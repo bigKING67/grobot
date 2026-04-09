@@ -1,80 +1,71 @@
-<!-- OSS_WEEKEND_START -->
-# 🏖️ OSS Weekend
+# grobot
 
-**Issue tracker reopens Monday, April 13, 2026.**
+企业级 Agent 工程实验仓库（Trellis 驱动），目标是基于 `TypeScript + Rust` 打造可在 IM 中调用的高可靠编码代理平台。
 
-OSS weekend runs Thursday, April 2, 2026 through Monday, April 13, 2026. New issues and PRs from unapproved contributors are auto-closed during this time. Approved contributors can still open issues and PRs if something is genuinely urgent, but please keep that to pressing matters only. For support, join [Discord](https://discord.com/invite/3cU7Bz4UPx).
+## 项目目标
 
-> _Current focus: at the moment i'm deep in refactoring internals, and need to focus._
-<!-- OSS_WEEKEND_END -->
+- 支持 Feishu / Telegram 首发接入，后续可扩展更多渠道。
+- 支持 100 并发会话，并保证严格会话隔离与可恢复执行。
+- 通过流程工程（harness、context、memory、eval、trace、安全）在非顶级模型上获得接近旗舰体验的稳定效果。
+- 保持模型供应商可替换（Kimi 2.5、GPT-5.4 级别、OpenAI-compatible 等）。
+
+## 技术栈与边界
+
+- TypeScript: gateway、channel adapters、management API、config orchestration。
+- Rust: runtime core（调度、会话状态机、工具执行策略、并发控制）。
+- Data plane: PostgreSQL + Redis（后续可扩展对象存储与消息队列）。
+
+## 文档导航
+
+所有核心设计文档位于 `.trellis/spec/guides/`：
+
+- [`agent-platform-blueprint.md`](.trellis/spec/guides/agent-platform-blueprint.md)
+  - 主架构蓝图、分层职责、核心控制流、SLO 目标。
+- [`agent-gateway-runtime-guide.md`](.trellis/spec/guides/agent-gateway-runtime-guide.md)
+  - 会话键规范、事件协议、网关与运行时契约、并发与降级策略。
+- [`agent-memory-context-guide.md`](.trellis/spec/guides/agent-memory-context-guide.md)
+  - 记忆分层、写入/召回链路、生命周期、上下文压缩策略。
+- [`agent-eval-observability-security-guide.md`](.trellis/spec/guides/agent-eval-observability-security-guide.md)
+  - 评测门禁、Trace 事件、SLO 告警、安全边界与审计。
+- [`agent-implementation-roadmap.md`](.trellis/spec/guides/agent-implementation-roadmap.md)
+  - 从 MVP 到企业化的阶段路线图与验收标准。
+- [`index.md`](.trellis/spec/guides/index.md)
+  - guides 总索引与触发条件。
+
+## Trellis 启动方式
+
+1. 新会话先执行 `/trellis:start`，同步当前项目上下文与协作规则。
+2. 从 `index.md` 选择本轮任务对应的 guide（架构、运行时、记忆、评测安全）。
+3. 变更前先固定契约与验收标准，变更后补充验证证据。
+
+## 推荐实施顺序
+
+1. 先读 `agent-platform-blueprint.md`，确认边界与目标。
+2. 按 `agent-gateway-runtime-guide.md` 固定契约和会话模型。
+3. 按 `agent-memory-context-guide.md` 落记忆与上下文策略。
+4. 同步接入 `agent-eval-observability-security-guide.md` 的门禁与追踪。
+5. 按 `agent-implementation-roadmap.md` 分阶段推进（MVP -> 100并发 -> GA）。
+
+## 参考资料（已采信）
+
+- Anthropic Managed Agents / Harness / Context / Evals
+- cc-connect（配置、Bridge 协议、Management API）
+- MemOS、Cortex（记忆系统）
+- Hermes Agent、IronClaw、Pi Mono（开源工程模式）
+- Claude Code Hub（企业网关与调度思路）
+- Karpathy LLM Wiki（持久化知识工件模式）
 
 ---
 
-<p align="center">
-  <a href="https://shittycodingagent.ai">
-    <img src="https://shittycodingagent.ai/logo.svg" alt="pi logo" width="128">
-  </a>
-</p>
-<p align="center">
-  <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
-  <a href="https://github.com/badlogic/pi-mono/actions/workflows/ci.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/badlogic/pi-mono/ci.yml?style=flat-square&branch=main" /></a>
-</p>
-<p align="center">
-  <a href="https://pi.dev">pi.dev</a> domain graciously donated by
-  <br /><br />
-  <a href="https://exe.dev"><img src="packages/coding-agent/docs/images/exy.png" alt="Exy mascot" width="48" /><br />exe.dev</a>
-</p>
+## English Summary
 
-# Pi Monorepo
+`grobot` is an enterprise agent-engineering workspace using Trellis and a TypeScript + Rust split:
 
-> **Looking for the pi coding agent?** See **[packages/coding-agent](packages/coding-agent)** for installation and usage.
+- TypeScript for gateway, platform adapters, management APIs, and orchestration.
+- Rust for high-concurrency runtime execution, scheduling, and policy enforcement.
+- Target: Feishu + Telegram launch, 100 concurrent sessions, strong session isolation, and model-agnostic quality through harness/context/memory/eval/trace/security engineering.
 
-Tools for building AI agents and managing LLM deployments.
+Start from:
 
-## Share your OSS coding agent sessions
-
-If you use pi or other coding agents for open source work, please share your sessions.
-
-Public OSS session data helps improve coding agents with real-world tasks, tool use, failures, and fixes instead of toy benchmarks.
-
-For the full explanation, see [this post on X](https://x.com/badlogicgames/status/2037811643774652911).
-
-To publish sessions, use [`badlogic/pi-share-hf`](https://github.com/badlogic/pi-share-hf). Read its README.md for setup instructions. All you need is a Hugging Face account, the Hugging Face CLI, and `pi-share-hf`.
-
-You can also watch [this video](https://x.com/badlogicgames/status/2041151967695634619), where I show how I publish my `pi-mono` sessions.
-
-I regularly publish my own `pi-mono` work sessions here:
-
-- [badlogicgames/pi-mono on Hugging Face](https://huggingface.co/datasets/badlogicgames/pi-mono)
-
-## Packages
-
-| Package | Description |
-|---------|-------------|
-| **[@mariozechner/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
-| **[@mariozechner/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@mariozechner/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
-| **[@mariozechner/pi-mom](packages/mom)** | Slack bot that delegates messages to the pi coding agent |
-| **[@mariozechner/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
-| **[@mariozechner/pi-web-ui](packages/web-ui)** | Web components for AI chat interfaces |
-| **[@mariozechner/pi-pods](packages/pods)** | CLI for managing vLLM deployments on GPU pods |
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents).
-
-## Development
-
-```bash
-npm install          # Install all dependencies
-npm run build        # Build all packages
-npm run check        # Lint, format, and type check
-./test.sh            # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh         # Run pi from sources (can be run from any directory)
-```
-
-> **Note:** `npm run check` requires `npm run build` to be run first. The web-ui package uses `tsc` which needs compiled `.d.ts` files from dependencies.
-
-## License
-
-MIT
+- `.trellis/spec/guides/agent-platform-blueprint.md`
+- `.trellis/spec/guides/index.md`
