@@ -8,6 +8,8 @@
 
 | Guide | Purpose | When to Use |
 | --- | --- | --- |
+| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | Before adding new utility, constant, helper, or repeated logic |
+| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Validate data flow and boundary contracts | Features spanning frontend/backend/db/tool boundaries |
 | [Agent Platform Blueprint](./agent-platform-blueprint.md) | Master architecture for TS+Rust multi-channel agent platform | Before major architecture decisions or scope planning |
 | [Agent Gateway and Runtime Guide](./agent-gateway-runtime-guide.md) | Runtime contracts, session control, concurrency, routing | When implementing adapters, gateway API, scheduler, failover |
 | [Agent Memory and Context Guide](./agent-memory-context-guide.md) | Memory lifecycle, retrieval, compaction, context layering | When implementing memory ingest/recall or context engineering |
@@ -17,6 +19,18 @@
 ---
 
 ## Quick Triggers
+
+### Use Cross-Layer Guide If
+
+- Feature touches 3+ subsystems.
+- Data formats change across service boundaries.
+- You need explicit input/output contracts.
+
+### Use Code Reuse Guide If
+
+- Similar code appears in 3+ places.
+- You are introducing new constants/config values.
+- You are about to create a new helper without searching first.
 
 ### Use Agent Blueprint and Runtime Guides If
 
