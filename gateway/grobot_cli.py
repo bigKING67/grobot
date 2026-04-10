@@ -70,6 +70,35 @@ class SessionStoreConfig:
 
 
 @dataclass
+class RuntimePaths:
+    repo_root: Path
+    home: Path
+    project_root: Path
+    project_dir: Path
+    project_toml: Path
+    config_toml: Path
+    runtime_dir: Path
+    sessions_dir: Path
+    global_rules_dir: Path
+    project_rules_dir: Path
+    global_skills_dir: Path
+    project_skills_dir: Path
+    global_mcp_dir: Path
+    global_mcp_registry: Path
+    project_mcp_file: Path
+    global_memory_dir: Path
+    project_memory_dir: Path
+    session_memory_dir: Path
+
+
+@dataclass
+class MemoryStorePaths:
+    session_snapshot: Path
+    project_log: Path
+    global_log: Path
+
+
+@dataclass
 class CircuitPolicy:
     failure_threshold: int
     cooldown_secs: int
@@ -405,6 +434,74 @@ HISTORY_RETRIEVAL_SECTION_WEIGHTS = {
     HISTORY_COMPACT_SECTION_TODO: 2.0,
     HISTORY_COMPACT_SECTION_TOOL_OUTPUT: 1.5,
 }
+DEFAULT_GROBOT_HOME_NAME = ".grobot"
+DEFAULT_GLOBAL_CONFIG_FILENAME = "config.toml"
+DEFAULT_PROJECT_CONFIG_DIRNAME = ".grobot"
+DEFAULT_PROJECT_CONFIG_FILENAME = "project.toml"
+DEFAULT_GLOBAL_MCP_REGISTRY = "servers.toml"
+DEFAULT_PROJECT_MCP_FILENAME = "mcp.toml"
+
+FALLBACK_GLOBAL_CONFIG_TEMPLATE = textwrap.dedent(
+    """
+    language = "zh"
+    quiet = false
+
+    [[projects]]
+    name = "default"
+
+    [projects.agent]
+    type = "claudecode"
+    provider = "default"
+
+    [projects.agent.options]
+    mode = "default"
+
+    [[projects.agent.providers]]
+    name = "default"
+    api_key = "replace-with-api-key"
+    base_url = "https://api.openai.com/v1"
+    model = "gpt-4o-mini"
+
+    [[projects.platforms]]
+    type = "feishu"
+
+    [projects.platforms.options]
+    app_id = "replace-with-feishu-app-id"
+    app_secret = "replace-with-feishu-app-secret"
+    allow_from = "*"
+    """
+).strip() + "\n"
+
+FALLBACK_PROJECT_TEMPLATE = textwrap.dedent(
+    """
+    schema_version = 1
+    mode = "mvp"
+
+    [agent]
+    id = "grobot"
+    name = "Grobot"
+
+    [gateway.management]
+    enabled = true
+    bind = "127.0.0.1:8080"
+
+    [runtime]
+    engine = "rust"
+
+    [tools]
+    allow = ["list", "glob", "search", "read", "write", "edit", "bash"]
+    """
+).strip() + "\n"
+
+FALLBACK_PROJECT_MCP_TEMPLATE = textwrap.dedent(
+    """
+    # Project-level MCP overrides.
+    # Example:
+    # [[servers]]
+    # name = "contextweaver"
+    # enabled = true
+    """
+).strip() + "\n"
 
 
 def fail(message: str) -> None:
@@ -414,6 +511,216 @@ def fail(message: str) -> None:
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def default_grobot_home(home_override: str | None = None) -> Path:
+    if isinstance(home_override, str) and home_override.strip():
+        return Path(home_override).expanduser().resolve()
+    env_home = os.getenv("GROBOT_HOME", "").strip()
+    if env_home:
+        return Path(env_home).expanduser().resolve()
+    return (Path.home() / DEFAULT_GROBOT_HOME_NAME).resolve()
+
+
+def discover_project_root(start_path: Path) -> Path | None:
+    current = start_path.resolve()
+    while True:
+        candidate = current / DEFAULT_PROJECT_CONFIG_DIRNAME / DEFAULT_PROJECT_CONFIG_FILENAME
+        if candidate.exists():
+            return current
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
+def resolve_runtime_paths(
+    *,
+    work_dir_override: str | None,
+    config_override: str | None,
+    home_override: str | None,
+    project_root_override: str | None,
+) -> RuntimePaths:
+    repo = repo_root().resolve()
+    home = default_grobot_home(home_override)
+    work_anchor = (
+        Path(work_dir_override).expanduser().resolve()
+        if isinstance(work_dir_override, str) and work_dir_override.strip()
+        else Path.cwd().resolve()
+    )
+
+    if isinstance(project_root_override, str) and project_root_override.strip():
+        project_root = Path(project_root_override).expanduser().resolve()
+    else:
+        project_root = discover_project_root(work_anchor) or discover_project_root(repo)
+        if project_root is None:
+            fail(
+                "project.toml not found. Use --project-root <dir> or run `grobot init --project` "
+                "inside your project."
+            )
+
+    project_dir = project_root / DEFAULT_PROJECT_CONFIG_DIRNAME
+    project_toml = project_dir / DEFAULT_PROJECT_CONFIG_FILENAME
+    if not project_toml.exists():
+        fail(f"Project TOML file not found: {project_toml}")
+
+    if isinstance(config_override, str) and config_override.strip():
+        config_toml = Path(config_override).expanduser().resolve()
+    else:
+        config_toml = home / DEFAULT_GLOBAL_CONFIG_FILENAME
+
+    runtime_dir = home / "runtime"
+    sessions_dir = runtime_dir / "sessions"
+    global_rules_dir = home / "rules"
+    project_rules_dir = project_dir / "rules"
+    global_skills_dir = home / "skills"
+    project_skills_dir = project_dir / "skills"
+    global_mcp_dir = home / "mcp"
+    global_mcp_registry = global_mcp_dir / DEFAULT_GLOBAL_MCP_REGISTRY
+    project_mcp_file = project_dir / DEFAULT_PROJECT_MCP_FILENAME
+    global_memory_dir = home / "memory" / "global"
+    project_memory_dir = project_dir / "memory"
+    session_memory_dir = runtime_dir / "memory" / "session"
+
+    return RuntimePaths(
+        repo_root=repo,
+        home=home,
+        project_root=project_root,
+        project_dir=project_dir,
+        project_toml=project_toml,
+        config_toml=config_toml,
+        runtime_dir=runtime_dir,
+        sessions_dir=sessions_dir,
+        global_rules_dir=global_rules_dir,
+        project_rules_dir=project_rules_dir,
+        global_skills_dir=global_skills_dir,
+        project_skills_dir=project_skills_dir,
+        global_mcp_dir=global_mcp_dir,
+        global_mcp_registry=global_mcp_registry,
+        project_mcp_file=project_mcp_file,
+        global_memory_dir=global_memory_dir,
+        project_memory_dir=project_memory_dir,
+        session_memory_dir=session_memory_dir,
+    )
+
+
+def ensure_runtime_layout(paths: RuntimePaths) -> None:
+    required_dirs = (
+        paths.home,
+        paths.runtime_dir,
+        paths.sessions_dir,
+        paths.global_memory_dir,
+        paths.project_memory_dir,
+        paths.session_memory_dir,
+    )
+    for directory in required_dirs:
+        directory.mkdir(parents=True, exist_ok=True)
+
+
+def write_text_file_if_missing(
+    target: Path,
+    *,
+    source: Path | None = None,
+    fallback_content: str,
+    force: bool = False,
+) -> bool:
+    if target.exists() and not force:
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if source is not None and source.exists():
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        target.write_text(fallback_content, encoding="utf-8")
+    return True
+
+
+def append_jsonl_file(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False))
+        handle.write("\n")
+
+
+def summarize_memory_sections(compact_memory: dict[str, Any] | None, max_items: int = 8) -> dict[str, list[str]]:
+    if not isinstance(compact_memory, dict):
+        return {}
+    sections = compact_memory.get("sections")
+    if not isinstance(sections, dict):
+        return {}
+    summary: dict[str, list[str]] = {}
+    for section in HISTORY_COMPACT_SECTIONS:
+        raw_items = sections.get(section)
+        if not isinstance(raw_items, list):
+            continue
+        cleaned = [str(item).strip() for item in raw_items if isinstance(item, str) and item.strip()]
+        if cleaned:
+            summary[section] = cleaned[:max_items]
+    return summary
+
+
+def build_memory_store_paths(paths: RuntimePaths, session_key: str) -> MemoryStorePaths:
+    safe_name = sanitize_session_key(session_key)
+    return MemoryStorePaths(
+        session_snapshot=paths.session_memory_dir / f"{safe_name}.json",
+        project_log=paths.project_memory_dir / "memory.jsonl",
+        global_log=paths.global_memory_dir / "memory.jsonl",
+    )
+
+
+def persist_memory_layers(
+    *,
+    paths: RuntimePaths,
+    selection: ProjectSelection,
+    session_key: str,
+    compact_memory: dict[str, Any] | None,
+) -> list[str]:
+    warnings: list[str] = []
+    summary_sections = summarize_memory_sections(compact_memory)
+    if not summary_sections:
+        return warnings
+
+    store_paths = build_memory_store_paths(paths, session_key)
+    session_payload = {
+        "version": 1,
+        "updated_at": now_utc_iso(),
+        "session_key": session_key,
+        "project": selection.name,
+        "work_dir": str(selection.work_dir),
+        "sections": summary_sections,
+    }
+    try:
+        write_json_file(store_paths.session_snapshot, session_payload)
+    except OSError as exc:
+        warnings.append(f"session memory snapshot write failed: {exc}")
+
+    log_entry = {
+        "timestamp": now_utc_iso(),
+        "session_key": session_key,
+        "project": selection.name,
+        "work_dir": str(selection.work_dir),
+        "sections": summary_sections,
+    }
+    try:
+        append_jsonl_file(store_paths.project_log, log_entry)
+    except OSError as exc:
+        warnings.append(f"project memory append failed: {exc}")
+
+    architecture = summary_sections.get(HISTORY_COMPACT_SECTION_ARCHITECTURE, [])
+    verification = summary_sections.get(HISTORY_COMPACT_SECTION_VERIFICATION, [])
+    if architecture or verification:
+        global_entry = {
+            "timestamp": now_utc_iso(),
+            "session_key": session_key,
+            "project": selection.name,
+            "work_dir": str(selection.work_dir),
+            "architecture": architecture,
+            "verification": verification,
+        }
+        try:
+            append_jsonl_file(store_paths.global_log, global_entry)
+        except OSError as exc:
+            warnings.append(f"global memory append failed: {exc}")
+    return warnings
 
 
 def load_toml(path: Path) -> dict[str, Any]:
@@ -438,10 +745,15 @@ def first_platform(project: dict[str, Any]) -> str:
     return "feishu"
 
 
-def find_project(config: dict[str, Any], project_name: str | None) -> dict[str, Any]:
+def find_project(
+    config: dict[str, Any],
+    project_name: str | None,
+    *,
+    config_hint: str = "config.toml",
+) -> dict[str, Any]:
     projects = config.get("projects")
     if not isinstance(projects, list) or not projects:
-        fail("No [[projects]] found in .grobot/config.toml")
+        fail(f"No [[projects]] found in {config_hint}")
 
     if project_name is None:
         first = projects[0]
@@ -454,7 +766,7 @@ def find_project(config: dict[str, Any], project_name: str | None) -> dict[str, 
             continue
         if item.get("name") == project_name:
             return item
-    fail(f'Project "{project_name}" not found in .grobot/config.toml')
+    fail(f'Project "{project_name}" not found in {config_hint}')
     return {}
 
 
@@ -495,7 +807,7 @@ def pick_provider(
     api_key = override_api_key or str(provider.get("api_key") or os.getenv("GROBOT_API_KEY", ""))
     if not api_key:
         fail(
-            "No API key provided. Set [projects.agent.providers].api_key in .grobot/config.toml "
+            "No API key provided. Set [projects.agent.providers].api_key in config.toml "
             "or export GROBOT_API_KEY."
         )
 
@@ -513,8 +825,10 @@ def resolve_project(
     override_api_key: str | None,
     override_base_url: str | None,
     override_model: str | None,
+    *,
+    config_hint: str = "config.toml",
 ) -> ProjectSelection:
-    project = find_project(config, project_name)
+    project = find_project(config, project_name, config_hint=config_hint)
     project_real_name = str(project.get("name") or "default")
 
     work_dir = None
@@ -729,6 +1043,7 @@ def resolve_session_store_config(
     *,
     project_toml: dict[str, Any],
     root: Path,
+    session_root: Path | None = None,
     session_backend_arg: str,
     redis_url_arg: str | None,
     ttl_secs_arg: int | None,
@@ -748,11 +1063,12 @@ def resolve_session_store_config(
 
     redis_url = redis_url_arg or os.getenv("GROBOT_REDIS_URL") or DEFAULT_REDIS_URL
     ttl_secs = infer_session_ttl_secs(project_toml, ttl_secs_arg)
+    resolved_session_root = session_root if isinstance(session_root, Path) else (root / ".grobot" / "sessions")
     return SessionStoreConfig(
         backend=backend,
         redis_url=redis_url if backend == "redis" else None,
         ttl_secs=ttl_secs,
-        root=root / ".grobot" / "sessions",
+        root=resolved_session_root,
     )
 
 
@@ -4029,7 +4345,7 @@ def summarize_provider_routing(project_toml: dict[str, Any]) -> dict[str, Any]:
 
 def build_management_status_payload(
     *,
-    root: Path,
+    runtime_paths: RuntimePaths,
     project_toml: dict[str, Any],
     selection: ProjectSelection,
     session_key: str,
@@ -4055,11 +4371,35 @@ def build_management_status_payload(
         "endpoints": {
             "status": "/api/v1/status",
         },
-        "repo": str(root),
+        "repo": str(runtime_paths.project_root),
         "project": {
             "name": selection.name,
             "schema_version": project_toml.get("schema_version"),
             "mode": project_toml.get("mode"),
+        },
+        "paths": {
+            "home": str(runtime_paths.home),
+            "project_root": str(runtime_paths.project_root),
+            "project_toml": str(runtime_paths.project_toml),
+            "config_toml": str(runtime_paths.config_toml),
+            "sessions_root": str(runtime_paths.sessions_dir),
+            "rules": {
+                "global": str(runtime_paths.global_rules_dir),
+                "project": str(runtime_paths.project_rules_dir),
+            },
+            "skills": {
+                "global": str(runtime_paths.global_skills_dir),
+                "project": str(runtime_paths.project_skills_dir),
+            },
+            "mcp": {
+                "global_registry": str(runtime_paths.global_mcp_registry),
+                "project_override": str(runtime_paths.project_mcp_file),
+            },
+            "memory": {
+                "session": str(runtime_paths.session_memory_dir),
+                "project": str(runtime_paths.project_memory_dir),
+                "global": str(runtime_paths.global_memory_dir),
+            },
         },
         "session": {
             "platform": selection.platform,
@@ -4145,13 +4485,15 @@ def mention_refresh_status_message(mention_index: MentionIndexState | MentionPat
 
 
 def run_status(args: argparse.Namespace) -> int:
-    root = repo_root()
-    project_toml = load_toml(root / ".grobot" / "project.toml")
-    config_path = root / ".grobot" / "config.toml"
-    if args.config:
-        config_path = Path(args.config).expanduser()
-
-    config_toml = load_toml(config_path)
+    paths = resolve_runtime_paths(
+        work_dir_override=args.work_dir,
+        config_override=args.config,
+        home_override=args.home,
+        project_root_override=args.project_root,
+    )
+    ensure_runtime_layout(paths)
+    project_toml = load_toml(paths.project_toml)
+    config_toml = load_toml(paths.config_toml)
     selection = resolve_project(
         config=config_toml,
         project_name=args.project,
@@ -4160,19 +4502,23 @@ def run_status(args: argparse.Namespace) -> int:
         override_api_key=args.api_key,
         override_base_url=args.base_url,
         override_model=args.model,
+        config_hint=str(paths.config_toml),
     )
     session_key = build_session_key(selection.name, selection.platform, selection.work_dir)
     session_store = resolve_session_store_config(
         project_toml=project_toml,
-        root=root,
+        root=paths.project_root,
+        session_root=paths.sessions_dir,
         session_backend_arg="auto",
         redis_url_arg=None,
         ttl_secs_arg=None,
     )
 
     print("Grobot status")
-    print(f"  repo:              {root}")
-    print(f"  config:            {config_path}")
+    print(f"  home:              {paths.home}")
+    print(f"  project_root:      {paths.project_root}")
+    print(f"  project_toml:      {paths.project_toml}")
+    print(f"  config:            {paths.config_toml}")
     print(f"  project:           {selection.name}")
     print(f"  platform:          {selection.platform}")
     print(f"  work_dir:          {selection.work_dir}")
@@ -4182,6 +4528,14 @@ def run_status(args: argparse.Namespace) -> int:
     print(f"  api_key:           {mask_secret(selection.provider.api_key)}")
     print(f"  session_preview:   {session_key}")
     print(f"  session_store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
+    print(f"  sessions_root:     {paths.sessions_dir}")
+    print(f"  rules:             global={paths.global_rules_dir} project={paths.project_rules_dir}")
+    print(f"  skills:            global={paths.global_skills_dir} project={paths.project_skills_dir}")
+    print(f"  mcp:               global={paths.global_mcp_registry} project={paths.project_mcp_file}")
+    print(
+        "  memory:            "
+        f"session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}"
+    )
 
     if not args.probe:
         print("  probe:             skipped (use --probe to verify /models)")
@@ -4194,16 +4548,17 @@ def run_status(args: argparse.Namespace) -> int:
 
 
 def run_serve(args: argparse.Namespace) -> int:
-    root = repo_root()
-    project_path = root / ".grobot" / "project.toml"
-    config_path = root / ".grobot" / "config.toml"
-    if args.config:
-        config_path = Path(args.config).expanduser()
-
     def build_runtime_state() -> dict[str, Any]:
-        project_toml = load_toml(project_path)
-        config_toml = load_toml(config_path)
-        project_cfg = find_project(config_toml, args.project)
+        paths = resolve_runtime_paths(
+            work_dir_override=args.work_dir,
+            config_override=args.config,
+            home_override=args.home,
+            project_root_override=args.project_root,
+        )
+        ensure_runtime_layout(paths)
+        project_toml = load_toml(paths.project_toml)
+        config_toml = load_toml(paths.config_toml)
+        project_cfg = find_project(config_toml, args.project, config_hint=str(paths.config_toml))
         selection = resolve_project(
             config=config_toml,
             project_name=args.project,
@@ -4212,6 +4567,7 @@ def run_serve(args: argparse.Namespace) -> int:
             override_api_key=args.api_key,
             override_base_url=args.base_url,
             override_model=args.model,
+            config_hint=str(paths.config_toml),
         )
         provider_pool = resolve_provider_pool(
             project=project_cfg,
@@ -4229,7 +4585,8 @@ def run_serve(args: argparse.Namespace) -> int:
         session_key = build_session_key(selection.name, selection.platform, selection.work_dir)
         session_store = resolve_session_store_config(
             project_toml=project_toml,
-            root=root,
+            root=paths.project_root,
+            session_root=paths.sessions_dir,
             session_backend_arg=args.session_backend,
             redis_url_arg=args.redis_url,
             ttl_secs_arg=args.session_ttl_secs,
@@ -4246,6 +4603,7 @@ def run_serve(args: argparse.Namespace) -> int:
             public_config_sections_profile,
         ) = resolve_public_config_sections(config_toml)
         return {
+            "paths": paths,
             "project_toml": project_toml,
             "config_toml": config_toml,
             "selection": selection,
@@ -4271,7 +4629,7 @@ def run_serve(args: argparse.Namespace) -> int:
 
     def state_status_payload() -> dict[str, Any]:
         payload = build_management_status_payload(
-            root=root,
+            runtime_paths=state["paths"],
             project_toml=state["project_toml"],
             selection=state["selection"],
             session_key=state["session_key"],
@@ -4327,6 +4685,7 @@ def run_serve(args: argparse.Namespace) -> int:
 
     def state_config_payload(visible_sections: tuple[str, ...] | None) -> dict[str, Any]:
         selection: ProjectSelection = state["selection"]
+        runtime_paths: RuntimePaths = state["paths"]
         payload: dict[str, Any] = {
             "status": "ok",
             "timestamp": now_utc_iso(),
@@ -4345,8 +4704,11 @@ def run_serve(args: argparse.Namespace) -> int:
 
         sections: dict[str, Any] = {
             CONFIG_SECTION_PATHS: {
-                "project_toml": str(project_path),
-                "config_toml": str(config_path),
+                "home": str(runtime_paths.home),
+                "project_root": str(runtime_paths.project_root),
+                "project_toml": str(runtime_paths.project_toml),
+                "config_toml": str(runtime_paths.config_toml),
+                "sessions_root": str(runtime_paths.sessions_dir),
             },
             CONFIG_SECTION_SELECTION: {
                 "project": selection.name,
@@ -4639,13 +5001,16 @@ def run_serve(args: argparse.Namespace) -> int:
 
 
 def run_start(args: argparse.Namespace) -> int:
-    root = repo_root()
-    project_toml = load_toml(root / ".grobot" / "project.toml")
-    config_path = root / ".grobot" / "config.toml"
-    if args.config:
-        config_path = Path(args.config).expanduser()
-    config_toml = load_toml(config_path)
-    project_cfg = find_project(config_toml, args.project)
+    paths = resolve_runtime_paths(
+        work_dir_override=args.work_dir,
+        config_override=args.config,
+        home_override=args.home,
+        project_root_override=args.project_root,
+    )
+    ensure_runtime_layout(paths)
+    project_toml = load_toml(paths.project_toml)
+    config_toml = load_toml(paths.config_toml)
+    project_cfg = find_project(config_toml, args.project, config_hint=str(paths.config_toml))
 
     selection = resolve_project(
         config=config_toml,
@@ -4655,6 +5020,7 @@ def run_start(args: argparse.Namespace) -> int:
         override_api_key=args.api_key,
         override_base_url=args.base_url,
         override_model=args.model,
+        config_hint=str(paths.config_toml),
     )
     provider_pool = resolve_provider_pool(
         project=project_cfg,
@@ -4676,7 +5042,8 @@ def run_start(args: argparse.Namespace) -> int:
     session_key = build_session_key(selection.name, selection.platform, selection.work_dir)
     session_store = resolve_session_store_config(
         project_toml=project_toml,
-        root=root,
+        root=paths.project_root,
+        session_root=paths.sessions_dir,
         session_backend_arg=args.session_backend,
         redis_url_arg=args.redis_url,
         ttl_secs_arg=args.session_ttl_secs,
@@ -4696,7 +5063,8 @@ def run_start(args: argparse.Namespace) -> int:
     )
 
     print("Grobot started")
-    print(f"  repo:      {root}")
+    print(f"  home:      {paths.home}")
+    print(f"  root:      {paths.project_root}")
     print(f"  project:   {selection.name}")
     print(f"  platform:  {selection.platform}")
     print(f"  work_dir:  {selection.work_dir}")
@@ -4705,6 +5073,8 @@ def run_start(args: argparse.Namespace) -> int:
     print(f"  failover:  {format_route_chain(routes)}")
     print(f"  session:   {session_key}")
     print(f"  store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
+    print(f"  sessions:  {paths.sessions_dir}")
+    print(f"  memory:    session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}")
     print(f"  tools:     {', '.join(local_tool_context.allow_tokens)}")
     retrieval_parts: list[str] = []
     if retrieval_config.enabled:
@@ -4783,6 +5153,15 @@ def run_start(args: argparse.Namespace) -> int:
         save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
         for warning in save_warnings:
             print(f"[store] {warning}", file=sys.stderr)
+        _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
+        memory_warnings = persist_memory_layers(
+            paths=paths,
+            selection=selection,
+            session_key=session_key,
+            compact_memory=compact_memory,
+        )
+        for warning in memory_warnings:
+            print(f"[memory] {warning}", file=sys.stderr)
         print(reply)
         return 0
 
@@ -4863,6 +5242,15 @@ def run_start(args: argparse.Namespace) -> int:
         save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
         for warning in save_warnings:
             print(f"[store] {warning}")
+        _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
+        memory_warnings = persist_memory_layers(
+            paths=paths,
+            selection=selection,
+            session_key=session_key,
+            compact_memory=compact_memory,
+        )
+        for warning in memory_warnings:
+            print(f"[memory] {warning}")
         print(reply)
         print("")
 
@@ -4870,14 +5258,132 @@ def run_start(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_init(args: argparse.Namespace) -> int:
+    init_global = bool(getattr(args, "init_global", False))
+    init_project = bool(getattr(args, "init_project", False))
+    if not init_global and not init_project:
+        init_global = True
+
+    repo = repo_root().resolve()
+    home = default_grobot_home(getattr(args, "home", None))
+    force = bool(getattr(args, "force", False))
+    created: list[str] = []
+    reused: list[str] = []
+
+    if init_global:
+        global_dirs = [
+            home,
+            home / "rules",
+            home / "skills",
+            home / "mcp",
+            home / "runtime" / "sessions",
+            home / "runtime" / "memory" / "session",
+            home / "memory" / "global",
+        ]
+        for path in global_dirs:
+            existed = path.exists()
+            path.mkdir(parents=True, exist_ok=True)
+            if existed:
+                reused.append(str(path))
+            else:
+                created.append(str(path))
+
+        config_target = home / DEFAULT_GLOBAL_CONFIG_FILENAME
+        config_source = repo / DEFAULT_PROJECT_CONFIG_DIRNAME / "config.toml.example"
+        wrote = write_text_file_if_missing(
+            config_target,
+            source=config_source,
+            fallback_content=FALLBACK_GLOBAL_CONFIG_TEMPLATE,
+            force=force,
+        )
+        if wrote:
+            created.append(str(config_target))
+        else:
+            reused.append(str(config_target))
+
+    if init_project:
+        project_root = (
+            Path(getattr(args, "project_root", "")).expanduser().resolve()
+            if isinstance(getattr(args, "project_root", None), str) and getattr(args, "project_root").strip()
+            else Path.cwd().resolve()
+        )
+        project_dir = project_root / DEFAULT_PROJECT_CONFIG_DIRNAME
+        project_dirs = [
+            project_dir,
+            project_dir / "rules",
+            project_dir / "skills",
+            project_dir / "memory",
+        ]
+        for path in project_dirs:
+            existed = path.exists()
+            path.mkdir(parents=True, exist_ok=True)
+            if existed:
+                reused.append(str(path))
+            else:
+                created.append(str(path))
+
+        project_target = project_dir / DEFAULT_PROJECT_CONFIG_FILENAME
+        project_source = repo / DEFAULT_PROJECT_CONFIG_DIRNAME / DEFAULT_PROJECT_CONFIG_FILENAME
+        wrote_project = write_text_file_if_missing(
+            project_target,
+            source=project_source,
+            fallback_content=FALLBACK_PROJECT_TEMPLATE,
+            force=force,
+        )
+        if wrote_project:
+            created.append(str(project_target))
+        else:
+            reused.append(str(project_target))
+
+        project_mcp_target = project_dir / DEFAULT_PROJECT_MCP_FILENAME
+        wrote_project_mcp = write_text_file_if_missing(
+            project_mcp_target,
+            source=None,
+            fallback_content=FALLBACK_PROJECT_MCP_TEMPLATE,
+            force=force,
+        )
+        if wrote_project_mcp:
+            created.append(str(project_mcp_target))
+        else:
+            reused.append(str(project_mcp_target))
+
+    print("Grobot init completed")
+    print(f"  home:      {home}")
+    if init_project:
+        project_root_display = (
+            Path(getattr(args, "project_root")).expanduser().resolve()
+            if isinstance(getattr(args, "project_root", None), str) and getattr(args, "project_root").strip()
+            else Path.cwd().resolve()
+        )
+        print(f"  project:   {project_root_display}")
+    print(f"  created:   {len(created)}")
+    print(f"  reused:    {len(reused)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Grobot local launcher")
     sub = parser.add_subparsers(dest="command")
 
+    init = sub.add_parser("init", help="Initialize global home and/or project .grobot layout")
+    init.add_argument("--global", dest="init_global", action="store_true", help="Initialize ~/.grobot home layout")
+    init.add_argument(
+        "--project",
+        dest="init_project",
+        action="store_true",
+        help="Initialize .grobot layout in target project root (default: current directory)",
+    )
+    init.add_argument("--home", help="Override global home directory (default: ~/.grobot or GROBOT_HOME)")
+    init.add_argument("--project-root", help="Target project root for --project")
+    init.add_argument("--force", action="store_true", help="Overwrite existing template files")
+    init.set_defaults(func=run_init)
+
     status = sub.add_parser("status", help="Show grobot runtime status")
-    status.add_argument("--project", help="Project name in .grobot/config.toml")
+    status.add_argument("--project", help="Project name in config.toml")
     status.add_argument("--work-dir", help="Override target work directory")
     status.add_argument("--config", help="Path to runtime config.toml")
+    status.add_argument("--home", help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)")
+    status.add_argument("--project-root", help="Project root containing .grobot/project.toml")
     status.add_argument("--provider", help="Provider name from [projects.agent.providers]")
     status.add_argument("--api-key", help="Override API key")
     status.add_argument("--base-url", help="Override OpenAI-compatible base URL")
@@ -4886,9 +5392,11 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(func=run_status)
 
     serve = sub.add_parser("serve", help="Run management API server")
-    serve.add_argument("--project", help="Project name in .grobot/config.toml")
+    serve.add_argument("--project", help="Project name in config.toml")
     serve.add_argument("--work-dir", help="Override target work directory")
     serve.add_argument("--config", help="Path to runtime config.toml")
+    serve.add_argument("--home", help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)")
+    serve.add_argument("--project-root", help="Project root containing .grobot/project.toml")
     serve.add_argument("--provider", help="Provider name from [projects.agent.providers]")
     serve.add_argument("--api-key", help="Override API key")
     serve.add_argument("--base-url", help="Override OpenAI-compatible base URL")
@@ -4914,10 +5422,12 @@ def build_parser() -> argparse.ArgumentParser:
     serve.set_defaults(func=run_serve)
 
     start = sub.add_parser("start", help="Start grobot session")
-    start.add_argument("--project", help="Project name in .grobot/config.toml")
+    start.add_argument("--project", help="Project name in config.toml")
     start.add_argument("--work-dir", help="Override target work directory")
     start.add_argument("--message", help="Run one-shot message and exit")
     start.add_argument("--config", help="Path to runtime config.toml")
+    start.add_argument("--home", help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)")
+    start.add_argument("--project-root", help="Project root containing .grobot/project.toml")
     start.add_argument("--provider", help="Provider name from [projects.agent.providers]")
     start.add_argument("--api-key", help="Override API key")
     start.add_argument("--base-url", help="Override OpenAI-compatible base URL")

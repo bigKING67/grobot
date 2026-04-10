@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# npm global install creates a symlink under <prefix>/bin.
+# Resolve the symlink chain first so gateway/grobot_cli.py is found in package root.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  TARGET="$(readlink "$SOURCE")"
+  if [[ "$TARGET" != /* ]]; then
+    SOURCE="$SCRIPT_DIR/$TARGET"
+  else
+    SOURCE="$TARGET"
+  fi
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 exec python3 "$SCRIPT_DIR/gateway/grobot_cli.py" "$@"

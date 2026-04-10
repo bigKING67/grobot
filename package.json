@@ -1,10 +1,18 @@
 {
   "name": "grobot",
-  "private": true,
+  "private": false,
   "version": "0.1.0",
+  "bin": {
+    "grobot": "./grobot"
+  },
+  "files": [
+    "grobot",
+    "gateway/grobot_cli.py",
+    "README.md"
+  ],
   "scripts": {
     "check": "npm run check:gateway",
-    "check:gateway": "python3 -m py_compile gateway/grobot_cli.py gateway/evals/__init__.py gateway/evals/models.py gateway/evals/scoring.py gateway/evals/runner.py gateway/evals/trace_mining.py gateway/evals/trace_clean.py gateway/evals/trace_pipeline.py gateway/evals/policy_guard.py gateway/evals/hill_climb.py gateway/tests/test_management_policy_templates.py gateway/tests/test_local_tools.py gateway/tests/test_start_tool_smoke.py gateway/tests/test_failover_context.py gateway/tests/test_session_store_fallback.py gateway/tests/test_history_compaction.py gateway/tests/test_agent_harness.py gateway/tests/test_trace_mining.py gateway/tests/test_trace_clean.py gateway/tests/test_trace_pipeline.py gateway/tests/test_trace_pipeline_policy_guard.py gateway/tests/test_hill_climb.py && python3 gateway/tests/test_management_policy_templates.py && python3 gateway/tests/test_local_tools.py && python3 gateway/tests/test_start_tool_smoke.py && python3 gateway/tests/test_failover_context.py && python3 gateway/tests/test_session_store_fallback.py && python3 gateway/tests/test_history_compaction.py && python3 gateway/tests/test_agent_harness.py && python3 gateway/tests/test_trace_mining.py && python3 gateway/tests/test_trace_clean.py && python3 gateway/tests/test_trace_pipeline.py && python3 gateway/tests/test_trace_pipeline_policy_guard.py && python3 gateway/tests/test_hill_climb.py",
+    "check:gateway": "python3 -m py_compile gateway/grobot_cli.py gateway/evals/__init__.py gateway/evals/models.py gateway/evals/scoring.py gateway/evals/runner.py gateway/evals/trace_mining.py gateway/evals/trace_clean.py gateway/evals/trace_pipeline.py gateway/evals/policy_guard.py gateway/evals/hill_climb.py gateway/tests/test_management_policy_templates.py gateway/tests/test_local_tools.py gateway/tests/test_runtime_paths.py gateway/tests/test_start_tool_smoke.py gateway/tests/test_failover_context.py gateway/tests/test_session_store_fallback.py gateway/tests/test_history_compaction.py gateway/tests/test_agent_harness.py gateway/tests/test_trace_mining.py gateway/tests/test_trace_clean.py gateway/tests/test_trace_pipeline.py gateway/tests/test_trace_pipeline_policy_guard.py gateway/tests/test_hill_climb.py && python3 gateway/tests/test_management_policy_templates.py && python3 gateway/tests/test_local_tools.py && python3 gateway/tests/test_runtime_paths.py && python3 gateway/tests/test_start_tool_smoke.py && python3 gateway/tests/test_failover_context.py && python3 gateway/tests/test_session_store_fallback.py && python3 gateway/tests/test_history_compaction.py && python3 gateway/tests/test_agent_harness.py && python3 gateway/tests/test_trace_mining.py && python3 gateway/tests/test_trace_clean.py && python3 gateway/tests/test_trace_pipeline.py && python3 gateway/tests/test_trace_pipeline_policy_guard.py && python3 gateway/tests/test_hill_climb.py",
     "harness:sample": "python3 gateway/evals/runner.py --cases gateway/evals/fixtures/cases.sample.jsonl --runs gateway/evals/fixtures/runs.sample.jsonl --gate-policy gateway/evals/gate_policy.default.json --output /tmp/grobot-harness-report.json",
     "harness:gate:sample": "python3 gateway/evals/runner.py --cases gateway/evals/fixtures/cases.sample.jsonl --runs gateway/evals/fixtures/runs.sample.jsonl --gate-policy gateway/evals/gate_policy.default.json --fail-on-gate",
     "harness:gate:ci": "python3 gateway/evals/runner.py --cases gateway/evals/fixtures/cases.ci.jsonl --runs gateway/evals/fixtures/runs.ci.jsonl --gate-policy gateway/evals/gate_policy.ci.json --fail-on-gate",
