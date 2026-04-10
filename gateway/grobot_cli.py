@@ -82,6 +82,22 @@ class LocalToolContext:
 
 
 @dataclass
+class RetrievalRemoteConfig:
+    base_url: str
+    api_key: str
+    model: str
+
+
+@dataclass
+class ContextRetrievalConfig:
+    enabled: bool
+    candidate_limit: int
+    selected_limit: int
+    embedding: RetrievalRemoteConfig | None
+    rerank: RetrievalRemoteConfig | None
+
+
+@dataclass
 class MentionPathIndex:
     work_dir: Path
     paths: set[str]
@@ -242,6 +258,152 @@ FILE_MENTION_PYTHON_EXCLUDE_DIRS = {
     "target",
     ".venv",
     "venv",
+}
+HISTORY_COMPACT_HEADER = "[Compact Context Snapshot v1]"
+HISTORY_COMPACT_SECTION_ARCHITECTURE = "Architecture decisions"
+HISTORY_COMPACT_SECTION_MODIFIED = "Modified files and key changes"
+HISTORY_COMPACT_SECTION_VERIFICATION = "Current verification status"
+HISTORY_COMPACT_SECTION_TODO = "Open TODOs and rollback notes"
+HISTORY_COMPACT_SECTION_TOOL_OUTPUT = "Tool outputs (pass/fail only)"
+HISTORY_COMPACT_SECTIONS = (
+    HISTORY_COMPACT_SECTION_ARCHITECTURE,
+    HISTORY_COMPACT_SECTION_MODIFIED,
+    HISTORY_COMPACT_SECTION_VERIFICATION,
+    HISTORY_COMPACT_SECTION_TODO,
+    HISTORY_COMPACT_SECTION_TOOL_OUTPUT,
+)
+HISTORY_COMPACT_SECTION_LIMITS: dict[str, int | None] = {
+    HISTORY_COMPACT_SECTION_ARCHITECTURE: None,
+    HISTORY_COMPACT_SECTION_MODIFIED: 48,
+    HISTORY_COMPACT_SECTION_VERIFICATION: 32,
+    HISTORY_COMPACT_SECTION_TODO: 32,
+    HISTORY_COMPACT_SECTION_TOOL_OUTPUT: 32,
+}
+HISTORY_ARCHITECTURE_KEYWORDS = (
+    "architecture",
+    "system design",
+    "trade-off",
+    "tradeoff",
+    "api contract",
+    "security decision",
+    "performance decision",
+    "design decision",
+    "架构",
+    "系统设计",
+    "架构决策",
+    "权衡",
+    "取舍",
+    "接口契约",
+    "安全决策",
+    "性能决策",
+    "设计决策",
+)
+HISTORY_MODIFIED_KEYWORDS = (
+    "modified",
+    "changed",
+    "updated",
+    "added",
+    "removed",
+    "breaking change",
+    "dependency impact",
+    "改动",
+    "修改",
+    "新增",
+    "删除",
+    "变更",
+    "影响",
+    "破坏性",
+    "依赖",
+)
+HISTORY_VERIFICATION_KEYWORDS = (
+    "verify",
+    "verification",
+    "test",
+    "tests",
+    "check",
+    "passed",
+    "failed",
+    "status",
+    "验证",
+    "测试",
+    "检查",
+    "通过",
+    "失败",
+    "状态",
+)
+HISTORY_TODO_KEYWORDS = (
+    "todo",
+    "fixme",
+    "rollback",
+    "follow-up",
+    "next step",
+    "open issue",
+    "未完成",
+    "待办",
+    "回滚",
+    "后续",
+    "遗留",
+    "风险",
+    "应急",
+)
+HISTORY_TOOL_OUTPUT_KEYWORDS = (
+    "command:",
+    "stdout",
+    "stderr",
+    "exit code",
+    "exit_code",
+    "traceback",
+    "error",
+    "[failover]",
+    "[store]",
+    "[interrupt]",
+)
+HISTORY_STATUS_PASS_MARKERS = (
+    " passed",
+    " pass",
+    " success",
+    " succeeded",
+    " ok",
+    " exit code: 0",
+    " exit_code: 0",
+    "通过",
+    "成功",
+)
+HISTORY_STATUS_FAIL_MARKERS = (
+    " failed",
+    " fail",
+    " error",
+    " exception",
+    " traceback",
+    " exit code: 1",
+    " exit_code: 1",
+    " timeout",
+    "失败",
+    "错误",
+    "异常",
+    "超时",
+)
+HISTORY_PATH_PATTERN = re.compile(
+    r"(?:\.{1,2}/|/)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+(?:\.[A-Za-z0-9_.-]+)?"
+)
+HISTORY_QUERY_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_./:-]+|[\u4e00-\u9fff]{1,12}")
+HISTORY_RETRIEVAL_MAX_ITEMS = 8
+HISTORY_RETRIEVAL_MAX_TEXT_CHARS = 220
+HISTORY_RETRIEVAL_MIN_SCORE = 1.0
+HISTORY_RETRIEVAL_PINNED_ARCH_LIMIT = 2
+HISTORY_RETRIEVAL_REMOTE_MAX_CANDIDATES = 24
+HISTORY_RETRIEVAL_EMBEDDING_SCORE_WEIGHT = 2.0
+HISTORY_RETRIEVAL_RERANK_SCORE_WEIGHT = 2.5
+HISTORY_RETRIEVAL_REMOTE_TIMEOUT_SECS = 20
+DEFAULT_RETRIEVAL_BASE_URL = "https://api.siliconflow.cn/v1"
+DEFAULT_RETRIEVAL_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
+DEFAULT_RETRIEVAL_RERANK_MODEL = "Qwen/Qwen3-Reranker-4B"
+HISTORY_RETRIEVAL_SECTION_WEIGHTS = {
+    HISTORY_COMPACT_SECTION_ARCHITECTURE: 5.0,
+    HISTORY_COMPACT_SECTION_MODIFIED: 3.0,
+    HISTORY_COMPACT_SECTION_VERIFICATION: 2.5,
+    HISTORY_COMPACT_SECTION_TODO: 2.0,
+    HISTORY_COMPACT_SECTION_TOOL_OUTPUT: 1.5,
 }
 
 
@@ -761,14 +923,26 @@ def load_history_from_store(
             payload = redis_get_json(store.redis_url, session_storage_key(session_key))
             if payload is not None:
                 messages = normalize_history_messages(payload.get("messages"))
-                return trim_history_messages(messages, max_turns), "redis", warnings
+                compact_memory = normalize_compact_memory_payload(payload.get("compact_memory"))
+                trimmed, _ = trim_history_messages_with_memory(
+                    messages,
+                    max_turns,
+                    existing_memory=compact_memory,
+                )
+                return trimmed, "redis", warnings
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"redis read failed, fallback to file: {exc}")
 
     payload = read_json_file(file_path)
     if payload is not None:
         messages = normalize_history_messages(payload.get("messages"))
-        return trim_history_messages(messages, max_turns), "file", warnings
+        compact_memory = normalize_compact_memory_payload(payload.get("compact_memory"))
+        trimmed, _ = trim_history_messages_with_memory(
+            messages,
+            max_turns,
+            existing_memory=compact_memory,
+        )
+        return trimmed, "file", warnings
     return [], "empty", warnings
 
 
@@ -779,12 +953,15 @@ def save_history_to_store(
     max_turns: int,
 ) -> list[str]:
     warnings: list[str] = []
+    trimmed_messages, compact_memory = trim_history_messages_with_memory(messages, max_turns)
     payload = {
         "version": 1,
         "updated_at": now_utc_iso(),
         "session_key": session_key,
-        "messages": trim_history_messages(messages, max_turns),
+        "messages": trimmed_messages,
     }
+    if compact_memory is not None:
+        payload["compact_memory"] = compact_memory
 
     if store.backend == "redis" and store.redis_url:
         try:
@@ -1019,14 +1196,19 @@ def http_json_or_raise(
     url: str,
     headers: dict[str, str],
     payload: dict[str, Any] | None,
+    *,
+    timeout_secs: int | None = None,
 ) -> dict[str, Any]:
     data = None
     if payload is not None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
     request = urllib.request.Request(url=url, data=data, method=method, headers=headers)
+    timeout = RESPONSE_TIMEOUT_SECS
+    if isinstance(timeout_secs, int) and timeout_secs > 0:
+        timeout = timeout_secs
     try:
-        with urllib.request.urlopen(request, timeout=RESPONSE_TIMEOUT_SECS) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as exc:
@@ -1211,13 +1393,708 @@ def call_model_with_messages_or_raise(
     raise RuntimeError("Model API exceeded max tool rounds without final answer")
 
 
-def trim_history_messages(history_messages: list[dict[str, str]], max_turns: int) -> list[dict[str, str]]:
+def compact_section_token(section: str) -> str:
+    return f"[{section}]"
+
+
+def compact_append_unique(
+    sections: dict[str, list[str]],
+    seen: dict[str, set[str]],
+    section: str,
+    value: str,
+) -> None:
+    item = value.strip()
+    if not item:
+        return
+    if item in seen[section]:
+        return
+    seen[section].add(item)
+    sections[section].append(item)
+
+
+def normalize_compact_sections(raw_sections: Any) -> dict[str, list[str]] | None:
+    if not isinstance(raw_sections, dict):
+        return None
+    sections = {section: [] for section in HISTORY_COMPACT_SECTIONS}
+    seen = {section: set() for section in HISTORY_COMPACT_SECTIONS}
+    for section in HISTORY_COMPACT_SECTIONS:
+        values = raw_sections.get(section)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, str):
+                compact_append_unique(sections, seen, section, value)
+    return sections
+
+
+def compact_apply_section_limits(sections: dict[str, list[str]]) -> dict[str, list[str]]:
+    for section, limit in HISTORY_COMPACT_SECTION_LIMITS.items():
+        if isinstance(limit, int) and limit > 0 and len(sections[section]) > limit:
+            sections[section] = sections[section][:limit]
+    return sections
+
+
+def render_compact_snapshot_content_from_sections(sections: dict[str, list[str]]) -> str:
+    lines = [HISTORY_COMPACT_HEADER]
+    for section in HISTORY_COMPACT_SECTIONS:
+        lines.append("")
+        lines.append(compact_section_token(section))
+        values = sections.get(section, [])
+        if not values:
+            lines.append("- none")
+            continue
+        for value in values:
+            lines.append(f"- {value}")
+    return "\n".join(lines)
+
+
+def build_compact_memory_payload(
+    sections: dict[str, list[str]],
+    source_messages: int,
+) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": now_utc_iso(),
+        "source_messages": max(0, source_messages),
+        "sections": sections,
+    }
+
+
+def normalize_compact_memory_payload(raw_payload: Any) -> dict[str, Any] | None:
+    if not isinstance(raw_payload, dict):
+        return None
+    sections = normalize_compact_sections(raw_payload.get("sections"))
+    if sections is None:
+        return None
+    compact_apply_section_limits(sections)
+    source_messages_raw = raw_payload.get("source_messages")
+    source_messages = source_messages_raw if isinstance(source_messages_raw, int) else 0
+    return build_compact_memory_payload(sections, source_messages)
+
+
+def parse_compact_snapshot_sections(content: str) -> dict[str, list[str]] | None:
+    if not content.startswith(HISTORY_COMPACT_HEADER):
+        return None
+    sections = {section: [] for section in HISTORY_COMPACT_SECTIONS}
+    seen = {section: set() for section in HISTORY_COMPACT_SECTIONS}
+    current_section: str | None = None
+    section_lookup = {
+        compact_section_token(section): section
+        for section in HISTORY_COMPACT_SECTIONS
+    }
+    for raw_line in content.splitlines()[1:]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        matched = section_lookup.get(line)
+        if matched is not None:
+            current_section = matched
+            continue
+        if current_section is None or not line.startswith("- "):
+            continue
+        item = line[2:].strip()
+        if not item or item.lower() == "none":
+            continue
+        compact_append_unique(sections, seen, current_section, item)
+    return sections
+
+
+def compact_memory_sections_from_message(message: dict[str, str]) -> dict[str, list[str]] | None:
+    content = message.get("content")
+    if not isinstance(content, str) or not content:
+        return None
+    return parse_compact_snapshot_sections(content)
+
+
+def line_contains_any_keyword(line_lower: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in line_lower for keyword in keywords)
+
+
+def compact_status_from_line(line_lower: str) -> str | None:
+    if line_contains_any_keyword(line_lower, HISTORY_STATUS_FAIL_MARKERS):
+        return "FAIL"
+    if line_contains_any_keyword(line_lower, HISTORY_STATUS_PASS_MARKERS):
+        return "PASS"
+    return None
+
+
+def compact_format_tool_status(line: str) -> str | None:
+    line_lower = line.lower()
+    status = compact_status_from_line(line_lower)
+    if status is None:
+        return None
+    cleaned = re.sub(r"^\$+\s*", "", line.strip())
+    return f"{status}: {truncate_text(cleaned, limit=180)}"
+
+
+def compact_merge_sections(
+    sections: dict[str, list[str]],
+    seen: dict[str, set[str]],
+    incoming: dict[str, list[str]],
+) -> None:
+    for section in HISTORY_COMPACT_SECTIONS:
+        values = incoming.get(section, [])
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, str):
+                compact_append_unique(sections, seen, section, value)
+
+
+def compact_is_architecture_line(line_lower: str) -> bool:
+    return line_contains_any_keyword(line_lower, HISTORY_ARCHITECTURE_KEYWORDS)
+
+
+def compact_is_verification_line(line_lower: str) -> bool:
+    return line_contains_any_keyword(line_lower, HISTORY_VERIFICATION_KEYWORDS)
+
+
+def compact_is_todo_line(line_lower: str) -> bool:
+    return line_contains_any_keyword(line_lower, HISTORY_TODO_KEYWORDS)
+
+
+def compact_is_modified_line(line: str, line_lower: str) -> bool:
+    if line_contains_any_keyword(line_lower, HISTORY_MODIFIED_KEYWORDS):
+        return True
+    return HISTORY_PATH_PATTERN.search(line) is not None
+
+
+def compact_is_tool_output_line(line: str, line_lower: str) -> bool:
+    if line.startswith("$ "):
+        return True
+    return line_contains_any_keyword(line_lower, HISTORY_TOOL_OUTPUT_KEYWORDS)
+
+
+def build_compact_history_sections(history_messages: list[dict[str, str]]) -> dict[str, list[str]]:
+    sections = {section: [] for section in HISTORY_COMPACT_SECTIONS}
+    seen = {section: set() for section in HISTORY_COMPACT_SECTIONS}
+
+    for message in history_messages:
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+
+        previous_snapshot = parse_compact_snapshot_sections(content)
+        if previous_snapshot is not None:
+            compact_merge_sections(sections, seen, previous_snapshot)
+            continue
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line_lower = line.lower()
+
+            if compact_is_architecture_line(line_lower):
+                # Keep architecture decisions verbatim for future context replay.
+                compact_append_unique(
+                    sections,
+                    seen,
+                    HISTORY_COMPACT_SECTION_ARCHITECTURE,
+                    line,
+                )
+                continue
+
+            if compact_is_tool_output_line(line, line_lower):
+                tool_status = compact_format_tool_status(line)
+                if tool_status is not None:
+                    compact_append_unique(
+                        sections,
+                        seen,
+                        HISTORY_COMPACT_SECTION_TOOL_OUTPUT,
+                        tool_status,
+                    )
+                continue
+
+            if compact_is_verification_line(line_lower):
+                status = compact_status_from_line(line_lower)
+                if status is not None and not line.startswith(("PASS:", "FAIL:")):
+                    compact_append_unique(
+                        sections,
+                        seen,
+                        HISTORY_COMPACT_SECTION_VERIFICATION,
+                        f"{status}: {line}",
+                    )
+                else:
+                    compact_append_unique(
+                        sections,
+                        seen,
+                        HISTORY_COMPACT_SECTION_VERIFICATION,
+                        line,
+                    )
+                continue
+
+            if compact_is_todo_line(line_lower):
+                compact_append_unique(
+                    sections,
+                    seen,
+                    HISTORY_COMPACT_SECTION_TODO,
+                    line,
+                )
+                continue
+
+            if compact_is_modified_line(line, line_lower):
+                compact_append_unique(
+                    sections,
+                    seen,
+                    HISTORY_COMPACT_SECTION_MODIFIED,
+                    line,
+                )
+                continue
+
+    return compact_apply_section_limits(sections)
+
+
+def build_compact_history_message(history_messages: list[dict[str, str]]) -> dict[str, str]:
+    sections = build_compact_history_sections(history_messages)
+    return {
+        "role": "assistant",
+        "content": render_compact_snapshot_content_from_sections(sections),
+    }
+
+
+def trim_history_messages_with_memory(
+    history_messages: list[dict[str, str]],
+    max_turns: int,
+    *,
+    existing_memory: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, str]], dict[str, Any] | None]:
     if max_turns <= 0:
-        return []
+        return [], None
+
     max_messages = max_turns * 2
+    if max_messages <= 2:
+        trimmed = history_messages[-max_messages:]
+        return trimmed, normalize_compact_memory_payload(existing_memory)
+
     if len(history_messages) <= max_messages:
-        return history_messages
-    return history_messages[-max_messages:]
+        return history_messages, normalize_compact_memory_payload(existing_memory)
+
+    recent_keep = max_messages - 1
+    older_messages = history_messages[:-recent_keep]
+    recent_messages = history_messages[-recent_keep:]
+    sections = build_compact_history_sections(older_messages)
+    compact_message = {
+        "role": "assistant",
+        "content": render_compact_snapshot_content_from_sections(sections),
+    }
+    compact_memory = build_compact_memory_payload(sections, source_messages=len(history_messages))
+    return [compact_message, *recent_messages], compact_memory
+
+
+def trim_history_messages(history_messages: list[dict[str, str]], max_turns: int) -> list[dict[str, str]]:
+    trimmed, _ = trim_history_messages_with_memory(history_messages, max_turns)
+    return trimmed
+
+
+def normalize_query_tokens(text: str) -> set[str]:
+    tokens: set[str] = set()
+    for raw in HISTORY_QUERY_TOKEN_PATTERN.findall(text.lower()):
+        token = raw.strip("._/-: ")
+        if not token:
+            continue
+        if len(token) == 1 and token.isascii() and not token.isdigit():
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def normalize_context_text(raw: str) -> str:
+    collapsed = " ".join(raw.split())
+    if len(collapsed) <= HISTORY_RETRIEVAL_MAX_TEXT_CHARS:
+        return collapsed
+    omitted = len(collapsed) - HISTORY_RETRIEVAL_MAX_TEXT_CHARS
+    return collapsed[:HISTORY_RETRIEVAL_MAX_TEXT_CHARS] + f"...(+{omitted})"
+
+
+def context_overlap_score(query_tokens: set[str], text: str) -> float:
+    if not query_tokens:
+        return 0.0
+    text_tokens = normalize_query_tokens(text)
+    if not text_tokens:
+        return 0.0
+    overlap_count = len(query_tokens & text_tokens)
+    if overlap_count == 0:
+        return 0.0
+    coverage = overlap_count / max(1, len(query_tokens))
+    density = overlap_count / max(1, len(text_tokens))
+    return float(overlap_count) + coverage + density
+
+
+def compact_section_tag(section: str) -> str:
+    if section == HISTORY_COMPACT_SECTION_ARCHITECTURE:
+        return "ARCH"
+    if section == HISTORY_COMPACT_SECTION_MODIFIED:
+        return "FILES"
+    if section == HISTORY_COMPACT_SECTION_VERIFICATION:
+        return "VERIFY"
+    if section == HISTORY_COMPACT_SECTION_TODO:
+        return "TODO"
+    return "TOOL"
+
+
+def append_retrieval_candidate(
+    candidates: list[dict[str, Any]],
+    *,
+    rendered: str,
+    text: str,
+    section: str,
+    weight: float,
+    recency: float,
+) -> None:
+    candidates.append(
+        {
+            "id": len(candidates),
+            "rendered": rendered,
+            "text": text,
+            "section": section,
+            "weight": weight,
+            "recency": recency,
+        }
+    )
+
+
+def collect_history_retrieval_candidates(
+    history_messages: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    candidates: list[dict[str, Any]] = []
+    pinned_architecture: list[str] = []
+    total = max(1, len(history_messages))
+
+    for idx, message in enumerate(history_messages):
+        role = message.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        recency = float(idx + 1) / float(total)
+
+        compact_sections = compact_memory_sections_from_message(message)
+        if compact_sections is not None:
+            for section in HISTORY_COMPACT_SECTIONS:
+                section_weight = HISTORY_RETRIEVAL_SECTION_WEIGHTS.get(section, 1.0)
+                section_tag = compact_section_tag(section)
+                for item in compact_sections.get(section, []):
+                    normalized_item = normalize_context_text(item)
+                    rendered = f"{section_tag}: {normalized_item}"
+                    append_retrieval_candidate(
+                        candidates,
+                        rendered=rendered,
+                        text=normalized_item,
+                        section=section,
+                        weight=section_weight,
+                        recency=recency,
+                    )
+                    if section == HISTORY_COMPACT_SECTION_ARCHITECTURE:
+                        pinned_architecture.append(rendered)
+            continue
+
+        message_weight = 1.1 if role == "user" else 1.0
+        normalized_content = normalize_context_text(content)
+        append_retrieval_candidate(
+            candidates,
+            rendered=f"{role.upper()}: {normalized_content}",
+            text=normalized_content,
+            section="message",
+            weight=message_weight,
+            recency=recency,
+        )
+
+    return candidates, pinned_architecture
+
+
+def safe_float(raw_value: Any, default: float = 0.0) -> float:
+    if isinstance(raw_value, (int, float)):
+        return float(raw_value)
+    return default
+
+
+def normalize_embedding_vector(raw_vector: Any) -> list[float]:
+    if not isinstance(raw_vector, list) or not raw_vector:
+        raise RuntimeError("embedding vector is empty")
+    vector: list[float] = []
+    for item in raw_vector:
+        if isinstance(item, (int, float)):
+            vector.append(float(item))
+        else:
+            raise RuntimeError("embedding vector contains non-numeric value")
+    return vector
+
+
+def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    if len(vec_a) != len(vec_b) or not vec_a:
+        return 0.0
+    dot = 0.0
+    norm_a = 0.0
+    norm_b = 0.0
+    for idx in range(len(vec_a)):
+        a = vec_a[idx]
+        b = vec_b[idx]
+        dot += a * b
+        norm_a += a * a
+        norm_b += b * b
+    if norm_a <= 0 or norm_b <= 0:
+        return 0.0
+    return dot / ((norm_a ** 0.5) * (norm_b ** 0.5))
+
+
+def request_remote_embeddings(
+    remote: RetrievalRemoteConfig,
+    inputs: list[str],
+) -> list[list[float]]:
+    if not inputs:
+        return []
+    payload = {
+        "model": remote.model,
+        "input": inputs,
+    }
+    headers = {
+        "Authorization": f"Bearer {remote.api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    response = http_json_or_raise(
+        "POST",
+        f"{remote.base_url}/embeddings",
+        headers,
+        payload,
+        timeout_secs=HISTORY_RETRIEVAL_REMOTE_TIMEOUT_SECS,
+    )
+    data = response.get("data")
+    if not isinstance(data, list) or not data:
+        raise RuntimeError("embedding API returned empty data")
+
+    items_with_index: list[tuple[int, list[float]]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        embedding = normalize_embedding_vector(item.get("embedding"))
+        index = item.get("index")
+        if not isinstance(index, int):
+            index = len(items_with_index)
+        items_with_index.append((index, embedding))
+    if not items_with_index:
+        raise RuntimeError("embedding API returned no vectors")
+
+    items_with_index.sort(key=lambda item: item[0])
+    return [vector for _, vector in items_with_index]
+
+
+def compute_embedding_similarity_scores(
+    query: str,
+    candidates: list[dict[str, Any]],
+    remote: RetrievalRemoteConfig | None,
+) -> dict[int, float]:
+    if remote is None or not candidates:
+        return {}
+    texts = [str(candidate["text"]) for candidate in candidates]
+    vectors = request_remote_embeddings(remote, [query, *texts])
+    if len(vectors) < 2:
+        return {}
+    query_vector = vectors[0]
+    doc_vectors = vectors[1:]
+    scores: dict[int, float] = {}
+    for idx, candidate in enumerate(candidates):
+        if idx >= len(doc_vectors):
+            break
+        candidate_id = candidate.get("id")
+        if not isinstance(candidate_id, int):
+            continue
+        scores[candidate_id] = cosine_similarity(query_vector, doc_vectors[idx])
+    return scores
+
+
+def normalize_rerank_results(raw_results: Any) -> list[tuple[int, float]]:
+    if not isinstance(raw_results, list):
+        return []
+    normalized: list[tuple[int, float]] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            continue
+        score = item.get("relevance_score")
+        if not isinstance(score, (int, float)):
+            score = item.get("score")
+        if not isinstance(score, (int, float)):
+            continue
+        normalized.append((index, float(score)))
+    return normalized
+
+
+def normalize_rerank_scores(items: list[tuple[int, float]]) -> dict[int, float]:
+    if not items:
+        return {}
+    values = [score for _, score in items]
+    min_score = min(values)
+    max_score = max(values)
+    if max_score <= min_score:
+        return {index: 1.0 if score > 0 else 0.0 for index, score in items}
+    return {index: (score - min_score) / (max_score - min_score) for index, score in items}
+
+
+def compute_rerank_scores(
+    query: str,
+    candidates: list[dict[str, Any]],
+    remote: RetrievalRemoteConfig | None,
+) -> dict[int, float]:
+    if remote is None or not candidates:
+        return {}
+    documents = [str(candidate["text"]) for candidate in candidates]
+    payload = {
+        "model": remote.model,
+        "query": query,
+        "documents": documents,
+    }
+    headers = {
+        "Authorization": f"Bearer {remote.api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    response = http_json_or_raise(
+        "POST",
+        f"{remote.base_url}/rerank",
+        headers,
+        payload,
+        timeout_secs=HISTORY_RETRIEVAL_REMOTE_TIMEOUT_SECS,
+    )
+    results = normalize_rerank_results(response.get("results"))
+    if not results:
+        results = normalize_rerank_results(response.get("data"))
+    normalized = normalize_rerank_scores(results)
+    scores: dict[int, float] = {}
+    for local_index, candidate in enumerate(candidates):
+        candidate_id = candidate.get("id")
+        if not isinstance(candidate_id, int):
+            continue
+        if local_index in normalized:
+            scores[candidate_id] = normalized[local_index]
+    return scores
+
+
+def shortlist_remote_candidates(
+    candidates: list[dict[str, Any]],
+    query_tokens: set[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for candidate in candidates:
+        text = str(candidate.get("text", ""))
+        overlap = context_overlap_score(query_tokens, text)
+        weight = safe_float(candidate.get("weight"), 1.0)
+        recency = safe_float(candidate.get("recency"), 0.0)
+        section = candidate.get("section")
+        seed = (overlap * weight) + recency + (0.2 * weight)
+        if section == HISTORY_COMPACT_SECTION_ARCHITECTURE:
+            seed += 0.2
+        ranked.append((seed, candidate))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [candidate for _, candidate in ranked[:limit]]
+
+
+def build_retrieved_context_block(
+    history_messages: list[dict[str, str]],
+    user_prompt: str,
+    retrieval_config: ContextRetrievalConfig | None = None,
+) -> str | None:
+    if isinstance(retrieval_config, ContextRetrievalConfig) and not retrieval_config.enabled:
+        return None
+    query_tokens = normalize_query_tokens(user_prompt)
+    if not query_tokens:
+        return None
+
+    weighted_candidates, pinned_architecture = collect_history_retrieval_candidates(history_messages)
+    if not weighted_candidates:
+        return None
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    selected_limit = HISTORY_RETRIEVAL_MAX_ITEMS
+    candidate_limit = HISTORY_RETRIEVAL_REMOTE_MAX_CANDIDATES
+    if isinstance(retrieval_config, ContextRetrievalConfig):
+        selected_limit = max(1, retrieval_config.selected_limit)
+        candidate_limit = max(selected_limit, retrieval_config.candidate_limit)
+
+    for item in pinned_architecture[:HISTORY_RETRIEVAL_PINNED_ARCH_LIMIT]:
+        if item in seen:
+            continue
+        selected.append(item)
+        seen.add(item)
+
+    remote_embedding_scores: dict[int, float] = {}
+    remote_rerank_scores: dict[int, float] = {}
+    remote_enabled = isinstance(retrieval_config, ContextRetrievalConfig) and (
+        retrieval_config.embedding is not None or retrieval_config.rerank is not None
+    )
+    if remote_enabled and isinstance(retrieval_config, ContextRetrievalConfig):
+        remote_candidates = shortlist_remote_candidates(weighted_candidates, query_tokens, candidate_limit)
+        try:
+            remote_embedding_scores = compute_embedding_similarity_scores(
+                user_prompt,
+                remote_candidates,
+                retrieval_config.embedding,
+            )
+        except RuntimeError:
+            remote_embedding_scores = {}
+        try:
+            remote_rerank_scores = compute_rerank_scores(
+                user_prompt,
+                remote_candidates,
+                retrieval_config.rerank,
+            )
+        except RuntimeError:
+            remote_rerank_scores = {}
+
+    scored: list[tuple[float, str]] = []
+    remote_signal_used = bool(remote_embedding_scores) or bool(remote_rerank_scores)
+    min_score = 0.2 if remote_signal_used else HISTORY_RETRIEVAL_MIN_SCORE
+    for candidate in weighted_candidates:
+        item = str(candidate.get("rendered", ""))
+        if not item or item in seen:
+            continue
+        text = str(candidate.get("text", item))
+        overlap = context_overlap_score(query_tokens, text)
+        weight = safe_float(candidate.get("weight"), 1.0)
+        recency = safe_float(candidate.get("recency"), 0.0)
+        candidate_id = candidate.get("id")
+        candidate_numeric_id = candidate_id if isinstance(candidate_id, int) else -1
+
+        score = (overlap * weight) + recency
+        if candidate_numeric_id >= 0 and candidate_numeric_id in remote_embedding_scores:
+            score += (
+                remote_embedding_scores[candidate_numeric_id]
+                * HISTORY_RETRIEVAL_EMBEDDING_SCORE_WEIGHT
+                * weight
+            )
+        if candidate_numeric_id >= 0 and candidate_numeric_id in remote_rerank_scores:
+            score += remote_rerank_scores[candidate_numeric_id] * HISTORY_RETRIEVAL_RERANK_SCORE_WEIGHT
+        if not remote_signal_used and overlap <= 0:
+            continue
+        if score < min_score:
+            continue
+        scored.append((score, item))
+
+    scored.sort(key=lambda entry: entry[0], reverse=True)
+    for _, item in scored:
+        if item in seen:
+            continue
+        selected.append(item)
+        seen.add(item)
+        if len(selected) >= selected_limit:
+            break
+
+    if not selected:
+        return None
+
+    lines = [
+        "[Retrieved Context]",
+        "Use only when relevant; explicit latest user instruction has highest priority.",
+    ]
+    for item in selected:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
 
 
 def build_chat_messages(
@@ -1226,10 +2103,15 @@ def build_chat_messages(
     history_messages: list[dict[str, str]],
     user_prompt: str,
     max_history_turns: int,
+    retrieval_config: ContextRetrievalConfig | None = None,
 ) -> list[dict[str, str]]:
     trimmed_history = trim_history_messages(history_messages, max_history_turns)
+    retrieved_context = build_retrieved_context_block(trimmed_history, user_prompt, retrieval_config)
+    effective_system_prompt = system_prompt
+    if isinstance(retrieved_context, str) and retrieved_context:
+        effective_system_prompt = f"{system_prompt}\n\n{retrieved_context}"
     return [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": effective_system_prompt},
         *trimmed_history,
         {"role": "user", "content": user_prompt},
     ]
@@ -1696,6 +2578,110 @@ def resolve_local_tool_context(project_toml: dict[str, Any], work_dir: Path) -> 
         allow_raw = tools_cfg.get("allow")
     allow_tokens = normalize_tool_allow_tokens(allow_raw)
     return LocalToolContext(work_dir=work_dir, allow_tokens=allow_tokens)
+
+
+def parse_bool_option(raw_value: Any, default: bool) -> bool:
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def parse_positive_int_option(raw_value: Any, default: int, minimum: int, maximum: int) -> int:
+    if isinstance(raw_value, int) and raw_value > 0:
+        return max(minimum, min(maximum, raw_value))
+    return max(minimum, min(maximum, default))
+
+
+def resolve_retrieval_remote(
+    raw_cfg: Any,
+    *,
+    default_model: str,
+    env_model: str,
+    env_api_key: str,
+    fallback_api_key: str | None,
+    env_base_url: str,
+    fallback_base_url: str,
+) -> RetrievalRemoteConfig | None:
+    cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
+    enabled = parse_bool_option(cfg.get("enabled"), True)
+    if not enabled:
+        return None
+
+    model = os.getenv(env_model) or cfg.get("model") or default_model
+    if not isinstance(model, str) or not model.strip():
+        return None
+    base_url = os.getenv(env_base_url) or cfg.get("base_url") or fallback_base_url
+    if not isinstance(base_url, str) or not base_url.strip():
+        return None
+    api_key = os.getenv(env_api_key) or cfg.get("api_key") or fallback_api_key
+    if not isinstance(api_key, str) or not api_key.strip():
+        return None
+    return RetrievalRemoteConfig(
+        base_url=base_url.rstrip("/"),
+        api_key=api_key.strip(),
+        model=model.strip(),
+    )
+
+
+def resolve_context_retrieval_config(
+    project_toml: dict[str, Any],
+    fallback_api_key: str | None,
+) -> ContextRetrievalConfig:
+    retrieval_cfg = project_toml.get("context_retrieval")
+    cfg = retrieval_cfg if isinstance(retrieval_cfg, dict) else {}
+    enabled = parse_bool_option(os.getenv("GROBOT_CONTEXT_RETRIEVAL_ENABLED"), True)
+    enabled = parse_bool_option(cfg.get("enabled"), enabled)
+
+    selected_limit = parse_positive_int_option(
+        cfg.get("selected_limit"),
+        HISTORY_RETRIEVAL_MAX_ITEMS,
+        1,
+        32,
+    )
+    candidate_limit = parse_positive_int_option(
+        cfg.get("candidate_limit"),
+        HISTORY_RETRIEVAL_REMOTE_MAX_CANDIDATES,
+        selected_limit,
+        64,
+    )
+    base_url = str(cfg.get("base_url") or DEFAULT_RETRIEVAL_BASE_URL).rstrip("/")
+    embedding_cfg = cfg.get("embedding")
+    rerank_cfg = cfg.get("rerank")
+    shared_api_key = os.getenv("GROBOT_RETRIEVAL_API_KEY")
+    shared_base_url = os.getenv("GROBOT_RETRIEVAL_BASE_URL") or base_url
+
+    embedding = resolve_retrieval_remote(
+        embedding_cfg,
+        default_model=DEFAULT_RETRIEVAL_EMBEDDING_MODEL,
+        env_model="GROBOT_EMBEDDING_MODEL",
+        env_api_key="GROBOT_EMBEDDING_API_KEY",
+        fallback_api_key=shared_api_key or fallback_api_key,
+        env_base_url="GROBOT_EMBEDDING_BASE_URL",
+        fallback_base_url=shared_base_url,
+    )
+    rerank = resolve_retrieval_remote(
+        rerank_cfg,
+        default_model=DEFAULT_RETRIEVAL_RERANK_MODEL,
+        env_model="GROBOT_RERANK_MODEL",
+        env_api_key="GROBOT_RERANK_API_KEY",
+        fallback_api_key=shared_api_key or fallback_api_key,
+        env_base_url="GROBOT_RERANK_BASE_URL",
+        fallback_base_url=shared_base_url,
+    )
+
+    return ContextRetrievalConfig(
+        enabled=enabled,
+        candidate_limit=candidate_limit,
+        selected_limit=selected_limit,
+        embedding=embedding,
+        rerank=rerank,
+    )
 
 
 def allow_all_tokens(allow_tokens: tuple[str, ...]) -> bool:
@@ -3701,6 +4687,7 @@ def run_start(args: argparse.Namespace) -> int:
         args.history_turns,
     )
     local_tool_context = resolve_local_tool_context(project_toml, selection.work_dir)
+    retrieval_config = resolve_context_retrieval_config(project_toml, selection.provider.api_key)
     mention_index: MentionIndexState | MentionPathIndex | None = None
     system_prompt = build_system_prompt(session_key=session_key, work_dir=selection.work_dir)
     circuit_policy = CircuitPolicy(
@@ -3719,6 +4706,22 @@ def run_start(args: argparse.Namespace) -> int:
     print(f"  session:   {session_key}")
     print(f"  store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
     print(f"  tools:     {', '.join(local_tool_context.allow_tokens)}")
+    retrieval_parts: list[str] = []
+    if retrieval_config.enabled:
+        retrieval_parts.append("enabled")
+    else:
+        retrieval_parts.append("disabled")
+    retrieval_parts.append(f"select={retrieval_config.selected_limit}")
+    retrieval_parts.append(f"candidates={retrieval_config.candidate_limit}")
+    if retrieval_config.embedding is not None:
+        retrieval_parts.append(f"embedding={retrieval_config.embedding.model}")
+    else:
+        retrieval_parts.append("embedding=off")
+    if retrieval_config.rerank is not None:
+        retrieval_parts.append(f"rerank={retrieval_config.rerank.model}")
+    else:
+        retrieval_parts.append("rerank=off")
+    print(f"  retrieval: {'; '.join(retrieval_parts)}")
     print(
         f"  circuit:   threshold={circuit_policy.failure_threshold}, cooldown={circuit_policy.cooldown_secs}s, "
         f"probe_recovery={'on' if not args.no_probe_recovery else 'off'}"
@@ -3758,6 +4761,7 @@ def run_start(args: argparse.Namespace) -> int:
             history_messages=history_messages,
             user_prompt=effective_prompt,
             max_history_turns=args.history_turns,
+            retrieval_config=retrieval_config,
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,
@@ -3837,6 +4841,7 @@ def run_start(args: argparse.Namespace) -> int:
             history_messages=history_messages,
             user_prompt=effective_prompt,
             max_history_turns=args.history_turns,
+            retrieval_config=retrieval_config,
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,

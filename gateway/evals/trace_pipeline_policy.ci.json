@@ -1,0 +1,29 @@
+{
+  "schema": "trace_pipeline_policy",
+  "schema_version": 2,
+  "profile": "ci",
+  "sessions_dir": "fixtures/sessions.ci",
+  "trace_cases_output": "/tmp/grobot-cases.trace.ci.jsonl",
+  "trace_runs_output": "/tmp/grobot-runs.trace.ci.jsonl",
+  "variant": "trace_baseline",
+  "holdout_ratio": 0.2,
+  "seed": 42,
+  "max_cases": 20,
+  "min_chars": 1,
+  "clean_cases_output": "/tmp/grobot-cases.trace.cleaned.ci.jsonl",
+  "clean_runs_output": "/tmp/grobot-runs.trace.cleaned.ci.jsonl",
+  "clean_report_output": "/tmp/grobot-trace-clean-report.ci.json",
+  "min_prompt_chars": 4,
+  "min_response_chars": 2,
+  "max_exact_duplicates_per_prompt": 1,
+  "similarity_threshold": 0.88,
+  "max_near_duplicates_per_anchor": 0,
+  "min_cases_per_split": 1,
+  "min_clean_cases": 2,
+  "fail_on_low_sample": true,
+  "min_clean_cases_by_split": {
+    "holdout": 1,
+    "optimization": 1
+  },
+  "fail_on_split_underflow": true
+}

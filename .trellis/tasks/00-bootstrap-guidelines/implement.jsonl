@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/tasks/00-bootstrap-guidelines/prd.md", "reason": "Bootstrap requirements"}
+{"file": "README.md", "reason": "Project goals and architecture scope"}
+{"file": "AGENTS.md", "reason": "Repo-level development constraints"}
+{"file": ".trellis/scripts/task.py", "reason": "Current task/context command behavior"}
+{"file": ".trellis/scripts/common/paths.py", "reason": "Path and workspace conventions"}
+{"file": ".trellis/scripts/common/developer.py", "reason": "Developer bootstrap conventions"}
+{"file": ".trellis/scripts/common/task_utils.py", "reason": "Task safety and archive behavior"}
+{"file": ".trellis/scripts/common/config.py", "reason": "Config fallback/error strategy"}

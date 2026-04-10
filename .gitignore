@@ -11,6 +11,10 @@ packages/*/dist-firefox/
 
 # Environment
 .env
+config.toml
+.grobot/config.toml
+.grobot/sessions/*
+!.grobot/sessions/README.md
 
 # Editor files
 .vscode/
@@ -38,3 +42,10 @@ plans/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
 collect.sh
+runtime/target/
+
+# Python caches / eval artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+gateway/evals/data/*

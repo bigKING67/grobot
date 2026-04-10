@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-10T00:00:00Z",
+  "session_key": "ci:fixture:trace-pipeline",
+  "messages": [
+    {
+      "role": "user",
+      "content": "请检查 API token 泄露风险并给出修复步骤"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成排查，建议立刻轮换密钥、清理日志中的敏感片段，并补充自动化脱敏校验。"
+    },
+    {
+      "role": "user",
+      "content": "继续补充回滚方案和验证清单"
+    },
+    {
+      "role": "assistant",
+      "content": "回滚方案包括恢复前一版配置、禁用新路由、回灌配置备份；验证清单包含接口冒烟、权限校验和审计日志检查。"
+    },
+    {
+      "role": "user",
+      "content": "请按 read 和 edit 顺序说明修复流程"
+    },
+    {
+      "role": "assistant",
+      "content": "先 read 读取当前配置与日志，再 edit 修正敏感字段处理逻辑，最后执行验证脚本确认没有残留。"
+    }
+  ]
+}

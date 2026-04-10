@@ -1,0 +1,74 @@
+schema_version = 1
+mode = "mvp"
+
+[agent]
+id = "grobot"
+name = "Grobot Coding Agent"
+description = "TypeScript gateway plus Rust runtime agent platform"
+
+[channels]
+enabled = ["feishu", "telegram"]
+reply_mode = "stream"
+
+[session]
+key_format = "<platform>:<tenant>:<scope>:<subject>"
+share_session_in_channel = false
+thread_isolation = true
+reply_in_thread = true
+resume_ttl_secs = 1800
+heartbeat_secs = 15
+
+[gateway]
+ingress = "webhook"
+orchestrator = "typescript"
+
+[gateway.management]
+enabled = true
+bind = "127.0.0.1:8080"
+
+[cc_connect]
+config_file = ".grobot/config.toml"
+config_template = ".grobot/config.toml.example"
+
+[runtime]
+engine = "rust"
+target_concurrency = 100
+workers_per_node = 16
+active_turn_soft_limit = 60
+turn_timeout_secs = 180
+session_sticky_ttl_secs = 300
+
+[runtime.queue]
+provider = "redis_stream"
+retry_backoff_ms = 500
+
+[runtime.storage]
+hot_cache = "redis"
+durable_state = "postgres"
+
+[provider_routing]
+default_group = "balanced"
+fallback_order = ["gpt-5.4", "kimi-2.5", "openai-compatible"]
+
+[[provider_routing.groups]]
+name = "balanced"
+model_class = "reasoning"
+
+[[provider_routing.groups.targets]]
+provider = "kimi"
+weight = 70
+
+[[provider_routing.groups.targets]]
+provider = "openai_compatible"
+weight = 30
+
+[tools]
+allow = ["list", "glob", "search", "read", "write", "edit", "shell", "git", "rg", "python3", "cargo", "npm"]
+deny = ["git reset --hard", "git push --force", "rm -rf /"]
+
+[safety]
+require_confirm = ["destructive_git", "db_schema_change", "prod_api_write"]
+
+[observability]
+trace_enabled = true
+metrics = ["latency_p95_ms", "queue_depth", "tool_error_rate", "session_success_rate"]

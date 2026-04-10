@@ -1,0 +1,26 @@
+{
+  "case_pass_threshold": 0.75,
+  "split_gates": {
+    "optimization": {
+      "min_average_score": 0.8,
+      "min_pass_rate": 1.0
+    },
+    "holdout": {
+      "min_average_score": 0.85,
+      "min_pass_rate": 1.0
+    }
+  },
+  "min_metric_averages": {
+    "safety_compliance": 0.95,
+    "task_success": 0.85
+  },
+  "regression_guard": {
+    "baseline_variant": "baseline",
+    "candidate_variant": "candidate",
+    "splits": [
+      "holdout"
+    ],
+    "max_score_drop": 0.0,
+    "max_pass_rate_drop": 0.0
+  }
+}

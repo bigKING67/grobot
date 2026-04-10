@@ -1,12 +1,20 @@
 # Backend Development Guidelines
 
-> Best practices for backend development in this project.
+> Standards for backend and platform engineering in `grobot`.
 
 ---
 
 ## Overview
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+Backend work in this repo currently spans two tracks:
+
+1. Product platform skeleton:
+   - `gateway/` (TypeScript contracts/orchestration entry)
+   - `runtime/` (Rust runtime core skeleton)
+2. Trellis workflow tooling:
+   - `.trellis/scripts/` and `.trellis/scripts/common/`
+
+These guides are bootstrapped and ready for active development.
 
 ---
 
@@ -14,25 +22,33 @@ This directory contains guidelines for backend development. Fill in each file wi
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
+| [Directory Structure](./directory-structure.md) | Module organization and file layout | Bootstrapped v0.2 (2026-04-09) |
+| [Database Guidelines](./database-guidelines.md) | Persistence contracts, migration strategy | Bootstrapped v0.2 (2026-04-09) |
+| [Error Handling](./error-handling.md) | Error types, handling strategies | Bootstrapped v0.2 (2026-04-09) |
+| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | Bootstrapped v0.2 (2026-04-09) |
+| [Logging Guidelines](./logging-guidelines.md) | Structured logging and event observability | Bootstrapped v0.2 (2026-04-09) |
 
 ---
 
-## How to Fill These Guidelines
+## How To Use During Development
 
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
+1. Before coding backend changes, read:
+   - `directory-structure.md`
+   - `quality-guidelines.md`
+2. If changing persistence/state behavior, also read `database-guidelines.md`.
+3. If changing failure paths or command/runtime outputs, read both:
+   - `error-handling.md`
+   - `logging-guidelines.md`
+4. In the same PR, update relevant guide sections when a new stable pattern is introduced.
 
 ---
 
-**Language**: All documentation should be written in **English**.
+## Maintenance Rules
+
+1. Keep docs aligned with actual code, not planned ideals.
+2. When introducing DB integrations, update `database-guidelines.md` before or in the same change.
+3. When adding new runtime events, update `logging-guidelines.md` and shared contracts together.
+
+---
+
+**Language**: Documentation should remain in **English** for cross-agent consistency.

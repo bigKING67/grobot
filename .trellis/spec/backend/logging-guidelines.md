@@ -1,51 +1,65 @@
 # Logging Guidelines
 
-> How logging is done in this project.
+> Logging patterns used in current Trellis workflow scripts.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
+Current logging is split by layer:
 
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
+1. Workflow CLI (`.trellis/scripts/*`): console-first, human-readable.
+2. Multi-agent tooling: tagged console logs (`[INFO]/[WARN]/[ERROR]/[SUCCESS]`).
+3. Runtime/gateway contract: normalized event envelope in shared contracts (stream-oriented observability).
 
-(To be filled by the team)
+This is acceptable for bootstrap. Structured centralized logging will be added
+when long-running runtime services are implemented.
 
 ---
 
 ## Log Levels
 
-<!-- When to use each level: debug, info, warn, error -->
+Use these semantics:
 
-(To be filled by the team)
+1. `INFO`: phase transitions, routing decisions, key identifiers.
+2. `WARN`: recoverable degradation or partial issues.
+3. `ERROR`: failed operation requiring abort/retry/human action.
+4. `SUCCESS`: explicit milestone completion for operator confidence.
 
 ---
 
 ## Structured Logging
 
-<!-- Log format, required fields -->
+Current format is lightweight and grep-friendly:
 
-(To be filled by the team)
+1. Prefix tags (`[INFO]`, `[WARN]`, `[ERROR]`) for CLI flows.
+2. Keep one event per line where possible.
+3. Include identifiers (task dir, branch, worktree, PID, trace/turn/session ids).
+4. Runtime event payloads must follow shared envelope definitions.
 
 ---
 
 ## What to Log
 
-<!-- Important events to log -->
-
-(To be filled by the team)
+1. Start/end of pipeline phases.
+2. Validation failures and missing prerequisites.
+3. Runtime coordinates: worktree path, PID, trace id, session key, turn id.
+4. Tool lifecycle events (`tool_start`, `tool_end`) when runtime event stream is available.
 
 ---
 
 ## What NOT to Log
 
-<!-- Sensitive data, PII, secrets -->
+1. Secrets, tokens, credentials, private keys.
+2. Sensitive environment variable values.
+3. Full unredacted user content when not required for debugging.
+4. Oversized raw payload dumps when concise summaries are sufficient.
 
-(To be filled by the team)
+---
+
+## Examples
+
+1. `.trellis/scripts/multi_agent/start.py`: tagged phase logs and operator guidance.
+2. `.trellis/scripts/multi_agent/cleanup.py`: explicit warning/error channels before cleanup actions.
+3. `.trellis/scripts/common/developer.py`: stderr error logs for bootstrap failures.
+4. `shared/contracts/runtime-events.md`: normalized runtime event envelope for observability.

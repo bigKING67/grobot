@@ -1,0 +1,53 @@
+name: harness-gate
+
+on:
+  pull_request:
+    paths:
+      - "gateway/**"
+      - "package.json"
+      - ".github/workflows/harness-gate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "gateway/**"
+      - "package.json"
+      - ".github/workflows/harness-gate.yml"
+
+jobs:
+  harness-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Show runtime versions
+        run: |
+          node --version
+          npm --version
+          python3 --version
+
+      - name: Run gateway checks
+        run: npm run check
+
+      - name: Run harness CI gate
+        run: npm run harness:gate:ci
+
+      - name: Validate trace pipeline policy profiles
+        run: npm run harness:trace-policy:check
+
+      - name: Print trace pipeline policy fingerprints
+        run: npm run harness:trace-policy:fingerprint
+
+      - name: Dry validate trace pipeline inputs
+        run: npm run harness:trace-pipeline:validate
+
+      - name: Run harness trace pipeline sample gate
+        run: npm run harness:trace-pipeline:ci
