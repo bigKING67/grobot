@@ -85,6 +85,8 @@ class RuntimePaths:
     project_rules_dir: Path
     global_skills_dir: Path
     project_skills_dir: Path
+    global_hooks_dir: Path
+    project_hooks_dir: Path
     global_mcp_dir: Path
     global_mcp_registry: Path
     project_mcp_file: Path
@@ -139,6 +141,13 @@ class MCPCallPolicy:
 
 
 @dataclass
+class HookPolicy:
+    enabled: bool
+    strict: bool
+    timeout_secs: int
+
+
+@dataclass
 class MCPServerCallState:
     condition: threading.Condition = field(default_factory=lambda: threading.Condition(threading.Lock()), repr=False)
     in_flight: int = 0
@@ -176,6 +185,15 @@ class LocalToolContext:
     work_dir: Path
     allow_tokens: tuple[str, ...]
     mcp_runtime: dict[str, Any] | None = None
+    global_hooks_dir: Path | None = None
+    project_hooks_dir: Path | None = None
+    hook_policy: HookPolicy = field(
+        default_factory=lambda: HookPolicy(
+            enabled=True,
+            strict=False,
+            timeout_secs=LOCAL_TOOL_HOOK_TIMEOUT_DEFAULT_SECS,
+        )
+    )
     mcp_sessions: dict[str, MCPClientSession] = field(default_factory=dict, repr=False)
     mcp_policy: MCPCallPolicy = field(
         default_factory=lambda: MCPCallPolicy(
@@ -341,6 +359,17 @@ LOCAL_TOOL_ALL = (
     LOCAL_TOOL_MCP_CALL,
 )
 LOCAL_TOOL_OUTPUT_LIMIT = 12000
+LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT = "user-prompt-submit"
+LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE = "before-tool-use"
+LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE = "after-tool-use"
+LOCAL_TOOL_HOOK_EVENTS = (
+    LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+    LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+    LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+)
+LOCAL_TOOL_HOOK_TIMEOUT_DEFAULT_SECS = 5
+LOCAL_TOOL_HOOK_TIMEOUT_MAX_SECS = 120
+LOCAL_TOOL_HOOK_OUTPUT_PREVIEW_LIMIT = 300
 LOCAL_TOOL_BASH_DEFAULT_TIMEOUT_SECS = 30
 LOCAL_TOOL_BASH_MAX_TIMEOUT_SECS = 120
 LOCAL_TOOL_MCP_CALL_DEFAULT_TIMEOUT_SECS = 20
@@ -594,7 +623,12 @@ FALLBACK_PROJECT_TEMPLATE = textwrap.dedent(
 
 [tools]
 allow = ["list", "glob", "search", "read", "write", "edit", "bash", "mcp_servers", "mcp_call"]
-    """
+
+[hooks]
+enabled = true
+strict = false
+timeout_secs = 5
+      """
 ).strip() + "\n"
 
 FALLBACK_PROJECT_MCP_TEMPLATE = textwrap.dedent(
@@ -619,6 +653,99 @@ FALLBACK_GLOBAL_MCP_TEMPLATE = textwrap.dedent(
     #
     # [servers.env]
     # CONTEXTWEAVER_API_KEY = "replace-with-api-key"
+    """
+).strip() + "\n"
+
+FALLBACK_HOOKS_README_TEMPLATE = textwrap.dedent(
+    """
+    # Grobot Hooks
+
+    Supported events:
+    - `user-prompt-submit`
+    - `before-tool-use`
+    - `after-tool-use`
+
+    Directory layout:
+    - `hooks/user-prompt-submit/`
+    - `hooks/before-tool-use/`
+    - `hooks/after-tool-use/`
+
+    Put executable scripts into event folders. Scripts receive JSON payload via STDIN.
+
+    Environment variables:
+    - `GROBOT_HOOK_EVENT`
+    - `GROBOT_HOOK_WORK_DIR`
+    - `GROBOT_HOOK_TIMEOUT_SECS`
+    """
+).strip() + "\n"
+
+FALLBACK_RULES_README_TEMPLATE = textwrap.dedent(
+    """
+    # Grobot Rules
+
+    Place reusable rule markdown files here.
+
+    Priority suggestion:
+    - global rules: shared baseline
+    - project rules: business-specific constraints
+    """
+).strip() + "\n"
+
+FALLBACK_SKILLS_README_TEMPLATE = textwrap.dedent(
+    """
+    # Grobot Skills
+
+    Place reusable skill prompts and automation helpers here.
+
+    Typical pattern:
+    - one skill, one focused responsibility
+    - keep input/output contract explicit
+    """
+).strip() + "\n"
+
+FALLBACK_MEMORY_README_TEMPLATE = textwrap.dedent(
+    """
+    # Grobot Memory
+
+    Project-level memory artifacts are stored here.
+
+    Suggested files:
+    - memory.jsonl: append-only compact memory log
+    - snapshots/: optional structured snapshots
+    """
+).strip() + "\n"
+
+HOOK_SAMPLE_USER_PROMPT_FILENAME = "10-log-user-prompt.sh"
+HOOK_SAMPLE_BEFORE_TOOL_FILENAME = "10-log-before-tool.sh"
+HOOK_SAMPLE_AFTER_TOOL_FILENAME = "10-log-after-tool.sh"
+
+FALLBACK_HOOK_SAMPLE_USER_PROMPT_TEMPLATE = textwrap.dedent(
+    """
+    #!/bin/sh
+    set -eu
+    payload="$(cat | tr '\n' ' ')"
+    log_file="${GROBOT_HOOK_LOG_FILE:-/tmp/grobot-hooks.log}"
+    printf '%s user-prompt-submit %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$payload" >> "$log_file"
+    """
+).strip() + "\n"
+
+FALLBACK_HOOK_SAMPLE_BEFORE_TOOL_TEMPLATE = textwrap.dedent(
+    """
+    #!/bin/sh
+    set -eu
+    payload="$(cat | tr '\n' ' ')"
+    log_file="${GROBOT_HOOK_LOG_FILE:-/tmp/grobot-hooks.log}"
+    printf '%s before-tool-use %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$payload" >> "$log_file"
+    """
+).strip() + "\n"
+
+FALLBACK_HOOK_SAMPLE_AFTER_TOOL_TEMPLATE = textwrap.dedent(
+    """
+    #!/bin/sh
+    set -eu
+    payload="$(cat | tr '\n' ' ')"
+    log_file="${GROBOT_HOOK_LOG_FILE:-/tmp/grobot-hooks.log}"
+    printf '%s after-tool-use %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$payload" >> "$log_file"
     """
 ).strip() + "\n"
 
@@ -694,6 +821,8 @@ def resolve_runtime_paths(
     project_rules_dir = project_dir / "rules"
     global_skills_dir = home / "skills"
     project_skills_dir = project_dir / "skills"
+    global_hooks_dir = home / "hooks"
+    project_hooks_dir = project_dir / "hooks"
     global_mcp_dir = home / "mcp"
     global_mcp_registry = global_mcp_dir / DEFAULT_GLOBAL_MCP_REGISTRY
     project_mcp_file = project_dir / DEFAULT_PROJECT_MCP_FILENAME
@@ -714,6 +843,8 @@ def resolve_runtime_paths(
         project_rules_dir=project_rules_dir,
         global_skills_dir=global_skills_dir,
         project_skills_dir=project_skills_dir,
+        global_hooks_dir=global_hooks_dir,
+        project_hooks_dir=project_hooks_dir,
         global_mcp_dir=global_mcp_dir,
         global_mcp_registry=global_mcp_registry,
         project_mcp_file=project_mcp_file,
@@ -728,6 +859,14 @@ def ensure_runtime_layout(paths: RuntimePaths) -> None:
         paths.home,
         paths.runtime_dir,
         paths.sessions_dir,
+        paths.global_hooks_dir,
+        paths.global_hooks_dir / LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+        paths.global_hooks_dir / LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+        paths.global_hooks_dir / LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+        paths.project_hooks_dir,
+        paths.project_hooks_dir / LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+        paths.project_hooks_dir / LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+        paths.project_hooks_dir / LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
         paths.global_memory_dir,
         paths.project_memory_dir,
         paths.session_memory_dir,
@@ -751,6 +890,61 @@ def write_text_file_if_missing(
     else:
         target.write_text(fallback_content, encoding="utf-8")
     return True
+
+
+def write_executable_file_if_missing(
+    target: Path,
+    *,
+    content: str,
+    force: bool = False,
+) -> bool:
+    wrote = write_text_file_if_missing(
+        target,
+        source=None,
+        fallback_content=content,
+        force=force,
+    )
+    if wrote:
+        mode = target.stat().st_mode
+        target.chmod(mode | 0o111)
+    return wrote
+
+
+def init_hook_sample_scripts(
+    *,
+    hooks_root: Path,
+    force: bool,
+    created: list[str],
+    reused: list[str],
+) -> None:
+    sample_files: tuple[tuple[str, str, str], ...] = (
+        (
+            LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+            HOOK_SAMPLE_USER_PROMPT_FILENAME,
+            FALLBACK_HOOK_SAMPLE_USER_PROMPT_TEMPLATE,
+        ),
+        (
+            LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+            HOOK_SAMPLE_BEFORE_TOOL_FILENAME,
+            FALLBACK_HOOK_SAMPLE_BEFORE_TOOL_TEMPLATE,
+        ),
+        (
+            LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+            HOOK_SAMPLE_AFTER_TOOL_FILENAME,
+            FALLBACK_HOOK_SAMPLE_AFTER_TOOL_TEMPLATE,
+        ),
+    )
+    for event_name, filename, template in sample_files:
+        target = hooks_root / event_name / filename
+        wrote = write_executable_file_if_missing(
+            target,
+            content=template,
+            force=force,
+        )
+        if wrote:
+            created.append(str(target))
+        else:
+            reused.append(str(target))
 
 
 def append_jsonl_file(path: Path, payload: dict[str, Any]) -> None:
@@ -2015,15 +2209,53 @@ def call_model_with_messages_or_raise(
                         "error": "missing tool function name",
                     }
                 else:
+                    parsed_args: dict[str, Any] | None = None
                     try:
-                        args_obj = parse_tool_arguments(raw_args)
-                        tool_result = execute_local_tool(tool_name, args_obj, tool_context)
+                        parsed_args = parse_tool_arguments(raw_args)
+                        run_hook_event(
+                            LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+                            {
+                                "event": LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+                                "tool": tool_name,
+                                "tool_call_id": call_id,
+                                "arguments": parsed_args,
+                                "timestamp": now_utc_iso(),
+                            },
+                            tool_context,
+                        )
+                        tool_result = execute_local_tool(tool_name, parsed_args, tool_context)
+                        run_hook_event(
+                            LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+                            {
+                                "event": LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+                                "tool": tool_name,
+                                "tool_call_id": call_id,
+                                "arguments": parsed_args,
+                                "ok": True,
+                                "result": tool_result,
+                                "timestamp": now_utc_iso(),
+                            },
+                            tool_context,
+                        )
                         tool_payload = {
                             "ok": True,
                             "tool": tool_name,
                             "result": tool_result,
                         }
                     except RuntimeError as exc:
+                        run_hook_event(
+                            LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+                            {
+                                "event": LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
+                                "tool": tool_name,
+                                "tool_call_id": call_id,
+                                "arguments": parsed_args if isinstance(parsed_args, dict) else {},
+                                "ok": False,
+                                "error": str(exc),
+                                "timestamp": now_utc_iso(),
+                            },
+                            tool_context,
+                        )
                         tool_payload = {
                             "ok": False,
                             "tool": tool_name,
@@ -3291,11 +3523,30 @@ def resolve_mcp_call_policy(project_toml: dict[str, Any]) -> MCPCallPolicy:
     )
 
 
+def resolve_hook_policy(project_toml: dict[str, Any]) -> HookPolicy:
+    raw_hooks = project_toml.get("hooks")
+    hooks_cfg = raw_hooks if isinstance(raw_hooks, dict) else {}
+    enabled = parse_bool_option(hooks_cfg.get("enabled"), True)
+    strict = parse_bool_option(hooks_cfg.get("strict"), False)
+    timeout_secs = parse_positive_int_option(
+        hooks_cfg.get("timeout_secs"),
+        LOCAL_TOOL_HOOK_TIMEOUT_DEFAULT_SECS,
+        1,
+        LOCAL_TOOL_HOOK_TIMEOUT_MAX_SECS,
+    )
+    return HookPolicy(
+        enabled=enabled,
+        strict=strict,
+        timeout_secs=timeout_secs,
+    )
+
+
 def resolve_local_tool_context(
     project_toml: dict[str, Any],
     work_dir: Path,
     *,
     mcp_runtime: dict[str, Any] | None = None,
+    runtime_paths: RuntimePaths | None = None,
 ) -> LocalToolContext:
     tools_cfg = project_toml.get("tools")
     allow_raw = None
@@ -3303,10 +3554,14 @@ def resolve_local_tool_context(
         allow_raw = tools_cfg.get("allow")
     allow_tokens = normalize_tool_allow_tokens(allow_raw)
     mcp_policy = resolve_mcp_call_policy(project_toml)
+    hook_policy = resolve_hook_policy(project_toml)
     return LocalToolContext(
         work_dir=work_dir,
         allow_tokens=allow_tokens,
         mcp_runtime=mcp_runtime,
+        global_hooks_dir=runtime_paths.global_hooks_dir if isinstance(runtime_paths, RuntimePaths) else None,
+        project_hooks_dir=runtime_paths.project_hooks_dir if isinstance(runtime_paths, RuntimePaths) else None,
+        hook_policy=hook_policy,
         mcp_policy=mcp_policy,
     )
 
@@ -3327,6 +3582,133 @@ def parse_positive_int_option(raw_value: Any, default: int, minimum: int, maximu
     if isinstance(raw_value, int) and raw_value > 0:
         return max(minimum, min(maximum, raw_value))
     return max(minimum, min(maximum, default))
+
+
+def discover_hook_scripts(event_name: str, context: LocalToolContext) -> list[Path]:
+    if event_name not in LOCAL_TOOL_HOOK_EVENTS:
+        raise RuntimeError(f"unsupported hook event: {event_name}")
+    hook_roots: list[Path] = []
+    if isinstance(context.global_hooks_dir, Path):
+        hook_roots.append(context.global_hooks_dir)
+    if isinstance(context.project_hooks_dir, Path):
+        hook_roots.append(context.project_hooks_dir)
+
+    scripts: list[Path] = []
+    for root in hook_roots:
+        event_dir = root / event_name
+        if not event_dir.exists() or not event_dir.is_dir():
+            continue
+        try:
+            entries = sorted(event_dir.iterdir(), key=lambda item: item.name.lower())
+        except OSError as exc:
+            print(f"[hook] failed to list {event_dir}: {exc}", file=sys.stderr)
+            continue
+        for entry in entries:
+            if entry.name.startswith("."):
+                continue
+            if entry.is_file():
+                scripts.append(entry.resolve())
+    return scripts
+
+
+def summarize_hooks_runtime(context: LocalToolContext) -> dict[str, Any]:
+    global_root = context.global_hooks_dir.resolve() if isinstance(context.global_hooks_dir, Path) else None
+    project_root = context.project_hooks_dir.resolve() if isinstance(context.project_hooks_dir, Path) else None
+    events: dict[str, Any] = {}
+    total_scripts = 0
+    for event_name in LOCAL_TOOL_HOOK_EVENTS:
+        scripts = discover_hook_scripts(event_name, context)
+        script_entries: list[dict[str, str]] = []
+        for script in scripts:
+            scope = "unknown"
+            relative = str(script)
+            if isinstance(global_root, Path) and script.is_relative_to(global_root):
+                scope = "global"
+                relative = str(script.relative_to(global_root))
+            elif isinstance(project_root, Path) and script.is_relative_to(project_root):
+                scope = "project"
+                relative = str(script.relative_to(project_root))
+            script_entries.append(
+                {
+                    "scope": scope,
+                    "path": relative,
+                    "absolute_path": str(script),
+                }
+            )
+        events[event_name] = {
+            "count": len(script_entries),
+            "scripts": script_entries,
+        }
+        total_scripts += len(script_entries)
+    return {
+        "policy": {
+            "enabled": context.hook_policy.enabled,
+            "strict": context.hook_policy.strict,
+            "timeout_secs": context.hook_policy.timeout_secs,
+        },
+        "global_dir": str(context.global_hooks_dir) if isinstance(context.global_hooks_dir, Path) else None,
+        "project_dir": str(context.project_hooks_dir) if isinstance(context.project_hooks_dir, Path) else None,
+        "event_count": len(LOCAL_TOOL_HOOK_EVENTS),
+        "total_scripts": total_scripts,
+        "events": events,
+    }
+
+
+def run_hook_event(event_name: str, payload: dict[str, Any], context: LocalToolContext) -> None:
+    policy = context.hook_policy
+    if not policy.enabled:
+        return
+
+    scripts = discover_hook_scripts(event_name, context)
+    if not scripts:
+        return
+
+    timeout_secs = max(1, min(LOCAL_TOOL_HOOK_TIMEOUT_MAX_SECS, policy.timeout_secs))
+    payload_json = json.dumps(payload, ensure_ascii=False)
+    failures: list[str] = []
+
+    for script in scripts:
+        if not os.access(script, os.X_OK):
+            failures.append(f"{script} is not executable")
+            continue
+        env = os.environ.copy()
+        env["GROBOT_HOOK_EVENT"] = event_name
+        env["GROBOT_HOOK_WORK_DIR"] = str(context.work_dir)
+        env["GROBOT_HOOK_TIMEOUT_SECS"] = str(timeout_secs)
+        try:
+            completed = subprocess.run(
+                [str(script)],
+                cwd=str(context.work_dir),
+                input=payload_json,
+                text=True,
+                capture_output=True,
+                timeout=timeout_secs,
+                env=env,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            failures.append(f"{script} timed out after {timeout_secs}s")
+            continue
+        except OSError as exc:
+            failures.append(f"{script} failed to start: {exc}")
+            continue
+
+        if completed.returncode != 0:
+            stderr_preview = truncate_text(
+                (completed.stderr or "").strip(),
+                limit=LOCAL_TOOL_HOOK_OUTPUT_PREVIEW_LIMIT,
+            )
+            stdout_preview = truncate_text(
+                (completed.stdout or "").strip(),
+                limit=LOCAL_TOOL_HOOK_OUTPUT_PREVIEW_LIMIT,
+            )
+            detail = stderr_preview or stdout_preview or "no output"
+            failures.append(f"{script} exited with code {completed.returncode}: {detail}")
+
+    for failure in failures:
+        print(f"[hook] {event_name}: {failure}", file=sys.stderr)
+    if failures and policy.strict:
+        raise RuntimeError(f'hook "{event_name}" failed: {failures[0]}')
 
 
 def resolve_retrieval_remote(
@@ -5947,6 +6329,7 @@ def build_management_status_payload(
     runtime_cfg = project_toml.get("runtime")
     gateway_cfg = project_toml.get("gateway")
     runtime_storage_cfg = runtime_cfg.get("storage") if isinstance(runtime_cfg, dict) else None
+    hook_policy = resolve_hook_policy(project_toml)
 
     management_enabled = None
     if isinstance(gateway_cfg, dict):
@@ -5982,6 +6365,10 @@ def build_management_status_payload(
             "skills": {
                 "global": str(runtime_paths.global_skills_dir),
                 "project": str(runtime_paths.project_skills_dir),
+            },
+            "hooks": {
+                "global": str(runtime_paths.global_hooks_dir),
+                "project": str(runtime_paths.project_hooks_dir),
             },
             "mcp": {
                 "global_registry": str(runtime_paths.global_mcp_registry),
@@ -6024,6 +6411,11 @@ def build_management_status_payload(
             else None,
         },
         "provider_routing": summarize_provider_routing(project_toml),
+        "hooks_policy": {
+            "enabled": hook_policy.enabled,
+            "strict": hook_policy.strict,
+            "timeout_secs": hook_policy.timeout_secs,
+        },
     }
 
 
@@ -6033,6 +6425,7 @@ def print_local_help() -> None:
     print("  /health   Show provider circuit health")
     print("  /mcp      Show effective MCP servers")
     print("  /mcp reset <server|all>  Reset MCP gate metrics and close MCP session(s)")
+    print("  /hooks    Show effective hooks and policy")
     print("  @file     Mention a file/path in prompt for fast resolution")
     print("  /help     Show local commands")
     print("  /exit     Quit")
@@ -6162,6 +6555,193 @@ def print_mcp_info(
     print("")
 
 
+def print_hooks_info(context: LocalToolContext) -> None:
+    runtime = summarize_hooks_runtime(context)
+    policy = runtime["policy"]
+    print("Hook runtime:")
+    print(
+        "  policy:    "
+        f"enabled={policy['enabled']}, strict={policy['strict']}, timeout={policy['timeout_secs']}s"
+    )
+    print(
+        "  paths:     "
+        f"global={runtime['global_dir']} project={runtime['project_dir']}"
+    )
+    print(
+        "  summary:   "
+        f"events={runtime['event_count']} total_scripts={runtime['total_scripts']}"
+    )
+    events = runtime.get("events")
+    if isinstance(events, dict):
+        for event_name in LOCAL_TOOL_HOOK_EVENTS:
+            event_payload = events.get(event_name)
+            if not isinstance(event_payload, dict):
+                continue
+            count = event_payload.get("count")
+            print(f"  {event_name}: count={count if isinstance(count, int) else 0}")
+            scripts = event_payload.get("scripts")
+            if isinstance(scripts, list) and scripts:
+                for item in scripts:
+                    if not isinstance(item, dict):
+                        continue
+                    scope = item.get("scope")
+                    path = item.get("path")
+                    if isinstance(scope, str) and isinstance(path, str):
+                        print(f"    - [{scope}] {path}")
+    print("")
+
+
+def collect_hooks_doctor_issues(runtime: dict[str, Any]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    policy = runtime.get("policy")
+    enabled = bool(policy.get("enabled")) if isinstance(policy, dict) else True
+
+    events = runtime.get("events")
+    if isinstance(events, dict):
+        for event_name, event_payload in events.items():
+            if not isinstance(event_name, str) or not isinstance(event_payload, dict):
+                continue
+            scripts = event_payload.get("scripts")
+            if not isinstance(scripts, list):
+                continue
+            for item in scripts:
+                if not isinstance(item, dict):
+                    continue
+                absolute_path = item.get("absolute_path")
+                if not isinstance(absolute_path, str):
+                    continue
+                script_path = Path(absolute_path)
+                if not script_path.exists():
+                    issues.append(
+                        {
+                            "level": "error",
+                            "code": "HOOK_SCRIPT_MISSING",
+                            "event": event_name,
+                            "path": absolute_path,
+                            "message": "hook script path listed but file does not exist",
+                        }
+                    )
+                    continue
+                if not os.access(script_path, os.X_OK):
+                    issues.append(
+                        {
+                            "level": "error",
+                            "code": "HOOK_SCRIPT_NOT_EXECUTABLE",
+                            "event": event_name,
+                            "path": absolute_path,
+                            "message": "hook script is not executable",
+                        }
+                    )
+
+    total_scripts = runtime.get("total_scripts")
+    if enabled and isinstance(total_scripts, int) and total_scripts == 0:
+        issues.append(
+            {
+                "level": "warn",
+                "code": "HOOKS_ENABLED_BUT_EMPTY",
+                "event": None,
+                "path": None,
+                "message": "hooks are enabled but no scripts were found",
+            }
+        )
+    return issues
+
+
+def run_hooks_doctor(args: argparse.Namespace) -> int:
+    paths = resolve_runtime_paths(
+        work_dir_override=args.work_dir,
+        config_override=args.config,
+        home_override=args.home,
+        project_root_override=args.project_root,
+    )
+    ensure_runtime_layout(paths)
+    project_toml = load_toml(paths.project_toml)
+    work_dir = (
+        Path(args.work_dir).expanduser().resolve()
+        if isinstance(args.work_dir, str) and args.work_dir.strip()
+        else paths.project_root
+    )
+    configured_project_name = args.project if isinstance(args.project, str) and args.project.strip() else None
+    if configured_project_name is None:
+        agent_cfg = project_toml.get("agent")
+        agent_id = agent_cfg.get("id") if isinstance(agent_cfg, dict) else None
+        if isinstance(agent_id, str) and agent_id.strip():
+            configured_project_name = agent_id.strip()
+    project_name = configured_project_name or paths.project_root.name
+    context = resolve_local_tool_context(
+        project_toml,
+        work_dir,
+        runtime_paths=paths,
+    )
+    runtime = summarize_hooks_runtime(context)
+    issues = collect_hooks_doctor_issues(runtime)
+    has_error = any(item.get("level") == "error" for item in issues)
+    has_warn = any(item.get("level") == "warn" for item in issues)
+    status = "error" if has_error else ("warn" if has_warn else "ok")
+
+    payload = {
+        "status": status,
+        "timestamp": now_utc_iso(),
+        "project": project_name,
+        "work_dir": str(work_dir),
+        "hooks_runtime": runtime,
+        "issues": issues,
+    }
+
+    if bool(getattr(args, "json_output", False)):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print("Grobot hooks doctor")
+        print(f"  project:   {project_name}")
+        print(f"  work_dir:  {work_dir}")
+        print(
+            "  policy:    "
+            f"enabled={runtime['policy']['enabled']}, strict={runtime['policy']['strict']}, "
+            f"timeout={runtime['policy']['timeout_secs']}s"
+        )
+        print(
+            "  scripts:   "
+            f"total={runtime['total_scripts']} events={runtime['event_count']}"
+        )
+        events = runtime.get("events")
+        if isinstance(events, dict):
+            for event_name in LOCAL_TOOL_HOOK_EVENTS:
+                event_payload = events.get(event_name)
+                if not isinstance(event_payload, dict):
+                    continue
+                count = event_payload.get("count")
+                print(f"  {event_name}: {count if isinstance(count, int) else 0}")
+        if not issues:
+            print("  checks:    ok")
+        else:
+            print("  checks:")
+            for issue in issues:
+                level = str(issue.get("level") or "warn")
+                code = str(issue.get("code") or "UNKNOWN")
+                event_name = issue.get("event")
+                message = str(issue.get("message") or "")
+                path = issue.get("path")
+                event_part = f" event={event_name}" if isinstance(event_name, str) else ""
+                path_part = f" path={path}" if isinstance(path, str) else ""
+                print(f"    - [{level}] {code}{event_part}{path_part}: {message}")
+        print("")
+
+    strict = bool(getattr(args, "strict", False))
+    if has_error:
+        return 1
+    if strict and has_warn:
+        return 1
+    return 0
+
+
+def run_hooks(args: argparse.Namespace) -> int:
+    command = getattr(args, "hooks_command", "")
+    if command == "doctor":
+        return run_hooks_doctor(args)
+    print("Usage: grobot hooks doctor [--project <name>] [--work-dir <path>] [--json]")
+    return 1
+
+
 def format_route_chain(routes: list[ProviderRoute]) -> str:
     return " -> ".join(f"{route.provider.name}/{route.model}" for route in routes)
 
@@ -6221,7 +6801,15 @@ def run_status(args: argparse.Namespace) -> int:
         ttl_secs_arg=None,
     )
     mcp_policy = resolve_mcp_call_policy(project_toml)
+    hook_policy = resolve_hook_policy(project_toml)
     mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
+    local_tool_context = resolve_local_tool_context(
+        project_toml,
+        selection.work_dir,
+        mcp_runtime=mcp_runtime,
+        runtime_paths=paths,
+    )
+    hooks_runtime = summarize_hooks_runtime(local_tool_context)
 
     print("Grobot status")
     print(f"  home:              {paths.home}")
@@ -6240,6 +6828,15 @@ def run_status(args: argparse.Namespace) -> int:
     print(f"  sessions_root:     {paths.sessions_dir}")
     print(f"  rules:             global={paths.global_rules_dir} project={paths.project_rules_dir}")
     print(f"  skills:            global={paths.global_skills_dir} project={paths.project_skills_dir}")
+    print(f"  hooks:             global={paths.global_hooks_dir} project={paths.project_hooks_dir}")
+    print(
+        "  hooks_policy:      "
+        f"enabled={hook_policy.enabled}, strict={hook_policy.strict}, timeout={hook_policy.timeout_secs}s"
+    )
+    print(
+        "  hooks_runtime:     "
+        f"events={hooks_runtime['event_count']} scripts={hooks_runtime['total_scripts']}"
+    )
     print(
         "  mcp_gate:          "
         f"concurrency={mcp_policy.max_concurrency_per_server}, "
@@ -6344,6 +6941,7 @@ def run_serve(args: argparse.Namespace) -> int:
             project_toml,
             selection.work_dir,
             mcp_runtime=mcp_runtime,
+            runtime_paths=paths,
         )
         return {
             "paths": paths,
@@ -6396,6 +6994,7 @@ def run_serve(args: argparse.Namespace) -> int:
             state["mcp_local_tool_context"],
             effective_names,
         )
+        payload["hooks_runtime"] = summarize_hooks_runtime(state["mcp_local_tool_context"])
         if state["mcp_warnings"]:
             payload["mcp_warnings"] = state["mcp_warnings"]
         payload["endpoints"] = {
@@ -6486,6 +7085,27 @@ def run_serve(args: argparse.Namespace) -> int:
                 "project_toml": str(runtime_paths.project_toml),
                 "config_toml": str(runtime_paths.config_toml),
                 "sessions_root": str(runtime_paths.sessions_dir),
+                "rules": {
+                    "global": str(runtime_paths.global_rules_dir),
+                    "project": str(runtime_paths.project_rules_dir),
+                },
+                "skills": {
+                    "global": str(runtime_paths.global_skills_dir),
+                    "project": str(runtime_paths.project_skills_dir),
+                },
+                "hooks": {
+                    "global": str(runtime_paths.global_hooks_dir),
+                    "project": str(runtime_paths.project_hooks_dir),
+                },
+                "mcp": {
+                    "global_registry": str(runtime_paths.global_mcp_registry),
+                    "project_override": str(runtime_paths.project_mcp_file),
+                },
+                "memory": {
+                    "session": str(runtime_paths.session_memory_dir),
+                    "project": str(runtime_paths.project_memory_dir),
+                    "global": str(runtime_paths.global_memory_dir),
+                },
             },
             CONFIG_SECTION_SELECTION: {
                 "project": selection.name,
@@ -6526,6 +7146,7 @@ def run_serve(args: argparse.Namespace) -> int:
             state["mcp_local_tool_context"],
             effective_names,
         )
+        payload["hooks_runtime"] = summarize_hooks_runtime(state["mcp_local_tool_context"])
         if state["mcp_warnings"]:
             payload["mcp_warnings"] = state["mcp_warnings"]
 
@@ -6967,6 +7588,7 @@ def run_start(args: argparse.Namespace) -> int:
         project_toml,
         selection.work_dir,
         mcp_runtime=mcp_runtime,
+        runtime_paths=paths,
     )
     mention_index: MentionIndexState | MentionPathIndex | None = None
     system_prompt = build_system_prompt(session_key=session_key, work_dir=selection.work_dir)
@@ -6988,6 +7610,18 @@ def run_start(args: argparse.Namespace) -> int:
     print(f"  store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
     print(f"  sessions:  {paths.sessions_dir}")
     print(f"  memory:    session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}")
+    print(f"  hooks:     global={paths.global_hooks_dir} project={paths.project_hooks_dir}")
+    print(
+        "  hooks_cfg: "
+        f"enabled={local_tool_context.hook_policy.enabled}, "
+        f"strict={local_tool_context.hook_policy.strict}, "
+        f"timeout={local_tool_context.hook_policy.timeout_secs}s"
+    )
+    hooks_runtime = summarize_hooks_runtime(local_tool_context)
+    print(
+        "  hooks_rt:  "
+        f"events={hooks_runtime['event_count']} scripts={hooks_runtime['total_scripts']}"
+    )
     print(f"  tools:     {', '.join(local_tool_context.allow_tokens)}")
     print(
         "  mcp_gate:  "
@@ -7065,6 +7699,24 @@ def run_start(args: argparse.Namespace) -> int:
         refresh_message = mention_refresh_status_message(mention_index)
         if refresh_message:
             print(f"[mentions] {refresh_message}", file=sys.stderr)
+        try:
+            run_hook_event(
+                LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+                {
+                    "event": LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+                    "session_key": session_key,
+                    "platform": selection.platform,
+                    "project": selection.name,
+                    "user_prompt": args.message,
+                    "effective_prompt": effective_prompt,
+                    "timestamp": now_utc_iso(),
+                },
+                local_tool_context,
+            )
+        except RuntimeError as exc:
+            print(f"[hook] {exc}", file=sys.stderr)
+            close_mcp_sessions(local_tool_context)
+            return 1
 
         messages = build_chat_messages(
             system_prompt=system_prompt,
@@ -7106,7 +7758,7 @@ def run_start(args: argparse.Namespace) -> int:
         close_mcp_sessions(local_tool_context)
         return 0
 
-    print("Enter message (`/model`, `/health`, `/mcp`, `/mcp reset <server|all>`, `/help`, `/exit`):")
+    print("Enter message (`/model`, `/health`, `/mcp`, `/hooks`, `/mcp reset <server|all>`, `/help`, `/exit`):")
     while True:
         try:
             user_input = input("grobot> ").strip()
@@ -7165,6 +7817,9 @@ def run_start(args: argparse.Namespace) -> int:
         if user_input == "/mcp":
             print_mcp_info(mcp_runtime, mcp_warnings, context=local_tool_context)
             continue
+        if user_input == "/hooks":
+            print_hooks_info(local_tool_context)
+            continue
 
         interrupted, interrupt_warnings = consume_interrupt_flag(session_store, session_key)
         for warning in interrupt_warnings:
@@ -7184,6 +7839,24 @@ def run_start(args: argparse.Namespace) -> int:
         refresh_message = mention_refresh_status_message(mention_index)
         if refresh_message:
             print(f"[mentions] {refresh_message}")
+        try:
+            run_hook_event(
+                LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+                {
+                    "event": LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+                    "session_key": session_key,
+                    "platform": selection.platform,
+                    "project": selection.name,
+                    "user_prompt": user_input,
+                    "effective_prompt": effective_prompt,
+                    "timestamp": now_utc_iso(),
+                },
+                local_tool_context,
+            )
+        except RuntimeError as exc:
+            print(f"[hook] {exc}")
+            print("")
+            continue
 
         messages = build_chat_messages(
             system_prompt=system_prompt,
@@ -7232,6 +7905,7 @@ def run_start(args: argparse.Namespace) -> int:
 def run_init(args: argparse.Namespace) -> int:
     init_global = bool(getattr(args, "init_global", False))
     init_project = bool(getattr(args, "init_project", False))
+    hooks_samples = bool(getattr(args, "hooks_samples", False))
     if not init_global and not init_project:
         init_global = True
 
@@ -7246,6 +7920,10 @@ def run_init(args: argparse.Namespace) -> int:
             home,
             home / "rules",
             home / "skills",
+            home / "hooks",
+            home / "hooks" / LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+            home / "hooks" / LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+            home / "hooks" / LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
             home / "mcp",
             home / "runtime" / "sessions",
             home / "runtime" / "memory" / "session",
@@ -7258,6 +7936,23 @@ def run_init(args: argparse.Namespace) -> int:
                 reused.append(str(path))
             else:
                 created.append(str(path))
+
+        global_readmes: tuple[tuple[Path, str], ...] = (
+            (home / "rules" / "README.md", FALLBACK_RULES_README_TEMPLATE),
+            (home / "skills" / "README.md", FALLBACK_SKILLS_README_TEMPLATE),
+            (home / "memory" / "global" / "README.md", FALLBACK_MEMORY_README_TEMPLATE),
+        )
+        for readme_path, template in global_readmes:
+            wrote_readme = write_text_file_if_missing(
+                readme_path,
+                source=None,
+                fallback_content=template,
+                force=force,
+            )
+            if wrote_readme:
+                created.append(str(readme_path))
+            else:
+                reused.append(str(readme_path))
 
         config_target = home / DEFAULT_GLOBAL_CONFIG_FILENAME
         config_source = repo / DEFAULT_PROJECT_CONFIG_DIRNAME / "config.toml.example"
@@ -7284,6 +7979,25 @@ def run_init(args: argparse.Namespace) -> int:
         else:
             reused.append(str(global_mcp_registry_target))
 
+        global_hooks_readme = home / "hooks" / "README.md"
+        wrote_global_hooks_readme = write_text_file_if_missing(
+            global_hooks_readme,
+            source=None,
+            fallback_content=FALLBACK_HOOKS_README_TEMPLATE,
+            force=force,
+        )
+        if wrote_global_hooks_readme:
+            created.append(str(global_hooks_readme))
+        else:
+            reused.append(str(global_hooks_readme))
+        if hooks_samples:
+            init_hook_sample_scripts(
+                hooks_root=home / "hooks",
+                force=force,
+                created=created,
+                reused=reused,
+            )
+
     if init_project:
         project_root = (
             Path(getattr(args, "project_root", "")).expanduser().resolve()
@@ -7295,6 +8009,10 @@ def run_init(args: argparse.Namespace) -> int:
             project_dir,
             project_dir / "rules",
             project_dir / "skills",
+            project_dir / "hooks",
+            project_dir / "hooks" / LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+            project_dir / "hooks" / LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+            project_dir / "hooks" / LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
             project_dir / "memory",
         ]
         for path in project_dirs:
@@ -7304,6 +8022,23 @@ def run_init(args: argparse.Namespace) -> int:
                 reused.append(str(path))
             else:
                 created.append(str(path))
+
+        project_readmes: tuple[tuple[Path, str], ...] = (
+            (project_dir / "rules" / "README.md", FALLBACK_RULES_README_TEMPLATE),
+            (project_dir / "skills" / "README.md", FALLBACK_SKILLS_README_TEMPLATE),
+            (project_dir / "memory" / "README.md", FALLBACK_MEMORY_README_TEMPLATE),
+        )
+        for readme_path, template in project_readmes:
+            wrote_readme = write_text_file_if_missing(
+                readme_path,
+                source=None,
+                fallback_content=template,
+                force=force,
+            )
+            if wrote_readme:
+                created.append(str(readme_path))
+            else:
+                reused.append(str(readme_path))
 
         project_target = project_dir / DEFAULT_PROJECT_CONFIG_FILENAME
         project_source = repo / DEFAULT_PROJECT_CONFIG_DIRNAME / DEFAULT_PROJECT_CONFIG_FILENAME
@@ -7329,6 +8064,25 @@ def run_init(args: argparse.Namespace) -> int:
             created.append(str(project_mcp_target))
         else:
             reused.append(str(project_mcp_target))
+
+        project_hooks_readme = project_dir / "hooks" / "README.md"
+        wrote_project_hooks_readme = write_text_file_if_missing(
+            project_hooks_readme,
+            source=None,
+            fallback_content=FALLBACK_HOOKS_README_TEMPLATE,
+            force=force,
+        )
+        if wrote_project_hooks_readme:
+            created.append(str(project_hooks_readme))
+        else:
+            reused.append(str(project_hooks_readme))
+        if hooks_samples:
+            init_hook_sample_scripts(
+                hooks_root=project_dir / "hooks",
+                force=force,
+                created=created,
+                reused=reused,
+            )
 
     print("Grobot init completed")
     print(f"  home:      {home}")
@@ -7359,6 +8113,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--home", help="Override global home directory (default: ~/.grobot or GROBOT_HOME)")
     init.add_argument("--project-root", help="Target project root for --project")
     init.add_argument("--force", action="store_true", help="Overwrite existing template files")
+    init.add_argument(
+        "--hooks-samples",
+        action="store_true",
+        help="Create executable sample hook scripts under hooks/<event>/",
+    )
     init.set_defaults(func=run_init)
 
     status = sub.add_parser("status", help="Show grobot runtime status")
@@ -7373,6 +8132,22 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--model", help="Override model id (or auto)")
     status.add_argument("--probe", action="store_true", help="Call provider /models to verify connectivity")
     status.set_defaults(func=run_status)
+
+    hooks = sub.add_parser("hooks", help="Hooks utilities")
+    hooks_sub = hooks.add_subparsers(dest="hooks_command")
+    hooks_doctor = hooks_sub.add_parser("doctor", help="Diagnose hooks policy and script readiness")
+    hooks_doctor.add_argument("--project", help="Project name in config.toml")
+    hooks_doctor.add_argument("--work-dir", help="Override target work directory")
+    hooks_doctor.add_argument("--config", help="Path to runtime config.toml")
+    hooks_doctor.add_argument("--home", help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)")
+    hooks_doctor.add_argument("--project-root", help="Project root containing .grobot/project.toml")
+    hooks_doctor.add_argument("--json", dest="json_output", action="store_true", help="Output JSON")
+    hooks_doctor.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero on warnings in addition to errors",
+    )
+    hooks.set_defaults(func=run_hooks)
 
     serve = sub.add_parser("serve", help="Run management API server")
     serve.add_argument("--project", help="Project name in config.toml")

@@ -22,12 +22,12 @@
   - 这些目录是产品代码，负责实现协议、编排、运行时和共享契约。
 - 全局运行层（`~/.grobot/`）：
   - `~/.grobot/config.toml`：全局 agent/platform/provider 配置（含敏感信息，不进仓库）
-  - `~/.grobot/rules/`、`~/.grobot/skills/`、`~/.grobot/mcp/servers.toml`
+  - `~/.grobot/rules/`、`~/.grobot/skills/`、`~/.grobot/hooks/`、`~/.grobot/mcp/servers.toml`
   - `~/.grobot/runtime/sessions/`、`~/.grobot/runtime/memory/session/`、`~/.grobot/memory/global/`
 - 项目运行层（`<业务仓库>/.grobot/`）：
   - `.grobot/project.toml`：项目级架构/运行契约（source of truth）
   - `.grobot/mcp.toml`：项目级 MCP 覆盖
-  - `.grobot/rules/`、`.grobot/skills/`、`.grobot/memory/`
+  - `.grobot/rules/`、`.grobot/skills/`、`.grobot/hooks/`、`.grobot/memory/`
 
 ### 配置初始化
 
@@ -40,6 +40,9 @@ grobot init --project
 
 # 3) 或指定项目目录
 grobot init --project --project-root /path/to/your/repo
+
+# 4) 初始化时同时生成 hooks 样例脚本（可直接 chmod 后使用）
+grobot init --project --hooks-samples
 ```
 
 ### npm 安装分发（给别人用）
@@ -62,6 +65,7 @@ grobot init --project
 - npm 发布包已通过 `files` 白名单控制，只包含 CLI 运行所需最小文件集合。
 - `grobot init --global` 会自动创建 `~/.grobot/mcp/servers.toml`（全局 MCP 注册表）。
 - `grobot init --project` 会自动创建 `<repo>/.grobot/mcp.toml`（项目级 MCP 覆盖）。
+- `grobot init` 会同时创建 hooks 目录：`hooks/user-prompt-submit/`、`hooks/before-tool-use/`、`hooks/after-tool-use/`（全局和项目层都会有）。
 
 ### 本地启动 grobot（可在任意业务目录触发）
 
@@ -118,11 +122,14 @@ grobot start \
 - `mcp_call` 内置每个 server 的并发/排队/熔断门禁（避免高并发下把同一个 MCP server 打挂）。
 - `mcp_call` 支持 `[tools.mcp].allow_tools` 白名单；不在白名单中的 MCP tool 会被拒绝调用。
 - `mcp_call`/`mcp_servers` 会输出 server 级 `runtime_state` 指标；`mcp_servers` 还会输出跨 server 聚合的 `runtime_summary`（含总调用、失败分桶、延迟分位和 `top_errors`）。
-- `runtime_state` 同时包含失败分桶：`policy_denied_calls`、`gate_rejected_calls`、`timeout_failures`、`transport_failures`、`tool_failures`、`unknown_failures`。
-- 管理 API 可对会话设置 interrupt 标记，`start` 在下一轮调用前会消费该标记并跳过当次请求。
-- 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
-- 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
-- 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
+  - `runtime_state` 同时包含失败分桶：`policy_denied_calls`、`gate_rejected_calls`、`timeout_failures`、`transport_failures`、`tool_failures`、`unknown_failures`。
+  - 管理 API 可对会话设置 interrupt 标记，`start` 在下一轮调用前会消费该标记并跳过当次请求。
+  - 支持 hooks 事件：`user-prompt-submit`、`before-tool-use`、`after-tool-use`。脚本目录支持全局（`~/.grobot/hooks/<event>/`）和项目层（`<repo>/.grobot/hooks/<event>/`）。
+  - hooks 脚本读取 STDIN JSON（事件 payload）；可通过 `.grobot/project.toml` 的 `[hooks]` 配置 `enabled/strict/timeout_secs`。
+  - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
+  - 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
+  - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
+  - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
 
 ### MCP 配置示例
 
@@ -162,6 +169,14 @@ failure_threshold = 3
 cooldown_secs = 20
 allow_tools = ["*"] # 可选：["search_code", "read_repo"]；["*"] 或省略表示不限制
 latency_sample_limit = 256 # 可选：延迟样本保留上限（16..1024）
+```
+
+```toml
+# <repo>/.grobot/project.toml
+[hooks]
+enabled = true
+strict = false
+timeout_secs = 5
 ```
 
 ### MCP 工具调用示例（会话内）
@@ -333,10 +348,22 @@ curl -sS -X POST \
 curl -sS -X POST \
   http://127.0.0.1:18080/api/v1/mcp/servers/ctx-project/reset \
   -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
+
+# hooks 体检（输出当前 policy、脚本清单与可执行性检查）
+grobot hooks doctor \
+  --project <project-name> \
+  --work-dir "$(pwd)"
+
+# hooks 体检 JSON（可接 CI/脚本）
+grobot hooks doctor \
+  --project <project-name> \
+  --work-dir "$(pwd)" \
+  --json
 ```
 
 说明：
 - `mcp/reset` 仅作用于当前 `grobot serve` 进程内的 MCP 运行态（会话与 gate 指标）；与独立进程启动的 `grobot start` 不共享。
+- `GET /api/v1/status` 与 `GET /api/v1/config` 现在会返回 `hooks_policy` + `hooks_runtime`（含事件脚本计数与路径）。
 
 ## 文档导航
 

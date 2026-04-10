@@ -1050,6 +1050,136 @@ class LocalToolsTests(unittest.TestCase):
                     context,
                 )
 
+    def test_resolve_hook_policy_from_project_toml(self) -> None:
+        policy = grobot_cli.resolve_hook_policy(
+            {
+                "hooks": {
+                    "enabled": True,
+                    "strict": True,
+                    "timeout_secs": 12,
+                }
+            }
+        )
+        self.assertTrue(policy.enabled)
+        self.assertTrue(policy.strict)
+        self.assertEqual(policy.timeout_secs, 12)
+
+    def test_hook_event_executes_global_and_project_scripts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            output_file = work_dir / "hook-output.log"
+            global_hook = work_dir / "global-hooks" / grobot_cli.LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE / "10-global.sh"
+            project_hook = work_dir / "project-hooks" / grobot_cli.LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE / "20-project.sh"
+            global_hook.parent.mkdir(parents=True, exist_ok=True)
+            project_hook.parent.mkdir(parents=True, exist_ok=True)
+            global_hook.write_text(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        f"echo \"global:$GROBOT_HOOK_EVENT\" >> {output_file}",
+                        "cat >/dev/null",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            project_hook.write_text(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        f"echo \"project:$GROBOT_HOOK_EVENT\" >> {output_file}",
+                        "cat >/dev/null",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            os.chmod(global_hook, 0o755)
+            os.chmod(project_hook, 0o755)
+
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                global_hooks_dir=(work_dir / "global-hooks"),
+                project_hooks_dir=(work_dir / "project-hooks"),
+                hook_policy=grobot_cli.HookPolicy(enabled=True, strict=False, timeout_secs=5),
+            )
+            grobot_cli.run_hook_event(
+                grobot_cli.LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
+                {"tool": "read"},
+                context,
+            )
+            rows = output_file.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(rows, ["global:before-tool-use", "project:before-tool-use"])
+
+    def test_summarize_hooks_runtime_reports_scope_and_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            global_hook = (
+                work_dir / "global-hooks" / grobot_cli.LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT / "10-global.sh"
+            )
+            project_hook = (
+                work_dir / "project-hooks" / grobot_cli.LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE / "20-project.sh"
+            )
+            global_hook.parent.mkdir(parents=True, exist_ok=True)
+            project_hook.parent.mkdir(parents=True, exist_ok=True)
+            global_hook.write_text("#!/bin/sh\ncat >/dev/null\n", encoding="utf-8")
+            project_hook.write_text("#!/bin/sh\ncat >/dev/null\n", encoding="utf-8")
+            os.chmod(global_hook, 0o755)
+            os.chmod(project_hook, 0o755)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                global_hooks_dir=(work_dir / "global-hooks"),
+                project_hooks_dir=(work_dir / "project-hooks"),
+                hook_policy=grobot_cli.HookPolicy(enabled=True, strict=False, timeout_secs=5),
+            )
+            runtime = grobot_cli.summarize_hooks_runtime(context)
+            self.assertEqual(runtime["event_count"], len(grobot_cli.LOCAL_TOOL_HOOK_EVENTS))
+            self.assertEqual(runtime["total_scripts"], 2)
+            submit_event = runtime["events"][grobot_cli.LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT]
+            after_event = runtime["events"][grobot_cli.LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE]
+            self.assertEqual(submit_event["count"], 1)
+            self.assertEqual(after_event["count"], 1)
+            self.assertEqual(submit_event["scripts"][0]["scope"], "global")
+            self.assertEqual(after_event["scripts"][0]["scope"], "project")
+
+    def test_hook_event_strict_mode_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            bad_hook = (
+                work_dir
+                / "project-hooks"
+                / grobot_cli.LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT
+                / "10-bad.sh"
+            )
+            bad_hook.parent.mkdir(parents=True, exist_ok=True)
+            bad_hook.write_text(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        "echo \"bad hook\" 1>&2",
+                        "exit 3",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            os.chmod(bad_hook, 0o755)
+
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                project_hooks_dir=(work_dir / "project-hooks"),
+                hook_policy=grobot_cli.HookPolicy(enabled=True, strict=True, timeout_secs=5),
+            )
+            with self.assertRaises(RuntimeError):
+                grobot_cli.run_hook_event(
+                    grobot_cli.LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
+                    {"prompt": "hello"},
+                    context,
+                )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

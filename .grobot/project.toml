@@ -66,6 +66,11 @@ weight = 30
 allow = ["list", "glob", "search", "read", "write", "edit", "shell", "git", "rg", "python3", "cargo", "npm"]
 deny = ["git reset --hard", "git push --force", "rm -rf /"]
 
+[hooks]
+enabled = true
+strict = false
+timeout_secs = 5
+
 [safety]
 require_confirm = ["destructive_git", "db_schema_change", "prod_api_write"]
 

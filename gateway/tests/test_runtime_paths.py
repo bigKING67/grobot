@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
+import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +43,8 @@ class RuntimePathsTests(unittest.TestCase):
             self.assertEqual(paths.project_toml, expected_repo_root.resolve() / ".grobot" / "project.toml")
             self.assertEqual(paths.config_toml, Path(temp_home).resolve() / "config.toml")
             self.assertEqual(paths.sessions_dir, Path(temp_home).resolve() / "runtime" / "sessions")
+            self.assertEqual(paths.global_hooks_dir, Path(temp_home).resolve() / "hooks")
+            self.assertEqual(paths.project_hooks_dir, expected_repo_root.resolve() / ".grobot" / "hooks")
 
     def test_resolve_runtime_paths_discovers_project_from_work_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
@@ -64,6 +69,7 @@ class RuntimePathsTests(unittest.TestCase):
             self.assertEqual(paths.project_root, project_root.resolve())
             self.assertEqual(paths.project_toml, (project_grobot / "project.toml").resolve())
             self.assertEqual(paths.project_memory_dir, (project_grobot / "memory").resolve())
+            self.assertEqual(paths.project_hooks_dir, (project_grobot / "hooks").resolve())
 
     def test_resolve_session_store_config_supports_session_root_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -174,15 +180,115 @@ class RuntimePathsTests(unittest.TestCase):
 
             global_config = Path(temp_home) / "config.toml"
             global_mcp_registry = Path(temp_home) / "mcp" / "servers.toml"
+            global_hooks_dir = Path(temp_home) / "hooks"
+            global_hooks_readme = global_hooks_dir / "README.md"
             project_toml = Path(temp_project) / ".grobot" / "project.toml"
             project_mcp = Path(temp_project) / ".grobot" / "mcp.toml"
+            project_hooks_dir = Path(temp_project) / ".grobot" / "hooks"
+            project_hooks_readme = project_hooks_dir / "README.md"
             self.assertTrue(global_config.exists())
             self.assertTrue(global_mcp_registry.exists())
+            self.assertTrue(global_hooks_dir.exists())
+            self.assertTrue(global_hooks_readme.exists())
             self.assertTrue(project_toml.exists())
             self.assertTrue(project_mcp.exists())
+            self.assertTrue(project_hooks_dir.exists())
+            self.assertTrue(project_hooks_readme.exists())
             self.assertIn("replace-with-api-key", global_config.read_text(encoding="utf-8"))
             self.assertIn("Global MCP registry", global_mcp_registry.read_text(encoding="utf-8"))
             self.assertIn("schema_version = 1", project_toml.read_text(encoding="utf-8"))
+
+    def test_run_init_with_hooks_samples_creates_executable_scripts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project, tempfile.TemporaryDirectory() as temp_repo:
+            original_repo_root = grobot_cli.repo_root
+            try:
+                grobot_cli.repo_root = lambda: Path(temp_repo)
+                args = type(
+                    "InitArgs",
+                    (),
+                    {
+                        "init_global": False,
+                        "init_project": True,
+                        "home": temp_home,
+                        "project_root": temp_project,
+                        "force": False,
+                        "hooks_samples": True,
+                    },
+                )()
+                exit_code = grobot_cli.run_init(args)
+                self.assertEqual(exit_code, 0)
+            finally:
+                grobot_cli.repo_root = original_repo_root
+
+            hooks_root = Path(temp_project) / ".grobot" / "hooks"
+            sample_paths = [
+                hooks_root / grobot_cli.LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT / grobot_cli.HOOK_SAMPLE_USER_PROMPT_FILENAME,
+                hooks_root / grobot_cli.LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE / grobot_cli.HOOK_SAMPLE_BEFORE_TOOL_FILENAME,
+                hooks_root / grobot_cli.LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE / grobot_cli.HOOK_SAMPLE_AFTER_TOOL_FILENAME,
+            ]
+            for sample in sample_paths:
+                self.assertTrue(sample.exists(), str(sample))
+                self.assertTrue(os.access(sample, os.X_OK), str(sample))
+
+    def test_run_hooks_doctor_outputs_json_and_warns_when_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            init_args = type(
+                "InitArgs",
+                (),
+                {
+                    "init_global": True,
+                    "init_project": True,
+                    "home": temp_home,
+                    "project_root": temp_project,
+                    "force": False,
+                    "hooks_samples": False,
+                },
+            )()
+            exit_code = grobot_cli.run_init(init_args)
+            self.assertEqual(exit_code, 0)
+
+            doctor_args = type(
+                "HooksDoctorArgs",
+                (),
+                {
+                    "hooks_command": "doctor",
+                    "project": None,
+                    "work_dir": temp_project,
+                    "config": None,
+                    "home": temp_home,
+                    "project_root": temp_project,
+                    "json_output": True,
+                    "strict": False,
+                },
+            )()
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                doctor_exit = grobot_cli.run_hooks_doctor(doctor_args)
+            self.assertEqual(doctor_exit, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["status"], "warn")
+            self.assertIn("hooks_runtime", payload)
+            self.assertEqual(
+                payload["hooks_runtime"]["event_count"],
+                len(grobot_cli.LOCAL_TOOL_HOOK_EVENTS),
+            )
+
+            strict_args = type(
+                "HooksDoctorStrictArgs",
+                (),
+                {
+                    "hooks_command": "doctor",
+                    "project": None,
+                    "work_dir": temp_project,
+                    "config": None,
+                    "home": temp_home,
+                    "project_root": temp_project,
+                    "json_output": False,
+                    "strict": True,
+                },
+            )()
+            strict_exit = grobot_cli.run_hooks_doctor(strict_args)
+            self.assertEqual(strict_exit, 1)
 
     def test_resolve_mcp_runtime_merges_project_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
