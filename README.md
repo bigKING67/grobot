@@ -60,6 +60,8 @@ grobot init --project
 - 全局安装后，用户日常只需要关注 `~/.grobot` 与业务仓库里的 `.grobot`。
 - `adapters/`、`gateway/`、`runtime/`、`shared/` 属于实现源码，不需要用户在业务目录里维护。
 - npm 发布包已通过 `files` 白名单控制，只包含 CLI 运行所需最小文件集合。
+- `grobot init --global` 会自动创建 `~/.grobot/mcp/servers.toml`（全局 MCP 注册表）。
+- `grobot init --project` 会自动创建 `<repo>/.grobot/mcp.toml`（项目级 MCP 覆盖）。
 
 ### 本地启动 grobot（可在任意业务目录触发）
 
@@ -102,14 +104,83 @@ grobot start \
 - `start` 现在会自动构建 provider failover 链（主 provider 失败时自动切后备）。
 - 切换 provider 时会重放当前会话历史消息（最近 N 轮），用于尽量保持上下文连续。
 - 会话持久化支持 `file` 与 `redis`（生产建议 Redis）。
-- `start` 已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`（通过 Chat Completions `tools` 调用）。
+- `start` 已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`（通过 Chat Completions `tools` 调用）。
 - `bash` 放行受 `.grobot/project.toml` 的 `[tools].allow` 控制；`read/write/edit` 仅允许访问 `--work-dir` 目录内路径。
 - `list/glob/search` 优先使用 `fd/rg`（不存在时自动回退到 Python 实现）。
 - `search` 支持 `context_before/context_after`，可直接返回命中行前后文（类似 `rg -B/-A`）。
 - 支持 `@文件名` 快速解析：在用户消息中写 `@xxx`，会先在 `--work-dir` 内做文件匹配并把解析结果注入 prompt（命中唯一路径可直接用于后续读写工具）。
 - `@文件名` 解析使用“常驻内存路径索引 + 增量刷新（added/removed diff）”，匹配阶段采用 trigram 候选集与优先级排序，适配大仓库搜索。
+- MCP 会在启动时读取并合并：`~/.grobot/mcp/servers.toml`（全局） + `<repo>/.grobot/mcp.toml`（项目覆盖同名 server）。
+- MCP 会在启动时做命令就绪度检查（ready/unready），并在 `status`、`serve`、`start`、`/mcp` 中显示原因。
+- `mcp_call` 会按 `initialize -> tools/list -> tools/call` 流程通过 stdio 调用 MCP server，并返回标准化结果预览（含 `is_error/content/structured_content_preview`）。
+- 同一 `start` 会话内，`mcp_call` 会复用已初始化的 MCP 进程（避免每次重启 server，降低时延）。
+- 若复用中的 MCP 进程异常退出，`mcp_call` 会自动重建会话并重试一次，降低偶发中断对会话的影响。
+- `mcp_call` 内置每个 server 的并发/排队/熔断门禁（避免高并发下把同一个 MCP server 打挂）。
+- `mcp_call` 支持 `[tools.mcp].allow_tools` 白名单；不在白名单中的 MCP tool 会被拒绝调用。
+- `mcp_call`/`mcp_servers` 会输出 server 级 `runtime_state` 指标；`mcp_servers` 还会输出跨 server 聚合的 `runtime_summary`（含总调用、失败分桶、延迟分位和 `top_errors`）。
+- `runtime_state` 同时包含失败分桶：`policy_denied_calls`、`gate_rejected_calls`、`timeout_failures`、`transport_failures`、`tool_failures`、`unknown_failures`。
 - 管理 API 可对会话设置 interrupt 标记，`start` 在下一轮调用前会消费该标记并跳过当次请求。
 - 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
+- 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
+- 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
+
+### MCP 配置示例
+
+```toml
+# ~/.grobot/mcp/servers.toml
+[[servers]]
+name = "ctx-global"
+command = "npx"
+args = ["-y", "contextweaver-mcp@latest"]
+enabled = true
+
+[servers.env]
+CONTEXTWEAVER_API_KEY = "replace-with-api-key"
+```
+
+```toml
+# <repo>/.grobot/mcp.toml
+[[servers]]
+name = "ctx-global"
+command = "npx"
+args = ["-y", "contextweaver-mcp@latest"]
+enabled = false # 通过同名覆盖关闭全局 server
+
+[[servers]]
+name = "ctx-project"
+command = "npx"
+args = ["-y", "project-local-mcp@latest"]
+enabled = true
+```
+
+```toml
+# <repo>/.grobot/project.toml
+[tools.mcp]
+max_concurrency_per_server = 1
+max_queue_per_server = 16
+failure_threshold = 3
+cooldown_secs = 20
+allow_tools = ["*"] # 可选：["search_code", "read_repo"]；["*"] 或省略表示不限制
+latency_sample_limit = 256 # 可选：延迟样本保留上限（16..1024）
+```
+
+### MCP 工具调用示例（会话内）
+
+当你在 `grobot start` 交互里让模型调用本地工具时，可按下述参数约定触发：
+
+```json
+{
+  "name": "mcp_call",
+  "arguments": {
+    "server": "ctx-project",
+    "tool": "search_code",
+    "arguments": {
+      "query": "ContextWeaver"
+    },
+    "timeout_secs": 20
+  }
+}
+```
 
 ### 本地体检（启动前先检查配置/连通性）
 
@@ -148,7 +219,7 @@ npm run harness:gate:ci
 npm run harness:hill-climb:sample
 ```
 
-### 管理端点（已实现 status/config/reload/interrupt）
+### 管理端点（已实现 status/config/reload/interrupt/mcp-reset）
 
 管理写接口鉴权来源优先级：
 - `--management-token`（CLI）
@@ -252,7 +323,20 @@ curl -sS -X POST \
   -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"ttl_secs":300}' | jq
+
+# 重置所有 MCP gate/metrics 与会话（远程运维）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/mcp/reset \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
+
+# 只重置指定 MCP server（名字需 URL 编码）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/mcp/servers/ctx-project/reset \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
 ```
+
+说明：
+- `mcp/reset` 仅作用于当前 `grobot serve` 进程内的 MCP 运行态（会话与 gate 指标）；与独立进程启动的 `grobot start` 不共享。
 
 ## 文档导航
 

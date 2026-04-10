@@ -82,6 +82,17 @@ class ManagementPolicyTemplateTests(unittest.TestCase):
         assert credential is not None
         self.assertEqual(credential.actions, (grobot_cli.MANAGEMENT_ACTION_RELOAD,))
 
+    def test_explicit_actions_accept_mcp_reset(self) -> None:
+        credential = grobot_cli.build_management_credential(
+            token="mcp-reset-token",
+            source="config_tokens",
+            name="mcp-reset",
+            raw_actions=["mcp_reset"],
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        self.assertEqual(credential.actions, (grobot_cli.MANAGEMENT_ACTION_MCP_RESET,))
+
     def test_explicit_config_sections_override_template_profile(self) -> None:
         credential = grobot_cli.build_management_credential(
             token="audit-limited-token",

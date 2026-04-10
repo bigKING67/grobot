@@ -173,13 +173,123 @@ class RuntimePathsTests(unittest.TestCase):
                 grobot_cli.repo_root = original_repo_root
 
             global_config = Path(temp_home) / "config.toml"
+            global_mcp_registry = Path(temp_home) / "mcp" / "servers.toml"
             project_toml = Path(temp_project) / ".grobot" / "project.toml"
             project_mcp = Path(temp_project) / ".grobot" / "mcp.toml"
             self.assertTrue(global_config.exists())
+            self.assertTrue(global_mcp_registry.exists())
             self.assertTrue(project_toml.exists())
             self.assertTrue(project_mcp.exists())
             self.assertIn("replace-with-api-key", global_config.read_text(encoding="utf-8"))
+            self.assertIn("Global MCP registry", global_mcp_registry.read_text(encoding="utf-8"))
             self.assertIn("schema_version = 1", project_toml.read_text(encoding="utf-8"))
+
+    def test_resolve_mcp_runtime_merges_project_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text("schema_version = 1\nmode = \"mvp\"\n", encoding="utf-8")
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+
+            paths.global_mcp_registry.parent.mkdir(parents=True, exist_ok=True)
+            paths.global_mcp_registry.write_text(
+                "\n".join(
+                    [
+                        "[[servers]]",
+                        "name = \"ctx\"",
+                        "command = \"python3\"",
+                        "args = [\"-V\"]",
+                        "enabled = true",
+                        "",
+                        "[[servers]]",
+                        "name = \"global-only\"",
+                        "command = \"/bin/sh\"",
+                        "args = [\"-c\", \"echo global-only\"]",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            paths.project_mcp_file.write_text(
+                "\n".join(
+                    [
+                        "[[servers]]",
+                        "name = \"ctx\"",
+                        "command = \"python3\"",
+                        "args = [\"-V\"]",
+                        "enabled = false",
+                        "",
+                        "[[servers]]",
+                        "name = \"project-only\"",
+                        "command = \"python3\"",
+                        "args = [\"project.py\"]",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            mcp_runtime, warnings = grobot_cli.resolve_mcp_runtime(paths)
+            self.assertEqual(warnings, [])
+            self.assertEqual(mcp_runtime["total"], 3)
+            self.assertEqual(mcp_runtime["enabled_count"], 2)
+            self.assertEqual(mcp_runtime["disabled_count"], 1)
+            self.assertEqual(mcp_runtime["ready_count"], 2)
+            self.assertEqual(mcp_runtime["unready_count"], 0)
+            self.assertIn("project-only", mcp_runtime["enabled"])
+            self.assertIn("ctx", mcp_runtime["disabled"])
+
+            effective = mcp_runtime["effective"]
+            ctx = next((item for item in effective if item["name"] == "ctx"), None)
+            self.assertIsNotNone(ctx)
+            self.assertEqual(ctx["source"], f"project:{paths.project_mcp_file}")
+            self.assertEqual(ctx["enabled"], False)
+            self.assertEqual(ctx["args"], ["-V"])
+            self.assertEqual(ctx["ready"], None)
+
+    def test_resolve_mcp_runtime_reports_invalid_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text("schema_version = 1\nmode = \"mvp\"\n", encoding="utf-8")
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+
+            paths.global_mcp_registry.parent.mkdir(parents=True, exist_ok=True)
+            paths.global_mcp_registry.write_text(
+                "\n".join(
+                    [
+                        "[[servers]]",
+                        "name = \"broken\"",
+                        "command = \"npx\"",
+                        "enabled = \"yes\"",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            mcp_runtime, warnings = grobot_cli.resolve_mcp_runtime(paths)
+            self.assertEqual(mcp_runtime["total"], 0)
+            self.assertEqual(mcp_runtime["enabled_count"], 0)
+            self.assertEqual(mcp_runtime["ready_count"], 0)
+            self.assertEqual(mcp_runtime["unready_count"], 0)
+            self.assertGreaterEqual(len(warnings), 1)
 
 
 if __name__ == "__main__":

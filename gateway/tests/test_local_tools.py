@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -26,6 +28,93 @@ grobot_cli = load_grobot_cli_module()
 
 
 class LocalToolsTests(unittest.TestCase):
+    def _write_mock_mcp_server(self, target: Path) -> None:
+        target.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json",
+                    "import sys",
+                    "",
+                    "def read_message():",
+                    "    headers = {}",
+                    "    while True:",
+                    "        line = sys.stdin.buffer.readline()",
+                    "        if not line:",
+                    "            return None",
+                    "        if line in (b'\\r\\n', b'\\n'):",
+                    "            break",
+                    "        if b':' not in line:",
+                    "            continue",
+                    "        key, value = line.decode('ascii', errors='replace').split(':', 1)",
+                    "        headers[key.strip().lower()] = value.strip()",
+                    "    length = int(headers.get('content-length', '0'))",
+                    "    body = sys.stdin.buffer.read(length)",
+                    "    if not body:",
+                    "        return None",
+                    "    return json.loads(body.decode('utf-8'))",
+                    "",
+                    "def write_message(payload):",
+                    "    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')",
+                    "    header = f'Content-Length: {len(body)}\\r\\n\\r\\n'.encode('ascii')",
+                    "    sys.stdout.buffer.write(header)",
+                    "    sys.stdout.buffer.write(body)",
+                    "    sys.stdout.buffer.flush()",
+                    "",
+                    "while True:",
+                    "    message = read_message()",
+                    "    if message is None:",
+                    "        break",
+                    "    method = message.get('method')",
+                    "    req_id = message.get('id')",
+                    "    if method == 'initialize':",
+                    "        write_message({",
+                    "            'jsonrpc': '2.0',",
+                    "            'id': req_id,",
+                    "            'result': {",
+                    "                'protocolVersion': '2024-11-05',",
+                    "                'serverInfo': {'name': 'mock', 'version': '1.0.0'},",
+                    "                'capabilities': {'tools': {}},",
+                    "            },",
+                    "        })",
+                    "        continue",
+                    "    if method == 'notifications/initialized':",
+                    "        continue",
+                    "    if method == 'tools/list':",
+                    "        write_message({",
+                    "            'jsonrpc': '2.0',",
+                    "            'id': req_id,",
+                    "            'result': {'tools': [{'name': 'echo', 'description': 'echo tool'}]},",
+                    "        })",
+                    "        continue",
+                    "    if method == 'tools/call':",
+                    "        params = message.get('params') or {}",
+                    "        arguments = params.get('arguments') if isinstance(params, dict) else {}",
+                    "        if not isinstance(arguments, dict):",
+                    "            arguments = {}",
+                    "        text = str(arguments.get('msg', ''))",
+                    "        write_message({",
+                    "            'jsonrpc': '2.0',",
+                    "            'id': req_id,",
+                    "            'result': {",
+                    "                'isError': False,",
+                    "                'content': [{'type': 'text', 'text': f'echo:{text}'}],",
+                    "                'structuredContent': {'echo': text},",
+                    "            },",
+                    "        })",
+                    "        continue",
+                    "    if req_id is not None:",
+                    "        write_message({",
+                    "            'jsonrpc': '2.0',",
+                    "            'id': req_id,",
+                    "            'error': {'code': -32601, 'message': 'method not found'},",
+                    "        })",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_file_mention_enrichment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             work_dir = Path(tmp_dir)
@@ -387,6 +476,577 @@ class LocalToolsTests(unittest.TestCase):
                 _ = grobot_cli.execute_local_tool(
                     grobot_cli.LOCAL_TOOL_SEARCH,
                     {"path": "src", "query": "hello"},
+                    context,
+                )
+
+    def test_resolve_mcp_call_policy_from_project_toml(self) -> None:
+        policy = grobot_cli.resolve_mcp_call_policy(
+            {
+                "tools": {
+                    "mcp": {
+                        "max_concurrency_per_server": 3,
+                        "max_queue_per_server": 25,
+                        "failure_threshold": 4,
+                        "cooldown_secs": 45,
+                        "allow_tools": ["echo", "search_code"],
+                        "latency_sample_limit": 512,
+                    }
+                }
+            }
+        )
+        self.assertEqual(policy.max_concurrency_per_server, 3)
+        self.assertEqual(policy.max_queue_per_server, 25)
+        self.assertEqual(policy.failure_threshold, 4)
+        self.assertEqual(policy.cooldown_secs, 45)
+        self.assertEqual(policy.allow_tools, ("echo", "search_code"))
+        self.assertEqual(policy.latency_sample_limit, 512)
+
+    def test_mcp_server_slot_queue_full(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            context = grobot_cli.LocalToolContext(
+                work_dir=Path(tmp_dir),
+                allow_tokens=("all",),
+                mcp_policy=grobot_cli.MCPCallPolicy(
+                    max_concurrency_per_server=1,
+                    max_queue_per_server=1,
+                    failure_threshold=3,
+                    cooldown_secs=20,
+                    allow_tools=None,
+                    latency_sample_limit=grobot_cli.LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT,
+                ),
+            )
+            state = grobot_cli.acquire_mcp_server_slot(
+                context=context,
+                server_name="mock",
+                timeout_secs=2,
+            )
+            blocked_event = threading.Event()
+
+            def hold_queue_slot() -> None:
+                try:
+                    queued_state = grobot_cli.acquire_mcp_server_slot(
+                        context=context,
+                        server_name="mock",
+                        timeout_secs=2,
+                    )
+                    grobot_cli.release_mcp_server_slot(queued_state)
+                except RuntimeError:
+                    pass
+                finally:
+                    blocked_event.set()
+
+            waiter = threading.Thread(target=hold_queue_slot)
+            waiter.start()
+            time.sleep(0.1)
+            with self.assertRaises(RuntimeError):
+                _ = grobot_cli.acquire_mcp_server_slot(
+                    context=context,
+                    server_name="mock",
+                    timeout_secs=1,
+                )
+            snapshot = grobot_cli.mcp_server_state_snapshot(state)
+            self.assertEqual(snapshot["gate_rejected_calls"], 1)
+            grobot_cli.release_mcp_server_slot(state)
+            waiter.join(timeout=2)
+            self.assertTrue(blocked_event.is_set())
+
+    def test_mcp_server_circuit_open_blocks_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            context = grobot_cli.LocalToolContext(
+                work_dir=Path(tmp_dir),
+                allow_tokens=("all",),
+                mcp_policy=grobot_cli.MCPCallPolicy(
+                    max_concurrency_per_server=1,
+                    max_queue_per_server=8,
+                    failure_threshold=2,
+                    cooldown_secs=60,
+                    allow_tools=None,
+                    latency_sample_limit=grobot_cli.LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT,
+                ),
+            )
+            state = grobot_cli.get_mcp_server_call_state(context, "mock")
+            opened_first = grobot_cli.mark_mcp_server_call_failure(
+                state=state,
+                error_text="first",
+                policy=context.mcp_policy,
+                elapsed_ms=8.5,
+            )
+            self.assertFalse(opened_first)
+            opened_second = grobot_cli.mark_mcp_server_call_failure(
+                state=state,
+                error_text="second",
+                policy=context.mcp_policy,
+                elapsed_ms=9.2,
+            )
+            self.assertTrue(opened_second)
+            with self.assertRaises(RuntimeError):
+                _ = grobot_cli.acquire_mcp_server_slot(
+                    context=context,
+                    server_name="mock",
+                    timeout_secs=1,
+                )
+            snapshot = grobot_cli.mcp_server_state_snapshot(state)
+            self.assertEqual(snapshot["failure_calls"], 2)
+            self.assertEqual(snapshot["unknown_failures"], 2)
+            self.assertEqual(snapshot["gate_rejected_calls"], 1)
+
+    def test_mcp_servers_tool_returns_runtime_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "total": 3,
+                    "enabled_count": 2,
+                    "disabled_count": 1,
+                    "ready_count": 1,
+                    "unready_count": 1,
+                    "effective": [
+                        {"name": "a", "enabled": True, "ready": True},
+                        {"name": "b", "enabled": True, "ready": False},
+                        {"name": "c", "enabled": False, "ready": None},
+                    ],
+                },
+            )
+
+            full = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_SERVERS,
+                {"include_disabled": True},
+                context,
+            )
+            self.assertEqual(full["total"], 3)
+            self.assertEqual(full["enabled_count"], 2)
+            self.assertEqual(full["ready_count"], 1)
+            self.assertEqual(len(full["servers"]), 3)
+            self.assertIn("policy", full)
+            self.assertIn("max_concurrency_per_server", full["policy"])
+            self.assertEqual(full["policy"]["allow_tools"], ["*"])
+            self.assertEqual(
+                full["policy"]["latency_sample_limit"],
+                grobot_cli.LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT,
+            )
+            self.assertIn("runtime_summary", full)
+            self.assertEqual(full["runtime_summary"]["servers_considered"], 3)
+            self.assertEqual(full["runtime_summary"]["total_calls"], 0)
+            self.assertTrue(all("runtime_state" in item for item in full["servers"]))
+            self.assertTrue(
+                all("p95_latency_ms" in item["runtime_state"] for item in full["servers"])
+            )
+
+            ready_only = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_SERVERS,
+                {"include_disabled": False, "only_ready": True},
+                context,
+            )
+            self.assertEqual(len(ready_only["servers"]), 1)
+            self.assertEqual(ready_only["servers"][0]["name"], "a")
+            self.assertEqual(ready_only["runtime_summary"]["servers_considered"], 1)
+
+    def test_mcp_servers_runtime_summary_aggregates_failures_and_top_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "total": 2,
+                    "enabled_count": 2,
+                    "disabled_count": 0,
+                    "ready_count": 2,
+                    "unready_count": 0,
+                    "effective": [
+                        {"name": "a", "enabled": True, "ready": True},
+                        {"name": "b", "enabled": True, "ready": True},
+                    ],
+                },
+            )
+            a_state = grobot_cli.get_mcp_server_call_state(context, "a")
+            b_state = grobot_cli.get_mcp_server_call_state(context, "b")
+            grobot_cli.mark_mcp_server_call_success(
+                state=a_state,
+                elapsed_ms=12.0,
+                policy=context.mcp_policy,
+            )
+            grobot_cli.mark_mcp_server_call_failure(
+                state=b_state,
+                error_text="json-rpc read timeout",
+                policy=context.mcp_policy,
+                elapsed_ms=33.0,
+            )
+            grobot_cli.mark_mcp_policy_denied(
+                state=b_state,
+                error_text='MCP tool "x" blocked by [tools.mcp].allow_tools',
+            )
+
+            result = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_SERVERS,
+                {"include_disabled": True, "include_runtime_state": True},
+                context,
+            )
+            summary = result["runtime_summary"]
+            self.assertEqual(summary["servers_considered"], 2)
+            self.assertEqual(summary["total_calls"], 2)
+            self.assertEqual(summary["success_calls"], 1)
+            self.assertEqual(summary["failure_calls"], 1)
+            self.assertEqual(summary["timeout_failures"], 1)
+            self.assertEqual(summary["transport_failures"], 0)
+            self.assertEqual(summary["policy_denied_calls"], 1)
+            self.assertGreaterEqual(summary["latency_sample_count"], 2)
+            self.assertTrue(summary["top_errors"])
+
+    def test_reset_mcp_server_states_supports_single_and_all(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            context = grobot_cli.LocalToolContext(
+                work_dir=Path(tmp_dir),
+                allow_tokens=("all",),
+            )
+            a_state = grobot_cli.get_mcp_server_call_state(context, "a")
+            b_state = grobot_cli.get_mcp_server_call_state(context, "b")
+            grobot_cli.mark_mcp_server_call_success(
+                state=a_state,
+                elapsed_ms=10.0,
+                policy=context.mcp_policy,
+            )
+            grobot_cli.mark_mcp_server_call_failure(
+                state=b_state,
+                error_text="tool not found",
+                policy=context.mcp_policy,
+                elapsed_ms=20.0,
+            )
+            self.assertEqual(grobot_cli.mcp_server_state_snapshot(a_state)["total_calls"], 1)
+            self.assertEqual(grobot_cli.mcp_server_state_snapshot(b_state)["total_calls"], 1)
+
+            reset_single = grobot_cli.reset_mcp_server_states(context, "a")
+            self.assertEqual(reset_single, 1)
+            self.assertEqual(grobot_cli.mcp_server_state_snapshot(a_state)["total_calls"], 0)
+            self.assertEqual(grobot_cli.mcp_server_state_snapshot(b_state)["total_calls"], 1)
+
+            reset_all = grobot_cli.reset_mcp_server_states(context, None)
+            self.assertEqual(reset_all, 2)
+            self.assertEqual(grobot_cli.mcp_server_state_snapshot(a_state)["total_calls"], 0)
+            self.assertEqual(grobot_cli.mcp_server_state_snapshot(b_state)["total_calls"], 0)
+
+    def test_close_single_mcp_session_closes_target_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            server_script = work_dir / "mock_mcp_server.py"
+            self._write_mock_mcp_server(server_script)
+            os.chmod(server_script, 0o755)
+
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "effective": [
+                        {
+                            "name": "mock",
+                            "enabled": True,
+                            "ready": True,
+                            "command": sys.executable,
+                            "command_resolved": sys.executable,
+                            "args": [str(server_script)],
+                            "env": {},
+                        }
+                    ]
+                },
+            )
+            _ = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_CALL,
+                {
+                    "server": "mock",
+                    "tool": "echo",
+                    "arguments": {"msg": "hello"},
+                    "timeout_secs": 10,
+                },
+                context,
+            )
+            self.assertIn("mock", context.mcp_sessions)
+            self.assertTrue(grobot_cli.close_single_mcp_session(context, "mock"))
+            self.assertNotIn("mock", context.mcp_sessions)
+            self.assertFalse(grobot_cli.close_single_mcp_session(context, "mock"))
+
+    def test_allowlist_blocks_mcp_servers_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=(grobot_cli.LOCAL_TOOL_READ,),
+                mcp_runtime={"effective": []},
+            )
+            with self.assertRaises(RuntimeError):
+                _ = grobot_cli.execute_local_tool(
+                    grobot_cli.LOCAL_TOOL_MCP_SERVERS,
+                    {},
+                    context,
+                )
+
+    def test_mcp_call_tool_executes_stdio_server(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            server_script = work_dir / "mock_mcp_server.py"
+            self._write_mock_mcp_server(server_script)
+            os.chmod(server_script, 0o755)
+
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "effective": [
+                        {
+                            "name": "mock",
+                            "enabled": True,
+                            "ready": True,
+                            "command": sys.executable,
+                            "command_resolved": sys.executable,
+                            "args": [str(server_script)],
+                            "env": {},
+                        }
+                    ]
+                },
+            )
+
+            result = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_CALL,
+                {
+                    "server": "mock",
+                    "tool": "echo",
+                    "arguments": {"msg": "hello-mcp"},
+                    "timeout_secs": 10,
+                },
+                context,
+            )
+
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["server"], "mock")
+            self.assertEqual(result["tool"], "echo")
+            self.assertIn("echo", result["available_tools"])
+            self.assertFalse(result["session_reused"])
+            self.assertFalse(result["session_recovered"])
+            first_pid = result["session_pid"]
+            runtime_state = result["runtime_state"]
+            self.assertEqual(runtime_state["total_calls"], 1)
+            self.assertEqual(runtime_state["success_calls"], 1)
+            self.assertEqual(runtime_state["failure_calls"], 0)
+            self.assertEqual(runtime_state["retry_calls"], 0)
+            self.assertEqual(runtime_state["recovered_calls"], 0)
+            self.assertEqual(runtime_state["policy_denied_calls"], 0)
+            self.assertEqual(runtime_state["gate_rejected_calls"], 0)
+            self.assertGreater(runtime_state["last_latency_ms"], 0)
+            self.assertGreaterEqual(runtime_state["p95_latency_ms"], 0)
+            normalized_result = result["result"]
+            self.assertFalse(normalized_result["is_error"])
+            content = normalized_result.get("content")
+            self.assertIsInstance(content, list)
+            self.assertTrue(any(item.get("text") == "echo:hello-mcp" for item in content if isinstance(item, dict)))
+            self.assertIn("hello-mcp", normalized_result.get("raw_preview", ""))
+            self.assertIn("hello-mcp", normalized_result.get("structured_content_preview", ""))
+
+            second = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_CALL,
+                {
+                    "server": "mock",
+                    "tool": "echo",
+                    "arguments": {"msg": "hello-again"},
+                    "timeout_secs": 10,
+                },
+                context,
+            )
+            self.assertTrue(second["session_reused"])
+            self.assertFalse(second["session_recovered"])
+            self.assertEqual(second["session_pid"], first_pid)
+            self.assertEqual(second["runtime_state"]["total_calls"], 2)
+            self.assertEqual(second["runtime_state"]["success_calls"], 2)
+            self.assertEqual(second["runtime_state"]["policy_denied_calls"], 0)
+            self.assertIn("hello-again", second["result"].get("raw_preview", ""))
+            grobot_cli.close_mcp_sessions(context)
+
+    def test_mcp_call_tool_auto_recovers_when_session_process_exits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            server_script = work_dir / "mock_mcp_server.py"
+            self._write_mock_mcp_server(server_script)
+            os.chmod(server_script, 0o755)
+
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "effective": [
+                        {
+                            "name": "mock",
+                            "enabled": True,
+                            "ready": True,
+                            "command": sys.executable,
+                            "command_resolved": sys.executable,
+                            "args": [str(server_script)],
+                            "env": {},
+                        }
+                    ]
+                },
+            )
+
+            first = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_CALL,
+                {
+                    "server": "mock",
+                    "tool": "echo",
+                    "arguments": {"msg": "first"},
+                    "timeout_secs": 10,
+                },
+                context,
+            )
+            self.assertFalse(first["session_recovered"])
+            first_pid = first["session_pid"]
+
+            live = context.mcp_sessions.get("mock")
+            self.assertIsNotNone(live)
+            if live is not None:
+                live.process.kill()
+                live.process.wait(timeout=2)
+
+            second = grobot_cli.execute_local_tool(
+                grobot_cli.LOCAL_TOOL_MCP_CALL,
+                {
+                    "server": "mock",
+                    "tool": "echo",
+                    "arguments": {"msg": "second"},
+                    "timeout_secs": 10,
+                },
+                context,
+            )
+            self.assertTrue(second["session_recovered"])
+            self.assertNotEqual(second["session_pid"], first_pid)
+            self.assertEqual(second["runtime_state"]["total_calls"], 2)
+            self.assertEqual(second["runtime_state"]["success_calls"], 2)
+            self.assertEqual(second["runtime_state"]["recovered_calls"], 1)
+            self.assertEqual(second["runtime_state"]["transport_failures"], 0)
+            self.assertIn("second", second["result"].get("raw_preview", ""))
+            grobot_cli.close_mcp_sessions(context)
+
+    def test_mcp_call_tool_tracks_tool_failure_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            server_script = work_dir / "mock_mcp_server.py"
+            self._write_mock_mcp_server(server_script)
+            os.chmod(server_script, 0o755)
+
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "effective": [
+                        {
+                            "name": "mock",
+                            "enabled": True,
+                            "ready": True,
+                            "command": sys.executable,
+                            "command_resolved": sys.executable,
+                            "args": [str(server_script)],
+                            "env": {},
+                        }
+                    ]
+                },
+            )
+
+            with self.assertRaises(RuntimeError):
+                _ = grobot_cli.execute_local_tool(
+                    grobot_cli.LOCAL_TOOL_MCP_CALL,
+                    {"server": "mock", "tool": "missing_tool", "arguments": {}, "timeout_secs": 10},
+                    context,
+                )
+            state = grobot_cli.lookup_mcp_server_call_state(context, "mock")
+            self.assertIsNotNone(state)
+            if state is not None:
+                snapshot = grobot_cli.mcp_server_state_snapshot(state)
+                self.assertEqual(snapshot["total_calls"], 1)
+                self.assertEqual(snapshot["failure_calls"], 1)
+                self.assertEqual(snapshot["tool_failures"], 1)
+                self.assertEqual(snapshot["unknown_failures"], 0)
+            grobot_cli.close_mcp_sessions(context)
+
+    def test_mcp_call_tool_respects_mcp_allow_tools_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_policy=grobot_cli.MCPCallPolicy(
+                    max_concurrency_per_server=1,
+                    max_queue_per_server=16,
+                    failure_threshold=3,
+                    cooldown_secs=20,
+                    allow_tools=("search_code",),
+                    latency_sample_limit=grobot_cli.LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT,
+                ),
+                mcp_runtime={
+                    "effective": [
+                        {
+                            "name": "mock",
+                            "enabled": True,
+                            "ready": True,
+                            "command": "mock-bin",
+                            "command_resolved": "mock-bin",
+                            "args": [],
+                            "env": {},
+                        }
+                    ]
+                },
+            )
+
+            with self.assertRaises(RuntimeError) as ctx:
+                _ = grobot_cli.execute_local_tool(
+                    grobot_cli.LOCAL_TOOL_MCP_CALL,
+                    {"server": "mock", "tool": "echo", "arguments": {"msg": "x"}},
+                    context,
+                )
+            self.assertIn("allow_tools", str(ctx.exception))
+            state = grobot_cli.lookup_mcp_server_call_state(context, "mock")
+            self.assertIsNotNone(state)
+            if state is not None:
+                snapshot = grobot_cli.mcp_server_state_snapshot(state)
+                self.assertEqual(snapshot["policy_denied_calls"], 1)
+                self.assertEqual(snapshot["total_calls"], 0)
+                self.assertEqual(snapshot["failure_calls"], 0)
+
+    def test_allowlist_blocks_mcp_call_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=(grobot_cli.LOCAL_TOOL_READ,),
+                mcp_runtime={"effective": []},
+            )
+            with self.assertRaises(RuntimeError):
+                _ = grobot_cli.execute_local_tool(
+                    grobot_cli.LOCAL_TOOL_MCP_CALL,
+                    {"server": "mock", "tool": "echo", "arguments": {"msg": "x"}},
+                    context,
+                )
+
+    def test_mcp_call_tool_rejects_unready_server(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            work_dir = Path(tmp_dir)
+            context = grobot_cli.LocalToolContext(
+                work_dir=work_dir,
+                allow_tokens=("all",),
+                mcp_runtime={
+                    "effective": [
+                        {
+                            "name": "mock",
+                            "enabled": True,
+                            "ready": False,
+                            "ready_reason": "command not found",
+                            "command": "mock-bin",
+                            "args": [],
+                        }
+                    ]
+                },
+            )
+            with self.assertRaises(RuntimeError):
+                _ = grobot_cli.execute_local_tool(
+                    grobot_cli.LOCAL_TOOL_MCP_CALL,
+                    {"server": "mock", "tool": "echo", "arguments": {"msg": "x"}},
                     context,
                 )
 

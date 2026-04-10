@@ -5,8 +5,10 @@ import argparse
 import fnmatch
 import hmac
 import json
+import math
 import os
 import re
+import select
 import shlex
 import shutil
 import socket
@@ -99,6 +101,71 @@ class MemoryStorePaths:
 
 
 @dataclass
+class MCPServerSpec:
+    name: str
+    command: str
+    args: tuple[str, ...]
+    env: dict[str, str]
+    cwd: str | None
+    enabled: bool
+    source: str
+
+
+@dataclass
+class MCPClientSession:
+    server_name: str
+    signature: str
+    process: subprocess.Popen[Any]
+    stdin: Any
+    stdout: Any
+    stdout_fd: int
+    stderr: Any
+    stderr_chunks: list[str] = field(default_factory=list, repr=False)
+    stderr_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    stderr_thread: threading.Thread | None = field(default=None, repr=False)
+    message_buffer: bytearray = field(default_factory=bytearray, repr=False)
+    available_tools: tuple[str, ...] = ()
+    next_request_id: int = 1
+
+
+@dataclass
+class MCPCallPolicy:
+    max_concurrency_per_server: int
+    max_queue_per_server: int
+    failure_threshold: int
+    cooldown_secs: int
+    allow_tools: tuple[str, ...] | None
+    latency_sample_limit: int
+
+
+@dataclass
+class MCPServerCallState:
+    condition: threading.Condition = field(default_factory=lambda: threading.Condition(threading.Lock()), repr=False)
+    in_flight: int = 0
+    queued: int = 0
+    consecutive_failures: int = 0
+    circuit_open_until: float = 0.0
+    last_error: str | None = None
+    total_calls: int = 0
+    success_calls: int = 0
+    failure_calls: int = 0
+    retry_calls: int = 0
+    recovered_calls: int = 0
+    policy_denied_calls: int = 0
+    gate_rejected_calls: int = 0
+    timeout_failures: int = 0
+    transport_failures: int = 0
+    tool_failures: int = 0
+    unknown_failures: int = 0
+    error_buckets: dict[str, int] = field(default_factory=dict, repr=False)
+    total_latency_ms: float = 0.0
+    max_latency_ms: float = 0.0
+    last_latency_ms: float = 0.0
+    last_finished_at: float = 0.0
+    latency_ms_samples: list[float] = field(default_factory=list, repr=False)
+
+
+@dataclass
 class CircuitPolicy:
     failure_threshold: int
     cooldown_secs: int
@@ -108,6 +175,20 @@ class CircuitPolicy:
 class LocalToolContext:
     work_dir: Path
     allow_tokens: tuple[str, ...]
+    mcp_runtime: dict[str, Any] | None = None
+    mcp_sessions: dict[str, MCPClientSession] = field(default_factory=dict, repr=False)
+    mcp_policy: MCPCallPolicy = field(
+        default_factory=lambda: MCPCallPolicy(
+            max_concurrency_per_server=1,
+            max_queue_per_server=16,
+            failure_threshold=3,
+            cooldown_secs=20,
+            allow_tools=None,
+            latency_sample_limit=LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT,
+        )
+    )
+    mcp_server_states: dict[str, MCPServerCallState] = field(default_factory=dict, repr=False)
+    mcp_server_states_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
 @dataclass
@@ -163,10 +244,12 @@ class ManagementCredential:
 MANAGEMENT_ACTION_RELOAD = "reload"
 MANAGEMENT_ACTION_INTERRUPT = "interrupt"
 MANAGEMENT_ACTION_CONFIG_READ = "config_read"
+MANAGEMENT_ACTION_MCP_RESET = "mcp_reset"
 MANAGEMENT_ACTION_ALL = (
     MANAGEMENT_ACTION_RELOAD,
     MANAGEMENT_ACTION_INTERRUPT,
     MANAGEMENT_ACTION_CONFIG_READ,
+    MANAGEMENT_ACTION_MCP_RESET,
 )
 
 CONFIG_READ_POLICY_AUTO = "auto"
@@ -244,6 +327,8 @@ LOCAL_TOOL_BASH = "bash"
 LOCAL_TOOL_LIST = "list"
 LOCAL_TOOL_GLOB = "glob"
 LOCAL_TOOL_SEARCH = "search"
+LOCAL_TOOL_MCP_SERVERS = "mcp_servers"
+LOCAL_TOOL_MCP_CALL = "mcp_call"
 LOCAL_TOOL_ALL = (
     LOCAL_TOOL_READ,
     LOCAL_TOOL_WRITE,
@@ -252,10 +337,29 @@ LOCAL_TOOL_ALL = (
     LOCAL_TOOL_LIST,
     LOCAL_TOOL_GLOB,
     LOCAL_TOOL_SEARCH,
+    LOCAL_TOOL_MCP_SERVERS,
+    LOCAL_TOOL_MCP_CALL,
 )
 LOCAL_TOOL_OUTPUT_LIMIT = 12000
 LOCAL_TOOL_BASH_DEFAULT_TIMEOUT_SECS = 30
 LOCAL_TOOL_BASH_MAX_TIMEOUT_SECS = 120
+LOCAL_TOOL_MCP_CALL_DEFAULT_TIMEOUT_SECS = 20
+LOCAL_TOOL_MCP_CALL_MAX_TIMEOUT_SECS = 120
+LOCAL_TOOL_MCP_HEADER_LIMIT = 16384
+LOCAL_TOOL_MCP_MESSAGE_LIMIT = 2 * 1024 * 1024
+LOCAL_TOOL_MCP_STDERR_PREVIEW_MAX_CHARS = 8000
+LOCAL_TOOL_MCP_MAX_CONCURRENCY_DEFAULT = 1
+LOCAL_TOOL_MCP_MAX_CONCURRENCY_MAX = 8
+LOCAL_TOOL_MCP_MAX_QUEUE_DEFAULT = 16
+LOCAL_TOOL_MCP_MAX_QUEUE_MAX = 256
+LOCAL_TOOL_MCP_CIRCUIT_FAILURE_THRESHOLD_DEFAULT = 3
+LOCAL_TOOL_MCP_CIRCUIT_FAILURE_THRESHOLD_MAX = 20
+LOCAL_TOOL_MCP_CIRCUIT_COOLDOWN_DEFAULT_SECS = 20
+LOCAL_TOOL_MCP_CIRCUIT_COOLDOWN_MAX_SECS = 600
+LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT = 256
+LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_MAX = 1024
+LOCAL_TOOL_MCP_ERROR_BUCKET_LIMIT_DEFAULT = 64
+LOCAL_TOOL_MCP_ERROR_KEY_MAX_CHARS = 240
 LOCAL_TOOL_READ_DEFAULT_LIMIT = 200
 LOCAL_TOOL_READ_MAX_LIMIT = 2000
 LOCAL_TOOL_LIST_DEFAULT_LIMIT = 200
@@ -488,8 +592,8 @@ FALLBACK_PROJECT_TEMPLATE = textwrap.dedent(
     [runtime]
     engine = "rust"
 
-    [tools]
-    allow = ["list", "glob", "search", "read", "write", "edit", "bash"]
+[tools]
+allow = ["list", "glob", "search", "read", "write", "edit", "bash", "mcp_servers", "mcp_call"]
     """
 ).strip() + "\n"
 
@@ -500,6 +604,21 @@ FALLBACK_PROJECT_MCP_TEMPLATE = textwrap.dedent(
     # [[servers]]
     # name = "contextweaver"
     # enabled = true
+    """
+).strip() + "\n"
+
+FALLBACK_GLOBAL_MCP_TEMPLATE = textwrap.dedent(
+    """
+    # Global MCP registry.
+    # Example:
+    # [[servers]]
+    # name = "contextweaver"
+    # command = "npx"
+    # args = ["-y", "contextweaver-mcp@latest"]
+    # enabled = true
+    #
+    # [servers.env]
+    # CONTEXTWEAVER_API_KEY = "replace-with-api-key"
     """
 ).strip() + "\n"
 
@@ -732,6 +851,223 @@ def load_toml(path: Path) -> dict[str, Any]:
         fail(f"Invalid TOML at {path}: {exc}")
     except OSError as exc:
         fail(f"Failed to read {path}: {exc}")
+
+
+def load_toml_optional(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    if not path.exists():
+        return None, None
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8")), None
+    except tomllib.TOMLDecodeError as exc:
+        return None, f"Invalid TOML at {path}: {exc}"
+    except OSError as exc:
+        return None, f"Failed to read {path}: {exc}"
+
+
+def parse_mcp_server_item(item: dict[str, Any], *, source: str, index: int) -> tuple[MCPServerSpec | None, str | None]:
+    name = item.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None, f"{source}: servers[{index}] missing non-empty string field `name`"
+
+    command = item.get("command")
+    if not isinstance(command, str) or not command.strip():
+        return None, f"{source}: servers[{index}] ({name}) missing non-empty string field `command`"
+
+    args_raw = item.get("args")
+    args: tuple[str, ...] = ()
+    if args_raw is not None:
+        if not isinstance(args_raw, list) or not all(isinstance(arg, str) for arg in args_raw):
+            return None, f"{source}: servers[{index}] ({name}) field `args` must be string array"
+        args = tuple(arg for arg in args_raw if arg)
+
+    env_raw = item.get("env")
+    env: dict[str, str] = {}
+    if env_raw is not None:
+        if not isinstance(env_raw, dict):
+            return None, f"{source}: servers[{index}] ({name}) field `env` must be table"
+        for key, value in env_raw.items():
+            if not isinstance(key, str) or not key.strip():
+                return None, f"{source}: servers[{index}] ({name}) has invalid env key"
+            if not isinstance(value, str):
+                return None, f"{source}: servers[{index}] ({name}) env[{key}] must be string"
+            env[key] = value
+
+    cwd_raw = item.get("cwd")
+    cwd: str | None = None
+    if cwd_raw is not None:
+        if not isinstance(cwd_raw, str) or not cwd_raw.strip():
+            return None, f"{source}: servers[{index}] ({name}) field `cwd` must be non-empty string"
+        cwd = cwd_raw
+
+    enabled_raw = item.get("enabled")
+    if enabled_raw is None:
+        enabled = True
+    elif isinstance(enabled_raw, bool):
+        enabled = enabled_raw
+    else:
+        return None, f"{source}: servers[{index}] ({name}) field `enabled` must be bool"
+
+    return (
+        MCPServerSpec(
+            name=name.strip(),
+            command=command.strip(),
+            args=args,
+            env=env,
+            cwd=cwd,
+            enabled=enabled,
+            source=source,
+        ),
+        None,
+    )
+
+
+def load_mcp_servers_from_file(path: Path, *, source_label: str) -> tuple[list[MCPServerSpec], list[str]]:
+    payload, error = load_toml_optional(path)
+    if error is not None:
+        return [], [error]
+    if payload is None:
+        return [], []
+    servers_raw = payload.get("servers")
+    if servers_raw is None:
+        return [], []
+    if not isinstance(servers_raw, list):
+        return [], [f"{source_label}: field `servers` must be array of tables"]
+    servers: list[MCPServerSpec] = []
+    warnings: list[str] = []
+    for idx, item in enumerate(servers_raw):
+        if not isinstance(item, dict):
+            warnings.append(f"{source_label}: servers[{idx}] must be table")
+            continue
+        parsed, warning = parse_mcp_server_item(item, source=source_label, index=idx)
+        if warning is not None:
+            warnings.append(warning)
+            continue
+        if parsed is not None:
+            servers.append(parsed)
+    return servers, warnings
+
+
+def merge_mcp_servers(global_servers: list[MCPServerSpec], project_servers: list[MCPServerSpec]) -> list[MCPServerSpec]:
+    ordered: OrderedDict[str, MCPServerSpec] = OrderedDict()
+    for server in global_servers:
+        ordered[server.name.lower()] = server
+    for server in project_servers:
+        ordered[server.name.lower()] = server
+    return list(ordered.values())
+
+
+def infer_mcp_source_path(source: str) -> Path | None:
+    if ":" not in source:
+        return None
+    _, value = source.split(":", 1)
+    value = value.strip()
+    if not value:
+        return None
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        return None
+    return candidate
+
+
+def resolve_mcp_server_command(server: MCPServerSpec, *, default_root: Path) -> tuple[str | None, str | None]:
+    command = server.command.strip()
+    if not command:
+        return None, "empty command"
+
+    if "/" not in command:
+        resolved = shutil.which(command)
+        if resolved:
+            return str(Path(resolved).resolve()), None
+        return None, f"command not found in PATH: {command}"
+
+    raw_path = Path(command).expanduser()
+    if raw_path.is_absolute():
+        candidate = raw_path
+    else:
+        base: Path | None = None
+        if isinstance(server.cwd, str) and server.cwd.strip():
+            base = Path(server.cwd).expanduser()
+        else:
+            source_path = infer_mcp_source_path(server.source)
+            if source_path is not None:
+                base = source_path.parent
+        if base is None:
+            base = default_root
+        candidate = (base / raw_path).expanduser()
+    candidate_resolved = candidate.resolve()
+    if candidate_resolved.exists() and os.access(candidate_resolved, os.X_OK):
+        return str(candidate_resolved), None
+    return None, f"command path is not executable: {candidate_resolved}"
+
+
+def summarize_mcp_servers(servers: list[MCPServerSpec], *, project_root: Path) -> tuple[dict[str, Any], list[str]]:
+    enabled = [server for server in servers if server.enabled]
+    disabled = [server for server in servers if not server.enabled]
+    ready: list[str] = []
+    unready: list[str] = []
+    warnings: list[str] = []
+    effective_rows: list[dict[str, Any]] = []
+
+    for server in servers:
+        resolved_command: str | None = None
+        ready_state: bool | None = None
+        ready_reason: str | None = None
+        if server.enabled:
+            resolved_command, command_error = resolve_mcp_server_command(server, default_root=project_root)
+            if command_error is None:
+                ready_state = True
+                ready.append(server.name)
+            else:
+                ready_state = False
+                ready_reason = command_error
+                unready.append(server.name)
+                warnings.append(f"MCP server `{server.name}` not ready: {command_error}")
+
+        effective_rows.append(
+            {
+                "name": server.name,
+                "enabled": server.enabled,
+                "source": server.source,
+                "command": server.command,
+                "command_resolved": resolved_command,
+                "args": list(server.args),
+                "cwd": server.cwd,
+                "env": mask_sensitive_object(server.env),
+                "ready": ready_state,
+                "ready_reason": ready_reason,
+            }
+        )
+
+    return {
+        "total": len(servers),
+        "enabled_count": len(enabled),
+        "disabled_count": len(disabled),
+        "enabled": [server.name for server in enabled],
+        "disabled": [server.name for server in disabled],
+        "ready_count": len(ready),
+        "unready_count": len(unready),
+        "ready": ready,
+        "unready": unready,
+        "effective": effective_rows,
+    }, warnings
+
+
+def resolve_mcp_runtime(paths: RuntimePaths) -> tuple[dict[str, Any], list[str]]:
+    global_servers, global_warnings = load_mcp_servers_from_file(
+        paths.global_mcp_registry,
+        source_label=f"global:{paths.global_mcp_registry}",
+    )
+    project_servers, project_warnings = load_mcp_servers_from_file(
+        paths.project_mcp_file,
+        source_label=f"project:{paths.project_mcp_file}",
+    )
+    merged = merge_mcp_servers(global_servers, project_servers)
+    summary, runtime_warnings = summarize_mcp_servers(merged, project_root=paths.project_root)
+    summary["paths"] = {
+        "global_registry": str(paths.global_mcp_registry),
+        "project_override": str(paths.project_mcp_file),
+    }
+    return summary, [*global_warnings, *project_warnings, *runtime_warnings]
 
 
 def first_platform(project: dict[str, Any]) -> str:
@@ -1596,7 +1932,7 @@ def build_system_prompt(session_key: str, work_dir: Path) -> str:
         You are Grobot, an engineering coding assistant.
         Session key: {session_key}
         Working directory: {work_dir}
-        Available local tools: list, glob, search, read, write, edit, bash.
+        Available local tools: list, glob, search, read, write, edit, bash, mcp_servers, mcp_call.
         Use tools when needed, then summarize concise actionable results.
         Keep replies concise and actionable.
         """
@@ -2887,13 +3223,92 @@ def normalize_tool_allow_tokens(raw_allow: Any) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def resolve_local_tool_context(project_toml: dict[str, Any], work_dir: Path) -> LocalToolContext:
+def normalize_mcp_allowed_tools(raw_value: Any) -> tuple[str, ...] | None:
+    if raw_value is None:
+        return None
+    if not isinstance(raw_value, list):
+        raise RuntimeError("[tools.mcp].allow_tools must be string array")
+    normalized: list[str] = []
+    for item in raw_value:
+        if not isinstance(item, str):
+            raise RuntimeError("[tools.mcp].allow_tools must contain only strings")
+        token = item.strip().lower()
+        if not token:
+            continue
+        if token in {"*", "all"}:
+            return None
+        if token not in normalized:
+            normalized.append(token)
+    return tuple(normalized)
+
+
+def resolve_mcp_call_policy(project_toml: dict[str, Any]) -> MCPCallPolicy:
+    tools_cfg = project_toml.get("tools")
+    mcp_cfg: dict[str, Any] = {}
+    if isinstance(tools_cfg, dict):
+        raw_mcp = tools_cfg.get("mcp")
+        if isinstance(raw_mcp, dict):
+            mcp_cfg = raw_mcp
+
+    max_concurrency = parse_positive_int_option(
+        mcp_cfg.get("max_concurrency_per_server"),
+        LOCAL_TOOL_MCP_MAX_CONCURRENCY_DEFAULT,
+        1,
+        LOCAL_TOOL_MCP_MAX_CONCURRENCY_MAX,
+    )
+    max_queue = parse_positive_int_option(
+        mcp_cfg.get("max_queue_per_server"),
+        LOCAL_TOOL_MCP_MAX_QUEUE_DEFAULT,
+        1,
+        LOCAL_TOOL_MCP_MAX_QUEUE_MAX,
+    )
+    failure_threshold = parse_positive_int_option(
+        mcp_cfg.get("failure_threshold"),
+        LOCAL_TOOL_MCP_CIRCUIT_FAILURE_THRESHOLD_DEFAULT,
+        1,
+        LOCAL_TOOL_MCP_CIRCUIT_FAILURE_THRESHOLD_MAX,
+    )
+    cooldown_secs = parse_positive_int_option(
+        mcp_cfg.get("cooldown_secs"),
+        LOCAL_TOOL_MCP_CIRCUIT_COOLDOWN_DEFAULT_SECS,
+        1,
+        LOCAL_TOOL_MCP_CIRCUIT_COOLDOWN_MAX_SECS,
+    )
+    allow_tools = normalize_mcp_allowed_tools(mcp_cfg.get("allow_tools"))
+    latency_sample_limit = parse_positive_int_option(
+        mcp_cfg.get("latency_sample_limit"),
+        LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_DEFAULT,
+        16,
+        LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_MAX,
+    )
+    return MCPCallPolicy(
+        max_concurrency_per_server=max_concurrency,
+        max_queue_per_server=max_queue,
+        failure_threshold=failure_threshold,
+        cooldown_secs=cooldown_secs,
+        allow_tools=allow_tools,
+        latency_sample_limit=latency_sample_limit,
+    )
+
+
+def resolve_local_tool_context(
+    project_toml: dict[str, Any],
+    work_dir: Path,
+    *,
+    mcp_runtime: dict[str, Any] | None = None,
+) -> LocalToolContext:
     tools_cfg = project_toml.get("tools")
     allow_raw = None
     if isinstance(tools_cfg, dict):
         allow_raw = tools_cfg.get("allow")
     allow_tokens = normalize_tool_allow_tokens(allow_raw)
-    return LocalToolContext(work_dir=work_dir, allow_tokens=allow_tokens)
+    mcp_policy = resolve_mcp_call_policy(project_toml)
+    return LocalToolContext(
+        work_dir=work_dir,
+        allow_tokens=allow_tokens,
+        mcp_runtime=mcp_runtime,
+        mcp_policy=mcp_policy,
+    )
 
 
 def parse_bool_option(raw_value: Any, default: bool) -> bool:
@@ -3014,6 +3429,8 @@ def is_local_tool_allowed(tool_name: str, context: LocalToolContext) -> bool:
         LOCAL_TOOL_LIST,
         LOCAL_TOOL_GLOB,
         LOCAL_TOOL_SEARCH,
+        LOCAL_TOOL_MCP_SERVERS,
+        LOCAL_TOOL_MCP_CALL,
     }:
         return tool_name in context.allow_tokens
     if tool_name == LOCAL_TOOL_BASH:
@@ -3693,6 +4110,1137 @@ def tool_run_bash(arguments: dict[str, Any], context: LocalToolContext) -> dict[
     }
 
 
+def tool_mcp_servers(arguments: dict[str, Any], context: LocalToolContext) -> dict[str, Any]:
+    runtime = context.mcp_runtime if isinstance(context.mcp_runtime, dict) else None
+    if runtime is None:
+        runtime_summary = aggregate_mcp_runtime_summary(context, None)
+        return {
+            "status": "ok",
+            "total": 0,
+            "enabled_count": 0,
+            "disabled_count": 0,
+            "ready_count": 0,
+            "unready_count": 0,
+            "policy": {
+                "max_concurrency_per_server": context.mcp_policy.max_concurrency_per_server,
+                "max_queue_per_server": context.mcp_policy.max_queue_per_server,
+                "failure_threshold": context.mcp_policy.failure_threshold,
+                "cooldown_secs": context.mcp_policy.cooldown_secs,
+                "allow_tools": list(context.mcp_policy.allow_tools)
+                if isinstance(context.mcp_policy.allow_tools, tuple)
+                else ["*"],
+                "latency_sample_limit": context.mcp_policy.latency_sample_limit,
+            },
+            "runtime_summary": runtime_summary,
+            "servers": [],
+        }
+
+    include_disabled = parse_bool_option(arguments.get("include_disabled"), True)
+    only_ready = parse_bool_option(arguments.get("only_ready"), False)
+    include_runtime_state = parse_bool_option(arguments.get("include_runtime_state"), True)
+
+    effective_raw = runtime.get("effective")
+    effective = [item for item in effective_raw if isinstance(item, dict)] if isinstance(effective_raw, list) else []
+    servers: list[dict[str, Any]] = []
+    for item in effective:
+        enabled = bool(item.get("enabled"))
+        ready = item.get("ready")
+        if not include_disabled and not enabled:
+            continue
+        if only_ready and ready is not True:
+            continue
+        if include_runtime_state and isinstance(item.get("name"), str):
+            state = get_mcp_server_call_state(context, str(item["name"]))
+            merged = dict(item)
+            merged["runtime_state"] = mcp_server_state_snapshot(state)
+            servers.append(merged)
+        else:
+            servers.append(item)
+
+    server_names = [str(item["name"]) for item in servers if isinstance(item.get("name"), str)]
+    runtime_summary = aggregate_mcp_runtime_summary(context, server_names)
+
+    return {
+        "status": "ok",
+        "total": runtime.get("total", 0),
+        "enabled_count": runtime.get("enabled_count", 0),
+        "disabled_count": runtime.get("disabled_count", 0),
+        "ready_count": runtime.get("ready_count", 0),
+        "unready_count": runtime.get("unready_count", 0),
+        "policy": {
+            "max_concurrency_per_server": context.mcp_policy.max_concurrency_per_server,
+            "max_queue_per_server": context.mcp_policy.max_queue_per_server,
+            "failure_threshold": context.mcp_policy.failure_threshold,
+            "cooldown_secs": context.mcp_policy.cooldown_secs,
+            "allow_tools": list(context.mcp_policy.allow_tools) if isinstance(context.mcp_policy.allow_tools, tuple) else ["*"],
+            "latency_sample_limit": context.mcp_policy.latency_sample_limit,
+        },
+        "runtime_summary": runtime_summary,
+        "servers": servers,
+    }
+
+
+def resolve_mcp_call_timeout_secs(raw_timeout: Any) -> int:
+    if isinstance(raw_timeout, int) and raw_timeout > 0:
+        return min(raw_timeout, LOCAL_TOOL_MCP_CALL_MAX_TIMEOUT_SECS)
+    return LOCAL_TOOL_MCP_CALL_DEFAULT_TIMEOUT_SECS
+
+
+def normalize_mcp_call_server_name(raw_value: Any) -> str:
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise RuntimeError("server must be non-empty string")
+    return raw_value.strip()
+
+
+def normalize_mcp_call_tool_name(raw_value: Any) -> str:
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise RuntimeError("tool must be non-empty string")
+    return raw_value.strip()
+
+
+def normalize_mcp_call_arguments(raw_value: Any) -> dict[str, Any]:
+    if raw_value is None:
+        return {}
+    if not isinstance(raw_value, dict):
+        raise RuntimeError("arguments must be object")
+    return raw_value
+
+
+def find_mcp_server_entry(runtime: dict[str, Any], server_name: str) -> dict[str, Any]:
+    effective_raw = runtime.get("effective")
+    if not isinstance(effective_raw, list):
+        raise RuntimeError("MCP runtime has no effective server list")
+    normalized_name = server_name.lower()
+    for item in effective_raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not isinstance(name, str):
+            continue
+        if name.lower() == normalized_name:
+            return item
+    raise RuntimeError(f'MCP server "{server_name}" not found')
+
+
+def resolve_mcp_server_process_spec(
+    server: dict[str, Any],
+    context: LocalToolContext,
+) -> tuple[list[str], str, dict[str, str], tuple[tuple[str, str], ...]]:
+    command_raw = server.get("command_resolved")
+    if not isinstance(command_raw, str) or not command_raw.strip():
+        command_raw = server.get("command")
+    if not isinstance(command_raw, str) or not command_raw.strip():
+        raise RuntimeError("MCP server command missing")
+
+    args_raw = server.get("args")
+    args: list[str] = []
+    if isinstance(args_raw, list):
+        args = [arg for arg in args_raw if isinstance(arg, str) and arg]
+
+    cwd_raw = server.get("cwd")
+    cwd_path = context.work_dir.resolve()
+    if isinstance(cwd_raw, str) and cwd_raw.strip():
+        candidate = Path(cwd_raw).expanduser()
+        if not candidate.is_absolute():
+            candidate = (context.work_dir / candidate).resolve()
+        cwd_path = candidate.resolve()
+
+    env = os.environ.copy()
+    env_raw = server.get("env")
+    env_overrides: list[tuple[str, str]] = []
+    if isinstance(env_raw, dict):
+        for key, value in env_raw.items():
+            if isinstance(key, str) and key.strip() and isinstance(value, str):
+                env[key] = value
+                env_overrides.append((key, value))
+
+    env_overrides.sort(key=lambda item: item[0])
+    return [command_raw.strip(), *args], str(cwd_path), env, tuple(env_overrides)
+
+
+def mcp_session_signature(
+    *,
+    command: list[str],
+    cwd: str,
+    env_overrides: tuple[tuple[str, str], ...],
+) -> str:
+    payload = {
+        "command": command,
+        "cwd": cwd,
+        "env_overrides": list(env_overrides),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def mcp_stderr_reader(session: MCPClientSession) -> None:
+    try:
+        while True:
+            chunk = session.stderr.read(4096)
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="replace")
+            if not text:
+                continue
+            with session.stderr_lock:
+                session.stderr_chunks.append(text)
+                combined = "".join(session.stderr_chunks)
+                if len(combined) > LOCAL_TOOL_MCP_STDERR_PREVIEW_MAX_CHARS:
+                    combined = combined[-LOCAL_TOOL_MCP_STDERR_PREVIEW_MAX_CHARS :]
+                session.stderr_chunks = [combined]
+    except OSError:
+        return
+
+
+def mcp_session_stderr_preview(session: MCPClientSession) -> str:
+    with session.stderr_lock:
+        if not session.stderr_chunks:
+            return ""
+        return truncate_text(session.stderr_chunks[-1], limit=2000)
+
+
+def close_mcp_session(session: MCPClientSession) -> None:
+    terminate_process(session.process)
+    for stream in (session.stdin, session.stdout, session.stderr):
+        try:
+            stream.close()
+        except OSError:
+            continue
+    if session.stderr_thread is not None:
+        session.stderr_thread.join(timeout=0.5)
+
+
+def close_mcp_sessions(context: LocalToolContext) -> None:
+    sessions = list(context.mcp_sessions.values())
+    context.mcp_sessions.clear()
+    for session in sessions:
+        close_mcp_session(session)
+
+
+def close_single_mcp_session(context: LocalToolContext, server_name: str) -> bool:
+    key = server_name.lower()
+    session = context.mcp_sessions.pop(key, None)
+    if session is None:
+        return False
+    close_mcp_session(session)
+    return True
+
+
+def reset_mcp_server_call_state(state: MCPServerCallState) -> None:
+    with state.condition:
+        state.in_flight = 0
+        state.queued = 0
+        state.consecutive_failures = 0
+        state.circuit_open_until = 0.0
+        state.last_error = None
+        state.total_calls = 0
+        state.success_calls = 0
+        state.failure_calls = 0
+        state.retry_calls = 0
+        state.recovered_calls = 0
+        state.policy_denied_calls = 0
+        state.gate_rejected_calls = 0
+        state.timeout_failures = 0
+        state.transport_failures = 0
+        state.tool_failures = 0
+        state.unknown_failures = 0
+        state.error_buckets.clear()
+        state.total_latency_ms = 0.0
+        state.max_latency_ms = 0.0
+        state.last_latency_ms = 0.0
+        state.last_finished_at = 0.0
+        state.latency_ms_samples.clear()
+        state.condition.notify_all()
+
+
+def reset_mcp_server_states(context: LocalToolContext, server_name: str | None = None) -> int:
+    with context.mcp_server_states_lock:
+        if isinstance(server_name, str) and server_name.strip():
+            state = context.mcp_server_states.get(server_name.strip().lower())
+            states = [state] if state is not None else []
+        else:
+            states = list(context.mcp_server_states.values())
+    for state in states:
+        reset_mcp_server_call_state(state)
+    return len(states)
+
+
+def get_mcp_server_call_state(context: LocalToolContext, server_name: str) -> MCPServerCallState:
+    key = server_name.lower()
+    with context.mcp_server_states_lock:
+        existing = context.mcp_server_states.get(key)
+        if existing is not None:
+            return existing
+        created = MCPServerCallState()
+        context.mcp_server_states[key] = created
+        return created
+
+
+def lookup_mcp_server_call_state(context: LocalToolContext, server_name: str) -> MCPServerCallState | None:
+    key = server_name.lower()
+    with context.mcp_server_states_lock:
+        return context.mcp_server_states.get(key)
+
+
+def aggregate_mcp_runtime_summary(
+    context: LocalToolContext,
+    server_names: list[str] | None = None,
+) -> dict[str, Any]:
+    keys = {item.strip().lower() for item in server_names or [] if isinstance(item, str) and item.strip()}
+    with context.mcp_server_states_lock:
+        state_items = list(context.mcp_server_states.items())
+
+    total_calls = 0
+    success_calls = 0
+    failure_calls = 0
+    retry_calls = 0
+    recovered_calls = 0
+    policy_denied_calls = 0
+    gate_rejected_calls = 0
+    timeout_failures = 0
+    transport_failures = 0
+    tool_failures = 0
+    unknown_failures = 0
+    total_latency_ms = 0.0
+    max_latency_ms = 0.0
+    servers_with_circuit_open = 0
+    all_latency_samples: list[float] = []
+    error_totals: dict[str, int] = {}
+    servers_considered = 0
+
+    for key, state in state_items:
+        if keys and key not in keys:
+            continue
+        with state.condition:
+            servers_considered += 1
+            total_calls += state.total_calls
+            success_calls += state.success_calls
+            failure_calls += state.failure_calls
+            retry_calls += state.retry_calls
+            recovered_calls += state.recovered_calls
+            policy_denied_calls += state.policy_denied_calls
+            gate_rejected_calls += state.gate_rejected_calls
+            timeout_failures += state.timeout_failures
+            transport_failures += state.transport_failures
+            tool_failures += state.tool_failures
+            unknown_failures += state.unknown_failures
+            total_latency_ms += state.total_latency_ms
+            max_latency_ms = max(max_latency_ms, state.max_latency_ms)
+            all_latency_samples.extend(state.latency_ms_samples)
+            if state.circuit_open_until > time.time():
+                servers_with_circuit_open += 1
+            for error_key, count in state.error_buckets.items():
+                error_totals[error_key] = error_totals.get(error_key, 0) + count
+
+    avg_latency_ms = (total_latency_ms / float(total_calls)) if total_calls > 0 else 0.0
+    top_errors = sorted(
+        error_totals.items(),
+        key=lambda item: (-item[1], item[0]),
+    )[:5]
+    return {
+        "servers_considered": servers_considered,
+        "servers_with_circuit_open": servers_with_circuit_open,
+        "total_calls": total_calls,
+        "success_calls": success_calls,
+        "failure_calls": failure_calls,
+        "retry_calls": retry_calls,
+        "recovered_calls": recovered_calls,
+        "policy_denied_calls": policy_denied_calls,
+        "gate_rejected_calls": gate_rejected_calls,
+        "timeout_failures": timeout_failures,
+        "transport_failures": transport_failures,
+        "tool_failures": tool_failures,
+        "unknown_failures": unknown_failures,
+        "success_rate": round((float(success_calls) / float(total_calls)), 4) if total_calls > 0 else 0.0,
+        "avg_latency_ms": normalize_latency_ms(avg_latency_ms),
+        "p50_latency_ms": latency_percentile(all_latency_samples, 50.0),
+        "p95_latency_ms": latency_percentile(all_latency_samples, 95.0),
+        "max_latency_ms": normalize_latency_ms(max_latency_ms),
+        "latency_sample_count": len(all_latency_samples),
+        "top_errors": [{"error": key, "count": count} for key, count in top_errors],
+    }
+
+
+def acquire_mcp_server_slot(
+    *,
+    context: LocalToolContext,
+    server_name: str,
+    timeout_secs: int,
+) -> MCPServerCallState:
+    state = get_mcp_server_call_state(context, server_name)
+    policy = context.mcp_policy
+    max_concurrency = max(1, policy.max_concurrency_per_server)
+    max_queue = max(1, policy.max_queue_per_server)
+    deadline = time.time() + float(timeout_secs)
+
+    with state.condition:
+        while True:
+            now = time.time()
+            if state.circuit_open_until > now:
+                left = int(max(state.circuit_open_until - now, 0))
+                error_text = (
+                    f'MCP server "{server_name}" circuit open ({left}s left); '
+                    f'last_error={state.last_error or "unknown"}'
+                )
+                state.gate_rejected_calls += 1
+                state.last_error = truncate_text(error_text, limit=400)
+                state.last_finished_at = time.time()
+                record_mcp_error_bucket(state, error_text)
+                raise RuntimeError(
+                    error_text
+                )
+            if state.in_flight < max_concurrency:
+                state.in_flight += 1
+                return state
+
+            if state.queued >= max_queue:
+                error_text = (
+                    f'MCP server "{server_name}" queue full (in_flight={state.in_flight}, queued={state.queued})'
+                )
+                state.gate_rejected_calls += 1
+                state.last_error = truncate_text(error_text, limit=400)
+                state.last_finished_at = time.time()
+                record_mcp_error_bucket(state, error_text)
+                raise RuntimeError(
+                    error_text
+                )
+
+            state.queued += 1
+            try:
+                while True:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        error_text = f'MCP server "{server_name}" queue wait timeout ({timeout_secs}s)'
+                        state.gate_rejected_calls += 1
+                        state.last_error = truncate_text(error_text, limit=400)
+                        state.last_finished_at = time.time()
+                        record_mcp_error_bucket(state, error_text)
+                        raise RuntimeError(
+                            error_text
+                        )
+                    state.condition.wait(timeout=remaining)
+                    now = time.time()
+                    if state.circuit_open_until > now:
+                        left = int(max(state.circuit_open_until - now, 0))
+                        error_text = (
+                            f'MCP server "{server_name}" circuit open ({left}s left); '
+                            f'last_error={state.last_error or "unknown"}'
+                        )
+                        state.gate_rejected_calls += 1
+                        state.last_error = truncate_text(error_text, limit=400)
+                        state.last_finished_at = time.time()
+                        record_mcp_error_bucket(state, error_text)
+                        raise RuntimeError(
+                            error_text
+                        )
+                    if state.in_flight < max_concurrency:
+                        state.in_flight += 1
+                        return state
+            finally:
+                state.queued = max(0, state.queued - 1)
+
+
+def release_mcp_server_slot(state: MCPServerCallState) -> None:
+    with state.condition:
+        state.in_flight = max(0, state.in_flight - 1)
+        state.condition.notify_all()
+
+
+def normalize_latency_ms(value: float) -> float:
+    if value < 0:
+        return 0.0
+    return round(value, 3)
+
+
+def append_mcp_latency_sample(state: MCPServerCallState, elapsed_ms: float, limit: int) -> None:
+    capped_limit = max(16, min(LOCAL_TOOL_MCP_LATENCY_SAMPLE_LIMIT_MAX, limit))
+    state.latency_ms_samples.append(elapsed_ms)
+    overflow = len(state.latency_ms_samples) - capped_limit
+    if overflow > 0:
+        del state.latency_ms_samples[:overflow]
+
+
+def normalize_mcp_error_key(error_text: str) -> str:
+    compact = " ".join(error_text.split())
+    return truncate_text(compact, limit=LOCAL_TOOL_MCP_ERROR_KEY_MAX_CHARS)
+
+
+def record_mcp_error_bucket(
+    state: MCPServerCallState,
+    error_text: str,
+    *,
+    limit: int = LOCAL_TOOL_MCP_ERROR_BUCKET_LIMIT_DEFAULT,
+) -> None:
+    key = normalize_mcp_error_key(error_text)
+    if not key:
+        return
+    buckets = state.error_buckets
+    if key in buckets:
+        buckets[key] += 1
+        return
+    if len(buckets) >= max(8, limit):
+        # Evict the least frequent key to keep memory bounded.
+        victim = min(buckets.items(), key=lambda item: item[1])[0]
+        del buckets[victim]
+    buckets[key] = 1
+
+
+def mark_mcp_policy_denied(
+    *,
+    state: MCPServerCallState,
+    error_text: str,
+) -> None:
+    with state.condition:
+        state.policy_denied_calls += 1
+        state.last_error = truncate_text(error_text, limit=400)
+        state.last_finished_at = time.time()
+        record_mcp_error_bucket(state, error_text)
+        state.condition.notify_all()
+
+
+def classify_mcp_failure_kind(error_text: str) -> str:
+    text = error_text.lower()
+    if "timeout" in text:
+        return "timeout"
+    if "does not expose tool" in text:
+        return "tool"
+    if any(
+        marker in text
+        for marker in (
+            "stdio closed",
+            "broken pipe",
+            "read timeout",
+            "write failed",
+            "json-rpc error",
+            "json-rpc read timeout",
+            "json-rpc write failed",
+            "invalid json-rpc response",
+        )
+    ):
+        return "transport"
+    return "unknown"
+
+
+def latency_percentile(samples: list[float], percentile: float) -> float:
+    if not samples:
+        return 0.0
+    ordered = sorted(samples)
+    if len(ordered) == 1:
+        return normalize_latency_ms(ordered[0])
+    rank = (max(0.0, min(100.0, percentile)) / 100.0) * float(len(ordered) - 1)
+    low_idx = int(math.floor(rank))
+    high_idx = int(math.ceil(rank))
+    if low_idx == high_idx:
+        return normalize_latency_ms(ordered[low_idx])
+    weight = rank - float(low_idx)
+    interpolated = ordered[low_idx] * (1.0 - weight) + ordered[high_idx] * weight
+    return normalize_latency_ms(interpolated)
+
+
+def mark_mcp_server_call_success(
+    *,
+    state: MCPServerCallState,
+    elapsed_ms: float,
+    policy: MCPCallPolicy,
+    retried: bool = False,
+    recovered: bool = False,
+) -> None:
+    elapsed = normalize_latency_ms(elapsed_ms)
+    with state.condition:
+        state.total_calls += 1
+        state.success_calls += 1
+        if retried:
+            state.retry_calls += 1
+        if recovered:
+            state.recovered_calls += 1
+        state.total_latency_ms += elapsed
+        state.max_latency_ms = max(state.max_latency_ms, elapsed)
+        state.last_latency_ms = elapsed
+        state.last_finished_at = time.time()
+        append_mcp_latency_sample(state, elapsed, policy.latency_sample_limit)
+        state.consecutive_failures = 0
+        state.circuit_open_until = 0.0
+        state.last_error = None
+
+
+def mark_mcp_server_call_failure(
+    *,
+    state: MCPServerCallState,
+    error_text: str,
+    policy: MCPCallPolicy,
+    elapsed_ms: float,
+    retried: bool = False,
+    recovered: bool = False,
+) -> bool:
+    opened = False
+    elapsed = normalize_latency_ms(elapsed_ms)
+    with state.condition:
+        state.total_calls += 1
+        state.failure_calls += 1
+        if retried:
+            state.retry_calls += 1
+        if recovered:
+            state.recovered_calls += 1
+        state.total_latency_ms += elapsed
+        state.max_latency_ms = max(state.max_latency_ms, elapsed)
+        state.last_latency_ms = elapsed
+        state.last_finished_at = time.time()
+        append_mcp_latency_sample(state, elapsed, policy.latency_sample_limit)
+        failure_kind = classify_mcp_failure_kind(error_text)
+        if failure_kind == "timeout":
+            state.timeout_failures += 1
+        elif failure_kind == "transport":
+            state.transport_failures += 1
+        elif failure_kind == "tool":
+            state.tool_failures += 1
+        else:
+            state.unknown_failures += 1
+        state.last_error = truncate_text(error_text, limit=400)
+        record_mcp_error_bucket(state, error_text)
+        state.consecutive_failures += 1
+        if state.consecutive_failures >= max(1, policy.failure_threshold):
+            state.circuit_open_until = time.time() + float(max(1, policy.cooldown_secs))
+            state.consecutive_failures = 0
+            opened = True
+        state.condition.notify_all()
+    return opened
+
+
+def mcp_server_state_snapshot(state: MCPServerCallState) -> dict[str, Any]:
+    with state.condition:
+        now = time.time()
+        open_until = state.circuit_open_until
+        circuit_open = open_until > now
+        total_calls = state.total_calls
+        success_calls = state.success_calls
+        avg_latency_ms = (state.total_latency_ms / float(total_calls)) if total_calls > 0 else 0.0
+        samples = list(state.latency_ms_samples)
+        top_errors = sorted(
+            state.error_buckets.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:3]
+        return {
+            "in_flight": state.in_flight,
+            "queued": state.queued,
+            "consecutive_failures": state.consecutive_failures,
+            "circuit_open": circuit_open,
+            "circuit_open_for_secs": int(max(open_until - now, 0)) if circuit_open else 0,
+            "last_error": state.last_error,
+            "total_calls": total_calls,
+            "success_calls": success_calls,
+            "failure_calls": state.failure_calls,
+            "retry_calls": state.retry_calls,
+            "recovered_calls": state.recovered_calls,
+            "policy_denied_calls": state.policy_denied_calls,
+            "gate_rejected_calls": state.gate_rejected_calls,
+            "timeout_failures": state.timeout_failures,
+            "transport_failures": state.transport_failures,
+            "tool_failures": state.tool_failures,
+            "unknown_failures": state.unknown_failures,
+            "success_rate": round((float(success_calls) / float(total_calls)), 4) if total_calls > 0 else 0.0,
+            "avg_latency_ms": normalize_latency_ms(avg_latency_ms),
+            "p50_latency_ms": latency_percentile(samples, 50.0),
+            "p95_latency_ms": latency_percentile(samples, 95.0),
+            "max_latency_ms": normalize_latency_ms(state.max_latency_ms),
+            "last_latency_ms": normalize_latency_ms(state.last_latency_ms),
+            "last_finished_at": round(state.last_finished_at, 3) if state.last_finished_at > 0 else 0.0,
+            "latency_sample_count": len(samples),
+            "error_bucket_count": len(state.error_buckets),
+            "top_errors": [{"error": key, "count": count} for key, count in top_errors],
+        }
+
+
+def next_mcp_request_id(session: MCPClientSession) -> int:
+    request_id = session.next_request_id
+    session.next_request_id += 1
+    return request_id
+
+
+def list_mcp_tools_for_session(session: MCPClientSession, timeout_secs: int) -> list[str]:
+    tools_result = request_mcp_jsonrpc(
+        stdin=session.stdin,
+        stdout_fd=session.stdout_fd,
+        buffer=session.message_buffer,
+        request_id=next_mcp_request_id(session),
+        method="tools/list",
+        params={},
+        timeout_secs=timeout_secs,
+    )
+    tools_raw = tools_result.get("tools") if isinstance(tools_result, dict) else None
+    tools = [item for item in tools_raw if isinstance(item, dict)] if isinstance(tools_raw, list) else []
+    names = [
+        item["name"]
+        for item in tools
+        if isinstance(item.get("name"), str) and item.get("name")
+    ]
+    session.available_tools = tuple(names)
+    return names
+
+
+def create_mcp_session(
+    *,
+    server_name: str,
+    command: list[str],
+    cwd: str,
+    env: dict[str, str],
+    signature: str,
+    timeout_secs: int,
+) -> MCPClientSession:
+    try:
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+    except OSError as exc:
+        raise RuntimeError(f'MCP server "{server_name}" failed to start: {exc}') from exc
+
+    if process.stdin is None or process.stdout is None or process.stderr is None:
+        terminate_process(process)
+        raise RuntimeError(f'MCP server "{server_name}" stdio unavailable')
+
+    session = MCPClientSession(
+        server_name=server_name,
+        signature=signature,
+        process=process,
+        stdin=process.stdin,
+        stdout=process.stdout,
+        stdout_fd=process.stdout.fileno(),
+        stderr=process.stderr,
+    )
+    session.stderr_thread = threading.Thread(
+        target=mcp_stderr_reader,
+        args=(session,),
+        daemon=True,
+        name=f"grobot-mcp-stderr-{server_name}",
+    )
+    session.stderr_thread.start()
+
+    try:
+        _ = request_mcp_jsonrpc(
+            stdin=session.stdin,
+            stdout_fd=session.stdout_fd,
+            buffer=session.message_buffer,
+            request_id=next_mcp_request_id(session),
+            method="initialize",
+            params={
+                "protocolVersion": "2024-11-05",
+                "clientInfo": {"name": "grobot", "version": "0.1.0"},
+                "capabilities": {},
+            },
+            timeout_secs=timeout_secs,
+        )
+        notify_mcp_jsonrpc(
+            stdin=session.stdin,
+            method="notifications/initialized",
+            params={},
+        )
+        list_mcp_tools_for_session(session, timeout_secs)
+        return session
+    except RuntimeError as exc:
+        stderr_preview = mcp_session_stderr_preview(session)
+        close_mcp_session(session)
+        detail = f"; stderr={stderr_preview}" if stderr_preview else ""
+        raise RuntimeError(f'MCP server "{server_name}" initialize failed: {exc}{detail}') from exc
+
+
+def get_or_create_mcp_session(
+    *,
+    server_name: str,
+    command: list[str],
+    cwd: str,
+    env: dict[str, str],
+    env_overrides: tuple[tuple[str, str], ...],
+    context: LocalToolContext,
+    timeout_secs: int,
+) -> tuple[MCPClientSession, bool, bool]:
+    signature = mcp_session_signature(command=command, cwd=cwd, env_overrides=env_overrides)
+    existing = context.mcp_sessions.get(server_name.lower())
+    recovered = False
+    if existing is not None:
+        if existing.signature != signature or existing.process.poll() is not None:
+            close_mcp_session(existing)
+            context.mcp_sessions.pop(server_name.lower(), None)
+            recovered = True
+        else:
+            return existing, True, False
+
+    session = create_mcp_session(
+        server_name=server_name,
+        command=command,
+        cwd=cwd,
+        env=env,
+        signature=signature,
+        timeout_secs=timeout_secs,
+    )
+    context.mcp_sessions[server_name.lower()] = session
+    return session, False, recovered
+
+
+def read_fd_with_deadline(fd: int, size: int, deadline: float) -> bytes:
+    while True:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            raise RuntimeError("MCP read timeout")
+        ready, _, _ = select.select([fd], [], [], remaining)
+        if not ready:
+            raise RuntimeError("MCP read timeout")
+        chunk = os.read(fd, size)
+        if not chunk:
+            raise RuntimeError("MCP stdio closed")
+        return chunk
+
+
+def read_mcp_jsonrpc_message(fd: int, buffer: bytearray, timeout_secs: int) -> dict[str, Any]:
+    deadline = time.time() + float(timeout_secs)
+    while b"\r\n\r\n" not in buffer:
+        if len(buffer) > LOCAL_TOOL_MCP_HEADER_LIMIT:
+            raise RuntimeError("MCP header too large")
+        buffer.extend(read_fd_with_deadline(fd, 4096, deadline))
+
+    header_end = buffer.find(b"\r\n\r\n")
+    header_bytes = bytes(buffer[:header_end])
+    del buffer[: header_end + 4]
+    header_lines = header_bytes.decode("ascii", errors="replace").split("\r\n")
+
+    content_length = None
+    for line in header_lines:
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        if key.strip().lower() == "content-length":
+            raw_length = value.strip()
+            try:
+                parsed = int(raw_length)
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid MCP Content-Length: {raw_length}") from exc
+            if parsed < 0 or parsed > LOCAL_TOOL_MCP_MESSAGE_LIMIT:
+                raise RuntimeError(f"MCP message size out of range: {parsed}")
+            content_length = parsed
+            break
+    if content_length is None:
+        raise RuntimeError("MCP message missing Content-Length")
+
+    while len(buffer) < content_length:
+        buffer.extend(read_fd_with_deadline(fd, content_length - len(buffer), deadline))
+    body = bytes(buffer[:content_length])
+    del buffer[:content_length]
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"MCP payload is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("MCP payload must be JSON object")
+    return payload
+
+
+def write_mcp_jsonrpc_message(stdin: Any, payload: dict[str, Any]) -> None:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+    try:
+        stdin.write(header)
+        stdin.write(body)
+        stdin.flush()
+    except BrokenPipeError as exc:
+        raise RuntimeError("MCP stdin broken pipe") from exc
+    except OSError as exc:
+        raise RuntimeError(f"MCP write failed: {exc}") from exc
+
+
+def request_mcp_jsonrpc(
+    *,
+    stdin: Any,
+    stdout_fd: int,
+    buffer: bytearray,
+    request_id: int,
+    method: str,
+    params: dict[str, Any],
+    timeout_secs: int,
+) -> Any:
+    write_mcp_jsonrpc_message(
+        stdin,
+        {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        },
+    )
+    while True:
+        message = read_mcp_jsonrpc_message(stdout_fd, buffer, timeout_secs)
+        if message.get("id") != request_id:
+            continue
+        if "error" in message:
+            error = message.get("error")
+            if isinstance(error, dict):
+                code = error.get("code")
+                msg = error.get("message")
+                detail = error.get("data")
+                raise RuntimeError(
+                    f"MCP request {method} failed: code={code}, message={msg}, data={truncate_text(json.dumps(mask_sensitive_object(detail), ensure_ascii=False), limit=400)}"
+                )
+            raise RuntimeError(f"MCP request {method} failed with unknown error payload")
+        return message.get("result")
+
+
+def notify_mcp_jsonrpc(
+    *,
+    stdin: Any,
+    method: str,
+    params: dict[str, Any],
+) -> None:
+    write_mcp_jsonrpc_message(
+        stdin,
+        {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+        },
+    )
+
+
+def terminate_process(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=1.5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def truncate_json_preview(payload: Any, *, limit: int = LOCAL_TOOL_OUTPUT_LIMIT) -> str:
+    try:
+        raw = json.dumps(mask_sensitive_object(payload), ensure_ascii=False)
+    except (TypeError, ValueError):
+        raw = str(payload)
+    return truncate_text(raw, limit=limit)
+
+
+def normalize_mcp_call_result(result: Any) -> dict[str, Any]:
+    normalized: dict[str, Any] = {
+        "raw_preview": truncate_json_preview(result),
+    }
+    if not isinstance(result, dict):
+        return normalized
+    normalized["is_error"] = bool(result.get("isError"))
+    content_raw = result.get("content")
+    if isinstance(content_raw, list):
+        content_items: list[dict[str, Any]] = []
+        for item in content_raw[:32]:
+            if isinstance(item, dict):
+                safe_item: dict[str, Any] = {}
+                for key, value in item.items():
+                    if isinstance(value, str):
+                        safe_item[key] = truncate_text(value, limit=2000)
+                    elif isinstance(value, (int, float, bool)) or value is None:
+                        safe_item[key] = value
+                    else:
+                        safe_item[key] = truncate_json_preview(value, limit=1000)
+                content_items.append(safe_item)
+            elif isinstance(item, str):
+                content_items.append({"type": "text", "text": truncate_text(item, limit=2000)})
+            else:
+                content_items.append({"type": "unknown", "value": truncate_json_preview(item, limit=1000)})
+        normalized["content"] = content_items
+    if "structuredContent" in result:
+        normalized["structured_content_preview"] = truncate_json_preview(result.get("structuredContent"))
+    return normalized
+
+
+def should_retry_mcp_call_error(exc: RuntimeError, session: MCPClientSession) -> bool:
+    if session.process.poll() is not None:
+        return True
+    text = str(exc).lower()
+    markers = (
+        "stdio closed",
+        "broken pipe",
+        "read timeout",
+        "write failed",
+    )
+    return any(marker in text for marker in markers)
+
+
+def tool_mcp_call(arguments: dict[str, Any], context: LocalToolContext) -> dict[str, Any]:
+    runtime = context.mcp_runtime if isinstance(context.mcp_runtime, dict) else None
+    if runtime is None:
+        raise RuntimeError("MCP runtime is unavailable")
+
+    server_name = normalize_mcp_call_server_name(arguments.get("server"))
+    tool_name = normalize_mcp_call_tool_name(arguments.get("tool"))
+    tool_name_lower = tool_name.lower()
+    tool_arguments = normalize_mcp_call_arguments(arguments.get("arguments"))
+    timeout_secs = resolve_mcp_call_timeout_secs(arguments.get("timeout_secs"))
+    server = find_mcp_server_entry(runtime, server_name)
+    if not bool(server.get("enabled")):
+        raise RuntimeError(f'MCP server "{server_name}" is disabled')
+    if server.get("ready") is not True:
+        reason = server.get("ready_reason")
+        suffix = f": {reason}" if isinstance(reason, str) and reason else ""
+        raise RuntimeError(f'MCP server "{server_name}" is not ready{suffix}')
+    allowed_tools = context.mcp_policy.allow_tools
+    if isinstance(allowed_tools, tuple) and tool_name_lower not in allowed_tools:
+        allowed_label = ", ".join(allowed_tools)
+        error_text = (
+            f'MCP tool "{tool_name}" blocked by [tools.mcp].allow_tools '
+            f"(allowed: {allowed_label})"
+        )
+        policy_state = get_mcp_server_call_state(context, server_name)
+        mark_mcp_policy_denied(state=policy_state, error_text=error_text)
+        raise RuntimeError(error_text)
+
+    command, cwd, env, env_overrides = resolve_mcp_server_process_spec(server, context)
+    call_state = acquire_mcp_server_slot(
+        context=context,
+        server_name=server_name,
+        timeout_secs=timeout_secs,
+    )
+    failure_recorded = False
+    started_at = time.perf_counter()
+    retried = False
+    recovered_call = False
+
+    def invoke_call(session: MCPClientSession, reused_flag: bool, recovered: bool) -> dict[str, Any]:
+        available_tools = list(session.available_tools)
+        if tool_name not in available_tools:
+            available_tools = list_mcp_tools_for_session(session, timeout_secs)
+        if tool_name not in available_tools:
+            raise RuntimeError(
+                f'MCP server "{server_name}" does not expose tool "{tool_name}"'
+            )
+
+        call_result = request_mcp_jsonrpc(
+            stdin=session.stdin,
+            stdout_fd=session.stdout_fd,
+            buffer=session.message_buffer,
+            request_id=next_mcp_request_id(session),
+            method="tools/call",
+            params={
+                "name": tool_name,
+                "arguments": tool_arguments,
+            },
+            timeout_secs=timeout_secs,
+        )
+        normalized_result = normalize_mcp_call_result(call_result)
+        return {
+            "status": "ok",
+            "server": server_name,
+            "tool": tool_name,
+            "available_tools": available_tools,
+            "timeout_secs": timeout_secs,
+            "session_reused": reused_flag,
+            "session_recovered": recovered,
+            "session_pid": session.process.pid,
+            "result": normalized_result,
+        }
+
+    try:
+        session, reused, recovered_before_call = get_or_create_mcp_session(
+            server_name=server_name,
+            command=command,
+            cwd=cwd,
+            env=env,
+            env_overrides=env_overrides,
+            context=context,
+            timeout_secs=timeout_secs,
+        )
+        recovered_call = recovered_before_call
+        server_key = server_name.lower()
+        try:
+            payload = invoke_call(session, reused, recovered_before_call)
+            elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+            mark_mcp_server_call_success(
+                state=call_state,
+                elapsed_ms=elapsed_ms,
+                policy=context.mcp_policy,
+                retried=retried,
+                recovered=recovered_call,
+            )
+            payload["runtime_state"] = mcp_server_state_snapshot(call_state)
+            return payload
+        except RuntimeError as exc:
+            if should_retry_mcp_call_error(exc, session):
+                retried = True
+                close_mcp_session(session)
+                context.mcp_sessions.pop(server_key, None)
+                retry_session, retry_reused, _retry_recovered = get_or_create_mcp_session(
+                    server_name=server_name,
+                    command=command,
+                    cwd=cwd,
+                    env=env,
+                    env_overrides=env_overrides,
+                    context=context,
+                    timeout_secs=timeout_secs,
+                )
+                recovered_call = True
+                try:
+                    retry_payload = invoke_call(retry_session, retry_reused, True)
+                    elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+                    mark_mcp_server_call_success(
+                        state=call_state,
+                        elapsed_ms=elapsed_ms,
+                        policy=context.mcp_policy,
+                        retried=retried,
+                        recovered=recovered_call,
+                    )
+                    retry_payload["runtime_state"] = mcp_server_state_snapshot(call_state)
+                    return retry_payload
+                except RuntimeError as retry_exc:
+                    retry_stderr_preview = mcp_session_stderr_preview(retry_session)
+                    retry_detail = f"; stderr={retry_stderr_preview}" if retry_stderr_preview else ""
+                    error_text = f"{retry_exc}{retry_detail}"
+                    elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+                    opened = mark_mcp_server_call_failure(
+                        state=call_state,
+                        error_text=error_text,
+                        policy=context.mcp_policy,
+                        elapsed_ms=elapsed_ms,
+                        retried=retried,
+                        recovered=recovered_call,
+                    )
+                    failure_recorded = True
+                    suffix = " (circuit opened)" if opened else ""
+                    raise RuntimeError(f"{error_text}{suffix}") from retry_exc
+            stderr_preview = mcp_session_stderr_preview(session)
+            detail = f"; stderr={stderr_preview}" if stderr_preview else ""
+            error_text = f"{exc}{detail}"
+            elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+            opened = mark_mcp_server_call_failure(
+                state=call_state,
+                error_text=error_text,
+                policy=context.mcp_policy,
+                elapsed_ms=elapsed_ms,
+                retried=retried,
+                recovered=recovered_call,
+            )
+            failure_recorded = True
+            suffix = " (circuit opened)" if opened else ""
+            raise RuntimeError(f"{error_text}{suffix}") from exc
+    except RuntimeError as exc:
+        if not failure_recorded:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+            opened = mark_mcp_server_call_failure(
+                state=call_state,
+                error_text=str(exc),
+                policy=context.mcp_policy,
+                elapsed_ms=elapsed_ms,
+                retried=retried,
+                recovered=recovered_call,
+            )
+            if opened:
+                raise RuntimeError(f"{exc} (circuit opened)") from exc
+        raise
+    finally:
+        release_mcp_server_slot(call_state)
+
+
 def execute_local_tool(
     tool_name: str,
     arguments: dict[str, Any],
@@ -3718,6 +5266,12 @@ def execute_local_tool(
         return tool_edit_file(arguments, context)
     if tool_name == LOCAL_TOOL_BASH:
         return tool_run_bash(arguments, context)
+    if tool_name == LOCAL_TOOL_MCP_SERVERS:
+        ensure_local_tool_allowed(tool_name, context)
+        return tool_mcp_servers(arguments, context)
+    if tool_name == LOCAL_TOOL_MCP_CALL:
+        ensure_local_tool_allowed(tool_name, context)
+        return tool_mcp_call(arguments, context)
     raise RuntimeError(f"unsupported tool: {tool_name}")
 
 
@@ -3854,6 +5408,44 @@ def build_model_tools() -> list[dict[str, Any]]:
                         "timeout_secs": {"type": "integer", "minimum": 1, "maximum": LOCAL_TOOL_BASH_MAX_TIMEOUT_SECS},
                     },
                     "required": ["command"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": LOCAL_TOOL_MCP_SERVERS,
+                "description": "Return effective MCP servers merged from global/project config with readiness status.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "include_disabled": {"type": "boolean"},
+                        "only_ready": {"type": "boolean"},
+                        "include_runtime_state": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": LOCAL_TOOL_MCP_CALL,
+                "description": "Call an MCP tool over stdio (initialize -> tools/list -> tools/call).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "server": {"type": "string"},
+                        "tool": {"type": "string"},
+                        "arguments": {"type": "object"},
+                        "timeout_secs": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": LOCAL_TOOL_MCP_CALL_MAX_TIMEOUT_SECS,
+                        },
+                    },
+                    "required": ["server", "tool"],
                     "additionalProperties": False,
                 },
             },
@@ -4439,6 +6031,8 @@ def print_local_help() -> None:
     print("Local commands:")
     print("  /model    Show current provider/model/session info")
     print("  /health   Show provider circuit health")
+    print("  /mcp      Show effective MCP servers")
+    print("  /mcp reset <server|all>  Reset MCP gate metrics and close MCP session(s)")
     print("  @file     Mention a file/path in prompt for fast resolution")
     print("  /help     Show local commands")
     print("  /exit     Quit")
@@ -4452,6 +6046,119 @@ def print_model_info(provider: ProviderConfig, model: str, work_dir: Path, sessi
     print(f"  base_url:  {provider.base_url}")
     print(f"  work_dir:  {work_dir}")
     print(f"  session:   {session_key}")
+    print("")
+
+
+def print_mcp_info(
+    mcp_runtime: dict[str, Any],
+    mcp_warnings: list[str],
+    context: LocalToolContext | None = None,
+) -> None:
+    print("MCP runtime:")
+    print(
+        "  summary:   "
+        f"enabled={mcp_runtime['enabled_count']}, disabled={mcp_runtime['disabled_count']}, total={mcp_runtime['total']}"
+    )
+    print(
+        "  readiness: "
+        f"ready={mcp_runtime.get('ready_count', 0)}, unready={mcp_runtime.get('unready_count', 0)}"
+    )
+    paths = mcp_runtime.get("paths") if isinstance(mcp_runtime, dict) else None
+    if isinstance(paths, dict):
+        global_registry = paths.get("global_registry")
+        project_override = paths.get("project_override")
+        if isinstance(global_registry, str) and isinstance(project_override, str):
+            print(f"  paths:     global={global_registry} project={project_override}")
+    if isinstance(context, LocalToolContext):
+        policy = context.mcp_policy
+        allow_tools = list(policy.allow_tools) if isinstance(policy.allow_tools, tuple) else ["*"]
+        print(
+            "  gate:      "
+            f"concurrency={policy.max_concurrency_per_server}, "
+            f"queue={policy.max_queue_per_server}, "
+            f"failure_threshold={policy.failure_threshold}, "
+            f"cooldown={policy.cooldown_secs}s, "
+            f"allow_tools={','.join(allow_tools)}, "
+            f"latency_sample_limit={policy.latency_sample_limit}"
+        )
+        effective_names = [
+            str(item.get("name"))
+            for item in (mcp_runtime.get("effective") if isinstance(mcp_runtime.get("effective"), list) else [])
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        ]
+        runtime_summary = aggregate_mcp_runtime_summary(context, effective_names)
+        print(
+            "  totals:    "
+            f"calls={runtime_summary['total_calls']} ok={runtime_summary['success_calls']} "
+            f"fail={runtime_summary['failure_calls']} deny={runtime_summary['policy_denied_calls']} "
+            f"gate={runtime_summary['gate_rejected_calls']} "
+            f"p95={runtime_summary['p95_latency_ms']}ms"
+        )
+        if runtime_summary["top_errors"]:
+            top_error = runtime_summary["top_errors"][0]
+            print(f"  top_error: {top_error['error']} (x{top_error['count']})")
+    enabled_servers = mcp_runtime.get("enabled")
+    if isinstance(enabled_servers, list) and enabled_servers:
+        print(f"  enabled:   {', '.join(str(item) for item in enabled_servers)}")
+    unready_servers = mcp_runtime.get("unready")
+    if isinstance(unready_servers, list) and unready_servers:
+        print(f"  unready:   {', '.join(str(item) for item in unready_servers)}")
+    effective_servers = mcp_runtime.get("effective")
+    if isinstance(effective_servers, list) and effective_servers:
+        print("  servers:")
+        for server in effective_servers:
+            if not isinstance(server, dict):
+                continue
+            name = server.get("name")
+            source = server.get("source")
+            command = server.get("command")
+            command_resolved = server.get("command_resolved")
+            args = server.get("args")
+            enabled = server.get("enabled")
+            ready = server.get("ready")
+            ready_reason = server.get("ready_reason")
+            if not isinstance(name, str):
+                continue
+            source_display = source if isinstance(source, str) and source else "unknown"
+            command_display = command if isinstance(command, str) else ""
+            args_display = " ".join(args) if isinstance(args, list) else ""
+            resolved_display = command_resolved if isinstance(command_resolved, str) else "-"
+            ready_display = (
+                "ready"
+                if ready is True
+                else ("not-ready" if ready is False else "n/a")
+            )
+            reason_display = f" ({ready_reason})" if isinstance(ready_reason, str) and ready_reason else ""
+            print(
+                "    - "
+                f"{name} ({'on' if enabled else 'off'}, {ready_display}, {source_display}) "
+                f"{command_display} {args_display}".rstrip()
+            )
+            print(f"      resolved: {resolved_display}{reason_display}")
+            if isinstance(context, LocalToolContext):
+                state = lookup_mcp_server_call_state(context, name)
+                if state is not None:
+                    snapshot = mcp_server_state_snapshot(state)
+                    print(
+                        "      runtime: "
+                        f"in_flight={snapshot['in_flight']} queued={snapshot['queued']} "
+                        f"circuit_open={snapshot['circuit_open']} "
+                        f"open_for={snapshot['circuit_open_for_secs']}s"
+                    )
+                    print(
+                        "      metrics: "
+                        f"calls={snapshot['total_calls']} ok={snapshot['success_calls']} "
+                        f"fail={snapshot['failure_calls']} retry={snapshot['retry_calls']} "
+                        f"recover={snapshot['recovered_calls']} "
+                        f"policy_deny={snapshot['policy_denied_calls']} gate_reject={snapshot['gate_rejected_calls']} "
+                        f"timeout={snapshot['timeout_failures']} transport={snapshot['transport_failures']} "
+                        f"tool={snapshot['tool_failures']} unknown={snapshot['unknown_failures']} "
+                        f"p50={snapshot['p50_latency_ms']}ms p95={snapshot['p95_latency_ms']}ms"
+                    )
+                    if isinstance(snapshot.get("last_error"), str) and snapshot["last_error"]:
+                        print(f"      last_error: {snapshot['last_error']}")
+    for warning in mcp_warnings:
+        print(f"  warning:   {warning}")
     print("")
 
 
@@ -4513,6 +6220,8 @@ def run_status(args: argparse.Namespace) -> int:
         redis_url_arg=None,
         ttl_secs_arg=None,
     )
+    mcp_policy = resolve_mcp_call_policy(project_toml)
+    mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
 
     print("Grobot status")
     print(f"  home:              {paths.home}")
@@ -4531,7 +6240,34 @@ def run_status(args: argparse.Namespace) -> int:
     print(f"  sessions_root:     {paths.sessions_dir}")
     print(f"  rules:             global={paths.global_rules_dir} project={paths.project_rules_dir}")
     print(f"  skills:            global={paths.global_skills_dir} project={paths.project_skills_dir}")
+    print(
+        "  mcp_gate:          "
+        f"concurrency={mcp_policy.max_concurrency_per_server}, "
+        f"queue={mcp_policy.max_queue_per_server}, "
+        f"failures={mcp_policy.failure_threshold}, "
+        f"cooldown={mcp_policy.cooldown_secs}s"
+    )
+    print(
+        "  mcp_gate_tools:    "
+        f"{','.join(mcp_policy.allow_tools) if isinstance(mcp_policy.allow_tools, tuple) else '*'}"
+    )
+    print(f"  mcp_latency:       sample_limit={mcp_policy.latency_sample_limit}")
     print(f"  mcp:               global={paths.global_mcp_registry} project={paths.project_mcp_file}")
+    print(
+        "  mcp_effective:     "
+        f"enabled={mcp_runtime['enabled_count']}, disabled={mcp_runtime['disabled_count']}, "
+        f"total={mcp_runtime['total']}"
+    )
+    print(
+        "  mcp_readiness:     "
+        f"ready={mcp_runtime.get('ready_count', 0)}, unready={mcp_runtime.get('unready_count', 0)}"
+    )
+    if isinstance(mcp_runtime.get("enabled"), list) and mcp_runtime["enabled"]:
+        print(f"  mcp_enabled:       {', '.join(mcp_runtime['enabled'])}")
+    if isinstance(mcp_runtime.get("unready"), list) and mcp_runtime["unready"]:
+        print(f"  mcp_unready:       {', '.join(mcp_runtime['unready'])}")
+    for warning in mcp_warnings:
+        print(f"  mcp_warning:       {warning}")
     print(
         "  memory:            "
         f"session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}"
@@ -4602,6 +6338,13 @@ def run_serve(args: argparse.Namespace) -> int:
             public_config_sections_source,
             public_config_sections_profile,
         ) = resolve_public_config_sections(config_toml)
+        mcp_policy = resolve_mcp_call_policy(project_toml)
+        mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
+        mcp_local_tool_context = resolve_local_tool_context(
+            project_toml,
+            selection.work_dir,
+            mcp_runtime=mcp_runtime,
+        )
         return {
             "paths": paths,
             "project_toml": project_toml,
@@ -4618,6 +6361,10 @@ def run_serve(args: argparse.Namespace) -> int:
             "public_config_sections": public_config_sections,
             "public_config_sections_source": public_config_sections_source,
             "public_config_sections_profile": public_config_sections_profile,
+            "mcp_policy": mcp_policy,
+            "mcp_runtime": mcp_runtime,
+            "mcp_warnings": mcp_warnings,
+            "mcp_local_tool_context": mcp_local_tool_context,
         }
 
     state = build_runtime_state()
@@ -4635,11 +6382,29 @@ def run_serve(args: argparse.Namespace) -> int:
             session_key=state["session_key"],
             bind=state["bind_runtime"],
         )
+        payload["mcp"] = state["mcp_runtime"]
+        effective_names = [
+            str(item.get("name"))
+            for item in (
+                state["mcp_runtime"].get("effective")
+                if isinstance(state["mcp_runtime"].get("effective"), list)
+                else []
+            )
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        ]
+        payload["mcp_runtime_summary"] = aggregate_mcp_runtime_summary(
+            state["mcp_local_tool_context"],
+            effective_names,
+        )
+        if state["mcp_warnings"]:
+            payload["mcp_warnings"] = state["mcp_warnings"]
         payload["endpoints"] = {
             "status": "/api/v1/status",
             "config": "/api/v1/config",
             "reload": "/api/v1/reload",
             "session_interrupt": "/api/v1/sessions/{id}/interrupt",
+            "mcp_reset_all": "/api/v1/mcp/reset",
+            "mcp_reset_server": "/api/v1/mcp/servers/{name}/reset",
             "healthz": "/healthz",
         }
         payload["reload_count"] = state["reload_count"]
@@ -4649,6 +6414,16 @@ def run_serve(args: argparse.Namespace) -> int:
         }
         payload["provider_failover"] = {
             "chain": [f"{provider.name}/{provider.model}" for provider in state["provider_chain"]],
+        }
+        payload["mcp_policy"] = {
+            "max_concurrency_per_server": state["mcp_policy"].max_concurrency_per_server,
+            "max_queue_per_server": state["mcp_policy"].max_queue_per_server,
+            "failure_threshold": state["mcp_policy"].failure_threshold,
+            "cooldown_secs": state["mcp_policy"].cooldown_secs,
+            "allow_tools": list(state["mcp_policy"].allow_tools)
+            if isinstance(state["mcp_policy"].allow_tools, tuple)
+            else ["*"],
+            "latency_sample_limit": state["mcp_policy"].latency_sample_limit,
         }
         management_credentials = state["management_credentials"]
         acl_enabled = any(
@@ -4677,6 +6452,8 @@ def run_serve(args: argparse.Namespace) -> int:
             "protected_endpoints": [
                 "POST /api/v1/reload",
                 "POST /api/v1/sessions/{id}/interrupt",
+                "POST /api/v1/mcp/reset",
+                "POST /api/v1/mcp/servers/{name}/reset",
             ],
         }
         if isinstance(state.get("reload_warning"), str) and state["reload_warning"]:
@@ -4725,6 +6502,32 @@ def run_serve(args: argparse.Namespace) -> int:
             CONFIG_SECTION_PROJECT_TOML: mask_sensitive_object(state["project_toml"]),
             CONFIG_SECTION_CONFIG_TOML: mask_sensitive_object(state["config_toml"]),
         }
+        payload["mcp_policy"] = {
+            "max_concurrency_per_server": state["mcp_policy"].max_concurrency_per_server,
+            "max_queue_per_server": state["mcp_policy"].max_queue_per_server,
+            "failure_threshold": state["mcp_policy"].failure_threshold,
+            "cooldown_secs": state["mcp_policy"].cooldown_secs,
+            "allow_tools": list(state["mcp_policy"].allow_tools)
+            if isinstance(state["mcp_policy"].allow_tools, tuple)
+            else ["*"],
+            "latency_sample_limit": state["mcp_policy"].latency_sample_limit,
+        }
+        payload["mcp"] = state["mcp_runtime"]
+        effective_names = [
+            str(item.get("name"))
+            for item in (
+                state["mcp_runtime"].get("effective")
+                if isinstance(state["mcp_runtime"].get("effective"), list)
+                else []
+            )
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        ]
+        payload["mcp_runtime_summary"] = aggregate_mcp_runtime_summary(
+            state["mcp_local_tool_context"],
+            effective_names,
+        )
+        if state["mcp_warnings"]:
+            payload["mcp_warnings"] = state["mcp_warnings"]
 
         allowed_sections = set(CONFIG_SECTION_ALL if visible_sections is None else visible_sections)
         for section_key in CONFIG_SECTION_ALL:
@@ -4737,6 +6540,7 @@ def run_serve(args: argparse.Namespace) -> int:
     def apply_reload() -> dict[str, Any]:
         old_bind = state["bind_runtime"]
         old_host, _ = parse_bind_address(old_bind)
+        old_mcp_context = state.get("mcp_local_tool_context")
         reloaded = build_runtime_state()
         reloaded["reload_count"] = int(state["reload_count"]) + 1
         reloaded["bind_runtime"] = old_bind
@@ -4746,6 +6550,9 @@ def run_serve(args: argparse.Namespace) -> int:
                 f"configured bind changed to {reloaded['bind']}, "
                 f"but runtime bind remains {old_bind}; restart required"
             )
+
+        if isinstance(old_mcp_context, LocalToolContext):
+            close_mcp_sessions(old_mcp_context)
 
         state.clear()
         state.update(reloaded)
@@ -4757,6 +6564,45 @@ def run_serve(args: argparse.Namespace) -> int:
             "runtime_bind": old_bind,
             "configured_bind": state["bind"],
             "warning": state["reload_warning"],
+        }
+
+    def apply_mcp_reset(target_server: str | None) -> dict[str, Any]:
+        context = state.get("mcp_local_tool_context")
+        if not isinstance(context, LocalToolContext):
+            raise RuntimeError("mcp local tool context unavailable")
+
+        if isinstance(target_server, str) and target_server.strip():
+            normalized_target = target_server.strip()
+            closed = close_single_mcp_session(context, normalized_target)
+            reset_states = reset_mcp_server_states(context, normalized_target)
+            scope = "server"
+            target_value = normalized_target
+            closed_sessions = 1 if closed else 0
+        else:
+            closed_sessions = len(context.mcp_sessions)
+            close_mcp_sessions(context)
+            reset_states = reset_mcp_server_states(context, None)
+            scope = "all"
+            target_value = "all"
+
+        effective_names = [
+            str(item.get("name"))
+            for item in (
+                state["mcp_runtime"].get("effective")
+                if isinstance(state["mcp_runtime"].get("effective"), list)
+                else []
+            )
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        ]
+        runtime_summary = aggregate_mcp_runtime_summary(context, effective_names)
+        return {
+            "status": "ok",
+            "timestamp": now_utc_iso(),
+            "scope": scope,
+            "target": target_value,
+            "closed_sessions": closed_sessions,
+            "reset_states": reset_states,
+            "runtime_summary": runtime_summary,
         }
 
     class ManagementHandler(BaseHTTPRequestHandler):
@@ -4927,6 +6773,35 @@ def run_serve(args: argparse.Namespace) -> int:
                 self._write_json(200, payload)
                 return
 
+            if parsed.path == "/api/v1/mcp/reset":
+                credential = self._require_management_auth(MANAGEMENT_ACTION_MCP_RESET)
+                if credential is None:
+                    return
+                try:
+                    payload = apply_mcp_reset(None)
+                except Exception as exc:  # noqa: BLE001
+                    self._write_json(500, {"error": "mcp_reset_failed", "detail": str(exc)})
+                    return
+                self._write_json(200, payload)
+                return
+
+            mcp_match = re.fullmatch(r"/api/v1/mcp/servers/(.+)/reset", parsed.path)
+            if mcp_match:
+                server_name = unquote(mcp_match.group(1)).strip()
+                if not server_name:
+                    self._write_json(400, {"error": "invalid_server_name"})
+                    return
+                credential = self._require_management_auth(MANAGEMENT_ACTION_MCP_RESET)
+                if credential is None:
+                    return
+                try:
+                    payload = apply_mcp_reset(server_name)
+                except Exception as exc:  # noqa: BLE001
+                    self._write_json(500, {"error": "mcp_reset_failed", "detail": str(exc)})
+                    return
+                self._write_json(200, payload)
+                return
+
             match = re.fullmatch(r"/api/v1/sessions/(.+)/interrupt", parsed.path)
             if match:
                 session_id = unquote(match.group(1)).strip()
@@ -4970,6 +6845,8 @@ def run_serve(args: argparse.Namespace) -> int:
     print("  endpoint:  GET /api/v1/config")
     print("  endpoint:  POST /api/v1/reload")
     print("  endpoint:  POST /api/v1/sessions/{id}/interrupt")
+    print("  endpoint:  POST /api/v1/mcp/reset")
+    print("  endpoint:  POST /api/v1/mcp/servers/{name}/reset")
     print("  healthz:   GET /healthz")
     credential_count = len(state["management_credentials"]) if isinstance(state["management_credentials"], list) else 0
     print(
@@ -4987,6 +6864,34 @@ def run_serve(args: argparse.Namespace) -> int:
         f"(source={state['public_config_sections_source']}, "
         f"profile={state['public_config_sections_profile'] or 'none'})"
     )
+    print(
+        "  mcp:       "
+        f"enabled={state['mcp_runtime']['enabled_count']}, "
+        f"disabled={state['mcp_runtime']['disabled_count']}, total={state['mcp_runtime']['total']}"
+    )
+    print(
+        "  mcp_gate:  "
+        f"concurrency={state['mcp_policy'].max_concurrency_per_server}, "
+        f"queue={state['mcp_policy'].max_queue_per_server}, "
+        f"failures={state['mcp_policy'].failure_threshold}, "
+        f"cooldown={state['mcp_policy'].cooldown_secs}s"
+    )
+    print(
+        "  mcp_tools: "
+        f"{','.join(state['mcp_policy'].allow_tools) if isinstance(state['mcp_policy'].allow_tools, tuple) else '*'}"
+    )
+    print(f"  mcp_lat:   sample_limit={state['mcp_policy'].latency_sample_limit}")
+    print(
+        "  mcp_ready: "
+        f"ready={state['mcp_runtime'].get('ready_count', 0)}, "
+        f"unready={state['mcp_runtime'].get('unready_count', 0)}"
+    )
+    if state["mcp_runtime"]["enabled"]:
+        print(f"  mcp_on:    {', '.join(state['mcp_runtime']['enabled'])}")
+    if state["mcp_runtime"].get("unready"):
+        print(f"  mcp_off:   {', '.join(state['mcp_runtime']['unready'])}")
+    for warning in state["mcp_warnings"]:
+        print(f"  mcp_warn:  {warning}")
     if credential_count > 0:
         print("  auth_hdr:  Authorization: Bearer <token> (or X-Grobot-Token)")
     print("Press Ctrl+C to stop.")
@@ -4996,6 +6901,9 @@ def run_serve(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("\nStopping management API...")
     finally:
+        mcp_context = state.get("mcp_local_tool_context")
+        if isinstance(mcp_context, LocalToolContext):
+            close_mcp_sessions(mcp_context)
         server.server_close()
     return 0
 
@@ -5053,8 +6961,13 @@ def run_start(args: argparse.Namespace) -> int:
         session_key,
         args.history_turns,
     )
-    local_tool_context = resolve_local_tool_context(project_toml, selection.work_dir)
     retrieval_config = resolve_context_retrieval_config(project_toml, selection.provider.api_key)
+    mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
+    local_tool_context = resolve_local_tool_context(
+        project_toml,
+        selection.work_dir,
+        mcp_runtime=mcp_runtime,
+    )
     mention_index: MentionIndexState | MentionPathIndex | None = None
     system_prompt = build_system_prompt(session_key=session_key, work_dir=selection.work_dir)
     circuit_policy = CircuitPolicy(
@@ -5076,6 +6989,32 @@ def run_start(args: argparse.Namespace) -> int:
     print(f"  sessions:  {paths.sessions_dir}")
     print(f"  memory:    session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}")
     print(f"  tools:     {', '.join(local_tool_context.allow_tokens)}")
+    print(
+        "  mcp_gate:  "
+        f"concurrency={local_tool_context.mcp_policy.max_concurrency_per_server}, "
+        f"queue={local_tool_context.mcp_policy.max_queue_per_server}, "
+        f"failures={local_tool_context.mcp_policy.failure_threshold}, "
+        f"cooldown={local_tool_context.mcp_policy.cooldown_secs}s"
+    )
+    print(
+        "  mcp_tools: "
+        f"{','.join(local_tool_context.mcp_policy.allow_tools) if isinstance(local_tool_context.mcp_policy.allow_tools, tuple) else '*'}"
+    )
+    print(f"  mcp_lat:   sample_limit={local_tool_context.mcp_policy.latency_sample_limit}")
+    print(
+        "  mcp:       "
+        f"enabled={mcp_runtime['enabled_count']}, disabled={mcp_runtime['disabled_count']}, total={mcp_runtime['total']}"
+    )
+    print(
+        "  mcp_ready: "
+        f"ready={mcp_runtime.get('ready_count', 0)}, unready={mcp_runtime.get('unready_count', 0)}"
+    )
+    if isinstance(mcp_runtime.get("enabled"), list) and mcp_runtime["enabled"]:
+        print(f"  mcp_on:    {', '.join(mcp_runtime['enabled'])}")
+    if isinstance(mcp_runtime.get("unready"), list) and mcp_runtime["unready"]:
+        print(f"  mcp_off:   {', '.join(mcp_runtime['unready'])}")
+    for warning in mcp_warnings:
+        print(f"[mcp] {warning}", file=sys.stderr)
     retrieval_parts: list[str] = []
     if retrieval_config.enabled:
         retrieval_parts.append("enabled")
@@ -5113,6 +7052,7 @@ def run_start(args: argparse.Namespace) -> int:
                 "Session interrupted by management API. This request was skipped; send again if needed.",
                 file=sys.stderr,
             )
+            close_mcp_sessions(local_tool_context)
             return 0
 
         effective_prompt, mention_lines, mention_index = enrich_user_prompt_with_file_mentions(
@@ -5163,9 +7103,10 @@ def run_start(args: argparse.Namespace) -> int:
         for warning in memory_warnings:
             print(f"[memory] {warning}", file=sys.stderr)
         print(reply)
+        close_mcp_sessions(local_tool_context)
         return 0
 
-    print("Enter message (`/model`, `/health`, `/help`, `/exit`):")
+    print("Enter message (`/model`, `/health`, `/mcp`, `/mcp reset <server|all>`, `/help`, `/exit`):")
     while True:
         try:
             user_input = input("grobot> ").strip()
@@ -5194,6 +7135,35 @@ def run_start(args: argparse.Namespace) -> int:
             for line in format_circuit_health(routes):
                 print(line)
             print("")
+            continue
+        if user_input.startswith("/mcp reset"):
+            parts = user_input.split(maxsplit=2)
+            if len(parts) < 3 or not parts[2].strip():
+                print('Usage: /mcp reset <server|all>')
+                print("")
+                continue
+            target = parts[2].strip()
+            if target.lower() == "all":
+                closed_count = len(local_tool_context.mcp_sessions)
+                close_mcp_sessions(local_tool_context)
+                reset_count = reset_mcp_server_states(local_tool_context, None)
+                print(
+                    f"Reset MCP state: target=all closed_sessions={closed_count} reset_states={reset_count}"
+                )
+                print("")
+                continue
+            closed = close_single_mcp_session(local_tool_context, target)
+            reset_count = reset_mcp_server_states(local_tool_context, target)
+            if reset_count == 0:
+                print(f'No MCP runtime state found for "{target}" (session_closed={closed}).')
+            else:
+                print(
+                    f'Reset MCP state: target={target} session_closed={closed} reset_states={reset_count}'
+                )
+            print("")
+            continue
+        if user_input == "/mcp":
+            print_mcp_info(mcp_runtime, mcp_warnings, context=local_tool_context)
             continue
 
         interrupted, interrupt_warnings = consume_interrupt_flag(session_store, session_key)
@@ -5255,6 +7225,7 @@ def run_start(args: argparse.Namespace) -> int:
         print("")
 
     _ = project_toml.get("schema_version")
+    close_mcp_sessions(local_tool_context)
     return 0
 
 
@@ -5300,6 +7271,18 @@ def run_init(args: argparse.Namespace) -> int:
             created.append(str(config_target))
         else:
             reused.append(str(config_target))
+
+        global_mcp_registry_target = home / "mcp" / DEFAULT_GLOBAL_MCP_REGISTRY
+        wrote_global_mcp_registry = write_text_file_if_missing(
+            global_mcp_registry_target,
+            source=None,
+            fallback_content=FALLBACK_GLOBAL_MCP_TEMPLATE,
+            force=force,
+        )
+        if wrote_global_mcp_registry:
+            created.append(str(global_mcp_registry_target))
+        else:
+            reused.append(str(global_mcp_registry_target))
 
     if init_project:
         project_root = (
