@@ -602,6 +602,35 @@ HISTORY_RETRIEVAL_REMOTE_MAX_CANDIDATES = 24
 HISTORY_RETRIEVAL_EMBEDDING_SCORE_WEIGHT = 2.0
 HISTORY_RETRIEVAL_RERANK_SCORE_WEIGHT = 2.5
 HISTORY_RETRIEVAL_REMOTE_TIMEOUT_SECS = 20
+HANDOFF_DEFAULT_RECENT_TURNS = 6
+HANDOFF_MAX_RECENT_TURNS = 20
+HANDOFF_FILENAME = "HANDOFF.md"
+HANDOFF_HEADER = "# HANDOFF"
+HANDOFF_SENSITIVE_INLINE_PATTERN = re.compile(
+    r"(?i)\b(api[_-]?key|token|secret|password)\b\s*([:=])\s*([^\s,;]+)"
+)
+HANDOFF_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+")
+HANDOFF_SK_LIKE_PATTERN = re.compile(r"\b(?:sk|gsk|rk)-[A-Za-z0-9_-]{8,}\b")
+HANDOFF_WORKED_HINTS = (
+    "pass",
+    "passed",
+    "success",
+    "succeeded",
+    "ok",
+    "通过",
+    "成功",
+)
+HANDOFF_FAILED_HINTS = (
+    "fail",
+    "failed",
+    "error",
+    "exception",
+    "timeout",
+    "失败",
+    "错误",
+    "异常",
+    "超时",
+)
 DEFAULT_RETRIEVAL_BASE_URL = "https://api.siliconflow.cn/v1"
 DEFAULT_RETRIEVAL_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
 DEFAULT_RETRIEVAL_RERANK_MODEL = "Qwen/Qwen3-Reranker-4B"
@@ -1027,6 +1056,242 @@ def summarize_memory_sections(compact_memory: dict[str, Any] | None, max_items: 
         if cleaned:
             summary[section] = cleaned[:max_items]
     return summary
+
+
+def sanitize_handoff_text(raw_text: str) -> str:
+    if not raw_text:
+        return ""
+
+    def _replace_inline(match: re.Match[str]) -> str:
+        key = match.group(1)
+        separator = match.group(2)
+        return f"{key}{separator}<redacted>"
+
+    sanitized = HANDOFF_SENSITIVE_INLINE_PATTERN.sub(_replace_inline, raw_text)
+    sanitized = HANDOFF_BEARER_PATTERN.sub("Bearer <redacted>", sanitized)
+    sanitized = HANDOFF_SK_LIKE_PATTERN.sub("<redacted>", sanitized)
+    return sanitized
+
+
+def compact_sections_for_handoff(compact_memory: dict[str, Any] | None) -> dict[str, list[str]]:
+    summary = summarize_memory_sections(compact_memory, max_items=64)
+    sanitized: dict[str, list[str]] = {}
+    for section, items in summary.items():
+        sanitized[section] = [sanitize_handoff_text(item) for item in items if isinstance(item, str)]
+    return sanitized
+
+
+def parse_status_lines(lines: list[str]) -> tuple[list[str], list[str]]:
+    worked: list[str] = []
+    failed: list[str] = []
+    for line in lines:
+        if not isinstance(line, str):
+            continue
+        text = sanitize_handoff_text(line.strip())
+        if not text:
+            continue
+        lower = text.lower()
+        if any(token in lower for token in HANDOFF_FAILED_HINTS):
+            if text not in failed:
+                failed.append(text)
+            continue
+        if any(token in lower for token in HANDOFF_WORKED_HINTS):
+            if text not in worked:
+                worked.append(text)
+    return worked, failed
+
+
+def should_auto_write_handoff(
+    *,
+    compacted: bool,
+    failover: bool,
+    todo_open: bool,
+) -> bool:
+    return bool(compacted or failover or todo_open)
+
+
+def recent_turn_pairs(history_messages: list[dict[str, str]], recent_turns: int) -> list[tuple[str, str]]:
+    if recent_turns <= 0:
+        return []
+    pairs: list[tuple[str, str]] = []
+    pending_user: str | None = None
+    for message in history_messages:
+        role = message.get("role")
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        content = sanitize_handoff_text(content.strip())
+        if role == "user":
+            pending_user = content
+            continue
+        if role == "assistant" and isinstance(pending_user, str):
+            pairs.append((pending_user, content))
+            pending_user = None
+    if not pairs:
+        return []
+    return pairs[-recent_turns:]
+
+
+def has_open_todo_items(compact_memory: dict[str, Any] | None) -> bool:
+    sections = compact_sections_for_handoff(compact_memory)
+    todo_items = sections.get(HISTORY_COMPACT_SECTION_TODO, [])
+    return bool(todo_items)
+
+
+def build_handoff_markdown(
+    *,
+    session_key: str,
+    project_name: str,
+    work_dir: Path,
+    compact_memory: dict[str, Any] | None,
+    history_messages: list[dict[str, str]],
+    recent_turns: int,
+    failover_errors: list[str],
+    compaction_observed: bool,
+) -> str:
+    sections = compact_sections_for_handoff(compact_memory)
+    architecture = sections.get(HISTORY_COMPACT_SECTION_ARCHITECTURE, [])
+    modified = sections.get(HISTORY_COMPACT_SECTION_MODIFIED, [])
+    verification = sections.get(HISTORY_COMPACT_SECTION_VERIFICATION, [])
+    todo_items = sections.get(HISTORY_COMPACT_SECTION_TODO, [])
+    tool_outputs = sections.get(HISTORY_COMPACT_SECTION_TOOL_OUTPUT, [])
+    combined_status = [*verification, *tool_outputs]
+    worked, failed = parse_status_lines(combined_status)
+    recent_pairs = recent_turn_pairs(history_messages, recent_turns)
+    latest_goal = recent_pairs[-1][0] if recent_pairs else "继续当前任务并保持现有架构决策不回退"
+
+    failover_notes = [sanitize_handoff_text(item) for item in failover_errors if isinstance(item, str) and item.strip()]
+    if failover_notes and not any(note in failed for note in failover_notes):
+        failed.extend(failover_notes)
+
+    lines: list[str] = [
+        HANDOFF_HEADER,
+        "",
+        "## Current Goal",
+        f"- {latest_goal}",
+        f"- session: `{sanitize_handoff_text(session_key)}`",
+        f"- project: `{sanitize_handoff_text(project_name)}`",
+        f"- work_dir: `{sanitize_handoff_text(str(work_dir))}`",
+        "",
+        "## Architecture Decisions (verbatim)",
+    ]
+    if architecture:
+        for item in architecture:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Modified Files and Key Changes",
+        ]
+    )
+    if modified:
+        for item in modified:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Verification Status (PASS/FAIL only)",
+        ]
+    )
+    status_lines = [item for item in combined_status if isinstance(item, str)]
+    if status_lines:
+        for item in status_lines:
+            normalized = item if item.startswith(("PASS:", "FAIL:")) else compact_format_tool_status(item) or item
+            if isinstance(normalized, str):
+                lines.append(f"- {sanitize_handoff_text(normalized)}")
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## What Was Tried",
+            "### Worked",
+        ]
+    )
+    if worked:
+        for item in worked:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+
+    lines.append("")
+    lines.append("### Did Not Work")
+    if failed:
+        for item in failed:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Open TODOs and Rollback Notes",
+        ]
+    )
+    if todo_items:
+        for item in todo_items:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Next 3 Steps",
+        ]
+    )
+    next_steps: list[str] = []
+    if todo_items:
+        next_steps.append(f"处理最高优先级 TODO：{todo_items[0]}")
+    if failed:
+        next_steps.append("优先复现并修复失败项，再更新验证状态")
+    if not next_steps:
+        next_steps.append("执行当前目标相关的最小闭环改动")
+    next_steps.append("运行最相关验证并记录 PASS/FAIL 结果")
+    next_steps.append("完成后刷新 HANDOFF.md，再进入新会话继续")
+    for idx, step in enumerate(next_steps[:3], start=1):
+        lines.append(f"{idx}. {step}")
+
+    lines.extend(
+        [
+            "",
+            "## Runtime Signals",
+            f"- compaction_observed: {'true' if compaction_observed else 'false'}",
+            f"- failover_observed: {'true' if bool(failover_errors) else 'false'}",
+            f"- open_todo_count: {len(todo_items)}",
+            "",
+            "## Recent Turns",
+        ]
+    )
+    if recent_pairs:
+        for idx, (user_text, assistant_text) in enumerate(recent_pairs, start=1):
+            lines.append(f"### Turn {idx}")
+            lines.append(f"- user: {user_text}")
+            lines.append(f"- assistant: {assistant_text}")
+    else:
+        lines.append("- none")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def write_handoff_file(
+    *,
+    path: Path,
+    content: str,
+) -> tuple[bool, str | None]:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return True, None
+    except OSError as exc:
+        return False, str(exc)
 
 
 def build_memory_store_paths(paths: RuntimePaths, session_key: str) -> MemoryStorePaths:
@@ -7159,6 +7424,7 @@ def print_local_help() -> None:
     print("  /mcp      Show effective MCP servers")
     print("  /mcp reset <server|all>  Reset MCP gate metrics and close MCP session(s)")
     print("  /hooks    Show effective hooks and policy")
+    print("  /handoff  Generate HANDOFF.md for cross-session continuation")
     print("  @file     Mention a file/path in prompt for fast resolution")
     print("  /help     Show local commands")
     print("  /exit     Quit")
@@ -8340,6 +8606,77 @@ def run_start(args: argparse.Namespace) -> int:
         failure_threshold=max(1, args.circuit_failures),
         cooldown_secs=max(1, args.circuit_cooldown_secs),
     )
+    handoff_recent_turns = parse_positive_int_option(
+        args.handoff_recent_turns,
+        HANDOFF_DEFAULT_RECENT_TURNS,
+        1,
+        HANDOFF_MAX_RECENT_TURNS,
+    )
+    handoff_auto_on_exit = bool(args.handoff_auto_on_exit)
+    handoff_path = paths.project_root / HANDOFF_FILENAME
+    compaction_observed = False
+    failover_observed = False
+    failover_errors_seen: list[str] = []
+
+    def record_failover_errors(errors: list[str]) -> None:
+        nonlocal failover_observed
+        if not errors:
+            return
+        failover_observed = True
+        for item in errors:
+            if not isinstance(item, str):
+                continue
+            cleaned = sanitize_handoff_text(item.strip())
+            if not cleaned:
+                continue
+            if cleaned not in failover_errors_seen:
+                failover_errors_seen.append(cleaned)
+            if len(failover_errors_seen) >= 16:
+                break
+
+    def render_and_write_handoff(
+        *,
+        reason: str,
+        compact_memory: dict[str, Any] | None = None,
+        to_stderr: bool = False,
+    ) -> bool:
+        if compact_memory is None:
+            _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
+        content = build_handoff_markdown(
+            session_key=session_key,
+            project_name=selection.name,
+            work_dir=selection.work_dir,
+            compact_memory=compact_memory,
+            history_messages=history_messages,
+            recent_turns=handoff_recent_turns,
+            failover_errors=failover_errors_seen,
+            compaction_observed=compaction_observed,
+        )
+        wrote, error = write_handoff_file(path=handoff_path, content=content)
+        output = sys.stderr if to_stderr else sys.stdout
+        if wrote:
+            print(f"[handoff] wrote {handoff_path} (reason={reason})", file=output)
+            return True
+        print(f"[handoff] write failed ({handoff_path}): {error}", file=output)
+        return False
+
+    def maybe_auto_handoff(*, to_stderr: bool = False) -> None:
+        if not handoff_auto_on_exit:
+            return
+        _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
+        todo_open = has_open_todo_items(compact_memory)
+        should_write = should_auto_write_handoff(
+            compacted=compaction_observed,
+            failover=failover_observed,
+            todo_open=todo_open,
+        )
+        if not should_write:
+            return
+        _ = render_and_write_handoff(
+            reason="auto-exit",
+            compact_memory=compact_memory,
+            to_stderr=to_stderr,
+        )
 
     print("Grobot started")
     print(f"  home:      {paths.home}")
@@ -8424,6 +8761,10 @@ def run_start(args: argparse.Namespace) -> int:
     print(
         f"  circuit:   threshold={circuit_policy.failure_threshold}, cooldown={circuit_policy.cooldown_secs}s, "
         f"probe_recovery={'on' if not args.no_probe_recovery else 'off'}"
+    )
+    print(
+        f"  handoff:   auto={'on' if handoff_auto_on_exit else 'off'} "
+        f"recent_turns={handoff_recent_turns} path={handoff_path}"
     )
     if history_messages:
         print(f"  restored:  {len(history_messages) // 2} turns from {restore_source}")
@@ -8512,12 +8853,16 @@ def run_start(args: argparse.Namespace) -> int:
         active_route = used_route
         if errors:
             print(f"[failover] {summarize_errors(errors)}", file=sys.stderr)
+            record_failover_errors(errors)
         history_messages.extend(
             [
                 {"role": "user", "content": args.message},
                 {"role": "assistant", "content": reply},
             ]
         )
+        max_messages = args.history_turns * 2
+        if max_messages > 2 and len(history_messages) > max_messages:
+            compaction_observed = True
         history_messages = trim_history_messages(history_messages, args.history_turns)
         save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
         for warning in save_warnings:
@@ -8532,10 +8877,11 @@ def run_start(args: argparse.Namespace) -> int:
         for warning in memory_warnings:
             print(f"[memory] {warning}", file=sys.stderr)
         print(reply)
+        maybe_auto_handoff(to_stderr=True)
         close_mcp_sessions(local_tool_context)
         return 0
 
-    print("Enter message (`/model`, `/health`, `/mcp`, `/hooks`, `/mcp reset <server|all>`, `/help`, `/exit`):")
+    print("Enter message (`/model`, `/health`, `/mcp`, `/hooks`, `/handoff`, `/mcp reset <server|all>`, `/help`, `/exit`):")
     while True:
         try:
             user_input = input("grobot> ").strip()
@@ -8552,6 +8898,10 @@ def run_start(args: argparse.Namespace) -> int:
             break
         if user_input == "/help":
             print_local_help()
+            continue
+        if user_input == "/handoff":
+            _ = render_and_write_handoff(reason="manual-command")
+            print("")
             continue
         if user_input == "/model":
             print_model_info(active_route.provider, active_route.model, selection.work_dir, session_key)
@@ -8673,12 +9023,16 @@ def run_start(args: argparse.Namespace) -> int:
         active_route = used_route
         if errors:
             print(f"[failover] {summarize_errors(errors)}")
+            record_failover_errors(errors)
         history_messages.extend(
             [
                 {"role": "user", "content": user_input},
                 {"role": "assistant", "content": reply},
             ]
         )
+        max_messages = args.history_turns * 2
+        if max_messages > 2 and len(history_messages) > max_messages:
+            compaction_observed = True
         history_messages = trim_history_messages(history_messages, args.history_turns)
         save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
         for warning in save_warnings:
@@ -8696,6 +9050,7 @@ def run_start(args: argparse.Namespace) -> int:
         print("")
 
     _ = project_toml.get("schema_version")
+    maybe_auto_handoff()
     close_mcp_sessions(local_tool_context)
     return 0
 
@@ -8989,6 +9344,25 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     start.add_argument("--model", help="Override model id (or auto)")
     start.add_argument("--history-turns", type=int, default=12, help="Max retained turns for context replay")
+    start.add_argument(
+        "--handoff-recent-turns",
+        type=int,
+        default=HANDOFF_DEFAULT_RECENT_TURNS,
+        help="Recent turn pairs included in generated HANDOFF.md",
+    )
+    start.add_argument(
+        "--handoff-auto-on-exit",
+        dest="handoff_auto_on_exit",
+        action="store_true",
+        default=True,
+        help="Auto-generate HANDOFF.md on session exit when trigger conditions are met",
+    )
+    start.add_argument(
+        "--no-handoff-auto-on-exit",
+        dest="handoff_auto_on_exit",
+        action="store_false",
+        help="Disable auto handoff generation on session exit",
+    )
     start.add_argument(
         "--session-backend",
         choices=["auto", "redis", "file"],
