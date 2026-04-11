@@ -130,10 +130,11 @@ grobot start \
   - 管理 API 可对会话设置 interrupt 标记，`start` 在下一轮调用前会消费该标记并跳过当次请求。
   - 支持 hooks 事件：`user-prompt-submit`、`before-tool-use`、`after-tool-use`。脚本目录支持全局（`~/.grobot/hooks/<event>/`）和项目层（`<repo>/.grobot/hooks/<event>/`）。
   - hooks 脚本读取 STDIN JSON（事件 payload）；可通过 `.grobot/project.toml` 的 `[hooks]` 配置 `enabled/strict/timeout_secs`。
- - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
-  - 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
-  - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
-  - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
+- 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
+- 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
+- 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
+- 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
+- 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。
 
 ### Wiki v1（Memory + Wiki 双轨）
 
@@ -179,6 +180,74 @@ grobot wiki lint --project <project-name> --work-dir "$(pwd)"
 - `group`: `.grobot/wiki/groups/<subject>/`（群级共享）
 - `org`: `~/.grobot/wiki/org/<tenant>/`（组织级，需显式开启 `allow_org_shared_read`）
 - `shared`: `.grobot/wiki/shared/`（项目共享）
+
+### Memory v1（个人/群组/组织记忆）
+
+默认模式也是 `review_first`：写入先进入提案，审核后再入库，避免错误记忆污染。
+
+```bash
+# 查看 memory v1 运行状态（scope 根目录 + 检索阈值）
+grobot memory status --project <project-name> --work-dir "$(pwd)"
+
+# 创建记忆写入提案（默认不直接入库）
+grobot memory write \
+  --project <project-name> \
+  --work-dir "$(pwd)" \
+  --kind episodic \
+  --scope auto \
+  --tags "payment,rollback" \
+  --text "支付回滚先锁单，再补偿；超时 30s 告警。"
+
+# 查询记忆（按 lexical + importance + confidence + recency 融合排序）
+grobot memory query \
+  --project <project-name> \
+  --work-dir "$(pwd)" \
+  --query "支付回滚告警规则"
+
+# 如需显式检索敏感记忆（默认关闭）
+grobot memory query \
+  --project <project-name> \
+  --work-dir "$(pwd)" \
+  --query "补偿审批手机号" \
+  --include-restricted
+
+# 审核提案
+grobot memory review list --project <project-name> --work-dir "$(pwd)"
+grobot memory review show <proposal_id> --project <project-name> --work-dir "$(pwd)"
+grobot memory review apply <proposal_id> --project <project-name> --work-dir "$(pwd)"
+grobot memory review reject <proposal_id> "不满足事实依据" --project <project-name> --work-dir "$(pwd)"
+
+# 生命周期维护（promote/decay/archive）
+grobot memory lifecycle --project <project-name> --work-dir "$(pwd)" --scope auto
+grobot memory lifecycle --project <project-name> --work-dir "$(pwd)" --dry-run
+```
+
+交互模式也支持：
+- `/memory status`
+- `/memory write ...`
+- `/memory query ...`
+- `/memory review list|show|apply|reject ...`
+- `/memory lifecycle [--scope <auto|user|group|org>] [--dry-run]`
+
+记忆分类（kind）：
+- `episodic`：会话/任务经过
+- `semantic`：稳定事实与结论
+- `preference`：个人或群组偏好
+- `policy`：约束、制度、操作边界
+
+记忆作用域（scope）：
+- `user`: `.grobot/memory/v1/users/<subject>/`
+- `group`: `.grobot/memory/v1/groups/<subject>/`
+- `org`: `~/.grobot/memory/global/v1/org/<tenant>/`（默认关闭，需显式开启）
+
+隐私默认策略：
+- `restricted/secret` 记忆默认不参与普通 `query` 与会话上下文注入
+- 仅在显式开启 `--include-restricted` / `--include-secret` 时返回
+
+生命周期策略（`[memory.v1.lifecycle]`）：
+- `promote`：高置信/高重要性的老 `episodic` 记忆提升为 `semantic`
+- `decay`：长期未更新记忆按衰减因子下调 `importance`
+- `archive`：超长期、低价值或短期事件记忆归档（不再参与默认检索）
 
 ### MCP 配置示例
 
@@ -298,7 +367,7 @@ npm run harness:skill-router:policy:validate
 npm run harness:ci-summary
 ```
 
-### 管理端点（已实现 status/config/reload/interrupt/mcp-reset）
+### 管理端点（已实现 status/config/reload/interrupt/mcp-reset/memory-ops）
 
 管理写接口鉴权来源优先级：
 - `--management-token`（CLI）
@@ -320,7 +389,15 @@ npm run harness:ci-summary
 - `ops_read_only`：`actions=["config_read"]` + `config_profile="operator"`
 - `audit_read`：`actions=["config_read"]` + `config_profile="auditor"`
 - `full_admin`：`actions=["all"]` + `config_profile="admin"`
+- `memory_ops_readonly`：`actions=["memory_read"]`
+- `memory_ops_writer`：`actions=["memory_import","memory_forget","memory_lifecycle"]`
 - 显式字段优先：若同时配置 `actions/config_sections/config_profile/interrupt_session_prefixes`，会覆盖模板默认值。
+
+最小权限模板建议（可直接复用）：
+- 只读运维：`policy_template="memory_ops_readonly"` + `interrupt_session_prefixes=["feishu:grobot:dm:"]`
+- 导入专员：`actions=["memory_import"]` + `interrupt_session_prefixes=[...]`
+- 清理专员：`actions=["memory_forget"]` + `interrupt_session_prefixes=[...]`
+- 生命周期维护专员：`actions=["memory_lifecycle"]` 或 `policy_template="memory_ops_writer"`
 
 可选 ACL（多 token + action 权限 + interrupt 会话前缀）：
 
@@ -351,6 +428,15 @@ token = "ops-config-token"
 policy_template = "audit_read"
 config_sections = ["selection", "session_store"] # 显式 section 会覆盖模板里的 config_profile
 # config_profile = "auditor" # 可选 preset: operator | auditor | admin（与 config_sections 二选一）
+
+[[management.tokens]]
+name = "ops-memory"
+token = "ops-memory-token"
+actions = ["memory_read", "memory_import", "memory_forget", "memory_lifecycle"]
+interrupt_session_prefixes = ["feishu:grobot:dm:"] # 可选：限制可操作 session 前缀
+
+# 兼容旧配置：
+# actions = ["memory_manage"] # 等价授权 memory_read/import/forget/lifecycle
 ```
 
 ```bash
@@ -413,6 +499,56 @@ curl -sS -X POST \
   http://127.0.0.1:18080/api/v1/mcp/servers/ctx-project/reset \
   -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
 
+# 列出会话记忆（默认不含 archived/restricted/secret）
+curl -sS \
+  "http://127.0.0.1:18080/api/v1/sessions/feishu%3Agrobot%3Adm%3Agrobot/memory?limit=20" \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
+
+# 分页读取会话记忆（cursor 为下一页游标）
+curl -sS \
+  "http://127.0.0.1:18080/api/v1/sessions/feishu%3Agrobot%3Adm%3Agrobot/memory?limit=20&cursor=20" \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
+
+# 导出会话记忆（可包含 archived + restricted）
+curl -sS \
+  "http://127.0.0.1:18080/api/v1/sessions/feishu%3Agrobot%3Adm%3Agrobot/memory/export?include_archived=true&include_restricted=true&limit=200" \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" | jq
+
+# 归档（forget）指定 memory id（支持 dry_run）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/sessions/feishu%3Agrobot%3Adm%3Agrobot/memory/forget \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ids":["mm202604010001abcd"],"reason":"privacy_cleanup","dry_run":true}' | jq
+
+# 导入记忆（按 fingerprint upsert）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/sessions/feishu%3Agrobot%3Adm%3Agrobot/memory/import \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"auto","records":[{"text":"退款 SLA 为 24 小时","kind":"semantic","classification":"internal","importance":0.9,"confidence":0.8,"tags":["sla","refund"]}]}' | jq
+
+# 运行记忆生命周期维护（promote/decay/archive，支持 dry_run）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/sessions/feishu%3Agrobot%3Adm%3Agrobot/memory/lifecycle \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"auto","dry_run":true}' | jq
+
+# 批量运行生命周期维护（按 prefix 自动发现会话）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/memory/lifecycle/run \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"auto","dry_run":true,"session_prefix":"feishu:grobot:dm:","limit":50}' | jq
+
+# 批量运行生命周期维护（显式指定会话列表）
+curl -sS -X POST \
+  http://127.0.0.1:18080/api/v1/memory/lifecycle/run \
+  -H "Authorization: Bearer $GROBOT_MGMT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"auto","dry_run":false,"sessions":["feishu:grobot:dm:open_a","feishu:grobot:group:chat_x"]}' | jq
+
 # hooks 体检（输出当前 policy、脚本清单与可执行性检查）
 grobot hooks doctor \
   --project <project-name> \
@@ -428,6 +564,12 @@ grobot hooks doctor \
 说明：
 - `mcp/reset` 仅作用于当前 `grobot serve` 进程内的 MCP 运行态（会话与 gate 指标）；与独立进程启动的 `grobot start` 不共享。
 - `GET /api/v1/status` 与 `GET /api/v1/config` 现在会返回 `hooks_policy` + `hooks_runtime`（含事件脚本计数与路径）。
+- memory 管理端点支持细粒度鉴权：`memory_read`（list/export）、`memory_import`、`memory_forget`、`memory_lifecycle`，并写入 `events.jsonl` 审计事件（`management_memory_*`）。
+- 为兼容旧配置，`memory_manage` 仍保留并等价授权以上细粒度动作。
+- `/memory` 与 `/memory/export` 支持 `cursor` 分页，响应会返回 `next_cursor` 与 `has_more`。
+- `/memory/import` 启用严格 schema 校验（字段类型/枚举/数值范围），任意记录不合法会整体拒绝并返回 `invalid_rows` 明细。
+- `/memory/import` 请求体大小默认上限 `1 MiB`，超限返回 `413 payload_too_large`。
+- `POST /api/v1/memory/lifecycle/run` 支持批量生命周期维护（`sessions[]` 或 `session_prefix/session_prefixes`），并在 `/api/v1/status` 暴露 `memory_management.lifecycle` 指标（最近执行、成功/失败计数、动作汇总、最近报告路径）。
 
 ## 文档导航
 

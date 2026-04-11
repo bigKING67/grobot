@@ -70,6 +70,37 @@ class ManagementPolicyTemplateTests(unittest.TestCase):
         self.assertEqual(credential.actions, grobot_cli.MANAGEMENT_ACTION_ALL)
         self.assertIsNone(credential.config_sections)
 
+    def test_memory_ops_readonly_template_defaults(self) -> None:
+        credential = grobot_cli.build_management_credential(
+            token="memory-readonly-token",
+            source="config_tokens",
+            name="memory-readonly",
+            raw_policy_template="memory_ops_readonly",
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        self.assertEqual(credential.actions, (grobot_cli.MANAGEMENT_ACTION_MEMORY_READ,))
+        self.assertIsNone(credential.config_sections)
+
+    def test_memory_ops_writer_template_defaults(self) -> None:
+        credential = grobot_cli.build_management_credential(
+            token="memory-writer-token",
+            source="config_tokens",
+            name="memory-writer",
+            raw_policy_template="memory_ops_writer",
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        self.assertEqual(
+            credential.actions,
+            (
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_IMPORT,
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_FORGET,
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+            ),
+        )
+        self.assertIsNone(credential.config_sections)
+
     def test_explicit_actions_override_template_defaults(self) -> None:
         credential = grobot_cli.build_management_credential(
             token="reload-only-token",
@@ -92,6 +123,43 @@ class ManagementPolicyTemplateTests(unittest.TestCase):
         self.assertIsNotNone(credential)
         assert credential is not None
         self.assertEqual(credential.actions, (grobot_cli.MANAGEMENT_ACTION_MCP_RESET,))
+
+    def test_explicit_actions_accept_memory_manage(self) -> None:
+        credential = grobot_cli.build_management_credential(
+            token="memory-manage-token",
+            source="config_tokens",
+            name="memory-manage",
+            raw_actions=["memory_manage"],
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        self.assertEqual(credential.actions, (grobot_cli.MANAGEMENT_ACTION_MEMORY_MANAGE,))
+
+    def test_explicit_actions_accept_granular_memory_actions(self) -> None:
+        credential = grobot_cli.build_management_credential(
+            token="memory-granular-token",
+            source="config_tokens",
+            name="memory-granular",
+            raw_actions=["memory_read", "memory_import", "memory_forget", "memory_lifecycle"],
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        self.assertEqual(
+            credential.actions,
+            (
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_READ,
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_IMPORT,
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_FORGET,
+                grobot_cli.MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+            ),
+        )
+
+    def test_memory_manage_alias_allows_granular_actions(self) -> None:
+        actions = (grobot_cli.MANAGEMENT_ACTION_MEMORY_MANAGE,)
+        self.assertTrue(grobot_cli.management_action_allowed(actions, grobot_cli.MANAGEMENT_ACTION_MEMORY_READ))
+        self.assertTrue(grobot_cli.management_action_allowed(actions, grobot_cli.MANAGEMENT_ACTION_MEMORY_IMPORT))
+        self.assertTrue(grobot_cli.management_action_allowed(actions, grobot_cli.MANAGEMENT_ACTION_MEMORY_FORGET))
+        self.assertTrue(grobot_cli.management_action_allowed(actions, grobot_cli.MANAGEMENT_ACTION_MEMORY_LIFECYCLE))
 
     def test_explicit_config_sections_override_template_profile(self) -> None:
         credential = grobot_cli.build_management_credential(

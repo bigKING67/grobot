@@ -247,6 +247,28 @@ class WikiConfig:
 
 
 @dataclass(frozen=True)
+class MemoryV1Config:
+    enabled: bool
+    allow_org_shared_read: bool
+    default_scope: str
+    write_mode: str
+    retrieval_max_items: int
+    retrieval_max_chars: int
+    retrieval_min_score: float
+    recency_half_life_days: int
+    lifecycle_enabled: bool
+    lifecycle_promote_after_days: int
+    lifecycle_promote_min_strength: float
+    lifecycle_decay_after_days: int
+    lifecycle_decay_factor: float
+    lifecycle_decay_min_importance: float
+    lifecycle_decay_interval_days: int
+    lifecycle_archive_after_days: int
+    lifecycle_archive_max_strength: float
+    lifecycle_batch_limit: int
+
+
+@dataclass(frozen=True)
 class WikiSessionContext:
     platform: str
     tenant: str
@@ -337,11 +359,27 @@ MANAGEMENT_ACTION_RELOAD = "reload"
 MANAGEMENT_ACTION_INTERRUPT = "interrupt"
 MANAGEMENT_ACTION_CONFIG_READ = "config_read"
 MANAGEMENT_ACTION_MCP_RESET = "mcp_reset"
+MANAGEMENT_ACTION_MEMORY_READ = "memory_read"
+MANAGEMENT_ACTION_MEMORY_IMPORT = "memory_import"
+MANAGEMENT_ACTION_MEMORY_FORGET = "memory_forget"
+MANAGEMENT_ACTION_MEMORY_LIFECYCLE = "memory_lifecycle"
+MANAGEMENT_ACTION_MEMORY_MANAGE = "memory_manage"
+MANAGEMENT_ACTION_MEMORY_GRANULAR = (
+    MANAGEMENT_ACTION_MEMORY_READ,
+    MANAGEMENT_ACTION_MEMORY_IMPORT,
+    MANAGEMENT_ACTION_MEMORY_FORGET,
+    MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+)
 MANAGEMENT_ACTION_ALL = (
     MANAGEMENT_ACTION_RELOAD,
     MANAGEMENT_ACTION_INTERRUPT,
     MANAGEMENT_ACTION_CONFIG_READ,
     MANAGEMENT_ACTION_MCP_RESET,
+    MANAGEMENT_ACTION_MEMORY_READ,
+    MANAGEMENT_ACTION_MEMORY_IMPORT,
+    MANAGEMENT_ACTION_MEMORY_FORGET,
+    MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+    MANAGEMENT_ACTION_MEMORY_MANAGE,
 )
 
 CONFIG_READ_POLICY_AUTO = "auto"
@@ -392,10 +430,14 @@ CONFIG_PROFILE_SECTION_MAP: dict[str, tuple[str, ...] | None] = {
 POLICY_TEMPLATE_OPS_READ_ONLY = "ops_read_only"
 POLICY_TEMPLATE_AUDIT_READ = "audit_read"
 POLICY_TEMPLATE_FULL_ADMIN = "full_admin"
+POLICY_TEMPLATE_MEMORY_OPS_READONLY = "memory_ops_readonly"
+POLICY_TEMPLATE_MEMORY_OPS_WRITER = "memory_ops_writer"
 POLICY_TEMPLATE_ALL = (
     POLICY_TEMPLATE_OPS_READ_ONLY,
     POLICY_TEMPLATE_AUDIT_READ,
     POLICY_TEMPLATE_FULL_ADMIN,
+    POLICY_TEMPLATE_MEMORY_OPS_READONLY,
+    POLICY_TEMPLATE_MEMORY_OPS_WRITER,
 )
 POLICY_TEMPLATE_DEFAULTS: dict[str, dict[str, Any]] = {
     POLICY_TEMPLATE_OPS_READ_ONLY: {
@@ -409,6 +451,16 @@ POLICY_TEMPLATE_DEFAULTS: dict[str, dict[str, Any]] = {
     POLICY_TEMPLATE_FULL_ADMIN: {
         "actions": ("all",),
         "config_profile": CONFIG_PROFILE_ADMIN,
+    },
+    POLICY_TEMPLATE_MEMORY_OPS_READONLY: {
+        "actions": (MANAGEMENT_ACTION_MEMORY_READ,),
+    },
+    POLICY_TEMPLATE_MEMORY_OPS_WRITER: {
+        "actions": (
+            MANAGEMENT_ACTION_MEMORY_IMPORT,
+            MANAGEMENT_ACTION_MEMORY_FORGET,
+            MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+        ),
     },
 }
 
@@ -669,6 +721,71 @@ SESSION_KEY_INSTANCE_SEPARATOR = "__s_"
 MEMORY_SCOPE_USER_PRIVATE = "user_private"
 MEMORY_SCOPE_GROUP_SHARED = "group_shared"
 MEMORY_SCOPE_ORG_SHARED = "org_shared"
+MEMORY_V1_SCOPE_AUTO = "auto"
+MEMORY_V1_SCOPE_USER = "user"
+MEMORY_V1_SCOPE_GROUP = "group"
+MEMORY_V1_SCOPE_ORG = "org"
+MEMORY_V1_SCOPE_ALL = (
+    MEMORY_V1_SCOPE_AUTO,
+    MEMORY_V1_SCOPE_USER,
+    MEMORY_V1_SCOPE_GROUP,
+    MEMORY_V1_SCOPE_ORG,
+)
+MEMORY_V1_WRITE_MODE_REVIEW_FIRST = "review_first"
+MEMORY_V1_WRITE_MODE_DIRECT = "direct"
+MEMORY_V1_WRITE_MODE_ALL = (
+    MEMORY_V1_WRITE_MODE_REVIEW_FIRST,
+    MEMORY_V1_WRITE_MODE_DIRECT,
+)
+MEMORY_V1_KIND_EPISODIC = "episodic"
+MEMORY_V1_KIND_SEMANTIC = "semantic"
+MEMORY_V1_KIND_PREFERENCE = "preference"
+MEMORY_V1_KIND_POLICY = "policy"
+MEMORY_V1_KIND_ALL = (
+    MEMORY_V1_KIND_EPISODIC,
+    MEMORY_V1_KIND_SEMANTIC,
+    MEMORY_V1_KIND_PREFERENCE,
+    MEMORY_V1_KIND_POLICY,
+)
+MEMORY_V1_CLASSIFICATION_PUBLIC = "public"
+MEMORY_V1_CLASSIFICATION_INTERNAL = "internal"
+MEMORY_V1_CLASSIFICATION_RESTRICTED = "restricted"
+MEMORY_V1_CLASSIFICATION_SECRET = "secret"
+MEMORY_V1_CLASSIFICATION_ALL = (
+    MEMORY_V1_CLASSIFICATION_PUBLIC,
+    MEMORY_V1_CLASSIFICATION_INTERNAL,
+    MEMORY_V1_CLASSIFICATION_RESTRICTED,
+    MEMORY_V1_CLASSIFICATION_SECRET,
+)
+MEMORY_V1_PROPOSAL_STATUS_PENDING = "pending"
+MEMORY_V1_PROPOSAL_STATUS_APPLIED = "applied"
+MEMORY_V1_PROPOSAL_STATUS_REJECTED = "rejected"
+MEMORY_V1_PROPOSAL_TYPE_WRITE = "write"
+MEMORY_V1_STATE_ACTIVE = "active"
+MEMORY_V1_STATE_ARCHIVED = "archived"
+MEMORY_V1_STATE_ALL = (
+    MEMORY_V1_STATE_ACTIVE,
+    MEMORY_V1_STATE_ARCHIVED,
+)
+MEMORY_V1_DEFAULT_RETRIEVAL_MAX_ITEMS = 8
+MEMORY_V1_DEFAULT_RETRIEVAL_MAX_CHARS = 220
+MEMORY_V1_DEFAULT_RETRIEVAL_MIN_SCORE = 2.0
+MEMORY_V1_DEFAULT_RECENCY_HALF_LIFE_DAYS = 30
+MEMORY_V1_DEFAULT_LIFECYCLE_ENABLED = True
+MEMORY_V1_DEFAULT_LIFECYCLE_PROMOTE_AFTER_DAYS = 7
+MEMORY_V1_DEFAULT_LIFECYCLE_PROMOTE_MIN_STRENGTH = 0.82
+MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_AFTER_DAYS = 21
+MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_FACTOR = 0.85
+MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_MIN_IMPORTANCE = 0.25
+MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_INTERVAL_DAYS = 7
+MEMORY_V1_DEFAULT_LIFECYCLE_ARCHIVE_AFTER_DAYS = 90
+MEMORY_V1_DEFAULT_LIFECYCLE_ARCHIVE_MAX_STRENGTH = 0.45
+MEMORY_V1_DEFAULT_LIFECYCLE_BATCH_LIMIT = 500
+MEMORY_V1_LIST_MAX_LIMIT = 50000
+MANAGEMENT_MEMORY_CURSOR_MAX = 200000
+MANAGEMENT_MEMORY_FETCH_MAX = 50000
+MANAGEMENT_MEMORY_IMPORT_MAX_BODY_BYTES = 1024 * 1024
+MANAGEMENT_MEMORY_BATCH_MAX_SESSIONS = 200
 WIKI_SCOPE_AUTO = "auto"
 WIKI_SCOPE_USER = "user"
 WIKI_SCOPE_GROUP = "group"
@@ -792,6 +909,20 @@ timeout_secs = 5
 allow_org_shared_read = false
 
 [memory.wiki]
+allow_org_shared_read = false
+
+[memory.v1]
+enabled = true
+default_scope = "auto"
+write_mode = "review_first"
+
+[memory.v1.retrieval]
+max_items = 8
+max_chars = 220
+min_score = 2.0
+recency_half_life_days = 30
+
+[memory.v1.privacy]
 allow_org_shared_read = false
 
 [wiki]
@@ -2152,6 +2283,59 @@ def save_session_registry(store: SessionStoreConfig, namespace_key: str, payload
     except OSError as exc:
         warnings.append(f"session registry write failed: {exc}")
     return warnings
+
+
+def list_session_keys_from_registry_files(
+    store: SessionStoreConfig,
+    *,
+    session_prefix: str | None = None,
+    limit: int = MANAGEMENT_MEMORY_BATCH_MAX_SESSIONS,
+) -> tuple[list[str], list[str], bool]:
+    warnings: list[str] = []
+    if limit <= 0:
+        return [], warnings, False
+    if not store.root.exists():
+        return [], warnings, False
+
+    normalized_prefix = session_prefix.strip() if isinstance(session_prefix, str) else ""
+    keys: list[str] = []
+    seen: set[str] = set()
+    truncated = False
+    try:
+        registry_files = sorted(store.root.glob("*.sessions.json"), key=lambda item: item.name.lower())
+    except OSError as exc:
+        warnings.append(f"session registry scan failed: {exc}")
+        return [], warnings, False
+
+    for registry_file in registry_files:
+        raw_payload = read_json_file(registry_file)
+        if not isinstance(raw_payload, dict):
+            continue
+        namespace_key = raw_payload.get("namespace_key")
+        if not isinstance(namespace_key, str) or not namespace_key.strip():
+            warnings.append(f"session registry missing namespace_key: {registry_file}")
+            continue
+        normalized = normalize_session_registry_payload(raw_payload, namespace_key.strip())
+        sessions = normalized.get("sessions")
+        if not isinstance(sessions, list):
+            continue
+        for item in sessions:
+            if not isinstance(item, dict):
+                continue
+            session_key = item.get("session_key")
+            if not isinstance(session_key, str) or not session_key.strip():
+                continue
+            cleaned = session_key.strip()
+            if normalized_prefix and not cleaned.startswith(normalized_prefix):
+                continue
+            if cleaned in seen:
+                continue
+            seen.add(cleaned)
+            keys.append(cleaned)
+            if len(keys) >= limit:
+                truncated = True
+                return keys, warnings, truncated
+    return keys, warnings, truncated
 
 
 def find_session_record(payload: dict[str, Any], session_id: str) -> dict[str, Any] | None:
@@ -4711,6 +4895,7 @@ def build_chat_messages(
     retrieval_config: ContextRetrievalConfig | None = None,
     skill_prompt_block: str = "",
     wiki_context_block: str | None = None,
+    memory_context_block: str | None = None,
 ) -> list[dict[str, str]]:
     trimmed_history = trim_history_messages(history_messages, max_history_turns)
     retrieved_context = build_retrieved_context_block(trimmed_history, user_prompt, retrieval_config)
@@ -4721,6 +4906,8 @@ def build_chat_messages(
         effective_system_prompt = f"{effective_system_prompt}\n\n{retrieved_context}"
     if isinstance(wiki_context_block, str) and wiki_context_block.strip():
         effective_system_prompt = f"{effective_system_prompt}\n\n{wiki_context_block.strip()}"
+    if isinstance(memory_context_block, str) and memory_context_block.strip():
+        effective_system_prompt = f"{effective_system_prompt}\n\n{memory_context_block.strip()}"
     return [
         {"role": "system", "content": effective_system_prompt},
         *trimmed_history,
@@ -5616,6 +5803,144 @@ def resolve_wiki_config(project_toml: dict[str, Any]) -> WikiConfig:
         retrieval_max_items=retrieval_max_items,
         lint_stale_days=lint_stale_days,
         lint_max_files=lint_max_files,
+    )
+
+
+def resolve_memory_v1_config(project_toml: dict[str, Any]) -> MemoryV1Config:
+    raw_memory = project_toml.get("memory")
+    memory_cfg = raw_memory if isinstance(raw_memory, dict) else {}
+    raw_v1 = memory_cfg.get("v1")
+    v1_cfg = raw_v1 if isinstance(raw_v1, dict) else {}
+    retrieval_raw = v1_cfg.get("retrieval")
+    retrieval_cfg = retrieval_raw if isinstance(retrieval_raw, dict) else {}
+    review_raw = v1_cfg.get("review")
+    review_cfg = review_raw if isinstance(review_raw, dict) else {}
+    privacy_raw = v1_cfg.get("privacy")
+    privacy_cfg = privacy_raw if isinstance(privacy_raw, dict) else {}
+    lifecycle_raw = v1_cfg.get("lifecycle")
+    lifecycle_cfg = lifecycle_raw if isinstance(lifecycle_raw, dict) else {}
+
+    enabled = parse_bool_option(v1_cfg.get("enabled"), True)
+    default_scope = parse_choice_option(
+        v1_cfg.get("default_scope"),
+        MEMORY_V1_SCOPE_AUTO,
+        MEMORY_V1_SCOPE_ALL,
+    )
+    write_mode = parse_choice_option(
+        review_cfg.get("write_mode", v1_cfg.get("write_mode")),
+        MEMORY_V1_WRITE_MODE_REVIEW_FIRST,
+        MEMORY_V1_WRITE_MODE_ALL,
+    )
+
+    allow_org_shared_read = parse_bool_option(memory_cfg.get("allow_org_shared_read"), False)
+    allow_org_shared_read = parse_bool_option(v1_cfg.get("allow_org_shared_read"), allow_org_shared_read)
+    allow_org_shared_read = parse_bool_option(
+        privacy_cfg.get("allow_org_shared_read"),
+        allow_org_shared_read,
+    )
+
+    retrieval_max_items = parse_positive_int_option(
+        retrieval_cfg.get("max_items"),
+        MEMORY_V1_DEFAULT_RETRIEVAL_MAX_ITEMS,
+        1,
+        32,
+    )
+    retrieval_max_chars = parse_positive_int_option(
+        retrieval_cfg.get("max_chars"),
+        MEMORY_V1_DEFAULT_RETRIEVAL_MAX_CHARS,
+        80,
+        1200,
+    )
+    retrieval_min_score = parse_float_option(
+        retrieval_cfg.get("min_score"),
+        MEMORY_V1_DEFAULT_RETRIEVAL_MIN_SCORE,
+        0.0,
+        20.0,
+    )
+    recency_half_life_days = parse_positive_int_option(
+        retrieval_cfg.get("recency_half_life_days"),
+        MEMORY_V1_DEFAULT_RECENCY_HALF_LIFE_DAYS,
+        1,
+        3650,
+    )
+    lifecycle_enabled = parse_bool_option(
+        lifecycle_cfg.get("enabled"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_ENABLED,
+    )
+    lifecycle_promote_after_days = parse_positive_int_option(
+        lifecycle_cfg.get("promote_after_days"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_PROMOTE_AFTER_DAYS,
+        1,
+        3650,
+    )
+    lifecycle_promote_min_strength = parse_float_option(
+        lifecycle_cfg.get("promote_min_strength"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_PROMOTE_MIN_STRENGTH,
+        0.0,
+        1.0,
+    )
+    lifecycle_decay_after_days = parse_positive_int_option(
+        lifecycle_cfg.get("decay_after_days"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_AFTER_DAYS,
+        1,
+        3650,
+    )
+    lifecycle_decay_factor = parse_float_option(
+        lifecycle_cfg.get("decay_factor"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_FACTOR,
+        0.05,
+        0.99,
+    )
+    lifecycle_decay_min_importance = parse_float_option(
+        lifecycle_cfg.get("decay_min_importance"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_MIN_IMPORTANCE,
+        0.0,
+        1.0,
+    )
+    lifecycle_decay_interval_days = parse_positive_int_option(
+        lifecycle_cfg.get("decay_interval_days"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_DECAY_INTERVAL_DAYS,
+        1,
+        3650,
+    )
+    lifecycle_archive_after_days = parse_positive_int_option(
+        lifecycle_cfg.get("archive_after_days"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_ARCHIVE_AFTER_DAYS,
+        1,
+        3650,
+    )
+    lifecycle_archive_max_strength = parse_float_option(
+        lifecycle_cfg.get("archive_max_strength"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_ARCHIVE_MAX_STRENGTH,
+        0.0,
+        1.0,
+    )
+    lifecycle_batch_limit = parse_positive_int_option(
+        lifecycle_cfg.get("batch_limit"),
+        MEMORY_V1_DEFAULT_LIFECYCLE_BATCH_LIMIT,
+        1,
+        5000,
+    )
+
+    return MemoryV1Config(
+        enabled=enabled,
+        allow_org_shared_read=allow_org_shared_read,
+        default_scope=default_scope,
+        write_mode=write_mode,
+        retrieval_max_items=retrieval_max_items,
+        retrieval_max_chars=retrieval_max_chars,
+        retrieval_min_score=retrieval_min_score,
+        recency_half_life_days=recency_half_life_days,
+        lifecycle_enabled=lifecycle_enabled,
+        lifecycle_promote_after_days=lifecycle_promote_after_days,
+        lifecycle_promote_min_strength=lifecycle_promote_min_strength,
+        lifecycle_decay_after_days=lifecycle_decay_after_days,
+        lifecycle_decay_factor=lifecycle_decay_factor,
+        lifecycle_decay_min_importance=lifecycle_decay_min_importance,
+        lifecycle_decay_interval_days=lifecycle_decay_interval_days,
+        lifecycle_archive_after_days=lifecycle_archive_after_days,
+        lifecycle_archive_max_strength=lifecycle_archive_max_strength,
+        lifecycle_batch_limit=lifecycle_batch_limit,
     )
 
 
@@ -7838,6 +8163,18 @@ def normalize_management_actions(raw_actions: Any) -> tuple[str, ...]:
     return tuple(normalized)
 
 
+def management_action_allowed(actions: tuple[str, ...], required_action: str) -> bool:
+    if required_action in actions:
+        return True
+    if (
+        required_action in MANAGEMENT_ACTION_MEMORY_GRANULAR
+        and MANAGEMENT_ACTION_MEMORY_MANAGE in actions
+    ):
+        # Backward-compatible alias: legacy memory_manage still grants granular memory actions.
+        return True
+    return False
+
+
 def normalize_interrupt_prefixes(raw_prefixes: Any) -> tuple[str, ...]:
     if not isinstance(raw_prefixes, (list, tuple)):
         return ()
@@ -8756,6 +9093,198 @@ def run_interactive_wiki_command(
     return 1, [f"unsupported wiki command: {sub}"]
 
 
+def run_interactive_memory_command(
+    *,
+    user_input: str,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+) -> tuple[int, list[str]]:
+    try:
+        tokens = shlex.split(user_input)
+    except ValueError as exc:
+        return 1, [f"memory parse error: {exc}"]
+    if not tokens or tokens[0] != "/memory":
+        return 1, ["memory command must start with /memory"]
+    if len(tokens) == 1:
+        return memory_v1_status(paths=paths, memory_config=memory_config, session_key=session_key)
+
+    sub = tokens[1].lower()
+    if sub == "status":
+        return memory_v1_status(paths=paths, memory_config=memory_config, session_key=session_key)
+
+    if sub == "write":
+        scope: str | None = None
+        kind = MEMORY_V1_KIND_EPISODIC
+        tags_raw: str | None = None
+        source: str | None = None
+        classification = MEMORY_V1_CLASSIFICATION_INTERNAL
+        apply_direct = False
+        importance = 0.6
+        confidence = 0.6
+        values: list[str] = []
+        idx = 2
+        while idx < len(tokens):
+            token = tokens[idx]
+            if token in {"--scope"} or token.startswith("--scope="):
+                scope, idx = parse_wiki_option_value(tokens, idx, "--scope")
+                continue
+            if token in {"--kind"} or token.startswith("--kind="):
+                kind, idx = parse_wiki_option_value(tokens, idx, "--kind")
+                continue
+            if token in {"--tags"} or token.startswith("--tags="):
+                tags_raw, idx = parse_wiki_option_value(tokens, idx, "--tags")
+                continue
+            if token in {"--source"} or token.startswith("--source="):
+                source, idx = parse_wiki_option_value(tokens, idx, "--source")
+                continue
+            if token in {"--classification"} or token.startswith("--classification="):
+                classification, idx = parse_wiki_option_value(tokens, idx, "--classification")
+                continue
+            if token in {"--importance"} or token.startswith("--importance="):
+                importance_raw, idx = parse_wiki_option_value(tokens, idx, "--importance")
+                try:
+                    importance = float(importance_raw)
+                except ValueError:
+                    return 1, [f"invalid --importance: {importance_raw}"]
+                continue
+            if token in {"--confidence"} or token.startswith("--confidence="):
+                confidence_raw, idx = parse_wiki_option_value(tokens, idx, "--confidence")
+                try:
+                    confidence = float(confidence_raw)
+                except ValueError:
+                    return 1, [f"invalid --confidence: {confidence_raw}"]
+                continue
+            if token == "--apply":
+                apply_direct = True
+                idx += 1
+                continue
+            values.append(token)
+            idx += 1
+        if not values:
+            return 1, [
+                "Usage: /memory write [--scope <auto|user|group|org>] [--kind <episodic|semantic|preference|policy>] "
+                "[--tags <a,b>] [--importance <0..1>] [--confidence <0..1>] [--classification <public|internal|restricted|secret>] "
+                "[--source <source>] [--apply] <text>"
+            ]
+        return memory_v1_write(
+            paths=paths,
+            memory_config=memory_config,
+            session_key=session_key,
+            text=" ".join(values).strip(),
+            kind=kind,
+            requested_scope=scope,
+            tags=memory_v1_parse_tags(tags_raw),
+            importance=parse_float_option(importance, 0.6, 0.0, 1.0),
+            confidence=parse_float_option(confidence, 0.6, 0.0, 1.0),
+            classification=classification,
+            source=source,
+            apply_direct=apply_direct,
+        )
+
+    if sub == "query":
+        scope: str | None = None
+        include_restricted = False
+        include_secret = False
+        values: list[str] = []
+        idx = 2
+        while idx < len(tokens):
+            token = tokens[idx]
+            if token in {"--scope"} or token.startswith("--scope="):
+                scope, idx = parse_wiki_option_value(tokens, idx, "--scope")
+                continue
+            if token == "--include-restricted":
+                include_restricted = True
+                idx += 1
+                continue
+            if token == "--include-secret":
+                include_secret = True
+                include_restricted = True
+                idx += 1
+                continue
+            values.append(token)
+            idx += 1
+        if not values:
+            return 1, [
+                "Usage: /memory query [--scope <auto|user|group|org>] [--include-restricted] [--include-secret] <query>"
+            ]
+        code, lines, _ = memory_v1_query(
+            paths=paths,
+            memory_config=memory_config,
+            session_key=session_key,
+            query=" ".join(values).strip(),
+            requested_scope=scope,
+            include_restricted=include_restricted,
+            include_secret=include_secret,
+        )
+        return code, lines
+
+    if sub == "review":
+        if len(tokens) < 3:
+            return 1, ["Usage: /memory review <list|show|apply|reject> ..."]
+        action = tokens[2].lower()
+        if action == "list":
+            return memory_v1_review_list(paths=paths, memory_config=memory_config, session_key=session_key)
+        if action == "show":
+            if len(tokens) < 4:
+                return 1, ["Usage: /memory review show <proposal_id>"]
+            return memory_v1_review_show(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                proposal_id=tokens[3],
+            )
+        if action == "apply":
+            if len(tokens) < 4:
+                return 1, ["Usage: /memory review apply <proposal_id> [note]"]
+            note = " ".join(tokens[4:]).strip() if len(tokens) > 4 else None
+            return memory_v1_review_apply(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                proposal_id=tokens[3],
+                reviewer="interactive",
+                note=note,
+            )
+        if action == "reject":
+            if len(tokens) < 4:
+                return 1, ["Usage: /memory review reject <proposal_id> [reason]"]
+            reason = " ".join(tokens[4:]).strip() if len(tokens) > 4 else None
+            return memory_v1_review_reject(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                proposal_id=tokens[3],
+                reviewer="interactive",
+                reason=reason,
+            )
+        return 1, [f"unsupported memory review action: {action}"]
+
+    if sub == "lifecycle":
+        scope: str | None = None
+        dry_run = False
+        idx = 2
+        while idx < len(tokens):
+            token = tokens[idx]
+            if token in {"--scope"} or token.startswith("--scope="):
+                scope, idx = parse_wiki_option_value(tokens, idx, "--scope")
+                continue
+            if token == "--dry-run":
+                dry_run = True
+                idx += 1
+                continue
+            return 1, ["Usage: /memory lifecycle [--scope <auto|user|group|org>] [--dry-run]"]
+        return memory_v1_lifecycle_run(
+            paths=paths,
+            memory_config=memory_config,
+            session_key=session_key,
+            requested_scope=scope,
+            dry_run=dry_run,
+        )
+
+    return 1, [f"unsupported memory command: {sub}"]
+
+
 def print_local_help() -> None:
     print("Local commands:")
     print("  /model    Show current provider/model/session info")
@@ -8764,6 +9293,7 @@ def print_local_help() -> None:
     print("  /new      Start a fresh session context")
     print("  /switch <id>    Switch active session and restore full context")
     print("  /continue <id>  Bridge from another session by summary only")
+    print("  /memory status|write|query|review|lifecycle ...  Memory v1 workflow (review-first)")
     print("  /wiki status|ingest|query|lint|review ...  Wiki workflow (review-first)")
     print("  /mcp      Show effective MCP servers")
     print("  /mcp reset <server|all>  Reset MCP gate metrics and close MCP session(s)")
@@ -9512,6 +10042,1869 @@ def wiki_review_reject(
     )
     return 0, [f"wiki review rejected: id={proposal_id}", f"reason={reason or '(none)'}"]
 
+
+def memory_v1_scope_label(scope: str) -> str:
+    if scope == MEMORY_V1_SCOPE_ORG:
+        return "org"
+    if scope == MEMORY_V1_SCOPE_GROUP:
+        return "group"
+    return "user"
+
+
+def parse_iso_utc_to_ts(value: Any) -> float | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        normalized = text.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return parsed.timestamp()
+
+
+def memory_v1_scope_root(
+    *,
+    paths: RuntimePaths,
+    session: WikiSessionContext,
+    scope: str,
+) -> Path:
+    tenant_slug = sanitize_session_segment(session.tenant, default="default", max_len=40)
+    subject_slug = sanitize_session_segment(session.subject, default="local", max_len=80)
+    if scope == MEMORY_V1_SCOPE_ORG:
+        return paths.global_memory_dir / "v1" / "org" / tenant_slug
+    if scope == MEMORY_V1_SCOPE_GROUP:
+        return paths.project_memory_dir / "v1" / "groups" / subject_slug
+    return paths.project_memory_dir / "v1" / "users" / subject_slug
+
+
+def resolve_memory_v1_default_scope(session: WikiSessionContext, memory_config: MemoryV1Config) -> str:
+    configured = memory_config.default_scope
+    if configured in {MEMORY_V1_SCOPE_USER, MEMORY_V1_SCOPE_GROUP, MEMORY_V1_SCOPE_ORG}:
+        return configured
+    if session.scope == SESSION_SCOPE_GROUP:
+        return MEMORY_V1_SCOPE_GROUP
+    return MEMORY_V1_SCOPE_USER
+
+
+def resolve_memory_v1_target_scope(
+    requested_scope: str | None,
+    *,
+    session: WikiSessionContext,
+    memory_config: MemoryV1Config,
+) -> str:
+    normalized = parse_choice_option(requested_scope, MEMORY_V1_SCOPE_AUTO, MEMORY_V1_SCOPE_ALL)
+    if normalized == MEMORY_V1_SCOPE_AUTO:
+        normalized = resolve_memory_v1_default_scope(session, memory_config)
+    if normalized == MEMORY_V1_SCOPE_ORG and not memory_config.allow_org_shared_read:
+        raise RuntimeError("org memory access is disabled. Set [memory.v1.privacy].allow_org_shared_read=true.")
+    return normalized
+
+
+def ensure_memory_v1_scope_layout(scope_root: Path) -> None:
+    required = (
+        scope_root,
+        scope_root / "staging",
+        scope_root / "reports",
+    )
+    for path in required:
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def memory_v1_build_scope_root(
+    *,
+    paths: RuntimePaths,
+    session_key: str,
+    memory_config: MemoryV1Config,
+    requested_scope: str | None = None,
+) -> tuple[str, Path]:
+    session = resolve_wiki_session_context(session_key)
+    scope = resolve_memory_v1_target_scope(
+        requested_scope,
+        session=session,
+        memory_config=memory_config,
+    )
+    root = memory_v1_scope_root(paths=paths, session=session, scope=scope)
+    ensure_memory_v1_scope_layout(root)
+    return scope, root
+
+
+def memory_v1_iter_read_roots(
+    *,
+    paths: RuntimePaths,
+    session_key: str,
+    memory_config: MemoryV1Config,
+    requested_scope: str | None = None,
+) -> list[Path]:
+    session = resolve_wiki_session_context(session_key)
+    roots: list[Path] = []
+    scoped: str
+    if (
+        isinstance(requested_scope, str)
+        and requested_scope.strip()
+        and requested_scope.strip().lower() != MEMORY_V1_SCOPE_AUTO
+    ):
+        scoped = resolve_memory_v1_target_scope(
+            requested_scope,
+            session=session,
+            memory_config=memory_config,
+        )
+        roots.append(memory_v1_scope_root(paths=paths, session=session, scope=scoped))
+    else:
+        default_scope = resolve_memory_v1_default_scope(session, memory_config)
+        roots.append(memory_v1_scope_root(paths=paths, session=session, scope=default_scope))
+        if memory_config.allow_org_shared_read:
+            roots.append(memory_v1_scope_root(paths=paths, session=session, scope=MEMORY_V1_SCOPE_ORG))
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        key = str(root.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        ensure_memory_v1_scope_layout(root)
+        deduped.append(root)
+    return deduped
+
+
+def memory_v1_accessible_scope_roots(
+    *,
+    paths: RuntimePaths,
+    session_key: str,
+    memory_config: MemoryV1Config,
+) -> list[Path]:
+    return memory_v1_iter_read_roots(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=None,
+    )
+
+
+def generate_memory_v1_proposal_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    rand = format(int.from_bytes(os.urandom(2), "big"), "04x")
+    return f"mp{ts}{rand}"
+
+
+def memory_v1_proposal_file(scope_root: Path, proposal_id: str) -> Path:
+    return scope_root / "staging" / f"{proposal_id}.json"
+
+
+def memory_v1_items_file(scope_root: Path) -> Path:
+    return scope_root / "items.jsonl"
+
+
+def memory_v1_events_file(scope_root: Path) -> Path:
+    return scope_root / "events.jsonl"
+
+
+def memory_v1_summarize_text(raw_text: str, *, max_len: int = 180) -> str:
+    collapsed = " ".join(raw_text.split()).strip()
+    if not collapsed:
+        return "(empty)"
+    if len(collapsed) <= max_len:
+        return collapsed
+    return collapsed[:max_len].rstrip() + "…"
+
+
+def memory_v1_parse_tags(raw_tags: str | None) -> list[str]:
+    if not isinstance(raw_tags, str):
+        return []
+    deduped: list[str] = []
+    for item in raw_tags.split(","):
+        cleaned = slugify_wiki_token(item, default="", max_len=40)
+        if not cleaned:
+            continue
+        if cleaned not in deduped:
+            deduped.append(cleaned)
+    return deduped
+
+
+def memory_v1_append_event(scope_root: Path, *, event: str, payload: dict[str, Any]) -> None:
+    record = {
+        "timestamp": now_utc_iso(),
+        "event": event,
+        **payload,
+    }
+    append_jsonl_file(memory_v1_events_file(scope_root), record)
+
+
+def memory_v1_collect_staging_files(scope_roots: list[Path]) -> list[Path]:
+    files: list[Path] = []
+    seen: set[str] = set()
+    for root in scope_roots:
+        staging = root / "staging"
+        if not staging.exists() or not staging.is_dir():
+            continue
+        for path in sorted(staging.glob("*.json")):
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(path)
+    return files
+
+
+def memory_v1_read_proposal(path: Path) -> dict[str, Any] | None:
+    payload = read_json_file(path)
+    if not isinstance(payload, dict):
+        return None
+    proposal_id = payload.get("id")
+    status = payload.get("status")
+    proposal_type = payload.get("type")
+    if not isinstance(proposal_id, str) or not proposal_id.strip():
+        return None
+    if not isinstance(status, str) or status not in {
+        MEMORY_V1_PROPOSAL_STATUS_PENDING,
+        MEMORY_V1_PROPOSAL_STATUS_APPLIED,
+        MEMORY_V1_PROPOSAL_STATUS_REJECTED,
+    }:
+        return None
+    if proposal_type != MEMORY_V1_PROPOSAL_TYPE_WRITE:
+        return None
+    return payload
+
+
+def memory_v1_find_proposal(scope_roots: list[Path], proposal_id: str) -> tuple[Path, dict[str, Any]] | None:
+    normalized_id = proposal_id.strip()
+    if not normalized_id:
+        return None
+    for root in scope_roots:
+        candidate = memory_v1_proposal_file(root, normalized_id)
+        proposal = memory_v1_read_proposal(candidate)
+        if proposal is not None:
+            return candidate, proposal
+    return None
+
+
+def memory_v1_record_fingerprint(kind: str, text: str) -> str:
+    normalized_kind = parse_choice_option(kind, MEMORY_V1_KIND_EPISODIC, MEMORY_V1_KIND_ALL)
+    normalized_text = " ".join(text.lower().split())
+    return f"{normalized_kind}:{normalized_text}"
+
+
+def memory_v1_is_classification_visible(
+    classification: str,
+    *,
+    include_restricted: bool,
+    include_secret: bool,
+) -> bool:
+    normalized = parse_choice_option(
+        classification,
+        MEMORY_V1_CLASSIFICATION_INTERNAL,
+        MEMORY_V1_CLASSIFICATION_ALL,
+    )
+    if normalized == MEMORY_V1_CLASSIFICATION_SECRET:
+        return include_secret
+    if normalized == MEMORY_V1_CLASSIFICATION_RESTRICTED:
+        return include_restricted or include_secret
+    return True
+
+
+def memory_v1_load_latest_records(
+    scope_root: Path,
+    *,
+    include_archived: bool = False,
+) -> list[dict[str, Any]]:
+    items_file = memory_v1_items_file(scope_root)
+    if not items_file.exists():
+        return []
+    try:
+        lines = items_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+
+    latest: dict[str, dict[str, Any]] = {}
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        fingerprint = row.get("fingerprint")
+        if not isinstance(fingerprint, str) or not fingerprint:
+            continue
+        record_id = row.get("id")
+        text = row.get("text")
+        kind = row.get("kind")
+        if not isinstance(record_id, str) or not record_id.strip():
+            continue
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if not isinstance(kind, str) or kind not in MEMORY_V1_KIND_ALL:
+            continue
+        state = parse_choice_option(row.get("state"), MEMORY_V1_STATE_ACTIVE, MEMORY_V1_STATE_ALL)
+        row["state"] = state
+        existing = latest.get(fingerprint)
+        if existing is None:
+            latest[fingerprint] = row
+            continue
+        existing_ts = parse_iso_utc_to_ts(existing.get("updated_at") or existing.get("created_at")) or 0.0
+        current_ts = parse_iso_utc_to_ts(row.get("updated_at") or row.get("created_at")) or 0.0
+        if current_ts >= existing_ts:
+            latest[fingerprint] = row
+    rows = list(latest.values())
+    if include_archived:
+        return rows
+    return [
+        row
+        for row in rows
+        if parse_choice_option(row.get("state"), MEMORY_V1_STATE_ACTIVE, MEMORY_V1_STATE_ALL) == MEMORY_V1_STATE_ACTIVE
+    ]
+
+
+def memory_v1_load_active_records(scope_root: Path) -> list[dict[str, Any]]:
+    return memory_v1_load_latest_records(scope_root, include_archived=False)
+
+
+def memory_v1_upsert_record(scope_root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    ensure_memory_v1_scope_layout(scope_root)
+    items_file = memory_v1_items_file(scope_root)
+    existing_records = memory_v1_load_active_records(scope_root)
+    target_fingerprint = str(payload.get("fingerprint") or "")
+    existing = None
+    for row in existing_records:
+        if str(row.get("fingerprint") or "") == target_fingerprint:
+            existing = row
+            break
+
+    now = now_utc_iso()
+    if isinstance(existing, dict):
+        merged_tags: list[str] = []
+        for source in (existing.get("tags"), payload.get("tags")):
+            if not isinstance(source, list):
+                continue
+            for item in source:
+                if not isinstance(item, str):
+                    continue
+                cleaned = item.strip()
+                if cleaned and cleaned not in merged_tags:
+                    merged_tags.append(cleaned)
+        updated = {
+            **existing,
+            **payload,
+            "id": str(existing.get("id")),
+            "created_at": str(existing.get("created_at") or now),
+            "updated_at": now,
+            "revision": int(existing.get("revision") or 1) + 1,
+            "state": MEMORY_V1_STATE_ACTIVE,
+            "archived_at": "",
+            "tags": merged_tags,
+            "importance": max(
+                parse_float_option(existing.get("importance"), 0.5, 0.0, 1.0),
+                parse_float_option(payload.get("importance"), 0.5, 0.0, 1.0),
+            ),
+            "confidence": max(
+                parse_float_option(existing.get("confidence"), 0.5, 0.0, 1.0),
+                parse_float_option(payload.get("confidence"), 0.5, 0.0, 1.0),
+            ),
+        }
+        append_jsonl_file(items_file, updated)
+        return updated
+
+    created = {
+        **payload,
+        "created_at": now,
+        "updated_at": now,
+        "revision": 1,
+        "state": MEMORY_V1_STATE_ACTIVE,
+        "archived_at": "",
+    }
+    append_jsonl_file(items_file, created)
+    return created
+
+
+def memory_v1_apply_proposal_payload(
+    *,
+    proposal_path: Path,
+    proposal: dict[str, Any],
+    reviewer: str,
+    note: str | None = None,
+) -> tuple[bool, str]:
+    if proposal.get("status") != MEMORY_V1_PROPOSAL_STATUS_PENDING:
+        return False, "proposal is not pending"
+
+    kind = parse_choice_option(proposal.get("kind"), MEMORY_V1_KIND_EPISODIC, MEMORY_V1_KIND_ALL)
+    text = str(proposal.get("text") or "").strip()
+    if not text:
+        return False, "proposal missing text"
+    scope = parse_choice_option(proposal.get("scope"), MEMORY_V1_SCOPE_USER, MEMORY_V1_SCOPE_ALL)
+    classification = parse_choice_option(
+        proposal.get("classification"),
+        MEMORY_V1_CLASSIFICATION_INTERNAL,
+        MEMORY_V1_CLASSIFICATION_ALL,
+    )
+    record_payload = {
+        "version": 1,
+        "id": str(proposal.get("memory_id") or generate_memory_v1_proposal_id().replace("mp", "mm", 1)),
+        "kind": kind,
+        "scope": scope,
+        "text": text,
+        "summary": memory_v1_summarize_text(text),
+        "tags": proposal.get("tags") if isinstance(proposal.get("tags"), list) else [],
+        "source": str(proposal.get("source") or "memory:manual"),
+        "session_key": str(proposal.get("session_key") or ""),
+        "classification": classification,
+        "importance": parse_float_option(proposal.get("importance"), 0.6, 0.0, 1.0),
+        "confidence": parse_float_option(proposal.get("confidence"), 0.6, 0.0, 1.0),
+        "fingerprint": memory_v1_record_fingerprint(kind, text),
+    }
+
+    scope_root = proposal_path.parent.parent
+    applied = memory_v1_upsert_record(scope_root, record_payload)
+    proposal["status"] = MEMORY_V1_PROPOSAL_STATUS_APPLIED
+    proposal["applied_at"] = now_utc_iso()
+    proposal["reviewed_by"] = reviewer
+    proposal["review_note"] = note or ""
+    proposal["applied_record_id"] = str(applied.get("id") or "")
+    write_json_file(proposal_path, proposal)
+    memory_v1_append_event(
+        scope_root,
+        event="proposal_applied",
+        payload={
+            "proposal_id": str(proposal.get("id") or ""),
+            "record_id": str(applied.get("id") or ""),
+            "kind": kind,
+            "scope": scope,
+            "reviewer": reviewer,
+            "note": note or "",
+        },
+    )
+    return True, str(applied.get("id") or "")
+
+
+def memory_v1_record_strength(record: dict[str, Any]) -> float:
+    importance = parse_float_option(record.get("importance"), 0.6, 0.0, 1.0)
+    confidence = parse_float_option(record.get("confidence"), 0.6, 0.0, 1.0)
+    return (importance + confidence) / 2.0
+
+
+def memory_v1_record_age_days(record: dict[str, Any], *, now_ts: float) -> float:
+    updated_ts = parse_iso_utc_to_ts(record.get("updated_at") or record.get("created_at")) or now_ts
+    return max(0.0, (now_ts - updated_ts) / 86400.0)
+
+
+def memory_v1_lifecycle_meta(record: dict[str, Any]) -> dict[str, Any]:
+    raw = record.get("lifecycle")
+    return raw if isinstance(raw, dict) else {}
+
+
+def memory_v1_append_record_revision(
+    *,
+    scope_root: Path,
+    record: dict[str, Any],
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    items_file = memory_v1_items_file(scope_root)
+    now = now_utc_iso()
+    next_row = {
+        **record,
+        **updates,
+        "id": str(record.get("id") or ""),
+        "fingerprint": str(record.get("fingerprint") or ""),
+        "created_at": str(record.get("created_at") or now),
+        "updated_at": now,
+        "revision": int(record.get("revision") or 1) + 1,
+    }
+    append_jsonl_file(items_file, next_row)
+    return next_row
+
+
+def memory_v1_apply_lifecycle_action(
+    *,
+    scope_root: Path,
+    record: dict[str, Any],
+    action: str,
+    reason: str,
+    update_fields: dict[str, Any],
+) -> dict[str, Any]:
+    lifecycle = dict(memory_v1_lifecycle_meta(record))
+    now = now_utc_iso()
+    lifecycle["last_action"] = action
+    lifecycle["last_action_at"] = now
+    if action == "promote":
+        lifecycle["promoted_at"] = now
+    elif action == "decay":
+        lifecycle["last_decay_at"] = now
+    elif action == "archive":
+        lifecycle["archived_at"] = now
+    updated = memory_v1_append_record_revision(
+        scope_root=scope_root,
+        record=record,
+        updates={
+            **update_fields,
+            "lifecycle": lifecycle,
+        },
+    )
+    memory_v1_append_event(
+        scope_root,
+        event=f"lifecycle_{action}",
+        payload={
+            "memory_id": str(record.get("id") or ""),
+            "fingerprint": str(record.get("fingerprint") or ""),
+            "kind_before": str(record.get("kind") or ""),
+            "kind_after": str(updated.get("kind") or ""),
+            "state_after": str(updated.get("state") or ""),
+            "reason": reason,
+        },
+    )
+    return updated
+
+
+def memory_v1_decide_lifecycle_action(
+    *,
+    record: dict[str, Any],
+    memory_config: MemoryV1Config,
+    now_ts: float,
+) -> tuple[str, dict[str, Any], str] | None:
+    state = parse_choice_option(record.get("state"), MEMORY_V1_STATE_ACTIVE, MEMORY_V1_STATE_ALL)
+    if state != MEMORY_V1_STATE_ACTIVE:
+        return None
+
+    kind = parse_choice_option(record.get("kind"), MEMORY_V1_KIND_EPISODIC, MEMORY_V1_KIND_ALL)
+    age_days = memory_v1_record_age_days(record, now_ts=now_ts)
+    strength = memory_v1_record_strength(record)
+    lifecycle = memory_v1_lifecycle_meta(record)
+
+    if age_days >= float(memory_config.lifecycle_archive_after_days):
+        should_archive = strength <= memory_config.lifecycle_archive_max_strength
+        if kind == MEMORY_V1_KIND_EPISODIC and strength < memory_config.lifecycle_promote_min_strength:
+            should_archive = True
+        if should_archive:
+            return (
+                "archive",
+                {
+                    "state": MEMORY_V1_STATE_ARCHIVED,
+                    "archived_at": now_utc_iso(),
+                },
+                f"age_days={age_days:.1f}, strength={strength:.2f}",
+            )
+
+    if (
+        kind == MEMORY_V1_KIND_EPISODIC
+        and age_days >= float(memory_config.lifecycle_promote_after_days)
+        and strength >= memory_config.lifecycle_promote_min_strength
+    ):
+        promoted_at = lifecycle.get("promoted_at")
+        if not isinstance(promoted_at, str) or not promoted_at.strip():
+            return (
+                "promote",
+                {
+                    "kind": MEMORY_V1_KIND_SEMANTIC,
+                    "state": MEMORY_V1_STATE_ACTIVE,
+                    "archived_at": "",
+                },
+                f"age_days={age_days:.1f}, strength={strength:.2f}",
+            )
+
+    if age_days >= float(memory_config.lifecycle_decay_after_days):
+        last_decay_ts = parse_iso_utc_to_ts(lifecycle.get("last_decay_at"))
+        if last_decay_ts is not None:
+            elapsed_days = max(0.0, (now_ts - last_decay_ts) / 86400.0)
+            if elapsed_days < float(memory_config.lifecycle_decay_interval_days):
+                return None
+        current_importance = parse_float_option(record.get("importance"), 0.6, 0.0, 1.0)
+        next_importance = max(
+            memory_config.lifecycle_decay_min_importance,
+            current_importance * memory_config.lifecycle_decay_factor,
+        )
+        if next_importance + 1e-9 < current_importance:
+            return (
+                "decay",
+                {
+                    "importance": round(next_importance, 4),
+                    "state": MEMORY_V1_STATE_ACTIVE,
+                    "archived_at": "",
+                },
+                f"age_days={age_days:.1f}, importance={current_importance:.3f}->{next_importance:.3f}",
+            )
+    return None
+
+
+def memory_v1_lifecycle_run(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    requested_scope: str | None = None,
+    dry_run: bool = False,
+) -> tuple[int, list[str]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."]
+    if not memory_config.lifecycle_enabled:
+        return 0, ["memory lifecycle is disabled in project config ([memory.v1.lifecycle].enabled=false)."]
+
+    roots = memory_v1_iter_read_roots(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=requested_scope,
+    )
+    now_ts = time.time()
+    scanned = 0
+    changed = 0
+    promote_count = 0
+    decay_count = 0
+    archive_count = 0
+    batch_limit = max(1, memory_config.lifecycle_batch_limit)
+    rows_preview: list[str] = []
+    reports: list[str] = []
+
+    for root in roots:
+        records = memory_v1_load_latest_records(root, include_archived=False)
+        if not records:
+            continue
+        local_actions: list[dict[str, Any]] = []
+        for record in records:
+            scanned += 1
+            if changed >= batch_limit:
+                break
+            decision = memory_v1_decide_lifecycle_action(
+                record=record,
+                memory_config=memory_config,
+                now_ts=now_ts,
+            )
+            if decision is None:
+                continue
+            action, update_fields, reason = decision
+            changed += 1
+            if action == "promote":
+                promote_count += 1
+            elif action == "decay":
+                decay_count += 1
+            elif action == "archive":
+                archive_count += 1
+            memory_id = str(record.get("id") or "")
+            local_actions.append(
+                {
+                    "memory_id": memory_id,
+                    "action": action,
+                    "reason": reason,
+                }
+            )
+            rows_preview.append(f"- {action}: {memory_id} ({reason})")
+            if not dry_run:
+                _ = memory_v1_apply_lifecycle_action(
+                    scope_root=root,
+                    record=record,
+                    action=action,
+                    reason=reason,
+                    update_fields=update_fields,
+                )
+        if local_actions:
+            report = {
+                "timestamp": now_utc_iso(),
+                "scope_root": str(root),
+                "dry_run": dry_run,
+                "scanned": len(records),
+                "changed": len(local_actions),
+                "actions": local_actions,
+            }
+            report_file = root / "reports" / f"lifecycle-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
+            write_json_file(report_file, report)
+            reports.append(str(report_file))
+            memory_v1_append_event(
+                root,
+                event="lifecycle_run",
+                payload={
+                    "dry_run": dry_run,
+                    "scanned": len(records),
+                    "changed": len(local_actions),
+                    "report": str(report_file),
+                },
+            )
+        if changed >= batch_limit:
+            break
+
+    lines = [
+        f"memory lifecycle: dry_run={'on' if dry_run else 'off'}",
+        f"roots={len(roots)} scanned={scanned} changed={changed} batch_limit={batch_limit}",
+        f"actions=promote:{promote_count} decay:{decay_count} archive:{archive_count}",
+    ]
+    if reports:
+        for report_path in reports:
+            lines.append(f"report={report_path}")
+    if rows_preview:
+        preview_limit = 8
+        lines.extend(rows_preview[:preview_limit])
+        if len(rows_preview) > preview_limit:
+            lines.append(f"... (+{len(rows_preview) - preview_limit} more)")
+    return 0, lines
+
+
+def parse_memory_v1_lifecycle_lines(lines: list[str]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "roots": 0,
+        "scanned": 0,
+        "changed": 0,
+        "batch_limit": 0,
+        "actions": {"promote": 0, "decay": 0, "archive": 0},
+        "reports": [],
+    }
+    roots_pattern = re.compile(r"roots=(\d+)\s+scanned=(\d+)\s+changed=(\d+)\s+batch_limit=(\d+)")
+    actions_pattern = re.compile(r"actions=promote:(\d+)\s+decay:(\d+)\s+archive:(\d+)")
+    reports: list[str] = []
+    for line in lines:
+        if not isinstance(line, str):
+            continue
+        text = line.strip()
+        if not text:
+            continue
+        roots_match = roots_pattern.fullmatch(text)
+        if roots_match:
+            summary["roots"] = int(roots_match.group(1))
+            summary["scanned"] = int(roots_match.group(2))
+            summary["changed"] = int(roots_match.group(3))
+            summary["batch_limit"] = int(roots_match.group(4))
+            continue
+        actions_match = actions_pattern.fullmatch(text)
+        if actions_match:
+            summary["actions"] = {
+                "promote": int(actions_match.group(1)),
+                "decay": int(actions_match.group(2)),
+                "archive": int(actions_match.group(3)),
+            }
+            continue
+        if text.startswith("report="):
+            report_path = text.split("=", 1)[1].strip()
+            if report_path:
+                reports.append(report_path)
+    summary["reports"] = reports[:16]
+    return summary
+
+
+def init_memory_management_metrics() -> dict[str, Any]:
+    return {
+        "lifecycle": {
+            "total_runs": 0,
+            "success_runs": 0,
+            "failed_runs": 0,
+            "last_run_at": None,
+            "last_duration_ms": None,
+            "last_scope": None,
+            "last_dry_run": None,
+            "last_requested_sessions": 0,
+            "last_success_sessions": 0,
+            "last_failed_sessions": 0,
+            "last_session_ids": [],
+            "last_scanned": 0,
+            "last_changed": 0,
+            "last_actions": {"promote": 0, "decay": 0, "archive": 0},
+            "last_reports": [],
+            "last_error": None,
+        }
+    }
+
+
+def update_memory_management_lifecycle_metrics(
+    metrics: dict[str, Any],
+    *,
+    scope: str,
+    dry_run: bool,
+    run_started_ts: float,
+    requested_sessions: list[str],
+    success_count: int,
+    failed_count: int,
+    scanned_count: int,
+    changed_count: int,
+    action_counts: dict[str, int],
+    report_paths: list[str],
+    error: str | None = None,
+) -> None:
+    lifecycle = metrics.get("lifecycle")
+    if not isinstance(lifecycle, dict):
+        lifecycle = init_memory_management_metrics()["lifecycle"]
+        metrics["lifecycle"] = lifecycle
+    lifecycle["total_runs"] = int(lifecycle.get("total_runs") or 0) + 1
+    lifecycle["success_runs"] = int(lifecycle.get("success_runs") or 0) + max(0, success_count)
+    lifecycle["failed_runs"] = int(lifecycle.get("failed_runs") or 0) + max(0, failed_count)
+    lifecycle["last_run_at"] = now_utc_iso()
+    lifecycle["last_duration_ms"] = max(0, int((time.time() - run_started_ts) * 1000.0))
+    lifecycle["last_scope"] = scope
+    lifecycle["last_dry_run"] = bool(dry_run)
+    lifecycle["last_requested_sessions"] = len(requested_sessions)
+    lifecycle["last_success_sessions"] = max(0, success_count)
+    lifecycle["last_failed_sessions"] = max(0, failed_count)
+    lifecycle["last_session_ids"] = requested_sessions[:32]
+    lifecycle["last_scanned"] = max(0, scanned_count)
+    lifecycle["last_changed"] = max(0, changed_count)
+    lifecycle["last_actions"] = {
+        "promote": max(0, int(action_counts.get("promote", 0))),
+        "decay": max(0, int(action_counts.get("decay", 0))),
+        "archive": max(0, int(action_counts.get("archive", 0))),
+    }
+    lifecycle["last_reports"] = [path for path in report_paths if isinstance(path, str) and path][:16]
+    lifecycle["last_error"] = (error or "").strip() or None
+
+
+def memory_v1_write(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    text: str,
+    kind: str,
+    requested_scope: str | None = None,
+    tags: list[str] | None = None,
+    importance: float = 0.6,
+    confidence: float = 0.6,
+    classification: str = MEMORY_V1_CLASSIFICATION_INTERNAL,
+    source: str | None = None,
+    apply_direct: bool = False,
+) -> tuple[int, list[str]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."]
+    clean_text = text.strip()
+    if not clean_text:
+        return 1, ["memory write failed: text is required."]
+
+    normalized_kind = parse_choice_option(kind, MEMORY_V1_KIND_EPISODIC, MEMORY_V1_KIND_ALL)
+    normalized_classification = parse_choice_option(
+        classification,
+        MEMORY_V1_CLASSIFICATION_INTERNAL,
+        MEMORY_V1_CLASSIFICATION_ALL,
+    )
+    scope, scope_root = memory_v1_build_scope_root(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=requested_scope,
+    )
+    proposal_id = generate_memory_v1_proposal_id()
+    payload = {
+        "version": 1,
+        "id": proposal_id,
+        "type": MEMORY_V1_PROPOSAL_TYPE_WRITE,
+        "status": MEMORY_V1_PROPOSAL_STATUS_PENDING,
+        "created_at": now_utc_iso(),
+        "session_key": session_key,
+        "memory_id": proposal_id.replace("mp", "mm", 1),
+        "kind": normalized_kind,
+        "scope": scope,
+        "text": clean_text,
+        "summary": memory_v1_summarize_text(clean_text),
+        "tags": tags or [],
+        "source": source or "memory:manual",
+        "importance": parse_float_option(importance, 0.6, 0.0, 1.0),
+        "confidence": parse_float_option(confidence, 0.6, 0.0, 1.0),
+        "classification": normalized_classification,
+    }
+    proposal_path = memory_v1_proposal_file(scope_root, proposal_id)
+    write_json_file(proposal_path, payload)
+    memory_v1_append_event(
+        scope_root,
+        event="proposal_created",
+        payload={
+            "proposal_id": proposal_id,
+            "kind": normalized_kind,
+            "scope": scope,
+            "write_mode": memory_config.write_mode,
+            "summary": payload["summary"],
+        },
+    )
+
+    if apply_direct or memory_config.write_mode == MEMORY_V1_WRITE_MODE_DIRECT:
+        ok, detail = memory_v1_apply_proposal_payload(
+            proposal_path=proposal_path,
+            proposal=payload,
+            reviewer="system:auto",
+            note="auto-apply (direct mode)",
+        )
+        if not ok:
+            return 1, [f"memory write failed: {detail}"]
+        return 0, [
+            f"memory write applied: proposal={proposal_id}",
+            f"scope={scope}",
+            f"memory_id={detail}",
+        ]
+    return 0, [
+        f"memory write proposal created: {proposal_id}",
+        f"scope={scope}",
+        f"proposal={proposal_path}",
+    ]
+
+
+def memory_v1_query(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    query: str,
+    requested_scope: str | None = None,
+    include_restricted: bool = False,
+    include_secret: bool = False,
+) -> tuple[int, list[str], list[dict[str, Any]]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."], []
+    query_tokens = normalize_query_tokens(query)
+    if not query_tokens:
+        return 1, ["memory query failed: query is required."], []
+
+    roots = memory_v1_iter_read_roots(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=requested_scope,
+    )
+    now_ts = time.time()
+    scored: list[tuple[float, dict[str, Any], str]] = []
+    for root in roots:
+        records = memory_v1_load_active_records(root)
+        for record in records:
+            text = str(record.get("text") or "").strip()
+            if not text:
+                continue
+            classification = parse_choice_option(
+                record.get("classification"),
+                MEMORY_V1_CLASSIFICATION_INTERNAL,
+                MEMORY_V1_CLASSIFICATION_ALL,
+            )
+            if not memory_v1_is_classification_visible(
+                classification,
+                include_restricted=include_restricted,
+                include_secret=include_secret,
+            ):
+                continue
+            lexical_score = context_overlap_score(query_tokens, text)
+            if lexical_score <= 0:
+                lowered_text = text.lower()
+                partial_hits = sum(1 for token in query_tokens if token in lowered_text)
+                if partial_hits == 0:
+                    continue
+                lexical_score = float(partial_hits) * 0.8
+            importance = parse_float_option(record.get("importance"), 0.6, 0.0, 1.0)
+            confidence = parse_float_option(record.get("confidence"), 0.6, 0.0, 1.0)
+            updated_ts = parse_iso_utc_to_ts(record.get("updated_at") or record.get("created_at")) or now_ts
+            age_days = max(0.0, (now_ts - updated_ts) / 86400.0)
+            recency = math.exp(-age_days / max(1.0, float(memory_config.recency_half_life_days)))
+            total_score = (lexical_score * 2.2) + (importance * 1.0) + (confidence * 0.8) + (recency * 0.6)
+            if total_score < memory_config.retrieval_min_score:
+                continue
+            rel = str(root)
+            try:
+                rel = root.relative_to(paths.project_root).as_posix()
+            except ValueError:
+                pass
+            scored.append((total_score, record, rel))
+
+    if not scored:
+        return 0, ["memory query: no matched memory items."], []
+    scored.sort(key=lambda item: item[0], reverse=True)
+    selected = scored[: memory_config.retrieval_max_items]
+    lines = [f"memory query: top={len(selected)}"]
+    result_rows: list[dict[str, Any]] = []
+    for score, record, rel_root in selected:
+        snippet = memory_v1_summarize_text(
+            str(record.get("text") or ""),
+            max_len=memory_config.retrieval_max_chars,
+        )
+        record_id = str(record.get("id") or "")
+        kind = str(record.get("kind") or MEMORY_V1_KIND_EPISODIC)
+        scope = str(record.get("scope") or MEMORY_V1_SCOPE_USER)
+        classification = parse_choice_option(
+            record.get("classification"),
+            MEMORY_V1_CLASSIFICATION_INTERNAL,
+            MEMORY_V1_CLASSIFICATION_ALL,
+        )
+        lines.append(f"- [{score:.2f}] {record_id} [{kind}/{scope}/{classification}] ({rel_root}): {snippet}")
+        result_rows.append(
+            {
+                "score": score,
+                "id": record_id,
+                "kind": kind,
+                "scope": scope,
+                "classification": classification,
+                "text": snippet,
+                "source_root": rel_root,
+            }
+        )
+    return 0, lines, result_rows
+
+
+def build_memory_v1_context_block(
+    user_prompt: str,
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+) -> str | None:
+    code, _, rows = memory_v1_query(
+        paths=paths,
+        memory_config=memory_config,
+        session_key=session_key,
+        query=user_prompt,
+        requested_scope=None,
+        include_restricted=False,
+        include_secret=False,
+    )
+    if code != 0 or not rows:
+        return None
+    lines = [
+        "[Memory Context v1]",
+        "Use only when relevant; explicit latest user instruction has highest priority.",
+    ]
+    for row in rows:
+        lines.append(
+            "- "
+            f"[{row.get('score', 0.0):.2f}] "
+            f"{row.get('id', '')} "
+            f"[{row.get('kind', '')}/{row.get('scope', '')}] "
+            f"{row.get('text', '')}"
+        )
+    return "\n".join(lines)
+
+
+def memory_v1_status(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+) -> tuple[int, list[str]]:
+    roots = memory_v1_iter_read_roots(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=None,
+    )
+    session = resolve_wiki_session_context(session_key)
+    default_scope = resolve_memory_v1_default_scope(session, memory_config)
+    default_root = memory_v1_scope_root(paths=paths, session=session, scope=default_scope)
+    lines = [
+        f"memory_v1 enabled={'on' if memory_config.enabled else 'off'}",
+        f"write_mode={memory_config.write_mode}",
+        f"default_scope={default_scope}",
+        f"default_root={default_root}",
+        f"allow_org_shared_read={'on' if memory_config.allow_org_shared_read else 'off'}",
+        (
+            "retrieval="
+            f"max_items={memory_config.retrieval_max_items}, "
+            f"max_chars={memory_config.retrieval_max_chars}, "
+            f"min_score={memory_config.retrieval_min_score:.2f}, "
+            f"recency_half_life_days={memory_config.recency_half_life_days}"
+        ),
+        (
+            "lifecycle="
+            f"enabled={'on' if memory_config.lifecycle_enabled else 'off'}, "
+            f"promote_after_days={memory_config.lifecycle_promote_after_days}, "
+            f"promote_min_strength={memory_config.lifecycle_promote_min_strength:.2f}, "
+            f"decay_after_days={memory_config.lifecycle_decay_after_days}, "
+            f"decay_factor={memory_config.lifecycle_decay_factor:.2f}, "
+            f"decay_min_importance={memory_config.lifecycle_decay_min_importance:.2f}, "
+            f"decay_interval_days={memory_config.lifecycle_decay_interval_days}, "
+            f"archive_after_days={memory_config.lifecycle_archive_after_days}, "
+            f"archive_max_strength={memory_config.lifecycle_archive_max_strength:.2f}, "
+            f"batch_limit={memory_config.lifecycle_batch_limit}"
+        ),
+    ]
+    for root in roots:
+        lines.append(f"read_root={root}")
+    return 0, lines
+
+
+def memory_v1_normalize_optional_kind(raw_kind: str | None) -> str | None:
+    if not isinstance(raw_kind, str) or not raw_kind.strip():
+        return None
+    normalized = raw_kind.strip().lower()
+    if normalized in MEMORY_V1_KIND_ALL:
+        return normalized
+    return None
+
+
+def memory_v1_normalize_optional_classification(raw: str | None) -> str | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    normalized = raw.strip().lower()
+    if normalized in MEMORY_V1_CLASSIFICATION_ALL:
+        return normalized
+    return None
+
+
+def memory_v1_append_management_read_audit(
+    scope_roots: list[Path],
+    *,
+    event: str,
+    actor: str,
+    payload: dict[str, Any],
+) -> None:
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in scope_roots:
+        key = str(root.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(root)
+    for root in deduped:
+        memory_v1_append_event(
+            root,
+            event=event,
+            payload={
+                "actor": actor,
+                **payload,
+            },
+        )
+
+
+def memory_v1_list_records(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    requested_scope: str | None = None,
+    include_archived: bool = False,
+    include_restricted: bool = False,
+    include_secret: bool = False,
+    kind_filter: str | None = None,
+    classification_filter: str | None = None,
+    query: str | None = None,
+    limit: int = 50,
+    actor: str | None = None,
+) -> tuple[int, list[dict[str, Any]]]:
+    if not memory_config.enabled:
+        return 1, []
+    roots = memory_v1_iter_read_roots(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=requested_scope,
+    )
+    normalized_kind_filter = memory_v1_normalize_optional_kind(kind_filter)
+    normalized_classification_filter = memory_v1_normalize_optional_classification(classification_filter)
+    query_tokens = normalize_query_tokens(query or "")
+    max_limit = max(1, min(MEMORY_V1_LIST_MAX_LIMIT, limit))
+    rows: list[dict[str, Any]] = []
+
+    for root in roots:
+        records = memory_v1_load_latest_records(root, include_archived=include_archived)
+        for record in records:
+            text = str(record.get("text") or "").strip()
+            if not text:
+                continue
+            kind = parse_choice_option(record.get("kind"), MEMORY_V1_KIND_EPISODIC, MEMORY_V1_KIND_ALL)
+            if normalized_kind_filter is not None and kind != normalized_kind_filter:
+                continue
+            classification = parse_choice_option(
+                record.get("classification"),
+                MEMORY_V1_CLASSIFICATION_INTERNAL,
+                MEMORY_V1_CLASSIFICATION_ALL,
+            )
+            if normalized_classification_filter is not None and classification != normalized_classification_filter:
+                continue
+            if not memory_v1_is_classification_visible(
+                classification,
+                include_restricted=include_restricted,
+                include_secret=include_secret,
+            ):
+                continue
+            state = parse_choice_option(
+                record.get("state"),
+                MEMORY_V1_STATE_ACTIVE,
+                MEMORY_V1_STATE_ALL,
+            )
+            lexical_score = 0.0
+            if query_tokens:
+                lexical_score = context_overlap_score(query_tokens, text)
+                if lexical_score <= 0:
+                    lowered = text.lower()
+                    partial_hits = sum(1 for token in query_tokens if token in lowered)
+                    if partial_hits == 0:
+                        continue
+                    lexical_score = float(partial_hits) * 0.8
+            rel_root = str(root)
+            try:
+                rel_root = root.relative_to(paths.project_root).as_posix()
+            except ValueError:
+                pass
+            updated_ts = parse_iso_utc_to_ts(record.get("updated_at") or record.get("created_at")) or 0.0
+            rows.append(
+                {
+                    "id": str(record.get("id") or ""),
+                    "kind": kind,
+                    "scope": str(record.get("scope") or MEMORY_V1_SCOPE_USER),
+                    "classification": classification,
+                    "state": state,
+                    "text": text,
+                    "summary": memory_v1_summarize_text(text, max_len=memory_config.retrieval_max_chars),
+                    "tags": record.get("tags") if isinstance(record.get("tags"), list) else [],
+                    "source": str(record.get("source") or ""),
+                    "source_root": rel_root,
+                    "importance": parse_float_option(record.get("importance"), 0.6, 0.0, 1.0),
+                    "confidence": parse_float_option(record.get("confidence"), 0.6, 0.0, 1.0),
+                    "created_at": str(record.get("created_at") or ""),
+                    "updated_at": str(record.get("updated_at") or ""),
+                    "_match_score": lexical_score,
+                    "_updated_ts": updated_ts,
+                }
+            )
+    if query_tokens:
+        rows.sort(key=lambda item: (float(item.get("_match_score", 0.0)), float(item.get("_updated_ts", 0.0))), reverse=True)
+    else:
+        rows.sort(key=lambda item: float(item.get("_updated_ts", 0.0)), reverse=True)
+    selected = rows[:max_limit]
+    for row in selected:
+        row.pop("_match_score", None)
+        row.pop("_updated_ts", None)
+
+    if isinstance(actor, str) and actor.strip():
+        memory_v1_append_management_read_audit(
+            roots,
+            event="management_memory_list",
+            actor=actor.strip(),
+            payload={
+                "scope": requested_scope or MEMORY_V1_SCOPE_AUTO,
+                "include_archived": include_archived,
+                "include_restricted": include_restricted,
+                "include_secret": include_secret,
+                "query_present": bool(query_tokens),
+                "returned": len(selected),
+            },
+        )
+    return 0, selected
+
+
+def memory_v1_export_records(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    requested_scope: str | None = None,
+    include_archived: bool = True,
+    include_restricted: bool = False,
+    include_secret: bool = False,
+    query: str | None = None,
+    limit: int = 2000,
+    actor: str | None = None,
+) -> tuple[int, list[dict[str, Any]]]:
+    return memory_v1_list_records(
+        paths=paths,
+        memory_config=memory_config,
+        session_key=session_key,
+        requested_scope=requested_scope,
+        include_archived=include_archived,
+        include_restricted=include_restricted,
+        include_secret=include_secret,
+        kind_filter=None,
+        classification_filter=None,
+        query=query,
+        limit=limit,
+        actor=actor,
+    )
+
+
+def memory_v1_forget_records(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    record_ids: list[str],
+    requested_scope: str | None = None,
+    reason: str | None = None,
+    actor: str = "system",
+    dry_run: bool = False,
+) -> tuple[int, dict[str, Any]]:
+    if not memory_config.enabled:
+        return 1, {"error": "memory v1 is disabled"}
+    normalized_ids: list[str] = []
+    for raw in record_ids:
+        if not isinstance(raw, str):
+            continue
+        cleaned = raw.strip()
+        if cleaned and cleaned not in normalized_ids:
+            normalized_ids.append(cleaned)
+    if not normalized_ids:
+        return 1, {"error": "record_ids is required"}
+
+    batch_limit = max(1, memory_config.lifecycle_batch_limit)
+    truncated = max(0, len(normalized_ids) - batch_limit)
+    target_ids = normalized_ids[:batch_limit]
+    roots = memory_v1_iter_read_roots(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=requested_scope,
+    )
+
+    lookup: dict[str, tuple[Path, dict[str, Any]]] = {}
+    for root in roots:
+        records = memory_v1_load_latest_records(root, include_archived=True)
+        for record in records:
+            record_id = str(record.get("id") or "").strip()
+            if not record_id or record_id in lookup:
+                continue
+            lookup[record_id] = (root, record)
+
+    forgotten: list[str] = []
+    already_archived: list[str] = []
+    not_found: list[str] = []
+    for record_id in target_ids:
+        located = lookup.get(record_id)
+        if located is None:
+            not_found.append(record_id)
+            continue
+        root, record = located
+        state = parse_choice_option(record.get("state"), MEMORY_V1_STATE_ACTIVE, MEMORY_V1_STATE_ALL)
+        if state == MEMORY_V1_STATE_ARCHIVED:
+            already_archived.append(record_id)
+            continue
+        forgotten.append(record_id)
+        if dry_run:
+            continue
+        _ = memory_v1_append_record_revision(
+            scope_root=root,
+            record=record,
+            updates={
+                "state": MEMORY_V1_STATE_ARCHIVED,
+                "archived_at": now_utc_iso(),
+                "forgotten_by": actor,
+                "forget_reason": (reason or "").strip(),
+            },
+        )
+        memory_v1_append_event(
+            root,
+            event="management_memory_forget",
+            payload={
+                "memory_id": record_id,
+                "actor": actor,
+                "reason": (reason or "").strip(),
+                "dry_run": False,
+            },
+        )
+    if dry_run:
+        memory_v1_append_management_read_audit(
+            roots,
+            event="management_memory_forget_dry_run",
+            actor=actor,
+            payload={
+                "requested": len(target_ids),
+                "forgettable": len(forgotten),
+                "already_archived": len(already_archived),
+                "not_found": len(not_found),
+            },
+        )
+    return 0, {
+        "requested_count": len(target_ids),
+        "truncated_count": truncated,
+        "forgotten_count": len(forgotten),
+        "already_archived_count": len(already_archived),
+        "not_found_count": len(not_found),
+        "forgotten_ids": forgotten,
+        "already_archived_ids": already_archived,
+        "not_found_ids": not_found,
+        "dry_run": dry_run,
+    }
+
+
+def memory_v1_import_records(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    records: list[Any],
+    requested_scope: str | None = None,
+    actor: str = "system",
+    source: str | None = None,
+    dry_run: bool = False,
+) -> tuple[int, dict[str, Any]]:
+    if not memory_config.enabled:
+        return 1, {"error": "memory v1 is disabled"}
+    if not isinstance(records, list) or not records:
+        return 1, {"error": "records is required"}
+
+    batch_limit = max(1, memory_config.lifecycle_batch_limit)
+    scope, scope_root = memory_v1_build_scope_root(
+        paths=paths,
+        session_key=session_key,
+        memory_config=memory_config,
+        requested_scope=requested_scope,
+    )
+    truncated_count = max(0, len(records) - batch_limit)
+    accepted = records[:batch_limit]
+    imported_ids: list[str] = []
+    archived_on_import_ids: list[str] = []
+    invalid_rows: list[dict[str, Any]] = []
+    normalized_rows: list[dict[str, Any]] = []
+
+    for idx, raw_row in enumerate(accepted):
+        if not isinstance(raw_row, dict):
+            invalid_rows.append(
+                {
+                    "index": idx,
+                    "errors": [
+                        {
+                            "field": "row",
+                            "reason": "must be object",
+                        }
+                    ],
+                }
+            )
+            continue
+        row = raw_row
+        row_errors: list[dict[str, str]] = []
+        raw_text = row.get("text")
+        text = ""
+        if isinstance(raw_text, str):
+            text = raw_text.strip()
+        if not text:
+            row_errors.append({"field": "text", "reason": "must be non-empty string"})
+
+        raw_kind = row.get("kind")
+        kind = MEMORY_V1_KIND_EPISODIC
+        if raw_kind is not None:
+            if not isinstance(raw_kind, str):
+                row_errors.append({"field": "kind", "reason": "must be string"})
+            else:
+                normalized_kind = raw_kind.strip().lower()
+                if not normalized_kind:
+                    row_errors.append({"field": "kind", "reason": "must be non-empty string"})
+                elif normalized_kind not in MEMORY_V1_KIND_ALL:
+                    row_errors.append({"field": "kind", "reason": f"must be one of {','.join(MEMORY_V1_KIND_ALL)}"})
+                else:
+                    kind = normalized_kind
+
+        raw_classification = row.get("classification")
+        classification = MEMORY_V1_CLASSIFICATION_INTERNAL
+        if raw_classification is not None:
+            if not isinstance(raw_classification, str):
+                row_errors.append({"field": "classification", "reason": "must be string"})
+            else:
+                normalized_classification = raw_classification.strip().lower()
+                if not normalized_classification:
+                    row_errors.append({"field": "classification", "reason": "must be non-empty string"})
+                elif normalized_classification not in MEMORY_V1_CLASSIFICATION_ALL:
+                    row_errors.append(
+                        {
+                            "field": "classification",
+                            "reason": f"must be one of {','.join(MEMORY_V1_CLASSIFICATION_ALL)}",
+                        }
+                    )
+                else:
+                    classification = normalized_classification
+
+        raw_state = row.get("state")
+        requested_state = MEMORY_V1_STATE_ACTIVE
+        if raw_state is not None:
+            if not isinstance(raw_state, str):
+                row_errors.append({"field": "state", "reason": "must be string"})
+            else:
+                normalized_state = raw_state.strip().lower()
+                if not normalized_state:
+                    row_errors.append({"field": "state", "reason": "must be non-empty string"})
+                elif normalized_state not in MEMORY_V1_STATE_ALL:
+                    row_errors.append({"field": "state", "reason": f"must be one of {','.join(MEMORY_V1_STATE_ALL)}"})
+                else:
+                    requested_state = normalized_state
+
+        raw_importance = row.get("importance")
+        importance = 0.6
+        if raw_importance is not None:
+            if isinstance(raw_importance, (int, float)):
+                parsed_importance = float(raw_importance)
+                if not math.isfinite(parsed_importance) or parsed_importance < 0.0 or parsed_importance > 1.0:
+                    row_errors.append({"field": "importance", "reason": "must be number in range [0,1]"})
+                else:
+                    importance = parsed_importance
+            else:
+                row_errors.append({"field": "importance", "reason": "must be number in range [0,1]"})
+
+        raw_confidence = row.get("confidence")
+        confidence = 0.6
+        if raw_confidence is not None:
+            if isinstance(raw_confidence, (int, float)):
+                parsed_confidence = float(raw_confidence)
+                if not math.isfinite(parsed_confidence) or parsed_confidence < 0.0 or parsed_confidence > 1.0:
+                    row_errors.append({"field": "confidence", "reason": "must be number in range [0,1]"})
+                else:
+                    confidence = parsed_confidence
+            else:
+                row_errors.append({"field": "confidence", "reason": "must be number in range [0,1]"})
+
+        tags: list[str] = []
+        raw_tags = row.get("tags")
+        if raw_tags is not None:
+            if not isinstance(raw_tags, list):
+                row_errors.append({"field": "tags", "reason": "must be array of strings"})
+            else:
+                for tag_idx, item in enumerate(raw_tags):
+                    if not isinstance(item, str):
+                        row_errors.append({"field": f"tags[{tag_idx}]", "reason": "must be string"})
+                        continue
+                    cleaned = slugify_wiki_token(item, default="", max_len=40)
+                    if cleaned and cleaned not in tags:
+                        tags.append(cleaned)
+
+        raw_id = row.get("id")
+        record_id = ""
+        if raw_id is not None:
+            if not isinstance(raw_id, str):
+                row_errors.append({"field": "id", "reason": "must be string"})
+            else:
+                cleaned_id = raw_id.strip()
+                if not cleaned_id:
+                    row_errors.append({"field": "id", "reason": "must be non-empty string"})
+                else:
+                    record_id = cleaned_id
+
+        raw_source = row.get("source")
+        normalized_source = ""
+        if raw_source is not None:
+            if not isinstance(raw_source, str):
+                row_errors.append({"field": "source", "reason": "must be string"})
+            else:
+                normalized_source = raw_source.strip()
+                if not normalized_source:
+                    row_errors.append({"field": "source", "reason": "must be non-empty string"})
+
+        if row_errors:
+            invalid_rows.append({"index": idx, "errors": row_errors})
+            continue
+
+        normalized_rows.append(
+            {
+                "id": record_id or generate_memory_v1_proposal_id().replace("mp", "mm", 1),
+                "kind": kind,
+                "text": text,
+                "classification": classification,
+                "tags": tags,
+                "source": normalized_source or str(source or f"memory:management_import:{actor}"),
+                "importance": importance,
+                "confidence": confidence,
+                "state": requested_state,
+            }
+        )
+
+    if invalid_rows:
+        return 1, {
+            "error": "invalid_record_schema",
+            "scope": scope,
+            "scope_root": str(scope_root),
+            "dry_run": dry_run,
+            "accepted_count": len(accepted),
+            "truncated_count": truncated_count,
+            "invalid_count": len(invalid_rows),
+            "invalid_rows": invalid_rows[:64],
+        }
+
+    for row in normalized_rows:
+        record_payload = {
+            "version": 1,
+            "id": str(row.get("id") or ""),
+            "kind": str(row.get("kind") or MEMORY_V1_KIND_EPISODIC),
+            "scope": scope,
+            "text": str(row.get("text") or ""),
+            "summary": memory_v1_summarize_text(str(row.get("text") or "")),
+            "tags": row.get("tags") if isinstance(row.get("tags"), list) else [],
+            "source": str(row.get("source") or source or f"memory:management_import:{actor}"),
+            "session_key": session_key,
+            "classification": str(row.get("classification") or MEMORY_V1_CLASSIFICATION_INTERNAL),
+            "importance": parse_float_option(row.get("importance"), 0.6, 0.0, 1.0),
+            "confidence": parse_float_option(row.get("confidence"), 0.6, 0.0, 1.0),
+            "fingerprint": memory_v1_record_fingerprint(
+                str(row.get("kind") or MEMORY_V1_KIND_EPISODIC),
+                str(row.get("text") or ""),
+            ),
+        }
+        requested_state = parse_choice_option(
+            row.get("state"),
+            MEMORY_V1_STATE_ACTIVE,
+            MEMORY_V1_STATE_ALL,
+        )
+        if dry_run:
+            imported_ids.append(str(record_payload["id"]))
+            if requested_state == MEMORY_V1_STATE_ARCHIVED:
+                archived_on_import_ids.append(str(record_payload["id"]))
+            continue
+
+        applied = memory_v1_upsert_record(scope_root, record_payload)
+        applied_id = str(applied.get("id") or "")
+        if applied_id:
+            imported_ids.append(applied_id)
+        if requested_state == MEMORY_V1_STATE_ARCHIVED:
+            _ = memory_v1_append_record_revision(
+                scope_root=scope_root,
+                record=applied,
+                updates={
+                    "state": MEMORY_V1_STATE_ARCHIVED,
+                    "archived_at": now_utc_iso(),
+                    "imported_archived": True,
+                },
+            )
+            if applied_id:
+                archived_on_import_ids.append(applied_id)
+
+    if not dry_run:
+        memory_v1_append_event(
+            scope_root,
+            event="management_memory_import",
+            payload={
+                "actor": actor,
+                "scope": scope,
+                "imported_count": len(imported_ids),
+                "archived_on_import_count": len(archived_on_import_ids),
+                "invalid_count": len(invalid_rows),
+                "truncated_count": truncated_count,
+            },
+        )
+    return 0, {
+        "scope": scope,
+        "scope_root": str(scope_root),
+        "dry_run": dry_run,
+        "accepted_count": len(accepted),
+        "truncated_count": truncated_count,
+        "imported_count": len(imported_ids),
+        "archived_on_import_count": len(archived_on_import_ids),
+        "invalid_count": len(invalid_rows),
+        "imported_ids": imported_ids[:64],
+        "archived_on_import_ids": archived_on_import_ids[:64],
+        "invalid_rows": invalid_rows[:64],
+    }
+
+
+def memory_v1_review_list(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+) -> tuple[int, list[str]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."]
+    roots = memory_v1_accessible_scope_roots(paths=paths, session_key=session_key, memory_config=memory_config)
+    staging_files = memory_v1_collect_staging_files(roots)
+    pending_rows: list[tuple[str, str, str, str]] = []
+    for file_path in staging_files:
+        proposal = memory_v1_read_proposal(file_path)
+        if proposal is None:
+            continue
+        if proposal.get("status") != MEMORY_V1_PROPOSAL_STATUS_PENDING:
+            continue
+        pending_rows.append(
+            (
+                str(proposal.get("id") or ""),
+                str(proposal.get("kind") or ""),
+                str(proposal.get("created_at") or ""),
+                str(file_path),
+            )
+        )
+    if not pending_rows:
+        return 0, ["memory review list: no pending proposals."]
+    pending_rows.sort(key=lambda item: item[2], reverse=True)
+    lines = [f"memory review list: pending={len(pending_rows)}"]
+    for proposal_id, kind, created_at, path in pending_rows:
+        lines.append(f"- {proposal_id} [{kind}] @ {created_at}")
+        lines.append(f"  path={path}")
+    return 0, lines
+
+
+def memory_v1_review_show(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    proposal_id: str,
+) -> tuple[int, list[str]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."]
+    roots = memory_v1_accessible_scope_roots(paths=paths, session_key=session_key, memory_config=memory_config)
+    located = memory_v1_find_proposal(roots, proposal_id)
+    if located is None:
+        return 1, [f'memory review show: proposal "{proposal_id}" not found.']
+    proposal_path, proposal = located
+    lines = [
+        f"id={proposal.get('id')}",
+        f"type={proposal.get('type')}",
+        f"status={proposal.get('status')}",
+        f"kind={proposal.get('kind')}",
+        f"scope={proposal.get('scope')}",
+        f"classification={proposal.get('classification')}",
+        f"created_at={proposal.get('created_at')}",
+        f"proposal_file={proposal_path}",
+        f"summary={proposal.get('summary')}",
+        "text:",
+        str(proposal.get("text") or ""),
+    ]
+    return 0, lines
+
+
+def memory_v1_review_apply(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    proposal_id: str,
+    reviewer: str,
+    note: str | None = None,
+) -> tuple[int, list[str]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."]
+    roots = memory_v1_accessible_scope_roots(paths=paths, session_key=session_key, memory_config=memory_config)
+    located = memory_v1_find_proposal(roots, proposal_id)
+    if located is None:
+        return 1, [f'memory review apply: proposal "{proposal_id}" not found.']
+    proposal_path, proposal = located
+    ok, detail = memory_v1_apply_proposal_payload(
+        proposal_path=proposal_path,
+        proposal=proposal,
+        reviewer=reviewer,
+        note=note,
+    )
+    if not ok:
+        return 1, [f"memory review apply failed: {detail}"]
+    return 0, [f"memory review applied: id={proposal_id}", f"memory_id={detail}"]
+
+
+def memory_v1_review_reject(
+    *,
+    paths: RuntimePaths,
+    memory_config: MemoryV1Config,
+    session_key: str,
+    proposal_id: str,
+    reviewer: str,
+    reason: str | None = None,
+) -> tuple[int, list[str]]:
+    if not memory_config.enabled:
+        return 1, ["memory v1 is disabled in project config ([memory.v1].enabled=false)."]
+    roots = memory_v1_accessible_scope_roots(paths=paths, session_key=session_key, memory_config=memory_config)
+    located = memory_v1_find_proposal(roots, proposal_id)
+    if located is None:
+        return 1, [f'memory review reject: proposal "{proposal_id}" not found.']
+    proposal_path, proposal = located
+    if proposal.get("status") != MEMORY_V1_PROPOSAL_STATUS_PENDING:
+        return 1, [f"memory review reject failed: proposal status={proposal.get('status')}"]
+    proposal["status"] = MEMORY_V1_PROPOSAL_STATUS_REJECTED
+    proposal["rejected_at"] = now_utc_iso()
+    proposal["reviewed_by"] = reviewer
+    proposal["review_note"] = (reason or "").strip()
+    write_json_file(proposal_path, proposal)
+    scope_root = proposal_path.parent.parent
+    memory_v1_append_event(
+        scope_root,
+        event="proposal_rejected",
+        payload={
+            "proposal_id": proposal_id,
+            "reviewer": reviewer,
+            "reason": reason or "",
+        },
+    )
+    return 0, [f"memory review rejected: id={proposal_id}", f"reason={reason or '(none)'}"]
+
+
+def run_memory(args: argparse.Namespace) -> int:
+    paths = resolve_runtime_paths(
+        work_dir_override=args.work_dir,
+        config_override=args.config,
+        home_override=args.home,
+        project_root_override=args.project_root,
+    )
+    ensure_runtime_layout(paths)
+    project_toml = load_toml(paths.project_toml)
+    config_toml = load_toml(paths.config_toml)
+    project_cfg = find_project(config_toml, args.project, config_hint=str(paths.config_toml))
+    platform = first_platform(project_cfg)
+    project_name = str(project_cfg.get("name") or "default")
+    work_dir = resolve_project_work_dir_for_non_llm(
+        project_cfg=project_cfg,
+        work_dir_override=args.work_dir,
+        fallback_root=paths.project_root,
+    )
+    identity = resolve_identity_context(args)
+    session_key = build_session_key(project_name, platform, work_dir, identity=identity)
+    memory_config = resolve_memory_v1_config(project_toml)
+    sub = getattr(args, "memory_command", "")
+
+    try:
+        if sub == "status":
+            code, lines = memory_v1_status(paths=paths, memory_config=memory_config, session_key=session_key)
+        elif sub == "write":
+            code, lines = memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text=str(getattr(args, "text", "") or ""),
+                kind=str(getattr(args, "kind", MEMORY_V1_KIND_EPISODIC)),
+                requested_scope=getattr(args, "scope", None),
+                tags=memory_v1_parse_tags(getattr(args, "tags", None)),
+                importance=parse_float_option(getattr(args, "importance", 0.6), 0.6, 0.0, 1.0),
+                confidence=parse_float_option(getattr(args, "confidence", 0.6), 0.6, 0.0, 1.0),
+                classification=str(getattr(args, "classification", MEMORY_V1_CLASSIFICATION_INTERNAL)),
+                source=getattr(args, "source", None),
+                apply_direct=bool(getattr(args, "apply", False)),
+            )
+        elif sub == "query":
+            code, lines, _ = memory_v1_query(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                query=str(getattr(args, "query", "") or ""),
+                requested_scope=getattr(args, "scope", None),
+                include_restricted=bool(getattr(args, "include_restricted", False)),
+                include_secret=bool(getattr(args, "include_secret", False)),
+            )
+        elif sub == "review":
+            action = getattr(args, "memory_review_command", "")
+            if action == "list":
+                code, lines = memory_v1_review_list(
+                    paths=paths,
+                    memory_config=memory_config,
+                    session_key=session_key,
+                )
+            elif action == "show":
+                code, lines = memory_v1_review_show(
+                    paths=paths,
+                    memory_config=memory_config,
+                    session_key=session_key,
+                    proposal_id=str(getattr(args, "proposal_id", "") or ""),
+                )
+            elif action == "apply":
+                note_raw = getattr(args, "note", None)
+                note = note_raw.strip() if isinstance(note_raw, str) and note_raw.strip() else None
+                code, lines = memory_v1_review_apply(
+                    paths=paths,
+                    memory_config=memory_config,
+                    session_key=session_key,
+                    proposal_id=str(getattr(args, "proposal_id", "") or ""),
+                    reviewer="cli",
+                    note=note,
+                )
+            elif action == "reject":
+                reason_raw = getattr(args, "reason", None)
+                reason = reason_raw.strip() if isinstance(reason_raw, str) and reason_raw.strip() else None
+                code, lines = memory_v1_review_reject(
+                    paths=paths,
+                    memory_config=memory_config,
+                    session_key=session_key,
+                    proposal_id=str(getattr(args, "proposal_id", "") or ""),
+                    reviewer="cli",
+                    reason=reason,
+                )
+            else:
+                print("Usage: grobot memory review <list|show|apply|reject> ...")
+                return 1
+        elif sub == "lifecycle":
+            code, lines = memory_v1_lifecycle_run(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope=getattr(args, "scope", None),
+                dry_run=bool(getattr(args, "dry_run", False)),
+            )
+        else:
+            print("Usage: grobot memory <status|write|query|review|lifecycle> ...")
+            return 1
+    except RuntimeError as exc:
+        print(f"memory error: {exc}")
+        return 1
+
+    for line in lines:
+        print(line)
+    return code
+
 def run_status(args: argparse.Namespace) -> int:
     paths = resolve_runtime_paths(
         work_dir_override=args.work_dir,
@@ -9724,6 +12117,7 @@ def run_serve(args: argparse.Namespace) -> int:
             "mcp_runtime": mcp_runtime,
             "mcp_warnings": mcp_warnings,
             "mcp_local_tool_context": mcp_local_tool_context,
+            "memory_management_metrics": init_memory_management_metrics(),
         }
 
     state = build_runtime_state()
@@ -9763,6 +12157,12 @@ def run_serve(args: argparse.Namespace) -> int:
             "config": "/api/v1/config",
             "reload": "/api/v1/reload",
             "session_interrupt": "/api/v1/sessions/{id}/interrupt",
+            "session_memory_list": "/api/v1/sessions/{id}/memory",
+            "session_memory_export": "/api/v1/sessions/{id}/memory/export",
+            "session_memory_forget": "/api/v1/sessions/{id}/memory/forget",
+            "session_memory_import": "/api/v1/sessions/{id}/memory/import",
+            "session_memory_lifecycle": "/api/v1/sessions/{id}/memory/lifecycle",
+            "memory_lifecycle_run": "/api/v1/memory/lifecycle/run",
             "mcp_reset_all": "/api/v1/mcp/reset",
             "mcp_reset_server": "/api/v1/mcp/servers/{name}/reset",
             "healthz": "/healthz",
@@ -9812,10 +12212,29 @@ def run_serve(args: argparse.Namespace) -> int:
             "protected_endpoints": [
                 "POST /api/v1/reload",
                 "POST /api/v1/sessions/{id}/interrupt",
+                "GET /api/v1/sessions/{id}/memory",
+                "GET /api/v1/sessions/{id}/memory/export",
+                "POST /api/v1/sessions/{id}/memory/forget",
+                "POST /api/v1/sessions/{id}/memory/import",
+                "POST /api/v1/sessions/{id}/memory/lifecycle",
+                "POST /api/v1/memory/lifecycle/run",
                 "POST /api/v1/mcp/reset",
                 "POST /api/v1/mcp/servers/{name}/reset",
             ],
+            "protected_endpoint_actions": {
+                "POST /api/v1/reload": MANAGEMENT_ACTION_RELOAD,
+                "POST /api/v1/sessions/{id}/interrupt": MANAGEMENT_ACTION_INTERRUPT,
+                "GET /api/v1/sessions/{id}/memory": MANAGEMENT_ACTION_MEMORY_READ,
+                "GET /api/v1/sessions/{id}/memory/export": MANAGEMENT_ACTION_MEMORY_READ,
+                "POST /api/v1/sessions/{id}/memory/forget": MANAGEMENT_ACTION_MEMORY_FORGET,
+                "POST /api/v1/sessions/{id}/memory/import": MANAGEMENT_ACTION_MEMORY_IMPORT,
+                "POST /api/v1/sessions/{id}/memory/lifecycle": MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+                "POST /api/v1/memory/lifecycle/run": MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+                "POST /api/v1/mcp/reset": MANAGEMENT_ACTION_MCP_RESET,
+                "POST /api/v1/mcp/servers/{name}/reset": MANAGEMENT_ACTION_MCP_RESET,
+            },
         }
+        payload["memory_management"] = state.get("memory_management_metrics")
         if isinstance(state.get("reload_warning"), str) and state["reload_warning"]:
             payload["reload_warning"] = state["reload_warning"]
         return payload
@@ -10049,7 +12468,7 @@ def run_serve(args: argparse.Namespace) -> int:
                 self._write_json(403, {"error": "management_auth_invalid"})
                 return None
 
-            if action not in credential.actions:
+            if not management_action_allowed(credential.actions, action):
                 self._write_json(
                     403,
                     {
@@ -10060,7 +12479,15 @@ def run_serve(args: argparse.Namespace) -> int:
                 return None
 
             if (
-                action == MANAGEMENT_ACTION_INTERRUPT
+                action
+                in {
+                    MANAGEMENT_ACTION_INTERRUPT,
+                    MANAGEMENT_ACTION_MEMORY_READ,
+                    MANAGEMENT_ACTION_MEMORY_IMPORT,
+                    MANAGEMENT_ACTION_MEMORY_FORGET,
+                    MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+                    MANAGEMENT_ACTION_MEMORY_MANAGE,
+                }
                 and isinstance(session_id, str)
                 and credential.interrupt_session_prefixes
                 and not any(session_id.startswith(prefix) for prefix in credential.interrupt_session_prefixes)
@@ -10070,7 +12497,7 @@ def run_serve(args: argparse.Namespace) -> int:
                     {
                         "error": "management_acl_denied",
                         "detail": (
-                            f'credential "{credential.name}" cannot interrupt session "{session_id}" '
+                            f'credential "{credential.name}" cannot access session "{session_id}" '
                             "by interrupt_session_prefixes"
                         ),
                     },
@@ -10086,17 +12513,23 @@ def run_serve(args: argparse.Namespace) -> int:
             self.end_headers()
             self.wfile.write(body)
 
-        def _read_json(self) -> dict[str, Any]:
+        def _read_json(self, *, max_bytes: int | None = None) -> dict[str, Any]:
             length_text = self.headers.get("Content-Length", "0")
             try:
                 length = int(length_text)
             except ValueError:
                 raise ValueError("Invalid Content-Length header")
+            if length < 0:
+                raise ValueError("Invalid Content-Length header")
+            if isinstance(max_bytes, int) and max_bytes > 0 and length > max_bytes:
+                raise ValueError(f"Request body too large: {length} > {max_bytes} bytes")
             if length <= 0:
                 return {}
             raw = self.rfile.read(length)
             if not raw:
                 return {}
+            if isinstance(max_bytes, int) and max_bytes > 0 and len(raw) > max_bytes:
+                raise ValueError(f"Request body too large: {len(raw)} > {max_bytes} bytes")
             try:
                 parsed = json.loads(raw.decode("utf-8"))
             except json.JSONDecodeError as exc:
@@ -10104,6 +12537,57 @@ def run_serve(args: argparse.Namespace) -> int:
             if not isinstance(parsed, dict):
                 raise ValueError("JSON body must be an object")
             return parsed
+
+        def _query_param_str(self, query: dict[str, list[str]], key: str, default: str = "") -> str:
+            values = query.get(key)
+            if isinstance(values, list) and values:
+                value = values[0]
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return default
+
+        def _query_param_bool(self, query: dict[str, list[str]], key: str, default: bool = False) -> bool:
+            values = query.get(key)
+            if isinstance(values, list) and values:
+                return parse_bool_option(values[0], default)
+            return default
+
+        def _query_param_int(
+            self,
+            query: dict[str, list[str]],
+            key: str,
+            default: int,
+            minimum: int,
+            maximum: int,
+        ) -> int:
+            values = query.get(key)
+            if isinstance(values, list) and values:
+                raw = values[0]
+                try:
+                    parsed = int(raw)
+                except (TypeError, ValueError):
+                    return max(minimum, min(maximum, default))
+                return max(minimum, min(maximum, parsed))
+            return max(minimum, min(maximum, default))
+
+        def _query_param_cursor(
+            self,
+            query: dict[str, list[str]],
+            *,
+            key: str = "cursor",
+            maximum: int = MANAGEMENT_MEMORY_CURSOR_MAX,
+        ) -> tuple[int, str | None]:
+            raw = self._query_param_str(query, key, "")
+            if not raw:
+                return 0, None
+            if not raw.isdigit():
+                return 0, "invalid_cursor"
+            parsed = int(raw)
+            if parsed < 0:
+                return 0, "invalid_cursor"
+            if parsed > max(0, maximum):
+                return 0, "cursor_too_large"
+            return parsed, None
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
@@ -10136,6 +12620,180 @@ def run_serve(args: argparse.Namespace) -> int:
                 payload["request"] = {"path": parsed.path}
                 self._write_json(200, payload)
                 return
+            memory_export_match = re.fullmatch(r"/api/v1/sessions/(.+)/memory/export", parsed.path)
+            if memory_export_match:
+                session_id = unquote(memory_export_match.group(1)).strip()
+                if not session_id:
+                    self._write_json(400, {"error": "invalid_session_id"})
+                    return
+                credential = self._require_management_auth(
+                    MANAGEMENT_ACTION_MEMORY_READ,
+                    session_id=session_id,
+                )
+                if credential is None:
+                    return
+                query = parse_qs(parsed.query)
+                scope = self._query_param_str(query, "scope", MEMORY_V1_SCOPE_AUTO).strip().lower()
+                if scope not in MEMORY_V1_SCOPE_ALL:
+                    self._write_json(400, {"error": "invalid_scope", "detail": scope})
+                    return
+                cursor, cursor_error = self._query_param_cursor(query)
+                if cursor_error is not None:
+                    self._write_json(400, {"error": cursor_error})
+                    return
+                include_archived = self._query_param_bool(query, "include_archived", True)
+                include_restricted = self._query_param_bool(query, "include_restricted", False)
+                include_secret = self._query_param_bool(query, "include_secret", False)
+                if include_secret:
+                    include_restricted = True
+                query_text = self._query_param_str(query, "query", "")
+                limit = self._query_param_int(query, "limit", 2000, 1, 5000)
+                fetch_limit = cursor + limit + 1
+                if fetch_limit > MANAGEMENT_MEMORY_FETCH_MAX:
+                    self._write_json(
+                        400,
+                        {
+                            "error": "cursor_window_too_large",
+                            "detail": f"cursor+limit exceeds max window {MANAGEMENT_MEMORY_FETCH_MAX}",
+                        },
+                    )
+                    return
+                memory_config = resolve_memory_v1_config(state["project_toml"])
+                try:
+                    code, rows = memory_v1_export_records(
+                        paths=state["paths"],
+                        memory_config=memory_config,
+                        session_key=session_id,
+                        requested_scope=scope,
+                        include_archived=include_archived,
+                        include_restricted=include_restricted,
+                        include_secret=include_secret,
+                        query=query_text,
+                        limit=fetch_limit,
+                        actor=f"management:{credential.name}",
+                    )
+                except RuntimeError as exc:
+                    self._write_json(400, {"error": "memory_error", "detail": str(exc)})
+                    return
+                if code != 0:
+                    self._write_json(400, {"error": "memory_export_failed"})
+                    return
+                page_rows = rows[cursor : cursor + limit]
+                has_more = len(rows) > (cursor + limit)
+                next_cursor = str(cursor + limit) if has_more else None
+                self._write_json(
+                    200,
+                    {
+                        "status": "ok",
+                        "timestamp": now_utc_iso(),
+                        "session_id": session_id,
+                        "scope": scope,
+                        "include_archived": include_archived,
+                        "include_restricted": include_restricted,
+                        "include_secret": include_secret,
+                        "query": query_text,
+                        "limit": limit,
+                        "cursor": cursor,
+                        "next_cursor": next_cursor,
+                        "has_more": has_more,
+                        "count": len(page_rows),
+                        "records": page_rows,
+                    },
+                )
+                return
+            memory_list_match = re.fullmatch(r"/api/v1/sessions/(.+)/memory", parsed.path)
+            if memory_list_match:
+                session_id = unquote(memory_list_match.group(1)).strip()
+                if not session_id:
+                    self._write_json(400, {"error": "invalid_session_id"})
+                    return
+                credential = self._require_management_auth(
+                    MANAGEMENT_ACTION_MEMORY_READ,
+                    session_id=session_id,
+                )
+                if credential is None:
+                    return
+                query = parse_qs(parsed.query)
+                scope = self._query_param_str(query, "scope", MEMORY_V1_SCOPE_AUTO).strip().lower()
+                if scope not in MEMORY_V1_SCOPE_ALL:
+                    self._write_json(400, {"error": "invalid_scope", "detail": scope})
+                    return
+                cursor, cursor_error = self._query_param_cursor(query)
+                if cursor_error is not None:
+                    self._write_json(400, {"error": cursor_error})
+                    return
+                include_archived = self._query_param_bool(query, "include_archived", False)
+                include_restricted = self._query_param_bool(query, "include_restricted", False)
+                include_secret = self._query_param_bool(query, "include_secret", False)
+                if include_secret:
+                    include_restricted = True
+                kind_filter = self._query_param_str(query, "kind", "").strip().lower()
+                if kind_filter and kind_filter not in MEMORY_V1_KIND_ALL:
+                    self._write_json(400, {"error": "invalid_kind", "detail": kind_filter})
+                    return
+                classification_filter = self._query_param_str(query, "classification", "").strip().lower()
+                if classification_filter and classification_filter not in MEMORY_V1_CLASSIFICATION_ALL:
+                    self._write_json(400, {"error": "invalid_classification", "detail": classification_filter})
+                    return
+                query_text = self._query_param_str(query, "query", "")
+                limit = self._query_param_int(query, "limit", 50, 1, 1000)
+                fetch_limit = cursor + limit + 1
+                if fetch_limit > MANAGEMENT_MEMORY_FETCH_MAX:
+                    self._write_json(
+                        400,
+                        {
+                            "error": "cursor_window_too_large",
+                            "detail": f"cursor+limit exceeds max window {MANAGEMENT_MEMORY_FETCH_MAX}",
+                        },
+                    )
+                    return
+                memory_config = resolve_memory_v1_config(state["project_toml"])
+                try:
+                    code, rows = memory_v1_list_records(
+                        paths=state["paths"],
+                        memory_config=memory_config,
+                        session_key=session_id,
+                        requested_scope=scope,
+                        include_archived=include_archived,
+                        include_restricted=include_restricted,
+                        include_secret=include_secret,
+                        kind_filter=kind_filter or None,
+                        classification_filter=classification_filter or None,
+                        query=query_text or None,
+                        limit=fetch_limit,
+                        actor=f"management:{credential.name}",
+                    )
+                except RuntimeError as exc:
+                    self._write_json(400, {"error": "memory_error", "detail": str(exc)})
+                    return
+                if code != 0:
+                    self._write_json(400, {"error": "memory_list_failed"})
+                    return
+                page_rows = rows[cursor : cursor + limit]
+                has_more = len(rows) > (cursor + limit)
+                next_cursor = str(cursor + limit) if has_more else None
+                self._write_json(
+                    200,
+                    {
+                        "status": "ok",
+                        "timestamp": now_utc_iso(),
+                        "session_id": session_id,
+                        "scope": scope,
+                        "include_archived": include_archived,
+                        "include_restricted": include_restricted,
+                        "include_secret": include_secret,
+                        "kind_filter": kind_filter or None,
+                        "classification_filter": classification_filter or None,
+                        "query": query_text,
+                        "limit": limit,
+                        "cursor": cursor,
+                        "next_cursor": next_cursor,
+                        "has_more": has_more,
+                        "count": len(page_rows),
+                        "records": page_rows,
+                    },
+                )
+                return
             if parsed.path == "/healthz":
                 self._write_json(200, {"status": "ok", "timestamp": now_utc_iso()})
                 return
@@ -10153,6 +12811,435 @@ def run_serve(args: argparse.Namespace) -> int:
                     self._write_json(500, {"error": "reload_failed", "detail": str(exc)})
                     return
                 self._write_json(200, payload)
+                return
+
+            memory_forget_match = re.fullmatch(r"/api/v1/sessions/(.+)/memory/forget", parsed.path)
+            if memory_forget_match:
+                session_id = unquote(memory_forget_match.group(1)).strip()
+                if not session_id:
+                    self._write_json(400, {"error": "invalid_session_id"})
+                    return
+                credential = self._require_management_auth(
+                    MANAGEMENT_ACTION_MEMORY_FORGET,
+                    session_id=session_id,
+                )
+                if credential is None:
+                    return
+                try:
+                    body = self._read_json()
+                except ValueError as exc:
+                    self._write_json(400, {"error": "invalid_json", "detail": str(exc)})
+                    return
+                ids: list[str] = []
+                single_id = body.get("id")
+                if isinstance(single_id, str) and single_id.strip():
+                    ids.append(single_id.strip())
+                raw_ids = body.get("ids")
+                if isinstance(raw_ids, list):
+                    for item in raw_ids:
+                        if not isinstance(item, str):
+                            continue
+                        cleaned = item.strip()
+                        if cleaned and cleaned not in ids:
+                            ids.append(cleaned)
+                scope = str(body.get("scope") or MEMORY_V1_SCOPE_AUTO).strip().lower()
+                if scope not in MEMORY_V1_SCOPE_ALL:
+                    self._write_json(400, {"error": "invalid_scope", "detail": scope})
+                    return
+                dry_run = parse_bool_option(body.get("dry_run"), False)
+                reason_raw = body.get("reason")
+                reason = reason_raw.strip() if isinstance(reason_raw, str) and reason_raw.strip() else None
+                memory_config = resolve_memory_v1_config(state["project_toml"])
+                try:
+                    code, result = memory_v1_forget_records(
+                        paths=state["paths"],
+                        memory_config=memory_config,
+                        session_key=session_id,
+                        record_ids=ids,
+                        requested_scope=scope,
+                        reason=reason,
+                        actor=f"management:{credential.name}",
+                        dry_run=dry_run,
+                    )
+                except RuntimeError as exc:
+                    self._write_json(400, {"error": "memory_error", "detail": str(exc)})
+                    return
+                if code != 0:
+                    payload = {"error": "memory_forget_failed"}
+                    if isinstance(result.get("error"), str):
+                        payload["detail_error"] = str(result.get("error"))
+                    for key, value in result.items():
+                        if key == "error":
+                            continue
+                        payload[key] = value
+                    self._write_json(400, payload)
+                    return
+                self._write_json(
+                    200,
+                    {
+                        "status": "ok",
+                        "timestamp": now_utc_iso(),
+                        "session_id": session_id,
+                        "scope": scope,
+                        **result,
+                    },
+                )
+                return
+
+            memory_import_match = re.fullmatch(r"/api/v1/sessions/(.+)/memory/import", parsed.path)
+            if memory_import_match:
+                session_id = unquote(memory_import_match.group(1)).strip()
+                if not session_id:
+                    self._write_json(400, {"error": "invalid_session_id"})
+                    return
+                credential = self._require_management_auth(
+                    MANAGEMENT_ACTION_MEMORY_IMPORT,
+                    session_id=session_id,
+                )
+                if credential is None:
+                    return
+                try:
+                    body = self._read_json(max_bytes=MANAGEMENT_MEMORY_IMPORT_MAX_BODY_BYTES)
+                except ValueError as exc:
+                    detail = str(exc)
+                    if detail.startswith("Request body too large:"):
+                        self._write_json(
+                            413,
+                            {
+                                "error": "payload_too_large",
+                                "detail": detail,
+                                "max_bytes": MANAGEMENT_MEMORY_IMPORT_MAX_BODY_BYTES,
+                            },
+                        )
+                        return
+                    self._write_json(400, {"error": "invalid_json", "detail": detail})
+                    return
+                raw_records = body.get("records")
+                records: list[Any] = raw_records if isinstance(raw_records, list) else []
+                scope = str(body.get("scope") or MEMORY_V1_SCOPE_AUTO).strip().lower()
+                if scope not in MEMORY_V1_SCOPE_ALL:
+                    self._write_json(400, {"error": "invalid_scope", "detail": scope})
+                    return
+                dry_run = parse_bool_option(body.get("dry_run"), False)
+                source_raw = body.get("source")
+                source = source_raw.strip() if isinstance(source_raw, str) and source_raw.strip() else None
+                memory_config = resolve_memory_v1_config(state["project_toml"])
+                try:
+                    code, result = memory_v1_import_records(
+                        paths=state["paths"],
+                        memory_config=memory_config,
+                        session_key=session_id,
+                        records=records,
+                        requested_scope=scope,
+                        actor=f"management:{credential.name}",
+                        source=source,
+                        dry_run=dry_run,
+                    )
+                except RuntimeError as exc:
+                    self._write_json(400, {"error": "memory_error", "detail": str(exc)})
+                    return
+                if code != 0:
+                    payload = {"error": "memory_import_failed"}
+                    if isinstance(result.get("error"), str):
+                        payload["detail_error"] = str(result.get("error"))
+                    for key, value in result.items():
+                        if key == "error":
+                            continue
+                        payload[key] = value
+                    self._write_json(400, payload)
+                    return
+                self._write_json(
+                    200,
+                    {
+                        "status": "ok",
+                        "timestamp": now_utc_iso(),
+                        "session_id": session_id,
+                        "scope": scope,
+                        **result,
+                    },
+                )
+                return
+
+            memory_lifecycle_match = re.fullmatch(r"/api/v1/sessions/(.+)/memory/lifecycle", parsed.path)
+            if memory_lifecycle_match:
+                session_id = unquote(memory_lifecycle_match.group(1)).strip()
+                if not session_id:
+                    self._write_json(400, {"error": "invalid_session_id"})
+                    return
+                credential = self._require_management_auth(
+                    MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
+                    session_id=session_id,
+                )
+                if credential is None:
+                    return
+                try:
+                    body = self._read_json()
+                except ValueError as exc:
+                    self._write_json(400, {"error": "invalid_json", "detail": str(exc)})
+                    return
+                scope = str(body.get("scope") or MEMORY_V1_SCOPE_AUTO).strip().lower()
+                if scope not in MEMORY_V1_SCOPE_ALL:
+                    self._write_json(400, {"error": "invalid_scope", "detail": scope})
+                    return
+                dry_run = parse_bool_option(body.get("dry_run"), False)
+                lifecycle_started_ts = time.time()
+                memory_config = resolve_memory_v1_config(state["project_toml"])
+                try:
+                    code, lines = memory_v1_lifecycle_run(
+                        paths=state["paths"],
+                        memory_config=memory_config,
+                        session_key=session_id,
+                        requested_scope=scope,
+                        dry_run=dry_run,
+                    )
+                except RuntimeError as exc:
+                    self._write_json(400, {"error": "memory_error", "detail": str(exc)})
+                    return
+                if code != 0:
+                    self._write_json(
+                        400,
+                        {
+                            "error": "memory_lifecycle_failed",
+                            "lines": lines,
+                        },
+                    )
+                    update_memory_management_lifecycle_metrics(
+                        state["memory_management_metrics"],
+                        scope=scope,
+                        dry_run=dry_run,
+                        run_started_ts=lifecycle_started_ts,
+                        requested_sessions=[session_id],
+                        success_count=0,
+                        failed_count=1,
+                        scanned_count=0,
+                        changed_count=0,
+                        action_counts={"promote": 0, "decay": 0, "archive": 0},
+                        report_paths=[],
+                        error="memory_lifecycle_failed",
+                    )
+                    return
+                lifecycle_summary = parse_memory_v1_lifecycle_lines(lines)
+                lifecycle_actions = lifecycle_summary.get("actions")
+                update_memory_management_lifecycle_metrics(
+                    state["memory_management_metrics"],
+                    scope=scope,
+                    dry_run=dry_run,
+                    run_started_ts=lifecycle_started_ts,
+                    requested_sessions=[session_id],
+                    success_count=1,
+                    failed_count=0,
+                    scanned_count=int(lifecycle_summary.get("scanned") or 0),
+                    changed_count=int(lifecycle_summary.get("changed") or 0),
+                    action_counts=lifecycle_actions if isinstance(lifecycle_actions, dict) else {},
+                    report_paths=lifecycle_summary.get("reports") if isinstance(lifecycle_summary.get("reports"), list) else [],
+                    error=None,
+                )
+                self._write_json(
+                    200,
+                    {
+                        "status": "ok",
+                        "timestamp": now_utc_iso(),
+                        "session_id": session_id,
+                        "scope": scope,
+                        "dry_run": dry_run,
+                        "lines": lines,
+                    },
+                )
+                return
+
+            if parsed.path == "/api/v1/memory/lifecycle/run":
+                credential = self._require_management_auth(MANAGEMENT_ACTION_MEMORY_LIFECYCLE)
+                if credential is None:
+                    return
+                try:
+                    body = self._read_json()
+                except ValueError as exc:
+                    self._write_json(400, {"error": "invalid_json", "detail": str(exc)})
+                    return
+                scope = str(body.get("scope") or MEMORY_V1_SCOPE_AUTO).strip().lower()
+                if scope not in MEMORY_V1_SCOPE_ALL:
+                    self._write_json(400, {"error": "invalid_scope", "detail": scope})
+                    return
+                dry_run = parse_bool_option(body.get("dry_run"), False)
+                raw_limit = body.get("limit")
+                if isinstance(raw_limit, int):
+                    limit = max(1, min(MANAGEMENT_MEMORY_BATCH_MAX_SESSIONS, raw_limit))
+                else:
+                    limit = 20
+
+                requested_sessions: list[str] = []
+                seen_sessions: set[str] = set()
+                raw_sessions = body.get("sessions")
+                if isinstance(raw_sessions, list):
+                    for item in raw_sessions:
+                        if not isinstance(item, str):
+                            continue
+                        cleaned = item.strip()
+                        if not cleaned or cleaned in seen_sessions:
+                            continue
+                        seen_sessions.add(cleaned)
+                        requested_sessions.append(cleaned)
+                        if len(requested_sessions) >= limit:
+                            break
+
+                raw_prefix = body.get("session_prefix")
+                raw_prefixes = body.get("session_prefixes")
+                session_prefixes: list[str] = []
+                if isinstance(raw_prefix, str) and raw_prefix.strip():
+                    session_prefixes.append(raw_prefix.strip())
+                if isinstance(raw_prefixes, list):
+                    for item in raw_prefixes:
+                        if not isinstance(item, str):
+                            continue
+                        cleaned = item.strip()
+                        if cleaned and cleaned not in session_prefixes:
+                            session_prefixes.append(cleaned)
+
+                discovery_warnings: list[str] = []
+                discovery_truncated = False
+                for prefix in session_prefixes:
+                    remaining = limit - len(requested_sessions)
+                    if remaining <= 0:
+                        discovery_truncated = True
+                        break
+                    discovered_keys, discovered_warnings, discovered_limit_hit = list_session_keys_from_registry_files(
+                        state["session_store"],
+                        session_prefix=prefix,
+                        limit=remaining,
+                    )
+                    for warning in discovered_warnings:
+                        if warning not in discovery_warnings:
+                            discovery_warnings.append(warning)
+                    if discovered_limit_hit:
+                        discovery_truncated = True
+                    for session_id in discovered_keys:
+                        if session_id in seen_sessions:
+                            continue
+                        seen_sessions.add(session_id)
+                        requested_sessions.append(session_id)
+                        if len(requested_sessions) >= limit:
+                            discovery_truncated = True
+                            break
+                    if len(requested_sessions) >= limit:
+                        break
+
+                if not requested_sessions:
+                    self._write_json(
+                        400,
+                        {
+                            "error": "no_target_sessions",
+                            "detail": "Provide sessions[] or session_prefix/session_prefixes.",
+                        },
+                    )
+                    return
+
+                denied_sessions = [
+                    session_id
+                    for session_id in requested_sessions
+                    if credential.interrupt_session_prefixes
+                    and not any(session_id.startswith(prefix) for prefix in credential.interrupt_session_prefixes)
+                ]
+                if denied_sessions:
+                    self._write_json(
+                        403,
+                        {
+                            "error": "management_acl_denied",
+                            "detail": (
+                                f'credential "{credential.name}" cannot access one or more sessions '
+                                "by interrupt_session_prefixes"
+                            ),
+                            "denied_sessions": denied_sessions[:16],
+                        },
+                    )
+                    return
+
+                lifecycle_started_ts = time.time()
+                memory_config = resolve_memory_v1_config(state["project_toml"])
+                success_count = 0
+                failed_count = 0
+                total_scanned = 0
+                total_changed = 0
+                total_actions = {"promote": 0, "decay": 0, "archive": 0}
+                report_paths: list[str] = []
+                run_results: list[dict[str, Any]] = []
+
+                for session_id in requested_sessions:
+                    session_started_ts = time.time()
+                    try:
+                        code, lines = memory_v1_lifecycle_run(
+                            paths=state["paths"],
+                            memory_config=memory_config,
+                            session_key=session_id,
+                            requested_scope=scope,
+                            dry_run=dry_run,
+                        )
+                    except RuntimeError as exc:
+                        code = 1
+                        lines = [f"memory lifecycle failed: {exc}"]
+                    lifecycle_summary = parse_memory_v1_lifecycle_lines(lines)
+                    total_scanned += int(lifecycle_summary.get("scanned") or 0)
+                    total_changed += int(lifecycle_summary.get("changed") or 0)
+                    actions_payload = lifecycle_summary.get("actions")
+                    if isinstance(actions_payload, dict):
+                        for action_key in ("promote", "decay", "archive"):
+                            total_actions[action_key] += int(actions_payload.get(action_key, 0) or 0)
+                    reports_payload = lifecycle_summary.get("reports")
+                    if isinstance(reports_payload, list):
+                        for report_path in reports_payload:
+                            if isinstance(report_path, str) and report_path and report_path not in report_paths:
+                                report_paths.append(report_path)
+                    if code == 0:
+                        success_count += 1
+                    else:
+                        failed_count += 1
+                    run_results.append(
+                        {
+                            "session_id": session_id,
+                            "status": "ok" if code == 0 else "error",
+                            "code": code,
+                            "duration_ms": max(0, int((time.time() - session_started_ts) * 1000.0)),
+                            "summary": lifecycle_summary,
+                            "lines": lines[:12],
+                        }
+                    )
+
+                lifecycle_error = None
+                if failed_count > 0:
+                    lifecycle_error = f"{failed_count} session(s) failed"
+                update_memory_management_lifecycle_metrics(
+                    state["memory_management_metrics"],
+                    scope=scope,
+                    dry_run=dry_run,
+                    run_started_ts=lifecycle_started_ts,
+                    requested_sessions=requested_sessions,
+                    success_count=success_count,
+                    failed_count=failed_count,
+                    scanned_count=total_scanned,
+                    changed_count=total_changed,
+                    action_counts=total_actions,
+                    report_paths=report_paths,
+                    error=lifecycle_error,
+                )
+                response_status = "ok" if failed_count == 0 else "partial"
+                self._write_json(
+                    200,
+                    {
+                        "status": response_status,
+                        "timestamp": now_utc_iso(),
+                        "scope": scope,
+                        "dry_run": dry_run,
+                        "requested_count": len(requested_sessions),
+                        "success_count": success_count,
+                        "failed_count": failed_count,
+                        "actions": total_actions,
+                        "scanned": total_scanned,
+                        "changed": total_changed,
+                        "session_prefixes": session_prefixes,
+                        "discovery_truncated": discovery_truncated,
+                        "discovery_warnings": discovery_warnings,
+                        "results": run_results[:64],
+                    },
+                )
                 return
 
             if parsed.path == "/api/v1/mcp/reset":
@@ -10227,6 +13314,12 @@ def run_serve(args: argparse.Namespace) -> int:
     print("  endpoint:  GET /api/v1/config")
     print("  endpoint:  POST /api/v1/reload")
     print("  endpoint:  POST /api/v1/sessions/{id}/interrupt")
+    print("  endpoint:  GET /api/v1/sessions/{id}/memory")
+    print("  endpoint:  GET /api/v1/sessions/{id}/memory/export")
+    print("  endpoint:  POST /api/v1/sessions/{id}/memory/forget")
+    print("  endpoint:  POST /api/v1/sessions/{id}/memory/import")
+    print("  endpoint:  POST /api/v1/sessions/{id}/memory/lifecycle")
+    print("  endpoint:  POST /api/v1/memory/lifecycle/run")
     print("  endpoint:  POST /api/v1/mcp/reset")
     print("  endpoint:  POST /api/v1/mcp/servers/{name}/reset")
     print("  healthz:   GET /healthz")
@@ -10364,6 +13457,7 @@ def run_start(args: argparse.Namespace) -> int:
         session_key,
         args.history_turns,
     )
+    memory_v1_config = resolve_memory_v1_config(project_toml)
     wiki_config = resolve_wiki_config(project_toml)
     allow_org_shared_wiki = wiki_config.allow_org_shared_read
     retrieval_config = resolve_context_retrieval_config(project_toml, selection.provider.api_key)
@@ -10736,6 +13830,12 @@ def run_start(args: argparse.Namespace) -> int:
                 session_key=session_key,
                 wiki_config=wiki_config,
             ),
+            memory_context_block=build_memory_v1_context_block(
+                effective_prompt,
+                paths=paths,
+                session_key=session_key,
+                memory_config=memory_v1_config,
+            ),
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,
@@ -10756,7 +13856,7 @@ def run_start(args: argparse.Namespace) -> int:
 
     print(
         "Enter message (`/model`, `/health`, `/sessions`, `/new`, `/switch <id>`, `/continue <id>`, "
-        "`/wiki ...`, `/mcp`, `/hooks`, `/handoff`, `/mcp reset <server|all>`, `/help`, `/exit`):"
+        "`/memory ...`, `/wiki ...`, `/mcp`, `/hooks`, `/handoff`, `/mcp reset <server|all>`, `/help`, `/exit`):"
     )
     while True:
         try:
@@ -10881,6 +13981,22 @@ def run_start(args: argparse.Namespace) -> int:
                 print("wiki command failed.")
             print("")
             continue
+        if user_input.startswith("/memory"):
+            try:
+                memory_code, memory_lines = run_interactive_memory_command(
+                    user_input=user_input,
+                    paths=paths,
+                    memory_config=memory_v1_config,
+                    session_key=session_key,
+                )
+            except RuntimeError as exc:
+                memory_code, memory_lines = (1, [f"memory error: {exc}"])
+            for line in memory_lines:
+                print(line)
+            if memory_code != 0:
+                print("memory command failed.")
+            print("")
+            continue
         if user_input.startswith("/mcp reset"):
             parts = user_input.split(maxsplit=2)
             if len(parts) < 3 or not parts[2].strip():
@@ -10983,6 +14099,12 @@ def run_start(args: argparse.Namespace) -> int:
                 paths=paths,
                 session_key=session_key,
                 wiki_config=wiki_config,
+            ),
+            memory_context_block=build_memory_v1_context_block(
+                effective_prompt,
+                paths=paths,
+                session_key=session_key,
+                memory_config=memory_v1_config,
             ),
         )
         reply, used_route, errors = call_with_failover(
@@ -11272,32 +14394,169 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hooks.set_defaults(func=run_hooks)
 
-    wiki = sub.add_parser("wiki", help="Wiki operations (status/ingest/query/lint/review)")
+    memory = sub.add_parser("memory", help="Memory v1 operations (status/write/query/review/lifecycle)")
 
-    def add_wiki_common_args(target: argparse.ArgumentParser) -> None:
-        target.add_argument("--project", help="Project name in config.toml")
-        target.add_argument("--work-dir", help="Override target work directory")
-        target.add_argument("--config", help="Path to runtime config.toml")
-        target.add_argument("--home", help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)")
-        target.add_argument("--project-root", help="Project root containing .grobot/project.toml")
+    def add_memory_common_args(target: argparse.ArgumentParser, *, inherit_only: bool = False) -> None:
+        inherit_default = argparse.SUPPRESS if inherit_only else None
+        session_scope_default: str | Any
+        if inherit_only:
+            session_scope_default = argparse.SUPPRESS
+        else:
+            session_scope_default = SESSION_SCOPE_DM
+        target.add_argument("--project", help="Project name in config.toml", default=inherit_default)
+        target.add_argument("--work-dir", help="Override target work directory", default=inherit_default)
+        target.add_argument("--config", help="Path to runtime config.toml", default=inherit_default)
+        target.add_argument(
+            "--home",
+            help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)",
+            default=inherit_default,
+        )
+        target.add_argument(
+            "--project-root",
+            help="Project root containing .grobot/project.toml",
+            default=inherit_default,
+        )
         target.add_argument(
             "--session-scope",
             choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
-            default=SESSION_SCOPE_DM,
+            default=session_scope_default,
+            help="Session scope (dm/group) used in memory scope derivation",
+        )
+        target.add_argument(
+            "--session-subject",
+            help="Session subject (e.g. open_id/chat_id/thread root); default derives from local user",
+            default=inherit_default,
+        )
+
+    add_memory_common_args(memory)
+    memory_sub = memory.add_subparsers(dest="memory_command")
+    memory_status_parser = memory_sub.add_parser("status", help="Show effective memory v1 config and scope roots")
+    add_memory_common_args(memory_status_parser, inherit_only=True)
+
+    memory_write_parser = memory_sub.add_parser("write", help="Create memory write proposal (or apply directly)")
+    add_memory_common_args(memory_write_parser, inherit_only=True)
+    memory_write_parser.add_argument("--text", required=True, help="Memory content text")
+    memory_write_parser.add_argument(
+        "--kind",
+        choices=list(MEMORY_V1_KIND_ALL),
+        default=MEMORY_V1_KIND_EPISODIC,
+        help="Memory kind",
+    )
+    memory_write_parser.add_argument(
+        "--scope",
+        choices=list(MEMORY_V1_SCOPE_ALL),
+        default=MEMORY_V1_SCOPE_AUTO,
+        help="Target memory scope",
+    )
+    memory_write_parser.add_argument("--tags", default="", help="Comma-separated tags")
+    memory_write_parser.add_argument("--source", default="", help="Optional source reference")
+    memory_write_parser.add_argument("--importance", type=float, default=0.6, help="Importance score (0..1)")
+    memory_write_parser.add_argument("--confidence", type=float, default=0.6, help="Confidence score (0..1)")
+    memory_write_parser.add_argument(
+        "--classification",
+        choices=list(MEMORY_V1_CLASSIFICATION_ALL),
+        default=MEMORY_V1_CLASSIFICATION_INTERNAL,
+        help="Memory sensitivity classification",
+    )
+    memory_write_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply immediately even when write_mode=review_first",
+    )
+
+    memory_query_parser = memory_sub.add_parser("query", help="Search memory items by query")
+    add_memory_common_args(memory_query_parser, inherit_only=True)
+    memory_query_parser.add_argument("--query", required=True, help="Query text")
+    memory_query_parser.add_argument(
+        "--scope",
+        choices=list(MEMORY_V1_SCOPE_ALL),
+        default=MEMORY_V1_SCOPE_AUTO,
+        help="Restrict query to a single memory scope",
+    )
+    memory_query_parser.add_argument(
+        "--include-restricted",
+        action="store_true",
+        help="Include restricted memories in query results",
+    )
+    memory_query_parser.add_argument(
+        "--include-secret",
+        action="store_true",
+        help="Include secret memories in query results (implies restricted)",
+    )
+
+    memory_review = memory_sub.add_parser("review", help="Review pending memory proposals")
+    add_memory_common_args(memory_review, inherit_only=True)
+    memory_review_sub = memory_review.add_subparsers(dest="memory_review_command")
+    memory_review_list = memory_review_sub.add_parser("list", help="List pending proposals")
+    add_memory_common_args(memory_review_list, inherit_only=True)
+    memory_review_show = memory_review_sub.add_parser("show", help="Show proposal detail")
+    add_memory_common_args(memory_review_show, inherit_only=True)
+    memory_review_show.add_argument("proposal_id")
+    memory_review_apply = memory_review_sub.add_parser("apply", help="Apply proposal")
+    add_memory_common_args(memory_review_apply, inherit_only=True)
+    memory_review_apply.add_argument("proposal_id")
+    memory_review_apply.add_argument("note", nargs="?", default="")
+    memory_review_reject = memory_review_sub.add_parser("reject", help="Reject proposal")
+    add_memory_common_args(memory_review_reject, inherit_only=True)
+    memory_review_reject.add_argument("proposal_id")
+    memory_review_reject.add_argument("reason", nargs="?", default="")
+
+    memory_lifecycle = memory_sub.add_parser("lifecycle", help="Run memory lifecycle maintenance (promote/decay/archive)")
+    add_memory_common_args(memory_lifecycle, inherit_only=True)
+    memory_lifecycle.add_argument(
+        "--scope",
+        choices=list(MEMORY_V1_SCOPE_ALL),
+        default=MEMORY_V1_SCOPE_AUTO,
+        help="Restrict lifecycle run to a single memory scope",
+    )
+    memory_lifecycle.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview lifecycle actions without writing record revisions",
+    )
+    memory.set_defaults(func=run_memory)
+
+    wiki = sub.add_parser("wiki", help="Wiki operations (status/ingest/query/lint/review)")
+
+    def add_wiki_common_args(target: argparse.ArgumentParser, *, inherit_only: bool = False) -> None:
+        inherit_default = argparse.SUPPRESS if inherit_only else None
+        session_scope_default: str | Any
+        if inherit_only:
+            session_scope_default = argparse.SUPPRESS
+        else:
+            session_scope_default = SESSION_SCOPE_DM
+        target.add_argument("--project", help="Project name in config.toml", default=inherit_default)
+        target.add_argument("--work-dir", help="Override target work directory", default=inherit_default)
+        target.add_argument("--config", help="Path to runtime config.toml", default=inherit_default)
+        target.add_argument(
+            "--home",
+            help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)",
+            default=inherit_default,
+        )
+        target.add_argument(
+            "--project-root",
+            help="Project root containing .grobot/project.toml",
+            default=inherit_default,
+        )
+        target.add_argument(
+            "--session-scope",
+            choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
+            default=session_scope_default,
             help="Session scope (dm/group) used in wiki scope derivation",
         )
         target.add_argument(
             "--session-subject",
             help="Session subject (e.g. open_id/chat_id/thread root); default derives from local user",
+            default=inherit_default,
         )
 
     add_wiki_common_args(wiki)
     wiki_sub = wiki.add_subparsers(dest="wiki_command")
     wiki_status_parser = wiki_sub.add_parser("status", help="Show effective wiki config and scope roots")
-    add_wiki_common_args(wiki_status_parser)
+    add_wiki_common_args(wiki_status_parser, inherit_only=True)
 
     wiki_ingest_parser = wiki_sub.add_parser("ingest", help="Create wiki ingest proposal (or apply directly)")
-    add_wiki_common_args(wiki_ingest_parser)
+    add_wiki_common_args(wiki_ingest_parser, inherit_only=True)
     wiki_ingest_parser.add_argument("--source", required=True, help="Source file path or inline text")
     wiki_ingest_parser.add_argument("--title", help="Optional page title")
     wiki_ingest_parser.add_argument(
@@ -11313,7 +14572,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     wiki_query_parser = wiki_sub.add_parser("query", help="Search wiki snippets by query")
-    add_wiki_common_args(wiki_query_parser)
+    add_wiki_common_args(wiki_query_parser, inherit_only=True)
     wiki_query_parser.add_argument("--query", required=True, help="Query text")
     wiki_query_parser.add_argument(
         "--scope",
@@ -11325,7 +14584,7 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_query_parser.add_argument("--title", help="Optional insight proposal title")
 
     wiki_lint_parser = wiki_sub.add_parser("lint", help="Run wiki lint checks")
-    add_wiki_common_args(wiki_lint_parser)
+    add_wiki_common_args(wiki_lint_parser, inherit_only=True)
     wiki_lint_parser.add_argument(
         "--scope",
         choices=list(WIKI_SCOPE_ALL),
@@ -11334,19 +14593,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     wiki_review = wiki_sub.add_parser("review", help="Review pending wiki proposals")
-    add_wiki_common_args(wiki_review)
+    add_wiki_common_args(wiki_review, inherit_only=True)
     wiki_review_sub = wiki_review.add_subparsers(dest="wiki_review_command")
     wiki_review_list = wiki_review_sub.add_parser("list", help="List pending proposals")
-    add_wiki_common_args(wiki_review_list)
+    add_wiki_common_args(wiki_review_list, inherit_only=True)
     wiki_review_show = wiki_review_sub.add_parser("show", help="Show proposal detail")
-    add_wiki_common_args(wiki_review_show)
+    add_wiki_common_args(wiki_review_show, inherit_only=True)
     wiki_review_show.add_argument("proposal_id")
     wiki_review_apply = wiki_review_sub.add_parser("apply", help="Apply proposal")
-    add_wiki_common_args(wiki_review_apply)
+    add_wiki_common_args(wiki_review_apply, inherit_only=True)
     wiki_review_apply.add_argument("proposal_id")
     wiki_review_apply.add_argument("note", nargs="?", default="")
     wiki_review_reject = wiki_review_sub.add_parser("reject", help="Reject proposal")
-    add_wiki_common_args(wiki_review_reject)
+    add_wiki_common_args(wiki_review_reject, inherit_only=True)
     wiki_review_reject.add_argument("proposal_id")
     wiki_review_reject.add_argument("reason", nargs="?", default="")
     wiki.set_defaults(func=run_wiki)
