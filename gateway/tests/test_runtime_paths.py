@@ -397,6 +397,177 @@ class RuntimePathsTests(unittest.TestCase):
             self.assertEqual(mcp_runtime["unready_count"], 0)
             self.assertGreaterEqual(len(warnings), 1)
 
+    def test_resolve_wiki_config_prefers_wiki_section(self) -> None:
+        config = grobot_cli.resolve_wiki_config(
+            {
+                "memory": {
+                    "allow_org_shared_read": True,
+                    "wiki": {"allow_org_shared_read": True},
+                },
+                "wiki": {
+                    "enabled": True,
+                    "allow_org_shared_read": False,
+                    "default_scope": "group",
+                    "retrieval": {
+                        "max_files": 22,
+                        "max_chars": 888,
+                        "max_items": 7,
+                    },
+                    "lint": {
+                        "stale_days": 12,
+                        "max_files": 66,
+                    },
+                    "review": {"write_mode": "direct"},
+                },
+            }
+        )
+        self.assertTrue(config.enabled)
+        self.assertFalse(config.allow_org_shared_read)
+        self.assertEqual(config.default_scope, "group")
+        self.assertEqual(config.write_mode, "direct")
+        self.assertEqual(config.retrieval_max_files, 22)
+        self.assertEqual(config.retrieval_max_chars, 888)
+        self.assertEqual(config.retrieval_max_items, 7)
+        self.assertEqual(config.lint_stale_days, 12)
+        self.assertEqual(config.lint_max_files, 66)
+
+    def test_wiki_ingest_review_apply_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "\n".join(
+                    [
+                        "schema_version = 1",
+                        'mode = "mvp"',
+                        "",
+                        "[wiki]",
+                        "enabled = true",
+                        'default_scope = "auto"',
+                        "allow_org_shared_read = false",
+                        "",
+                        "[wiki.review]",
+                        'write_mode = "review_first"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (project_root / "docs").mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "spec.md").write_text(
+                "支付回滚流程：先锁单，再补偿。\n接口契约：status=paid/unpaid。\n",
+                encoding="utf-8",
+            )
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            project_toml = grobot_cli.load_toml(paths.project_toml)
+            wiki_config = grobot_cli.resolve_wiki_config(project_toml)
+            session_key = "feishu:demo:dm:open_user_1"
+
+            ingest_code, ingest_lines = grobot_cli.wiki_ingest(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                work_dir=project_root,
+                source="docs/spec.md",
+                title="支付回滚规范",
+                requested_scope="auto",
+                apply_direct=False,
+            )
+            self.assertEqual(ingest_code, 0)
+            proposal_line = next(
+                (line for line in ingest_lines if line.startswith("wiki ingest proposal created:")),
+                "",
+            )
+            self.assertTrue(proposal_line)
+            proposal_id = proposal_line.split(":", 1)[1].strip()
+            self.assertTrue(proposal_id.startswith("wp"))
+
+            list_code, list_lines = grobot_cli.wiki_review_list(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+            )
+            self.assertEqual(list_code, 0)
+            self.assertTrue(any(proposal_id in line for line in list_lines))
+
+            apply_code, apply_lines = grobot_cli.wiki_review_apply(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                proposal_id=proposal_id,
+                reviewer="unit-test",
+                note="looks good",
+            )
+            self.assertEqual(apply_code, 0)
+            self.assertTrue(any("wiki review applied" in line for line in apply_lines))
+
+            user_root = paths.project_wiki_dir / "users" / "open_user_1"
+            pages = sorted((user_root / "pages").glob("*.md"))
+            self.assertGreaterEqual(len(pages), 1)
+            page_content = pages[0].read_text(encoding="utf-8")
+            self.assertIn("# 支付回滚规范", page_content)
+            self.assertIn("status=paid/unpaid", page_content)
+            self.assertTrue((user_root / "index.md").exists())
+            self.assertTrue((user_root / "log.md").exists())
+
+    def test_wiki_lint_reports_broken_links_and_orphans(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "schema_version = 1\nmode = \"mvp\"\n",
+                encoding="utf-8",
+            )
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            session_key = "feishu:demo:dm:open_user_lint"
+            wiki_config = grobot_cli.resolve_wiki_config({"wiki": {"enabled": True}})
+            _, scope_root = grobot_cli.wiki_build_scope_root(
+                paths=paths,
+                session_key=session_key,
+                wiki_config=wiki_config,
+                requested_scope="user",
+            )
+            (scope_root / "pages").mkdir(parents=True, exist_ok=True)
+            (scope_root / "pages" / "a.md").write_text(
+                "# A\n\nSee [B](b.md)\n",
+                encoding="utf-8",
+            )
+            (scope_root / "pages" / "orphan.md").write_text(
+                "# Orphan\n\nNo inbound links.\n",
+                encoding="utf-8",
+            )
+
+            lint_code, lint_lines = grobot_cli.wiki_lint(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                requested_scope="user",
+            )
+            self.assertEqual(lint_code, 0)
+            report_line = next((line for line in lint_lines if line.startswith("report=")), "")
+            self.assertTrue(report_line)
+            report_path = Path(report_line.split("=", 1)[1].strip())
+            self.assertTrue(report_path.exists())
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertGreaterEqual(len(payload.get("broken_links", [])), 1)
+            self.assertGreaterEqual(len(payload.get("orphan_pages", [])), 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

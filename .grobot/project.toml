@@ -71,6 +71,29 @@ enabled = true
 strict = false
 timeout_secs = 5
 
+[memory]
+allow_org_shared_read = false
+
+[memory.wiki]
+allow_org_shared_read = false
+
+[wiki]
+enabled = true
+default_scope = "auto"
+allow_org_shared_read = false
+
+[wiki.retrieval]
+max_files = 80
+max_chars = 320
+max_items = 4
+
+[wiki.lint]
+stale_days = 30
+max_files = 300
+
+[wiki.review]
+write_mode = "review_first"
+
 [skills.router]
 enabled = true
 score_threshold = 2.0

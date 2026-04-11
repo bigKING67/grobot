@@ -57,6 +57,12 @@ class ProjectSelection:
     provider: ProviderConfig
 
 
+@dataclass(frozen=True)
+class IdentityContext:
+    scope: str
+    subject: str
+
+
 @dataclass
 class ProviderRoute:
     provider: ProviderConfig
@@ -93,6 +99,8 @@ class RuntimePaths:
     global_memory_dir: Path
     project_memory_dir: Path
     session_memory_dir: Path
+    global_wiki_dir: Path = Path(".")
+    project_wiki_dir: Path = Path(".")
 
 
 @dataclass
@@ -223,6 +231,27 @@ class ContextRetrievalConfig:
     selected_limit: int
     embedding: RetrievalRemoteConfig | None
     rerank: RetrievalRemoteConfig | None
+
+
+@dataclass(frozen=True)
+class WikiConfig:
+    enabled: bool
+    allow_org_shared_read: bool
+    default_scope: str
+    write_mode: str
+    retrieval_max_files: int
+    retrieval_max_chars: int
+    retrieval_max_items: int
+    lint_stale_days: int
+    lint_max_files: int
+
+
+@dataclass(frozen=True)
+class WikiSessionContext:
+    platform: str
+    tenant: str
+    scope: str
+    subject: str
 
 
 @dataclass(frozen=True)
@@ -631,6 +660,49 @@ HANDOFF_FAILED_HINTS = (
     "异常",
     "超时",
 )
+SESSION_SCOPE_DM = "dm"
+SESSION_SCOPE_GROUP = "group"
+SESSION_SCOPE_ALL = (SESSION_SCOPE_DM, SESSION_SCOPE_GROUP)
+SESSION_REGISTRY_VERSION = 1
+SESSION_REGISTRY_MAIN_ID = "main"
+SESSION_KEY_INSTANCE_SEPARATOR = "__s_"
+MEMORY_SCOPE_USER_PRIVATE = "user_private"
+MEMORY_SCOPE_GROUP_SHARED = "group_shared"
+MEMORY_SCOPE_ORG_SHARED = "org_shared"
+WIKI_SCOPE_AUTO = "auto"
+WIKI_SCOPE_USER = "user"
+WIKI_SCOPE_GROUP = "group"
+WIKI_SCOPE_ORG = "org"
+WIKI_SCOPE_ALL = (
+    WIKI_SCOPE_AUTO,
+    WIKI_SCOPE_USER,
+    WIKI_SCOPE_GROUP,
+    WIKI_SCOPE_ORG,
+)
+WIKI_WRITE_MODE_REVIEW_FIRST = "review_first"
+WIKI_WRITE_MODE_DIRECT = "direct"
+WIKI_WRITE_MODE_ALL = (
+    WIKI_WRITE_MODE_REVIEW_FIRST,
+    WIKI_WRITE_MODE_DIRECT,
+)
+WIKI_MAX_FILES = 80
+WIKI_MAX_CHARS = 320
+WIKI_DEFAULT_MAX_ITEMS = 4
+WIKI_DEFAULT_LINT_STALE_DAYS = 30
+WIKI_DEFAULT_LINT_MAX_FILES = 300
+WIKI_PROPOSAL_STATUS_PENDING = "pending"
+WIKI_PROPOSAL_STATUS_APPLIED = "applied"
+WIKI_PROPOSAL_STATUS_REJECTED = "rejected"
+WIKI_PROPOSAL_TYPE_INGEST = "ingest"
+WIKI_PROPOSAL_TYPE_INSIGHT = "insight"
+WIKI_RESERVED_PROJECT_DIRS = {
+    "shared",
+    "users",
+    "groups",
+    "staging",
+    "reports",
+    "sources",
+}
 DEFAULT_RETRIEVAL_BASE_URL = "https://api.siliconflow.cn/v1"
 DEFAULT_RETRIEVAL_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
 DEFAULT_RETRIEVAL_RERANK_MODEL = "Qwen/Qwen3-Reranker-4B"
@@ -715,6 +787,29 @@ allow = ["list", "glob", "search", "read", "write", "edit", "bash", "mcp_servers
 enabled = true
 strict = false
 timeout_secs = 5
+
+[memory]
+allow_org_shared_read = false
+
+[memory.wiki]
+allow_org_shared_read = false
+
+[wiki]
+enabled = true
+default_scope = "auto"
+allow_org_shared_read = false
+
+[wiki.retrieval]
+max_files = 80
+max_chars = 320
+max_items = 4
+
+[wiki.lint]
+stale_days = 30
+max_files = 300
+
+[wiki.review]
+write_mode = "review_first"
       """
 ).strip() + "\n"
 
@@ -799,6 +894,27 @@ FALLBACK_MEMORY_README_TEMPLATE = textwrap.dedent(
     Suggested files:
     - memory.jsonl: append-only compact memory log
     - snapshots/: optional structured snapshots
+    """
+).strip() + "\n"
+
+FALLBACK_WIKI_README_TEMPLATE = textwrap.dedent(
+    """
+    # Grobot Wiki
+
+    Wiki v1 follows a review-first workflow (`ingest -> review -> apply`).
+
+    Scope layout:
+    - project shared: `.grobot/wiki/shared/`
+    - user private: `.grobot/wiki/users/<subject>/`
+    - group shared: `.grobot/wiki/groups/<subject>/`
+    - org shared: `~/.grobot/wiki/org/<tenant>/` (requires explicit read enable)
+
+    Suggested operations:
+    - `grobot wiki ingest --source <file-or-text>`
+    - `grobot wiki review list`
+    - `grobot wiki review apply <proposal_id>`
+    - `grobot wiki query --query "<keywords>"`
+    - `grobot wiki lint`
     """
 ).strip() + "\n"
 
@@ -916,6 +1032,8 @@ def resolve_runtime_paths(
     global_memory_dir = home / "memory" / "global"
     project_memory_dir = project_dir / "memory"
     session_memory_dir = runtime_dir / "memory" / "session"
+    global_wiki_dir = home / "wiki"
+    project_wiki_dir = project_dir / "wiki"
 
     return RuntimePaths(
         repo_root=repo,
@@ -938,6 +1056,8 @@ def resolve_runtime_paths(
         global_memory_dir=global_memory_dir,
         project_memory_dir=project_memory_dir,
         session_memory_dir=session_memory_dir,
+        global_wiki_dir=global_wiki_dir,
+        project_wiki_dir=project_wiki_dir,
     )
 
 
@@ -957,6 +1077,9 @@ def ensure_runtime_layout(paths: RuntimePaths) -> None:
         paths.global_memory_dir,
         paths.project_memory_dir,
         paths.session_memory_dir,
+        paths.global_wiki_dir,
+        paths.global_wiki_dir / "org",
+        paths.project_wiki_dir,
     )
     for directory in required_dirs:
         directory.mkdir(parents=True, exist_ok=True)
@@ -1316,10 +1439,12 @@ def persist_memory_layers(
         return warnings
 
     store_paths = build_memory_store_paths(paths, session_key)
+    memory_scope = memory_scope_from_session_key(session_key)
     session_payload = {
         "version": 1,
         "updated_at": now_utc_iso(),
         "session_key": session_key,
+        "scope": memory_scope,
         "project": selection.name,
         "work_dir": str(selection.work_dir),
         "sections": summary_sections,
@@ -1332,6 +1457,7 @@ def persist_memory_layers(
     log_entry = {
         "timestamp": now_utc_iso(),
         "session_key": session_key,
+        "scope": memory_scope,
         "project": selection.name,
         "work_dir": str(selection.work_dir),
         "sections": summary_sections,
@@ -1347,6 +1473,7 @@ def persist_memory_layers(
         global_entry = {
             "timestamp": now_utc_iso(),
             "session_key": session_key,
+            "scope": MEMORY_SCOPE_ORG_SHARED,
             "project": selection.name,
             "work_dir": str(selection.work_dir),
             "architecture": architecture,
@@ -1937,6 +2064,138 @@ def session_file_path(store: SessionStoreConfig, session_key: str) -> Path:
     return store.root / f"{sanitize_session_key(session_key)}.json"
 
 
+def session_registry_file_path(store: SessionStoreConfig, namespace_key: str) -> Path:
+    safe_name = sanitize_session_key(namespace_key)
+    return store.root / f"{safe_name}.sessions.json"
+
+
+def session_instance_key(namespace_key: str, session_id: str) -> str:
+    parsed = parse_session_key_parts(namespace_key)
+    if parsed is None:
+        return namespace_key
+    platform, tenant, scope, subject = parsed
+    if session_id == SESSION_REGISTRY_MAIN_ID:
+        return namespace_key
+    safe_id = sanitize_session_segment(session_id, default=SESSION_REGISTRY_MAIN_ID, max_len=24)
+    return f"{platform}:{tenant}:{scope}:{subject}{SESSION_KEY_INSTANCE_SEPARATOR}{safe_id}"
+
+
+def generate_session_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    rand = format(int.from_bytes(os.urandom(2), "big"), "04x")
+    return f"s{ts}{rand}"
+
+
+def normalize_session_registry_payload(raw_payload: Any, namespace_key: str) -> dict[str, Any]:
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    sessions_raw = payload.get("sessions")
+    sessions: list[dict[str, Any]] = []
+    if isinstance(sessions_raw, list):
+        for item in sessions_raw:
+            if not isinstance(item, dict):
+                continue
+            session_id = item.get("id")
+            session_key = item.get("session_key")
+            if not isinstance(session_id, str) or not session_id.strip():
+                continue
+            if not isinstance(session_key, str) or not session_key.strip():
+                continue
+            sessions.append(
+                {
+                    "id": session_id.strip(),
+                    "session_key": session_key.strip(),
+                    "created_at": str(item.get("created_at") or now_utc_iso()),
+                    "updated_at": str(item.get("updated_at") or now_utc_iso()),
+                    "preview": str(item.get("preview") or ""),
+                }
+            )
+    if not sessions:
+        now = now_utc_iso()
+        sessions = [
+            {
+                "id": SESSION_REGISTRY_MAIN_ID,
+                "session_key": namespace_key,
+                "created_at": now,
+                "updated_at": now,
+                "preview": "",
+            }
+        ]
+    active_id = payload.get("active_id")
+    if not isinstance(active_id, str) or not any(item["id"] == active_id for item in sessions):
+        active_id = sessions[0]["id"]
+    return {
+        "version": SESSION_REGISTRY_VERSION,
+        "namespace_key": namespace_key,
+        "active_id": active_id,
+        "sessions": sessions,
+    }
+
+
+def load_session_registry(store: SessionStoreConfig, namespace_key: str) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    path = session_registry_file_path(store, namespace_key)
+    payload = read_json_file(path)
+    normalized = normalize_session_registry_payload(payload, namespace_key)
+    try:
+        write_json_file(path, normalized)
+    except OSError as exc:
+        warnings.append(f"session registry write failed: {exc}")
+    return normalized, warnings
+
+
+def save_session_registry(store: SessionStoreConfig, namespace_key: str, payload: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    path = session_registry_file_path(store, namespace_key)
+    normalized = normalize_session_registry_payload(payload, namespace_key)
+    try:
+        write_json_file(path, normalized)
+    except OSError as exc:
+        warnings.append(f"session registry write failed: {exc}")
+    return warnings
+
+
+def find_session_record(payload: dict[str, Any], session_id: str) -> dict[str, Any] | None:
+    sessions = payload.get("sessions")
+    if not isinstance(sessions, list):
+        return None
+    for item in sessions:
+        if isinstance(item, dict) and item.get("id") == session_id:
+            return item
+    return None
+
+
+def create_session_record(namespace_key: str, session_id: str | None = None) -> dict[str, Any]:
+    actual_id = session_id or generate_session_id()
+    now = now_utc_iso()
+    return {
+        "id": actual_id,
+        "session_key": session_instance_key(namespace_key, actual_id),
+        "created_at": now,
+        "updated_at": now,
+        "preview": "",
+    }
+
+
+def append_session_record(payload: dict[str, Any], record: dict[str, Any]) -> None:
+    sessions = payload.get("sessions")
+    if not isinstance(sessions, list):
+        sessions = []
+        payload["sessions"] = sessions
+    sessions.append(record)
+
+
+def touch_session_record(payload: dict[str, Any], session_id: str, *, preview: str | None = None) -> None:
+    record = find_session_record(payload, session_id)
+    if record is None:
+        return
+    record["updated_at"] = now_utc_iso()
+    if isinstance(preview, str):
+        compact = " ".join(preview.split())
+        if len(compact) > 120:
+            compact = compact[:120].rstrip() + "…"
+        record["preview"] = compact
+
+
 def normalize_history_messages(raw_messages: Any) -> list[dict[str, str]]:
     if not isinstance(raw_messages, list):
         return []
@@ -2348,16 +2607,73 @@ def format_circuit_health(routes: list[ProviderRoute]) -> list[str]:
     return lines
 
 
-def safe_subject_from_path(path: Path) -> str:
-    raw = path.name or "workspace"
-    sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", raw)
-    return sanitized[:80] or "workspace"
+def sanitize_session_segment(raw: Any, *, default: str, max_len: int = 80) -> str:
+    text = str(raw).strip() if raw is not None else ""
+    sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", text)
+    if not sanitized:
+        sanitized = default
+    return sanitized[: max(1, max_len)]
 
 
-def build_session_key(project_name: str, platform: str, work_dir: Path) -> str:
-    tenant = re.sub(r"[^a-zA-Z0-9._-]", "_", project_name)[:40] or "default"
-    subject = safe_subject_from_path(work_dir)
-    return f"{platform}:{tenant}:dm:{subject}"
+def default_identity_subject() -> str:
+    env_subject = os.getenv("GROBOT_SESSION_SUBJECT", "").strip()
+    if env_subject:
+        return sanitize_session_segment(env_subject, default="local", max_len=80)
+    user_hint = os.getenv("USER", "").strip() or os.getenv("USERNAME", "").strip()
+    if user_hint:
+        return sanitize_session_segment(user_hint, default="local", max_len=80)
+    return "local"
+
+
+def parse_session_key_parts(session_key: str) -> tuple[str, str, str, str] | None:
+    if not isinstance(session_key, str):
+        return None
+    parts = session_key.split(":")
+    if len(parts) != 4:
+        return None
+    platform, tenant, scope, subject = parts
+    if not platform or not tenant or not subject or scope not in SESSION_SCOPE_ALL:
+        return None
+    return platform, tenant, scope, subject
+
+
+def resolve_identity_context(args: argparse.Namespace) -> IdentityContext:
+    raw_scope = str(getattr(args, "session_scope", SESSION_SCOPE_DM) or SESSION_SCOPE_DM).strip().lower()
+    scope = raw_scope if raw_scope in SESSION_SCOPE_ALL else SESSION_SCOPE_DM
+    raw_subject = getattr(args, "session_subject", None)
+    subject = (
+        sanitize_session_segment(raw_subject, default=default_identity_subject(), max_len=80)
+        if isinstance(raw_subject, str) and raw_subject.strip()
+        else default_identity_subject()
+    )
+    return IdentityContext(scope=scope, subject=subject)
+
+
+def build_session_key(
+    project_name: str,
+    platform: str,
+    work_dir: Path | None = None,
+    *,
+    identity: IdentityContext | None = None,
+) -> str:
+    tenant = sanitize_session_segment(project_name, default="default", max_len=40)
+    if identity is None:
+        # `work_dir` kept only for backward-compatible call sites; no longer used in key subject derivation.
+        _ = work_dir
+        identity = IdentityContext(scope=SESSION_SCOPE_DM, subject=default_identity_subject())
+    scope = identity.scope if identity.scope in SESSION_SCOPE_ALL else SESSION_SCOPE_DM
+    subject = sanitize_session_segment(identity.subject, default=default_identity_subject(), max_len=80)
+    return f"{platform}:{tenant}:{scope}:{subject}"
+
+
+def memory_scope_from_session_key(session_key: str) -> str:
+    parsed = parse_session_key_parts(session_key)
+    if parsed is None:
+        return MEMORY_SCOPE_USER_PRIVATE
+    _, _, scope, _ = parsed
+    if scope == SESSION_SCOPE_GROUP:
+        return MEMORY_SCOPE_GROUP_SHARED
+    return MEMORY_SCOPE_USER_PRIVATE
 
 
 def http_json_or_raise(
@@ -3502,6 +3818,43 @@ def trim_history_messages(history_messages: list[dict[str, str]], max_turns: int
     return trimmed
 
 
+def build_continue_bridge_message(
+    *,
+    source_session_id: str,
+    source_session_key: str,
+    source_history_messages: list[dict[str, str]],
+    max_turns: int,
+) -> dict[str, str] | None:
+    if not source_history_messages:
+        return None
+    trimmed, compact_memory = trim_history_messages_with_memory(source_history_messages, max_turns)
+    compact_sections = compact_sections_for_handoff(compact_memory)
+    lines = [
+        "[Session Continue Bridge]",
+        f"source_session_id={source_session_id}",
+        f"source_session_key={source_session_key}",
+    ]
+    has_section = False
+    for section in HISTORY_COMPACT_SECTIONS:
+        values = compact_sections.get(section, [])
+        if not values:
+            continue
+        has_section = True
+        lines.append(f"- {section}:")
+        for item in values[:3]:
+            lines.append(f"  - {sanitize_handoff_text(item)}")
+    if not has_section:
+        recent_pairs = recent_turn_pairs(trimmed, 2)
+        if not recent_pairs:
+            return None
+        lines.append("- Recent turns:")
+        for user_text, assistant_text in recent_pairs:
+            lines.append(f"  - user: {sanitize_handoff_text(user_text)}")
+            lines.append(f"    assistant: {sanitize_handoff_text(assistant_text)}")
+    lines.append("This bridge is summary-only; full history was not imported.")
+    return {"role": "assistant", "content": "\n".join(lines)}
+
+
 def normalize_query_tokens(text: str) -> set[str]:
     tokens: set[str] = set()
     for raw in HISTORY_QUERY_TOKEN_PATTERN.findall(text.lower()):
@@ -3912,6 +4265,443 @@ def build_retrieved_context_block(
     return "\n".join(lines)
 
 
+def resolve_allow_org_shared_wiki(project_toml: dict[str, Any]) -> bool:
+    return resolve_wiki_config(project_toml).allow_org_shared_read
+
+
+def resolve_wiki_session_context(session_key: str) -> WikiSessionContext:
+    parsed = parse_session_key_parts(session_key)
+    if parsed is None:
+        return WikiSessionContext(
+            platform="local",
+            tenant="default",
+            scope=SESSION_SCOPE_DM,
+            subject=default_identity_subject(),
+        )
+    platform, tenant, scope, subject = parsed
+    return WikiSessionContext(
+        platform=platform,
+        tenant=tenant,
+        scope=scope,
+        subject=subject,
+    )
+
+
+def slugify_wiki_token(raw_text: str, *, default: str, max_len: int = 80) -> str:
+    lowered = raw_text.strip().lower()
+    slug = re.sub(r"[^a-z0-9._-]+", "-", lowered).strip("._-")
+    if not slug:
+        return default
+    return slug[: max(1, max_len)]
+
+
+def wiki_scope_root(
+    *,
+    paths: RuntimePaths,
+    session: WikiSessionContext,
+    scope: str,
+) -> Path:
+    tenant_slug = sanitize_session_segment(session.tenant, default="default", max_len=40)
+    subject_slug = sanitize_session_segment(session.subject, default="local", max_len=80)
+    if scope == WIKI_SCOPE_ORG:
+        return paths.global_wiki_dir / "org" / tenant_slug
+    if scope == WIKI_SCOPE_GROUP:
+        return paths.project_wiki_dir / "groups" / subject_slug
+    return paths.project_wiki_dir / "users" / subject_slug
+
+
+def resolve_wiki_default_scope(session: WikiSessionContext, wiki_config: WikiConfig) -> str:
+    configured = wiki_config.default_scope
+    if configured in {WIKI_SCOPE_USER, WIKI_SCOPE_GROUP, WIKI_SCOPE_ORG}:
+        return configured
+    if session.scope == SESSION_SCOPE_GROUP:
+        return WIKI_SCOPE_GROUP
+    return WIKI_SCOPE_USER
+
+
+def resolve_wiki_target_scope(
+    requested_scope: str | None,
+    *,
+    session: WikiSessionContext,
+    wiki_config: WikiConfig,
+) -> str:
+    normalized = parse_choice_option(requested_scope, WIKI_SCOPE_AUTO, WIKI_SCOPE_ALL)
+    if normalized == WIKI_SCOPE_AUTO:
+        normalized = resolve_wiki_default_scope(session, wiki_config)
+    if normalized == WIKI_SCOPE_ORG and not wiki_config.allow_org_shared_read:
+        raise RuntimeError(
+            "org wiki access is disabled. Set [wiki].allow_org_shared_read=true (or [memory.wiki].allow_org_shared_read=true)."
+        )
+    return normalized
+
+
+def iter_wiki_read_roots(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session: WikiSessionContext,
+    force_scope: str | None = None,
+) -> list[Path]:
+    roots: list[Path] = []
+    scoped: str
+    if force_scope is not None and force_scope.strip() and force_scope.strip().lower() != WIKI_SCOPE_AUTO:
+        scoped = resolve_wiki_target_scope(force_scope, session=session, wiki_config=wiki_config)
+        roots.append(wiki_scope_root(paths=paths, session=session, scope=scoped))
+    else:
+        shared_root = paths.project_wiki_dir / "shared"
+        roots.append(shared_root)
+        roots.append(paths.project_wiki_dir)
+        scoped = resolve_wiki_default_scope(session, wiki_config)
+        roots.append(wiki_scope_root(paths=paths, session=session, scope=scoped))
+        if wiki_config.allow_org_shared_read:
+            roots.append(wiki_scope_root(paths=paths, session=session, scope=WIKI_SCOPE_ORG))
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        key = str(root.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(root)
+    return deduped
+
+
+def wiki_is_reserved_legacy_path(path: Path, project_wiki_dir: Path) -> bool:
+    try:
+        rel = path.relative_to(project_wiki_dir)
+    except ValueError:
+        return False
+    if not rel.parts:
+        return False
+    return rel.parts[0] in WIKI_RESERVED_PROJECT_DIRS
+
+
+def iter_wiki_candidate_roots(
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    *,
+    force_scope: str | None = None,
+) -> list[Path]:
+    session = resolve_wiki_session_context(session_key)
+    return iter_wiki_read_roots(
+        paths=paths,
+        wiki_config=wiki_config,
+        session=session,
+        force_scope=force_scope,
+    )
+
+
+def collect_wiki_snippets(
+    query: str,
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    force_scope: str | None = None,
+) -> list[tuple[float, str, str]]:
+    query_tokens = normalize_query_tokens(query)
+    if not query_tokens:
+        return []
+    scored: list[tuple[float, str, str]] = []
+    roots = iter_wiki_candidate_roots(
+        paths,
+        wiki_config,
+        session_key,
+        force_scope=force_scope,
+    )
+    scanned_files = 0
+    for root in roots:
+        if not root.exists() or not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".md", ".txt"}:
+                continue
+            if root == paths.project_wiki_dir and wiki_is_reserved_legacy_path(path, paths.project_wiki_dir):
+                continue
+            scanned_files += 1
+            if scanned_files > wiki_config.retrieval_max_files:
+                break
+            try:
+                content = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            normalized = normalize_context_text(content)
+            score = context_overlap_score(query_tokens, normalized)
+            if score <= 0:
+                continue
+            if len(normalized) > wiki_config.retrieval_max_chars:
+                normalized = normalized[: wiki_config.retrieval_max_chars].rstrip() + "…"
+            try:
+                rel = path.relative_to(paths.project_root).as_posix()
+            except ValueError:
+                rel = str(path)
+            scored.append((score, rel, normalized))
+        if scanned_files > wiki_config.retrieval_max_files:
+            break
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored[: wiki_config.retrieval_max_items]
+
+
+def build_wiki_context_block(
+    user_prompt: str,
+    *,
+    paths: RuntimePaths,
+    session_key: str,
+    wiki_config: WikiConfig | None = None,
+    allow_org_shared: bool | None = None,
+) -> str | None:
+    resolved_cfg = wiki_config
+    if resolved_cfg is None:
+        resolved_cfg = WikiConfig(
+            enabled=True,
+            allow_org_shared_read=bool(allow_org_shared),
+            default_scope=WIKI_SCOPE_AUTO,
+            write_mode=WIKI_WRITE_MODE_REVIEW_FIRST,
+            retrieval_max_files=WIKI_MAX_FILES,
+            retrieval_max_chars=WIKI_MAX_CHARS,
+            retrieval_max_items=WIKI_DEFAULT_MAX_ITEMS,
+            lint_stale_days=WIKI_DEFAULT_LINT_STALE_DAYS,
+            lint_max_files=WIKI_DEFAULT_LINT_MAX_FILES,
+        )
+    if not resolved_cfg.enabled:
+        return None
+    scored = collect_wiki_snippets(
+        user_prompt,
+        paths=paths,
+        wiki_config=resolved_cfg,
+        session_key=session_key,
+    )
+    if not scored:
+        return None
+    lines = [
+        "[Wiki Context]",
+        "Use only when relevant; explicit latest user instruction has highest priority.",
+    ]
+    for _, rel, snippet in scored:
+        lines.append(f"- {rel}: {snippet}")
+    return "\n".join(lines)
+
+
+def ensure_wiki_scope_layout(scope_root: Path) -> None:
+    required = (
+        scope_root,
+        scope_root / "pages",
+        scope_root / "sources",
+        scope_root / "staging",
+        scope_root / "reports",
+    )
+    for path in required:
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def wiki_scope_label(scope: str) -> str:
+    if scope == WIKI_SCOPE_ORG:
+        return "org"
+    if scope == WIKI_SCOPE_GROUP:
+        return "group"
+    return "user"
+
+
+def wiki_build_scope_root(
+    *,
+    paths: RuntimePaths,
+    session_key: str,
+    wiki_config: WikiConfig,
+    requested_scope: str | None = None,
+) -> tuple[str, Path]:
+    session = resolve_wiki_session_context(session_key)
+    scope = resolve_wiki_target_scope(requested_scope, session=session, wiki_config=wiki_config)
+    root = wiki_scope_root(paths=paths, session=session, scope=scope)
+    ensure_wiki_scope_layout(root)
+    return scope, root
+
+
+def generate_wiki_proposal_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    rand = format(int.from_bytes(os.urandom(2), "big"), "04x")
+    return f"wp{ts}{rand}"
+
+
+def wiki_proposal_file(scope_root: Path, proposal_id: str) -> Path:
+    return scope_root / "staging" / f"{proposal_id}.json"
+
+
+def wiki_slug_from_title(title: str, *, default_prefix: str = "page") -> str:
+    normalized = slugify_wiki_token(title, default="", max_len=80)
+    if normalized:
+        return normalized
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{default_prefix}-{stamp}"
+
+
+def wiki_extract_summary_lines(raw_text: str, *, limit: int = 4) -> list[str]:
+    lines: list[str] = []
+    for raw_line in raw_text.splitlines():
+        line = " ".join(raw_line.split()).strip()
+        if not line:
+            continue
+        lines.append(line)
+        if len(lines) >= limit:
+            break
+    if lines:
+        return lines
+    compact = " ".join(raw_text.split()).strip()
+    if compact:
+        return [compact[:160]]
+    return ["(empty source)"]
+
+
+def wiki_render_summary_lines(summary_lines: list[str]) -> str:
+    unique_lines: list[str] = []
+    for item in summary_lines:
+        if not isinstance(item, str):
+            continue
+        stripped = item.strip()
+        if not stripped:
+            continue
+        if stripped not in unique_lines:
+            unique_lines.append(stripped)
+    if not unique_lines:
+        unique_lines = ["(none)"]
+    return "\n".join(f"- {line}" for line in unique_lines)
+
+
+def wiki_build_page_content(
+    *,
+    title: str,
+    summary_lines: list[str],
+    source_ref: str,
+    scope: str,
+    body: str,
+) -> str:
+    cleaned_body = body.strip()
+    return (
+        f"# {title.strip() or 'Untitled'}\n\n"
+        f"- created_at: {now_utc_iso()}\n"
+        f"- scope: {wiki_scope_label(scope)}\n"
+        f"- source: {source_ref}\n\n"
+        "## Summary\n"
+        f"{wiki_render_summary_lines(summary_lines)}\n\n"
+        "## Details\n"
+        f"{cleaned_body if cleaned_body else '(none)'}\n"
+    )
+
+
+def wiki_load_markdown_index_entries(index_file: Path) -> dict[str, str]:
+    entries: dict[str, str] = {}
+    if not index_file.exists():
+        return entries
+    try:
+        content = index_file.read_text(encoding="utf-8")
+    except OSError:
+        return entries
+    pattern = re.compile(r"^- \[[^\]]+\]\(([^)]+)\)\s*-\s*(.+)\s*$")
+    for line in content.splitlines():
+        matched = pattern.match(line.strip())
+        if not matched:
+            continue
+        link = matched.group(1).strip()
+        entries[link] = line.strip()
+    return entries
+
+
+def wiki_update_index(scope_root: Path, *, page_rel: str, title: str, summary_line: str) -> None:
+    index_file = scope_root / "index.md"
+    entries = wiki_load_markdown_index_entries(index_file)
+    display_title = title.strip() or Path(page_rel).stem
+    summary = " ".join(summary_line.split()).strip() or "(no summary)"
+    entries[page_rel] = f"- [{display_title}]({page_rel}) - {summary}"
+    ordered = [entries[key] for key in sorted(entries.keys())]
+    lines = ["# Wiki Index", "", "## Pages", *ordered, ""]
+    index_file.write_text("\n".join(lines), encoding="utf-8")
+
+
+def wiki_append_log(scope_root: Path, *, event: str, lines: list[str]) -> None:
+    log_file = scope_root / "log.md"
+    payload_lines = [f"## [{now_utc_iso()}] {event}"]
+    for line in lines:
+        text = str(line).strip()
+        if text:
+            payload_lines.append(f"- {text}")
+    payload_lines.append("")
+    with log_file.open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(payload_lines))
+        handle.write("\n")
+
+
+def wiki_resolve_source_input(raw_source: str, work_dir: Path) -> tuple[str, str]:
+    source = raw_source.strip()
+    if not source:
+        raise RuntimeError("source is required")
+    source_path = Path(source).expanduser()
+    candidate = source_path if source_path.is_absolute() else (work_dir / source_path)
+    if candidate.exists() and candidate.is_file():
+        try:
+            content = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise RuntimeError(f"failed to read source file: {exc}") from exc
+        try:
+            source_ref = candidate.resolve().relative_to(work_dir.resolve()).as_posix()
+        except ValueError:
+            source_ref = str(candidate.resolve())
+        return source_ref, content
+    return "inline:text", source
+
+
+def wiki_collect_staging_files(scope_roots: list[Path]) -> list[Path]:
+    files: list[Path] = []
+    seen: set[str] = set()
+    for root in scope_roots:
+        staging = root / "staging"
+        if not staging.exists() or not staging.is_dir():
+            continue
+        for path in sorted(staging.glob("*.json")):
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(path)
+    return files
+
+
+def wiki_read_proposal(path: Path) -> dict[str, Any] | None:
+    payload = read_json_file(path)
+    if not isinstance(payload, dict):
+        return None
+    proposal_id = payload.get("id")
+    status = payload.get("status")
+    proposal_type = payload.get("type")
+    if not isinstance(proposal_id, str) or not proposal_id.strip():
+        return None
+    if not isinstance(status, str) or status not in {
+        WIKI_PROPOSAL_STATUS_PENDING,
+        WIKI_PROPOSAL_STATUS_APPLIED,
+        WIKI_PROPOSAL_STATUS_REJECTED,
+    }:
+        return None
+    if not isinstance(proposal_type, str) or proposal_type not in {
+        WIKI_PROPOSAL_TYPE_INGEST,
+        WIKI_PROPOSAL_TYPE_INSIGHT,
+    }:
+        return None
+    return payload
+
+
+def wiki_find_proposal(scope_roots: list[Path], proposal_id: str) -> tuple[Path, dict[str, Any]] | None:
+    normalized_id = proposal_id.strip()
+    if not normalized_id:
+        return None
+    for root in scope_roots:
+        candidate = wiki_proposal_file(root, normalized_id)
+        proposal = wiki_read_proposal(candidate)
+        if proposal is not None:
+            return candidate, proposal
+    return None
+
 def build_chat_messages(
     *,
     system_prompt: str,
@@ -3920,6 +4710,7 @@ def build_chat_messages(
     max_history_turns: int,
     retrieval_config: ContextRetrievalConfig | None = None,
     skill_prompt_block: str = "",
+    wiki_context_block: str | None = None,
 ) -> list[dict[str, str]]:
     trimmed_history = trim_history_messages(history_messages, max_history_turns)
     retrieved_context = build_retrieved_context_block(trimmed_history, user_prompt, retrieval_config)
@@ -3928,6 +4719,8 @@ def build_chat_messages(
         effective_system_prompt = f"{effective_system_prompt}\n\n{skill_prompt_block.strip()}"
     if isinstance(retrieved_context, str) and retrieved_context:
         effective_system_prompt = f"{effective_system_prompt}\n\n{retrieved_context}"
+    if isinstance(wiki_context_block, str) and wiki_context_block.strip():
+        effective_system_prompt = f"{effective_system_prompt}\n\n{wiki_context_block.strip()}"
     return [
         {"role": "system", "content": effective_system_prompt},
         *trimmed_history,
@@ -4518,6 +5311,14 @@ def parse_positive_int_option(raw_value: Any, default: int, minimum: int, maximu
     return max(minimum, min(maximum, default))
 
 
+def parse_choice_option(raw_value: Any, default: str, allowed: tuple[str, ...]) -> str:
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in allowed:
+            return normalized
+    return default
+
+
 def parse_float_option(raw_value: Any, default: float, minimum: float, maximum: float) -> float:
     if isinstance(raw_value, (int, float)):
         candidate = float(raw_value)
@@ -4736,6 +5537,85 @@ def resolve_context_retrieval_config(
         selected_limit=selected_limit,
         embedding=embedding,
         rerank=rerank,
+    )
+
+
+def resolve_wiki_config(project_toml: dict[str, Any]) -> WikiConfig:
+    raw_wiki = project_toml.get("wiki")
+    wiki_cfg = raw_wiki if isinstance(raw_wiki, dict) else {}
+    raw_memory = project_toml.get("memory")
+    memory_cfg = raw_memory if isinstance(raw_memory, dict) else {}
+    raw_memory_wiki = memory_cfg.get("wiki")
+    memory_wiki_cfg = raw_memory_wiki if isinstance(raw_memory_wiki, dict) else {}
+
+    retrieval_raw = wiki_cfg.get("retrieval")
+    retrieval_cfg = retrieval_raw if isinstance(retrieval_raw, dict) else {}
+    lint_raw = wiki_cfg.get("lint")
+    lint_cfg = lint_raw if isinstance(lint_raw, dict) else {}
+    review_raw = wiki_cfg.get("review")
+    review_cfg = review_raw if isinstance(review_raw, dict) else {}
+
+    enabled = parse_bool_option(wiki_cfg.get("enabled"), True)
+    allow_org_shared_read = parse_bool_option(memory_cfg.get("allow_org_shared_read"), False)
+    allow_org_shared_read = parse_bool_option(
+        memory_wiki_cfg.get("allow_org_shared_read"),
+        allow_org_shared_read,
+    )
+    allow_org_shared_read = parse_bool_option(
+        wiki_cfg.get("allow_org_shared_read"),
+        allow_org_shared_read,
+    )
+    default_scope = parse_choice_option(
+        wiki_cfg.get("default_scope"),
+        WIKI_SCOPE_AUTO,
+        WIKI_SCOPE_ALL,
+    )
+    write_mode = parse_choice_option(
+        review_cfg.get("write_mode", wiki_cfg.get("write_mode")),
+        WIKI_WRITE_MODE_REVIEW_FIRST,
+        WIKI_WRITE_MODE_ALL,
+    )
+    retrieval_max_files = parse_positive_int_option(
+        retrieval_cfg.get("max_files"),
+        WIKI_MAX_FILES,
+        1,
+        2000,
+    )
+    retrieval_max_chars = parse_positive_int_option(
+        retrieval_cfg.get("max_chars"),
+        WIKI_MAX_CHARS,
+        120,
+        8000,
+    )
+    retrieval_max_items = parse_positive_int_option(
+        retrieval_cfg.get("max_items"),
+        WIKI_DEFAULT_MAX_ITEMS,
+        1,
+        24,
+    )
+    lint_stale_days = parse_positive_int_option(
+        lint_cfg.get("stale_days"),
+        WIKI_DEFAULT_LINT_STALE_DAYS,
+        1,
+        3650,
+    )
+    lint_max_files = parse_positive_int_option(
+        lint_cfg.get("max_files"),
+        WIKI_DEFAULT_LINT_MAX_FILES,
+        1,
+        10000,
+    )
+
+    return WikiConfig(
+        enabled=enabled,
+        allow_org_shared_read=allow_org_shared_read,
+        default_scope=default_scope,
+        write_mode=write_mode,
+        retrieval_max_files=retrieval_max_files,
+        retrieval_max_chars=retrieval_max_chars,
+        retrieval_max_items=retrieval_max_items,
+        lint_stale_days=lint_stale_days,
+        lint_max_files=lint_max_files,
     )
 
 
@@ -7096,6 +7976,295 @@ def normalize_config_read_policy(raw_policy: Any) -> str | None:
     return None
 
 
+def wiki_accessible_scope_roots(
+    *,
+    paths: RuntimePaths,
+    session_key: str,
+    wiki_config: WikiConfig,
+) -> list[Path]:
+    session = resolve_wiki_session_context(session_key)
+    roots = iter_wiki_read_roots(
+        paths=paths,
+        wiki_config=wiki_config,
+        session=session,
+    )
+    write_scope = resolve_wiki_default_scope(session, wiki_config)
+    roots.append(wiki_scope_root(paths=paths, session=session, scope=write_scope))
+    if wiki_config.allow_org_shared_read:
+        roots.append(wiki_scope_root(paths=paths, session=session, scope=WIKI_SCOPE_ORG))
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        key = str(root.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        ensure_wiki_scope_layout(root)
+        deduped.append(root)
+    return deduped
+
+
+def wiki_apply_proposal_payload(
+    *,
+    proposal_path: Path,
+    proposal: dict[str, Any],
+    reviewer: str,
+    note: str | None = None,
+) -> tuple[bool, str]:
+    if proposal.get("status") != WIKI_PROPOSAL_STATUS_PENDING:
+        return False, "proposal is not pending"
+    page_rel_raw = proposal.get("target_page")
+    page_content_raw = proposal.get("content")
+    title_raw = proposal.get("title")
+    summary_raw = proposal.get("summary_lines")
+    source_ref_raw = proposal.get("source_ref")
+    if not isinstance(page_rel_raw, str) or not page_rel_raw.strip():
+        return False, "proposal missing target_page"
+    if not isinstance(page_content_raw, str):
+        return False, "proposal missing content"
+    scope_root = proposal_path.parent.parent
+    ensure_wiki_scope_layout(scope_root)
+    page_target = (scope_root / page_rel_raw).resolve()
+    if scope_root.resolve() not in page_target.parents:
+        return False, "target page out of scope root"
+    page_target.parent.mkdir(parents=True, exist_ok=True)
+    page_target.write_text(page_content_raw, encoding="utf-8")
+    summary_lines = summary_raw if isinstance(summary_raw, list) else []
+    summary_line = ""
+    for item in summary_lines:
+        if isinstance(item, str) and item.strip():
+            summary_line = item.strip()
+            break
+    wiki_update_index(
+        scope_root,
+        page_rel=page_rel_raw,
+        title=str(title_raw or Path(page_rel_raw).stem),
+        summary_line=summary_line,
+    )
+    wiki_append_log(
+        scope_root,
+        event=f"proposal_applied:{proposal.get('id', 'unknown')}",
+        lines=[
+            f"type={proposal.get('type', 'unknown')}",
+            f"title={title_raw or Path(page_rel_raw).stem}",
+            f"target={page_rel_raw}",
+            f"source={source_ref_raw or 'unknown'}",
+            f"reviewer={reviewer}",
+            f"note={note or '(none)'}",
+        ],
+    )
+    proposal["status"] = WIKI_PROPOSAL_STATUS_APPLIED
+    proposal["applied_at"] = now_utc_iso()
+    proposal["reviewed_by"] = reviewer
+    proposal["review_note"] = note or ""
+    write_json_file(proposal_path, proposal)
+    return True, page_rel_raw
+
+
+def wiki_create_proposal(
+    *,
+    scope_root: Path,
+    proposal_type: str,
+    title: str,
+    source_ref: str,
+    summary_lines: list[str],
+    page_content: str,
+    session_key: str,
+) -> tuple[str, Path]:
+    ensure_wiki_scope_layout(scope_root)
+    proposal_id = generate_wiki_proposal_id()
+    page_slug = wiki_slug_from_title(title, default_prefix=proposal_type)
+    target_page = f"pages/{page_slug}.md"
+    payload = {
+        "version": 1,
+        "id": proposal_id,
+        "status": WIKI_PROPOSAL_STATUS_PENDING,
+        "type": proposal_type,
+        "created_at": now_utc_iso(),
+        "session_key": session_key,
+        "title": title.strip() or "Untitled",
+        "source_ref": source_ref,
+        "summary_lines": summary_lines,
+        "target_page": target_page,
+        "content": page_content,
+    }
+    proposal_path = wiki_proposal_file(scope_root, proposal_id)
+    write_json_file(proposal_path, payload)
+    return proposal_id, proposal_path
+
+
+def wiki_ingest(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    work_dir: Path,
+    source: str,
+    title: str | None = None,
+    requested_scope: str | None = None,
+    apply_direct: bool = False,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    scope, scope_root = wiki_build_scope_root(
+        paths=paths,
+        session_key=session_key,
+        wiki_config=wiki_config,
+        requested_scope=requested_scope,
+    )
+    source_ref, source_content = wiki_resolve_source_input(source, work_dir)
+    summary_lines = wiki_extract_summary_lines(source_content)
+    resolved_title = title.strip() if isinstance(title, str) and title.strip() else Path(source_ref).name
+    if resolved_title == "inline:text":
+        resolved_title = f"Ingest {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
+
+    proposal_id = generate_wiki_proposal_id()
+    snapshot_path = scope_root / "sources" / f"{proposal_id}.md"
+    snapshot_path.write_text(source_content, encoding="utf-8")
+    page_content = wiki_build_page_content(
+        title=resolved_title,
+        summary_lines=summary_lines,
+        source_ref=source_ref,
+        scope=scope,
+        body=source_content,
+    )
+    proposal_payload = {
+        "version": 1,
+        "id": proposal_id,
+        "status": WIKI_PROPOSAL_STATUS_PENDING,
+        "type": WIKI_PROPOSAL_TYPE_INGEST,
+        "created_at": now_utc_iso(),
+        "session_key": session_key,
+        "scope": scope,
+        "title": resolved_title,
+        "source_ref": source_ref,
+        "summary_lines": summary_lines,
+        "source_snapshot": str(snapshot_path),
+        "target_page": f"pages/{wiki_slug_from_title(resolved_title, default_prefix='ingest')}.md",
+        "content": page_content,
+    }
+    proposal_path = wiki_proposal_file(scope_root, proposal_id)
+    write_json_file(proposal_path, proposal_payload)
+    wiki_append_log(
+        scope_root,
+        event=f"proposal_created:{proposal_id}",
+        lines=[
+            f"type={WIKI_PROPOSAL_TYPE_INGEST}",
+            f"title={resolved_title}",
+            f"source={source_ref}",
+            f"scope={scope}",
+            f"write_mode={wiki_config.write_mode}",
+        ],
+    )
+
+    if apply_direct or wiki_config.write_mode == WIKI_WRITE_MODE_DIRECT:
+        ok, detail = wiki_apply_proposal_payload(
+            proposal_path=proposal_path,
+            proposal=proposal_payload,
+            reviewer="system:auto",
+            note="auto-apply (direct mode)",
+        )
+        if not ok:
+            return 1, [f"wiki ingest failed: {detail}"]
+        return 0, [
+            f"wiki ingest applied: proposal={proposal_id}",
+            f"scope={scope}",
+            f"page={detail}",
+            f"source_snapshot={snapshot_path}",
+        ]
+    return 0, [
+        f"wiki ingest proposal created: {proposal_id}",
+        f"scope={scope}",
+        f"proposal={proposal_path}",
+        f"source_snapshot={snapshot_path}",
+    ]
+
+
+def wiki_query(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    query: str,
+    requested_scope: str | None = None,
+    save_as_proposal: bool = False,
+    title: str | None = None,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    snippets = collect_wiki_snippets(
+        query,
+        paths=paths,
+        wiki_config=wiki_config,
+        session_key=session_key,
+        force_scope=requested_scope,
+    )
+    if not snippets:
+        return 0, ["wiki query: no matched wiki snippets."]
+    lines = [f"wiki query: top={len(snippets)}"]
+    for score, rel, snippet in snippets:
+        lines.append(f"- [{score:.2f}] {rel}: {snippet}")
+    if not save_as_proposal:
+        return 0, lines
+
+    scope, scope_root = wiki_build_scope_root(
+        paths=paths,
+        session_key=session_key,
+        wiki_config=wiki_config,
+        requested_scope=requested_scope,
+    )
+    summary_lines = [f"[{score:.2f}] {rel}" for score, rel, _ in snippets[:4]]
+    body_lines = [f"- [{score:.2f}] {rel}\n  - {snippet}" for score, rel, snippet in snippets]
+    resolved_title = title.strip() if isinstance(title, str) and title.strip() else f"Insight {query[:40]}"
+    page_content = wiki_build_page_content(
+        title=resolved_title,
+        summary_lines=summary_lines,
+        source_ref=f"query:{query}",
+        scope=scope,
+        body="\n".join(body_lines),
+    )
+    proposal_id, proposal_path = wiki_create_proposal(
+        scope_root=scope_root,
+        proposal_type=WIKI_PROPOSAL_TYPE_INSIGHT,
+        title=resolved_title,
+        source_ref=f"query:{query}",
+        summary_lines=summary_lines,
+        page_content=page_content,
+        session_key=session_key,
+    )
+    wiki_append_log(
+        scope_root,
+        event=f"proposal_created:{proposal_id}",
+        lines=[
+            f"type={WIKI_PROPOSAL_TYPE_INSIGHT}",
+            f"title={resolved_title}",
+            f"scope={scope}",
+            f"query={query}",
+        ],
+    )
+    lines.append(f"wiki query insight proposal={proposal_id}")
+    lines.append(f"proposal_file={proposal_path}")
+    return 0, lines
+
+
+def wiki_collect_markdown_links(content: str) -> list[str]:
+    links: list[str] = []
+    for matched in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", content):
+        target = matched.group(1).strip()
+        if target:
+            links.append(target)
+    return links
+
+
+def wiki_first_heading(content: str) -> str | None:
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            heading = stripped[2:].strip()
+            if heading:
+                return heading
+    return None
+
 def resolve_config_read_policy(
     config_toml: dict[str, Any],
     override_policy: str | None,
@@ -7337,6 +8506,9 @@ def build_management_status_payload(
             if isinstance(enabled, bool):
                 management_enabled = enabled
 
+    parsed_session = parse_session_key_parts(session_key)
+    session_scope = parsed_session[2] if parsed_session is not None else None
+    session_subject = parsed_session[3] if parsed_session is not None else None
     return {
         "status": "ok",
         "service": "grobot-management",
@@ -7377,11 +8549,17 @@ def build_management_status_payload(
                 "project": str(runtime_paths.project_memory_dir),
                 "global": str(runtime_paths.global_memory_dir),
             },
+            "wiki": {
+                "project": str(runtime_paths.project_wiki_dir),
+                "global": str(runtime_paths.global_wiki_dir),
+            },
         },
         "session": {
             "platform": selection.platform,
             "work_dir": str(selection.work_dir),
             "session_preview": session_key,
+            "scope": session_scope,
+            "subject": session_subject,
             "key_format": session_cfg.get("key_format") if isinstance(session_cfg, dict) else None,
             "heartbeat_secs": session_cfg.get("heartbeat_secs") if isinstance(session_cfg, dict) else None,
         },
@@ -7417,10 +8595,176 @@ def build_management_status_payload(
     }
 
 
+def parse_wiki_option_value(tokens: list[str], index: int, option_name: str) -> tuple[str, int]:
+    token = tokens[index]
+    if token == option_name:
+        if index + 1 >= len(tokens):
+            raise RuntimeError(f"{option_name} requires a value")
+        return tokens[index + 1], index + 2
+    prefix = f"{option_name}="
+    if token.startswith(prefix):
+        return token[len(prefix) :], index + 1
+    raise RuntimeError(f"unsupported option format: {token}")
+
+
+def run_interactive_wiki_command(
+    *,
+    user_input: str,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    work_dir: Path,
+) -> tuple[int, list[str]]:
+    try:
+        tokens = shlex.split(user_input)
+    except ValueError as exc:
+        return 1, [f"wiki parse error: {exc}"]
+    if not tokens or tokens[0] != "/wiki":
+        return 1, ["wiki command must start with /wiki"]
+    if len(tokens) == 1:
+        return wiki_status(paths=paths, wiki_config=wiki_config, session_key=session_key)
+
+    sub = tokens[1].lower()
+    if sub == "status":
+        return wiki_status(paths=paths, wiki_config=wiki_config, session_key=session_key)
+
+    if sub == "ingest":
+        scope: str | None = None
+        title: str | None = None
+        apply_direct = False
+        values: list[str] = []
+        idx = 2
+        while idx < len(tokens):
+            token = tokens[idx]
+            if token in {"--scope"} or token.startswith("--scope="):
+                scope_value, idx = parse_wiki_option_value(tokens, idx, "--scope")
+                scope = scope_value
+                continue
+            if token in {"--title"} or token.startswith("--title="):
+                title_value, idx = parse_wiki_option_value(tokens, idx, "--title")
+                title = title_value
+                continue
+            if token == "--apply":
+                apply_direct = True
+                idx += 1
+                continue
+            values.append(token)
+            idx += 1
+        if not values:
+            return 1, ["Usage: /wiki ingest [--scope <auto|user|group|org>] [--title <title>] [--apply] <source-path-or-text>"]
+        source = " ".join(values).strip()
+        return wiki_ingest(
+            paths=paths,
+            wiki_config=wiki_config,
+            session_key=session_key,
+            work_dir=work_dir,
+            source=source,
+            title=title,
+            requested_scope=scope,
+            apply_direct=apply_direct,
+        )
+
+    if sub == "query":
+        scope = None
+        title = None
+        save_as_proposal = False
+        values = []
+        idx = 2
+        while idx < len(tokens):
+            token = tokens[idx]
+            if token in {"--scope"} or token.startswith("--scope="):
+                scope_value, idx = parse_wiki_option_value(tokens, idx, "--scope")
+                scope = scope_value
+                continue
+            if token in {"--title"} or token.startswith("--title="):
+                title_value, idx = parse_wiki_option_value(tokens, idx, "--title")
+                title = title_value
+                continue
+            if token == "--save":
+                save_as_proposal = True
+                idx += 1
+                continue
+            values.append(token)
+            idx += 1
+        if not values:
+            return 1, ["Usage: /wiki query [--scope <auto|user|group|org>] [--save] [--title <title>] <query>"]
+        return wiki_query(
+            paths=paths,
+            wiki_config=wiki_config,
+            session_key=session_key,
+            query=" ".join(values).strip(),
+            requested_scope=scope,
+            save_as_proposal=save_as_proposal,
+            title=title,
+        )
+
+    if sub == "lint":
+        scope = None
+        if len(tokens) >= 3:
+            if tokens[2] in {"--scope"} or tokens[2].startswith("--scope="):
+                scope, _ = parse_wiki_option_value(tokens, 2, "--scope")
+            else:
+                return 1, ["Usage: /wiki lint [--scope <auto|user|group|org>]"]
+        return wiki_lint(
+            paths=paths,
+            wiki_config=wiki_config,
+            session_key=session_key,
+            requested_scope=scope,
+        )
+
+    if sub == "review":
+        if len(tokens) < 3:
+            return 1, ["Usage: /wiki review <list|show|apply|reject> ..."]
+        action = tokens[2].lower()
+        if action == "list":
+            return wiki_review_list(paths=paths, wiki_config=wiki_config, session_key=session_key)
+        if action == "show":
+            if len(tokens) < 4:
+                return 1, ["Usage: /wiki review show <proposal_id>"]
+            return wiki_review_show(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                proposal_id=tokens[3],
+            )
+        if action == "apply":
+            if len(tokens) < 4:
+                return 1, ["Usage: /wiki review apply <proposal_id> [note]"]
+            note = " ".join(tokens[4:]).strip() if len(tokens) > 4 else None
+            return wiki_review_apply(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                proposal_id=tokens[3],
+                reviewer="interactive",
+                note=note,
+            )
+        if action == "reject":
+            if len(tokens) < 4:
+                return 1, ["Usage: /wiki review reject <proposal_id> [reason]"]
+            reason = " ".join(tokens[4:]).strip() if len(tokens) > 4 else None
+            return wiki_review_reject(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                proposal_id=tokens[3],
+                reviewer="interactive",
+                reason=reason,
+            )
+        return 1, [f"unsupported wiki review action: {action}"]
+
+    return 1, [f"unsupported wiki command: {sub}"]
+
+
 def print_local_help() -> None:
     print("Local commands:")
     print("  /model    Show current provider/model/session info")
     print("  /health   Show provider circuit health")
+    print("  /sessions List session ids in current namespace")
+    print("  /new      Start a fresh session context")
+    print("  /switch <id>    Switch active session and restore full context")
+    print("  /continue <id>  Bridge from another session by summary only")
+    print("  /wiki status|ingest|query|lint|review ...  Wiki workflow (review-first)")
     print("  /mcp      Show effective MCP servers")
     print("  /mcp reset <server|all>  Reset MCP gate metrics and close MCP session(s)")
     print("  /hooks    Show effective hooks and policy")
@@ -7741,6 +9085,130 @@ def run_hooks(args: argparse.Namespace) -> int:
     return 1
 
 
+def resolve_project_work_dir_for_non_llm(
+    *,
+    project_cfg: dict[str, Any],
+    work_dir_override: str | None,
+    fallback_root: Path,
+) -> Path:
+    if isinstance(work_dir_override, str) and work_dir_override.strip():
+        return Path(work_dir_override).expanduser().resolve()
+    agent_cfg = project_cfg.get("agent")
+    if isinstance(agent_cfg, dict):
+        options = agent_cfg.get("options")
+        if isinstance(options, dict):
+            raw_work_dir = options.get("work_dir")
+            if isinstance(raw_work_dir, str) and raw_work_dir.strip():
+                return Path(raw_work_dir).expanduser().resolve()
+    return fallback_root.resolve()
+
+
+def run_wiki(args: argparse.Namespace) -> int:
+    paths = resolve_runtime_paths(
+        work_dir_override=args.work_dir,
+        config_override=args.config,
+        home_override=args.home,
+        project_root_override=args.project_root,
+    )
+    ensure_runtime_layout(paths)
+    project_toml = load_toml(paths.project_toml)
+    config_toml = load_toml(paths.config_toml)
+    project_cfg = find_project(config_toml, args.project, config_hint=str(paths.config_toml))
+    platform = first_platform(project_cfg)
+    project_name = str(project_cfg.get("name") or "default")
+    work_dir = resolve_project_work_dir_for_non_llm(
+        project_cfg=project_cfg,
+        work_dir_override=args.work_dir,
+        fallback_root=paths.project_root,
+    )
+    identity = resolve_identity_context(args)
+    session_key = build_session_key(project_name, platform, work_dir, identity=identity)
+    wiki_config = resolve_wiki_config(project_toml)
+    sub = getattr(args, "wiki_command", "")
+
+    try:
+        if sub == "status":
+            code, lines = wiki_status(paths=paths, wiki_config=wiki_config, session_key=session_key)
+        elif sub == "ingest":
+            code, lines = wiki_ingest(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                work_dir=work_dir,
+                source=str(args.source or ""),
+                title=getattr(args, "title", None),
+                requested_scope=getattr(args, "scope", None),
+                apply_direct=bool(getattr(args, "apply", False)),
+            )
+        elif sub == "query":
+            code, lines = wiki_query(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                query=str(getattr(args, "query", "") or ""),
+                requested_scope=getattr(args, "scope", None),
+                save_as_proposal=bool(getattr(args, "save", False)),
+                title=getattr(args, "title", None),
+            )
+        elif sub == "lint":
+            code, lines = wiki_lint(
+                paths=paths,
+                wiki_config=wiki_config,
+                session_key=session_key,
+                requested_scope=getattr(args, "scope", None),
+            )
+        elif sub == "review":
+            review_action = getattr(args, "wiki_review_command", "")
+            if review_action == "list":
+                code, lines = wiki_review_list(
+                    paths=paths,
+                    wiki_config=wiki_config,
+                    session_key=session_key,
+                )
+            elif review_action == "show":
+                code, lines = wiki_review_show(
+                    paths=paths,
+                    wiki_config=wiki_config,
+                    session_key=session_key,
+                    proposal_id=str(getattr(args, "proposal_id", "") or ""),
+                )
+            elif review_action == "apply":
+                note_raw = getattr(args, "note", None)
+                note = note_raw.strip() if isinstance(note_raw, str) and note_raw.strip() else None
+                code, lines = wiki_review_apply(
+                    paths=paths,
+                    wiki_config=wiki_config,
+                    session_key=session_key,
+                    proposal_id=str(getattr(args, "proposal_id", "") or ""),
+                    reviewer="cli",
+                    note=note,
+                )
+            elif review_action == "reject":
+                reason_raw = getattr(args, "reason", None)
+                reason = reason_raw.strip() if isinstance(reason_raw, str) and reason_raw.strip() else None
+                code, lines = wiki_review_reject(
+                    paths=paths,
+                    wiki_config=wiki_config,
+                    session_key=session_key,
+                    proposal_id=str(getattr(args, "proposal_id", "") or ""),
+                    reviewer="cli",
+                    reason=reason,
+                )
+            else:
+                print("Usage: grobot wiki review <list|show|apply|reject> ...")
+                return 1
+        else:
+            print("Usage: grobot wiki <status|ingest|query|lint|review> ...")
+            return 1
+    except RuntimeError as exc:
+        print(f"wiki error: {exc}")
+        return 1
+
+    for line in lines:
+        print(line)
+    return code
+
+
 def format_route_chain(routes: list[ProviderRoute]) -> str:
     return " -> ".join(f"{route.provider.name}/{route.model}" for route in routes)
 
@@ -7770,6 +9238,280 @@ def mention_refresh_status_message(mention_index: MentionIndexState | MentionPat
     return None
 
 
+def wiki_lint_scope(scope_root: Path, *, stale_days: int, max_files: int) -> dict[str, Any]:
+    ensure_wiki_scope_layout(scope_root)
+    pages_root = scope_root / "pages"
+    page_files = sorted(pages_root.rglob("*.md"))[:max_files]
+    page_rel_set = {path.relative_to(scope_root).as_posix() for path in page_files}
+    inbound_counts: dict[str, int] = {rel: 0 for rel in page_rel_set}
+    broken_links: list[dict[str, str]] = []
+    titles: dict[str, list[str]] = {}
+    now_ts = time.time()
+    stale_seconds = float(stale_days) * 86400.0
+    stale_pages: list[str] = []
+
+    for page in page_files:
+        rel_page = page.relative_to(scope_root).as_posix()
+        try:
+            content = page.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        heading = wiki_first_heading(content)
+        if isinstance(heading, str):
+            titles.setdefault(heading.lower(), []).append(rel_page)
+        for target in wiki_collect_markdown_links(content):
+            if target.startswith("http://") or target.startswith("https://"):
+                continue
+            normalized = target.split("#", 1)[0].strip()
+            if not normalized:
+                continue
+            link_target = (page.parent / normalized).resolve()
+            try:
+                rel_target = link_target.relative_to(scope_root.resolve()).as_posix()
+            except ValueError:
+                broken_links.append({"source": rel_page, "target": normalized, "reason": "out_of_scope"})
+                continue
+            if rel_target in inbound_counts:
+                inbound_counts[rel_target] += 1
+            else:
+                broken_links.append({"source": rel_page, "target": normalized, "reason": "missing_page"})
+        mtime = page.stat().st_mtime
+        if (now_ts - mtime) > stale_seconds:
+            stale_pages.append(rel_page)
+
+    orphan_pages = [
+        rel
+        for rel, inbound in inbound_counts.items()
+        if inbound == 0 and rel.lower() not in {"pages/index.md", "pages/home.md"}
+    ]
+    title_conflicts: list[dict[str, Any]] = []
+    for title_key, items in titles.items():
+        if len(items) > 1:
+            title_conflicts.append({"title": title_key, "pages": sorted(items)})
+
+    return {
+        "scope_root": str(scope_root),
+        "page_count": len(page_files),
+        "orphan_pages": sorted(orphan_pages),
+        "broken_links": broken_links,
+        "stale_pages": sorted(stale_pages),
+        "title_conflicts": title_conflicts,
+    }
+
+
+def wiki_lint(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    requested_scope: str | None = None,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    scope, scope_root = wiki_build_scope_root(
+        paths=paths,
+        session_key=session_key,
+        wiki_config=wiki_config,
+        requested_scope=requested_scope,
+    )
+    report = wiki_lint_scope(
+        scope_root,
+        stale_days=wiki_config.lint_stale_days,
+        max_files=wiki_config.lint_max_files,
+    )
+    report_file = scope_root / "reports" / f"lint-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
+    write_json_file(report_file, report)
+    wiki_append_log(
+        scope_root,
+        event="lint_run",
+        lines=[
+            f"scope={scope}",
+            f"orphan={len(report['orphan_pages'])}",
+            f"broken={len(report['broken_links'])}",
+            f"stale={len(report['stale_pages'])}",
+            f"conflicts={len(report['title_conflicts'])}",
+            f"report={report_file}",
+        ],
+    )
+    lines = [
+        f"wiki lint completed: scope={scope}",
+        f"pages={report['page_count']} orphan={len(report['orphan_pages'])} broken={len(report['broken_links'])} stale={len(report['stale_pages'])} conflicts={len(report['title_conflicts'])}",
+        f"report={report_file}",
+    ]
+    return 0, lines
+
+
+def wiki_status(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+) -> tuple[int, list[str]]:
+    session = resolve_wiki_session_context(session_key)
+    default_scope = resolve_wiki_default_scope(session, wiki_config)
+    default_root = wiki_scope_root(paths=paths, session=session, scope=default_scope)
+    read_roots = iter_wiki_read_roots(paths=paths, wiki_config=wiki_config, session=session)
+    lines = [
+        f"wiki enabled={'on' if wiki_config.enabled else 'off'}",
+        f"write_mode={wiki_config.write_mode}",
+        f"default_scope={default_scope}",
+        f"default_root={default_root}",
+        f"allow_org_shared_read={'on' if wiki_config.allow_org_shared_read else 'off'}",
+        (
+            "retrieval="
+            f"max_files={wiki_config.retrieval_max_files}, "
+            f"max_chars={wiki_config.retrieval_max_chars}, "
+            f"max_items={wiki_config.retrieval_max_items}"
+        ),
+        (
+            "lint="
+            f"stale_days={wiki_config.lint_stale_days}, "
+            f"max_files={wiki_config.lint_max_files}"
+        ),
+    ]
+    for root in read_roots:
+        lines.append(f"read_root={root}")
+    return 0, lines
+
+
+def wiki_review_list(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    roots = wiki_accessible_scope_roots(paths=paths, session_key=session_key, wiki_config=wiki_config)
+    staging_files = wiki_collect_staging_files(roots)
+    pending_rows: list[tuple[str, str, str, str, str]] = []
+    for file_path in staging_files:
+        proposal = wiki_read_proposal(file_path)
+        if proposal is None:
+            continue
+        if proposal.get("status") != WIKI_PROPOSAL_STATUS_PENDING:
+            continue
+        pending_rows.append(
+            (
+                str(proposal.get("id", "")),
+                str(proposal.get("type", "")),
+                str(proposal.get("title", "")),
+                str(proposal.get("created_at", "")),
+                str(file_path),
+            )
+        )
+    if not pending_rows:
+        return 0, ["wiki review list: no pending proposals."]
+    pending_rows.sort(key=lambda item: item[3], reverse=True)
+    lines = [f"wiki review list: pending={len(pending_rows)}"]
+    for proposal_id, proposal_type, title, created_at, path in pending_rows:
+        lines.append(f"- {proposal_id} [{proposal_type}] {title} @ {created_at}")
+        lines.append(f"  path={path}")
+    return 0, lines
+
+
+def wiki_review_show(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    proposal_id: str,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    roots = wiki_accessible_scope_roots(paths=paths, session_key=session_key, wiki_config=wiki_config)
+    located = wiki_find_proposal(roots, proposal_id)
+    if located is None:
+        return 1, [f'wiki review show: proposal "{proposal_id}" not found.']
+    proposal_path, proposal = located
+    lines = [
+        f"id={proposal.get('id')}",
+        f"type={proposal.get('type')}",
+        f"status={proposal.get('status')}",
+        f"title={proposal.get('title')}",
+        f"created_at={proposal.get('created_at')}",
+        f"target_page={proposal.get('target_page')}",
+        f"source_ref={proposal.get('source_ref')}",
+        f"proposal_file={proposal_path}",
+        "summary:",
+    ]
+    summary_lines = proposal.get("summary_lines")
+    if isinstance(summary_lines, list):
+        for item in summary_lines[:6]:
+            if isinstance(item, str):
+                lines.append(f"- {item}")
+    content = proposal.get("content")
+    if isinstance(content, str) and content.strip():
+        preview = content.strip()
+        if len(preview) > 800:
+            preview = preview[:800].rstrip() + "\n...[truncated]"
+        lines.extend(["content_preview:", preview])
+    return 0, lines
+
+
+def wiki_review_apply(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    proposal_id: str,
+    reviewer: str,
+    note: str | None = None,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    roots = wiki_accessible_scope_roots(paths=paths, session_key=session_key, wiki_config=wiki_config)
+    located = wiki_find_proposal(roots, proposal_id)
+    if located is None:
+        return 1, [f'wiki review apply: proposal "{proposal_id}" not found.']
+    proposal_path, proposal = located
+    ok, detail = wiki_apply_proposal_payload(
+        proposal_path=proposal_path,
+        proposal=proposal,
+        reviewer=reviewer,
+        note=note,
+    )
+    if not ok:
+        return 1, [f"wiki review apply failed: {detail}"]
+    return 0, [f"wiki review applied: id={proposal_id}", f"page={detail}"]
+
+
+def wiki_review_reject(
+    *,
+    paths: RuntimePaths,
+    wiki_config: WikiConfig,
+    session_key: str,
+    proposal_id: str,
+    reviewer: str,
+    reason: str | None = None,
+) -> tuple[int, list[str]]:
+    if not wiki_config.enabled:
+        return 1, ["wiki is disabled in project config ([wiki].enabled=false)."]
+    roots = wiki_accessible_scope_roots(paths=paths, session_key=session_key, wiki_config=wiki_config)
+    located = wiki_find_proposal(roots, proposal_id)
+    if located is None:
+        return 1, [f'wiki review reject: proposal "{proposal_id}" not found.']
+    proposal_path, proposal = located
+    if proposal.get("status") != WIKI_PROPOSAL_STATUS_PENDING:
+        return 1, [f"wiki review reject failed: proposal status={proposal.get('status')}"]
+    proposal["status"] = WIKI_PROPOSAL_STATUS_REJECTED
+    proposal["rejected_at"] = now_utc_iso()
+    proposal["reviewed_by"] = reviewer
+    proposal["review_note"] = (reason or "").strip()
+    write_json_file(proposal_path, proposal)
+    scope_root = proposal_path.parent.parent
+    wiki_append_log(
+        scope_root,
+        event=f"proposal_rejected:{proposal_id}",
+        lines=[
+            f"type={proposal.get('type', 'unknown')}",
+            f"title={proposal.get('title', 'Untitled')}",
+            f"reviewer={reviewer}",
+            f"reason={reason or '(none)'}",
+        ],
+    )
+    return 0, [f"wiki review rejected: id={proposal_id}", f"reason={reason or '(none)'}"]
+
 def run_status(args: argparse.Namespace) -> int:
     paths = resolve_runtime_paths(
         work_dir_override=args.work_dir,
@@ -7790,7 +9532,13 @@ def run_status(args: argparse.Namespace) -> int:
         override_model=args.model,
         config_hint=str(paths.config_toml),
     )
-    session_key = build_session_key(selection.name, selection.platform, selection.work_dir)
+    identity_context = resolve_identity_context(args)
+    session_key = build_session_key(
+        selection.name,
+        selection.platform,
+        selection.work_dir,
+        identity=identity_context,
+    )
     session_store = resolve_session_store_config(
         project_toml=project_toml,
         root=paths.project_root,
@@ -7823,6 +9571,8 @@ def run_status(args: argparse.Namespace) -> int:
     print(f"  model_config:      {selection.provider.model}")
     print(f"  api_key:           {mask_secret(selection.provider.api_key)}")
     print(f"  session_preview:   {session_key}")
+    print(f"  session_scope:     {identity_context.scope}")
+    print(f"  session_subject:   {identity_context.subject}")
     print(f"  session_store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
     print(f"  sessions_root:     {paths.sessions_dir}")
     print(f"  rules:             global={paths.global_rules_dir} project={paths.project_rules_dir}")
@@ -7867,6 +9617,12 @@ def run_status(args: argparse.Namespace) -> int:
     print(
         "  memory:            "
         f"session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}"
+    )
+    print(
+        "  wiki:              "
+        f"project={paths.project_wiki_dir} global={paths.global_wiki_dir} "
+        f"allow_org_shared={'on' if wiki_config.allow_org_shared_read else 'off'} "
+        f"write_mode={wiki_config.write_mode}"
     )
 
     if not args.probe:
@@ -7914,7 +9670,13 @@ def run_serve(args: argparse.Namespace) -> int:
             selected_provider=selection.provider,
             provider_forced=bool(args.provider),
         )
-        session_key = build_session_key(selection.name, selection.platform, selection.work_dir)
+        identity_context = resolve_identity_context(args)
+        session_key = build_session_key(
+            selection.name,
+            selection.platform,
+            selection.work_dir,
+            identity=identity_context,
+        )
         session_store = resolve_session_store_config(
             project_toml=project_toml,
             root=paths.project_root,
@@ -8567,7 +10329,13 @@ def run_start(args: argparse.Namespace) -> int:
     if not routes:
         fail("No available provider route. " + summarize_errors(route_skips, limit=3))
     active_route = routes[0]
-    session_key = build_session_key(selection.name, selection.platform, selection.work_dir)
+    identity_context = resolve_identity_context(args)
+    session_namespace_key = build_session_key(
+        selection.name,
+        selection.platform,
+        selection.work_dir,
+        identity=identity_context,
+    )
     session_store = resolve_session_store_config(
         project_toml=project_toml,
         root=paths.project_root,
@@ -8576,11 +10344,28 @@ def run_start(args: argparse.Namespace) -> int:
         redis_url_arg=args.redis_url,
         ttl_secs_arg=args.session_ttl_secs,
     )
+    session_registry, session_registry_warnings = load_session_registry(
+        session_store,
+        session_namespace_key,
+    )
+    active_session_id = str(session_registry.get("active_id") or SESSION_REGISTRY_MAIN_ID)
+    active_record = find_session_record(session_registry, active_session_id)
+    if active_record is None:
+        active_record = create_session_record(session_namespace_key, session_id=SESSION_REGISTRY_MAIN_ID)
+        append_session_record(session_registry, active_record)
+        session_registry["active_id"] = active_record["id"]
+        session_registry_warnings.extend(
+            save_session_registry(session_store, session_namespace_key, session_registry)
+        )
+        active_session_id = active_record["id"]
+    session_key = str(active_record.get("session_key") or session_namespace_key)
     history_messages, restore_source, store_read_warnings = load_history_from_store(
         session_store,
         session_key,
         args.history_turns,
     )
+    wiki_config = resolve_wiki_config(project_toml)
+    allow_org_shared_wiki = wiki_config.allow_org_shared_read
     retrieval_config = resolve_context_retrieval_config(project_toml, selection.provider.api_key)
     skill_router_config = resolve_skill_router_config(project_toml)
     mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
@@ -8678,6 +10463,100 @@ def run_start(args: argparse.Namespace) -> int:
             to_stderr=to_stderr,
         )
 
+    def persist_session_registry_state() -> None:
+        warnings = save_session_registry(session_store, session_namespace_key, session_registry)
+        for warning in warnings:
+            print(f"[session] {warning}", file=sys.stderr)
+
+    def print_session_overview() -> None:
+        records = session_registry.get("sessions")
+        if not isinstance(records, list) or not records:
+            print("No sessions available.")
+            print("")
+            return
+        print(f"Session namespace: {session_namespace_key}")
+        for item in records:
+            if not isinstance(item, dict):
+                continue
+            sid = str(item.get("id") or "")
+            skey = str(item.get("session_key") or "")
+            updated_at = str(item.get("updated_at") or "")
+            preview = str(item.get("preview") or "")
+            marker = "*" if sid == active_session_id else " "
+            preview_part = f" | {preview}" if preview else ""
+            print(f"{marker} {sid} -> {skey} ({updated_at}){preview_part}")
+        print("")
+
+    def switch_active_session(target_session_id: str, *, reason: str) -> bool:
+        nonlocal active_session_id, session_key, history_messages, restore_source, system_prompt
+        record = find_session_record(session_registry, target_session_id)
+        if record is None:
+            print(f'Session "{target_session_id}" not found. Use /sessions to inspect ids.')
+            print("")
+            return False
+        next_key = str(record.get("session_key") or "")
+        if not next_key:
+            print(f'Session "{target_session_id}" has invalid key.')
+            print("")
+            return False
+        loaded_messages, loaded_source, warnings = load_history_from_store(
+            session_store,
+            next_key,
+            args.history_turns,
+        )
+        for warning in warnings:
+            print(f"[store] {warning}")
+        active_session_id = target_session_id
+        session_registry["active_id"] = target_session_id
+        touch_session_record(session_registry, target_session_id)
+        persist_session_registry_state()
+        session_key = next_key
+        history_messages = loaded_messages
+        restore_source = loaded_source
+        system_prompt = build_system_prompt(session_key=session_key, work_dir=selection.work_dir)
+        print(
+            f'Switched to session "{target_session_id}" (reason={reason}, restored={len(history_messages) // 2} turns from {restore_source}).'
+        )
+        print("")
+        return True
+
+    def create_new_session() -> str:
+        new_record = create_session_record(session_namespace_key)
+        append_session_record(session_registry, new_record)
+        session_registry["active_id"] = new_record["id"]
+        persist_session_registry_state()
+        return str(new_record["id"])
+
+    def persist_history_state(*, output: Any) -> None:
+        save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
+        for warning in save_warnings:
+            print(f"[store] {warning}", file=output)
+        _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
+        memory_warnings = persist_memory_layers(
+            paths=paths,
+            selection=selection,
+            session_key=session_key,
+            compact_memory=compact_memory,
+        )
+        for warning in memory_warnings:
+            print(f"[memory] {warning}", file=output)
+
+    def record_turn(user_text: str, assistant_text: str, *, output: Any) -> None:
+        nonlocal history_messages, compaction_observed
+        history_messages.extend(
+            [
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": assistant_text},
+            ]
+        )
+        max_messages = args.history_turns * 2
+        if max_messages > 2 and len(history_messages) > max_messages:
+            compaction_observed = True
+        history_messages = trim_history_messages(history_messages, args.history_turns)
+        persist_history_state(output=output)
+        touch_session_record(session_registry, active_session_id, preview=user_text)
+        persist_session_registry_state()
+
     print("Grobot started")
     print(f"  home:      {paths.home}")
     print(f"  root:      {paths.project_root}")
@@ -8688,9 +10567,16 @@ def run_start(args: argparse.Namespace) -> int:
     print(f"  model:     {active_route.model}")
     print(f"  failover:  {format_route_chain(routes)}")
     print(f"  session:   {session_key}")
+    print(f"  namespace: {session_namespace_key}")
+    print(f"  session_id:{active_session_id}")
     print(f"  store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
     print(f"  sessions:  {paths.sessions_dir}")
     print(f"  memory:    session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}")
+    print(
+        f"  wiki:      project={paths.project_wiki_dir} global={paths.global_wiki_dir} "
+        f"allow_org_shared={'on' if allow_org_shared_wiki else 'off'} "
+        f"write_mode={wiki_config.write_mode}"
+    )
     print(f"  hooks:     global={paths.global_hooks_dir} project={paths.project_hooks_dir}")
     print(
         "  hooks_cfg: "
@@ -8772,6 +10658,8 @@ def run_start(args: argparse.Namespace) -> int:
         print(f"  skipped:   {summarize_errors(route_skips)}")
     for warning in store_read_warnings:
         print(f"[store] {warning}", file=sys.stderr)
+    for warning in session_registry_warnings:
+        print(f"[session] {warning}", file=sys.stderr)
     print("")
 
     if args.message:
@@ -8842,6 +10730,12 @@ def run_start(args: argparse.Namespace) -> int:
             max_history_turns=args.history_turns,
             retrieval_config=retrieval_config,
             skill_prompt_block=skill_resolution.block,
+            wiki_context_block=build_wiki_context_block(
+                effective_prompt,
+                paths=paths,
+                session_key=session_key,
+                wiki_config=wiki_config,
+            ),
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,
@@ -8854,34 +10748,16 @@ def run_start(args: argparse.Namespace) -> int:
         if errors:
             print(f"[failover] {summarize_errors(errors)}", file=sys.stderr)
             record_failover_errors(errors)
-        history_messages.extend(
-            [
-                {"role": "user", "content": args.message},
-                {"role": "assistant", "content": reply},
-            ]
-        )
-        max_messages = args.history_turns * 2
-        if max_messages > 2 and len(history_messages) > max_messages:
-            compaction_observed = True
-        history_messages = trim_history_messages(history_messages, args.history_turns)
-        save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
-        for warning in save_warnings:
-            print(f"[store] {warning}", file=sys.stderr)
-        _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
-        memory_warnings = persist_memory_layers(
-            paths=paths,
-            selection=selection,
-            session_key=session_key,
-            compact_memory=compact_memory,
-        )
-        for warning in memory_warnings:
-            print(f"[memory] {warning}", file=sys.stderr)
+        record_turn(args.message, reply, output=sys.stderr)
         print(reply)
         maybe_auto_handoff(to_stderr=True)
         close_mcp_sessions(local_tool_context)
         return 0
 
-    print("Enter message (`/model`, `/health`, `/mcp`, `/hooks`, `/handoff`, `/mcp reset <server|all>`, `/help`, `/exit`):")
+    print(
+        "Enter message (`/model`, `/health`, `/sessions`, `/new`, `/switch <id>`, `/continue <id>`, "
+        "`/wiki ...`, `/mcp`, `/hooks`, `/handoff`, `/mcp reset <server|all>`, `/help`, `/exit`):"
+    )
     while True:
         try:
             user_input = input("grobot> ").strip()
@@ -8907,12 +10783,102 @@ def run_start(args: argparse.Namespace) -> int:
             print_model_info(active_route.provider, active_route.model, selection.work_dir, session_key)
             print(f"  failover:  {format_route_chain(routes)}")
             print(f"  store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
+            print(f"  namespace: {session_namespace_key}")
+            print(f"  session_id:{active_session_id}")
             print("")
             continue
         if user_input == "/health":
             print("Circuit health:")
             for line in format_circuit_health(routes):
                 print(line)
+            print("")
+            continue
+        if user_input == "/sessions":
+            print_session_overview()
+            continue
+        if user_input == "/new":
+            new_id = create_new_session()
+            _ = switch_active_session(new_id, reason="new")
+            continue
+        if user_input.startswith("/switch"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2 or not parts[1].strip():
+                print("Usage: /switch <session_id>")
+                print("")
+                continue
+            _ = switch_active_session(parts[1].strip(), reason="switch")
+            continue
+        if user_input.startswith("/continue"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2 or not parts[1].strip():
+                print("Usage: /continue <session_id>")
+                print("")
+                continue
+            source_id = parts[1].strip()
+            if source_id == active_session_id:
+                print("Skip: source session is current active session.")
+                print("")
+                continue
+            source_record = find_session_record(session_registry, source_id)
+            if source_record is None:
+                print(f'Session "{source_id}" not found. Use /sessions to inspect ids.')
+                print("")
+                continue
+            source_key = str(source_record.get("session_key") or "")
+            if not source_key:
+                print(f'Session "{source_id}" has invalid key.')
+                print("")
+                continue
+            source_history, source_restore, source_warnings = load_history_from_store(
+                session_store,
+                source_key,
+                args.history_turns,
+            )
+            for warning in source_warnings:
+                print(f"[store] {warning}")
+            bridge_message = build_continue_bridge_message(
+                source_session_id=source_id,
+                source_session_key=source_key,
+                source_history_messages=source_history,
+                max_turns=args.history_turns,
+            )
+            if bridge_message is None:
+                print(
+                    f'Cannot bridge from "{source_id}" because source session has no recoverable summary '
+                    f"(restored={source_restore})."
+                )
+                print("")
+                continue
+            history_messages.append(bridge_message)
+            history_messages = trim_history_messages(history_messages, args.history_turns)
+            persist_history_state(output=sys.stdout)
+            touch_session_record(
+                session_registry,
+                active_session_id,
+                preview=f"continue from {source_id}",
+            )
+            persist_session_registry_state()
+            print(
+                f'Bridge injected from "{source_id}" into current session "{active_session_id}" '
+                f"(summary only, no full history import)."
+            )
+            print("")
+            continue
+        if user_input.startswith("/wiki"):
+            try:
+                wiki_code, wiki_lines = run_interactive_wiki_command(
+                    user_input=user_input,
+                    paths=paths,
+                    wiki_config=wiki_config,
+                    session_key=session_key,
+                    work_dir=selection.work_dir,
+                )
+            except RuntimeError as exc:
+                wiki_code, wiki_lines = (1, [f"wiki error: {exc}"])
+            for line in wiki_lines:
+                print(line)
+            if wiki_code != 0:
+                print("wiki command failed.")
             print("")
             continue
         if user_input.startswith("/mcp reset"):
@@ -9012,6 +10978,12 @@ def run_start(args: argparse.Namespace) -> int:
             max_history_turns=args.history_turns,
             retrieval_config=retrieval_config,
             skill_prompt_block=skill_resolution.block,
+            wiki_context_block=build_wiki_context_block(
+                effective_prompt,
+                paths=paths,
+                session_key=session_key,
+                wiki_config=wiki_config,
+            ),
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,
@@ -9024,28 +10996,7 @@ def run_start(args: argparse.Namespace) -> int:
         if errors:
             print(f"[failover] {summarize_errors(errors)}")
             record_failover_errors(errors)
-        history_messages.extend(
-            [
-                {"role": "user", "content": user_input},
-                {"role": "assistant", "content": reply},
-            ]
-        )
-        max_messages = args.history_turns * 2
-        if max_messages > 2 and len(history_messages) > max_messages:
-            compaction_observed = True
-        history_messages = trim_history_messages(history_messages, args.history_turns)
-        save_warnings = save_history_to_store(session_store, session_key, history_messages, args.history_turns)
-        for warning in save_warnings:
-            print(f"[store] {warning}")
-        _, compact_memory = trim_history_messages_with_memory(history_messages, args.history_turns)
-        memory_warnings = persist_memory_layers(
-            paths=paths,
-            selection=selection,
-            session_key=session_key,
-            compact_memory=compact_memory,
-        )
-        for warning in memory_warnings:
-            print(f"[memory] {warning}")
+        record_turn(user_input, reply, output=sys.stdout)
         print(reply)
         print("")
 
@@ -9081,6 +11032,8 @@ def run_init(args: argparse.Namespace) -> int:
             home / "runtime" / "sessions",
             home / "runtime" / "memory" / "session",
             home / "memory" / "global",
+            home / "wiki",
+            home / "wiki" / "org",
         ]
         for path in global_dirs:
             existed = path.exists()
@@ -9094,6 +11047,8 @@ def run_init(args: argparse.Namespace) -> int:
             (home / "rules" / "README.md", FALLBACK_RULES_README_TEMPLATE),
             (home / "skills" / "README.md", FALLBACK_SKILLS_README_TEMPLATE),
             (home / "memory" / "global" / "README.md", FALLBACK_MEMORY_README_TEMPLATE),
+            (home / "wiki" / "README.md", FALLBACK_WIKI_README_TEMPLATE),
+            (home / "wiki" / "org" / "README.md", FALLBACK_WIKI_README_TEMPLATE),
         )
         for readme_path, template in global_readmes:
             wrote_readme = write_text_file_if_missing(
@@ -9167,6 +11122,10 @@ def run_init(args: argparse.Namespace) -> int:
             project_dir / "hooks" / LOCAL_TOOL_HOOK_EVENT_BEFORE_TOOL_USE,
             project_dir / "hooks" / LOCAL_TOOL_HOOK_EVENT_AFTER_TOOL_USE,
             project_dir / "memory",
+            project_dir / "wiki",
+            project_dir / "wiki" / "shared",
+            project_dir / "wiki" / "users",
+            project_dir / "wiki" / "groups",
         ]
         for path in project_dirs:
             existed = path.exists()
@@ -9180,6 +11139,7 @@ def run_init(args: argparse.Namespace) -> int:
             (project_dir / "rules" / "README.md", FALLBACK_RULES_README_TEMPLATE),
             (project_dir / "skills" / "README.md", FALLBACK_SKILLS_README_TEMPLATE),
             (project_dir / "memory" / "README.md", FALLBACK_MEMORY_README_TEMPLATE),
+            (project_dir / "wiki" / "README.md", FALLBACK_WIKI_README_TEMPLATE),
         )
         for readme_path, template in project_readmes:
             wrote_readme = write_text_file_if_missing(
@@ -9283,6 +11243,16 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--api-key", help="Override API key")
     status.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     status.add_argument("--model", help="Override model id (or auto)")
+    status.add_argument(
+        "--session-scope",
+        choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
+        default=SESSION_SCOPE_DM,
+        help="Session scope (dm/group) used in session key generation",
+    )
+    status.add_argument(
+        "--session-subject",
+        help="Session subject (e.g. open_id/chat_id/thread root); default derives from local user",
+    )
     status.add_argument("--probe", action="store_true", help="Call provider /models to verify connectivity")
     status.set_defaults(func=run_status)
 
@@ -9302,6 +11272,85 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hooks.set_defaults(func=run_hooks)
 
+    wiki = sub.add_parser("wiki", help="Wiki operations (status/ingest/query/lint/review)")
+
+    def add_wiki_common_args(target: argparse.ArgumentParser) -> None:
+        target.add_argument("--project", help="Project name in config.toml")
+        target.add_argument("--work-dir", help="Override target work directory")
+        target.add_argument("--config", help="Path to runtime config.toml")
+        target.add_argument("--home", help="Path to global grobot home (default: ~/.grobot or GROBOT_HOME)")
+        target.add_argument("--project-root", help="Project root containing .grobot/project.toml")
+        target.add_argument(
+            "--session-scope",
+            choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
+            default=SESSION_SCOPE_DM,
+            help="Session scope (dm/group) used in wiki scope derivation",
+        )
+        target.add_argument(
+            "--session-subject",
+            help="Session subject (e.g. open_id/chat_id/thread root); default derives from local user",
+        )
+
+    add_wiki_common_args(wiki)
+    wiki_sub = wiki.add_subparsers(dest="wiki_command")
+    wiki_status_parser = wiki_sub.add_parser("status", help="Show effective wiki config and scope roots")
+    add_wiki_common_args(wiki_status_parser)
+
+    wiki_ingest_parser = wiki_sub.add_parser("ingest", help="Create wiki ingest proposal (or apply directly)")
+    add_wiki_common_args(wiki_ingest_parser)
+    wiki_ingest_parser.add_argument("--source", required=True, help="Source file path or inline text")
+    wiki_ingest_parser.add_argument("--title", help="Optional page title")
+    wiki_ingest_parser.add_argument(
+        "--scope",
+        choices=list(WIKI_SCOPE_ALL),
+        default=WIKI_SCOPE_AUTO,
+        help="Target wiki scope",
+    )
+    wiki_ingest_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply immediately even when write_mode=review_first",
+    )
+
+    wiki_query_parser = wiki_sub.add_parser("query", help="Search wiki snippets by query")
+    add_wiki_common_args(wiki_query_parser)
+    wiki_query_parser.add_argument("--query", required=True, help="Query text")
+    wiki_query_parser.add_argument(
+        "--scope",
+        choices=list(WIKI_SCOPE_ALL),
+        default=WIKI_SCOPE_AUTO,
+        help="Restrict query to a single scope",
+    )
+    wiki_query_parser.add_argument("--save", action="store_true", help="Save result as insight proposal")
+    wiki_query_parser.add_argument("--title", help="Optional insight proposal title")
+
+    wiki_lint_parser = wiki_sub.add_parser("lint", help="Run wiki lint checks")
+    add_wiki_common_args(wiki_lint_parser)
+    wiki_lint_parser.add_argument(
+        "--scope",
+        choices=list(WIKI_SCOPE_ALL),
+        default=WIKI_SCOPE_AUTO,
+        help="Run lint on selected scope",
+    )
+
+    wiki_review = wiki_sub.add_parser("review", help="Review pending wiki proposals")
+    add_wiki_common_args(wiki_review)
+    wiki_review_sub = wiki_review.add_subparsers(dest="wiki_review_command")
+    wiki_review_list = wiki_review_sub.add_parser("list", help="List pending proposals")
+    add_wiki_common_args(wiki_review_list)
+    wiki_review_show = wiki_review_sub.add_parser("show", help="Show proposal detail")
+    add_wiki_common_args(wiki_review_show)
+    wiki_review_show.add_argument("proposal_id")
+    wiki_review_apply = wiki_review_sub.add_parser("apply", help="Apply proposal")
+    add_wiki_common_args(wiki_review_apply)
+    wiki_review_apply.add_argument("proposal_id")
+    wiki_review_apply.add_argument("note", nargs="?", default="")
+    wiki_review_reject = wiki_review_sub.add_parser("reject", help="Reject proposal")
+    add_wiki_common_args(wiki_review_reject)
+    wiki_review_reject.add_argument("proposal_id")
+    wiki_review_reject.add_argument("reason", nargs="?", default="")
+    wiki.set_defaults(func=run_wiki)
+
     serve = sub.add_parser("serve", help="Run management API server")
     serve.add_argument("--project", help="Project name in config.toml")
     serve.add_argument("--work-dir", help="Override target work directory")
@@ -9312,6 +11361,16 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--api-key", help="Override API key")
     serve.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     serve.add_argument("--model", help="Override model id (or auto)")
+    serve.add_argument(
+        "--session-scope",
+        choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
+        default=SESSION_SCOPE_DM,
+        help="Session scope (dm/group) used in session key generation",
+    )
+    serve.add_argument(
+        "--session-subject",
+        help="Session subject (e.g. open_id/chat_id/thread root); default derives from local user",
+    )
     serve.add_argument("--bind", help="Override management bind, e.g. 127.0.0.1:8080")
     serve.add_argument(
         "--management-token",
@@ -9343,6 +11402,16 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--api-key", help="Override API key")
     start.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     start.add_argument("--model", help="Override model id (or auto)")
+    start.add_argument(
+        "--session-scope",
+        choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
+        default=SESSION_SCOPE_DM,
+        help="Session scope (dm/group) used in session key generation",
+    )
+    start.add_argument(
+        "--session-subject",
+        help="Session subject (e.g. open_id/chat_id/thread root); default derives from local user",
+    )
     start.add_argument("--history-turns", type=int, default=12, help="Max retained turns for context replay")
     start.add_argument(
         "--handoff-recent-turns",

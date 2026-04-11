@@ -130,10 +130,55 @@ grobot start \
   - 管理 API 可对会话设置 interrupt 标记，`start` 在下一轮调用前会消费该标记并跳过当次请求。
   - 支持 hooks 事件：`user-prompt-submit`、`before-tool-use`、`after-tool-use`。脚本目录支持全局（`~/.grobot/hooks/<event>/`）和项目层（`<repo>/.grobot/hooks/<event>/`）。
   - hooks 脚本读取 STDIN JSON（事件 payload）；可通过 `.grobot/project.toml` 的 `[hooks]` 配置 `enabled/strict/timeout_secs`。
-  - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
+ - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
   - 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
   - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
   - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
+
+### Wiki v1（Memory + Wiki 双轨）
+
+默认模式是 `review_first`：先产出提案，再审核应用，避免直接写坏知识库。
+
+```bash
+# 查看 wiki 运行状态（当前会话 scope、读写根目录、写入模式）
+grobot wiki status --project <project-name> --work-dir "$(pwd)"
+
+# 生成 ingest 提案（默认不直接写入页面）
+grobot wiki ingest \
+  --project <project-name> \
+  --work-dir "$(pwd)" \
+  --source "docs/architecture.md" \
+  --scope auto
+
+# 查询 wiki（可选保存为 insight 提案）
+grobot wiki query \
+  --project <project-name> \
+  --work-dir "$(pwd)" \
+  --query "支付回滚策略" \
+  --save
+
+# 审核提案
+grobot wiki review list --project <project-name> --work-dir "$(pwd)"
+grobot wiki review show <proposal_id> --project <project-name> --work-dir "$(pwd)"
+grobot wiki review apply <proposal_id> --project <project-name> --work-dir "$(pwd)"
+grobot wiki review reject <proposal_id> "信息不完整" --project <project-name> --work-dir "$(pwd)"
+
+# 运行 wiki lint（孤儿页/坏链/陈旧页/标题冲突）
+grobot wiki lint --project <project-name> --work-dir "$(pwd)"
+```
+
+交互模式也支持：
+- `/wiki status`
+- `/wiki ingest <source>`
+- `/wiki query <query>`
+- `/wiki lint`
+- `/wiki review list|show|apply|reject ...`
+
+作用域与隔离：
+- `user`: `.grobot/wiki/users/<subject>/`（私有）
+- `group`: `.grobot/wiki/groups/<subject>/`（群级共享）
+- `org`: `~/.grobot/wiki/org/<tenant>/`（组织级，需显式开启 `allow_org_shared_read`）
+- `shared`: `.grobot/wiki/shared/`（项目共享）
 
 ### MCP 配置示例
 
