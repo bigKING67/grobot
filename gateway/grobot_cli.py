@@ -225,6 +225,18 @@ class ContextRetrievalConfig:
     rerank: RetrievalRemoteConfig | None
 
 
+@dataclass(frozen=True)
+class SkillRouterConfig:
+    enabled: bool
+    descriptor_scan_lines: int
+    max_descriptors: int
+    score_threshold: float
+    min_score_gap: float
+    max_skill_block_chars: int
+    observability_enabled: bool
+    observability_path: str | None
+
+
 @dataclass
 class MentionPathIndex:
     work_dir: Path
@@ -247,6 +259,39 @@ class MentionIndexState:
     last_refresh_applied_at: float = 0.0
     last_refresh_error: str | None = None
     last_refresh_status: str = "idle"
+
+
+@dataclass(frozen=True)
+class SkillDescriptor:
+    name: str
+    scope: str
+    source: str
+    skill_file: Path
+    description: str
+    use_when: tuple[str, ...]
+    dont_use_when: tuple[str, ...]
+    output: str
+    side_effect: bool
+    rate_limit: str | None
+    keywords: tuple[str, ...]
+    specificity: float
+
+
+@dataclass(frozen=True)
+class SkillRoutingResult:
+    descriptor: SkillDescriptor
+    score: float
+    positive_hits: tuple[str, ...]
+    negative_hits: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class SkillRuntimeResolution:
+    block: str
+    status: str
+    routing: SkillRoutingResult | None
+    truncated: bool
 
 
 @dataclass
@@ -560,6 +605,18 @@ HISTORY_RETRIEVAL_REMOTE_TIMEOUT_SECS = 20
 DEFAULT_RETRIEVAL_BASE_URL = "https://api.siliconflow.cn/v1"
 DEFAULT_RETRIEVAL_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
 DEFAULT_RETRIEVAL_RERANK_MODEL = "Qwen/Qwen3-Reranker-4B"
+SKILL_DESCRIPTOR_MAX_SCAN_LINES = 180
+SKILL_DESCRIPTOR_MAX_ITEMS = 64
+SKILL_DESCRIPTOR_MAX_OUTPUT_LEN = 240
+SKILL_ROUTER_SCORE_THRESHOLD = 2.0
+SKILL_ROUTER_MIN_SCORE_GAP = 0.8
+SKILL_ROUTER_MAX_BLOCK_CHARS = 14000
+SKILL_ROUTER_OBSERVABILITY_ENABLED = True
+SKILL_ROUTER_OBSERVABILITY_DEFAULT_FILE = "skills/router_events.jsonl"
+SKILL_ROUTER_OBSERVABILITY_PROMPT_PREVIEW_CHARS = 220
+SKILL_ROUTER_OBSERVABILITY_HIT_PREVIEW_ITEMS = 8
+SKILL_ROUTER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_./:-]{2,}|[\u4e00-\u9fff]{1,8}")
+SKILL_SIDE_EFFECT_KEYWORDS = ("deploy", "release", "push", "publish", "write", "delete", "修改", "写入", "发布")
 HISTORY_RETRIEVAL_SECTION_WEIGHTS = {
     HISTORY_COMPACT_SECTION_ARCHITECTURE: 5.0,
     HISTORY_COMPACT_SECTION_MODIFIED: 3.0,
@@ -573,6 +630,7 @@ DEFAULT_PROJECT_CONFIG_DIRNAME = ".grobot"
 DEFAULT_PROJECT_CONFIG_FILENAME = "project.toml"
 DEFAULT_GLOBAL_MCP_REGISTRY = "servers.toml"
 DEFAULT_PROJECT_MCP_FILENAME = "mcp.toml"
+SKILL_METADATA_FILENAME = "skill.meta.toml"
 
 FALLBACK_GLOBAL_CONFIG_TEMPLATE = textwrap.dedent(
     """
@@ -2120,6 +2178,613 @@ def extract_text_from_message_content(content: Any) -> str:
     return ""
 
 
+def tokenize_skill_text(raw_text: str) -> set[str]:
+    if not isinstance(raw_text, str):
+        return set()
+    lowered = raw_text.lower()
+    tokens = {item for item in SKILL_ROUTER_TOKEN_PATTERN.findall(lowered) if item}
+    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", lowered):
+        chunk_len = len(chunk)
+        for width in (2, 3, 4):
+            if chunk_len < width:
+                continue
+            for idx in range(0, chunk_len - width + 1):
+                tokens.add(chunk[idx : idx + width])
+    return tokens
+
+
+def normalize_descriptor_items(raw_value: Any) -> tuple[str, ...]:
+    if isinstance(raw_value, str):
+        values: list[str] = []
+        for chunk in re.split(r"[;\n；]", raw_value):
+            for piece in re.split(r"[，,、]", chunk):
+                item = piece.strip()
+                if item:
+                    values.append(item)
+        return tuple(values)
+    if isinstance(raw_value, list):
+        values = []
+        for item in raw_value:
+            if isinstance(item, str):
+                stripped = item.strip()
+                if stripped:
+                    values.append(stripped)
+        return tuple(values)
+    return ()
+
+
+def parse_skill_markdown_descriptor(
+    markdown_text: str,
+    *,
+    max_scan_lines: int = SKILL_DESCRIPTOR_MAX_SCAN_LINES,
+) -> dict[str, Any]:
+    lines = markdown_text.splitlines()
+    max_lines = min(len(lines), max(1, max_scan_lines))
+    description = ""
+    use_when: list[str] = []
+    dont_use_when: list[str] = []
+    output = ""
+    rate_limit = None
+    side_effect: bool | None = None
+
+    heading_map = {
+        "use when": "use",
+        "when to use": "use",
+        "适用场景": "use",
+        "何时使用": "use",
+        "don't use when": "dont",
+        "do not use when": "dont",
+        "avoid when": "dont",
+        "不适用": "dont",
+        "何时不要使用": "dont",
+        "output": "output",
+        "产出物": "output",
+        "输出": "output",
+        "rate limit": "rate",
+        "限流": "rate",
+        "side effect": "side",
+        "副作用": "side",
+    }
+
+    idx = 0
+    while idx < max_lines:
+        raw_line = lines[idx]
+        line = raw_line.strip()
+        if not line:
+            idx += 1
+            continue
+
+        lowered = line.lower()
+        if not description and not line.startswith("#") and not line.startswith(("-", "*", "+")):
+            if not re.match(r"^\d+\.\s+", line):
+                description = line
+
+        inline_match = re.match(
+            r"^\s*(use when|when to use|适用场景|何时使用|don't use when|do not use when|avoid when|不适用|何时不要使用|output|产出物|输出|rate limit|限流|side effect|副作用)\s*[:：]\s*(.+)\s*$",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if inline_match:
+            key = heading_map.get(inline_match.group(1).strip().lower())
+            content = inline_match.group(2).strip()
+            if key == "use":
+                use_when.extend(normalize_descriptor_items(content))
+            elif key == "dont":
+                dont_use_when.extend(normalize_descriptor_items(content))
+            elif key == "output":
+                output = output or content[:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+            elif key == "rate":
+                rate_limit = content[:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+            elif key == "side":
+                lowered_side = content.lower()
+                side_effect = lowered_side in {"true", "yes", "on", "1", "enabled"}
+            idx += 1
+            continue
+
+        if line.startswith("#"):
+            heading_name = line.lstrip("#").strip().lower()
+            section_key = heading_map.get(heading_name)
+            if section_key is None:
+                idx += 1
+                continue
+            section_items: list[str] = []
+            idx += 1
+            while idx < max_lines:
+                child = lines[idx].strip()
+                if child.startswith("#"):
+                    break
+                if child.startswith(("-", "*", "+")):
+                    child_value = child[1:].strip()
+                    if child_value:
+                        section_items.extend(normalize_descriptor_items(child_value))
+                elif re.match(r"^\d+\.\s+", child):
+                    child_value = re.sub(r"^\d+\.\s+", "", child).strip()
+                    if child_value:
+                        section_items.extend(normalize_descriptor_items(child_value))
+                elif child and section_key in {"output", "rate"}:
+                    section_items.append(child)
+                idx += 1
+
+            if section_key == "use":
+                use_when.extend(section_items)
+            elif section_key == "dont":
+                dont_use_when.extend(section_items)
+            elif section_key == "output" and section_items:
+                output = output or section_items[0][:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+            elif section_key == "rate" and section_items:
+                rate_limit = section_items[0][:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+            elif section_key == "side" and section_items:
+                lowered_side = section_items[0].lower()
+                side_effect = lowered_side in {"true", "yes", "on", "1", "enabled"}
+            continue
+
+        idx += 1
+
+    return {
+        "description": description,
+        "use_when": tuple(use_when),
+        "dont_use_when": tuple(dont_use_when),
+        "output": output,
+        "rate_limit": rate_limit,
+        "side_effect": side_effect,
+    }
+
+
+def load_skill_metadata(skill_dir: Path) -> dict[str, Any]:
+    metadata_file = skill_dir / SKILL_METADATA_FILENAME
+    if not metadata_file.exists() or not metadata_file.is_file():
+        return {}
+    payload, _ = load_toml_optional(metadata_file)
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def build_skill_keywords(
+    *,
+    name: str,
+    description: str,
+    use_when: tuple[str, ...],
+    dont_use_when: tuple[str, ...],
+    output: str,
+) -> tuple[str, ...]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    sources = [name, description, output, *use_when, *dont_use_when]
+    for source in sources:
+        for token in tokenize_skill_text(source):
+            if token in seen:
+                continue
+            seen.add(token)
+            keywords.append(token)
+            if len(keywords) >= 80:
+                return tuple(keywords)
+    return tuple(keywords)
+
+
+def infer_skill_side_effect(
+    *,
+    explicit_side_effect: bool | None,
+    name: str,
+    description: str,
+    use_when: tuple[str, ...],
+    output: str,
+) -> bool:
+    if isinstance(explicit_side_effect, bool):
+        return explicit_side_effect
+    text = " ".join([name, description, output, *use_when]).lower()
+    return any(keyword in text for keyword in SKILL_SIDE_EFFECT_KEYWORDS)
+
+
+def discover_skill_descriptors(
+    global_skills_dir: Path,
+    project_skills_dir: Path,
+    *,
+    max_descriptors: int = SKILL_DESCRIPTOR_MAX_ITEMS,
+    descriptor_scan_lines: int = SKILL_DESCRIPTOR_MAX_SCAN_LINES,
+) -> tuple[SkillDescriptor, ...]:
+    descriptors: list[SkillDescriptor] = []
+    scopes: tuple[tuple[str, Path], ...] = (
+        ("global", global_skills_dir),
+        ("project", project_skills_dir),
+    )
+    for scope, scope_root in scopes:
+        if not scope_root.exists():
+            continue
+        skill_files = sorted(scope_root.rglob("SKILL.md"), key=lambda item: item.as_posix().lower())
+        for skill_file in skill_files:
+            if not skill_file.is_file():
+                continue
+            if len(descriptors) >= max(1, max_descriptors):
+                return tuple(descriptors)
+            try:
+                markdown = skill_file.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            parsed = parse_skill_markdown_descriptor(markdown, max_scan_lines=descriptor_scan_lines)
+            metadata = load_skill_metadata(skill_file.parent)
+            name = skill_file.parent.name.strip() or skill_file.stem
+            description = (
+                str(metadata.get("description", "")).strip()
+                if isinstance(metadata.get("description"), str)
+                else str(parsed.get("description", "")).strip()
+            )
+            use_when = normalize_descriptor_items(metadata.get("use_when")) or tuple(parsed.get("use_when", ()))
+            dont_use_when = normalize_descriptor_items(metadata.get("dont_use_when")) or tuple(parsed.get("dont_use_when", ()))
+            output = (
+                str(metadata.get("output", "")).strip()[:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+                if isinstance(metadata.get("output"), str)
+                else str(parsed.get("output", "")).strip()[:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+            )
+            rate_limit = None
+            raw_rate_limit = metadata.get("rate_limit", parsed.get("rate_limit"))
+            if isinstance(raw_rate_limit, str):
+                stripped_rate_limit = raw_rate_limit.strip()
+                if stripped_rate_limit:
+                    rate_limit = stripped_rate_limit[:SKILL_DESCRIPTOR_MAX_OUTPUT_LEN]
+            side_effect = infer_skill_side_effect(
+                explicit_side_effect=metadata.get("side_effect", parsed.get("side_effect")),
+                name=name,
+                description=description,
+                use_when=use_when,
+                output=output,
+            )
+            keywords = build_skill_keywords(
+                name=name,
+                description=description,
+                use_when=use_when,
+                dont_use_when=dont_use_when,
+                output=output,
+            )
+            specificity = float(len(use_when) + (len(dont_use_when) * 1.5) + (1 if output else 0))
+            descriptors.append(
+                SkillDescriptor(
+                    name=name,
+                    scope=scope,
+                    source=f"{scope}:{skill_file}",
+                    skill_file=skill_file,
+                    description=description,
+                    use_when=use_when,
+                    dont_use_when=dont_use_when,
+                    output=output,
+                    side_effect=side_effect,
+                    rate_limit=rate_limit,
+                    keywords=keywords,
+                    specificity=specificity,
+                )
+            )
+    return tuple(descriptors)
+
+
+def route_skill_for_prompt(
+    user_prompt: str,
+    descriptors: tuple[SkillDescriptor, ...],
+    *,
+    score_threshold: float = SKILL_ROUTER_SCORE_THRESHOLD,
+    min_score_gap: float = SKILL_ROUTER_MIN_SCORE_GAP,
+) -> SkillRoutingResult | None:
+    if not descriptors or not isinstance(user_prompt, str) or not user_prompt.strip():
+        return None
+    prompt_text = user_prompt.strip()
+    prompt_lower = prompt_text.lower()
+    prompt_tokens = tokenize_skill_text(prompt_text)
+    scored_items: list[SkillRoutingResult] = []
+    for descriptor in descriptors:
+        positive_hits: list[str] = []
+        negative_hits: list[str] = []
+        positive_score = 0.0
+        negative_score = 0.0
+
+        for phrase in descriptor.use_when:
+            phrase_norm = phrase.strip().lower()
+            if not phrase_norm:
+                continue
+            if phrase_norm in prompt_lower:
+                positive_score += 4.0
+                positive_hits.append(f"use:{phrase}")
+                continue
+            overlap = len(prompt_tokens.intersection(tokenize_skill_text(phrase_norm)))
+            if overlap > 0:
+                positive_score += min(2.4, overlap * 0.8)
+                positive_hits.append(f"use~{phrase}")
+
+        keyword_overlap = len(prompt_tokens.intersection(set(descriptor.keywords)))
+        if keyword_overlap > 0:
+            positive_score += min(3.0, keyword_overlap * 0.45)
+
+        for phrase in descriptor.dont_use_when:
+            phrase_norm = phrase.strip().lower()
+            if not phrase_norm:
+                continue
+            if phrase_norm in prompt_lower:
+                if phrase_in_negated_context(prompt_lower, phrase_norm):
+                    positive_score += 0.6
+                    positive_hits.append(f"avoid-negated:{phrase}")
+                    continue
+                negative_score += 8.0
+                negative_hits.append(f"avoid:{phrase}")
+                continue
+            overlap = len(prompt_tokens.intersection(tokenize_skill_text(phrase_norm)))
+            if overlap >= 2:
+                negative_score += 4.5
+                negative_hits.append(f"avoid~{phrase}")
+
+        if descriptor.side_effect and any(token in prompt_lower for token in ("只读", "read-only", "不要修改", "不要执行")):
+            negative_score += 3.0
+            negative_hits.append("avoid:side_effect_for_readonly")
+
+        score = positive_score - negative_score + (descriptor.specificity * 0.05)
+        if score < score_threshold:
+            continue
+        reason_parts: list[str] = []
+        if positive_hits:
+            reason_parts.append(f"matched={','.join(positive_hits[:3])}")
+        if negative_hits:
+            reason_parts.append(f"penalty={','.join(negative_hits[:2])}")
+        if not reason_parts:
+            reason_parts.append("matched=keyword-overlap")
+        scored_items.append(
+            SkillRoutingResult(
+                descriptor=descriptor,
+                score=score,
+                positive_hits=tuple(positive_hits),
+                negative_hits=tuple(negative_hits),
+                reason="; ".join(reason_parts),
+            )
+        )
+
+    if not scored_items:
+        return None
+    scored_items.sort(
+        key=lambda item: (
+            item.score,
+            item.descriptor.specificity,
+            item.descriptor.scope == "project",
+            item.descriptor.name.lower(),
+        ),
+        reverse=True,
+    )
+    top = scored_items[0]
+    if len(scored_items) == 1:
+        return top
+    second = scored_items[1]
+    if abs(top.score - second.score) > min_score_gap:
+        return top
+
+    close_candidates = [item for item in scored_items if abs(top.score - item.score) <= min_score_gap]
+    close_candidates.sort(
+        key=lambda item: (
+            item.descriptor.specificity,
+            item.score,
+            item.descriptor.scope == "project",
+        ),
+        reverse=True,
+    )
+    return close_candidates[0]
+
+
+def phrase_in_negated_context(prompt_lower: str, phrase_lower: str) -> bool:
+    if not phrase_lower or phrase_lower not in prompt_lower:
+        return False
+    negated_markers = (
+        f"不要{phrase_lower}",
+        f"别{phrase_lower}",
+        f"避免{phrase_lower}",
+        f"not {phrase_lower}",
+        f"don't {phrase_lower}",
+        f"do not {phrase_lower}",
+        f"avoid {phrase_lower}",
+    )
+    return any(marker in prompt_lower for marker in negated_markers)
+
+
+def build_skill_prompt_block(
+    routing: SkillRoutingResult,
+    *,
+    max_block_chars: int = SKILL_ROUTER_MAX_BLOCK_CHARS,
+) -> tuple[str, bool]:
+    descriptor = routing.descriptor
+    try:
+        raw_skill = descriptor.skill_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        fallback = textwrap.dedent(
+            f"""
+            [Activated Skill]
+            name: {descriptor.name}
+            scope: {descriptor.scope}
+            source: {descriptor.source}
+            reason: {routing.reason}
+            note: SKILL.md load failed ({exc}). Continue with descriptor only.
+            """
+        ).strip()
+        return fallback, False
+
+    was_truncated = False
+    skill_content = raw_skill
+    if len(skill_content) > max(500, max_block_chars):
+        skill_content = skill_content[: max(500, max_block_chars)].rstrip() + "\n\n[truncated]"
+        was_truncated = True
+
+    lines = [
+        "[Activated Skill]",
+        f"name: {descriptor.name}",
+        f"scope: {descriptor.scope}",
+        f"source: {descriptor.source}",
+        f"score: {routing.score:.2f}",
+        f"reason: {routing.reason}",
+        "policy: Runtime scanned all skill descriptors this turn and loaded only this one skill.",
+    ]
+    if descriptor.output:
+        lines.append(f"expected_output: {descriptor.output}")
+    if descriptor.side_effect:
+        lines.append("side_effect: true")
+        if descriptor.rate_limit:
+            lines.append(f"rate_limit: {descriptor.rate_limit}")
+        else:
+            lines.append(
+                "rate_limit: batch writes, avoid per-item loops, and backoff/retry on HTTP 429."
+            )
+    else:
+        lines.append("side_effect: false")
+    lines.extend(
+        [
+            "",
+            "[Skill Content]",
+            skill_content.strip(),
+        ]
+    )
+    return "\n".join(lines).strip(), was_truncated
+
+
+def resolve_skill_runtime(
+    user_prompt: str,
+    descriptors: tuple[SkillDescriptor, ...],
+    router_config: SkillRouterConfig | None = None,
+) -> SkillRuntimeResolution:
+    cfg = router_config or SkillRouterConfig(
+        enabled=True,
+        descriptor_scan_lines=SKILL_DESCRIPTOR_MAX_SCAN_LINES,
+        max_descriptors=SKILL_DESCRIPTOR_MAX_ITEMS,
+        score_threshold=SKILL_ROUTER_SCORE_THRESHOLD,
+        min_score_gap=SKILL_ROUTER_MIN_SCORE_GAP,
+        max_skill_block_chars=SKILL_ROUTER_MAX_BLOCK_CHARS,
+        observability_enabled=SKILL_ROUTER_OBSERVABILITY_ENABLED,
+        observability_path=None,
+    )
+    if not cfg.enabled:
+        return SkillRuntimeResolution(
+            block="",
+            status="[skills] selected=none (router disabled)",
+            routing=None,
+            truncated=False,
+        )
+    routing = route_skill_for_prompt(
+        user_prompt,
+        descriptors,
+        score_threshold=cfg.score_threshold,
+        min_score_gap=cfg.min_score_gap,
+    )
+    if routing is None:
+        return SkillRuntimeResolution(
+            block="",
+            status="[skills] selected=none",
+            routing=None,
+            truncated=False,
+        )
+    block, truncated = build_skill_prompt_block(
+        routing,
+        max_block_chars=cfg.max_skill_block_chars,
+    )
+    suffix = " truncated=true" if truncated else ""
+    status = (
+        f"[skills] selected={routing.descriptor.name} scope={routing.descriptor.scope} "
+        f"score={routing.score:.2f}{suffix}"
+    )
+    return SkillRuntimeResolution(
+        block=block,
+        status=status,
+        routing=routing,
+        truncated=truncated,
+    )
+
+
+def resolve_skill_runtime_block(
+    user_prompt: str,
+    descriptors: tuple[SkillDescriptor, ...],
+    router_config: SkillRouterConfig | None = None,
+) -> tuple[str, str]:
+    resolved = resolve_skill_runtime(user_prompt, descriptors, router_config)
+    return resolved.block, resolved.status
+
+
+def summarize_skill_prompt_preview(prompt: str, limit: int = SKILL_ROUTER_OBSERVABILITY_PROMPT_PREVIEW_CHARS) -> str:
+    if not isinstance(prompt, str):
+        return ""
+    compact = " ".join(prompt.split())
+    if len(compact) <= max(1, limit):
+        return compact
+    return compact[: max(1, limit)].rstrip() + "…"
+
+
+def resolve_skill_observability_path(
+    raw_path: str | None,
+    *,
+    runtime_paths: RuntimePaths,
+) -> Path:
+    if isinstance(raw_path, str) and raw_path.strip():
+        candidate = Path(raw_path.strip()).expanduser()
+        if not candidate.is_absolute():
+            candidate = runtime_paths.project_root / candidate
+        return candidate.resolve()
+    return (runtime_paths.runtime_dir / SKILL_ROUTER_OBSERVABILITY_DEFAULT_FILE).resolve()
+
+
+def append_skill_router_event(
+    *,
+    runtime_paths: RuntimePaths,
+    router_config: SkillRouterConfig,
+    session_key: str,
+    project_name: str,
+    turn_mode: str,
+    user_prompt: str,
+    effective_prompt: str,
+    descriptors: tuple[SkillDescriptor, ...],
+    resolution: SkillRuntimeResolution,
+    event_path: Path | None = None,
+) -> str | None:
+    if not router_config.observability_enabled:
+        return None
+
+    output_path = event_path or resolve_skill_observability_path(
+        router_config.observability_path,
+        runtime_paths=runtime_paths,
+    )
+    scope_counts = {
+        "project": sum(1 for item in descriptors if item.scope == "project"),
+        "global": sum(1 for item in descriptors if item.scope == "global"),
+    }
+    selection: dict[str, Any] | None = None
+    if resolution.routing is not None:
+        selection = {
+            "name": resolution.routing.descriptor.name,
+            "scope": resolution.routing.descriptor.scope,
+            "score": round(resolution.routing.score, 4),
+            "reason": resolution.routing.reason,
+            "positive_hits": list(resolution.routing.positive_hits[:SKILL_ROUTER_OBSERVABILITY_HIT_PREVIEW_ITEMS]),
+            "negative_hits": list(resolution.routing.negative_hits[:SKILL_ROUTER_OBSERVABILITY_HIT_PREVIEW_ITEMS]),
+            "truncated": resolution.truncated,
+        }
+
+    payload: dict[str, Any] = {
+        "timestamp": now_utc_iso(),
+        "event": "skill_router_turn",
+        "project": project_name,
+        "session_key": session_key,
+        "turn_mode": turn_mode,
+        "status": resolution.status,
+        "prompt_preview": summarize_skill_prompt_preview(user_prompt),
+        "effective_prompt_preview": summarize_skill_prompt_preview(effective_prompt),
+        "descriptor_count": len(descriptors),
+        "descriptor_scope_counts": scope_counts,
+        "router": {
+            "enabled": router_config.enabled,
+            "score_threshold": router_config.score_threshold,
+            "min_score_gap": router_config.min_score_gap,
+            "max_descriptors": router_config.max_descriptors,
+            "descriptor_scan_lines": router_config.descriptor_scan_lines,
+            "max_skill_block_chars": router_config.max_skill_block_chars,
+            "observability_enabled": router_config.observability_enabled,
+            "observability_path": str(output_path),
+        },
+        "selection": selection,
+    }
+    try:
+        append_jsonl_file(output_path, payload)
+        return None
+    except OSError as exc:
+        return str(exc)
+
+
 def build_system_prompt(session_key: str, work_dir: Path) -> str:
     return textwrap.dedent(
         f"""
@@ -2127,6 +2792,7 @@ def build_system_prompt(session_key: str, work_dir: Path) -> str:
         Session key: {session_key}
         Working directory: {work_dir}
         Available local tools: list, glob, search, read, write, edit, bash, mcp_servers, mcp_call.
+        Skill policy: runtime scans available skill descriptors each turn and may inject at most one activated skill.
         Use tools when needed, then summarize concise actionable results.
         Keep replies concise and actionable.
         """
@@ -2988,12 +3654,15 @@ def build_chat_messages(
     user_prompt: str,
     max_history_turns: int,
     retrieval_config: ContextRetrievalConfig | None = None,
+    skill_prompt_block: str = "",
 ) -> list[dict[str, str]]:
     trimmed_history = trim_history_messages(history_messages, max_history_turns)
     retrieved_context = build_retrieved_context_block(trimmed_history, user_prompt, retrieval_config)
     effective_system_prompt = system_prompt
+    if isinstance(skill_prompt_block, str) and skill_prompt_block.strip():
+        effective_system_prompt = f"{effective_system_prompt}\n\n{skill_prompt_block.strip()}"
     if isinstance(retrieved_context, str) and retrieved_context:
-        effective_system_prompt = f"{system_prompt}\n\n{retrieved_context}"
+        effective_system_prompt = f"{effective_system_prompt}\n\n{retrieved_context}"
     return [
         {"role": "system", "content": effective_system_prompt},
         *trimmed_history,
@@ -3584,6 +4253,14 @@ def parse_positive_int_option(raw_value: Any, default: int, minimum: int, maximu
     return max(minimum, min(maximum, default))
 
 
+def parse_float_option(raw_value: Any, default: float, minimum: float, maximum: float) -> float:
+    if isinstance(raw_value, (int, float)):
+        candidate = float(raw_value)
+        if math.isfinite(candidate):
+            return max(minimum, min(maximum, candidate))
+    return max(minimum, min(maximum, float(default)))
+
+
 def discover_hook_scripts(event_name: str, context: LocalToolContext) -> list[Path]:
     if event_name not in LOCAL_TOOL_HOOK_EVENTS:
         raise RuntimeError(f"unsupported hook event: {event_name}")
@@ -3794,6 +4471,62 @@ def resolve_context_retrieval_config(
         selected_limit=selected_limit,
         embedding=embedding,
         rerank=rerank,
+    )
+
+
+def resolve_skill_router_config(project_toml: dict[str, Any]) -> SkillRouterConfig:
+    skills_cfg = project_toml.get("skills")
+    skill_cfg = skills_cfg if isinstance(skills_cfg, dict) else {}
+    router_cfg_raw = skill_cfg.get("router")
+    router_cfg = router_cfg_raw if isinstance(router_cfg_raw, dict) else {}
+    runtime_cfg_raw = skill_cfg.get("runtime")
+    runtime_cfg = runtime_cfg_raw if isinstance(runtime_cfg_raw, dict) else {}
+    observability_cfg_raw = skill_cfg.get("observability")
+    observability_cfg = observability_cfg_raw if isinstance(observability_cfg_raw, dict) else {}
+    observability_path = None
+    raw_observability_path = observability_cfg.get("path")
+    if isinstance(raw_observability_path, str):
+        stripped = raw_observability_path.strip()
+        if stripped:
+            observability_path = stripped
+
+    return SkillRouterConfig(
+        enabled=parse_bool_option(router_cfg.get("enabled"), True),
+        descriptor_scan_lines=parse_positive_int_option(
+            runtime_cfg.get("descriptor_scan_lines"),
+            SKILL_DESCRIPTOR_MAX_SCAN_LINES,
+            40,
+            500,
+        ),
+        max_descriptors=parse_positive_int_option(
+            runtime_cfg.get("max_descriptors"),
+            SKILL_DESCRIPTOR_MAX_ITEMS,
+            1,
+            256,
+        ),
+        score_threshold=parse_float_option(
+            router_cfg.get("score_threshold"),
+            SKILL_ROUTER_SCORE_THRESHOLD,
+            0.0,
+            10.0,
+        ),
+        min_score_gap=parse_float_option(
+            router_cfg.get("min_score_gap"),
+            SKILL_ROUTER_MIN_SCORE_GAP,
+            0.0,
+            5.0,
+        ),
+        max_skill_block_chars=parse_positive_int_option(
+            runtime_cfg.get("max_skill_block_chars"),
+            SKILL_ROUTER_MAX_BLOCK_CHARS,
+            500,
+            40000,
+        ),
+        observability_enabled=parse_bool_option(
+            observability_cfg.get("enabled"),
+            SKILL_ROUTER_OBSERVABILITY_ENABLED,
+        ),
+        observability_path=observability_path,
     )
 
 
@@ -7583,6 +8316,7 @@ def run_start(args: argparse.Namespace) -> int:
         args.history_turns,
     )
     retrieval_config = resolve_context_retrieval_config(project_toml, selection.provider.api_key)
+    skill_router_config = resolve_skill_router_config(project_toml)
     mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
     local_tool_context = resolve_local_tool_context(
         project_toml,
@@ -7591,6 +8325,16 @@ def run_start(args: argparse.Namespace) -> int:
         runtime_paths=paths,
     )
     mention_index: MentionIndexState | MentionPathIndex | None = None
+    skill_descriptors = discover_skill_descriptors(
+        paths.global_skills_dir,
+        paths.project_skills_dir,
+        max_descriptors=skill_router_config.max_descriptors,
+        descriptor_scan_lines=skill_router_config.descriptor_scan_lines,
+    )
+    skill_observability_path = resolve_skill_observability_path(
+        skill_router_config.observability_path,
+        runtime_paths=paths,
+    )
     system_prompt = build_system_prompt(session_key=session_key, work_dir=selection.work_dir)
     circuit_policy = CircuitPolicy(
         failure_threshold=max(1, args.circuit_failures),
@@ -7621,6 +8365,18 @@ def run_start(args: argparse.Namespace) -> int:
     print(
         "  hooks_rt:  "
         f"events={hooks_runtime['event_count']} scripts={hooks_runtime['total_scripts']}"
+    )
+    project_skill_count = sum(1 for item in skill_descriptors if item.scope == "project")
+    global_skill_count = sum(1 for item in skill_descriptors if item.scope == "global")
+    print(
+        "  skills_rt: "
+        f"enabled={skill_router_config.enabled} total={len(skill_descriptors)} "
+        f"project={project_skill_count} global={global_skill_count} "
+        f"threshold={skill_router_config.score_threshold:.2f} gap={skill_router_config.min_score_gap:.2f}"
+    )
+    print(
+        "  skills_obs: "
+        f"enabled={skill_router_config.observability_enabled} path={skill_observability_path}"
     )
     print(f"  tools:     {', '.join(local_tool_context.allow_tokens)}")
     print(
@@ -7699,6 +8455,26 @@ def run_start(args: argparse.Namespace) -> int:
         refresh_message = mention_refresh_status_message(mention_index)
         if refresh_message:
             print(f"[mentions] {refresh_message}", file=sys.stderr)
+        skill_resolution = resolve_skill_runtime(
+            effective_prompt,
+            skill_descriptors,
+            skill_router_config,
+        )
+        print(skill_resolution.status, file=sys.stderr)
+        skill_obs_warning = append_skill_router_event(
+            runtime_paths=paths,
+            router_config=skill_router_config,
+            session_key=session_key,
+            project_name=selection.name,
+            turn_mode="oneshot",
+            user_prompt=args.message,
+            effective_prompt=effective_prompt,
+            descriptors=skill_descriptors,
+            resolution=skill_resolution,
+            event_path=skill_observability_path,
+        )
+        if isinstance(skill_obs_warning, str) and skill_obs_warning:
+            print(f"[skills] observability append failed: {skill_obs_warning}", file=sys.stderr)
         try:
             run_hook_event(
                 LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
@@ -7724,6 +8500,7 @@ def run_start(args: argparse.Namespace) -> int:
             user_prompt=effective_prompt,
             max_history_turns=args.history_turns,
             retrieval_config=retrieval_config,
+            skill_prompt_block=skill_resolution.block,
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,
@@ -7839,6 +8616,26 @@ def run_start(args: argparse.Namespace) -> int:
         refresh_message = mention_refresh_status_message(mention_index)
         if refresh_message:
             print(f"[mentions] {refresh_message}")
+        skill_resolution = resolve_skill_runtime(
+            effective_prompt,
+            skill_descriptors,
+            skill_router_config,
+        )
+        print(skill_resolution.status)
+        skill_obs_warning = append_skill_router_event(
+            runtime_paths=paths,
+            router_config=skill_router_config,
+            session_key=session_key,
+            project_name=selection.name,
+            turn_mode="interactive",
+            user_prompt=user_input,
+            effective_prompt=effective_prompt,
+            descriptors=skill_descriptors,
+            resolution=skill_resolution,
+            event_path=skill_observability_path,
+        )
+        if isinstance(skill_obs_warning, str) and skill_obs_warning:
+            print(f"[skills] observability append failed: {skill_obs_warning}")
         try:
             run_hook_event(
                 LOCAL_TOOL_HOOK_EVENT_USER_PROMPT_SUBMIT,
@@ -7864,6 +8661,7 @@ def run_start(args: argparse.Namespace) -> int:
             user_prompt=effective_prompt,
             max_history_turns=args.history_turns,
             retrieval_config=retrieval_config,
+            skill_prompt_block=skill_resolution.block,
         )
         reply, used_route, errors = call_with_failover(
             routes=routes,

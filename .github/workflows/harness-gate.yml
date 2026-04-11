@@ -14,8 +14,11 @@ on:
       - "package.json"
       - ".github/workflows/harness-gate.yml"
 
+permissions:
+  contents: read
+
 jobs:
-  harness-gate:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,6 +40,23 @@ jobs:
       - name: Run gateway checks
         run: npm run check
 
+      - name: Validate CI label policy
+        run: npm run harness:ci-label-policy:check
+
+  trace-gate:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
       - name: Run harness CI gate
         run: npm run harness:gate:ci
 
@@ -51,3 +71,282 @@ jobs:
 
       - name: Run harness trace pipeline sample gate
         run: npm run harness:trace-pipeline:ci
+
+      - name: Generate trace pipeline CI report
+        if: always()
+        run: |
+          mkdir -p gateway/evals/data
+          python3 gateway/evals/trace_pipeline.py \
+            --policy gateway/evals/trace_pipeline_policy.ci.json \
+            --print-json \
+            > gateway/evals/data/trace_pipeline_ci_report.json
+          cp -f /tmp/grobot-trace-clean-report.ci.json gateway/evals/data/trace_clean_report.ci.json || true
+          cp -f /tmp/grobot-cases.trace.cleaned.ci.jsonl gateway/evals/data/cases.trace.cleaned.ci.jsonl || true
+          cp -f /tmp/grobot-runs.trace.cleaned.ci.jsonl gateway/evals/data/runs.trace.cleaned.ci.jsonl || true
+
+      - name: Upload trace artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-trace-reports
+          path: |
+            gateway/evals/data/trace_pipeline_ci_report.json
+            gateway/evals/data/trace_clean_report.ci.json
+            gateway/evals/data/cases.trace.cleaned.ci.jsonl
+            gateway/evals/data/runs.trace.cleaned.ci.jsonl
+
+  skill-router-gate:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Validate skill-router policy profiles
+        run: npm run harness:skill-router:policy:check
+
+      - name: Build skill-router baseline report (base commit)
+        id: skill_router_baseline
+        if: always()
+        run: |
+          python3 gateway/evals/skill_router_baseline_report.py \
+            --event-name "${{ github.event_name }}" \
+            --pr-base-sha "${{ github.event.pull_request.base.sha }}" \
+            --before-sha "${{ github.event.before }}" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$GITHUB_WORKSPACE/gateway/evals/data/skill_router_ci_report.base.json" \
+            --github-output "$GITHUB_OUTPUT" \
+            --print-json
+
+      - name: Run skill-router CI gate (with trend check)
+        run: |
+          python3 gateway/evals/skill_router_ci_gate.py \
+            --event-name "${{ github.event_name }}" \
+            --pr-base-sha "${{ github.event.pull_request.base.sha }}" \
+            --before-sha "${{ github.event.before }}" \
+            --baseline-available "${{ steps.skill_router_baseline.outputs.available }}" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$GITHUB_WORKSPACE/gateway/evals/data/skill_router_ci_report.json" \
+            --base-report "$GITHUB_WORKSPACE/gateway/evals/data/skill_router_ci_report.base.json" \
+            --print-json
+
+      - name: Upload skill-router artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-skill-router-reports
+          path: |
+            gateway/evals/data/skill_router_ci_report.json
+            gateway/evals/data/skill_router_ci_report.base.json
+
+  gate-summary:
+    if: always()
+    needs:
+      - trace-gate
+      - skill-router-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      overall_state: ${{ steps.export_labels.outputs.overall_state }}
+      trend_owner: ${{ steps.export_labels.outputs.trend_owner }}
+      trend_decision_tag: ${{ steps.export_labels.outputs.trend_decision_tag }}
+      trend_decision_severity: ${{ steps.export_labels.outputs.trend_decision_severity }}
+      trend_action_hint: ${{ steps.export_labels.outputs.trend_action_hint }}
+      suggested_labels_csv: ${{ steps.export_labels.outputs.suggested_labels_csv }}
+      suggested_labels_json: ${{ steps.export_labels.outputs.suggested_labels_json }}
+      policy_drift_state: ${{ steps.export_labels.outputs.policy_drift_state }}
+      policy_drift_severity: ${{ steps.export_labels.outputs.policy_drift_severity }}
+      policy_drift_reason: ${{ steps.export_labels.outputs.policy_drift_reason }}
+      policy_drift_worsening_streak: ${{ steps.export_labels.outputs.policy_drift_worsening_streak }}
+      policy_drift_worsening_alert: ${{ steps.export_labels.outputs.policy_drift_worsening_alert }}
+      policy_drift_worsening_label: ${{ steps.export_labels.outputs.policy_drift_worsening_label }}
+      policy_drift_transition: ${{ steps.export_labels.outputs.policy_drift_transition }}
+      policy_drift_transition_state: ${{ steps.export_labels.outputs.policy_drift_transition_state }}
+      policy_drift_severity_delta: ${{ steps.export_labels.outputs.policy_drift_severity_delta }}
+      policy_drift_owner: ${{ steps.export_labels.outputs.policy_drift_owner }}
+      policy_drift_action_hint: ${{ steps.export_labels.outputs.policy_drift_action_hint }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download trace artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: harness-trace-reports
+          path: gateway/evals/data
+
+      - name: Download skill-router artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: harness-skill-router-reports
+          path: gateway/evals/data
+
+      - name: Ensure default reports when artifacts missing
+        run: |
+          mkdir -p gateway/evals/data
+          if [ ! -f gateway/evals/data/trace_pipeline_ci_report.json ]; then
+            printf '%s\n' '{"clean_stats":{"output_cases":0,"output_runs":0},"sample_guard":{"pass":false,"split":{"counts":{"holdout":0,"optimization":0}}}}' > gateway/evals/data/trace_pipeline_ci_report.json
+          fi
+          if [ ! -f gateway/evals/data/skill_router_ci_report.json ]; then
+            printf '%s\n' '{"summary":{"accuracy":0.0,"forbidden_violations":0,"total_cases":0},"gate":{"passed":false},"trend_meta":{"mode":"gate_only","reason":"artifact_missing","required":false,"executed":false,"baseline_available":false,"policy_blob_match":null,"policy_hash_current":null,"policy_hash_base":null,"policy_hash_match":null}}' > gateway/evals/data/skill_router_ci_report.json
+          fi
+
+      - name: Build policy drift report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const path = require("path");
+            const workspacePath = process.env.GITHUB_WORKSPACE || ".";
+            const { buildPolicyDriftReportForPullRequest } = require(path.join(
+              workspacePath,
+              "gateway/evals/ci_policy_drift_report.js"
+            ));
+            await buildPolicyDriftReportForPullRequest({
+              core,
+              github,
+              context,
+              workspacePath,
+            });
+
+      - name: Build harness summary
+        run: |
+          python3 gateway/evals/ci_summary.py \
+            --trace-report gateway/evals/data/trace_pipeline_ci_report.json \
+            --skill-router-report gateway/evals/data/skill_router_ci_report.json \
+            --policy-drift-report gateway/evals/data/policy_drift_report.json \
+            --output gateway/evals/data/harness_ci_summary.json \
+            --markdown-output gateway/evals/data/harness_ci_summary.md \
+            --labels-output gateway/evals/data/harness_ci_labels.json \
+            --print-json \
+            --fail-on-overall-fail
+
+      - name: Export suggested labels (always)
+        id: export_labels
+        if: always()
+        run: |
+          python3 gateway/evals/ci_summary_export.py \
+            --summary gateway/evals/data/harness_ci_summary.json \
+            --github-output "$GITHUB_OUTPUT" \
+            --print-json
+
+      - name: Emit harness annotations (always)
+        if: always()
+        run: |
+          python3 gateway/evals/ci_summary.py \
+            --trace-report gateway/evals/data/trace_pipeline_ci_report.json \
+            --skill-router-report gateway/evals/data/skill_router_ci_report.json \
+            --emit-github-annotations
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f gateway/evals/data/harness_ci_summary.md ]; then
+            tee -a "$GITHUB_STEP_SUMMARY" < gateway/evals/data/harness_ci_summary.md >/dev/null
+          fi
+
+      - name: Upload harness summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-gate-summary
+          path: |
+            gateway/evals/data/harness_ci_summary.json
+            gateway/evals/data/harness_ci_labels.json
+            gateway/evals/data/harness_ci_summary.md
+
+  apply-suggested-labels:
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs:
+      - gate-summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply suggested labels to PR
+        uses: actions/github-script@v7
+        env:
+          SUGGESTED_LABELS_JSON: ${{ needs.gate-summary.outputs.suggested_labels_json }}
+          POLICY_DRIFT_WORSENING_ALERT: ${{ needs.gate-summary.outputs.policy_drift_worsening_alert }}
+          POLICY_DRIFT_WORSENING_LABEL: ${{ needs.gate-summary.outputs.policy_drift_worsening_label }}
+        with:
+          script: |
+            const path = require("path");
+            const workspacePath = process.env.GITHUB_WORKSPACE || ".";
+            const { applySuggestedLabelsForPullRequest } = require(path.join(
+              workspacePath,
+              "gateway/evals/ci_apply_labels.js"
+            ));
+            await applySuggestedLabelsForPullRequest({
+              core,
+              github,
+              context,
+              env: process.env,
+              workspacePath,
+            });
+
+  notify-trend-action:
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs:
+      - gate-summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upsert harness gate action comment
+        uses: actions/github-script@v7
+        env:
+          OVERALL_STATE: ${{ needs.gate-summary.outputs.overall_state }}
+          TREND_OWNER: ${{ needs.gate-summary.outputs.trend_owner }}
+          TREND_DECISION_TAG: ${{ needs.gate-summary.outputs.trend_decision_tag }}
+          TREND_DECISION_SEVERITY: ${{ needs.gate-summary.outputs.trend_decision_severity }}
+          TREND_ACTION_HINT: ${{ needs.gate-summary.outputs.trend_action_hint }}
+          POLICY_DRIFT_STATE: ${{ needs.gate-summary.outputs.policy_drift_state }}
+          POLICY_DRIFT_SEVERITY: ${{ needs.gate-summary.outputs.policy_drift_severity }}
+          POLICY_DRIFT_REASON: ${{ needs.gate-summary.outputs.policy_drift_reason }}
+          POLICY_DRIFT_TRANSITION: ${{ needs.gate-summary.outputs.policy_drift_transition }}
+          POLICY_DRIFT_TRANSITION_STATE: ${{ needs.gate-summary.outputs.policy_drift_transition_state }}
+          POLICY_DRIFT_SEVERITY_DELTA: ${{ needs.gate-summary.outputs.policy_drift_severity_delta }}
+          POLICY_DRIFT_OWNER: ${{ needs.gate-summary.outputs.policy_drift_owner }}
+          POLICY_DRIFT_ACTION_HINT: ${{ needs.gate-summary.outputs.policy_drift_action_hint }}
+          POLICY_DRIFT_WORSENING_STREAK: ${{ needs.gate-summary.outputs.policy_drift_worsening_streak }}
+          POLICY_DRIFT_WORSENING_ALERT: ${{ needs.gate-summary.outputs.policy_drift_worsening_alert }}
+          SUGGESTED_LABELS_CSV: ${{ needs.gate-summary.outputs.suggested_labels_csv }}
+        with:
+          script: |
+            const path = require("path");
+            const workspacePath = process.env.GITHUB_WORKSPACE || ".";
+            const { upsertHarnessGateActionComment } = require(path.join(
+              workspacePath,
+              "gateway/evals/ci_trend_action_comment.js"
+            ));
+            await upsertHarnessGateActionComment({
+              core,
+              github,
+              context,
+              env: process.env,
+              workspacePath,
+            });

@@ -2,8 +2,12 @@
 
 Place grobot-specific policy/rule documents here.
 
-Examples:
+Suggested usage:
+- Write scenario-specific operating rules, not generic boilerplate.
+- Keep `skills-routing.md` as the source of truth for skill usage boundaries.
+- Keep MCP usage constraints in dedicated rule files per connector when needed.
 
-1. safety policies
-2. tool allow/deny rule sets
-3. runtime mode guardrails
+Examples:
+1. skill routing and anti-misroute rules
+2. MCP read/write safety constraints
+3. runtime mode guardrails for your business repo

@@ -49,3 +49,4 @@ __pycache__/
 **/__pycache__/
 *.pyc
 gateway/evals/data/*
+logs/

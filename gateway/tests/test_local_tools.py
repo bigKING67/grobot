@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -1179,6 +1180,274 @@ class LocalToolsTests(unittest.TestCase):
                     {"prompt": "hello"},
                     context,
                 )
+
+    def test_discover_skill_descriptors_parses_markdown_and_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            global_skills = base / "global-skills"
+            project_skills = base / "project-skills"
+
+            global_skill_dir = global_skills / "debug-assistant"
+            global_skill_dir.mkdir(parents=True, exist_ok=True)
+            (global_skill_dir / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "# Debug Assistant",
+                        "",
+                        "Use when: 排查错误, 定位报错",
+                        "Don't use when: 部署发布",
+                        "Output: root cause summary",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            project_skill_dir = project_skills / "deploy-ops"
+            project_skill_dir.mkdir(parents=True, exist_ok=True)
+            (project_skill_dir / "SKILL.md").write_text("# Deploy Ops\n", encoding="utf-8")
+            (project_skill_dir / "skill.meta.toml").write_text(
+                "\n".join(
+                    [
+                        "description = \"deployment operations\"",
+                        "use_when = [\"部署生产\", \"发布版本\"]",
+                        "dont_use_when = [\"只读分析\"]",
+                        "output = \"deployment runbook\"",
+                        "side_effect = true",
+                        "rate_limit = \"batch write and backoff on 429\"",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            descriptors = grobot_cli.discover_skill_descriptors(global_skills, project_skills)
+            self.assertEqual(len(descriptors), 2)
+
+            debug_desc = next(item for item in descriptors if item.name == "debug-assistant")
+            deploy_desc = next(item for item in descriptors if item.name == "deploy-ops")
+
+            self.assertEqual(debug_desc.scope, "global")
+            self.assertIn("排查错误", debug_desc.use_when)
+            self.assertIn("部署发布", debug_desc.dont_use_when)
+            self.assertEqual(debug_desc.output, "root cause summary")
+
+            self.assertEqual(deploy_desc.scope, "project")
+            self.assertTrue(deploy_desc.side_effect)
+            self.assertEqual(deploy_desc.rate_limit, "batch write and backoff on 429")
+            self.assertIn("部署生产", deploy_desc.use_when)
+            self.assertIn("只读分析", deploy_desc.dont_use_when)
+
+    def test_route_skill_for_prompt_prefers_non_conflicting_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            global_skills = base / "global-skills"
+            project_skills = base / "project-skills"
+
+            debug_skill = global_skills / "debug-assistant"
+            debug_skill.mkdir(parents=True, exist_ok=True)
+            (debug_skill / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "# Debug Assistant",
+                        "",
+                        "Use when: 排查错误; 调试失败",
+                        "Don't use when: 部署发布",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            deploy_skill = project_skills / "deploy-ops"
+            deploy_skill.mkdir(parents=True, exist_ok=True)
+            (deploy_skill / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "# Deploy Ops",
+                        "",
+                        "Use when: 部署生产; 发布版本",
+                        "Don't use when: 只读分析; 不要执行",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            descriptors = grobot_cli.discover_skill_descriptors(global_skills, project_skills)
+            routed = grobot_cli.route_skill_for_prompt("只读排查当前报错，不要部署发布", descriptors)
+            self.assertIsNotNone(routed)
+            if routed is None:
+                self.fail("skill routing returned None unexpectedly")
+            self.assertEqual(routed.descriptor.name, "debug-assistant")
+
+    def test_resolve_skill_runtime_block_returns_selected_skill_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            global_skills = base / "global-skills"
+            skill_dir = global_skills / "incident-review"
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "# Incident Review",
+                        "",
+                        "Use when: 线上事故复盘",
+                        "Output: timeline and action items",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            descriptors = grobot_cli.discover_skill_descriptors(global_skills, base / "project-skills")
+            block, status = grobot_cli.resolve_skill_runtime_block("请做一次线上事故复盘", descriptors)
+            self.assertIn("selected=incident-review", status)
+            self.assertIn("[Activated Skill]", block)
+            self.assertIn("timeline and action items", block)
+
+            empty_block, empty_status = grobot_cli.resolve_skill_runtime_block("hello world", descriptors)
+            self.assertEqual(empty_block, "")
+            self.assertEqual(empty_status, "[skills] selected=none")
+
+    def test_resolve_skill_router_config_from_project_toml(self) -> None:
+        config = grobot_cli.resolve_skill_router_config(
+            {
+                "skills": {
+                    "router": {
+                        "enabled": False,
+                        "score_threshold": 3.4,
+                        "min_score_gap": 1.2,
+                    },
+                    "runtime": {
+                        "max_descriptors": 12,
+                        "descriptor_scan_lines": 90,
+                        "max_skill_block_chars": 3200,
+                    },
+                    "observability": {
+                        "enabled": False,
+                        "path": "logs/skills-router.jsonl",
+                    },
+                }
+            }
+        )
+        self.assertFalse(config.enabled)
+        self.assertEqual(config.score_threshold, 3.4)
+        self.assertEqual(config.min_score_gap, 1.2)
+        self.assertEqual(config.max_descriptors, 12)
+        self.assertEqual(config.descriptor_scan_lines, 90)
+        self.assertEqual(config.max_skill_block_chars, 3200)
+        self.assertFalse(config.observability_enabled)
+        self.assertEqual(config.observability_path, "logs/skills-router.jsonl")
+
+    def test_resolve_skill_runtime_block_respects_disabled_router(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            global_skills = base / "global-skills"
+            skill_dir = global_skills / "incident-review"
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "# Incident Review",
+                        "Use when: 线上事故复盘",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            descriptors = grobot_cli.discover_skill_descriptors(global_skills, base / "project-skills")
+            router_cfg = grobot_cli.SkillRouterConfig(
+                enabled=False,
+                descriptor_scan_lines=180,
+                max_descriptors=64,
+                score_threshold=2.0,
+                min_score_gap=0.8,
+                max_skill_block_chars=14000,
+                observability_enabled=True,
+                observability_path=None,
+            )
+            block, status = grobot_cli.resolve_skill_runtime_block(
+                "请做一次线上事故复盘",
+                descriptors,
+                router_cfg,
+            )
+            self.assertEqual(block, "")
+            self.assertEqual(status, "[skills] selected=none (router disabled)")
+
+    def test_append_skill_router_event_writes_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            global_skills = base / "global-skills"
+            skill_dir = global_skills / "incident-review"
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "# Incident Review",
+                        "Use when: 线上事故复盘",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            descriptors = grobot_cli.discover_skill_descriptors(global_skills, base / "project-skills")
+            router_cfg = grobot_cli.SkillRouterConfig(
+                enabled=True,
+                descriptor_scan_lines=180,
+                max_descriptors=64,
+                score_threshold=2.0,
+                min_score_gap=0.8,
+                max_skill_block_chars=14000,
+                observability_enabled=True,
+                observability_path="logs/skills-router.jsonl",
+            )
+            resolution = grobot_cli.resolve_skill_runtime("请做一次线上事故复盘", descriptors, router_cfg)
+            runtime_paths = grobot_cli.RuntimePaths(
+                repo_root=base,
+                home=base / "home",
+                project_root=base,
+                project_dir=base / ".grobot",
+                project_toml=base / ".grobot" / "project.toml",
+                config_toml=base / "home" / "config.toml",
+                runtime_dir=base / "home" / "runtime",
+                sessions_dir=base / "home" / "runtime" / "sessions",
+                global_rules_dir=base / "home" / "rules",
+                project_rules_dir=base / ".grobot" / "rules",
+                global_skills_dir=base / "home" / "skills",
+                project_skills_dir=base / ".grobot" / "skills",
+                global_hooks_dir=base / "home" / "hooks",
+                project_hooks_dir=base / ".grobot" / "hooks",
+                global_mcp_dir=base / "home" / "mcp",
+                global_mcp_registry=base / "home" / "mcp" / "servers.toml",
+                project_mcp_file=base / ".grobot" / "mcp.toml",
+                global_memory_dir=base / "home" / "memory" / "global",
+                project_memory_dir=base / ".grobot" / "memory",
+                session_memory_dir=base / "home" / "runtime" / "memory" / "session",
+            )
+
+            warning = grobot_cli.append_skill_router_event(
+                runtime_paths=runtime_paths,
+                router_config=router_cfg,
+                session_key="feishu:test:dm:user",
+                project_name="demo",
+                turn_mode="oneshot",
+                user_prompt="请做一次线上事故复盘",
+                effective_prompt="请做一次线上事故复盘",
+                descriptors=descriptors,
+                resolution=resolution,
+            )
+            self.assertIsNone(warning)
+            log_file = base / "logs" / "skills-router.jsonl"
+            self.assertTrue(log_file.exists())
+            rows = [line for line in log_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(len(rows), 1)
+            payload = json.loads(rows[0])
+            self.assertEqual(payload["event"], "skill_router_turn")
+            self.assertEqual(payload["project"], "demo")
+            self.assertEqual(payload["selection"]["name"], "incident-review")
 
 
 if __name__ == "__main__":

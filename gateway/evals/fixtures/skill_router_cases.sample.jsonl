@@ -1,0 +1,3 @@
+{"id":"debug-readonly","prompt":"请只读排查线上报错，不要部署发布","expected_skill":"debug-assistant","forbidden_skills":["deploy-ops"]}
+{"id":"deploy-release","prompt":"请准备一次生产发布流程并给出执行步骤","expected_skill":"deploy-ops","forbidden_skills":[]}
+{"id":"general-chat","prompt":"hello world","expected_skill":null,"forbidden_skills":["deploy-ops"]}

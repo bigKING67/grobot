@@ -114,6 +114,10 @@ grobot start \
 - `search` 支持 `context_before/context_after`，可直接返回命中行前后文（类似 `rg -B/-A`）。
 - 支持 `@文件名` 快速解析：在用户消息中写 `@xxx`，会先在 `--work-dir` 内做文件匹配并把解析结果注入 prompt（命中唯一路径可直接用于后续读写工具）。
 - `@文件名` 解析使用“常驻内存路径索引 + 增量刷新（added/removed diff）”，匹配阶段采用 trigram 候选集与优先级排序，适配大仓库搜索。
+- Skills 按“描述符常驻 + 正文按需加载”运行：每轮先扫描 global/project skills 描述，命中时仅加载一个最匹配的 `SKILL.md`，并对 `Don't use when` 反例做强降权。
+- 对带副作用的 skill（如部署/发布），路由块会附带速率约束提示（批量写入、避免逐条循环、遇到 429 回退重试）。
+- Skills 路由阈值可在 `.grobot/project.toml` 的 `[skills.router]` 与 `[skills.runtime]` 配置（`score_threshold`、`min_score_gap`、`max_descriptors`、`descriptor_scan_lines`、`max_skill_block_chars`）。
+- Skills 路由观测可在 `.grobot/project.toml` 的 `[skills.observability]` 配置（`enabled`、`path`），每轮会写入 JSONL（包含 selected skill、score、hits、prompt preview 与阈值配置）。
 - MCP 会在启动时读取并合并：`~/.grobot/mcp/servers.toml`（全局） + `<repo>/.grobot/mcp.toml`（项目覆盖同名 server）。
 - MCP 会在启动时做命令就绪度检查（ready/unready），并在 `status`、`serve`、`start`、`/mcp` 中显示原因。
 - `mcp_call` 会按 `initialize -> tools/list -> tools/call` 流程通过 stdio 调用 MCP server，并返回标准化结果预览（含 `is_error/content/structured_content_preview`）。
@@ -232,6 +236,21 @@ npm run harness:gate:ci
 
 # 5) 在多个 variant 间做爬山选优（优化分提升且 holdout 不退化）
 npm run harness:hill-climb:sample
+
+# 6) Skill 路由离线评测（准确率/精确率/召回率/禁用命中）
+npm run harness:skill-router:sample
+
+# 7) Skill 路由门禁（CI / prod）
+npm run harness:skill-router:gate:ci
+npm run harness:skill-router:gate:prod
+
+# 8) Skill 路由 policy 自检（schema/version/path/hash）
+npm run harness:skill-router:policy:check
+npm run harness:skill-router:policy:fingerprint
+npm run harness:skill-router:policy:validate
+
+# 9) 统一汇总 trace + skill-router 报告（用于 CI 摘要）
+npm run harness:ci-summary
 ```
 
 ### 管理端点（已实现 status/config/reload/interrupt/mcp-reset）

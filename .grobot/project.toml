@@ -71,6 +71,20 @@ enabled = true
 strict = false
 timeout_secs = 5
 
+[skills.router]
+enabled = true
+score_threshold = 2.0
+min_score_gap = 0.8
+
+[skills.runtime]
+max_descriptors = 64
+descriptor_scan_lines = 180
+max_skill_block_chars = 14000
+
+[skills.observability]
+enabled = true
+path = "logs/skills-router.jsonl"
+
 [safety]
 require_confirm = ["destructive_git", "db_schema_change", "prod_api_write"]
 

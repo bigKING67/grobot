@@ -1,0 +1,9 @@
+[skills.router]
+enabled = true
+score_threshold = 2.0
+min_score_gap = 0.8
+max_descriptors = 64
+descriptor_scan_lines = 180
+
+[skills.observability]
+enabled = false
