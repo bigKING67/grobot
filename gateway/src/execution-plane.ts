@@ -34,14 +34,14 @@ interface ProjectExecutionConfig {
 }
 
 function parseGatewayImpl(value: string | undefined): GatewayImpl | undefined {
-  if (value === "ts" || value === "python") {
+  if (value === "ts") {
     return value;
   }
   return undefined;
 }
 
 function parseRuntimeImpl(value: string | undefined): RuntimeImpl | undefined {
-  if (value === "rust" || value === "python") {
+  if (value === "rust") {
     return value;
   }
   return undefined;

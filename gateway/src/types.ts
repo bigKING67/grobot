@@ -2,9 +2,9 @@ export type Platform = "feishu" | "telegram";
 
 export type SessionScope = "dm" | "group";
 
-export type GatewayImpl = "python" | "ts";
+export type GatewayImpl = "ts";
 
-export type RuntimeImpl = "python" | "rust";
+export type RuntimeImpl = "rust";
 
 export interface SessionKeyParts {
   platform: Platform;
@@ -97,6 +97,17 @@ export interface ShadowComparison {
   runtimeLabel: string;
 }
 
+export type GovernanceDecision = "pass" | "review" | "block";
+
+export interface GovernanceEvaluation {
+  plane: "governance.v1";
+  decision: GovernanceDecision;
+  score: number;
+  gatePassed: boolean;
+  reasons: string[];
+  suggestedAction: "none" | "manual_review";
+}
+
 export interface TurnExecutionReport {
   traceId: string;
   requestId: string;
@@ -106,6 +117,7 @@ export interface TurnExecutionReport {
   primaryRuntime: string;
   assistantMessage: string;
   verification: TurnVerificationResult;
+  governance: GovernanceEvaluation;
   shadowComparison?: ShadowComparison;
   eventCount: number;
 }

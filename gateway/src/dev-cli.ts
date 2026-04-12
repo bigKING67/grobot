@@ -20,9 +20,9 @@ function usage(): string {
     "Grobot TS dev CLI (source-checkout fallback)",
     "",
     "Commands:",
-    "  status [--work-dir <dir>] [--gateway-impl ts|python] [--runtime-impl rust|python] [--shadow-mode|--no-shadow-mode]",
-    "  start --message <text> [--project <name>] [--work-dir <dir>] [--gateway-impl ts|python] [--runtime-impl rust|python]",
-    "  serve [--bind 127.0.0.1:8080] [--management-token <token>] [--config <path>] [--config-read-policy auto|public|auth|disabled] [--work-dir <dir>] [--gateway-impl ts|python] [--runtime-impl rust|python]",
+    "  status [--work-dir <dir>] [--gateway-impl ts] [--runtime-impl rust] [--shadow-mode|--no-shadow-mode]",
+    "  start --message <text> [--project <name>] [--work-dir <dir>] [--gateway-impl ts] [--runtime-impl rust]",
+    "  serve [--bind 127.0.0.1:8080] [--management-token <token>] [--config <path>] [--config-read-policy auto|public|auth|disabled] [--work-dir <dir>] [--gateway-impl ts] [--runtime-impl rust]",
     "",
     "Optional session args for start:",
     "  --platform feishu|telegram --tenant <id> --scope dm|group --subject <id>",
@@ -91,6 +91,51 @@ function hasFlag(options: Record<string, OptionValue>, key: string): boolean {
     return normalized.length > 0;
   }
   return false;
+}
+
+function isTruthyString(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "true" ||
+    normalized === "1" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+function validateHardCutExecutionOptions(options: Record<string, OptionValue>): string[] {
+  const errors: string[] = [];
+  if (hasFlag(options, "legacy-python-cli")) {
+    errors.push("--legacy-python-cli is removed in TS+Rust hard-cut mode");
+  }
+  if (isTruthyString(process.env.GROBOT_LEGACY_PYTHON)) {
+    errors.push("GROBOT_LEGACY_PYTHON is no longer supported");
+  }
+
+  const gatewayRaw = readOptionString(options, "gateway-impl");
+  if (gatewayRaw) {
+    const gatewayValue = gatewayRaw.trim().toLowerCase();
+    if (gatewayValue === "python") {
+      errors.push("--gateway-impl=python is no longer supported");
+    } else if (gatewayValue !== "ts") {
+      errors.push(`invalid --gateway-impl value: ${gatewayRaw}`);
+    }
+  }
+
+  const runtimeRaw = readOptionString(options, "runtime-impl");
+  if (runtimeRaw) {
+    const runtimeValue = runtimeRaw.trim().toLowerCase();
+    if (runtimeValue === "python") {
+      errors.push("--runtime-impl=python is no longer supported");
+    } else if (runtimeValue !== "rust") {
+      errors.push(`invalid --runtime-impl value: ${runtimeRaw}`);
+    }
+  }
+
+  return errors;
 }
 
 function fileReadable(path: string): boolean {
@@ -1562,9 +1607,10 @@ function resolveConfigReadPolicy(
 
 function writeJson(response: ServerResponse, statusCode: number, payload: Record<string, unknown>): void {
   const body = JSON.stringify(payload);
+  const bodyBytes = utf8ByteLength(body);
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json");
-  response.setHeader("Content-Length", String(body.length));
+  response.setHeader("Content-Length", String(bodyBytes));
   response.end(body);
 }
 
@@ -1783,6 +1829,9 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
   process.stdout.write(`${report.assistantMessage}\n`);
   process.stderr.write(
     `[execution] gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
+  );
+  process.stderr.write(
+    `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,
   );
   return report.verification.pass ? 0 : 1;
 }
@@ -2597,6 +2646,13 @@ async function runServe(options: Record<string, OptionValue>): Promise<number> {
             runtime_impl: executionPlane.runtimeImplSource,
             shadow_mode: executionPlane.shadowModeSource,
           },
+        },
+        governance_plane: {
+          enabled: true,
+          plane: "governance.v1",
+          evaluator: "basic_turn_gate",
+          auto_upgrade_enabled: false,
+          auto_upgrade_reason: "manual_mode_default",
         },
         management_auth: {
           credential_count: managementToken ? 1 : 0,
@@ -3507,6 +3563,15 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const hardCutErrors = validateHardCutExecutionOptions(parsed.options);
+  if (hardCutErrors.length > 0) {
+    process.stderr.write("error: invalid execution-plane options in TS+Rust hard-cut mode.\n");
+    for (const item of hardCutErrors) {
+      process.stderr.write(`- ${item}\n`);
+    }
+    return 2;
+  }
+
   if (parsed.command === "status") {
     return runStatus(parsed.options);
   }
@@ -3518,7 +3583,6 @@ async function main(): Promise<number> {
   }
 
   process.stderr.write(`error: unsupported command for ts-dev-cli: ${parsed.command}\n`);
-  process.stderr.write("hint: fallback to python cli will handle this command\n");
   return 3;
 }
 

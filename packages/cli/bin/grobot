@@ -74,19 +74,36 @@ if [ -n "$CORE_PACKAGE" ]; then
 fi
 
 # 5) Source checkout fallback.
-#    Default to TS dev CLI. Python fallback is opt-in via legacy flag/env.
+#    Hard-cut mode: TS dev CLI only, no legacy Python fallback.
 DEV_TS_CLI_RUNNER="${PACKAGE_ROOT}/scripts/run-ts-dev-cli.sh"
-DEV_CLI="${PACKAGE_ROOT}/gateway/grobot_cli.py"
 FORWARD_ARGS=()
-LEGACY_PYTHON_ENABLED=0
 TS_DEV_FLAG_SEEN=0
-FORCE_PYTHON_EXECUTION=0
 PREV_ARG=""
+
+is_truthy() {
+  local value
+  value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+fail_legacy_python() {
+  local detail="$1"
+  echo "error: legacy python execution path is removed." >&2
+  echo "detail: ${detail}" >&2
+  echo "allowed: --gateway-impl ts, --runtime-impl rust" >&2
+  return 2
+}
+
 for ARG in "$@"; do
   if [ -n "$PREV_ARG" ]; then
     if [ "$PREV_ARG" = "--gateway-impl" ] || [ "$PREV_ARG" = "--runtime-impl" ]; then
-      if [ "$ARG" = "python" ]; then
-        FORCE_PYTHON_EXECUTION=1
+      VALUE_LOWER="$(printf '%s' "$ARG" | tr '[:upper:]' '[:lower:]')"
+      if [ "$VALUE_LOWER" = "python" ]; then
+        fail_legacy_python "${PREV_ARG}=${ARG}"
+        exit 2
       fi
       FORWARD_ARGS+=("$ARG")
       PREV_ARG=""
@@ -95,15 +112,9 @@ for ARG in "$@"; do
     PREV_ARG=""
   fi
   case "$ARG" in
-    --legacy-python-cli)
-      LEGACY_PYTHON_ENABLED=1
-      ;;
-    --legacy-python-cli=*)
-      LEGACY_VALUE="${ARG#*=}"
-      LEGACY_VALUE_LOWER="$(printf '%s' "$LEGACY_VALUE" | tr '[:upper:]' '[:lower:]')"
-      case "$LEGACY_VALUE_LOWER" in
-        1|true|yes|on) LEGACY_PYTHON_ENABLED=1 ;;
-      esac
+    --legacy-python-cli|--legacy-python-cli=*)
+      fail_legacy_python "$ARG"
+      exit 2
       ;;
     --ts-dev-cli|--ts-dev-cli=*)
       TS_DEV_FLAG_SEEN=1
@@ -113,8 +124,8 @@ for ARG in "$@"; do
       FORWARD_ARGS+=("$ARG")
       ;;
     --gateway-impl=python|--runtime-impl=python)
-      FORCE_PYTHON_EXECUTION=1
-      FORWARD_ARGS+=("$ARG")
+      fail_legacy_python "$ARG"
+      exit 2
       ;;
     *)
       FORWARD_ARGS+=("$ARG")
@@ -122,23 +133,13 @@ for ARG in "$@"; do
   esac
 done
 
-LEGACY_ENV_VALUE_LOWER="$(printf '%s' "${GROBOT_LEGACY_PYTHON:-}" | tr '[:upper:]' '[:lower:]')"
-case "$LEGACY_ENV_VALUE_LOWER" in
-  1|true|yes|on) LEGACY_PYTHON_ENABLED=1 ;;
-esac
+if is_truthy "${GROBOT_LEGACY_PYTHON:-}"; then
+  fail_legacy_python "GROBOT_LEGACY_PYTHON=${GROBOT_LEGACY_PYTHON}"
+  exit 2
+fi
 
 if [ "$TS_DEV_FLAG_SEEN" -eq 1 ]; then
   echo "warning: --ts-dev-cli is deprecated and can be removed." >&2
-fi
-
-if [ "$FORCE_PYTHON_EXECUTION" -eq 1 ] && [ -f "$DEV_CLI" ]; then
-  echo "warning: using legacy python cli because execution plane explicitly requests python." >&2
-  exec python3 "$DEV_CLI" "${FORWARD_ARGS[@]}"
-fi
-
-if [ "$LEGACY_PYTHON_ENABLED" -eq 1 ] && [ -f "$DEV_CLI" ]; then
-  echo "warning: using legacy python cli fallback (explicitly enabled)." >&2
-  exec python3 "$DEV_CLI" "${FORWARD_ARGS[@]}"
 fi
 
 TS_DEV_CLI_EXIT_CODE=86
@@ -161,9 +162,8 @@ if [ "$TS_DEV_CLI_AVAILABLE" -eq 1 ]; then
   if [ "$TS_DEV_CLI_EXIT_CODE" -eq 86 ]; then
     echo "error: ts-dev-cli is unavailable in this source checkout." >&2
   elif [ "$TS_DEV_CLI_EXIT_CODE" -eq 2 ] || [ "$TS_DEV_CLI_EXIT_CODE" -eq 3 ]; then
-    echo "error: command is not available in ts-dev-cli yet." >&2
+    echo "error: command is not available in ts-dev-cli." >&2
   fi
-  echo "hint: use --legacy-python-cli or GROBOT_LEGACY_PYTHON=1 during transition." >&2
   exit "$TS_DEV_CLI_EXIT_CODE"
 fi
 
@@ -176,5 +176,4 @@ echo "  - ${GROBOT_HOME_DIR}/core/current/grobot-core" >&2
 echo "  - ${GROBOT_HOME_DIR}/core/${PLATFORM_KEY:-<platform>}/grobot-core" >&2
 echo "  - ${PACKAGE_ROOT}/node_modules/${CORE_PACKAGE:-@grobot/core-<platform>}/bin/grobot-core" >&2
 echo "hint: install core to ~/.grobot/core/current or set GROBOT_CORE_BIN." >&2
-echo "hint: source-checkout compatibility fallback requires --legacy-python-cli (or GROBOT_LEGACY_PYTHON=1)." >&2
 exit 1

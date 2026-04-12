@@ -7,20 +7,20 @@ export interface MigrationOptions {
 }
 
 const DEFAULT_OPTIONS: MigrationOptions = {
-  gatewayImpl: "python",
-  runtimeImpl: "python",
+  gatewayImpl: "ts",
+  runtimeImpl: "rust",
   shadowMode: false,
 };
 
 function parseGatewayImpl(value: unknown): GatewayImpl {
-  if (value === "python" || value === "ts") {
+  if (value === "ts") {
     return value;
   }
   return DEFAULT_OPTIONS.gatewayImpl;
 }
 
 function parseRuntimeImpl(value: unknown): RuntimeImpl {
-  if (value === "python" || value === "rust") {
+  if (value === "rust") {
     return value;
   }
   return DEFAULT_OPTIONS.runtimeImpl;

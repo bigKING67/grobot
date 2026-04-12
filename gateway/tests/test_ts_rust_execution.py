@@ -1384,31 +1384,12 @@ class TsRustExecutionTests(unittest.TestCase):
             self.assertIn("engine: ts-dev-cli", result.stdout)
             self.assertIn("--ts-dev-cli is deprecated", result.stderr)
 
-    def test_source_checkout_requires_explicit_legacy_for_python_fallback(self) -> None:
+    def test_source_checkout_rejects_legacy_python_flag(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         result = subprocess.run(
             [
                 "./grobot",
-                "init",
-                "--help",
-            ],
-            cwd=str(repo_root),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("not available in ts-dev-cli", result.stderr)
-        self.assertIn("--legacy-python-cli", result.stderr)
-
-    def test_source_checkout_legacy_flag_enables_python_fallback(self) -> None:
-        repo_root = Path(__file__).resolve().parents[2]
-        result = subprocess.run(
-            [
-                "./grobot",
-                "init",
-                "--help",
+                "status",
                 "--legacy-python-cli",
             ],
             cwd=str(repo_root),
@@ -1417,20 +1398,35 @@ class TsRustExecutionTests(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("--global", result.stdout)
-        self.assertIn("--project", result.stdout)
-        self.assertIn("legacy python cli fallback", result.stderr)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("legacy python execution path is removed", result.stderr)
 
-    def test_source_checkout_legacy_env_enables_python_fallback(self) -> None:
+    def test_source_checkout_rejects_python_gateway_impl(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        result = subprocess.run(
+            [
+                "./grobot",
+                "status",
+                "--gateway-impl",
+                "python",
+            ],
+            cwd=str(repo_root),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("legacy python execution path is removed", result.stderr)
+
+    def test_source_checkout_rejects_legacy_python_env(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         env = os.environ.copy()
         env["GROBOT_LEGACY_PYTHON"] = "1"
         result = subprocess.run(
             [
                 "./grobot",
-                "init",
-                "--help",
+                "status",
             ],
             cwd=str(repo_root),
             text=True,
@@ -1439,10 +1435,8 @@ class TsRustExecutionTests(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("--global", result.stdout)
-        self.assertIn("--project", result.stdout)
-        self.assertIn("legacy python cli fallback", result.stderr)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("legacy python execution path is removed", result.stderr)
 
     def test_serve_config_read_policy_disabled_blocks_config_endpoint(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]

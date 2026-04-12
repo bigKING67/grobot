@@ -8,6 +8,7 @@ import {
   TurnRequest,
   TurnVerifier,
 } from "../types";
+import { evaluateTurnGovernance } from "../governance/evaluator";
 
 export interface TurnContextAssembler {
   assemble(turn: TurnRequest): Promise<string[]>;
@@ -85,6 +86,7 @@ export class AgentLoop {
     }
 
     const verification = await this.deps.verifier.verify(primary);
+    const governance = evaluateTurnGovernance(verification, shadowComparison);
 
     const report: TurnExecutionReport = {
       traceId: primary.traceId,
@@ -95,6 +97,7 @@ export class AgentLoop {
       primaryRuntime: primary.runtimeLabel,
       assistantMessage: primary.assistantMessage,
       verification,
+      governance,
       shadowComparison,
       eventCount: primary.events.length,
     };

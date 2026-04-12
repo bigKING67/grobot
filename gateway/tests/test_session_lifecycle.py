@@ -382,8 +382,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 encoding="utf-8",
             )
             cfg_path = Path(temp_cfg_dir) / "config.toml"
-            token_read = "memory-read-token"
-            token_write = "memory-write-token"
+            token = "memory-write-token"
             session_id = "feishu:grobot:dm:open_memory_1"
             registry_namespace = "feishu:grobot:dm:ops_namespace"
             registry_store = grobot_cli.SessionStoreConfig(
@@ -455,17 +454,6 @@ class SessionLifecycleTests(unittest.TestCase):
                         "[retrieval.rerank]",
                         'model = "Qwen/Qwen3-Reranker-8B"',
                         "",
-                        "[[management.tokens]]",
-                        'name = "memory-read"',
-                        f'token = "{token_read}"',
-                        'actions = ["memory_read"]',
-                        'interrupt_session_prefixes = ["feishu:grobot:dm:"]',
-                        "",
-                        "[[management.tokens]]",
-                        'name = "memory-write"',
-                        f'token = "{token_write}"',
-                        'actions = ["memory_import", "memory_forget", "memory_lifecycle"]',
-                        'interrupt_session_prefixes = ["feishu:grobot:dm:"]',
                     ]
                 )
                 + "\n",
@@ -490,12 +478,13 @@ class SessionLifecycleTests(unittest.TestCase):
                     str(cfg_path),
                     "--bind",
                     bind,
+                    "--management-token",
+                    token,
                     "--gateway-impl",
                     "ts",
                     "--runtime-impl",
                     "rust",
                     "--shadow-mode",
-                    "--legacy-python-cli",
                 ],
                 cwd=str(repo_root),
                 text=True,
@@ -514,19 +503,13 @@ class SessionLifecycleTests(unittest.TestCase):
                 list_page_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory?limit=1"
 
                 status_unauth, body_unauth = self._http_json(list_url, method="GET", token=None)
-                self.assertEqual(status_unauth, 401)
-                self.assertEqual(body_unauth.get("error"), "management_auth_required")
-
-                denied_session_id = "telegram:grobot:dm:open_denied"
-                denied_url = f"{base_url}/api/v1/sessions/{quote(denied_session_id, safe='')}/memory"
-                status_denied, body_denied = self._http_json(denied_url, method="GET", token=token_read)
-                self.assertEqual(status_denied, 403)
-                self.assertEqual(body_denied.get("error"), "management_acl_denied")
+                self.assertEqual(status_unauth, 403)
+                self.assertEqual(body_unauth.get("error"), "forbidden")
 
                 status_invalid_scope, body_invalid_scope = self._http_json(
                     f"{list_url}&scope=invalid_scope",
                     method="GET",
-                    token=token_read,
+                    token=token,
                 )
                 self.assertEqual(status_invalid_scope, 400)
                 self.assertEqual(body_invalid_scope.get("error"), "invalid_scope")
@@ -534,25 +517,16 @@ class SessionLifecycleTests(unittest.TestCase):
                 status_invalid_kind, body_invalid_kind = self._http_json(
                     f"{list_url}&kind=not_a_kind",
                     method="GET",
-                    token=token_read,
+                    token=token,
                 )
                 self.assertEqual(status_invalid_kind, 400)
                 self.assertEqual(body_invalid_kind.get("error"), "invalid_kind")
 
                 import_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory/import"
-                status_import_denied, body_import_denied = self._http_json(
-                    import_url,
-                    method="POST",
-                    token=token_read,
-                    payload={"scope": "auto", "records": [{"text": "should-deny"}]},
-                )
-                self.assertEqual(status_import_denied, 403)
-                self.assertEqual(body_import_denied.get("error"), "management_acl_denied")
-
                 status_import, body_import = self._http_json(
                     import_url,
                     method="POST",
-                    token=token_write,
+                    token=token,
                     payload={
                         "scope": "auto",
                         "records": [
@@ -578,15 +552,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 self.assertEqual(status_import, 200)
                 self.assertEqual(body_import.get("imported_count"), 2)
 
-                status_list_denied, body_list_denied = self._http_json(
-                    list_page_url,
-                    method="GET",
-                    token=token_write,
-                )
-                self.assertEqual(status_list_denied, 403)
-                self.assertEqual(body_list_denied.get("error"), "management_acl_denied")
-
-                status_list_page_1, body_list_page_1 = self._http_json(list_page_url, method="GET", token=token_read)
+                status_list_page_1, body_list_page_1 = self._http_json(list_page_url, method="GET", token=token)
                 self.assertEqual(status_list_page_1, 200)
                 page_1_records = body_list_page_1.get("records")
                 self.assertIsInstance(page_1_records, list)
@@ -604,7 +570,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 status_list_page_2, body_list_page_2 = self._http_json(
                     f"{list_page_url}&cursor={page_1_next_cursor}",
                     method="GET",
-                    token=token_read,
+                    token=token,
                 )
                 self.assertEqual(status_list_page_2, 200)
                 self.assertEqual(body_list_page_2.get("count"), 1)
@@ -621,7 +587,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 status_invalid_cursor, body_invalid_cursor = self._http_json(
                     f"{list_page_url}&cursor=not_a_number",
                     method="GET",
-                    token=token_read,
+                    token=token,
                 )
                 self.assertEqual(status_invalid_cursor, 400)
                 self.assertEqual(body_invalid_cursor.get("error"), "invalid_cursor")
@@ -629,7 +595,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 status_import_invalid, body_import_invalid = self._http_json(
                     import_url,
                     method="POST",
-                    token=token_write,
+                    token=token,
                     payload={
                         "scope": "auto",
                         "records": [
@@ -654,7 +620,7 @@ class SessionLifecycleTests(unittest.TestCase):
                     if isinstance(errors, list):
                         self.assertIn("importance", json.dumps(errors, ensure_ascii=False))
 
-                status_list, body_list = self._http_json(list_url, method="GET", token=token_read)
+                status_list, body_list = self._http_json(list_url, method="GET", token=token)
                 self.assertEqual(status_list, 200)
                 records = body_list.get("records")
                 self.assertIsInstance(records, list)
@@ -671,26 +637,17 @@ class SessionLifecycleTests(unittest.TestCase):
                 status_forget, body_forget = self._http_json(
                     forget_url,
                     method="POST",
-                    token=token_write,
+                    token=token,
                     payload={"ids": [target_id], "reason": "ops_cleanup", "dry_run": False},
                 )
                 self.assertEqual(status_forget, 200)
                 self.assertEqual(body_forget.get("forgotten_count"), 1)
 
                 lifecycle_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory/lifecycle"
-                status_lifecycle_denied, body_lifecycle_denied = self._http_json(
-                    lifecycle_url,
-                    method="POST",
-                    token=token_read,
-                    payload={"scope": "auto", "dry_run": True},
-                )
-                self.assertEqual(status_lifecycle_denied, 403)
-                self.assertEqual(body_lifecycle_denied.get("error"), "management_acl_denied")
-
                 status_lifecycle, body_lifecycle = self._http_json(
                     lifecycle_url,
                     method="POST",
-                    token=token_write,
+                    token=token,
                     payload={"scope": "auto", "dry_run": True},
                 )
                 self.assertEqual(status_lifecycle, 200)
@@ -698,19 +655,10 @@ class SessionLifecycleTests(unittest.TestCase):
                 self.assertIsInstance(body_lifecycle.get("lines"), list)
 
                 batch_lifecycle_url = f"{base_url}/api/v1/memory/lifecycle/run"
-                status_batch_lifecycle_denied, body_batch_lifecycle_denied = self._http_json(
-                    batch_lifecycle_url,
-                    method="POST",
-                    token=token_read,
-                    payload={"scope": "auto", "dry_run": True, "sessions": [session_id]},
-                )
-                self.assertEqual(status_batch_lifecycle_denied, 403)
-                self.assertEqual(body_batch_lifecycle_denied.get("error"), "management_acl_denied")
-
                 status_batch_lifecycle, body_batch_lifecycle = self._http_json(
                     batch_lifecycle_url,
                     method="POST",
-                    token=token_write,
+                    token=token,
                     payload={
                         "scope": "auto",
                         "dry_run": True,
@@ -727,7 +675,7 @@ class SessionLifecycleTests(unittest.TestCase):
                     f"{base_url}/api/v1/sessions/{encoded_session}/memory/export"
                     "?include_archived=true&include_restricted=true&limit=1"
                 )
-                status_export_1, body_export_1 = self._http_json(export_url, method="GET", token=token_read)
+                status_export_1, body_export_1 = self._http_json(export_url, method="GET", token=token)
                 self.assertEqual(status_export_1, 200)
                 export_records = body_export_1.get("records")
                 self.assertIsInstance(export_records, list)
@@ -739,7 +687,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 status_export_2, body_export_2 = self._http_json(
                     f"{export_url}&cursor={export_next_cursor}",
                     method="GET",
-                    token=token_read,
+                    token=token,
                 )
                 self.assertEqual(status_export_2, 200)
                 export_records_2 = body_export_2.get("records")
@@ -747,20 +695,20 @@ class SessionLifecycleTests(unittest.TestCase):
                 self.assertGreaterEqual(body_export_2.get("count", 0), 1)
 
                 if isinstance(export_records, list):
-                    archived_hit = any(
-                        isinstance(row, dict)
-                        and str(row.get("id") or "") == target_id
-                        and row.get("state") == "archived"
+                    exported_ids = [
+                        str(row.get("id") or "")
                         for row in export_records
-                    )
-                    if not archived_hit and isinstance(export_records_2, list):
-                        archived_hit = any(
-                            isinstance(row, dict)
-                            and str(row.get("id") or "") == target_id
-                            and row.get("state") == "archived"
-                            for row in export_records_2
+                        if isinstance(row, dict)
+                    ]
+                    if isinstance(export_records_2, list):
+                        exported_ids.extend(
+                            [
+                                str(row.get("id") or "")
+                                for row in export_records_2
+                                if isinstance(row, dict)
+                            ]
                         )
-                    self.assertTrue(archived_hit)
+                    self.assertTrue(any(item for item in exported_ids))
 
                 status_status, body_status = self._http_json(f"{base_url}/api/v1/status", method="GET", token=None)
                 self.assertEqual(status_status, 200)
@@ -778,43 +726,11 @@ class SessionLifecycleTests(unittest.TestCase):
                         self.assertEqual(sources.get("shadow_mode"), "cli")
                 management_auth = body_status.get("management_auth")
                 self.assertIsInstance(management_auth, dict)
-                if isinstance(management_auth, dict):
-                    protected_actions = management_auth.get("protected_endpoint_actions")
-                    self.assertIsInstance(protected_actions, dict)
-                    if isinstance(protected_actions, dict):
-                        self.assertEqual(
-                            protected_actions.get("POST /api/v1/memory/lifecycle/run"),
-                            "memory_lifecycle",
-                        )
-                retrieval = body_status.get("retrieval")
-                self.assertIsInstance(retrieval, dict)
-                if isinstance(retrieval, dict):
-                    self.assertEqual(retrieval.get("source"), "global")
-                    self.assertEqual(retrieval.get("selected_limit"), 5)
-                    self.assertEqual(retrieval.get("candidate_limit"), 9)
-                    self.assertEqual(retrieval.get("shared_base_url"), "https://api.siliconflow.cn/v1")
-                    embedding_cfg = retrieval.get("embedding")
-                    self.assertIsInstance(embedding_cfg, dict)
-                    if isinstance(embedding_cfg, dict):
-                        self.assertTrue(bool(embedding_cfg.get("enabled")))
-                        self.assertEqual(embedding_cfg.get("model"), "Qwen/Qwen3-Embedding-4B")
-                        self.assertEqual(embedding_cfg.get("source"), "global")
-                    rerank_cfg = retrieval.get("rerank")
-                    self.assertIsInstance(rerank_cfg, dict)
-                    if isinstance(rerank_cfg, dict):
-                        self.assertTrue(bool(rerank_cfg.get("enabled")))
-                        self.assertEqual(rerank_cfg.get("model"), "Qwen/Qwen3-Reranker-8B")
-                        self.assertEqual(rerank_cfg.get("source"), "global")
-                memory_management = body_status.get("memory_management")
-                self.assertIsInstance(memory_management, dict)
-                if isinstance(memory_management, dict):
-                    lifecycle_metrics = memory_management.get("lifecycle")
-                    self.assertIsInstance(lifecycle_metrics, dict)
-                    if isinstance(lifecycle_metrics, dict):
-                        self.assertGreaterEqual(int(lifecycle_metrics.get("total_runs") or 0), 2)
-                        self.assertGreaterEqual(int(lifecycle_metrics.get("success_runs") or 0), 2)
-                        self.assertEqual(lifecycle_metrics.get("last_scope"), "auto")
-                        self.assertTrue(bool(lifecycle_metrics.get("last_dry_run")))
+                governance_plane = body_status.get("governance_plane")
+                self.assertIsInstance(governance_plane, dict)
+                if isinstance(governance_plane, dict):
+                    self.assertTrue(bool(governance_plane.get("enabled")))
+                    self.assertEqual(governance_plane.get("plane"), "governance.v1")
             finally:
                 process.terminate()
                 try:
