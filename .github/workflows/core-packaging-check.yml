@@ -1,0 +1,89 @@
+name: core-packaging-check
+
+on:
+  pull_request:
+    paths:
+      - "packages/cli/**"
+      - "packages/core-*/**"
+      - "scripts/install-core-binary.sh"
+      - "scripts/install-core-from-url.sh"
+      - "scripts/core-generate-manifest.sh"
+      - "scripts/core-stage-artifacts.sh"
+      - "scripts/core-status.sh"
+      - "scripts/core-verify-packages.sh"
+      - "scripts/core-release-gate.sh"
+      - "scripts/core-release-prepare.sh"
+      - "package.json"
+      - "grobot"
+      - "README.md"
+      - ".github/workflows/core-packaging-check.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/cli/**"
+      - "packages/core-*/**"
+      - "scripts/install-core-binary.sh"
+      - "scripts/install-core-from-url.sh"
+      - "scripts/core-generate-manifest.sh"
+      - "scripts/core-stage-artifacts.sh"
+      - "scripts/core-status.sh"
+      - "scripts/core-verify-packages.sh"
+      - "scripts/core-release-gate.sh"
+      - "scripts/core-release-prepare.sh"
+      - "package.json"
+      - "grobot"
+      - "README.md"
+      - ".github/workflows/core-packaging-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Show runtime versions
+        run: |
+          node --version
+          npm --version
+          python3 --version
+
+      - name: Validate shell scripts syntax
+        run: |
+          bash -n packages/cli/bin/grobot
+          bash -n scripts/install-core-binary.sh
+          bash -n scripts/install-core-from-url.sh
+          bash -n scripts/core-generate-manifest.sh
+          bash -n scripts/core-stage-artifacts.sh
+          bash -n scripts/core-status.sh
+          bash -n scripts/core-verify-packages.sh
+          bash -n scripts/core-release-gate.sh
+          bash -n scripts/core-release-prepare.sh
+
+      - name: Verify core packages (dev mode allows stubs)
+        run: npm run core:verify:packages -- --allow-stub
+
+      - name: Run core release gate in dev mode
+        run: npm run core:gate:release -- --allow-stub --report /tmp/core-release-gate-report.dev.json
+
+      - name: Print core status (JSON)
+        run: npm run core:status -- --json
+
+      - name: Upload core packaging reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-packaging-reports
+          path: |
+            /tmp/core-release-gate-report.dev.json

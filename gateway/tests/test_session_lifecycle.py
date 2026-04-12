@@ -443,6 +443,18 @@ class SessionLifecycleTests(unittest.TestCase):
                         "[management]",
                         "enabled = true",
                         "",
+                        "[retrieval]",
+                        "enabled = true",
+                        "selected_limit = 5",
+                        "candidate_limit = 9",
+                        'base_url = "https://api.siliconflow.cn/v1"',
+                        "",
+                        "[retrieval.embedding]",
+                        'model = "Qwen/Qwen3-Embedding-4B"',
+                        "",
+                        "[retrieval.rerank]",
+                        'model = "Qwen/Qwen3-Reranker-8B"',
+                        "",
                         "[[management.tokens]]",
                         'name = "memory-read"',
                         f'token = "{token_read}"',
@@ -478,6 +490,12 @@ class SessionLifecycleTests(unittest.TestCase):
                     str(cfg_path),
                     "--bind",
                     bind,
+                    "--gateway-impl",
+                    "ts",
+                    "--runtime-impl",
+                    "rust",
+                    "--shadow-mode",
+                    "--legacy-python-cli",
                 ],
                 cwd=str(repo_root),
                 text=True,
@@ -746,6 +764,18 @@ class SessionLifecycleTests(unittest.TestCase):
 
                 status_status, body_status = self._http_json(f"{base_url}/api/v1/status", method="GET", token=None)
                 self.assertEqual(status_status, 200)
+                execution_plane = body_status.get("execution_plane")
+                self.assertIsInstance(execution_plane, dict)
+                if isinstance(execution_plane, dict):
+                    self.assertEqual(execution_plane.get("gateway_impl"), "ts")
+                    self.assertEqual(execution_plane.get("runtime_impl"), "rust")
+                    self.assertTrue(bool(execution_plane.get("shadow_mode")))
+                    sources = execution_plane.get("sources")
+                    self.assertIsInstance(sources, dict)
+                    if isinstance(sources, dict):
+                        self.assertEqual(sources.get("gateway_impl"), "cli")
+                        self.assertEqual(sources.get("runtime_impl"), "cli")
+                        self.assertEqual(sources.get("shadow_mode"), "cli")
                 management_auth = body_status.get("management_auth")
                 self.assertIsInstance(management_auth, dict)
                 if isinstance(management_auth, dict):
@@ -756,6 +786,25 @@ class SessionLifecycleTests(unittest.TestCase):
                             protected_actions.get("POST /api/v1/memory/lifecycle/run"),
                             "memory_lifecycle",
                         )
+                retrieval = body_status.get("retrieval")
+                self.assertIsInstance(retrieval, dict)
+                if isinstance(retrieval, dict):
+                    self.assertEqual(retrieval.get("source"), "global")
+                    self.assertEqual(retrieval.get("selected_limit"), 5)
+                    self.assertEqual(retrieval.get("candidate_limit"), 9)
+                    self.assertEqual(retrieval.get("shared_base_url"), "https://api.siliconflow.cn/v1")
+                    embedding_cfg = retrieval.get("embedding")
+                    self.assertIsInstance(embedding_cfg, dict)
+                    if isinstance(embedding_cfg, dict):
+                        self.assertTrue(bool(embedding_cfg.get("enabled")))
+                        self.assertEqual(embedding_cfg.get("model"), "Qwen/Qwen3-Embedding-4B")
+                        self.assertEqual(embedding_cfg.get("source"), "global")
+                    rerank_cfg = retrieval.get("rerank")
+                    self.assertIsInstance(rerank_cfg, dict)
+                    if isinstance(rerank_cfg, dict):
+                        self.assertTrue(bool(rerank_cfg.get("enabled")))
+                        self.assertEqual(rerank_cfg.get("model"), "Qwen/Qwen3-Reranker-8B")
+                        self.assertEqual(rerank_cfg.get("source"), "global")
                 memory_management = body_status.get("memory_management")
                 self.assertIsInstance(memory_management, dict)
                 if isinstance(memory_management, dict):

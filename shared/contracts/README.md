@@ -10,3 +10,12 @@ Current contract docs:
 
 1. `session-key.md`
 2. `runtime-events.md`
+3. `runtime-v1.json`
+
+## Runtime v1
+
+`runtime-v1.json` is the canonical cross-language protocol marker for:
+
+1. Method list (`runtime.health`, `runtime.turn.execute`)
+2. Transport (`json-rpc-2.0-over-stdio`)
+3. Version pin (`runtime.v1`)

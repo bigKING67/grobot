@@ -1,0 +1,6 @@
+{
+  "name": "@grobot/agent-core",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Internal Grobot core source and build pipeline metadata"
+}

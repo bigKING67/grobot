@@ -94,6 +94,24 @@ class FakeModelHandler(BaseHTTPRequestHandler):
 
 
 class StartToolSmokeTests(unittest.TestCase):
+    def test_package_launcher_explicit_python_impl_forces_legacy_cli(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        result = subprocess.run(
+            [
+                "./packages/cli/bin/grobot",
+                "init",
+                "--help",
+                "--gateway-impl=python",
+            ],
+            cwd=str(repo_root),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("--global", result.stdout)
+        self.assertIn("legacy python cli", result.stderr)
+
     def test_start_message_runs_tool_call_and_writes_file(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         FakeModelHandler.requests = []
@@ -154,6 +172,11 @@ class StartToolSmokeTests(unittest.TestCase):
                         str(work_dir),
                         "--config",
                         str(cfg_path),
+                        "--gateway-impl",
+                        "python",
+                        "--runtime-impl",
+                        "python",
+                        "--no-shadow-mode",
                         "--message",
                         "请先看@docs/note.md，然后创建一个 smoke-note.txt 文件并写入 hello",
                     ],
@@ -169,6 +192,7 @@ class StartToolSmokeTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertIn("smoke_tool_ok", result.stdout)
+            self.assertIn("legacy python cli", result.stderr)
 
             note_path = work_dir / "smoke-note.txt"
             self.assertTrue(note_path.exists(), "tool write file should exist")

@@ -37,6 +37,7 @@
 - You are changing session lifecycle, queueing, or channel adapters.
 - You are introducing new provider routing or tool policy logic.
 - You are changing runtime interfaces between TypeScript and Rust.
+- You need to align model/tool/orchestration/extension four-layer boundaries.
 
 ### Use Memory and Eval/Security Guides If
 

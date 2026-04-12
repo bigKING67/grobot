@@ -431,6 +431,395 @@ class RuntimePathsTests(unittest.TestCase):
         self.assertEqual(config.lint_stale_days, 12)
         self.assertEqual(config.lint_max_files, 66)
 
+    def test_resolve_memory_v1_config_prefers_v1_section(self) -> None:
+        config = grobot_cli.resolve_memory_v1_config(
+            {
+                "memory": {
+                    "allow_org_shared_read": False,
+                    "v1": {
+                        "enabled": True,
+                        "default_scope": "group",
+                        "write_mode": "direct",
+                        "retrieval": {
+                            "max_items": 9,
+                            "max_chars": 333,
+                            "min_score": 1.7,
+                            "recency_half_life_days": 21,
+                        },
+                        "privacy": {"allow_org_shared_read": True},
+                        "lifecycle": {
+                            "enabled": True,
+                            "promote_after_days": 3,
+                            "promote_min_strength": 0.9,
+                            "decay_after_days": 8,
+                            "decay_factor": 0.7,
+                            "decay_min_importance": 0.2,
+                            "decay_interval_days": 2,
+                            "archive_after_days": 15,
+                            "archive_max_strength": 0.35,
+                            "batch_limit": 42,
+                        },
+                    },
+                }
+            }
+        )
+        self.assertTrue(config.enabled)
+        self.assertTrue(config.allow_org_shared_read)
+        self.assertEqual(config.default_scope, "group")
+        self.assertEqual(config.write_mode, "direct")
+        self.assertEqual(config.retrieval_max_items, 9)
+        self.assertEqual(config.retrieval_max_chars, 333)
+        self.assertAlmostEqual(config.retrieval_min_score, 1.7, places=6)
+        self.assertEqual(config.recency_half_life_days, 21)
+        self.assertTrue(config.lifecycle_enabled)
+        self.assertEqual(config.lifecycle_promote_after_days, 3)
+        self.assertAlmostEqual(config.lifecycle_promote_min_strength, 0.9, places=6)
+        self.assertEqual(config.lifecycle_decay_after_days, 8)
+        self.assertAlmostEqual(config.lifecycle_decay_factor, 0.7, places=6)
+        self.assertAlmostEqual(config.lifecycle_decay_min_importance, 0.2, places=6)
+        self.assertEqual(config.lifecycle_decay_interval_days, 2)
+        self.assertEqual(config.lifecycle_archive_after_days, 15)
+        self.assertAlmostEqual(config.lifecycle_archive_max_strength, 0.35, places=6)
+        self.assertEqual(config.lifecycle_batch_limit, 42)
+
+    def test_memory_v1_write_review_query_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "\n".join(
+                    [
+                        "schema_version = 1",
+                        'mode = "mvp"',
+                        "",
+                        "[memory]",
+                        "allow_org_shared_read = false",
+                        "",
+                        "[memory.v1]",
+                        "enabled = true",
+                        'default_scope = "auto"',
+                        'write_mode = "review_first"',
+                        "",
+                        "[memory.v1.retrieval]",
+                        "max_items = 8",
+                        "max_chars = 220",
+                        "min_score = 0.5",
+                        "recency_half_life_days = 30",
+                        "",
+                        "[memory.v1.privacy]",
+                        "allow_org_shared_read = false",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            project_toml = grobot_cli.load_toml(paths.project_toml)
+            memory_config = grobot_cli.resolve_memory_v1_config(project_toml)
+            session_key = "feishu:demo:dm:open_user_9"
+
+            write_code, write_lines = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="支付回滚策略：先锁单，再补偿，超时 30s 触发告警。",
+                kind="semantic",
+                requested_scope="auto",
+                tags=["payment", "rollback"],
+                importance=0.8,
+                confidence=0.9,
+                classification="internal",
+                source="unit-test",
+                apply_direct=False,
+            )
+            self.assertEqual(write_code, 0)
+            proposal_line = next(
+                (line for line in write_lines if line.startswith("memory write proposal created:")),
+                "",
+            )
+            self.assertTrue(proposal_line)
+            proposal_id = proposal_line.split(":", 1)[1].strip()
+            self.assertTrue(proposal_id.startswith("mp"))
+
+            list_code, list_lines = grobot_cli.memory_v1_review_list(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+            )
+            self.assertEqual(list_code, 0)
+            self.assertTrue(any(proposal_id in line for line in list_lines))
+
+            apply_code, apply_lines = grobot_cli.memory_v1_review_apply(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                proposal_id=proposal_id,
+                reviewer="unit-test",
+                note="approved",
+            )
+            self.assertEqual(apply_code, 0)
+            self.assertTrue(any("memory review applied" in line for line in apply_lines))
+
+            query_code, query_lines, rows = grobot_cli.memory_v1_query(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                query="支付回滚 告警",
+                requested_scope="auto",
+            )
+            self.assertEqual(query_code, 0)
+            self.assertTrue(any("payment" in json.dumps(row, ensure_ascii=False) or "支付回滚" in json.dumps(row, ensure_ascii=False) for row in rows))
+            self.assertTrue(any("支付回滚策略" in line for line in query_lines))
+
+            items_file = paths.project_memory_dir / "v1" / "users" / "open_user_9" / "items.jsonl"
+            self.assertTrue(items_file.exists())
+            rows_from_file = [
+                json.loads(line)
+                for line in items_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertGreaterEqual(len(rows_from_file), 1)
+            self.assertEqual(rows_from_file[-1].get("kind"), "semantic")
+
+    def test_memory_v1_query_hides_restricted_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "\n".join(
+                    [
+                        "schema_version = 1",
+                        'mode = "mvp"',
+                        "",
+                        "[memory.v1]",
+                        "enabled = true",
+                        'default_scope = "auto"',
+                        'write_mode = "direct"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            memory_config = grobot_cli.resolve_memory_v1_config(grobot_cli.load_toml(paths.project_toml))
+            session_key = "feishu:demo:dm:open_user_privacy"
+
+            code_internal, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="内部规范：支付回滚超时 30s 告警",
+                kind="policy",
+                requested_scope="auto",
+                classification="internal",
+                apply_direct=True,
+            )
+            self.assertEqual(code_internal, 0)
+
+            code_restricted, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="敏感规则：补偿审批人手机号 138xxxxxx",
+                kind="policy",
+                requested_scope="auto",
+                classification="restricted",
+                apply_direct=True,
+            )
+            self.assertEqual(code_restricted, 0)
+
+            query_default_code, query_default_lines, query_default_rows = grobot_cli.memory_v1_query(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                query="补偿审批人 手机号",
+                requested_scope="auto",
+                include_restricted=False,
+                include_secret=False,
+            )
+            self.assertEqual(query_default_code, 0)
+            self.assertEqual(query_default_rows, [])
+            self.assertTrue(any("no matched memory items" in line for line in query_default_lines))
+
+            query_allow_code, _query_allow_lines, query_allow_rows = grobot_cli.memory_v1_query(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                query="补偿审批人 手机号",
+                requested_scope="auto",
+                include_restricted=True,
+                include_secret=False,
+            )
+            self.assertEqual(query_allow_code, 0)
+            self.assertGreaterEqual(len(query_allow_rows), 1)
+            self.assertTrue(
+                any(
+                    row.get("classification") == "restricted"
+                    for row in query_allow_rows
+                )
+            )
+
+    def test_memory_v1_lifecycle_promote_decay_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "\n".join(
+                    [
+                        "schema_version = 1",
+                        'mode = "mvp"',
+                        "",
+                        "[memory.v1]",
+                        "enabled = true",
+                        'default_scope = "auto"',
+                        'write_mode = "direct"',
+                        "",
+                        "[memory.v1.retrieval]",
+                        "max_items = 8",
+                        "min_score = 0.1",
+                        "",
+                        "[memory.v1.lifecycle]",
+                        "enabled = true",
+                        "promote_after_days = 1",
+                        "promote_min_strength = 0.80",
+                        "decay_after_days = 1",
+                        "decay_factor = 0.60",
+                        "decay_min_importance = 0.20",
+                        "decay_interval_days = 1",
+                        "archive_after_days = 1",
+                        "archive_max_strength = 0.30",
+                        "batch_limit = 20",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            memory_config = grobot_cli.resolve_memory_v1_config(grobot_cli.load_toml(paths.project_toml))
+            session_key = "feishu:demo:dm:open_user_lifecycle"
+
+            code_promote, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="事件A：支付回滚流程已经稳定，长期有效。",
+                kind="episodic",
+                requested_scope="auto",
+                importance=0.95,
+                confidence=0.95,
+                classification="internal",
+                apply_direct=True,
+            )
+            self.assertEqual(code_promote, 0)
+            code_decay, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="事件B：一次性补偿策略草案。",
+                kind="semantic",
+                requested_scope="auto",
+                importance=0.50,
+                confidence=0.30,
+                classification="internal",
+                apply_direct=True,
+            )
+            self.assertEqual(code_decay, 0)
+            code_archive, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="事件C：临时审批手机号 138xxxxxx。",
+                kind="episodic",
+                requested_scope="auto",
+                importance=0.20,
+                confidence=0.20,
+                classification="restricted",
+                apply_direct=True,
+            )
+            self.assertEqual(code_archive, 0)
+
+            items_file = paths.project_memory_dir / "v1" / "users" / "open_user_lifecycle" / "items.jsonl"
+            self.assertTrue(items_file.exists())
+            rows = [json.loads(line) for line in items_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+            for row in rows:
+                row["created_at"] = "2026-01-01T00:00:00+00:00"
+                row["updated_at"] = "2026-01-01T00:00:00+00:00"
+            items_file.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
+
+            dry_code, dry_lines = grobot_cli.memory_v1_lifecycle_run(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                dry_run=True,
+            )
+            self.assertEqual(dry_code, 0)
+            self.assertTrue(any("dry_run=on" in line for line in dry_lines))
+
+            run_code, run_lines = grobot_cli.memory_v1_lifecycle_run(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                dry_run=False,
+            )
+            self.assertEqual(run_code, 0)
+            self.assertTrue(any("actions=promote:1 decay:1 archive:1" in line for line in run_lines))
+
+            latest_rows = grobot_cli.memory_v1_load_latest_records(
+                paths.project_memory_dir / "v1" / "users" / "open_user_lifecycle",
+                include_archived=True,
+            )
+            by_text = {str(row.get("text") or ""): row for row in latest_rows}
+            promote_row = by_text.get("事件A：支付回滚流程已经稳定，长期有效。")
+            decay_row = by_text.get("事件B：一次性补偿策略草案。")
+            archive_row = by_text.get("事件C：临时审批手机号 138xxxxxx。")
+            self.assertIsNotNone(promote_row)
+            self.assertIsNotNone(decay_row)
+            self.assertIsNotNone(archive_row)
+            if promote_row is not None:
+                self.assertEqual(promote_row.get("kind"), "semantic")
+                self.assertEqual(promote_row.get("state"), "active")
+            if decay_row is not None:
+                self.assertLess(float(decay_row.get("importance") or 1.0), 0.5)
+                self.assertEqual(decay_row.get("state"), "active")
+            if archive_row is not None:
+                self.assertEqual(archive_row.get("state"), "archived")
+
+            hidden_code, _hidden_lines, hidden_rows = grobot_cli.memory_v1_query(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                query="审批手机号",
+                requested_scope="auto",
+                include_restricted=True,
+                include_secret=False,
+            )
+            self.assertEqual(hidden_code, 0)
+            self.assertEqual(hidden_rows, [])
+
     def test_wiki_ingest_review_apply_flow(self) -> None:
         with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
             project_root = Path(temp_project)
@@ -567,6 +956,366 @@ class RuntimePathsTests(unittest.TestCase):
             payload = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertGreaterEqual(len(payload.get("broken_links", [])), 1)
             self.assertGreaterEqual(len(payload.get("orphan_pages", [])), 1)
+
+    def test_memory_v1_management_ops_list_forget_export_import(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "\n".join(
+                    [
+                        "schema_version = 1",
+                        'mode = "mvp"',
+                        "",
+                        "[memory.v1]",
+                        "enabled = true",
+                        'default_scope = "auto"',
+                        'write_mode = "direct"',
+                        "",
+                        "[memory.v1.lifecycle]",
+                        "enabled = true",
+                        "batch_limit = 20",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            memory_config = grobot_cli.resolve_memory_v1_config(grobot_cli.load_toml(paths.project_toml))
+            session_key = "feishu:demo:dm:open_user_mgmt"
+
+            code_a, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="内部记忆：支付回滚策略 v1",
+                kind="semantic",
+                requested_scope="auto",
+                classification="internal",
+                apply_direct=True,
+            )
+            self.assertEqual(code_a, 0)
+            code_b, _ = grobot_cli.memory_v1_write(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                text="敏感记忆：审批人手机号 138xxxxxx",
+                kind="policy",
+                requested_scope="auto",
+                classification="restricted",
+                apply_direct=True,
+            )
+            self.assertEqual(code_b, 0)
+
+            list_code_default, list_rows_default = grobot_cli.memory_v1_list_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                include_archived=False,
+                include_restricted=False,
+                include_secret=False,
+                query=None,
+                limit=50,
+                actor="management:test",
+            )
+            self.assertEqual(list_code_default, 0)
+            self.assertTrue(any("支付回滚策略" in str(row.get("text")) for row in list_rows_default))
+            self.assertFalse(any("手机号" in str(row.get("text")) for row in list_rows_default))
+
+            list_code_all, list_rows_all = grobot_cli.memory_v1_list_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                include_archived=False,
+                include_restricted=True,
+                include_secret=False,
+                query=None,
+                limit=50,
+                actor="management:test",
+            )
+            self.assertEqual(list_code_all, 0)
+            sensitive_row = next((row for row in list_rows_all if "手机号" in str(row.get("text"))), None)
+            self.assertIsNotNone(sensitive_row)
+            assert sensitive_row is not None
+            sensitive_id = str(sensitive_row.get("id") or "")
+            self.assertTrue(sensitive_id)
+
+            forget_code, forget_result = grobot_cli.memory_v1_forget_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                record_ids=[sensitive_id],
+                requested_scope="auto",
+                reason="privacy-cleanup",
+                actor="management:test",
+                dry_run=False,
+            )
+            self.assertEqual(forget_code, 0)
+            self.assertEqual(forget_result.get("forgotten_count"), 1)
+
+            list_code_after, list_rows_after = grobot_cli.memory_v1_list_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                include_archived=False,
+                include_restricted=True,
+                include_secret=False,
+                query=None,
+                limit=50,
+                actor="management:test",
+            )
+            self.assertEqual(list_code_after, 0)
+            self.assertFalse(any(str(row.get("id")) == sensitive_id for row in list_rows_after))
+
+            export_code, export_rows = grobot_cli.memory_v1_export_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                include_archived=True,
+                include_restricted=True,
+                include_secret=False,
+                query=None,
+                limit=2000,
+                actor="management:test",
+            )
+            self.assertEqual(export_code, 0)
+            self.assertTrue(any(str(row.get("id")) == sensitive_id and row.get("state") == "archived" for row in export_rows))
+
+            import_code, import_result = grobot_cli.memory_v1_import_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                records=[
+                    {
+                        "text": "导入记忆：退款 SLA 为 24 小时",
+                        "kind": "semantic",
+                        "classification": "internal",
+                        "importance": 0.9,
+                        "confidence": 0.8,
+                        "tags": ["sla", "refund"],
+                    }
+                ],
+                requested_scope="auto",
+                actor="management:test",
+                source="management-api",
+                dry_run=False,
+            )
+            self.assertEqual(import_code, 0)
+            self.assertEqual(import_result.get("imported_count"), 1)
+
+            list_code_imported, list_rows_imported = grobot_cli.memory_v1_list_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                requested_scope="auto",
+                include_archived=False,
+                include_restricted=False,
+                include_secret=False,
+                query="退款 SLA",
+                limit=10,
+                actor="management:test",
+            )
+            self.assertEqual(list_code_imported, 0)
+            self.assertTrue(any("退款 SLA" in str(row.get("text")) for row in list_rows_imported))
+
+            scope_root = paths.project_memory_dir / "v1" / "users" / "open_user_mgmt"
+            events_file = scope_root / "events.jsonl"
+            self.assertTrue(events_file.exists())
+            events = [
+                json.loads(line).get("event")
+                for line in events_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertIn("management_memory_forget", events)
+            self.assertIn("management_memory_import", events)
+
+    def test_memory_v1_import_rejects_invalid_record_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text(
+                "\n".join(
+                    [
+                        "schema_version = 1",
+                        'mode = "mvp"',
+                        "",
+                        "[memory.v1]",
+                        "enabled = true",
+                        'default_scope = "auto"',
+                        'write_mode = "direct"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            memory_config = grobot_cli.resolve_memory_v1_config(grobot_cli.load_toml(paths.project_toml))
+            session_key = "feishu:demo:dm:open_user_import_schema"
+
+            import_code, import_result = grobot_cli.memory_v1_import_records(
+                paths=paths,
+                memory_config=memory_config,
+                session_key=session_key,
+                records=[
+                    {
+                        "text": "这条会失败",
+                        "kind": "semantic",
+                        "importance": "high",
+                        "tags": "not-an-array",
+                    }
+                ],
+                requested_scope="auto",
+                actor="management:test",
+                source="management-api",
+                dry_run=False,
+            )
+            self.assertEqual(import_code, 1)
+            self.assertEqual(import_result.get("error"), "invalid_record_schema")
+            self.assertEqual(import_result.get("invalid_count"), 1)
+            invalid_rows = import_result.get("invalid_rows")
+            self.assertIsInstance(invalid_rows, list)
+            if isinstance(invalid_rows, list) and invalid_rows:
+                row0 = invalid_rows[0]
+                self.assertIsInstance(row0, dict)
+                errors = row0.get("errors")
+                self.assertIsInstance(errors, list)
+                if isinstance(errors, list):
+                    error_text = json.dumps(errors, ensure_ascii=False)
+                    self.assertIn("importance", error_text)
+                    self.assertIn("tags", error_text)
+
+    def test_resolve_execution_plane_config_precedence(self) -> None:
+        project_toml = {
+            "execution": {
+                "gateway_impl": "ts",
+                "runtime_impl": "rust",
+                "shadow_mode": True,
+            }
+        }
+        old_gateway = os.environ.get(grobot_cli.ENV_EXECUTION_GATEWAY_IMPL)
+        old_runtime = os.environ.get(grobot_cli.ENV_EXECUTION_RUNTIME_IMPL)
+        old_shadow = os.environ.get(grobot_cli.ENV_EXECUTION_SHADOW_MODE)
+        try:
+            config_project = grobot_cli.resolve_execution_plane_config(project_toml)
+            self.assertEqual(config_project.gateway_impl, "ts")
+            self.assertEqual(config_project.runtime_impl, "rust")
+            self.assertTrue(config_project.shadow_mode)
+            self.assertEqual(config_project.gateway_impl_source, "project_toml:execution.gateway_impl")
+            self.assertEqual(config_project.runtime_impl_source, "project_toml:execution.runtime_impl")
+            self.assertEqual(config_project.shadow_mode_source, "project_toml:execution.shadow_mode")
+
+            os.environ[grobot_cli.ENV_EXECUTION_GATEWAY_IMPL] = "python"
+            os.environ[grobot_cli.ENV_EXECUTION_RUNTIME_IMPL] = "python"
+            os.environ[grobot_cli.ENV_EXECUTION_SHADOW_MODE] = "off"
+            config_env = grobot_cli.resolve_execution_plane_config(project_toml)
+            self.assertEqual(config_env.gateway_impl, "python")
+            self.assertEqual(config_env.runtime_impl, "python")
+            self.assertFalse(config_env.shadow_mode)
+            self.assertEqual(config_env.gateway_impl_source, f"env:{grobot_cli.ENV_EXECUTION_GATEWAY_IMPL}")
+            self.assertEqual(config_env.runtime_impl_source, f"env:{grobot_cli.ENV_EXECUTION_RUNTIME_IMPL}")
+            self.assertEqual(config_env.shadow_mode_source, f"env:{grobot_cli.ENV_EXECUTION_SHADOW_MODE}")
+
+            config_cli = grobot_cli.resolve_execution_plane_config(
+                project_toml,
+                gateway_impl_arg="ts",
+                runtime_impl_arg="rust",
+                shadow_mode_arg=True,
+            )
+            self.assertEqual(config_cli.gateway_impl, "ts")
+            self.assertEqual(config_cli.runtime_impl, "rust")
+            self.assertTrue(config_cli.shadow_mode)
+            self.assertEqual(config_cli.gateway_impl_source, "cli")
+            self.assertEqual(config_cli.runtime_impl_source, "cli")
+            self.assertEqual(config_cli.shadow_mode_source, "cli")
+        finally:
+            if old_gateway is None:
+                os.environ.pop(grobot_cli.ENV_EXECUTION_GATEWAY_IMPL, None)
+            else:
+                os.environ[grobot_cli.ENV_EXECUTION_GATEWAY_IMPL] = old_gateway
+            if old_runtime is None:
+                os.environ.pop(grobot_cli.ENV_EXECUTION_RUNTIME_IMPL, None)
+            else:
+                os.environ[grobot_cli.ENV_EXECUTION_RUNTIME_IMPL] = old_runtime
+            if old_shadow is None:
+                os.environ.pop(grobot_cli.ENV_EXECUTION_SHADOW_MODE, None)
+            else:
+                os.environ[grobot_cli.ENV_EXECUTION_SHADOW_MODE] = old_shadow
+
+    def test_management_status_payload_includes_execution_plane(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
+            project_root = Path(temp_project)
+            project_grobot = project_root / ".grobot"
+            project_grobot.mkdir(parents=True, exist_ok=True)
+            (project_grobot / "project.toml").write_text("schema_version = 1\nmode = \"mvp\"\n", encoding="utf-8")
+
+            paths = grobot_cli.resolve_runtime_paths(
+                work_dir_override=str(project_root),
+                config_override=None,
+                home_override=temp_home,
+                project_root_override=str(project_root),
+            )
+            grobot_cli.ensure_runtime_layout(paths)
+            selection = grobot_cli.ProjectSelection(
+                name="demo",
+                work_dir=project_root,
+                platform="feishu",
+                provider=grobot_cli.ProviderConfig(
+                    name="kimi",
+                    api_key="sk-demo",
+                    base_url="https://api.example.com/v1",
+                    model="kimi-2.5",
+                ),
+            )
+            execution_plane = grobot_cli.ExecutionPlaneConfig(
+                gateway_impl="ts",
+                runtime_impl="rust",
+                shadow_mode=True,
+                gateway_impl_source="cli",
+                runtime_impl_source="project_toml:execution.runtime_impl",
+                shadow_mode_source="env:GROBOT_SHADOW_MODE",
+            )
+            payload = grobot_cli.build_management_status_payload(
+                runtime_paths=paths,
+                project_toml={"schema_version": 1, "mode": "mvp"},
+                selection=selection,
+                session_key="feishu:demo:dm:open_user_1",
+                bind="127.0.0.1:8080",
+                execution_plane=execution_plane,
+            )
+            execution_payload = payload.get("execution_plane")
+            self.assertIsInstance(execution_payload, dict)
+            if isinstance(execution_payload, dict):
+                self.assertEqual(execution_payload.get("gateway_impl"), "ts")
+                self.assertEqual(execution_payload.get("runtime_impl"), "rust")
+                self.assertTrue(bool(execution_payload.get("shadow_mode")))
+                sources = execution_payload.get("sources")
+                self.assertIsInstance(sources, dict)
+                if isinstance(sources, dict):
+                    self.assertEqual(sources.get("gateway_impl"), "cli")
+                    self.assertEqual(
+                        sources.get("runtime_impl"),
+                        "project_toml:execution.runtime_impl",
+                    )
+                    self.assertEqual(sources.get("shadow_mode"), "env:GROBOT_SHADOW_MODE")
 
 
 if __name__ == "__main__":

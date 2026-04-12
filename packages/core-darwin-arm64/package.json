@@ -1,0 +1,15 @@
+{
+  "name": "@grobot/core-darwin-arm64",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Grobot core binary package for darwin arm64",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "bin": {
+    "grobot-core": "./bin/grobot-core"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@grobot/cli",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Grobot CLI launcher layer",
+  "bin": {
+    "grobot": "./bin/grobot"
+  }
+}

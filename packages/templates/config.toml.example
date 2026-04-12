@@ -1,0 +1,137 @@
+# cc-connect configuration for grobot
+#
+# Usage:
+# 1) cp .grobot/config.toml.example .grobot/config.toml
+# 2) Fill credentials in .grobot/config.toml
+# 3) Keep .grobot/config.toml out of git (contains secrets)
+
+# =============================================================================
+# Global
+# =============================================================================
+
+language = "zh"
+attachment_send = "on"
+quiet = false
+idle_timeout_mins = 120
+
+[log]
+level = "info" # debug | info | warn | error
+
+[rate_limit]
+max_messages = 20
+window_secs = 60
+
+[stream_preview]
+enabled = true
+interval_ms = 1500
+min_delta_chars = 30
+max_chars = 2000
+
+[retrieval]
+enabled = true
+selected_limit = 4
+candidate_limit = 8
+base_url = "https://api.siliconflow.cn/v1"
+# api_key = "replace-with-retrieval-api-key"
+
+[retrieval.embedding]
+enabled = true
+model = "Qwen/Qwen3-Embedding-8B"
+
+[retrieval.rerank]
+enabled = true
+model = "Qwen/Qwen3-Reranker-4B"
+
+[bridge]
+enabled = true
+port = 9810
+token = "replace-with-bridge-token"
+path = "/bridge/ws"
+
+[management]
+enabled = true
+port = 9820
+token = "replace-with-management-token" # full-control token for reload/interrupt/config_read
+policy_template = "full_admin" # optional: ops_read_only | audit_read | full_admin
+config_read_policy = "auto" # auto | public | auth | disabled
+public_config_sections = ["selection", "session_store"] # used when config_read_policy resolves to public
+# public_config_profile = "operator" # optional preset: operator | auditor | admin (ignored if public_config_sections is set)
+cors_origins = ["http://localhost:3000"]
+
+# Runtime override priority for management write token:
+# 1) --management-token
+# 2) GROBOT_MANAGEMENT_TOKEN
+# 3) [management].token
+#
+# Runtime override priority for GET /api/v1/config read policy:
+# 1) --config-read-policy
+# 2) GROBOT_CONFIG_READ_POLICY
+# 3) [management].config_read_policy
+#
+# Optional ACL (multi-token):
+# [[management.tokens]]
+# name = "ops-reload"
+# token = "replace-with-reload-token"
+# policy_template = "full_admin" # optional preset: ops_read_only | audit_read | full_admin
+# actions = ["reload"] # "reload" | "interrupt" | "config_read" | "all"
+#
+# [[management.tokens]]
+# name = "ops-feishu-interrupt"
+# token = "replace-with-interrupt-token"
+# actions = ["interrupt"]
+# interrupt_session_prefixes = ["feishu:grobot:dm:"] # optional session prefix allow-list
+#
+# [[management.tokens]]
+# name = "ops-config-read"
+# token = "replace-with-config-read-token"
+# policy_template = "audit_read"
+# config_sections = ["selection", "session_store"] # optional: visible sections in GET /api/v1/config
+# config_profile = "auditor" # optional preset: operator | auditor | admin (ignored if config_sections is set)
+
+# =============================================================================
+# Project: grobot
+# =============================================================================
+
+[[projects]]
+name = "grobot"
+
+[projects.agent]
+type = "claudecode"
+provider = "kimi"
+
+[projects.agent.options]
+work_dir = "/Users/gaoqian/Documents/sixseven/workman/groland/grobot"
+mode = "default" # default | acceptEdits | plan | bypassPermissions
+
+[[projects.agent.providers]]
+name = "kimi"
+api_key = "replace-with-kimi-api-key"
+base_url = "https://api.moonshot.cn/v1"
+model = "auto" # auto = read from /models and pick first kimi/moonshot model
+
+# Optional fallback provider example (used when primary fails)
+# [[projects.agent.providers]]
+# name = "openai_compatible"
+# api_key = "replace-with-openai-compatible-key"
+# base_url = "https://api.openai.com/v1"
+# model = "gpt-4o-mini"
+
+[[projects.platforms]]
+type = "feishu"
+
+[projects.platforms.options]
+app_id = "replace-with-feishu-app-id"
+app_secret = "replace-with-feishu-app-secret"
+allow_from = "*"
+share_session_in_channel = false
+thread_isolation = true
+reply_in_thread = true
+
+# Optional telegram platform:
+# [[projects.platforms]]
+# type = "telegram"
+#
+# [projects.platforms.options]
+# token = "replace-with-telegram-bot-token"
+# allow_from = "*"
+# share_session_in_channel = false

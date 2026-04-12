@@ -1,0 +1,40 @@
+name: core-release-gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Show runtime versions
+        run: |
+          node --version
+          npm --version
+          python3 --version
+
+      - name: Run core release gate
+        run: npm run core:gate:release -- --report /tmp/core-release-gate-report.json
+
+      - name: Upload core release gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-release-gate-report
+          path: /tmp/core-release-gate-report.json

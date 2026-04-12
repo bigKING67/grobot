@@ -4,7 +4,7 @@
 - 第二轮：请复述上一轮关键词
 - session: `feishu:grobot:dm:gaoqian`
 - project: `grobot`
-- work_dir: `/var/folders/np/87rgyzv508l28zy3fzvpgwrr0000gn/T/tmpi2snr5uc`
+- work_dir: `/var/folders/np/87rgyzv508l28zy3fzvpgwrr0000gn/T/tmp0t5aphr0`
 
 ## Architecture Decisions (verbatim)
 - none
@@ -37,14 +37,14 @@
 
 ## Recent Turns
 ### Turn 1
-- user: 请先看@docs/note.md，然后创建一个 smoke-note.txt 文件并写入 hello
-- assistant: smoke_tool_ok
-### Turn 2
 - user: 第一轮：请记住关键词 alpha
 - assistant: success_turn_1
-### Turn 3
+### Turn 2
 - user: 第二轮：请复述上一轮关键词
 - assistant: success_turn_2
+### Turn 3
+- user: 请先看@docs/note.md，然后创建一个 smoke-note.txt 文件并写入 hello
+- assistant: smoke_tool_ok
 ### Turn 4
 - user: 请先看@docs/note.md，然后创建一个 smoke-note.txt 文件并写入 hello
 - assistant: smoke_tool_ok

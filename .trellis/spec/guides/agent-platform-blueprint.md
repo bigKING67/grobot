@@ -39,6 +39,21 @@
 
 ## 3. Target Topology
 
+### 3.0 Agent Layering Model (Canonical)
+
+1. Model Layer
+   - Owns reasoning only.
+   - Primary model families are Kimi 2.5, GPT-5.4-class, and OpenAI-compatible endpoints.
+   - Must remain provider-agnostic (no hard dependency on a Claude-only stack).
+2. Tool Layer
+   - Owns tool execution contracts (`read/write/edit/bash/search/web/mcp`).
+   - Must enforce policy boundaries, timeout budgets, and audit traces.
+3. Orchestration Layer
+   - Owns agent loop (`assemble -> execute -> verify -> persist`), session state, compaction, and failover decisions.
+4. Extension Layer
+   - Owns skills, hooks, MCP integration, and future subagent orchestration.
+   - Must be capability-pluggable and policy-gated.
+
 ### 3.1 Runtime Components
 
 | Layer | Component | Language | Responsibility |

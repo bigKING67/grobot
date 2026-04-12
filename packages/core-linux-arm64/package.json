@@ -1,0 +1,15 @@
+{
+  "name": "@grobot/core-linux-arm64",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Grobot core binary package for linux arm64",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "bin": {
+    "grobot-core": "./bin/grobot-core"
+  }
+}

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# npm global install creates a symlink under <prefix>/bin.
-# Resolve the symlink chain first so gateway/grobot_cli.py is found in package root.
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
   SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
@@ -14,4 +12,99 @@ while [ -h "$SOURCE" ]; do
   fi
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-exec python3 "$SCRIPT_DIR/gateway/grobot_cli.py" "$@"
+CLI_ENTRY="$SCRIPT_DIR/packages/cli/bin/grobot"
+if [ -x "$CLI_ENTRY" ]; then
+  exec "$CLI_ENTRY" "$@"
+fi
+
+# Source-checkout entry path.
+TS_DEV_CLI_RUNNER="$SCRIPT_DIR/scripts/run-ts-dev-cli.sh"
+PYTHON_CLI="$SCRIPT_DIR/gateway/grobot_cli.py"
+FORWARD_ARGS=()
+LEGACY_PYTHON_ENABLED=0
+TS_DEV_FLAG_SEEN=0
+FORCE_PYTHON_EXECUTION=0
+PREV_ARG=""
+
+for ARG in "$@"; do
+  if [ -n "$PREV_ARG" ]; then
+    if [ "$PREV_ARG" = "--gateway-impl" ] || [ "$PREV_ARG" = "--runtime-impl" ]; then
+      if [ "$ARG" = "python" ]; then
+        FORCE_PYTHON_EXECUTION=1
+      fi
+      FORWARD_ARGS+=("$ARG")
+      PREV_ARG=""
+      continue
+    fi
+    PREV_ARG=""
+  fi
+  case "$ARG" in
+    --legacy-python-cli)
+      LEGACY_PYTHON_ENABLED=1
+      ;;
+    --legacy-python-cli=*)
+      LEGACY_VALUE="${ARG#*=}"
+      LEGACY_VALUE_LOWER="$(printf '%s' "$LEGACY_VALUE" | tr '[:upper:]' '[:lower:]')"
+      case "$LEGACY_VALUE_LOWER" in
+        1|true|yes|on) LEGACY_PYTHON_ENABLED=1 ;;
+      esac
+      ;;
+    --ts-dev-cli|--ts-dev-cli=*)
+      TS_DEV_FLAG_SEEN=1
+      ;;
+    --gateway-impl|--runtime-impl)
+      PREV_ARG="$ARG"
+      FORWARD_ARGS+=("$ARG")
+      ;;
+    --gateway-impl=python|--runtime-impl=python)
+      FORCE_PYTHON_EXECUTION=1
+      FORWARD_ARGS+=("$ARG")
+      ;;
+    *)
+      FORWARD_ARGS+=("$ARG")
+      ;;
+  esac
+done
+
+LEGACY_ENV_VALUE_LOWER="$(printf '%s' "${GROBOT_LEGACY_PYTHON:-}" | tr '[:upper:]' '[:lower:]')"
+case "$LEGACY_ENV_VALUE_LOWER" in
+  1|true|yes|on) LEGACY_PYTHON_ENABLED=1 ;;
+esac
+
+if [ "$TS_DEV_FLAG_SEEN" -eq 1 ]; then
+  echo "warning: --ts-dev-cli is deprecated in source checkout and can be removed." >&2
+fi
+
+if [ "$FORCE_PYTHON_EXECUTION" -eq 1 ] && [ -f "$PYTHON_CLI" ]; then
+  echo "warning: using legacy python cli because execution plane explicitly requests python." >&2
+  exec python3 "$PYTHON_CLI" "${FORWARD_ARGS[@]}"
+fi
+
+if [ "$LEGACY_PYTHON_ENABLED" -eq 1 ] && [ -f "$PYTHON_CLI" ]; then
+  echo "warning: using legacy python cli fallback (explicitly enabled)." >&2
+  exec python3 "$PYTHON_CLI" "${FORWARD_ARGS[@]}"
+fi
+
+run_ts_dev_cli() {
+  if [ ! -x "$TS_DEV_CLI_RUNNER" ]; then
+    return 86
+  fi
+  "$TS_DEV_CLI_RUNNER" "${FORWARD_ARGS[@]}"
+}
+
+set +e
+run_ts_dev_cli
+TS_DEV_CLI_EXIT_CODE=$?
+set -e
+
+if [ "$TS_DEV_CLI_EXIT_CODE" -eq 0 ]; then
+  exit 0
+fi
+
+if [ "$TS_DEV_CLI_EXIT_CODE" -eq 86 ]; then
+  echo "error: ts-dev-cli is unavailable in this source checkout." >&2
+elif [ "$TS_DEV_CLI_EXIT_CODE" -eq 2 ] || [ "$TS_DEV_CLI_EXIT_CODE" -eq 3 ]; then
+  echo "error: command is not available in ts-dev-cli yet." >&2
+fi
+echo "hint: use --legacy-python-cli or GROBOT_LEGACY_PYTHON=1 during transition." >&2
+exit "$TS_DEV_CLI_EXIT_CODE"

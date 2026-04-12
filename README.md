@@ -15,11 +15,37 @@
 - Rust: runtime core（调度、会话状态机、工具执行策略、并发控制）。
 - Data plane: PostgreSQL + Redis（后续可扩展对象存储与消息队列）。
 
+## Agent 四层架构（对齐 Claude Code 风格，但不绑定 Claude）
+
+1. 模型层（Model Layer）
+   - 职责：负责推理与生成，不直接拥有工具执行权限。
+   - 现状定位：以 `Kimi 2.5`、`GPT-5.4`、以及 OpenAI-compatible 模型为主，可替换，不锁定单一厂商。
+2. 工具层（Tool Layer）
+   - 职责：提供 `read/write/edit/bash/search/glob/list`、Web、MCP 等可控能力。
+   - 要求：所有工具必须经过 allowlist、超时、审计与错误分级处理。
+3. 编排层（Orchestration Layer）
+   - 职责：`context assemble -> execute -> verify -> persist` 的 agent loop、会话、压缩、权限控制、故障转移。
+   - 要求：会话隔离、一致性回放、可回退切流、可观测事件全覆盖。
+4. 扩展层（Extension Layer）
+   - 职责：`skills`、`hooks`、`MCP`、（后续）`subagents` 的可插拔扩展。
+   - 要求：扩展能力必须与安全策略解耦，按策略显式启用。
+
+## 迁移底座（2026-04）
+
+- 已新增 TS 侧 Agent Loop v2 骨架：`context -> runtime -> verify -> persist`，支持 `shadow_mode` 对比位。
+- 已新增 Rust 侧 `runtime.v1` stdio JSON-RPC 骨架：`runtime.health` 与 `runtime.turn.execute`。
+- 已新增跨层契约文件：`shared/contracts/runtime-v1.json`，作为 Gateway/Runtime 的版本锚点。
+- `npm run check` 已升级为三段门禁：Python gateway checks + TypeScript compile + Rust check/test。
+
 ## 目录分层（源码 vs 配置）
 
 - 源码层（repo root）：
   - `adapters/`、`gateway/`、`runtime/`、`shared/`
-  - 这些目录是产品代码，负责实现协议、编排、运行时和共享契约。
+  - `packages/cli/`：CLI 启动壳（平台探测、核心二进制定位、参数透传）
+  - `packages/agent-core/`：预留的核心实现与构建元数据目录（内部）
+  - `packages/core-*/`：平台核心包骨架（darwin/linux, x64/arm64）
+  - `packages/templates/`：初始化模板资产
+  - 这些目录共同承担协议、编排、运行时、分发与模板管理。
 - 全局运行层（`~/.grobot/`）：
   - `~/.grobot/config.toml`：全局 agent/platform/provider 配置（含敏感信息，不进仓库）
   - `~/.grobot/rules/`、`~/.grobot/skills/`、`~/.grobot/hooks/`、`~/.grobot/mcp/servers.toml`
@@ -62,10 +88,179 @@ grobot init --project
 说明：
 - 全局安装后，用户日常只需要关注 `~/.grobot` 与业务仓库里的 `.grobot`。
 - `adapters/`、`gateway/`、`runtime/`、`shared/` 属于实现源码，不需要用户在业务目录里维护。
+- CLI 入口已切到 `packages/cli/bin/grobot`，发布时优先加载平台核心包；源码 checkout 下默认走 TS dev CLI。Python CLI 仅在显式开启兼容开关时启用：`--legacy-python-cli` 或 `GROBOT_LEGACY_PYTHON=1`（过渡期 1 个版本）。
 - npm 发布包已通过 `files` 白名单控制，只包含 CLI 运行所需最小文件集合。
 - `grobot init --global` 会自动创建 `~/.grobot/mcp/servers.toml`（全局 MCP 注册表）。
 - `grobot init --project` 会自动创建 `<repo>/.grobot/mcp.toml`（项目级 MCP 覆盖）。
 - `grobot init` 会同时创建 hooks 目录：`hooks/user-prompt-submit/`、`hooks/before-tool-use/`、`hooks/after-tool-use/`（全局和项目层都会有）。
+
+### 下载源码后直接运行（不走 npm）
+
+```bash
+# 进入源码目录后可直接运行
+cd /path/to/grobot
+./grobot --help
+```
+
+### 源码一键安装到终端命令
+
+```bash
+# 安装到 ~/.grobot/bin/grobot，并尝试写入当前 shell profile 的 PATH
+cd /path/to/grobot
+bash scripts/install-local.sh
+
+# 验证
+grobot --help
+```
+
+可选参数：
+
+```bash
+# 自定义安装目录（例如 /usr/local/bin）
+bash scripts/install-local.sh --bin-dir /usr/local/bin --no-profile
+
+# 卸载源码安装的软链接
+bash scripts/uninstall-local.sh
+```
+
+### 核心分发（闭源发布预备）
+
+- 目标发布形态：`grobot` 主包（CLI 壳） + 平台核心包（`@grobot/core-*`）。
+- CLI 启动顺序：
+  1. 若设置 `GROBOT_CORE_BIN`，优先使用该二进制；
+  2. 否则查找 `~/.grobot/core/current/grobot-core`；
+  3. 再查找 `~/.grobot/core/<platform>/grobot-core`；
+  4. 再按当前 `OS/ARCH` 在 `node_modules/@grobot/core-*/bin/grobot-core` 查找；
+  5. 若在源码仓库运行，默认走 `scripts/run-ts-dev-cli.sh`（会按需编译并运行 TS dev CLI）；
+  6. 若需兼容旧链路，显式加 `--legacy-python-cli`（或设置 `GROBOT_LEGACY_PYTHON=1`）后才会回退到 `gateway/grobot_cli.py`。
+- `packages/core-*` 当前提供的是占位 stub，发布流水线需替换为真实编译产物。
+
+### 本地注入/升级闭源 core（不重新发 npm）
+
+```bash
+# 1) 把外部构建好的 grobot-core 注入到 ~/.grobot/core/<platform>/grobot-core
+#    并自动更新 ~/.grobot/core/current -> ~/.grobot/core/<platform>
+npm run core:install:binary -- --binary /path/to/grobot-core
+
+# 2) 查看当前会命中的 core 来源（与 launcher 顺序一致）
+npm run core:status
+
+# 3) 验证启动是否已命中新 core
+grobot --help
+```
+
+可选参数：
+
+```bash
+# 指定平台槽位（跨平台打包时有用）
+npm run core:install:binary -- \
+  --binary /path/to/grobot-core \
+  --platform linux-x64
+
+# 安装但不更新 current 软链
+npm run core:install:binary -- \
+  --binary /path/to/grobot-core \
+  --no-current
+
+# 允许安装 stub（二进制占位文件，仅用于本地联调 launcher）
+npm run core:install:binary -- \
+  --binary /path/to/grobot-core \
+  --allow-stub
+
+# 自定义 core 目录
+npm run core:install:binary -- \
+  --binary /path/to/grobot-core \
+  --core-dir /opt/grobot/core
+
+# 通过下载链接安装（强制校验 SHA256）
+npm run core:install:url -- \
+  --url "https://download.example.com/grobot-core-darwin-arm64" \
+  --sha256 "<sha256-hex>"
+```
+
+状态/发布检查：
+
+```bash
+# 机读状态（CI/脚本可直接解析）
+npm run core:status -- --json
+
+# 要求当前必须命中“真实 core”（不是 python fallback / 不是 stub）
+npm run core:status -- --require-real-core
+
+# 校验所有平台 core 包是否齐全（默认 stub 视为失败）
+npm run core:verify:packages
+
+# 本地开发阶段允许 stub
+npm run core:verify:packages -- --allow-stub
+
+# 发布前 gate（默认不允许 stub；会做 pack dry-run 检查）
+npm run core:gate:release
+
+# 仅本地联调时放宽
+npm run core:gate:release -- --allow-stub
+```
+
+闭源 core 回填到 `packages/core-*`（发布流水线模板）：
+
+```bash
+# 约定 artifacts 目录包含四个文件（可执行）：
+#   grobot-core-darwin-arm64
+#   grobot-core-darwin-x64
+#   grobot-core-linux-x64
+#   grobot-core-linux-arm64
+
+# 1) 生成 manifest（默认会拒绝 stub）
+npm run core:manifest:generate -- \
+  --artifacts-dir dist/core-artifacts \
+  --output dist/core-artifacts/core-artifacts.manifest.json
+
+# 2) 按 manifest 校验后回填到 packages/core-*/bin/grobot-core
+npm run core:stage:artifacts -- \
+  --artifacts-dir dist/core-artifacts \
+  --manifest dist/core-artifacts/core-artifacts.manifest.json
+
+# 3) 发布前 gate（必须通过）
+npm run core:gate:release
+
+# 4) 一键编排（manifest -> stage -> gate）
+npm run core:release:prepare -- \
+  --artifacts-dir dist/core-artifacts
+```
+
+可选（本地联调）：
+
+```bash
+# 允许用 stub 走通流程
+npm run core:manifest:generate -- --artifacts-dir dist/core-artifacts --allow-stub
+npm run core:stage:artifacts -- --artifacts-dir dist/core-artifacts --allow-stub
+
+# 仅校验不写入
+npm run core:stage:artifacts -- --artifacts-dir dist/core-artifacts --dry-run
+
+# 一键编排（仅校验，不写入 packages/）
+npm run core:release:prepare -- \
+  --artifacts-dir dist/core-artifacts \
+  --allow-stub \
+  --dry-run \
+  --skip-gate
+```
+
+报告产物（便于 CI 归档与回溯）：
+
+```bash
+# gate 会写 JSON 报告
+npm run core:gate:release -- \
+  --allow-stub \
+  --report dist/core-artifacts/core-release-gate-report.json
+
+# prepare 会写两份报告：
+#   <report-dir>/core-release-prepare-summary.json
+#   <report-dir>/core-release-gate-report.json (未 skip-gate 时)
+npm run core:release:prepare -- \
+  --artifacts-dir dist/core-artifacts \
+  --allow-stub \
+  --report-dir dist/core-artifacts/reports
+```
 
 ### 本地启动 grobot（可在任意业务目录触发）
 
@@ -297,6 +492,20 @@ strict = false
 timeout_secs = 5
 ```
 
+```toml
+# <repo>/.grobot/project.toml
+[execution]
+gateway_impl = "ts" # python | ts
+runtime_impl = "rust" # python | rust
+shadow_mode = false
+```
+
+执行平面优先级（高到低）：
+- CLI：`--gateway-impl` / `--runtime-impl` / `--shadow-mode`（或 `--no-shadow-mode`）
+- 环境变量：`GROBOT_GATEWAY_IMPL` / `GROBOT_RUNTIME_IMPL` / `GROBOT_SHADOW_MODE`
+- 项目层：`.grobot/project.toml` 的 `[execution]`
+- 默认值：`gateway_impl=ts`、`runtime_impl=rust`、`shadow_mode=false`
+
 ### MCP 工具调用示例（会话内）
 
 当你在 `grobot start` 交互里让模型调用本地工具时，可按下述参数约定触发：
@@ -329,6 +538,39 @@ grobot status \
   --work-dir "$(pwd)" \
   --probe
 ```
+
+### 上下文检索配置（Embedding + Rerank）
+
+检索配置支持四层优先级（高到低）：
+- 环境变量（`GROBOT_CONTEXT_RETRIEVAL_ENABLED`、`GROBOT_RETRIEVAL_*`、`GROBOT_EMBEDDING_*`、`GROBOT_RERANK_*`）
+- 项目层 `<repo>/.grobot/project.toml` 的 `[context_retrieval]`
+- 全局层 `~/.grobot/config.toml` 的 `[retrieval]`
+- 内置默认值（`selected_limit=4`、`candidate_limit=8`、SiliconFlow 默认模型）
+
+示例（全局层）：
+
+```toml
+# ~/.grobot/config.toml
+[retrieval]
+enabled = true
+selected_limit = 4
+candidate_limit = 8
+base_url = "https://api.siliconflow.cn/v1"
+# api_key = "replace-with-retrieval-api-key"
+
+[retrieval.embedding]
+enabled = true
+model = "Qwen/Qwen3-Embedding-8B"
+
+[retrieval.rerank]
+enabled = true
+model = "Qwen/Qwen3-Reranker-4B"
+```
+
+可观测性：
+- `grobot status` 会输出检索来源（`source`）、限额来源、`embedding/rerank` 的启用状态、模型和禁用原因。
+- `GET /api/v1/status` 会返回 `retrieval` 结构化字段（不包含明文密钥，仅返回 `shared_api_key_source`）。
+- `grobot status` / `grobot start` / `grobot serve` 会输出 execution plane 的生效值与来源；`GET /api/v1/status` 返回 `execution_plane`（含 `sources`）。
 
 ### Agent Harness（评测门禁 + 迭代优化）
 
@@ -368,6 +610,8 @@ npm run harness:ci-summary
 ```
 
 ### 管理端点（已实现 status/config/reload/interrupt/mcp-reset/memory-ops）
+
+说明：本节描述的是 Python 管理服务的完整能力；TS `serve --gateway-impl ts` 当前覆盖 `status/config/reload/interrupt/mcp-reset/memory(read/write/lifecycle)/healthz`，但策略模板与持久化后端仍以 Python 管理服务为准。
 
 管理写接口鉴权来源优先级：
 - `--management-token`（CLI）
@@ -563,7 +807,7 @@ grobot hooks doctor \
 
 说明：
 - `mcp/reset` 仅作用于当前 `grobot serve` 进程内的 MCP 运行态（会话与 gate 指标）；与独立进程启动的 `grobot start` 不共享。
-- `GET /api/v1/status` 与 `GET /api/v1/config` 现在会返回 `hooks_policy` + `hooks_runtime`（含事件脚本计数与路径）。
+- `GET /api/v1/status` 与 `GET /api/v1/config` 现在会返回 `hooks_policy` + `hooks_runtime`（含事件脚本计数与路径）；`/api/v1/status` 还会返回结构化 `retrieval` 字段（来源、限额、embedding/rerank 状态与禁用原因，不含明文密钥）。
 - memory 管理端点支持细粒度鉴权：`memory_read`（list/export）、`memory_import`、`memory_forget`、`memory_lifecycle`，并写入 `events.jsonl` 审计事件（`management_memory_*`）。
 - 为兼容旧配置，`memory_manage` 仍保留并等价授权以上细粒度动作。
 - `/memory` 与 `/memory/export` 支持 `cursor` 分页，响应会返回 `next_cursor` 与 `has_more`。

@@ -77,6 +77,16 @@ class SessionStoreConfig:
     root: Path
 
 
+@dataclass(frozen=True)
+class ExecutionPlaneConfig:
+    gateway_impl: str
+    runtime_impl: str
+    shadow_mode: bool
+    gateway_impl_source: str
+    runtime_impl_source: str
+    shadow_mode_source: str
+
+
 @dataclass
 class RuntimePaths:
     repo_root: Path
@@ -231,6 +241,17 @@ class ContextRetrievalConfig:
     selected_limit: int
     embedding: RetrievalRemoteConfig | None
     rerank: RetrievalRemoteConfig | None
+    source: str = "default"
+    enabled_source: str = "default"
+    selected_limit_source: str = "default"
+    candidate_limit_source: str = "default"
+    shared_base_url: str = ""
+    shared_base_url_source: str = "default"
+    shared_api_key_source: str = "default"
+    embedding_source: str = "off"
+    rerank_source: str = "off"
+    embedding_disabled_reason: str | None = None
+    rerank_disabled_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -392,6 +413,42 @@ CONFIG_READ_POLICY_ALL = (
     CONFIG_READ_POLICY_AUTH,
     CONFIG_READ_POLICY_DISABLED,
 )
+
+EXECUTION_GATEWAY_IMPL_PYTHON = "python"
+EXECUTION_GATEWAY_IMPL_TS = "ts"
+EXECUTION_GATEWAY_IMPL_ALL = (
+    EXECUTION_GATEWAY_IMPL_PYTHON,
+    EXECUTION_GATEWAY_IMPL_TS,
+)
+
+EXECUTION_RUNTIME_IMPL_PYTHON = "python"
+EXECUTION_RUNTIME_IMPL_RUST = "rust"
+EXECUTION_RUNTIME_IMPL_ALL = (
+    EXECUTION_RUNTIME_IMPL_PYTHON,
+    EXECUTION_RUNTIME_IMPL_RUST,
+)
+
+EXECUTION_DEFAULT_GATEWAY_IMPL = EXECUTION_GATEWAY_IMPL_TS
+EXECUTION_DEFAULT_RUNTIME_IMPL = EXECUTION_RUNTIME_IMPL_RUST
+EXECUTION_DEFAULT_SHADOW_MODE = False
+
+ENV_EXECUTION_GATEWAY_IMPL = "GROBOT_GATEWAY_IMPL"
+ENV_EXECUTION_RUNTIME_IMPL = "GROBOT_RUNTIME_IMPL"
+ENV_EXECUTION_SHADOW_MODE = "GROBOT_SHADOW_MODE"
+
+TS_GATEWAY_BUILD_TIMEOUT_SECS = 120
+TS_GATEWAY_EXEC_TIMEOUT_SECS = 120
+TS_GATEWAY_DIST_ENTRY = Path("gateway") / "dist" / "bridge-cli.js"
+TS_GATEWAY_TSC_PROJECT = Path("gateway") / "tsconfig.json"
+TS_GATEWAY_COMPILE_CMD = (
+    "npx",
+    "--yes",
+    "--package",
+    "typescript@5.6.3",
+    "tsc",
+    "--project",
+)
+RUST_RUNTIME_DEFAULT_RELATIVE = Path("runtime") / "target" / "debug" / "grobot-runtime"
 
 CONFIG_SECTION_PATHS = "paths"
 CONFIG_SECTION_SELECTION = "selection"
@@ -855,6 +912,21 @@ FALLBACK_GLOBAL_CONFIG_TEMPLATE = textwrap.dedent(
     language = "zh"
     quiet = false
 
+    [retrieval]
+    enabled = true
+    selected_limit = 4
+    candidate_limit = 8
+    base_url = "https://api.siliconflow.cn/v1"
+    # api_key = "replace-with-retrieval-api-key"
+
+    [retrieval.embedding]
+    enabled = true
+    model = "Qwen/Qwen3-Embedding-8B"
+
+    [retrieval.rerank]
+    enabled = true
+    model = "Qwen/Qwen3-Reranker-4B"
+
     [[projects]]
     name = "default"
 
@@ -893,6 +965,11 @@ FALLBACK_PROJECT_TEMPLATE = textwrap.dedent(
     [gateway.management]
     enabled = true
     bind = "127.0.0.1:8080"
+
+    [execution]
+    gateway_impl = "ts"
+    runtime_impl = "rust"
+    shadow_mode = false
 
     [runtime]
     engine = "rust"
@@ -5514,6 +5591,297 @@ def parse_float_option(raw_value: Any, default: float, minimum: float, maximum: 
     return max(minimum, min(maximum, float(default)))
 
 
+def parse_optional_choice_option(raw_value: Any, allowed: tuple[str, ...]) -> str | None:
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in allowed:
+            return normalized
+    return None
+
+
+def parse_optional_bool_option(raw_value: Any) -> bool | None:
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return None
+
+
+def _project_execution_value(
+    project_toml: dict[str, Any],
+    key: str,
+) -> tuple[Any, str] | None:
+    execution_cfg = project_toml.get("execution")
+    if isinstance(execution_cfg, dict) and key in execution_cfg:
+        return execution_cfg.get(key), f"project_toml:execution.{key}"
+    migration_cfg = project_toml.get("migration")
+    if isinstance(migration_cfg, dict) and key in migration_cfg:
+        return migration_cfg.get(key), f"project_toml:migration.{key}"
+    return None
+
+
+def resolve_execution_plane_config(
+    project_toml: dict[str, Any],
+    *,
+    gateway_impl_arg: str | None = None,
+    runtime_impl_arg: str | None = None,
+    shadow_mode_arg: bool | None = None,
+) -> ExecutionPlaneConfig:
+    gateway_impl = EXECUTION_DEFAULT_GATEWAY_IMPL
+    gateway_impl_source = "default"
+    cli_gateway_impl = parse_optional_choice_option(gateway_impl_arg, EXECUTION_GATEWAY_IMPL_ALL)
+    if cli_gateway_impl is not None:
+        gateway_impl = cli_gateway_impl
+        gateway_impl_source = "cli"
+    else:
+        env_gateway_impl = parse_optional_choice_option(os.getenv(ENV_EXECUTION_GATEWAY_IMPL), EXECUTION_GATEWAY_IMPL_ALL)
+        if env_gateway_impl is not None:
+            gateway_impl = env_gateway_impl
+            gateway_impl_source = f"env:{ENV_EXECUTION_GATEWAY_IMPL}"
+        else:
+            project_gateway_value = _project_execution_value(project_toml, "gateway_impl")
+            if project_gateway_value is not None:
+                parsed_gateway_impl = parse_optional_choice_option(project_gateway_value[0], EXECUTION_GATEWAY_IMPL_ALL)
+                if parsed_gateway_impl is not None:
+                    gateway_impl = parsed_gateway_impl
+                    gateway_impl_source = project_gateway_value[1]
+
+    runtime_impl = EXECUTION_DEFAULT_RUNTIME_IMPL
+    runtime_impl_source = "default"
+    cli_runtime_impl = parse_optional_choice_option(runtime_impl_arg, EXECUTION_RUNTIME_IMPL_ALL)
+    if cli_runtime_impl is not None:
+        runtime_impl = cli_runtime_impl
+        runtime_impl_source = "cli"
+    else:
+        env_runtime_impl = parse_optional_choice_option(os.getenv(ENV_EXECUTION_RUNTIME_IMPL), EXECUTION_RUNTIME_IMPL_ALL)
+        if env_runtime_impl is not None:
+            runtime_impl = env_runtime_impl
+            runtime_impl_source = f"env:{ENV_EXECUTION_RUNTIME_IMPL}"
+        else:
+            project_runtime_value = _project_execution_value(project_toml, "runtime_impl")
+            if project_runtime_value is not None:
+                parsed_runtime_impl = parse_optional_choice_option(project_runtime_value[0], EXECUTION_RUNTIME_IMPL_ALL)
+                if parsed_runtime_impl is not None:
+                    runtime_impl = parsed_runtime_impl
+                    runtime_impl_source = project_runtime_value[1]
+
+    shadow_mode = EXECUTION_DEFAULT_SHADOW_MODE
+    shadow_mode_source = "default"
+    if isinstance(shadow_mode_arg, bool):
+        shadow_mode = shadow_mode_arg
+        shadow_mode_source = "cli"
+    else:
+        env_shadow_mode = parse_optional_bool_option(os.getenv(ENV_EXECUTION_SHADOW_MODE))
+        if env_shadow_mode is not None:
+            shadow_mode = env_shadow_mode
+            shadow_mode_source = f"env:{ENV_EXECUTION_SHADOW_MODE}"
+        else:
+            project_shadow_value = _project_execution_value(project_toml, "shadow_mode")
+            if project_shadow_value is not None:
+                parsed_shadow_mode = parse_optional_bool_option(project_shadow_value[0])
+                if parsed_shadow_mode is not None:
+                    shadow_mode = parsed_shadow_mode
+                    shadow_mode_source = project_shadow_value[1]
+
+    return ExecutionPlaneConfig(
+        gateway_impl=gateway_impl,
+        runtime_impl=runtime_impl,
+        shadow_mode=shadow_mode,
+        gateway_impl_source=gateway_impl_source,
+        runtime_impl_source=runtime_impl_source,
+        shadow_mode_source=shadow_mode_source,
+    )
+
+
+def _compact_output_preview(raw_text: str, *, limit: int = 400) -> str:
+    cleaned = raw_text.strip()
+    if not cleaned:
+        return ""
+    single_line = " ".join(cleaned.splitlines())
+    if len(single_line) <= limit:
+        return single_line
+    return f"{single_line[:limit]}..."
+
+
+def ensure_ts_gateway_dist(repo: Path) -> tuple[Path, list[str]]:
+    dist_entry = (repo / TS_GATEWAY_DIST_ENTRY).resolve()
+    warnings: list[str] = []
+    if dist_entry.exists():
+        return dist_entry, warnings
+
+    tsc_project = (repo / TS_GATEWAY_TSC_PROJECT).resolve()
+    if not tsc_project.exists():
+        raise RuntimeError(f"ts gateway project not found: {tsc_project}")
+
+    cmd = [*TS_GATEWAY_COMPILE_CMD, str(tsc_project)]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(repo),
+            text=True,
+            capture_output=True,
+            timeout=TS_GATEWAY_BUILD_TIMEOUT_SECS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ts gateway compile timeout: {exc}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"ts gateway compile failed to start: {exc}") from exc
+
+    if result.returncode != 0:
+        stderr_preview = _compact_output_preview(str(result.stderr or ""))
+        stdout_preview = _compact_output_preview(str(result.stdout or ""))
+        detail = stderr_preview or stdout_preview or "unknown compile error"
+        raise RuntimeError(f"ts gateway compile failed (exit={result.returncode}): {detail}")
+
+    if not dist_entry.exists():
+        raise RuntimeError(f"ts gateway compile finished but entry is missing: {dist_entry}")
+
+    stdout_preview = _compact_output_preview(str(result.stdout or ""))
+    if stdout_preview:
+        warnings.append(f"ts compile: {stdout_preview}")
+    return dist_entry, warnings
+
+
+def ensure_rust_runtime_binary(repo: Path) -> tuple[Path, list[str]]:
+    warnings: list[str] = []
+    env_path = os.getenv("GROBOT_RUNTIME_BIN", "").strip()
+    if env_path:
+        runtime_bin = Path(env_path).expanduser().resolve()
+        if not runtime_bin.exists():
+            raise RuntimeError(f"{ENV_EXECUTION_RUNTIME_IMPL} runtime binary not found: {runtime_bin}")
+        return runtime_bin, warnings
+
+    runtime_bin = (repo / RUST_RUNTIME_DEFAULT_RELATIVE).resolve()
+    if runtime_bin.exists():
+        return runtime_bin, warnings
+
+    cmd = [
+        "cargo",
+        "build",
+        "--manifest-path",
+        str((repo / "runtime" / "Cargo.toml").resolve()),
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(repo),
+            text=True,
+            capture_output=True,
+            timeout=TS_GATEWAY_BUILD_TIMEOUT_SECS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"rust runtime build timeout: {exc}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"rust runtime build failed to start: {exc}") from exc
+
+    if result.returncode != 0:
+        stderr_preview = _compact_output_preview(str(result.stderr or ""))
+        stdout_preview = _compact_output_preview(str(result.stdout or ""))
+        detail = stderr_preview or stdout_preview or "unknown build error"
+        raise RuntimeError(f"rust runtime build failed (exit={result.returncode}): {detail}")
+
+    if not runtime_bin.exists():
+        raise RuntimeError(f"rust runtime binary missing after build: {runtime_bin}")
+
+    warnings.append(f"built rust runtime binary: {runtime_bin}")
+    return runtime_bin, warnings
+
+
+def execute_turn_via_ts_gateway(
+    *,
+    repo: Path,
+    session_key: str,
+    user_message: str,
+    project_name: str,
+    execution_plane: ExecutionPlaneConfig,
+) -> tuple[str, list[str]]:
+    if execution_plane.gateway_impl != EXECUTION_GATEWAY_IMPL_TS:
+        raise RuntimeError("ts gateway execution requires gateway_impl=ts")
+
+    session_parts = parse_session_key_parts(session_key)
+    if session_parts is None:
+        raise RuntimeError(f"invalid session key for ts gateway: {session_key}")
+    platform, tenant, scope, subject = session_parts
+
+    dist_entry, warnings = ensure_ts_gateway_dist(repo)
+    child_env = os.environ.copy()
+    if execution_plane.runtime_impl == EXECUTION_RUNTIME_IMPL_RUST:
+        runtime_bin, build_warnings = ensure_rust_runtime_binary(repo)
+        warnings.extend(build_warnings)
+        child_env["GROBOT_RUNTIME_BIN"] = str(runtime_bin)
+
+    payload = {
+        "userMessage": user_message,
+        "session": {
+            "platform": platform,
+            "tenant": tenant,
+            "scope": scope,
+            "subject": subject,
+        },
+        "context": {
+            "actorId": subject,
+            "projectId": project_name,
+        },
+        "migration": {
+            "gatewayImpl": execution_plane.gateway_impl,
+            "runtimeImpl": execution_plane.runtime_impl,
+            "shadowMode": execution_plane.shadow_mode,
+        },
+    }
+
+    try:
+        run = subprocess.run(
+            ["node", str(dist_entry)],
+            cwd=str(repo),
+            input=json.dumps(payload, ensure_ascii=False),
+            text=True,
+            capture_output=True,
+            timeout=TS_GATEWAY_EXEC_TIMEOUT_SECS,
+            env=child_env,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ts gateway turn timeout: {exc}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"ts gateway launch failed: {exc}") from exc
+
+    stdout_text = str(run.stdout or "").strip()
+    stderr_text = _compact_output_preview(str(run.stderr or ""))
+    response_line = ""
+    for line in stdout_text.splitlines():
+        candidate = line.strip()
+        if candidate:
+            response_line = candidate
+            break
+    if not response_line:
+        detail = stderr_text or "empty bridge stdout"
+        raise RuntimeError(f"ts gateway bridge produced no response: {detail}")
+
+    try:
+        parsed = json.loads(response_line)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid ts gateway response json: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError("ts gateway response is not an object")
+
+    if run.returncode != 0 or parsed.get("status") != "ok":
+        detail = str(parsed.get("detail") or "").strip()
+        if not detail:
+            detail = stderr_text or f"bridge exit={run.returncode}"
+        raise RuntimeError(f"ts gateway turn failed: {detail}")
+
+    assistant_message = parsed.get("assistant_message")
+    if not isinstance(assistant_message, str) or not assistant_message.strip():
+        raise RuntimeError("ts gateway returned empty assistant_message")
+    return assistant_message, warnings
+
+
 def discover_hook_scripts(event_name: str, context: LocalToolContext) -> list[Path]:
     if event_name not in LOCAL_TOOL_HOOK_EVENTS:
         raise RuntimeError(f"unsupported hook event: {event_name}")
@@ -5641,81 +6009,244 @@ def run_hook_event(event_name: str, payload: dict[str, Any], context: LocalToolC
         raise RuntimeError(f'hook "{event_name}" failed: {failures[0]}')
 
 
+def resolve_retrieval_source(*sources: str) -> str:
+    for name in ("env", "project", "global", "provider", "default"):
+        if name in sources:
+            return name
+    return "default"
+
+
+def resolve_retrieval_bool_option(
+    *,
+    env_name: str | None,
+    project_cfg: dict[str, Any],
+    global_cfg: dict[str, Any],
+    key: str,
+    default: bool,
+) -> tuple[bool, str]:
+    if isinstance(env_name, str):
+        raw_env = os.getenv(env_name)
+        if raw_env is not None:
+            return parse_bool_option(raw_env, default), "env"
+    if key in project_cfg:
+        return parse_bool_option(project_cfg.get(key), default), "project"
+    if key in global_cfg:
+        return parse_bool_option(global_cfg.get(key), default), "global"
+    return default, "default"
+
+
+def resolve_retrieval_limit_option(
+    *,
+    project_cfg: dict[str, Any],
+    global_cfg: dict[str, Any],
+    key: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> tuple[int, str]:
+    if key in project_cfg:
+        return parse_positive_int_option(project_cfg.get(key), default, minimum, maximum), "project"
+    if key in global_cfg:
+        return parse_positive_int_option(global_cfg.get(key), default, minimum, maximum), "global"
+    return parse_positive_int_option(default, default, minimum, maximum), "default"
+
+
+def resolve_retrieval_string_option(
+    *,
+    env_name: str | None,
+    project_cfg: dict[str, Any],
+    global_cfg: dict[str, Any],
+    key: str,
+    fallback_value: str | None,
+    fallback_source: str,
+) -> tuple[str | None, str]:
+    if isinstance(env_name, str):
+        raw_env = os.getenv(env_name)
+        if isinstance(raw_env, str) and raw_env.strip():
+            return raw_env.strip(), "env"
+
+    raw_project = project_cfg.get(key)
+    if isinstance(raw_project, str) and raw_project.strip():
+        return raw_project.strip(), "project"
+
+    raw_global = global_cfg.get(key)
+    if isinstance(raw_global, str) and raw_global.strip():
+        return raw_global.strip(), "global"
+
+    if isinstance(fallback_value, str) and fallback_value.strip():
+        return fallback_value.strip(), fallback_source
+    return None, "default"
+
+
 def resolve_retrieval_remote(
-    raw_cfg: Any,
+    project_raw_cfg: Any,
+    global_raw_cfg: Any,
     *,
     default_model: str,
     env_model: str,
     env_api_key: str,
-    fallback_api_key: str | None,
+    shared_api_key: str | None,
+    shared_api_key_source: str,
     env_base_url: str,
-    fallback_base_url: str,
-) -> RetrievalRemoteConfig | None:
-    cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
-    enabled = parse_bool_option(cfg.get("enabled"), True)
+    shared_base_url: str,
+    shared_base_url_source: str,
+) -> tuple[RetrievalRemoteConfig | None, str, str | None]:
+    project_cfg = project_raw_cfg if isinstance(project_raw_cfg, dict) else {}
+    global_cfg = global_raw_cfg if isinstance(global_raw_cfg, dict) else {}
+    enabled, enabled_source = resolve_retrieval_bool_option(
+        env_name=None,
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="enabled",
+        default=True,
+    )
     if not enabled:
-        return None
+        return None, enabled_source, "disabled_by_config"
 
-    model = os.getenv(env_model) or cfg.get("model") or default_model
+    model, model_source = resolve_retrieval_string_option(
+        env_name=env_model,
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="model",
+        fallback_value=default_model,
+        fallback_source="default",
+    )
     if not isinstance(model, str) or not model.strip():
-        return None
-    base_url = os.getenv(env_base_url) or cfg.get("base_url") or fallback_base_url
+        return None, resolve_retrieval_source(enabled_source, model_source), "missing_model"
+
+    base_url, base_url_source = resolve_retrieval_string_option(
+        env_name=env_base_url,
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="base_url",
+        fallback_value=shared_base_url,
+        fallback_source=shared_base_url_source,
+    )
     if not isinstance(base_url, str) or not base_url.strip():
-        return None
-    api_key = os.getenv(env_api_key) or cfg.get("api_key") or fallback_api_key
+        return None, resolve_retrieval_source(enabled_source, model_source, base_url_source), "missing_base_url"
+
+    api_key, api_key_source = resolve_retrieval_string_option(
+        env_name=env_api_key,
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="api_key",
+        fallback_value=shared_api_key,
+        fallback_source=shared_api_key_source,
+    )
     if not isinstance(api_key, str) or not api_key.strip():
-        return None
-    return RetrievalRemoteConfig(
-        base_url=base_url.rstrip("/"),
-        api_key=api_key.strip(),
-        model=model.strip(),
+        return (
+            None,
+            resolve_retrieval_source(enabled_source, model_source, base_url_source, api_key_source),
+            "missing_api_key",
+        )
+
+    source = resolve_retrieval_source(enabled_source, model_source, base_url_source, api_key_source)
+    return (
+        RetrievalRemoteConfig(
+            base_url=base_url.rstrip("/"),
+            api_key=api_key.strip(),
+            model=model.strip(),
+        ),
+        source,
+        None,
     )
 
 
 def resolve_context_retrieval_config(
     project_toml: dict[str, Any],
     fallback_api_key: str | None,
+    global_toml: dict[str, Any] | None = None,
 ) -> ContextRetrievalConfig:
     retrieval_cfg = project_toml.get("context_retrieval")
-    cfg = retrieval_cfg if isinstance(retrieval_cfg, dict) else {}
-    enabled = parse_bool_option(os.getenv("GROBOT_CONTEXT_RETRIEVAL_ENABLED"), True)
-    enabled = parse_bool_option(cfg.get("enabled"), enabled)
+    project_cfg = retrieval_cfg if isinstance(retrieval_cfg, dict) else {}
+    global_root = global_toml if isinstance(global_toml, dict) else {}
+    global_retrieval_cfg = global_root.get("retrieval")
+    global_cfg = global_retrieval_cfg if isinstance(global_retrieval_cfg, dict) else {}
 
-    selected_limit = parse_positive_int_option(
-        cfg.get("selected_limit"),
-        HISTORY_RETRIEVAL_MAX_ITEMS,
-        1,
-        32,
+    enabled, enabled_source = resolve_retrieval_bool_option(
+        env_name="GROBOT_CONTEXT_RETRIEVAL_ENABLED",
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="enabled",
+        default=True,
     )
-    candidate_limit = parse_positive_int_option(
-        cfg.get("candidate_limit"),
-        HISTORY_RETRIEVAL_REMOTE_MAX_CANDIDATES,
-        selected_limit,
-        64,
+    selected_limit, selected_limit_source = resolve_retrieval_limit_option(
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="selected_limit",
+        default=HISTORY_RETRIEVAL_MAX_ITEMS,
+        minimum=1,
+        maximum=32,
     )
-    base_url = str(cfg.get("base_url") or DEFAULT_RETRIEVAL_BASE_URL).rstrip("/")
-    embedding_cfg = cfg.get("embedding")
-    rerank_cfg = cfg.get("rerank")
-    shared_api_key = os.getenv("GROBOT_RETRIEVAL_API_KEY")
-    shared_base_url = os.getenv("GROBOT_RETRIEVAL_BASE_URL") or base_url
+    candidate_limit, candidate_limit_source = resolve_retrieval_limit_option(
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="candidate_limit",
+        default=HISTORY_RETRIEVAL_REMOTE_MAX_CANDIDATES,
+        minimum=selected_limit,
+        maximum=64,
+    )
+    shared_base_url, shared_base_url_source = resolve_retrieval_string_option(
+        env_name="GROBOT_RETRIEVAL_BASE_URL",
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="base_url",
+        fallback_value=DEFAULT_RETRIEVAL_BASE_URL,
+        fallback_source="default",
+    )
+    fallback_api_key_source = "provider" if isinstance(fallback_api_key, str) and fallback_api_key.strip() else "default"
+    shared_api_key, shared_api_key_source = resolve_retrieval_string_option(
+        env_name="GROBOT_RETRIEVAL_API_KEY",
+        project_cfg=project_cfg,
+        global_cfg=global_cfg,
+        key="api_key",
+        fallback_value=fallback_api_key,
+        fallback_source=fallback_api_key_source,
+    )
 
-    embedding = resolve_retrieval_remote(
-        embedding_cfg,
-        default_model=DEFAULT_RETRIEVAL_EMBEDDING_MODEL,
-        env_model="GROBOT_EMBEDDING_MODEL",
-        env_api_key="GROBOT_EMBEDDING_API_KEY",
-        fallback_api_key=shared_api_key or fallback_api_key,
-        env_base_url="GROBOT_EMBEDDING_BASE_URL",
-        fallback_base_url=shared_base_url,
-    )
-    rerank = resolve_retrieval_remote(
-        rerank_cfg,
-        default_model=DEFAULT_RETRIEVAL_RERANK_MODEL,
-        env_model="GROBOT_RERANK_MODEL",
-        env_api_key="GROBOT_RERANK_API_KEY",
-        fallback_api_key=shared_api_key or fallback_api_key,
-        env_base_url="GROBOT_RERANK_BASE_URL",
-        fallback_base_url=shared_base_url,
+    embedding: RetrievalRemoteConfig | None = None
+    rerank: RetrievalRemoteConfig | None = None
+    embedding_source = "off"
+    rerank_source = "off"
+    embedding_disabled_reason: str | None = None
+    rerank_disabled_reason: str | None = None
+    if enabled:
+        embedding, embedding_source, embedding_disabled_reason = resolve_retrieval_remote(
+            project_cfg.get("embedding"),
+            global_cfg.get("embedding"),
+            default_model=DEFAULT_RETRIEVAL_EMBEDDING_MODEL,
+            env_model="GROBOT_EMBEDDING_MODEL",
+            env_api_key="GROBOT_EMBEDDING_API_KEY",
+            shared_api_key=shared_api_key,
+            shared_api_key_source=shared_api_key_source,
+            env_base_url="GROBOT_EMBEDDING_BASE_URL",
+            shared_base_url=shared_base_url or DEFAULT_RETRIEVAL_BASE_URL,
+            shared_base_url_source=shared_base_url_source,
+        )
+        rerank, rerank_source, rerank_disabled_reason = resolve_retrieval_remote(
+            project_cfg.get("rerank"),
+            global_cfg.get("rerank"),
+            default_model=DEFAULT_RETRIEVAL_RERANK_MODEL,
+            env_model="GROBOT_RERANK_MODEL",
+            env_api_key="GROBOT_RERANK_API_KEY",
+            shared_api_key=shared_api_key,
+            shared_api_key_source=shared_api_key_source,
+            env_base_url="GROBOT_RERANK_BASE_URL",
+            shared_base_url=shared_base_url or DEFAULT_RETRIEVAL_BASE_URL,
+            shared_base_url_source=shared_base_url_source,
+        )
+    else:
+        embedding_disabled_reason = "context_retrieval_disabled"
+        rerank_disabled_reason = "context_retrieval_disabled"
+
+    source = resolve_retrieval_source(
+        enabled_source,
+        selected_limit_source,
+        candidate_limit_source,
+        shared_base_url_source,
+        shared_api_key_source,
+        embedding_source,
+        rerank_source,
     )
 
     return ContextRetrievalConfig(
@@ -5724,7 +6255,61 @@ def resolve_context_retrieval_config(
         selected_limit=selected_limit,
         embedding=embedding,
         rerank=rerank,
+        source=source,
+        enabled_source=enabled_source,
+        selected_limit_source=selected_limit_source,
+        candidate_limit_source=candidate_limit_source,
+        shared_base_url=shared_base_url or DEFAULT_RETRIEVAL_BASE_URL,
+        shared_base_url_source=shared_base_url_source,
+        shared_api_key_source=shared_api_key_source,
+        embedding_source=embedding_source,
+        rerank_source=rerank_source,
+        embedding_disabled_reason=embedding_disabled_reason,
+        rerank_disabled_reason=rerank_disabled_reason,
     )
+
+
+def build_context_retrieval_status_payload(config: ContextRetrievalConfig) -> dict[str, Any]:
+    embedding_payload: dict[str, Any] = {
+        "enabled": config.embedding is not None,
+        "source": config.embedding_source,
+    }
+    if config.embedding is not None:
+        embedding_payload["model"] = config.embedding.model
+        embedding_payload["base_url"] = config.embedding.base_url
+    else:
+        embedding_payload["model"] = None
+        embedding_payload["base_url"] = None
+        if isinstance(config.embedding_disabled_reason, str) and config.embedding_disabled_reason:
+            embedding_payload["disabled_reason"] = config.embedding_disabled_reason
+
+    rerank_payload: dict[str, Any] = {
+        "enabled": config.rerank is not None,
+        "source": config.rerank_source,
+    }
+    if config.rerank is not None:
+        rerank_payload["model"] = config.rerank.model
+        rerank_payload["base_url"] = config.rerank.base_url
+    else:
+        rerank_payload["model"] = None
+        rerank_payload["base_url"] = None
+        if isinstance(config.rerank_disabled_reason, str) and config.rerank_disabled_reason:
+            rerank_payload["disabled_reason"] = config.rerank_disabled_reason
+
+    return {
+        "enabled": config.enabled,
+        "source": config.source,
+        "enabled_source": config.enabled_source,
+        "selected_limit": config.selected_limit,
+        "selected_limit_source": config.selected_limit_source,
+        "candidate_limit": config.candidate_limit,
+        "candidate_limit_source": config.candidate_limit_source,
+        "shared_base_url": config.shared_base_url,
+        "shared_base_url_source": config.shared_base_url_source,
+        "shared_api_key_source": config.shared_api_key_source,
+        "embedding": embedding_payload,
+        "rerank": rerank_payload,
+    }
 
 
 def resolve_wiki_config(project_toml: dict[str, Any]) -> WikiConfig:
@@ -8821,6 +9406,19 @@ def summarize_provider_routing(project_toml: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_execution_plane_status_payload(config: ExecutionPlaneConfig) -> dict[str, Any]:
+    return {
+        "gateway_impl": config.gateway_impl,
+        "runtime_impl": config.runtime_impl,
+        "shadow_mode": config.shadow_mode,
+        "sources": {
+            "gateway_impl": config.gateway_impl_source,
+            "runtime_impl": config.runtime_impl_source,
+            "shadow_mode": config.shadow_mode_source,
+        },
+    }
+
+
 def build_management_status_payload(
     *,
     runtime_paths: RuntimePaths,
@@ -8828,6 +9426,8 @@ def build_management_status_payload(
     selection: ProjectSelection,
     session_key: str,
     bind: str,
+    retrieval_config: ContextRetrievalConfig | None = None,
+    execution_plane: ExecutionPlaneConfig | None = None,
 ) -> dict[str, Any]:
     session_cfg = project_toml.get("session")
     runtime_cfg = project_toml.get("runtime")
@@ -8846,6 +9446,11 @@ def build_management_status_payload(
     parsed_session = parse_session_key_parts(session_key)
     session_scope = parsed_session[2] if parsed_session is not None else None
     session_subject = parsed_session[3] if parsed_session is not None else None
+    resolved_execution_plane = (
+        execution_plane
+        if isinstance(execution_plane, ExecutionPlaneConfig)
+        else resolve_execution_plane_config(project_toml)
+    )
     return {
         "status": "ok",
         "service": "grobot-management",
@@ -8923,12 +9528,16 @@ def build_management_status_payload(
             if isinstance(runtime_storage_cfg, dict)
             else None,
         },
+        "execution_plane": build_execution_plane_status_payload(resolved_execution_plane),
         "provider_routing": summarize_provider_routing(project_toml),
         "hooks_policy": {
             "enabled": hook_policy.enabled,
             "strict": hook_policy.strict,
             "timeout_secs": hook_policy.timeout_secs,
         },
+        "retrieval": build_context_retrieval_status_payload(retrieval_config)
+        if isinstance(retrieval_config, ContextRetrievalConfig)
+        else None,
     }
 
 
@@ -11940,8 +12549,20 @@ def run_status(args: argparse.Namespace) -> int:
         redis_url_arg=None,
         ttl_secs_arg=None,
     )
+    execution_plane = resolve_execution_plane_config(
+        project_toml,
+        gateway_impl_arg=getattr(args, "gateway_impl", None),
+        runtime_impl_arg=getattr(args, "runtime_impl", None),
+        shadow_mode_arg=getattr(args, "shadow_mode", None),
+    )
     mcp_policy = resolve_mcp_call_policy(project_toml)
     hook_policy = resolve_hook_policy(project_toml)
+    wiki_config = resolve_wiki_config(project_toml)
+    retrieval_config = resolve_context_retrieval_config(
+        project_toml,
+        selection.provider.api_key,
+        global_toml=config_toml,
+    )
     mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
     local_tool_context = resolve_local_tool_context(
         project_toml,
@@ -11967,6 +12588,12 @@ def run_status(args: argparse.Namespace) -> int:
     print(f"  session_scope:     {identity_context.scope}")
     print(f"  session_subject:   {identity_context.subject}")
     print(f"  session_store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
+    print(
+        "  execution_plane:  "
+        f"gateway={execution_plane.gateway_impl}({execution_plane.gateway_impl_source}) "
+        f"runtime={execution_plane.runtime_impl}({execution_plane.runtime_impl_source}) "
+        f"shadow={'on' if execution_plane.shadow_mode else 'off'}({execution_plane.shadow_mode_source})"
+    )
     print(f"  sessions_root:     {paths.sessions_dir}")
     print(f"  rules:             global={paths.global_rules_dir} project={paths.project_rules_dir}")
     print(f"  skills:            global={paths.global_skills_dir} project={paths.project_skills_dir}")
@@ -12017,6 +12644,42 @@ def run_status(args: argparse.Namespace) -> int:
         f"allow_org_shared={'on' if wiki_config.allow_org_shared_read else 'off'} "
         f"write_mode={wiki_config.write_mode}"
     )
+    retrieval_payload = build_context_retrieval_status_payload(retrieval_config)
+    print(
+        "  retrieval:         "
+        f"enabled={'on' if retrieval_payload['enabled'] else 'off'} "
+        f"source={retrieval_payload['source']} "
+        f"selected={retrieval_payload['selected_limit']}({retrieval_payload['selected_limit_source']}) "
+        f"candidates={retrieval_payload['candidate_limit']}({retrieval_payload['candidate_limit_source']})"
+    )
+    retrieval_embedding = retrieval_payload["embedding"]
+    if isinstance(retrieval_embedding, dict) and retrieval_embedding.get("enabled"):
+        print(
+            "  retrieval_embed:   "
+            f"on model={retrieval_embedding.get('model')} "
+            f"source={retrieval_embedding.get('source')} "
+            f"base={retrieval_embedding.get('base_url')}"
+        )
+    else:
+        print(
+            "  retrieval_embed:   "
+            f"off source={retrieval_embedding.get('source') if isinstance(retrieval_embedding, dict) else 'off'} "
+            f"reason={retrieval_embedding.get('disabled_reason') if isinstance(retrieval_embedding, dict) and retrieval_embedding.get('disabled_reason') else 'disabled'}"
+        )
+    retrieval_rerank = retrieval_payload["rerank"]
+    if isinstance(retrieval_rerank, dict) and retrieval_rerank.get("enabled"):
+        print(
+            "  retrieval_rerank:  "
+            f"on model={retrieval_rerank.get('model')} "
+            f"source={retrieval_rerank.get('source')} "
+            f"base={retrieval_rerank.get('base_url')}"
+        )
+    else:
+        print(
+            "  retrieval_rerank:  "
+            f"off source={retrieval_rerank.get('source') if isinstance(retrieval_rerank, dict) else 'off'} "
+            f"reason={retrieval_rerank.get('disabled_reason') if isinstance(retrieval_rerank, dict) and retrieval_rerank.get('disabled_reason') else 'disabled'}"
+        )
 
     if not args.probe:
         print("  probe:             skipped (use --probe to verify /models)")
@@ -12097,6 +12760,17 @@ def run_serve(args: argparse.Namespace) -> int:
             mcp_runtime=mcp_runtime,
             runtime_paths=paths,
         )
+        retrieval_config = resolve_context_retrieval_config(
+            project_toml,
+            selection.provider.api_key,
+            global_toml=config_toml,
+        )
+        execution_plane = resolve_execution_plane_config(
+            project_toml,
+            gateway_impl_arg=getattr(args, "gateway_impl", None),
+            runtime_impl_arg=getattr(args, "runtime_impl", None),
+            shadow_mode_arg=getattr(args, "shadow_mode", None),
+        )
         return {
             "paths": paths,
             "project_toml": project_toml,
@@ -12117,6 +12791,8 @@ def run_serve(args: argparse.Namespace) -> int:
             "mcp_runtime": mcp_runtime,
             "mcp_warnings": mcp_warnings,
             "mcp_local_tool_context": mcp_local_tool_context,
+            "retrieval_config": retrieval_config,
+            "execution_plane": execution_plane,
             "memory_management_metrics": init_memory_management_metrics(),
         }
 
@@ -12134,6 +12810,8 @@ def run_serve(args: argparse.Namespace) -> int:
             selection=state["selection"],
             session_key=state["session_key"],
             bind=state["bind_runtime"],
+            retrieval_config=state.get("retrieval_config"),
+            execution_plane=state.get("execution_plane"),
         )
         payload["mcp"] = state["mcp_runtime"]
         effective_names = [
@@ -12242,6 +12920,12 @@ def run_serve(args: argparse.Namespace) -> int:
     def state_config_payload(visible_sections: tuple[str, ...] | None) -> dict[str, Any]:
         selection: ProjectSelection = state["selection"]
         runtime_paths: RuntimePaths = state["paths"]
+        execution_plane = state.get("execution_plane")
+        execution_payload = (
+            build_execution_plane_status_payload(execution_plane)
+            if isinstance(execution_plane, ExecutionPlaneConfig)
+            else None
+        )
         payload: dict[str, Any] = {
             "status": "ok",
             "timestamp": now_utc_iso(),
@@ -12293,6 +12977,7 @@ def run_serve(args: argparse.Namespace) -> int:
                 "work_dir": str(selection.work_dir),
                 "session_preview": state["session_key"],
                 "provider": selection.provider.name,
+                "execution_plane": execution_payload,
             },
             CONFIG_SECTION_SESSION_STORE: {
                 "backend": state["session_store"].backend,
@@ -13339,6 +14024,14 @@ def run_serve(args: argparse.Namespace) -> int:
         f"(source={state['public_config_sections_source']}, "
         f"profile={state['public_config_sections_profile'] or 'none'})"
     )
+    execution_plane = state.get("execution_plane")
+    if isinstance(execution_plane, ExecutionPlaneConfig):
+        print(
+            "  exec:      "
+            f"gateway={execution_plane.gateway_impl}({execution_plane.gateway_impl_source}) "
+            f"runtime={execution_plane.runtime_impl}({execution_plane.runtime_impl_source}) "
+            f"shadow={'on' if execution_plane.shadow_mode else 'off'}({execution_plane.shadow_mode_source})"
+        )
     print(
         "  mcp:       "
         f"enabled={state['mcp_runtime']['enabled_count']}, "
@@ -13460,7 +14153,17 @@ def run_start(args: argparse.Namespace) -> int:
     memory_v1_config = resolve_memory_v1_config(project_toml)
     wiki_config = resolve_wiki_config(project_toml)
     allow_org_shared_wiki = wiki_config.allow_org_shared_read
-    retrieval_config = resolve_context_retrieval_config(project_toml, selection.provider.api_key)
+    retrieval_config = resolve_context_retrieval_config(
+        project_toml,
+        selection.provider.api_key,
+        global_toml=config_toml,
+    )
+    execution_plane = resolve_execution_plane_config(
+        project_toml,
+        gateway_impl_arg=getattr(args, "gateway_impl", None),
+        runtime_impl_arg=getattr(args, "runtime_impl", None),
+        shadow_mode_arg=getattr(args, "shadow_mode", None),
+    )
     skill_router_config = resolve_skill_router_config(project_toml)
     mcp_runtime, mcp_warnings = resolve_mcp_runtime(paths)
     local_tool_context = resolve_local_tool_context(
@@ -13664,6 +14367,12 @@ def run_start(args: argparse.Namespace) -> int:
     print(f"  namespace: {session_namespace_key}")
     print(f"  session_id:{active_session_id}")
     print(f"  store:     {session_store.backend} (ttl={session_store.ttl_secs}s)")
+    print(
+        "  exec:      "
+        f"gateway={execution_plane.gateway_impl}({execution_plane.gateway_impl_source}) "
+        f"runtime={execution_plane.runtime_impl}({execution_plane.runtime_impl_source}) "
+        f"shadow={'on' if execution_plane.shadow_mode else 'off'}({execution_plane.shadow_mode_source})"
+    )
     print(f"  sessions:  {paths.sessions_dir}")
     print(f"  memory:    session={paths.session_memory_dir} project={paths.project_memory_dir} global={paths.global_memory_dir}")
     print(
@@ -13722,22 +14431,42 @@ def run_start(args: argparse.Namespace) -> int:
         print(f"  mcp_off:   {', '.join(mcp_runtime['unready'])}")
     for warning in mcp_warnings:
         print(f"[mcp] {warning}", file=sys.stderr)
-    retrieval_parts: list[str] = []
-    if retrieval_config.enabled:
-        retrieval_parts.append("enabled")
+    retrieval_payload = build_context_retrieval_status_payload(retrieval_config)
+    print(
+        "  retrieval: "
+        f"enabled={'on' if retrieval_payload['enabled'] else 'off'} "
+        f"source={retrieval_payload['source']} "
+        f"select={retrieval_payload['selected_limit']}({retrieval_payload['selected_limit_source']}) "
+        f"candidates={retrieval_payload['candidate_limit']}({retrieval_payload['candidate_limit_source']})"
+    )
+    retrieval_embedding = retrieval_payload["embedding"]
+    if isinstance(retrieval_embedding, dict) and retrieval_embedding.get("enabled"):
+        print(
+            "  retrieval_embed: "
+            f"on model={retrieval_embedding.get('model')} "
+            f"source={retrieval_embedding.get('source')} "
+            f"base={retrieval_embedding.get('base_url')}"
+        )
     else:
-        retrieval_parts.append("disabled")
-    retrieval_parts.append(f"select={retrieval_config.selected_limit}")
-    retrieval_parts.append(f"candidates={retrieval_config.candidate_limit}")
-    if retrieval_config.embedding is not None:
-        retrieval_parts.append(f"embedding={retrieval_config.embedding.model}")
+        print(
+            "  retrieval_embed: "
+            f"off source={retrieval_embedding.get('source') if isinstance(retrieval_embedding, dict) else 'off'} "
+            f"reason={retrieval_embedding.get('disabled_reason') if isinstance(retrieval_embedding, dict) and retrieval_embedding.get('disabled_reason') else 'disabled'}"
+        )
+    retrieval_rerank = retrieval_payload["rerank"]
+    if isinstance(retrieval_rerank, dict) and retrieval_rerank.get("enabled"):
+        print(
+            "  retrieval_rerank: "
+            f"on model={retrieval_rerank.get('model')} "
+            f"source={retrieval_rerank.get('source')} "
+            f"base={retrieval_rerank.get('base_url')}"
+        )
     else:
-        retrieval_parts.append("embedding=off")
-    if retrieval_config.rerank is not None:
-        retrieval_parts.append(f"rerank={retrieval_config.rerank.model}")
-    else:
-        retrieval_parts.append("rerank=off")
-    print(f"  retrieval: {'; '.join(retrieval_parts)}")
+        print(
+            "  retrieval_rerank: "
+            f"off source={retrieval_rerank.get('source') if isinstance(retrieval_rerank, dict) else 'off'} "
+            f"reason={retrieval_rerank.get('disabled_reason') if isinstance(retrieval_rerank, dict) and retrieval_rerank.get('disabled_reason') else 'disabled'}"
+        )
     print(
         f"  circuit:   threshold={circuit_policy.failure_threshold}, cooldown={circuit_policy.cooldown_secs}s, "
         f"probe_recovery={'on' if not args.no_probe_recovery else 'off'}"
@@ -13837,17 +14566,33 @@ def run_start(args: argparse.Namespace) -> int:
                 memory_config=memory_v1_config,
             ),
         )
-        reply, used_route, errors = call_with_failover(
-            routes=routes,
-            messages=messages,
-            tool_context=local_tool_context,
-            policy=circuit_policy,
-            enable_probe_recovery=not args.no_probe_recovery,
-        )
-        active_route = used_route
-        if errors:
-            print(f"[failover] {summarize_errors(errors)}", file=sys.stderr)
-            record_failover_errors(errors)
+        if execution_plane.gateway_impl == EXECUTION_GATEWAY_IMPL_TS:
+            try:
+                reply, ts_warnings = execute_turn_via_ts_gateway(
+                    repo=paths.repo_root,
+                    session_key=session_key,
+                    user_message=effective_prompt,
+                    project_name=selection.name,
+                    execution_plane=execution_plane,
+                )
+            except RuntimeError as exc:
+                print(f"[ts-gateway] {exc}", file=sys.stderr)
+                close_mcp_sessions(local_tool_context)
+                return 1
+            for warning in ts_warnings:
+                print(f"[ts-gateway] {warning}", file=sys.stderr)
+        else:
+            reply, used_route, errors = call_with_failover(
+                routes=routes,
+                messages=messages,
+                tool_context=local_tool_context,
+                policy=circuit_policy,
+                enable_probe_recovery=not args.no_probe_recovery,
+            )
+            active_route = used_route
+            if errors:
+                print(f"[failover] {summarize_errors(errors)}", file=sys.stderr)
+                record_failover_errors(errors)
         record_turn(args.message, reply, output=sys.stderr)
         print(reply)
         maybe_auto_handoff(to_stderr=True)
@@ -14107,17 +14852,33 @@ def run_start(args: argparse.Namespace) -> int:
                 memory_config=memory_v1_config,
             ),
         )
-        reply, used_route, errors = call_with_failover(
-            routes=routes,
-            messages=messages,
-            tool_context=local_tool_context,
-            policy=circuit_policy,
-            enable_probe_recovery=not args.no_probe_recovery,
-        )
-        active_route = used_route
-        if errors:
-            print(f"[failover] {summarize_errors(errors)}")
-            record_failover_errors(errors)
+        if execution_plane.gateway_impl == EXECUTION_GATEWAY_IMPL_TS:
+            try:
+                reply, ts_warnings = execute_turn_via_ts_gateway(
+                    repo=paths.repo_root,
+                    session_key=session_key,
+                    user_message=effective_prompt,
+                    project_name=selection.name,
+                    execution_plane=execution_plane,
+                )
+            except RuntimeError as exc:
+                print(f"[ts-gateway] {exc}")
+                print("")
+                continue
+            for warning in ts_warnings:
+                print(f"[ts-gateway] {warning}")
+        else:
+            reply, used_route, errors = call_with_failover(
+                routes=routes,
+                messages=messages,
+                tool_context=local_tool_context,
+                policy=circuit_policy,
+                enable_probe_recovery=not args.no_probe_recovery,
+            )
+            active_route = used_route
+            if errors:
+                print(f"[failover] {summarize_errors(errors)}")
+                record_failover_errors(errors)
         record_turn(user_input, reply, output=sys.stdout)
         print(reply)
         print("")
@@ -14365,6 +15126,29 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--api-key", help="Override API key")
     status.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     status.add_argument("--model", help="Override model id (or auto)")
+    status.add_argument(
+        "--gateway-impl",
+        choices=list(EXECUTION_GATEWAY_IMPL_ALL),
+        help="Override execution gateway implementation (python|ts)",
+    )
+    status.add_argument(
+        "--runtime-impl",
+        choices=list(EXECUTION_RUNTIME_IMPL_ALL),
+        help="Override execution runtime implementation (python|rust)",
+    )
+    status.add_argument(
+        "--shadow-mode",
+        dest="shadow_mode",
+        action="store_true",
+        default=None,
+        help="Enable shadow mode for migration comparison",
+    )
+    status.add_argument(
+        "--no-shadow-mode",
+        dest="shadow_mode",
+        action="store_false",
+        help="Disable shadow mode for migration comparison",
+    )
     status.add_argument(
         "--session-scope",
         choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
@@ -14621,6 +15405,29 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     serve.add_argument("--model", help="Override model id (or auto)")
     serve.add_argument(
+        "--gateway-impl",
+        choices=list(EXECUTION_GATEWAY_IMPL_ALL),
+        help="Override execution gateway implementation (python|ts)",
+    )
+    serve.add_argument(
+        "--runtime-impl",
+        choices=list(EXECUTION_RUNTIME_IMPL_ALL),
+        help="Override execution runtime implementation (python|rust)",
+    )
+    serve.add_argument(
+        "--shadow-mode",
+        dest="shadow_mode",
+        action="store_true",
+        default=None,
+        help="Enable shadow mode for migration comparison",
+    )
+    serve.add_argument(
+        "--no-shadow-mode",
+        dest="shadow_mode",
+        action="store_false",
+        help="Disable shadow mode for migration comparison",
+    )
+    serve.add_argument(
         "--session-scope",
         choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],
         default=SESSION_SCOPE_DM,
@@ -14661,6 +15468,29 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--api-key", help="Override API key")
     start.add_argument("--base-url", help="Override OpenAI-compatible base URL")
     start.add_argument("--model", help="Override model id (or auto)")
+    start.add_argument(
+        "--gateway-impl",
+        choices=list(EXECUTION_GATEWAY_IMPL_ALL),
+        help="Override execution gateway implementation (python|ts)",
+    )
+    start.add_argument(
+        "--runtime-impl",
+        choices=list(EXECUTION_RUNTIME_IMPL_ALL),
+        help="Override execution runtime implementation (python|rust)",
+    )
+    start.add_argument(
+        "--shadow-mode",
+        dest="shadow_mode",
+        action="store_true",
+        default=None,
+        help="Enable shadow mode for migration comparison",
+    )
+    start.add_argument(
+        "--no-shadow-mode",
+        dest="shadow_mode",
+        action="store_false",
+        help="Disable shadow mode for migration comparison",
+    )
     start.add_argument(
         "--session-scope",
         choices=[SESSION_SCOPE_DM, SESSION_SCOPE_GROUP],

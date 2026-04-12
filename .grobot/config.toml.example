@@ -27,6 +27,21 @@ interval_ms = 1500
 min_delta_chars = 30
 max_chars = 2000
 
+[retrieval]
+enabled = true
+selected_limit = 4
+candidate_limit = 8
+base_url = "https://api.siliconflow.cn/v1"
+# api_key = "replace-with-retrieval-api-key"
+
+[retrieval.embedding]
+enabled = true
+model = "Qwen/Qwen3-Embedding-8B"
+
+[retrieval.rerank]
+enabled = true
+model = "Qwen/Qwen3-Reranker-4B"
+
 [bridge]
 enabled = true
 port = 9810
@@ -52,6 +67,11 @@ cors_origins = ["http://localhost:3000"]
 # 1) --config-read-policy
 # 2) GROBOT_CONFIG_READ_POLICY
 # 3) [management].config_read_policy
+#
+# Execution plane override priority (per command):
+# 1) --gateway-impl / --runtime-impl / --shadow-mode
+# 2) GROBOT_GATEWAY_IMPL / GROBOT_RUNTIME_IMPL / GROBOT_SHADOW_MODE
+# 3) <repo>/.grobot/project.toml [execution]
 #
 # Optional ACL (multi-token):
 # [[management.tokens]]

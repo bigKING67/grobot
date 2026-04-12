@@ -26,6 +26,11 @@ orchestrator = "typescript"
 enabled = true
 bind = "127.0.0.1:8080"
 
+[execution]
+gateway_impl = "ts"
+runtime_impl = "rust"
+shadow_mode = false
+
 [cc_connect]
 config_file = ".grobot/config.toml"
 config_template = ".grobot/config.toml.example"
@@ -76,6 +81,32 @@ allow_org_shared_read = false
 
 [memory.wiki]
 allow_org_shared_read = false
+
+[memory.v1]
+enabled = true
+default_scope = "auto"
+write_mode = "review_first"
+
+[memory.v1.retrieval]
+max_items = 8
+max_chars = 220
+min_score = 2.0
+recency_half_life_days = 30
+
+[memory.v1.privacy]
+allow_org_shared_read = false
+
+[memory.v1.lifecycle]
+enabled = true
+promote_after_days = 7
+promote_min_strength = 0.82
+decay_after_days = 21
+decay_factor = 0.85
+decay_min_importance = 0.25
+decay_interval_days = 7
+archive_after_days = 90
+archive_max_strength = 0.45
+batch_limit = 500
 
 [wiki]
 enabled = true

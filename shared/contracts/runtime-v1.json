@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grobot.dev/contracts/runtime-v1.json",
+  "title": "Grobot Runtime v1 Contract",
+  "description": "Canonical JSON-RPC contract between gateway control plane and runtime data plane.",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "transport",
+    "methods"
+  ],
+  "properties": {
+    "protocol_version": {
+      "const": "runtime.v1"
+    },
+    "transport": {
+      "enum": [
+        "json-rpc-2.0-over-stdio"
+      ]
+    },
+    "methods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "request",
+          "response"
+        ],
+        "properties": {
+          "name": {
+            "enum": [
+              "runtime.health",
+              "runtime.turn.execute"
+            ]
+          },
+          "request": {
+            "type": "object"
+          },
+          "response": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

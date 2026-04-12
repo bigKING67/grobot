@@ -255,6 +255,99 @@ class HistoryCompactionTests(unittest.TestCase):
         if config.embedding is not None and config.rerank is not None:
             self.assertEqual(config.embedding.model, "Qwen/Qwen3-Embedding-4B")
             self.assertEqual(config.rerank.model, "Qwen/Qwen3-Reranker-8B")
+        self.assertEqual(config.source, "env")
+        self.assertEqual(config.embedding_source, "env")
+        self.assertEqual(config.rerank_source, "env")
+
+    def test_resolve_context_retrieval_config_from_global_config(self) -> None:
+        global_toml = {
+            "retrieval": {
+                "enabled": True,
+                "selected_limit": 6,
+                "candidate_limit": 12,
+                "base_url": "https://global.example/v1",
+                "api_key": "global-shared-key",
+                "embedding": {
+                    "model": "embed-global",
+                },
+                "rerank": {
+                    "model": "rerank-global",
+                },
+            }
+        }
+        config = grobot_cli.resolve_context_retrieval_config(
+            {},
+            fallback_api_key=None,
+            global_toml=global_toml,
+        )
+        self.assertTrue(config.enabled)
+        self.assertEqual(config.source, "global")
+        self.assertEqual(config.selected_limit, 6)
+        self.assertEqual(config.selected_limit_source, "global")
+        self.assertEqual(config.candidate_limit, 12)
+        self.assertEqual(config.candidate_limit_source, "global")
+        self.assertEqual(config.shared_base_url, "https://global.example/v1")
+        self.assertEqual(config.shared_base_url_source, "global")
+        self.assertEqual(config.shared_api_key_source, "global")
+        self.assertIsNotNone(config.embedding)
+        self.assertIsNotNone(config.rerank)
+        if config.embedding is not None and config.rerank is not None:
+            self.assertEqual(config.embedding.model, "embed-global")
+            self.assertEqual(config.rerank.model, "rerank-global")
+        self.assertEqual(config.embedding_source, "global")
+        self.assertEqual(config.rerank_source, "global")
+
+    def test_resolve_context_retrieval_config_project_overrides_global(self) -> None:
+        project_toml = {
+            "context_retrieval": {
+                "selected_limit": 5,
+                "embedding": {
+                    "model": "embed-project",
+                },
+            }
+        }
+        global_toml = {
+            "retrieval": {
+                "selected_limit": 3,
+                "candidate_limit": 10,
+                "api_key": "global-shared-key",
+                "embedding": {
+                    "model": "embed-global",
+                },
+                "rerank": {
+                    "model": "rerank-global",
+                },
+            }
+        }
+        config = grobot_cli.resolve_context_retrieval_config(
+            project_toml,
+            fallback_api_key=None,
+            global_toml=global_toml,
+        )
+        self.assertTrue(config.enabled)
+        self.assertEqual(config.source, "project")
+        self.assertEqual(config.selected_limit, 5)
+        self.assertEqual(config.selected_limit_source, "project")
+        self.assertEqual(config.candidate_limit, 10)
+        self.assertEqual(config.candidate_limit_source, "global")
+        self.assertIsNotNone(config.embedding)
+        self.assertIsNotNone(config.rerank)
+        if config.embedding is not None and config.rerank is not None:
+            self.assertEqual(config.embedding.model, "embed-project")
+            self.assertEqual(config.rerank.model, "rerank-global")
+        self.assertEqual(config.embedding_source, "project")
+        self.assertEqual(config.rerank_source, "global")
+
+    def test_resolve_context_retrieval_config_disabled_sets_remote_reason(self) -> None:
+        config = grobot_cli.resolve_context_retrieval_config(
+            {"context_retrieval": {"enabled": False}},
+            fallback_api_key="provider-key",
+        )
+        self.assertFalse(config.enabled)
+        self.assertIsNone(config.embedding)
+        self.assertIsNone(config.rerank)
+        self.assertEqual(config.embedding_disabled_reason, "context_retrieval_disabled")
+        self.assertEqual(config.rerank_disabled_reason, "context_retrieval_disabled")
 
     def test_compute_embedding_similarity_scores_parses_indexed_vectors(self) -> None:
         remote = grobot_cli.RetrievalRemoteConfig(

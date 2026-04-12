@@ -1,0 +1,6 @@
+{
+  "name": "@grobot/templates",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Template assets for grobot init and packaging"
+}
