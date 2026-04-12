@@ -46,7 +46,7 @@ class HistoryCompactionTests(unittest.TestCase):
     def test_trim_history_compacts_with_priority_sections(self) -> None:
         history = [
             {"role": "user", "content": "Architecture decision: Use event-sourcing for writes"},
-            {"role": "assistant", "content": "Modified files: gateway/grobot_cli.py and package.json"},
+            {"role": "assistant", "content": "Modified files: gateway/src/dev-cli.ts and package.json"},
             {"role": "user", "content": "Verification: npm run check passed"},
             {"role": "assistant", "content": "TODO: keep rollback notes in runbook"},
             {"role": "user", "content": "Command: python3 gateway/tests/test_local_tools.py"},
@@ -68,7 +68,7 @@ class HistoryCompactionTests(unittest.TestCase):
 
         self.assertIn(HISTORY_COMPACT_HEADER, content)
         self.assertIn("Architecture decision: Use event-sourcing for writes", content)
-        self.assertIn("Modified files: gateway/grobot_cli.py and package.json", content)
+        self.assertIn("Modified files: gateway/src/dev-cli.ts and package.json", content)
         self.assertIn("PASS: Verification: npm run check passed", content)
         self.assertIn("TODO: keep rollback notes in runbook", content)
         self.assertIn("FAIL: stderr: ERROR timeout while running command", content)
@@ -90,7 +90,7 @@ class HistoryCompactionTests(unittest.TestCase):
                 "- Architecture decision: keep provider failover deterministic",
                 "",
                 "[Modified files and key changes]",
-                "- gateway/grobot_cli.py",
+                "- gateway/src/dev-cli.ts",
                 "",
                 "[Current verification status]",
                 "- PASS: npm run check passed",
@@ -123,7 +123,7 @@ class HistoryCompactionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             history = [
                 {"role": "user", "content": "Architecture decision: API contract fixed v2"},
-                {"role": "assistant", "content": "Modified files: gateway/grobot_cli.py"},
+                {"role": "assistant", "content": "Modified files: gateway/src/dev-cli.ts"},
                 {"role": "user", "content": "Verification: npm run check passed"},
                 {"role": "assistant", "content": "TODO: rollback to commit abc if health check fails"},
                 {"role": "user", "content": "最新输入-1"},
@@ -153,7 +153,7 @@ class HistoryCompactionTests(unittest.TestCase):
             self.assertIsInstance(modified, list)
             self.assertIsInstance(verification, list)
             self.assertTrue(any("API contract fixed v2" in str(item) for item in architecture or []))
-            self.assertTrue(any("gateway/grobot_cli.py" in str(item) for item in modified or []))
+            self.assertTrue(any("gateway/src/dev-cli.ts" in str(item) for item in modified or []))
             self.assertTrue(any("PASS:" in str(item) for item in verification or []))
 
     def test_retrieval_block_prioritizes_architecture_and_relevant_items(self) -> None:
@@ -165,7 +165,7 @@ class HistoryCompactionTests(unittest.TestCase):
                 "- Architecture decision: keep failover deterministic with sticky session key",
                 "",
                 "[Modified files and key changes]",
-                "- gateway/grobot_cli.py updated trim_history_messages",
+                "- gateway/src/dev-cli.ts updated trim_history_messages",
                 "",
                 "[Current verification status]",
                 "- PASS: npm run check passed",

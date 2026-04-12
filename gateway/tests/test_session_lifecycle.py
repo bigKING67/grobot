@@ -140,7 +140,7 @@ class SessionLifecycleTests(unittest.TestCase):
         source_history = [
             {"role": "user", "content": "Architecture decision: keep deterministic failover ordering."},
             {"role": "assistant", "content": "已记录架构决策并完成第一轮测试。"},
-            {"role": "user", "content": "Modified files: gateway/grobot_cli.py, gateway/tests/test_session_lifecycle.py"},
+            {"role": "user", "content": "Modified files: gateway/src/dev-cli.ts, gateway/tests/test_session_lifecycle.py"},
             {"role": "assistant", "content": "PASS: session commands verified locally."},
             {"role": "user", "content": "TODO: add edge-case tests for switch and continue."},
             {"role": "assistant", "content": "收到，稍后补齐。"},

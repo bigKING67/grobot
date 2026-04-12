@@ -45,7 +45,7 @@ class HandoffTests(unittest.TestCase):
                     "Architecture decision: keep failover deterministic"
                 ],
                 SECTION_MODIFIED: [
-                    "Modified files: gateway/grobot_cli.py"
+                    "Modified files: gateway/src/dev-cli.ts"
                 ],
                 SECTION_VERIFICATION: [
                     "PASS: npm run check passed"
@@ -80,7 +80,7 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("## Architecture Decisions (verbatim)", markdown)
         self.assertIn("Architecture decision: keep failover deterministic", markdown)
         self.assertIn("## Modified Files and Key Changes", markdown)
-        self.assertIn("Modified files: gateway/grobot_cli.py", markdown)
+        self.assertIn("Modified files: gateway/src/dev-cli.ts", markdown)
         self.assertIn("## Verification Status (PASS/FAIL only)", markdown)
         self.assertIn("PASS: npm run check passed", markdown)
         self.assertIn("FAIL: stderr timeout in skill router eval", markdown)

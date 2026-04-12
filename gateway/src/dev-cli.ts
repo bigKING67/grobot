@@ -773,6 +773,43 @@ function buildContinueBridgeMessage(
   };
 }
 
+function hasOpenTodoItems(history: ChatHistoryMessage[]): boolean {
+  const sections = extractHistorySections(history);
+  const todos = sections["Open TODOs / rollback"] ?? [];
+  return todos.length > 0;
+}
+
+function hasFailureSignals(history: ChatHistoryMessage[]): boolean {
+  const sections = extractHistorySections(history);
+  const verificationRows = sections["Verification status"] ?? [];
+  const toolRows = sections["Tool outputs"] ?? [];
+  const rows = [...verificationRows, ...toolRows];
+  const failMarkers = [
+    "fail",
+    "failed",
+    "error",
+    "exception",
+    "timeout",
+    "失败",
+    "错误",
+    "异常",
+    "超时",
+  ];
+  for (const row of rows) {
+    const lowered = row.toLowerCase();
+    for (const marker of failMarkers) {
+      if (lowered.includes(marker)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function shouldAutoWriteHandoff(compacted: boolean, failover: boolean, todoOpen: boolean): boolean {
+  return compacted || failover || todoOpen;
+}
+
 function buildPromptWithHistory(
   userPrompt: string,
   historyMessages: ChatHistoryMessage[],
@@ -3024,6 +3061,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     process.stderr.write(`[store] ${warning}\n`);
   }
   let historyCompacted = false;
+  let failureObserved = false;
 
   const persistSessionRegistryState = async (): Promise<void> => {
     const warnings = await saveSessionRegistryState(sessionRegistry);
@@ -3164,13 +3202,21 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     process.stderr.write(
       `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,
     );
+    if (!report.verification.pass) {
+      failureObserved = true;
+    }
     return report.verification.pass ? 0 : 1;
   };
 
   const message = readOptionString(options, "message");
   if (message) {
     const code = await executeTurn(message, false);
-    if (handoffAutoOnExit && historyCompacted) {
+    if (code !== 0) {
+      failureObserved = true;
+    }
+    const todoOpen = hasOpenTodoItems(historyMessages);
+    const failSignals = failureObserved || hasFailureSignals(historyMessages);
+    if (handoffAutoOnExit && shouldAutoWriteHandoff(historyCompacted, failSignals, todoOpen)) {
       writeHandoff("auto-exit", true);
     }
     return code;
@@ -3297,8 +3343,12 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
       return "continue";
     }
     try {
-      await executeTurn(userInput, true);
+      const code = await executeTurn(userInput, true);
+      if (code !== 0) {
+        failureObserved = true;
+      }
     } catch (error) {
+      failureObserved = true;
       process.stderr.write(`turn failed: ${String(error)}\n`);
       process.stdout.write("\n");
     }
@@ -3348,7 +3398,11 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
   }
 
   if (handoffAutoOnExit && historyMessages.length > 0) {
-    writeHandoff("auto-exit", false);
+    const todoOpen = hasOpenTodoItems(historyMessages);
+    const failSignals = failureObserved || hasFailureSignals(historyMessages);
+    if (shouldAutoWriteHandoff(historyCompacted, failSignals, todoOpen)) {
+      writeHandoff("auto-exit", false);
+    }
   }
   return 0;
 }

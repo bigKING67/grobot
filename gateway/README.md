@@ -33,13 +33,13 @@ TypeScript gateway skeleton for Grobot.
 27. Unified trace pipeline (`gateway/src/evals/trace-pipeline.ts`): one command with tunable mining/cleaning params.
 28. TS migration skeleton for Agent Loop v2 (`context -> runtime -> verify -> persist`) with optional shadow comparison.
 29. TS migration options resolver (`gateway_impl` / `runtime_impl` / `shadow_mode`) for dual-track rollout.
-30. Python CLI execution-plane resolver (`CLI > env > .grobot/project.toml > default`) with `gateway_impl` / `runtime_impl` / `shadow_mode`.
+30. TS dev CLI execution-plane resolver (`CLI > env > .grobot/project.toml > default`) with `gateway_impl` / `runtime_impl` / `shadow_mode`.
 31. Management status exposure for execution plane in `GET /api/v1/status` (`execution_plane` + per-field source).
 32. TS bridge CLI (`gateway/src/bridge-cli.ts`) wired into Python `start` path when `gateway_impl=ts`, using Rust stdio runtime when `runtime_impl=rust`.
 33. Gateway TypeScript compile gate via `gateway/tsconfig.json`.
 34. TS dev CLI fallback (`gateway/src/dev-cli.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
 35. TS `serve --ts-dev-cli` currently exposes `GET /api/v1/status`, `GET /api/v1/config` (auth + masked), `GET /healthz`, `POST /api/v1/reload`, `POST /api/v1/sessions/{id}/interrupt`, `POST /api/v1/mcp/reset`, `POST /api/v1/mcp/servers/{name}/reset`, `GET /api/v1/sessions/{id}/memory`, `GET /api/v1/sessions/{id}/memory/export`, `POST /api/v1/sessions/{id}/memory/import`, `POST /api/v1/sessions/{id}/memory/forget`, `POST /api/v1/sessions/{id}/memory/lifecycle`, and `POST /api/v1/memory/lifecycle/run`.
-36. TS `start/status/serve` 参数层已对齐 `grobot_cli.py` 常用路径与会话参数（`--home`/`--project-root`/`--config-path`/`--session-scope`/`--session-subject`/`--session-backend` 别名）；`serve` 还支持从 `[management].token` 自动读取管理令牌。管理面仍是迁移子集，完整策略模板/ACL 矩阵与持久后端细节仍在 Python 侧更完整。
+36. TS `start/status/serve` 参数层已覆盖常用路径与会话参数（`--home`/`--project-root`/`--config-path`/`--session-scope`/`--session-subject`/`--session-backend` 别名）；`serve` 还支持从 `[management].token` 自动读取管理令牌。
 37. TS memory store backend selection now supports `file` (default) and `redis` (via `--session-store redis` / `GROBOT_SESSION_STORE=redis` / `[runtime.storage].hot_cache=redis`). Status endpoint reports selected backend, Redis key, and fallback reason when Redis bootstrap fails and it falls back to file.
 38. TS `serve --ts-dev-cli` now honors config read policy precedence for `GET /api/v1/config` (`--config-read-policy` > `GROBOT_CONFIG_READ_POLICY` > `[management].config_read_policy` > `auto`), with `auto` resolving by bind host (loopback=`public`, non-loopback=`auth`).
 39. TS Redis memory store uses a minimal RESP2 client over `node:net` (currently `AUTH`/`SELECT`/`GET`/`SET EX` on `redis://`). `rediss://` is not supported in TS dev CLI yet; when Redis bootstrap fails, runtime falls back to file store and exposes `fallback_reason` in `/api/v1/status`.
