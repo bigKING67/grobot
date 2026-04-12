@@ -35,7 +35,7 @@ TypeScript gateway skeleton for Grobot.
 29. TS migration options resolver (`gateway_impl` / `runtime_impl` / `shadow_mode`) for dual-track rollout.
 30. TS dev CLI execution-plane resolver (`CLI > env > .grobot/project.toml > default`) with `gateway_impl` / `runtime_impl` / `shadow_mode`.
 31. Management status exposure for execution plane in `GET /api/v1/status` (`execution_plane` + per-field source).
-32. TS bridge CLI (`gateway/src/bridge-cli.ts`) wired into Python `start` path when `gateway_impl=ts`, using Rust stdio runtime when `runtime_impl=rust`.
+32. TS bridge CLI (`gateway/src/bridge-cli.ts`) wired into the TS `start` path when `gateway_impl=ts`, using Rust stdio runtime when `runtime_impl=rust`.
 33. Gateway TypeScript compile gate via `gateway/tsconfig.json`.
 34. TS dev CLI fallback (`gateway/src/dev-cli.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
 35. TS `serve --ts-dev-cli` currently exposes `GET /api/v1/status`, `GET /api/v1/config` (auth + masked), `GET /healthz`, `POST /api/v1/reload`, `POST /api/v1/sessions/{id}/interrupt`, `POST /api/v1/mcp/reset`, `POST /api/v1/mcp/servers/{name}/reset`, `GET /api/v1/sessions/{id}/memory`, `GET /api/v1/sessions/{id}/memory/export`, `POST /api/v1/sessions/{id}/memory/import`, `POST /api/v1/sessions/{id}/memory/forget`, `POST /api/v1/sessions/{id}/memory/lifecycle`, and `POST /api/v1/memory/lifecycle/run`.

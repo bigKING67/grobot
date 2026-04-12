@@ -189,6 +189,96 @@ class StartToolSmokeTests(unittest.TestCase):
         self.assertIn("reason: auto-exit", handoff_content)
         self.assertIn("## Compact Instructions", handoff_content)
 
+    def test_start_interactive_skips_auto_handoff_without_trigger(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory(prefix="grobot-start-interactive-no-handoff-") as tmp_dir:
+            root = Path(tmp_dir)
+            work_dir = root / "work"
+            home_dir = root / "home"
+            work_dir.mkdir(parents=True, exist_ok=True)
+            home_dir.mkdir(parents=True, exist_ok=True)
+            config_path = root / "config.toml"
+            self._write_smoke_config(config_path, work_dir)
+            handoff_path = work_dir / "HANDOFF.md"
+
+            result = subprocess.run(
+                [
+                    "./grobot",
+                    "start",
+                    "--project",
+                    "grobot",
+                    "--project-root",
+                    str(work_dir),
+                    "--work-dir",
+                    str(work_dir),
+                    "--home",
+                    str(home_dir),
+                    "--config",
+                    str(config_path),
+                    "--gateway-impl",
+                    "ts",
+                    "--runtime-impl",
+                    "rust",
+                ],
+                cwd=repo_root,
+                input="plain chat message\n/exit\n",
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            handoff_exists = handoff_path.exists()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertFalse(handoff_exists)
+
+    def test_start_interactive_writes_auto_handoff_when_history_compacted(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory(prefix="grobot-start-compact-handoff-") as tmp_dir:
+            root = Path(tmp_dir)
+            work_dir = root / "work"
+            home_dir = root / "home"
+            work_dir.mkdir(parents=True, exist_ok=True)
+            home_dir.mkdir(parents=True, exist_ok=True)
+            config_path = root / "config.toml"
+            self._write_smoke_config(config_path, work_dir)
+            handoff_path = work_dir / "HANDOFF.md"
+
+            result = subprocess.run(
+                [
+                    "./grobot",
+                    "start",
+                    "--project",
+                    "grobot",
+                    "--project-root",
+                    str(work_dir),
+                    "--work-dir",
+                    str(work_dir),
+                    "--home",
+                    str(home_dir),
+                    "--config",
+                    str(config_path),
+                    "--gateway-impl",
+                    "ts",
+                    "--runtime-impl",
+                    "rust",
+                    "--history-turns",
+                    "1",
+                ],
+                cwd=repo_root,
+                input="alpha turn\nbeta turn\ngamma turn\n/exit\n",
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            handoff_exists = handoff_path.exists()
+            handoff_content = handoff_path.read_text(encoding="utf-8") if handoff_exists else ""
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue(handoff_exists)
+        self.assertIn("reason: auto-exit", handoff_content)
+        self.assertIn("## Recent Turns", handoff_content)
+
     def test_start_session_store_redis_success_persists_registry_and_history(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         redis_store: dict[str, str] = {}
