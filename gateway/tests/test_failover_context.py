@@ -6,14 +6,14 @@ import unittest
 from pathlib import Path
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 
 class FailoverContextTests(unittest.TestCase):
     def _run_contract(self, command: str, repo_root: Path) -> dict[str, object]:
-        result = run_ts_contract("start-smoke-contract.ts", command, ("--repo-root", str(repo_root)))
+        result = run_node_contract("start-smoke-contract.mjs", command, ("--repo-root", str(repo_root)))
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         payload = json.loads(result.stdout)
         self.assertIsInstance(payload, dict)

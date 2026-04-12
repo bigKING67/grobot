@@ -2,18 +2,16 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-type JsonObject = Record<string, unknown>;
-
-function isObject(value: unknown): value is JsonObject {
+function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseArgs(argv: string[]): { command: string; options: Map<string, string> } {
+function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
     throw new Error("missing command");
   }
-  const options = new Map<string, string>();
+  const options = new Map();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (!token.startsWith("--")) {
@@ -29,7 +27,7 @@ function parseArgs(argv: string[]): { command: string; options: Map<string, stri
   return { command, options };
 }
 
-function requireOption(options: Map<string, string>, key: string): string {
+function requireOption(options, key) {
   const value = options.get(key);
   if (!value) {
     throw new Error(`missing --${key}`);
@@ -37,11 +35,7 @@ function requireOption(options: Map<string, string>, key: string): string {
   return value;
 }
 
-function runCommand(
-  repoRoot: string,
-  argv: string[],
-  envPrefix: Record<string, string> | null = null
-): JsonObject {
+function runCommand(repoRoot, argv, envPrefix = null) {
   const commandLine = argv.map(shellEscape).join(" ");
   const exportPrefix = buildEnvPrefix(envPrefix);
   const shellScript = `cd ${shellEscape(repoRoot)} && ${exportPrefix}${commandLine}`;
@@ -55,11 +49,11 @@ function runCommand(
   };
 }
 
-function shellEscape(value: string): string {
+function shellEscape(value) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
-function buildEnvPrefix(envPrefix: Record<string, string> | null): string {
+function buildEnvPrefix(envPrefix) {
   if (!envPrefix) {
     return "";
   }
@@ -70,7 +64,7 @@ function buildEnvPrefix(envPrefix: Record<string, string> | null): string {
   return `${entries.map(([key, value]) => `${key}=${shellEscape(value)}`).join(" ")} `;
 }
 
-function buildSmokeConfig(workDir: string): string {
+function buildSmokeConfig(workDir) {
   return [
     'language = "zh"',
     "",
@@ -101,7 +95,7 @@ function buildSmokeConfig(workDir: string): string {
   ].join("\n");
 }
 
-function buildFailoverConfig(workDir: string): string {
+function buildFailoverConfig(workDir) {
   return [
     'language = "zh"',
     "",
@@ -138,25 +132,25 @@ function buildFailoverConfig(workDir: string): string {
   ].join("\n");
 }
 
-function writeConfig(content: string): { configPath: string } {
+function writeConfig(content) {
   const configDir = createTempDir("grobot-start-config");
   const configPath = `${configDir}/config.toml`;
   writeFileSync(configPath, content, "utf8");
   return { configPath };
 }
 
-function createTempDir(prefix: string): string {
+function createTempDir(prefix) {
   const random = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1_000_000).toString(36)}`;
   const dir = resolve("/tmp", `${prefix}-${random}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function runPackageLauncherRejectsPython(repoRoot: string): JsonObject {
+function runPackageLauncherRejectsPython(repoRoot) {
   return runCommand(repoRoot, ["./packages/cli/bin/grobot", "status", "--gateway-impl=python"]);
 }
 
-function runStartMessageSmoke(repoRoot: string): JsonObject {
+function runStartMessageSmoke(repoRoot) {
   const workDir = createTempDir("grobot-start-work");
   const config = writeConfig(buildSmokeConfig(workDir));
   return runCommand(repoRoot, [
@@ -178,7 +172,7 @@ function runStartMessageSmoke(repoRoot: string): JsonObject {
   ]);
 }
 
-function runFailoverRejectsPython(repoRoot: string): JsonObject {
+function runFailoverRejectsPython(repoRoot) {
   const workDir = createTempDir("grobot-start-work");
   const config = writeConfig(buildFailoverConfig(workDir));
   return runCommand(repoRoot, [
@@ -199,7 +193,7 @@ function runFailoverRejectsPython(repoRoot: string): JsonObject {
   ]);
 }
 
-function runFailoverTsRust(repoRoot: string): JsonObject {
+function runFailoverTsRust(repoRoot) {
   const workDir = createTempDir("grobot-start-work");
   const config = writeConfig(buildFailoverConfig(workDir));
   return runCommand(repoRoot, [
@@ -223,7 +217,7 @@ function runFailoverTsRust(repoRoot: string): JsonObject {
   ]);
 }
 
-function writeExecutionProjectToml(workDir: string): void {
+function writeExecutionProjectToml(workDir) {
   const grobotDir = `${workDir}/.grobot`;
   mkdirSync(grobotDir, { recursive: true });
   writeFileSync(
@@ -242,7 +236,7 @@ function writeExecutionProjectToml(workDir: string): void {
   );
 }
 
-function runStatusTsRust(repoRoot: string): JsonObject {
+function runStatusTsRust(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
   return runCommand(repoRoot, [
@@ -257,7 +251,7 @@ function runStatusTsRust(repoRoot: string): JsonObject {
   ]);
 }
 
-function runStatusTsRustDeprecatedFlag(repoRoot: string): JsonObject {
+function runStatusTsRustDeprecatedFlag(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
   return runCommand(repoRoot, [
@@ -273,22 +267,22 @@ function runStatusTsRustDeprecatedFlag(repoRoot: string): JsonObject {
   ]);
 }
 
-function runStatusRejectLegacyFlag(repoRoot: string): JsonObject {
+function runStatusRejectLegacyFlag(repoRoot) {
   return runCommand(repoRoot, ["./grobot", "status", "--legacy-python-cli"]);
 }
 
-function runStatusRejectPythonGateway(repoRoot: string): JsonObject {
+function runStatusRejectPythonGateway(repoRoot) {
   return runCommand(repoRoot, ["./grobot", "status", "--gateway-impl", "python"]);
 }
 
-function runStatusRejectLegacyEnv(repoRoot: string): JsonObject {
+function runStatusRejectLegacyEnv(repoRoot) {
   return runCommand(repoRoot, ["./grobot", "status"], { GROBOT_LEGACY_PYTHON: "1" });
 }
 
-function runCli(argv: string[]): number {
+function runCli(argv) {
   const { command, options } = parseArgs(argv);
   const repoRoot = resolve(requireOption(options, "repo-root"));
-  let payload: JsonObject;
+  let payload;
   switch (command) {
     case "package-launcher-rejects-python":
       payload = runPackageLauncherRejectsPython(repoRoot);

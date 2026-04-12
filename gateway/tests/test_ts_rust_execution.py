@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Callable
 
 try:
-    from gateway.tests.ts_contract import run_node_contract, run_ts_contract, spawn_node_contract
+    from gateway.tests.ts_contract import run_node_contract, spawn_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_node_contract, run_ts_contract, spawn_node_contract
+    from ts_contract import run_node_contract, spawn_node_contract
 
 
 def _resp_simple(text: str = "OK") -> bytes:
@@ -180,7 +180,7 @@ class FakeRedisServer:
 
 class TsRustExecutionTests(unittest.TestCase):
     def _run_start_contract(self, repo_root: Path, command: str) -> dict[str, object]:
-        result = run_ts_contract("start-smoke-contract.ts", command, ("--repo-root", str(repo_root)))
+        result = run_node_contract("start-smoke-contract.mjs", command, ("--repo-root", str(repo_root)))
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         payload = json.loads(result.stdout)
         self.assertIsInstance(payload, dict)
