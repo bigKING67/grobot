@@ -37,9 +37,14 @@ function requireOption(options: Map<string, string>, key: string): string {
   return value;
 }
 
-function runCommand(repoRoot: string, argv: string[]): JsonObject {
+function runCommand(
+  repoRoot: string,
+  argv: string[],
+  envPrefix: Record<string, string> | null = null
+): JsonObject {
   const commandLine = argv.map(shellEscape).join(" ");
-  const shellScript = `cd ${shellEscape(repoRoot)} && ${commandLine}`;
+  const exportPrefix = buildEnvPrefix(envPrefix);
+  const shellScript = `cd ${shellEscape(repoRoot)} && ${exportPrefix}${commandLine}`;
   const completed = spawnSync("bash", ["-lc", shellScript], {
     encoding: "utf8",
   });
@@ -52,6 +57,17 @@ function runCommand(repoRoot: string, argv: string[]): JsonObject {
 
 function shellEscape(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function buildEnvPrefix(envPrefix: Record<string, string> | null): string {
+  if (!envPrefix) {
+    return "";
+  }
+  const entries = Object.entries(envPrefix);
+  if (entries.length === 0) {
+    return "";
+  }
+  return `${entries.map(([key, value]) => `${key}=${shellEscape(value)}`).join(" ")} `;
 }
 
 function buildSmokeConfig(workDir: string): string {
@@ -207,6 +223,68 @@ function runFailoverTsRust(repoRoot: string): JsonObject {
   ]);
 }
 
+function writeExecutionProjectToml(workDir: string): void {
+  const grobotDir = `${workDir}/.grobot`;
+  mkdirSync(grobotDir, { recursive: true });
+  writeFileSync(
+    `${grobotDir}/project.toml`,
+    [
+      "schema_version = 1",
+      'mode = "mvp"',
+      "",
+      "[execution]",
+      'gateway_impl = "ts"',
+      'runtime_impl = "rust"',
+      "shadow_mode = false",
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+function runStatusTsRust(repoRoot: string): JsonObject {
+  const workDir = createTempDir("grobot-status-work");
+  writeExecutionProjectToml(workDir);
+  return runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ]);
+}
+
+function runStatusTsRustDeprecatedFlag(repoRoot: string): JsonObject {
+  const workDir = createTempDir("grobot-status-work");
+  writeExecutionProjectToml(workDir);
+  return runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--ts-dev-cli",
+  ]);
+}
+
+function runStatusRejectLegacyFlag(repoRoot: string): JsonObject {
+  return runCommand(repoRoot, ["./grobot", "status", "--legacy-python-cli"]);
+}
+
+function runStatusRejectPythonGateway(repoRoot: string): JsonObject {
+  return runCommand(repoRoot, ["./grobot", "status", "--gateway-impl", "python"]);
+}
+
+function runStatusRejectLegacyEnv(repoRoot: string): JsonObject {
+  return runCommand(repoRoot, ["./grobot", "status"], { GROBOT_LEGACY_PYTHON: "1" });
+}
+
 function runCli(argv: string[]): number {
   const { command, options } = parseArgs(argv);
   const repoRoot = resolve(requireOption(options, "repo-root"));
@@ -223,6 +301,21 @@ function runCli(argv: string[]): number {
       break;
     case "failover-runs-ts-rust":
       payload = runFailoverTsRust(repoRoot);
+      break;
+    case "status-ts-rust":
+      payload = runStatusTsRust(repoRoot);
+      break;
+    case "status-ts-rust-deprecated-flag":
+      payload = runStatusTsRustDeprecatedFlag(repoRoot);
+      break;
+    case "status-reject-legacy-flag":
+      payload = runStatusRejectLegacyFlag(repoRoot);
+      break;
+    case "status-reject-python-gateway":
+      payload = runStatusRejectPythonGateway(repoRoot);
+      break;
+    case "status-reject-legacy-env":
+      payload = runStatusRejectLegacyEnv(repoRoot);
       break;
     default:
       throw new Error(`unknown command: ${command}`);

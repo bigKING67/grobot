@@ -14,6 +14,11 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+try:
+    from gateway.tests.ts_contract import run_ts_contract
+except ModuleNotFoundError:
+    from ts_contract import run_ts_contract
+
 
 def _resp_simple(text: str = "OK") -> bytes:
     return f"+{text}\r\n".encode("utf-8")
@@ -175,6 +180,15 @@ class FakeRedisServer:
 
 
 class TsRustExecutionTests(unittest.TestCase):
+    def _run_start_contract(self, repo_root: Path, command: str) -> dict[str, object]:
+        result = run_ts_contract("start-smoke-contract.ts", command, ("--repo-root", str(repo_root)))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertIsInstance(payload, dict)
+        if not isinstance(payload, dict):
+            self.fail("start-smoke contract payload must be object")
+        return payload
+
     def test_serve_runs_via_ts_dev_cli_with_management_endpoints(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp_work_dir, tempfile.TemporaryDirectory() as temp_home_dir:
@@ -1301,142 +1315,35 @@ class TsRustExecutionTests(unittest.TestCase):
 
     def test_status_prefers_ts_dev_cli_in_source_checkout(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        with tempfile.TemporaryDirectory() as temp_work_dir:
-            work_dir = Path(temp_work_dir)
-            (work_dir / ".grobot").mkdir(parents=True, exist_ok=True)
-            (work_dir / ".grobot" / "project.toml").write_text(
-                "\n".join(
-                    [
-                        "schema_version = 1",
-                        'mode = "mvp"',
-                        "",
-                        "[execution]",
-                        'gateway_impl = "ts"',
-                        'runtime_impl = "rust"',
-                        "shadow_mode = false",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            result = subprocess.run(
-                [
-                    "./grobot",
-                    "status",
-                    "--work-dir",
-                    str(work_dir),
-                    "--gateway-impl",
-                    "ts",
-                    "--runtime-impl",
-                    "rust",
-                ],
-                cwd=str(repo_root),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, msg=result.stderr)
-            self.assertIn("engine: ts-dev-cli", result.stdout)
-            self.assertIn("execution: gateway=ts(cli) runtime=rust(cli)", result.stdout)
+        payload = self._run_start_contract(repo_root, "status-ts-rust")
+        self.assertEqual(payload.get("exit_code"), 0, msg=str(payload.get("stderr", "")))
+        self.assertIn("engine: ts-dev-cli", str(payload.get("stdout", "")))
+        self.assertIn("execution: gateway=ts(cli) runtime=rust(cli)", str(payload.get("stdout", "")))
 
     def test_source_checkout_reports_deprecated_ts_dev_flag(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        with tempfile.TemporaryDirectory() as temp_work_dir:
-            work_dir = Path(temp_work_dir)
-            (work_dir / ".grobot").mkdir(parents=True, exist_ok=True)
-            (work_dir / ".grobot" / "project.toml").write_text(
-                "\n".join(
-                    [
-                        "schema_version = 1",
-                        'mode = "mvp"',
-                        "",
-                        "[execution]",
-                        'gateway_impl = "ts"',
-                        'runtime_impl = "rust"',
-                        "shadow_mode = false",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            result = subprocess.run(
-                [
-                    "./grobot",
-                    "status",
-                    "--work-dir",
-                    str(work_dir),
-                    "--gateway-impl",
-                    "ts",
-                    "--runtime-impl",
-                    "rust",
-                    "--ts-dev-cli",
-                ],
-                cwd=str(repo_root),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, msg=result.stderr)
-            self.assertIn("engine: ts-dev-cli", result.stdout)
-            self.assertIn("--ts-dev-cli is deprecated", result.stderr)
+        payload = self._run_start_contract(repo_root, "status-ts-rust-deprecated-flag")
+        self.assertEqual(payload.get("exit_code"), 0, msg=str(payload.get("stderr", "")))
+        self.assertIn("engine: ts-dev-cli", str(payload.get("stdout", "")))
+        self.assertIn("--ts-dev-cli is deprecated", str(payload.get("stderr", "")))
 
     def test_source_checkout_rejects_legacy_python_flag(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        result = subprocess.run(
-            [
-                "./grobot",
-                "status",
-                "--legacy-python-cli",
-            ],
-            cwd=str(repo_root),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("legacy python execution path is removed", result.stderr)
+        payload = self._run_start_contract(repo_root, "status-reject-legacy-flag")
+        self.assertEqual(payload.get("exit_code"), 2)
+        self.assertIn("legacy python execution path is removed", str(payload.get("stderr", "")))
 
     def test_source_checkout_rejects_python_gateway_impl(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        result = subprocess.run(
-            [
-                "./grobot",
-                "status",
-                "--gateway-impl",
-                "python",
-            ],
-            cwd=str(repo_root),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("legacy python execution path is removed", result.stderr)
+        payload = self._run_start_contract(repo_root, "status-reject-python-gateway")
+        self.assertEqual(payload.get("exit_code"), 2)
+        self.assertIn("legacy python execution path is removed", str(payload.get("stderr", "")))
 
     def test_source_checkout_rejects_legacy_python_env(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        env = os.environ.copy()
-        env["GROBOT_LEGACY_PYTHON"] = "1"
-        result = subprocess.run(
-            [
-                "./grobot",
-                "status",
-            ],
-            cwd=str(repo_root),
-            text=True,
-            capture_output=True,
-            env=env,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("legacy python execution path is removed", result.stderr)
+        payload = self._run_start_contract(repo_root, "status-reject-legacy-env")
+        self.assertEqual(payload.get("exit_code"), 2)
+        self.assertIn("legacy python execution path is removed", str(payload.get("stderr", "")))
 
     def test_serve_config_read_policy_disabled_blocks_config_endpoint(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -1657,68 +1564,9 @@ class TsRustExecutionTests(unittest.TestCase):
 
     def test_start_message_runs_via_ts_gateway_and_rust_runtime(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        with tempfile.TemporaryDirectory() as temp_work_dir, tempfile.TemporaryDirectory() as temp_cfg_dir:
-            work_dir = Path(temp_work_dir)
-            cfg_path = Path(temp_cfg_dir) / "config.toml"
-            cfg_path.write_text(
-                "\n".join(
-                    [
-                        'language = "zh"',
-                        "",
-                        "[[projects]]",
-                        'name = "grobot"',
-                        "",
-                        "[projects.agent]",
-                        'type = "claudecode"',
-                        'provider = "mock"',
-                        "",
-                        "[projects.agent.options]",
-                        f'work_dir = "{work_dir}"',
-                        'mode = "default"',
-                        "",
-                        "[[projects.agent.providers]]",
-                        'name = "mock"',
-                        'api_key = "mock-key"',
-                        'base_url = "http://127.0.0.1:65534/v1"',
-                        'model = "mock-model"',
-                        "",
-                        "[[projects.platforms]]",
-                        'type = "feishu"',
-                        "",
-                        "[projects.platforms.options]",
-                        'app_id = "x"',
-                        'app_secret = "y"',
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            result = subprocess.run(
-                [
-                    "./grobot",
-                    "start",
-                    "--project",
-                    "grobot",
-                    "--work-dir",
-                    str(work_dir),
-                    "--config",
-                    str(cfg_path),
-                    "--gateway-impl",
-                    "ts",
-                    "--runtime-impl",
-                    "rust",
-                    "--message",
-                    "ts rust execution smoke",
-                ],
-                cwd=str(repo_root),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, msg=result.stderr)
-            self.assertIn("[rust-runtime]", result.stdout)
+        payload = self._run_start_contract(repo_root, "start-message-smoke")
+        self.assertEqual(payload.get("exit_code"), 0, msg=str(payload.get("stderr", "")))
+        self.assertIn("[rust-runtime]", str(payload.get("stdout", "")))
 
 
 if __name__ == "__main__":
