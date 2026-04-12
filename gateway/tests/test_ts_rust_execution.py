@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import socket
 import tempfile
@@ -15,9 +14,9 @@ from pathlib import Path
 from typing import Callable
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract, run_ts_contract, spawn_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract, run_ts_contract, spawn_node_contract
 
 
 def _resp_simple(text: str = "OK") -> bytes:
@@ -189,6 +188,19 @@ class TsRustExecutionTests(unittest.TestCase):
             self.fail("start-smoke contract payload must be object")
         return payload
 
+    def _run_serve_contract(self, repo_root: Path, command: str, *args: str) -> dict[str, object]:
+        result = run_node_contract(
+            "serve-smoke-contract.mjs",
+            command,
+            ("--repo-root", str(repo_root), *args),
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertIsInstance(payload, dict)
+        if not isinstance(payload, dict):
+            self.fail("serve-smoke contract payload must be object")
+        return payload
+
     def test_serve_runs_via_ts_dev_cli_with_management_endpoints(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp_work_dir, tempfile.TemporaryDirectory() as temp_home_dir:
@@ -230,28 +242,23 @@ class TsRustExecutionTests(unittest.TestCase):
             sock.close()
             bind = f"127.0.0.1:{port}"
             token = "ts-dev-token"
-            env = os.environ.copy()
-            env["GROBOT_HOME"] = str(home_dir)
-
-            proc = subprocess.Popen(
-                [
-                    "./grobot",
-                    "serve",
+            proc = spawn_node_contract(
+                "serve-daemon-contract.mjs",
+                "ts-dev-management-endpoints-daemon",
+                (
+                    "--repo-root",
+                    str(repo_root),
                     "--work-dir",
                     str(work_dir),
-                    "--gateway-impl",
-                    "ts",
-                    "--ts-dev-cli",
-                    "--runtime-impl",
-                    "rust",
+                    "--home-dir",
+                    str(home_dir),
                     "--bind",
                     bind,
                     "--management-token",
                     token,
-                ],
-                cwd=str(repo_root),
+                ),
+                cwd=repo_root,
                 text=True,
-                env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -677,59 +684,39 @@ class TsRustExecutionTests(unittest.TestCase):
             port = sock.getsockname()[1]
             sock.close()
             bind = f"127.0.0.1:{port}"
-
-            env = os.environ.copy()
-            env["GROBOT_HOME"] = str(home_dir)
-            proc = subprocess.Popen(
-                [
-                    "./grobot",
-                    "serve",
-                    "--work-dir",
-                    str(work_dir),
-                    "--gateway-impl",
-                    "ts",
-                    "--ts-dev-cli",
-                    "--runtime-impl",
-                    "rust",
-                    "--bind",
-                    bind,
-                ],
-                cwd=str(repo_root),
-                text=True,
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            payload = self._run_serve_contract(
+                repo_root,
+                "config-read-policy-auto",
+                "--work-dir",
+                str(work_dir),
+                "--home-dir",
+                str(home_dir),
+                "--bind",
+                bind,
             )
+            self.assertTrue(payload.get("ready"))
 
-            try:
-                base_url = f"http://{bind}"
-                status_payload: dict[str, object] | None = None
-                for _ in range(60):
-                    try:
-                        with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                            status_payload = json.loads(resp.read().decode("utf-8"))
-                        break
-                    except Exception:
-                        time.sleep(0.1)
+            status_endpoint = payload.get("status_endpoint")
+            self.assertIsInstance(status_endpoint, dict)
+            assert isinstance(status_endpoint, dict)
+            self.assertEqual(status_endpoint.get("status"), 200)
+            status_body = status_endpoint.get("body")
+            self.assertIsInstance(status_body, dict)
+            assert isinstance(status_body, dict)
+            management_auth = status_body.get("management_auth")
+            self.assertIsInstance(management_auth, dict)
+            assert isinstance(management_auth, dict)
+            self.assertEqual(management_auth.get("config_read_policy"), "public")
+            self.assertEqual(management_auth.get("config_read_policy_configured"), "auto")
 
-                self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                assert status_payload is not None
-                management_auth = status_payload.get("management_auth")
-                self.assertIsInstance(management_auth, dict)
-                assert isinstance(management_auth, dict)
-                self.assertEqual(management_auth.get("config_read_policy"), "public")
-                self.assertEqual(management_auth.get("config_read_policy_configured"), "auto")
-
-                with urllib.request.urlopen(f"{base_url}/api/v1/config", timeout=1.0) as resp_config:
-                    config_payload = json.loads(resp_config.read().decode("utf-8"))
-                self.assertEqual(config_payload.get("status"), "ok")
-            finally:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=3)
+            config_endpoint = payload.get("config_endpoint")
+            self.assertIsInstance(config_endpoint, dict)
+            assert isinstance(config_endpoint, dict)
+            self.assertEqual(config_endpoint.get("status"), 200)
+            config_body = config_endpoint.get("body")
+            self.assertIsInstance(config_body, dict)
+            assert isinstance(config_body, dict)
+            self.assertEqual(config_body.get("status"), "ok")
 
     def test_serve_session_store_redis_fallbacks_to_file_when_unavailable(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -756,59 +743,34 @@ class TsRustExecutionTests(unittest.TestCase):
             port = sock.getsockname()[1]
             sock.close()
             bind = f"127.0.0.1:{port}"
-
-            proc = subprocess.Popen(
-                [
-                    "./grobot",
-                    "serve",
-                    "--work-dir",
-                    str(work_dir),
-                    "--gateway-impl",
-                    "ts",
-                    "--ts-dev-cli",
-                    "--runtime-impl",
-                    "rust",
-                    "--bind",
-                    bind,
-                    "--management-token",
-                    "fallback-token",
-                    "--session-store",
-                    "redis",
-                    "--redis-url",
-                    "redis://127.0.0.1:1/0",
-                ],
-                cwd=str(repo_root),
-                text=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            payload = self._run_serve_contract(
+                repo_root,
+                "session-store-redis-unavailable",
+                "--work-dir",
+                str(work_dir),
+                "--bind",
+                bind,
+                "--management-token",
+                "fallback-token",
+                "--redis-url",
+                "redis://127.0.0.1:1/0",
             )
+            self.assertTrue(payload.get("ready"))
 
-            try:
-                base_url = f"http://{bind}"
-                status_payload: dict[str, object] | None = None
-                for _ in range(60):
-                    try:
-                        with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                            status_payload = json.loads(resp.read().decode("utf-8"))
-                        break
-                    except Exception:
-                        time.sleep(0.1)
-                self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                assert status_payload is not None
-                memory_store_payload = status_payload.get("memory_store")
-                self.assertIsInstance(memory_store_payload, dict)
-                assert isinstance(memory_store_payload, dict)
-                self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
-                self.assertEqual(memory_store_payload.get("backend"), "file")
-                fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
-                self.assertIn("redis bootstrap failed", fallback_reason)
-            finally:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=3)
+            status_endpoint = payload.get("status_endpoint")
+            self.assertIsInstance(status_endpoint, dict)
+            assert isinstance(status_endpoint, dict)
+            self.assertEqual(status_endpoint.get("status"), 200)
+            status_body = status_endpoint.get("body")
+            self.assertIsInstance(status_body, dict)
+            assert isinstance(status_body, dict)
+            memory_store_payload = status_body.get("memory_store")
+            self.assertIsInstance(memory_store_payload, dict)
+            assert isinstance(memory_store_payload, dict)
+            self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
+            self.assertEqual(memory_store_payload.get("backend"), "file")
+            fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
+            self.assertIn("redis bootstrap failed", fallback_reason)
 
     def test_serve_session_store_redis_bootstrap_supports_chunked_bulk_reply(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -861,71 +823,46 @@ class TsRustExecutionTests(unittest.TestCase):
                 sock.close()
                 bind = f"127.0.0.1:{port}"
                 token = "chunked-token"
-
-                proc = subprocess.Popen(
-                    [
-                        "./grobot",
-                        "serve",
-                        "--work-dir",
-                        str(work_dir),
-                        "--gateway-impl",
-                        "ts",
-                        "--ts-dev-cli",
-                        "--runtime-impl",
-                        "rust",
-                        "--bind",
-                        bind,
-                        "--management-token",
-                        token,
-                        "--session-store",
-                        "redis",
-                        "--redis-url",
-                        fake_redis.redis_url,
-                    ],
-                    cwd=str(repo_root),
-                    text=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                payload = self._run_serve_contract(
+                    repo_root,
+                    "session-store-redis-status-and-memory-list",
+                    "--work-dir",
+                    str(work_dir),
+                    "--bind",
+                    bind,
+                    "--management-token",
+                    token,
+                    "--redis-url",
+                    fake_redis.redis_url,
+                    "--session-id",
+                    session_id,
                 )
+                self.assertTrue(payload.get("ready"))
 
-                try:
-                    base_url = f"http://{bind}"
-                    status_payload: dict[str, object] | None = None
-                    for _ in range(60):
-                        try:
-                            with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                                status_payload = json.loads(resp.read().decode("utf-8"))
-                            break
-                        except Exception:
-                            time.sleep(0.1)
-                    self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                    assert status_payload is not None
-                    memory_store_payload = status_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_payload, dict)
-                    assert isinstance(memory_store_payload, dict)
-                    self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
-                    self.assertEqual(memory_store_payload.get("backend"), "redis")
-                    self.assertIsNone(memory_store_payload.get("fallback_reason"))
-                    self.assertEqual(memory_store_payload.get("session_count"), 1)
+                status_endpoint = payload.get("status_endpoint")
+                self.assertIsInstance(status_endpoint, dict)
+                assert isinstance(status_endpoint, dict)
+                self.assertEqual(status_endpoint.get("status"), 200)
+                status_body = status_endpoint.get("body")
+                self.assertIsInstance(status_body, dict)
+                assert isinstance(status_body, dict)
+                memory_store_payload = status_body.get("memory_store")
+                self.assertIsInstance(memory_store_payload, dict)
+                assert isinstance(memory_store_payload, dict)
+                self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
+                self.assertEqual(memory_store_payload.get("backend"), "redis")
+                self.assertIsNone(memory_store_payload.get("fallback_reason"))
+                self.assertEqual(memory_store_payload.get("session_count"), 1)
 
-                    req_memory_list = urllib.request.Request(
-                        f"{base_url}/api/v1/sessions/feishu%3Agrobot%3Adm%3Atest-user/memory?limit=20",
-                        method="GET",
-                        headers={
-                            "Authorization": f"Bearer {token}",
-                        },
-                    )
-                    with urllib.request.urlopen(req_memory_list, timeout=1.0) as resp_memory_list:
-                        memory_list_payload = json.loads(resp_memory_list.read().decode("utf-8"))
-                    self.assertEqual(memory_list_payload.get("status"), "ok")
-                    self.assertEqual(memory_list_payload.get("count"), 1)
-                finally:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait(timeout=3)
+                memory_list_endpoint = payload.get("memory_list_endpoint")
+                self.assertIsInstance(memory_list_endpoint, dict)
+                assert isinstance(memory_list_endpoint, dict)
+                self.assertEqual(memory_list_endpoint.get("status"), 200)
+                memory_list_body = memory_list_endpoint.get("body")
+                self.assertIsInstance(memory_list_body, dict)
+                assert isinstance(memory_list_body, dict)
+                self.assertEqual(memory_list_body.get("status"), "ok")
+                self.assertEqual(memory_list_body.get("count"), 1)
 
     def test_serve_session_store_redis_fallbacks_to_file_on_array_reply(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -959,59 +896,34 @@ class TsRustExecutionTests(unittest.TestCase):
                 port = sock.getsockname()[1]
                 sock.close()
                 bind = f"127.0.0.1:{port}"
-
-                proc = subprocess.Popen(
-                    [
-                        "./grobot",
-                        "serve",
-                        "--work-dir",
-                        str(work_dir),
-                        "--gateway-impl",
-                        "ts",
-                        "--ts-dev-cli",
-                        "--runtime-impl",
-                        "rust",
-                        "--bind",
-                        bind,
-                        "--management-token",
-                        "array-token",
-                        "--session-store",
-                        "redis",
-                        "--redis-url",
-                        fake_redis.redis_url,
-                    ],
-                    cwd=str(repo_root),
-                    text=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                payload = self._run_serve_contract(
+                    repo_root,
+                    "session-store-redis-unavailable",
+                    "--work-dir",
+                    str(work_dir),
+                    "--bind",
+                    bind,
+                    "--management-token",
+                    "array-token",
+                    "--redis-url",
+                    fake_redis.redis_url,
                 )
+                self.assertTrue(payload.get("ready"))
 
-                try:
-                    base_url = f"http://{bind}"
-                    status_payload: dict[str, object] | None = None
-                    for _ in range(60):
-                        try:
-                            with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                                status_payload = json.loads(resp.read().decode("utf-8"))
-                            break
-                        except Exception:
-                            time.sleep(0.1)
-                    self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                    assert status_payload is not None
-                    memory_store_payload = status_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_payload, dict)
-                    assert isinstance(memory_store_payload, dict)
-                    self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
-                    self.assertEqual(memory_store_payload.get("backend"), "file")
-                    fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
-                    self.assertIn("non-string payload", fallback_reason)
-                finally:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait(timeout=3)
+                status_endpoint = payload.get("status_endpoint")
+                self.assertIsInstance(status_endpoint, dict)
+                assert isinstance(status_endpoint, dict)
+                self.assertEqual(status_endpoint.get("status"), 200)
+                status_body = status_endpoint.get("body")
+                self.assertIsInstance(status_body, dict)
+                assert isinstance(status_body, dict)
+                memory_store_payload = status_body.get("memory_store")
+                self.assertIsInstance(memory_store_payload, dict)
+                assert isinstance(memory_store_payload, dict)
+                self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
+                self.assertEqual(memory_store_payload.get("backend"), "file")
+                fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
+                self.assertIn("non-string payload", fallback_reason)
 
     def test_serve_session_store_redis_fallbacks_to_file_on_error_reply(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -1045,59 +957,34 @@ class TsRustExecutionTests(unittest.TestCase):
                 port = sock.getsockname()[1]
                 sock.close()
                 bind = f"127.0.0.1:{port}"
-
-                proc = subprocess.Popen(
-                    [
-                        "./grobot",
-                        "serve",
-                        "--work-dir",
-                        str(work_dir),
-                        "--gateway-impl",
-                        "ts",
-                        "--ts-dev-cli",
-                        "--runtime-impl",
-                        "rust",
-                        "--bind",
-                        bind,
-                        "--management-token",
-                        "error-token",
-                        "--session-store",
-                        "redis",
-                        "--redis-url",
-                        fake_redis.redis_url,
-                    ],
-                    cwd=str(repo_root),
-                    text=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                payload = self._run_serve_contract(
+                    repo_root,
+                    "session-store-redis-unavailable",
+                    "--work-dir",
+                    str(work_dir),
+                    "--bind",
+                    bind,
+                    "--management-token",
+                    "error-token",
+                    "--redis-url",
+                    fake_redis.redis_url,
                 )
+                self.assertTrue(payload.get("ready"))
 
-                try:
-                    base_url = f"http://{bind}"
-                    status_payload: dict[str, object] | None = None
-                    for _ in range(60):
-                        try:
-                            with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                                status_payload = json.loads(resp.read().decode("utf-8"))
-                            break
-                        except Exception:
-                            time.sleep(0.1)
-                    self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                    assert status_payload is not None
-                    memory_store_payload = status_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_payload, dict)
-                    assert isinstance(memory_store_payload, dict)
-                    self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
-                    self.assertEqual(memory_store_payload.get("backend"), "file")
-                    fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
-                    self.assertIn("redis error reply", fallback_reason)
-                finally:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait(timeout=3)
+                status_endpoint = payload.get("status_endpoint")
+                self.assertIsInstance(status_endpoint, dict)
+                assert isinstance(status_endpoint, dict)
+                self.assertEqual(status_endpoint.get("status"), 200)
+                status_body = status_endpoint.get("body")
+                self.assertIsInstance(status_body, dict)
+                assert isinstance(status_body, dict)
+                memory_store_payload = status_body.get("memory_store")
+                self.assertIsInstance(memory_store_payload, dict)
+                assert isinstance(memory_store_payload, dict)
+                self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
+                self.assertEqual(memory_store_payload.get("backend"), "file")
+                fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
+                self.assertIn("redis error reply", fallback_reason)
 
     def test_serve_session_store_redis_fallbacks_to_file_on_incomplete_bulk_reply(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -1132,59 +1019,34 @@ class TsRustExecutionTests(unittest.TestCase):
                 port = sock.getsockname()[1]
                 sock.close()
                 bind = f"127.0.0.1:{port}"
-
-                proc = subprocess.Popen(
-                    [
-                        "./grobot",
-                        "serve",
-                        "--work-dir",
-                        str(work_dir),
-                        "--gateway-impl",
-                        "ts",
-                        "--ts-dev-cli",
-                        "--runtime-impl",
-                        "rust",
-                        "--bind",
-                        bind,
-                        "--management-token",
-                        "incomplete-token",
-                        "--session-store",
-                        "redis",
-                        "--redis-url",
-                        fake_redis.redis_url,
-                    ],
-                    cwd=str(repo_root),
-                    text=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                payload = self._run_serve_contract(
+                    repo_root,
+                    "session-store-redis-unavailable",
+                    "--work-dir",
+                    str(work_dir),
+                    "--bind",
+                    bind,
+                    "--management-token",
+                    "incomplete-token",
+                    "--redis-url",
+                    fake_redis.redis_url,
                 )
+                self.assertTrue(payload.get("ready"))
 
-                try:
-                    base_url = f"http://{bind}"
-                    status_payload: dict[str, object] | None = None
-                    for _ in range(60):
-                        try:
-                            with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                                status_payload = json.loads(resp.read().decode("utf-8"))
-                            break
-                        except Exception:
-                            time.sleep(0.1)
-                    self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                    assert status_payload is not None
-                    memory_store_payload = status_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_payload, dict)
-                    assert isinstance(memory_store_payload, dict)
-                    self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
-                    self.assertEqual(memory_store_payload.get("backend"), "file")
-                    fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
-                    self.assertIn("connection closed before full reply", fallback_reason)
-                finally:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait(timeout=3)
+                status_endpoint = payload.get("status_endpoint")
+                self.assertIsInstance(status_endpoint, dict)
+                assert isinstance(status_endpoint, dict)
+                self.assertEqual(status_endpoint.get("status"), 200)
+                status_body = status_endpoint.get("body")
+                self.assertIsInstance(status_body, dict)
+                assert isinstance(status_body, dict)
+                memory_store_payload = status_body.get("memory_store")
+                self.assertIsInstance(memory_store_payload, dict)
+                assert isinstance(memory_store_payload, dict)
+                self.assertEqual(memory_store_payload.get("requested_backend"), "redis")
+                self.assertEqual(memory_store_payload.get("backend"), "file")
+                fallback_reason = str(memory_store_payload.get("fallback_reason") or "")
+                self.assertIn("connection closed before full reply", fallback_reason)
 
     def test_memory_lifecycle_run_returns_error_when_redis_persist_fails(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -1240,78 +1102,44 @@ class TsRustExecutionTests(unittest.TestCase):
                 sock.close()
                 bind = f"127.0.0.1:{port}"
                 token = "lifecycle-token"
-
-                proc = subprocess.Popen(
-                    [
-                        "./grobot",
-                        "serve",
-                        "--work-dir",
-                        str(work_dir),
-                        "--gateway-impl",
-                        "ts",
-                        "--ts-dev-cli",
-                        "--runtime-impl",
-                        "rust",
-                        "--bind",
-                        bind,
-                        "--management-token",
-                        token,
-                        "--session-store",
-                        "redis",
-                        "--redis-url",
-                        fake_redis.redis_url,
-                    ],
-                    cwd=str(repo_root),
-                    text=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                payload = self._run_serve_contract(
+                    repo_root,
+                    "memory-lifecycle-run-error",
+                    "--work-dir",
+                    str(work_dir),
+                    "--bind",
+                    bind,
+                    "--management-token",
+                    token,
+                    "--redis-url",
+                    fake_redis.redis_url,
+                    "--session-id",
+                    session_id,
                 )
+                self.assertTrue(payload.get("ready"))
 
-                try:
-                    base_url = f"http://{bind}"
-                    status_payload: dict[str, object] | None = None
-                    for _ in range(60):
-                        try:
-                            with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                                status_payload = json.loads(resp.read().decode("utf-8"))
-                            break
-                        except Exception:
-                            time.sleep(0.1)
-                    self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                    assert status_payload is not None
-                    memory_store_payload = status_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_payload, dict)
-                    assert isinstance(memory_store_payload, dict)
-                    self.assertEqual(memory_store_payload.get("backend"), "redis")
+                status_endpoint = payload.get("status_endpoint")
+                self.assertIsInstance(status_endpoint, dict)
+                assert isinstance(status_endpoint, dict)
+                self.assertEqual(status_endpoint.get("status"), 200)
+                status_body = status_endpoint.get("body")
+                self.assertIsInstance(status_body, dict)
+                assert isinstance(status_body, dict)
+                memory_store_payload = status_body.get("memory_store")
+                self.assertIsInstance(memory_store_payload, dict)
+                assert isinstance(memory_store_payload, dict)
+                self.assertEqual(memory_store_payload.get("backend"), "redis")
 
-                    req_lifecycle_run = urllib.request.Request(
-                        f"{base_url}/api/v1/memory/lifecycle/run",
-                        method="POST",
-                        data=json.dumps(
-                            {
-                                "dry_run": False,
-                                "sessions": [session_id],
-                            }
-                        ).encode("utf-8"),
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {token}",
-                        },
-                    )
-                    with self.assertRaises(urllib.error.HTTPError) as ctx_lifecycle_run:
-                        urllib.request.urlopen(req_lifecycle_run, timeout=1.0)
-                    self.assertEqual(ctx_lifecycle_run.exception.code, 400)
-                    lifecycle_payload = json.loads(ctx_lifecycle_run.exception.read().decode("utf-8"))
-                    self.assertEqual(lifecycle_payload.get("error"), "memory_lifecycle_failed")
-                    self.assertEqual(lifecycle_payload.get("detail_error"), "memory_store_persist_failed")
-                    self.assertIn("redis error reply", str(lifecycle_payload.get("detail", "")))
-                finally:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait(timeout=3)
+                lifecycle_run_endpoint = payload.get("lifecycle_run_endpoint")
+                self.assertIsInstance(lifecycle_run_endpoint, dict)
+                assert isinstance(lifecycle_run_endpoint, dict)
+                self.assertEqual(lifecycle_run_endpoint.get("status"), 400)
+                lifecycle_run_body = lifecycle_run_endpoint.get("body")
+                self.assertIsInstance(lifecycle_run_body, dict)
+                assert isinstance(lifecycle_run_body, dict)
+                self.assertEqual(lifecycle_run_body.get("error"), "memory_lifecycle_failed")
+                self.assertEqual(lifecycle_run_body.get("detail_error"), "memory_store_persist_failed")
+                self.assertIn("redis error reply", str(lifecycle_run_body.get("detail", "")))
 
     def test_status_prefers_ts_dev_cli_in_source_checkout(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -1371,63 +1199,31 @@ class TsRustExecutionTests(unittest.TestCase):
             sock.close()
             bind = f"127.0.0.1:{port}"
             token = "disabled-policy-token"
-
-            proc = subprocess.Popen(
-                [
-                    "./grobot",
-                    "serve",
-                    "--work-dir",
-                    str(work_dir),
-                    "--gateway-impl",
-                    "ts",
-                    "--ts-dev-cli",
-                    "--runtime-impl",
-                    "rust",
-                    "--bind",
-                    bind,
-                    "--management-token",
-                    token,
-                    "--config-read-policy",
-                    "disabled",
-                ],
-                cwd=str(repo_root),
-                text=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            payload = self._run_serve_contract(
+                repo_root,
+                "config-read-policy-disabled",
+                "--work-dir",
+                str(work_dir),
+                "--bind",
+                bind,
+                "--management-token",
+                token,
             )
+            self.assertTrue(payload.get("ready"))
 
-            try:
-                base_url = f"http://{bind}"
-                ready = False
-                for _ in range(60):
-                    try:
-                        with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                            json.loads(resp.read().decode("utf-8"))
-                        ready = True
-                        break
-                    except Exception:
-                        time.sleep(0.1)
-                self.assertTrue(ready, "serve status endpoint not ready")
+            status_endpoint = payload.get("status_endpoint")
+            self.assertIsInstance(status_endpoint, dict)
+            assert isinstance(status_endpoint, dict)
+            self.assertEqual(status_endpoint.get("status"), 200)
 
-                req_config = urllib.request.Request(
-                    f"{base_url}/api/v1/config",
-                    method="GET",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                    },
-                )
-                with self.assertRaises(urllib.error.HTTPError) as ctx_config:
-                    urllib.request.urlopen(req_config, timeout=1.0)
-                self.assertEqual(ctx_config.exception.code, 403)
-                payload = json.loads(ctx_config.exception.read().decode("utf-8"))
-                self.assertIn("disabled", str(payload.get("detail", "")))
-            finally:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=3)
+            config_endpoint = payload.get("config_endpoint")
+            self.assertIsInstance(config_endpoint, dict)
+            assert isinstance(config_endpoint, dict)
+            self.assertEqual(config_endpoint.get("status"), 403)
+            config_body = config_endpoint.get("body")
+            self.assertIsInstance(config_body, dict)
+            assert isinstance(config_body, dict)
+            self.assertIn("disabled", str(config_body.get("detail", "")))
 
     def test_reload_refreshes_memory_store_runtime_from_project_toml(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -1463,104 +1259,64 @@ class TsRustExecutionTests(unittest.TestCase):
                 sock.close()
                 bind = f"127.0.0.1:{port}"
                 token = "reload-memory-store-token"
-
-                env = os.environ.copy()
-                env["GROBOT_REDIS_URL"] = fake_redis.redis_url
-                proc = subprocess.Popen(
-                    [
-                        "./grobot",
-                        "serve",
-                        "--work-dir",
-                        str(work_dir),
-                        "--gateway-impl",
-                        "ts",
-                        "--ts-dev-cli",
-                        "--runtime-impl",
-                        "rust",
-                        "--bind",
-                        bind,
-                        "--management-token",
-                        token,
-                    ],
-                    cwd=str(repo_root),
-                    text=True,
-                    env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                payload = self._run_serve_contract(
+                    repo_root,
+                    "reload-memory-store-from-project-toml",
+                    "--work-dir",
+                    str(work_dir),
+                    "--bind",
+                    bind,
+                    "--management-token",
+                    token,
+                    "--redis-url",
+                    fake_redis.redis_url,
+                    "--project-toml-path",
+                    str(project_toml_path),
                 )
+                self.assertTrue(payload.get("ready"))
 
-                try:
-                    base_url = f"http://{bind}"
-                    status_payload: dict[str, object] | None = None
-                    for _ in range(60):
-                        try:
-                            with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=0.5) as resp:
-                                status_payload = json.loads(resp.read().decode("utf-8"))
-                            break
-                        except Exception:
-                            time.sleep(0.1)
-                    self.assertIsNotNone(status_payload, "serve status endpoint not ready")
-                    assert status_payload is not None
-                    memory_store_payload = status_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_payload, dict)
-                    assert isinstance(memory_store_payload, dict)
-                    self.assertEqual(memory_store_payload.get("backend"), "file")
-                    self.assertEqual(memory_store_payload.get("requested_backend"), "file")
+                status_before = payload.get("status_before")
+                self.assertIsInstance(status_before, dict)
+                assert isinstance(status_before, dict)
+                self.assertEqual(status_before.get("status"), 200)
+                status_before_body = status_before.get("body")
+                self.assertIsInstance(status_before_body, dict)
+                assert isinstance(status_before_body, dict)
+                memory_store_payload = status_before_body.get("memory_store")
+                self.assertIsInstance(memory_store_payload, dict)
+                assert isinstance(memory_store_payload, dict)
+                self.assertEqual(memory_store_payload.get("backend"), "file")
+                self.assertEqual(memory_store_payload.get("requested_backend"), "file")
 
-                    project_toml_path.write_text(
-                        "\n".join(
-                            [
-                                "schema_version = 1",
-                                'mode = "mvp"',
-                                "",
-                                "[execution]",
-                                'gateway_impl = "ts"',
-                                'runtime_impl = "rust"',
-                                "shadow_mode = false",
-                                "",
-                                "[runtime.storage]",
-                                'hot_cache = "redis"',
-                            ]
-                        )
-                        + "\n",
-                        encoding="utf-8",
-                    )
+                reload_endpoint = payload.get("reload_endpoint")
+                self.assertIsInstance(reload_endpoint, dict)
+                assert isinstance(reload_endpoint, dict)
+                self.assertEqual(reload_endpoint.get("status"), 200)
+                reload_body = reload_endpoint.get("body")
+                self.assertIsInstance(reload_body, dict)
+                assert isinstance(reload_body, dict)
+                self.assertEqual(reload_body.get("status"), "ok")
+                self.assertEqual(reload_body.get("reload_count"), 1)
+                reload_memory_store_payload = reload_body.get("memory_store")
+                self.assertIsInstance(reload_memory_store_payload, dict)
+                assert isinstance(reload_memory_store_payload, dict)
+                self.assertEqual(reload_memory_store_payload.get("backend"), "redis")
+                self.assertEqual(reload_memory_store_payload.get("requested_backend"), "redis")
+                self.assertEqual(reload_memory_store_payload.get("source"), f"project_toml:{project_toml_path}")
+                self.assertIsNone(reload_memory_store_payload.get("fallback_reason"))
 
-                    req_reload = urllib.request.Request(
-                        f"{base_url}/api/v1/reload",
-                        method="POST",
-                        data=b"{}",
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {token}",
-                        },
-                    )
-                    with urllib.request.urlopen(req_reload, timeout=1.0) as resp_reload:
-                        reload_payload = json.loads(resp_reload.read().decode("utf-8"))
-                    self.assertEqual(reload_payload.get("status"), "ok")
-                    self.assertEqual(reload_payload.get("reload_count"), 1)
-                    reload_memory_store_payload = reload_payload.get("memory_store")
-                    self.assertIsInstance(reload_memory_store_payload, dict)
-                    assert isinstance(reload_memory_store_payload, dict)
-                    self.assertEqual(reload_memory_store_payload.get("backend"), "redis")
-                    self.assertEqual(reload_memory_store_payload.get("requested_backend"), "redis")
-                    self.assertEqual(reload_memory_store_payload.get("source"), f"project_toml:{project_toml_path}")
-                    self.assertIsNone(reload_memory_store_payload.get("fallback_reason"))
-
-                    with urllib.request.urlopen(f"{base_url}/api/v1/status", timeout=1.0) as resp_status_after_reload:
-                        status_after_reload_payload = json.loads(resp_status_after_reload.read().decode("utf-8"))
-                    memory_store_after_reload = status_after_reload_payload.get("memory_store")
-                    self.assertIsInstance(memory_store_after_reload, dict)
-                    assert isinstance(memory_store_after_reload, dict)
-                    self.assertEqual(memory_store_after_reload.get("backend"), "redis")
-                    self.assertEqual(memory_store_after_reload.get("requested_backend"), "redis")
-                finally:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait(timeout=3)
+                status_after = payload.get("status_after")
+                self.assertIsInstance(status_after, dict)
+                assert isinstance(status_after, dict)
+                self.assertEqual(status_after.get("status"), 200)
+                status_after_body = status_after.get("body")
+                self.assertIsInstance(status_after_body, dict)
+                assert isinstance(status_after_body, dict)
+                memory_store_after_reload = status_after_body.get("memory_store")
+                self.assertIsInstance(memory_store_after_reload, dict)
+                assert isinstance(memory_store_after_reload, dict)
+                self.assertEqual(memory_store_after_reload.get("backend"), "redis")
+                self.assertEqual(memory_store_after_reload.get("requested_backend"), "redis")
 
     def test_start_message_runs_via_ts_gateway_and_rust_runtime(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]

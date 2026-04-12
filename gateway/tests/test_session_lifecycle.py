@@ -14,9 +14,9 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_ts_contract, spawn_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_ts_contract, spawn_node_contract
 
 
 def run_session_lifecycle_contract(command: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -491,31 +491,24 @@ class SessionLifecycleTests(unittest.TestCase):
 
             port = self._pick_free_tcp_port()
             bind = f"127.0.0.1:{port}"
-            process = subprocess.Popen(
-                [
-                    "./grobot",
-                    "serve",
-                    "--project",
-                    "grobot",
-                    "--work-dir",
-                    str(project_root),
+            process = spawn_node_contract(
+                "serve-daemon-contract.mjs",
+                "session-lifecycle-management-daemon",
+                (
+                    "--repo-root",
+                    str(repo_root),
                     "--project-root",
                     str(project_root),
-                    "--home",
+                    "--home-dir",
                     temp_home,
-                    "--config",
+                    "--config-path",
                     str(cfg_path),
                     "--bind",
                     bind,
                     "--management-token",
                     token,
-                    "--gateway-impl",
-                    "ts",
-                    "--runtime-impl",
-                    "rust",
-                    "--shadow-mode",
-                ],
-                cwd=str(repo_root),
+                ),
+                cwd=repo_root,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
