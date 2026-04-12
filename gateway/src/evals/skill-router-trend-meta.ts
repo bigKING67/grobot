@@ -17,6 +17,95 @@ export interface SkillRouterTrendMetaInput {
   policyBlobMatch: unknown;
 }
 
+interface ParsedCliArgs {
+  reportPath: string;
+  baseReportPath: string;
+  trendMode: string;
+  trendReason: string;
+  trendRequired: string;
+  baselineAvailable: string;
+  baseSha: string;
+  currentPolicyBlob: string;
+  basePolicyBlob: string;
+  policyBlobMatch: string;
+  printJson: boolean;
+}
+
+function readArgValue(argv: string[], index: number, flag: string): string {
+  const value = argv[index + 1] ?? "";
+  if (!value || value.startsWith("--")) {
+    throw new Error(`missing value for ${flag}`);
+  }
+  return value;
+}
+
+function parseArgs(argv: string[]): ParsedCliArgs {
+  const args: ParsedCliArgs = {
+    reportPath: "gateway/evals/data/skill_router_ci_report.json",
+    baseReportPath: "gateway/evals/data/skill_router_ci_report.base.json",
+    trendMode: "gate_only",
+    trendReason: "unknown",
+    trendRequired: "false",
+    baselineAvailable: "false",
+    baseSha: "",
+    currentPolicyBlob: "",
+    basePolicyBlob: "",
+    policyBlobMatch: "unknown",
+    printJson: false,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    switch (token) {
+      case "--report":
+        args.reportPath = readArgValue(argv, index, "--report");
+        index += 1;
+        break;
+      case "--base-report":
+        args.baseReportPath = readArgValue(argv, index, "--base-report");
+        index += 1;
+        break;
+      case "--trend-mode":
+        args.trendMode = readArgValue(argv, index, "--trend-mode");
+        index += 1;
+        break;
+      case "--trend-reason":
+        args.trendReason = readArgValue(argv, index, "--trend-reason");
+        index += 1;
+        break;
+      case "--trend-required":
+        args.trendRequired = readArgValue(argv, index, "--trend-required");
+        index += 1;
+        break;
+      case "--baseline-available":
+        args.baselineAvailable = readArgValue(argv, index, "--baseline-available");
+        index += 1;
+        break;
+      case "--base-sha":
+        args.baseSha = readArgValue(argv, index, "--base-sha");
+        index += 1;
+        break;
+      case "--current-policy-blob":
+        args.currentPolicyBlob = readArgValue(argv, index, "--current-policy-blob");
+        index += 1;
+        break;
+      case "--base-policy-blob":
+        args.basePolicyBlob = readArgValue(argv, index, "--base-policy-blob");
+        index += 1;
+        break;
+      case "--policy-blob-match":
+        args.policyBlobMatch = readArgValue(argv, index, "--policy-blob-match");
+        index += 1;
+        break;
+      case "--print-json":
+        args.printJson = true;
+        break;
+      default:
+        throw new Error(`unknown argument: ${token}`);
+    }
+  }
+  return args;
+}
+
 function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -112,4 +201,40 @@ export function buildSkillRouterTrendMeta(input: SkillRouterTrendMetaInput): Jso
     policy_hash_base: basePolicyHash ?? null,
     policy_hash_match: policyHashMatch ?? null,
   };
+}
+
+export function runCli(argv: string[]): number {
+  const args = parseArgs(argv);
+  const report = loadReport(args.reportPath);
+  const baseReport = loadReport(args.baseReportPath);
+  const trendMeta = buildSkillRouterTrendMeta({
+    currentReport: report,
+    baseReport,
+    trendMode: args.trendMode,
+    trendReason: args.trendReason,
+    trendRequired: args.trendRequired,
+    baselineAvailable: args.baselineAvailable,
+    baseSha: args.baseSha,
+    currentPolicyBlob: args.currentPolicyBlob,
+    basePolicyBlob: args.basePolicyBlob,
+    policyBlobMatch: args.policyBlobMatch,
+  });
+  report.trend_meta = trendMeta;
+  saveReport(args.reportPath, report);
+  if (args.printJson) {
+    process.stdout.write(`${JSON.stringify({ skill_router_trend_meta: trendMeta }, undefined, 0)}\n`);
+  }
+  return 0;
+}
+
+const entryScript = process.argv[1] ?? "";
+const shouldRunCli = entryScript.includes("skill-router-trend-meta");
+
+if (shouldRunCli) {
+  try {
+    process.exitCode = runCli(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`skill-router-trend-meta fatal: ${String(error)}\n`);
+    process.exitCode = 1;
+  }
 }

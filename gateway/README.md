@@ -25,12 +25,12 @@ TypeScript gateway skeleton for Grobot.
 19. `@file` mention index acceleration: in-memory file-path index with incremental refresh (added/removed diff) and trigram-based candidate selection for large repositories.
 20. End-to-end smoke test for `grobot start` tool-calling flow (`gateway/tests/test_start_tool_smoke.py`).
 21. Agent-level eval harness v0 (`gateway/evals`): optimization/holdout split, multi-variant scoring, gate enforcement, and holdout regression guard.
-22. Trace mining bootstrap (`gateway/evals/trace_mining.py`): auto-generate eval datasets from local session traces.
-23. Hill-climbing selector (`gateway/evals/hill_climb.py`): choose best variant by optimization gain under holdout non-regression constraints.
+22. Trace mining bootstrap (`gateway/src/evals/trace-mining.ts`): auto-generate eval datasets from local session traces.
+23. Hill-climbing selector (`gateway/src/evals/hill-climb.ts`): choose best variant by optimization gain under holdout non-regression constraints.
 24. CI gate mode (`runner --fail-on-gate`): fail-fast with non-zero exit when any gate/regression guard fails.
-25. Trace cleaning pipeline (`gateway/evals/trace_clean.py`): mined dataset dedupe/redaction plus review report generation.
+25. Trace cleaning pipeline (`gateway/src/evals/trace-clean.ts`): mined dataset dedupe/redaction plus review report generation.
 26. GitHub Actions gate workflow (`.github/workflows/harness-gate.yml`): runs `npm run check` + `npm run harness:gate:ci`.
-27. Unified trace pipeline (`gateway/evals/trace_pipeline.py`): one command with tunable mining/cleaning params.
+27. Unified trace pipeline (`gateway/src/evals/trace-pipeline.ts`): one command with tunable mining/cleaning params.
 28. TS migration skeleton for Agent Loop v2 (`context -> runtime -> verify -> persist`) with optional shadow comparison.
 29. TS migration options resolver (`gateway_impl` / `runtime_impl` / `shadow_mode`) for dual-track rollout.
 30. Python CLI execution-plane resolver (`CLI > env > .grobot/project.toml > default`) with `gateway_impl` / `runtime_impl` / `shadow_mode`.
@@ -44,6 +44,7 @@ TypeScript gateway skeleton for Grobot.
 38. TS `serve --ts-dev-cli` now honors config read policy precedence for `GET /api/v1/config` (`--config-read-policy` > `GROBOT_CONFIG_READ_POLICY` > `[management].config_read_policy` > `auto`), with `auto` resolving by bind host (loopback=`public`, non-loopback=`auth`).
 39. TS Redis memory store uses a minimal RESP2 client over `node:net` (currently `AUTH`/`SELECT`/`GET`/`SET EX` on `redis://`). `rediss://` is not supported in TS dev CLI yet; when Redis bootstrap fails, runtime falls back to file store and exposes `fallback_reason` in `/api/v1/status`.
 40. `POST /api/v1/reload` now refreshes memory store runtime config as well (`file/redis`, source, fallback reason) and reloads in-memory session map from the resolved backend.
+41. Skill-router eval baseline/ci-gate/report pipeline is TS-only (`gateway/src/evals/skill-router-*.ts`).
 
 ## Verification
 
@@ -62,7 +63,7 @@ python3 gateway/tests/test_hill_climb.py
 Sample harness run:
 
 ```bash
-python3 gateway/evals/runner.py \
+npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
@@ -72,7 +73,7 @@ python3 gateway/evals/runner.py \
 CI gate mode:
 
 ```bash
-python3 gateway/evals/runner.py \
+npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \

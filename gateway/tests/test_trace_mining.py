@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import json
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from evals.trace_mining import mine_trace_sessions  # noqa: E402
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -24,6 +24,11 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 class TraceMiningTests(unittest.TestCase):
+    def _run_trace_mining(self, args: list[str]) -> dict[str, object]:
+        result = run_ts_script("evals/trace-mining.ts", tuple(args))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        return json.loads(result.stdout)
+
     def test_mine_trace_sessions_builds_cases_and_runs(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -52,21 +57,35 @@ class TraceMiningTests(unittest.TestCase):
 
             cases_output = root / "cases.jsonl"
             runs_output = root / "runs.jsonl"
-            stats = mine_trace_sessions(
-                sessions_dir=sessions_dir,
-                cases_output=cases_output,
-                runs_output=runs_output,
-                variant="trace_baseline",
-                holdout_ratio=0.5,
-                seed=42,
-                max_cases=0,
-                min_chars=5,
+            payload = self._run_trace_mining(
+                [
+                    "--sessions-dir",
+                    str(sessions_dir),
+                    "--cases-output",
+                    str(cases_output),
+                    "--runs-output",
+                    str(runs_output),
+                    "--variant",
+                    "trace_baseline",
+                    "--holdout-ratio",
+                    "0.5",
+                    "--seed",
+                    "42",
+                    "--max-cases",
+                    "0",
+                    "--min-chars",
+                    "5",
+                ]
             )
+            stats = payload.get("stats")
+            self.assertIsInstance(stats, dict)
+            if not isinstance(stats, dict):
+                self.fail("stats must be object")
 
-            self.assertEqual(stats.session_files, 1)
-            self.assertEqual(stats.message_pairs, 2)
-            self.assertEqual(stats.generated_cases, 1)
-            self.assertEqual(stats.skipped_short, 1)
+            self.assertEqual(stats["session_files"], 1)
+            self.assertEqual(stats["message_pairs"], 2)
+            self.assertEqual(stats["generated_cases"], 1)
+            self.assertEqual(stats["skipped_short"], 1)
 
             cases = _read_jsonl(cases_output)
             runs = _read_jsonl(runs_output)
@@ -107,25 +126,45 @@ class TraceMiningTests(unittest.TestCase):
             case_b = root / "b.cases.jsonl"
             run_b = root / "b.runs.jsonl"
 
-            mine_trace_sessions(
-                sessions_dir=sessions_dir,
-                cases_output=case_a,
-                runs_output=run_a,
-                variant="trace_baseline",
-                holdout_ratio=0.33,
-                seed=7,
-                max_cases=0,
-                min_chars=1,
+            _ = self._run_trace_mining(
+                [
+                    "--sessions-dir",
+                    str(sessions_dir),
+                    "--cases-output",
+                    str(case_a),
+                    "--runs-output",
+                    str(run_a),
+                    "--variant",
+                    "trace_baseline",
+                    "--holdout-ratio",
+                    "0.33",
+                    "--seed",
+                    "7",
+                    "--max-cases",
+                    "0",
+                    "--min-chars",
+                    "1",
+                ]
             )
-            mine_trace_sessions(
-                sessions_dir=sessions_dir,
-                cases_output=case_b,
-                runs_output=run_b,
-                variant="trace_baseline",
-                holdout_ratio=0.33,
-                seed=7,
-                max_cases=0,
-                min_chars=1,
+            _ = self._run_trace_mining(
+                [
+                    "--sessions-dir",
+                    str(sessions_dir),
+                    "--cases-output",
+                    str(case_b),
+                    "--runs-output",
+                    str(run_b),
+                    "--variant",
+                    "trace_baseline",
+                    "--holdout-ratio",
+                    "0.33",
+                    "--seed",
+                    "7",
+                    "--max-cases",
+                    "0",
+                    "--min-chars",
+                    "1",
+                ]
             )
 
             cases_first = _read_jsonl(case_a)

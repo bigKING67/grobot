@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import json
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
-from evals.trace_clean import REDACTED_SECRET, clean_trace_dataset  # noqa: E402
+REDACTED_SECRET = "[REDACTED_SECRET]"
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -31,6 +33,11 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 class TraceCleanTests(unittest.TestCase):
+    def _run_trace_clean(self, args: list[str]) -> dict[str, object]:
+        result = run_ts_script("evals/trace-clean.ts", tuple(args))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        return json.loads(result.stdout)
+
     def test_clean_trace_dataset_dedupes_redacts_and_drops_orphan_runs(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -115,20 +122,35 @@ class TraceCleanTests(unittest.TestCase):
             _write_jsonl(runs_input, runs)
             whitelist_file.write_text("case5\n", encoding="utf-8")
 
-            report = clean_trace_dataset(
-                cases_input=cases_input,
-                runs_input=runs_input,
-                cases_output=cases_output,
-                runs_output=runs_output,
-                report_output=report_output,
-                min_prompt_chars=4,
-                min_response_chars=4,
-                max_exact_duplicates_per_prompt=1,
-                similarity_threshold=0.7,
-                max_near_duplicates_per_anchor=0,
-                whitelist_case_ids_file=whitelist_file,
-                min_cases_per_split=0,
+            _ = self._run_trace_clean(
+                [
+                    "--cases-input",
+                    str(cases_input),
+                    "--runs-input",
+                    str(runs_input),
+                    "--cases-output",
+                    str(cases_output),
+                    "--runs-output",
+                    str(runs_output),
+                    "--report-output",
+                    str(report_output),
+                    "--min-prompt-chars",
+                    "4",
+                    "--min-response-chars",
+                    "4",
+                    "--max-exact-duplicates-per-prompt",
+                    "1",
+                    "--similarity-threshold",
+                    "0.7",
+                    "--max-near-duplicates-per-anchor",
+                    "0",
+                    "--whitelist-case-ids-file",
+                    str(whitelist_file),
+                    "--min-cases-per-split",
+                    "0",
+                ]
             )
+            report = json.loads(report_output.read_text(encoding="utf-8"))
 
             self.assertEqual(report["stats"]["input_cases"], 6)
             self.assertEqual(report["stats"]["output_cases"], 3)
@@ -202,20 +224,33 @@ class TraceCleanTests(unittest.TestCase):
             _write_jsonl(cases_input, cases)
             _write_jsonl(runs_input, runs)
 
-            report = clean_trace_dataset(
-                cases_input=cases_input,
-                runs_input=runs_input,
-                cases_output=cases_output,
-                runs_output=runs_output,
-                report_output=report_output,
-                min_prompt_chars=4,
-                min_response_chars=2,
-                max_exact_duplicates_per_prompt=2,
-                similarity_threshold=0.6,
-                max_near_duplicates_per_anchor=0,
-                whitelist_case_ids_file=None,
-                min_cases_per_split=2,
+            _ = self._run_trace_clean(
+                [
+                    "--cases-input",
+                    str(cases_input),
+                    "--runs-input",
+                    str(runs_input),
+                    "--cases-output",
+                    str(cases_output),
+                    "--runs-output",
+                    str(runs_output),
+                    "--report-output",
+                    str(report_output),
+                    "--min-prompt-chars",
+                    "4",
+                    "--min-response-chars",
+                    "2",
+                    "--max-exact-duplicates-per-prompt",
+                    "2",
+                    "--similarity-threshold",
+                    "0.6",
+                    "--max-near-duplicates-per-anchor",
+                    "0",
+                    "--min-cases-per-split",
+                    "2",
+                ]
             )
+            report = json.loads(report_output.read_text(encoding="utf-8"))
 
             self.assertEqual(report["stats"]["output_cases"], 3)
             self.assertEqual(report["stats"]["kept_by_split_minimum_cases"], 1)

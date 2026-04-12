@@ -8,27 +8,39 @@
 
 ## 目录
 
-- `models.py`: case/run/gate policy schema 与解析。
-- `scoring.py`: 五维评分器（task/tool/context/safety/latency_cost）。
-- `runner.py`: harness 执行与报告输出。
-- `trace_mining.py`: 从 `.grobot/sessions` 自动抽样构建初版 eval case/run 数据。
-- `trace_clean.py`: 对抽样数据执行去重、脱敏、审核报告输出。
-- `hill_climb.py`: 在多个 variant 间执行“优化优先 + holdout 不退化”爬山选择。
-- `skill_router_eval.py`: skills 路由离线评测（准确率 + 禁用命中 + gate）。
-- `skill_router_baseline_report.py`: 从 base commit 生成 skill-router baseline 报告（封装 worktree 拉取与可用性判定，替代 workflow 内联 shell）。
-- `skill_router_ci_gate.py`: skill-router CI gate 统一入口（封装 gate/trend 执行、policy blob 对比与 `trend_meta` 回填，替代 workflow 内联 shell）。
-- `skill_router_trend_meta.py`: skill-router CI 报告的 `trend_meta` 回填工具（替代 workflow 内联 Python，统一 hash/布尔/空值归一化）。
+- `gateway/src/evals/runner.ts`: case/run/gate policy schema 解析、五维评分器（task/tool/context/safety/latency_cost）、harness 执行与报告输出（CLI 真源）。
+- `gateway/src/evals/trace-mining.ts`: 从 `.grobot/sessions` 自动抽样构建初版 eval case/run 数据（CLI 真源）。
+- `gateway/src/evals/trace-clean.ts`: 对抽样数据执行去重、脱敏、审核报告输出（CLI 真源）。
+- `gateway/src/evals/trace-pipeline.ts`: mining + cleaning 一体化 pipeline（CLI 真源）。
+- `gateway/src/evals/trace-policy-guard.ts`: trace pipeline policy 校验与 fingerprint（CLI 真源）。
+- Trace mining/cleaning/pipeline/policy-guard 已统一迁移到 TypeScript CLI 真源（`gateway/src/evals/trace-*.ts`）。
+- `gateway/src/evals/hill-climb.ts`: 在多个 variant 间执行“优化优先 + holdout 不退化”爬山选择（CLI 真源）。
+- `gateway/src/evals/skill-router-eval.ts`: skills 路由离线评测（准确率 + 禁用命中 + gate，CLI 真源）。
+- `gateway/src/evals/skill-router-baseline-report.ts`: 从 base commit 生成 skill-router baseline 报告（CLI 真源）。
+- `gateway/src/evals/skill-router-ci-gate.ts`: skill-router CI gate 统一入口（CLI 真源，封装 gate/trend 与 `trend_meta` 回填）。
+- `gateway/src/evals/skill-router-trend-meta.ts`: skill-router CI 报告 `trend_meta` 归一化工具（TS 真源）。
 - `ci_label_policy.json`: harness gate 的 `ci/*` 标签与 PR 汇总评论策略真相源。
-- `ci_label_policy_guard.py`: `ci_label_policy.json` 的 schema/字段校验与 canonical hash。
+- `gateway/src/evals/ci-label-policy-guard.ts`: `ci_label_policy.json` 的 schema/字段校验与 canonical hash（CLI 真源）。
 - `ci_label_policy_runtime.js`: GitHub Actions (`github-script`) 共享的策略加载/归一化运行时（标签与评论共用），并输出轻量 `policy shape` 诊断日志（schema/schema_version/unknown/missing fields + `severity=high|medium|low|none`）。
 - `ci_policy_drift_report.js`: `gate-summary` 中 policy drift 报告构建运行时（读取 PR 历史 comment marker、统一计算 drift transition/streak）。
 - `ci_apply_labels.js`: `apply-suggested-labels` 的自动打标运行时（读取 gate-summary outputs + policy，统一处理安全过滤、缺失标签补建与 stale 标签清理）。
 - `ci_trend_action_comment.js`: `notify-trend-action` 的评论 upsert 运行时（读取 gate-summary outputs + policy，统一处理触发、owner/action 合并、状态 marker 与 stale comment 清理）。
-- `ci_summary_export.py`: 从 `harness_ci_summary.json` 生成 `gate-summary` outputs（含 `policy_drift` 扩展字段）并写入 `GITHUB_OUTPUT`，用于替代 workflow 内联 Python。
+- `gateway/src/evals/ci-summary.ts`: 汇总 trace/skill-router/policy-drift 报告并生成 CI summary（CLI 真源）。
+- `gateway/src/evals/ci-summary-export.ts`: 从 `harness_ci_summary.json` 生成 `gate-summary` outputs（含 `policy_drift` 扩展字段）并写入 `GITHUB_OUTPUT`（CLI 真源）。
 - `gate_policy.default.json`: 默认门禁策略模板。
 - `gate_policy.ci.json`: CI 专用 gate 策略。
 - `skill_router_policy.dev.json` / `skill_router_policy.ci.json` / `skill_router_policy.prod.json`: skill-router policy 模板。
 - `fixtures/*.jsonl`: 示例数据。
+
+## Trace CLI 真相源
+
+1. 默认 trace CLI 入口以 TypeScript 实现为真源（`gateway/src/evals/*.ts`）。
+2. Python trace 兼容脚本已移除；统一使用 TS 入口命令（`npx --yes --package tsx@4.20.6 tsx gateway/src/evals/...`）。
+
+## Skill Router CLI 真相源
+
+1. 默认 skill-router CLI 入口以 TypeScript 实现为真源（`gateway/src/evals/skill-router-*.ts`）。
+2. CI 主链路（baseline/ci-gate）统一走 TS 入口。
 
 ## Case Schema (`cases.jsonl`)
 
@@ -62,7 +74,7 @@
 ## 执行
 
 ```bash
-python3 gateway/evals/runner.py \
+npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
@@ -77,7 +89,7 @@ python3 gateway/evals/runner.py \
 ## 从真实会话生成初版数据
 
 ```bash
-python3 gateway/evals/trace_mining.py \
+npm run harness:trace-mine -- \
   --sessions-dir .grobot/sessions \
   --cases-output gateway/evals/data/cases.trace.jsonl \
   --runs-output gateway/evals/data/runs.trace_baseline.jsonl \
@@ -91,7 +103,7 @@ python3 gateway/evals/trace_mining.py \
 ## 抽样数据清洗（去重 + 脱敏 + 审核报告）
 
 ```bash
-python3 gateway/evals/trace_clean.py \
+npm run harness:trace-clean -- \
   --cases-input gateway/evals/data/cases.trace.jsonl \
   --runs-input gateway/evals/data/runs.trace_baseline.jsonl \
   --cases-output gateway/evals/data/cases.trace.cleaned.jsonl \
@@ -113,7 +125,7 @@ python3 gateway/evals/trace_clean.py \
 ## 一体化 Trace Pipeline（min sample gate）
 
 ```bash
-python3 gateway/evals/trace_pipeline.py \
+npm run harness:trace-pipeline -- \
   --sessions-dir .grobot/sessions \
   --trace-cases-output gateway/evals/data/cases.trace.jsonl \
   --trace-runs-output gateway/evals/data/runs.trace_baseline.jsonl \
@@ -130,20 +142,20 @@ python3 gateway/evals/trace_pipeline.py \
 也可以直接用 policy 文件（推荐）：
 
 ```bash
-python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.dev.json
-python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.ci.json
-python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.prod.json
-python3 gateway/evals/policy_guard.py --policy gateway/evals/trace_pipeline_policy.dev.json --policy gateway/evals/trace_pipeline_policy.ci.json --policy gateway/evals/trace_pipeline_policy.prod.json
-python3 gateway/evals/policy_guard.py --policy gateway/evals/trace_pipeline_policy.dev.json --policy gateway/evals/trace_pipeline_policy.ci.json --policy gateway/evals/trace_pipeline_policy.prod.json --print-json
+npm run harness:trace-pipeline:dev
+npm run harness:trace-pipeline:ci
+npm run harness:trace-pipeline:prod
+npm run harness:trace-policy:check
+npm run harness:trace-policy:fingerprint
 ```
 
 policy 文件约束：
 
 1. 必须包含 `schema`（当前值：`trace_pipeline_policy`）。
 2. 必须包含 `schema_version`（当前值：`2`）。
-3. `policy_guard.py` 会在 CI 中校验 schema/version 兼容性。
+3. `trace-policy-guard.ts` 会在 CI 中校验 schema/version 兼容性。
 4. 历史 `schema_version=1` 会在加载时自动迁移到 `2`（默认补 `profile=custom`）。
-5. `policy_guard.py --print-json` 会输出每个 policy 的 `policy_hash`（基于 canonical policy JSON 的 `sha256`），便于追踪策略漂移。
+5. `trace-policy-guard.ts --print-json` 会输出每个 policy 的 `policy_hash`（基于 canonical policy JSON 的 `sha256`），便于追踪策略漂移。
 
 关键参数：
 
@@ -157,7 +169,7 @@ policy 文件约束：
 ## 策略爬山（自动选优）
 
 ```bash
-python3 gateway/evals/hill_climb.py \
+npx --yes --package tsx@4.20.6 tsx gateway/src/evals/hill-climb.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
@@ -175,9 +187,7 @@ python3 gateway/evals/hill_climb.py \
 ## Skill Router Eval（路由准确率）
 
 ```bash
-python3 gateway/evals/skill_router_eval.py \
-  --policy gateway/evals/skill_router_policy.dev.json \
-  --print-json
+npm run harness:skill-router:sample
 ```
 
 说明：
@@ -197,7 +207,7 @@ python3 gateway/evals/skill_router_eval.py \
 13. `harness-gate.yml` 的 `apply-suggested-labels` 与 `notify-trend-action` 会通过 `gateway/evals/ci_apply_labels.js` / `gateway/evals/ci_trend_action_comment.js` 调用 `gateway/evals/ci_label_policy_runtime.js`，读取并归一化 `gateway/evals/ci_label_policy.json`（`safe_label_pattern`、`managed_label_prefixes`、标签颜色/描述、评论 marker、`comment_trigger`、`comment_template`），避免 workflow 硬编码漂移。
 14. `apply-suggested-labels` 会调用 `ci_apply_labels.js`，在 PR 事件自动消费 `suggested_labels_json`，并额外把 runtime `policyDiagnostics.severity` 注入 `ci/policy-drift-{high|medium|low|none}` 标签；当 `policy_drift.worsening_alert=true` 时还会注入 `policy_drift.worsening_label`（默认 `ci/policy-drift-worsening`）：仅允许匹配 policy `safe_label_pattern` 的标签；缺失标签按 policy 自动创建后再打标；并会按 `managed_label_prefixes` 自动移除过时 `ci/*` 标签（仅清理托管前缀，包括历史 drift 状态），权限不足或创建/删除失败仅告警不阻断主流程。
 15. `notify-trend-action` 会调用 `ci_trend_action_comment.js`，按 policy 的 `comment_trigger` 判定是否需要评论：命中时按 `comment_marker + comment_template` upsert 汇总评论（字段顺序、label、是否 code 样式由 policy 决定）；不命中时若存在旧评论会自动删除，避免信号残留。
-16. policy 自检命令：`python3 gateway/evals/ci_label_policy_guard.py --policy gateway/evals/ci_label_policy.json --print-json`（输出 canonical hash 用于审计策略漂移）。
+16. policy 自检命令：`npm run harness:ci-label-policy:fingerprint`（输出 canonical hash 用于审计策略漂移）。
 17. `comment_trigger` 仅允许 `overall_states` 与 `trend_severities` 两个子字段；值必须在 guard 枚举内且不得重复，避免“触发条件看似存在但实际无效”的隐性漂移。
 18. `notify-trend-action` 在 workflow 中只保留薄封装，具体逻辑由 `ci_trend_action_comment.js` 处理；policy 依然采用单次读取并复用解析结果（marker/template/trigger 同源），降低脚本漂移与维护成本。
 19. runtime 诊断策略漂移时会输出 `core.warning`（包含 `severity` 分级、schema/version 与字段漂移摘要）；形状健康时输出 `core.notice`，便于在 CI 日志快速定位配置不兼容问题。
@@ -207,23 +217,21 @@ python3 gateway/evals/skill_router_eval.py \
 23. `harness_ci_summary.md` 顶部在 `policy_drift.worsening_alert=true` 时会显示告警行（含 streak 与 transition），并且 `--emit-github-annotations` 会优先输出 `Policy Drift Worsening` 注解。
 24. `Build policy drift report` 会调用 `ci_policy_drift_report.js`，并在其中复用 `ci_label_policy_runtime.js` 的共享 helper：`extractPolicyDriftStateFromCommentBody` 统一解析 PR 评论中的隐藏状态 marker，`buildPolicyDriftReport` 统一计算 `previous/current`、`worsening_streak` 与阈值告警，`buildPolicyDriftStateMarker` 统一回写 marker，避免 workflow 内联脚本重复维护同一语义。
 25. `gate-summary` 额外导出 `policy_drift_transition`、`policy_drift_transition_state`、`policy_drift_severity_delta`、`policy_drift_owner`、`policy_drift_action_hint`；`notify-trend-action` 优先消费这些结构化字段生成评论（owner/action），仅在缺失时回退 policy 默认值，减少同一语义在不同 job 的二次推导漂移。
-26. `Build skill-router baseline report (base commit)` 会调用 `skill_router_baseline_report.py` 统一处理 base SHA 解析、worktree 拉取、baseline 可用性判定与 `GITHUB_OUTPUT` 回填，避免 workflow 里重复维护临时目录与清理细节。
-27. `Run skill-router CI gate (with trend check)` 会调用 `skill_router_ci_gate.py` 统一处理 `skill_router_eval.py` 的 gate/trend 执行、policy blob 匹配判断与 `trend_meta` 写回，避免 workflow 中维护大段条件分支脚本。
+26. `Build skill-router baseline report (base commit)` 会调用 `gateway/src/evals/skill-router-baseline-report.ts` 统一处理 base SHA 解析、worktree 拉取、baseline 可用性判定与 `GITHUB_OUTPUT` 回填，避免 workflow 里重复维护临时目录与清理细节。
+27. `Run skill-router CI gate (with trend check)` 会调用 `gateway/src/evals/skill-router-ci-gate.ts` 统一处理 `gateway/src/evals/skill-router-eval.ts` 的 gate/trend 执行、policy blob 匹配判断与 `trend_meta` 写回，避免 workflow 中维护大段条件分支脚本。
 
 ## CI Gate（可直接在 GitHub Actions 阻断）
 
 ```bash
-python3 gateway/evals/runner.py \
+npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.ci.jsonl \
   --runs gateway/evals/fixtures/runs.ci.jsonl \
   --gate-policy gateway/evals/gate_policy.ci.json \
   --fail-on-gate
 
-python3 gateway/evals/skill_router_eval.py \
-  --policy gateway/evals/skill_router_policy.ci.json \
-  --fail-on-gate
+npm run harness:skill-router:gate:ci
 
-python3 gateway/evals/skill_router_eval.py \
+npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-eval.ts \
   --policy gateway/evals/skill_router_policy.ci.json \
   --compare-report gateway/evals/data/skill_router_ci_report.prev.json \
   --fail-on-trend

@@ -3,9 +3,9 @@
 This directory is the reserved home for Grobot runtime core source and build
 metadata used to produce platform binaries.
 
-Current repo still keeps the Python implementation under `gateway/grobot_cli.py`
-for development compatibility. The release pipeline should compile core binaries
-from this internal layer and publish them through platform packages:
+Current repo uses a TypeScript gateway (`gateway/src/dev-cli.ts`) and Rust runtime
+(`runtime/src/main.rs`) for source-checkout execution. The release pipeline should
+compile core binaries from this internal layer and publish them through platform packages:
 
 - `@grobot/core-darwin-arm64`
 - `@grobot/core-darwin-x64`

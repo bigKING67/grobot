@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const ZERO_SHA = "0000000000000000000000000000000000000000";
+const TSX_PACKAGE = "tsx@4.20.6";
 
 type JsonObject = Record<string, unknown>;
 
@@ -186,7 +187,7 @@ export function buildSkillRouterBaselineReport(input: BuildBaselineInput): JsonO
   const repoRoot = removeTrailingSlashes(input.repoRoot);
   const outputPath = resolvePathFromRepoRoot(repoRoot, input.outputPath);
   const policyRelPath = input.policyRelPath ?? "gateway/evals/skill_router_policy.ci.json";
-  const evalRelPath = input.evalRelPath ?? "gateway/evals/skill_router_eval.py";
+  const evalRelPath = input.evalRelPath ?? "gateway/src/evals/skill-router-eval.ts";
   const worktreeDir = `/tmp/grobot-skill-router-base-${randomSuffix()}`;
 
   const addResult = runCapture(["git", "-C", repoRoot, "worktree", "add", "--detach", worktreeDir, baseSha]);
@@ -199,27 +200,29 @@ export function buildSkillRouterBaselineReport(input: BuildBaselineInput): JsonO
     };
   }
 
-  try {
-    const evalPath = pathJoin(worktreeDir, evalRelPath);
-    const policyPath = pathJoin(worktreeDir, policyRelPath);
-    if (!existsSync(evalPath) || !existsSync(policyPath)) {
-      return {
-        available: false,
+    try {
+      const evalPath = pathJoin(worktreeDir, evalRelPath);
+      const policyPath = pathJoin(worktreeDir, policyRelPath);
+      if (!existsSync(evalPath) || !existsSync(policyPath)) {
+        return {
+          available: false,
         reason: "required_files_missing",
         base_sha: baseSha,
       };
     }
 
     mkdirSync(dirname(outputPath), { recursive: true });
-    const runResult = runCapture([
-      input.pythonBin,
-      evalPath,
-      "--policy",
-      policyPath,
-      "--print-json",
-      "--output",
-      outputPath,
-    ]);
+    const evalCommand: string[] = [];
+    const normalizedEvalPath = evalPath.toLowerCase();
+    if (normalizedEvalPath.endsWith(".ts")) {
+      evalCommand.push("npx", "--yes", "--package", TSX_PACKAGE, "tsx", evalPath);
+    } else if (normalizedEvalPath.endsWith(".js")) {
+      evalCommand.push("node", evalPath);
+    } else {
+      evalCommand.push(input.pythonBin, evalPath);
+    }
+    evalCommand.push("--policy", policyPath, "--print-json", "--output", outputPath);
+    const runResult = runCapture(evalCommand);
     const available = existsSync(outputPath);
     return {
       available,

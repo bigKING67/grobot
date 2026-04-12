@@ -46,6 +46,7 @@ declare module "node:child_process" {
 declare module "node:crypto" {
   export interface Hash {
     update(data: string): Hash;
+    digest(): Buffer;
     digest(encoding: "hex"): string;
   }
 
@@ -57,10 +58,23 @@ declare module "node:path" {
 }
 
 declare module "node:fs" {
+  export interface Stats {
+    isDirectory(): boolean;
+  }
+
+  export const constants: {
+    W_OK: number;
+  };
+
   export function readFileSync(path: number | string, encoding: "utf8"): string;
   export function writeFileSync(path: string, data: string, encoding: "utf8"): void;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
+  export function chmodSync(path: string, mode: number): void;
   export function existsSync(path: string): boolean;
+  export function readdirSync(path: string): string[];
+  export function unlinkSync(path: string): void;
+  export function statSync(path: string): Stats;
+  export function accessSync(path: string, mode?: number): void;
 }
 
 declare module "node:http" {

@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import importlib.util
-import os
-import sys
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
-from unittest import mock
+
+try:
+    from gateway.tests.ts_contract import run_ts_contract
+except ModuleNotFoundError:
+    from ts_contract import run_ts_contract
+
+HISTORY_COMPACT_HEADER = "[Compact Context Snapshot v1]"
 
 
-def load_grobot_cli_module() -> Any:
-    module_path = Path(__file__).resolve().parents[1] / "grobot_cli.py"
-    spec = importlib.util.spec_from_file_location("grobot_cli", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Failed to load module spec: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-grobot_cli = load_grobot_cli_module()
+def run_history_contract(
+    command: str,
+    payload: dict[str, object],
+    *,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run_ts_contract(
+        "history-compaction-contract.ts",
+        command,
+        ("--payload", json.dumps(payload, ensure_ascii=False)),
+        env=env,
+    )
 
 
 class HistoryCompactionTests(unittest.TestCase):
@@ -33,7 +37,10 @@ class HistoryCompactionTests(unittest.TestCase):
             {"role": "user", "content": "u2"},
             {"role": "assistant", "content": "a2"},
         ]
-        trimmed = grobot_cli.trim_history_messages(history, max_turns=3)
+        result = run_history_contract("trim", {"history": history, "max_turns": 3})
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        trimmed = payload["trimmed"]
         self.assertEqual(trimmed, history)
 
     def test_trim_history_compacts_with_priority_sections(self) -> None:
@@ -50,14 +57,16 @@ class HistoryCompactionTests(unittest.TestCase):
             {"role": "assistant", "content": "最近回复-2"},
             {"role": "user", "content": "最近输入-3"},
         ]
-
-        trimmed = grobot_cli.trim_history_messages(history, max_turns=3)
+        result = run_history_contract("trim", {"history": history, "max_turns": 3})
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        trimmed = payload["trimmed"]
         self.assertEqual(len(trimmed), 6)
         compacted = trimmed[0]
         self.assertEqual(compacted.get("role"), "assistant")
         content = str(compacted.get("content"))
 
-        self.assertIn(grobot_cli.HISTORY_COMPACT_HEADER, content)
+        self.assertIn(HISTORY_COMPACT_HEADER, content)
         self.assertIn("Architecture decision: Use event-sourcing for writes", content)
         self.assertIn("Modified files: gateway/grobot_cli.py and package.json", content)
         self.assertIn("PASS: Verification: npm run check passed", content)
@@ -75,7 +84,7 @@ class HistoryCompactionTests(unittest.TestCase):
     def test_trim_history_reuses_existing_compact_snapshot(self) -> None:
         existing_snapshot = "\n".join(
             [
-                grobot_cli.HISTORY_COMPACT_HEADER,
+                HISTORY_COMPACT_HEADER,
                 "",
                 "[Architecture decisions]",
                 "- Architecture decision: keep provider failover deterministic",
@@ -102,22 +111,16 @@ class HistoryCompactionTests(unittest.TestCase):
             {"role": "user", "content": "新输入-3"},
             {"role": "assistant", "content": "新回复-3"},
         ]
-
-        trimmed = grobot_cli.trim_history_messages(history, max_turns=3)
-        compacted = str(trimmed[0].get("content"))
-        self.assertEqual(compacted.count(grobot_cli.HISTORY_COMPACT_HEADER), 1)
+        result = run_history_contract("trim", {"history": history, "max_turns": 3})
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        compacted = str(payload["trimmed"][0]["content"])
+        self.assertEqual(compacted.count(HISTORY_COMPACT_HEADER), 1)
         self.assertIn("Architecture decision: keep provider failover deterministic", compacted)
         self.assertIn("PASS: npm run check passed", compacted)
 
     def test_save_history_persists_structured_compact_memory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            store = grobot_cli.SessionStoreConfig(
-                backend="file",
-                redis_url=None,
-                ttl_secs=1800,
-                root=Path(temp_dir) / ".grobot" / "sessions",
-            )
-            session_key = "feishu:test:dm:workspace"
             history = [
                 {"role": "user", "content": "Architecture decision: API contract fixed v2"},
                 {"role": "assistant", "content": "Modified files: gateway/grobot_cli.py"},
@@ -128,22 +131,21 @@ class HistoryCompactionTests(unittest.TestCase):
                 {"role": "user", "content": "最新输入-2"},
                 {"role": "assistant", "content": "最新回复-2"},
             ]
-
-            warnings = grobot_cli.save_history_to_store(store, session_key, history, max_turns=3)
-            self.assertEqual(warnings, [])
-
-            payload = grobot_cli.read_json_file(grobot_cli.session_file_path(store, session_key))
-            self.assertIsInstance(payload, dict)
-            if not isinstance(payload, dict):
-                return
-            compact_memory = payload.get("compact_memory")
-            self.assertIsInstance(compact_memory, dict)
-            if not isinstance(compact_memory, dict):
-                return
-            sections = compact_memory.get("sections")
-            self.assertIsInstance(sections, dict)
-            if not isinstance(sections, dict):
-                return
+            result = run_history_contract(
+                "save-history",
+                {
+                    "root": str(Path(temp_dir) / ".grobot" / "sessions"),
+                    "session_key": "feishu:test:dm:workspace",
+                    "history": history,
+                    "max_turns": 3,
+                },
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            body = json.loads(result.stdout)
+            self.assertEqual(body["warnings"], [])
+            payload = body["payload"]
+            compact_memory = payload["compact_memory"]
+            sections = compact_memory["sections"]
             architecture = sections.get("Architecture decisions")
             modified = sections.get("Modified files and key changes")
             verification = sections.get("Current verification status")
@@ -157,7 +159,7 @@ class HistoryCompactionTests(unittest.TestCase):
     def test_retrieval_block_prioritizes_architecture_and_relevant_items(self) -> None:
         snapshot = "\n".join(
             [
-                grobot_cli.HISTORY_COMPACT_HEADER,
+                HISTORY_COMPACT_HEADER,
                 "",
                 "[Architecture decisions]",
                 "- Architecture decision: keep failover deterministic with sticky session key",
@@ -180,13 +182,17 @@ class HistoryCompactionTests(unittest.TestCase):
             {"role": "user", "content": "最近聊过 failover 和 trim 方案"},
             {"role": "assistant", "content": "确认过，继续"},
         ]
-        retrieved = grobot_cli.build_retrieved_context_block(
-            history,
-            user_prompt="现在优化 failover 的 trim_history_messages 架构",
+        result = run_history_contract(
+            "retrieved-block",
+            {
+                "history": history,
+                "user_prompt": "现在优化 failover 的 trim_history_messages 架构",
+                "retrieval_config": None,
+            },
         )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        retrieved = json.loads(result.stdout)["block"]
         self.assertIsInstance(retrieved, str)
-        if not isinstance(retrieved, str):
-            return
         self.assertIn("[Retrieved Context]", retrieved)
         self.assertIn("ARCH:", retrieved)
         self.assertIn("FILES:", retrieved)
@@ -199,65 +205,60 @@ class HistoryCompactionTests(unittest.TestCase):
             {"role": "user", "content": "支付接口回滚策略按蓝绿发布"},
             {"role": "assistant", "content": "确认"},
         ]
-        config = grobot_cli.ContextRetrievalConfig(
-            enabled=True,
-            candidate_limit=8,
-            selected_limit=4,
-            embedding=grobot_cli.RetrievalRemoteConfig(
-                base_url="https://example.invalid/v1",
-                api_key="test-key",
-                model="embed-test",
-            ),
-            rerank=grobot_cli.RetrievalRemoteConfig(
-                base_url="https://example.invalid/v1",
-                api_key="test-key",
-                model="rerank-test",
-            ),
+        config = {
+            "enabled": True,
+            "candidate_limit": 8,
+            "selected_limit": 4,
+            "embedding": {
+                "base_url": "https://example.invalid/v1",
+                "api_key": "test-key",
+                "model": "embed-test",
+            },
+            "rerank": {
+                "base_url": "https://example.invalid/v1",
+                "api_key": "test-key",
+                "model": "rerank-test",
+            },
+        }
+        result = run_history_contract(
+            "retrieved-block",
+            {
+                "history": history,
+                "user_prompt": "help me optimize support chatbot workflow",
+                "retrieval_config": config,
+            },
         )
-
-        with (
-            mock.patch.object(
-                grobot_cli,
-                "compute_embedding_similarity_scores",
-                return_value={0: 0.95},
-            ),
-            mock.patch.object(
-                grobot_cli,
-                "compute_rerank_scores",
-                return_value={0: 0.99},
-            ),
-        ):
-            retrieved = grobot_cli.build_retrieved_context_block(
-                history,
-                user_prompt="help me optimize support chatbot workflow",
-                retrieval_config=config,
-            )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        retrieved = json.loads(result.stdout)["block"]
         self.assertIsInstance(retrieved, str)
-        if not isinstance(retrieved, str):
-            return
         self.assertIn("USER: 客户支持流程v2改成状态机驱动", retrieved)
 
     def test_resolve_context_retrieval_config_from_env(self) -> None:
-        with mock.patch.dict(
-            os.environ,
+        result = run_history_contract(
+            "resolve-config",
             {
+                "project_toml": {},
+                "global_toml": {},
+                "fallback_api_key": None,
+            },
+            env={
                 "GROBOT_RETRIEVAL_API_KEY": "env-key",
                 "GROBOT_EMBEDDING_MODEL": "Qwen/Qwen3-Embedding-4B",
                 "GROBOT_RERANK_MODEL": "Qwen/Qwen3-Reranker-8B",
                 "GROBOT_RETRIEVAL_BASE_URL": "https://api.siliconflow.cn/v1",
             },
-            clear=False,
-        ):
-            config = grobot_cli.resolve_context_retrieval_config({}, fallback_api_key=None)
-        self.assertTrue(config.enabled)
-        self.assertIsNotNone(config.embedding)
-        self.assertIsNotNone(config.rerank)
-        if config.embedding is not None and config.rerank is not None:
-            self.assertEqual(config.embedding.model, "Qwen/Qwen3-Embedding-4B")
-            self.assertEqual(config.rerank.model, "Qwen/Qwen3-Reranker-8B")
-        self.assertEqual(config.source, "env")
-        self.assertEqual(config.embedding_source, "env")
-        self.assertEqual(config.rerank_source, "env")
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        config = json.loads(result.stdout)
+        self.assertTrue(config["enabled"])
+        self.assertIsNotNone(config["embedding"])
+        self.assertIsNotNone(config["rerank"])
+        if config["embedding"] is not None and config["rerank"] is not None:
+            self.assertEqual(config["embedding"]["model"], "Qwen/Qwen3-Embedding-4B")
+            self.assertEqual(config["rerank"]["model"], "Qwen/Qwen3-Reranker-8B")
+        self.assertEqual(config["source"], "env")
+        self.assertEqual(config["embedding_source"], "env")
+        self.assertEqual(config["rerank_source"], "env")
 
     def test_resolve_context_retrieval_config_from_global_config(self) -> None:
         global_toml = {
@@ -275,27 +276,28 @@ class HistoryCompactionTests(unittest.TestCase):
                 },
             }
         }
-        config = grobot_cli.resolve_context_retrieval_config(
-            {},
-            fallback_api_key=None,
-            global_toml=global_toml,
+        result = run_history_contract(
+            "resolve-config",
+            {"project_toml": {}, "global_toml": global_toml, "fallback_api_key": None},
         )
-        self.assertTrue(config.enabled)
-        self.assertEqual(config.source, "global")
-        self.assertEqual(config.selected_limit, 6)
-        self.assertEqual(config.selected_limit_source, "global")
-        self.assertEqual(config.candidate_limit, 12)
-        self.assertEqual(config.candidate_limit_source, "global")
-        self.assertEqual(config.shared_base_url, "https://global.example/v1")
-        self.assertEqual(config.shared_base_url_source, "global")
-        self.assertEqual(config.shared_api_key_source, "global")
-        self.assertIsNotNone(config.embedding)
-        self.assertIsNotNone(config.rerank)
-        if config.embedding is not None and config.rerank is not None:
-            self.assertEqual(config.embedding.model, "embed-global")
-            self.assertEqual(config.rerank.model, "rerank-global")
-        self.assertEqual(config.embedding_source, "global")
-        self.assertEqual(config.rerank_source, "global")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        config = json.loads(result.stdout)
+        self.assertTrue(config["enabled"])
+        self.assertEqual(config["source"], "global")
+        self.assertEqual(config["selected_limit"], 6)
+        self.assertEqual(config["selected_limit_source"], "global")
+        self.assertEqual(config["candidate_limit"], 12)
+        self.assertEqual(config["candidate_limit_source"], "global")
+        self.assertEqual(config["shared_base_url"], "https://global.example/v1")
+        self.assertEqual(config["shared_base_url_source"], "global")
+        self.assertEqual(config["shared_api_key_source"], "global")
+        self.assertIsNotNone(config["embedding"])
+        self.assertIsNotNone(config["rerank"])
+        if config["embedding"] is not None and config["rerank"] is not None:
+            self.assertEqual(config["embedding"]["model"], "embed-global")
+            self.assertEqual(config["rerank"]["model"], "rerank-global")
+        self.assertEqual(config["embedding_source"], "global")
+        self.assertEqual(config["rerank_source"], "global")
 
     def test_resolve_context_retrieval_config_project_overrides_global(self) -> None:
         project_toml = {
@@ -311,6 +313,7 @@ class HistoryCompactionTests(unittest.TestCase):
                 "selected_limit": 3,
                 "candidate_limit": 10,
                 "api_key": "global-shared-key",
+                "base_url": "https://global.example/v1",
                 "embedding": {
                     "model": "embed-global",
                 },
@@ -319,42 +322,44 @@ class HistoryCompactionTests(unittest.TestCase):
                 },
             }
         }
-        config = grobot_cli.resolve_context_retrieval_config(
-            project_toml,
-            fallback_api_key=None,
-            global_toml=global_toml,
+        result = run_history_contract(
+            "resolve-config",
+            {"project_toml": project_toml, "global_toml": global_toml, "fallback_api_key": None},
         )
-        self.assertTrue(config.enabled)
-        self.assertEqual(config.source, "project")
-        self.assertEqual(config.selected_limit, 5)
-        self.assertEqual(config.selected_limit_source, "project")
-        self.assertEqual(config.candidate_limit, 10)
-        self.assertEqual(config.candidate_limit_source, "global")
-        self.assertIsNotNone(config.embedding)
-        self.assertIsNotNone(config.rerank)
-        if config.embedding is not None and config.rerank is not None:
-            self.assertEqual(config.embedding.model, "embed-project")
-            self.assertEqual(config.rerank.model, "rerank-global")
-        self.assertEqual(config.embedding_source, "project")
-        self.assertEqual(config.rerank_source, "global")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        config = json.loads(result.stdout)
+        self.assertTrue(config["enabled"])
+        self.assertEqual(config["source"], "project")
+        self.assertEqual(config["selected_limit"], 5)
+        self.assertEqual(config["selected_limit_source"], "project")
+        self.assertEqual(config["candidate_limit"], 10)
+        self.assertEqual(config["candidate_limit_source"], "global")
+        self.assertIsNotNone(config["embedding"])
+        self.assertIsNotNone(config["rerank"])
+        if config["embedding"] is not None and config["rerank"] is not None:
+            self.assertEqual(config["embedding"]["model"], "embed-project")
+            self.assertEqual(config["rerank"]["model"], "rerank-global")
+        self.assertEqual(config["embedding_source"], "project")
+        self.assertEqual(config["rerank_source"], "global")
 
     def test_resolve_context_retrieval_config_disabled_sets_remote_reason(self) -> None:
-        config = grobot_cli.resolve_context_retrieval_config(
-            {"context_retrieval": {"enabled": False}},
-            fallback_api_key="provider-key",
+        result = run_history_contract(
+            "resolve-config",
+            {
+                "project_toml": {"context_retrieval": {"enabled": False}},
+                "global_toml": {},
+                "fallback_api_key": "provider-key",
+            },
         )
-        self.assertFalse(config.enabled)
-        self.assertIsNone(config.embedding)
-        self.assertIsNone(config.rerank)
-        self.assertEqual(config.embedding_disabled_reason, "context_retrieval_disabled")
-        self.assertEqual(config.rerank_disabled_reason, "context_retrieval_disabled")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        config = json.loads(result.stdout)
+        self.assertFalse(config["enabled"])
+        self.assertIsNone(config["embedding"])
+        self.assertIsNone(config["rerank"])
+        self.assertEqual(config["embedding_disabled_reason"], "context_retrieval_disabled")
+        self.assertEqual(config["rerank_disabled_reason"], "context_retrieval_disabled")
 
     def test_compute_embedding_similarity_scores_parses_indexed_vectors(self) -> None:
-        remote = grobot_cli.RetrievalRemoteConfig(
-            base_url="https://example.invalid/v1",
-            api_key="k",
-            model="m",
-        )
         candidates = [
             {"id": 0, "text": "alpha"},
             {"id": 1, "text": "beta"},
@@ -366,18 +371,17 @@ class HistoryCompactionTests(unittest.TestCase):
                 {"index": 2, "embedding": [0.1, 0.9]},
             ]
         }
-        with mock.patch.object(grobot_cli, "http_json_or_raise", return_value=mocked_response):
-            scores = grobot_cli.compute_embedding_similarity_scores("query", candidates, remote)
-        self.assertIn(0, scores)
-        self.assertIn(1, scores)
-        self.assertGreater(scores[0], scores[1])
+        result = run_history_contract(
+            "embedding-scores",
+            {"candidates": candidates, "response": mocked_response},
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        scores = json.loads(result.stdout)["scores"]
+        self.assertIn("0", scores)
+        self.assertIn("1", scores)
+        self.assertGreater(scores["0"], scores["1"])
 
     def test_compute_rerank_scores_supports_results_or_data(self) -> None:
-        remote = grobot_cli.RetrievalRemoteConfig(
-            base_url="https://example.invalid/v1",
-            api_key="k",
-            model="m",
-        )
         candidates = [
             {"id": 0, "text": "alpha"},
             {"id": 1, "text": "beta"},
@@ -390,13 +394,17 @@ class HistoryCompactionTests(unittest.TestCase):
                 {"index": 1, "relevance_score": 0.3},
             ]
         }
-        with mock.patch.object(grobot_cli, "http_json_or_raise", return_value=mocked_response):
-            scores = grobot_cli.compute_rerank_scores("query", candidates, remote)
-        self.assertIn(0, scores)
-        self.assertIn(1, scores)
-        self.assertIn(2, scores)
-        self.assertGreater(scores[2], scores[0])
-        self.assertGreater(scores[0], scores[1])
+        result = run_history_contract(
+            "rerank-scores",
+            {"candidates": candidates, "response": mocked_response},
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        scores = json.loads(result.stdout)["scores"]
+        self.assertIn("0", scores)
+        self.assertIn("1", scores)
+        self.assertIn("2", scores)
+        self.assertGreater(scores["2"], scores["0"])
+        self.assertGreater(scores["0"], scores["1"])
 
 
 if __name__ == "__main__":

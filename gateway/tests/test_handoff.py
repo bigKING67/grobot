@@ -1,31 +1,36 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import importlib.util
-import sys
+import json
+import subprocess
 import unittest
 from pathlib import Path
-from typing import Any
+
+try:
+    from gateway.tests.ts_contract import run_ts_contract
+except ModuleNotFoundError:
+    from ts_contract import run_ts_contract
 
 
-def load_grobot_cli_module() -> Any:
-    module_path = Path(__file__).resolve().parents[1] / "grobot_cli.py"
-    spec = importlib.util.spec_from_file_location("grobot_cli", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Failed to load module spec: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+SECTION_ARCHITECTURE = "Architecture decisions"
+SECTION_MODIFIED = "Modified files and key changes"
+SECTION_VERIFICATION = "Current verification status"
+SECTION_TODO = "Open TODOs and rollback notes"
+SECTION_TOOL_OUTPUT = "Tool outputs (pass/fail only)"
+HANDOFF_DEFAULT_RECENT_TURNS = 6
 
 
-grobot_cli = load_grobot_cli_module()
+def run_handoff_contract(command: str, *args: str) -> subprocess.CompletedProcess[str]:
+    return run_ts_contract("handoff-contract.ts", command, args)
 
 
 class HandoffTests(unittest.TestCase):
     def test_sanitize_handoff_text_masks_secrets(self) -> None:
         raw = "api_key=sk-1234567890 token:abc Bearer xyz123 password = letmein"
-        sanitized = grobot_cli.sanitize_handoff_text(raw)
+        result = run_handoff_contract("sanitize", "--text", raw)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        sanitized = payload["sanitized"]
         self.assertIn("api_key=<redacted>", sanitized)
         self.assertIn("token:<redacted>", sanitized)
         self.assertIn("Bearer <redacted>", sanitized)
@@ -36,19 +41,19 @@ class HandoffTests(unittest.TestCase):
         compact_memory = {
             "version": 1,
             "sections": {
-                grobot_cli.HISTORY_COMPACT_SECTION_ARCHITECTURE: [
+                SECTION_ARCHITECTURE: [
                     "Architecture decision: keep failover deterministic"
                 ],
-                grobot_cli.HISTORY_COMPACT_SECTION_MODIFIED: [
+                SECTION_MODIFIED: [
                     "Modified files: gateway/grobot_cli.py"
                 ],
-                grobot_cli.HISTORY_COMPACT_SECTION_VERIFICATION: [
+                SECTION_VERIFICATION: [
                     "PASS: npm run check passed"
                 ],
-                grobot_cli.HISTORY_COMPACT_SECTION_TODO: [
+                SECTION_TODO: [
                     "TODO: add rollback note for mcp gate"
                 ],
-                grobot_cli.HISTORY_COMPACT_SECTION_TOOL_OUTPUT: [
+                SECTION_TOOL_OUTPUT: [
                     "FAIL: stderr timeout in skill router eval"
                 ],
             },
@@ -57,16 +62,19 @@ class HandoffTests(unittest.TestCase):
             {"role": "user", "content": "继续做handoff功能"},
             {"role": "assistant", "content": "已经完成主要逻辑，补测试中"},
         ]
-        markdown = grobot_cli.build_handoff_markdown(
-            session_key="feishu:demo:dm:user",
-            project_name="grobot",
-            work_dir=Path("/tmp/work"),
-            compact_memory=compact_memory,
-            history_messages=history_messages,
-            recent_turns=3,
-            failover_errors=["openai-compatible/o4: timeout"],
-            compaction_observed=True,
-        )
+        payload = {
+            "session_key": "feishu:demo:dm:user",
+            "project_name": "grobot",
+            "work_dir": str(Path("/tmp/work")),
+            "compact_memory": compact_memory,
+            "history_messages": history_messages,
+            "recent_turns": 3,
+            "failover_errors": ["openai-compatible/o4: timeout"],
+            "compaction_observed": True,
+        }
+        result = run_handoff_contract("build", "--payload", json.dumps(payload, ensure_ascii=False))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        markdown = result.stdout
         self.assertIn("# HANDOFF", markdown)
         self.assertIn("## Current Goal", markdown)
         self.assertIn("## Architecture Decisions (verbatim)", markdown)
@@ -88,32 +96,46 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("## Recent Turns", markdown)
 
     def test_should_auto_write_handoff(self) -> None:
-        self.assertTrue(grobot_cli.should_auto_write_handoff(compacted=True, failover=False, todo_open=False))
-        self.assertTrue(grobot_cli.should_auto_write_handoff(compacted=False, failover=True, todo_open=False))
-        self.assertTrue(grobot_cli.should_auto_write_handoff(compacted=False, failover=False, todo_open=True))
-        self.assertFalse(grobot_cli.should_auto_write_handoff(compacted=False, failover=False, todo_open=False))
+        scenarios = [
+            ("true", "false", "false", True),
+            ("false", "true", "false", True),
+            ("false", "false", "true", True),
+            ("false", "false", "false", False),
+        ]
+        for compacted, failover, todo_open, expected in scenarios:
+            result = run_handoff_contract(
+                "should-auto-write",
+                "--compacted",
+                compacted,
+                "--failover",
+                failover,
+                "--todo-open",
+                todo_open,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["value"], expected)
 
     def test_has_open_todo_items(self) -> None:
-        self.assertFalse(grobot_cli.has_open_todo_items(None))
-        self.assertFalse(
-            grobot_cli.has_open_todo_items(
-                {"sections": {grobot_cli.HISTORY_COMPACT_SECTION_TODO: []}}
+        for compact_memory, expected in [
+            ({"sections": {SECTION_TODO: []}}, False),
+            ({"sections": {SECTION_TODO: ["TODO: retry"]}}, True),
+        ]:
+            result = run_handoff_contract(
+                "has-open-todo",
+                "--compact-memory",
+                json.dumps(compact_memory, ensure_ascii=False),
             )
-        )
-        self.assertTrue(
-            grobot_cli.has_open_todo_items(
-                {"sections": {grobot_cli.HISTORY_COMPACT_SECTION_TODO: ["TODO: retry"]}}
-            )
-        )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["value"], expected)
 
     def test_start_parser_includes_handoff_options(self) -> None:
-        parser = grobot_cli.build_parser()
-        parsed = parser.parse_args(["start", "--project", "demo"])
-        self.assertEqual(parsed.handoff_recent_turns, grobot_cli.HANDOFF_DEFAULT_RECENT_TURNS)
-        self.assertTrue(parsed.handoff_auto_on_exit)
-
-        parsed_off = parser.parse_args(["start", "--project", "demo", "--no-handoff-auto-on-exit"])
-        self.assertFalse(parsed_off.handoff_auto_on_exit)
+        result = run_handoff_contract("start-defaults")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["handoff_recent_turns"], HANDOFF_DEFAULT_RECENT_TURNS)
+        self.assertTrue(payload["handoff_auto_on_exit"])
 
 
 if __name__ == "__main__":

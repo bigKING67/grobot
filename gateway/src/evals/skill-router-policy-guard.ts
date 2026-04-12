@@ -531,9 +531,14 @@ function main(): number {
   return hasError ? 1 : 0;
 }
 
-try {
-  process.exitCode = main();
-} catch (error) {
-  process.stderr.write(`skill-router-policy-guard fatal: ${String(error)}\n`);
-  process.exitCode = 1;
+const entryScript = process.argv[1] ?? "";
+const shouldRunCli = entryScript.includes("skill-router-policy-guard");
+
+if (shouldRunCli) {
+  try {
+    process.exitCode = main();
+  } catch (error) {
+    process.stderr.write(`skill-router-policy-guard fatal: ${String(error)}\n`);
+    process.exitCode = 1;
+  }
 }

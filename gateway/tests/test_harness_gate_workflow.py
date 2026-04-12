@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 
 class HarnessGateWorkflowContractTests(unittest.TestCase):
     WORKFLOW_PATH = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "harness-gate.yml"
-    SKILL_ROUTER_CI_GATE_PATH = Path(__file__).resolve().parents[1] / "evals" / "skill_router_ci_gate.py"
+    SKILL_ROUTER_CI_GATE_PATH = Path(__file__).resolve().parents[1] / "src" / "evals" / "skill-router-ci-gate.ts"
     POLICY_RUNTIME_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_label_policy_runtime.js"
     POLICY_DRIFT_RUNTIME_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_policy_drift_report.js"
     APPLY_LABELS_RUNTIME_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_apply_labels.js"
@@ -674,12 +674,12 @@ class HarnessGateWorkflowContractTests(unittest.TestCase):
 
     def test_skill_router_ci_gate_runtime_keeps_trend_logic(self) -> None:
         runtime = self._read_skill_router_ci_gate_runtime()
-        self.assertIn("resolve_base_sha(", runtime)
-        self.assertIn("build_skill_router_trend_meta(", runtime)
-        self.assertIn('trend_reason = "policy_blob_mismatch"', runtime)
-        self.assertIn('trend_reason = "policy_blob_unavailable"', runtime)
+        self.assertIn("resolveBaseSha({", runtime)
+        self.assertIn("buildSkillRouterTrendMeta({", runtime)
+        self.assertIn('trendReason = "policy_blob_mismatch";', runtime)
+        self.assertIn('trendReason = "policy_blob_unavailable";', runtime)
         self.assertIn("--fail-on-trend", runtime)
-        self.assertIn("phase\": \"trend_eval\"", runtime)
+        self.assertIn('phase: "trend_eval"', runtime)
 
     def test_skill_router_baseline_step_uses_dedicated_script(self) -> None:
         workflow = self._read_workflow()

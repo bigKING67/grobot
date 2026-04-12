@@ -4,6 +4,7 @@ import { resolveBaseSha } from "./skill-router-baseline-report";
 import { buildSkillRouterTrendMeta, loadReport, saveReport } from "./skill-router-trend-meta";
 
 type JsonObject = Record<string, unknown>;
+const TSX_PACKAGE = "tsx@4.20.6";
 
 interface ParsedCliArgs {
   eventName: string;
@@ -116,16 +117,23 @@ function runEval(input: {
   outputPath: string;
   compareReportPath?: string;
 }): number {
-  const command: string[] = [
-    input.pythonBin,
-    input.evalScriptPath,
+  const extension = input.evalScriptPath.toLowerCase();
+  const command: string[] = [];
+  if (extension.endsWith(".ts")) {
+    command.push("npx", "--yes", "--package", TSX_PACKAGE, "tsx", input.evalScriptPath);
+  } else if (extension.endsWith(".js")) {
+    command.push("node", input.evalScriptPath);
+  } else {
+    command.push(input.pythonBin, input.evalScriptPath);
+  }
+  command.push(
     "--policy",
     input.policyPath,
     "--fail-on-gate",
     "--print-json",
     "--output",
     input.outputPath,
-  ];
+  );
   if (typeof input.compareReportPath === "string" && input.compareReportPath.length > 0) {
     command.push("--compare-report", input.compareReportPath, "--fail-on-trend");
   }
@@ -142,7 +150,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   let baseReportPath = "gateway/evals/data/skill_router_ci_report.base.json";
   let policyPath = "gateway/evals/skill_router_policy.ci.json";
   let policyBlobPath = "gateway/evals/skill_router_policy.ci.json";
-  let evalScriptPath = "gateway/evals/skill_router_eval.py";
+  let evalScriptPath = "gateway/src/evals/skill-router-eval.ts";
   let pythonBin = "python3";
   let printJson = false;
 

@@ -541,8 +541,8 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   return { policies, printJson };
 }
 
-function main(): number {
-  const args = parseArgs(process.argv.slice(2));
+export function runCli(argv: string[]): number {
+  const args = parseArgs(argv);
   const results: JsonObject[] = [];
   let hasError = false;
   for (const policyPath of args.policies) {
@@ -561,9 +561,14 @@ function main(): number {
   return hasError ? 1 : 0;
 }
 
-try {
-  process.exitCode = main();
-} catch (error) {
-  process.stderr.write(`trace-policy-guard fatal: ${String(error)}\n`);
-  process.exitCode = 1;
+const entryScript = process.argv[1] ?? "";
+const shouldRunCli = entryScript.includes("trace-policy-guard");
+
+if (shouldRunCli) {
+  try {
+    process.exitCode = runCli(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`trace-policy-guard fatal: ${String(error)}\n`);
+    process.exitCode = 1;
+  }
 }

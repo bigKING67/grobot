@@ -57,11 +57,19 @@ status_line() {
 }
 
 json_escape() {
-  python3 - <<'PY' "$1"
-import json
-import sys
-print(json.dumps(sys.argv[1]))
-PY
+  local raw="$1"
+  if command -v node >/dev/null 2>&1; then
+    node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$raw"
+    return
+  fi
+
+  # Shell fallback for environments without node in PATH.
+  raw="${raw//\\/\\\\}"
+  raw="${raw//\"/\\\"}"
+  raw="${raw//$'\n'/\\n}"
+  raw="${raw//$'\r'/\\r}"
+  raw="${raw//$'\t'/\\t}"
+  printf '"%s"' "$raw"
 }
 
 GROBOT_HOME_DIR="${GROBOT_HOME:-${HOME}/.grobot}"
@@ -105,7 +113,7 @@ NODE_BIN=""
 if [ -n "$CORE_PACKAGE" ]; then
   NODE_BIN="${REPO_ROOT}/node_modules/${CORE_PACKAGE}/bin/grobot-core"
 fi
-DEV_CLI="${REPO_ROOT}/gateway/grobot_cli.py"
+TS_DEV_CLI_RUNNER="${REPO_ROOT}/scripts/run-ts-dev-cli.sh"
 
 ACTIVE_SOURCE="none"
 ACTIVE_PATH=""
@@ -121,9 +129,9 @@ elif [ -x "$HOME_PLATFORM_BIN" ]; then
 elif [ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ]; then
   ACTIVE_SOURCE="node_modules"
   ACTIVE_PATH="$NODE_BIN"
-elif [ -f "$DEV_CLI" ]; then
-  ACTIVE_SOURCE="python-fallback"
-  ACTIVE_PATH="$DEV_CLI"
+elif [ -x "$TS_DEV_CLI_RUNNER" ]; then
+  ACTIVE_SOURCE="source:ts-dev-cli"
+  ACTIVE_PATH="$TS_DEV_CLI_RUNNER"
 fi
 
 ACTIVE_IS_STUB=0
@@ -156,7 +164,7 @@ if [ "$OUTPUT_JSON" -eq 1 ]; then
   printf '    "home_current_bin": %s,\n' "$(json_escape "$HOME_CURRENT_BIN")"
   printf '    "home_platform_bin": %s,\n' "$(json_escape "$HOME_PLATFORM_BIN")"
   printf '    "node_bin": %s,\n' "$(json_escape "${NODE_BIN:-}")"
-  printf '    "dev_cli": %s\n' "$(json_escape "$DEV_CLI")"
+  printf '    "ts_dev_cli_runner": %s\n' "$(json_escape "$TS_DEV_CLI_RUNNER")"
   printf '  }\n'
   printf '}\n'
 else
@@ -189,10 +197,10 @@ else
   else
     echo "  [skip] node_modules/@grobot/core-*/bin/grobot-core: platform unsupported"
   fi
-  if [ -f "$DEV_CLI" ]; then
-    echo "  [ok]   source fallback: $DEV_CLI"
+  if [ -x "$TS_DEV_CLI_RUNNER" ]; then
+    echo "  [ok]   source ts-dev-cli runner: $TS_DEV_CLI_RUNNER"
   else
-    echo "  [miss] source fallback: $DEV_CLI"
+    echo "  [miss] source ts-dev-cli runner: $TS_DEV_CLI_RUNNER"
   fi
 fi
 

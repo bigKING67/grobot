@@ -3,25 +3,18 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+try:
+    from gateway.tests.ts_contract import run_ts_contract
+except ModuleNotFoundError:
+    from ts_contract import run_ts_contract
 
-def run_runtime_paths_contract(command: str, *args: str) -> subprocess.CompletedProcess[str]:
-    script_path = Path(__file__).resolve().parents[1] / "src" / "contracts" / "runtime-paths-contract.ts"
-    cmd = [
-        "npx",
-        "--yes",
-        "--package",
-        "tsx@4.20.6",
-        "tsx",
-        str(script_path),
-        command,
-        *args,
-    ]
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+def run_runtime_paths_contract(command: str, *args: str):
+    return run_ts_contract("runtime-paths-contract.ts", command, args)
 
 
 class RuntimePathsTests(unittest.TestCase):

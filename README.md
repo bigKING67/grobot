@@ -88,7 +88,7 @@ grobot init --project
 说明：
 - 全局安装后，用户日常只需要关注 `~/.grobot` 与业务仓库里的 `.grobot`。
 - `adapters/`、`gateway/`、`runtime/`、`shared/` 属于实现源码，不需要用户在业务目录里维护。
-- CLI 入口已切到 `packages/cli/bin/grobot`，发布时优先加载平台核心包；源码 checkout 下默认走 TS dev CLI。Python CLI 仅在显式开启兼容开关时启用：`--legacy-python-cli` 或 `GROBOT_LEGACY_PYTHON=1`（过渡期 1 个版本）。
+- CLI 入口已切到 `packages/cli/bin/grobot`，发布时优先加载平台核心包；源码 checkout 下默认走 TS dev CLI。legacy Python CLI 兼容链路已移除（`--legacy-python-cli` 与 `GROBOT_LEGACY_PYTHON` 均会直接报错）。
 - npm 发布包已通过 `files` 白名单控制，只包含 CLI 运行所需最小文件集合。
 - `grobot init --global` 会自动创建 `~/.grobot/mcp/servers.toml`（全局 MCP 注册表）。
 - `grobot init --project` 会自动创建 `<repo>/.grobot/mcp.toml`（项目级 MCP 覆盖）。
@@ -132,7 +132,7 @@ bash scripts/uninstall-local.sh
   3. 再查找 `~/.grobot/core/<platform>/grobot-core`；
   4. 再按当前 `OS/ARCH` 在 `node_modules/@grobot/core-*/bin/grobot-core` 查找；
   5. 若在源码仓库运行，默认走 `scripts/run-ts-dev-cli.sh`（会按需编译并运行 TS dev CLI）；
-  6. 若需兼容旧链路，显式加 `--legacy-python-cli`（或设置 `GROBOT_LEGACY_PYTHON=1`）后才会回退到 `gateway/grobot_cli.py`。
+  6. legacy Python fallback 已移除（`--legacy-python-cli` / `GROBOT_LEGACY_PYTHON` 会返回错误并终止）。
 - `packages/core-*` 当前提供的是占位 stub，发布流水线需替换为真实编译产物。
 
 ### 本地注入/升级闭源 core（不重新发 npm）
@@ -184,7 +184,7 @@ npm run core:install:url -- \
 # 机读状态（CI/脚本可直接解析）
 npm run core:status -- --json
 
-# 要求当前必须命中“真实 core”（不是 python fallback / 不是 stub）
+# 要求当前必须命中“真实 core”（不是 source ts-dev-cli / 不是 stub）
 npm run core:status -- --require-real-core
 
 # 校验所有平台 core 包是否齐全（默认 stub 视为失败）

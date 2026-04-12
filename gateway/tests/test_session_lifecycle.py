@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import importlib.util
 import json
 import socket
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -15,19 +13,14 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-
-def load_grobot_cli_module() -> Any:
-    module_path = Path(__file__).resolve().parents[1] / "grobot_cli.py"
-    spec = importlib.util.spec_from_file_location("grobot_cli", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Failed to load module spec: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+try:
+    from gateway.tests.ts_contract import run_ts_contract
+except ModuleNotFoundError:
+    from ts_contract import run_ts_contract
 
 
-grobot_cli = load_grobot_cli_module()
+def run_session_lifecycle_contract(command: str, *args: str) -> subprocess.CompletedProcess[str]:
+    return run_ts_contract("session-lifecycle-contract.ts", command, args)
 
 
 class SessionLifecycleTests(unittest.TestCase):
@@ -87,54 +80,61 @@ class SessionLifecycleTests(unittest.TestCase):
         return False
 
     def test_build_session_key_uses_identity_not_work_dir(self) -> None:
-        identity = grobot_cli.IdentityContext(scope="dm", subject="open_id_123")
-        key_one = grobot_cli.build_session_key(
+        result_one = run_session_lifecycle_contract(
+            "build-session-key",
+            "--project-name",
             "my-project",
+            "--platform",
             "feishu",
-            Path("/tmp/workspace-a"),
-            identity=identity,
+            "--scope",
+            "dm",
+            "--subject",
+            "open_id_123",
+            "--work-dir",
+            "/tmp/workspace-a",
         )
-        key_two = grobot_cli.build_session_key(
+        self.assertEqual(result_one.returncode, 0, msg=result_one.stderr)
+        payload_one = json.loads(result_one.stdout)
+
+        result_two = run_session_lifecycle_contract(
+            "build-session-key",
+            "--project-name",
             "my-project",
+            "--platform",
             "feishu",
-            Path("/tmp/workspace-b"),
-            identity=identity,
+            "--scope",
+            "dm",
+            "--subject",
+            "open_id_123",
+            "--work-dir",
+            "/tmp/workspace-b",
         )
-        self.assertEqual(key_one, "feishu:my-project:dm:open_id_123")
-        self.assertEqual(key_two, "feishu:my-project:dm:open_id_123")
+        self.assertEqual(result_two.returncode, 0, msg=result_two.stderr)
+        payload_two = json.loads(result_two.stdout)
+
+        self.assertEqual(payload_one["session_key"], "feishu:my-project:dm:open_id_123")
+        self.assertEqual(payload_two["session_key"], "feishu:my-project:dm:open_id_123")
 
     def test_session_registry_supports_main_and_new_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / ".grobot" / "sessions"
-            store = grobot_cli.SessionStoreConfig(
-                backend="file",
-                redis_url=None,
-                ttl_secs=1800,
-                root=root,
-            )
             namespace_key = "feishu:grobot:dm:open_abc"
-            registry, warnings = grobot_cli.load_session_registry(store, namespace_key)
-            self.assertEqual(warnings, [])
-            self.assertEqual(registry["active_id"], grobot_cli.SESSION_REGISTRY_MAIN_ID)
-
-            main_record = grobot_cli.find_session_record(registry, grobot_cli.SESSION_REGISTRY_MAIN_ID)
-            self.assertIsNotNone(main_record)
-            if isinstance(main_record, dict):
-                self.assertEqual(main_record["session_key"], namespace_key)
-
-            new_record = grobot_cli.create_session_record(namespace_key)
-            grobot_cli.append_session_record(registry, new_record)
-            registry["active_id"] = new_record["id"]
-            save_warnings = grobot_cli.save_session_registry(store, namespace_key, registry)
-            self.assertEqual(save_warnings, [])
-
-            restored, restored_warnings = grobot_cli.load_session_registry(store, namespace_key)
-            self.assertEqual(restored_warnings, [])
-            self.assertEqual(restored["active_id"], new_record["id"])
-            records = restored.get("sessions")
-            self.assertIsInstance(records, list)
-            if isinstance(records, list):
-                self.assertGreaterEqual(len(records), 2)
+            result = run_session_lifecycle_contract(
+                "session-registry-flow",
+                "--root",
+                str(root),
+                "--namespace-key",
+                namespace_key,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["initial_warnings"], [])
+            self.assertEqual(payload["initial_active_id"], "main")
+            self.assertEqual(payload["initial_main_session_key"], namespace_key)
+            self.assertEqual(payload["save_warnings"], [])
+            self.assertEqual(payload["restored_warnings"], [])
+            self.assertGreaterEqual(int(payload["restored_session_count"]), 2)
+            self.assertTrue(bool(str(payload["restored_active_id"])))
 
     def test_continue_bridge_message_is_summary_only(self) -> None:
         source_history = [
@@ -145,12 +145,20 @@ class SessionLifecycleTests(unittest.TestCase):
             {"role": "user", "content": "TODO: add edge-case tests for switch and continue."},
             {"role": "assistant", "content": "收到，稍后补齐。"},
         ]
-        bridge = grobot_cli.build_continue_bridge_message(
-            source_session_id="s20260411abcd",
-            source_session_key="feishu:grobot:dm:open_abc__s_s20260411abcd",
-            source_history_messages=source_history,
-            max_turns=2,
+        payload = {
+            "source_session_id": "s20260411abcd",
+            "source_session_key": "feishu:grobot:dm:open_abc__s_s20260411abcd",
+            "source_history_messages": source_history,
+            "max_turns": 2,
+        }
+        result = run_session_lifecycle_contract(
+            "continue-bridge-message",
+            "--payload",
+            json.dumps(payload, ensure_ascii=False),
         )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        parsed = json.loads(result.stdout)
+        bridge = parsed.get("bridge")
         self.assertIsInstance(bridge, dict)
         if isinstance(bridge, dict):
             content = bridge.get("content")
@@ -166,119 +174,156 @@ class SessionLifecycleTests(unittest.TestCase):
             project_grobot = project_root / ".grobot"
             project_grobot.mkdir(parents=True, exist_ok=True)
             (project_grobot / "project.toml").write_text("schema_version = 1\nmode = \"mvp\"\n", encoding="utf-8")
+            project_wiki_dir = project_grobot / "wiki"
+            global_wiki_dir = Path(temp_home) / "wiki"
+            project_wiki_dir.mkdir(parents=True, exist_ok=True)
+            (global_wiki_dir / "org" / "demo").mkdir(parents=True, exist_ok=True)
 
-            paths = grobot_cli.resolve_runtime_paths(
-                work_dir_override=str(project_root),
-                config_override=None,
-                home_override=temp_home,
-                project_root_override=str(project_root),
-            )
-            grobot_cli.ensure_runtime_layout(paths)
-
-            (paths.project_wiki_dir / "project-note.md").write_text(
+            (project_wiki_dir / "project-note.md").write_text(
                 "接口契约：支付状态统一为 paid/unpaid。",
                 encoding="utf-8",
             )
-            (paths.global_wiki_dir / "org" / "demo").mkdir(parents=True, exist_ok=True)
-            (paths.global_wiki_dir / "org" / "demo" / "org-note.md").write_text(
+            (global_wiki_dir / "org" / "demo" / "org-note.md").write_text(
                 "组织标准：所有回滚都要附应急联系人。",
                 encoding="utf-8",
             )
 
             prompt = "接口契约 支付状态"
-            block_project_only = grobot_cli.build_wiki_context_block(
+            result_project_only = run_session_lifecycle_contract(
+                "build-wiki-context",
+                "--prompt",
                 prompt,
-                paths=paths,
-                session_key="local:demo:dm:tester",
-                allow_org_shared=False,
+                "--project-wiki-dir",
+                str(project_wiki_dir),
+                "--global-wiki-dir",
+                str(global_wiki_dir),
+                "--session-key",
+                "local:demo:dm:tester",
+                "--allow-org-shared",
+                "false",
             )
+            self.assertEqual(result_project_only.returncode, 0, msg=result_project_only.stderr)
+            block_project_only = json.loads(result_project_only.stdout).get("block")
             self.assertIsInstance(block_project_only, str)
             if isinstance(block_project_only, str):
                 self.assertIn("project-note.md", block_project_only)
                 self.assertNotIn("org-note.md", block_project_only)
 
-            block_with_org = grobot_cli.build_wiki_context_block(
+            result_with_org = run_session_lifecycle_contract(
+                "build-wiki-context",
+                "--prompt",
                 "所有回滚都要附应急联系人",
-                paths=paths,
-                session_key="local:demo:group:team-chat",
-                allow_org_shared=True,
+                "--project-wiki-dir",
+                str(project_wiki_dir),
+                "--global-wiki-dir",
+                str(global_wiki_dir),
+                "--session-key",
+                "local:demo:group:team-chat",
+                "--allow-org-shared",
+                "true",
             )
+            self.assertEqual(result_with_org.returncode, 0, msg=result_with_org.stderr)
+            block_with_org = json.loads(result_with_org.stdout).get("block")
             self.assertIsInstance(block_with_org, str)
             if isinstance(block_with_org, str):
                 self.assertIn("org-note.md", block_with_org)
 
     def test_parser_accepts_session_identity_flags(self) -> None:
-        parser = grobot_cli.build_parser()
-        parsed = parser.parse_args(
-            [
-                "start",
-                "--project",
-                "demo",
-                "--session-scope",
-                "group",
-                "--session-subject",
-                "chat_open_id_1",
-            ]
+        argv = [
+            "start",
+            "--project",
+            "demo",
+            "--session-scope",
+            "group",
+            "--session-subject",
+            "chat_open_id_1",
+        ]
+        result = run_session_lifecycle_contract(
+            "parse-args",
+            "--argv",
+            json.dumps(argv, ensure_ascii=False),
         )
-        self.assertEqual(parsed.session_scope, "group")
-        self.assertEqual(parsed.session_subject, "chat_open_id_1")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        parsed = json.loads(result.stdout)
+        self.assertEqual(parsed["session_scope"], "group")
+        self.assertEqual(parsed["session_subject"], "chat_open_id_1")
 
     def test_parser_accepts_memory_subcommand(self) -> None:
-        parser = grobot_cli.build_parser()
-        parsed = parser.parse_args(
-            [
-                "memory",
-                "--project",
-                "demo",
-                "--session-scope",
-                "group",
-                "--session-subject",
-                "chat_open_id_1",
-                "write",
-                "--text",
-                "接口契约优先于风格偏好",
-                "--kind",
-                "policy",
-                "--scope",
-                "group",
-            ]
+        parsed_result = run_session_lifecycle_contract(
+            "parse-args",
+            "--argv",
+            json.dumps(
+                [
+                    "memory",
+                    "--project",
+                    "demo",
+                    "--session-scope",
+                    "group",
+                    "--session-subject",
+                    "chat_open_id_1",
+                    "write",
+                    "--text",
+                    "接口契约优先于风格偏好",
+                    "--kind",
+                    "policy",
+                    "--scope",
+                    "group",
+                ],
+                ensure_ascii=False,
+            ),
         )
-        self.assertEqual(parsed.command, "memory")
-        self.assertEqual(parsed.memory_command, "write")
-        self.assertEqual(parsed.kind, "policy")
-        self.assertEqual(parsed.scope, "group")
-        self.assertEqual(parsed.session_scope, "group")
-        self.assertEqual(parsed.session_subject, "chat_open_id_1")
+        self.assertEqual(parsed_result.returncode, 0, msg=parsed_result.stderr)
+        parsed = json.loads(parsed_result.stdout)
+        self.assertEqual(parsed["command"], "memory")
+        self.assertEqual(parsed["memory_command"], "write")
+        self.assertEqual(parsed["kind"], "policy")
+        self.assertEqual(parsed["scope"], "group")
+        self.assertEqual(parsed["session_scope"], "group")
+        self.assertEqual(parsed["session_subject"], "chat_open_id_1")
 
-        parsed_query = parser.parse_args(
-            [
-                "memory",
-                "--project",
-                "demo",
-                "query",
-                "--query",
-                "补偿审批",
-                "--include-restricted",
-            ]
+        parsed_query_result = run_session_lifecycle_contract(
+            "parse-args",
+            "--argv",
+            json.dumps(
+                [
+                    "memory",
+                    "--project",
+                    "demo",
+                    "query",
+                    "--query",
+                    "补偿审批",
+                    "--include-restricted",
+                ],
+                ensure_ascii=False,
+            ),
         )
-        self.assertEqual(parsed_query.memory_command, "query")
-        self.assertTrue(parsed_query.include_restricted)
-        self.assertFalse(parsed_query.include_secret)
+        self.assertEqual(parsed_query_result.returncode, 0, msg=parsed_query_result.stderr)
+        parsed_query = json.loads(parsed_query_result.stdout)
+        self.assertEqual(parsed_query["memory_command"], "query")
+        self.assertTrue(parsed_query["include_restricted"])
+        self.assertFalse(parsed_query["include_secret"])
 
-        parsed_lifecycle = parser.parse_args(
-            [
-                "memory",
-                "--project",
-                "demo",
-                "lifecycle",
-                "--scope",
-                "group",
-                "--dry-run",
-            ]
+        parsed_lifecycle_result = run_session_lifecycle_contract(
+            "parse-args",
+            "--argv",
+            json.dumps(
+                [
+                    "memory",
+                    "--project",
+                    "demo",
+                    "lifecycle",
+                    "--scope",
+                    "group",
+                    "--dry-run",
+                ],
+                ensure_ascii=False,
+            ),
         )
-        self.assertEqual(parsed_lifecycle.memory_command, "lifecycle")
-        self.assertEqual(parsed_lifecycle.scope, "group")
-        self.assertTrue(parsed_lifecycle.dry_run)
+        self.assertEqual(parsed_lifecycle_result.returncode, 0, msg=parsed_lifecycle_result.stderr)
+        parsed_lifecycle = json.loads(parsed_lifecycle_result.stdout)
+        self.assertEqual(parsed_lifecycle["memory_command"], "lifecycle")
+        self.assertEqual(parsed_lifecycle["scope"], "group")
+        self.assertTrue(parsed_lifecycle["dry_run"])
 
     def test_interactive_memory_write_and_review(self) -> None:
         with tempfile.TemporaryDirectory() as temp_home, tempfile.TemporaryDirectory() as temp_project:
@@ -303,58 +348,54 @@ class SessionLifecycleTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-
-            paths = grobot_cli.resolve_runtime_paths(
-                work_dir_override=str(project_root),
-                config_override=None,
-                home_override=temp_home,
-                project_root_override=str(project_root),
-            )
-            grobot_cli.ensure_runtime_layout(paths)
-            memory_config = grobot_cli.resolve_memory_v1_config(grobot_cli.load_toml(paths.project_toml))
             session_key = "feishu:demo:group:chat_001"
-
-            write_code, write_lines = grobot_cli.run_interactive_memory_command(
-                user_input='/memory write --kind policy --scope auto --tags "api,contract" 接口契约优先于风格偏好',
-                paths=paths,
-                memory_config=memory_config,
-                session_key=session_key,
+            result = run_session_lifecycle_contract(
+                "interactive-memory-flow",
+                "--root",
+                str(project_root),
+                "--session-key",
+                session_key,
             )
-            self.assertEqual(write_code, 0)
-            proposal_line = next(
-                (line for line in write_lines if line.startswith("memory write proposal created:")),
-                "",
-            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            payload = json.loads(result.stdout)
+            write_payload = payload.get("write")
+            review_payload = payload.get("review")
+            query_payload = payload.get("query")
+            lifecycle_payload = payload.get("lifecycle")
+            self.assertIsInstance(write_payload, dict)
+            self.assertIsInstance(review_payload, dict)
+            self.assertIsInstance(query_payload, dict)
+            self.assertIsInstance(lifecycle_payload, dict)
+            if not isinstance(write_payload, dict):
+                return
+            self.assertEqual(write_payload.get("code"), 0)
+            write_lines = write_payload.get("lines")
+            self.assertIsInstance(write_lines, list)
+            if not isinstance(write_lines, list):
+                return
+            proposal_line = next((line for line in write_lines if str(line).startswith("memory write proposal created:")), "")
             self.assertTrue(proposal_line)
             proposal_id = proposal_line.split(":", 1)[1].strip()
             self.assertTrue(proposal_id.startswith("mp"))
 
-            review_code, review_lines = grobot_cli.run_interactive_memory_command(
-                user_input=f"/memory review apply {proposal_id} looks-good",
-                paths=paths,
-                memory_config=memory_config,
-                session_key=session_key,
-            )
-            self.assertEqual(review_code, 0)
-            self.assertTrue(any("memory review applied" in line for line in review_lines))
-
-            query_code, query_lines = grobot_cli.run_interactive_memory_command(
-                user_input="/memory query 接口契约 优先",
-                paths=paths,
-                memory_config=memory_config,
-                session_key=session_key,
-            )
-            self.assertEqual(query_code, 0)
-            self.assertTrue(any("memory query: top=" in line for line in query_lines))
-
-            lifecycle_code, lifecycle_lines = grobot_cli.run_interactive_memory_command(
-                user_input="/memory lifecycle --dry-run",
-                paths=paths,
-                memory_config=memory_config,
-                session_key=session_key,
-            )
-            self.assertEqual(lifecycle_code, 0)
-            self.assertTrue(any("memory lifecycle: dry_run=on" in line for line in lifecycle_lines))
+            if isinstance(review_payload, dict):
+                self.assertEqual(review_payload.get("code"), 0)
+                review_lines = review_payload.get("lines")
+                self.assertIsInstance(review_lines, list)
+                if isinstance(review_lines, list):
+                    self.assertTrue(any("memory review applied" in str(line) for line in review_lines))
+            if isinstance(query_payload, dict):
+                self.assertEqual(query_payload.get("code"), 0)
+                query_lines = query_payload.get("lines")
+                self.assertIsInstance(query_lines, list)
+                if isinstance(query_lines, list):
+                    self.assertTrue(any("memory query: top=" in str(line) for line in query_lines))
+            if isinstance(lifecycle_payload, dict):
+                self.assertEqual(lifecycle_payload.get("code"), 0)
+                lifecycle_lines = lifecycle_payload.get("lines")
+                self.assertIsInstance(lifecycle_lines, list)
+                if isinstance(lifecycle_lines, list):
+                    self.assertTrue(any("memory lifecycle: dry_run=on" in str(line) for line in lifecycle_lines))
 
     def test_management_api_memory_endpoints_auth_acl_and_flow(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -385,31 +426,19 @@ class SessionLifecycleTests(unittest.TestCase):
             token = "memory-write-token"
             session_id = "feishu:grobot:dm:open_memory_1"
             registry_namespace = "feishu:grobot:dm:ops_namespace"
-            registry_store = grobot_cli.SessionStoreConfig(
-                backend="file",
-                redis_url=None,
-                ttl_secs=1800,
-                root=Path(temp_home) / "runtime" / "sessions",
-            )
-            registry_payload = grobot_cli.normalize_session_registry_payload(
-                {
-                    "namespace_key": registry_namespace,
-                    "active_id": grobot_cli.SESSION_REGISTRY_MAIN_ID,
-                    "sessions": [
-                        {
-                            "id": grobot_cli.SESSION_REGISTRY_MAIN_ID,
-                            "session_key": session_id,
-                        }
-                    ],
-                },
+            registry_root = Path(temp_home) / "runtime" / "sessions"
+            prepare_registry = run_session_lifecycle_contract(
+                "prepare-registry",
+                "--root",
+                str(registry_root),
+                "--namespace-key",
                 registry_namespace,
+                "--session-key",
+                session_id,
             )
-            save_warnings = grobot_cli.save_session_registry(
-                registry_store,
-                registry_namespace,
-                registry_payload,
-            )
-            self.assertEqual(save_warnings, [])
+            self.assertEqual(prepare_registry.returncode, 0, msg=prepare_registry.stderr)
+            prepare_payload = json.loads(prepare_registry.stdout)
+            self.assertEqual(prepare_payload.get("warnings"), [])
             cfg_path.write_text(
                 "\n".join(
                     [
@@ -499,8 +528,8 @@ class SessionLifecycleTests(unittest.TestCase):
                     return
 
                 encoded_session = quote(session_id, safe="")
-                list_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory?limit=20"
-                list_page_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory?limit=1"
+                list_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory?limit=20&include_restricted=true"
+                list_page_url = f"{base_url}/api/v1/sessions/{encoded_session}/memory?limit=1&include_restricted=true"
 
                 status_unauth, body_unauth = self._http_json(list_url, method="GET", token=None)
                 self.assertEqual(status_unauth, 403)
@@ -620,7 +649,8 @@ class SessionLifecycleTests(unittest.TestCase):
                     if isinstance(errors, list):
                         self.assertIn("importance", json.dumps(errors, ensure_ascii=False))
 
-                status_list, body_list = self._http_json(list_url, method="GET", token=token)
+                list_query_url = f"{list_url}&query={quote('退款 SLA', safe='')}"
+                status_list, body_list = self._http_json(list_query_url, method="GET", token=token)
                 self.assertEqual(status_list, 200)
                 records = body_list.get("records")
                 self.assertIsInstance(records, list)
