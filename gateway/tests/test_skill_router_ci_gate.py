@@ -2,74 +2,84 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
+
 
 class SkillRouterCiGateTests(unittest.TestCase):
-    SCRIPT_PATH = Path(__file__).resolve().parents[1] / "evals" / "skill_router_ci_gate.py"
-
     def _write_fake_eval_script(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             "\n".join(
                 [
-                    "#!/usr/bin/env python3",
-                    "from __future__ import annotations",
+                    "#!/usr/bin/env node",
+                    "const fs = require('node:fs');",
+                    "const path = require('node:path');",
                     "",
-                    "import argparse",
-                    "import json",
-                    "import os",
-                    "from pathlib import Path",
+                    "const argv = process.argv.slice(2);",
+                    "const hasFlag = (flag) => argv.includes(flag);",
+                    "const getArg = (flag) => {",
+                    "  const idx = argv.indexOf(flag);",
+                    "  if (idx < 0) return null;",
+                    "  const value = argv[idx + 1];",
+                    "  return typeof value === 'string' ? value : null;",
+                    "};",
                     "",
-                    "parser = argparse.ArgumentParser()",
-                    "parser.add_argument('--policy')",
-                    "parser.add_argument('--compare-report', default=None)",
-                    "parser.add_argument('--fail-on-gate', action='store_true')",
-                    "parser.add_argument('--fail-on-trend', action='store_true')",
-                    "parser.add_argument('--print-json', action='store_true')",
-                    "parser.add_argument('--output', required=True)",
-                    "args = parser.parse_args()",
-                    "",
-                    "log_path = os.environ.get('SKILL_ROUTER_FAKE_LOG')",
-                    "if isinstance(log_path, str) and log_path:",
-                    "    with open(log_path, 'a', encoding='utf-8') as handle:",
-                    "        handle.write(",
-                    "            json.dumps(",
-                    "                {",
-                    "                    'compare_report': args.compare_report,",
-                    "                    'fail_on_gate': args.fail_on_gate,",
-                    "                    'fail_on_trend': args.fail_on_trend,",
-                    "                },",
-                    "                ensure_ascii=False,",
-                    "            ) + '\\n'",
-                    "        )",
-                    "",
-                    "policy_hash = os.environ.get('SKILL_ROUTER_FAKE_POLICY_HASH', 'hash-default')",
-                    "payload = {",
-                    "    'summary': {'accuracy': 1.0, 'forbidden_violations': 0, 'total_cases': 1},",
-                    "    'gate': {'passed': True},",
-                    "    'policy': {'hash': policy_hash},",
+                    "const compareReport = getArg('--compare-report');",
+                    "const outputPath = getArg('--output');",
+                    "if (!outputPath) {",
+                    "  process.stderr.write('missing --output\\n');",
+                    "  process.exit(2);",
                     "}",
-                    "if isinstance(args.compare_report, str) and args.compare_report:",
-                    "    trend_pass = os.environ.get('SKILL_ROUTER_FAKE_TREND_PASS', 'true').strip().lower() == 'true'",
-                    "    payload['trend'] = {'passed': trend_pass}",
                     "",
-                    "output_path = Path(args.output)",
-                    "output_path.parent.mkdir(parents=True, exist_ok=True)",
-                    "output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\\n', encoding='utf-8')",
+                    "const logPath = process.env.SKILL_ROUTER_FAKE_LOG;",
+                    "if (typeof logPath === 'string' && logPath.length > 0) {",
+                    "  fs.appendFileSync(",
+                    "    logPath,",
+                    "    JSON.stringify(",
+                    "      {",
+                    "        compare_report: compareReport,",
+                    "        fail_on_gate: hasFlag('--fail-on-gate'),",
+                    "        fail_on_trend: hasFlag('--fail-on-trend'),",
+                    "      },",
+                    "      null,",
+                    "      0,",
+                    "    ) + '\\n',",
+                    "    'utf8',",
+                    "  );",
+                    "}",
                     "",
-                    "if args.print_json:",
-                    "    print(json.dumps(payload, ensure_ascii=False))",
+                    "const policyHash = process.env.SKILL_ROUTER_FAKE_POLICY_HASH || 'hash-default';",
+                    "const payload = {",
+                    "  summary: { accuracy: 1.0, forbidden_violations: 0, total_cases: 1 },",
+                    "  gate: { passed: true },",
+                    "  policy: { hash: policyHash },",
+                    "};",
+                    "if (typeof compareReport === 'string' && compareReport.length > 0) {",
+                    "  const trendPass = String(process.env.SKILL_ROUTER_FAKE_TREND_PASS || 'true').trim().toLowerCase() === 'true';",
+                    "  payload.trend = { passed: trendPass };",
+                    "}",
                     "",
-                    "if os.environ.get('SKILL_ROUTER_FAKE_FAIL_GATE', '0') == '1' and not args.compare_report:",
-                    "    raise SystemExit(4)",
-                    "if os.environ.get('SKILL_ROUTER_FAKE_FAIL_TREND', '0') == '1' and args.compare_report:",
-                    "    raise SystemExit(6)",
+                    "fs.mkdirSync(path.dirname(outputPath), { recursive: true });",
+                    "fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\\n`, 'utf8');",
+                    "",
+                    "if (hasFlag('--print-json')) {",
+                    "  process.stdout.write(`${JSON.stringify(payload)}\\n`);",
+                    "}",
+                    "",
+                    "if (process.env.SKILL_ROUTER_FAKE_FAIL_GATE === '1' && !compareReport) {",
+                    "  process.exit(4);",
+                    "}",
+                    "if (process.env.SKILL_ROUTER_FAKE_FAIL_TREND === '1' && compareReport) {",
+                    "  process.exit(6);",
+                    "}",
                 ]
             ),
             encoding="utf-8",
@@ -123,9 +133,7 @@ class SkillRouterCiGateTests(unittest.TestCase):
     ) -> subprocess.CompletedProcess[str]:
         output_path = repo_root / "gateway" / "evals" / "data" / "skill_router_ci_report.json"
         base_report_path = repo_root / "gateway" / "evals" / "data" / "skill_router_ci_report.base.json"
-        command = [
-            sys.executable,
-            str(self.SCRIPT_PATH),
+        args = [
             "--event-name",
             "push",
             "--before-sha",
@@ -143,25 +151,16 @@ class SkillRouterCiGateTests(unittest.TestCase):
             "--policy-blob-path",
             "gateway/evals/skill_router_policy.ci.json",
             "--eval-script",
-            "gateway/evals/skill_router_eval.py",
+            "gateway/evals/skill_router_eval.js",
             "--print-json",
         ]
-        command_env = os.environ.copy()
-        if isinstance(env, dict):
-            command_env.update(env)
-        return subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            env=command_env,
-        )
+        return run_ts_script("evals/skill-router-ci-gate.ts", tuple(args), env=env)
 
     def test_gate_only_when_baseline_unavailable(self) -> None:
         with TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             head_sha = self._init_git_repo_with_policy(repo_root, policy_text='{"schema":"v1"}\n')
-            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.py")
+            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.js")
             log_path = repo_root / "eval-call-log.jsonl"
             completed = self._run_ci_gate(
                 repo_root=repo_root,
@@ -190,7 +189,7 @@ class SkillRouterCiGateTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             head_sha = self._init_git_repo_with_policy(repo_root, policy_text='{"schema":"v1"}\n')
-            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.py")
+            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.js")
             base_report_path = repo_root / "gateway" / "evals" / "data" / "skill_router_ci_report.base.json"
             base_report_path.parent.mkdir(parents=True, exist_ok=True)
             base_report_path.write_text(
@@ -245,7 +244,7 @@ class SkillRouterCiGateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.py")
+            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.js")
             base_report_path = repo_root / "gateway" / "evals" / "data" / "skill_router_ci_report.base.json"
             base_report_path.parent.mkdir(parents=True, exist_ok=True)
             base_report_path.write_text(
@@ -287,7 +286,7 @@ class SkillRouterCiGateTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             head_sha = self._init_git_repo_with_policy(repo_root, policy_text='{"schema":"v1"}\n')
-            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.py")
+            self._write_fake_eval_script(repo_root / "gateway" / "evals" / "skill_router_eval.js")
             base_report_path = repo_root / "gateway" / "evals" / "data" / "skill_router_ci_report.base.json"
             base_report_path.parent.mkdir(parents=True, exist_ok=True)
             base_report_path.write_text(

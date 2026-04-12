@@ -3,21 +3,46 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from evals.ci_summary_export import build_harness_gate_outputs  # noqa: E402
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
 
 class HarnessCiSummaryExportTests(unittest.TestCase):
-    SCRIPT_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_summary_export.py"
+    def _write_json(self, path: Path, payload: dict) -> None:
+        path.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    def _build_command(
+        self,
+        *,
+        summary_path: Path,
+        github_output_path: Path | None = None,
+        extra_args: list[str] | None = None,
+    ) -> list[str]:
+        command = ["--summary", str(summary_path)]
+        if github_output_path is not None:
+            command.extend(["--github-output", str(github_output_path)])
+        if extra_args:
+            command.extend(extra_args)
+        return command
+
+    def _run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+        return run_ts_script("evals/ci-summary-export.ts", tuple(command))
 
     def test_build_harness_gate_outputs_defaults_when_summary_empty(self) -> None:
-        outputs = build_harness_gate_outputs({})
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            summary_path = root / "summary.json"
+            self._write_json(summary_path, {})
+            completed = self._run(self._build_command(summary_path=summary_path, extra_args=["--print-json"]))
+            self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+            outputs = json.loads(completed.stdout)
+
         self.assertEqual(outputs["overall_state"], "unknown")
         self.assertEqual(outputs["trend_owner"], "unknown-owner")
         self.assertEqual(outputs["trend_decision_tag"], "TREND_UNKNOWN_MODE")
@@ -34,30 +59,36 @@ class HarnessCiSummaryExportTests(unittest.TestCase):
         self.assertEqual(outputs["suggested_labels_json"], [])
 
     def test_build_harness_gate_outputs_uses_summary_values(self) -> None:
-        outputs = build_harness_gate_outputs(
-            {
-                "overall_pass": True,
-                "suggested_labels": ["ci/harness-pass", "ci/policy-drift-medium"],
-                "skill_router": {
-                    "trend_owner": "router-evals",
-                    "trend_decision_tag": "TREND_EXECUTED_PASS",
-                    "trend_decision_severity": "info",
-                    "trend_action_hint": "trend executed and passed",
-                },
-                "policy_drift": {
-                    "severity": "medium",
-                    "reason": "missing_fields",
-                    "transition": "low->medium",
-                    "transition_state": "worsened",
-                    "severity_delta": 1,
-                    "owner": "policy-maintainers",
-                    "action_hint": "policy drift worsened; add missing required fields and re-run policy guard.",
-                    "worsening_streak": 2,
-                    "worsening_alert": True,
-                    "worsening_label": "ci/policy-drift-worsening",
-                },
-            }
-        )
+        summary_payload = {
+            "overall_pass": True,
+            "suggested_labels": ["ci/harness-pass", "ci/policy-drift-medium"],
+            "skill_router": {
+                "trend_owner": "router-evals",
+                "trend_decision_tag": "TREND_EXECUTED_PASS",
+                "trend_decision_severity": "info",
+                "trend_action_hint": "trend executed and passed",
+            },
+            "policy_drift": {
+                "severity": "medium",
+                "reason": "missing_fields",
+                "transition": "low->medium",
+                "transition_state": "worsened",
+                "severity_delta": 1,
+                "owner": "policy-maintainers",
+                "action_hint": "policy drift worsened; add missing required fields and re-run policy guard.",
+                "worsening_streak": 2,
+                "worsening_alert": True,
+                "worsening_label": "ci/policy-drift-worsening",
+            },
+        }
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            summary_path = root / "summary.json"
+            self._write_json(summary_path, summary_payload)
+            completed = self._run(self._build_command(summary_path=summary_path, extra_args=["--print-json"]))
+            self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+            outputs = json.loads(completed.stdout)
+
         self.assertEqual(outputs["overall_state"], "pass")
         self.assertEqual(outputs["trend_owner"], "router-evals")
         self.assertEqual(outputs["trend_decision_tag"], "TREND_EXECUTED_PASS")
@@ -77,41 +108,34 @@ class HarnessCiSummaryExportTests(unittest.TestCase):
             root = Path(temp_dir)
             summary_path = root / "summary.json"
             output_path = root / "github-output.txt"
-            summary_path.write_text(
-                json.dumps(
-                    {
-                        "overall_pass": True,
-                        "suggested_labels": ["ci/harness-pass"],
-                        "skill_router": {"trend_owner": "router-evals"},
-                        "policy_drift": {
-                            "severity": "low",
-                            "reason": "unknown_fields",
-                            "transition": "none->low",
-                            "transition_state": "introduced",
-                            "severity_delta": 1,
-                            "owner": "policy-maintainers",
-                            "action_hint": "policy drift persists; remove unknown fields.",
-                            "worsening_streak": 1,
-                            "worsening_alert": False,
-                            "worsening_label": "ci/policy-drift-worsening",
-                        },
+            self._write_json(
+                summary_path,
+                {
+                    "overall_pass": True,
+                    "suggested_labels": ["ci/harness-pass"],
+                    "skill_router": {"trend_owner": "router-evals"},
+                    "policy_drift": {
+                        "severity": "low",
+                        "reason": "unknown_fields",
+                        "transition": "none->low",
+                        "transition_state": "introduced",
+                        "severity_delta": 1,
+                        "owner": "policy-maintainers",
+                        "action_hint": "policy drift persists; remove unknown fields.",
+                        "worsening_streak": 1,
+                        "worsening_alert": False,
+                        "worsening_label": "ci/policy-drift-worsening",
                     },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+                },
             )
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--summary",
-                str(summary_path),
-                "--github-output",
-                str(output_path),
-                "--print-json",
-            ]
-            completed = subprocess.run(command, capture_output=True, text=True, check=False)
-            self.assertEqual(completed.returncode, 0)
+            completed = self._run(
+                self._build_command(
+                    summary_path=summary_path,
+                    github_output_path=output_path,
+                    extra_args=["--print-json"],
+                )
+            )
+            self.assertEqual(completed.returncode, 0, msg=completed.stderr)
             stdout_payload = json.loads(completed.stdout)
             self.assertEqual(stdout_payload["overall_state"], "pass")
             self.assertEqual(stdout_payload["policy_drift_state"], "low:unknown_fields")

@@ -3,65 +3,97 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from evals.skill_router_baseline_report import resolve_base_sha  # noqa: E402
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
 
 class SkillRouterBaselineReportTests(unittest.TestCase):
-    SCRIPT_PATH = Path(__file__).resolve().parents[1] / "evals" / "skill_router_baseline_report.py"
+    def _run_cli(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        return run_ts_script("evals/skill-router-baseline-report.ts", tuple([*args, "--print-json"]))
 
     def test_resolve_base_sha_prefers_event_specific_field(self) -> None:
-        self.assertEqual(
-            resolve_base_sha(
-                event_name="pull_request",
-                pr_base_sha="abc123",
-                before_sha="def456",
-            ),
-            "abc123",
-        )
-        self.assertEqual(
-            resolve_base_sha(
-                event_name="push",
-                pr_base_sha="abc123",
-                before_sha="def456",
-            ),
-            "def456",
-        )
-        self.assertIsNone(
-            resolve_base_sha(
-                event_name="push",
-                pr_base_sha="",
-                before_sha="0000000000000000000000000000000000000000",
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_path = root / "baseline.json"
+
+            pull_request_result = self._run_cli(
+                [
+                    "--event-name",
+                    "pull_request",
+                    "--pr-base-sha",
+                    "abc123",
+                    "--before-sha",
+                    "def456",
+                    "--repo-root",
+                    str(root),
+                    "--output",
+                    str(output_path),
+                ]
             )
-        )
+            self.assertEqual(pull_request_result.returncode, 0)
+            pull_request_payload = json.loads(pull_request_result.stdout)
+            self.assertEqual(pull_request_payload.get("base_sha"), "abc123")
+
+            push_result = self._run_cli(
+                [
+                    "--event-name",
+                    "push",
+                    "--pr-base-sha",
+                    "abc123",
+                    "--before-sha",
+                    "def456",
+                    "--repo-root",
+                    str(root),
+                    "--output",
+                    str(output_path),
+                ]
+            )
+            self.assertEqual(push_result.returncode, 0)
+            push_payload = json.loads(push_result.stdout)
+            self.assertEqual(push_payload.get("base_sha"), "def456")
+
+            zero_sha_result = self._run_cli(
+                [
+                    "--event-name",
+                    "push",
+                    "--before-sha",
+                    "0000000000000000000000000000000000000000",
+                    "--repo-root",
+                    str(root),
+                    "--output",
+                    str(output_path),
+                ]
+            )
+            self.assertEqual(zero_sha_result.returncode, 0)
+            zero_sha_payload = json.loads(zero_sha_result.stdout)
+            self.assertEqual(zero_sha_payload.get("reason"), "no_base_sha")
+            self.assertIsNone(zero_sha_payload.get("base_sha"))
 
     def test_main_writes_unavailable_when_base_sha_missing(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             output_path = root / "baseline.json"
             github_output_path = root / "github-output.txt"
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--event-name",
-                "pull_request",
-                "--pr-base-sha",
-                "",
-                "--repo-root",
-                str(root),
-                "--output",
-                str(output_path),
-                "--github-output",
-                str(github_output_path),
-                "--print-json",
-            ]
-            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+            completed = self._run_cli(
+                [
+                    "--event-name",
+                    "pull_request",
+                    "--pr-base-sha",
+                    "",
+                    "--repo-root",
+                    str(root),
+                    "--output",
+                    str(output_path),
+                    "--github-output",
+                    str(github_output_path),
+                ]
+            )
             self.assertEqual(completed.returncode, 0)
             payload = json.loads(completed.stdout)
             self.assertEqual(payload.get("available"), False)
@@ -74,22 +106,20 @@ class SkillRouterBaselineReportTests(unittest.TestCase):
             root = Path(temp_dir)
             output_path = root / "baseline.json"
             github_output_path = root / "github-output.txt"
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--event-name",
-                "push",
-                "--before-sha",
-                "abc123",
-                "--repo-root",
-                str(root),
-                "--output",
-                str(output_path),
-                "--github-output",
-                str(github_output_path),
-                "--print-json",
-            ]
-            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+            completed = self._run_cli(
+                [
+                    "--event-name",
+                    "push",
+                    "--before-sha",
+                    "abc123",
+                    "--repo-root",
+                    str(root),
+                    "--output",
+                    str(output_path),
+                    "--github-output",
+                    str(github_output_path),
+                ]
+            )
             self.assertEqual(completed.returncode, 0)
             payload = json.loads(completed.stdout)
             self.assertEqual(payload.get("available"), False)

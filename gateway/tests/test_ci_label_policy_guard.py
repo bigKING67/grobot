@@ -2,18 +2,15 @@
 from __future__ import annotations
 
 import json
-import sys
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from evals.ci_label_policy_guard import (  # noqa: E402
-    build_policy_result,
-    validate_ci_label_policy_config,
-    validate_ci_label_policy_file,
-)
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
 
 class CiLabelPolicyGuardTests(unittest.TestCase):
@@ -68,34 +65,63 @@ class CiLabelPolicyGuardTests(unittest.TestCase):
             ],
         }
 
+    def _run_guard(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        return run_ts_script("evals/ci-label-policy-guard.ts", tuple(args))
+
+    def _validate_config(self, config: dict[str, object]) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
+        with TemporaryDirectory() as temp_dir:
+            policy_file = Path(temp_dir) / "policy.json"
+            policy_file.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            result = self._run_guard(["--policy", str(policy_file), "--print-json"])
+            payload = json.loads(result.stdout)
+            policies = payload.get("policies")
+            self.assertIsInstance(policies, list)
+            if not isinstance(policies, list) or not policies:
+                self.fail("policies payload must be non-empty list")
+            item = policies[0]
+            self.assertIsInstance(item, dict)
+            if not isinstance(item, dict):
+                self.fail("policy result must be object")
+            return result, item
+
     def test_repository_policy_is_valid(self) -> None:
         evals_dir = Path(__file__).resolve().parents[1] / "evals"
         policy_file = evals_dir / "ci_label_policy.json"
-        config, errors = validate_ci_label_policy_file(policy_file)
-        self.assertIsNotNone(config)
-        self.assertEqual(errors, [])
+        result = self._run_guard(["--policy", str(policy_file), "--print-json"])
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        item = payload["policies"][0]
+        self.assertTrue(item["ok"], msg=item["errors"])
 
     def test_repository_policy_includes_policy_drift_labels(self) -> None:
         evals_dir = Path(__file__).resolve().parents[1] / "evals"
         policy_file = evals_dir / "ci_label_policy.json"
-        config, errors = validate_ci_label_policy_file(policy_file)
-        self.assertEqual(errors, [])
-        self.assertIsNotNone(config)
-        assert isinstance(config, dict)
-        policy_drift = config.get("policy_drift")
+        result = self._run_guard(["--policy", str(policy_file), "--print-json"])
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        item = payload["policies"][0]
+        self.assertTrue(item["ok"], msg=item["errors"])
+        canonical = item.get("canonical_policy")
+        self.assertIsInstance(canonical, dict)
+        if not isinstance(canonical, dict):
+            self.fail("canonical_policy must be object")
+        policy_drift = canonical.get("policy_drift")
         self.assertIsInstance(policy_drift, dict)
-        assert isinstance(policy_drift, dict)
+        if not isinstance(policy_drift, dict):
+            self.fail("policy_drift must be object")
         self.assertEqual(policy_drift.get("label_prefix"), "ci/policy-drift-")
         self.assertEqual(policy_drift.get("worsening_alert_threshold"), 2)
         self.assertEqual(policy_drift.get("worsening_label"), "ci/policy-drift-worsening")
-        managed_prefixes = config.get("managed_label_prefixes")
+        managed_prefixes = canonical.get("managed_label_prefixes")
         self.assertIsInstance(managed_prefixes, list)
-        assert isinstance(managed_prefixes, list)
+        if not isinstance(managed_prefixes, list):
+            self.fail("managed_label_prefixes must be list")
         self.assertIn("ci/policy-drift-", managed_prefixes)
         self.assertIn("ci/policy-drift-worsening", managed_prefixes)
-        label_rules = config.get("label_rules")
+        label_rules = canonical.get("label_rules")
         self.assertIsInstance(label_rules, list)
-        assert isinstance(label_rules, list)
+        if not isinstance(label_rules, list):
+            self.fail("label_rules must be list")
         prefixes = {
             rule.get("prefix")
             for rule in label_rules
@@ -114,172 +140,222 @@ class CiLabelPolicyGuardTests(unittest.TestCase):
     def test_validate_policy_config_rejects_unknown_fields(self) -> None:
         config = self._base_config()
         config["unexpected"] = True
-        errors = validate_ci_label_policy_config(config)
-        self.assertTrue(any("unknown fields" in item for item in errors))
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        errors = item["errors"]
+        self.assertIsInstance(errors, list)
+        if isinstance(errors, list):
+            self.assertTrue(any("unknown fields" in err for err in errors))
 
     def test_validate_policy_config_rejects_invalid_regex(self) -> None:
         config = self._base_config()
         config["safe_label_pattern"] = "["
-        errors = validate_ci_label_policy_config(config)
-        self.assertTrue(any("safe_label_pattern is invalid regex" in item for item in errors))
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        errors = item["errors"]
+        self.assertIsInstance(errors, list)
+        if isinstance(errors, list):
+            self.assertTrue(any("safe_label_pattern is invalid regex" in err for err in errors))
 
     def test_validate_policy_config_rejects_duplicate_prefix(self) -> None:
         config = self._base_config()
         label_rules = config["label_rules"]
-        assert isinstance(label_rules, list)
-        label_rules.append(
-            {
-                "prefix": "ci/owner-",
-                "color": "1d76db",
-                "description": "dup",
-            }
-        )
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("duplicate label rule prefix: ci/owner-", errors)
+        self.assertIsInstance(label_rules, list)
+        if isinstance(label_rules, list):
+            label_rules.append({"prefix": "ci/owner-", "color": "1d76db", "description": "dup"})
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate label rule prefix: ci/owner-", item["errors"])
 
     def test_validate_policy_config_rejects_unmanaged_rule_prefix(self) -> None:
         config = self._base_config()
         label_rules = config["label_rules"]
-        assert isinstance(label_rules, list)
-        label_rules.append(
-            {
-                "prefix": "ci/trend-",
-                "color": "5319e7",
-                "description": "trend",
-            }
+        self.assertIsInstance(label_rules, list)
+        if isinstance(label_rules, list):
+            label_rules.append({"prefix": "ci/trend-", "color": "5319e7", "description": "trend"})
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "label_rules[2].prefix is not covered by managed_label_prefixes: ci/trend-",
+            item["errors"],
         )
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("label_rules[2].prefix is not covered by managed_label_prefixes: ci/trend-", errors)
 
     def test_validate_policy_config_rejects_unknown_comment_template_field(self) -> None:
         config = self._base_config()
         comment_template = config["comment_template"]
-        assert isinstance(comment_template, dict)
-        fields = comment_template["fields"]
-        assert isinstance(fields, list)
-        fields.append({"key": "unknown", "label": "x", "format": "code"})
-        errors = validate_ci_label_policy_config(config)
-        self.assertTrue(any("comment_template.fields[2].key must be one of" in item for item in errors))
+        self.assertIsInstance(comment_template, dict)
+        if isinstance(comment_template, dict):
+            fields = comment_template["fields"]
+            self.assertIsInstance(fields, list)
+            if isinstance(fields, list):
+                fields.append({"key": "unknown", "label": "x", "format": "code"})
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        errors = item["errors"]
+        self.assertIsInstance(errors, list)
+        if isinstance(errors, list):
+            self.assertTrue(any("comment_template.fields[2].key must be one of" in err for err in errors))
 
     def test_validate_policy_config_accepts_policy_drift_comment_field(self) -> None:
         config = self._base_config()
         comment_template = config["comment_template"]
-        assert isinstance(comment_template, dict)
-        fields = comment_template["fields"]
-        assert isinstance(fields, list)
-        fields.append({"key": "policy_drift", "label": "policy_drift", "format": "code"})
-        errors = validate_ci_label_policy_config(config)
-        self.assertEqual(errors, [])
+        self.assertIsInstance(comment_template, dict)
+        if isinstance(comment_template, dict):
+            fields = comment_template["fields"]
+            self.assertIsInstance(fields, list)
+            if isinstance(fields, list):
+                fields.append({"key": "policy_drift", "label": "policy_drift", "format": "code"})
+        result, item = self._validate_config(config)
+        self.assertEqual(result.returncode, 0, msg=item["errors"])
+        self.assertTrue(item["ok"], msg=item["errors"])
 
     def test_validate_policy_config_rejects_unknown_comment_trigger_severity(self) -> None:
         config = self._base_config()
         comment_trigger = config["comment_trigger"]
-        assert isinstance(comment_trigger, dict)
-        trend_severities = comment_trigger["trend_severities"]
-        assert isinstance(trend_severities, list)
-        trend_severities.append("fatal")
-        errors = validate_ci_label_policy_config(config)
-        self.assertTrue(any("comment_trigger.trend_severities[2] must be one of" in item for item in errors))
+        self.assertIsInstance(comment_trigger, dict)
+        if isinstance(comment_trigger, dict):
+            trend_severities = comment_trigger["trend_severities"]
+            self.assertIsInstance(trend_severities, list)
+            if isinstance(trend_severities, list):
+                trend_severities.append("fatal")
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        errors = item["errors"]
+        self.assertIsInstance(errors, list)
+        if isinstance(errors, list):
+            self.assertTrue(any("comment_trigger.trend_severities[2] must be one of" in err for err in errors))
 
     def test_validate_policy_config_rejects_unknown_policy_drift_trigger_severity(self) -> None:
         config = self._base_config()
         policy_drift = config["policy_drift"]
-        assert isinstance(policy_drift, dict)
-        trigger_severities = policy_drift["comment_trigger_severities"]
-        assert isinstance(trigger_severities, list)
-        trigger_severities.append("fatal")
-        errors = validate_ci_label_policy_config(config)
-        self.assertTrue(
-            any("policy_drift.comment_trigger_severities[2] must be one of" in item for item in errors)
-        )
+        self.assertIsInstance(policy_drift, dict)
+        if isinstance(policy_drift, dict):
+            trigger_severities = policy_drift["comment_trigger_severities"]
+            self.assertIsInstance(trigger_severities, list)
+            if isinstance(trigger_severities, list):
+                trigger_severities.append("fatal")
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        errors = item["errors"]
+        self.assertIsInstance(errors, list)
+        if isinstance(errors, list):
+            self.assertTrue(any("policy_drift.comment_trigger_severities[2] must be one of" in err for err in errors))
 
     def test_validate_policy_config_rejects_unknown_policy_drift_action_hint_key(self) -> None:
         config = self._base_config()
         policy_drift = config["policy_drift"]
-        assert isinstance(policy_drift, dict)
-        action_hints = policy_drift["action_hints"]
-        assert isinstance(action_hints, dict)
-        action_hints["fatal"] = "bad"
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("policy_drift.action_hints has unknown keys: fatal", errors)
+        self.assertIsInstance(policy_drift, dict)
+        if isinstance(policy_drift, dict):
+            action_hints = policy_drift["action_hints"]
+            self.assertIsInstance(action_hints, dict)
+            if isinstance(action_hints, dict):
+                action_hints["fatal"] = "bad"
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("policy_drift.action_hints has unknown keys: fatal", item["errors"])
 
     def test_validate_policy_config_rejects_non_positive_policy_drift_worsening_alert_threshold(self) -> None:
         config = self._base_config()
         policy_drift = config["policy_drift"]
-        assert isinstance(policy_drift, dict)
-        policy_drift["worsening_alert_threshold"] = 0
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("policy_drift.worsening_alert_threshold must be >= 1", errors)
+        self.assertIsInstance(policy_drift, dict)
+        if isinstance(policy_drift, dict):
+            policy_drift["worsening_alert_threshold"] = 0
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("policy_drift.worsening_alert_threshold must be >= 1", item["errors"])
 
     def test_validate_policy_config_requires_policy_drift_worsening_label_managed(self) -> None:
         config = self._base_config()
         managed_prefixes = config["managed_label_prefixes"]
-        assert isinstance(managed_prefixes, list)
-        managed_prefixes.remove("ci/policy-drift-worsening")
-        errors = validate_ci_label_policy_config(config)
+        self.assertIsInstance(managed_prefixes, list)
+        if isinstance(managed_prefixes, list):
+            managed_prefixes.remove("ci/policy-drift-worsening")
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
         self.assertIn(
             "policy_drift.worsening_label must be included in managed_label_prefixes: ci/policy-drift-worsening",
-            errors,
+            item["errors"],
         )
 
     def test_validate_policy_config_requires_policy_drift_prefix_managed(self) -> None:
         config = self._base_config()
         managed_prefixes = config["managed_label_prefixes"]
-        assert isinstance(managed_prefixes, list)
-        managed_prefixes.remove("ci/policy-drift-")
-        errors = validate_ci_label_policy_config(config)
+        self.assertIsInstance(managed_prefixes, list)
+        if isinstance(managed_prefixes, list):
+            managed_prefixes.remove("ci/policy-drift-")
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
         self.assertIn(
             "policy_drift.label_prefix must be included in managed_label_prefixes: ci/policy-drift-",
-            errors,
+            item["errors"],
         )
 
     def test_validate_policy_config_rejects_unknown_comment_trigger_field(self) -> None:
         config = self._base_config()
         comment_trigger = config["comment_trigger"]
-        assert isinstance(comment_trigger, dict)
-        comment_trigger["unexpected"] = ["x"]
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("comment_trigger has unknown fields: unexpected", errors)
+        self.assertIsInstance(comment_trigger, dict)
+        if isinstance(comment_trigger, dict):
+            comment_trigger["unexpected"] = ["x"]
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("comment_trigger has unknown fields: unexpected", item["errors"])
 
     def test_validate_policy_config_rejects_duplicate_comment_trigger_overall_state(self) -> None:
         config = self._base_config()
         comment_trigger = config["comment_trigger"]
-        assert isinstance(comment_trigger, dict)
-        overall_states = comment_trigger["overall_states"]
-        assert isinstance(overall_states, list)
-        overall_states.append("fail")
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("duplicate comment_trigger.overall_states value: fail", errors)
+        self.assertIsInstance(comment_trigger, dict)
+        if isinstance(comment_trigger, dict):
+            overall_states = comment_trigger["overall_states"]
+            self.assertIsInstance(overall_states, list)
+            if isinstance(overall_states, list):
+                overall_states.append("fail")
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate comment_trigger.overall_states value: fail", item["errors"])
 
     def test_validate_policy_config_rejects_duplicate_comment_trigger_severity(self) -> None:
         config = self._base_config()
         comment_trigger = config["comment_trigger"]
-        assert isinstance(comment_trigger, dict)
-        trend_severities = comment_trigger["trend_severities"]
-        assert isinstance(trend_severities, list)
-        trend_severities.append("warn")
-        errors = validate_ci_label_policy_config(config)
-        self.assertIn("duplicate comment_trigger.trend_severities value: warn", errors)
+        self.assertIsInstance(comment_trigger, dict)
+        if isinstance(comment_trigger, dict):
+            trend_severities = comment_trigger["trend_severities"]
+            self.assertIsInstance(trend_severities, list)
+            if isinstance(trend_severities, list):
+                trend_severities.append("warn")
+        result, item = self._validate_config(config)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate comment_trigger.trend_severities value: warn", item["errors"])
 
     def test_validate_policy_file_reports_json_error(self) -> None:
         with TemporaryDirectory() as temp_dir:
             policy_file = Path(temp_dir) / "broken.json"
             policy_file.write_text("{not-json", encoding="utf-8")
-            config, errors = validate_ci_label_policy_file(policy_file)
-            self.assertIsNone(config)
-            self.assertTrue(any("Expecting property name enclosed in double quotes" in item for item in errors))
+        result = self._run_guard(["--policy", str(policy_file), "--print-json"])
+        self.assertNotEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        item = payload["policies"][0]
+        errors = item.get("errors")
+        self.assertIsInstance(errors, list)
+        if isinstance(errors, list):
+            self.assertTrue(
+                any(("json" in str(err).lower()) or ("property name" in str(err).lower()) for err in errors),
+                msg=repr(errors),
+            )
 
     def test_build_policy_result_includes_hash_and_canonical_payload(self) -> None:
         evals_dir = Path(__file__).resolve().parents[1] / "evals"
         policy_file = evals_dir / "ci_label_policy.json"
-        result = build_policy_result(policy_file, include_details=True)
-        self.assertTrue(result["ok"], msg=result["errors"])
-        self.assertTrue(str(result.get("policy_hash", "")).startswith("sha256:"))
-        canonical = result.get("canonical_policy")
+        result = self._run_guard(["--policy", str(policy_file), "--print-json"])
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        item = payload["policies"][0]
+        self.assertTrue(item["ok"], msg=item["errors"])
+        self.assertTrue(str(item.get("policy_hash", "")).startswith("sha256:"))
+        canonical = item.get("canonical_policy")
         self.assertIsInstance(canonical, dict)
-        assert isinstance(canonical, dict)
-        self.assertEqual(canonical.get("schema"), "ci_label_policy")
-        self.assertEqual(canonical.get("schema_version"), 1)
+        if isinstance(canonical, dict):
+            self.assertEqual(canonical.get("schema"), "ci_label_policy")
+            self.assertEqual(canonical.get("schema_version"), 1)
 
 
 if __name__ == "__main__":

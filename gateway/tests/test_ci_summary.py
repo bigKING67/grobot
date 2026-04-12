@@ -3,21 +3,37 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from evals.ci_summary import (  # noqa: E402
-    build_harness_ci_summary,
-    render_harness_ci_summary_markdown,
-)
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
 
 class HarnessCiSummaryTests(unittest.TestCase):
-    SCRIPT_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_summary.py"
+    def _write_json(self, path: Path, payload: dict) -> None:
+        path.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    def _build_command(
+        self,
+        *,
+        trace_path: Path,
+        skill_path: Path,
+        policy_drift_path: Path | None = None,
+        extra_args: list[str] | None = None,
+    ) -> list[str]:
+        command = ["--trace-report", str(trace_path), "--skill-router-report", str(skill_path)]
+        if policy_drift_path is not None:
+            command.extend(["--policy-drift-report", str(policy_drift_path)])
+        if extra_args:
+            command.extend(extra_args)
+        return command
+
+    def _run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+        return run_ts_script("evals/ci-summary.ts", tuple(command))
 
     def test_build_harness_ci_summary_reports_overall_pass(self) -> None:
         trace_report = {
@@ -43,7 +59,22 @@ class HarnessCiSummaryTests(unittest.TestCase):
             "policy": {"hash": "sha256:skill"},
         }
 
-        summary = build_harness_ci_summary(trace_report=trace_report, skill_router_report=skill_report)
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            trace_path = root / "trace.json"
+            skill_path = root / "skill.json"
+            self._write_json(trace_path, trace_report)
+            self._write_json(skill_path, skill_report)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--print-json"],
+                )
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            summary = json.loads(result.stdout)
+
         self.assertTrue(summary["overall_pass"])
         self.assertEqual(summary["trace"]["clean_cases"], 3)
         self.assertEqual(summary["trace"]["split_counts"]["holdout"], 1)
@@ -92,7 +123,23 @@ class HarnessCiSummaryTests(unittest.TestCase):
             "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 3},
             "gate": {"passed": True},
         }
-        summary = build_harness_ci_summary(trace_report=trace_report, skill_router_report=skill_report)
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            trace_path = root / "trace.json"
+            skill_path = root / "skill.json"
+            self._write_json(trace_path, trace_report)
+            self._write_json(skill_path, skill_report)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--print-json"],
+                )
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            summary = json.loads(result.stdout)
+
         self.assertEqual(summary["trace"]["clean_cases"], 4)
         self.assertEqual(summary["trace"]["clean_runs"], 5)
         self.assertEqual(summary["trace"]["split_counts"]["optimization"], 3)
@@ -125,7 +172,23 @@ class HarnessCiSummaryTests(unittest.TestCase):
             "gate": {"passed": True},
             "trend_meta": {"required": True, "mode": "gate_only", "reason": "missing_trend"},
         }
-        summary = build_harness_ci_summary(trace_report=trace_report, skill_router_report=skill_report)
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            trace_path = root / "trace.json"
+            skill_path = root / "skill.json"
+            self._write_json(trace_path, trace_report)
+            self._write_json(skill_path, skill_report)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--print-json"],
+                )
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            summary = json.loads(result.stdout)
+
         self.assertFalse(summary["overall_pass"])
         self.assertEqual(summary["skill_router"]["trend_decision_tag"], "TREND_REQUIRED_FAIL")
         self.assertEqual(summary["skill_router"]["trend_decision_severity"], "error")
@@ -164,11 +227,26 @@ class HarnessCiSummaryTests(unittest.TestCase):
             "worsening_streak": 2,
             "worsening_alert": True,
         }
-        summary = build_harness_ci_summary(
-            trace_report=trace_report,
-            skill_router_report=skill_report,
-            policy_drift_report=policy_drift_report,
-        )
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            trace_path = root / "trace.json"
+            skill_path = root / "skill.json"
+            policy_drift_path = root / "policy_drift.json"
+            self._write_json(trace_path, trace_report)
+            self._write_json(skill_path, skill_report)
+            self._write_json(policy_drift_path, policy_drift_report)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    policy_drift_path=policy_drift_path,
+                    extra_args=["--print-json"],
+                )
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            summary = json.loads(result.stdout)
+
         self.assertEqual(summary["policy_drift"]["severity"], "high")
         self.assertEqual(summary["policy_drift"]["reason"], "schema_mismatch")
         self.assertEqual(summary["policy_drift"]["previous_severity"], "medium")
@@ -183,42 +261,37 @@ class HarnessCiSummaryTests(unittest.TestCase):
         self.assertIn("policy drift worsened", summary["policy_drift"]["action_hint"])
 
     def test_render_harness_ci_summary_markdown_contains_core_rows(self) -> None:
-        summary = {
-            "overall_pass": False,
-            "suggested_labels": [
-                "ci/harness-fail",
-                "ci/severity-warn",
-                "ci/owner-policy-governance",
-                "ci/trend-skipped-policy-changed",
-                "ci/action-review",
-            ],
-            "trace": {
-                "sample_guard_pass": True,
-                "clean_cases": 2,
-                "clean_runs": 2,
-                "split_counts": {"holdout": 1, "optimization": 1},
-            },
-            "skill_router": {
-                "gate_pass": False,
-                "trend_decision_tag": "TREND_SKIPPED_POLICY_CHANGED",
-                "trend_decision_severity": "warn",
-                "trend_owner": "policy-governance",
-                "trend_action_hint": "trend skipped because policy changed between base and head",
-                "trend_required": False,
-                "trend_pass": None,
-                "trend_mode": None,
-                "trend_reason": None,
+        trace_report = {
+            "clean_stats": {"output_cases": 2, "output_runs": 2},
+            "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
+        }
+        skill_report = {
+            "summary": {"accuracy": 0.9, "forbidden_violations": 1, "total_cases": 3},
+            "gate": {"passed": False},
+            "trend_meta": {
+                "required": False,
+                "mode": "gate_only",
+                "reason": "policy_blob_mismatch",
                 "baseline_available": False,
-                "policy_blob_match": None,
-                "policy_hash_current": None,
-                "policy_hash_base": None,
-                "policy_hash_match": None,
-                "accuracy": 0.9,
-                "forbidden_violations": 1,
-                "total_cases": 3,
             },
         }
-        markdown = render_harness_ci_summary_markdown(summary)
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            trace_path = root / "trace.json"
+            skill_path = root / "skill.json"
+            self._write_json(trace_path, trace_report)
+            self._write_json(skill_path, skill_report)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--print-markdown"],
+                )
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            markdown = result.stdout
+
         self.assertIn("overall: fail", markdown)
         self.assertIn(
             "suggested-labels: ci/harness-fail, ci/severity-warn, ci/owner-policy-governance, ci/trend-skipped-policy-changed, ci/action-review",
@@ -228,7 +301,7 @@ class HarnessCiSummaryTests(unittest.TestCase):
         self.assertIn("skill-router-trend-severity: warn", markdown)
         self.assertIn("skill-router-trend-owner: policy-governance", markdown)
         self.assertIn("skill-router-trend-action: trend skipped because policy changed between base and head", markdown)
-        self.assertIn("skill-router-trend: mode=n/a; required=no; pass=n/a; reason=n/a", markdown)
+        self.assertIn("skill-router-trend: mode=gate_only; required=no; pass=n/a; reason=policy_blob_mismatch", markdown)
         self.assertIn(
             "| meta | suggested_labels | ci/harness-fail, ci/severity-warn, ci/owner-policy-governance, ci/trend-skipped-policy-changed, ci/action-review |",
             markdown,
@@ -255,8 +328,8 @@ class HarnessCiSummaryTests(unittest.TestCase):
         )
         self.assertIn("| skill_router | trend_required | no |", markdown)
         self.assertIn("| skill_router | trend_pass | n/a |", markdown)
-        self.assertIn("| skill_router | trend_mode | n/a |", markdown)
-        self.assertIn("| skill_router | trend_reason | n/a |", markdown)
+        self.assertIn("| skill_router | trend_mode | gate_only |", markdown)
+        self.assertIn("| skill_router | trend_reason | policy_blob_mismatch |", markdown)
         self.assertIn("| skill_router | baseline_available | no |", markdown)
         self.assertIn("| skill_router | policy_blob_match | n/a |", markdown)
         self.assertIn("| skill_router | policy_hash_match | n/a |", markdown)
@@ -264,44 +337,42 @@ class HarnessCiSummaryTests(unittest.TestCase):
         self.assertIn("| skill_router | policy_hash_base | n/a |", markdown)
 
     def test_render_harness_ci_summary_markdown_shows_policy_drift_worsening_alert(self) -> None:
-        summary = {
-            "overall_pass": True,
-            "suggested_labels": ["ci/harness-pass", "ci/severity-info", "ci/owner-release-owner", "ci/trend-not-requested"],
-            "policy_drift": {
-                "severity": "high",
-                "reason": "schema_mismatch",
-                "previous_severity": "medium",
-                "previous_reason": "missing_fields",
-                "worsening_streak": 2,
-                "worsening_alert": True,
-            },
-            "trace": {
-                "sample_guard_pass": True,
-                "clean_cases": 2,
-                "clean_runs": 2,
-                "split_counts": {"holdout": 1, "optimization": 1},
-            },
-            "skill_router": {
-                "gate_pass": True,
-                "trend_decision_tag": "TREND_NOT_REQUESTED",
-                "trend_decision_severity": "info",
-                "trend_owner": "release-owner",
-                "trend_action_hint": "trend not required for this run",
-                "trend_required": False,
-                "trend_pass": None,
-                "trend_mode": None,
-                "trend_reason": None,
-                "baseline_available": False,
-                "policy_blob_match": None,
-                "policy_hash_current": None,
-                "policy_hash_base": None,
-                "policy_hash_match": None,
-                "accuracy": 1.0,
-                "forbidden_violations": 0,
-                "total_cases": 2,
-            },
+        trace_report = {
+            "clean_stats": {"output_cases": 2, "output_runs": 2},
+            "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
         }
-        markdown = render_harness_ci_summary_markdown(summary)
+        skill_report = {
+            "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
+            "gate": {"passed": True},
+        }
+        policy_drift_report = {
+            "severity": "high",
+            "reason": "schema_mismatch",
+            "previous_severity": "medium",
+            "previous_reason": "missing_fields",
+            "worsening_streak": 2,
+            "worsening_alert": True,
+        }
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            trace_path = root / "trace.json"
+            skill_path = root / "skill.json"
+            policy_drift_path = root / "policy_drift.json"
+            self._write_json(trace_path, trace_report)
+            self._write_json(skill_path, skill_report)
+            self._write_json(policy_drift_path, policy_drift_report)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    policy_drift_path=policy_drift_path,
+                    extra_args=["--print-markdown"],
+                )
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            markdown = result.stdout
+
         self.assertIn("> [!WARNING] policy_drift worsening alert: streak=2; transition=medium->high", markdown)
         self.assertIn("- policy-drift: high:schema_mismatch", markdown)
         self.assertIn(
@@ -319,39 +390,27 @@ class HarnessCiSummaryTests(unittest.TestCase):
             root = Path(temp_dir)
             trace_path = root / "trace.json"
             skill_path = root / "skill.json"
-            trace_path.write_text(
-                json.dumps(
-                    {
-                        "clean_stats": {"output_cases": 1, "output_runs": 1},
-                        "sample_guard": {"pass": False, "split": {"counts": {"holdout": 0, "optimization": 1}}},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                trace_path,
+                {
+                    "clean_stats": {"output_cases": 1, "output_runs": 1},
+                    "sample_guard": {"pass": False, "split": {"counts": {"holdout": 0, "optimization": 1}}},
+                },
             )
-            skill_path.write_text(
-                json.dumps(
-                    {
-                        "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 1},
-                        "gate": {"passed": True},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                skill_path,
+                {
+                    "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 1},
+                    "gate": {"passed": True},
+                },
             )
-
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--trace-report",
-                str(trace_path),
-                "--skill-router-report",
-                str(skill_path),
-                "--fail-on-overall-fail",
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--fail-on-overall-fail"],
+                )
+            )
             self.assertEqual(result.returncode, 4)
             self.assertIn("overall=fail", result.stdout)
 
@@ -360,40 +419,28 @@ class HarnessCiSummaryTests(unittest.TestCase):
             root = Path(temp_dir)
             trace_path = root / "trace.json"
             skill_path = root / "skill.json"
-            trace_path.write_text(
-                json.dumps(
-                    {
-                        "clean_stats": {"output_cases": 2, "output_runs": 2},
-                        "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                trace_path,
+                {
+                    "clean_stats": {"output_cases": 2, "output_runs": 2},
+                    "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
+                },
             )
-            skill_path.write_text(
-                json.dumps(
-                    {
-                        "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
-                        "gate": {"passed": True},
-                        "trend_meta": {"required": False, "mode": "gate_only", "reason": "policy_blob_mismatch"},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                skill_path,
+                {
+                    "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
+                    "gate": {"passed": True},
+                    "trend_meta": {"required": False, "mode": "gate_only", "reason": "policy_blob_mismatch"},
+                },
             )
-
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--trace-report",
-                str(trace_path),
-                "--skill-router-report",
-                str(skill_path),
-                "--emit-github-annotations",
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--emit-github-annotations"],
+                )
+            )
             self.assertEqual(result.returncode, 0)
             self.assertIn("::warning title=Skill Router Trend::", result.stdout)
             self.assertIn("TREND_SKIPPED_POLICY_CHANGED", result.stdout)
@@ -415,56 +462,39 @@ class HarnessCiSummaryTests(unittest.TestCase):
             trace_path = root / "trace.json"
             skill_path = root / "skill.json"
             policy_drift_path = root / "policy-drift.json"
-            trace_path.write_text(
-                json.dumps(
-                    {
-                        "clean_stats": {"output_cases": 2, "output_runs": 2},
-                        "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                trace_path,
+                {
+                    "clean_stats": {"output_cases": 2, "output_runs": 2},
+                    "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
+                },
             )
-            skill_path.write_text(
-                json.dumps(
-                    {
-                        "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
-                        "gate": {"passed": True},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                skill_path,
+                {
+                    "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
+                    "gate": {"passed": True},
+                },
             )
-            policy_drift_path.write_text(
-                json.dumps(
-                    {
-                        "severity": "medium",
-                        "reason": "missing_fields",
-                        "previous_severity": "low",
-                        "previous_reason": "unknown_fields",
-                        "worsening_streak": 2,
-                        "worsening_alert": True,
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                policy_drift_path,
+                {
+                    "severity": "medium",
+                    "reason": "missing_fields",
+                    "previous_severity": "low",
+                    "previous_reason": "unknown_fields",
+                    "worsening_streak": 2,
+                    "worsening_alert": True,
+                },
             )
-
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--trace-report",
-                str(trace_path),
-                "--skill-router-report",
-                str(skill_path),
-                "--policy-drift-report",
-                str(policy_drift_path),
-                "--emit-github-annotations",
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    policy_drift_path=policy_drift_path,
+                    extra_args=["--emit-github-annotations"],
+                )
+            )
             self.assertEqual(result.returncode, 0)
             self.assertIn("::warning title=Policy Drift Worsening::", result.stdout)
             self.assertIn("policy_drift=medium:missing_fields", result.stdout)
@@ -482,39 +512,27 @@ class HarnessCiSummaryTests(unittest.TestCase):
             root = Path(temp_dir)
             trace_path = root / "trace.json"
             skill_path = root / "skill.json"
-            trace_path.write_text(
-                json.dumps(
-                    {
-                        "clean_stats": {"output_cases": 1, "output_runs": 1},
-                        "sample_guard": {"pass": False, "split": {"counts": {"holdout": 0, "optimization": 1}}},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                trace_path,
+                {
+                    "clean_stats": {"output_cases": 1, "output_runs": 1},
+                    "sample_guard": {"pass": False, "split": {"counts": {"holdout": 0, "optimization": 1}}},
+                },
             )
-            skill_path.write_text(
-                json.dumps(
-                    {
-                        "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 1},
-                        "gate": {"passed": True},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                skill_path,
+                {
+                    "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 1},
+                    "gate": {"passed": True},
+                },
             )
-
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--trace-report",
-                str(trace_path),
-                "--skill-router-report",
-                str(skill_path),
-                "--emit-github-annotations",
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--emit-github-annotations"],
+                )
+            )
             self.assertEqual(result.returncode, 0)
             self.assertIn("::error title=Harness Gate Overall Fail::", result.stdout)
             self.assertIn("owner=release-owner", result.stdout)
@@ -528,40 +546,28 @@ class HarnessCiSummaryTests(unittest.TestCase):
             root = Path(temp_dir)
             trace_path = root / "trace.json"
             skill_path = root / "skill.json"
-            trace_path.write_text(
-                json.dumps(
-                    {
-                        "clean_stats": {"output_cases": 2, "output_runs": 2},
-                        "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                trace_path,
+                {
+                    "clean_stats": {"output_cases": 2, "output_runs": 2},
+                    "sample_guard": {"pass": True, "split": {"counts": {"holdout": 1, "optimization": 1}}},
+                },
             )
-            skill_path.write_text(
-                json.dumps(
-                    {
-                        "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
-                        "gate": {"passed": True},
-                        "trend_meta": {"required": False, "mode": "gate_only", "reason": "policy_blob_mismatch"},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                skill_path,
+                {
+                    "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 2},
+                    "gate": {"passed": True},
+                    "trend_meta": {"required": False, "mode": "gate_only", "reason": "policy_blob_mismatch"},
+                },
             )
-
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--trace-report",
-                str(trace_path),
-                "--skill-router-report",
-                str(skill_path),
-                "--print-labels",
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--print-labels"],
+                )
+            )
             self.assertEqual(result.returncode, 0)
             self.assertIn(
                 "ci/harness-pass,ci/severity-warn,ci/owner-policy-governance,ci/trend-skipped-policy-changed,ci/action-review",
@@ -574,40 +580,27 @@ class HarnessCiSummaryTests(unittest.TestCase):
             trace_path = root / "trace.json"
             skill_path = root / "skill.json"
             labels_path = root / "labels.json"
-            trace_path.write_text(
-                json.dumps(
-                    {
-                        "clean_stats": {"output_cases": 1, "output_runs": 1},
-                        "sample_guard": {"pass": False, "split": {"counts": {"holdout": 0, "optimization": 1}}},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                trace_path,
+                {
+                    "clean_stats": {"output_cases": 1, "output_runs": 1},
+                    "sample_guard": {"pass": False, "split": {"counts": {"holdout": 0, "optimization": 1}}},
+                },
             )
-            skill_path.write_text(
-                json.dumps(
-                    {
-                        "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 1},
-                        "gate": {"passed": True},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_json(
+                skill_path,
+                {
+                    "summary": {"accuracy": 1.0, "forbidden_violations": 0, "total_cases": 1},
+                    "gate": {"passed": True},
+                },
             )
-
-            command = [
-                sys.executable,
-                str(self.SCRIPT_PATH),
-                "--trace-report",
-                str(trace_path),
-                "--skill-router-report",
-                str(skill_path),
-                "--labels-output",
-                str(labels_path),
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = self._run(
+                self._build_command(
+                    trace_path=trace_path,
+                    skill_path=skill_path,
+                    extra_args=["--labels-output", str(labels_path)],
+                )
+            )
             self.assertEqual(result.returncode, 0)
             labels_payload = json.loads(labels_path.read_text(encoding="utf-8"))
             self.assertEqual(

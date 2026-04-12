@@ -2,18 +2,27 @@
 from __future__ import annotations
 
 import json
-import sys
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from evals.hill_climb import hill_climb_from_report  # noqa: E402
-from evals.runner import run_harness  # noqa: E402
+try:
+    from gateway.tests.ts_contract import run_ts_script
+except ModuleNotFoundError:
+    from ts_contract import run_ts_script
 
 
 class HillClimbTests(unittest.TestCase):
+    def _run_hill_climb(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        return run_ts_script("evals/hill-climb.ts", tuple(args))
+
+    def _parse_json_from_stdout(self, stdout: str) -> dict[str, object]:
+        start = stdout.find("{")
+        if start < 0:
+            raise AssertionError(f"expected JSON payload in stdout, got: {stdout!r}")
+        return json.loads(stdout[start:])
+
     def test_hill_climb_prefers_optimization_gain_without_holdout_regression(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -97,13 +106,30 @@ class HillClimbTests(unittest.TestCase):
             with policy_file.open("w", encoding="utf-8") as handle:
                 json.dump(policy, handle, ensure_ascii=False)
 
-            report = run_harness(case_file=cases_file, run_file=runs_file, gate_policy_file=policy_file)
-            result = hill_climb_from_report(
-                report=report,
-                baseline_variant="lexical",
-                min_optimization_gain=0.01,
-                allow_holdout_drop=0.0,
+            completed = self._run_hill_climb(
+                [
+                    "--cases",
+                    str(cases_file),
+                    "--runs",
+                    str(runs_file),
+                    "--gate-policy",
+                    str(policy_file),
+                    "--baseline-variant",
+                    "lexical",
+                    "--min-optimization-gain",
+                    "0.01",
+                    "--allow-holdout-drop",
+                    "0.0",
+                    "--print-json",
+                ]
             )
+            self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+            payload = self._parse_json_from_stdout(completed.stdout)
+
+            result = payload.get("result")
+            self.assertIsInstance(result, dict)
+            if not isinstance(result, dict):
+                self.fail("result must be object")
 
             self.assertEqual(result["winner"], "hybrid")
             trail = result.get("trail")
@@ -114,6 +140,25 @@ class HillClimbTests(unittest.TestCase):
             self.assertIsInstance(rejected, list)
             if isinstance(rejected, list):
                 self.assertTrue(any(item.get("variant") == "risky" for item in rejected if isinstance(item, dict)))
+
+    def test_missing_baseline_variant_returns_parse_error(self) -> None:
+        result = self._run_hill_climb(
+            [
+                "--cases",
+                "cases.jsonl",
+                "--runs",
+                "runs.jsonl",
+            ]
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("hill-climb fatal:", result.stderr)
+        self.assertIn("missing required args: --baseline-variant", result.stderr)
+
+    def test_unknown_argument_returns_parse_error(self) -> None:
+        result = self._run_hill_climb(["--unknown-flag"])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("hill-climb fatal:", result.stderr)
+        self.assertIn("unknown argument: --unknown-flag", result.stderr)
 
 
 if __name__ == "__main__":
