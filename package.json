@@ -49,8 +49,8 @@
     "harness:skill-router:policy:check": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-policy-guard.ts --policy gateway/evals/skill_router_policy.dev.json --policy gateway/evals/skill_router_policy.ci.json --policy gateway/evals/skill_router_policy.prod.json",
     "harness:skill-router:policy:fingerprint": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-policy-guard.ts --policy gateway/evals/skill_router_policy.dev.json --policy gateway/evals/skill_router_policy.ci.json --policy gateway/evals/skill_router_policy.prod.json --print-json",
     "harness:skill-router:policy:validate": "python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.dev.json --dry-validate-only --print-json && python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.ci.json --dry-validate-only --print-json && python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.prod.json --dry-validate-only --print-json",
-    "harness:ci-label-policy:check": "python3 gateway/evals/ci_label_policy_guard.py --policy gateway/evals/ci_label_policy.json",
-    "harness:ci-label-policy:fingerprint": "python3 gateway/evals/ci_label_policy_guard.py --policy gateway/evals/ci_label_policy.json --print-json",
+    "harness:ci-label-policy:check": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/ci-label-policy-guard.ts --policy gateway/evals/ci_label_policy.json",
+    "harness:ci-label-policy:fingerprint": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/ci-label-policy-guard.ts --policy gateway/evals/ci_label_policy.json --print-json",
     "harness:ci-summary": "npm run harness:ci-summary:build -- --trace-report gateway/evals/data/trace_pipeline_ci_report.json --skill-router-report gateway/evals/data/skill_router_ci_report.json --print-json",
     "harness:ci-summary:build": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/ci-summary.ts",
     "harness:ci-summary:export": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/ci-summary-export.ts"
