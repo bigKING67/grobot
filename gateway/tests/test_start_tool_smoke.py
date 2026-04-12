@@ -97,6 +97,7 @@ class StartToolSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(int(payload.get("history_message_count", 0)), 2)
         self.assertTrue(bool(payload.get("handoff_exists")))
         self.assertTrue(bool(payload.get("handoff_has_compact_instructions")))
+        self.assertTrue(bool(payload.get("handoff_has_auto_exit_reason")))
         self.assertIn("[rust-runtime]", str(payload.get("stdout", "")))
 
     def test_start_message_skips_auto_handoff_without_trigger(self) -> None:

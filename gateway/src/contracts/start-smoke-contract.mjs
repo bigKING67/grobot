@@ -228,7 +228,7 @@ function runStartInteractiveSessionFlow(repoRoot) {
       "8",
     ],
     null,
-    ["/sessions", "/new", "/sessions", "interactive ts start", "/handoff", "/exit", ""].join("\n"),
+    ["/sessions", "/new", "/sessions", "TODO: interactive ts start", "/exit", ""].join("\n"),
   );
   const namespaceKey = "feishu:grobot:dm:smoke-user";
   const registryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
@@ -264,6 +264,7 @@ function runStartInteractiveSessionFlow(repoRoot) {
       activeHistoryPayload && Array.isArray(activeHistoryPayload.messages) ? activeHistoryPayload.messages.length : 0,
     handoff_exists: handoffContent.length > 0,
     handoff_has_compact_instructions: handoffContent.includes("## Compact Instructions"),
+    handoff_has_auto_exit_reason: handoffContent.includes("reason: auto-exit"),
   };
 }
 
