@@ -8,13 +8,13 @@ import unittest
 from pathlib import Path
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 
 def run_session_store_contract(command: str, root: Path) -> subprocess.CompletedProcess[str]:
-    return run_ts_contract("session-store-contract.ts", command, ("--root", str(root)))
+    return run_node_contract("session-store-contract.mjs", command, ("--root", str(root)))
 
 
 class SessionStoreFallbackTests(unittest.TestCase):

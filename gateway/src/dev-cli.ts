@@ -1042,6 +1042,14 @@ function memoryStoreRedisKey(projectName: string, workDir: string): string {
   return `grobot:ts-dev-cli:memory-store:v1:${projectName}:${encodeURIComponent(workDir)}`;
 }
 
+function sessionRegistryRedisKey(namespaceKey: string): string {
+  return `grobot:ts-dev-cli:session-registry:v1:${encodeURIComponent(namespaceKey)}`;
+}
+
+function sessionHistoryRedisKey(sessionKey: string): string {
+  return `grobot:ts-dev-cli:session-history:v1:${encodeURIComponent(sessionKey)}`;
+}
+
 function decodeMemoryStorePayload(payload: Record<string, unknown>): Map<string, Record<string, unknown>[]> {
   const map = new Map<string, Record<string, unknown>[]>();
   const sessions = payload.sessions;
@@ -2868,8 +2876,125 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     subject,
   } as const;
   const sessionNamespaceKey = buildSessionKey(sessionNamespace);
+  const sessionRegistryFilePathValue = sessionRegistryFilePath(homeDir, sessionNamespaceKey);
+  let sessionStoreRuntime = resolveMemoryStoreRuntime(options, projectTomlPath);
+  const sessionRegistryKey = sessionRegistryRedisKey(sessionNamespaceKey);
+  const fallbackSessionStoreToFile = (reason: string): string[] => {
+    if (sessionStoreRuntime.backend === "file") {
+      return [];
+    }
+    sessionStoreRuntime = {
+      ...sessionStoreRuntime,
+      backend: "file",
+      fallbackReason: reason,
+    };
+    return [`session store fallback to file: ${reason}`];
+  };
+  const loadSessionRegistryState = async (): Promise<LoadedSessionRegistry> => {
+    if (sessionStoreRuntime.backend === "redis" && sessionStoreRuntime.redisUrl) {
+      try {
+        const payload = await redisGetJson(sessionStoreRuntime.redisUrl, sessionRegistryKey);
+        const normalized = normalizeSessionRegistryPayload(payload ?? {}, sessionNamespaceKey);
+        return {
+          registry: normalized,
+          warnings: [],
+        };
+      } catch (error) {
+        const fallbackWarnings = fallbackSessionStoreToFile(`redis registry read failed: ${String(error)}`);
+        const fileState = loadSessionRegistry(homeDir, sessionNamespaceKey);
+        return {
+          registry: fileState.registry,
+          warnings: [...fallbackWarnings, ...fileState.warnings],
+        };
+      }
+    }
+    return loadSessionRegistry(homeDir, sessionNamespaceKey);
+  };
+  const saveSessionRegistryState = async (payload: SessionRegistryPayload): Promise<string[]> => {
+    const normalized = normalizeSessionRegistryPayload(payload, sessionNamespaceKey);
+    if (sessionStoreRuntime.backend === "redis" && sessionStoreRuntime.redisUrl) {
+      try {
+        await redisSetJson(
+          sessionStoreRuntime.redisUrl,
+          sessionRegistryKey,
+          normalized as unknown as Record<string, unknown>,
+          MEMORY_STORE_REDIS_TTL_SECS,
+        );
+        return [];
+      } catch (error) {
+        const warnings = fallbackSessionStoreToFile(`redis registry write failed: ${String(error)}`);
+        const fileWarnings = saveSessionRegistry(homeDir, sessionNamespaceKey, normalized);
+        return [...warnings, ...fileWarnings];
+      }
+    }
+    return saveSessionRegistry(homeDir, sessionNamespaceKey, normalized);
+  };
+  const loadHistoryMessagesState = async (
+    activeSessionKey: string,
+  ): Promise<{
+    messages: ChatHistoryMessage[];
+    source: "store" | "empty";
+    warnings: string[];
+  }> => {
+    if (sessionStoreRuntime.backend === "redis" && sessionStoreRuntime.redisUrl) {
+      const historyKey = sessionHistoryRedisKey(activeSessionKey);
+      try {
+        const payload = await redisGetJson(sessionStoreRuntime.redisUrl, historyKey);
+        if (!payload) {
+          return {
+            messages: [],
+            source: "empty",
+            warnings: [],
+          };
+        }
+        const messages = trimHistoryMessages(normalizeHistoryMessages(payload.messages), historyTurns);
+        return {
+          messages,
+          source: messages.length > 0 ? "store" : "empty",
+          warnings: [],
+        };
+      } catch (error) {
+        const warnings = fallbackSessionStoreToFile(`redis history read failed: ${String(error)}`);
+        const fileState = loadHistoryMessages(homeDir, activeSessionKey, historyTurns);
+        return {
+          messages: fileState.messages,
+          source: fileState.source,
+          warnings: [...warnings, ...fileState.warnings],
+        };
+      }
+    }
+    return loadHistoryMessages(homeDir, activeSessionKey, historyTurns);
+  };
+  const saveHistoryMessagesState = async (
+    activeSessionKey: string,
+    rows: ChatHistoryMessage[],
+  ): Promise<string[]> => {
+    const bounded = trimHistoryMessages(rows, historyTurns);
+    if (sessionStoreRuntime.backend === "redis" && sessionStoreRuntime.redisUrl) {
+      const historyKey = sessionHistoryRedisKey(activeSessionKey);
+      try {
+        await redisSetJson(
+          sessionStoreRuntime.redisUrl,
+          historyKey,
+          {
+            version: HISTORY_STORE_VERSION,
+            session_key: activeSessionKey,
+            updated_at: nowIsoUtc(),
+            messages: bounded,
+          },
+          MEMORY_STORE_REDIS_TTL_SECS,
+        );
+        return [];
+      } catch (error) {
+        const warnings = fallbackSessionStoreToFile(`redis history write failed: ${String(error)}`);
+        const fileWarnings = saveHistoryMessages(homeDir, activeSessionKey, bounded, historyTurns);
+        return [...warnings, ...fileWarnings];
+      }
+    }
+    return saveHistoryMessages(homeDir, activeSessionKey, bounded, historyTurns);
+  };
 
-  const sessionRegistryState = loadSessionRegistry(homeDir, sessionNamespaceKey);
+  const sessionRegistryState = await loadSessionRegistryState();
   let sessionRegistry = sessionRegistryState.registry;
   for (const warning of sessionRegistryState.warnings) {
     process.stderr.write(`[session] ${warning}\n`);
@@ -2892,7 +3017,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
   let activeSessionRecord = ensureActiveSession();
   let activeSessionId = activeSessionRecord.id;
   let sessionKey = activeSessionRecord.session_key;
-  let historyLoad = loadHistoryMessages(homeDir, sessionKey, historyTurns);
+  let historyLoad = await loadHistoryMessagesState(sessionKey);
   let historyMessages = historyLoad.messages;
   let restoreSource = historyLoad.source;
   for (const warning of historyLoad.warnings) {
@@ -2900,15 +3025,15 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
   }
   let historyCompacted = false;
 
-  const persistSessionRegistryState = (): void => {
-    const warnings = saveSessionRegistry(homeDir, sessionNamespaceKey, sessionRegistry);
+  const persistSessionRegistryState = async (): Promise<void> => {
+    const warnings = await saveSessionRegistryState(sessionRegistry);
     for (const warning of warnings) {
       process.stderr.write(`[session] ${warning}\n`);
     }
   };
 
-  const persistHistoryState = (): void => {
-    const warnings = saveHistoryMessages(homeDir, sessionKey, historyMessages, historyTurns);
+  const persistHistoryState = async (): Promise<void> => {
+    const warnings = await saveHistoryMessagesState(sessionKey, historyMessages);
     for (const warning of warnings) {
       process.stderr.write(`[store] ${warning}\n`);
     }
@@ -2932,7 +3057,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     output.write(`[handoff] write failed (${handoffPath}): ${wrote.error}\n`);
   };
 
-  const switchActiveSession = (targetSessionId: string, reason: string): boolean => {
+  const switchActiveSession = async (targetSessionId: string, reason: string): Promise<boolean> => {
     const record = findSessionRecord(sessionRegistry, targetSessionId);
     if (!record) {
       process.stdout.write(`Session "${targetSessionId}" not found. Use /sessions to inspect ids.\n\n`);
@@ -2941,25 +3066,25 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     activeSessionId = record.id;
     sessionRegistry.active_id = record.id;
     sessionKey = record.session_key;
-    historyLoad = loadHistoryMessages(homeDir, sessionKey, historyTurns);
+    historyLoad = await loadHistoryMessagesState(sessionKey);
     historyMessages = historyLoad.messages;
     restoreSource = historyLoad.source;
     for (const warning of historyLoad.warnings) {
       process.stderr.write(`[store] ${warning}\n`);
     }
     touchSessionRecord(sessionRegistry, activeSessionId);
-    persistSessionRegistryState();
+    await persistSessionRegistryState();
     process.stdout.write(
       `Switched to session "${activeSessionId}" (reason=${reason}, restored=${String(historyMessages.length / 2)} turns from ${restoreSource}).\n\n`,
     );
     return true;
   };
 
-  const createNewSession = (): string => {
+  const createNewSession = async (): Promise<string> => {
     const record = createSessionRecord(sessionNamespaceKey);
     sessionRegistry.sessions.push(record);
     sessionRegistry.active_id = record.id;
-    persistSessionRegistryState();
+    await persistSessionRegistryState();
     return record.id;
   };
 
@@ -2979,7 +3104,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     process.stdout.write("\n");
   };
 
-  const recordTurn = (userText: string, assistantText: string): void => {
+  const recordTurn = async (userText: string, assistantText: string): Promise<void> => {
     const nextHistory = [
       ...historyMessages,
       { role: "user", content: userText } as ChatHistoryMessage,
@@ -2990,9 +3115,9 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
       historyCompacted = true;
     }
     historyMessages = trimmed;
-    persistHistoryState();
+    await persistHistoryState();
     touchSessionRecord(sessionRegistry, activeSessionId, userText);
-    persistSessionRegistryState();
+    await persistSessionRegistryState();
   };
 
   const executeTurn = async (userText: string, interactiveMode: boolean): Promise<number> => {
@@ -3028,7 +3153,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
         shadowMode: executionPlane.shadowMode,
       },
     );
-    recordTurn(userText, report.assistantMessage);
+    await recordTurn(userText, report.assistantMessage);
     process.stdout.write(`${report.assistantMessage}\n`);
     if (interactiveMode) {
       process.stdout.write("\n");
@@ -3059,6 +3184,15 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
   process.stdout.write(`  session:   ${sessionKey}\n`);
   process.stdout.write(`  namespace: ${sessionNamespaceKey}\n`);
   process.stdout.write(`  session_id:${activeSessionId}\n`);
+  process.stdout.write(
+    `  store:     ${sessionStoreRuntime.backend} (source=${sessionStoreRuntime.source}, registry=${sessionRegistryFilePathValue})\n`,
+  );
+  if (sessionStoreRuntime.redisUrl) {
+    process.stdout.write(`  store_redis:${maskRedisUrl(sessionStoreRuntime.redisUrl)}\n`);
+  }
+  if (sessionStoreRuntime.fallbackReason) {
+    process.stdout.write(`  store_fallback:${sessionStoreRuntime.fallbackReason}\n`);
+  }
   process.stdout.write(
     `  handoff:   auto=${handoffAutoOnExit ? "on" : "off"} recent_turns=${String(handoffRecentTurns)} path=${handoffPath}\n`,
   );
@@ -3098,8 +3232,8 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
       return "continue";
     }
     if (userInput === "/new") {
-      const nextId = createNewSession();
-      void switchActiveSession(nextId, "new");
+      const nextId = await createNewSession();
+      await switchActiveSession(nextId, "new");
       return "continue";
     }
     if (userInput.startsWith("/switch")) {
@@ -3109,7 +3243,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
         process.stdout.write("Usage: /switch <session_id>\n\n");
         return "continue";
       }
-      void switchActiveSession(target, "switch");
+      await switchActiveSession(target, "switch");
       return "continue";
     }
     if (userInput.startsWith("/continue")) {
@@ -3128,7 +3262,7 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
         process.stdout.write(`Session "${sourceId}" not found. Use /sessions to inspect ids.\n\n`);
         return "continue";
       }
-      const sourceHistoryState = loadHistoryMessages(homeDir, sourceRecord.session_key, historyTurns);
+      const sourceHistoryState = await loadHistoryMessagesState(sourceRecord.session_key);
       for (const warning of sourceHistoryState.warnings) {
         process.stderr.write(`[store] ${warning}\n`);
       }
@@ -3149,9 +3283,9 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
         historyCompacted = true;
       }
       historyMessages = nextHistory;
-      persistHistoryState();
+      await persistHistoryState();
       touchSessionRecord(sessionRegistry, activeSessionId, `continue from ${sourceId}`);
-      persistSessionRegistryState();
+      await persistSessionRegistryState();
       process.stdout.write(
         `Bridge injected from "${sourceId}" into current session "${activeSessionId}" (summary only, no full history import).\n\n`,
       );

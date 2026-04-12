@@ -6,9 +6,9 @@ import subprocess
 import unittest
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 MANAGEMENT_ACTION_RELOAD = "reload"
 MANAGEMENT_ACTION_INTERRUPT = "interrupt"
@@ -60,7 +60,7 @@ def run_management_policy_contract(
         cmd.extend(["--required-action", required_action])
     if override_token is not None:
         cmd.extend(["--override-token", override_token])
-    return run_ts_contract("management-policy-contract.ts", command, cmd, env=env)
+    return run_node_contract("management-policy-contract.mjs", command, cmd, env=env)
 
 
 class ManagementPolicyTemplateTests(unittest.TestCase):

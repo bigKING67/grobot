@@ -90,16 +90,6 @@ def _build_node_cmd(script_relative_path: str, args: Iterable[str]) -> list[str]
     ]
 
 
-def run_ts_contract(
-    script_name: str,
-    command: str,
-    args: Iterable[str] = (),
-    *,
-    env: dict[str, str] | None = None,
-) -> subprocess.CompletedProcess[str]:
-    return run_ts_script(f"contracts/{script_name}", (command, *list(args)), env=env)
-
-
 def run_node_contract(
     script_name: str,
     command: str,
@@ -108,6 +98,16 @@ def run_node_contract(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return run_node_script(f"contracts/{script_name}", (command, *list(args)), env=env)
+
+
+def run_ts_contract(
+    script_name: str,
+    command: str,
+    args: Iterable[str] = (),
+    *,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run_ts_script(f"contracts/{script_name}", (command, *list(args)), env=env)
 
 
 def spawn_node_contract(

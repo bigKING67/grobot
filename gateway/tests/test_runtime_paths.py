@@ -8,13 +8,13 @@ import unittest
 from pathlib import Path
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 
 def run_runtime_paths_contract(command: str, *args: str):
-    return run_ts_contract("runtime-paths-contract.ts", command, args)
+    return run_node_contract("runtime-paths-contract.mjs", command, args)
 
 
 class RuntimePathsTests(unittest.TestCase):

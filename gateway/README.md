@@ -39,12 +39,13 @@ TypeScript gateway skeleton for Grobot.
 33. Gateway TypeScript compile gate via `gateway/tsconfig.json`.
 34. TS dev CLI fallback (`gateway/src/dev-cli.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
 35. TS `serve --ts-dev-cli` currently exposes `GET /api/v1/status`, `GET /api/v1/config` (auth + masked), `GET /healthz`, `POST /api/v1/reload`, `POST /api/v1/sessions/{id}/interrupt`, `POST /api/v1/mcp/reset`, `POST /api/v1/mcp/servers/{name}/reset`, `GET /api/v1/sessions/{id}/memory`, `GET /api/v1/sessions/{id}/memory/export`, `POST /api/v1/sessions/{id}/memory/import`, `POST /api/v1/sessions/{id}/memory/forget`, `POST /api/v1/sessions/{id}/memory/lifecycle`, and `POST /api/v1/memory/lifecycle/run`.
-36. TS `serve --ts-dev-cli` is still a migration subset; full policy template/ACL matrix and durable memory backend parity remain on Python management server.
+36. TS `start/status/serve` 参数层已对齐 `grobot_cli.py` 常用路径与会话参数（`--home`/`--project-root`/`--config-path`/`--session-scope`/`--session-subject`/`--session-backend` 别名）；`serve` 还支持从 `[management].token` 自动读取管理令牌。管理面仍是迁移子集，完整策略模板/ACL 矩阵与持久后端细节仍在 Python 侧更完整。
 37. TS memory store backend selection now supports `file` (default) and `redis` (via `--session-store redis` / `GROBOT_SESSION_STORE=redis` / `[runtime.storage].hot_cache=redis`). Status endpoint reports selected backend, Redis key, and fallback reason when Redis bootstrap fails and it falls back to file.
 38. TS `serve --ts-dev-cli` now honors config read policy precedence for `GET /api/v1/config` (`--config-read-policy` > `GROBOT_CONFIG_READ_POLICY` > `[management].config_read_policy` > `auto`), with `auto` resolving by bind host (loopback=`public`, non-loopback=`auth`).
 39. TS Redis memory store uses a minimal RESP2 client over `node:net` (currently `AUTH`/`SELECT`/`GET`/`SET EX` on `redis://`). `rediss://` is not supported in TS dev CLI yet; when Redis bootstrap fails, runtime falls back to file store and exposes `fallback_reason` in `/api/v1/status`.
 40. `POST /api/v1/reload` now refreshes memory store runtime config as well (`file/redis`, source, fallback reason) and reloads in-memory session map from the resolved backend.
 41. Skill-router eval baseline/ci-gate/report pipeline is TS-only (`gateway/src/evals/skill-router-*.ts`).
+42. TS `status --probe` now performs a real OpenAI-compatible `/models` probe (credential precedence: CLI > env > selected project provider in `config.toml`), reports HTTP status/model count, and exits non-zero on probe failure.
 
 ## Verification
 

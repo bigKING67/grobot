@@ -312,6 +312,46 @@ function runFailoverTsRust(repoRoot) {
   ]);
 }
 
+function runStartSessionStoreRedisFallback(repoRoot) {
+  const workDir = createTempDir("grobot-start-work");
+  const homeDir = createTempDir("grobot-start-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const sessionKey = "feishu:grobot:dm:redis-fallback-user";
+  const historyPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(sessionKey)}.history.json`;
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--home",
+    homeDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "redis-fallback-user",
+    "--session-backend",
+    "redis",
+    "--redis-url",
+    "redis://127.0.0.1:6399/0",
+    "--message",
+    "session store redis fallback smoke",
+  ]);
+  const historyPayload = readJsonFileSafe(historyPath);
+  return {
+    ...result,
+    history_path: historyPath,
+    history_exists: Boolean(historyPayload),
+    history_message_count:
+      historyPayload && Array.isArray(historyPayload.messages) ? historyPayload.messages.length : 0,
+  };
+}
+
 function writeExecutionProjectToml(workDir) {
   const grobotDir = `${workDir}/.grobot`;
   mkdirSync(grobotDir, { recursive: true });
@@ -393,6 +433,9 @@ function runCli(argv) {
       break;
     case "failover-runs-ts-rust":
       payload = runFailoverTsRust(repoRoot);
+      break;
+    case "start-session-store-redis-fallback":
+      payload = runStartSessionStoreRedisFallback(repoRoot);
       break;
     case "status-ts-rust":
       payload = runStatusTsRust(repoRoot);

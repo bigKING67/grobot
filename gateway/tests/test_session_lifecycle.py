@@ -14,13 +14,13 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract, spawn_node_contract
+    from gateway.tests.ts_contract import run_node_contract, spawn_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract, spawn_node_contract
+    from ts_contract import run_node_contract, spawn_node_contract
 
 
 def run_session_lifecycle_contract(command: str, *args: str) -> subprocess.CompletedProcess[str]:
-    return run_ts_contract("session-lifecycle-contract.ts", command, args)
+    return run_node_contract("session-lifecycle-contract.mjs", command, args)
 
 
 class SessionLifecycleTests(unittest.TestCase):

@@ -6,13 +6,13 @@ import unittest
 from typing import Any
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 
 def run_local_tools_contract(command: str, *args: str):
-    return run_ts_contract("local-tools-contract.ts", command, args)
+    return run_node_contract("local-tools-contract.mjs", command, args)
 
 
 class LocalToolsContractTests(unittest.TestCase):

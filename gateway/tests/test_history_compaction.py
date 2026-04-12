@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 HISTORY_COMPACT_HEADER = "[Compact Context Snapshot v1]"
 
@@ -21,8 +21,8 @@ def run_history_contract(
     *,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return run_ts_contract(
-        "history-compaction-contract.ts",
+    return run_node_contract(
+        "history-compaction-contract.mjs",
         command,
         ("--payload", json.dumps(payload, ensure_ascii=False)),
         env=env,

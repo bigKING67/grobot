@@ -34,6 +34,15 @@ class StartToolSmokeTests(unittest.TestCase):
         self.assertIn("[rust-runtime]", str(payload.get("stdout", "")))
         self.assertIn("[governance]", str(payload.get("stderr", "")))
 
+    def test_start_session_store_redis_fallback_to_file(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        payload = self._run_contract("start-session-store-redis-fallback", repo_root)
+        self.assertEqual(payload.get("exit_code"), 0, msg=str(payload.get("stderr", "")))
+        self.assertTrue(bool(payload.get("history_exists")))
+        self.assertGreaterEqual(int(payload.get("history_message_count", 0)), 2)
+        stderr_text = str(payload.get("stderr", ""))
+        self.assertIn("fallback", stderr_text.lower())
+
     def test_start_interactive_session_flow_runs_via_ts_rust(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         payload = self._run_contract("start-interactive-session-flow", repo_root)

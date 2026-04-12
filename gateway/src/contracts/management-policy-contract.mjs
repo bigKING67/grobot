@@ -1,5 +1,3 @@
-type JsonObject = Record<string, unknown>;
-
 const MANAGEMENT_ACTION_RELOAD = "reload";
 const MANAGEMENT_ACTION_INTERRUPT = "interrupt";
 const MANAGEMENT_ACTION_CONFIG_READ = "config_read";
@@ -9,14 +7,12 @@ const MANAGEMENT_ACTION_MEMORY_IMPORT = "memory_import";
 const MANAGEMENT_ACTION_MEMORY_FORGET = "memory_forget";
 const MANAGEMENT_ACTION_MEMORY_LIFECYCLE = "memory_lifecycle";
 const MANAGEMENT_ACTION_MEMORY_MANAGE = "memory_manage";
-
 const MANAGEMENT_ACTION_MEMORY_GRANULAR = [
   MANAGEMENT_ACTION_MEMORY_READ,
   MANAGEMENT_ACTION_MEMORY_IMPORT,
   MANAGEMENT_ACTION_MEMORY_FORGET,
-  MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
-] as const;
-
+  MANAGEMENT_ACTION_MEMORY_LIFECYCLE
+];
 const MANAGEMENT_ACTION_ALL = [
   MANAGEMENT_ACTION_RELOAD,
   MANAGEMENT_ACTION_INTERRUPT,
@@ -26,100 +22,78 @@ const MANAGEMENT_ACTION_ALL = [
   MANAGEMENT_ACTION_MEMORY_IMPORT,
   MANAGEMENT_ACTION_MEMORY_FORGET,
   MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
-  MANAGEMENT_ACTION_MEMORY_MANAGE,
-] as const;
-
+  MANAGEMENT_ACTION_MEMORY_MANAGE
+];
 const CONFIG_SECTION_PATHS = "paths";
 const CONFIG_SECTION_SELECTION = "selection";
 const CONFIG_SECTION_SESSION_STORE = "session_store";
 const CONFIG_SECTION_PROJECT_TOML = "project_toml";
 const CONFIG_SECTION_CONFIG_TOML = "config_toml";
-
 const CONFIG_SECTION_ALL = [
   CONFIG_SECTION_PATHS,
   CONFIG_SECTION_SELECTION,
   CONFIG_SECTION_SESSION_STORE,
   CONFIG_SECTION_PROJECT_TOML,
-  CONFIG_SECTION_CONFIG_TOML,
-] as const;
-
+  CONFIG_SECTION_CONFIG_TOML
+];
 const DEFAULT_PUBLIC_CONFIG_SECTIONS = [
   CONFIG_SECTION_SELECTION,
-  CONFIG_SECTION_SESSION_STORE,
-] as const;
-
+  CONFIG_SECTION_SESSION_STORE
+];
 const CONFIG_PROFILE_OPERATOR = "operator";
 const CONFIG_PROFILE_AUDITOR = "auditor";
 const CONFIG_PROFILE_ADMIN = "admin";
-
-const CONFIG_PROFILE_SECTION_MAP: Record<string, readonly string[] | null> = {
+const CONFIG_PROFILE_SECTION_MAP = {
   [CONFIG_PROFILE_OPERATOR]: DEFAULT_PUBLIC_CONFIG_SECTIONS,
   [CONFIG_PROFILE_AUDITOR]: [
     CONFIG_SECTION_PATHS,
     CONFIG_SECTION_SELECTION,
     CONFIG_SECTION_SESSION_STORE,
-    CONFIG_SECTION_PROJECT_TOML,
+    CONFIG_SECTION_PROJECT_TOML
   ],
-  [CONFIG_PROFILE_ADMIN]: null,
+  [CONFIG_PROFILE_ADMIN]: null
 };
-
 const POLICY_TEMPLATE_OPS_READ_ONLY = "ops_read_only";
 const POLICY_TEMPLATE_AUDIT_READ = "audit_read";
 const POLICY_TEMPLATE_FULL_ADMIN = "full_admin";
 const POLICY_TEMPLATE_MEMORY_OPS_READONLY = "memory_ops_readonly";
 const POLICY_TEMPLATE_MEMORY_OPS_WRITER = "memory_ops_writer";
-
 const POLICY_TEMPLATE_ALL = [
   POLICY_TEMPLATE_OPS_READ_ONLY,
   POLICY_TEMPLATE_AUDIT_READ,
   POLICY_TEMPLATE_FULL_ADMIN,
   POLICY_TEMPLATE_MEMORY_OPS_READONLY,
-  POLICY_TEMPLATE_MEMORY_OPS_WRITER,
-] as const;
-
-const POLICY_TEMPLATE_DEFAULTS: Record<
-  string,
-  { actions?: readonly string[]; config_profile?: string; config_sections?: readonly string[] | null }
-> = {
+  POLICY_TEMPLATE_MEMORY_OPS_WRITER
+];
+const POLICY_TEMPLATE_DEFAULTS = {
   [POLICY_TEMPLATE_OPS_READ_ONLY]: {
     actions: [MANAGEMENT_ACTION_CONFIG_READ],
-    config_profile: CONFIG_PROFILE_OPERATOR,
+    config_profile: CONFIG_PROFILE_OPERATOR
   },
   [POLICY_TEMPLATE_AUDIT_READ]: {
     actions: [MANAGEMENT_ACTION_CONFIG_READ],
-    config_profile: CONFIG_PROFILE_AUDITOR,
+    config_profile: CONFIG_PROFILE_AUDITOR
   },
   [POLICY_TEMPLATE_FULL_ADMIN]: {
     actions: ["all"],
-    config_profile: CONFIG_PROFILE_ADMIN,
+    config_profile: CONFIG_PROFILE_ADMIN
   },
   [POLICY_TEMPLATE_MEMORY_OPS_READONLY]: {
-    actions: [MANAGEMENT_ACTION_MEMORY_READ],
+    actions: [MANAGEMENT_ACTION_MEMORY_READ]
   },
   [POLICY_TEMPLATE_MEMORY_OPS_WRITER]: {
     actions: [
       MANAGEMENT_ACTION_MEMORY_IMPORT,
       MANAGEMENT_ACTION_MEMORY_FORGET,
-      MANAGEMENT_ACTION_MEMORY_LIFECYCLE,
-    ],
-  },
+      MANAGEMENT_ACTION_MEMORY_LIFECYCLE
+    ]
+  }
 };
-
-type ManagementCredential = {
-  name: string;
-  token: string;
-  source: string;
-  actions: string[];
-  interrupt_session_prefixes: string[];
-  config_sections: string[] | null;
-};
-
-function isObject(value: unknown): value is JsonObject {
+function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function parseJsonArg(raw: string, argName: string): JsonObject {
-  let parsed: unknown;
+function parseJsonArg(raw, argName) {
+  let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -130,13 +104,12 @@ function parseJsonArg(raw: string, argName: string): JsonObject {
   }
   return parsed;
 }
-
-function parseArgs(argv: string[]): { command: string; options: Map<string, string> } {
+function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
     throw new Error("missing command");
   }
-  const options = new Map<string, string>();
+  const options = /* @__PURE__ */ new Map();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (!token.startsWith("--")) {
@@ -151,21 +124,19 @@ function parseArgs(argv: string[]): { command: string; options: Map<string, stri
   }
   return { command, options };
 }
-
-function requireOption(options: Map<string, string>, key: string): string {
+function requireOption(options, key) {
   const value = options.get(key);
   if (!value) {
     throw new Error(`missing --${key}`);
   }
   return value;
 }
-
-function normalizeManagementActions(rawActions: unknown): string[] {
-  const allowedActions = new Set<string>(MANAGEMENT_ACTION_ALL as readonly string[]);
+function normalizeManagementActions(rawActions) {
+  const allowedActions = new Set(MANAGEMENT_ACTION_ALL);
   if (!Array.isArray(rawActions)) {
     return [...MANAGEMENT_ACTION_ALL];
   }
-  const normalized: string[] = [];
+  const normalized = [];
   for (const item of rawActions) {
     if (typeof item !== "string") {
       continue;
@@ -180,25 +151,20 @@ function normalizeManagementActions(rawActions: unknown): string[] {
   }
   return normalized;
 }
-
-function managementActionAllowed(actions: readonly string[], requiredAction: string): boolean {
+function managementActionAllowed(actions, requiredAction) {
   if (actions.includes(requiredAction)) {
     return true;
   }
-  if (
-    MANAGEMENT_ACTION_MEMORY_GRANULAR.includes(requiredAction as (typeof MANAGEMENT_ACTION_MEMORY_GRANULAR)[number]) &&
-    actions.includes(MANAGEMENT_ACTION_MEMORY_MANAGE)
-  ) {
+  if (MANAGEMENT_ACTION_MEMORY_GRANULAR.includes(requiredAction) && actions.includes(MANAGEMENT_ACTION_MEMORY_MANAGE)) {
     return true;
   }
   return false;
 }
-
-function normalizeInterruptPrefixes(raw: unknown): string[] {
+function normalizeInterruptPrefixes(raw) {
   if (!Array.isArray(raw)) {
     return [];
   }
-  const normalized: string[] = [];
+  const normalized = [];
   for (const item of raw) {
     if (typeof item !== "string") {
       continue;
@@ -210,12 +176,11 @@ function normalizeInterruptPrefixes(raw: unknown): string[] {
   }
   return normalized;
 }
-
-function normalizeConfigSections(rawSections: unknown): string[] | null {
+function normalizeConfigSections(rawSections) {
   if (!Array.isArray(rawSections)) {
     return null;
   }
-  const normalized: string[] = [];
+  const normalized = [];
   for (const item of rawSections) {
     if (typeof item !== "string") {
       continue;
@@ -224,30 +189,27 @@ function normalizeConfigSections(rawSections: unknown): string[] | null {
     if (token === "*" || token === "all") {
       return null;
     }
-    if (CONFIG_SECTION_ALL.includes(token as (typeof CONFIG_SECTION_ALL)[number]) && !normalized.includes(token)) {
+    if (CONFIG_SECTION_ALL.includes(token) && !normalized.includes(token)) {
       normalized.push(token);
     }
   }
   return normalized;
 }
-
-function normalizeConfigProfile(rawProfile: unknown): string | null {
+function normalizeConfigProfile(rawProfile) {
   if (typeof rawProfile !== "string") {
     return null;
   }
   const token = rawProfile.trim().toLowerCase();
   return token || null;
 }
-
-function normalizePolicyTemplate(rawTemplate: unknown): string | null {
+function normalizePolicyTemplate(rawTemplate) {
   if (typeof rawTemplate !== "string") {
     return null;
   }
   const token = rawTemplate.trim().toLowerCase();
   return token || null;
 }
-
-function resolveManagementPolicyTemplate(rawTemplate: unknown, scope: string): JsonObject {
+function resolveManagementPolicyTemplate(rawTemplate, scope) {
   const template = normalizePolicyTemplate(rawTemplate);
   if (template === null) {
     return {};
@@ -258,8 +220,7 @@ function resolveManagementPolicyTemplate(rawTemplate: unknown, scope: string): J
   }
   return { ...defaults };
 }
-
-function resolveConfigSectionsByProfile(rawProfile: unknown, scope: string): string[] | null {
+function resolveConfigSectionsByProfile(rawProfile, scope) {
   const profile = normalizeConfigProfile(rawProfile);
   if (profile === null) {
     return null;
@@ -272,8 +233,7 @@ function resolveConfigSectionsByProfile(rawProfile: unknown, scope: string): str
   const mapped = CONFIG_PROFILE_SECTION_MAP[profile];
   return mapped === null ? null : [...mapped];
 }
-
-function buildManagementCredential(payload: JsonObject): ManagementCredential | null {
+function buildManagementCredential(payload) {
   const tokenRaw = payload.token;
   if (typeof tokenRaw !== "string" || tokenRaw.trim().length === 0) {
     return null;
@@ -281,45 +241,38 @@ function buildManagementCredential(payload: JsonObject): ManagementCredential | 
   const source = typeof payload.source === "string" ? payload.source : "config";
   const name = typeof payload.name === "string" ? payload.name : "credential";
   const templateDefaults = resolveManagementPolicyTemplate(payload.raw_policy_template, `management credential "${name}"`);
-
   let resolvedRawActions = payload.raw_actions;
   if (!Array.isArray(resolvedRawActions)) {
     resolvedRawActions = templateDefaults.actions;
   }
-
   let resolvedRawInterruptPrefixes = payload.raw_interrupt_prefixes;
   if (!Array.isArray(resolvedRawInterruptPrefixes)) {
     resolvedRawInterruptPrefixes = templateDefaults.interrupt_session_prefixes;
   }
-
   let resolvedRawConfigSections = payload.raw_config_sections;
   if (!Array.isArray(resolvedRawConfigSections)) {
     resolvedRawConfigSections = templateDefaults.config_sections;
   }
-
   let resolvedRawConfigProfile = payload.raw_config_profile;
   if (normalizeConfigProfile(resolvedRawConfigProfile) === null) {
     resolvedRawConfigProfile = templateDefaults.config_profile;
   }
-
   const actions = normalizeManagementActions(resolvedRawActions);
   let configSections = normalizeConfigSections(resolvedRawConfigSections);
   if (!Array.isArray(resolvedRawConfigSections)) {
     configSections = resolveConfigSectionsByProfile(resolvedRawConfigProfile, `management credential "${name}"`);
   }
-
   return {
     name,
     token: tokenRaw.trim(),
     source,
     actions,
     interrupt_session_prefixes: normalizeInterruptPrefixes(resolvedRawInterruptPrefixes),
-    config_sections: configSections,
+    config_sections: configSections
   };
 }
-
-function dedupeManagementCredentials(credentials: ManagementCredential[]): ManagementCredential[] {
-  const deduped: ManagementCredential[] = [];
+function dedupeManagementCredentials(credentials) {
+  const deduped = [];
   for (const credential of credentials) {
     if (deduped.some((item) => item.token === credential.token)) {
       continue;
@@ -328,37 +281,32 @@ function dedupeManagementCredentials(credentials: ManagementCredential[]): Manag
   }
   return deduped;
 }
-
-function resolveManagementCredentials(configToml: JsonObject, overrideToken: string | null): { credentials: ManagementCredential[]; source: string } {
+function resolveManagementCredentials(configToml, overrideToken) {
   if (overrideToken && overrideToken.trim()) {
     const credential = buildManagementCredential({
       token: overrideToken,
       source: "cli",
       name: "cli_override",
-      raw_actions: [...MANAGEMENT_ACTION_ALL],
+      raw_actions: [...MANAGEMENT_ACTION_ALL]
     });
     return { credentials: credential ? [credential] : [], source: "cli" };
   }
-
   const envToken = (process.env.GROBOT_MANAGEMENT_TOKEN ?? "").trim();
   if (envToken) {
     const credential = buildManagementCredential({
       token: envToken,
       source: "env",
       name: "env_token",
-      raw_actions: [...MANAGEMENT_ACTION_ALL],
+      raw_actions: [...MANAGEMENT_ACTION_ALL]
     });
     return { credentials: credential ? [credential] : [], source: "env" };
   }
-
   const managementCfg = configToml.management;
   if (!isObject(managementCfg)) {
     return { credentials: [], source: "none" };
   }
-
-  const credentials: ManagementCredential[] = [];
-  const sourceTokens: string[] = [];
-
+  const credentials = [];
+  const sourceTokens = [];
   const tokensCfg = managementCfg.tokens;
   if (Array.isArray(tokensCfg)) {
     tokensCfg.forEach((item, index) => {
@@ -375,7 +323,7 @@ function resolveManagementCredentials(configToml: JsonObject, overrideToken: str
         raw_actions: item.actions,
         raw_interrupt_prefixes: item.interrupt_session_prefixes,
         raw_config_sections: item.config_sections,
-        raw_config_profile: item.config_profile,
+        raw_config_profile: item.config_profile
       });
       if (credential) {
         credentials.push(credential);
@@ -385,7 +333,6 @@ function resolveManagementCredentials(configToml: JsonObject, overrideToken: str
       sourceTokens.push("config_tokens");
     }
   }
-
   const single = buildManagementCredential({
     token: managementCfg.token,
     source: "config",
@@ -394,58 +341,59 @@ function resolveManagementCredentials(configToml: JsonObject, overrideToken: str
     raw_actions: managementCfg.actions,
     raw_interrupt_prefixes: managementCfg.interrupt_session_prefixes,
     raw_config_sections: managementCfg.config_sections,
-    raw_config_profile: managementCfg.config_profile,
+    raw_config_profile: managementCfg.config_profile
   });
   if (single) {
     credentials.push(single);
     sourceTokens.push("config");
   }
-
   const deduped = dedupeManagementCredentials(credentials);
   if (deduped.length === 0) {
     return { credentials: [], source: "none" };
   }
   return { credentials: deduped, source: sourceTokens.length > 0 ? sourceTokens.join("+") : "config" };
 }
-
-export function runCli(argv: string[]): number {
+function runCli(argv) {
   const { command, options } = parseArgs(argv);
   switch (command) {
     case "build-credential": {
       const payload = parseJsonArg(requireOption(options, "payload"), "--payload");
       const credential = buildManagementCredential(payload);
-      process.stdout.write(`${JSON.stringify({ credential })}\n`);
+      process.stdout.write(`${JSON.stringify({ credential })}
+`);
       return 0;
     }
     case "action-allowed": {
       const actionsRaw = parseJsonArg(requireOption(options, "payload"), "--payload").actions;
       const requiredAction = requireOption(options, "required-action");
-      const actions = Array.isArray(actionsRaw)
-        ? actionsRaw.filter((item): item is string => typeof item === "string")
-        : [];
-      process.stdout.write(`${JSON.stringify({ allowed: managementActionAllowed(actions, requiredAction) })}\n`);
+      const actions = Array.isArray(actionsRaw) ? actionsRaw.filter((item) => typeof item === "string") : [];
+      process.stdout.write(`${JSON.stringify({ allowed: managementActionAllowed(actions, requiredAction) })}
+`);
       return 0;
     }
     case "resolve-credentials": {
       const config = parseJsonArg(requireOption(options, "config"), "--config");
       const overrideToken = options.get("override-token") ?? null;
       const resolved = resolveManagementCredentials(config, overrideToken);
-      process.stdout.write(`${JSON.stringify(resolved)}\n`);
+      process.stdout.write(`${JSON.stringify(resolved)}
+`);
       return 0;
     }
     default:
       throw new Error(`unknown command: ${command}`);
   }
 }
-
 const entryScript = process.argv[1] ?? "";
 const shouldRun = entryScript.includes("management-policy-contract");
-
 if (shouldRun) {
   try {
     process.exitCode = runCli(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`management-policy-contract fatal: ${String(error)}\n`);
+    process.stderr.write(`management-policy-contract fatal: ${String(error)}
+`);
     process.exitCode = 1;
   }
 }
+export {
+  runCli
+};

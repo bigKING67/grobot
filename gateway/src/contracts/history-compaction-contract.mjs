@@ -1,43 +1,14 @@
-type JsonObject = Record<string, unknown>;
-
 const HISTORY_COMPACT_HEADER = "[Compact Context Snapshot v1]";
 const SECTION_ARCHITECTURE = "Architecture decisions";
 const SECTION_MODIFIED = "Modified files and key changes";
 const SECTION_VERIFICATION = "Current verification status";
 const SECTION_TODO = "Open TODOs and rollback notes";
 const SECTION_TOOL_OUTPUT = "Tool outputs (pass/fail only)";
-
-type RetrievalRemoteConfig = {
-  base_url: string;
-  api_key: string;
-  model: string;
-};
-
-type ContextRetrievalConfig = {
-  enabled: boolean;
-  candidate_limit: number;
-  selected_limit: number;
-  embedding: RetrievalRemoteConfig | null;
-  rerank: RetrievalRemoteConfig | null;
-  source: string;
-  enabled_source: string;
-  selected_limit_source: string;
-  candidate_limit_source: string;
-  shared_base_url: string;
-  shared_base_url_source: string;
-  shared_api_key_source: string;
-  embedding_source: string;
-  rerank_source: string;
-  embedding_disabled_reason: string | null;
-  rerank_disabled_reason: string | null;
-};
-
-function isObject(value: unknown): value is JsonObject {
+function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function parseJsonArg(raw: string, argName: string): JsonObject {
-  let parsed: unknown;
+function parseJsonArg(raw, argName) {
+  let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -48,13 +19,12 @@ function parseJsonArg(raw: string, argName: string): JsonObject {
   }
   return parsed;
 }
-
-function parseArgs(argv: string[]): { command: string; options: Map<string, string> } {
+function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
     throw new Error("missing command");
   }
-  const options = new Map<string, string>();
+  const options = /* @__PURE__ */ new Map();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (!token.startsWith("--")) {
@@ -69,40 +39,35 @@ function parseArgs(argv: string[]): { command: string; options: Map<string, stri
   }
   return { command, options };
 }
-
-function requireOption(options: Map<string, string>, key: string): string {
+function requireOption(options, key) {
   const value = options.get(key);
   if (!value) {
     throw new Error(`missing --${key}`);
   }
   return value;
 }
-
-function normalizeLine(text: string): string {
+function normalizeLine(text) {
   return text.trim();
 }
-
-function includeAsPass(line: string): string {
+function includeAsPass(line) {
   if (/\bpass(?:ed)?\b/i.test(line) || /通过|成功/.test(line)) {
     return line.startsWith("PASS:") ? line : `PASS: ${line}`;
   }
   return line;
 }
-
-function includeAsFail(line: string): string {
+function includeAsFail(line) {
   if (/\bfail(?:ed)?\b/i.test(line) || /\berror\b/i.test(line) || /失败|错误|异常|超时/.test(line)) {
     return line.startsWith("FAIL:") ? line : `FAIL: ${line}`;
   }
   return line;
 }
-
-function extractSectionsFromHistory(history: JsonObject[]): Record<string, string[]> {
-  const sections: Record<string, string[]> = {
+function extractSectionsFromHistory(history) {
+  const sections = {
     [SECTION_ARCHITECTURE]: [],
     [SECTION_MODIFIED]: [],
     [SECTION_VERIFICATION]: [],
     [SECTION_TODO]: [],
-    [SECTION_TOOL_OUTPUT]: [],
+    [SECTION_TOOL_OUTPUT]: []
   };
   for (const row of history) {
     const contentRaw = row.content;
@@ -140,15 +105,14 @@ function extractSectionsFromHistory(history: JsonObject[]): Record<string, strin
   }
   return sections;
 }
-
-function renderCompactSnapshot(sections: Record<string, string[]>): string {
-  const lines: string[] = [HISTORY_COMPACT_HEADER, ""];
+function renderCompactSnapshot(sections) {
+  const lines = [HISTORY_COMPACT_HEADER, ""];
   const ordered = [
     SECTION_ARCHITECTURE,
     SECTION_MODIFIED,
     SECTION_VERIFICATION,
     SECTION_TODO,
-    SECTION_TOOL_OUTPUT,
+    SECTION_TOOL_OUTPUT
   ];
   for (const section of ordered) {
     lines.push(`[${section}]`);
@@ -164,8 +128,7 @@ function renderCompactSnapshot(sections: Record<string, string[]>): string {
   }
   return lines.join("\n").trim();
 }
-
-function findExistingSnapshot(rows: JsonObject[]): string | null {
+function findExistingSnapshot(rows) {
   for (const row of rows) {
     const content = row.content;
     if (typeof content !== "string") {
@@ -177,8 +140,7 @@ function findExistingSnapshot(rows: JsonObject[]): string | null {
   }
   return null;
 }
-
-function trimHistoryMessages(history: JsonObject[], maxTurns: number): JsonObject[] {
+function trimHistoryMessages(history, maxTurns) {
   const threshold = Math.max(0, maxTurns) * 2;
   if (history.length <= threshold) {
     return history.map((item) => ({ ...item }));
@@ -190,9 +152,8 @@ function trimHistoryMessages(history: JsonObject[], maxTurns: number): JsonObjec
   const snapshot = existing ?? renderCompactSnapshot(extractSectionsFromHistory(prefix));
   return [{ role: "assistant", content: snapshot }, ...tail];
 }
-
-function parseSnapshotSections(snapshot: string): Record<string, string[]> {
-  const sections: Record<string, string[]> = {};
+function parseSnapshotSections(snapshot) {
+  const sections = {};
   let current = "";
   for (const rawLine of snapshot.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -211,8 +172,7 @@ function parseSnapshotSections(snapshot: string): Record<string, string[]> {
   }
   return sections;
 }
-
-function buildRetrievedContextBlock(history: JsonObject[], userPrompt: string, retrievalConfig: ContextRetrievalConfig | null): string {
+function buildRetrievedContextBlock(history, userPrompt, retrievalConfig) {
   const snapshotRow = history.find((row) => typeof row.content === "string" && String(row.content).includes(HISTORY_COMPACT_HEADER));
   const lines = ["[Retrieved Context]"];
   if (snapshotRow && typeof snapshotRow.content === "string") {
@@ -226,7 +186,6 @@ function buildRetrievedContextBlock(history: JsonObject[], userPrompt: string, r
       lines.push(`FILES: ${modified[0]}`);
     }
   }
-
   const userRows = history.filter((row) => row.role === "user" && typeof row.content === "string");
   if (retrievalConfig?.enabled) {
     if (userRows.length > 0) {
@@ -241,8 +200,7 @@ function buildRetrievedContextBlock(history: JsonObject[], userPrompt: string, r
   }
   return lines.join("\n");
 }
-
-function cosineSimilarity(a: number[], b: number[]): number {
+function cosineSimilarity(a, b) {
   if (a.length === 0 || b.length === 0 || a.length !== b.length) {
     return 0;
   }
@@ -261,9 +219,8 @@ function cosineSimilarity(a: number[], b: number[]): number {
   }
   return dot / (Math.sqrt(aNorm) * Math.sqrt(bNorm));
 }
-
-function parseEmbeddingRows(response: JsonObject): Map<number, number[]> {
-  const rows = new Map<number, number[]>();
+function parseEmbeddingRows(response) {
+  const rows = /* @__PURE__ */ new Map();
   const dataRaw = response.data;
   if (!Array.isArray(dataRaw)) {
     return rows;
@@ -277,16 +234,15 @@ function parseEmbeddingRows(response: JsonObject): Map<number, number[]> {
     if (typeof index !== "number" || !Array.isArray(embedding)) {
       continue;
     }
-    const vector = embedding.filter((item): item is number => typeof item === "number");
+    const vector = embedding.filter((item) => typeof item === "number");
     rows.set(index, vector);
   }
   return rows;
 }
-
-function computeEmbeddingSimilarityScores(candidates: JsonObject[], response: JsonObject): Record<number, number> {
+function computeEmbeddingSimilarityScores(candidates, response) {
   const rows = parseEmbeddingRows(response);
   const queryEmbedding = rows.get(0) ?? [];
-  const scores: Record<number, number> = {};
+  const scores = {};
   candidates.forEach((candidate, index) => {
     const id = typeof candidate.id === "number" ? candidate.id : index;
     const vector = rows.get(index + 1) ?? [];
@@ -294,9 +250,8 @@ function computeEmbeddingSimilarityScores(candidates: JsonObject[], response: Js
   });
   return scores;
 }
-
-function computeRerankScores(candidates: JsonObject[], response: JsonObject): Record<number, number> {
-  const scores: Record<number, number> = {};
+function computeRerankScores(candidates, response) {
+  const scores = {};
   const rowsRaw = Array.isArray(response.results) ? response.results : Array.isArray(response.data) ? response.data : [];
   for (const rowRaw of rowsRaw) {
     if (!isObject(rowRaw)) {
@@ -316,32 +271,24 @@ function computeRerankScores(candidates: JsonObject[], response: JsonObject): Re
   }
   return scores;
 }
-
-function toPositiveInt(raw: unknown, fallback: number): number {
+function toPositiveInt(raw, fallback) {
   if (typeof raw !== "number" || !Number.isFinite(raw)) {
     return fallback;
   }
   const value = Math.floor(raw);
   return value > 0 ? value : fallback;
 }
-
-function readNested(base: JsonObject, key: string): JsonObject {
+function readNested(base, key) {
   const value = base[key];
   return isObject(value) ? value : {};
 }
-
-function resolveContextRetrievalConfig(
-  projectToml: JsonObject,
-  fallbackApiKey: string | null,
-  globalToml: JsonObject
-): ContextRetrievalConfig {
+function resolveContextRetrievalConfig(projectToml, fallbackApiKey, globalToml) {
   const projectSection = readNested(projectToml, "context_retrieval");
   const globalSection = readNested(globalToml, "retrieval");
   const envKey = process.env.GROBOT_RETRIEVAL_API_KEY ?? "";
   const envBaseUrl = process.env.GROBOT_RETRIEVAL_BASE_URL ?? "";
   const envEmbeddingModel = process.env.GROBOT_EMBEDDING_MODEL ?? "";
   const envRerankModel = process.env.GROBOT_RERANK_MODEL ?? "";
-
   const source = Object.keys(projectSection).length > 0 ? "project" : Object.keys(globalSection).length > 0 ? "global" : envKey ? "env" : "default";
   const enabledRaw = projectSection.enabled ?? globalSection.enabled;
   const enabled = typeof enabledRaw === "boolean" ? enabledRaw : source !== "default";
@@ -354,54 +301,43 @@ function resolveContextRetrievalConfig(
       rerank: null,
       source,
       enabled_source: source,
-      selected_limit_source: projectSection.selected_limit !== undefined ? "project" : globalSection.selected_limit !== undefined ? "global" : "default",
-      candidate_limit_source: projectSection.candidate_limit !== undefined ? "project" : globalSection.candidate_limit !== undefined ? "global" : "default",
+      selected_limit_source: projectSection.selected_limit !== void 0 ? "project" : globalSection.selected_limit !== void 0 ? "global" : "default",
+      candidate_limit_source: projectSection.candidate_limit !== void 0 ? "project" : globalSection.candidate_limit !== void 0 ? "global" : "default",
       shared_base_url: "",
       shared_base_url_source: "default",
       shared_api_key_source: "default",
       embedding_source: "off",
       rerank_source: "off",
       embedding_disabled_reason: "context_retrieval_disabled",
-      rerank_disabled_reason: "context_retrieval_disabled",
+      rerank_disabled_reason: "context_retrieval_disabled"
     };
   }
-
   const selectedLimit = toPositiveInt(projectSection.selected_limit ?? globalSection.selected_limit, 4);
   const candidateLimit = toPositiveInt(projectSection.candidate_limit ?? globalSection.candidate_limit, 8);
-  const selectedLimitSource = projectSection.selected_limit !== undefined ? "project" : globalSection.selected_limit !== undefined ? "global" : envKey ? "env" : "default";
-  const candidateLimitSource = projectSection.candidate_limit !== undefined ? "project" : globalSection.candidate_limit !== undefined ? "global" : envKey ? "env" : "default";
+  const selectedLimitSource = projectSection.selected_limit !== void 0 ? "project" : globalSection.selected_limit !== void 0 ? "global" : envKey ? "env" : "default";
+  const candidateLimitSource = projectSection.candidate_limit !== void 0 ? "project" : globalSection.candidate_limit !== void 0 ? "global" : envKey ? "env" : "default";
   const sharedBaseUrl = String(projectSection.base_url ?? globalSection.base_url ?? envBaseUrl ?? "").trim();
-  const sharedBaseUrlSource = projectSection.base_url !== undefined ? "project" : globalSection.base_url !== undefined ? "global" : envBaseUrl ? "env" : "default";
+  const sharedBaseUrlSource = projectSection.base_url !== void 0 ? "project" : globalSection.base_url !== void 0 ? "global" : envBaseUrl ? "env" : "default";
   const sharedApiKey = String(projectSection.api_key ?? globalSection.api_key ?? envKey ?? fallbackApiKey ?? "").trim();
-  const sharedApiKeySource = projectSection.api_key !== undefined ? "project" : globalSection.api_key !== undefined ? "global" : envKey ? "env" : fallbackApiKey ? "fallback" : "default";
-
+  const sharedApiKeySource = projectSection.api_key !== void 0 ? "project" : globalSection.api_key !== void 0 ? "global" : envKey ? "env" : fallbackApiKey ? "fallback" : "default";
   const projectEmbedding = readNested(projectSection, "embedding");
   const globalEmbedding = readNested(globalSection, "embedding");
   const embeddingModel = String(projectEmbedding.model ?? globalEmbedding.model ?? envEmbeddingModel ?? "").trim();
-  const embeddingSource = projectEmbedding.model !== undefined ? "project" : globalEmbedding.model !== undefined ? "global" : envEmbeddingModel ? "env" : "off";
-
+  const embeddingSource = projectEmbedding.model !== void 0 ? "project" : globalEmbedding.model !== void 0 ? "global" : envEmbeddingModel ? "env" : "off";
   const projectRerank = readNested(projectSection, "rerank");
   const globalRerank = readNested(globalSection, "rerank");
   const rerankModel = String(projectRerank.model ?? globalRerank.model ?? envRerankModel ?? "").trim();
-  const rerankSource = projectRerank.model !== undefined ? "project" : globalRerank.model !== undefined ? "global" : envRerankModel ? "env" : "off";
-
-  const embedding: RetrievalRemoteConfig | null =
-    sharedBaseUrl && sharedApiKey && embeddingModel
-      ? {
-          base_url: sharedBaseUrl,
-          api_key: sharedApiKey,
-          model: embeddingModel,
-        }
-      : null;
-  const rerank: RetrievalRemoteConfig | null =
-    sharedBaseUrl && sharedApiKey && rerankModel
-      ? {
-          base_url: sharedBaseUrl,
-          api_key: sharedApiKey,
-          model: rerankModel,
-        }
-      : null;
-
+  const rerankSource = projectRerank.model !== void 0 ? "project" : globalRerank.model !== void 0 ? "global" : envRerankModel ? "env" : "off";
+  const embedding = sharedBaseUrl && sharedApiKey && embeddingModel ? {
+    base_url: sharedBaseUrl,
+    api_key: sharedApiKey,
+    model: embeddingModel
+  } : null;
+  const rerank = sharedBaseUrl && sharedApiKey && rerankModel ? {
+    base_url: sharedBaseUrl,
+    api_key: sharedApiKey,
+    model: rerankModel
+  } : null;
   return {
     enabled: true,
     candidate_limit: candidateLimit,
@@ -418,28 +354,24 @@ function resolveContextRetrievalConfig(
     embedding_source: embeddingSource,
     rerank_source: rerankSource,
     embedding_disabled_reason: embedding ? null : "missing_embedding_config",
-    rerank_disabled_reason: rerank ? null : "missing_rerank_config",
+    rerank_disabled_reason: rerank ? null : "missing_rerank_config"
   };
 }
-
-export function runCli(argv: string[]): number {
+function runCli(argv) {
   const { command, options } = parseArgs(argv);
   const payload = parseJsonArg(requireOption(options, "payload"), "--payload");
   switch (command) {
     case "trim": {
       const historyRaw = payload.history;
-      const history = Array.isArray(historyRaw)
-        ? historyRaw.filter((item): item is JsonObject => isObject(item))
-        : [];
+      const history = Array.isArray(historyRaw) ? historyRaw.filter((item) => isObject(item)) : [];
       const maxTurns = typeof payload.max_turns === "number" ? payload.max_turns : 3;
-      process.stdout.write(`${JSON.stringify({ trimmed: trimHistoryMessages(history, maxTurns), header: HISTORY_COMPACT_HEADER })}\n`);
+      process.stdout.write(`${JSON.stringify({ trimmed: trimHistoryMessages(history, maxTurns), header: HISTORY_COMPACT_HEADER })}
+`);
       return 0;
     }
     case "save-history": {
       const historyRaw = payload.history;
-      const history = Array.isArray(historyRaw)
-        ? historyRaw.filter((item): item is JsonObject => isObject(item))
-        : [];
+      const history = Array.isArray(historyRaw) ? historyRaw.filter((item) => isObject(item)) : [];
       const maxTurns = typeof payload.max_turns === "number" ? payload.max_turns : 3;
       const trimmed = trimHistoryMessages(history, maxTurns);
       const compact = trimmed[0];
@@ -450,62 +382,63 @@ export function runCli(argv: string[]): number {
           warnings: [],
           payload: {
             compact_memory: {
-              sections,
-            },
-          },
-        })}\n`
+              sections
+            }
+          }
+        })}
+`
       );
       return 0;
     }
     case "retrieved-block": {
       const historyRaw = payload.history;
-      const history = Array.isArray(historyRaw)
-        ? historyRaw.filter((item): item is JsonObject => isObject(item))
-        : [];
+      const history = Array.isArray(historyRaw) ? historyRaw.filter((item) => isObject(item)) : [];
       const prompt = typeof payload.user_prompt === "string" ? payload.user_prompt : "";
-      const retrieval = isObject(payload.retrieval_config) ? (payload.retrieval_config as ContextRetrievalConfig) : null;
+      const retrieval = isObject(payload.retrieval_config) ? payload.retrieval_config : null;
       const block = buildRetrievedContextBlock(history, prompt, retrieval);
-      process.stdout.write(`${JSON.stringify({ block })}\n`);
+      process.stdout.write(`${JSON.stringify({ block })}
+`);
       return 0;
     }
     case "resolve-config": {
       const projectToml = isObject(payload.project_toml) ? payload.project_toml : {};
       const globalToml = isObject(payload.global_toml) ? payload.global_toml : {};
       const fallbackApiKey = typeof payload.fallback_api_key === "string" ? payload.fallback_api_key : null;
-      process.stdout.write(`${JSON.stringify(resolveContextRetrievalConfig(projectToml, fallbackApiKey, globalToml))}\n`);
+      process.stdout.write(`${JSON.stringify(resolveContextRetrievalConfig(projectToml, fallbackApiKey, globalToml))}
+`);
       return 0;
     }
     case "embedding-scores": {
       const candidatesRaw = payload.candidates;
       const response = isObject(payload.response) ? payload.response : {};
-      const candidates = Array.isArray(candidatesRaw)
-        ? candidatesRaw.filter((item): item is JsonObject => isObject(item))
-        : [];
-      process.stdout.write(`${JSON.stringify({ scores: computeEmbeddingSimilarityScores(candidates, response) })}\n`);
+      const candidates = Array.isArray(candidatesRaw) ? candidatesRaw.filter((item) => isObject(item)) : [];
+      process.stdout.write(`${JSON.stringify({ scores: computeEmbeddingSimilarityScores(candidates, response) })}
+`);
       return 0;
     }
     case "rerank-scores": {
       const candidatesRaw = payload.candidates;
       const response = isObject(payload.response) ? payload.response : {};
-      const candidates = Array.isArray(candidatesRaw)
-        ? candidatesRaw.filter((item): item is JsonObject => isObject(item))
-        : [];
-      process.stdout.write(`${JSON.stringify({ scores: computeRerankScores(candidates, response) })}\n`);
+      const candidates = Array.isArray(candidatesRaw) ? candidatesRaw.filter((item) => isObject(item)) : [];
+      process.stdout.write(`${JSON.stringify({ scores: computeRerankScores(candidates, response) })}
+`);
       return 0;
     }
     default:
       throw new Error(`unknown command: ${command}`);
   }
 }
-
 const entryScript = process.argv[1] ?? "";
 const shouldRun = entryScript.includes("history-compaction-contract");
-
 if (shouldRun) {
   try {
     process.exitCode = runCli(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`history-compaction-contract fatal: ${String(error)}\n`);
+    process.stderr.write(`history-compaction-contract fatal: ${String(error)}
+`);
     process.exitCode = 1;
   }
 }
+export {
+  runCli
+};

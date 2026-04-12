@@ -1,27 +1,21 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-type JsonObject = Record<string, unknown>;
-
 const SESSION_SCOPE_DM = "dm";
 const SESSION_SCOPE_GROUP = "group";
-const SESSION_SCOPE_ALL = [SESSION_SCOPE_DM, SESSION_SCOPE_GROUP] as const;
+const SESSION_SCOPE_ALL = [SESSION_SCOPE_DM, SESSION_SCOPE_GROUP];
 const SESSION_REGISTRY_MAIN_ID = "main";
 const SESSION_KEY_INSTANCE_SEPARATOR = "__s_";
 const SESSION_REGISTRY_VERSION = 1;
-
 const HISTORY_SECTION_ARCHITECTURE = "Architecture decisions";
 const HISTORY_SECTION_MODIFIED = "Modified files and key changes";
 const HISTORY_SECTION_VERIFICATION = "Current verification status";
 const HISTORY_SECTION_TODO = "Open TODOs and rollback notes";
 const HISTORY_SECTION_TOOL_OUTPUT = "Tool outputs (pass/fail only)";
-
-function isObject(value: unknown): value is JsonObject {
+function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function parseJsonArg(raw: string, argName: string): JsonObject {
-  let parsed: unknown;
+function parseJsonArg(raw, argName) {
+  let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -32,9 +26,8 @@ function parseJsonArg(raw: string, argName: string): JsonObject {
   }
   return parsed;
 }
-
-function parseJsonArrayArg(raw: string, argName: string): unknown[] {
-  let parsed: unknown;
+function parseJsonArrayArg(raw, argName) {
+  let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -45,13 +38,12 @@ function parseJsonArrayArg(raw: string, argName: string): unknown[] {
   }
   return parsed;
 }
-
-function parseArgs(argv: string[]): { command: string; options: Map<string, string> } {
+function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
     throw new Error("missing command");
   }
-  const options = new Map<string, string>();
+  const options = /* @__PURE__ */ new Map();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (!token.startsWith("--")) {
@@ -66,16 +58,14 @@ function parseArgs(argv: string[]): { command: string; options: Map<string, stri
   }
   return { command, options };
 }
-
-function requireOption(options: Map<string, string>, key: string): string {
+function requireOption(options, key) {
   const value = options.get(key);
   if (!value) {
     throw new Error(`missing --${key}`);
   }
   return value;
 }
-
-function normalizeBool(raw: string): boolean {
+function normalizeBool(raw) {
   const value = raw.trim().toLowerCase();
   if (value === "true" || value === "1" || value === "yes") {
     return true;
@@ -85,19 +75,16 @@ function normalizeBool(raw: string): boolean {
   }
   throw new Error(`invalid boolean: ${raw}`);
 }
-
-function nowIsoUtc(): string {
-  return new Date().toISOString();
+function nowIsoUtc() {
+  return (/* @__PURE__ */ new Date()).toISOString();
 }
-
-function pathJoin(...parts: string[]): string {
+function pathJoin(...parts) {
   if (parts.length === 0) {
     return ".";
   }
   return resolve(...parts);
 }
-
-function pathDirname(path: string): string {
+function pathDirname(path) {
   const normalized = path.replace(/\\/g, "/");
   const slashIndex = normalized.lastIndexOf("/");
   if (slashIndex < 0) {
@@ -108,8 +95,7 @@ function pathDirname(path: string): string {
   }
   return normalized.slice(0, slashIndex);
 }
-
-function pathBasename(path: string): string {
+function pathBasename(path) {
   const normalized = path.replace(/\\/g, "/");
   const slashIndex = normalized.lastIndexOf("/");
   if (slashIndex < 0) {
@@ -117,38 +103,33 @@ function pathBasename(path: string): string {
   }
   return normalized.slice(slashIndex + 1);
 }
-
-function sanitizeSessionSegment(raw: unknown, defaultValue: string, maxLen = 80): string {
+function sanitizeSessionSegment(raw, defaultValue, maxLen = 80) {
   const text = String(raw ?? "").trim();
   const sanitized = text.replace(/[^a-zA-Z0-9._-]/g, "_");
   const resolved = sanitized || defaultValue;
   return resolved.slice(0, Math.max(1, maxLen));
 }
-
-function sanitizeSessionKey(sessionKey: string): string {
+function sanitizeSessionKey(sessionKey) {
   return sessionKey.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
-
-function parseSessionKeyParts(sessionKey: string): [string, string, string, string] | null {
+function parseSessionKeyParts(sessionKey) {
   const parts = sessionKey.split(":");
   if (parts.length !== 4) {
     return null;
   }
   const [platform, tenant, scope, subject] = parts;
-  if (!platform || !tenant || !subject || !SESSION_SCOPE_ALL.includes(scope as (typeof SESSION_SCOPE_ALL)[number])) {
+  if (!platform || !tenant || !subject || !SESSION_SCOPE_ALL.includes(scope)) {
     return null;
   }
   return [platform, tenant, scope, subject];
 }
-
-function buildSessionKey(projectName: string, platform: string, scopeRaw: string, subjectRaw: string): string {
+function buildSessionKey(projectName, platform, scopeRaw, subjectRaw) {
   const tenant = sanitizeSessionSegment(projectName, "default", 40);
-  const scope = SESSION_SCOPE_ALL.includes(scopeRaw as (typeof SESSION_SCOPE_ALL)[number]) ? scopeRaw : SESSION_SCOPE_DM;
+  const scope = SESSION_SCOPE_ALL.includes(scopeRaw) ? scopeRaw : SESSION_SCOPE_DM;
   const subject = sanitizeSessionSegment(subjectRaw, "local", 80);
   return `${platform}:${tenant}:${scope}:${subject}`;
 }
-
-function sessionInstanceKey(namespaceKey: string, sessionId: string): string {
+function sessionInstanceKey(namespaceKey, sessionId) {
   const parsed = parseSessionKeyParts(namespaceKey);
   if (parsed === null) {
     return namespaceKey;
@@ -160,24 +141,20 @@ function sessionInstanceKey(namespaceKey: string, sessionId: string): string {
   const safeId = sanitizeSessionSegment(sessionId, SESSION_REGISTRY_MAIN_ID, 24);
   return `${platform}:${tenant}:${scope}:${subject}${SESSION_KEY_INSTANCE_SEPARATOR}${safeId}`;
 }
-
-function generateSessionId(): string {
-  const now = new Date();
+function generateSessionId() {
+  const now = /* @__PURE__ */ new Date();
   const stamp = [
     now.getUTCFullYear().toString().padStart(4, "0"),
     (now.getUTCMonth() + 1).toString().padStart(2, "0"),
     now.getUTCDate().toString().padStart(2, "0"),
     now.getUTCHours().toString().padStart(2, "0"),
     now.getUTCMinutes().toString().padStart(2, "0"),
-    now.getUTCSeconds().toString().padStart(2, "0"),
+    now.getUTCSeconds().toString().padStart(2, "0")
   ].join("");
-  const rand = Math.floor(Math.random() * 65536)
-    .toString(16)
-    .padStart(4, "0");
+  const rand = Math.floor(Math.random() * 65536).toString(16).padStart(4, "0");
   return `s${stamp}${rand}`;
 }
-
-function createSessionRecord(namespaceKey: string, sessionId?: string): JsonObject {
+function createSessionRecord(namespaceKey, sessionId) {
   const actualId = sessionId ?? generateSessionId();
   const now = nowIsoUtc();
   return {
@@ -185,11 +162,10 @@ function createSessionRecord(namespaceKey: string, sessionId?: string): JsonObje
     session_key: sessionInstanceKey(namespaceKey, actualId),
     created_at: now,
     updated_at: now,
-    preview: "",
+    preview: ""
   };
 }
-
-function appendSessionRecord(payload: JsonObject, record: JsonObject): void {
+function appendSessionRecord(payload, record) {
   const sessionsRaw = payload.sessions;
   if (!Array.isArray(sessionsRaw)) {
     payload.sessions = [record];
@@ -197,8 +173,7 @@ function appendSessionRecord(payload: JsonObject, record: JsonObject): void {
   }
   sessionsRaw.push(record);
 }
-
-function findSessionRecord(payload: JsonObject, sessionId: string): JsonObject | null {
+function findSessionRecord(payload, sessionId) {
   const sessionsRaw = payload.sessions;
   if (!Array.isArray(sessionsRaw)) {
     return null;
@@ -213,11 +188,10 @@ function findSessionRecord(payload: JsonObject, sessionId: string): JsonObject |
   }
   return null;
 }
-
-function normalizeSessionRegistryPayload(rawPayload: unknown, namespaceKey: string): JsonObject {
+function normalizeSessionRegistryPayload(rawPayload, namespaceKey) {
   const payload = isObject(rawPayload) ? rawPayload : {};
   const sessionsRaw = payload.sessions;
-  const sessions: JsonObject[] = [];
+  const sessions = [];
   if (Array.isArray(sessionsRaw)) {
     for (const item of sessionsRaw) {
       if (!isObject(item)) {
@@ -233,7 +207,7 @@ function normalizeSessionRegistryPayload(rawPayload: unknown, namespaceKey: stri
         session_key: sessionKey,
         created_at: String(item.created_at ?? nowIsoUtc()),
         updated_at: String(item.updated_at ?? nowIsoUtc()),
-        preview: String(item.preview ?? ""),
+        preview: String(item.preview ?? "")
       });
     }
   }
@@ -244,7 +218,7 @@ function normalizeSessionRegistryPayload(rawPayload: unknown, namespaceKey: stri
       session_key: namespaceKey,
       created_at: now,
       updated_at: now,
-      preview: "",
+      preview: ""
     });
   }
   const activeIdRaw = typeof payload.active_id === "string" ? payload.active_id : "";
@@ -253,11 +227,10 @@ function normalizeSessionRegistryPayload(rawPayload: unknown, namespaceKey: stri
     version: SESSION_REGISTRY_VERSION,
     namespace_key: namespaceKey,
     active_id: activeId,
-    sessions,
+    sessions
   };
 }
-
-function readJsonFile(path: string): unknown {
+function readJsonFile(path) {
   try {
     const raw = readFileSync(path, "utf8");
     return JSON.parse(raw);
@@ -265,18 +238,16 @@ function readJsonFile(path: string): unknown {
     return {};
   }
 }
-
-function writeJsonFile(path: string, payload: JsonObject): void {
+function writeJsonFile(path, payload) {
   mkdirSync(pathDirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(payload, undefined, 2)}\n`, "utf8");
+  writeFileSync(path, `${JSON.stringify(payload, void 0, 2)}
+`, "utf8");
 }
-
-function sessionRegistryFilePath(root: string, namespaceKey: string): string {
+function sessionRegistryFilePath(root, namespaceKey) {
   return pathJoin(root, `${sanitizeSessionKey(namespaceKey)}.sessions.json`);
 }
-
-function loadSessionRegistry(root: string, namespaceKey: string): { registry: JsonObject; warnings: string[] } {
-  const warnings: string[] = [];
+function loadSessionRegistry(root, namespaceKey) {
+  const warnings = [];
   const path = sessionRegistryFilePath(root, namespaceKey);
   const loaded = readJsonFile(path);
   const normalized = normalizeSessionRegistryPayload(loaded, namespaceKey);
@@ -287,9 +258,8 @@ function loadSessionRegistry(root: string, namespaceKey: string): { registry: Js
   }
   return { registry: normalized, warnings };
 }
-
-function saveSessionRegistry(root: string, namespaceKey: string, payload: JsonObject): string[] {
-  const warnings: string[] = [];
+function saveSessionRegistry(root, namespaceKey, payload) {
+  const warnings = [];
   const normalized = normalizeSessionRegistryPayload(payload, namespaceKey);
   const path = sessionRegistryFilePath(root, namespaceKey);
   try {
@@ -299,14 +269,13 @@ function saveSessionRegistry(root: string, namespaceKey: string, payload: JsonOb
   }
   return warnings;
 }
-
-function extractCompactSections(history: unknown[]): Record<string, string[]> {
-  const sections: Record<string, string[]> = {
+function extractCompactSections(history) {
+  const sections = {
     [HISTORY_SECTION_ARCHITECTURE]: [],
     [HISTORY_SECTION_MODIFIED]: [],
     [HISTORY_SECTION_VERIFICATION]: [],
     [HISTORY_SECTION_TODO]: [],
-    [HISTORY_SECTION_TOOL_OUTPUT]: [],
+    [HISTORY_SECTION_TOOL_OUTPUT]: []
   };
   for (const item of history) {
     if (!isObject(item)) {
@@ -343,8 +312,7 @@ function extractCompactSections(history: unknown[]): Record<string, string[]> {
   }
   return sections;
 }
-
-function buildContinueBridgeMessage(payload: JsonObject): JsonObject | null {
+function buildContinueBridgeMessage(payload) {
   const sourceSessionId = typeof payload.source_session_id === "string" ? payload.source_session_id : "";
   const sourceSessionKey = typeof payload.source_session_key === "string" ? payload.source_session_key : "";
   const historyRaw = payload.source_history_messages;
@@ -352,19 +320,18 @@ function buildContinueBridgeMessage(payload: JsonObject): JsonObject | null {
     return null;
   }
   const sections = extractCompactSections(historyRaw);
-  const lines: string[] = [
+  const lines = [
     "[Session Continue Bridge]",
     `source_session_id=${sourceSessionId}`,
-    `source_session_key=${sourceSessionKey}`,
+    `source_session_key=${sourceSessionKey}`
   ];
-
   let hasSection = false;
   const ordered = [
     HISTORY_SECTION_ARCHITECTURE,
     HISTORY_SECTION_MODIFIED,
     HISTORY_SECTION_VERIFICATION,
     HISTORY_SECTION_TODO,
-    HISTORY_SECTION_TOOL_OUTPUT,
+    HISTORY_SECTION_TOOL_OUTPUT
   ];
   for (const section of ordered) {
     const values = sections[section] ?? [];
@@ -396,29 +363,23 @@ function buildContinueBridgeMessage(payload: JsonObject): JsonObject | null {
   lines.push("This bridge is summary-only; full history was not imported.");
   return { role: "assistant", content: lines.join("\n") };
 }
-
-function normalizeQueryTokens(text: string): string[] {
-  const normalized = text
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.replace(/^[,.;:!?()[\]{}"'`~]+|[,.;:!?()[\]{}"'`~]+$/g, ""))
-    .filter((token) => token.length > 0);
+function normalizeQueryTokens(text) {
+  const normalized = text.toLowerCase().split(/\s+/).map((token) => token.replace(/^[,.;:!?()[\]{}"'`~]+|[,.;:!?()[\]{}"'`~]+$/g, "")).filter((token) => token.length > 0);
   if (normalized.length > 0) {
     return normalized;
   }
   const compact = text.trim().toLowerCase();
   return compact ? [compact] : [];
 }
-
-function listTextFilesRecursive(root: string): string[] {
-  const found: string[] = [];
+function listTextFilesRecursive(root) {
+  const found = [];
   const stack = [root];
   while (stack.length > 0) {
     const current = stack.pop();
     if (!current) {
       continue;
     }
-    let entries: string[] = [];
+    let entries = [];
     try {
       entries = readdirSync(current);
     } catch {
@@ -443,30 +404,22 @@ function listTextFilesRecursive(root: string): string[] {
   }
   return found;
 }
-
-function readTextSafe(path: string): string {
+function readTextSafe(path) {
   try {
     return readFileSync(path, "utf8");
   } catch {
     return "";
   }
 }
-
-function buildWikiContextBlock(
-  prompt: string,
-  projectWikiDir: string,
-  globalWikiDir: string,
-  sessionKey: string,
-  allowOrgShared: boolean
-): string | null {
-  const roots: string[] = [];
+function buildWikiContextBlock(prompt, projectWikiDir, globalWikiDir, sessionKey, allowOrgShared) {
+  const roots = [];
   roots.push(projectWikiDir);
   const parsed = parseSessionKeyParts(sessionKey);
   if (allowOrgShared && parsed !== null && parsed[2] === SESSION_SCOPE_GROUP) {
     roots.push(pathJoin(globalWikiDir, "org"));
   }
   const queryTokens = normalizeQueryTokens(prompt);
-  const scored: Array<{ score: number; rel: string; snippet: string }> = [];
+  const scored = [];
   for (const root of roots) {
     const files = listTextFilesRecursive(root);
     for (const filePath of files) {
@@ -491,7 +444,7 @@ function buildWikiContextBlock(
       } catch {
         relPath = filePath;
       }
-      const snippet = normalized.length > 220 ? `${normalized.slice(0, 220).trim()}…` : normalized;
+      const snippet = normalized.length > 220 ? `${normalized.slice(0, 220).trim()}\u2026` : normalized;
       scored.push({ score, rel: relPath || filePath, snippet });
     }
   }
@@ -501,15 +454,14 @@ function buildWikiContextBlock(
   scored.sort((left, right) => right.score - left.score);
   const lines = [
     "[Wiki Context]",
-    "Use only when relevant; explicit latest user instruction has highest priority.",
+    "Use only when relevant; explicit latest user instruction has highest priority."
   ];
   for (const row of scored.slice(0, 8)) {
     lines.push(`- ${row.rel}: ${row.snippet}`);
   }
   return lines.join("\n");
 }
-
-function parseOptionToken(token: string): { key: string; valueInline: string | null } | null {
+function parseOptionToken(token) {
   if (!token.startsWith("--")) {
     return null;
   }
@@ -520,14 +472,13 @@ function parseOptionToken(token: string): { key: string; valueInline: string | n
   }
   return {
     key: body.slice(0, eqIndex),
-    valueInline: body.slice(eqIndex + 1),
+    valueInline: body.slice(eqIndex + 1)
   };
 }
-
-function parseCliArgv(argvTokens: unknown[]): JsonObject {
-  const tokens = argvTokens.filter((item): item is string => typeof item === "string");
+function parseCliArgv(argvTokens) {
+  const tokens = argvTokens.filter((item) => typeof item === "string");
   const command = tokens[0] ?? "";
-  const parsed: JsonObject = {
+  const parsed = {
     command,
     session_scope: SESSION_SCOPE_DM,
     session_subject: null,
@@ -536,7 +487,7 @@ function parseCliArgv(argvTokens: unknown[]): JsonObject {
     scope: null,
     include_restricted: false,
     include_secret: false,
-    dry_run: false,
+    dry_run: false
   };
   let index = 1;
   while (index < tokens.length) {
@@ -558,7 +509,6 @@ function parseCliArgv(argvTokens: unknown[]): JsonObject {
       optionValue = tokens[index + 1] ?? "";
       index += 1;
     }
-
     if (optionKey === "session-scope" && optionValue) {
       parsed.session_scope = optionValue;
     } else if (optionKey === "session-subject" && optionValue) {
@@ -579,32 +529,27 @@ function parseCliArgv(argvTokens: unknown[]): JsonObject {
   }
   return parsed;
 }
-
-function memoryScopeFromSessionKey(sessionKey: string): "group" | "user" {
+function memoryScopeFromSessionKey(sessionKey) {
   const parsed = parseSessionKeyParts(sessionKey);
   if (parsed !== null && parsed[2] === SESSION_SCOPE_GROUP) {
     return "group";
   }
   return "user";
 }
-
-function generateMemoryProposalId(): string {
-  const now = new Date();
+function generateMemoryProposalId() {
+  const now = /* @__PURE__ */ new Date();
   const stamp = [
     now.getUTCFullYear().toString().padStart(4, "0"),
     (now.getUTCMonth() + 1).toString().padStart(2, "0"),
     now.getUTCDate().toString().padStart(2, "0"),
     now.getUTCHours().toString().padStart(2, "0"),
     now.getUTCMinutes().toString().padStart(2, "0"),
-    now.getUTCSeconds().toString().padStart(2, "0"),
+    now.getUTCSeconds().toString().padStart(2, "0")
   ].join("");
-  const rand = Math.floor(Math.random() * 65536)
-    .toString(16)
-    .padStart(4, "0");
+  const rand = Math.floor(Math.random() * 65536).toString(16).padStart(4, "0");
   return `mp${stamp}${rand}`;
 }
-
-function runInteractiveMemoryFlow(root: string, sessionKey: string): JsonObject {
+function runInteractiveMemoryFlow(root, sessionKey) {
   const projectRoot = resolve(root);
   const projectDir = pathJoin(projectRoot, ".grobot");
   const scope = memoryScopeFromSessionKey(sessionKey);
@@ -617,11 +562,10 @@ function runInteractiveMemoryFlow(root: string, sessionKey: string): JsonObject 
   mkdirSync(stagingDir, { recursive: true });
   mkdirSync(activeDir, { recursive: true });
   mkdirSync(reportsDir, { recursive: true });
-
   const proposalId = generateMemoryProposalId();
   const proposalPath = pathJoin(stagingDir, `${proposalId}.json`);
   const memoryId = proposalId.replace(/^mp/, "mm");
-  const proposal: JsonObject = {
+  const proposal = {
     version: 1,
     id: proposalId,
     status: "pending",
@@ -629,16 +573,15 @@ function runInteractiveMemoryFlow(root: string, sessionKey: string): JsonObject 
     session_key: sessionKey,
     kind: "policy",
     scope,
-    text: "接口契约优先于风格偏好",
-    created_at: nowIsoUtc(),
+    text: "\u63A5\u53E3\u5951\u7EA6\u4F18\u5148\u4E8E\u98CE\u683C\u504F\u597D",
+    created_at: nowIsoUtc()
   };
   writeJsonFile(proposalPath, proposal);
   const writeLines = [
     `memory write proposal created: ${proposalId}`,
     `scope=${scope}`,
-    `proposal=${proposalPath}`,
+    `proposal=${proposalPath}`
   ];
-
   proposal.status = "applied";
   proposal.applied_at = nowIsoUtc();
   writeJsonFile(proposalPath, proposal);
@@ -648,34 +591,30 @@ function runInteractiveMemoryFlow(root: string, sessionKey: string): JsonObject 
     scope,
     kind: "policy",
     classification: "internal",
-    text: "接口契约优先于风格偏好",
+    text: "\u63A5\u53E3\u5951\u7EA6\u4F18\u5148\u4E8E\u98CE\u683C\u504F\u597D",
     created_at: nowIsoUtc(),
     updated_at: nowIsoUtc(),
     importance: 0.6,
-    confidence: 0.6,
+    confidence: 0.6
   });
   const reviewLines = [`memory review applied: id=${proposalId}`, `memory_id=${memoryId}`];
-
   const queryLines = [
     "memory query: top=1",
-    `- [3.20] ${memoryId} [policy/${scope}/internal] (.grobot/memory/${scope}/${subject}): 接口契约优先于风格偏好`,
+    `- [3.20] ${memoryId} [policy/${scope}/internal] (.grobot/memory/${scope}/${subject}): \u63A5\u53E3\u5951\u7EA6\u4F18\u5148\u4E8E\u98CE\u683C\u504F\u597D`
   ];
-
   const lifecycleLines = [
     "memory lifecycle: dry_run=on",
     "roots=1 scanned=1 changed=0 batch_limit=64",
-    "actions=promote:0 decay:0 archive:0",
+    "actions=promote:0 decay:0 archive:0"
   ];
-
   return {
     write: { code: 0, lines: writeLines, proposal_id: proposalId },
     review: { code: 0, lines: reviewLines },
     query: { code: 0, lines: queryLines },
-    lifecycle: { code: 0, lines: lifecycleLines },
+    lifecycle: { code: 0, lines: lifecycleLines }
   };
 }
-
-function runSessionRegistryFlow(root: string, namespaceKey: string): JsonObject {
+function runSessionRegistryFlow(root, namespaceKey) {
   mkdirSync(root, { recursive: true });
   const initial = loadSessionRegistry(root, namespaceKey);
   const initialActiveId = initial.registry.active_id;
@@ -694,32 +633,30 @@ function runSessionRegistryFlow(root: string, namespaceKey: string): JsonObject 
     restored_warnings: restored.warnings,
     restored_active_id: restored.registry.active_id,
     restored_session_count: restoredSessions.length,
-    new_record: newRecord,
+    new_record: newRecord
   };
 }
-
-function prepareRegistry(root: string, namespaceKey: string, sessionKey: string): JsonObject {
+function prepareRegistry(root, namespaceKey, sessionKey) {
   mkdirSync(root, { recursive: true });
-  const rawPayload: JsonObject = {
+  const rawPayload = {
     namespace_key: namespaceKey,
     active_id: SESSION_REGISTRY_MAIN_ID,
     sessions: [
       {
         id: SESSION_REGISTRY_MAIN_ID,
-        session_key: sessionKey,
-      },
-    ],
+        session_key: sessionKey
+      }
+    ]
   };
   const normalized = normalizeSessionRegistryPayload(rawPayload, namespaceKey);
   const warnings = saveSessionRegistry(root, namespaceKey, normalized);
   return {
     warnings,
     registry_path: sessionRegistryFilePath(root, namespaceKey),
-    payload: normalized,
+    payload: normalized
   };
 }
-
-export function runCli(argv: string[]): number {
+function runCli(argv) {
   const { command, options } = parseArgs(argv);
   switch (command) {
     case "build-session-key": {
@@ -727,19 +664,22 @@ export function runCli(argv: string[]): number {
       const platform = requireOption(options, "platform");
       const scope = requireOption(options, "scope");
       const subject = requireOption(options, "subject");
-      process.stdout.write(`${JSON.stringify({ session_key: buildSessionKey(projectName, platform, scope, subject) })}\n`);
+      process.stdout.write(`${JSON.stringify({ session_key: buildSessionKey(projectName, platform, scope, subject) })}
+`);
       return 0;
     }
     case "session-registry-flow": {
       const root = resolve(requireOption(options, "root"));
       const namespaceKey = requireOption(options, "namespace-key");
-      process.stdout.write(`${JSON.stringify(runSessionRegistryFlow(root, namespaceKey))}\n`);
+      process.stdout.write(`${JSON.stringify(runSessionRegistryFlow(root, namespaceKey))}
+`);
       return 0;
     }
     case "continue-bridge-message": {
       const payload = parseJsonArg(requireOption(options, "payload"), "--payload");
       const bridge = buildContinueBridgeMessage(payload);
-      process.stdout.write(`${JSON.stringify({ bridge })}\n`);
+      process.stdout.write(`${JSON.stringify({ bridge })}
+`);
       return 0;
     }
     case "build-wiki-context": {
@@ -749,40 +689,46 @@ export function runCli(argv: string[]): number {
       const sessionKey = requireOption(options, "session-key");
       const allowOrgShared = normalizeBool(requireOption(options, "allow-org-shared"));
       const block = buildWikiContextBlock(prompt, projectWikiDir, globalWikiDir, sessionKey, allowOrgShared);
-      process.stdout.write(`${JSON.stringify({ block })}\n`);
+      process.stdout.write(`${JSON.stringify({ block })}
+`);
       return 0;
     }
     case "parse-args": {
       const argvTokens = parseJsonArrayArg(requireOption(options, "argv"), "--argv");
-      process.stdout.write(`${JSON.stringify(parseCliArgv(argvTokens))}\n`);
+      process.stdout.write(`${JSON.stringify(parseCliArgv(argvTokens))}
+`);
       return 0;
     }
     case "interactive-memory-flow": {
       const root = resolve(requireOption(options, "root"));
       const sessionKey = requireOption(options, "session-key");
-      process.stdout.write(`${JSON.stringify(runInteractiveMemoryFlow(root, sessionKey))}\n`);
+      process.stdout.write(`${JSON.stringify(runInteractiveMemoryFlow(root, sessionKey))}
+`);
       return 0;
     }
     case "prepare-registry": {
       const root = resolve(requireOption(options, "root"));
       const namespaceKey = requireOption(options, "namespace-key");
       const sessionKey = requireOption(options, "session-key");
-      process.stdout.write(`${JSON.stringify(prepareRegistry(root, namespaceKey, sessionKey))}\n`);
+      process.stdout.write(`${JSON.stringify(prepareRegistry(root, namespaceKey, sessionKey))}
+`);
       return 0;
     }
     default:
       throw new Error(`unknown command: ${command}`);
   }
 }
-
 const entryScript = process.argv[1] ?? "";
 const shouldRun = entryScript.includes("session-lifecycle-contract");
-
 if (shouldRun) {
   try {
     process.exitCode = runCli(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`session-lifecycle-contract fatal: ${String(error)}\n`);
+    process.stderr.write(`session-lifecycle-contract fatal: ${String(error)}
+`);
     process.exitCode = 1;
   }
 }
+export {
+  runCli
+};

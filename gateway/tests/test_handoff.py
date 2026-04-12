@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 
 try:
-    from gateway.tests.ts_contract import run_ts_contract
+    from gateway.tests.ts_contract import run_node_contract
 except ModuleNotFoundError:
-    from ts_contract import run_ts_contract
+    from ts_contract import run_node_contract
 
 
 SECTION_ARCHITECTURE = "Architecture decisions"
@@ -21,7 +21,7 @@ HANDOFF_DEFAULT_RECENT_TURNS = 6
 
 
 def run_handoff_contract(command: str, *args: str) -> subprocess.CompletedProcess[str]:
-    return run_ts_contract("handoff-contract.ts", command, args)
+    return run_node_contract("handoff-contract.mjs", command, args)
 
 
 class HandoffTests(unittest.TestCase):

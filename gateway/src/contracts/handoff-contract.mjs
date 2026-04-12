@@ -1,18 +1,14 @@
-type JsonObject = Record<string, unknown>;
-
 const HANDOFF_DEFAULT_RECENT_TURNS = 6;
 const SECTION_ARCHITECTURE = "Architecture decisions";
 const SECTION_MODIFIED = "Modified files and key changes";
 const SECTION_VERIFICATION = "Current verification status";
 const SECTION_TODO = "Open TODOs and rollback notes";
 const SECTION_TOOL_OUTPUT = "Tool outputs (pass/fail only)";
-
-function isObject(value: unknown): value is JsonObject {
+function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function parseJsonArg(raw: string, argName: string): JsonObject {
-  let parsed: unknown;
+function parseJsonArg(raw, argName) {
+  let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -23,13 +19,12 @@ function parseJsonArg(raw: string, argName: string): JsonObject {
   }
   return parsed;
 }
-
-function parseArgs(argv: string[]): { command: string; options: Map<string, string> } {
+function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
     throw new Error("missing command");
   }
-  const options = new Map<string, string>();
+  const options = /* @__PURE__ */ new Map();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (!token.startsWith("--")) {
@@ -44,8 +39,7 @@ function parseArgs(argv: string[]): { command: string; options: Map<string, stri
   }
   return { command, options };
 }
-
-function normalizeBool(raw: string): boolean {
+function normalizeBool(raw) {
   const value = raw.trim().toLowerCase();
   if (value === "true" || value === "1" || value === "yes") {
     return true;
@@ -55,19 +49,17 @@ function normalizeBool(raw: string): boolean {
   }
   throw new Error(`invalid boolean: ${raw}`);
 }
-
-export function sanitizeHandoffText(raw: string): string {
+function sanitizeHandoffText(raw) {
   let sanitized = raw;
   sanitized = sanitized.replace(
     /\b(api[_-]?key|token|secret|password)\b\s*([:=])\s*([^\s,;]+)/gi,
-    (_all, key: string, sep: string) => `${key}${sep}<redacted>`
+    (_all, key, sep) => `${key}${sep}<redacted>`
   );
   sanitized = sanitized.replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer <redacted>");
   sanitized = sanitized.replace(/\b(?:sk|gsk|rk)-[A-Za-z0-9_-]{8,}\b/g, "<redacted>");
   return sanitized;
 }
-
-function readSectionItems(compactMemory: JsonObject, sectionName: string): string[] {
+function readSectionItems(compactMemory, sectionName) {
   const sectionsRaw = compactMemory.sections;
   if (!isObject(sectionsRaw)) {
     return [];
@@ -76,10 +68,9 @@ function readSectionItems(compactMemory: JsonObject, sectionName: string): strin
   if (!Array.isArray(values)) {
     return [];
   }
-  return values.filter((item): item is string => typeof item === "string");
+  return values.filter((item) => typeof item === "string");
 }
-
-function hasHint(content: string, hints: readonly string[]): boolean {
+function hasHint(content, hints) {
   const normalized = content.toLowerCase();
   for (const hint of hints) {
     if (normalized.includes(hint)) {
@@ -88,26 +79,22 @@ function hasHint(content: string, hints: readonly string[]): boolean {
   }
   return false;
 }
-
-export function hasOpenTodoItems(compactMemory: JsonObject | null): boolean {
+function hasOpenTodoItems(compactMemory) {
   if (!compactMemory) {
     return false;
   }
   return readSectionItems(compactMemory, SECTION_TODO).length > 0;
 }
-
-export function shouldAutoWriteHandoff(compacted: boolean, failover: boolean, todoOpen: boolean): boolean {
+function shouldAutoWriteHandoff(compacted, failover, todoOpen) {
   return compacted || failover || todoOpen;
 }
-
-function renderBulletLines(lines: string[]): string {
+function renderBulletLines(lines) {
   if (lines.length === 0) {
     return "- (none)";
   }
   return lines.map((line) => `- ${line}`).join("\n");
 }
-
-function selectCurrentGoal(historyMessages: unknown): string {
+function selectCurrentGoal(historyMessages) {
   if (!Array.isArray(historyMessages)) {
     return "Continue current implementation with verified checkpoints.";
   }
@@ -125,14 +112,13 @@ function selectCurrentGoal(historyMessages: unknown): string {
   }
   return "Continue current implementation with verified checkpoints.";
 }
-
-function renderRecentTurns(historyMessages: unknown, recentTurns: number): string {
+function renderRecentTurns(historyMessages, recentTurns) {
   if (!Array.isArray(historyMessages) || historyMessages.length === 0) {
     return "- (none)";
   }
   const maxRows = Math.max(1, recentTurns) * 2;
   const selected = historyMessages.slice(-maxRows);
-  const lines: string[] = [];
+  const lines = [];
   for (const row of selected) {
     if (!isObject(row)) {
       continue;
@@ -146,26 +132,22 @@ function renderRecentTurns(historyMessages: unknown, recentTurns: number): strin
   }
   return lines.length > 0 ? lines.join("\n") : "- (none)";
 }
-
-export function buildHandoffMarkdown(payload: JsonObject): string {
+function buildHandoffMarkdown(payload) {
   const compactMemory = isObject(payload.compact_memory) ? payload.compact_memory : {};
   const verification = readSectionItems(compactMemory, SECTION_VERIFICATION);
   const toolOutput = readSectionItems(compactMemory, SECTION_TOOL_OUTPUT);
-  const worked = [...verification, ...toolOutput].filter((line) =>
-    hasHint(line, ["pass", "passed", "success", "succeeded", "ok", "通过", "成功"])
+  const worked = [...verification, ...toolOutput].filter(
+    (line) => hasHint(line, ["pass", "passed", "success", "succeeded", "ok", "\u901A\u8FC7", "\u6210\u529F"])
   );
-  const failed = [...verification, ...toolOutput].filter((line) =>
-    hasHint(line, ["fail", "failed", "error", "exception", "timeout", "失败", "错误", "异常", "超时"])
+  const failed = [...verification, ...toolOutput].filter(
+    (line) => hasHint(line, ["fail", "failed", "error", "exception", "timeout", "\u5931\u8D25", "\u9519\u8BEF", "\u5F02\u5E38", "\u8D85\u65F6"])
   );
   const failoverErrorsRaw = payload.failover_errors;
-  const failoverErrors = Array.isArray(failoverErrorsRaw)
-    ? failoverErrorsRaw.filter((item): item is string => typeof item === "string")
-    : [];
+  const failoverErrors = Array.isArray(failoverErrorsRaw) ? failoverErrorsRaw.filter((item) => typeof item === "string") : [];
   const compactionObserved = payload.compaction_observed === true;
   const failoverObserved = failoverErrors.length > 0;
   const recentTurnsRaw = payload.recent_turns;
   const recentTurns = typeof recentTurnsRaw === "number" && Number.isFinite(recentTurnsRaw) ? recentTurnsRaw : 3;
-
   return [
     "# HANDOFF",
     "",
@@ -200,51 +182,54 @@ export function buildHandoffMarkdown(payload: JsonObject): string {
     `- failover_observed: ${failoverObserved ? "true" : "false"}`,
     "",
     "## Recent Turns",
-    renderRecentTurns(payload.history_messages, recentTurns),
+    renderRecentTurns(payload.history_messages, recentTurns)
   ].join("\n");
 }
-
-function requireOption(options: Map<string, string>, key: string): string {
+function requireOption(options, key) {
   const value = options.get(key);
   if (!value) {
     throw new Error(`missing --${key}`);
   }
   return value;
 }
-
-export function runCli(argv: string[]): number {
+function runCli(argv) {
   const { command, options } = parseArgs(argv);
   switch (command) {
     case "sanitize": {
       const text = requireOption(options, "text");
-      process.stdout.write(`${JSON.stringify({ sanitized: sanitizeHandoffText(text) })}\n`);
+      process.stdout.write(`${JSON.stringify({ sanitized: sanitizeHandoffText(text) })}
+`);
       return 0;
     }
     case "build": {
       const payloadRaw = requireOption(options, "payload");
       const payload = parseJsonArg(payloadRaw, "--payload");
-      process.stdout.write(`${buildHandoffMarkdown(payload)}\n`);
+      process.stdout.write(`${buildHandoffMarkdown(payload)}
+`);
       return 0;
     }
     case "should-auto-write": {
       const compacted = normalizeBool(requireOption(options, "compacted"));
       const failover = normalizeBool(requireOption(options, "failover"));
       const todoOpen = normalizeBool(requireOption(options, "todo-open"));
-      process.stdout.write(`${JSON.stringify({ value: shouldAutoWriteHandoff(compacted, failover, todoOpen) })}\n`);
+      process.stdout.write(`${JSON.stringify({ value: shouldAutoWriteHandoff(compacted, failover, todoOpen) })}
+`);
       return 0;
     }
     case "has-open-todo": {
       const compactRaw = requireOption(options, "compact-memory");
       const compactMemory = parseJsonArg(compactRaw, "--compact-memory");
-      process.stdout.write(`${JSON.stringify({ value: hasOpenTodoItems(compactMemory) })}\n`);
+      process.stdout.write(`${JSON.stringify({ value: hasOpenTodoItems(compactMemory) })}
+`);
       return 0;
     }
     case "start-defaults": {
       process.stdout.write(
         `${JSON.stringify({
           handoff_recent_turns: HANDOFF_DEFAULT_RECENT_TURNS,
-          handoff_auto_on_exit: true,
-        })}\n`
+          handoff_auto_on_exit: true
+        })}
+`
       );
       return 0;
     }
@@ -252,15 +237,21 @@ export function runCli(argv: string[]): number {
       throw new Error(`unknown command: ${command}`);
   }
 }
-
 const entryScript = process.argv[1] ?? "";
 const shouldRun = entryScript.includes("handoff-contract");
-
 if (shouldRun) {
   try {
     process.exitCode = runCli(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`handoff-contract fatal: ${String(error)}\n`);
+    process.stderr.write(`handoff-contract fatal: ${String(error)}
+`);
     process.exitCode = 1;
   }
 }
+export {
+  buildHandoffMarkdown,
+  hasOpenTodoItems,
+  runCli,
+  sanitizeHandoffText,
+  shouldAutoWriteHandoff
+};
