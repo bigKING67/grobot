@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function isObject(value) {
@@ -35,12 +35,13 @@ function requireOption(options, key) {
   return value;
 }
 
-function runCommand(repoRoot, argv, envPrefix = null) {
+function runCommand(repoRoot, argv, envPrefix = null, stdinText = null) {
   const commandLine = argv.map(shellEscape).join(" ");
   const exportPrefix = buildEnvPrefix(envPrefix);
   const shellScript = `cd ${shellEscape(repoRoot)} && ${exportPrefix}${commandLine}`;
   const completed = spawnSync("bash", ["-lc", shellScript], {
     encoding: "utf8",
+    input: typeof stdinText === "string" ? stdinText : undefined,
   });
   return {
     exit_code: completed.status ?? 1,
@@ -146,6 +147,32 @@ function createTempDir(prefix) {
   return dir;
 }
 
+function sanitizeSessionKey(sessionKey) {
+  return String(sessionKey).replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function readJsonFileSafe(path) {
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readTextFileSafe(path) {
+  if (!existsSync(path)) {
+    return "";
+  }
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 function runPackageLauncherRejectsPython(repoRoot) {
   return runCommand(repoRoot, ["./packages/cli/bin/grobot", "status", "--gateway-impl=python"]);
 }
@@ -170,6 +197,74 @@ function runStartMessageSmoke(repoRoot) {
     "--message",
     "ts rust execution smoke",
   ]);
+}
+
+function runStartInteractiveSessionFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-work");
+  const homeDir = createTempDir("grobot-start-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commandResult = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "smoke-user",
+      "--history-turns",
+      "8",
+    ],
+    null,
+    ["/sessions", "/new", "/sessions", "interactive ts start", "/handoff", "/exit", ""].join("\n"),
+  );
+  const namespaceKey = "feishu:grobot:dm:smoke-user";
+  const registryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPayload = readJsonFileSafe(registryPath);
+  const handoffPath = `${workDir}/HANDOFF.md`;
+  const handoffContent = readTextFileSafe(handoffPath);
+  const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
+  const activeSessionId = registryPayload && typeof registryPayload.active_id === "string" ? registryPayload.active_id : "";
+  let activeSessionKey = namespaceKey;
+  for (const item of sessions) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    if (String(item.id ?? "") !== activeSessionId) {
+      continue;
+    }
+    const key = typeof item.session_key === "string" ? item.session_key : "";
+    if (key.trim().length > 0) {
+      activeSessionKey = key.trim();
+      break;
+    }
+  }
+  const activeHistoryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(activeSessionKey)}.history.json`;
+  const activeHistoryPayload = readJsonFileSafe(activeHistoryPath);
+  return {
+    ...commandResult,
+    registry_path: registryPath,
+    history_path: activeHistoryPath,
+    handoff_path: handoffPath,
+    session_count: sessions.length,
+    active_session_id: activeSessionId,
+    history_message_count:
+      activeHistoryPayload && Array.isArray(activeHistoryPayload.messages) ? activeHistoryPayload.messages.length : 0,
+    handoff_exists: handoffContent.length > 0,
+    handoff_has_compact_instructions: handoffContent.includes("## Compact Instructions"),
+  };
 }
 
 function runFailoverRejectsPython(repoRoot) {
@@ -289,6 +384,9 @@ function runCli(argv) {
       break;
     case "start-message-smoke":
       payload = runStartMessageSmoke(repoRoot);
+      break;
+    case "start-interactive-session-flow":
+      payload = runStartInteractiveSessionFlow(repoRoot);
       break;
     case "failover-rejects-python":
       payload = runFailoverRejectsPython(repoRoot);

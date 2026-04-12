@@ -1,7 +1,9 @@
-import { createServer, IncomingMessage, ServerResponse } from "node:http";
+import { createServer, IncomingMessage, ServerResponse, request as httpRequest } from "node:http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
+import { request as httpsRequest } from "node:https";
+import { createInterface, Interface } from "node:readline";
 import { resolveExecutionPlaneConfig } from "./execution-plane";
 import { runGatewayTurn } from "./main";
 import { Platform, SessionScope } from "./types";
@@ -20,12 +22,15 @@ function usage(): string {
     "Grobot TS dev CLI (source-checkout fallback)",
     "",
     "Commands:",
-    "  status [--work-dir <dir>] [--gateway-impl ts] [--runtime-impl rust] [--shadow-mode|--no-shadow-mode]",
-    "  start --message <text> [--project <name>] [--work-dir <dir>] [--gateway-impl ts] [--runtime-impl rust]",
-    "  serve [--bind 127.0.0.1:8080] [--management-token <token>] [--config <path>] [--config-read-policy auto|public|auth|disabled] [--work-dir <dir>] [--gateway-impl ts] [--runtime-impl rust]",
+    "  status [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--provider <name>] [--api-key <key>] [--base-url <url>] [--model <id>] [--probe] [--gateway-impl ts] [--runtime-impl rust] [--shadow-mode|--no-shadow-mode]",
+    "  start [--message <text>] [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--session-scope dm|group] [--session-subject <id>] [--history-turns <n>] [--handoff-recent-turns <n>] [--handoff-auto-on-exit|--no-handoff-auto-on-exit] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
+    "  serve [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--bind 127.0.0.1:8080] [--management-token <token>] [--config-read-policy auto|public|auth|disabled] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
+    "",
+    "Probe notes:",
+    "  --probe uses base_url/api_key from CLI flags first, then GROBOT_BASE_URL/GROBOT_API_KEY.",
     "",
     "Optional session args for start:",
-    "  --platform feishu|telegram --tenant <id> --scope dm|group --subject <id>",
+    "  --platform feishu|telegram --tenant <id> --scope dm|group --subject <id> (legacy aliases; prefer --session-scope/--session-subject)",
   ].join("\n");
 }
 
@@ -74,6 +79,16 @@ function readOptionString(options: Record<string, OptionValue>, key: string): st
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+  }
+  return undefined;
+}
+
+function readOptionStringAny(options: Record<string, OptionValue>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = readOptionString(options, key);
+    if (value) {
+      return value;
+    }
   }
   return undefined;
 }
@@ -148,6 +163,9 @@ function fileReadable(path: string): boolean {
 }
 
 function removeTrailingSlashes(value: string): string {
+  if (/^[\\/]+$/.test(value)) {
+    return value.startsWith("\\") ? "\\" : "/";
+  }
   return value.replace(/[\\/]+$/, "");
 }
 
@@ -189,25 +207,68 @@ function parseTomlString(value: string): string | undefined {
   return trimmed;
 }
 
-function resolveWorkDir(options: Record<string, OptionValue>): string {
-  const raw = readOptionString(options, "work-dir");
-  if (!raw) {
-    return process.cwd();
+function toAbsolutePath(rawPath: string, homeDir: string, baseDir: string): string {
+  const trimmed = rawPath.trim();
+  if (!trimmed) {
+    return removeTrailingSlashes(baseDir);
   }
-  if (raw.startsWith("/")) {
-    return removeTrailingSlashes(raw);
+  let expanded = trimmed;
+  if (expanded === "~") {
+    expanded = homeDir;
+  } else if (expanded.startsWith("~/")) {
+    expanded = `${homeDir}/${expanded.slice(2)}`;
   }
-  return removeTrailingSlashes(`${process.cwd()}/${raw}`);
+  if (expanded.startsWith("/") || expanded.startsWith("\\")) {
+    return removeTrailingSlashes(expanded);
+  }
+  return removeTrailingSlashes(`${removeTrailingSlashes(baseDir)}/${expanded}`);
 }
 
-function resolveProjectTomlPath(options: Record<string, OptionValue>, workDir: string): string | undefined {
-  const explicit = readOptionString(options, "project-toml");
-  if (explicit && fileReadable(explicit)) {
-    return explicit;
+function resolveProjectRoot(options: Record<string, OptionValue>, homeDir: string): string {
+  const raw = readOptionString(options, "project-root");
+  if (!raw) {
+    return removeTrailingSlashes(process.cwd());
+  }
+  return toAbsolutePath(raw, homeDir, process.cwd());
+}
+
+function resolveWorkDir(options: Record<string, OptionValue>, projectRoot: string, homeDir: string): string {
+  const raw = readOptionString(options, "work-dir");
+  if (!raw) {
+    return projectRoot;
+  }
+  return toAbsolutePath(raw, homeDir, projectRoot);
+}
+
+function resolveProjectTomlPath(
+  options: Record<string, OptionValue>,
+  workDir: string,
+  projectRoot: string,
+  homeDir: string,
+): string | undefined {
+  const explicit = readOptionStringAny(options, ["project-toml", "project-path"]);
+  if (explicit) {
+    const explicitPath = toAbsolutePath(explicit, homeDir, process.cwd());
+    if (fileReadable(explicitPath)) {
+      return explicitPath;
+    }
+  }
+  const hasProjectRootOverride = Boolean(readOptionString(options, "project-root"));
+  if (hasProjectRootOverride) {
+    const fromProjectRoot = `${projectRoot}/.grobot/project.toml`;
+    if (fileReadable(fromProjectRoot)) {
+      return fromProjectRoot;
+    }
   }
   const fromWorkDir = `${workDir}/.grobot/project.toml`;
   if (fileReadable(fromWorkDir)) {
     return fromWorkDir;
+  }
+  if (!hasProjectRootOverride) {
+    const fromProjectRoot = `${projectRoot}/.grobot/project.toml`;
+    if (fromProjectRoot !== fromWorkDir && fileReadable(fromProjectRoot)) {
+      return fromProjectRoot;
+    }
   }
   const repoRoot = process.env.GROBOT_TS_DEV_REPO_ROOT;
   if (repoRoot) {
@@ -219,16 +280,22 @@ function resolveProjectTomlPath(options: Record<string, OptionValue>, workDir: s
   return undefined;
 }
 
-function resolveConfigTomlPath(options: Record<string, OptionValue>): string | undefined {
-  const explicit = readOptionString(options, "config");
-  if (explicit && fileReadable(explicit)) {
-    return explicit;
+function resolveConfigTomlPath(options: Record<string, OptionValue>, homeDir: string): string | undefined {
+  const explicit = readOptionStringAny(options, ["config", "config-path"]);
+  if (explicit) {
+    const explicitPath = toAbsolutePath(explicit, homeDir, process.cwd());
+    if (fileReadable(explicitPath)) {
+      return explicitPath;
+    }
   }
   const envPath = process.env.GROBOT_CONFIG;
-  if (typeof envPath === "string" && envPath.trim().length > 0 && fileReadable(envPath.trim())) {
-    return envPath.trim();
+  if (typeof envPath === "string" && envPath.trim().length > 0) {
+    const envConfigPath = toAbsolutePath(envPath, homeDir, process.cwd());
+    if (fileReadable(envConfigPath)) {
+      return envConfigPath;
+    }
   }
-  const fromHome = `${resolveHomeDir()}/config.toml`;
+  const fromHome = `${homeDir}/config.toml`;
   if (fileReadable(fromHome)) {
     return fromHome;
   }
@@ -259,16 +326,32 @@ function parseScope(raw: string | undefined): SessionScope {
   return "dm";
 }
 
-function resolveHomeDir(): string {
+function resolveSessionScopeOption(options: Record<string, OptionValue>): string | undefined {
+  return readOptionStringAny(options, ["session-scope", "scope"]);
+}
+
+function resolveSessionSubjectOption(options: Record<string, OptionValue>): string | undefined {
+  return readOptionStringAny(options, ["session-subject", "subject"]);
+}
+
+function resolveSessionPlatformOption(options: Record<string, OptionValue>): string | undefined {
+  return readOptionString(options, "platform");
+}
+
+function resolveHomeDir(options?: Record<string, OptionValue>): string {
+  const home = process.env.HOME;
+  const defaultHome = typeof home === "string" && home.trim().length > 0
+    ? `${removeTrailingSlashes(home.trim())}/.grobot`
+    : `${process.cwd()}/.grobot`;
+  const fromOption = options ? readOptionStringAny(options, ["home", "home-dir"]) : undefined;
+  if (fromOption) {
+    return toAbsolutePath(fromOption, defaultHome, process.cwd());
+  }
   const fromEnv = process.env.GROBOT_HOME;
   if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
     return removeTrailingSlashes(fromEnv.trim());
   }
-  const home = process.env.HOME;
-  if (typeof home === "string" && home.trim().length > 0) {
-    return `${removeTrailingSlashes(home.trim())}/.grobot`;
-  }
-  return `${process.cwd()}/.grobot`;
+  return defaultHome;
 }
 
 function dirname(path: string): string {
@@ -280,12 +363,550 @@ function dirname(path: string): string {
   return normalized.slice(0, slash);
 }
 
-function resolveInterruptStorePath(): string {
-  return `${resolveHomeDir()}/runtime/sessions/interrupts.json`;
+function resolveInterruptStorePath(homeDir?: string): string {
+  const root = homeDir ? removeTrailingSlashes(homeDir) : resolveHomeDir();
+  return `${root}/runtime/sessions/interrupts.json`;
 }
 
-function resolveMemoryStorePath(): string {
-  return `${resolveHomeDir()}/runtime/memory/ts-dev-cli-memory.json`;
+function resolveMemoryStorePath(homeDir?: string): string {
+  const root = homeDir ? removeTrailingSlashes(homeDir) : resolveHomeDir();
+  return `${root}/runtime/memory/ts-dev-cli-memory.json`;
+}
+
+const SESSION_REGISTRY_VERSION = 1;
+const SESSION_REGISTRY_MAIN_ID = "main";
+const SESSION_KEY_INSTANCE_SEPARATOR = "__s_";
+const HISTORY_STORE_VERSION = 1;
+const DEFAULT_HISTORY_TURNS = 12;
+const MAX_HISTORY_TURNS = 64;
+const DEFAULT_HANDOFF_RECENT_TURNS = 6;
+const MAX_HANDOFF_RECENT_TURNS = 20;
+const HANDOFF_FILENAME = "HANDOFF.md";
+
+type ChatHistoryRole = "user" | "assistant";
+
+interface ChatHistoryMessage {
+  role: ChatHistoryRole;
+  content: string;
+}
+
+interface SessionRegistryRecord {
+  id: string;
+  session_key: string;
+  created_at: string;
+  updated_at: string;
+  preview: string;
+}
+
+interface SessionRegistryPayload {
+  version: number;
+  namespace_key: string;
+  active_id: string;
+  sessions: SessionRegistryRecord[];
+}
+
+interface LoadedSessionRegistry {
+  registry: SessionRegistryPayload;
+  warnings: string[];
+}
+
+function nowIsoUtc(): string {
+  return new Date().toISOString();
+}
+
+function sanitizeSessionSegment(raw: string, defaultValue: string, maxLen = 80): string {
+  const cleaned = String(raw).trim().replace(/[^a-zA-Z0-9._-]/g, "_");
+  const resolved = cleaned.length > 0 ? cleaned : defaultValue;
+  return resolved.slice(0, Math.max(1, maxLen));
+}
+
+function sanitizeSessionKey(sessionKey: string): string {
+  return sessionKey.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function parseSessionKeyPartsLoose(
+  sessionKey: string,
+): [platform: string, tenant: string, scope: SessionScope, subject: string] | undefined {
+  const tokens = sessionKey.split(":");
+  if (tokens.length !== 4) {
+    return undefined;
+  }
+  const [platform, tenant, scopeRaw, subject] = tokens;
+  if (!platform || !tenant || !subject) {
+    return undefined;
+  }
+  const scope = parseScope(scopeRaw);
+  return [platform, tenant, scope, subject];
+}
+
+function sessionInstanceKey(namespaceKey: string, sessionId: string): string {
+  const parsed = parseSessionKeyPartsLoose(namespaceKey);
+  if (!parsed) {
+    return namespaceKey;
+  }
+  const [platform, tenant, scope, subject] = parsed;
+  if (sessionId === SESSION_REGISTRY_MAIN_ID) {
+    return namespaceKey;
+  }
+  const safeId = sanitizeSessionSegment(sessionId, SESSION_REGISTRY_MAIN_ID, 24);
+  return `${platform}:${tenant}:${scope}:${subject}${SESSION_KEY_INSTANCE_SEPARATOR}${safeId}`;
+}
+
+function generateSessionId(): string {
+  const now = new Date();
+  const stamp = [
+    now.getUTCFullYear().toString().padStart(4, "0"),
+    String(now.getUTCMonth() + 1).padStart(2, "0"),
+    String(now.getUTCDate()).padStart(2, "0"),
+    String(now.getUTCHours()).padStart(2, "0"),
+    String(now.getUTCMinutes()).padStart(2, "0"),
+    String(now.getUTCSeconds()).padStart(2, "0"),
+  ].join("");
+  const rand = Math.floor(Math.random() * 65_536).toString(16).padStart(4, "0");
+  return `s${stamp}${rand}`;
+}
+
+function createSessionRecord(namespaceKey: string, sessionId?: string): SessionRegistryRecord {
+  const now = nowIsoUtc();
+  const actualId = sessionId ?? generateSessionId();
+  return {
+    id: actualId,
+    session_key: sessionInstanceKey(namespaceKey, actualId),
+    created_at: now,
+    updated_at: now,
+    preview: "",
+  };
+}
+
+function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: string): SessionRegistryPayload {
+  const payload = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {};
+  const sessionsRaw = payload.sessions;
+  const sessions: SessionRegistryRecord[] = [];
+  if (Array.isArray(sessionsRaw)) {
+    for (const row of sessionsRaw) {
+      if (typeof row !== "object" || row === null) {
+        continue;
+      }
+      const record = row as Record<string, unknown>;
+      const id = typeof record.id === "string" ? record.id.trim() : "";
+      const sessionKey = typeof record.session_key === "string" ? record.session_key.trim() : "";
+      if (!id || !sessionKey) {
+        continue;
+      }
+      sessions.push({
+        id,
+        session_key: sessionKey,
+        created_at: typeof record.created_at === "string" && record.created_at.trim().length > 0
+          ? record.created_at
+          : nowIsoUtc(),
+        updated_at: typeof record.updated_at === "string" && record.updated_at.trim().length > 0
+          ? record.updated_at
+          : nowIsoUtc(),
+        preview: typeof record.preview === "string" ? record.preview : "",
+      });
+    }
+  }
+  if (sessions.length === 0) {
+    sessions.push(createSessionRecord(namespaceKey, SESSION_REGISTRY_MAIN_ID));
+  }
+  const activeRaw = typeof payload.active_id === "string" ? payload.active_id.trim() : "";
+  const activeId = sessions.some((item) => item.id === activeRaw) ? activeRaw : sessions[0].id;
+  return {
+    version: SESSION_REGISTRY_VERSION,
+    namespace_key: namespaceKey,
+    active_id: activeId,
+    sessions,
+  };
+}
+
+function sessionRegistryRoot(homeDir: string): string {
+  return `${removeTrailingSlashes(homeDir)}/runtime/sessions`;
+}
+
+function sessionRegistryFilePath(homeDir: string, namespaceKey: string): string {
+  const root = sessionRegistryRoot(homeDir);
+  return `${root}/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+}
+
+function historyStoreFilePath(homeDir: string, sessionKey: string): string {
+  const root = sessionRegistryRoot(homeDir);
+  return `${root}/${sanitizeSessionKey(sessionKey)}.history.json`;
+}
+
+function loadSessionRegistry(homeDir: string, namespaceKey: string): LoadedSessionRegistry {
+  const path = sessionRegistryFilePath(homeDir, namespaceKey);
+  const warnings: string[] = [];
+  let raw: unknown = {};
+  if (fileReadable(path)) {
+    try {
+      raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    } catch (error) {
+      warnings.push(`session registry parse failed (${path}): ${String(error)}`);
+    }
+  }
+  const normalized = normalizeSessionRegistryPayload(raw, namespaceKey);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(normalized, undefined, 2)}\n`, "utf8");
+  } catch (error) {
+    warnings.push(`session registry write failed (${path}): ${String(error)}`);
+  }
+  return {
+    registry: normalized,
+    warnings,
+  };
+}
+
+function saveSessionRegistry(homeDir: string, namespaceKey: string, payload: SessionRegistryPayload): string[] {
+  const warnings: string[] = [];
+  const normalized = normalizeSessionRegistryPayload(payload, namespaceKey);
+  const path = sessionRegistryFilePath(homeDir, namespaceKey);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(normalized, undefined, 2)}\n`, "utf8");
+  } catch (error) {
+    warnings.push(`session registry write failed (${path}): ${String(error)}`);
+  }
+  return warnings;
+}
+
+function findSessionRecord(payload: SessionRegistryPayload, sessionId: string): SessionRegistryRecord | undefined {
+  return payload.sessions.find((item) => item.id === sessionId);
+}
+
+function touchSessionRecord(payload: SessionRegistryPayload, sessionId: string, preview?: string): void {
+  const index = payload.sessions.findIndex((item) => item.id === sessionId);
+  if (index < 0) {
+    return;
+  }
+  const now = nowIsoUtc();
+  const record = payload.sessions[index];
+  payload.sessions[index] = {
+    ...record,
+    updated_at: now,
+    preview: typeof preview === "string" ? compactSingleLine(preview, 120) : record.preview,
+  };
+}
+
+function normalizeHistoryMessages(raw: unknown): ChatHistoryMessage[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const normalized: ChatHistoryMessage[] = [];
+  for (const row of raw) {
+    if (typeof row !== "object" || row === null) {
+      continue;
+    }
+    const record = row as Record<string, unknown>;
+    const roleRaw = typeof record.role === "string" ? record.role.trim() : "";
+    const contentRaw = typeof record.content === "string" ? record.content.trim() : "";
+    const role: ChatHistoryRole = roleRaw === "assistant" ? "assistant" : "user";
+    if (!contentRaw) {
+      continue;
+    }
+    normalized.push({
+      role,
+      content: contentRaw,
+    });
+  }
+  return normalized;
+}
+
+function trimHistoryMessages(history: ChatHistoryMessage[], maxTurns: number): ChatHistoryMessage[] {
+  const maxMessages = Math.max(2, maxTurns * 2);
+  if (history.length <= maxMessages) {
+    return history;
+  }
+  return history.slice(history.length - maxMessages);
+}
+
+function loadHistoryMessages(
+  homeDir: string,
+  sessionKey: string,
+  maxTurns: number,
+): {
+  messages: ChatHistoryMessage[];
+  source: "store" | "empty";
+  warnings: string[];
+} {
+  const path = historyStoreFilePath(homeDir, sessionKey);
+  const warnings: string[] = [];
+  if (!fileReadable(path)) {
+    return {
+      messages: [],
+      source: "empty",
+      warnings,
+    };
+  }
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (typeof raw !== "object" || raw === null) {
+      return {
+        messages: [],
+        source: "empty",
+        warnings: [`history payload is invalid object (${path})`],
+      };
+    }
+    const payload = raw as Record<string, unknown>;
+    const messages = trimHistoryMessages(normalizeHistoryMessages(payload.messages), maxTurns);
+    return {
+      messages,
+      source: messages.length > 0 ? "store" : "empty",
+      warnings,
+    };
+  } catch (error) {
+    warnings.push(`history parse failed (${path}): ${String(error)}`);
+    return {
+      messages: [],
+      source: "empty",
+      warnings,
+    };
+  }
+}
+
+function saveHistoryMessages(
+  homeDir: string,
+  sessionKey: string,
+  historyMessages: ChatHistoryMessage[],
+  maxTurns: number,
+): string[] {
+  const warnings: string[] = [];
+  const path = historyStoreFilePath(homeDir, sessionKey);
+  const normalized = trimHistoryMessages(historyMessages, maxTurns);
+  const payload = {
+    version: HISTORY_STORE_VERSION,
+    session_key: sessionKey,
+    updated_at: nowIsoUtc(),
+    messages: normalized,
+  };
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(payload, undefined, 2)}\n`, "utf8");
+  } catch (error) {
+    warnings.push(`history write failed (${path}): ${String(error)}`);
+  }
+  return warnings;
+}
+
+function compactSingleLine(raw: string, limit: number): string {
+  const compact = raw.replace(/\s+/g, " ").trim();
+  if (compact.length <= Math.max(1, limit)) {
+    return compact;
+  }
+  return `${compact.slice(0, Math.max(1, limit)).trimEnd()}…`;
+}
+
+function extractHistorySections(history: ChatHistoryMessage[]): Record<string, string[]> {
+  const sections: Record<string, string[]> = {
+    "Architecture decisions": [],
+    "Modified files": [],
+    "Verification status": [],
+    "Open TODOs / rollback": [],
+    "Tool outputs": [],
+  };
+  for (const item of history) {
+    const content = item.content.trim();
+    if (!content) {
+      continue;
+    }
+    const lowered = content.toLowerCase();
+    if (lowered.includes("architecture")) {
+      sections["Architecture decisions"].push(content);
+      continue;
+    }
+    if (lowered.includes("modified files") || lowered.includes("changed files") || lowered.includes("file:")) {
+      sections["Modified files"].push(content);
+      continue;
+    }
+    if (lowered.includes("todo") || lowered.includes("rollback")) {
+      sections["Open TODOs / rollback"].push(content);
+      continue;
+    }
+    if (lowered.includes("pass") || lowered.includes("fail") || lowered.includes("verification") || lowered.includes("test")) {
+      sections["Verification status"].push(content);
+      continue;
+    }
+    if (lowered.includes("error") || lowered.includes("warning") || lowered.includes("trace")) {
+      sections["Tool outputs"].push(content);
+    }
+  }
+  return sections;
+}
+
+function buildContinueBridgeMessage(
+  sourceSessionId: string,
+  sourceSessionKey: string,
+  sourceHistory: ChatHistoryMessage[],
+  maxTurns: number,
+): ChatHistoryMessage | undefined {
+  if (!sourceHistory.length) {
+    return undefined;
+  }
+  const sections = extractHistorySections(sourceHistory);
+  const lines: string[] = [
+    "[Session Continue Bridge]",
+    `source_session_id=${sourceSessionId}`,
+    `source_session_key=${sourceSessionKey}`,
+  ];
+  let sectionCount = 0;
+  for (const [sectionName, sectionRows] of Object.entries(sections)) {
+    if (!sectionRows.length) {
+      continue;
+    }
+    sectionCount += 1;
+    lines.push(`- ${sectionName}:`);
+    for (const row of sectionRows.slice(0, 3)) {
+      lines.push(`  - ${compactSingleLine(row, 220)}`);
+    }
+  }
+  if (sectionCount === 0) {
+    lines.push("- Recent turns:");
+    const recentRows = sourceHistory.slice(-Math.max(1, maxTurns) * 2);
+    for (const row of recentRows) {
+      lines.push(`  - ${row.role}: ${compactSingleLine(row.content, 220)}`);
+    }
+  }
+  lines.push("This bridge is summary-only; full history was not imported.");
+  return {
+    role: "assistant",
+    content: lines.join("\n"),
+  };
+}
+
+function buildPromptWithHistory(
+  userPrompt: string,
+  historyMessages: ChatHistoryMessage[],
+  maxTurns: number,
+): string {
+  if (!historyMessages.length) {
+    return userPrompt;
+  }
+  const recentRows = historyMessages.slice(-Math.max(1, maxTurns) * 2);
+  const lines = [
+    "[Conversation Context]",
+    ...recentRows.map((row) => `${row.role}: ${compactSingleLine(row.content, 280)}`),
+    "",
+    "[Current User Message]",
+    userPrompt,
+  ];
+  return lines.join("\n");
+}
+
+function parsePositiveIntOption(
+  raw: string | undefined,
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (!raw) {
+    return defaultValue;
+  }
+  const parsed = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+  return Math.max(minimum, Math.min(maximum, parsed));
+}
+
+function resolveHistoryTurns(options: Record<string, OptionValue>): number {
+  return parsePositiveIntOption(
+    readOptionString(options, "history-turns"),
+    DEFAULT_HISTORY_TURNS,
+    1,
+    MAX_HISTORY_TURNS,
+  );
+}
+
+function resolveHandoffRecentTurns(options: Record<string, OptionValue>): number {
+  return parsePositiveIntOption(
+    readOptionString(options, "handoff-recent-turns"),
+    DEFAULT_HANDOFF_RECENT_TURNS,
+    1,
+    MAX_HANDOFF_RECENT_TURNS,
+  );
+}
+
+function resolveHandoffAutoOnExit(options: Record<string, OptionValue>): boolean {
+  if (hasFlag(options, "handoff-auto-on-exit")) {
+    return true;
+  }
+  if (hasFlag(options, "no-handoff-auto-on-exit")) {
+    return false;
+  }
+  const raw = process.env.GROBOT_HANDOFF_AUTO_ON_EXIT;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return parseBoolValue(raw, true);
+  }
+  return true;
+}
+
+function buildHandoffMarkdown(args: {
+  sessionKey: string;
+  projectName: string;
+  workDir: string;
+  historyMessages: ChatHistoryMessage[];
+  recentTurns: number;
+  reason: string;
+}): string {
+  const { sessionKey, projectName, workDir, historyMessages, recentTurns, reason } = args;
+  const sections = extractHistorySections(historyMessages);
+  const recent = historyMessages.slice(-Math.max(1, recentTurns) * 2);
+  const lines: string[] = [
+    "# HANDOFF",
+    "",
+    `- generated_at: ${nowIsoUtc()}`,
+    `- reason: ${reason}`,
+    `- project: ${projectName}`,
+    `- work_dir: ${workDir}`,
+    `- session_key: ${sessionKey}`,
+    "",
+    "## Compact Instructions",
+    "When compressing, preserve in priority order:",
+    "1. Architecture decisions (NEVER summarize)",
+    "2. Modified files and their key changes",
+    "3. Current verification status (pass/fail)",
+    "4. Open TODOs and rollback notes",
+    "5. Tool outputs (can delete, keep pass/fail only)",
+    "",
+  ];
+  for (const [sectionName, rows] of Object.entries(sections)) {
+    if (!rows.length) {
+      continue;
+    }
+    lines.push(`## ${sectionName}`);
+    for (const row of rows.slice(0, 8)) {
+      lines.push(`- ${row}`);
+    }
+    lines.push("");
+  }
+  lines.push("## Recent Turns");
+  if (!recent.length) {
+    lines.push("- (none)");
+  } else {
+    for (const row of recent) {
+      lines.push(`- ${row.role}: ${row.content}`);
+    }
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
+function writeHandoffFile(path: string, content: string): { ok: true } | { ok: false; error: string } {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content, "utf8");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+function questionAsync(rl: Interface, prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(prompt, (value) => {
+      resolve(value);
+    });
+  });
 }
 
 interface InterruptStorePayload {
@@ -353,15 +974,15 @@ function cleanupInterruptStore(payload: InterruptStorePayload): InterruptStorePa
   };
 }
 
-function setInterruptFlag(sessionKey: string, ttlSecs: number): void {
-  const path = resolveInterruptStorePath();
+function setInterruptFlag(sessionKey: string, ttlSecs: number, homeDir?: string): void {
+  const path = resolveInterruptStorePath(homeDir);
   const payload = cleanupInterruptStore(loadInterruptStore(path));
   payload.entries[sessionKey] = nowEpochSec() + ttlSecs;
   saveInterruptStore(path, payload);
 }
 
-function consumeInterruptFlag(sessionKey: string): boolean {
-  const path = resolveInterruptStorePath();
+function consumeInterruptFlag(sessionKey: string, homeDir?: string): boolean {
+  const path = resolveInterruptStorePath(homeDir);
   const payload = cleanupInterruptStore(loadInterruptStore(path));
   if (!payload.entries[sessionKey]) {
     return false;
@@ -1076,7 +1697,7 @@ function resolveMemoryStoreRuntime(
   projectTomlPath: string | undefined,
 ): MemoryStoreRuntime {
   const fromCli = normalizeMemoryStoreBackend(
-    readOptionString(options, "memory-store-backend") ?? readOptionString(options, "session-store"),
+    readOptionStringAny(options, ["memory-store-backend", "session-store", "session-backend"]),
   );
   if (fromCli && fromCli !== "auto") {
     return {
@@ -1571,6 +2192,50 @@ function parseManagementConfigReadPolicy(rawToml: string): string | undefined {
   return undefined;
 }
 
+function parseManagementTokenFromToml(rawToml: string): string | undefined {
+  const lines = rawToml.split(/\r?\n/);
+  let inManagementSection = false;
+  for (const rawLine of lines) {
+    const line = stripInlineComment(rawLine).trim();
+    if (!line) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+    if (sectionMatch) {
+      inManagementSection = sectionMatch[1] === "management";
+      continue;
+    }
+    if (!inManagementSection) {
+      continue;
+    }
+    const kvMatch = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
+    if (!kvMatch) {
+      continue;
+    }
+    if (kvMatch[1] !== "token") {
+      continue;
+    }
+    return parseTomlString(kvMatch[2]);
+  }
+  return undefined;
+}
+
+function readManagementTokenFromToml(configTomlPath?: string): string | undefined {
+  if (!configTomlPath || !fileReadable(configTomlPath)) {
+    return undefined;
+  }
+  try {
+    const raw = readFileSync(configTomlPath, "utf8");
+    const token = parseManagementTokenFromToml(raw);
+    if (typeof token === "string" && token.trim().length > 0) {
+      return token.trim();
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function readConfigReadPolicyFromToml(configTomlPath?: string): { policy: ConfigReadPolicy; source: string } | undefined {
   if (!configTomlPath || !fileReadable(configTomlPath)) {
     return undefined;
@@ -1673,6 +2338,20 @@ function maskSensitiveText(raw: string): string {
   return maskedLines.join("\n");
 }
 
+function maskSecret(raw: string | undefined): string {
+  if (!raw) {
+    return "<unset>";
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "<unset>";
+  }
+  if (trimmed.length <= 6) {
+    return "<redacted>";
+  }
+  return `${trimmed.slice(0, 2)}***${trimmed.slice(-2)}`;
+}
+
 function readMaskedFile(path: string | undefined): string | undefined {
   if (!path) {
     return undefined;
@@ -1752,9 +2431,346 @@ function runRuntimeHealthcheck(runtimeBinaryPath: string): {
   }
 }
 
+interface ProviderProbeResult {
+  state: "ok" | "warn" | "error";
+  detail: string;
+  httpStatus?: number;
+  modelCount?: number;
+  selectedModel?: string;
+  selectedFound?: boolean;
+}
+
+interface ProviderSnapshot {
+  name: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+interface ProjectProviderSnapshot {
+  projectName: string;
+  providerName?: string;
+  provider?: ProviderSnapshot;
+  source: string;
+}
+
+function normalizeConfigPathForMatch(path: string): string {
+  return removeTrailingSlashes(path).replace(/\\/g, "/");
+}
+
+function readProviderSnapshotFromToml(
+  configTomlPath: string | undefined,
+  projectName: string,
+  workDir: string,
+  homeDir: string,
+): ProjectProviderSnapshot | undefined {
+  if (!configTomlPath || !fileReadable(configTomlPath)) {
+    return undefined;
+  }
+  interface MutableProvider {
+    name?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  }
+  interface MutableProject {
+    name?: string;
+    workDir?: string;
+    selectedProvider?: string;
+    providers: MutableProvider[];
+  }
+  const projects: MutableProject[] = [];
+  let currentProject: MutableProject | undefined;
+  let currentProvider: MutableProvider | undefined;
+  let section = "";
+  try {
+    const raw = readFileSync(configTomlPath, "utf8");
+    const lines = raw.split(/\r?\n/);
+    for (const rawLine of lines) {
+      const line = stripInlineComment(rawLine).trim();
+      if (!line) {
+        continue;
+      }
+      const arraySectionMatch = line.match(/^\[\[([A-Za-z0-9_.-]+)\]\]$/);
+      if (arraySectionMatch) {
+        section = arraySectionMatch[1];
+        if (section === "projects") {
+          currentProject = {
+            providers: [],
+          };
+          projects.push(currentProject);
+          currentProvider = undefined;
+        } else if (section === "projects.agent.providers") {
+          if (currentProject) {
+            currentProvider = {};
+            currentProject.providers.push(currentProvider);
+          }
+        } else {
+          currentProvider = undefined;
+        }
+        continue;
+      }
+      const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+      if (sectionMatch) {
+        section = sectionMatch[1];
+        if (section !== "projects.agent.providers") {
+          currentProvider = undefined;
+        }
+        continue;
+      }
+      const kvMatch = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
+      if (!kvMatch) {
+        continue;
+      }
+      const key = kvMatch[1];
+      const value = parseTomlString(kvMatch[2]);
+      if (!value || !currentProject) {
+        continue;
+      }
+      if (section === "projects") {
+        if (key === "name") {
+          currentProject.name = value;
+        } else if (key === "work_dir") {
+          currentProject.workDir = value;
+        }
+        continue;
+      }
+      if (section === "projects.agent") {
+        if (key === "provider") {
+          currentProject.selectedProvider = value;
+        }
+        continue;
+      }
+      if (section === "projects.agent.providers" && currentProvider) {
+        if (key === "name") {
+          currentProvider.name = value;
+        } else if (key === "base_url") {
+          currentProvider.baseUrl = value;
+        } else if (key === "api_key") {
+          currentProvider.apiKey = value;
+        } else if (key === "model") {
+          currentProvider.model = value;
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  if (!projects.length) {
+    return undefined;
+  }
+  const normalizedWorkDir = normalizeConfigPathForMatch(workDir);
+  const selectProject = (): MutableProject => {
+    const byName = projects.find((item) => {
+      if (typeof item.name !== "string") {
+        return false;
+      }
+      return item.name.trim() === projectName;
+    });
+    if (byName) {
+      return byName;
+    }
+    const byWorkDir = projects.find((item) => {
+      if (typeof item.workDir !== "string" || !item.workDir.trim()) {
+        return false;
+      }
+      const expanded = toAbsolutePath(item.workDir, homeDir, process.cwd());
+      return normalizeConfigPathForMatch(expanded) === normalizedWorkDir;
+    });
+    if (byWorkDir) {
+      return byWorkDir;
+    }
+    return projects[0];
+  };
+  const selectedProject = selectProject();
+  const selectedName = selectedProject.selectedProvider?.trim();
+  const provider = selectedName
+    ? selectedProject.providers.find((item) => item.name?.trim() === selectedName) ?? selectedProject.providers[0]
+    : selectedProject.providers[0];
+  if (!provider) {
+    return {
+      projectName: selectedProject.name?.trim() || projectName,
+      providerName: selectedName,
+      provider: undefined,
+      source: `config_toml:${configTomlPath}`,
+    };
+  }
+  return {
+    projectName: selectedProject.name?.trim() || projectName,
+    providerName: selectedName || provider.name?.trim(),
+    provider: {
+      name: provider.name?.trim() || selectedName || "<unknown>",
+      baseUrl: provider.baseUrl?.trim(),
+      apiKey: provider.apiKey?.trim(),
+      model: provider.model?.trim(),
+    },
+    source: `config_toml:${configTomlPath}`,
+  };
+}
+
+function normalizeProbeBaseUrl(rawBaseUrl: string): URL {
+  const trimmed = rawBaseUrl.trim();
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const url = new URL(withProtocol);
+  const basePath = url.pathname.replace(/\/+$/, "");
+  url.pathname = `${basePath}/models`;
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+function parseModelIdsFromProbePayload(payload: unknown): string[] {
+  if (typeof payload !== "object" || payload === null) {
+    return [];
+  }
+  const parsed = payload as Record<string, unknown>;
+  const rawData = parsed.data;
+  if (Array.isArray(rawData)) {
+    return rawData
+      .map((item) => {
+        if (typeof item !== "object" || item === null) {
+          return "";
+        }
+        const id = (item as Record<string, unknown>).id;
+        return typeof id === "string" ? id.trim() : "";
+      })
+      .filter((id) => id.length > 0);
+  }
+  const rawModels = parsed.models;
+  if (Array.isArray(rawModels)) {
+    return rawModels
+      .map((item) => {
+        if (typeof item === "string") {
+          return item.trim();
+        }
+        if (typeof item === "object" && item !== null) {
+          const id = (item as Record<string, unknown>).id;
+          return typeof id === "string" ? id.trim() : "";
+        }
+        return "";
+      })
+      .filter((id) => id.length > 0);
+  }
+  return [];
+}
+
+async function probeProviderModels(
+  baseUrl: string,
+  apiKey: string,
+  modelHint: string | undefined,
+): Promise<ProviderProbeResult> {
+  let url: URL;
+  try {
+    url = normalizeProbeBaseUrl(baseUrl);
+  } catch (error) {
+    return {
+      state: "error",
+      detail: `invalid base_url: ${String(error)}`,
+    };
+  }
+  const requestFactory = url.protocol === "https:" ? httpsRequest : httpRequest;
+  const requestOptions = {
+    protocol: url.protocol,
+    hostname: url.hostname,
+    port: url.port ? Number.parseInt(url.port, 10) : undefined,
+    path: `${url.pathname}${url.search}`,
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${apiKey}`,
+      "user-agent": "grobot-ts-dev-cli/0.1",
+    },
+    timeout: 5_000,
+  };
+
+  return await new Promise<ProviderProbeResult>((resolve) => {
+    const req = requestFactory(requestOptions, (res: IncomingMessage) => {
+      let body = "";
+      res.on("data", (chunk: string) => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        const statusCode = res.statusCode ?? 0;
+        if (statusCode < 200 || statusCode >= 300) {
+          const snippet = body.trim().slice(0, 240);
+          resolve({
+            state: "warn",
+            detail: `http_${String(statusCode)} ${snippet || "<empty-body>"}`,
+            httpStatus: statusCode,
+          });
+          return;
+        }
+        try {
+          const payload = JSON.parse(body) as unknown;
+          const modelIds = parseModelIdsFromProbePayload(payload);
+          const normalizedHint = modelHint?.trim();
+          const selectedFound = normalizedHint
+            ? modelIds.some((item) => item === normalizedHint)
+            : undefined;
+          resolve({
+            state: "ok",
+            detail: normalizedHint
+              ? `models=${String(modelIds.length)} selected=${selectedFound ? "matched" : "missing"}`
+              : `models=${String(modelIds.length)}`,
+            httpStatus: statusCode,
+            modelCount: modelIds.length,
+            selectedModel: normalizedHint,
+            selectedFound,
+          });
+        } catch (error) {
+          resolve({
+            state: "warn",
+            detail: `invalid_json_response: ${String(error)}`,
+            httpStatus: statusCode,
+          });
+        }
+      });
+    });
+    req.on("timeout", () => {
+      req.destroy(new Error("timeout"));
+    });
+    req.on("error", (error: Error) => {
+      resolve({
+        state: "error",
+        detail: String(error),
+      });
+    });
+    req.end();
+  });
+}
+
 async function runStatus(options: Record<string, OptionValue>): Promise<number> {
-  const workDir = resolveWorkDir(options);
-  const projectTomlPath = resolveProjectTomlPath(options, workDir);
+  const homeDir = resolveHomeDir(options);
+  const projectRoot = resolveProjectRoot(options, homeDir);
+  const workDir = resolveWorkDir(options, projectRoot, homeDir);
+  const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
+  const configTomlPath = resolveConfigTomlPath(options, homeDir);
+  const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
+  const sessionScopeRaw = resolveSessionScopeOption(options);
+  const sessionSubject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
+  const projectProviderSnapshot = readProviderSnapshotFromToml(configTomlPath, projectName, workDir, homeDir);
+  const providerName = readOptionString(options, "provider") ??
+    process.env.GROBOT_PROVIDER ??
+    projectProviderSnapshot?.providerName ??
+    "<auto>";
+  const modelName = readOptionString(options, "model") ??
+    process.env.GROBOT_MODEL ??
+    projectProviderSnapshot?.provider?.model ??
+    "<auto>";
+  const baseUrl = readOptionString(options, "base-url") ??
+    process.env.GROBOT_BASE_URL ??
+    projectProviderSnapshot?.provider?.baseUrl ??
+    "<auto>";
+  const apiKey = readOptionString(options, "api-key") ??
+    process.env.GROBOT_API_KEY ??
+    projectProviderSnapshot?.provider?.apiKey;
+  const sessionPreview = buildSessionKey({
+    platform: parsePlatform(resolveSessionPlatformOption(options)),
+    tenant: readOptionString(options, "tenant") ?? projectName,
+    scope: parseScope(sessionScopeRaw),
+    subject: sessionSubject,
+  });
   const executionPlane = resolveExecutionPlaneConfig({
     gatewayImplArg: readOptionString(options, "gateway-impl"),
     runtimeImplArg: readOptionString(options, "runtime-impl"),
@@ -1765,8 +2781,22 @@ async function runStatus(options: Record<string, OptionValue>): Promise<number> 
 
   process.stdout.write("status: ok\n");
   process.stdout.write("engine: ts-dev-cli\n");
+  process.stdout.write(`home: ${homeDir}\n`);
+  process.stdout.write(`project_root: ${projectRoot}\n`);
   process.stdout.write(`work_dir: ${workDir}\n`);
+  process.stdout.write(`config_toml: ${configTomlPath ?? "<not-found>"}\n`);
   process.stdout.write(`project_toml: ${projectTomlPath ?? "<not-found>"}\n`);
+  process.stdout.write(`project: ${projectName}\n`);
+  process.stdout.write(`provider: ${providerName}\n`);
+  if (projectProviderSnapshot?.source) {
+    process.stdout.write(`provider_source: ${projectProviderSnapshot.source}\n`);
+  }
+  process.stdout.write(`model: ${modelName}\n`);
+  process.stdout.write(`base_url: ${baseUrl}\n`);
+  process.stdout.write(`api_key: ${maskSecret(apiKey)}\n`);
+  process.stdout.write(`session_scope: ${parseScope(sessionScopeRaw)}\n`);
+  process.stdout.write(`session_subject: ${sessionSubject}\n`);
+  process.stdout.write(`session_preview: ${sessionPreview}\n`);
   process.stdout.write(
     `execution: gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
   );
@@ -1778,20 +2808,51 @@ async function runStatus(options: Record<string, OptionValue>): Promise<number> 
       `runtime_health: ${health.ok ? "ok" : "warn"} (${runtimeBinaryPath}) ${health.detail}\n`,
     );
   }
+  if (hasFlag(options, "probe")) {
+    const probeBaseUrl = readOptionString(options, "base-url") ??
+      process.env.GROBOT_BASE_URL ??
+      projectProviderSnapshot?.provider?.baseUrl;
+    const probeApiKey = readOptionString(options, "api-key") ??
+      process.env.GROBOT_API_KEY ??
+      projectProviderSnapshot?.provider?.apiKey;
+    const probeModel = readOptionString(options, "model") ??
+      process.env.GROBOT_MODEL ??
+      projectProviderSnapshot?.provider?.model;
+    if (!probeBaseUrl || !probeApiKey) {
+      process.stdout.write("probe: skipped (missing base_url/api_key)\n");
+      return 2;
+    }
+    const probe = await probeProviderModels(probeBaseUrl, probeApiKey, probeModel);
+    process.stdout.write(`probe: ${probe.state} ${probe.detail}\n`);
+    if (typeof probe.httpStatus === "number" && probe.httpStatus > 0) {
+      process.stdout.write(`probe_http_status: ${probe.httpStatus}\n`);
+    }
+    if (typeof probe.modelCount === "number") {
+      process.stdout.write(`probe_model_count: ${probe.modelCount}\n`);
+    }
+    if (typeof probe.selectedModel === "string" && probe.selectedModel.length > 0) {
+      process.stdout.write(
+        `probe_selected_model: ${probe.selectedModel} (${probe.selectedFound ? "found" : "missing"})\n`,
+      );
+    }
+    if (probe.state !== "ok") {
+      return 1;
+    }
+  }
   return 0;
 }
 
 async function runStart(options: Record<string, OptionValue>): Promise<number> {
-  const message = readOptionString(options, "message");
-  if (!message) {
-    process.stderr.write("error: start requires --message in ts-dev-cli mode\n");
-    return 2;
-  }
-
-  const workDir = resolveWorkDir(options);
-  const projectTomlPath = resolveProjectTomlPath(options, workDir);
+  const homeDir = resolveHomeDir(options);
+  const projectRoot = resolveProjectRoot(options, homeDir);
+  const workDir = resolveWorkDir(options, projectRoot, homeDir);
+  const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
-  const subject = readOptionString(options, "subject") ?? process.env.USER ?? "user";
+  const historyTurns = resolveHistoryTurns(options);
+  const handoffRecentTurns = resolveHandoffRecentTurns(options);
+  const handoffAutoOnExit = resolveHandoffAutoOnExit(options);
+  const handoffPath = `${projectRoot}/${HANDOFF_FILENAME}`;
+  const subject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
   const executionPlane = resolveExecutionPlaneConfig({
     gatewayImplArg: readOptionString(options, "gateway-impl"),
     runtimeImplArg: readOptionString(options, "runtime-impl"),
@@ -1800,50 +2861,376 @@ async function runStart(options: Record<string, OptionValue>): Promise<number> {
     projectTomlPath,
   });
 
-  const session = {
-    platform: parsePlatform(readOptionString(options, "platform")),
+  const sessionNamespace = {
+    platform: parsePlatform(resolveSessionPlatformOption(options)),
     tenant: readOptionString(options, "tenant") ?? projectName,
-    scope: parseScope(readOptionString(options, "scope")),
+    scope: parseScope(resolveSessionScopeOption(options)),
     subject,
   } as const;
-  const sessionKey = buildSessionKey(session);
-  if (consumeInterruptFlag(sessionKey)) {
-    process.stdout.write("Session interrupted by management API. Current request skipped.\n");
-    return 0;
+  const sessionNamespaceKey = buildSessionKey(sessionNamespace);
+
+  const sessionRegistryState = loadSessionRegistry(homeDir, sessionNamespaceKey);
+  let sessionRegistry = sessionRegistryState.registry;
+  for (const warning of sessionRegistryState.warnings) {
+    process.stderr.write(`[session] ${warning}\n`);
   }
 
-  const report = await runGatewayTurn(
-    message,
-    session,
-    {
-      actorId: process.env.USER ?? subject,
-      projectId: projectName,
-    },
-    {
-      gatewayImpl: executionPlane.gatewayImpl,
-      runtimeImpl: executionPlane.runtimeImpl,
-      shadowMode: executionPlane.shadowMode,
-    },
+  const ensureActiveSession = (): SessionRegistryRecord => {
+    const activeId = typeof sessionRegistry.active_id === "string" && sessionRegistry.active_id.length > 0
+      ? sessionRegistry.active_id
+      : SESSION_REGISTRY_MAIN_ID;
+    const found = findSessionRecord(sessionRegistry, activeId);
+    if (found) {
+      return found;
+    }
+    const fallback = createSessionRecord(sessionNamespaceKey, SESSION_REGISTRY_MAIN_ID);
+    sessionRegistry.sessions = [fallback];
+    sessionRegistry.active_id = fallback.id;
+    return fallback;
+  };
+
+  let activeSessionRecord = ensureActiveSession();
+  let activeSessionId = activeSessionRecord.id;
+  let sessionKey = activeSessionRecord.session_key;
+  let historyLoad = loadHistoryMessages(homeDir, sessionKey, historyTurns);
+  let historyMessages = historyLoad.messages;
+  let restoreSource = historyLoad.source;
+  for (const warning of historyLoad.warnings) {
+    process.stderr.write(`[store] ${warning}\n`);
+  }
+  let historyCompacted = false;
+
+  const persistSessionRegistryState = (): void => {
+    const warnings = saveSessionRegistry(homeDir, sessionNamespaceKey, sessionRegistry);
+    for (const warning of warnings) {
+      process.stderr.write(`[session] ${warning}\n`);
+    }
+  };
+
+  const persistHistoryState = (): void => {
+    const warnings = saveHistoryMessages(homeDir, sessionKey, historyMessages, historyTurns);
+    for (const warning of warnings) {
+      process.stderr.write(`[store] ${warning}\n`);
+    }
+  };
+
+  const writeHandoff = (reason: string, toStderr: boolean): void => {
+    const content = buildHandoffMarkdown({
+      sessionKey,
+      projectName,
+      workDir,
+      historyMessages,
+      recentTurns: handoffRecentTurns,
+      reason,
+    });
+    const wrote = writeHandoffFile(handoffPath, content);
+    const output = toStderr ? process.stderr : process.stdout;
+    if (wrote.ok) {
+      output.write(`[handoff] wrote ${handoffPath} (reason=${reason})\n`);
+      return;
+    }
+    output.write(`[handoff] write failed (${handoffPath}): ${wrote.error}\n`);
+  };
+
+  const switchActiveSession = (targetSessionId: string, reason: string): boolean => {
+    const record = findSessionRecord(sessionRegistry, targetSessionId);
+    if (!record) {
+      process.stdout.write(`Session "${targetSessionId}" not found. Use /sessions to inspect ids.\n\n`);
+      return false;
+    }
+    activeSessionId = record.id;
+    sessionRegistry.active_id = record.id;
+    sessionKey = record.session_key;
+    historyLoad = loadHistoryMessages(homeDir, sessionKey, historyTurns);
+    historyMessages = historyLoad.messages;
+    restoreSource = historyLoad.source;
+    for (const warning of historyLoad.warnings) {
+      process.stderr.write(`[store] ${warning}\n`);
+    }
+    touchSessionRecord(sessionRegistry, activeSessionId);
+    persistSessionRegistryState();
+    process.stdout.write(
+      `Switched to session "${activeSessionId}" (reason=${reason}, restored=${String(historyMessages.length / 2)} turns from ${restoreSource}).\n\n`,
+    );
+    return true;
+  };
+
+  const createNewSession = (): string => {
+    const record = createSessionRecord(sessionNamespaceKey);
+    sessionRegistry.sessions.push(record);
+    sessionRegistry.active_id = record.id;
+    persistSessionRegistryState();
+    return record.id;
+  };
+
+  const printSessionOverview = (): void => {
+    if (!sessionRegistry.sessions.length) {
+      process.stdout.write("No sessions available.\n\n");
+      return;
+    }
+    process.stdout.write(`Session namespace: ${sessionNamespaceKey}\n`);
+    for (const record of sessionRegistry.sessions) {
+      const marker = record.id === activeSessionId ? "*" : " ";
+      const previewPart = record.preview ? ` | ${record.preview}` : "";
+      process.stdout.write(
+        `${marker} ${record.id} -> ${record.session_key} (${record.updated_at})${previewPart}\n`,
+      );
+    }
+    process.stdout.write("\n");
+  };
+
+  const recordTurn = (userText: string, assistantText: string): void => {
+    const nextHistory = [
+      ...historyMessages,
+      { role: "user", content: userText } as ChatHistoryMessage,
+      { role: "assistant", content: assistantText } as ChatHistoryMessage,
+    ];
+    const trimmed = trimHistoryMessages(nextHistory, historyTurns);
+    if (trimmed.length < nextHistory.length) {
+      historyCompacted = true;
+    }
+    historyMessages = trimmed;
+    persistHistoryState();
+    touchSessionRecord(sessionRegistry, activeSessionId, userText);
+    persistSessionRegistryState();
+  };
+
+  const executeTurn = async (userText: string, interactiveMode: boolean): Promise<number> => {
+    if (consumeInterruptFlag(sessionKey, homeDir)) {
+      if (interactiveMode) {
+        process.stdout.write("Session interrupted by management API. Current input skipped.\n\n");
+      } else {
+        process.stdout.write("Session interrupted by management API. Current request skipped.\n");
+      }
+      return 0;
+    }
+    const prompt = buildPromptWithHistory(userText, historyMessages, Math.min(historyTurns, 6));
+    const parsedSession = parseSessionKeyPartsLoose(sessionKey);
+    if (!parsedSession) {
+      process.stderr.write(`error: invalid active session key: ${sessionKey}\n`);
+      return 1;
+    }
+    const report = await runGatewayTurn(
+      prompt,
+      {
+        platform: parsePlatform(parsedSession[0]),
+        tenant: parsedSession[1],
+        scope: parseScope(parsedSession[2]),
+        subject: parsedSession[3],
+      },
+      {
+        actorId: process.env.USER ?? subject,
+        projectId: projectName,
+      },
+      {
+        gatewayImpl: executionPlane.gatewayImpl,
+        runtimeImpl: executionPlane.runtimeImpl,
+        shadowMode: executionPlane.shadowMode,
+      },
+    );
+    recordTurn(userText, report.assistantMessage);
+    process.stdout.write(`${report.assistantMessage}\n`);
+    if (interactiveMode) {
+      process.stdout.write("\n");
+    }
+    process.stderr.write(
+      `[execution] gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
+    );
+    process.stderr.write(
+      `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,
+    );
+    return report.verification.pass ? 0 : 1;
+  };
+
+  const message = readOptionString(options, "message");
+  if (message) {
+    const code = await executeTurn(message, false);
+    if (handoffAutoOnExit && historyCompacted) {
+      writeHandoff("auto-exit", true);
+    }
+    return code;
+  }
+
+  process.stdout.write("Grobot started\n");
+  process.stdout.write(`  home:      ${homeDir}\n`);
+  process.stdout.write(`  root:      ${projectRoot}\n`);
+  process.stdout.write(`  project:   ${projectName}\n`);
+  process.stdout.write(`  work_dir:  ${workDir}\n`);
+  process.stdout.write(`  session:   ${sessionKey}\n`);
+  process.stdout.write(`  namespace: ${sessionNamespaceKey}\n`);
+  process.stdout.write(`  session_id:${activeSessionId}\n`);
+  process.stdout.write(
+    `  handoff:   auto=${handoffAutoOnExit ? "on" : "off"} recent_turns=${String(handoffRecentTurns)} path=${handoffPath}\n`,
+  );
+  if (historyMessages.length > 0) {
+    process.stdout.write(`  restored:  ${String(historyMessages.length / 2)} turns from ${restoreSource}\n`);
+  }
+  process.stdout.write("\n");
+  process.stdout.write(
+    "Enter message (`/sessions`, `/new`, `/switch <id>`, `/continue <id>`, `/handoff`, `/help`, `/exit`):\n",
   );
 
-  process.stdout.write(`${report.assistantMessage}\n`);
-  process.stderr.write(
-    `[execution] gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
-  );
-  process.stderr.write(
-    `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,
-  );
-  return report.verification.pass ? 0 : 1;
+  const handleInteractiveInput = async (userInputRaw: string): Promise<"continue" | "break"> => {
+    const userInput = userInputRaw.trim();
+    if (!userInput) {
+      return "continue";
+    }
+    if (userInput === "/exit" || userInput === "exit" || userInput === "quit") {
+      return "break";
+    }
+    if (userInput === "/help") {
+      process.stdout.write(
+        [
+          "Interactive commands:",
+          "  /sessions            List sessions in current namespace",
+          "  /new                 Create and switch to a new session",
+          "  /switch <id>         Switch active session",
+          "  /continue <id>       Inject summary bridge from another session",
+          "  /handoff             Write HANDOFF.md",
+          "  /exit                Exit interactive mode",
+          "",
+        ].join("\n"),
+      );
+      return "continue";
+    }
+    if (userInput === "/sessions") {
+      printSessionOverview();
+      return "continue";
+    }
+    if (userInput === "/new") {
+      const nextId = createNewSession();
+      void switchActiveSession(nextId, "new");
+      return "continue";
+    }
+    if (userInput.startsWith("/switch")) {
+      const tokens = userInput.split(/\s+/, 2);
+      const target = tokens[1]?.trim() ?? "";
+      if (!target) {
+        process.stdout.write("Usage: /switch <session_id>\n\n");
+        return "continue";
+      }
+      void switchActiveSession(target, "switch");
+      return "continue";
+    }
+    if (userInput.startsWith("/continue")) {
+      const tokens = userInput.split(/\s+/, 2);
+      const sourceId = tokens[1]?.trim() ?? "";
+      if (!sourceId) {
+        process.stdout.write("Usage: /continue <session_id>\n\n");
+        return "continue";
+      }
+      if (sourceId === activeSessionId) {
+        process.stdout.write("Skip: source session is current active session.\n\n");
+        return "continue";
+      }
+      const sourceRecord = findSessionRecord(sessionRegistry, sourceId);
+      if (!sourceRecord) {
+        process.stdout.write(`Session "${sourceId}" not found. Use /sessions to inspect ids.\n\n`);
+        return "continue";
+      }
+      const sourceHistoryState = loadHistoryMessages(homeDir, sourceRecord.session_key, historyTurns);
+      for (const warning of sourceHistoryState.warnings) {
+        process.stderr.write(`[store] ${warning}\n`);
+      }
+      const bridge = buildContinueBridgeMessage(
+        sourceId,
+        sourceRecord.session_key,
+        sourceHistoryState.messages,
+        historyTurns,
+      );
+      if (!bridge) {
+        process.stdout.write(
+          `Cannot bridge from "${sourceId}" because source session has no recoverable summary (restored=${sourceHistoryState.source}).\n\n`,
+        );
+        return "continue";
+      }
+      const nextHistory = trimHistoryMessages([...historyMessages, bridge], historyTurns);
+      if (nextHistory.length < historyMessages.length + 1) {
+        historyCompacted = true;
+      }
+      historyMessages = nextHistory;
+      persistHistoryState();
+      touchSessionRecord(sessionRegistry, activeSessionId, `continue from ${sourceId}`);
+      persistSessionRegistryState();
+      process.stdout.write(
+        `Bridge injected from "${sourceId}" into current session "${activeSessionId}" (summary only, no full history import).\n\n`,
+      );
+      return "continue";
+    }
+    if (userInput === "/handoff") {
+      writeHandoff("manual-command", false);
+      process.stdout.write("\n");
+      return "continue";
+    }
+    try {
+      await executeTurn(userInput, true);
+    } catch (error) {
+      process.stderr.write(`turn failed: ${String(error)}\n`);
+      process.stdout.write("\n");
+    }
+    return "continue";
+  };
+
+  if (!process.stdin.isTTY) {
+    let stdinContent = "";
+    process.stdin.setEncoding("utf8");
+    for await (const chunk of process.stdin) {
+      stdinContent += String(chunk);
+    }
+    const lines = stdinContent.split(/\r?\n/);
+    for (const line of lines) {
+      const action = await handleInteractiveInput(line);
+      if (action === "break") {
+        break;
+      }
+    }
+  } else {
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    let sawSigint = false;
+    rl.on("SIGINT", () => {
+      sawSigint = true;
+      rl.close();
+    });
+    while (true) {
+      let rawInput = "";
+      try {
+        rawInput = await questionAsync(rl, "grobot> ");
+      } catch {
+        break;
+      }
+      if (sawSigint) {
+        process.stdout.write("Interrupted\n");
+        break;
+      }
+      const action = await handleInteractiveInput(rawInput);
+      if (action === "break") {
+        break;
+      }
+    }
+    rl.close();
+  }
+
+  if (handoffAutoOnExit && historyMessages.length > 0) {
+    writeHandoff("auto-exit", false);
+  }
+  return 0;
 }
 
 async function runServe(options: Record<string, OptionValue>): Promise<number> {
-  const workDir = resolveWorkDir(options);
-  const projectTomlPath = resolveProjectTomlPath(options, workDir);
-  let configTomlPath = resolveConfigTomlPath(options);
+  const homeDir = resolveHomeDir(options);
+  const projectRoot = resolveProjectRoot(options, homeDir);
+  const workDir = resolveWorkDir(options, projectRoot, homeDir);
+  const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
+  let configTomlPath = resolveConfigTomlPath(options, homeDir);
   const bind = parseBind(readOptionString(options, "bind"));
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const managementToken =
-    readOptionString(options, "management-token") ?? process.env.GROBOT_MANAGEMENT_TOKEN;
+    readOptionString(options, "management-token") ??
+    process.env.GROBOT_MANAGEMENT_TOKEN ??
+    readManagementTokenFromToml(configTomlPath);
   const executionPlaneInput = {
     gatewayImplArg: readOptionString(options, "gateway-impl"),
     runtimeImplArg: readOptionString(options, "runtime-impl"),
@@ -1857,7 +3244,7 @@ async function runServe(options: Record<string, OptionValue>): Promise<number> {
   const mcpSessions = new Set<string>();
   const mcpServerStates = new Map<string, MCPRuntimeState>();
   let memoryStoreRuntime = resolveMemoryStoreRuntime(options, projectTomlPath);
-  const memoryStorePath = resolveMemoryStorePath();
+  const memoryStorePath = resolveMemoryStorePath(homeDir);
   const memoryStoreKey = memoryStoreRedisKey(projectName, workDir);
   const loadMemoryStoreRuntimeState = async (
     runtimeInput: MemoryStoreRuntime,
@@ -3391,7 +4778,7 @@ async function runServe(options: Record<string, OptionValue>): Promise<number> {
         return;
       }
       executionPlane = resolveExecutionPlaneConfig(executionPlaneInput);
-      configTomlPath = resolveConfigTomlPath(options);
+      configTomlPath = resolveConfigTomlPath(options, homeDir);
       configReadPolicy = resolveConfigReadPolicy(options, bind.host, configTomlPath);
       const reloadedMemoryState = await loadMemoryStoreRuntimeState(resolveMemoryStoreRuntime(options, projectTomlPath));
       memoryStoreRuntime = reloadedMemoryState.runtime;
@@ -3515,7 +4902,7 @@ async function runServe(options: Record<string, OptionValue>): Promise<number> {
           return;
         }
       }
-      setInterruptFlag(sessionId, ttlSecs);
+      setInterruptFlag(sessionId, ttlSecs, homeDir);
       writeJson(response, 200, {
         status: "ok",
         session_id: sessionId,

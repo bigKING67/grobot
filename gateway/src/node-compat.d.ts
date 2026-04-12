@@ -3,6 +3,11 @@ declare const process: {
   env: Record<string, string | undefined>;
   cwd(): string;
   on(event: string, listener: (...args: unknown[]) => void): void;
+  stdin: {
+    isTTY?: boolean;
+    setEncoding(encoding: string): void;
+    [Symbol.asyncIterator](): AsyncIterator<string>;
+  };
   stdout: {
     write(chunk: string): void;
   };
@@ -78,9 +83,27 @@ declare module "node:fs" {
 }
 
 declare module "node:http" {
+  export interface RequestOptions {
+    protocol?: string;
+    hostname?: string;
+    port?: number;
+    path?: string;
+    method?: string;
+    headers?: Record<string, string>;
+    timeout?: number;
+  }
+
+  export interface ClientRequest {
+    on(event: "error", listener: (error: Error) => void): ClientRequest;
+    on(event: "timeout", listener: () => void): ClientRequest;
+    destroy(error?: Error): void;
+    end(data?: string | Uint8Array): void;
+  }
+
   export interface IncomingMessage {
     method?: string;
     url?: string;
+    statusCode?: number;
     headers: Record<string, string | string[] | undefined>;
     on(event: "data", listener: (chunk: string) => void): void;
     on(event: "end", listener: () => void): void;
@@ -107,6 +130,20 @@ declare module "node:http" {
   export function createServer(
     handler: (request: IncomingMessage, response: ServerResponse) => void,
   ): Server;
+
+  export function request(
+    options: RequestOptions,
+    callback: (response: IncomingMessage) => void,
+  ): ClientRequest;
+}
+
+declare module "node:https" {
+  import { ClientRequest, IncomingMessage, RequestOptions } from "node:http";
+
+  export function request(
+    options: RequestOptions,
+    callback: (response: IncomingMessage) => void,
+  ): ClientRequest;
 }
 
 declare module "node:net" {
@@ -124,4 +161,17 @@ declare module "node:net" {
     options: { host: string; port: number },
     listener?: () => void,
   ): Socket;
+}
+
+declare module "node:readline" {
+  export interface Interface {
+    question(prompt: string, callback: (answer: string) => void): void;
+    close(): void;
+    on(event: "SIGINT", listener: () => void): Interface;
+  }
+
+  export function createInterface(options: {
+    input: unknown;
+    output?: unknown;
+  }): Interface;
 }

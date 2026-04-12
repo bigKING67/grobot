@@ -34,6 +34,17 @@ class StartToolSmokeTests(unittest.TestCase):
         self.assertIn("[rust-runtime]", str(payload.get("stdout", "")))
         self.assertIn("[governance]", str(payload.get("stderr", "")))
 
+    def test_start_interactive_session_flow_runs_via_ts_rust(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        payload = self._run_contract("start-interactive-session-flow", repo_root)
+        self.assertEqual(payload.get("exit_code"), 0, msg=str(payload.get("stderr", "")))
+        self.assertGreaterEqual(int(payload.get("session_count", 0)), 2)
+        self.assertTrue(bool(str(payload.get("active_session_id", ""))))
+        self.assertGreaterEqual(int(payload.get("history_message_count", 0)), 2)
+        self.assertTrue(bool(payload.get("handoff_exists")))
+        self.assertTrue(bool(payload.get("handoff_has_compact_instructions")))
+        self.assertIn("[rust-runtime]", str(payload.get("stdout", "")))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
