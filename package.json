@@ -37,18 +37,22 @@
     "harness:trace-pipeline:dev": "python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.dev.json",
     "harness:trace-pipeline:ci": "python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.ci.json",
     "harness:trace-pipeline:prod": "python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.prod.json",
-    "harness:trace-policy:check": "python3 gateway/evals/policy_guard.py --policy gateway/evals/trace_pipeline_policy.dev.json --policy gateway/evals/trace_pipeline_policy.ci.json --policy gateway/evals/trace_pipeline_policy.prod.json",
-    "harness:trace-policy:fingerprint": "python3 gateway/evals/policy_guard.py --policy gateway/evals/trace_pipeline_policy.dev.json --policy gateway/evals/trace_pipeline_policy.ci.json --policy gateway/evals/trace_pipeline_policy.prod.json --print-json",
+    "harness:trace-policy:check": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/trace-policy-guard.ts --policy gateway/evals/trace_pipeline_policy.dev.json --policy gateway/evals/trace_pipeline_policy.ci.json --policy gateway/evals/trace_pipeline_policy.prod.json",
+    "harness:trace-policy:fingerprint": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/trace-policy-guard.ts --policy gateway/evals/trace_pipeline_policy.dev.json --policy gateway/evals/trace_pipeline_policy.ci.json --policy gateway/evals/trace_pipeline_policy.prod.json --print-json",
     "harness:trace-pipeline:validate": "python3 gateway/evals/trace_pipeline.py --policy gateway/evals/trace_pipeline_policy.ci.json --dry-validate-only --print-json",
     "harness:hill-climb:sample": "python3 gateway/evals/hill_climb.py --cases gateway/evals/fixtures/cases.sample.jsonl --runs gateway/evals/fixtures/runs.sample.jsonl --gate-policy gateway/evals/gate_policy.default.json --baseline-variant lexical --min-optimization-gain 0.0 --allow-holdout-drop 0.0",
     "harness:skill-router:sample": "python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.dev.json --print-json",
+    "harness:skill-router:baseline": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-baseline-report.ts",
+    "harness:skill-router:ci-gate": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-ci-gate.ts",
     "harness:skill-router:gate:ci": "python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.ci.json --fail-on-gate",
     "harness:skill-router:gate:prod": "python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.prod.json --fail-on-gate",
-    "harness:skill-router:policy:check": "python3 gateway/evals/skill_router_policy_guard.py --policy gateway/evals/skill_router_policy.dev.json --policy gateway/evals/skill_router_policy.ci.json --policy gateway/evals/skill_router_policy.prod.json",
-    "harness:skill-router:policy:fingerprint": "python3 gateway/evals/skill_router_policy_guard.py --policy gateway/evals/skill_router_policy.dev.json --policy gateway/evals/skill_router_policy.ci.json --policy gateway/evals/skill_router_policy.prod.json --print-json",
+    "harness:skill-router:policy:check": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-policy-guard.ts --policy gateway/evals/skill_router_policy.dev.json --policy gateway/evals/skill_router_policy.ci.json --policy gateway/evals/skill_router_policy.prod.json",
+    "harness:skill-router:policy:fingerprint": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-policy-guard.ts --policy gateway/evals/skill_router_policy.dev.json --policy gateway/evals/skill_router_policy.ci.json --policy gateway/evals/skill_router_policy.prod.json --print-json",
     "harness:skill-router:policy:validate": "python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.dev.json --dry-validate-only --print-json && python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.ci.json --dry-validate-only --print-json && python3 gateway/evals/skill_router_eval.py --policy gateway/evals/skill_router_policy.prod.json --dry-validate-only --print-json",
     "harness:ci-label-policy:check": "python3 gateway/evals/ci_label_policy_guard.py --policy gateway/evals/ci_label_policy.json",
     "harness:ci-label-policy:fingerprint": "python3 gateway/evals/ci_label_policy_guard.py --policy gateway/evals/ci_label_policy.json --print-json",
-    "harness:ci-summary": "python3 gateway/evals/ci_summary.py --trace-report gateway/evals/data/trace_pipeline_ci_report.json --skill-router-report gateway/evals/data/skill_router_ci_report.json --print-json"
+    "harness:ci-summary": "npm run harness:ci-summary:build -- --trace-report gateway/evals/data/trace_pipeline_ci_report.json --skill-router-report gateway/evals/data/skill_router_ci_report.json --print-json",
+    "harness:ci-summary:build": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/ci-summary.ts",
+    "harness:ci-summary:export": "npx --yes --package tsx@4.20.6 tsx gateway/src/evals/ci-summary-export.ts"
   }
 }

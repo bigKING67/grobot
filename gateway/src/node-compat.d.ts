@@ -43,6 +43,19 @@ declare module "node:child_process" {
   ): SpawnSyncReturns<string>;
 }
 
+declare module "node:crypto" {
+  export interface Hash {
+    update(data: string): Hash;
+    digest(encoding: "hex"): string;
+  }
+
+  export function createHash(algorithm: string): Hash;
+}
+
+declare module "node:path" {
+  export function resolve(...paths: string[]): string;
+}
+
 declare module "node:fs" {
   export function readFileSync(path: number | string, encoding: "utf8"): string;
   export function writeFileSync(path: string, data: string, encoding: "utf8"): void;

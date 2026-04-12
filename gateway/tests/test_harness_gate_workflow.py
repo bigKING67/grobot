@@ -629,7 +629,7 @@ class HarnessGateWorkflowContractTests(unittest.TestCase):
         workflow = self._read_workflow()
         self.assertIn("Build policy drift report", workflow)
         self.assertIn("gateway/evals/data/policy_drift_report.json", workflow)
-        self.assertIn("python3 gateway/evals/ci_summary_export.py \\", workflow)
+        self.assertIn("npm run harness:ci-summary:export -- \\", workflow)
         self.assertIn("--summary gateway/evals/data/harness_ci_summary.json \\", workflow)
         self.assertIn("--github-output \"$GITHUB_OUTPUT\" \\", workflow)
         self.assertIn("--print-json", workflow)
@@ -651,7 +651,7 @@ class HarnessGateWorkflowContractTests(unittest.TestCase):
 
     def test_skill_router_ci_gate_step_uses_dedicated_script(self) -> None:
         workflow = self._read_workflow()
-        self.assertIn("python3 gateway/evals/skill_router_ci_gate.py \\", workflow)
+        self.assertIn("npm run harness:skill-router:ci-gate -- \\", workflow)
         self.assertIn("--event-name \"${{ github.event_name }}\" \\", workflow)
         self.assertIn("--pr-base-sha \"${{ github.event.pull_request.base.sha }}\" \\", workflow)
         self.assertIn("--before-sha \"${{ github.event.before }}\" \\", workflow)
@@ -683,7 +683,7 @@ class HarnessGateWorkflowContractTests(unittest.TestCase):
 
     def test_skill_router_baseline_step_uses_dedicated_script(self) -> None:
         workflow = self._read_workflow()
-        self.assertIn("python3 gateway/evals/skill_router_baseline_report.py \\", workflow)
+        self.assertIn("npm run harness:skill-router:baseline -- \\", workflow)
         self.assertIn("--event-name \"${{ github.event_name }}\" \\", workflow)
         self.assertIn("--pr-base-sha \"${{ github.event.pull_request.base.sha }}\" \\", workflow)
         self.assertIn("--before-sha \"${{ github.event.before }}\" \\", workflow)
