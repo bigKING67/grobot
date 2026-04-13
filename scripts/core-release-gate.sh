@@ -38,7 +38,7 @@ emit_report() {
     return 0
   fi
   mkdir -p "$(dirname "$REPORT_PATH")"
-  python3 - <<'PY' \
+  node - \
     "$REPORT_PATH" \
     "$EXIT_CODE" \
     "$FAIL_REASON" \
@@ -47,42 +47,40 @@ emit_report() {
     "$(json_bool "$VERIFY_PACKAGES_PASSED")" \
     "$(json_bool "$LAUNCHER_LOOKUP_PASSED")" \
     "$(json_bool "$PACK_DRYRUN_PASSED")" \
-    "$(json_bool "$PACK_DRYRUN_SKIPPED")"
-import json
-import sys
-from datetime import datetime, timezone
+    "$(json_bool "$PACK_DRYRUN_SKIPPED")" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
 
-report_path = sys.argv[1]
-exit_code = int(sys.argv[2])
-fail_reason = sys.argv[3]
-allow_stub = bool(int(sys.argv[4]))
-skip_pack = bool(int(sys.argv[5]))
-verify_passed = sys.argv[6] == "true"
-launcher_passed = sys.argv[7] == "true"
-pack_passed = sys.argv[8] == "true"
-pack_skipped = sys.argv[9] == "true"
+const reportPath = process.argv[2] ?? "";
+const exitCode = Number.parseInt(process.argv[3] ?? "1", 10);
+const failReason = process.argv[4] ?? "";
+const allowStub = (process.argv[5] ?? "0") === "1";
+const skipPack = (process.argv[6] ?? "0") === "1";
+const verifyPassed = (process.argv[7] ?? "false") === "true";
+const launcherPassed = (process.argv[8] ?? "false") === "true";
+const packPassed = (process.argv[9] ?? "false") === "true";
+const packSkipped = (process.argv[10] ?? "false") === "true";
 
-payload = {
-    "schema_version": 1,
-    "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-    "overall_passed": exit_code == 0,
-    "exit_code": exit_code,
-    "fail_reason": fail_reason,
-    "options": {
-        "allow_stub": allow_stub,
-        "skip_pack_dryrun": skip_pack,
-    },
-    "checks": {
-        "verify_packages": {"passed": verify_passed},
-        "launcher_lookup_chain": {"passed": launcher_passed},
-        "pack_dryrun": {"passed": pack_passed, "skipped": pack_skipped},
-    },
-}
+const payload = {
+  schema_version: 1,
+  generated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  overall_passed: exitCode === 0,
+  exit_code: exitCode,
+  fail_reason: failReason,
+  options: {
+    allow_stub: allowStub,
+    skip_pack_dryrun: skipPack,
+  },
+  checks: {
+    verify_packages: { passed: verifyPassed },
+    launcher_lookup_chain: { passed: launcherPassed },
+    pack_dryrun: { passed: packPassed, skipped: packSkipped },
+  },
+};
 
-with open(report_path, "w", encoding="utf-8") as f:
-    json.dump(payload, f, ensure_ascii=False, indent=2)
-    f.write("\n")
-PY
+fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+fs.writeFileSync(reportPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+NODE
 }
 
 fail_exit() {

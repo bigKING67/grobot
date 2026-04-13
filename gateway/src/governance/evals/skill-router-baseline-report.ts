@@ -13,7 +13,6 @@ interface ParsedCliArgs {
   repoRoot: string;
   outputPath: string;
   githubOutputPath: string | undefined;
-  pythonBin: string;
   printJson: boolean;
 }
 
@@ -101,7 +100,6 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   let repoRoot = ".";
   let outputPath = "gateway/evals/data/skill_router_ci_report.base.json";
   let githubOutputPath: string | undefined;
-  let pythonBin = "python3";
   let printJson = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -136,11 +134,6 @@ function parseArgs(argv: string[]): ParsedCliArgs {
       index += 1;
       continue;
     }
-    if (token === "--python-bin") {
-      pythonBin = argv[index + 1] ?? pythonBin;
-      index += 1;
-      continue;
-    }
     if (token === "--print-json") {
       printJson = true;
       continue;
@@ -154,7 +147,6 @@ function parseArgs(argv: string[]): ParsedCliArgs {
     repoRoot,
     outputPath,
     githubOutputPath,
-    pythonBin,
     printJson,
   };
 }
@@ -165,7 +157,6 @@ interface BuildBaselineInput {
   beforeSha: string;
   repoRoot: string;
   outputPath: string;
-  pythonBin: string;
   policyRelPath?: string;
   evalRelPath?: string;
 }
@@ -219,7 +210,11 @@ export function buildSkillRouterBaselineReport(input: BuildBaselineInput): JsonO
     } else if (normalizedEvalPath.endsWith(".js")) {
       evalCommand.push("node", evalPath);
     } else {
-      evalCommand.push(input.pythonBin, evalPath);
+      return {
+        available: false,
+        reason: "unsupported_eval_script_extension",
+        base_sha: baseSha,
+      };
     }
     evalCommand.push("--policy", policyPath, "--print-json", "--output", outputPath);
     const runResult = runCapture(evalCommand);
@@ -246,7 +241,6 @@ function main(): number {
       beforeSha: args.beforeSha,
       repoRoot: args.repoRoot,
       outputPath: args.outputPath,
-      pythonBin: args.pythonBin,
     });
   } catch (error) {
     result = {

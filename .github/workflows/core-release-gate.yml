@@ -27,7 +27,6 @@ jobs:
         run: |
           node --version
           npm --version
-          python3 --version
 
       - name: Run core release gate
         run: npm run core:gate:release -- --report /tmp/core-release-gate-report.json

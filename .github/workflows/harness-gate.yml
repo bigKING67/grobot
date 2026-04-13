@@ -35,7 +35,6 @@ jobs:
         run: |
           node --version
           npm --version
-          python3 --version
 
       - name: Run gateway checks
         run: npm run check

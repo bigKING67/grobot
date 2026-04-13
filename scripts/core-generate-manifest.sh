@@ -111,31 +111,30 @@ done
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
-python3 - <<'PY' "$OUTPUT_PATH" "${PY_ARGS[@]}"
-import json
-import sys
-from datetime import datetime, timezone
+node - "$OUTPUT_PATH" "${PY_ARGS[@]}" <<'NODE'
+const fs = require("node:fs");
 
-output_path = sys.argv[1]
-items = {}
-for raw in sys.argv[2:]:
-    platform, file_name, sha256, size_bytes = raw.split("|", 3)
-    items[platform] = {
-        "file": file_name,
-        "sha256": sha256,
-        "size_bytes": int(size_bytes),
-    }
-
-payload = {
-    "schema_version": 1,
-    "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-    "artifacts": items,
+const outputPath = process.argv[2] ?? "";
+const items = {};
+for (const raw of process.argv.slice(3)) {
+  const [platform = "", fileName = "", sha256 = "", sizeRaw = "0"] = String(raw).split("|", 4);
+  if (!platform) {
+    continue;
+  }
+  const sizeBytes = Number.parseInt(sizeRaw, 10);
+  items[platform] = {
+    file: fileName,
+    sha256,
+    size_bytes: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+  };
 }
-
-with open(output_path, "w", encoding="utf-8") as f:
-    json.dump(payload, f, ensure_ascii=False, indent=2)
-    f.write("\n")
-PY
+const payload = {
+  schema_version: 1,
+  generated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  artifacts: items,
+};
+fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+NODE
 
 echo "core artifact manifest generated."
 echo "  artifacts_dir: $ARTIFACTS_DIR"

@@ -83,37 +83,32 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 if [ "$OUTPUT_JSON" -eq 1 ]; then
-  python3 - <<'PY' "$TOTAL" "$OK_COUNT" "$MISS_COUNT" "$STUB_COUNT" "$ALLOW_STUB" "${SUMMARY_LINES[@]}"
-import json
-import sys
-
-total = int(sys.argv[1])
-ok_count = int(sys.argv[2])
-miss_count = int(sys.argv[3])
-stub_count = int(sys.argv[4])
-allow_stub = bool(int(sys.argv[5]))
-items = []
-for raw in sys.argv[6:]:
-    pkg, status, reason, path = raw.split("|", 3)
-    items.append(
-        {
-            "package": pkg,
-            "status": status,
-            "reason": reason,
-            "path": path,
-        }
-    )
-
-payload = {
-    "total": total,
-    "ok_count": ok_count,
-    "missing_or_invalid_count": miss_count,
-    "stub_count": stub_count,
-    "allow_stub": allow_stub,
-    "items": items,
+  node - "$TOTAL" "$OK_COUNT" "$MISS_COUNT" "$STUB_COUNT" "$ALLOW_STUB" "${SUMMARY_LINES[@]}" <<'NODE'
+const total = Number.parseInt(process.argv[2] ?? "0", 10);
+const okCount = Number.parseInt(process.argv[3] ?? "0", 10);
+const missCount = Number.parseInt(process.argv[4] ?? "0", 10);
+const stubCount = Number.parseInt(process.argv[5] ?? "0", 10);
+const allowStub = (process.argv[6] ?? "0") === "1";
+const items = [];
+for (const raw of process.argv.slice(7)) {
+  const [pkg = "", status = "", reason = "", itemPath = ""] = String(raw).split("|", 4);
+  items.push({
+    package: pkg,
+    status,
+    reason,
+    path: itemPath,
+  });
 }
-print(json.dumps(payload, ensure_ascii=False, indent=2))
-PY
+const payload = {
+  total,
+  ok_count: okCount,
+  missing_or_invalid_count: missCount,
+  stub_count: stubCount,
+  allow_stub: allowStub,
+  items,
+};
+process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+NODE
 else
   echo "core package verify"
   for line in "${SUMMARY_LINES[@]}"; do

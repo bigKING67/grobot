@@ -136,7 +136,7 @@ else
 fi
 
 SUMMARY_PATH="$REPORT_DIR/core-release-prepare-summary.json"
-python3 - <<'PY' \
+node - \
   "$SUMMARY_PATH" \
   "$ARTIFACTS_DIR" \
   "$MANIFEST_OUT" \
@@ -144,42 +144,40 @@ python3 - <<'PY' \
   "$ALLOW_STUB" \
   "$DRY_RUN" \
   "$SKIP_GATE" \
-  "$SKIP_PACK_DRYRUN"
-import json
-import sys
-from datetime import datetime, timezone
+  "$SKIP_PACK_DRYRUN" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
 
-summary_path = sys.argv[1]
-artifacts_dir = sys.argv[2]
-manifest_out = sys.argv[3]
-report_dir = sys.argv[4]
-allow_stub = bool(int(sys.argv[5]))
-dry_run = bool(int(sys.argv[6]))
-skip_gate = bool(int(sys.argv[7]))
-skip_pack_dryrun = bool(int(sys.argv[8]))
+const summaryPath = process.argv[2] ?? "";
+const artifactsDir = process.argv[3] ?? "";
+const manifestOut = process.argv[4] ?? "";
+const reportDir = process.argv[5] ?? "";
+const allowStub = (process.argv[6] ?? "0") === "1";
+const dryRun = (process.argv[7] ?? "0") === "1";
+const skipGate = (process.argv[8] ?? "0") === "1";
+const skipPackDryrun = (process.argv[9] ?? "0") === "1";
 
-payload = {
-    "schema_version": 1,
-    "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-    "artifacts_dir": artifacts_dir,
-    "manifest_out": manifest_out,
-    "report_dir": report_dir,
-    "options": {
-        "allow_stub": allow_stub,
-        "dry_run": dry_run,
-        "skip_gate": skip_gate,
-        "skip_pack_dryrun": skip_pack_dryrun,
-    },
-    "reports": {
-        "prepare_summary": summary_path,
-        "gate_report": f"{report_dir}/core-release-gate-report.json" if not skip_gate else "",
-    },
-}
+const payload = {
+  schema_version: 1,
+  generated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  artifacts_dir: artifactsDir,
+  manifest_out: manifestOut,
+  report_dir: reportDir,
+  options: {
+    allow_stub: allowStub,
+    dry_run: dryRun,
+    skip_gate: skipGate,
+    skip_pack_dryrun: skipPackDryrun,
+  },
+  reports: {
+    prepare_summary: summaryPath,
+    gate_report: skipGate ? "" : `${reportDir}/core-release-gate-report.json`,
+  },
+};
 
-with open(summary_path, "w", encoding="utf-8") as f:
-    json.dump(payload, f, ensure_ascii=False, indent=2)
-    f.write("\n")
-PY
+fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
+fs.writeFileSync(summaryPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+NODE
 
 echo "core release prepare completed."
 echo "  manifest:      $MANIFEST_OUT"

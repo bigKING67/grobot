@@ -32,10 +32,10 @@ Governance plane is intentionally separated from the request hot path. It drives
 14. Field-level config visibility ACL (`config_sections` / `public_config_sections`).
 15. Built-in config-view profiles (`operator` / `auditor` / `admin`) for faster role setup.
 16. Built-in management policy templates (`policy_template`: `ops_read_only` / `audit_read` / `full_admin`).
-17. Python unit tests for management policy-template defaults and precedence (`gateway/tests/test_management_policy_templates.py`).
-18. Local tool execution for `list` / `glob` / `search` / `read` / `write` / `edit` / `bash` in `grobot start` (OpenAI-compatible `tools` loop, `fd/rg` preferred with Python fallback, `search` supports context lines, and `@file` mention pre-resolution is injected into prompt).
+17. Node contract checks for management policy-template defaults and execution smoke (`gateway/tests/check-gateway-node.mjs`).
+18. Local tool execution for `list` / `glob` / `search` / `read` / `write` / `edit` / `bash` in `grobot start` (OpenAI-compatible `tools` loop, `fd/rg` preferred with built-in fallback and no Python runtime dependency, `search` supports context lines, and `@file` mention pre-resolution is injected into prompt).
 19. `@file` mention index acceleration: in-memory file-path index with incremental refresh (added/removed diff) and trigram-based candidate selection for large repositories.
-20. End-to-end smoke test for `grobot start` tool-calling flow (`gateway/tests/test_start_tool_smoke.py`).
+20. End-to-end smoke checks for `grobot start` / execution-plane contracts (`gateway/tests/check-gateway-node.mjs`, including `start-smoke-contract` scenarios).
 21. Agent-level eval harness v0 (`gateway/evals`): optimization/holdout split, multi-variant scoring, gate enforcement, and holdout regression guard.
 22. Trace mining bootstrap (`gateway/src/governance/evals/trace-mining.ts`): auto-generate eval datasets from local session traces.
 23. Hill-climbing selector (`gateway/src/governance/evals/hill-climb.ts`): choose best variant by optimization gain under holdout non-regression constraints.
@@ -59,21 +59,15 @@ Governance plane is intentionally separated from the request hot path. It drives
 41. Skill-router eval baseline/ci-gate/report pipeline is TS-only (`gateway/src/governance/evals/skill-router-*.ts`).
 42. TS `status --probe` now performs a real OpenAI-compatible `/models` probe (credential precedence: CLI > env > selected project provider in `config.toml`), reports HTTP status/model count, and exits non-zero on probe failure.
 43. `gateway/src/orchestration/dev-cli.ts` is now a thin entrypoint. The implementation moved to `gateway/src/orchestration/entrypoints/dev-cli/index.ts` to reduce single-file coupling while keeping CLI/API behavior compatible.
-44. Legacy Python execution boundary is documented in `gateway/LEGACY_EXECUTION_BOUNDARY.md` (freeze policy + bridge contracts).
+44. Legacy Python execution retirement record is documented in `gateway/LEGACY_EXECUTION_BOUNDARY.md`.
 45. `orchestration/entrypoints/dev-cli` now separates argument parsing and runtime health probing into dedicated modules (`cli-args.ts`, `runtime-health.ts`) to reduce single-file coupling without changing command behavior.
 
 ## Verification
 
-Run gateway Python checks:
+Run gateway checks:
 
 ```bash
-python3 gateway/tests/test_management_policy_templates.py
-python3 gateway/tests/test_local_tools.py
-python3 gateway/tests/test_start_tool_smoke.py
-python3 gateway/tests/test_agent_harness.py
-python3 gateway/tests/test_trace_mining.py
-python3 gateway/tests/test_trace_clean.py
-python3 gateway/tests/test_hill_climb.py
+npm run check:gateway
 ```
 
 Sample harness run:

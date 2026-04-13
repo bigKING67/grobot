@@ -17,7 +17,6 @@ interface ParsedCliArgs {
   policyPath: string;
   policyBlobPath: string;
   evalScriptPath: string;
-  pythonBin: string;
   printJson: boolean;
 }
 
@@ -32,7 +31,6 @@ interface SkillRouterCiGateInput {
   policyPath: string;
   policyBlobPath: string;
   evalScriptPath: string;
-  pythonBin: string;
 }
 
 interface SkillRouterCiGateResult {
@@ -111,7 +109,6 @@ function runCapture(command: string[]): string | undefined {
 }
 
 function runEval(input: {
-  pythonBin: string;
   evalScriptPath: string;
   policyPath: string;
   outputPath: string;
@@ -124,7 +121,8 @@ function runEval(input: {
   } else if (extension.endsWith(".js")) {
     command.push("node", input.evalScriptPath);
   } else {
-    command.push(input.pythonBin, input.evalScriptPath);
+    process.stderr.write(`skill-router-ci-gate: unsupported eval script extension: ${input.evalScriptPath}\n`);
+    return 2;
   }
   command.push(
     "--policy",
@@ -151,7 +149,6 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   let policyPath = "gateway/evals/skill_router_policy.ci.json";
   let policyBlobPath = "gateway/evals/skill_router_policy.ci.json";
   let evalScriptPath = "gateway/src/governance/evals/skill-router-eval.ts";
-  let pythonBin = "python3";
   let printJson = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -206,11 +203,6 @@ function parseArgs(argv: string[]): ParsedCliArgs {
       index += 1;
       continue;
     }
-    if (token === "--python-bin") {
-      pythonBin = argv[index + 1] ?? pythonBin;
-      index += 1;
-      continue;
-    }
     if (token === "--print-json") {
       printJson = true;
       continue;
@@ -228,7 +220,6 @@ function parseArgs(argv: string[]): ParsedCliArgs {
     policyPath,
     policyBlobPath,
     evalScriptPath,
-    pythonBin,
     printJson,
   };
 }
@@ -243,7 +234,6 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
   mkdirSync(dirname(outputPath), { recursive: true });
 
   const gateExitCode = runEval({
-    pythonBin: input.pythonBin,
     evalScriptPath,
     policyPath,
     outputPath,
@@ -282,7 +272,6 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
           trendRequired = "true";
           policyBlobMatch = "true";
           const trendExitCode = runEval({
-            pythonBin: input.pythonBin,
             evalScriptPath,
             policyPath,
             outputPath,
@@ -344,7 +333,6 @@ function main(): number {
     policyPath: args.policyPath,
     policyBlobPath: args.policyBlobPath,
     evalScriptPath: args.evalScriptPath,
-    pythonBin: args.pythonBin,
   });
 
   if (args.printJson) {

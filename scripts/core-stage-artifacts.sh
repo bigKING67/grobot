@@ -102,18 +102,29 @@ PLATFORMS=(
 load_manifest_expected_sha() {
   local manifest="$1"
   local platform="$2"
-  python3 - <<'PY' "$manifest" "$platform"
-import json
-import sys
+  node - "$manifest" "$platform" <<'NODE'
+const fs = require("node:fs");
 
-manifest_path = sys.argv[1]
-platform = sys.argv[2]
-with open(manifest_path, "r", encoding="utf-8") as f:
-    data = json.load(f)
-artifact = (data.get("artifacts") or {}).get(platform) or {}
-value = artifact.get("sha256") or ""
-print(value)
-PY
+const manifestPath = process.argv[2] ?? "";
+const platform = process.argv[3] ?? "";
+let value = "";
+try {
+  const raw = fs.readFileSync(manifestPath, "utf8");
+  const parsed = JSON.parse(raw);
+  if (parsed && typeof parsed === "object") {
+    const artifacts = parsed.artifacts;
+    if (artifacts && typeof artifacts === "object") {
+      const artifact = artifacts[platform];
+      if (artifact && typeof artifact === "object" && typeof artifact.sha256 === "string") {
+        value = artifact.sha256;
+      }
+    }
+  }
+} catch {
+  value = "";
+}
+process.stdout.write(value);
+NODE
 }
 
 echo "staging core artifacts..."

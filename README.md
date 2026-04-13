@@ -43,7 +43,7 @@
 - 已新增 TS 侧 Agent Loop v2 骨架：`context -> runtime -> verify -> persist`，支持 `shadow_mode` 对比位。
 - 已新增 Rust 侧 `runtime.v1` stdio JSON-RPC 骨架：`runtime.health` 与 `runtime.turn.execute`。
 - 已新增跨层契约文件：`shared/contracts/runtime-v1.json`，作为 Gateway/Runtime 的版本锚点。
-- `npm run check` 已升级为三段门禁：Python gateway checks + TypeScript compile + Rust check/test。
+- `npm run check` 已升级为四段门禁：Python target-scope + repository python boundary audit + Node gateway checks + TypeScript compile + Rust check/test。
 
 ## 目录分层（源码 vs 配置）
 
@@ -316,7 +316,7 @@ grobot start \
 - 会话持久化支持 `file` 与 `redis`（生产建议 Redis）。
 - `start` 已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`（通过 Chat Completions `tools` 调用）。
 - `bash` 放行受 `.grobot/project.toml` 的 `[tools].allow` 控制；`read/write/edit` 仅允许访问 `--work-dir` 目录内路径。
-- `list/glob/search` 优先使用 `fd/rg`（不存在时自动回退到 Python 实现）。
+- `list/glob/search` 优先使用 `fd/rg`（不存在时自动回退到内置实现，不依赖 Python 运行时）。
 - `search` 支持 `context_before/context_after`，可直接返回命中行前后文（类似 `rg -B/-A`）。
 - 支持 `@文件名` 快速解析：在用户消息中写 `@xxx`，会先在 `--work-dir` 内做文件匹配并把解析结果注入 prompt（命中唯一路径可直接用于后续读写工具）。
 - `@文件名` 解析使用“常驻内存路径索引 + 增量刷新（added/removed diff）”，匹配阶段采用 trigram 候选集与优先级排序，适配大仓库搜索。
@@ -506,8 +506,8 @@ timeout_secs = 5
 ```toml
 # <repo>/.grobot/project.toml
 [execution]
-gateway_impl = "ts" # python | ts
-runtime_impl = "rust" # python | rust
+gateway_impl = "ts" # TS only（python 已在 hard-cut 移除）
+runtime_impl = "rust" # Rust only（python 已在 hard-cut 移除）
 shadow_mode = false
 ```
 
@@ -622,7 +622,7 @@ npm run harness:ci-summary
 
 ### 管理端点（已实现 status/config/reload/interrupt/mcp-reset/memory-ops）
 
-说明：本节描述的是 Python 管理服务的完整能力；TS `serve --gateway-impl ts` 当前覆盖 `status/config/reload/interrupt/mcp-reset/memory(read/write/lifecycle)/healthz`，但策略模板与持久化后端仍以 Python 管理服务为准。
+说明：本节描述的是当前 TS 管理服务能力。`serve --gateway-impl ts` 已覆盖 `status/config/reload/interrupt/mcp-reset/memory(read/write/lifecycle)/healthz`，并支持策略模板与持久化后端（`file/redis`）的运行态管理；legacy Python 管理链路已退役，历史记录见 `gateway/LEGACY_EXECUTION_BOUNDARY.md`。
 
 管理写接口鉴权来源优先级：
 - `--management-token`（CLI）

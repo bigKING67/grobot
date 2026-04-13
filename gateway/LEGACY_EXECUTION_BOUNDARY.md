@@ -1,19 +1,20 @@
-# Legacy Python Boundary (Phase 2 Freeze)
+# Legacy Python Retirement Record
 
 ## Status
 
-- `gateway/grobot_cli.py` is treated as a legacy facade in the TS+Rust migration.
-- During the current phase, no new feature should be added directly into that file.
-- New behavior must be implemented in TypeScript (`gateway/src/**`) or Rust (`runtime/src/**`), then exposed through bridge contracts.
+- As of 2026-04-13, the legacy Python CLI facade (`gateway/grobot_cli.py`) is fully retired and removed from this repository.
+- Runtime and management execution paths are TS+Rust only (`gateway/src/**` + `runtime/src/**`).
+- Any Python reintroduction into runtime/release/governance target scope is treated as regression.
+
+## Guardrail
+
+- `npm run audit:python:target` enforces two checks:
+  - target-scope text audit (`package.json` / `.github/workflows` / `scripts` / `gateway/src/governance`) must not reintroduce `python3`/`--python-bin` style runtime dependencies.
+  - repository-wide Python-file boundary audit: any `*.py` under repo root fails the check (except `.trellis/**` tooling scripts, which are out-of-scope for this migration).
 
 ## Boundary Contracts
 
-1. Python -> TS bridge:
-   - Input: JSON via stdin (user message, session key parts, actor/project context, migration options).
-   - Output: single JSON object with `status`, `assistant_message`, and `report`.
-   - Entrypoint: `gateway/src/extensions/bridge-cli.ts`.
-
-2. TS -> Rust runtime:
+1. TS -> Rust runtime:
    - Transport: stdio JSON-RPC.
    - Methods: `runtime.health`, `runtime.turn.execute`.
    - Contract source of truth: `shared/contracts/runtime-v1.json`.
