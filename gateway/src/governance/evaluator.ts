@@ -1,4 +1,4 @@
-import { GovernanceEvaluation, ShadowComparison, TurnVerificationResult } from "../types";
+import { GovernanceEvaluation, ShadowComparison, TurnVerificationResult } from "../models/types";
 
 function clampScore(value: number): number {
   if (!Number.isFinite(value)) {

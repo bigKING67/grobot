@@ -15,7 +15,9 @@
 - Rust: runtime core（调度、会话状态机、工具执行策略、并发控制）。
 - Data plane: PostgreSQL + Redis（后续可扩展对象存储与消息队列）。
 
-## Agent 四层架构（对齐 Claude Code 风格，但不绑定 Claude）
+## Agent 分层架构（4层执行面 + 治理平面）
+
+执行面（在线请求链路）包含 4 层：
 
 1. 模型层（Model Layer）
    - 职责：负责推理与生成，不直接拥有工具执行权限。
@@ -23,12 +25,18 @@
 2. 工具层（Tool Layer）
    - 职责：提供 `read/write/edit/bash/search/glob/list`、Web、MCP 等可控能力。
    - 要求：所有工具必须经过 allowlist、超时、审计与错误分级处理。
-3. 编排层（Orchestration Layer）
-   - 职责：`context assemble -> execute -> verify -> persist` 的 agent loop、会话、压缩、权限控制、故障转移。
-   - 要求：会话隔离、一致性回放、可回退切流、可观测事件全覆盖。
-4. 扩展层（Extension Layer）
+3. 扩展层（Extension Layer）
    - 职责：`skills`、`hooks`、`MCP`、（后续）`subagents` 的可插拔扩展。
    - 要求：扩展能力必须与安全策略解耦，按策略显式启用。
+4. 编排层（Orchestration Layer）
+   - 职责：`context assemble -> execute -> verify -> persist` 的 agent loop、会话、压缩、权限控制、故障转移。
+   - 要求：会话隔离、一致性回放、可回退切流、可观测事件全覆盖。
+
+治理平面（Governance Plane）独立于在线执行链路：
+
+5. 治理平面（Governance Plane）
+   - 职责：评估、测试、回归门禁与自动优化迭代（harness/evals/trace/policy/trend gate）。
+   - 要求：策略可审计、回归可阻断、优化可复盘，不把评测逻辑混入业务热路径。
 
 ## 迁移底座（2026-04）
 
@@ -46,6 +54,9 @@
   - `packages/core-*/`：平台核心包骨架（darwin/linux, x64/arm64）
   - `packages/templates/`：初始化模板资产
   - 这些目录共同承担协议、编排、运行时、分发与模板管理。
+- Gateway/Runtime 内部分层（执行面 + 治理平面）：
+  - 执行面：`models/`、`tools/`、`extensions/`、`orchestration/`
+  - 治理平面：`governance/`（评估、测试、自动优化）
 - 全局运行层（`~/.grobot/`）：
   - `~/.grobot/config.toml`：全局 agent/platform/provider 配置（含敏感信息，不进仓库）
   - `~/.grobot/rules/`、`~/.grobot/skills/`、`~/.grobot/hooks/`、`~/.grobot/mcp/servers.toml`
@@ -863,6 +874,9 @@ grobot hooks doctor \
 
 - TypeScript for gateway, platform adapters, management APIs, and orchestration.
 - Rust for high-concurrency runtime execution, scheduling, and policy enforcement.
+- Internal architecture uses `4 execution layers + 1 governance plane`:
+  - execution: `models/tools/extensions/orchestration`
+  - governance: evals, testing, and auto-optimization loops.
 - Target: Feishu + Telegram launch, 100 concurrent sessions, strong session isolation, and model-agnostic quality through harness/context/memory/eval/trace/security engineering.
 
 Start from:

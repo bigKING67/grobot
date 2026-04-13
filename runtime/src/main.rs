@@ -1,27 +1,14 @@
-mod protocol;
+mod extensions;
+mod governance;
+mod models;
+mod orchestration;
+mod tools;
 
 use std::io::{self, BufRead, Write};
-
-#[derive(Debug, Clone)]
-struct RuntimeConfig {
-    target_concurrency: usize,
-    active_turn_soft_limit: usize,
-    turn_timeout_secs: u64,
-}
-
-fn bootstrap(config: &RuntimeConfig) {
-    eprintln!(
-        "runtime bootstrap: concurrency={}, active_turn_soft_limit={}, turn_timeout_secs={}",
-        config.target_concurrency, config.active_turn_soft_limit, config.turn_timeout_secs
-    );
-}
+use governance::session::{bootstrap, default_runtime_config};
 
 fn main() {
-    let config = RuntimeConfig {
-        target_concurrency: 100,
-        active_turn_soft_limit: 60,
-        turn_timeout_secs: 180,
-    };
+    let config = default_runtime_config();
     bootstrap(&config);
 
     let stdin = io::stdin();
@@ -40,7 +27,7 @@ fn main() {
             continue;
         }
 
-        let response = protocol::handle_json_line(&input);
+        let response = extensions::protocol::handle_json_line(&input);
         if writeln!(stdout, "{response}").is_err() {
             eprintln!("stdout write error");
             break;

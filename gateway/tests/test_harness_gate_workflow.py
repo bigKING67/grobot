@@ -11,7 +11,9 @@ from tempfile import TemporaryDirectory
 
 class HarnessGateWorkflowContractTests(unittest.TestCase):
     WORKFLOW_PATH = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "harness-gate.yml"
-    SKILL_ROUTER_CI_GATE_PATH = Path(__file__).resolve().parents[1] / "src" / "evals" / "skill-router-ci-gate.ts"
+    SKILL_ROUTER_CI_GATE_PATH = (
+        Path(__file__).resolve().parents[1] / "src" / "governance" / "evals" / "skill-router-ci-gate.ts"
+    )
     POLICY_RUNTIME_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_label_policy_runtime.js"
     POLICY_DRIFT_RUNTIME_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_policy_drift_report.js"
     APPLY_LABELS_RUNTIME_PATH = Path(__file__).resolve().parents[1] / "evals" / "ci_apply_labels.js"

@@ -15,7 +15,7 @@ except ModuleNotFoundError:
 
 class AgentHarnessTests(unittest.TestCase):
     def _run_runner(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        return run_ts_script("evals/runner.ts", tuple(args))
+        return run_ts_script("governance/evals/runner.ts", tuple(args))
 
     def _parse_json_from_stdout(self, stdout: str) -> dict[str, object]:
         start = stdout.find("{")

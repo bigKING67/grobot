@@ -6,27 +6,33 @@
 2. 多策略 A/B（例如 `lexical` vs `hybrid`）对比。
 3. gate 拦截（分 split 阈值 + 关键指标阈值 + holdout regression guard）。
 
+## 治理平面定位
+
+1. `gateway/evals/*`（policy、fixtures、runtime helpers）和 `gateway/src/governance/evals/*.ts` 共同组成 Gateway 的治理平面。
+2. 该平面负责评估、测试、回归门禁与自动优化迭代（例如 hill-climb/trend gate）。
+3. 该平面不在 `start/serve` 的在线执行热路径中，避免将评测逻辑混入业务执行链路。
+
 ## 目录
 
-- `gateway/src/evals/runner.ts`: case/run/gate policy schema 解析、五维评分器（task/tool/context/safety/latency_cost）、harness 执行与报告输出（CLI 真源）。
-- `gateway/src/evals/trace-mining.ts`: 从 `.grobot/sessions` 自动抽样构建初版 eval case/run 数据（CLI 真源）。
-- `gateway/src/evals/trace-clean.ts`: 对抽样数据执行去重、脱敏、审核报告输出（CLI 真源）。
-- `gateway/src/evals/trace-pipeline.ts`: mining + cleaning 一体化 pipeline（CLI 真源）。
-- `gateway/src/evals/trace-policy-guard.ts`: trace pipeline policy 校验与 fingerprint（CLI 真源）。
-- Trace mining/cleaning/pipeline/policy-guard 已统一迁移到 TypeScript CLI 真源（`gateway/src/evals/trace-*.ts`）。
-- `gateway/src/evals/hill-climb.ts`: 在多个 variant 间执行“优化优先 + holdout 不退化”爬山选择（CLI 真源）。
-- `gateway/src/evals/skill-router-eval.ts`: skills 路由离线评测（准确率 + 禁用命中 + gate，CLI 真源）。
-- `gateway/src/evals/skill-router-baseline-report.ts`: 从 base commit 生成 skill-router baseline 报告（CLI 真源）。
-- `gateway/src/evals/skill-router-ci-gate.ts`: skill-router CI gate 统一入口（CLI 真源，封装 gate/trend 与 `trend_meta` 回填）。
-- `gateway/src/evals/skill-router-trend-meta.ts`: skill-router CI 报告 `trend_meta` 归一化工具（TS 真源）。
+- `gateway/src/governance/evals/runner.ts`: case/run/gate policy schema 解析、五维评分器（task/tool/context/safety/latency_cost）、harness 执行与报告输出（CLI 真源）。
+- `gateway/src/governance/evals/trace-mining.ts`: 从 `.grobot/sessions` 自动抽样构建初版 eval case/run 数据（CLI 真源）。
+- `gateway/src/governance/evals/trace-clean.ts`: 对抽样数据执行去重、脱敏、审核报告输出（CLI 真源）。
+- `gateway/src/governance/evals/trace-pipeline.ts`: mining + cleaning 一体化 pipeline（CLI 真源）。
+- `gateway/src/governance/evals/trace-policy-guard.ts`: trace pipeline policy 校验与 fingerprint（CLI 真源）。
+- Trace mining/cleaning/pipeline/policy-guard 已统一迁移到 TypeScript CLI 真源（`gateway/src/governance/evals/trace-*.ts`）。
+- `gateway/src/governance/evals/hill-climb.ts`: 在多个 variant 间执行“优化优先 + holdout 不退化”爬山选择（CLI 真源）。
+- `gateway/src/governance/evals/skill-router-eval.ts`: skills 路由离线评测（准确率 + 禁用命中 + gate，CLI 真源）。
+- `gateway/src/governance/evals/skill-router-baseline-report.ts`: 从 base commit 生成 skill-router baseline 报告（CLI 真源）。
+- `gateway/src/governance/evals/skill-router-ci-gate.ts`: skill-router CI gate 统一入口（CLI 真源，封装 gate/trend 与 `trend_meta` 回填）。
+- `gateway/src/governance/evals/skill-router-trend-meta.ts`: skill-router CI 报告 `trend_meta` 归一化工具（TS 真源）。
 - `ci_label_policy.json`: harness gate 的 `ci/*` 标签与 PR 汇总评论策略真相源。
-- `gateway/src/evals/ci-label-policy-guard.ts`: `ci_label_policy.json` 的 schema/字段校验与 canonical hash（CLI 真源）。
+- `gateway/src/governance/evals/ci-label-policy-guard.ts`: `ci_label_policy.json` 的 schema/字段校验与 canonical hash（CLI 真源）。
 - `ci_label_policy_runtime.js`: GitHub Actions (`github-script`) 共享的策略加载/归一化运行时（标签与评论共用），并输出轻量 `policy shape` 诊断日志（schema/schema_version/unknown/missing fields + `severity=high|medium|low|none`）。
 - `ci_policy_drift_report.js`: `gate-summary` 中 policy drift 报告构建运行时（读取 PR 历史 comment marker、统一计算 drift transition/streak）。
 - `ci_apply_labels.js`: `apply-suggested-labels` 的自动打标运行时（读取 gate-summary outputs + policy，统一处理安全过滤、缺失标签补建与 stale 标签清理）。
 - `ci_trend_action_comment.js`: `notify-trend-action` 的评论 upsert 运行时（读取 gate-summary outputs + policy，统一处理触发、owner/action 合并、状态 marker 与 stale comment 清理）。
-- `gateway/src/evals/ci-summary.ts`: 汇总 trace/skill-router/policy-drift 报告并生成 CI summary（CLI 真源）。
-- `gateway/src/evals/ci-summary-export.ts`: 从 `harness_ci_summary.json` 生成 `gate-summary` outputs（含 `policy_drift` 扩展字段）并写入 `GITHUB_OUTPUT`（CLI 真源）。
+- `gateway/src/governance/evals/ci-summary.ts`: 汇总 trace/skill-router/policy-drift 报告并生成 CI summary（CLI 真源）。
+- `gateway/src/governance/evals/ci-summary-export.ts`: 从 `harness_ci_summary.json` 生成 `gate-summary` outputs（含 `policy_drift` 扩展字段）并写入 `GITHUB_OUTPUT`（CLI 真源）。
 - `gate_policy.default.json`: 默认门禁策略模板。
 - `gate_policy.ci.json`: CI 专用 gate 策略。
 - `skill_router_policy.dev.json` / `skill_router_policy.ci.json` / `skill_router_policy.prod.json`: skill-router policy 模板。
@@ -34,12 +40,12 @@
 
 ## Trace CLI 真相源
 
-1. 默认 trace CLI 入口以 TypeScript 实现为真源（`gateway/src/evals/*.ts`）。
-2. Python trace 兼容脚本已移除；统一使用 TS 入口命令（`npx --yes --package tsx@4.20.6 tsx gateway/src/evals/...`）。
+1. 默认 trace CLI 入口以 TypeScript 实现为真源（`gateway/src/governance/evals/*.ts`）。
+2. Python trace 兼容脚本已移除；统一使用 TS 入口命令（`npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/...`）。
 
 ## Skill Router CLI 真相源
 
-1. 默认 skill-router CLI 入口以 TypeScript 实现为真源（`gateway/src/evals/skill-router-*.ts`）。
+1. 默认 skill-router CLI 入口以 TypeScript 实现为真源（`gateway/src/governance/evals/skill-router-*.ts`）。
 2. CI 主链路（baseline/ci-gate）统一走 TS 入口。
 
 ## Case Schema (`cases.jsonl`)
@@ -74,7 +80,7 @@
 ## 执行
 
 ```bash
-npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
+npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
@@ -169,7 +175,7 @@ policy 文件约束：
 ## 策略爬山（自动选优）
 
 ```bash
-npx --yes --package tsx@4.20.6 tsx gateway/src/evals/hill-climb.ts \
+npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/hill-climb.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
@@ -217,13 +223,13 @@ npm run harness:skill-router:sample
 23. `harness_ci_summary.md` 顶部在 `policy_drift.worsening_alert=true` 时会显示告警行（含 streak 与 transition），并且 `--emit-github-annotations` 会优先输出 `Policy Drift Worsening` 注解。
 24. `Build policy drift report` 会调用 `ci_policy_drift_report.js`，并在其中复用 `ci_label_policy_runtime.js` 的共享 helper：`extractPolicyDriftStateFromCommentBody` 统一解析 PR 评论中的隐藏状态 marker，`buildPolicyDriftReport` 统一计算 `previous/current`、`worsening_streak` 与阈值告警，`buildPolicyDriftStateMarker` 统一回写 marker，避免 workflow 内联脚本重复维护同一语义。
 25. `gate-summary` 额外导出 `policy_drift_transition`、`policy_drift_transition_state`、`policy_drift_severity_delta`、`policy_drift_owner`、`policy_drift_action_hint`；`notify-trend-action` 优先消费这些结构化字段生成评论（owner/action），仅在缺失时回退 policy 默认值，减少同一语义在不同 job 的二次推导漂移。
-26. `Build skill-router baseline report (base commit)` 会调用 `gateway/src/evals/skill-router-baseline-report.ts` 统一处理 base SHA 解析、worktree 拉取、baseline 可用性判定与 `GITHUB_OUTPUT` 回填，避免 workflow 里重复维护临时目录与清理细节。
-27. `Run skill-router CI gate (with trend check)` 会调用 `gateway/src/evals/skill-router-ci-gate.ts` 统一处理 `gateway/src/evals/skill-router-eval.ts` 的 gate/trend 执行、policy blob 匹配判断与 `trend_meta` 写回，避免 workflow 中维护大段条件分支脚本。
+26. `Build skill-router baseline report (base commit)` 会调用 `gateway/src/governance/evals/skill-router-baseline-report.ts` 统一处理 base SHA 解析、worktree 拉取、baseline 可用性判定与 `GITHUB_OUTPUT` 回填，避免 workflow 里重复维护临时目录与清理细节。
+27. `Run skill-router CI gate (with trend check)` 会调用 `gateway/src/governance/evals/skill-router-ci-gate.ts` 统一处理 `gateway/src/governance/evals/skill-router-eval.ts` 的 gate/trend 执行、policy blob 匹配判断与 `trend_meta` 写回，避免 workflow 中维护大段条件分支脚本。
 
 ## CI Gate（可直接在 GitHub Actions 阻断）
 
 ```bash
-npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
+npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.ci.jsonl \
   --runs gateway/evals/fixtures/runs.ci.jsonl \
   --gate-policy gateway/evals/gate_policy.ci.json \
@@ -231,7 +237,7 @@ npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
 
 npm run harness:skill-router:gate:ci
 
-npx --yes --package tsx@4.20.6 tsx gateway/src/evals/skill-router-eval.ts \
+npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/skill-router-eval.ts \
   --policy gateway/evals/skill_router_policy.ci.json \
   --compare-report gateway/evals/data/skill_router_ci_report.prev.json \
   --fail-on-trend

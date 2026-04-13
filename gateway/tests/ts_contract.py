@@ -38,7 +38,12 @@ def run_ts_script(
     *,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    script_path = Path(__file__).resolve().parents[1] / "src" / script_relative_path
+    normalized_script_path = (
+        f"governance/{script_relative_path}"
+        if script_relative_path.startswith("evals/")
+        else script_relative_path
+    )
+    script_path = Path(__file__).resolve().parents[1] / "src" / normalized_script_path
     return _run_tsx(script_path, args, env=env)
 
 
@@ -97,7 +102,7 @@ def run_node_contract(
     *,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return run_node_script(f"contracts/{script_name}", (command, *list(args)), env=env)
+    return run_node_script(f"extensions/contracts/{script_name}", (command, *list(args)), env=env)
 
 
 def run_ts_contract(
@@ -107,7 +112,7 @@ def run_ts_contract(
     *,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return run_ts_script(f"contracts/{script_name}", (command, *list(args)), env=env)
+    return run_ts_script(f"extensions/contracts/{script_name}", (command, *list(args)), env=env)
 
 
 def spawn_node_contract(
@@ -122,7 +127,7 @@ def spawn_node_contract(
     stderr: int | None = None,
 ) -> subprocess.Popen[str]:
     return spawn_node_script(
-        f"contracts/{script_name}",
+        f"extensions/contracts/{script_name}",
         (command, *list(args)),
         env=env,
         cwd=cwd,

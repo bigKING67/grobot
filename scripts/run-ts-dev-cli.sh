@@ -21,7 +21,7 @@ fi
 
 CACHE_ROOT="${GROBOT_HOME:-${HOME}/.grobot}/cache/ts-dev-cli"
 OUT_DIR="${GROBOT_TS_DEV_CLI_OUT_DIR:-$CACHE_ROOT/dist}"
-ENTRY="$OUT_DIR/dev-cli.js"
+ENTRY="$OUT_DIR/orchestration/dev-cli.js"
 mkdir -p "$OUT_DIR"
 
 NEEDS_BUILD=0

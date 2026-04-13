@@ -2,6 +2,18 @@
 
 TypeScript gateway skeleton for Grobot.
 
+## Architecture Positioning
+
+Gateway follows a `4 execution layers + 1 governance plane` structure:
+
+1. `models` (`gateway/src/models`): canonical data shapes and session/context modeling.
+2. `tools` (`gateway/src/tools`): runtime/tool adapters and persistence-side executors.
+3. `extensions` (`gateway/src/extensions`): cross-boundary bridge/contracts and external integration entrypoints.
+4. `orchestration` (`gateway/src/orchestration`): command entrypoints and runtime orchestration flow.
+5. `governance` (`gateway/src/governance`): evaluation/testing/auto-optimization loop (policy gates, regression checks, report generation).
+
+Governance plane is intentionally separated from the request hot path. It drives quality control and iterative optimization, not online turn execution.
+
 ## Current Scope
 
 1. Canonical `SessionKey` parsing/building.
@@ -25,27 +37,30 @@ TypeScript gateway skeleton for Grobot.
 19. `@file` mention index acceleration: in-memory file-path index with incremental refresh (added/removed diff) and trigram-based candidate selection for large repositories.
 20. End-to-end smoke test for `grobot start` tool-calling flow (`gateway/tests/test_start_tool_smoke.py`).
 21. Agent-level eval harness v0 (`gateway/evals`): optimization/holdout split, multi-variant scoring, gate enforcement, and holdout regression guard.
-22. Trace mining bootstrap (`gateway/src/evals/trace-mining.ts`): auto-generate eval datasets from local session traces.
-23. Hill-climbing selector (`gateway/src/evals/hill-climb.ts`): choose best variant by optimization gain under holdout non-regression constraints.
+22. Trace mining bootstrap (`gateway/src/governance/evals/trace-mining.ts`): auto-generate eval datasets from local session traces.
+23. Hill-climbing selector (`gateway/src/governance/evals/hill-climb.ts`): choose best variant by optimization gain under holdout non-regression constraints.
 24. CI gate mode (`runner --fail-on-gate`): fail-fast with non-zero exit when any gate/regression guard fails.
-25. Trace cleaning pipeline (`gateway/src/evals/trace-clean.ts`): mined dataset dedupe/redaction plus review report generation.
+25. Trace cleaning pipeline (`gateway/src/governance/evals/trace-clean.ts`): mined dataset dedupe/redaction plus review report generation.
 26. GitHub Actions gate workflow (`.github/workflows/harness-gate.yml`): runs `npm run check` + `npm run harness:gate:ci`.
-27. Unified trace pipeline (`gateway/src/evals/trace-pipeline.ts`): one command with tunable mining/cleaning params.
+27. Unified trace pipeline (`gateway/src/governance/evals/trace-pipeline.ts`): one command with tunable mining/cleaning params.
 28. TS migration skeleton for Agent Loop v2 (`context -> runtime -> verify -> persist`) with optional shadow comparison.
 29. TS migration options resolver (`gateway_impl` / `runtime_impl` / `shadow_mode`) for dual-track rollout.
 30. TS dev CLI execution-plane resolver (`CLI > env > .grobot/project.toml > default`) with `gateway_impl` / `runtime_impl` / `shadow_mode`.
 31. Management status exposure for execution plane in `GET /api/v1/status` (`execution_plane` + per-field source).
-32. TS bridge CLI (`gateway/src/bridge-cli.ts`) wired into the TS `start` path when `gateway_impl=ts`, using Rust stdio runtime when `runtime_impl=rust`.
+32. TS bridge CLI (`gateway/src/extensions/bridge-cli.ts`) wired into the TS `start` path when `gateway_impl=ts`, using Rust stdio runtime when `runtime_impl=rust`.
 33. Gateway TypeScript compile gate via `gateway/tsconfig.json`.
-34. TS dev CLI fallback (`gateway/src/dev-cli.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
+34. TS dev CLI fallback (`gateway/src/orchestration/dev-cli.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
 35. TS `serve --ts-dev-cli` currently exposes `GET /api/v1/status`, `GET /api/v1/config` (auth + masked), `GET /healthz`, `POST /api/v1/reload`, `POST /api/v1/sessions/{id}/interrupt`, `POST /api/v1/mcp/reset`, `POST /api/v1/mcp/servers/{name}/reset`, `GET /api/v1/sessions/{id}/memory`, `GET /api/v1/sessions/{id}/memory/export`, `POST /api/v1/sessions/{id}/memory/import`, `POST /api/v1/sessions/{id}/memory/forget`, `POST /api/v1/sessions/{id}/memory/lifecycle`, and `POST /api/v1/memory/lifecycle/run`.
 36. TS `start/status/serve` 参数层已覆盖常用路径与会话参数（`--home`/`--project-root`/`--config-path`/`--session-scope`/`--session-subject`/`--session-backend` 别名）；`serve` 还支持从 `[management].token` 自动读取管理令牌。
 37. TS memory store backend selection now supports `file` (default) and `redis` (via `--session-store redis` / `GROBOT_SESSION_STORE=redis` / `[runtime.storage].hot_cache=redis`). Status endpoint reports selected backend, Redis key, and fallback reason when Redis bootstrap fails and it falls back to file.
 38. TS `serve --ts-dev-cli` now honors config read policy precedence for `GET /api/v1/config` (`--config-read-policy` > `GROBOT_CONFIG_READ_POLICY` > `[management].config_read_policy` > `auto`), with `auto` resolving by bind host (loopback=`public`, non-loopback=`auth`).
 39. TS Redis memory store uses a minimal RESP2 client over `node:net` (currently `AUTH`/`SELECT`/`GET`/`SET EX` on `redis://`). `rediss://` is not supported in TS dev CLI yet; when Redis bootstrap fails, runtime falls back to file store and exposes `fallback_reason` in `/api/v1/status`.
 40. `POST /api/v1/reload` now refreshes memory store runtime config as well (`file/redis`, source, fallback reason) and reloads in-memory session map from the resolved backend.
-41. Skill-router eval baseline/ci-gate/report pipeline is TS-only (`gateway/src/evals/skill-router-*.ts`).
+41. Skill-router eval baseline/ci-gate/report pipeline is TS-only (`gateway/src/governance/evals/skill-router-*.ts`).
 42. TS `status --probe` now performs a real OpenAI-compatible `/models` probe (credential precedence: CLI > env > selected project provider in `config.toml`), reports HTTP status/model count, and exits non-zero on probe failure.
+43. `gateway/src/orchestration/dev-cli.ts` is now a thin entrypoint. The implementation moved to `gateway/src/orchestration/entrypoints/dev-cli/index.ts` to reduce single-file coupling while keeping CLI/API behavior compatible.
+44. Legacy Python execution boundary is documented in `gateway/LEGACY_EXECUTION_BOUNDARY.md` (freeze policy + bridge contracts).
+45. `orchestration/entrypoints/dev-cli` now separates argument parsing and runtime health probing into dedicated modules (`cli-args.ts`, `runtime-health.ts`) to reduce single-file coupling without changing command behavior.
 
 ## Verification
 
@@ -64,7 +79,7 @@ python3 gateway/tests/test_hill_climb.py
 Sample harness run:
 
 ```bash
-npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
+npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
@@ -74,7 +89,7 @@ npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
 CI gate mode:
 
 ```bash
-npx --yes --package tsx@4.20.6 tsx gateway/src/evals/runner.ts \
+npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts \
   --cases gateway/evals/fixtures/cases.sample.jsonl \
   --runs gateway/evals/fixtures/runs.sample.jsonl \
   --gate-policy gateway/evals/gate_policy.default.json \
