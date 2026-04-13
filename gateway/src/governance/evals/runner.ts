@@ -120,12 +120,17 @@ function printSummary(report: JsonObject): void {
       }
       const summary = asObject(variant.summary) ?? {};
       const gate = asObject(variant.gate) ?? {};
+      const sentinel = asObject(variant.sentinel) ?? {};
+      const reward = asObject(variant.reward_v1) ?? {};
       const caseCount = formatNumber(summary.case_count);
       const averageScore = formatNumber(summary.average_score);
       const passRate = formatNumber(summary.pass_rate);
+      const sentinelTotal = formatNumber(sentinel.total);
+      const sentinelPassRate = formatNumber(sentinel.pass_rate);
+      const rewardComposite = formatNumber(reward.composite_score);
       const gateStatus = gate.passed === true ? "PASS" : "FAIL";
       process.stdout.write(
-        `[variant=${variantName}] cases=${Math.trunc(caseCount)} avg_score=${averageScore.toFixed(4)} pass_rate=${passRate.toFixed(4)} gate=${gateStatus}\n`
+        `[variant=${variantName}] cases=${Math.trunc(caseCount)} avg_score=${averageScore.toFixed(4)} pass_rate=${passRate.toFixed(4)} sentinel=${Math.trunc(sentinelTotal)}@${sentinelPassRate.toFixed(4)} reward_v1=${rewardComposite.toFixed(4)} gate=${gateStatus}\n`
       );
       const splits = asObject(variant.splits);
       if (splits != null) {
@@ -150,6 +155,15 @@ function printSummary(report: JsonObject): void {
             return;
           }
           process.stdout.write(`    gate_failure: ${item}\n`);
+        });
+      }
+      const sentinelFailed = sentinel.failed_case_ids;
+      if (Array.isArray(sentinelFailed) && sentinelFailed.length > 0) {
+        sentinelFailed.forEach((item) => {
+          if (typeof item !== "string") {
+            return;
+          }
+          process.stdout.write(`    sentinel_failure: ${item}\n`);
         });
       }
     });

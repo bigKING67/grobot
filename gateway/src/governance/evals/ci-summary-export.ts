@@ -12,6 +12,11 @@ interface HarnessGateOutputs {
   trend_decision_tag: string;
   trend_decision_severity: string;
   trend_action_hint: string;
+  auto_loop_state: string;
+  auto_loop_selected_variant: string;
+  auto_loop_selected_proposal: string;
+  auto_loop_circuit_breaker: string;
+  auto_loop_circuit_reason: string;
   policy_drift_state: string;
   policy_drift_severity: string;
   policy_drift_reason: string;
@@ -141,6 +146,16 @@ export function buildHarnessGateOutputs(payload: Record<string, unknown>): Harne
   const trendDecisionTag = normalizeOptionalText(skillRouter.trend_decision_tag) ?? "TREND_UNKNOWN_MODE";
   const trendDecisionSeverity = normalizeOptionalText(skillRouter.trend_decision_severity) ?? "warn";
   const trendActionHint = normalizeOptionalText(skillRouter.trend_action_hint) ?? "n/a";
+  const autoLoopRaw = payload.auto_loop;
+  const autoLoop =
+    typeof autoLoopRaw === "object" && autoLoopRaw !== null && !Array.isArray(autoLoopRaw)
+      ? (autoLoopRaw as Record<string, unknown>)
+      : {};
+  const autoLoopState = normalizeOptionalText(autoLoop.promotion_state) ?? "n/a";
+  const autoLoopSelectedVariant = normalizeOptionalText(autoLoop.selected_variant) ?? "n/a";
+  const autoLoopSelectedProposal = normalizeOptionalText(autoLoop.selected_proposal_id) ?? "n/a";
+  const autoLoopCircuitBreaker = autoLoop.circuit_breaker_triggered === true ? "true" : "false";
+  const autoLoopCircuitReason = normalizeOptionalText(autoLoop.circuit_breaker_reason) ?? "n/a";
 
   const policyDriftSeverity = normalizeOptionalText(policyDrift.severity) ?? "none";
   const policyDriftReason = normalizeOptionalText(policyDrift.reason) ?? "shape_ok";
@@ -160,6 +175,11 @@ export function buildHarnessGateOutputs(payload: Record<string, unknown>): Harne
     trend_decision_tag: trendDecisionTag,
     trend_decision_severity: trendDecisionSeverity,
     trend_action_hint: trendActionHint,
+    auto_loop_state: autoLoopState,
+    auto_loop_selected_variant: autoLoopSelectedVariant,
+    auto_loop_selected_proposal: autoLoopSelectedProposal,
+    auto_loop_circuit_breaker: autoLoopCircuitBreaker,
+    auto_loop_circuit_reason: autoLoopCircuitReason,
     policy_drift_state: `${policyDriftSeverity}:${policyDriftReason}`,
     policy_drift_severity: policyDriftSeverity,
     policy_drift_reason: policyDriftReason,
@@ -183,6 +203,11 @@ function writeGithubOutputs(path: string, outputs: HarnessGateOutputs): void {
     `trend_decision_tag=${outputs.trend_decision_tag}`,
     `trend_decision_severity=${outputs.trend_decision_severity}`,
     `trend_action_hint=${outputs.trend_action_hint}`,
+    `auto_loop_state=${outputs.auto_loop_state}`,
+    `auto_loop_selected_variant=${outputs.auto_loop_selected_variant}`,
+    `auto_loop_selected_proposal=${outputs.auto_loop_selected_proposal}`,
+    `auto_loop_circuit_breaker=${outputs.auto_loop_circuit_breaker}`,
+    `auto_loop_circuit_reason=${outputs.auto_loop_circuit_reason}`,
     `policy_drift_state=${outputs.policy_drift_state}`,
     `policy_drift_severity=${outputs.policy_drift_severity}`,
     `policy_drift_reason=${outputs.policy_drift_reason}`,

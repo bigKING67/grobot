@@ -59,6 +59,9 @@ jobs:
       - name: Run harness CI gate
         run: npm run harness:gate:ci
 
+      - name: Run harness auto-loop CI simulation
+        run: npm run harness:loop:auto:ci
+
       - name: Validate trace pipeline policy profiles
         run: npm run harness:trace-policy:check
 
@@ -75,7 +78,8 @@ jobs:
         if: always()
         run: |
           mkdir -p gateway/evals/data
-          npm run harness:trace-pipeline:ci -- \
+          npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/trace-pipeline.ts \
+            --policy gateway/evals/trace_pipeline_policy.ci.json \
             --print-json \
             > gateway/evals/data/trace_pipeline_ci_report.json
           cp -f /tmp/grobot-trace-clean-report.ci.json gateway/evals/data/trace_clean_report.ci.json || true
@@ -92,6 +96,9 @@ jobs:
             gateway/evals/data/trace_clean_report.ci.json
             gateway/evals/data/cases.trace.cleaned.ci.jsonl
             gateway/evals/data/runs.trace.cleaned.ci.jsonl
+            gateway/evals/data/auto_loop_ci_report.json
+            gateway/evals/data/candidate_proposals_ci.json
+            gateway/evals/data/experiment_ledger_ci.jsonl
 
   skill-router-gate:
     needs: check
@@ -161,6 +168,11 @@ jobs:
       trend_decision_tag: ${{ steps.export_labels.outputs.trend_decision_tag }}
       trend_decision_severity: ${{ steps.export_labels.outputs.trend_decision_severity }}
       trend_action_hint: ${{ steps.export_labels.outputs.trend_action_hint }}
+      auto_loop_state: ${{ steps.export_labels.outputs.auto_loop_state }}
+      auto_loop_selected_variant: ${{ steps.export_labels.outputs.auto_loop_selected_variant }}
+      auto_loop_selected_proposal: ${{ steps.export_labels.outputs.auto_loop_selected_proposal }}
+      auto_loop_circuit_breaker: ${{ steps.export_labels.outputs.auto_loop_circuit_breaker }}
+      auto_loop_circuit_reason: ${{ steps.export_labels.outputs.auto_loop_circuit_reason }}
       suggested_labels_csv: ${{ steps.export_labels.outputs.suggested_labels_csv }}
       suggested_labels_json: ${{ steps.export_labels.outputs.suggested_labels_json }}
       policy_drift_state: ${{ steps.export_labels.outputs.policy_drift_state }}
@@ -201,6 +213,9 @@ jobs:
           if [ ! -f gateway/evals/data/skill_router_ci_report.json ]; then
             printf '%s\n' '{"summary":{"accuracy":0.0,"forbidden_violations":0,"total_cases":0},"gate":{"passed":false},"trend_meta":{"mode":"gate_only","reason":"artifact_missing","required":false,"executed":false,"baseline_available":false,"policy_blob_match":null,"policy_hash_current":null,"policy_hash_base":null,"policy_hash_match":null}}' > gateway/evals/data/skill_router_ci_report.json
           fi
+          if [ ! -f gateway/evals/data/auto_loop_ci_report.json ]; then
+            printf '%s\n' '{"run_id":null,"baseline_variant":null,"selected_proposal_id":null,"selected_variant":null,"promotion_state":null,"evaluations":[],"circuit_breaker":{"triggered":false,"reason":"artifact_missing"}}' > gateway/evals/data/auto_loop_ci_report.json
+          fi
 
       - name: Build policy drift report
         uses: actions/github-script@v7
@@ -224,6 +239,7 @@ jobs:
           npm run harness:ci-summary:build -- \
             --trace-report gateway/evals/data/trace_pipeline_ci_report.json \
             --skill-router-report gateway/evals/data/skill_router_ci_report.json \
+            --auto-loop-report gateway/evals/data/auto_loop_ci_report.json \
             --policy-drift-report gateway/evals/data/policy_drift_report.json \
             --output gateway/evals/data/harness_ci_summary.json \
             --markdown-output gateway/evals/data/harness_ci_summary.md \
@@ -246,6 +262,7 @@ jobs:
           npm run harness:ci-summary:build -- \
             --trace-report gateway/evals/data/trace_pipeline_ci_report.json \
             --skill-router-report gateway/evals/data/skill_router_ci_report.json \
+            --auto-loop-report gateway/evals/data/auto_loop_ci_report.json \
             --emit-github-annotations
 
       - name: Publish job summary
@@ -322,6 +339,11 @@ jobs:
           TREND_DECISION_TAG: ${{ needs.gate-summary.outputs.trend_decision_tag }}
           TREND_DECISION_SEVERITY: ${{ needs.gate-summary.outputs.trend_decision_severity }}
           TREND_ACTION_HINT: ${{ needs.gate-summary.outputs.trend_action_hint }}
+          AUTO_LOOP_STATE: ${{ needs.gate-summary.outputs.auto_loop_state }}
+          AUTO_LOOP_SELECTED_VARIANT: ${{ needs.gate-summary.outputs.auto_loop_selected_variant }}
+          AUTO_LOOP_SELECTED_PROPOSAL: ${{ needs.gate-summary.outputs.auto_loop_selected_proposal }}
+          AUTO_LOOP_CIRCUIT_BREAKER: ${{ needs.gate-summary.outputs.auto_loop_circuit_breaker }}
+          AUTO_LOOP_CIRCUIT_REASON: ${{ needs.gate-summary.outputs.auto_loop_circuit_reason }}
           POLICY_DRIFT_STATE: ${{ needs.gate-summary.outputs.policy_drift_state }}
           POLICY_DRIFT_SEVERITY: ${{ needs.gate-summary.outputs.policy_drift_severity }}
           POLICY_DRIFT_REASON: ${{ needs.gate-summary.outputs.policy_drift_reason }}

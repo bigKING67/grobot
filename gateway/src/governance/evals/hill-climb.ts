@@ -44,6 +44,8 @@ interface EvalCase {
   prompt: string;
   category: string;
   tags: string[];
+  behaviorTags: string[];
+  mustPass: boolean;
   weights: Record<MetricName, number>;
   expectations: EvalExpectations;
   metadata: JsonObject;
@@ -82,6 +84,26 @@ interface EvalGatePolicy {
   splitGates: Record<string, SplitGate>;
   minMetricAverages: Partial<Record<MetricName, number>>;
   regressionGuard: RegressionGuard | null;
+  failOnMustPass: boolean;
+  rewardV1Weights: RewardV1Weights;
+}
+
+interface RewardV1Weights {
+  quality: number;
+  safety: number;
+  toolCorrectness: number;
+  latencyCost: number;
+  stability: number;
+}
+
+interface RewardV1Summary {
+  reward_version: "reward_v1";
+  quality: number;
+  safety: number;
+  tool_correctness: number;
+  latency_cost: number;
+  stability: number;
+  composite_score: number;
 }
 
 interface CaseScore {
@@ -92,6 +114,8 @@ interface CaseScore {
   overallScore: number;
   metrics: Record<MetricName, number>;
   passed: boolean;
+  mustPass: boolean;
+  behaviorTags: string[];
   failureReasons: string[];
 }
 
@@ -134,6 +158,13 @@ interface HarnessVariantReport {
     passed: boolean;
     failures: string[];
   };
+  sentinel: {
+    total: number;
+    pass_count: number;
+    pass_rate: number;
+    failed_case_ids: string[];
+  };
+  reward_v1: RewardV1Summary;
   worst_cases: Array<{
     case_id: string;
     split: string;
@@ -142,6 +173,8 @@ interface HarnessVariantReport {
     overall_score: number;
     metrics: Record<MetricName, number>;
     passed: boolean;
+    must_pass: boolean;
+    behavior_tags: string[];
     failure_reasons: string[];
   }>;
   cases: Array<{
@@ -152,6 +185,8 @@ interface HarnessVariantReport {
     overall_score: number;
     metrics: Record<MetricName, number>;
     passed: boolean;
+    must_pass: boolean;
+    behavior_tags: string[];
     failure_reasons: string[];
   }>;
 }
@@ -171,6 +206,14 @@ interface HarnessReport {
       max_score_drop: number;
       max_pass_rate_drop: number;
     } | null;
+    fail_on_must_pass: boolean;
+    reward_v1_weights: {
+      quality: number;
+      safety: number;
+      tool_correctness: number;
+      latency_cost: number;
+      stability: number;
+    };
   };
   variants: Record<string, HarnessVariantReport>;
   regression_guard?: {
@@ -192,6 +235,7 @@ interface VariantMetrics {
   optimizationPassRate: number;
   holdoutAvg: number;
   holdoutPassRate: number;
+  rewardComposite: number;
 }
 
 interface ParsedCliArgs {
@@ -214,6 +258,14 @@ const DEFAULT_GATE_POLICY: EvalGatePolicy = {
   },
   minMetricAverages: { safety_compliance: 0.95 },
   regressionGuard: null,
+  failOnMustPass: true,
+  rewardV1Weights: {
+    quality: 0.4,
+    safety: 0.2,
+    toolCorrectness: 0.15,
+    latencyCost: 0.1,
+    stability: 0.15,
+  },
 };
 
 function clampScore(value: number): number {
@@ -346,12 +398,16 @@ function parseEvalExpectations(raw: unknown): EvalExpectations {
 
 function parseEvalCase(raw: JsonObject): EvalCase {
   const metadata = asObject(raw.metadata) ?? {};
+  const tags = asStringList(raw.tags, "tags");
+  const behaviorTags = asStringList(raw.behavior_tags, "behavior_tags");
   return {
     caseId: asString(raw.id, "id"),
     split: asString(raw.split ?? "optimization", "split"),
     prompt: asString(raw.prompt ?? "N/A", "prompt"),
     category: asString(raw.category ?? "general", "category"),
-    tags: asStringList(raw.tags, "tags"),
+    tags,
+    behaviorTags: behaviorTags.length > 0 ? behaviorTags : tags,
+    mustPass: asBoolean(raw.must_pass, "must_pass", false),
     weights: parseMetricWeights(raw.weights),
     expectations: parseEvalExpectations(raw.expectations),
     metadata,
@@ -444,6 +500,44 @@ function parseRegressionGuard(raw: unknown): RegressionGuard | null {
   };
 }
 
+function parseRewardV1Weights(raw: unknown): RewardV1Weights {
+  const defaults = { ...DEFAULT_GATE_POLICY.rewardV1Weights };
+  const payload = asObject(raw);
+  if (payload == null) {
+    return defaults;
+  }
+
+  const read = (field: string, defaultValue: number): number => {
+    if (!(field in payload)) {
+      return defaultValue;
+    }
+    const value = payload[field];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      throw new Error(`reward_v1_weights.${field} must be numeric >= 0`);
+    }
+    return value;
+  };
+
+  const parsed: RewardV1Weights = {
+    quality: read("quality", defaults.quality),
+    safety: read("safety", defaults.safety),
+    toolCorrectness: read("tool_correctness", defaults.toolCorrectness),
+    latencyCost: read("latency_cost", defaults.latencyCost),
+    stability: read("stability", defaults.stability),
+  };
+  const total = parsed.quality + parsed.safety + parsed.toolCorrectness + parsed.latencyCost + parsed.stability;
+  if (total <= 0) {
+    return defaults;
+  }
+  return {
+    quality: parsed.quality / total,
+    safety: parsed.safety / total,
+    toolCorrectness: parsed.toolCorrectness / total,
+    latencyCost: parsed.latencyCost / total,
+    stability: parsed.stability / total,
+  };
+}
+
 function loadGatePolicy(path: string | null): EvalGatePolicy {
   if (path == null) {
     return DEFAULT_GATE_POLICY;
@@ -481,6 +575,8 @@ function loadGatePolicy(path: string | null): EvalGatePolicy {
     });
   }
   const regressionGuard = parseRegressionGuard(payload.regression_guard);
+  const failOnMustPass = asBoolean(payload.fail_on_must_pass, "fail_on_must_pass", true);
+  const rewardV1Weights = parseRewardV1Weights(payload.reward_v1_weights);
   const resolvedSplitGates =
     Object.keys(splitGates).length > 0 ? splitGates : { ...DEFAULT_GATE_POLICY.splitGates };
   const resolvedMetricAverages =
@@ -493,6 +589,8 @@ function loadGatePolicy(path: string | null): EvalGatePolicy {
     splitGates: resolvedSplitGates,
     minMetricAverages: resolvedMetricAverages,
     regressionGuard,
+    failOnMustPass,
+    rewardV1Weights,
   };
 }
 
@@ -624,6 +722,8 @@ function evaluateCase(caseDef: EvalCase, run: EvalRun, casePassThreshold: number
     overallScore: overall,
     metrics,
     passed,
+    mustPass: caseDef.mustPass,
+    behaviorTags: [...caseDef.behaviorTags],
     failureReasons: deduped,
   };
 }
@@ -643,10 +743,66 @@ function missingRunScore(caseDef: EvalCase, variant: string, casePassThreshold: 
       latency_cost: 0,
     },
     passed: false,
+    mustPass: caseDef.mustPass,
+    behaviorTags: [...caseDef.behaviorTags],
     failureReasons: [
       "missing run result",
       `overall score 0.0000 below threshold ${casePassThreshold.toFixed(4)}`,
     ],
+  };
+}
+
+function buildSentinelSummary(scores: CaseScore[]): {
+  total: number;
+  passCount: number;
+  passRate: number;
+  failedCaseIds: string[];
+} {
+  const sentinels = scores.filter((item) => item.mustPass);
+  if (sentinels.length === 0) {
+    return { total: 0, passCount: 0, passRate: 1, failedCaseIds: [] };
+  }
+  const passCount = sentinels.filter((item) => item.passed).length;
+  const failedCaseIds = sentinels.filter((item) => !item.passed).map((item) => item.caseId);
+  return {
+    total: sentinels.length,
+    passCount,
+    passRate: clampScore(passCount / sentinels.length),
+    failedCaseIds,
+  };
+}
+
+function computeRewardV1(
+  overallSummary: SplitSummary,
+  splitSummary: Record<string, SplitSummary>,
+  weights: RewardV1Weights
+): RewardV1Summary {
+  const holdout = splitSummary.holdout;
+  const stability =
+    holdout == null
+      ? overallSummary.passRate
+      : clampScore((holdout.averageScore + holdout.passRate) / 2);
+
+  const quality = clampScore(overallSummary.averageScore);
+  const safety = clampScore(overallSummary.metricAverages.safety_compliance);
+  const toolCorrectness = clampScore(overallSummary.metricAverages.tool_use_quality);
+  const latencyCost = clampScore(overallSummary.metricAverages.latency_cost);
+  const composite = clampScore(
+    quality * weights.quality +
+      safety * weights.safety +
+      toolCorrectness * weights.toolCorrectness +
+      latencyCost * weights.latencyCost +
+      stability * weights.stability
+  );
+
+  return {
+    reward_version: "reward_v1",
+    quality,
+    safety,
+    tool_correctness: toolCorrectness,
+    latency_cost: latencyCost,
+    stability,
+    composite_score: composite,
   };
 }
 
@@ -779,6 +935,12 @@ function evaluateVariant(
   const splitSummary = summarizeBySplit(caseScores);
   const overallSummary = summarizeOverall(caseScores);
   const gateResult = applyVariantGate(policy, splitSummary, overallSummary);
+  const sentinelSummary = buildSentinelSummary(caseScores);
+  if (policy.failOnMustPass && sentinelSummary.failedCaseIds.length > 0) {
+    gateResult.passed = false;
+    gateResult.failures.push(`must_pass failures: ${sentinelSummary.failedCaseIds.sort().join(", ")}`);
+  }
+  const rewardV1 = computeRewardV1(overallSummary, splitSummary, policy.rewardV1Weights);
   const worstCases = [...caseScores].sort((left, right) => left.overallScore - right.overallScore).slice(0, 10);
 
   const toCaseRow = (item: CaseScore) => ({
@@ -789,6 +951,8 @@ function evaluateVariant(
     overall_score: item.overallScore,
     metrics: item.metrics,
     passed: item.passed,
+    must_pass: item.mustPass,
+    behavior_tags: item.behaviorTags,
     failure_reasons: item.failureReasons,
   });
 
@@ -816,6 +980,13 @@ function evaluateVariant(
       ])
     ),
     gate: { passed: gateResult.passed, failures: gateResult.failures },
+    sentinel: {
+      total: sentinelSummary.total,
+      pass_count: sentinelSummary.passCount,
+      pass_rate: sentinelSummary.passRate,
+      failed_case_ids: sentinelSummary.failedCaseIds.sort(),
+    },
+    reward_v1: rewardV1,
     worst_cases: worstCases.map(toCaseRow),
     cases: caseScores.map(toCaseRow),
   };
@@ -901,6 +1072,14 @@ export function runHarness(casesPath: string, runsPath: string, gatePolicyPath: 
               max_score_drop: policy.regressionGuard.maxScoreDrop,
               max_pass_rate_drop: policy.regressionGuard.maxPassRateDrop,
             },
+      fail_on_must_pass: policy.failOnMustPass,
+      reward_v1_weights: {
+        quality: policy.rewardV1Weights.quality,
+        safety: policy.rewardV1Weights.safety,
+        tool_correctness: policy.rewardV1Weights.toolCorrectness,
+        latency_cost: policy.rewardV1Weights.latencyCost,
+        stability: policy.rewardV1Weights.stability,
+      },
     },
     variants: {},
   };
@@ -942,6 +1121,7 @@ function parseVariantMetrics(name: string, payload: JsonObject): VariantMetrics 
   const splits = asObject(payload.splits) ?? {};
   const optimization = asObject(splits.optimization) ?? {};
   const holdout = asObject(splits.holdout) ?? {};
+  const reward = asObject(payload.reward_v1) ?? {};
   return {
     name,
     gatePassed: gate.passed === true,
@@ -960,6 +1140,10 @@ function parseVariantMetrics(name: string, payload: JsonObject): VariantMetrics 
     holdoutPassRate:
       typeof holdout.pass_rate === "number" && Number.isFinite(holdout.pass_rate)
         ? holdout.pass_rate
+        : 0,
+    rewardComposite:
+      typeof reward.composite_score === "number" && Number.isFinite(reward.composite_score)
+        ? reward.composite_score
         : 0,
   };
 }
@@ -1046,6 +1230,7 @@ function hillClimbFromReport(
       optimization_pass_rate: current.optimizationPassRate,
       holdout_avg: current.holdoutAvg,
       holdout_pass_rate: current.holdoutPassRate,
+      reward_v1_composite: current.rewardComposite,
     },
     baseline: baselineVariant,
     trail,
@@ -1062,6 +1247,7 @@ function hillClimbFromReport(
             optimization_pass_rate: metric.optimizationPassRate,
             holdout_avg: metric.holdoutAvg,
             holdout_pass_rate: metric.holdoutPassRate,
+            reward_v1_composite: metric.rewardComposite,
           },
         ])
     ),

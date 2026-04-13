@@ -6,6 +6,7 @@ type PolicyDriftSeverity = "none" | "low" | "medium" | "high";
 interface ParsedCliArgs {
   traceReportPath: string;
   skillRouterReportPath: string;
+  autoLoopReportPath: string | undefined;
   policyDriftReportPath: string | undefined;
   outputPath: string | undefined;
   markdownOutputPath: string | undefined;
@@ -38,6 +39,21 @@ interface HarnessCiSummary {
   overall_pass: boolean;
   suggested_labels: string[];
   policy_drift: PolicyDriftSummary;
+  auto_loop: {
+    available: boolean;
+    run_id: string | null;
+    baseline_variant: string | null;
+    proposal_count: number;
+    evaluation_count: number;
+    selected_proposal_id: string | null;
+    selected_variant: string | null;
+    promotion_state: string | null;
+    circuit_breaker_triggered: boolean;
+    circuit_breaker_reason: string | null;
+    selected_reward_v1_composite: number | null;
+    selected_optimization_gain: number | null;
+    selected_holdout_drop: number | null;
+  };
   trace: {
     sample_guard_pass: boolean;
     clean_cases: number;
@@ -377,6 +393,7 @@ function computeSuggestedLabels(
   trendDecisionTag: string,
   trendDecisionSeverity: string,
   trendOwner: string,
+  autoLoop: HarnessCiSummary["auto_loop"],
 ): string[] {
   const labels: string[] = [
     `ci/harness-${overallPass ? "pass" : "fail"}`,
@@ -384,6 +401,14 @@ function computeSuggestedLabels(
     `ci/owner-${slugifyLabelSegment(trendOwner)}`,
     `ci/${slugifyLabelSegment(trendDecisionTag)}`,
   ];
+  if (autoLoop.available) {
+    labels.push(autoLoop.selected_proposal_id ? "ci/auto-loop-ready" : "ci/auto-loop-no-selection");
+    if (autoLoop.circuit_breaker_triggered) {
+      labels.push("ci/auto-loop-circuit-breaker");
+    }
+  } else {
+    labels.push("ci/auto-loop-missing");
+  }
   if (trendDecisionSeverity === "error") {
     labels.push("ci/action-required");
   } else if (trendDecisionSeverity === "warn") {
@@ -413,9 +438,91 @@ function asStringOrNull(value: unknown): string | null {
   return text ?? null;
 }
 
+function normalizeAutoLoopReport(autoLoopReport: JsonObject | undefined): HarnessCiSummary["auto_loop"] {
+  if (autoLoopReport == null || Object.keys(autoLoopReport).length === 0) {
+    return {
+      available: false,
+      run_id: null,
+      baseline_variant: null,
+      proposal_count: 0,
+      evaluation_count: 0,
+      selected_proposal_id: null,
+      selected_variant: null,
+      promotion_state: null,
+      circuit_breaker_triggered: false,
+      circuit_breaker_reason: null,
+      selected_reward_v1_composite: null,
+      selected_optimization_gain: null,
+      selected_holdout_drop: null,
+    };
+  }
+
+  const evaluationsRaw = autoLoopReport.evaluations;
+  const evaluations = Array.isArray(evaluationsRaw)
+    ? evaluationsRaw.filter((item) => typeof item === "object" && item !== null && !Array.isArray(item))
+    : [];
+  const selectedProposalId = asStringOrNull(autoLoopReport.selected_proposal_id);
+  let selectedEval: JsonObject | null = null;
+  if (selectedProposalId != null) {
+    for (const item of evaluations) {
+      const payload = item as JsonObject;
+      if (asStringOrNull(payload.proposal_id) === selectedProposalId) {
+        selectedEval = payload;
+        break;
+      }
+    }
+  }
+  if (selectedEval == null) {
+    for (const item of evaluations) {
+      const payload = item as JsonObject;
+      if (asStringOrNull(payload.status) === "selected") {
+        selectedEval = payload;
+        break;
+      }
+    }
+  }
+
+  const manifestPath = asStringOrNull(autoLoopReport.manifest_output);
+  let proposalCount = 0;
+  if (manifestPath && existsSync(manifestPath)) {
+    try {
+      const manifest = parseJsonObject(manifestPath);
+      const proposals = manifest.proposals;
+      if (Array.isArray(proposals)) {
+        proposalCount = proposals.length;
+      }
+    } catch {
+      proposalCount = 0;
+    }
+  } else {
+    proposalCount = evaluations.length;
+  }
+
+  const circuit = asObject(autoLoopReport.circuit_breaker);
+  return {
+    available: true,
+    run_id: asStringOrNull(autoLoopReport.run_id),
+    baseline_variant: asStringOrNull(autoLoopReport.baseline_variant),
+    proposal_count: proposalCount,
+    evaluation_count: evaluations.length,
+    selected_proposal_id: selectedProposalId,
+    selected_variant: asStringOrNull(autoLoopReport.selected_variant),
+    promotion_state: asStringOrNull(autoLoopReport.promotion_state),
+    circuit_breaker_triggered: toBool(circuit?.triggered, false),
+    circuit_breaker_reason: asStringOrNull(circuit?.reason),
+    selected_reward_v1_composite:
+      selectedEval == null ? null : toNumber((selectedEval as JsonObject).reward_v1_composite, 0),
+    selected_optimization_gain:
+      selectedEval == null ? null : toNumber((selectedEval as JsonObject).optimization_gain, 0),
+    selected_holdout_drop:
+      selectedEval == null ? null : toNumber((selectedEval as JsonObject).holdout_drop, 0),
+  };
+}
+
 export function buildHarnessCiSummary(
   traceReport: JsonObject,
   skillRouterReport: JsonObject,
+  autoLoopReport?: JsonObject,
   policyDriftReport?: JsonObject,
 ): HarnessCiSummary {
   let traceCleanStats = asObject(traceReport.clean_stats);
@@ -452,9 +559,16 @@ export function buildHarnessCiSummary(
   const trendActionHint = computeTrendActionHint(trendDecisionTag);
   const trendOwner = computeTrendOwner(trendDecisionTag);
   const trendPassForOverall = skillTrendPass === null ? true : skillTrendPass;
+  const autoLoopSummary = normalizeAutoLoopReport(autoLoopReport);
 
   const overallPass = tracePass && skillGatePass && trendPassForOverall;
-  const suggestedLabels = computeSuggestedLabels(overallPass, trendDecisionTag, trendDecisionSeverity, trendOwner);
+  const suggestedLabels = computeSuggestedLabels(
+    overallPass,
+    trendDecisionTag,
+    trendDecisionSeverity,
+    trendOwner,
+    autoLoopSummary,
+  );
 
   let tracePolicyHash: string | null = asStringOrNull(traceReport.policy_hash);
   if (tracePolicyHash === null) {
@@ -469,6 +583,7 @@ export function buildHarnessCiSummary(
     overall_pass: overallPass,
     suggested_labels: suggestedLabels,
     policy_drift: normalizedPolicyDrift,
+    auto_loop: autoLoopSummary,
     trace: {
       sample_guard_pass: tracePass,
       clean_cases: toInt(traceCleanStats.output_cases, 0),
@@ -557,6 +672,7 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
   const trace = asObject(summary.trace as unknown);
   const skill = asObject(summary.skill_router as unknown);
   const policyDrift = asObject(summary.policy_drift as unknown);
+  const autoLoop = asObject(summary.auto_loop as unknown);
   const splitCounts = asObject(trace.split_counts);
   const trendPassValue = skill.trend_pass;
   const trendRequired = toBool(skill.trend_required, false);
@@ -583,6 +699,24 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
     ? summary.suggested_labels.filter((item) => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
     : [];
   const labelsText = labels.length > 0 ? labels.join(", ") : "n/a";
+  const autoLoopAvailable = toBool(autoLoop.available, false);
+  const autoLoopSelectedProposal = normalizeOptionalText(autoLoop.selected_proposal_id) ?? "n/a";
+  const autoLoopSelectedVariant = normalizeOptionalText(autoLoop.selected_variant) ?? "n/a";
+  const autoLoopPromotionState = normalizeOptionalText(autoLoop.promotion_state) ?? "n/a";
+  const autoLoopCircuit = toBool(autoLoop.circuit_breaker_triggered, false);
+  const autoLoopCircuitReason = normalizeOptionalText(autoLoop.circuit_breaker_reason) ?? "n/a";
+  const autoLoopReward =
+    typeof autoLoop.selected_reward_v1_composite === "number"
+      ? Number(autoLoop.selected_reward_v1_composite).toFixed(4)
+      : "n/a";
+  const autoLoopGain =
+    typeof autoLoop.selected_optimization_gain === "number"
+      ? Number(autoLoop.selected_optimization_gain).toFixed(4)
+      : "n/a";
+  const autoLoopHoldoutDrop =
+    typeof autoLoop.selected_holdout_drop === "number"
+      ? Number(autoLoop.selected_holdout_drop).toFixed(4)
+      : "n/a";
 
   const drift = normalizePolicyDriftFieldsForMarkdown(policyDrift);
   const lines: string[] = ["## Harness Gate Summary", ""];
@@ -593,6 +727,8 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
   lines.push(
     `- overall: ${summary.overall_pass ? "pass" : "fail"}`,
     `- suggested-labels: ${labelsText}`,
+    `- auto-loop: available=${autoLoopAvailable ? "yes" : "no"}; selected_proposal=${autoLoopSelectedProposal}; selected_variant=${autoLoopSelectedVariant}; promotion_state=${autoLoopPromotionState}`,
+    `- auto-loop-circuit-breaker: ${autoLoopCircuit ? "yes" : "no"}; reason=${autoLoopCircuitReason}`,
     `- policy-drift: ${drift.severity}:${drift.reason}`,
     `- policy-drift-trend: transition=${drift.transition}; state=${drift.transitionState}; delta=${drift.severityDelta}; streak=${drift.worseningStreak}; alert=${drift.worseningAlert ? "yes" : "no"}; threshold=${drift.worseningAlertThreshold}; worsening_label=${drift.worseningLabel}`,
     `- policy-drift-owner: ${drift.owner}`,
@@ -606,6 +742,17 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
     "| Domain | Key | Value |",
     "| --- | --- | --- |",
     `| meta | suggested_labels | ${labelsText} |`,
+    `| auto_loop | available | ${autoLoopAvailable ? "yes" : "no"} |`,
+    `| auto_loop | proposal_count | ${toInt(autoLoop.proposal_count, 0)} |`,
+    `| auto_loop | evaluation_count | ${toInt(autoLoop.evaluation_count, 0)} |`,
+    `| auto_loop | selected_proposal_id | ${autoLoopSelectedProposal} |`,
+    `| auto_loop | selected_variant | ${autoLoopSelectedVariant} |`,
+    `| auto_loop | promotion_state | ${autoLoopPromotionState} |`,
+    `| auto_loop | selected_reward_v1_composite | ${autoLoopReward} |`,
+    `| auto_loop | selected_optimization_gain | ${autoLoopGain} |`,
+    `| auto_loop | selected_holdout_drop | ${autoLoopHoldoutDrop} |`,
+    `| auto_loop | circuit_breaker_triggered | ${autoLoopCircuit ? "yes" : "no"} |`,
+    `| auto_loop | circuit_breaker_reason | ${autoLoopCircuitReason} |`,
     `| policy_drift | severity | ${drift.severity} |`,
     `| policy_drift | reason | ${drift.reason} |`,
     `| policy_drift | transition | ${drift.transition} |`,
@@ -656,6 +803,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   const args: ParsedCliArgs = {
     traceReportPath: "",
     skillRouterReportPath: "",
+    autoLoopReportPath: undefined,
     policyDriftReportPath: undefined,
     outputPath: undefined,
     markdownOutputPath: undefined,
@@ -676,6 +824,11 @@ function parseArgs(argv: string[]): ParsedCliArgs {
     }
     if (token === "--skill-router-report") {
       args.skillRouterReportPath = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+    if (token === "--auto-loop-report") {
+      args.autoLoopReportPath = argv[index + 1] ?? "";
       index += 1;
       continue;
     }
@@ -744,11 +897,17 @@ function writeTextFile(path: string, payload: string): void {
 
 function printGithubAnnotation(summary: HarnessCiSummary): void {
   const skill = asObject(summary.skill_router as unknown);
+  const autoLoop = asObject(summary.auto_loop as unknown);
   const trendTag = normalizeOptionalText(skill.trend_decision_tag) ?? "TREND_NOT_REQUESTED";
   const trendSeverity = normalizeOptionalText(skill.trend_decision_severity) ?? "info";
   const trendActionHint = normalizeOptionalText(skill.trend_action_hint) ?? "n/a";
   const trendOwner = normalizeOptionalText(skill.trend_owner) ?? "unknown-owner";
   const drift = normalizePolicyDriftFieldsForMarkdown(asObject(summary.policy_drift as unknown));
+  const autoLoopSelectedProposal = normalizeOptionalText(autoLoop.selected_proposal_id) ?? "n/a";
+  const autoLoopSelectedVariant = normalizeOptionalText(autoLoop.selected_variant) ?? "n/a";
+  const autoLoopPromotionState = normalizeOptionalText(autoLoop.promotion_state) ?? "n/a";
+  const autoLoopCircuit = toBool(autoLoop.circuit_breaker_triggered, false);
+  const autoLoopCircuitReason = normalizeOptionalText(autoLoop.circuit_breaker_reason) ?? "n/a";
   const labels = extractSuggestedLabels(summary);
   const labelsText = labels.length > 0 ? labels.join(",") : "n/a";
 
@@ -764,6 +923,11 @@ function printGithubAnnotation(summary: HarnessCiSummary): void {
     `policy_drift_worsening_threshold=${drift.worseningAlertThreshold}; ` +
     `policy_drift_worsening_label=${drift.worseningLabel}; ` +
     `policy_drift_worsening_alert=${drift.worseningAlert ? "yes" : "no"}; ` +
+    `auto_loop_selected_proposal=${autoLoopSelectedProposal}; ` +
+    `auto_loop_selected_variant=${autoLoopSelectedVariant}; ` +
+    `auto_loop_promotion_state=${autoLoopPromotionState}; ` +
+    `auto_loop_circuit_breaker=${autoLoopCircuit ? "yes" : "no"}; ` +
+    `auto_loop_circuit_reason=${autoLoopCircuitReason}; ` +
     `labels=${labelsText}`;
 
   if (!summary.overall_pass) {
@@ -793,11 +957,15 @@ function main(): number {
   const args = parseArgs(process.argv.slice(2));
   const traceReport = parseJsonObject(args.traceReportPath);
   const skillRouterReport = parseJsonObject(args.skillRouterReportPath);
+  const autoLoopReport =
+    args.autoLoopReportPath && existsSync(args.autoLoopReportPath)
+      ? parseJsonObject(args.autoLoopReportPath)
+      : undefined;
   const policyDriftReport =
     args.policyDriftReportPath && existsSync(args.policyDriftReportPath)
       ? parseJsonObject(args.policyDriftReportPath)
       : undefined;
-  const summary = buildHarnessCiSummary(traceReport, skillRouterReport, policyDriftReport);
+  const summary = buildHarnessCiSummary(traceReport, skillRouterReport, autoLoopReport, policyDriftReport);
   const markdown = renderHarnessCiSummaryMarkdown(summary);
   const suggestedLabels = extractSuggestedLabels(summary);
   const suggestedLabelsCsv = suggestedLabels.join(",");

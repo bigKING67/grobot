@@ -1,10 +1,12 @@
-# Agent Harness v0
+# Agent Harness v2
 
 `gateway/evals` 提供一个可落地的 agent-level 评测闭环，用于支撑：
 
 1. `optimization` 与 `holdout` 双集合评估。
 2. 多策略 A/B（例如 `lexical` vs `hybrid`）对比。
-3. gate 拦截（分 split 阈值 + 关键指标阈值 + holdout regression guard）。
+3. gate 拦截（split 阈值 + 关键指标阈值 + holdout regression guard + `must_pass` sentinel）。
+4. `reward_v1` 多目标排序 + `candidate` 提案 + `auto-loop` 预算熔断迭代。
+5. 实验账本（ledger）与推广协议（promotion protocol）审计闭环。
 
 ## 治理平面定位
 
@@ -21,6 +23,11 @@
 - `gateway/src/governance/evals/trace-policy-guard.ts`: trace pipeline policy 校验与 fingerprint（CLI 真源）。
 - Trace mining/cleaning/pipeline/policy-guard 已统一迁移到 TypeScript CLI 真源（`gateway/src/governance/evals/trace-*.ts`）。
 - `gateway/src/governance/evals/hill-climb.ts`: 在多个 variant 间执行“优化优先 + holdout 不退化”爬山选择（CLI 真源）。
+- `gateway/src/governance/evals/candidate-generator.ts`: 基于 harness 报告自动生成原子化候选提案（CLI 真源）。
+- `gateway/src/governance/evals/auto-loop.ts`: 候选评估、预算熔断、账本写入的一体化迭代入口（CLI 真源）。
+- `gateway/src/governance/evals/harness-ledger.ts`: 实验账本读写与 lineages 辅助函数（TS 真源）。
+- `gateway/src/governance/evals/ledger-cli.ts`: 账本 tail/诊断入口（CLI 真源）。
+- `gateway/src/governance/evals/promotion-protocol.ts`: `shadow_passed/promoted/rolled_back/rejected` 状态迁移入口（CLI 真源）。
 - `gateway/src/governance/evals/skill-router-eval.ts`: skills 路由离线评测（准确率 + 禁用命中 + gate，CLI 真源）。
 - `gateway/src/governance/evals/skill-router-baseline-report.ts`: 从 base commit 生成 skill-router baseline 报告（CLI 真源）。
 - `gateway/src/governance/evals/skill-router-ci-gate.ts`: skill-router CI gate 统一入口（CLI 真源，封装 gate/trend 与 `trend_meta` 回填）。
@@ -55,6 +62,8 @@
 - `id`: case 唯一标识。
 - `split`: `optimization` 或 `holdout`。
 - `prompt`: 任务描述。
+- `behavior_tags`: 行为标签（可选，缺省回落到 `tags`）。
+- `must_pass`: sentinel 回归开关（可选，默认 `false`）。
 - `weights`: 各评分维度权重（可选，不填则使用默认）。
 - `expectations`: 期望与约束：
   - `required_substrings`
@@ -91,6 +100,11 @@ npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts \
 
 - `--print-json`: 控制台打印完整报告 JSON。
 - `--fail-on-gate`: 任一 gate 失败即返回非 0（适合 CI gate）。
+
+输出会额外包含：
+
+- `variants[*].sentinel`: `must_pass` case 的通过统计与失败 id。
+- `variants[*].reward_v1`: 多目标得分（`quality/safety/tool_correctness/latency_cost/stability/composite_score`）。
 
 ## 从真实会话生成初版数据
 
@@ -208,6 +222,7 @@ npm run harness:skill-router:sample
 8. 支持趋势回归：`--compare-report <baseline.json> --fail-on-trend`；阈值默认来自 policy gates（CLI 仍可覆盖）。
 9. CI 中仅当 base commit 与当前 commit 的 `skill_router_policy.ci.json` blob 一致时才执行 trend 对比；若策略已变更则自动降级为 gate-only，并在报告 `trend_meta` 中记录原因（含 `policy_blob_*` 与 `policy_hash_*` 字段）。
 10. `harness:ci-summary` 会输出 `trend_decision_tag`、`trend_decision_severity`、`trend_owner`、`trend_action_hint` 与 `suggested_labels`，用于在 GitHub Summary 第一屏快速判定是否需要人工介入并明确归属人群。
+11. `harness:ci-summary` 支持 `--auto-loop-report`，会把 `selected_proposal_id/selected_variant/promotion_state/circuit_breaker` 汇总进 summary 与 annotation。
 11. `harness:ci-summary --emit-github-annotations` 会基于 `trend_decision_severity` 输出 `::notice::/::warning::/::error::` 注解，PR 页面无需展开 summary 也能看到趋势门禁信号。
 12. `harness-gate.yml` 的 `gate-summary` job 会导出 `overall_state`、`trend_owner`、`suggested_labels_csv`、`suggested_labels_json` outputs，可供后续 workflow 做自动打标或通知分派。
 13. `harness-gate.yml` 的 `apply-suggested-labels` 与 `notify-trend-action` 会通过 `gateway/evals/ci_apply_labels.js` / `gateway/evals/ci_trend_action_comment.js` 调用 `gateway/evals/ci_label_policy_runtime.js`，读取并归一化 `gateway/evals/ci_label_policy.json`（`safe_label_pattern`、`managed_label_prefixes`、标签颜色/描述、评论 marker、`comment_trigger`、`comment_template`），避免 workflow 硬编码漂移。
@@ -250,6 +265,59 @@ npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/skill-router-eva
 1. `optimization` / `holdout` 的平均分或 pass_rate 低于阈值。
 2. 关键指标（如 `safety_compliance`）低于阈值。
 3. 候选策略在 `holdout` 上相对 baseline 发生退化（`regression_guard`）。
+4. 任一 `must_pass=true` 的 case 失败（可通过 `gate_policy.fail_on_must_pass` 控制）。
+
+## 自我迭代闭环（candidate + auto-loop + ledger + promotion）
+
+1. 先生成基础 harness 报告：
+
+```bash
+npm run harness:sample
+```
+
+2. 从 harness 报告自动生成候选提案：
+
+```bash
+npm run harness:candidate:generate:sample
+```
+
+3. 运行 auto-loop（预算 + 熔断 + ledger 写入）：
+
+```bash
+npm run harness:loop:auto:sample
+```
+
+4. 查看账本：
+
+```bash
+npm run harness:ledger:tail
+```
+
+5. 对候选执行推广状态迁移（示例）：
+
+```bash
+npm run harness:promotion:sample
+```
+
+说明：
+
+1. `auto-loop` 默认预算：`max_candidates=4`、`max_rounds=2`、`max_parallel=2`、`consecutive_failures_to_stop=2`、`cooldown_hours=12`。
+2. 默认只推进到 `ready_for_manual_promotion`，不会自动升默认策略。
+3. `promotion-protocol` 强制状态机校验，非法迁移会直接失败。
+
+## Saturated Case 退役建议
+
+当 eval 集合持续增长时，建议定期识别“稳定满分且无区分度”的 case，输出退役候选清单：
+
+```bash
+npm run harness:eval:retire-saturated:sample
+```
+
+说明：
+
+1. 仅对 `must_pass=false` 的 case 给出退役建议。
+2. 退役判定默认要求 `observations >= min_observations` 且 `min_score >= min_score` 且 `pass_rate=1.0`。
+3. 输出包含 `saturated_cases` 和 `all_candidates`，方便人工复核后再真正退役。
 
 ## npm 快捷命令
 
@@ -267,6 +335,12 @@ npm run harness:trace-policy:check
 npm run harness:trace-policy:fingerprint
 npm run harness:trace-pipeline:validate
 npm run harness:hill-climb:sample
+npm run harness:candidate:generate:sample
+npm run harness:loop:auto:sample
+npm run harness:loop:auto:ci
+npm run harness:eval:retire-saturated:sample
+npm run harness:ledger:tail
+npm run harness:promotion:sample
 npm run harness:skill-router:sample
 npm run harness:skill-router:gate:ci
 npm run harness:skill-router:gate:prod

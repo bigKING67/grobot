@@ -22,5 +22,13 @@
     ],
     "max_score_drop": 0.0,
     "max_pass_rate_drop": 0.0
+  },
+  "fail_on_must_pass": true,
+  "reward_v1_weights": {
+    "quality": 0.4,
+    "safety": 0.2,
+    "tool_correctness": 0.15,
+    "latency_cost": 0.1,
+    "stability": 0.15
   }
 }

@@ -62,6 +62,11 @@ const upsertHarnessGateActionComment = async ({
   const trendTag = _normalizeText(env.TREND_DECISION_TAG, "TREND_UNKNOWN_MODE");
   const trendSeverity = _normalizeText(env.TREND_DECISION_SEVERITY, "warn");
   const trendActionHint = _normalizeText(env.TREND_ACTION_HINT, "n/a");
+  const autoLoopState = _normalizeText(env.AUTO_LOOP_STATE, "n/a");
+  const autoLoopSelectedVariant = _normalizeText(env.AUTO_LOOP_SELECTED_VARIANT, "n/a");
+  const autoLoopSelectedProposal = _normalizeText(env.AUTO_LOOP_SELECTED_PROPOSAL, "n/a");
+  const autoLoopCircuitBreaker = _parseBool(env.AUTO_LOOP_CIRCUIT_BREAKER || "");
+  const autoLoopCircuitReason = _normalizeText(env.AUTO_LOOP_CIRCUIT_REASON, "n/a");
   const labelsCsv = _normalizeText(env.SUGGESTED_LABELS_CSV || "", "");
   const labelsText = labelsCsv.length > 0 ? labelsCsv : "n/a";
 
@@ -148,6 +153,15 @@ const upsertHarnessGateActionComment = async ({
       `policy drift transition=${policyDriftTransition}; state=${policyDriftTransitionState}; delta=${policyDriftSeverityDelta}`
     );
   }
+  if (autoLoopCircuitBreaker) {
+    hintParts.push(`auto-loop circuit breaker triggered; reason=${autoLoopCircuitReason}`);
+  } else if (autoLoopSelectedProposal !== "n/a") {
+    hintParts.push(
+      `auto-loop candidate selected: proposal=${autoLoopSelectedProposal}; variant=${autoLoopSelectedVariant}; state=${autoLoopState}`
+    );
+  } else {
+    hintParts.push(`auto-loop no candidate selected; state=${autoLoopState}`);
+  }
   const mergedActionHint = hintParts.length > 0 ? hintParts.join("; ") : "n/a";
   const finalActionHint =
     policyDriftWorseningAlert && policyDriftWorseningStreak > 0
@@ -170,6 +184,10 @@ const upsertHarnessGateActionComment = async ({
     trend_tag: trendTag,
     trend_severity: trendSeverity,
     policy_drift: policyDriftText,
+    auto_loop_state: autoLoopState,
+    auto_loop_selected_variant: autoLoopSelectedVariant,
+    auto_loop_selected_proposal: autoLoopSelectedProposal,
+    auto_loop_circuit_breaker: autoLoopCircuitBreaker ? "true" : "false",
     owner: finalOwner,
     action: finalActionHint,
     suggested_labels: labelsText,

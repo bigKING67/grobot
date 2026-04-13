@@ -36,6 +36,26 @@
         "format": "code"
       },
       {
+        "key": "auto_loop_state",
+        "label": "auto_loop_state",
+        "format": "code"
+      },
+      {
+        "key": "auto_loop_selected_variant",
+        "label": "auto_loop_selected_variant",
+        "format": "code"
+      },
+      {
+        "key": "auto_loop_selected_proposal",
+        "label": "auto_loop_selected_proposal",
+        "format": "code"
+      },
+      {
+        "key": "auto_loop_circuit_breaker",
+        "label": "auto_loop_circuit_breaker",
+        "format": "code"
+      },
+      {
         "key": "owner",
         "label": "owner",
         "format": "code"
@@ -72,6 +92,7 @@
     "ci/severity-",
     "ci/owner-",
     "ci/action-",
+    "ci/auto-loop-",
     "ci/trend-",
     "ci/policy-drift-",
     "ci/policy-drift-worsening"
@@ -113,6 +134,26 @@
       "prefix": "ci/action-review",
       "color": "fbca04",
       "description": "Suggested CI remediation action"
+    },
+    {
+      "prefix": "ci/auto-loop-ready",
+      "color": "0e8a16",
+      "description": "Auto-loop has selected candidate ready for manual promotion"
+    },
+    {
+      "prefix": "ci/auto-loop-no-selection",
+      "color": "fbca04",
+      "description": "Auto-loop completed without selected candidate"
+    },
+    {
+      "prefix": "ci/auto-loop-circuit-breaker",
+      "color": "b60205",
+      "description": "Auto-loop triggered circuit breaker"
+    },
+    {
+      "prefix": "ci/auto-loop-missing",
+      "color": "5319e7",
+      "description": "Auto-loop report missing or unavailable"
     },
     {
       "prefix": "ci/owner-",
