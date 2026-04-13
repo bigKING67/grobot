@@ -7,6 +7,7 @@ import {
 import {
   createSessionRecord,
   findSessionRecord,
+  type SessionProviderRuntimeState,
   touchSessionRecord,
   type SessionRegistryPayload,
 } from "./session-registry";
@@ -19,6 +20,8 @@ interface CreateRunStartSessionOpsInput {
   getActiveSessionId(): string;
   setActiveSessionId(value: string): void;
   setSessionKey(value: string): void;
+  setStickyProvider(value: string | undefined): void;
+  setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
   onHistoryCompacted(): void;
@@ -39,6 +42,8 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     input.setActiveSessionId(record.id);
     sessionRegistry.active_id = record.id;
     input.setSessionKey(record.session_key);
+    input.setStickyProvider(record.sticky_provider);
+    input.setProviderRuntimeStates(Array.isArray(record.provider_runtime_states) ? [...record.provider_runtime_states] : []);
     const historyLoad = await input.sessionStore.loadHistoryMessagesState(record.session_key);
     input.setHistoryMessages(historyLoad.messages);
     input.writeStoreWarnings(historyLoad.warnings);
@@ -55,6 +60,8 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const record = createSessionRecord(input.sessionNamespaceKey);
     sessionRegistry.sessions.push(record);
     sessionRegistry.active_id = record.id;
+    input.setStickyProvider(undefined);
+    input.setProviderRuntimeStates([]);
     await input.persistSessionRegistryState();
     return record.id;
   };

@@ -164,6 +164,47 @@ function buildFailoverConfig(workDir) {
   ].join("\n");
 }
 
+function buildProviderPoolConfig(workDir, providerBaseUrl, providerCount) {
+  const normalizedCount = Number.isFinite(providerCount) ? Math.max(1, Math.floor(providerCount)) : 1;
+  const lines = [
+    'language = "zh"',
+    "",
+    "[[projects]]",
+    'name = "grobot"',
+    "",
+    "[projects.agent]",
+    'type = "claudecode"',
+    'provider = "pool-01"',
+    "",
+    "[projects.agent.options]",
+    `work_dir = "${workDir}"`,
+    'mode = "default"',
+    "",
+  ];
+  for (let index = 1; index <= normalizedCount; index += 1) {
+    const suffix = String(index).padStart(2, "0");
+    lines.push("[[projects.agent.providers]]");
+    lines.push(`name = "pool-${suffix}"`);
+    lines.push(`api_key = "pool-key-${suffix}"`);
+    lines.push(`base_url = "${providerBaseUrl}"`);
+    lines.push('model = "pool-model"');
+    lines.push("priority = 10");
+    lines.push("weight = 100");
+    lines.push("requests_per_minute = 1");
+    lines.push("burst = 1");
+    lines.push("max_inflight = 2");
+    lines.push("");
+  }
+  lines.push("[[projects.platforms]]");
+  lines.push('type = "feishu"');
+  lines.push("");
+  lines.push("[projects.platforms.options]");
+  lines.push('app_id = "x"');
+  lines.push('app_secret = "y"');
+  lines.push("");
+  return lines.join("\n");
+}
+
 function writeConfig(content) {
   const configDir = createTempDir("grobot-start-config");
   const configPath = `${configDir}/config.toml`;
@@ -378,6 +419,50 @@ function runFailoverTsRust(repoRoot) {
   ]);
 }
 
+function runProviderPoolMultiTurnTsRust(repoRoot, providerBaseUrl, providerCount, turnCount) {
+  const workDir = createTempDir("grobot-start-work");
+  const homeDir = createTempDir("grobot-start-home");
+  const normalizedProviderCount = Number.isFinite(providerCount) ? Math.max(1, Math.floor(providerCount)) : 10;
+  const normalizedTurnCount = Number.isFinite(turnCount) ? Math.max(1, Math.floor(turnCount)) : 6;
+  const config = writeConfig(
+    buildProviderPoolConfig(workDir, providerBaseUrl, normalizedProviderCount),
+  );
+  const lines = [];
+  for (let index = 1; index <= normalizedTurnCount; index += 1) {
+    lines.push(`pool-turn-${String(index)}`);
+  }
+  lines.push("/health");
+  lines.push("/exit");
+  lines.push("");
+  return runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "provider-pool-user",
+      "--history-turns",
+      "12",
+    ],
+    null,
+    lines.join("\n"),
+  );
+}
+
 function runStartSessionStoreRedisFallback(repoRoot) {
   const workDir = createTempDir("grobot-start-work");
   const homeDir = createTempDir("grobot-start-home");
@@ -484,7 +569,7 @@ function runCli(argv) {
   const { command, options } = parseArgs(argv);
   const repoRoot = resolve(requireOption(options, "repo-root"));
   let payload;
-  switch (command) {
+    switch (command) {
     case "package-launcher-rejects-python":
       payload = runPackageLauncherRejectsPython(repoRoot);
       break;
@@ -505,12 +590,20 @@ function runCli(argv) {
     case "failover-rejects-python":
       payload = runFailoverRejectsPython(repoRoot);
       break;
-    case "failover-runs-ts-rust":
-      payload = runFailoverTsRust(repoRoot);
-      break;
-    case "start-session-store-redis-fallback":
-      payload = runStartSessionStoreRedisFallback(repoRoot);
-      break;
+      case "failover-runs-ts-rust":
+        payload = runFailoverTsRust(repoRoot);
+        break;
+      case "provider-pool-multi-turn-ts-rust":
+        payload = runProviderPoolMultiTurnTsRust(
+          repoRoot,
+          requireOption(options, "provider-base-url"),
+          Number.parseInt(options.get("provider-count") ?? "10", 10),
+          Number.parseInt(options.get("turn-count") ?? "6", 10),
+        );
+        break;
+      case "start-session-store-redis-fallback":
+        payload = runStartSessionStoreRedisFallback(repoRoot);
+        break;
     case "status-ts-rust":
       payload = runStatusTsRust(repoRoot);
       break;

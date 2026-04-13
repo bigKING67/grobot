@@ -19,6 +19,7 @@ interface RunStartInteractiveModeInput {
   restoredTurns: number;
   restoreSource: "store" | "empty";
   buildHelpText(): string;
+  showHealthStatus(): void;
   printSessionOverview(): void;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
@@ -57,6 +58,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     },
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
+    },
+    showHealthStatus: () => {
+      input.showHealthStatus();
     },
     showSessions: () => {
       input.printSessionOverview();

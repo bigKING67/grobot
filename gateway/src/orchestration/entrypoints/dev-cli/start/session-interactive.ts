@@ -3,6 +3,7 @@ export type SessionInteractiveAction = "continue" | "break";
 export interface SessionInteractiveHandlers {
   writeStdout(message: string): void;
   showHelp(): void;
+  showHealthStatus(): void;
   showSessions(): void;
   createAndSwitchSession(): Promise<void>;
   switchSession(targetSessionId: string): Promise<void>;
@@ -19,6 +20,7 @@ export function buildInteractiveHelpText(): string {
     "  /new                 Create and switch to a new session",
     "  /switch <id>         Switch active session",
     "  /continue <id>       Inject summary bridge from another session",
+    "  /health              Show provider failover and circuit status",
     "  /handoff             Write HANDOFF.md",
     "  /exit                Exit interactive mode",
     "",
@@ -43,6 +45,10 @@ export async function dispatchSessionInteractiveInput(
   }
   if (userInput === "/sessions") {
     handlers.showSessions();
+    return "continue";
+  }
+  if (userInput === "/health") {
+    handlers.showHealthStatus();
     return "continue";
   }
   if (userInput === "/new") {

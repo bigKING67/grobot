@@ -12,7 +12,7 @@ export function usage(): string {
     "",
     "Commands:",
     "  status [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--provider <name>] [--api-key <key>] [--base-url <url>] [--model <id>] [--probe] [--gateway-impl ts] [--runtime-impl rust] [--shadow-mode|--no-shadow-mode]",
-    "  start [--message <text>] [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--session-scope dm|group] [--session-subject <id>] [--history-turns <n>] [--handoff-recent-turns <n>] [--handoff-auto-on-exit|--no-handoff-auto-on-exit] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
+      "  start [--message <text>] [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--provider <name>] [--session-scope dm|group] [--session-subject <id>] [--history-turns <n>] [--handoff-recent-turns <n>] [--handoff-auto-on-exit|--no-handoff-auto-on-exit] [--circuit-failures <n>] [--circuit-cooldown-secs <n>] [--provider-max-inflight <n>] [--provider-requests-per-minute <n>] [--provider-burst <n>] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
     "  serve [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--bind 127.0.0.1:8080] [--management-token <token>] [--config-read-policy auto|public|auth|disabled] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
     "",
     "Probe notes:",

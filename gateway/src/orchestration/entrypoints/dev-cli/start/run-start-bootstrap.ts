@@ -4,6 +4,7 @@ import {
   createSessionRecord,
   findSessionRecord,
   SESSION_REGISTRY_MAIN_ID,
+  type SessionProviderRuntimeState,
   type SessionRegistryPayload,
   type SessionRegistryRecord,
 } from "./session-registry";
@@ -21,6 +22,8 @@ export interface RunStartBootstrapState {
   sessionKey: string;
   historyMessages: ChatHistoryMessage[];
   restoreSource: "store" | "empty";
+  stickyProvider?: string;
+  providerRuntimeStates: SessionProviderRuntimeState[];
 }
 
 function ensureActiveSession(
@@ -56,5 +59,9 @@ export async function bootstrapRunStartState(
     sessionKey: activeSessionRecord.session_key,
     historyMessages: historyLoad.messages,
     restoreSource: historyLoad.source,
+    stickyProvider: activeSessionRecord.sticky_provider,
+    providerRuntimeStates: Array.isArray(activeSessionRecord.provider_runtime_states)
+      ? [...activeSessionRecord.provider_runtime_states]
+      : [],
   };
 }

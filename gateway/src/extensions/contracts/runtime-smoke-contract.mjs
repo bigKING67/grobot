@@ -260,17 +260,71 @@ async function runToolCallDiagnosticEvents(repoRoot) {
   }
 }
 
+async function runProviderPoolLoadBalance(repoRoot) {
+  const providerPoolModel = await startMockModelServer({ content: "POOL_RUNTIME_OK" });
+  const providerCount = 10;
+  const turnCount = 6;
+  try {
+    const runResult = await runCommandAsync(
+      repoRoot,
+      [
+        "node",
+        "gateway/src/extensions/contracts/start-smoke-contract.mjs",
+        "provider-pool-multi-turn-ts-rust",
+        "--repo-root",
+        repoRoot,
+        "--provider-base-url",
+        providerPoolModel.baseUrl,
+        "--provider-count",
+        String(providerCount),
+        "--turn-count",
+        String(turnCount),
+      ],
+      null,
+      null,
+      240_000,
+    );
+    const payload = parseJsonOutput(
+      "runtime-smoke-contract provider-pool-load-balance",
+      runResult.stdout,
+    );
+    const calls = providerPoolModel.getCalls();
+    const authorizationCounts = new Map();
+    for (const call of calls) {
+      const authorization = typeof call.authorization === "string" ? call.authorization : "";
+      const key = authorization.length > 0 ? authorization : "<empty>";
+      authorizationCounts.set(key, (authorizationCounts.get(key) ?? 0) + 1);
+    }
+    const sortedAuthorizationCounts = Array.from(authorizationCounts.entries())
+      .map(([authorization, count]) => ({ authorization, count }))
+      .sort((left, right) => right.count - left.count);
+    return {
+      ...payload,
+      provider_count: providerCount,
+      turn_count: turnCount,
+      runtime_call_count: calls.length,
+      unique_authorization_count: authorizationCounts.size,
+      authorization_counts: sortedAuthorizationCounts,
+    };
+  } finally {
+    await providerPoolModel.close();
+  }
+}
+
 async function runCli(argv) {
   const { command, options } = parseArgs(argv);
   const repoRoot = resolve(requireOption(options, "repo-root"));
   let payload;
-  switch (command) {
-    case "provider-config-passthrough":
-      payload = await runProviderConfigPassthrough(repoRoot);
-      break;
-    case "tool-call-fail-fast":
-      payload = await runToolCallFailFast(repoRoot);
-      break;
+    switch (command) {
+      case "provider-config-passthrough":
+        payload = await runProviderConfigPassthrough(repoRoot);
+        break;
+      case "provider-pool-load-balance":
+        payload = await runProviderPoolLoadBalance(repoRoot);
+        break;
+      case "tool-call-fail-fast":
+        payload = await runToolCallFailFast(repoRoot);
+        break;
     case "tool-call-diagnostic-events":
       payload = await runToolCallDiagnosticEvents(repoRoot);
       break;

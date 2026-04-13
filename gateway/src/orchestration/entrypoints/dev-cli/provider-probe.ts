@@ -56,6 +56,18 @@ function parseTomlString(value: string): string | undefined {
   return trimmed;
 }
 
+function parseTomlNumber(value: string): number | undefined {
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
 function toAbsolutePath(rawPath: string, homeDir: string, baseDir: string): string {
   const trimmed = rawPath.trim();
   if (!trimmed) {
@@ -82,11 +94,37 @@ export interface ProviderProbeResult {
   selectedFound?: boolean;
 }
 
-interface ProviderSnapshot {
+interface MutableProvider {
+  name?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  priority?: number;
+  weight?: number;
+  unitCost?: number;
+  maxInFlight?: number;
+  requestsPerMinute?: number;
+  burst?: number;
+}
+
+interface MutableProject {
+  name?: string;
+  workDir?: string;
+  selectedProvider?: string;
+  providers: MutableProvider[];
+}
+
+export interface ProviderSnapshot {
   name: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  priority?: number;
+  weight?: number;
+  unitCost?: number;
+  maxInFlight?: number;
+  requestsPerMinute?: number;
+  burst?: number;
 }
 
 export interface ProjectProviderSnapshot {
@@ -96,32 +134,18 @@ export interface ProjectProviderSnapshot {
   source: string;
 }
 
+export interface ProjectProviderPoolSnapshot {
+  projectName: string;
+  providerName?: string;
+  providers: ProviderSnapshot[];
+  source: string;
+}
+
 function normalizeConfigPathForMatch(path: string): string {
   return removeTrailingSlashes(path).replace(/\\/g, "/");
 }
 
-export function readProviderSnapshotFromToml(
-  configTomlPath: string | undefined,
-  projectName: string,
-  workDir: string,
-  homeDir: string,
-  providerOverride?: string,
-): ProjectProviderSnapshot | undefined {
-  if (!configTomlPath || !fileReadable(configTomlPath)) {
-    return undefined;
-  }
-  interface MutableProvider {
-    name?: string;
-    baseUrl?: string;
-    apiKey?: string;
-    model?: string;
-  }
-  interface MutableProject {
-    name?: string;
-    workDir?: string;
-    selectedProvider?: string;
-    providers: MutableProvider[];
-  }
+function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undefined {
   const projects: MutableProject[] = [];
   let currentProject: MutableProject | undefined;
   let currentProvider: MutableProvider | undefined;
@@ -184,73 +208,162 @@ export function readProviderSnapshotFromToml(
         }
         continue;
       }
-      if (section === "projects.agent.providers" && currentProvider) {
-        if (key === "name") {
-          currentProvider.name = value;
-        } else if (key === "base_url") {
-          currentProvider.baseUrl = value;
+        if (section === "projects.agent.providers" && currentProvider) {
+          if (key === "name") {
+            currentProvider.name = value;
+          } else if (key === "base_url") {
+            currentProvider.baseUrl = value;
         } else if (key === "api_key") {
           currentProvider.apiKey = value;
         } else if (key === "model") {
           currentProvider.model = value;
+        } else if (key === "priority") {
+          currentProvider.priority = parseTomlNumber(kvMatch[2]);
+          } else if (key === "weight") {
+            currentProvider.weight = parseTomlNumber(kvMatch[2]);
+          } else if (key === "unit_cost" || key === "cost_per_1k_tokens") {
+            currentProvider.unitCost = parseTomlNumber(kvMatch[2]);
+          } else if (key === "max_inflight" || key === "max_in_flight") {
+            currentProvider.maxInFlight = parseTomlNumber(kvMatch[2]);
+          } else if (key === "requests_per_minute" || key === "rpm") {
+            currentProvider.requestsPerMinute = parseTomlNumber(kvMatch[2]);
+          } else if (key === "burst" || key === "bucket_burst") {
+            currentProvider.burst = parseTomlNumber(kvMatch[2]);
+          }
         }
       }
-    }
   } catch {
     return undefined;
   }
+  return projects;
+}
 
-  if (!projects.length) {
-    return undefined;
-  }
+function selectProject(
+  projects: readonly MutableProject[],
+  projectName: string,
+  workDir: string,
+  homeDir: string,
+): MutableProject {
   const normalizedWorkDir = normalizeConfigPathForMatch(workDir);
-  const selectProject = (): MutableProject => {
-    const byName = projects.find((item) => {
-      if (typeof item.name !== "string") {
-        return false;
-      }
-      return item.name.trim() === projectName;
-    });
-    if (byName) {
-      return byName;
+  const byName = projects.find((item) => {
+    if (typeof item.name !== "string") {
+      return false;
     }
-    const byWorkDir = projects.find((item) => {
-      if (typeof item.workDir !== "string" || !item.workDir.trim()) {
-        return false;
-      }
-      const expanded = toAbsolutePath(item.workDir, homeDir, process.cwd());
-      return normalizeConfigPathForMatch(expanded) === normalizedWorkDir;
-    });
-    if (byWorkDir) {
-      return byWorkDir;
+    return item.name.trim() === projectName;
+  });
+  if (byName) {
+    return byName;
+  }
+  const byWorkDir = projects.find((item) => {
+    if (typeof item.workDir !== "string" || !item.workDir.trim()) {
+      return false;
     }
-    return projects[0];
-  };
-  const selectedProject = selectProject();
+    const expanded = toAbsolutePath(item.workDir, homeDir, process.cwd());
+    return normalizeConfigPathForMatch(expanded) === normalizedWorkDir;
+  });
+  if (byWorkDir) {
+    return byWorkDir;
+  }
+  return projects[0];
+}
+
+function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): ProviderSnapshot {
+  const resolvedName = raw.name?.trim();
+  return {
+    name: resolvedName && resolvedName.length > 0 ? resolvedName : fallbackName,
+    baseUrl: raw.baseUrl?.trim(),
+    apiKey: raw.apiKey?.trim(),
+      model: raw.model?.trim(),
+      priority: typeof raw.priority === "number" ? raw.priority : undefined,
+      weight: typeof raw.weight === "number" ? raw.weight : undefined,
+      unitCost: typeof raw.unitCost === "number" ? raw.unitCost : undefined,
+      maxInFlight: typeof raw.maxInFlight === "number" ? raw.maxInFlight : undefined,
+      requestsPerMinute: typeof raw.requestsPerMinute === "number" ? raw.requestsPerMinute : undefined,
+      burst: typeof raw.burst === "number" ? raw.burst : undefined,
+    };
+}
+
+function buildOrderedProviders(
+  selectedProject: MutableProject,
+  providerOverride?: string,
+): { requestedName?: string; providers: ProviderSnapshot[] } {
   const selectedName = selectedProject.selectedProvider?.trim();
   const overrideName = providerOverride?.trim();
   const requestedName = overrideName && overrideName.length > 0 ? overrideName : selectedName;
-  const provider = requestedName
-    ? selectedProject.providers.find((item) => item.name?.trim() === requestedName) ?? selectedProject.providers[0]
-    : selectedProject.providers[0];
-  if (!provider) {
+  if (!Array.isArray(selectedProject.providers) || selectedProject.providers.length === 0) {
     return {
-      projectName: selectedProject.name?.trim() || projectName,
-      providerName: requestedName,
-      provider: undefined,
-      source: `config_toml:${configTomlPath}`,
+      requestedName,
+      providers: [],
     };
   }
+  const ordered: MutableProvider[] = [];
+  if (requestedName && requestedName.length > 0) {
+    const matched = selectedProject.providers.find((item) => item.name?.trim() === requestedName);
+    if (matched) {
+      ordered.push(matched);
+    }
+  }
+  for (const item of selectedProject.providers) {
+    if (ordered.includes(item)) {
+      continue;
+    }
+    ordered.push(item);
+  }
+  return {
+    requestedName,
+    providers: ordered.map((item, index) =>
+      normalizeProviderSnapshot(item, requestedName && requestedName.length > 0 ? requestedName : `provider-${String(index + 1)}`),
+    ),
+  };
+}
+
+export function readProviderPoolFromToml(
+  configTomlPath: string | undefined,
+  projectName: string,
+  workDir: string,
+  homeDir: string,
+  providerOverride?: string,
+): ProjectProviderPoolSnapshot | undefined {
+  if (!configTomlPath || !fileReadable(configTomlPath)) {
+    return undefined;
+  }
+  const projects = parseProjectsFromToml(configTomlPath);
+  if (!projects || !projects.length) {
+    return undefined;
+  }
+  const selectedProject = selectProject(projects, projectName, workDir, homeDir);
+  const ordered = buildOrderedProviders(selectedProject, providerOverride);
   return {
     projectName: selectedProject.name?.trim() || projectName,
-    providerName: requestedName || provider.name?.trim(),
-    provider: {
-      name: provider.name?.trim() || requestedName || "<unknown>",
-      baseUrl: provider.baseUrl?.trim(),
-      apiKey: provider.apiKey?.trim(),
-      model: provider.model?.trim(),
-    },
+    providerName: ordered.requestedName || ordered.providers[0]?.name,
+    providers: ordered.providers,
     source: `config_toml:${configTomlPath}`,
+  };
+}
+
+export function readProviderSnapshotFromToml(
+  configTomlPath: string | undefined,
+  projectName: string,
+  workDir: string,
+  homeDir: string,
+  providerOverride?: string,
+): ProjectProviderSnapshot | undefined {
+  const pool = readProviderPoolFromToml(
+    configTomlPath,
+    projectName,
+    workDir,
+    homeDir,
+    providerOverride,
+  );
+  if (!pool) {
+    return undefined;
+  }
+  const provider = pool.providers[0];
+  return {
+    projectName: pool.projectName,
+    providerName: pool.providerName,
+    provider,
+    source: pool.source,
   };
 }
 

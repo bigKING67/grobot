@@ -3,11 +3,15 @@ import { type RuntimeModelConfig } from "../../../../models/types";
 import { type SessionStoreController } from "../services/session-store";
 import { createRunStartHandoff } from "./run-start-handoff";
 import { createRunStartSessionOps } from "./run-start-session-ops";
-import { createRunStartTurnRunner } from "./run-start-turn";
+import {
+  createRunStartTurnRunner,
+  type RuntimeFailoverConfig,
+  type RuntimeProviderCandidate,
+} from "./run-start-turn";
 import { type RunStartPersistence } from "./run-start-persistence";
 import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type ChatHistoryMessage } from "./session-history";
-import { type SessionRegistryPayload, touchSessionRecord } from "./session-registry";
+import { setSessionProviderRuntime, type SessionRegistryPayload, touchSessionRecord } from "./session-registry";
 
 interface CreateRunStartWireInput {
   sessionNamespaceKey: string;
@@ -21,6 +25,8 @@ interface CreateRunStartWireInput {
   subject: string;
   executionPlane: ExecutionPlaneConfig;
   runtimeModelConfig?: RuntimeModelConfig;
+  runtimeProviderChain: RuntimeProviderCandidate[];
+  runtimeFailoverConfig: RuntimeFailoverConfig;
   runtimeModelConfigSource: {
     baseUrl: string;
     apiKey: string;
@@ -62,6 +68,8 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     getActiveSessionId: input.runtimeState.getActiveSessionId,
     setActiveSessionId: input.runtimeState.setActiveSessionId,
     setSessionKey: input.runtimeState.setSessionKey,
+    setStickyProvider: input.runtimeState.setStickyProvider,
+    setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,
     onHistoryCompacted: input.runtimeState.markHistoryCompacted,
@@ -78,10 +86,16 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     subject: input.subject,
     executionPlane: input.executionPlane,
     runtimeModelConfig: input.runtimeModelConfig,
+    runtimeProviderChain: input.runtimeProviderChain,
+    runtimeFailoverConfig: input.runtimeFailoverConfig,
     runtimeModelConfigSource: input.runtimeModelConfigSource,
     getSessionKey: input.runtimeState.getSessionKey,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,
+    getStickyProvider: input.runtimeState.getStickyProvider,
+    setStickyProvider: input.runtimeState.setStickyProvider,
+    getProviderRuntimeStates: input.runtimeState.getProviderRuntimeStates,
+    setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
     onHistoryCompacted: input.runtimeState.markHistoryCompacted,
     onVerificationFailure: input.runtimeState.markFailureObserved,
     touchActiveSession: (userText) => {
@@ -89,6 +103,16 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
         input.runtimeState.getSessionRegistry(),
         input.runtimeState.getActiveSessionId(),
         userText,
+      );
+    },
+    updateActiveSessionProviderRuntime: (stickyProvider, providerRuntimeStates) => {
+      setSessionProviderRuntime(
+        input.runtimeState.getSessionRegistry(),
+        input.runtimeState.getActiveSessionId(),
+        {
+          stickyProvider,
+          providerRuntimeStates,
+        },
       );
     },
     persistHistoryState: input.persistence.persistHistoryState,

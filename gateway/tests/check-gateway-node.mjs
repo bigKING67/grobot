@@ -660,14 +660,32 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(providerConfigPayload.exit_code, 0);
   assert.equal(String(providerConfigPayload.stdout).includes("CONFIG_PROVIDER_OK"), true);
-  assert.equal(Number(providerConfigPayload.runtime_call_count) >= 1, true);
-  assert.equal(providerConfigPayload.runtime_last_call?.model, "provider-config-model");
-  assert.equal(String(providerConfigPayload.runtime_last_call?.authorization), "Bearer provider-config-key");
-  logStep("runtime-smoke-contract provider-config-passthrough");
+    assert.equal(Number(providerConfigPayload.runtime_call_count) >= 1, true);
+    assert.equal(providerConfigPayload.runtime_last_call?.model, "provider-config-model");
+    assert.equal(String(providerConfigPayload.runtime_last_call?.authorization), "Bearer provider-config-key");
+    logStep("runtime-smoke-contract provider-config-passthrough");
 
-  const upstreamFailureResult = runContract("start-smoke-contract.mjs", "failover-runs-ts-rust", ["--repo-root", repoRoot], {
-    timeoutMs: 240_000,
-    env: {
+    const providerPoolResult = runContract(
+      "runtime-smoke-contract.mjs",
+      "provider-pool-load-balance",
+      ["--repo-root", repoRoot],
+      { timeoutMs: 240_000 },
+    );
+    const providerPoolPayload = parseJsonOutput(
+      "runtime-smoke-contract provider-pool-load-balance",
+      providerPoolResult.stdout,
+    );
+    assert.equal(providerPoolPayload.exit_code, 0);
+    assert.equal(Number(providerPoolPayload.runtime_call_count) >= Number(providerPoolPayload.turn_count), true);
+    assert.equal(Number(providerPoolPayload.unique_authorization_count) >= 3, true);
+    logStep("runtime-smoke-contract provider-pool-load-balance", {
+      unique_keys: providerPoolPayload.unique_authorization_count,
+      calls: providerPoolPayload.runtime_call_count,
+    });
+
+    const upstreamFailureResult = runContract("start-smoke-contract.mjs", "failover-runs-ts-rust", ["--repo-root", repoRoot], {
+      timeoutMs: 240_000,
+      env: {
       ...process.env,
       GROBOT_BASE_URL: "http://127.0.0.1:9/v1",
       GROBOT_API_KEY: "mock-runtime-key",

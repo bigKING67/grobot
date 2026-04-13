@@ -1,6 +1,6 @@
 import { type RunStartBootstrapState } from "./run-start-bootstrap";
 import { type ChatHistoryMessage } from "./session-history";
-import { type SessionRegistryPayload } from "./session-registry";
+import { type SessionProviderRuntimeState, type SessionRegistryPayload } from "./session-registry";
 
 interface CreateRunStartRuntimeStateInput {
   bootstrapState: RunStartBootstrapState;
@@ -20,6 +20,10 @@ export interface RunStartRuntimeState {
   markFailureObserved(): void;
   hasFailureObserved(): boolean;
   getRestoredTurns(): number;
+  getStickyProvider(): string | undefined;
+  setStickyProvider(value: string | undefined): void;
+  getProviderRuntimeStates(): SessionProviderRuntimeState[];
+  setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
 }
 
 export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInput): RunStartRuntimeState {
@@ -30,6 +34,8 @@ export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInpu
   let restoreSource = input.bootstrapState.restoreSource;
   let historyCompacted = false;
   let failureObserved = false;
+  let stickyProvider = input.bootstrapState.stickyProvider;
+  let providerRuntimeStates = input.bootstrapState.providerRuntimeStates;
 
   return {
     getSessionRegistry: (): SessionRegistryPayload => sessionRegistry,
@@ -55,5 +61,13 @@ export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInpu
     },
     hasFailureObserved: (): boolean => failureObserved,
     getRestoredTurns: (): number => historyMessages.length / 2,
+    getStickyProvider: (): string | undefined => stickyProvider,
+    setStickyProvider: (value: string | undefined): void => {
+      stickyProvider = value;
+    },
+    getProviderRuntimeStates: (): SessionProviderRuntimeState[] => providerRuntimeStates,
+    setProviderRuntimeStates: (rows: SessionProviderRuntimeState[]): void => {
+      providerRuntimeStates = rows;
+    },
   };
 }

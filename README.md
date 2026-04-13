@@ -301,7 +301,10 @@ grobot start \
   --redis-url "redis://127.0.0.1:6379/0" \
   --history-turns 16 \
   --circuit-failures 2 \
-  --circuit-cooldown-secs 30
+  --circuit-cooldown-secs 30 \
+  --provider-max-inflight 4 \
+  --provider-requests-per-minute 120 \
+  --provider-burst 120
 
 # 若你在任意目录启动，但希望强制使用某个项目根目录
 grobot start \
@@ -312,7 +315,11 @@ grobot start \
 
 说明：
 - `start` 现在会自动构建 provider failover 链（主 provider 失败时自动切后备）。
+- provider 选择默认按 `session_key` 粘性：同一会话优先复用上轮成功 provider；不可用时才故障转移。
+- provider 链路策略为 `sticky + score + failover + circuit`：优先 sticky，候选按评分排序，失败自动切换，达到阈值后熔断并在冷却后半开探测恢复。
+- score 会综合：`priority`、连续失败惩罚、成本惩罚、`EWMA latency` 与 `EWMA error rate`（再叠加少量确定性抖动），用于在多 provider 间自动倾斜流量。
 - 切换 provider 时会重放当前会话历史消息（最近 N 轮），用于尽量保持上下文连续。
+- 若显式传入 `--base-url/--api-key/--model`（或对应 `GROBOT_*` 环境变量），则按单 provider 直连执行，不走 config provider 链。
 - 会话持久化支持 `file` 与 `redis`（生产建议 Redis）。
 - `start` 已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`（通过 Chat Completions `tools` 调用）。
 - `bash` 放行受 `.grobot/project.toml` 的 `[tools].allow` 控制；`read/write/edit` 仅允许访问 `--work-dir` 目录内路径。
@@ -326,10 +333,10 @@ grobot start \
 - Skills 路由观测可在 `.grobot/project.toml` 的 `[skills.observability]` 配置（`enabled`、`path`），每轮会写入 JSONL（包含 selected skill、score、hits、prompt preview 与阈值配置）。
 - MCP 会在启动时读取并合并：`~/.grobot/mcp/servers.toml`（全局） + `<repo>/.grobot/mcp.toml`（项目覆盖同名 server）。
 - MCP 会在启动时做命令就绪度检查（ready/unready），并在 `status`、`serve`、`start`、`/mcp` 中显示原因。
-- `mcp_call` 会按 `initialize -> tools/list -> tools/call` 流程通过 stdio 调用 MCP server，并返回标准化结果预览（含 `is_error/content/structured_content_preview`）。
-- 同一 `start` 会话内，`mcp_call` 会复用已初始化的 MCP 进程（避免每次重启 server，降低时延）。
-- 若复用中的 MCP 进程异常退出，`mcp_call` 会自动重建会话并重试一次，降低偶发中断对会话的影响。
-- `mcp_call` 内置每个 server 的并发/排队/熔断门禁（避免高并发下把同一个 MCP server 打挂）。
+  - `mcp_call` 会按 `initialize -> tools/list -> tools/call` 流程通过 stdio 调用 MCP server，并返回标准化结果预览（含 `is_error/content/structured_content_preview`）。
+  - 同一 `start` 会话内，`mcp_call` 会复用已初始化的 MCP 进程（避免每次重启 server，降低时延）。
+  - 若复用中的 MCP 进程异常退出，`mcp_call` 会自动重建会话并重试一次，降低偶发中断对会话的影响。
+  - `mcp_call` 内置每个 server 的并发/排队/熔断门禁（避免高并发下把同一个 MCP server 打挂）。
 - `mcp_call` 支持 `[tools.mcp].allow_tools` 白名单；不在白名单中的 MCP tool 会被拒绝调用。
 - `mcp_call`/`mcp_servers` 会输出 server 级 `runtime_state` 指标；`mcp_servers` 还会输出跨 server 聚合的 `runtime_summary`（含总调用、失败分桶、延迟分位和 `top_errors`）。
   - `runtime_state` 同时包含失败分桶：`policy_denied_calls`、`gate_rejected_calls`、`timeout_failures`、`transport_failures`、`tool_failures`、`unknown_failures`。
@@ -337,10 +344,20 @@ grobot start \
   - 支持 hooks 事件：`user-prompt-submit`、`before-tool-use`、`after-tool-use`。脚本目录支持全局（`~/.grobot/hooks/<event>/`）和项目层（`<repo>/.grobot/hooks/<event>/`）。
   - hooks 脚本读取 STDIN JSON（事件 payload）；可通过 `.grobot/project.toml` 的 `[hooks]` 配置 `enabled/strict/timeout_secs`。
 - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
-- 交互命令新增 `/health`，用于查看 provider 熔断状态（CLOSED/OPEN/HALF_OPEN）。
+- 交互命令新增 `/health`，用于查看 provider 粘性与熔断状态（CLOSED/OPEN/HALF_OPEN）。
+  - `/health` 同时展示 `ewma_latency_ms` 与 `ewma_error_rate`，可用于判断实时路由倾斜是否符合预期。
 - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
 - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
-- 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。
+  - 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。
+
+provider 高级字段（可选，定义在 `[[projects.agent.providers]]`）：
+- `priority`：数字越小优先级越高（默认按声明顺序回退）。
+- `weight`：同等条件下权重越高越优先（用于流量倾斜）。
+- `unit_cost` / `cost_per_1k_tokens`：数值越低越优先（成本惩罚项）。
+- `max_inflight`（或 `max_in_flight`）：单 provider 并发上限，超过即跳过并尝试下一个 provider。
+- `requests_per_minute`（或 `rpm`）：单 provider 每分钟请求预算（token-bucket 补充速率）。
+- `burst`（或 `bucket_burst`）：token-bucket 桶容量；未配置时默认等于 `requests_per_minute`。
+- 也可通过 CLI / 环境变量设置默认值：`--provider-max-inflight`、`--provider-requests-per-minute`、`--provider-burst`（对应 `GROBOT_PROVIDER_MAX_INFLIGHT`、`GROBOT_PROVIDER_REQUESTS_PER_MINUTE`、`GROBOT_PROVIDER_BURST`）。
 
 ### Wiki v1（Memory + Wiki 双轨）
 

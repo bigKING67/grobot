@@ -12,12 +12,26 @@ export const SESSION_REGISTRY_MAIN_ID = "main";
 export const SESSION_KEY_INSTANCE_SEPARATOR = "__s_";
 export const HISTORY_STORE_VERSION = 1;
 
+export interface SessionProviderRuntimeState {
+  provider_name: string;
+  consecutive_failures: number;
+  circuit_open_until_ms: number;
+  last_error_class?: string;
+  last_error_message?: string;
+  last_failed_at?: string;
+  last_succeeded_at?: string;
+  ewma_latency_ms?: number;
+  ewma_error_rate?: number;
+}
+
 export interface SessionRegistryRecord {
   id: string;
   session_key: string;
   created_at: string;
   updated_at: string;
   preview: string;
+  sticky_provider?: string;
+  provider_runtime_states?: SessionProviderRuntimeState[];
 }
 
 export interface SessionRegistryPayload {
@@ -30,6 +44,64 @@ export interface SessionRegistryPayload {
 export interface LoadedSessionRegistry {
   registry: SessionRegistryPayload;
   warnings: string[];
+}
+
+function parseOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseNonNegativeInt(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : 0;
+}
+
+function parseOptionalNonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  if (value < 0) {
+    return undefined;
+  }
+  return value;
+}
+
+function normalizeProviderRuntimeStates(raw: unknown): SessionProviderRuntimeState[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  const states: SessionProviderRuntimeState[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const providerName = parseOptionalString(record.provider_name);
+    if (!providerName) {
+      continue;
+    }
+      states.push({
+        provider_name: providerName,
+        consecutive_failures: parseNonNegativeInt(record.consecutive_failures),
+        circuit_open_until_ms: parseNonNegativeInt(record.circuit_open_until_ms),
+        last_error_class: parseOptionalString(record.last_error_class),
+        last_error_message: parseOptionalString(record.last_error_message),
+        last_failed_at: parseOptionalString(record.last_failed_at),
+        last_succeeded_at: parseOptionalString(record.last_succeeded_at),
+        ewma_latency_ms: parseOptionalNonNegativeNumber(record.ewma_latency_ms),
+        ewma_error_rate: parseOptionalNonNegativeNumber(record.ewma_error_rate),
+      });
+    }
+  if (!states.length) {
+    return undefined;
+  }
+  return states;
 }
 
 function fileReadable(path: string): boolean {
@@ -157,6 +229,8 @@ export function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: stri
           ? record.updated_at
           : nowIsoUtc(),
         preview: typeof record.preview === "string" ? record.preview : "",
+        sticky_provider: parseOptionalString(record.sticky_provider),
+        provider_runtime_states: normalizeProviderRuntimeStates(record.provider_runtime_states),
       });
     }
   }
@@ -242,6 +316,29 @@ export function touchSessionRecord(payload: SessionRegistryPayload, sessionId: s
     ...record,
     updated_at: now,
     preview: typeof preview === "string" ? compactSingleLine(preview, 120) : record.preview,
+  };
+}
+
+export function setSessionProviderRuntime(
+  payload: SessionRegistryPayload,
+  sessionId: string,
+  routing: {
+    stickyProvider?: string;
+    providerRuntimeStates: readonly SessionProviderRuntimeState[];
+  },
+): void {
+  const index = payload.sessions.findIndex((item) => item.id === sessionId);
+  if (index < 0) {
+    return;
+  }
+  const record = payload.sessions[index];
+  const stickyProvider = parseOptionalString(routing.stickyProvider);
+  const normalizedStates = normalizeProviderRuntimeStates(routing.providerRuntimeStates as unknown);
+  payload.sessions[index] = {
+    ...record,
+    updated_at: nowIsoUtc(),
+    sticky_provider: stickyProvider,
+    provider_runtime_states: normalizedStates,
   };
 }
 

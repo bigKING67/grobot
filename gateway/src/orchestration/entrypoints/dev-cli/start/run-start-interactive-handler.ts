@@ -7,6 +7,7 @@ interface CreateRunStartInteractiveHandlerInput {
   writeStdout(message: string): void;
   writeStderr(message: string): void;
   showHelp(): void;
+  showHealthStatus(): void;
   showSessions(): void;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
@@ -23,6 +24,7 @@ export function createRunStartInteractiveHandler(
     dispatchSessionInteractiveInput(userInputRaw, {
       writeStdout: input.writeStdout,
       showHelp: input.showHelp,
+      showHealthStatus: input.showHealthStatus,
       showSessions: input.showSessions,
       createAndSwitchSession: async () => {
         const nextId = await input.createNewSession();

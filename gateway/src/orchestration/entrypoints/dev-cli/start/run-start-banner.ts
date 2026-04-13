@@ -44,6 +44,6 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
   }
   process.stdout.write("\n");
   process.stdout.write(
-    "Enter message (`/sessions`, `/new`, `/switch <id>`, `/continue <id>`, `/handoff`, `/help`, `/exit`):\n",
+    "Enter message (`/sessions`, `/new`, `/switch <id>`, `/continue <id>`, `/health`, `/handoff`, `/help`, `/exit`):\n",
   );
 }
