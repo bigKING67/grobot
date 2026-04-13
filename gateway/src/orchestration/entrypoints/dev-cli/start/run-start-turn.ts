@@ -1,5 +1,6 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { runGatewayTurn } from "../../../main";
+import { type RuntimeModelConfig } from "../../../../models/types";
 import { consumeInterruptFlag } from "../services/interrupt-store";
 import {
   buildPromptWithHistory,
@@ -15,6 +16,13 @@ interface CreateRunStartTurnRunnerInput {
   projectName: string;
   subject: string;
   executionPlane: ExecutionPlaneConfig;
+  runtimeModelConfig?: RuntimeModelConfig;
+  runtimeModelConfigSource: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    timeoutMs: string;
+  };
   getSessionKey(): string;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
@@ -79,6 +87,9 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         runtimeImpl: input.executionPlane.runtimeImpl,
         shadowMode: input.executionPlane.shadowMode,
       },
+      {
+        modelConfig: input.runtimeModelConfig,
+      },
     );
     await recordTurn(userText, report.assistantMessage);
     input.writeStdout(`${report.assistantMessage}\n`);
@@ -87,6 +98,9 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     }
     input.writeStderr(
       `[execution] gateway=${input.executionPlane.gatewayImpl}(${input.executionPlane.gatewayImplSource}) runtime=${input.executionPlane.runtimeImpl}(${input.executionPlane.runtimeImplSource}) shadow=${input.executionPlane.shadowMode ? "on" : "off"}(${input.executionPlane.shadowModeSource})\n`,
+    );
+    input.writeStderr(
+      `[runtime-model] base_url=${input.runtimeModelConfigSource.baseUrl} model=${input.runtimeModelConfigSource.model} api_key=${input.runtimeModelConfigSource.apiKey} timeout_ms=${input.runtimeModelConfigSource.timeoutMs}\n`,
     );
     input.writeStderr(
       `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,

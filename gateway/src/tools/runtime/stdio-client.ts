@@ -86,6 +86,15 @@ function resolveRuntimeBinaryPath(): string {
 }
 
 function toRpcRequestLine(request: RuntimeRequest): string {
+  const runtimeModelConfig = request.modelConfig;
+  const modelConfigPayload = runtimeModelConfig
+    ? {
+        base_url: runtimeModelConfig.baseUrl,
+        api_key: runtimeModelConfig.apiKey,
+        model: runtimeModelConfig.model,
+        timeout_ms: runtimeModelConfig.timeoutMs,
+      }
+    : undefined;
   return JSON.stringify({
     jsonrpc: "2.0",
     id: request.requestId,
@@ -95,6 +104,7 @@ function toRpcRequestLine(request: RuntimeRequest): string {
       session_key: request.sessionKey,
       user_message: request.userMessage,
       context_lines: request.contextLines,
+      model_config: modelConfigPayload,
     },
   });
 }

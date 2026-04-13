@@ -105,6 +105,7 @@ export function readProviderSnapshotFromToml(
   projectName: string,
   workDir: string,
   homeDir: string,
+  providerOverride?: string,
 ): ProjectProviderSnapshot | undefined {
   if (!configTomlPath || !fileReadable(configTomlPath)) {
     return undefined;
@@ -227,22 +228,24 @@ export function readProviderSnapshotFromToml(
   };
   const selectedProject = selectProject();
   const selectedName = selectedProject.selectedProvider?.trim();
-  const provider = selectedName
-    ? selectedProject.providers.find((item) => item.name?.trim() === selectedName) ?? selectedProject.providers[0]
+  const overrideName = providerOverride?.trim();
+  const requestedName = overrideName && overrideName.length > 0 ? overrideName : selectedName;
+  const provider = requestedName
+    ? selectedProject.providers.find((item) => item.name?.trim() === requestedName) ?? selectedProject.providers[0]
     : selectedProject.providers[0];
   if (!provider) {
     return {
       projectName: selectedProject.name?.trim() || projectName,
-      providerName: selectedName,
+      providerName: requestedName,
       provider: undefined,
       source: `config_toml:${configTomlPath}`,
     };
   }
   return {
     projectName: selectedProject.name?.trim() || projectName,
-    providerName: selectedName || provider.name?.trim(),
+    providerName: requestedName || provider.name?.trim(),
     provider: {
-      name: provider.name?.trim() || selectedName || "<unknown>",
+      name: provider.name?.trim() || requestedName || "<unknown>",
       baseUrl: provider.baseUrl?.trim(),
       apiKey: provider.apiKey?.trim(),
       model: provider.model?.trim(),

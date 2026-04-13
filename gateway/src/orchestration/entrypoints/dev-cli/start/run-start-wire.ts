@@ -1,4 +1,5 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
+import { type RuntimeModelConfig } from "../../../../models/types";
 import { type SessionStoreController } from "../services/session-store";
 import { createRunStartHandoff } from "./run-start-handoff";
 import { createRunStartSessionOps } from "./run-start-session-ops";
@@ -19,6 +20,13 @@ interface CreateRunStartWireInput {
   interruptStorePath: string;
   subject: string;
   executionPlane: ExecutionPlaneConfig;
+  runtimeModelConfig?: RuntimeModelConfig;
+  runtimeModelConfigSource: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    timeoutMs: string;
+  };
   runtimeState: RunStartRuntimeState;
   persistence: RunStartPersistence;
   writeStoreWarnings(warnings: readonly string[]): void;
@@ -69,6 +77,8 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     projectName: input.projectName,
     subject: input.subject,
     executionPlane: input.executionPlane,
+    runtimeModelConfig: input.runtimeModelConfig,
+    runtimeModelConfigSource: input.runtimeModelConfigSource,
     getSessionKey: input.runtimeState.getSessionKey,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,

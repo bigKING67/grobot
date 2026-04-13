@@ -7,6 +7,7 @@ import { buildSessionKey } from "../models/session-key";
 import { InMemorySessionPersister } from "../tools/state/session-persister";
 import {
   MigrationOptions,
+  RuntimeModelConfig,
   RuntimeEvent,
   SessionKeyParts,
   TurnExecutionReport,
@@ -16,6 +17,10 @@ import {
 export interface GatewayContext {
   actorId: string;
   projectId: string;
+}
+
+export interface GatewayRuntimeOptions {
+  modelConfig?: RuntimeModelConfig;
 }
 
 export function createTurnRequest(
@@ -54,6 +59,7 @@ export async function runGatewayTurn(
   session: SessionKeyParts,
   context: GatewayContext,
   migrationOverrides?: Partial<MigrationOptions>,
+  runtimeOptions?: GatewayRuntimeOptions,
 ): Promise<TurnExecutionReport> {
   const migration = resolveMigrationOptions(migrationOverrides);
   const turn = createTurnRequest(userMessage, session, context);
@@ -72,5 +78,5 @@ export async function runGatewayTurn(
     persister: new InMemorySessionPersister(),
   });
 
-  return loop.runTurn(turn, migration);
+  return loop.runTurn(turn, migration, runtimeOptions?.modelConfig);
 }

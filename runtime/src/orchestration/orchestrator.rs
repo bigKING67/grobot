@@ -169,6 +169,7 @@ mod tests {
             session_key: "feishu:tenant:dm:user".to_string(),
             user_message: "hello".to_string(),
             context_lines: vec!["c1".to_string()],
+            model_config: None,
         }
     }
 

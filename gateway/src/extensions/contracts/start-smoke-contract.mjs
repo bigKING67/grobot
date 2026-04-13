@@ -96,6 +96,37 @@ function buildSmokeConfig(workDir) {
   ].join("\n");
 }
 
+function buildSingleProviderConfig(workDir, provider) {
+  return [
+    'language = "zh"',
+    "",
+    "[[projects]]",
+    'name = "grobot"',
+    "",
+    "[projects.agent]",
+    'type = "claudecode"',
+    `provider = "${provider.name}"`,
+    "",
+    "[projects.agent.options]",
+    `work_dir = "${workDir}"`,
+    'mode = "default"',
+    "",
+    "[[projects.agent.providers]]",
+    `name = "${provider.name}"`,
+    `api_key = "${provider.apiKey}"`,
+    `base_url = "${provider.baseUrl}"`,
+    `model = "${provider.model}"`,
+    "",
+    "[[projects.platforms]]",
+    'type = "feishu"',
+    "",
+    "[projects.platforms.options]",
+    'app_id = "x"',
+    'app_secret = "y"',
+    "",
+  ].join("\n");
+}
+
 function buildFailoverConfig(workDir) {
   return [
     'language = "zh"',
@@ -196,6 +227,40 @@ function runStartMessageSmoke(repoRoot) {
     "--no-shadow-mode",
     "--message",
     "ts rust execution smoke",
+  ]);
+}
+
+function runStartMessageProviderConfigTsRust(
+  repoRoot,
+  providerBaseUrl,
+  providerApiKey,
+  providerModel,
+) {
+  const workDir = createTempDir("grobot-start-work");
+  const config = writeConfig(
+    buildSingleProviderConfig(workDir, {
+      name: "runtime-provider",
+      baseUrl: providerBaseUrl,
+      apiKey: providerApiKey,
+      model: providerModel,
+    }),
+  );
+  return runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--no-shadow-mode",
+    "--message",
+    "provider config passthrough smoke",
   ]);
 }
 
@@ -425,6 +490,14 @@ function runCli(argv) {
       break;
     case "start-message-smoke":
       payload = runStartMessageSmoke(repoRoot);
+      break;
+    case "start-message-provider-config-ts-rust":
+      payload = runStartMessageProviderConfigTsRust(
+        repoRoot,
+        requireOption(options, "provider-base-url"),
+        requireOption(options, "provider-api-key"),
+        requireOption(options, "provider-model"),
+      );
       break;
     case "start-interactive-session-flow":
       payload = runStartInteractiveSessionFlow(repoRoot);

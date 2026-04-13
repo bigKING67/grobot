@@ -1,6 +1,6 @@
 # Runtime Real Execution v1 Spec
 
-> Scope: Rust runtime `runtime.turn.execute` real-model execution (OpenAI-compatible), no tool-calling in v1.
+> Scope: Rust runtime `runtime.turn.execute` real-model execution (OpenAI-compatible), with v1.1 provider pass-through and explicit tool-call fail-fast.
 
 ---
 
@@ -15,21 +15,20 @@
 ### 1.2 Non-Goals (v1)
 
 - No runtime tool orchestration (`tool_start`/`tool_end` still reserved, not exercised here).
-- No provider config pass-through from gateway request.
 - No protocol version bump to `runtime.v2`.
 
 ---
 
 ## 2. Config and Inputs
 
-### 2.1 Runtime Env Source (v1)
+### 2.1 Runtime Env Source (fallback)
 
-- `GROBOT_BASE_URL` (required)
-- `GROBOT_API_KEY` (required)
-- `GROBOT_MODEL` (required)
+- `GROBOT_BASE_URL` (required if request has no `model_config.base_url`)
+- `GROBOT_API_KEY` (required if request has no `model_config.api_key`)
+- `GROBOT_MODEL` (required if request has no `model_config.model`)
 - `GROBOT_RUNTIME_HTTP_TIMEOUT_MS` (optional, default `15000`, clamp `[1000,120000]`)
 
-### 2.2 Request Contract (unchanged)
+### 2.2 Request Contract (runtime.v1 compatible, extended optional fields)
 
 Method: `runtime.turn.execute`
 
@@ -42,6 +41,16 @@ Required params:
 Optional params:
 
 - `context_lines` (array of strings)
+- `model_config` (object, all fields optional):
+  - `base_url`
+  - `api_key`
+  - `model`
+  - `timeout_ms`
+
+Resolution priority per field:
+
+1. `model_config.<field>`
+2. corresponding env (`GROBOT_*`)
 
 ---
 
@@ -99,12 +108,14 @@ RPC error:
 - `upstream_response_read_failed`
 - `upstream_invalid_json`
 - `upstream_invalid_response`
+- `tool_call_not_supported` (model returned `tool_calls`; runtime v1.1 fail-fast)
 
 ---
 
 ## 4. Gateway Compatibility Rules
 
 - `gateway/src/tools/runtime/stdio-client.ts` must keep JSON-RPC parsing compatible.
+- `gateway/src/tools/runtime/stdio-client.ts` must forward optional `model_config` without changing protocol version.
 - On RPC error, gateway should surface `error_class` and `trace_id` in thrown error message.
 - No change to `RuntimeTurnResult` public shape in TypeScript types.
 
@@ -121,4 +132,9 @@ Acceptance:
 
 - `npm run check` passes in a default local environment without real provider credentials.
 - Rust runtime unit tests cover both success-event ordering and failure-event ordering at orchestrator level.
-- Node gateway checks include a local mock model server path proving `failover-runs-ts-rust` can return real-model content.
+- Rust runtime unit tests cover request-level provider pass-through and `tool_call_not_supported` fail-fast.
+- Node gateway checks include:
+  - local mock model server proving `failover-runs-ts-rust` real-model content path,
+  - provider config (`config.toml`) pass-through path,
+  - explicit upstream failure mapping path (`upstream_connect_failed`),
+  - tool-call fail-fast path (`tool_call_not_supported`).

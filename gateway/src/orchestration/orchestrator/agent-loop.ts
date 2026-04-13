@@ -1,6 +1,7 @@
 import {
   MigrationOptions,
   RuntimeClient,
+  RuntimeModelConfig,
   RuntimeRequest,
   RuntimeTurnResult,
   ShadowComparison,
@@ -34,6 +35,7 @@ function buildRuntimeRequest(
   turn: TurnRequest,
   contextLines: string[],
   migration: MigrationOptions,
+  runtimeModelConfig?: RuntimeModelConfig,
 ): RuntimeRequest {
   return {
     protocolVersion: "runtime.v1",
@@ -41,6 +43,7 @@ function buildRuntimeRequest(
     sessionKey: turn.sessionKey,
     userMessage: turn.userMessage,
     contextLines,
+    modelConfig: runtimeModelConfig,
     metadata: {
       ...turn.metadata,
       gatewayImpl: migration.gatewayImpl,
@@ -72,10 +75,11 @@ export class AgentLoop {
   public async runTurn(
     turn: TurnRequest,
     migration: MigrationOptions,
+    runtimeModelConfig?: RuntimeModelConfig,
   ): Promise<TurnExecutionReport> {
     const startedAt = nowIso();
     const contextLines = await this.deps.contextAssembler.assemble(turn);
-    const runtimeRequest = buildRuntimeRequest(turn, contextLines, migration);
+    const runtimeRequest = buildRuntimeRequest(turn, contextLines, migration, runtimeModelConfig);
 
     const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest);
 

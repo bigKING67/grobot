@@ -167,7 +167,10 @@ function readUtf8Body(request) {
   });
 }
 
-async function startMockModelServer() {
+async function startMockModelServer(options = {}) {
+  const mode = typeof options.mode === "string" ? options.mode : "text";
+  const fixedContent = typeof options.content === "string" ? options.content : "MOCK_RUNTIME_OK";
+  const calls = [];
   const server = createServer(async (request, response) => {
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
       response.writeHead(404, { "content-type": "application/json" });
@@ -176,17 +179,60 @@ async function startMockModelServer() {
     }
 
     const bodyText = await readUtf8Body(request);
+    let model = "";
     let prompt = "";
     try {
       const parsed = JSON.parse(bodyText);
+      model = typeof parsed?.model === "string" ? parsed.model : "";
       const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
       const first = messages.find((item) => item?.role === "user");
       prompt = typeof first?.content === "string" ? first.content : "";
     } catch {
       // ignore malformed body in test server and continue with default response
     }
+    const authorizationHeaderRaw = request.headers.authorization;
+    const authorization = Array.isArray(authorizationHeaderRaw)
+      ? authorizationHeaderRaw.join(",")
+      : (typeof authorizationHeaderRaw === "string" ? authorizationHeaderRaw : "");
+    calls.push({
+      method: request.method,
+      path: request.url ?? "",
+      authorization,
+      model,
+      prompt,
+      bodyText,
+    });
 
     response.writeHead(200, { "content-type": "application/json" });
+    if (mode === "tool_call") {
+      response.end(
+        JSON.stringify({
+          id: "mock-chatcmpl",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "lookup",
+                      arguments: "{}",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
     response.end(
       JSON.stringify({
         id: "mock-chatcmpl",
@@ -197,7 +243,7 @@ async function startMockModelServer() {
             finish_reason: "stop",
             message: {
               role: "assistant",
-              content: `MOCK_RUNTIME_OK ${prompt ? `(prompt:${prompt.length})` : ""}`.trim(),
+              content: `${fixedContent} ${prompt ? `(prompt:${prompt.length})` : ""}`.trim(),
             },
           },
         ],
@@ -219,6 +265,9 @@ async function startMockModelServer() {
 
   return {
     baseUrl: `http://127.0.0.1:${String(port)}/v1`,
+    getCalls() {
+      return calls.slice();
+    },
     async close() {
       await new Promise((resolveClose) => server.close(() => resolveClose(undefined)));
     },
@@ -347,9 +396,94 @@ async function runTsRustExecutionSmoke() {
     const failoverRunsPayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust", failoverRunsResult.stdout);
     assert.equal(failoverRunsPayload.exit_code, 0);
     assert.equal(String(failoverRunsPayload.stdout).includes("MOCK_RUNTIME_OK"), true);
+    const mockCalls = mockModel.getCalls();
+    assert.equal(mockCalls.length >= 1, true);
+    const lastCall = mockCalls[mockCalls.length - 1] ?? {};
+    assert.equal(lastCall.method, "POST");
+    assert.equal(lastCall.path, "/v1/chat/completions");
+    assert.equal(lastCall.model, "mock-runtime-model");
+    assert.equal(String(lastCall.authorization).startsWith("Bearer "), true);
+    assert.equal(String(lastCall.prompt).includes("ts rust hard-cut"), true);
     logStep("start-smoke-contract failover-runs-ts-rust");
   } finally {
     await mockModel.close();
+  }
+
+  const providerConfigModel = await startMockModelServer({ content: "CONFIG_PROVIDER_OK" });
+  try {
+    const providerConfigResult = await runContractAsync(
+      "start-smoke-contract.mjs",
+      "start-message-provider-config-ts-rust",
+      [
+        "--repo-root",
+        repoRoot,
+        "--provider-base-url",
+        providerConfigModel.baseUrl,
+        "--provider-api-key",
+        "provider-config-key",
+        "--provider-model",
+        "provider-config-model",
+      ],
+      { timeoutMs: 240_000 },
+    );
+    const providerConfigPayload = parseJsonOutput(
+      "start-smoke-contract start-message-provider-config-ts-rust",
+      providerConfigResult.stdout,
+    );
+    assert.equal(providerConfigPayload.exit_code, 0);
+    assert.equal(String(providerConfigPayload.stdout).includes("CONFIG_PROVIDER_OK"), true);
+    const providerCalls = providerConfigModel.getCalls();
+    assert.equal(providerCalls.length >= 1, true);
+    const providerLastCall = providerCalls[providerCalls.length - 1] ?? {};
+    assert.equal(providerLastCall.model, "provider-config-model");
+    assert.equal(String(providerLastCall.authorization), "Bearer provider-config-key");
+    logStep("start-smoke-contract start-message-provider-config-ts-rust");
+  } finally {
+    await providerConfigModel.close();
+  }
+
+  const upstreamFailureResult = runContract("start-smoke-contract.mjs", "failover-runs-ts-rust", ["--repo-root", repoRoot], {
+    timeoutMs: 240_000,
+    env: {
+      ...process.env,
+      GROBOT_BASE_URL: "http://127.0.0.1:9/v1",
+      GROBOT_API_KEY: "mock-runtime-key",
+      GROBOT_MODEL: "mock-runtime-model",
+      GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "1200",
+    },
+  });
+  const upstreamFailurePayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust upstream-failure", upstreamFailureResult.stdout);
+  assert.equal(upstreamFailurePayload.exit_code !== 0, true);
+  assert.equal(String(upstreamFailurePayload.stderr).includes("runtime rpc error -32001"), true);
+  assert.equal(String(upstreamFailurePayload.stderr).includes("class=upstream_connect_failed"), true);
+  logStep("start-smoke-contract failover-runs-ts-rust-upstream-failure");
+
+  const toolCallFailureModel = await startMockModelServer({ mode: "tool_call" });
+  try {
+    const toolCallFailureResult = await runContractAsync(
+      "start-smoke-contract.mjs",
+      "failover-runs-ts-rust",
+      ["--repo-root", repoRoot],
+      {
+        timeoutMs: 240_000,
+        env: {
+          ...process.env,
+          GROBOT_BASE_URL: toolCallFailureModel.baseUrl,
+          GROBOT_API_KEY: "mock-runtime-key",
+          GROBOT_MODEL: "mock-runtime-model",
+          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+        },
+      },
+    );
+    const toolCallFailurePayload = parseJsonOutput(
+      "start-smoke-contract failover-runs-ts-rust tool-call-failure",
+      toolCallFailureResult.stdout,
+    );
+    assert.equal(toolCallFailurePayload.exit_code !== 0, true);
+    assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_call_not_supported"), true);
+    logStep("start-smoke-contract failover-runs-ts-rust-tool-call-failure");
+  } finally {
+    await toolCallFailureModel.close();
   }
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [

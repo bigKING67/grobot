@@ -29,8 +29,15 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const sessionScopeRaw = resolveSessionScopeOption(options);
   const sessionSubject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
-  const projectProviderSnapshot = readProviderSnapshotFromToml(configTomlPath, projectName, workDir, homeDir);
-  const providerName = readOptionString(options, "provider") ??
+  const providerOverride = readOptionString(options, "provider");
+  const projectProviderSnapshot = readProviderSnapshotFromToml(
+    configTomlPath,
+    projectName,
+    workDir,
+    homeDir,
+    providerOverride,
+  );
+  const providerName = providerOverride ??
     process.env.GROBOT_PROVIDER ??
     projectProviderSnapshot?.providerName ??
     "<auto>";

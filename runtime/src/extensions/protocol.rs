@@ -1,4 +1,4 @@
-use crate::models::engine::TurnExecuteInput;
+use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
 use crate::orchestration::orchestrator::execute_turn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -38,12 +38,26 @@ pub struct RpcErrorResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct TurnExecuteModelConfigParams {
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct TurnExecuteParams {
     pub request_id: String,
     pub session_key: String,
     pub user_message: String,
     #[serde(default)]
     pub context_lines: Vec<String>,
+    #[serde(default)]
+    pub model_config: Option<TurnExecuteModelConfigParams>,
 }
 
 fn success(id: Value, result: Value) -> RpcSuccessResponse {
@@ -107,6 +121,12 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 session_key: params.session_key,
                 user_message: params.user_message,
                 context_lines: params.context_lines,
+                model_config: params.model_config.map(|model_config| RuntimeModelConfigInput {
+                    base_url: model_config.base_url,
+                    api_key: model_config.api_key,
+                    model: model_config.model,
+                    timeout_ms: model_config.timeout_ms,
+                }),
             });
             match execution_result {
                 Ok(execution) => Ok(success(

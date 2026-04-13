@@ -30,6 +30,7 @@ export interface RuntimeRequest {
   sessionKey: string;
   userMessage: string;
   contextLines: string[];
+  modelConfig?: RuntimeModelConfig;
   metadata: {
     platform: Platform;
     actorId: string;
@@ -38,6 +39,13 @@ export interface RuntimeRequest {
     runtimeImpl: RuntimeImpl;
     shadowMode: boolean;
   };
+}
+
+export interface RuntimeModelConfig {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  timeoutMs?: number;
 }
 
 export type RuntimeEventType =
