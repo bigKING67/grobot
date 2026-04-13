@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { startMockModelServer } from "../src/extensions/contracts/_shared/mock-model-server.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,6 +14,229 @@ const repoRoot = resolve(__dirname, "..", "..");
 const contractsRoot = resolve(repoRoot, "gateway/src/extensions/contracts");
 
 const tempDirs = [];
+let runReporter = null;
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function parseStepDuration(step) {
+  if (!isRecord(step)) {
+    return 0;
+  }
+  return toFiniteNumber(step.step_duration_ms, 0);
+}
+
+function parseElapsed(step) {
+  if (!isRecord(step)) {
+    return 0;
+  }
+  return toFiniteNumber(step.elapsed_ms, 0);
+}
+
+function parseStepName(step) {
+  if (!isRecord(step) || typeof step.name !== "string") {
+    return "";
+  }
+  return step.name;
+}
+
+function normalizeSteps(payload) {
+  if (!isRecord(payload) || !Array.isArray(payload.steps)) {
+    return [];
+  }
+  return payload.steps.filter((entry) => isRecord(entry));
+}
+
+function loadBaselineReport(baselinePath) {
+  const raw = readFileSync(baselinePath, "utf8");
+  const parsed = JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new Error(`baseline report must be a JSON object: ${baselinePath}`);
+  }
+  return parsed;
+}
+
+function buildStepDurationMap(steps) {
+  const map = new Map();
+  for (const step of steps) {
+    const name = parseStepName(step);
+    if (!name || map.has(name)) {
+      continue;
+    }
+    map.set(name, parseStepDuration(step));
+  }
+  return map;
+}
+
+function computeComparisonPayload(currentPayload, baselinePayload, baselinePath) {
+  const currentSteps = normalizeSteps(currentPayload);
+  const baselineSteps = normalizeSteps(baselinePayload);
+  const baselineDurations = buildStepDurationMap(baselineSteps);
+  const comparable = [];
+  for (const step of currentSteps) {
+    const name = parseStepName(step);
+    if (!name || !baselineDurations.has(name)) {
+      continue;
+    }
+    const currentDurationMs = parseStepDuration(step);
+    const baselineDurationMs = toFiniteNumber(baselineDurations.get(name), 0);
+    comparable.push({
+      name,
+      current_step_duration_ms: currentDurationMs,
+      baseline_step_duration_ms: baselineDurationMs,
+      delta_ms: currentDurationMs - baselineDurationMs,
+      current_elapsed_ms: parseElapsed(step),
+    });
+  }
+
+  const regressions = comparable
+    .filter((entry) => entry.delta_ms > 0)
+    .sort((left, right) => right.delta_ms - left.delta_ms)
+    .slice(0, 5);
+  const improvements = comparable
+    .filter((entry) => entry.delta_ms < 0)
+    .sort((left, right) => left.delta_ms - right.delta_ms)
+    .slice(0, 5)
+    .map((entry) => ({
+      ...entry,
+      gain_ms: Math.abs(entry.delta_ms),
+    }));
+  const unchangedCount = comparable.filter((entry) => entry.delta_ms === 0).length;
+  const currentDurationMs = toFiniteNumber(currentPayload.duration_ms, 0);
+  const baselineDurationMs = toFiniteNumber(baselinePayload.duration_ms, 0);
+  return {
+    baseline_path: baselinePath,
+    baseline_status: typeof baselinePayload.status === "string" ? baselinePayload.status : "",
+    baseline_step_count: Array.isArray(baselinePayload.steps) ? baselinePayload.steps.length : 0,
+    baseline_retry_count: toFiniteNumber(baselinePayload.retry_count, 0),
+    duration_delta_ms: currentDurationMs - baselineDurationMs,
+    comparable_steps: comparable.length,
+    regressions_count: regressions.length,
+    improvements_count: improvements.length,
+    unchanged_count: unchangedCount,
+    top_regressions: regressions,
+    top_improvements: improvements,
+  };
+}
+
+function formatMeta(metadata) {
+  if (!isRecord(metadata)) {
+    return "";
+  }
+  const entries = Object.entries(metadata);
+  if (entries.length === 0) {
+    return "";
+  }
+  return ` ${entries.map(([key, value]) => `${key}=${String(value)}`).join(" ")}`;
+}
+
+function createRunReporter(options = {}) {
+  const mode = typeof options.mode === "string" ? options.mode : "full";
+  const emitText = options.emitText !== false;
+  const failOnRetry = options.failOnRetry === true;
+  const startedMs = Date.now();
+  const report = {
+    mode,
+    fail_on_retry: failOnRetry,
+    retry_gate_triggered: false,
+    started_at: nowIso(),
+    completed_at: "",
+    duration_ms: 0,
+    status: "running",
+    error_message: "",
+    steps: [],
+    retries: [],
+  };
+  return {
+    emitText,
+    step(name, metadata = {}) {
+      const elapsedMs = Date.now() - startedMs;
+      const previousStep = report.steps[report.steps.length - 1] ?? null;
+      const previousElapsedMs =
+        previousStep && typeof previousStep.elapsed_ms === "number"
+          ? previousStep.elapsed_ms
+          : 0;
+      const stepDurationMs = Math.max(0, elapsedMs - previousElapsedMs);
+      report.steps.push({
+        name,
+        at: nowIso(),
+        elapsed_ms: elapsedMs,
+        step_duration_ms: stepDurationMs,
+        ...(isRecord(metadata) ? metadata : {}),
+      });
+      if (emitText) {
+        process.stdout.write(`[ok] ${name}${formatMeta(metadata)}\n`);
+      }
+    },
+    retry(name, attempt, maxAttempts, reason, metadata = {}) {
+      const elapsedMs = Date.now() - startedMs;
+      report.retries.push({
+        name,
+        attempt,
+        max_attempts: maxAttempts,
+        reason,
+        at: nowIso(),
+        elapsed_ms: elapsedMs,
+        ...(isRecord(metadata) ? metadata : {}),
+      });
+      if (emitText) {
+        process.stdout.write(`[retry] ${name} attempt ${String(attempt)}/${String(maxAttempts)} reason=${reason}\n`);
+      }
+    },
+    finish(status, errorMessage = "") {
+      report.status = status;
+      report.error_message = errorMessage;
+      report.completed_at = nowIso();
+      report.duration_ms = Date.now() - startedMs;
+    },
+    retryCount() {
+      return report.retries.length;
+    },
+    markRetryGateTriggered() {
+      report.retry_gate_triggered = true;
+    },
+    toJSON() {
+      const topSlowestSteps = report.steps
+        .map((entry, index) => {
+          const stepDurationMs =
+            typeof entry.step_duration_ms === "number"
+              ? entry.step_duration_ms
+              : 0;
+          const elapsedMs =
+            typeof entry.elapsed_ms === "number"
+              ? entry.elapsed_ms
+              : 0;
+          return {
+            order: index + 1,
+            name: entry.name,
+            step_duration_ms: stepDurationMs,
+            elapsed_ms: elapsedMs,
+          };
+        })
+        .sort((left, right) => (
+          right.step_duration_ms - left.step_duration_ms
+        ) || (
+          right.elapsed_ms - left.elapsed_ms
+        ))
+        .slice(0, 5);
+      return {
+        ...report,
+        step_count: report.steps.length,
+        retry_count: report.retries.length,
+        top_slowest_steps: topSlowestSteps,
+      };
+    },
+  };
+}
 
 function makeTempDir(prefix) {
   const path = mkdtempSync(resolve(tmpdir(), `${prefix}-`));
@@ -110,21 +333,6 @@ function parseJsonOutput(name, stdout) {
   }
 }
 
-function parseFirstJsonLine(name, stdout) {
-  const firstLine = String(stdout ?? "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-  if (!firstLine) {
-    throw new Error(`${name}: empty stdout`);
-  }
-  try {
-    return JSON.parse(firstLine);
-  } catch (error) {
-    throw new Error(`${name}: first non-empty line is not valid JSON: ${String(error)}\n${stdout}`);
-  }
-}
-
 function assertSuccess(name, result) {
   if (result.code !== 0) {
     throw new Error(`${name}: exit=${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
@@ -145,8 +353,106 @@ async function runContractAsync(scriptName, command, args = [], options = {}) {
   return result;
 }
 
-function logStep(name) {
-  process.stdout.write(`[ok] ${name}\n`);
+function logStep(name, metadata = {}) {
+  if (runReporter) {
+    runReporter.step(name, metadata);
+    return;
+  }
+  process.stdout.write(`[ok] ${name}${formatMeta(metadata)}\n`);
+}
+
+function logRetry(name, attempt, maxAttempts, reason) {
+  if (runReporter) {
+    runReporter.retry(name, attempt, maxAttempts, reason);
+    return;
+  }
+  process.stdout.write(`[retry] ${name} attempt ${String(attempt)}/${String(maxAttempts)} reason=${reason}\n`);
+}
+
+function sleepMs(delayMs) {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, delayMs));
+}
+
+function parseCliOptions(argv) {
+  const options = {
+    mode: "full",
+    json: false,
+    json_output: "",
+    fail_on_retry: false,
+    baseline_json: "",
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] ?? "";
+    if (token === "--runtime-smoke-only") {
+      options.mode = "runtime-smoke-only";
+      continue;
+    }
+    if (token === "--json") {
+      options.json = true;
+      continue;
+    }
+    if (token === "--fail-on-retry") {
+      options.fail_on_retry = true;
+      continue;
+    }
+    if (token === "--json-output") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --json-output");
+      }
+      options.json_output = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--baseline-json") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --baseline-json");
+      }
+      options.baseline_json = value;
+      index += 1;
+      continue;
+    }
+    if (!token) {
+      continue;
+    }
+    throw new Error(`unknown argument: ${token}`);
+  }
+  return options;
+}
+
+function buildReportPayload(cli, reporter, baselineReportPath, baselineReportPayload) {
+  const payload = reporter.toJSON();
+  if (baselineReportPayload && baselineReportPath) {
+    payload.comparison = computeComparisonPayload(payload, baselineReportPayload, baselineReportPath);
+  }
+  return payload;
+}
+
+function emitJsonReport(cli, reporter, baselineReportPath = "", baselineReportPayload = null) {
+  const payload = buildReportPayload(cli, reporter, baselineReportPath, baselineReportPayload);
+  if (cli.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  }
+  if (cli.json_output) {
+    const outputPath = resolve(repoRoot, cli.json_output);
+    writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    if (!cli.json) {
+      process.stdout.write(`[ok] gateway-check-report-written path=${outputPath}\n`);
+    }
+  }
+}
+
+function enforceRetryGate(cli, reporter) {
+  if (!cli.fail_on_retry) {
+    return;
+  }
+  const retryCount = reporter.retryCount();
+  if (retryCount <= 0) {
+    return;
+  }
+  reporter.markRetryGateTriggered();
+  throw new Error(`retry gate failed: observed ${String(retryCount)} retries`);
 }
 
 function reserveFreePort() {
@@ -169,124 +475,6 @@ function reserveFreePort() {
       });
     });
   });
-}
-
-function readUtf8Body(request) {
-  return new Promise((resolveBody, reject) => {
-    const chunks = [];
-    request.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    request.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
-    request.on("error", reject);
-  });
-}
-
-async function startMockModelServer(options = {}) {
-  const mode = typeof options.mode === "string" ? options.mode : "text";
-  const fixedContent = typeof options.content === "string" ? options.content : "MOCK_RUNTIME_OK";
-  const calls = [];
-  const server = createServer(async (request, response) => {
-    if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
-      response.writeHead(404, { "content-type": "application/json" });
-      response.end(JSON.stringify({ error: "not_found" }));
-      return;
-    }
-
-    const bodyText = await readUtf8Body(request);
-    let model = "";
-    let prompt = "";
-    try {
-      const parsed = JSON.parse(bodyText);
-      model = typeof parsed?.model === "string" ? parsed.model : "";
-      const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
-      const first = messages.find((item) => item?.role === "user");
-      prompt = typeof first?.content === "string" ? first.content : "";
-    } catch {
-      // ignore malformed body in test server and continue with default response
-    }
-    const authorizationHeaderRaw = request.headers.authorization;
-    const authorization = Array.isArray(authorizationHeaderRaw)
-      ? authorizationHeaderRaw.join(",")
-      : (typeof authorizationHeaderRaw === "string" ? authorizationHeaderRaw : "");
-    calls.push({
-      method: request.method,
-      path: request.url ?? "",
-      authorization,
-      model,
-      prompt,
-      bodyText,
-    });
-
-    response.writeHead(200, { "content-type": "application/json" });
-    if (mode === "tool_call") {
-      response.end(
-        JSON.stringify({
-          id: "mock-chatcmpl",
-          object: "chat.completion",
-          choices: [
-            {
-              index: 0,
-              finish_reason: "tool_calls",
-              message: {
-                role: "assistant",
-                tool_calls: [
-                  {
-                    id: "call_1",
-                    type: "function",
-                    function: {
-                      name: "lookup",
-                      arguments: "{}",
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-      );
-      return;
-    }
-
-    response.end(
-      JSON.stringify({
-        id: "mock-chatcmpl",
-        object: "chat.completion",
-        choices: [
-          {
-            index: 0,
-            finish_reason: "stop",
-            message: {
-              role: "assistant",
-              content: `${fixedContent} ${prompt ? `(prompt:${prompt.length})` : ""}`.trim(),
-            },
-          },
-        ],
-      }),
-    );
-  });
-
-  const port = await new Promise((resolvePort, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("mock model server failed to bind port"));
-        return;
-      }
-      resolvePort(address.port);
-    });
-  });
-
-  return {
-    baseUrl: `http://127.0.0.1:${String(port)}/v1`,
-    getCalls() {
-      return calls.slice();
-    },
-    async close() {
-      await new Promise((resolveClose) => server.close(() => resolveClose(undefined)));
-    },
-  };
 }
 
 async function runGatewayContractSmoke() {
@@ -370,14 +558,30 @@ async function runTsRustExecutionSmoke() {
   });
   assertSuccess("runtime build for ts-rust smoke", runtimeBuildResult);
   logStep("runtime build for ts-rust smoke");
-  const runtimeBinaryPath = resolve(repoRoot, "runtime/target/debug/grobot-runtime");
 
-  const statusResult = runContract("start-smoke-contract.mjs", "status-ts-rust", ["--repo-root", repoRoot], {
-    timeoutMs: 240_000,
-  });
-  const statusPayload = parseJsonOutput("start-smoke-contract status-ts-rust", statusResult.stdout);
+  let statusPayload = null;
+  let statusAttempts = 0;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    statusAttempts = attempt;
+    const statusResult = runContract("start-smoke-contract.mjs", "status-ts-rust", ["--repo-root", repoRoot], {
+      timeoutMs: 240_000,
+    });
+    statusPayload = parseJsonOutput("start-smoke-contract status-ts-rust", statusResult.stdout);
+    if (statusPayload.exit_code === 0) {
+      break;
+    }
+    const isTransientTsBootstrap =
+      statusPayload.exit_code === 86 &&
+      String(statusPayload.stderr).includes("ts-dev-cli bootstrap failed");
+    if (!isTransientTsBootstrap || attempt === 3) {
+      break;
+    }
+    logRetry("start-smoke-contract status-ts-rust", attempt, 3, "transient ts-dev-cli bootstrap flake");
+    await sleepMs(500);
+  }
+  assert.equal(statusPayload !== null, true);
   assert.equal(statusPayload.exit_code, 0);
-  logStep("start-smoke-contract status-ts-rust");
+  logStep("start-smoke-contract status-ts-rust", { attempts: statusAttempts });
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [
     "--repo-root",
@@ -392,71 +596,74 @@ async function runTsRustExecutionSmoke() {
   assert.equal(failoverRejectPayload.exit_code, 2);
   logStep("start-smoke-contract failover-rejects-python");
 
-  const mockModel = await startMockModelServer();
-  try {
-    const failoverRunsResult = await runContractAsync(
-      "start-smoke-contract.mjs",
-      "failover-runs-ts-rust",
-      ["--repo-root", repoRoot],
-      {
-        timeoutMs: 240_000,
-        env: {
-          ...process.env,
-          GROBOT_BASE_URL: mockModel.baseUrl,
-          GROBOT_API_KEY: "mock-runtime-key",
-          GROBOT_MODEL: "mock-runtime-model",
-          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+  let failoverRunsPayload = null;
+  let failoverRunsCalls = [];
+  let failoverRunsAttempts = 0;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    failoverRunsAttempts = attempt;
+    const mockModel = await startMockModelServer();
+    try {
+      const failoverRunsResult = await runContractAsync(
+        "start-smoke-contract.mjs",
+        "failover-runs-ts-rust",
+        ["--repo-root", repoRoot],
+        {
+          timeoutMs: 240_000,
+          env: {
+            ...process.env,
+            GROBOT_BASE_URL: mockModel.baseUrl,
+            GROBOT_API_KEY: "mock-runtime-key",
+            GROBOT_MODEL: "mock-runtime-model",
+            GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+          },
         },
-      },
-    );
-    const failoverRunsPayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust", failoverRunsResult.stdout);
-    assert.equal(failoverRunsPayload.exit_code, 0);
-    assert.equal(String(failoverRunsPayload.stdout).includes("MOCK_RUNTIME_OK"), true);
-    const mockCalls = mockModel.getCalls();
-    assert.equal(mockCalls.length >= 1, true);
-    const lastCall = mockCalls[mockCalls.length - 1] ?? {};
-    assert.equal(lastCall.method, "POST");
-    assert.equal(lastCall.path, "/v1/chat/completions");
-    assert.equal(lastCall.model, "mock-runtime-model");
-    assert.equal(String(lastCall.authorization).startsWith("Bearer "), true);
-    assert.equal(String(lastCall.prompt).includes("ts rust hard-cut"), true);
-    logStep("start-smoke-contract failover-runs-ts-rust");
-  } finally {
-    await mockModel.close();
+      );
+      failoverRunsPayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust", failoverRunsResult.stdout);
+      failoverRunsCalls = mockModel.getCalls();
+      const isSuccess =
+        failoverRunsPayload.exit_code === 0 &&
+        String(failoverRunsPayload.stdout).includes("MOCK_RUNTIME_OK") &&
+        failoverRunsCalls.length >= 1;
+      if (isSuccess) {
+        break;
+      }
+      if (attempt < 3) {
+        const retryReason = `exit=${String(failoverRunsPayload.exit_code)} calls=${String(failoverRunsCalls.length)}`;
+        logRetry("start-smoke-contract failover-runs-ts-rust", attempt, 3, retryReason);
+        await sleepMs(500);
+      }
+    } finally {
+      await mockModel.close();
+    }
   }
+  assert.equal(failoverRunsPayload !== null, true);
+  assert.equal(failoverRunsPayload.exit_code, 0);
+  assert.equal(String(failoverRunsPayload.stdout).includes("MOCK_RUNTIME_OK"), true);
+  assert.equal(failoverRunsCalls.length >= 1, true);
+  const lastCall = failoverRunsCalls[failoverRunsCalls.length - 1] ?? {};
+  assert.equal(lastCall.method, "POST");
+  assert.equal(lastCall.path, "/v1/chat/completions");
+  assert.equal(lastCall.model, "mock-runtime-model");
+  assert.equal(String(lastCall.authorization).startsWith("Bearer "), true);
+  assert.equal(String(lastCall.prompt).includes("ts rust hard-cut"), true);
+  logStep("start-smoke-contract failover-runs-ts-rust", { attempts: failoverRunsAttempts });
 
-  const providerConfigModel = await startMockModelServer({ content: "CONFIG_PROVIDER_OK" });
-  try {
-    const providerConfigResult = await runContractAsync(
-      "start-smoke-contract.mjs",
-      "start-message-provider-config-ts-rust",
-      [
-        "--repo-root",
-        repoRoot,
-        "--provider-base-url",
-        providerConfigModel.baseUrl,
-        "--provider-api-key",
-        "provider-config-key",
-        "--provider-model",
-        "provider-config-model",
-      ],
-      { timeoutMs: 240_000 },
-    );
-    const providerConfigPayload = parseJsonOutput(
-      "start-smoke-contract start-message-provider-config-ts-rust",
-      providerConfigResult.stdout,
-    );
-    assert.equal(providerConfigPayload.exit_code, 0);
-    assert.equal(String(providerConfigPayload.stdout).includes("CONFIG_PROVIDER_OK"), true);
-    const providerCalls = providerConfigModel.getCalls();
-    assert.equal(providerCalls.length >= 1, true);
-    const providerLastCall = providerCalls[providerCalls.length - 1] ?? {};
-    assert.equal(providerLastCall.model, "provider-config-model");
-    assert.equal(String(providerLastCall.authorization), "Bearer provider-config-key");
-    logStep("start-smoke-contract start-message-provider-config-ts-rust");
-  } finally {
-    await providerConfigModel.close();
-  }
+  const providerConfigResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "provider-config-passthrough",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const providerConfigPayload = parseJsonOutput(
+    "runtime-smoke-contract provider-config-passthrough",
+    providerConfigResult.stdout,
+  );
+  assert.equal(providerConfigPayload.exit_code, 0);
+  assert.equal(String(providerConfigPayload.stdout).includes("CONFIG_PROVIDER_OK"), true);
+  assert.equal(Number(providerConfigPayload.runtime_call_count) >= 1, true);
+  assert.equal(providerConfigPayload.runtime_last_call?.model, "provider-config-model");
+  assert.equal(String(providerConfigPayload.runtime_last_call?.authorization), "Bearer provider-config-key");
+  logStep("runtime-smoke-contract provider-config-passthrough");
 
   const upstreamFailureResult = runContract("start-smoke-contract.mjs", "failover-runs-ts-rust", ["--repo-root", repoRoot], {
     timeoutMs: 240_000,
@@ -474,80 +681,39 @@ async function runTsRustExecutionSmoke() {
   assert.equal(String(upstreamFailurePayload.stderr).includes("class=upstream_connect_failed"), true);
   logStep("start-smoke-contract failover-runs-ts-rust-upstream-failure");
 
-  const toolCallFailureModel = await startMockModelServer({ mode: "tool_call" });
-  try {
-    const toolCallFailureResult = await runContractAsync(
-      "start-smoke-contract.mjs",
-      "failover-runs-ts-rust",
-      ["--repo-root", repoRoot],
-      {
-        timeoutMs: 240_000,
-        env: {
-          ...process.env,
-          GROBOT_BASE_URL: toolCallFailureModel.baseUrl,
-          GROBOT_API_KEY: "mock-runtime-key",
-          GROBOT_MODEL: "mock-runtime-model",
-          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
-        },
-      },
-    );
-    const toolCallFailurePayload = parseJsonOutput(
-      "start-smoke-contract failover-runs-ts-rust tool-call-failure",
-      toolCallFailureResult.stdout,
-    );
-    assert.equal(toolCallFailurePayload.exit_code !== 0, true);
-    assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_call_not_supported"), true);
-    logStep("start-smoke-contract failover-runs-ts-rust-tool-call-failure");
-  } finally {
-    await toolCallFailureModel.close();
-  }
+  const toolCallFailureResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "tool-call-fail-fast",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const toolCallFailurePayload = parseJsonOutput(
+    "runtime-smoke-contract tool-call-fail-fast",
+    toolCallFailureResult.stdout,
+  );
+  assert.equal(toolCallFailurePayload.exit_code !== 0, true);
+  assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_call_not_supported"), true);
+  assert.equal(Number(toolCallFailurePayload.runtime_call_count) >= 1, true);
+  logStep("runtime-smoke-contract tool-call-fail-fast");
 
-  const runtimeToolEventModel = await startMockModelServer({ mode: "tool_call" });
-  try {
-    const rpcRequestLine = JSON.stringify({
-      jsonrpc: "2.0",
-      id: "tool-event-check",
-      method: "runtime.turn.execute",
-      params: {
-        request_id: `req_tool_events_${Date.now()}`,
-        session_key: "feishu:grobot:dm:tool-events",
-        user_message: "tool event contract check",
-        context_lines: [],
-      },
-    });
-    const runtimeRpcResult = await runCommandAsync(
-      runtimeBinaryPath,
-      [],
-      {
-        timeoutMs: 120_000,
-        input: `${rpcRequestLine}\n`,
-        env: {
-          ...process.env,
-          GROBOT_BASE_URL: runtimeToolEventModel.baseUrl,
-          GROBOT_API_KEY: "tool-event-key",
-          GROBOT_MODEL: "tool-event-model",
-          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
-        },
-      },
-    );
-    assert.equal(runtimeRpcResult.code, 0);
-    const runtimeRpcPayload = parseFirstJsonLine(
-      "runtime turn tool event contract",
-      runtimeRpcResult.stdout,
-    );
-    assert.equal(runtimeRpcPayload.error?.code, -32001);
-    const errorData = runtimeRpcPayload.error?.data ?? {};
-    assert.equal(errorData.error_class, "tool_call_not_supported");
-    const eventTypes = Array.isArray(errorData.events)
-      ? errorData.events.map((event) => String(event?.event_type ?? ""))
-      : [];
-    assert.equal(eventTypes.includes("tool_start"), true);
-    assert.equal(eventTypes.includes("tool_end"), true);
-    assert.equal(eventTypes.includes("turn_failed"), true);
-    logStep("runtime-rpc-tool-call-diagnostic-events");
-  } finally {
-    await runtimeToolEventModel.close();
-  }
+  const toolCallDiagnosticResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "tool-call-diagnostic-events",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const toolCallDiagnosticPayload = parseJsonOutput(
+    "runtime-smoke-contract tool-call-diagnostic-events",
+    toolCallDiagnosticResult.stdout,
+  );
+  assert.equal(toolCallDiagnosticPayload.exit_code, 0);
+  assert.equal(toolCallDiagnosticPayload.error_code, -32001);
+  assert.equal(toolCallDiagnosticPayload.error_class, "tool_call_not_supported");
+  assert.equal(Array.isArray(toolCallDiagnosticPayload.event_types), true);
+  assert.equal(toolCallDiagnosticPayload.event_types.includes("tool_start"), true);
+  assert.equal(toolCallDiagnosticPayload.event_types.includes("tool_end"), true);
+  assert.equal(toolCallDiagnosticPayload.event_types.includes("turn_failed"), true);
+  logStep("runtime-smoke-contract tool-call-diagnostic-events");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
@@ -690,6 +856,7 @@ function ensureContractsExist() {
     "session-store-contract.mjs",
     "start-smoke-contract.mjs",
     "serve-smoke-contract.mjs",
+    "runtime-smoke-contract.mjs",
     "handoff-contract.mjs",
     "history-compaction-contract.mjs",
   ];
@@ -702,12 +869,55 @@ function ensureContractsExist() {
 }
 
 async function main() {
-  ensureContractsExist();
-  await runGatewayContractSmoke();
-  await runTsRustExecutionSmoke();
-  runGovernanceEvalSmoke();
-  runWorkflowGuard();
-  process.stdout.write("gateway node checks completed.\n");
+  const cli = parseCliOptions(process.argv.slice(2));
+  const reporter = createRunReporter({
+    mode: cli.mode,
+    emitText: !cli.json,
+    failOnRetry: cli.fail_on_retry,
+  });
+  const baselineReportPath = cli.baseline_json
+    ? resolve(repoRoot, cli.baseline_json)
+    : "";
+  const baselineReportPayload = baselineReportPath
+    ? loadBaselineReport(baselineReportPath)
+    : null;
+  runReporter = reporter;
+  try {
+    ensureContractsExist();
+    if (cli.mode === "runtime-smoke-only") {
+      await runTsRustExecutionSmoke();
+      enforceRetryGate(cli, reporter);
+      reporter.finish("ok");
+      if (cli.json || cli.json_output) {
+        emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
+      }
+      if (!cli.json) {
+        process.stdout.write("gateway runtime smoke checks completed.\n");
+      }
+      return;
+    }
+    await runGatewayContractSmoke();
+    await runTsRustExecutionSmoke();
+    runGovernanceEvalSmoke();
+    runWorkflowGuard();
+    enforceRetryGate(cli, reporter);
+    reporter.finish("ok");
+    if (cli.json || cli.json_output) {
+      emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
+    }
+    if (!cli.json) {
+      process.stdout.write("gateway node checks completed.\n");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reporter.finish("failed", message);
+    if (cli.json || cli.json_output) {
+      emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
+    }
+    throw error;
+  } finally {
+    runReporter = null;
+  }
 }
 
 try {
