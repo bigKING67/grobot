@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -36,6 +37,71 @@ function runCommand(command, args, options = {}) {
   };
 }
 
+function runCommandAsync(command, args, options = {}) {
+  return new Promise((resolveResult, rejectResult) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd ?? repoRoot,
+      env: options.env ?? process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const timeoutMs = options.timeoutMs ?? 180_000;
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timeoutHandle = null;
+
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+      }
+      resolveResult(payload);
+    };
+
+    if (child.stdout) {
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+    }
+    if (child.stderr) {
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+    }
+
+    child.on("error", rejectResult);
+    child.on("close", (code) => {
+      finish({
+        code: typeof code === "number" ? code : 1,
+        stdout,
+        stderr,
+      });
+    });
+
+    timeoutHandle = setTimeout(() => {
+      child.kill("SIGKILL");
+      const timeoutMessage = `command timeout after ${String(timeoutMs)}ms`;
+      finish({
+        code: 1,
+        stdout,
+        stderr: stderr.length > 0 ? `${stderr}\n${timeoutMessage}` : timeoutMessage,
+      });
+    }, timeoutMs);
+
+    if (typeof options.input === "string" && child.stdin) {
+      child.stdin.write(options.input);
+    }
+    if (child.stdin) {
+      child.stdin.end();
+    }
+  });
+}
+
 function parseJsonOutput(name, stdout) {
   try {
     return JSON.parse(stdout);
@@ -53,6 +119,13 @@ function assertSuccess(name, result) {
 function runContract(scriptName, command, args = [], options = {}) {
   const scriptPath = resolve(contractsRoot, scriptName);
   const result = runCommand("node", [scriptPath, command, ...args], options);
+  assertSuccess(`${scriptName} ${command}`, result);
+  return result;
+}
+
+async function runContractAsync(scriptName, command, args = [], options = {}) {
+  const scriptPath = resolve(contractsRoot, scriptName);
+  const result = await runCommandAsync("node", [scriptPath, command, ...args], options);
   assertSuccess(`${scriptName} ${command}`, result);
   return result;
 }
@@ -81,6 +154,75 @@ function reserveFreePort() {
       });
     });
   });
+}
+
+function readUtf8Body(request) {
+  return new Promise((resolveBody, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    request.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
+}
+
+async function startMockModelServer() {
+  const server = createServer(async (request, response) => {
+    if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "not_found" }));
+      return;
+    }
+
+    const bodyText = await readUtf8Body(request);
+    let prompt = "";
+    try {
+      const parsed = JSON.parse(bodyText);
+      const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+      const first = messages.find((item) => item?.role === "user");
+      prompt = typeof first?.content === "string" ? first.content : "";
+    } catch {
+      // ignore malformed body in test server and continue with default response
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        id: "mock-chatcmpl",
+        object: "chat.completion",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: `MOCK_RUNTIME_OK ${prompt ? `(prompt:${prompt.length})` : ""}`.trim(),
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  const port = await new Promise((resolvePort, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("mock model server failed to bind port"));
+        return;
+      }
+      resolvePort(address.port);
+    });
+  });
+
+  return {
+    baseUrl: `http://127.0.0.1:${String(port)}/v1`,
+    async close() {
+      await new Promise((resolveClose) => server.close(() => resolveClose(undefined)));
+    },
+  };
 }
 
 async function runGatewayContractSmoke() {
@@ -159,6 +301,12 @@ async function runGatewayContractSmoke() {
 }
 
 async function runTsRustExecutionSmoke() {
+  const runtimeBuildResult = runCommand("cargo", ["build", "--manifest-path", "runtime/Cargo.toml"], {
+    timeoutMs: 240_000,
+  });
+  assertSuccess("runtime build for ts-rust smoke", runtimeBuildResult);
+  logStep("runtime build for ts-rust smoke");
+
   const statusResult = runContract("start-smoke-contract.mjs", "status-ts-rust", ["--repo-root", repoRoot], {
     timeoutMs: 240_000,
   });
@@ -179,12 +327,30 @@ async function runTsRustExecutionSmoke() {
   assert.equal(failoverRejectPayload.exit_code, 2);
   logStep("start-smoke-contract failover-rejects-python");
 
-  const failoverRunsResult = runContract("start-smoke-contract.mjs", "failover-runs-ts-rust", ["--repo-root", repoRoot], {
-    timeoutMs: 240_000,
-  });
-  const failoverRunsPayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust", failoverRunsResult.stdout);
-  assert.equal(failoverRunsPayload.exit_code, 0);
-  logStep("start-smoke-contract failover-runs-ts-rust");
+  const mockModel = await startMockModelServer();
+  try {
+    const failoverRunsResult = await runContractAsync(
+      "start-smoke-contract.mjs",
+      "failover-runs-ts-rust",
+      ["--repo-root", repoRoot],
+      {
+        timeoutMs: 240_000,
+        env: {
+          ...process.env,
+          GROBOT_BASE_URL: mockModel.baseUrl,
+          GROBOT_API_KEY: "mock-runtime-key",
+          GROBOT_MODEL: "mock-runtime-model",
+          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+        },
+      },
+    );
+    const failoverRunsPayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust", failoverRunsResult.stdout);
+    assert.equal(failoverRunsPayload.exit_code, 0);
+    assert.equal(String(failoverRunsPayload.stdout).includes("MOCK_RUNTIME_OK"), true);
+    logStep("start-smoke-contract failover-runs-ts-rust");
+  } finally {
+    await mockModel.close();
+  }
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",

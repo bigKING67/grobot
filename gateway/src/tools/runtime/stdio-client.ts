@@ -4,6 +4,7 @@ import { RuntimeClient, RuntimeEvent, RuntimeEventType, RuntimeRequest, RuntimeT
 interface RpcErrorPayload {
   code: number;
   message: string;
+  data?: unknown;
 }
 
 interface RpcSuccessPayload {
@@ -111,15 +112,16 @@ function parseRpcResponse(stdout: string): RpcResponseEnvelope {
     throw new Error("runtime returned invalid json-rpc payload");
   }
   if (isRecord(parsed.error)) {
-    return {
-      jsonrpc: "2.0",
-      id: (typeof parsed.id === "string" || typeof parsed.id === "number" ? parsed.id : null),
-      error: {
-        code: Number(parsed.error.code ?? -32603),
-        message: asString(parsed.error.message, "unknown runtime error"),
-      },
-    };
-  }
+      return {
+        jsonrpc: "2.0",
+        id: (typeof parsed.id === "string" || typeof parsed.id === "number" ? parsed.id : null),
+        error: {
+          code: Number(parsed.error.code ?? -32603),
+          message: asString(parsed.error.message, "unknown runtime error"),
+          data: parsed.error.data,
+        },
+      };
+    }
   return {
     jsonrpc: "2.0",
     id: (typeof parsed.id === "string" || typeof parsed.id === "number" ? parsed.id : null),
@@ -180,7 +182,20 @@ export class StdioRustRuntimeClient implements RuntimeClient {
 
     const response = parseRpcResponse(String(run.stdout || ""));
     if ("error" in response) {
-      throw new Error(`runtime rpc error ${response.error.code}: ${response.error.message}`);
+      const errorData = isRecord(response.error.data) ? response.error.data : undefined;
+      const errorClass = asString(errorData?.error_class);
+      const errorMessage = asString(errorData?.error_message);
+      const traceId = asString(errorData?.trace_id);
+      const detail = [
+        errorClass ? `class=${errorClass}` : "",
+        traceId ? `trace=${traceId}` : "",
+        errorMessage ? `detail=${errorMessage}` : "",
+      ]
+        .filter((item) => item.length > 0)
+        .join(" ");
+      throw new Error(
+        `runtime rpc error ${response.error.code}: ${response.error.message}${detail ? ` (${detail})` : ""}`,
+      );
     }
     return parseRuntimeResult(request, response);
   }

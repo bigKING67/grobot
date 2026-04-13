@@ -26,6 +26,8 @@ pub struct RpcSuccessResponse {
 pub struct RpcErrorObject {
     pub code: i64,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +61,19 @@ fn error(id: Value, code: i64, message: &str) -> RpcErrorResponse {
         error: RpcErrorObject {
             code,
             message: message.to_string(),
+            data: None,
+        },
+    }
+}
+
+fn error_with_data(id: Value, code: i64, message: &str, data: Value) -> RpcErrorResponse {
+    RpcErrorResponse {
+        jsonrpc: JSONRPC_VERSION,
+        id,
+        error: RpcErrorObject {
+            code,
+            message: message.to_string(),
+            data: Some(data),
         },
     }
 }
@@ -87,23 +102,39 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 return Err(error(request.id, -32602, "empty request fields"));
             }
 
-            let execution = execute_turn(TurnExecuteInput {
+            let execution_result = execute_turn(TurnExecuteInput {
                 request_id: params.request_id,
                 session_key: params.session_key,
                 user_message: params.user_message,
                 context_lines: params.context_lines,
             });
-            Ok(success(
-                request.id,
-                json!({
-                    "protocol_version": RUNTIME_PROTOCOL_VERSION,
-                    "trace_id": execution.trace_id,
-                    "request_id": execution.request_id,
-                    "session_key": execution.session_key,
-                    "assistant_message": execution.assistant_message,
-                    "events": execution.events
-                }),
-            ))
+            match execution_result {
+                Ok(execution) => Ok(success(
+                    request.id,
+                    json!({
+                        "protocol_version": RUNTIME_PROTOCOL_VERSION,
+                        "trace_id": execution.trace_id,
+                        "request_id": execution.request_id,
+                        "session_key": execution.session_key,
+                        "assistant_message": execution.assistant_message,
+                        "events": execution.events
+                    }),
+                )),
+                Err(failure) => Err(error_with_data(
+                    request.id,
+                    -32001,
+                    "runtime turn execution failed",
+                    json!({
+                        "protocol_version": RUNTIME_PROTOCOL_VERSION,
+                        "trace_id": failure.trace_id,
+                        "request_id": failure.request_id,
+                        "session_key": failure.session_key,
+                        "error_class": failure.error_class,
+                        "error_message": failure.error_message,
+                        "events": failure.events
+                    }),
+                )),
+            }
         }
         _ => Err(error(request.id, -32601, "method not found")),
     }
@@ -156,17 +187,11 @@ mod tests {
     }
 
     #[test]
-    fn turn_execute_returns_events() {
-        let input = r#"{"jsonrpc":"2.0","id":"2","method":"runtime.turn.execute","params":{"request_id":"req_1","session_key":"feishu:tenant:dm:user","user_message":"hello","context_lines":["a","b"]}}"#;
+    fn turn_execute_validates_empty_fields() {
+        let input = r#"{"jsonrpc":"2.0","id":"2","method":"runtime.turn.execute","params":{"request_id":"req_1","session_key":"feishu:tenant:dm:user","user_message":"   ","context_lines":["a","b"]}}"#;
         let output = handle_json_line(input);
         let payload: Value = serde_json::from_str(&output).expect("valid json");
-        assert_eq!(payload["result"]["request_id"], "req_1");
-        assert_eq!(
-            payload["result"]["events"]
-                .as_array()
-                .expect("events array")
-                .len(),
-            3
-        );
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(payload["error"]["message"], "empty request fields");
     }
 }

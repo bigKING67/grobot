@@ -15,6 +15,7 @@
 | [Agent Memory and Context Guide](./agent-memory-context-guide.md) | Memory lifecycle, retrieval, compaction, context layering | When implementing memory ingest/recall or context engineering |
 | [Agent Eval, Observability, and Security Guide](./agent-eval-observability-security-guide.md) | Release gates, trace schema, SLOs, security controls | Before production rollout or policy-sensitive features |
 | [Agent Implementation Roadmap](./agent-implementation-roadmap.md) | MVP to enterprise phase plan with entry/exit criteria | For milestone planning, sequencing, and risk management |
+| [Runtime Real Execution v1 Spec](./runtime-real-execution-v1-spec.md) | Doc-first spec for Rust runtime real-model execution (no tools) | Before implementing or reviewing runtime model call path changes |
 
 ---
 
