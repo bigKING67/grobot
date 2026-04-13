@@ -38,6 +38,17 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
         }
     }
 
+    fn extract_tool_name_from_not_supported(error_message: &str) -> String {
+        let prefix = "runtime v1 does not support tool calls yet:";
+        if let Some(raw) = error_message.strip_prefix(prefix) {
+            let normalized = raw.trim();
+            if !normalized.is_empty() {
+                return normalized.to_string();
+            }
+        }
+        "unknown_tool".to_string()
+    }
+
     pub fn execute_turn(
         &self,
         input: TurnExecuteInput,
@@ -96,6 +107,26 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
             Err(error) => {
                 let error_class = error.error_class;
                 let error_message = error.message;
+                if error_class == "tool_call_not_supported" {
+                    let tool_name = Self::extract_tool_name_from_not_supported(&error_message);
+                    events.push(Self::build_event(
+                        "tool_start",
+                        &turn_id,
+                        Some(json!({
+                            "tool_name": tool_name
+                        })),
+                    ));
+                    events.push(Self::build_event(
+                        "tool_end",
+                        &turn_id,
+                        Some(json!({
+                            "tool_name": tool_name,
+                            "status": "failed",
+                            "error_class": error_class.clone(),
+                            "error_message": error_message.clone()
+                        })),
+                    ));
+                }
                 events.push(Self::build_event(
                     "turn_failed",
                     &turn_id,
@@ -199,5 +230,51 @@ mod tests {
             vec!["turn_start", "model_request", "turn_failed", "turn_end"]
         );
         assert_eq!(failure.error_class, "upstream_http_error");
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct StubToolCallNotSupportedModel;
+
+    impl ModelExecutor for StubToolCallNotSupportedModel {
+        fn generate_assistant_message(
+            &self,
+            _input: &TurnExecuteInput,
+        ) -> Result<String, ModelExecutionError> {
+            Err(ModelExecutionError::new(
+                "tool_call_not_supported",
+                "runtime v1 does not support tool calls yet: lookup",
+            ))
+        }
+    }
+
+    #[test]
+    fn tool_call_not_supported_emits_tool_events_before_turn_failed() {
+        let orchestrator = TurnOrchestrator::new(StubToolCallNotSupportedModel, NoopToolExecutor);
+        let failure = orchestrator
+            .execute_turn(sample_input())
+            .expect_err("expected tool_call_not_supported");
+        let event_types: Vec<&str> = failure.events.iter().map(|event| event.event_type.as_str()).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                "turn_start",
+                "model_request",
+                "tool_start",
+                "tool_end",
+                "turn_failed",
+                "turn_end"
+            ]
+        );
+        let tool_start_payload = failure.events[2]
+            .payload
+            .as_ref()
+            .expect("tool_start payload");
+        assert_eq!(tool_start_payload["tool_name"], "lookup");
+        let tool_end_payload = failure.events[3]
+            .payload
+            .as_ref()
+            .expect("tool_end payload");
+        assert_eq!(tool_end_payload["status"], "failed");
+        assert_eq!(tool_end_payload["error_class"], "tool_call_not_supported");
     }
 }

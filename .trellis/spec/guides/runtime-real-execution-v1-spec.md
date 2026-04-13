@@ -83,6 +83,11 @@ Event order:
 3. `turn_failed`
 4. `turn_end` (`status=failed`)
 
+For `tool_call_not_supported` specifically, runtime emits additional diagnostic events before `turn_failed`:
+
+1. `tool_start`
+2. `tool_end` (`status=failed`)
+
 RPC error:
 
 - code: `-32001`

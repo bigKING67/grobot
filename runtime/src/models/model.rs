@@ -194,24 +194,30 @@ fn extract_response_content(response: &Value) -> Option<String> {
     None
 }
 
-fn contains_tool_calls(response: &Value) -> bool {
+fn extract_first_tool_call_name(response: &Value) -> Option<String> {
     let choices = match response.get("choices").and_then(Value::as_array) {
         Some(choices) => choices,
-        None => return false,
+        None => return None,
     };
     let first = match choices.first() {
         Some(first) => first,
-        None => return false,
+        None => return None,
     };
     let message = match first.get("message") {
         Some(message) => message,
-        None => return false,
+        None => return None,
     };
-    message
+    let first_tool = message
         .get("tool_calls")
         .and_then(Value::as_array)
-        .map(|tool_calls| !tool_calls.is_empty())
-        .unwrap_or(false)
+        .and_then(|tool_calls| tool_calls.first())?;
+    let function = first_tool.get("function")?;
+    let name = function.get("name").and_then(Value::as_str)?;
+    let normalized = name.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(normalized.to_string())
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -285,10 +291,10 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             )
         })?;
 
-        if contains_tool_calls(&payload) {
+        if let Some(tool_name) = extract_first_tool_call_name(&payload) {
             return Err(ModelExecutionError::new(
                 "tool_call_not_supported",
-                "runtime v1 does not support tool calls yet",
+                format!("runtime v1 does not support tool calls yet: {tool_name}"),
             ));
         }
 
@@ -712,6 +718,7 @@ mod tests {
             .generate_assistant_message(&input)
             .expect_err("expected tool_call_not_supported");
         assert_eq!(error.error_class, "tool_call_not_supported");
+        assert!(error.message.contains("lookup"));
 
         let calls = server.finish();
         assert_eq!(calls.len(), 1);

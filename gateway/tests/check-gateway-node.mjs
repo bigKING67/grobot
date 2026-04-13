@@ -110,6 +110,21 @@ function parseJsonOutput(name, stdout) {
   }
 }
 
+function parseFirstJsonLine(name, stdout) {
+  const firstLine = String(stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) {
+    throw new Error(`${name}: empty stdout`);
+  }
+  try {
+    return JSON.parse(firstLine);
+  } catch (error) {
+    throw new Error(`${name}: first non-empty line is not valid JSON: ${String(error)}\n${stdout}`);
+  }
+}
+
 function assertSuccess(name, result) {
   if (result.code !== 0) {
     throw new Error(`${name}: exit=${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
@@ -355,6 +370,7 @@ async function runTsRustExecutionSmoke() {
   });
   assertSuccess("runtime build for ts-rust smoke", runtimeBuildResult);
   logStep("runtime build for ts-rust smoke");
+  const runtimeBinaryPath = resolve(repoRoot, "runtime/target/debug/grobot-runtime");
 
   const statusResult = runContract("start-smoke-contract.mjs", "status-ts-rust", ["--repo-root", repoRoot], {
     timeoutMs: 240_000,
@@ -484,6 +500,53 @@ async function runTsRustExecutionSmoke() {
     logStep("start-smoke-contract failover-runs-ts-rust-tool-call-failure");
   } finally {
     await toolCallFailureModel.close();
+  }
+
+  const runtimeToolEventModel = await startMockModelServer({ mode: "tool_call" });
+  try {
+    const rpcRequestLine = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "tool-event-check",
+      method: "runtime.turn.execute",
+      params: {
+        request_id: `req_tool_events_${Date.now()}`,
+        session_key: "feishu:grobot:dm:tool-events",
+        user_message: "tool event contract check",
+        context_lines: [],
+      },
+    });
+    const runtimeRpcResult = await runCommandAsync(
+      runtimeBinaryPath,
+      [],
+      {
+        timeoutMs: 120_000,
+        input: `${rpcRequestLine}\n`,
+        env: {
+          ...process.env,
+          GROBOT_BASE_URL: runtimeToolEventModel.baseUrl,
+          GROBOT_API_KEY: "tool-event-key",
+          GROBOT_MODEL: "tool-event-model",
+          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+        },
+      },
+    );
+    assert.equal(runtimeRpcResult.code, 0);
+    const runtimeRpcPayload = parseFirstJsonLine(
+      "runtime turn tool event contract",
+      runtimeRpcResult.stdout,
+    );
+    assert.equal(runtimeRpcPayload.error?.code, -32001);
+    const errorData = runtimeRpcPayload.error?.data ?? {};
+    assert.equal(errorData.error_class, "tool_call_not_supported");
+    const eventTypes = Array.isArray(errorData.events)
+      ? errorData.events.map((event) => String(event?.event_type ?? ""))
+      : [];
+    assert.equal(eventTypes.includes("tool_start"), true);
+    assert.equal(eventTypes.includes("tool_end"), true);
+    assert.equal(eventTypes.includes("turn_failed"), true);
+    logStep("runtime-rpc-tool-call-diagnostic-events");
+  } finally {
+    await runtimeToolEventModel.close();
   }
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
