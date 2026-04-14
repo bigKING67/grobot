@@ -52,8 +52,11 @@
 
 执行方式：
 - 文档真相源：`README.md`、`runtime/README.md`、`gateway/README.md`、`gateway/evals/README.md`。
+- 门禁回归测试：`npm run check:layer-contract:test`（验证门禁脚本本身行为）。
 - 软门禁命令：`npm run check:layer-contract`（warn-first），严格模式：`npm run check:layer-contract:strict`。
 - 契约真相源：`scripts/layer-contract-spec.json`（目录、文档标记、单体文件阈值）。
+- CI 严格门禁：`.github/workflows/layer-contract-gate.yml`（对结构相关改动执行 strict gate）。
+- 跨层依赖白名单：`importPolicyAllowlist`（仅用于明确例外，默认应为空）。
 
 ## 迁移底座（2026-04）
 
