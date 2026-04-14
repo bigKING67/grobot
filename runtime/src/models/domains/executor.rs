@@ -1,6 +1,16 @@
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAiCompatibleModelExecutor;
 
+const KIMI_MODEL_REQUEST_MAX_ATTEMPTS: usize = 3;
+#[cfg(test)]
+const KIMI_MODEL_REQUEST_RETRY_BASE_DELAY_MS: u64 = 10;
+#[cfg(not(test))]
+const KIMI_MODEL_REQUEST_RETRY_BASE_DELAY_MS: u64 = 800;
+#[cfg(test)]
+const KIMI_MODEL_REQUEST_RETRY_MAX_DELAY_MS: u64 = 50;
+#[cfg(not(test))]
+const KIMI_MODEL_REQUEST_RETRY_MAX_DELAY_MS: u64 = 3_000;
+
 fn normalize_attachment_type(raw: &str) -> String {
     raw.trim().to_ascii_lowercase()
 }
@@ -131,6 +141,122 @@ fn fetch_kimi_file_content(
         ));
     }
     Ok(body)
+}
+
+fn classify_request_error_class(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        "upstream_timeout"
+    } else if error.is_connect() {
+        "upstream_connect_failed"
+    } else {
+        "upstream_request_failed"
+    }
+}
+
+fn should_retry_kimi_http_error(status: reqwest::StatusCode, body_text: &str) -> bool {
+    if status.as_u16() == 429 || status.is_server_error() {
+        return true;
+    }
+    if status.as_u16() == 400 {
+        let normalized = body_text.to_ascii_lowercase();
+        if normalized.contains("overloaded")
+            || normalized.contains("too many requests")
+            || normalized.contains("try again later")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn kimi_retry_delay_ms(attempt_index: usize) -> u64 {
+    if attempt_index == 0 {
+        return 0;
+    }
+    let shift = (attempt_index.saturating_sub(1)).min(6) as u32;
+    let multiplier = 1_u64 << shift;
+    KIMI_MODEL_REQUEST_RETRY_BASE_DELAY_MS
+        .saturating_mul(multiplier)
+        .min(KIMI_MODEL_REQUEST_RETRY_MAX_DELAY_MS)
+}
+
+fn send_chat_completion_with_optional_kimi_retry(
+    client: &Client,
+    endpoint: &str,
+    api_key: &str,
+    body: &Value,
+    provider_kind: ProviderKind,
+) -> Result<String, ModelExecutionError> {
+    let retry_enabled = provider_kind == ProviderKind::Kimi;
+    let max_attempts = if retry_enabled {
+        KIMI_MODEL_REQUEST_MAX_ATTEMPTS
+    } else {
+        1
+    };
+    let mut last_retryable_error: Option<ModelExecutionError> = None;
+
+    for attempt in 0..max_attempts {
+        if retry_enabled && attempt > 0 {
+            let delay_ms = kimi_retry_delay_ms(attempt);
+            if delay_ms > 0 {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+            }
+        }
+
+        let response = match client
+            .post(endpoint)
+            .bearer_auth(api_key)
+            .header("Content-Type", "application/json")
+            .json(body)
+            .send()
+        {
+            Ok(value) => value,
+            Err(error) => {
+                let class = classify_request_error_class(&error);
+                let message = format!("model request failed: {error}");
+                let is_retryable = retry_enabled
+                    && attempt + 1 < max_attempts
+                    && (error.is_timeout() || error.is_connect());
+                if is_retryable {
+                    last_retryable_error = Some(ModelExecutionError::new(class, message));
+                    continue;
+                }
+                return Err(ModelExecutionError::new(class, message));
+            }
+        };
+
+        let status = response.status();
+        let body_text = response.text().map_err(|error| {
+            ModelExecutionError::new(
+                "upstream_response_read_failed",
+                format!("failed to read model response body: {error}"),
+            )
+        })?;
+        if status.is_success() {
+            return Ok(body_text);
+        }
+        let detail = body_text.chars().take(240).collect::<String>();
+        let is_retryable =
+            retry_enabled && attempt + 1 < max_attempts && should_retry_kimi_http_error(status, &body_text);
+        if is_retryable {
+            last_retryable_error = Some(ModelExecutionError::new(
+                "upstream_http_error",
+                format!("upstream status={} body={detail}", status.as_u16()),
+            ));
+            continue;
+        }
+        return Err(ModelExecutionError::new(
+            "upstream_http_error",
+            format!("upstream status={} body={detail}", status.as_u16()),
+        ));
+    }
+
+    Err(last_retryable_error.unwrap_or_else(|| {
+        ModelExecutionError::new(
+            "upstream_request_failed",
+            "model request failed after retries without a terminal response",
+        )
+    }))
 }
 
 fn build_runtime_messages(
@@ -297,36 +423,13 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                     "type": "disabled"
                 });
             }
-            let response = client
-                .post(&endpoint)
-                .bearer_auth(&config.api_key)
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .map_err(|error| {
-                    let class = if error.is_timeout() {
-                        "upstream_timeout"
-                    } else if error.is_connect() {
-                        "upstream_connect_failed"
-                    } else {
-                        "upstream_request_failed"
-                    };
-                    ModelExecutionError::new(class, format!("model request failed: {error}"))
-                })?;
-            let status = response.status();
-            let body_text = response.text().map_err(|error| {
-                ModelExecutionError::new(
-                    "upstream_response_read_failed",
-                    format!("failed to read model response body: {error}"),
-                )
-            })?;
-            if !status.is_success() {
-                let detail = body_text.chars().take(240).collect::<String>();
-                return Err(ModelExecutionError::new(
-                    "upstream_http_error",
-                    format!("upstream status={} body={detail}", status.as_u16()),
-                ));
-            }
+            let body_text = send_chat_completion_with_optional_kimi_retry(
+                &client,
+                &endpoint,
+                &config.api_key,
+                &body,
+                config.provider_kind,
+            )?;
             let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
                 ModelExecutionError::new(
                     "upstream_invalid_json",

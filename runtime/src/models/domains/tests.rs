@@ -2,9 +2,10 @@
 mod tests {
     use super::{
         build_runtime_user_prompt, build_tool_definitions, extract_response_content,
-        load_runtime_model_config, should_disable_thinking_for_kimi_builtin_web_search,
-        ModelExecutor, OpenAiCompatibleModelExecutor, ENV_API_KEY, ENV_BASE_URL,
-        ENV_MODEL, ENV_RUNTIME_TIMEOUT_MS,
+        load_runtime_model_config, pick_auto_model,
+        should_disable_thinking_for_kimi_builtin_web_search, ModelExecutor,
+        OpenAiCompatibleModelExecutor, ProviderKind, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL,
+        ENV_RUNTIME_TIMEOUT_MS,
     };
     use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
     use crate::tools::tools::LocalToolExecutor;
@@ -159,6 +160,10 @@ mod tests {
     }
 
     fn start_mock_http_server(status_line: &str, response_body: &str) -> MockHttpServer {
+        start_mock_http_server_sequence(&[(status_line, response_body)])
+    }
+
+    fn start_mock_http_server_sequence(responses: &[(&str, &str)]) -> MockHttpServer {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test mock http server");
         let addr = listener.local_addr().expect("read local addr");
         listener
@@ -166,38 +171,42 @@ mod tests {
             .expect("set non-blocking listener");
         let requests = Arc::new(Mutex::new(Vec::<RecordedRequest>::new()));
         let requests_for_thread = Arc::clone(&requests);
-        let status = status_line.to_string();
-        let response_payload = response_body.to_string();
+        let response_specs = responses
+            .iter()
+            .map(|(status, body)| (status.to_string(), body.to_string()))
+            .collect::<Vec<(String, String)>>();
         let handle = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            loop {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        stream
-                            .set_read_timeout(Some(Duration::from_secs(2)))
-                            .expect("set read timeout");
-                        let request_raw = read_http_request(&mut stream);
-                        if let Some(request) = parse_recorded_request(&request_raw) {
-                            if let Ok(mut guard) = requests_for_thread.lock() {
-                                guard.push(request);
+            for (status, response_payload) in response_specs {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            stream
+                                .set_read_timeout(Some(Duration::from_secs(2)))
+                                .expect("set read timeout");
+                            let request_raw = read_http_request(&mut stream);
+                            if let Some(request) = parse_recorded_request(&request_raw) {
+                                if let Ok(mut guard) = requests_for_thread.lock() {
+                                    guard.push(request);
+                                }
                             }
-                        }
-                        let response = format!(
-                            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-                            response_payload.as_bytes().len(),
-                            response_payload
-                        );
-                        let _ = stream.write_all(response.as_bytes());
-                        let _ = stream.flush();
-                        break;
-                    }
-                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                        if Instant::now() >= deadline {
+                            let response = format!(
+                                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                                response_payload.as_bytes().len(),
+                                response_payload
+                            );
+                            let _ = stream.write_all(response.as_bytes());
+                            let _ = stream.flush();
                             break;
                         }
-                        thread::sleep(Duration::from_millis(10));
+                        Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                            if Instant::now() >= deadline {
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(_) => break,
                     }
-                    Err(_) => break,
                 }
             }
         });
@@ -316,6 +325,29 @@ mod tests {
     }
 
     #[test]
+    fn pick_auto_model_prioritizes_kimi_k25_family() {
+        let models = vec![
+            "moonshot-v1-128k-vision-preview".to_string(),
+            "kimi-k2-thinking".to_string(),
+            "kimi-k2.5".to_string(),
+        ];
+        let selected = pick_auto_model(&models, ProviderKind::Kimi).expect("selected model");
+        assert_eq!(selected, "kimi-k2.5");
+    }
+
+    #[test]
+    fn pick_auto_model_uses_first_for_non_kimi_provider() {
+        let models = vec![
+            "model-a".to_string(),
+            "kimi-k2.5".to_string(),
+            "model-c".to_string(),
+        ];
+        let selected =
+            pick_auto_model(&models, ProviderKind::OpenAiCompatible).expect("selected model");
+        assert_eq!(selected, "model-a");
+    }
+
+    #[test]
     fn executor_roundtrip_with_mock_http_server() {
         let _env_guard = env_lock().lock().expect("lock env");
         let server = start_mock_http_server(
@@ -407,6 +439,54 @@ mod tests {
 
         let calls = server.finish();
         assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn executor_retries_kimi_overload_and_succeeds() {
+        let _env_guard = env_lock().lock().expect("lock env");
+        let server = start_mock_http_server_sequence(&[
+            (
+                "429 Too Many Requests",
+                r#"{"error":{"message":"The engine is currently overloaded, please try again later"}}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"id":"mock","choices":[{"message":{"content":"KIMI_RETRY_OK"}}]}"#,
+            ),
+        ]);
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+        let input = TurnExecuteInput {
+            request_id: "req_rt_kimi_retry".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            user_message: "请联网搜索今天热点".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(server.base_url.clone()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: None,
+            }),
+            tool_context: None,
+            attachments: vec![],
+        };
+
+        let executor = OpenAiCompatibleModelExecutor;
+        let output = executor
+            .generate_assistant_message(&input, &LocalToolExecutor)
+            .expect("kimi request should retry and succeed");
+        assert_eq!(output, "KIMI_RETRY_OK");
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].path, "/v1/chat/completions");
+        assert_eq!(calls[1].path, "/v1/chat/completions");
     }
 
     #[test]

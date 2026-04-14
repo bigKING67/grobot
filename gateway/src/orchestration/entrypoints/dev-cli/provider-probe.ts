@@ -491,9 +491,19 @@ function pickAutoModel(modelIds: readonly string[]): string | undefined {
   if (modelIds.length === 0) {
     return undefined;
   }
-  const kimiPreferred = modelIds.find((item) => /^(kimi|moonshot)[-_]/i.test(item));
-  if (kimiPreferred) {
-    return kimiPreferred;
+  const priorityPrefixes = [
+    "kimi-k2.5",
+    "kimi_k2.5",
+    "kimi-k2",
+    "kimi_k2",
+    "kimi",
+    "moonshot",
+  ];
+  for (const prefix of priorityPrefixes) {
+    const preferred = modelIds.find((item) => item.trim().toLowerCase().startsWith(prefix));
+    if (preferred) {
+      return preferred;
+    }
   }
   const nonEmpty = modelIds.find((item) => item.trim().length > 0);
   return nonEmpty;

@@ -280,11 +280,22 @@ fn pick_auto_model(model_ids: &[String], provider_kind: ProviderKind) -> Option<
         return None;
     }
     if provider_kind == ProviderKind::Kimi {
-        if let Some(preferred) = model_ids.iter().find(|item| {
-            let normalized = item.trim().to_ascii_lowercase();
-            normalized.starts_with("kimi") || normalized.starts_with("moonshot")
-        }) {
-            return Some(preferred.clone());
+        let priority_prefixes = [
+            "kimi-k2.5",
+            "kimi_k2.5",
+            "kimi-k2",
+            "kimi_k2",
+            "kimi",
+            "moonshot",
+        ];
+        for prefix in priority_prefixes {
+            if let Some(preferred) = model_ids.iter().find(|item| {
+                item.trim()
+                    .to_ascii_lowercase()
+                    .starts_with(prefix)
+            }) {
+                return Some(preferred.clone());
+            }
         }
     }
     model_ids.first().cloned()
