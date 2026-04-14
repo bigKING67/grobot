@@ -729,6 +729,38 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(toolCallSuccessPayload.runtime_call_count) >= 2, true);
   logStep("runtime-smoke-contract tool-call-success");
 
+  const mcpCallSuccessResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "mcp-call-success",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const mcpCallSuccessPayload = parseJsonOutput(
+    "runtime-smoke-contract mcp-call-success",
+    mcpCallSuccessResult.stdout,
+  );
+  assert.equal(mcpCallSuccessPayload.exit_code, 0);
+  assert.equal(String(mcpCallSuccessPayload.assistant_message).includes("MCP_CALL_RUNTIME_OK"), true);
+  assert.equal(Number(mcpCallSuccessPayload.runtime_call_count) >= 2, true);
+  assert.equal(String(mcpCallSuccessPayload.runtime_last_body).includes("echo:hello-mcp"), true);
+  logStep("runtime-smoke-contract mcp-call-success");
+
+  const mcpServersSuccessResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "mcp-servers-success",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const mcpServersSuccessPayload = parseJsonOutput(
+    "runtime-smoke-contract mcp-servers-success",
+    mcpServersSuccessResult.stdout,
+  );
+  assert.equal(mcpServersSuccessPayload.exit_code, 0);
+  assert.equal(String(mcpServersSuccessPayload.assistant_message).includes("MCP_SERVERS_RUNTIME_OK"), true);
+  assert.equal(Number(mcpServersSuccessPayload.runtime_call_count) >= 2, true);
+  assert.equal(String(mcpServersSuccessPayload.runtime_last_body).includes("\\\"ready_count\\\":1"), true);
+  logStep("runtime-smoke-contract mcp-servers-success");
+
   const toolCallDiagnosticResult = runContract(
     "runtime-smoke-contract.mjs",
     "tool-call-diagnostic-events",
@@ -787,6 +819,7 @@ async function runTsRustExecutionSmoke() {
     hits: planConcurrencyPayload.append_hits,
   });
 
+  const planEventsReportPath = resolve(makeTempDir("plan-events-report"), "report.json");
   const planEventsReportResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -797,6 +830,8 @@ async function runTsRustExecutionSmoke() {
     String(planModeFlowPayload.events_path),
     "--events-path",
     String(planConcurrencyPayload.events_path),
+    "--output",
+    planEventsReportPath,
     "--print-json",
   ]);
   assertSuccess("plan-events-report", planEventsReportResult);
@@ -818,6 +853,30 @@ async function runTsRustExecutionSmoke() {
     files: planEventsReportPayload?.totals?.files_count,
     events: planEventsReportPayload?.totals?.events_count,
     sessions: planEventsReportPayload?.totals?.sessions_count,
+  });
+
+  const planEventsPolicyGuardResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/governance/evals/plan-events-policy-guard.ts",
+    "--policy",
+    "gateway/evals/plan_events_policy.ci.json",
+    "--report",
+    planEventsReportPath,
+    "--print-json",
+  ]);
+  assertSuccess("plan-events-policy-guard", planEventsPolicyGuardResult);
+  const planEventsPolicyGuardPayload = parseJsonOutput(
+    "plan-events-policy-guard",
+    planEventsPolicyGuardResult.stdout,
+  );
+  assert.equal(planEventsPolicyGuardPayload?.status, "ok");
+  assert.equal(Number(planEventsPolicyGuardPayload?.violations_count), 0);
+  logStep("plan-events-policy-guard", {
+    profile: planEventsPolicyGuardPayload?.profile,
+    violations: planEventsPolicyGuardPayload?.violations_count,
   });
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [

@@ -14,6 +14,7 @@ interface PlanEventCounter {
   plan_created_count: number;
   plan_progress_appended_count: number;
   plan_status_changed_count: number;
+  plan_recovered_stale_approved_count: number;
   plan_apply_started_count: number;
   plan_apply_succeeded_count: number;
   plan_apply_failed_count: number;
@@ -66,6 +67,7 @@ function createCounter(): PlanEventCounter {
     plan_created_count: 0,
     plan_progress_appended_count: 0,
     plan_status_changed_count: 0,
+    plan_recovered_stale_approved_count: 0,
     plan_apply_started_count: 0,
     plan_apply_succeeded_count: 0,
     plan_apply_failed_count: 0,
@@ -168,6 +170,9 @@ function applyEvent(counter: PlanEventCounter, event: string): void {
       break;
     case "plan_status_changed":
       counter.plan_status_changed_count += 1;
+      break;
+    case "plan_recovered_stale_approved":
+      counter.plan_recovered_stale_approved_count += 1;
       break;
     case "plan_apply_started":
       counter.plan_apply_started_count += 1;
