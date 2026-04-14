@@ -1,6 +1,7 @@
 declare const process: {
   argv: string[];
   env: Record<string, string | undefined>;
+  pid: number;
   cwd(): string;
   on(event: string, listener: (...args: unknown[]) => void): void;
   stdin: {
@@ -65,6 +66,7 @@ declare module "node:path" {
 declare module "node:fs" {
   export interface Stats {
     isDirectory(): boolean;
+    mtimeMs: number;
   }
 
   export const constants: {
@@ -78,6 +80,8 @@ declare module "node:fs" {
   export function existsSync(path: string): boolean;
   export function readdirSync(path: string): string[];
   export function unlinkSync(path: string): void;
+  export function renameSync(oldPath: string, newPath: string): void;
+  export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
   export function statSync(path: string): Stats;
   export function accessSync(path: string, mode?: number): void;
 }
