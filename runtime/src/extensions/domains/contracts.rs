@@ -65,6 +65,14 @@ pub struct TurnExecuteKimiOptionsParams {
     #[serde(default)]
     pub official_tool_formulas: Option<Value>,
     #[serde(default)]
+    pub max_tokens: Option<u32>,
+    #[serde(default)]
+    pub stream: Option<bool>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub top_p: Option<f64>,
+    #[serde(default)]
     pub files_enabled: Option<bool>,
     #[serde(default)]
     pub allow_file_admin: Option<bool>,

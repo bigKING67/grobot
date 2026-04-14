@@ -131,6 +131,13 @@ export interface ProviderProbeResult {
   autoSelected?: boolean;
 }
 
+export interface ProviderModelListResult {
+  state: "ok" | "warn" | "error";
+  detail: string;
+  httpStatus?: number;
+  modelIds: string[];
+}
+
 interface MutableProvider {
   name?: string;
   baseUrl?: string;
@@ -140,6 +147,10 @@ interface MutableProvider {
   kimiWebSearchMode?: string;
   kimiDisableThinkingOnBuiltinWebSearch?: boolean;
   kimiOfficialToolsAllowlist?: string[];
+  kimiMaxTokens?: number;
+  kimiStream?: boolean;
+  kimiTemperature?: number;
+  kimiTopP?: number;
   kimiFilesEnabled?: boolean;
   kimiAllowFileAdmin?: boolean;
   priority?: number;
@@ -166,6 +177,10 @@ export interface ProviderSnapshot {
   kimiWebSearchMode?: string;
   kimiDisableThinkingOnBuiltinWebSearch?: boolean;
   kimiOfficialToolsAllowlist?: string[];
+  kimiMaxTokens?: number;
+  kimiStream?: boolean;
+  kimiTemperature?: number;
+  kimiTopP?: number;
   kimiFilesEnabled?: boolean;
   kimiAllowFileAdmin?: boolean;
   priority?: number;
@@ -274,6 +289,14 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
             currentProvider.kimiDisableThinkingOnBuiltinWebSearch = parseTomlBoolean(kvMatch[2]);
           } else if (key === "kimi_official_tools_allowlist") {
             currentProvider.kimiOfficialToolsAllowlist = parseTomlStringArray(kvMatch[2]);
+          } else if (key === "kimi_max_tokens") {
+            currentProvider.kimiMaxTokens = parseTomlNumber(kvMatch[2]);
+          } else if (key === "kimi_stream") {
+            currentProvider.kimiStream = parseTomlBoolean(kvMatch[2]);
+          } else if (key === "kimi_temperature") {
+            currentProvider.kimiTemperature = parseTomlNumber(kvMatch[2]);
+          } else if (key === "kimi_top_p") {
+            currentProvider.kimiTopP = parseTomlNumber(kvMatch[2]);
           } else if (key === "kimi_files_enabled") {
             currentProvider.kimiFilesEnabled = parseTomlBoolean(kvMatch[2]);
           } else if (key === "kimi_allow_file_admin") {
@@ -346,6 +369,10 @@ function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): 
     kimiWebSearchMode: kimiWebSearchMode && kimiWebSearchMode.length > 0 ? kimiWebSearchMode : undefined,
     kimiDisableThinkingOnBuiltinWebSearch: raw.kimiDisableThinkingOnBuiltinWebSearch,
     kimiOfficialToolsAllowlist,
+    kimiMaxTokens: typeof raw.kimiMaxTokens === "number" ? raw.kimiMaxTokens : undefined,
+    kimiStream: raw.kimiStream,
+    kimiTemperature: typeof raw.kimiTemperature === "number" ? raw.kimiTemperature : undefined,
+    kimiTopP: typeof raw.kimiTopP === "number" ? raw.kimiTopP : undefined,
     kimiFilesEnabled: raw.kimiFilesEnabled,
     kimiAllowFileAdmin: raw.kimiAllowFileAdmin,
     priority: typeof raw.priority === "number" ? raw.priority : undefined,
@@ -550,6 +577,37 @@ export async function probeProviderModels(
   apiKey: string,
   modelHint: string | undefined,
 ): Promise<ProviderProbeResult> {
+  const listed = await listProviderModels(baseUrl, apiKey);
+  if (listed.state !== "ok") {
+    return {
+      state: listed.state,
+      detail: listed.detail,
+      httpStatus: listed.httpStatus,
+      modelCount: listed.modelIds.length,
+    };
+  }
+  const selected = resolveProbeModelHint(modelHint, listed.modelIds);
+  const resolvedPart = selected.resolvedModel
+    ? ` resolved=${selected.resolvedModel}`
+    : "";
+  return {
+    state: "ok",
+    detail: selected.selectedModel
+      ? `models=${String(listed.modelIds.length)} selected=${selected.selectedFound ? "matched" : "missing"}${resolvedPart}`
+      : `models=${String(listed.modelIds.length)}`,
+    httpStatus: listed.httpStatus,
+    modelCount: listed.modelIds.length,
+    selectedModel: selected.selectedModel,
+    selectedFound: selected.selectedFound,
+    resolvedModel: selected.resolvedModel,
+    autoSelected: selected.autoSelected,
+  };
+}
+
+export async function listProviderModels(
+  baseUrl: string,
+  apiKey: string,
+): Promise<ProviderModelListResult> {
   let url: URL;
   try {
     url = normalizeProbeBaseUrl(baseUrl);
@@ -557,6 +615,7 @@ export async function probeProviderModels(
     return {
       state: "error",
       detail: `invalid base_url: ${String(error)}`,
+      modelIds: [],
     };
   }
   const requestFactory = url.protocol === "https:" ? httpsRequest : httpRequest;
@@ -574,11 +633,15 @@ export async function probeProviderModels(
     timeout: 5_000,
   };
 
-  return await new Promise<ProviderProbeResult>((resolve) => {
+  return await new Promise((resolve: (value: ProviderModelListResult) => void) => {
     const req = requestFactory(requestOptions, (res: IncomingMessage) => {
       let body = "";
-      res.on("data", (chunk: string) => {
-        body += chunk;
+      res.on("data", (chunk: unknown) => {
+        if (typeof chunk === "string") {
+          body += chunk;
+          return;
+        }
+        body += Buffer.from(chunk as Uint8Array).toString("utf8");
       });
       res.on("end", () => {
         const statusCode = res.statusCode ?? 0;
@@ -588,33 +651,25 @@ export async function probeProviderModels(
             state: "warn",
             detail: `http_${String(statusCode)} ${snippet || "<empty-body>"}`,
             httpStatus: statusCode,
+            modelIds: [],
           });
           return;
         }
         try {
           const payload = JSON.parse(body) as unknown;
           const modelIds = parseModelIdsFromProbePayload(payload);
-          const selected = resolveProbeModelHint(modelHint, modelIds);
-          const resolvedPart = selected.resolvedModel
-            ? ` resolved=${selected.resolvedModel}`
-            : "";
           resolve({
             state: "ok",
-            detail: selected.selectedModel
-              ? `models=${String(modelIds.length)} selected=${selected.selectedFound ? "matched" : "missing"}${resolvedPart}`
-              : `models=${String(modelIds.length)}`,
+            detail: `models=${String(modelIds.length)}`,
             httpStatus: statusCode,
-            modelCount: modelIds.length,
-            selectedModel: selected.selectedModel,
-            selectedFound: selected.selectedFound,
-            resolvedModel: selected.resolvedModel,
-            autoSelected: selected.autoSelected,
+            modelIds,
           });
         } catch (error) {
           resolve({
             state: "warn",
             detail: `invalid_json_response: ${String(error)}`,
             httpStatus: statusCode,
+            modelIds: [],
           });
         }
       });
@@ -626,6 +681,7 @@ export async function probeProviderModels(
       resolve({
         state: "error",
         detail: String(error),
+        modelIds: [],
       });
     });
     req.end();

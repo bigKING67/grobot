@@ -43,6 +43,10 @@ interface ResolvedRuntimeModelConfig {
 
 const DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_OPENAI_COMPATIBLE = 10_000;
 const DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_KIMI = 45_000;
+const DEFAULT_KIMI_MAX_TOKENS = 262_144;
+const DEFAULT_KIMI_STREAM = true;
+const DEFAULT_KIMI_TEMPERATURE = 1.0;
+const DEFAULT_KIMI_TOP_P = 0.95;
 
 function stripInlineComment(line: string): string {
   let inQuote = false;
@@ -187,7 +191,7 @@ const DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST = [
   "rethink",
   "code_runner",
 ];
-const DEFAULT_KIMI_SEARCH_ROUTING_POLICY: KimiSearchRoutingPolicy = "mcp_first_fallback_builtin";
+const DEFAULT_KIMI_SEARCH_ROUTING_POLICY: KimiSearchRoutingPolicy = "builtin_only";
 
 function normalizeProviderKind(rawKind: string | undefined, providerName?: string, baseUrl?: string): "openai_compatible" | "kimi" {
   const normalizedKind = rawKind?.trim().toLowerCase();
@@ -231,6 +235,28 @@ function normalizeKimiWebSearchMode(raw: string | undefined): KimiWebSearchMode 
     return normalized;
   }
   return "builtin_preferred";
+}
+
+function normalizeKimiMaxTokens(raw: number | undefined): number {
+  const normalized = normalizePositiveInt(raw);
+  if (typeof normalized !== "number") {
+    return DEFAULT_KIMI_MAX_TOKENS;
+  }
+  return Math.min(Math.max(normalized, 1_024), DEFAULT_KIMI_MAX_TOKENS);
+}
+
+function normalizeKimiTemperature(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_KIMI_TEMPERATURE;
+  }
+  return Math.min(Math.max(raw, 0), 2);
+}
+
+function normalizeKimiTopP(raw: number | undefined): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_KIMI_TOP_P;
+  }
+  return Math.min(Math.max(raw, 0), 1);
 }
 
 function normalizeKimiSearchRoutingPolicy(raw: string | undefined): KimiSearchRoutingPolicy | undefined {
@@ -341,6 +367,10 @@ function resolveRuntimeModelConfig(
         kimiWebSearchMode?: string;
         kimiDisableThinkingOnBuiltinWebSearch?: boolean;
         kimiOfficialToolsAllowlist?: string[];
+        kimiMaxTokens?: number;
+        kimiStream?: boolean;
+        kimiTemperature?: number;
+        kimiTopP?: number;
         kimiFilesEnabled?: boolean;
         kimiAllowFileAdmin?: boolean;
         priority?: number;
@@ -439,6 +469,10 @@ function resolveRuntimeModelConfig(
         disableThinkingOnBuiltinWebSearch:
           fallback?.kimiDisableThinkingOnBuiltinWebSearch ?? true,
         officialToolsAllowlist: normalizeKimiAllowlist(fallback?.kimiOfficialToolsAllowlist),
+        maxTokens: normalizeKimiMaxTokens(fallback?.kimiMaxTokens),
+        stream: fallback?.kimiStream ?? DEFAULT_KIMI_STREAM,
+        temperature: normalizeKimiTemperature(fallback?.kimiTemperature),
+        topP: normalizeKimiTopP(fallback?.kimiTopP),
         filesEnabled: fallback?.kimiFilesEnabled ?? true,
         allowFileAdmin: fallback?.kimiAllowFileAdmin ?? false,
       },
@@ -474,6 +508,10 @@ function resolveRuntimeModelConfig(
             disableThinkingOnBuiltinWebSearch:
               provider.kimiDisableThinkingOnBuiltinWebSearch ?? true,
             officialToolsAllowlist: normalizeKimiAllowlist(provider.kimiOfficialToolsAllowlist),
+            maxTokens: normalizeKimiMaxTokens(provider.kimiMaxTokens),
+            stream: provider.kimiStream ?? DEFAULT_KIMI_STREAM,
+            temperature: normalizeKimiTemperature(provider.kimiTemperature),
+            topP: normalizeKimiTopP(provider.kimiTopP),
             filesEnabled: provider.kimiFilesEnabled ?? true,
             allowFileAdmin: provider.kimiAllowFileAdmin ?? false,
           },

@@ -120,6 +120,35 @@ fn parse_kimi_web_search_mode(raw: Option<&str>) -> KimiWebSearchMode {
     }
 }
 
+fn normalize_kimi_max_tokens(raw: Option<u32>) -> u32 {
+    const DEFAULT_KIMI_MAX_TOKENS: u32 = 262_144;
+    const MIN_KIMI_MAX_TOKENS: u32 = 1_024;
+    let value = raw.unwrap_or(DEFAULT_KIMI_MAX_TOKENS);
+    value.clamp(MIN_KIMI_MAX_TOKENS, DEFAULT_KIMI_MAX_TOKENS)
+}
+
+fn normalize_kimi_temperature(raw: Option<f64>) -> f64 {
+    const DEFAULT_KIMI_TEMPERATURE: f64 = 1.0;
+    let Some(value) = raw else {
+        return DEFAULT_KIMI_TEMPERATURE;
+    };
+    if !value.is_finite() {
+        return DEFAULT_KIMI_TEMPERATURE;
+    }
+    value.clamp(0.0, 2.0)
+}
+
+fn normalize_kimi_top_p(raw: Option<f64>) -> f64 {
+    const DEFAULT_KIMI_TOP_P: f64 = 0.95;
+    let Some(value) = raw else {
+        return DEFAULT_KIMI_TOP_P;
+    };
+    if !value.is_finite() {
+        return DEFAULT_KIMI_TOP_P;
+    }
+    value.clamp(0.0, 1.0)
+}
+
 fn default_kimi_official_tools_allowlist() -> Vec<String> {
     vec![
         "web_search".to_string(),
@@ -149,6 +178,10 @@ fn resolve_kimi_options(input_config: Option<&RuntimeModelConfigInput>) -> KimiP
             .map(|item| canonical_kimi_tool_name(&item))
             .filter(|item| !item.is_empty())
             .collect(),
+        max_tokens: normalize_kimi_max_tokens(input_kimi.and_then(|options| options.max_tokens)),
+        stream: input_kimi.and_then(|options| options.stream).unwrap_or(true),
+        temperature: normalize_kimi_temperature(input_kimi.and_then(|options| options.temperature)),
+        top_p: normalize_kimi_top_p(input_kimi.and_then(|options| options.top_p)),
         files_enabled: input_kimi
             .and_then(|options| options.files_enabled)
             .unwrap_or(true),

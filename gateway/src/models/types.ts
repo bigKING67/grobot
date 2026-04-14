@@ -56,6 +56,10 @@ export interface RuntimeKimiOptions {
   disableThinkingOnBuiltinWebSearch?: boolean;
   officialToolsAllowlist?: string[];
   officialToolFormulas?: Record<string, string>;
+  maxTokens?: number;
+  stream?: boolean;
+  temperature?: number;
+  topP?: number;
   filesEnabled?: boolean;
   allowFileAdmin?: boolean;
 }

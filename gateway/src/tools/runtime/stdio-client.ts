@@ -20,6 +20,9 @@ interface RpcErrorEnvelope {
 }
 
 type RpcResponseEnvelope = RpcSuccessPayload | RpcErrorEnvelope;
+const RUNTIME_SPAWN_TIMEOUT_FLOOR_MS = 15_000;
+const RUNTIME_SPAWN_TIMEOUT_CEILING_MS = 300_000;
+const RUNTIME_SPAWN_TIMEOUT_HEADROOM_MS = 3_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -46,6 +49,21 @@ function normalizeRuntimeEventType(raw: unknown): RuntimeEventType {
     return value as RuntimeEventType;
   }
   return "turn_failed";
+}
+
+function normalizePositiveInt(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const normalized = Math.floor(value);
+  if (normalized <= 0) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function toEventObjects(
@@ -106,6 +124,10 @@ function toRpcRequestLine(request: RuntimeRequest): string {
                       runtimeModelConfig.providerOptions.kimi.officialToolsAllowlist,
                     official_tool_formulas:
                       runtimeModelConfig.providerOptions.kimi.officialToolFormulas,
+                    max_tokens: runtimeModelConfig.providerOptions.kimi.maxTokens,
+                    stream: runtimeModelConfig.providerOptions.kimi.stream,
+                    temperature: runtimeModelConfig.providerOptions.kimi.temperature,
+                    top_p: runtimeModelConfig.providerOptions.kimi.topP,
                     files_enabled: runtimeModelConfig.providerOptions.kimi.filesEnabled,
                     allow_file_admin: runtimeModelConfig.providerOptions.kimi.allowFileAdmin,
                   }
@@ -205,20 +227,45 @@ export class StdioRustRuntimeClient implements RuntimeClient {
       options?.runtimeBinaryPath && options.runtimeBinaryPath.trim().length > 0
         ? options.runtimeBinaryPath
         : resolveRuntimeBinaryPath();
-    this.timeoutMs = options?.timeoutMs ?? 15_000;
+    this.timeoutMs = options?.timeoutMs ?? RUNTIME_SPAWN_TIMEOUT_FLOOR_MS;
     this.maxBufferBytes = options?.maxBufferBytes ?? 1_048_576;
+  }
+
+  private resolveRequestTimeoutMs(request: RuntimeRequest): number {
+    const baseTimeout = clamp(this.timeoutMs, RUNTIME_SPAWN_TIMEOUT_FLOOR_MS, RUNTIME_SPAWN_TIMEOUT_CEILING_MS);
+    const modelTimeout = normalizePositiveInt(request.modelConfig?.timeoutMs);
+    if (typeof modelTimeout !== "number") {
+      return baseTimeout;
+    }
+    const expandedTimeout = clamp(
+      modelTimeout + RUNTIME_SPAWN_TIMEOUT_HEADROOM_MS,
+      RUNTIME_SPAWN_TIMEOUT_FLOOR_MS,
+      RUNTIME_SPAWN_TIMEOUT_CEILING_MS,
+    );
+    return Math.max(baseTimeout, expandedTimeout);
   }
 
   public async executeTurn(request: RuntimeRequest): Promise<RuntimeTurnResult> {
     const input = `${toRpcRequestLine(request)}\n`;
+    const requestTimeoutMs = this.resolveRequestTimeoutMs(request);
     const run = spawnSync(this.runtimeBinaryPath, [], {
       input,
       encoding: "utf8",
-      timeout: this.timeoutMs,
+      timeout: requestTimeoutMs,
       maxBuffer: this.maxBufferBytes,
     });
 
     if (run.error) {
+      const errorWithCode = run.error as Error & { code?: string };
+      if (errorWithCode?.code === "ETIMEDOUT") {
+        const modelTimeout = normalizePositiveInt(request.modelConfig?.timeoutMs);
+        const timeoutSource = typeof modelTimeout === "number"
+          ? `model_timeout_ms=${String(modelTimeout)}`
+          : "model_timeout_ms=default_unset";
+        throw new Error(
+          `runtime spawn timeout after ${String(requestTimeoutMs)}ms (${timeoutSource}); consider setting --runtime-http-timeout-ms or GROBOT_RUNTIME_HTTP_TIMEOUT_MS`,
+        );
+      }
       throw new Error(`runtime spawn failed: ${String(run.error)}`);
     }
     if (run.status !== 0) {

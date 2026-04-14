@@ -22,6 +22,10 @@ pub struct RuntimeKimiOptionsInput {
     pub disable_thinking_on_builtin_web_search: Option<bool>,
     pub official_tools_allowlist: Option<Vec<String>>,
     pub official_tool_formulas: Option<Value>,
+    pub max_tokens: Option<u32>,
+    pub stream: Option<bool>,
+    pub temperature: Option<f64>,
+    pub top_p: Option<f64>,
     pub files_enabled: Option<bool>,
     pub allow_file_admin: Option<bool>,
 }

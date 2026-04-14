@@ -57,6 +57,10 @@ struct KimiProviderOptions {
     web_search_mode: KimiWebSearchMode,
     disable_thinking_on_builtin_web_search: bool,
     official_tools_allowlist: Vec<String>,
+    max_tokens: u32,
+    stream: bool,
+    temperature: f64,
+    top_p: f64,
     files_enabled: bool,
     allow_file_admin: bool,
 }
