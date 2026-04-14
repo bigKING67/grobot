@@ -115,6 +115,10 @@ kimi_official_tools_allowlist = ["web-search", "date", "fetch", "rethink", "code
 kimi_files_enabled = true
 kimi_allow_file_admin = false
 
+# Local runtime tools remain available when provider=kimi:
+# - read/write/edit are enabled by default in runtime tool context
+# - bash requires allowlist in .grobot/project.toml [tools].allow (empty = denied)
+
 # Optional fallback provider example (used when primary fails)
 # [[projects.agent.providers]]
 # name = "openai_compatible"

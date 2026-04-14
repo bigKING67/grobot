@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::engine::{RuntimeModelConfigInput, RuntimeToolContextInput, TurnExecuteInput};
+    use serde_json::Value;
     use std::collections::HashMap as StdHashMap;
     use std::fs;
     use std::process;
@@ -201,5 +203,88 @@ allow_tools = ["echo"]
         assert_eq!(state.queue_timeout_calls, 1);
         assert_eq!(state.queue_waiting, 0);
         store.states.remove(server_key);
+    }
+
+    #[test]
+    fn kimi_provider_still_supports_local_read_write_and_bash_tools() {
+        let workspace = make_temp_workspace("kimi-local-tools");
+        let input = TurnExecuteInput {
+            request_id: "req-kimi-local-tools".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run local tools".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some("https://api.moonshot.cn/v1".to_string()),
+                api_key: Some("test-api-key".to_string()),
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(10_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: None,
+            }),
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "bash".to_string(),
+                ]),
+                bash_allowlist: Some(vec!["printf".to_string()]),
+                max_tool_rounds: Some(8),
+            }),
+            attachments: vec![],
+        };
+        let executor = LocalToolExecutor;
+
+        let write_call = ToolCallInput {
+            id: "write-1".to_string(),
+            name: "write".to_string(),
+            arguments: json!({
+                "path": "kimi.txt",
+                "content": "hello kimi"
+            }),
+        };
+        let write_output = executor
+            .execute_tool_call(&write_call, &input)
+            .expect("write should succeed");
+        let write_payload: Value =
+            serde_json::from_str(&write_output.content).expect("write output should be json");
+        assert_eq!(write_payload["tool"].as_str(), Some("write"));
+        assert_eq!(
+            fs::read_to_string(workspace.join("kimi.txt")).expect("read written file"),
+            "hello kimi"
+        );
+
+        let read_call = ToolCallInput {
+            id: "read-1".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "kimi.txt"
+            }),
+        };
+        let read_output = executor
+            .execute_tool_call(&read_call, &input)
+            .expect("read should succeed");
+        let read_payload: Value =
+            serde_json::from_str(&read_output.content).expect("read output should be json");
+        assert_eq!(read_payload["tool"].as_str(), Some("read"));
+        assert_eq!(read_payload["content"].as_str(), Some("hello kimi"));
+
+        let bash_call = ToolCallInput {
+            id: "bash-1".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({
+                "command": "printf kimi_ok"
+            }),
+        };
+        let bash_output = executor
+            .execute_tool_call(&bash_call, &input)
+            .expect("bash should succeed");
+        let bash_payload: Value =
+            serde_json::from_str(&bash_output.content).expect("bash output should be json");
+        assert_eq!(bash_payload["tool"].as_str(), Some("bash"));
+        assert_eq!(bash_payload["exit_code"].as_i64(), Some(0));
+        assert_eq!(bash_payload["stdout"].as_str(), Some("kimi_ok"));
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 }
