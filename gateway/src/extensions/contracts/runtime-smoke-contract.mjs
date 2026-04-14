@@ -117,6 +117,101 @@ function runCommandAsync(repoRoot, argv, envPrefix = null, stdinText = null, tim
   });
 }
 
+function runRuntimeRpcSequence(repoRoot, envPrefix, requests, timeoutMs = 180_000) {
+  return new Promise((resolveResult, rejectResult) => {
+    const runtimeBinaryPath = resolve(repoRoot, "runtime/target/debug/grobot-runtime");
+    const child = spawn(runtimeBinaryPath, {
+      cwd: repoRoot,
+      env: envPrefix ?? process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let requestIndex = 0;
+    let timeoutHandle = null;
+
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+      }
+      resolveResult(payload);
+    };
+
+    const fail = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+      }
+      rejectResult(error);
+    };
+
+    const pushNextRequest = () => {
+      if (requestIndex >= requests.length) {
+        if (child.stdin) {
+          child.stdin.end();
+        }
+        return;
+      }
+      const request = requests[requestIndex] ?? {};
+      requestIndex += 1;
+      const line = typeof request.line === "string" ? request.line : "";
+      const delayMsRaw = request.delay_ms;
+      const delayMs = Number.isFinite(delayMsRaw) && delayMsRaw > 0 ? delayMsRaw : 0;
+      if (child.stdin && line.length > 0) {
+        child.stdin.write(`${line}\n`);
+      }
+      if (delayMs > 0) {
+        setTimeout(pushNextRequest, delayMs);
+        return;
+      }
+      pushNextRequest();
+    };
+
+    timeoutHandle = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish({
+        exit_code: 1,
+        stdout,
+        stderr: stderr.length > 0
+          ? `${stderr}\ncommand timeout after ${String(timeoutMs)}ms`
+          : `command timeout after ${String(timeoutMs)}ms`,
+      });
+    }, timeoutMs);
+
+    if (child.stdout) {
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+    }
+    if (child.stderr) {
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+    }
+
+    child.on("error", fail);
+    child.on("close", (code) => {
+      finish({
+        exit_code: typeof code === "number" ? code : 1,
+        stdout,
+        stderr,
+      });
+    });
+
+    pushNextRequest();
+  });
+}
+
 function parseJsonOutput(name, stdout) {
   try {
     return JSON.parse(stdout);
@@ -138,6 +233,50 @@ function parseFirstJsonLine(name, stdout) {
   } catch (error) {
     throw new Error(`${name}: first non-empty line is not valid JSON: ${String(error)}\n${stdout}`);
   }
+}
+
+function parseJsonLines(name, stdout) {
+  const lines = String(stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    throw new Error(`${name}: empty stdout`);
+  }
+  return lines.map((line, index) => {
+    try {
+      return JSON.parse(line);
+    } catch (error) {
+      throw new Error(`${name}: line ${String(index + 1)} is not valid JSON: ${String(error)}\n${line}`);
+    }
+  });
+}
+
+function collectMcpToolPayloadsFromModelCalls(calls) {
+  const payloads = [];
+  for (const call of calls) {
+    if (typeof call?.bodyText !== "string") {
+      continue;
+    }
+    let body = null;
+    try {
+      body = JSON.parse(call.bodyText);
+    } catch {
+      continue;
+    }
+    const messages = Array.isArray(body?.messages) ? body.messages : [];
+    for (const message of messages) {
+      if (message?.role !== "tool" || message?.name !== "mcp_call" || typeof message?.content !== "string") {
+        continue;
+      }
+      try {
+        payloads.push(JSON.parse(message.content));
+      } catch {
+        // ignore malformed tool payload in smoke contract
+      }
+    }
+  }
+  return payloads;
 }
 
 async function runProviderConfigPassthrough(repoRoot) {
@@ -388,6 +527,217 @@ async function runMcpCallSuccess(repoRoot) {
   }
 }
 
+async function runMcpCallTimeout(repoRoot) {
+  const model = await startMockModelServer({ mode: "tool_loop_mcp_call_success" });
+  const workDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-timeout-work-"));
+  const homeDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-timeout-home-"));
+  try {
+    const grobotDir = resolve(workDir, ".grobot");
+    mkdirSync(grobotDir, { recursive: true });
+    const mockMcpServerPath = resolve(
+      repoRoot,
+      "gateway/src/extensions/contracts/_shared/mock-mcp-server.mjs",
+    );
+    const mcpTomlPath = resolve(grobotDir, "mcp.toml");
+    const projectTomlPath = resolve(grobotDir, "project.toml");
+    writeFileSync(
+      mcpTomlPath,
+      [
+        "[[servers]]",
+        'name = "mock"',
+        'command = "node"',
+        `args = [${tomlString(mockMcpServerPath)}, "--tool-call-delay-ms", "260"]`,
+        "enabled = true",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(
+      projectTomlPath,
+      [
+        "[tools.mcp]",
+        "call_timeout_ms = 120",
+      ].join("\n"),
+      "utf8",
+    );
+    const runtimeBinaryPath = resolve(repoRoot, "runtime/target/debug/grobot-runtime");
+    const requestId = `req_mcp_timeout_${Date.now()}`;
+    const requestLine = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "mcp-call-timeout-check",
+      method: "runtime.turn.execute",
+      params: {
+        request_id: requestId,
+        session_key: "feishu:grobot:dm:mcp-timeout",
+        user_message: "mcp timeout contract check",
+        context_lines: [],
+        tool_context: {
+          work_dir: workDir,
+          enabled_tools: ["mcp_call"],
+          max_tool_rounds: 4,
+        },
+      },
+    });
+    const runResult = await runCommandAsync(
+      repoRoot,
+      [runtimeBinaryPath],
+      {
+        ...process.env,
+        HOME: homeDir,
+        GROBOT_BASE_URL: model.baseUrl,
+        GROBOT_API_KEY: "mcp-timeout-key",
+        GROBOT_MODEL: "mcp-timeout-model",
+        GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+      },
+      `${requestLine}\n`,
+      120_000,
+    );
+    const rpcPayload = parseFirstJsonLine(
+      "runtime-smoke-contract mcp-call-timeout",
+      runResult.stdout,
+    );
+    const errorData = isObject(rpcPayload?.error?.data) ? rpcPayload.error.data : {};
+    return {
+      exit_code: runResult.exit_code,
+      stderr: runResult.stderr,
+      runtime_call_count: model.getCalls().length,
+      assistant_message: rpcPayload?.result?.assistant_message ?? "",
+      error_code: rpcPayload?.error?.code ?? null,
+      error_class: errorData.error_class ?? "",
+    };
+  } finally {
+    await model.close();
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(homeDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
+async function runMcpSessionIdleReap(repoRoot) {
+  const model = await startMockModelServer({ mode: "tool_loop_mcp_call_success" });
+  const workDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-idle-work-"));
+  const homeDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-idle-home-"));
+  try {
+    const grobotDir = resolve(workDir, ".grobot");
+    mkdirSync(grobotDir, { recursive: true });
+    const mockMcpServerPath = resolve(
+      repoRoot,
+      "gateway/src/extensions/contracts/_shared/mock-mcp-server.mjs",
+    );
+    const mcpTomlPath = resolve(grobotDir, "mcp.toml");
+    const projectTomlPath = resolve(grobotDir, "project.toml");
+    writeFileSync(
+      mcpTomlPath,
+      [
+        "[[servers]]",
+        'name = "mock"',
+        'command = "node"',
+        `args = [${tomlString(mockMcpServerPath)}]`,
+        "enabled = true",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(
+      projectTomlPath,
+      [
+        "[tools.mcp]",
+        "call_timeout_ms = 4000",
+        "session_idle_ttl_secs = 10",
+      ].join("\n"),
+      "utf8",
+    );
+    const sessionKey = `feishu:grobot:dm:mcp-idle-${Date.now()}`;
+    const requestOne = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "mcp-session-idle-reap-check-1",
+      method: "runtime.turn.execute",
+      params: {
+        request_id: `req_mcp_idle_1_${Date.now()}`,
+        session_key: sessionKey,
+        user_message: "mcp idle reap contract check #1",
+        context_lines: [],
+        tool_context: {
+          work_dir: workDir,
+          enabled_tools: ["mcp_call"],
+          max_tool_rounds: 4,
+        },
+      },
+    });
+    const requestTwo = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "mcp-session-idle-reap-check-2",
+      method: "runtime.turn.execute",
+      params: {
+        request_id: `req_mcp_idle_2_${Date.now()}`,
+        session_key: sessionKey,
+        user_message: "mcp idle reap contract check #2",
+        context_lines: [],
+        tool_context: {
+          work_dir: workDir,
+          enabled_tools: ["mcp_call"],
+          max_tool_rounds: 4,
+        },
+      },
+    });
+    const runResult = await runRuntimeRpcSequence(
+      repoRoot,
+      {
+        ...process.env,
+        HOME: homeDir,
+        GROBOT_BASE_URL: model.baseUrl,
+        GROBOT_API_KEY: "mcp-idle-key",
+        GROBOT_MODEL: "mcp-idle-model",
+        GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+      },
+      [
+        { line: requestOne, delay_ms: 10_500 },
+        { line: requestTwo },
+      ],
+      120_000,
+    );
+    const rpcPayloads = parseJsonLines(
+      "runtime-smoke-contract mcp-session-idle-reap",
+      runResult.stdout,
+    );
+    const firstRpc = rpcPayloads[0] ?? {};
+    const secondRpc = rpcPayloads[1] ?? {};
+    const mcpPayloads = collectMcpToolPayloadsFromModelCalls(model.getCalls());
+    const firstMcp = mcpPayloads[0] ?? {};
+    const secondMcp = mcpPayloads[1] ?? {};
+    return {
+      exit_code: runResult.exit_code,
+      stderr: runResult.stderr,
+      runtime_call_count: model.getCalls().length,
+      rpc_count: rpcPayloads.length,
+      first_error_code: firstRpc?.error?.code ?? null,
+      second_error_code: secondRpc?.error?.code ?? null,
+      tool_payload_count: mcpPayloads.length,
+      first_session_reused: Boolean(firstMcp?.session_reused),
+      second_session_reused: Boolean(secondMcp?.session_reused),
+      first_session_pid: Number.isFinite(firstMcp?.session_pid) ? firstMcp.session_pid : null,
+      second_session_pid: Number.isFinite(secondMcp?.session_pid) ? secondMcp.session_pid : null,
+    };
+  } finally {
+    await model.close();
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(homeDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
 async function runMcpServersSuccess(repoRoot) {
   const model = await startMockModelServer({ mode: "tool_loop_mcp_servers_success" });
   const workDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-servers-work-"));
@@ -544,6 +894,12 @@ async function runCli(argv) {
       break;
     case "mcp-call-success":
       payload = await runMcpCallSuccess(repoRoot);
+      break;
+    case "mcp-call-timeout":
+      payload = await runMcpCallTimeout(repoRoot);
+      break;
+    case "mcp-session-idle-reap":
+      payload = await runMcpSessionIdleReap(repoRoot);
       break;
     case "mcp-servers-success":
       payload = await runMcpServersSuccess(repoRoot);

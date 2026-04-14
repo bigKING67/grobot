@@ -502,6 +502,62 @@ async function runGatewayContractSmoke() {
   assert.equal(localToolsPayload.lines.length >= 3, true);
   logStep("local-tools-contract file-mention-enrichment");
 
+  const mcpPolicyResult = runContract("local-tools-contract.mjs", "resolve-mcp-call-policy");
+  const mcpPolicyPayload = parseJsonOutput("local-tools-contract resolve-mcp-call-policy", mcpPolicyResult.stdout);
+  assert.equal(Number(mcpPolicyPayload.max_concurrency_per_server) >= 1, true);
+  assert.equal(Number(mcpPolicyPayload.max_queue_per_server) >= 0, true);
+  assert.equal(Number(mcpPolicyPayload.failure_threshold) >= 1, true);
+  assert.equal(Number(mcpPolicyPayload.cooldown_secs) >= 1, true);
+  assert.equal(Number(mcpPolicyPayload.latency_sample_limit) >= 16, true);
+  assert.equal(Array.isArray(mcpPolicyPayload.allow_tools), true);
+  logStep("local-tools-contract resolve-mcp-call-policy");
+
+  const mcpQueueGateResult = runContract("local-tools-contract.mjs", "mcp-server-slot-queue-full");
+  const mcpQueueGatePayload = parseJsonOutput("local-tools-contract mcp-server-slot-queue-full", mcpQueueGateResult.stdout);
+  assert.equal(mcpQueueGatePayload.raised, true);
+  assert.equal(Number(mcpQueueGatePayload?.snapshot?.gate_rejected_calls), 1);
+  logStep("local-tools-contract mcp-server-slot-queue-full");
+
+  const mcpCircuitOpenResult = runContract("local-tools-contract.mjs", "mcp-server-circuit-open");
+  const mcpCircuitOpenPayload = parseJsonOutput("local-tools-contract mcp-server-circuit-open", mcpCircuitOpenResult.stdout);
+  assert.equal(mcpCircuitOpenPayload.raised, true);
+  assert.equal(mcpCircuitOpenPayload.opened_second, true);
+  assert.equal(Number(mcpCircuitOpenPayload?.snapshot?.gate_rejected_calls), 1);
+  logStep("local-tools-contract mcp-server-circuit-open");
+
+  const mcpServersSummaryResult = runContract("local-tools-contract.mjs", "mcp-servers-summary");
+  const mcpServersSummaryPayload = parseJsonOutput("local-tools-contract mcp-servers-summary", mcpServersSummaryResult.stdout);
+  assert.equal(Number(mcpServersSummaryPayload?.full?.total), 3);
+  assert.equal(Number(mcpServersSummaryPayload?.full?.ready_count), 1);
+  assert.equal(Number(mcpServersSummaryPayload?.full?.runtime_summary?.servers_considered), 3);
+  assert.equal(Number(mcpServersSummaryPayload?.ready_only?.runtime_summary?.servers_considered), 1);
+  logStep("local-tools-contract mcp-servers-summary");
+
+  const mcpCallStdioResult = runContract("local-tools-contract.mjs", "mcp-call-stdio");
+  const mcpCallStdioPayload = parseJsonOutput("local-tools-contract mcp-call-stdio", mcpCallStdioResult.stdout);
+  assert.equal(mcpCallStdioPayload?.first?.session_reused, false);
+  assert.equal(mcpCallStdioPayload?.second?.session_reused, true);
+  assert.equal(Number(mcpCallStdioPayload?.second?.runtime_state?.total_calls), 2);
+  logStep("local-tools-contract mcp-call-stdio");
+
+  const mcpCallRecoverResult = runContract("local-tools-contract.mjs", "mcp-call-auto-recover");
+  const mcpCallRecoverPayload = parseJsonOutput("local-tools-contract mcp-call-auto-recover", mcpCallRecoverResult.stdout);
+  assert.equal(mcpCallRecoverPayload?.second?.session_recovered, true);
+  assert.equal(Number(mcpCallRecoverPayload?.second?.runtime_state?.recovered_calls), 1);
+  logStep("local-tools-contract mcp-call-auto-recover");
+
+  const mcpCallToolFailureResult = runContract("local-tools-contract.mjs", "mcp-call-tool-failure");
+  const mcpCallToolFailurePayload = parseJsonOutput("local-tools-contract mcp-call-tool-failure", mcpCallToolFailureResult.stdout);
+  assert.equal(mcpCallToolFailurePayload.raised, true);
+  assert.equal(Number(mcpCallToolFailurePayload?.snapshot?.tool_failures), 1);
+  logStep("local-tools-contract mcp-call-tool-failure");
+
+  const mcpCallAllowToolsResult = runContract("local-tools-contract.mjs", "mcp-call-allow-tools");
+  const mcpCallAllowToolsPayload = parseJsonOutput("local-tools-contract mcp-call-allow-tools", mcpCallAllowToolsResult.stdout);
+  assert.equal(mcpCallAllowToolsPayload.raised, true);
+  assert.equal(Number(mcpCallAllowToolsPayload?.snapshot?.policy_denied_calls), 1);
+  logStep("local-tools-contract mcp-call-allow-tools");
+
   const homeDir = makeTempDir("grobot-home");
   const workDir = makeTempDir("grobot-work");
   const runtimePathsResult = runContract("runtime-paths-contract.mjs", "resolve-runtime-paths", [
@@ -744,6 +800,50 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(mcpCallSuccessPayload.runtime_call_count) >= 2, true);
   assert.equal(String(mcpCallSuccessPayload.runtime_last_body).includes("echo:hello-mcp"), true);
   logStep("runtime-smoke-contract mcp-call-success");
+
+  const mcpCallTimeoutResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "mcp-call-timeout",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const mcpCallTimeoutPayload = parseJsonOutput(
+    "runtime-smoke-contract mcp-call-timeout",
+    mcpCallTimeoutResult.stdout,
+  );
+  assert.equal(mcpCallTimeoutPayload.exit_code, 0);
+  assert.equal(mcpCallTimeoutPayload.error_code, -32001);
+  assert.equal(mcpCallTimeoutPayload.error_class, "mcp_timeout");
+  assert.equal(Number(mcpCallTimeoutPayload.runtime_call_count) >= 1, true);
+  logStep("runtime-smoke-contract mcp-call-timeout");
+
+  const mcpSessionIdleReapResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "mcp-session-idle-reap",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const mcpSessionIdleReapPayload = parseJsonOutput(
+    "runtime-smoke-contract mcp-session-idle-reap",
+    mcpSessionIdleReapResult.stdout,
+  );
+  assert.equal(mcpSessionIdleReapPayload.exit_code, 0);
+  assert.equal(Number(mcpSessionIdleReapPayload.rpc_count), 2);
+  assert.equal(Number(mcpSessionIdleReapPayload.tool_payload_count), 2);
+  assert.equal(mcpSessionIdleReapPayload.first_error_code, null);
+  assert.equal(mcpSessionIdleReapPayload.second_error_code, null);
+  assert.equal(mcpSessionIdleReapPayload.first_session_reused, false);
+  assert.equal(mcpSessionIdleReapPayload.second_session_reused, false);
+  assert.equal(
+    Number(mcpSessionIdleReapPayload.first_session_pid) > 0 &&
+      Number(mcpSessionIdleReapPayload.second_session_pid) > 0,
+    true,
+  );
+  assert.equal(
+    Number(mcpSessionIdleReapPayload.first_session_pid) !== Number(mcpSessionIdleReapPayload.second_session_pid),
+    true,
+  );
+  logStep("runtime-smoke-contract mcp-session-idle-reap");
 
   const mcpServersSuccessResult = runContract(
     "runtime-smoke-contract.mjs",

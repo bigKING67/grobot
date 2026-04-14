@@ -23,6 +23,44 @@ function writeError(id, code, message) {
   });
 }
 
+function parseDelayMs(name) {
+  const raw = process.env[name] ?? "";
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return parsed;
+}
+
+function parseDelayFlag(argv, flagName) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] ?? "";
+    if (!token) {
+      continue;
+    }
+    const inlinePrefix = `${flagName}=`;
+    if (token.startsWith(inlinePrefix)) {
+      const inlineValue = token.slice(inlinePrefix.length);
+      const inlineParsed = Number.parseInt(inlineValue, 10);
+      if (Number.isFinite(inlineParsed) && inlineParsed > 0) {
+        return inlineParsed;
+      }
+      continue;
+    }
+    if (token === flagName) {
+      const nextValue = argv[index + 1] ?? "";
+      const parsed = Number.parseInt(nextValue, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return 0;
+}
+
+const toolCallDelayMs = parseDelayFlag(process.argv.slice(2), "--tool-call-delay-ms")
+  || parseDelayMs("MOCK_MCP_TOOL_CALL_DELAY_MS");
+
 function parseFrames(buffer) {
   const frames = [];
   let offset = 0;
@@ -125,11 +163,18 @@ function handleRequest(request) {
       return;
     }
     const message = typeof args?.message === "string" ? args.message : "";
-    writeResult(id, {
+    const resultPayload = {
       isError: false,
       content: [{ type: "text", text: `echo:${message}` }],
       structuredContent: { message },
-    });
+    };
+    if (toolCallDelayMs > 0) {
+      setTimeout(() => {
+        writeResult(id, resultPayload);
+      }, toolCallDelayMs);
+      return;
+    }
+    writeResult(id, resultPayload);
     return;
   }
   if (id !== undefined) {
