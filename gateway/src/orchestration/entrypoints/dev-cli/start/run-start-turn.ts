@@ -339,7 +339,7 @@ function hasSearchIntent(userText: string): boolean {
   if (normalized.length === 0) {
     return false;
   }
-  const patterns = [
+  const keywordPatterns = [
     "联网",
     "搜索",
     "检索",
@@ -354,7 +354,23 @@ function hasSearchIntent(userText: string): boolean {
     "news",
     "citation",
   ];
-  return patterns.some((pattern) => normalized.includes(pattern));
+  if (keywordPatterns.some((pattern) => normalized.includes(pattern))) {
+    return true;
+  }
+
+  // Cover colloquial Chinese queries, e.g. "帮我搜一下明天上海天气".
+  if (/(搜|查|找)(一下|下|一搜|一查|一找)?/.test(normalized)) {
+    return true;
+  }
+
+  // Treat weather-forecast style questions as search intent when time anchor exists.
+  const weatherTopicMatched = /(天气|气温|温度|风力|降雨|降水|空气质量|aqi|weather|forecast)/.test(normalized);
+  const timeAnchorMatched = /(今天|明天|后天|本周|下周|today|tomorrow|this week|next week)/.test(normalized);
+  if (weatherTopicMatched && timeAnchorMatched) {
+    return true;
+  }
+
+  return false;
 }
 
 function hasGrokSearchServer(serverNames: readonly string[]): boolean {
