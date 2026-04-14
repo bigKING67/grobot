@@ -191,7 +191,7 @@ const DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST = [
   "rethink",
   "code_runner",
 ];
-const DEFAULT_KIMI_SEARCH_ROUTING_POLICY: KimiSearchRoutingPolicy = "builtin_only";
+const DEFAULT_KIMI_SEARCH_ROUTING_POLICY: KimiSearchRoutingPolicy = "mcp_first_fallback_builtin";
 
 function normalizeProviderKind(rawKind: string | undefined, providerName?: string, baseUrl?: string): "openai_compatible" | "kimi" {
   const normalizedKind = rawKind?.trim().toLowerCase();
