@@ -1,4 +1,4 @@
-use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
+use crate::models::engine::{RuntimeModelConfigInput, RuntimeToolContextInput, TurnExecuteInput};
 use crate::orchestration::orchestrator::execute_turn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -58,6 +58,20 @@ pub struct TurnExecuteParams {
     pub context_lines: Vec<String>,
     #[serde(default)]
     pub model_config: Option<TurnExecuteModelConfigParams>,
+    #[serde(default)]
+    pub tool_context: Option<TurnExecuteToolContextParams>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TurnExecuteToolContextParams {
+    #[serde(default)]
+    pub work_dir: Option<String>,
+    #[serde(default)]
+    pub enabled_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub bash_allowlist: Option<Vec<String>>,
+    #[serde(default)]
+    pub max_tool_rounds: Option<u32>,
 }
 
 fn success(id: Value, result: Value) -> RpcSuccessResponse {
@@ -126,6 +140,12 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                     api_key: model_config.api_key,
                     model: model_config.model,
                     timeout_ms: model_config.timeout_ms,
+                }),
+                tool_context: params.tool_context.map(|tool_context| RuntimeToolContextInput {
+                    work_dir: tool_context.work_dir,
+                    enabled_tools: tool_context.enabled_tools,
+                    bash_allowlist: tool_context.bash_allowlist,
+                    max_tool_rounds: tool_context.max_tool_rounds,
                 }),
             });
             match execution_result {

@@ -4,7 +4,7 @@ use crate::models::engine::{
     RuntimeEventOutput, TurnExecuteFailure, TurnExecuteInput, TurnExecuteOutput,
 };
 use crate::models::model::{ModelExecutor, OpenAiCompatibleModelExecutor};
-use crate::tools::tools::{NoopToolExecutor, ToolExecutor};
+use crate::tools::tools::{LocalToolExecutor, ToolExecutor};
 use serde_json::{json, Value};
 
 fn now_iso() -> String {
@@ -76,7 +76,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
         ];
 
         self.tools.before_turn(&input);
-        let model_result = self.model.generate_assistant_message(&input);
+        let model_result = self.model.generate_assistant_message(&input, &self.tools);
         self.tools.after_turn(&input);
 
         match model_result {
@@ -157,7 +157,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
 }
 
 pub fn execute_turn(input: TurnExecuteInput) -> Result<TurnExecuteOutput, TurnExecuteFailure> {
-    let orchestrator = TurnOrchestrator::new(OpenAiCompatibleModelExecutor, NoopToolExecutor);
+    let orchestrator = TurnOrchestrator::new(OpenAiCompatibleModelExecutor, LocalToolExecutor);
     orchestrator.execute_turn(input)
 }
 
@@ -165,7 +165,7 @@ pub fn execute_turn(input: TurnExecuteInput) -> Result<TurnExecuteOutput, TurnEx
 mod tests {
     use super::{TurnOrchestrator, TurnExecuteInput};
     use crate::models::model::{ModelExecutionError, ModelExecutor};
-    use crate::tools::tools::NoopToolExecutor;
+    use crate::tools::tools::{LocalToolExecutor, ToolExecutor};
 
     #[derive(Debug, Clone, Copy)]
     struct StubSuccessModel;
@@ -174,6 +174,7 @@ mod tests {
         fn generate_assistant_message(
             &self,
             _input: &TurnExecuteInput,
+            _tools: &dyn ToolExecutor,
         ) -> Result<String, ModelExecutionError> {
             Ok("ok".to_string())
         }
@@ -186,6 +187,7 @@ mod tests {
         fn generate_assistant_message(
             &self,
             _input: &TurnExecuteInput,
+            _tools: &dyn ToolExecutor,
         ) -> Result<String, ModelExecutionError> {
             Err(ModelExecutionError::new(
                 "upstream_http_error",
@@ -201,12 +203,13 @@ mod tests {
             user_message: "hello".to_string(),
             context_lines: vec!["c1".to_string()],
             model_config: None,
+            tool_context: None,
         }
     }
 
     #[test]
     fn success_path_contains_model_response_and_turn_end() {
-        let orchestrator = TurnOrchestrator::new(StubSuccessModel, NoopToolExecutor);
+        let orchestrator = TurnOrchestrator::new(StubSuccessModel, LocalToolExecutor);
         let output = orchestrator
             .execute_turn(sample_input())
             .expect("success output");
@@ -220,7 +223,7 @@ mod tests {
 
     #[test]
     fn failure_path_contains_turn_failed_event() {
-        let orchestrator = TurnOrchestrator::new(StubFailModel, NoopToolExecutor);
+        let orchestrator = TurnOrchestrator::new(StubFailModel, LocalToolExecutor);
         let failure = orchestrator
             .execute_turn(sample_input())
             .expect_err("expected failure");
@@ -239,6 +242,7 @@ mod tests {
         fn generate_assistant_message(
             &self,
             _input: &TurnExecuteInput,
+            _tools: &dyn ToolExecutor,
         ) -> Result<String, ModelExecutionError> {
             Err(ModelExecutionError::new(
                 "tool_call_not_supported",
@@ -249,7 +253,7 @@ mod tests {
 
     #[test]
     fn tool_call_not_supported_emits_tool_events_before_turn_failed() {
-        let orchestrator = TurnOrchestrator::new(StubToolCallNotSupportedModel, NoopToolExecutor);
+        let orchestrator = TurnOrchestrator::new(StubToolCallNotSupportedModel, LocalToolExecutor);
         let failure = orchestrator
             .execute_turn(sample_input())
             .expect_err("expected tool_call_not_supported");

@@ -87,12 +87,21 @@ function resolveRuntimeBinaryPath(): string {
 
 function toRpcRequestLine(request: RuntimeRequest): string {
   const runtimeModelConfig = request.modelConfig;
+  const runtimeToolContext = request.toolContext;
   const modelConfigPayload = runtimeModelConfig
     ? {
         base_url: runtimeModelConfig.baseUrl,
         api_key: runtimeModelConfig.apiKey,
         model: runtimeModelConfig.model,
         timeout_ms: runtimeModelConfig.timeoutMs,
+      }
+    : undefined;
+  const toolContextPayload = runtimeToolContext
+    ? {
+        work_dir: runtimeToolContext.workDir,
+        enabled_tools: runtimeToolContext.enabledTools,
+        bash_allowlist: runtimeToolContext.bashAllowlist,
+        max_tool_rounds: runtimeToolContext.maxToolRounds,
       }
     : undefined;
   return JSON.stringify({
@@ -105,6 +114,7 @@ function toRpcRequestLine(request: RuntimeRequest): string {
       user_message: request.userMessage,
       context_lines: request.contextLines,
       model_config: modelConfigPayload,
+      tool_context: toolContextPayload,
     },
   });
 }

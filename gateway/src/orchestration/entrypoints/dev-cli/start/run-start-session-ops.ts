@@ -7,6 +7,8 @@ import {
 import {
   createSessionRecord,
   findSessionRecord,
+  type SessionPlanMeta,
+  type SessionPlanMode,
   type SessionProviderRuntimeState,
   touchSessionRecord,
   type SessionRegistryPayload,
@@ -22,6 +24,8 @@ interface CreateRunStartSessionOpsInput {
   setSessionKey(value: string): void;
   setStickyProvider(value: string | undefined): void;
   setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
+  setPlanMode(value: SessionPlanMode): void;
+  setPlanMeta(value: SessionPlanMeta | undefined): void;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
   onHistoryCompacted(): void;
@@ -44,6 +48,8 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     input.setSessionKey(record.session_key);
     input.setStickyProvider(record.sticky_provider);
     input.setProviderRuntimeStates(Array.isArray(record.provider_runtime_states) ? [...record.provider_runtime_states] : []);
+    input.setPlanMode(record.plan_mode === "plan_only" ? "plan_only" : "normal");
+    input.setPlanMeta(record.plan_meta);
     const historyLoad = await input.sessionStore.loadHistoryMessagesState(record.session_key);
     input.setHistoryMessages(historyLoad.messages);
     input.writeStoreWarnings(historyLoad.warnings);
@@ -62,6 +68,8 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     sessionRegistry.active_id = record.id;
     input.setStickyProvider(undefined);
     input.setProviderRuntimeStates([]);
+    input.setPlanMode("normal");
+    input.setPlanMeta(undefined);
     await input.persistSessionRegistryState();
     return record.id;
   };

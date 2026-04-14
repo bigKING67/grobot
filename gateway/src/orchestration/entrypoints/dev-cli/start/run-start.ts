@@ -9,6 +9,7 @@ import { createRunStartPersistence } from "./run-start-persistence";
 import { createRunStartRuntimeState } from "./run-start-runtime-state";
 import { type SessionProviderRuntimeState } from "./session-registry";
 import { createRunStartWire } from "./run-start-wire";
+import { createRunStartPlanMode } from "./run-start-plan-mode";
 
 function providerHealthStatus(
   state: SessionProviderRuntimeState | undefined,
@@ -107,6 +108,7 @@ export async function runStart(options: Record<string, OptionValue>): Promise<nu
     runtimeProviderChain,
     runtimeFailoverConfig,
     runtimeModelConfigSource,
+    runtimeToolContext,
     sessionNamespaceKey,
     sessionRegistryFilePathValue,
     sessionStore,
@@ -143,15 +145,35 @@ export async function runStart(options: Record<string, OptionValue>): Promise<nu
     runtimeProviderChain,
     runtimeFailoverConfig,
     runtimeModelConfigSource,
+    runtimeToolContext,
     runtimeState,
     persistence,
     writeStoreWarnings: output.writeStoreWarnings,
     writeStdout: output.writeStdout,
     writeStderr: output.writeStderr,
   });
+  const planMode = createRunStartPlanMode({
+    workDir,
+    runtimeState,
+    persistence,
+    executeTurn,
+    markFailureObserved: runtimeState.markFailureObserved,
+    writeStdout: output.writeStdout,
+    writeStderr: output.writeStderr,
+  });
 
   const message = readOptionString(options, "message");
   if (message) {
+    const planHandled = await planMode.handleMessageInput(message);
+    if (planHandled.handled) {
+      if (planHandled.code !== 0) {
+        runtimeState.markFailureObserved();
+      }
+      if (handoffAutoOnExit) {
+        handoff.writeAutoExitHandoffIfNeeded(true);
+      }
+      return planHandled.code;
+    }
     return runStartMessageMode({
       message,
       executeTurn,
@@ -205,6 +227,14 @@ export async function runStart(options: Record<string, OptionValue>): Promise<nu
     writeManualHandoff: () => {
       handoff.writeHandoff("manual-command", false);
     },
+    isPlanMode: planMode.isPlanMode,
+    showPlanStatus: planMode.showPlanStatus,
+    showPlanContent: planMode.showPlanContent,
+    showPlanOptions: planMode.showPlanOptions,
+    enterPlan: planMode.enterPlan,
+    applyPlan: planMode.applyPlan,
+    discardPlan: planMode.discardPlan,
+    runPlanTurn: planMode.runPlanTurn,
     executeTurn,
     markFailureObserved: runtimeState.markFailureObserved,
     getHistoryMessagesCount: () => runtimeState.getHistoryMessages().length,

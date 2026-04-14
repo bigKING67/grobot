@@ -11,6 +11,16 @@ export const SESSION_REGISTRY_VERSION = 1;
 export const SESSION_REGISTRY_MAIN_ID = "main";
 export const SESSION_KEY_INSTANCE_SEPARATOR = "__s_";
 export const HISTORY_STORE_VERSION = 1;
+export type SessionPlanMode = "normal" | "plan_only";
+
+export interface SessionPlanMeta {
+  active_plan_id?: string;
+  active_plan_status?: "draft" | "approved" | "apply_failed" | "applied" | "discarded";
+  active_plan_path?: string;
+  active_plan_seq?: number;
+  active_plan_title?: string;
+  updated_at?: string;
+}
 
 export interface SessionProviderRuntimeState {
   provider_name: string;
@@ -32,6 +42,8 @@ export interface SessionRegistryRecord {
   preview: string;
   sticky_provider?: string;
   provider_runtime_states?: SessionProviderRuntimeState[];
+  plan_mode?: SessionPlanMode;
+  plan_meta?: SessionPlanMeta;
 }
 
 export interface SessionRegistryPayload {
@@ -54,6 +66,17 @@ function parseOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function parseOptionalPositiveInt(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const normalized = Math.floor(value);
+  if (normalized <= 0) {
+    return undefined;
+  }
+  return normalized;
+}
+
 function parseNonNegativeInt(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
@@ -70,6 +93,56 @@ function parseOptionalNonNegativeNumber(value: unknown): number | undefined {
     return undefined;
   }
   return value;
+}
+
+function parsePlanMode(value: unknown): SessionPlanMode {
+  if (value === "plan_only") {
+    return "plan_only";
+  }
+  return "normal";
+}
+
+function parsePlanStatus(value: unknown): "draft" | "approved" | "apply_failed" | "applied" | "discarded" | undefined {
+  if (value === "approved") {
+    return "approved";
+  }
+  if (value === "apply_failed") {
+    return "apply_failed";
+  }
+  if (value === "applied") {
+    return "applied";
+  }
+  if (value === "discarded") {
+    return "discarded";
+  }
+  if (value === "draft") {
+    return "draft";
+  }
+  return undefined;
+}
+
+function normalizePlanMeta(raw: unknown): SessionPlanMeta | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const activePlanId = parseOptionalString(record.active_plan_id);
+  const activePlanStatus = parsePlanStatus(record.active_plan_status);
+  const activePlanPath = parseOptionalString(record.active_plan_path);
+  const activePlanSeq = parseOptionalPositiveInt(record.active_plan_seq);
+  const activePlanTitle = parseOptionalString(record.active_plan_title);
+  const updatedAt = parseOptionalString(record.updated_at);
+  if (!activePlanId && !activePlanPath && !activePlanSeq && !activePlanTitle && !activePlanStatus && !updatedAt) {
+    return undefined;
+  }
+  return {
+    active_plan_id: activePlanId,
+    active_plan_status: activePlanStatus,
+    active_plan_path: activePlanPath,
+    active_plan_seq: activePlanSeq,
+    active_plan_title: activePlanTitle,
+    updated_at: updatedAt,
+  };
 }
 
 function normalizeProviderRuntimeStates(raw: unknown): SessionProviderRuntimeState[] | undefined {
@@ -201,6 +274,7 @@ export function createSessionRecord(namespaceKey: string, sessionId?: string): S
     created_at: now,
     updated_at: now,
     preview: "",
+    plan_mode: "normal",
   };
 }
 
@@ -231,6 +305,8 @@ export function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: stri
         preview: typeof record.preview === "string" ? record.preview : "",
         sticky_provider: parseOptionalString(record.sticky_provider),
         provider_runtime_states: normalizeProviderRuntimeStates(record.provider_runtime_states),
+        plan_mode: parsePlanMode(record.plan_mode),
+        plan_meta: normalizePlanMeta(record.plan_meta),
       });
     }
   }
@@ -339,6 +415,27 @@ export function setSessionProviderRuntime(
     updated_at: nowIsoUtc(),
     sticky_provider: stickyProvider,
     provider_runtime_states: normalizedStates,
+  };
+}
+
+export function setSessionPlanState(
+  payload: SessionRegistryPayload,
+  sessionId: string,
+  planState: {
+    planMode: SessionPlanMode;
+    planMeta?: SessionPlanMeta;
+  },
+): void {
+  const index = payload.sessions.findIndex((item) => item.id === sessionId);
+  if (index < 0) {
+    return;
+  }
+  const record = payload.sessions[index];
+  payload.sessions[index] = {
+    ...record,
+    updated_at: nowIsoUtc(),
+    plan_mode: planState.planMode,
+    plan_meta: planState.planMeta,
   };
 }
 

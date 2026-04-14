@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { startMockModelServer } from "./_shared/mock-model-server.mjs";
 
@@ -37,6 +39,10 @@ function requireOption(options, key) {
 
 function shellEscape(value) {
   return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function tomlString(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function buildEnvPrefix(envPrefix) {
@@ -295,6 +301,176 @@ async function runToolCallDiagnosticEvents(repoRoot) {
   }
 }
 
+async function runMcpCallSuccess(repoRoot) {
+  const model = await startMockModelServer({ mode: "tool_loop_mcp_call_success" });
+  const workDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-work-"));
+  const homeDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-home-"));
+  try {
+    const grobotDir = resolve(workDir, ".grobot");
+    mkdirSync(grobotDir, { recursive: true });
+    const mockMcpServerPath = resolve(
+      repoRoot,
+      "gateway/src/extensions/contracts/_shared/mock-mcp-server.mjs",
+    );
+    const mcpTomlPath = resolve(grobotDir, "mcp.toml");
+    writeFileSync(
+      mcpTomlPath,
+      [
+        "[[servers]]",
+        'name = "mock"',
+        'command = "node"',
+        `args = [${tomlString(mockMcpServerPath)}]`,
+        "enabled = true",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const runtimeBinaryPath = resolve(repoRoot, "runtime/target/debug/grobot-runtime");
+    const requestId = `req_mcp_call_${Date.now()}`;
+    const requestLine = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "mcp-call-success-check",
+      method: "runtime.turn.execute",
+      params: {
+        request_id: requestId,
+        session_key: "feishu:grobot:dm:mcp-success",
+        user_message: "mcp call contract check",
+        context_lines: [],
+        tool_context: {
+          work_dir: workDir,
+          enabled_tools: ["mcp_call"],
+          max_tool_rounds: 4,
+        },
+      },
+    });
+    const runResult = await runCommandAsync(
+      repoRoot,
+      [runtimeBinaryPath],
+      {
+        ...process.env,
+        HOME: homeDir,
+        GROBOT_BASE_URL: model.baseUrl,
+        GROBOT_API_KEY: "mcp-call-key",
+        GROBOT_MODEL: "mcp-call-model",
+        GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+      },
+      `${requestLine}\n`,
+      120_000,
+    );
+    const rpcPayload = parseFirstJsonLine(
+      "runtime-smoke-contract mcp-call-success",
+      runResult.stdout,
+    );
+    const calls = model.getCalls();
+    const lastCall = calls[calls.length - 1] ?? null;
+    const errorData = isObject(rpcPayload?.error?.data) ? rpcPayload.error.data : {};
+    return {
+      exit_code: runResult.exit_code,
+      stderr: runResult.stderr,
+      runtime_call_count: calls.length,
+      assistant_message: rpcPayload?.result?.assistant_message ?? "",
+      runtime_last_body: typeof lastCall?.bodyText === "string" ? lastCall.bodyText : "",
+      error_code: rpcPayload?.error?.code ?? null,
+      error_class: errorData.error_class ?? "",
+    };
+  } finally {
+    await model.close();
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(homeDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
+async function runMcpServersSuccess(repoRoot) {
+  const model = await startMockModelServer({ mode: "tool_loop_mcp_servers_success" });
+  const workDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-servers-work-"));
+  const homeDir = mkdtempSync(resolve(tmpdir(), "grobot-mcp-servers-home-"));
+  try {
+    const grobotDir = resolve(workDir, ".grobot");
+    mkdirSync(grobotDir, { recursive: true });
+    const mcpTomlPath = resolve(grobotDir, "mcp.toml");
+    writeFileSync(
+      mcpTomlPath,
+      [
+        "[[servers]]",
+        'name = "mock-ready"',
+        'command = "node"',
+        'args = ["--version"]',
+        "enabled = true",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const runtimeBinaryPath = resolve(repoRoot, "runtime/target/debug/grobot-runtime");
+    const requestId = `req_mcp_servers_${Date.now()}`;
+    const requestLine = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "mcp-servers-success-check",
+      method: "runtime.turn.execute",
+      params: {
+        request_id: requestId,
+        session_key: "feishu:grobot:dm:mcp-servers",
+        user_message: "mcp servers contract check",
+        context_lines: [],
+        tool_context: {
+          work_dir: workDir,
+          enabled_tools: ["mcp_servers"],
+          max_tool_rounds: 4,
+        },
+      },
+    });
+    const runResult = await runCommandAsync(
+      repoRoot,
+      [runtimeBinaryPath],
+      {
+        ...process.env,
+        HOME: homeDir,
+        GROBOT_BASE_URL: model.baseUrl,
+        GROBOT_API_KEY: "mcp-servers-key",
+        GROBOT_MODEL: "mcp-servers-model",
+        GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+      },
+      `${requestLine}\n`,
+      120_000,
+    );
+    const rpcPayload = parseFirstJsonLine(
+      "runtime-smoke-contract mcp-servers-success",
+      runResult.stdout,
+    );
+    const calls = model.getCalls();
+    const lastCall = calls[calls.length - 1] ?? null;
+    const errorData = isObject(rpcPayload?.error?.data) ? rpcPayload.error.data : {};
+    return {
+      exit_code: runResult.exit_code,
+      stderr: runResult.stderr,
+      runtime_call_count: calls.length,
+      assistant_message: rpcPayload?.result?.assistant_message ?? "",
+      runtime_last_body: typeof lastCall?.bodyText === "string" ? lastCall.bodyText : "",
+      error_code: rpcPayload?.error?.code ?? null,
+      error_class: errorData.error_class ?? "",
+    };
+  } finally {
+    await model.close();
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(homeDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
 async function runProviderPoolLoadBalance(repoRoot) {
   const providerPoolModel = await startMockModelServer({ content: "POOL_RUNTIME_OK" });
   const providerCount = 10;
@@ -365,6 +541,12 @@ async function runCli(argv) {
       break;
     case "tool-call-diagnostic-events":
       payload = await runToolCallDiagnosticEvents(repoRoot);
+      break;
+    case "mcp-call-success":
+      payload = await runMcpCallSuccess(repoRoot);
+      break;
+    case "mcp-servers-success":
+      payload = await runMcpServersSuccess(repoRoot);
       break;
     default:
       throw new Error(`unknown command: ${command}`);

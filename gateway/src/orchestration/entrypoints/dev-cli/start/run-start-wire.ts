@@ -1,5 +1,5 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
-import { type RuntimeModelConfig } from "../../../../models/types";
+import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { type SessionStoreController } from "../services/session-store";
 import { createRunStartHandoff } from "./run-start-handoff";
 import { createRunStartSessionOps } from "./run-start-session-ops";
@@ -33,6 +33,7 @@ interface CreateRunStartWireInput {
     model: string;
     timeoutMs: string;
   };
+  runtimeToolContext?: RuntimeToolContext;
   runtimeState: RunStartRuntimeState;
   persistence: RunStartPersistence;
   writeStoreWarnings(warnings: readonly string[]): void;
@@ -70,6 +71,8 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     setSessionKey: input.runtimeState.setSessionKey,
     setStickyProvider: input.runtimeState.setStickyProvider,
     setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
+    setPlanMode: input.runtimeState.setPlanMode,
+    setPlanMeta: input.runtimeState.setPlanMeta,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,
     onHistoryCompacted: input.runtimeState.markHistoryCompacted,
@@ -89,6 +92,7 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     runtimeProviderChain: input.runtimeProviderChain,
     runtimeFailoverConfig: input.runtimeFailoverConfig,
     runtimeModelConfigSource: input.runtimeModelConfigSource,
+    runtimeToolContext: input.runtimeToolContext,
     getSessionKey: input.runtimeState.getSessionKey,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,

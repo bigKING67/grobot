@@ -127,6 +127,104 @@ export async function startMockModelServer(options = {}) {
       return;
     }
 
+    if (mode === "tool_loop_mcp_call_success") {
+      const hasToolResult = messages.some((item) => item?.role === "tool");
+      if (!hasToolResult) {
+        response.end(
+          JSON.stringify({
+            id: "mock-chatcmpl",
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      id: "call_1",
+                      type: "function",
+                      function: {
+                        name: "mcp_call",
+                        arguments: "{\"server\":\"mock\",\"tool\":\"echo\",\"arguments\":{\"message\":\"hello-mcp\"}}",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          id: "mock-chatcmpl",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "MCP_CALL_RUNTIME_OK",
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
+    if (mode === "tool_loop_mcp_servers_success") {
+      const hasToolResult = messages.some((item) => item?.role === "tool");
+      if (!hasToolResult) {
+        response.end(
+          JSON.stringify({
+            id: "mock-chatcmpl",
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      id: "call_1",
+                      type: "function",
+                      function: {
+                        name: "mcp_servers",
+                        arguments: "{\"ready_only\":true}",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          id: "mock-chatcmpl",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "MCP_SERVERS_RUNTIME_OK",
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
     response.end(
       JSON.stringify({
         id: "mock-chatcmpl",

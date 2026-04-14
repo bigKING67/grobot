@@ -4,6 +4,8 @@ import {
   createSessionRecord,
   findSessionRecord,
   SESSION_REGISTRY_MAIN_ID,
+  type SessionPlanMeta,
+  type SessionPlanMode,
   type SessionProviderRuntimeState,
   type SessionRegistryPayload,
   type SessionRegistryRecord,
@@ -24,6 +26,8 @@ export interface RunStartBootstrapState {
   restoreSource: "store" | "empty";
   stickyProvider?: string;
   providerRuntimeStates: SessionProviderRuntimeState[];
+  planMode: SessionPlanMode;
+  planMeta?: SessionPlanMeta;
 }
 
 function ensureActiveSession(
@@ -63,5 +67,7 @@ export async function bootstrapRunStartState(
     providerRuntimeStates: Array.isArray(activeSessionRecord.provider_runtime_states)
       ? [...activeSessionRecord.provider_runtime_states]
       : [],
+    planMode: activeSessionRecord.plan_mode === "plan_only" ? "plan_only" : "normal",
+    planMeta: activeSessionRecord.plan_meta,
   };
 }

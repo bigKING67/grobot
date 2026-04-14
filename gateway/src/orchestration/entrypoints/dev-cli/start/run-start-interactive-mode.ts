@@ -25,6 +25,14 @@ interface RunStartInteractiveModeInput {
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
   continueFromSession(sourceSessionId: string): Promise<void>;
   writeManualHandoff(): void;
+  isPlanMode(): boolean;
+  showPlanStatus(): Promise<number>;
+  showPlanContent(): Promise<number>;
+  showPlanOptions(): Promise<number>;
+  enterPlan(goal: string): Promise<number>;
+  applyPlan(extra: string): Promise<number>;
+  discardPlan(): Promise<number>;
+  runPlanTurn(userInput: string): Promise<number>;
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
   markFailureObserved(): void;
   getHistoryMessagesCount(): number;
@@ -69,6 +77,14 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     switchActiveSession: input.switchActiveSession,
     continueFromSession: input.continueFromSession,
     writeHandoff: input.writeManualHandoff,
+    isPlanMode: input.isPlanMode,
+    showPlanStatus: input.showPlanStatus,
+    showPlanContent: input.showPlanContent,
+    showPlanOptions: input.showPlanOptions,
+    enterPlan: input.enterPlan,
+    applyPlan: input.applyPlan,
+    discardPlan: input.discardPlan,
+    runPlanTurn: input.runPlanTurn,
     executeTurn: input.executeTurn,
     markFailureObserved: input.markFailureObserved,
   });

@@ -13,6 +13,14 @@ interface CreateRunStartInteractiveHandlerInput {
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
   continueFromSession(sourceSessionId: string): Promise<void>;
   writeHandoff(): void;
+  isPlanMode(): boolean;
+  showPlanStatus(): Promise<number>;
+  showPlanContent(): Promise<number>;
+  showPlanOptions(): Promise<number>;
+  enterPlan(goal: string): Promise<number>;
+  applyPlan(extra: string): Promise<number>;
+  discardPlan(): Promise<number>;
+  runPlanTurn(userInput: string): Promise<number>;
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
   markFailureObserved(): void;
 }
@@ -35,6 +43,37 @@ export function createRunStartInteractiveHandler(
       },
       continueFromSession: input.continueFromSession,
       writeHandoff: input.writeHandoff,
+      isPlanMode: input.isPlanMode,
+      showPlanStatus: async () => {
+        await input.showPlanStatus();
+      },
+      showPlanContent: async () => {
+        await input.showPlanContent();
+      },
+      showPlanOptions: async () => {
+        await input.showPlanOptions();
+      },
+      enterPlan: async (goal) => {
+        await input.enterPlan(goal);
+      },
+      applyPlan: async (extra) => {
+        const code = await input.applyPlan(extra);
+        if (code !== 0) {
+          input.markFailureObserved();
+        }
+      },
+      discardPlan: async () => {
+        const code = await input.discardPlan();
+        if (code !== 0) {
+          input.markFailureObserved();
+        }
+      },
+      runPlanTurn: async (userInput) => {
+        const code = await input.runPlanTurn(userInput);
+        if (code !== 0) {
+          input.markFailureObserved();
+        }
+      },
       runTurn: async (userInput) => {
         const code = await input.executeTurn(userInput, true);
         if (code !== 0) {

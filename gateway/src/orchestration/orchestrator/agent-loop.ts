@@ -3,6 +3,7 @@ import {
   RuntimeClient,
   RuntimeModelConfig,
   RuntimeRequest,
+  RuntimeToolContext,
   RuntimeTurnResult,
   ShadowComparison,
   TurnExecutionReport,
@@ -36,6 +37,7 @@ function buildRuntimeRequest(
   contextLines: string[],
   migration: MigrationOptions,
   runtimeModelConfig?: RuntimeModelConfig,
+  runtimeToolContext?: RuntimeToolContext,
 ): RuntimeRequest {
   return {
     protocolVersion: "runtime.v1",
@@ -44,6 +46,7 @@ function buildRuntimeRequest(
     userMessage: turn.userMessage,
     contextLines,
     modelConfig: runtimeModelConfig,
+    toolContext: runtimeToolContext,
     metadata: {
       ...turn.metadata,
       gatewayImpl: migration.gatewayImpl,
@@ -76,10 +79,17 @@ export class AgentLoop {
     turn: TurnRequest,
     migration: MigrationOptions,
     runtimeModelConfig?: RuntimeModelConfig,
+    runtimeToolContext?: RuntimeToolContext,
   ): Promise<TurnExecutionReport> {
     const startedAt = nowIso();
     const contextLines = await this.deps.contextAssembler.assemble(turn);
-    const runtimeRequest = buildRuntimeRequest(turn, contextLines, migration, runtimeModelConfig);
+    const runtimeRequest = buildRuntimeRequest(
+      turn,
+      contextLines,
+      migration,
+      runtimeModelConfig,
+      runtimeToolContext,
+    );
 
     const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest);
 

@@ -1,6 +1,11 @@
 import { type RunStartBootstrapState } from "./run-start-bootstrap";
 import { type ChatHistoryMessage } from "./session-history";
-import { type SessionProviderRuntimeState, type SessionRegistryPayload } from "./session-registry";
+import {
+  type SessionPlanMeta,
+  type SessionPlanMode,
+  type SessionProviderRuntimeState,
+  type SessionRegistryPayload,
+} from "./session-registry";
 
 interface CreateRunStartRuntimeStateInput {
   bootstrapState: RunStartBootstrapState;
@@ -24,6 +29,10 @@ export interface RunStartRuntimeState {
   setStickyProvider(value: string | undefined): void;
   getProviderRuntimeStates(): SessionProviderRuntimeState[];
   setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
+  getPlanMode(): SessionPlanMode;
+  setPlanMode(value: SessionPlanMode): void;
+  getPlanMeta(): SessionPlanMeta | undefined;
+  setPlanMeta(value: SessionPlanMeta | undefined): void;
 }
 
 export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInput): RunStartRuntimeState {
@@ -36,6 +45,8 @@ export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInpu
   let failureObserved = false;
   let stickyProvider = input.bootstrapState.stickyProvider;
   let providerRuntimeStates = input.bootstrapState.providerRuntimeStates;
+  let planMode = input.bootstrapState.planMode;
+  let planMeta = input.bootstrapState.planMeta;
 
   return {
     getSessionRegistry: (): SessionRegistryPayload => sessionRegistry,
@@ -68,6 +79,14 @@ export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInpu
     getProviderRuntimeStates: (): SessionProviderRuntimeState[] => providerRuntimeStates,
     setProviderRuntimeStates: (rows: SessionProviderRuntimeState[]): void => {
       providerRuntimeStates = rows;
+    },
+    getPlanMode: (): SessionPlanMode => planMode,
+    setPlanMode: (value: SessionPlanMode): void => {
+      planMode = value;
+    },
+    getPlanMeta: (): SessionPlanMeta | undefined => planMeta,
+    setPlanMeta: (value: SessionPlanMeta | undefined): void => {
+      planMeta = value;
     },
   };
 }

@@ -31,6 +31,7 @@ export interface RuntimeRequest {
   userMessage: string;
   contextLines: string[];
   modelConfig?: RuntimeModelConfig;
+  toolContext?: RuntimeToolContext;
   metadata: {
     platform: Platform;
     actorId: string;
@@ -46,6 +47,13 @@ export interface RuntimeModelConfig {
   apiKey?: string;
   model?: string;
   timeoutMs?: number;
+}
+
+export interface RuntimeToolContext {
+  workDir?: string;
+  enabledTools?: string[];
+  bashAllowlist?: string[];
+  maxToolRounds?: number;
 }
 
 export type RuntimeEventType =

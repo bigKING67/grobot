@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { resolveExecutionPlaneConfig } from "../../../execution-plane";
-import { type RuntimeModelConfig } from "../../../../models/types";
+import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
@@ -35,6 +36,110 @@ interface ResolvedRuntimeModelConfig {
     apiKey: string;
     model: string;
     timeoutMs: string;
+  };
+}
+
+function stripInlineComment(line: string): string {
+  let inQuote = false;
+  let escaped = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "\"") {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (char === "#" && !inQuote) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+}
+
+function parseTomlStringArray(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    return [];
+  }
+  const content = trimmed.slice(1, -1).trim();
+  if (!content) {
+    return [];
+  }
+  const values: string[] = [];
+  for (const token of content.split(",")) {
+    const part = token.trim();
+    if (!part.startsWith("\"") || !part.endsWith("\"")) {
+      continue;
+    }
+    const value = part.slice(1, -1).trim();
+    if (!value) {
+      continue;
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
+  if (!projectTomlPath) {
+    return [];
+  }
+  let raw = "";
+  try {
+    raw = readFileSync(projectTomlPath, "utf8");
+  } catch {
+    return [];
+  }
+  const lines = raw.split(/\r?\n/);
+  let inToolsSection = false;
+  for (const rawLine of lines) {
+    const line = stripInlineComment(rawLine).trim();
+    if (!line) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+    if (sectionMatch) {
+      inToolsSection = sectionMatch[1] === "tools";
+      continue;
+    }
+    if (!inToolsSection) {
+      continue;
+    }
+    const kvMatch = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
+    if (!kvMatch) {
+      continue;
+    }
+    if (kvMatch[1] !== "allow") {
+      continue;
+    }
+    return parseTomlStringArray(kvMatch[2]);
+  }
+  return [];
+}
+
+function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): RuntimeToolContext {
+  const bashAllowlist = readToolsAllowlistFromProjectToml(projectTomlPath);
+  const maxToolRoundsRaw = process.env.GROBOT_MAX_TOOL_ROUNDS;
+  const parsedMaxToolRounds =
+    typeof maxToolRoundsRaw === "string" && /^\d+$/.test(maxToolRoundsRaw.trim())
+      ? Number.parseInt(maxToolRoundsRaw.trim(), 10)
+      : undefined;
+  const maxToolRounds =
+    typeof parsedMaxToolRounds === "number" && Number.isFinite(parsedMaxToolRounds)
+      ? Math.min(Math.max(parsedMaxToolRounds, 1), 32)
+      : 8;
+  return {
+    workDir,
+    enabledTools: ["list", "glob", "search", "read", "write", "edit", "bash", "mcp_servers", "mcp_call"],
+    bashAllowlist,
+    maxToolRounds,
   };
 }
 
@@ -299,5 +404,6 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     runtimeProviderChain: runtimeModelConfig.providerChain,
     runtimeFailoverConfig: runtimeModelConfig.failoverConfig,
     runtimeModelConfigSource: runtimeModelConfig.modelConfigSource,
+    runtimeToolContext: resolveRuntimeToolContext(workDir, projectTomlPath),
   };
 }

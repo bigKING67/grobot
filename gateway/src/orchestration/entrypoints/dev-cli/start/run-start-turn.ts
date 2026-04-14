@@ -1,6 +1,6 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { runGatewayTurn } from "../../../main";
-import { type RuntimeModelConfig } from "../../../../models/types";
+import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { consumeInterruptFlag } from "../services/interrupt-store";
 import {
   buildPromptWithHistory,
@@ -44,6 +44,7 @@ interface CreateRunStartTurnRunnerInput {
     model: string;
     timeoutMs: string;
   };
+  runtimeToolContext?: RuntimeToolContext;
   getSessionKey(): string;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
@@ -477,6 +478,7 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           },
           {
             modelConfig: provider.modelConfig,
+            toolContext: input.runtimeToolContext,
           },
         );
           const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);

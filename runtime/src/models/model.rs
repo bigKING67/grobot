@@ -1,4 +1,5 @@
 use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
+use crate::tools::tools::{ToolCallInput, ToolExecutor};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::env;
@@ -16,6 +17,7 @@ pub trait ModelExecutor {
     fn generate_assistant_message(
         &self,
         input: &TurnExecuteInput,
+        tools: &dyn ToolExecutor,
     ) -> Result<String, ModelExecutionError>;
 }
 
@@ -220,6 +222,264 @@ fn extract_first_tool_call_name(response: &Value) -> Option<String> {
     Some(normalized.to_string())
 }
 
+fn extract_first_assistant_message(response: &Value) -> Option<Value> {
+    let choices = response.get("choices")?.as_array()?;
+    let first = choices.first()?;
+    let message = first.get("message")?.clone();
+    if !message.is_object() {
+        return None;
+    }
+    Some(message)
+}
+
+fn parse_tool_arguments(raw: &str, tool_name: &str) -> Result<Value, ModelExecutionError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(json!({}));
+    }
+    let parsed: Value = serde_json::from_str(trimmed).map_err(|error| {
+        ModelExecutionError::new(
+            "invalid_tool_arguments",
+            format!("tool arguments are invalid JSON ({tool_name}): {error}"),
+        )
+    })?;
+    if !parsed.is_object() {
+        return Err(ModelExecutionError::new(
+            "invalid_tool_arguments",
+            format!("tool arguments must be an object ({tool_name})"),
+        ));
+    }
+    Ok(parsed)
+}
+
+fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecutionError> {
+    let choices = response
+        .get("choices")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ModelExecutionError::new(
+                "upstream_invalid_response",
+                "missing choices in model response",
+            )
+        })?;
+    let first = choices.first().ok_or_else(|| {
+        ModelExecutionError::new(
+            "upstream_invalid_response",
+            "empty choices in model response",
+        )
+    })?;
+    let message = first.get("message").and_then(Value::as_object).ok_or_else(|| {
+        ModelExecutionError::new(
+            "upstream_invalid_response",
+            "missing choices[0].message in model response",
+        )
+    })?;
+    let Some(raw_calls) = message.get("tool_calls").and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    let mut calls: Vec<ToolCallInput> = Vec::new();
+    for (index, raw_call) in raw_calls.iter().enumerate() {
+        let Some(call_object) = raw_call.as_object() else {
+            continue;
+        };
+        let function = call_object
+            .get("function")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                ModelExecutionError::new(
+                    "upstream_invalid_response",
+                    "tool_call.function is missing",
+                )
+            })?;
+        let name = function
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                ModelExecutionError::new(
+                    "upstream_invalid_response",
+                    "tool_call.function.name is missing",
+                )
+            })?
+            .to_string();
+        let id = call_object
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("call_{}", index + 1));
+        let arguments_raw = function
+            .get("arguments")
+            .and_then(Value::as_str)
+            .unwrap_or("{}");
+        let arguments = parse_tool_arguments(arguments_raw, &name)?;
+        calls.push(ToolCallInput { id, name, arguments });
+    }
+    Ok(calls)
+}
+
+fn build_tool_definitions() -> Value {
+    json!([
+        {
+            "type": "function",
+            "function": {
+                "name": "list",
+                "description": "List files/directories under workspace",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "recursive": { "type": "boolean" },
+                        "max_entries": { "type": "integer" }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "glob",
+                "description": "Find workspace paths by glob pattern",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": { "type": "string" },
+                        "path": { "type": "string" },
+                        "max_entries": { "type": "integer" }
+                    },
+                    "required": ["pattern"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search",
+                "description": "Search text in workspace files",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "path": { "type": "string" },
+                        "fixed": { "type": "boolean" },
+                        "regex": { "type": "boolean" },
+                        "case_sensitive": { "type": "boolean" },
+                        "context_before": { "type": "integer" },
+                        "context_after": { "type": "integer" },
+                        "max_results": { "type": "integer" }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read file content",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "line_start": { "type": "integer" },
+                        "line_end": { "type": "integer" }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "write",
+                "description": "Write file content",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" },
+                        "append": { "type": "boolean" }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "edit",
+                "description": "Replace text in file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "old_text": { "type": "string" },
+                        "new_text": { "type": "string" },
+                        "replace_all": { "type": "boolean" }
+                    },
+                    "required": ["path", "old_text"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "description": "Run an allowlisted shell command",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "mcp_servers",
+                "description": "List MCP servers merged from global/project registry",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "ready_only": { "type": "boolean" },
+                        "include_disabled": { "type": "boolean" }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "mcp_call",
+                "description": "Call one MCP tool via stdio",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "server": { "type": "string" },
+                        "tool": { "type": "string" },
+                        "arguments": { "type": "object" }
+                    },
+                    "required": ["server", "tool"]
+                }
+            }
+        }
+    ])
+}
+
+fn resolve_max_tool_rounds(input: &TurnExecuteInput) -> usize {
+    let parsed = input
+        .tool_context
+        .as_ref()
+        .and_then(|context| context.max_tool_rounds)
+        .unwrap_or(8);
+    let clamped = parsed.clamp(1, 32);
+    clamped as usize
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAiCompatibleModelExecutor;
 
@@ -227,6 +487,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
     fn generate_assistant_message(
         &self,
         input: &TurnExecuteInput,
+        tools: &dyn ToolExecutor,
     ) -> Result<String, ModelExecutionError> {
         let config = load_runtime_model_config(input.model_config.as_ref())?;
         let endpoint = format!("{}/chat/completions", config.base_url);
@@ -241,69 +502,108 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 )
             })?;
 
-        let body = json!({
-            "model": config.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": build_runtime_user_prompt(input)
-                }
-            ]
-        });
-
-        let response = client
-            .post(&endpoint)
-            .bearer_auth(config.api_key)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .map_err(|error| {
-                let class = if error.is_timeout() {
-                    "upstream_timeout"
-                } else if error.is_connect() {
-                    "upstream_connect_failed"
-                } else {
-                    "upstream_request_failed"
-                };
-                ModelExecutionError::new(class, format!("model request failed: {error}"))
+        let mut messages: Vec<Value> = vec![json!({
+            "role": "user",
+            "content": build_runtime_user_prompt(input)
+        })];
+        let max_tool_rounds = resolve_max_tool_rounds(input);
+        let mut tool_rounds = 0usize;
+        loop {
+            let mut body = json!({
+                "model": config.model,
+                "messages": messages.clone(),
+            });
+            if input.tool_context.is_some() {
+                body["tools"] = build_tool_definitions();
+                body["tool_choice"] = json!("auto");
+            }
+            let response = client
+                .post(&endpoint)
+                .bearer_auth(&config.api_key)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .map_err(|error| {
+                    let class = if error.is_timeout() {
+                        "upstream_timeout"
+                    } else if error.is_connect() {
+                        "upstream_connect_failed"
+                    } else {
+                        "upstream_request_failed"
+                    };
+                    ModelExecutionError::new(class, format!("model request failed: {error}"))
+                })?;
+            let status = response.status();
+            let body_text = response.text().map_err(|error| {
+                ModelExecutionError::new(
+                    "upstream_response_read_failed",
+                    format!("failed to read model response body: {error}"),
+                )
             })?;
-
-        let status = response.status();
-        let body_text = response.text().map_err(|error| {
-            ModelExecutionError::new(
-                "upstream_response_read_failed",
-                format!("failed to read model response body: {error}"),
-            )
-        })?;
-
-        if !status.is_success() {
-            let detail = body_text.chars().take(240).collect::<String>();
+            if !status.is_success() {
+                let detail = body_text.chars().take(240).collect::<String>();
+                return Err(ModelExecutionError::new(
+                    "upstream_http_error",
+                    format!("upstream status={} body={detail}", status.as_u16()),
+                ));
+            }
+            let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
+                ModelExecutionError::new(
+                    "upstream_invalid_json",
+                    format!("invalid model response json: {error}"),
+                )
+            })?;
+            let tool_calls = extract_tool_calls(&payload)?;
+            if !tool_calls.is_empty() {
+                if input.tool_context.is_none() {
+                    if let Some(tool_name) = extract_first_tool_call_name(&payload) {
+                        return Err(ModelExecutionError::new(
+                            "tool_call_not_supported",
+                            format!("runtime v1 does not support tool calls yet: {tool_name}"),
+                        ));
+                    }
+                    return Err(ModelExecutionError::new(
+                        "tool_call_not_supported",
+                        "runtime v1 does not support tool calls yet: unknown_tool",
+                    ));
+                }
+                if tool_rounds >= max_tool_rounds {
+                    return Err(ModelExecutionError::new(
+                        "tool_round_limit_exceeded",
+                        format!(
+                            "model exceeded tool round limit: rounds={tool_rounds} limit={max_tool_rounds}"
+                        ),
+                    ));
+                }
+                let assistant_message = extract_first_assistant_message(&payload).ok_or_else(|| {
+                    ModelExecutionError::new(
+                        "upstream_invalid_response",
+                        "missing choices[0].message in tool call response",
+                    )
+                })?;
+                messages.push(assistant_message);
+                for tool_call in tool_calls {
+                    let output = tools
+                        .execute_tool_call(&tool_call, input)
+                        .map_err(|error| ModelExecutionError::new(&error.error_class, error.message))?;
+                    messages.push(json!({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.name,
+                        "content": output.content,
+                    }));
+                }
+                tool_rounds += 1;
+                continue;
+            }
+            if let Some(content) = extract_response_content(&payload) {
+                return Ok(content);
+            }
             return Err(ModelExecutionError::new(
-                "upstream_http_error",
-                format!("upstream status={} body={detail}", status.as_u16()),
-            ));
-        }
-
-        let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
-            ModelExecutionError::new(
-                "upstream_invalid_json",
-                format!("invalid model response json: {error}"),
-            )
-        })?;
-
-        if let Some(tool_name) = extract_first_tool_call_name(&payload) {
-            return Err(ModelExecutionError::new(
-                "tool_call_not_supported",
-                format!("runtime v1 does not support tool calls yet: {tool_name}"),
-            ));
-        }
-
-        extract_response_content(&payload).ok_or_else(|| {
-            ModelExecutionError::new(
                 "upstream_invalid_response",
                 "missing choices[0].message.content in model response",
-            )
-        })
+            ));
+        }
     }
 }
 
@@ -315,6 +615,7 @@ mod tests {
         ENV_RUNTIME_TIMEOUT_MS,
     };
     use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
+    use crate::tools::tools::LocalToolExecutor;
     use serde_json::json;
     use std::env;
     use std::ffi::OsString;
@@ -569,6 +870,7 @@ mod tests {
             user_message: "请总结一下".to_string(),
             context_lines: vec!["A".to_string(), "B".to_string()],
             model_config: None,
+            tool_context: None,
         };
         let prompt = build_runtime_user_prompt(&input);
         assert!(prompt.contains("请总结一下"));
@@ -602,10 +904,11 @@ mod tests {
                 model: Some("runtime-test-model".to_string()),
                 timeout_ms: Some(5_000),
             }),
+            tool_context: None,
         };
         let executor = OpenAiCompatibleModelExecutor;
         let output = executor
-            .generate_assistant_message(&input)
+            .generate_assistant_message(&input, &LocalToolExecutor)
             .expect("runtime model success");
         assert_eq!(output, "MOCK_RUNTIME_OK");
 
@@ -651,10 +954,11 @@ mod tests {
                 model: Some("runtime-test-model".to_string()),
                 timeout_ms: Some(5_000),
             }),
+            tool_context: None,
         };
         let executor = OpenAiCompatibleModelExecutor;
         let error = executor
-            .generate_assistant_message(&input)
+            .generate_assistant_message(&input, &LocalToolExecutor)
             .expect_err("expected upstream_http_error");
         assert_eq!(error.error_class, "upstream_http_error");
         assert!(error.message.contains("status=503"));
@@ -678,10 +982,11 @@ mod tests {
             user_message: "ping".to_string(),
             context_lines: vec![],
             model_config: None,
+            tool_context: None,
         };
         let executor = OpenAiCompatibleModelExecutor;
         let error = executor
-            .generate_assistant_message(&input)
+            .generate_assistant_message(&input, &LocalToolExecutor)
             .expect_err("expected config_missing");
         assert_eq!(error.error_class, "config_missing");
         assert!(error.message.contains(ENV_BASE_URL));
@@ -712,10 +1017,11 @@ mod tests {
                 model: Some("runtime-test-model".to_string()),
                 timeout_ms: Some(5_000),
             }),
+            tool_context: None,
         };
         let executor = OpenAiCompatibleModelExecutor;
         let error = executor
-            .generate_assistant_message(&input)
+            .generate_assistant_message(&input, &LocalToolExecutor)
             .expect_err("expected tool_call_not_supported");
         assert_eq!(error.error_class, "tool_call_not_supported");
         assert!(error.message.contains("lookup"));
