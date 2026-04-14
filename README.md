@@ -38,6 +38,23 @@
    - 职责：评估、测试、回归门禁与自动优化迭代（harness/evals/trace/policy/trend gate）。
    - 要求：策略可审计、回归可阻断、优化可复盘，不把评测逻辑混入业务热路径。
 
+## Layer Directory Contract v1（四层+治理平面）
+
+为避免单体文件回潮，`runtime/src/*` 与 `gateway/src/*` 统一执行“能力域目录 + 模块文件”契约。
+
+| 层 | 职责 | 目录规范（必须） | 新增模块流程（必须） | 评审检查点（必须） |
+| --- | --- | --- | --- | --- |
+| 模型层（Model Layer） | 模型配置、请求构建、响应解析、工具回合控制 | 放在 `models/domains/*`；`models/model.rs` 只保留薄入口/聚合 | 先在 `domains/` 建能力文件，再接入入口聚合 | 入口文件是否保持轻量；模型/工具接口是否保持兼容 |
+| 工具层（Tool Layer） | 本地工具、MCP、执行策略与审计状态 | 放在 `tools/domains/<capability>/*`；`tools/tools.rs` 只保留聚合与分发入口 | 新工具先入对应能力域（如 `fs`/`mcp`），禁止直接堆到聚合文件 | 是否按能力域落位；是否复用公共校验与错误分类 |
+| 扩展层（Extension Layer） | 协议边界、跨进程/跨语言扩展桥接 | 放在 `extensions/domains/*`；入口文件只做协议装配 | 新增扩展先建域文件，再挂载到协议处理入口 | 协议字段/错误码是否统一；是否避免把业务逻辑混入协议层 |
+| 编排层（Orchestration Layer） | `before -> model -> after -> events` 运行编排 | 放在 `orchestration/domains/*`；`orchestrator.rs` 只保留组装/入口 | 先拆分 pipeline 能力，再在入口组合 | 编排事件是否完整；失败路径是否可观测 |
+| 治理平面（Governance Plane） | 评估、测试、回归门禁、自动优化迭代 | 放在 `governance/**` 与 `gateway/evals/**` 的能力域目录 | 新治理能力先补 policy/脚本，再接 CI 或离线流程 | 是否与在线热路径解耦；是否可审计、可回放、可阻断 |
+
+执行方式：
+- 文档真相源：`README.md`、`runtime/README.md`、`gateway/README.md`、`gateway/evals/README.md`。
+- 软门禁命令：`npm run check:layer-contract`（warn-first），严格模式：`npm run check:layer-contract:strict`。
+- 契约真相源：`scripts/layer-contract-spec.json`（目录、文档标记、单体文件阈值）。
+
 ## 迁移底座（2026-04）
 
 - 已新增 TS 侧 Agent Loop v2 骨架：`context -> runtime -> verify -> persist`，支持 `shadow_mode` 对比位。
@@ -64,7 +81,7 @@
 - 项目运行层（`<业务仓库>/.grobot/`）：
   - `.grobot/project.toml`：项目级架构/运行契约（source of truth）
   - `.grobot/mcp.toml`：项目级 MCP 覆盖
-  - `.grobot/rules/`、`.grobot/skills/`、`.grobot/hooks/`、`.grobot/memory/`
+  - `.grobot/rules/`、`.grobot/skills/`、`.grobot/hooks/`、`.grobot/memory/`、`.grobot/plans/`
 
 ### 配置初始化
 
@@ -346,6 +363,12 @@ grobot start \
 - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
 - 交互命令新增 `/health`，用于查看 provider 粘性与熔断状态（CLOSED/OPEN/HALF_OPEN）。
   - `/health` 同时展示 `ewma_latency_ms` 与 `ewma_error_rate`，可用于判断实时路由倾斜是否符合预期。
+- 交互命令新增 `/plan ...`，可进入 Plan Mode 并把计划工件落盘到 `.grobot/plans/<session_id>/`。
+  - `/plan <goal>`：进入 PLAN_ONLY 并创建结构化计划文件。
+  - `/plan status`：查看当前计划状态和文件路径。
+  - `/plan show`：打印当前计划 Markdown。
+  - `/plan apply [extra]`：审批并执行计划，执行后退出 PLAN_ONLY。
+  - `/plan discard`：废弃当前计划并退出 PLAN_ONLY。
 - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
 - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
   - 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。

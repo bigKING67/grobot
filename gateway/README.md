@@ -14,6 +14,23 @@ Gateway follows a `4 execution layers + 1 governance plane` structure:
 
 Governance plane is intentionally separated from the request hot path. It drives quality control and iterative optimization, not online turn execution.
 
+## Layer Directory Contract (Gateway)
+
+1. 职责
+   - Gateway 负责模型/工具/扩展/编排的入口装配与管理 API，不承载 Runtime 的重执行逻辑。
+   - 治理平面负责评测、回归、优化闭环，保持与在线热路径解耦。
+2. 边界约束
+   - `gateway/src/tools/*` 以适配器与状态管理为主；工具核心执行逻辑归 `runtime/src/tools/*`。
+   - `gateway/src/orchestration/*` 负责 CLI/serve/start 流程组织；模型与工具执行细节不下沉到此层。
+   - `gateway/src/governance/*` 与 `gateway/evals/*` 共同组成治理平面，不与在线请求链路混写。
+3. 新增模块流程
+   - 先确定层边界，再在对应层目录新增能力文件；避免跨层“就近塞代码”。
+   - 涉及治理能力时，必须同步更新 `gateway/evals/README.md` 的策略与运行入口说明。
+4. 评审检查点
+   - 是否出现 runtime 执行逻辑误入 gateway tools/orchestration。
+   - 是否出现治理代码侵入 `start/serve` 热路径。
+   - 是否保持管理 API、契约测试与文档一致。
+
 ## Current Scope
 
 1. Canonical `SessionKey` parsing/building.

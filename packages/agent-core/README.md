@@ -11,6 +11,11 @@ At architecture level, Grobot now uses `4 execution layers + 1 governance plane`
 `models/tools/extensions/orchestration` for online execution, and `governance` for
 evaluation, testing, and auto-optimization loops.
 
+Directory contract and checks are tracked in:
+- `scripts/layer-contract-spec.json` (source of truth)
+- `npm run check:layer-contract` (warn-first)
+- `npm run check:layer-contract:strict` (block on warnings)
+
 - `@grobot/core-darwin-arm64`
 - `@grobot/core-darwin-x64`
 - `@grobot/core-linux-x64`

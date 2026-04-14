@@ -1,0 +1,86 @@
+{
+  "schema": "layer_contract_v1",
+  "layers": [
+    {
+      "name": "model",
+      "path": "runtime/src/models",
+      "requiredDomainDirs": ["domains"]
+    },
+    {
+      "name": "tools",
+      "path": "runtime/src/tools",
+      "requiredDomainDirs": ["domains", "domains/core", "domains/fs", "domains/shell", "domains/mcp"]
+    },
+    {
+      "name": "extensions",
+      "path": "runtime/src/extensions",
+      "requiredDomainDirs": ["domains"]
+    },
+    {
+      "name": "orchestration",
+      "path": "runtime/src/orchestration",
+      "requiredDomainDirs": ["domains"]
+    },
+    {
+      "name": "governance",
+      "path": "runtime/src/governance",
+      "requiredDomainDirs": ["domains"]
+    }
+  ],
+  "docs": [
+    {
+      "path": "README.md",
+      "mustInclude": [
+        "Layer Directory Contract v1",
+        "模型层（Model Layer）",
+        "治理平面（Governance Plane）"
+      ]
+    },
+    {
+      "path": "runtime/README.md",
+      "mustInclude": [
+        "Layer Directory Contract (Runtime)",
+        "新增模块流程",
+        "评审检查点"
+      ]
+    },
+    {
+      "path": "gateway/README.md",
+      "mustInclude": [
+        "Layer Directory Contract (Gateway)",
+        "边界约束",
+        "治理平面"
+      ]
+    },
+    {
+      "path": "gateway/evals/README.md",
+      "mustInclude": [
+        "治理平面目录契约（Gateway）",
+        "新增模块流程",
+        "评审检查点"
+      ]
+    }
+  ],
+  "maxLinesWarnings": [
+    {
+      "path": "runtime/src/models/model.rs",
+      "max": 120
+    },
+    {
+      "path": "runtime/src/tools/tools.rs",
+      "max": 120
+    },
+    {
+      "path": "runtime/src/extensions/protocol.rs",
+      "max": 120
+    },
+    {
+      "path": "runtime/src/orchestration/orchestrator.rs",
+      "max": 120
+    },
+    {
+      "path": "runtime/src/governance/session.rs",
+      "max": 80
+    }
+  ]
+}

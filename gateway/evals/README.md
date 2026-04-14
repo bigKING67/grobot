@@ -14,6 +14,22 @@
 2. 该平面负责评估、测试、回归门禁与自动优化迭代（例如 hill-climb/trend gate）。
 3. 该平面不在 `start/serve` 的在线执行热路径中，避免将评测逻辑混入业务执行链路。
 
+## 治理平面目录契约（Gateway）
+
+1. 职责
+   - `gateway/src/governance/evals/*.ts`：治理执行入口（runner、pipeline、gate、report）。
+   - `gateway/evals/*`：治理策略与数据资产（policy、fixtures、report runtime、CI helper）。
+2. 目录规范
+   - 新增治理逻辑优先落在 `gateway/src/governance/evals/`，策略参数落在 `gateway/evals/*.json`。
+   - CI 脚本不得内联重复策略；统一复用治理运行时与 policy 文件。
+3. 新增模块流程
+   - 先补 policy/schema，再实现 CLI 入口，再接入 npm script 或 workflow。
+   - 涉及趋势/标签/评论策略时，同步更新 guard 与 runtime 共享层，避免漂移。
+4. 评审检查点
+   - 是否保持治理逻辑与在线执行链路解耦。
+   - 是否提供可复现命令、可审计输出和失败阻断行为。
+   - 是否同步更新 README 的入口命令与策略说明。
+
 ## 目录
 
 - `gateway/src/governance/evals/runner.ts`: case/run/gate policy schema 解析、五维评分器（task/tool/context/safety/latency_cost）、harness 执行与报告输出（CLI 真源）。
