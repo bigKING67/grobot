@@ -82,5 +82,38 @@
       "path": "runtime/src/governance/session.rs",
       "max": 80
     }
+  ],
+  "importPolicyWarnings": [
+    {
+      "name": "model",
+      "path": "runtime/src/models",
+      "forbiddenCratePrefixes": ["extensions", "orchestration", "governance"]
+    },
+    {
+      "name": "tools",
+      "path": "runtime/src/tools",
+      "forbiddenCratePrefixes": ["extensions", "orchestration", "governance"]
+    },
+    {
+      "name": "extensions",
+      "path": "runtime/src/extensions",
+      "forbiddenCratePrefixes": ["governance"]
+    },
+    {
+      "name": "orchestration",
+      "path": "runtime/src/orchestration",
+      "forbiddenCratePrefixes": ["extensions", "governance"]
+    },
+    {
+      "name": "governance",
+      "path": "runtime/src/governance",
+      "forbiddenCratePrefixes": ["models", "tools", "extensions", "orchestration"]
+    }
+  ],
+  "importPolicyAllowlist": [
+    {
+      "pathEquals": "runtime/src/orchestration/domains/tests.rs",
+      "cratePrefix": "extensions"
+    }
   ]
 }

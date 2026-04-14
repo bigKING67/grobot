@@ -1,0 +1,49 @@
+name: layer-contract-gate
+
+on:
+  pull_request:
+    paths:
+      - "runtime/**"
+      - "README.md"
+      - "runtime/README.md"
+      - "gateway/README.md"
+      - "gateway/evals/README.md"
+      - "package.json"
+      - "scripts/layer-contract-check.mjs"
+      - "scripts/layer-contract-spec.json"
+      - ".github/workflows/layer-contract-gate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "runtime/**"
+      - "README.md"
+      - "runtime/README.md"
+      - "gateway/README.md"
+      - "gateway/evals/README.md"
+      - "package.json"
+      - "scripts/layer-contract-check.mjs"
+      - "scripts/layer-contract-spec.json"
+      - ".github/workflows/layer-contract-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  strict-layer-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Run strict layer contract gate
+        run: |
+          npm run check:layer-contract:test
+          npm run check:layer-contract:strict
