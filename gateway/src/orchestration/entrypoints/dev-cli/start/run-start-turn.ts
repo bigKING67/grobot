@@ -29,6 +29,11 @@ export interface RuntimeFailoverConfig {
   stickyMode: "session_key";
 }
 
+export type KimiSearchRoutingPolicy =
+  | "mcp_first_fallback_builtin"
+  | "builtin_only"
+  | "mcp_only";
+
 interface CreateRunStartTurnRunnerInput {
   interruptStorePath: string;
   historyTurns: number;
@@ -43,8 +48,12 @@ interface CreateRunStartTurnRunnerInput {
     apiKey: string;
     model: string;
     timeoutMs: string;
+    providerKind: string;
   };
   runtimeToolContext?: RuntimeToolContext;
+  kimiSearchRoutingPolicy: KimiSearchRoutingPolicy;
+  mcpInstructionPromptPrefix?: string;
+  mcpInstructionServerNames: string[];
   getSessionKey(): string;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
@@ -78,6 +87,8 @@ interface ProviderFlowState {
 }
 
 const EWMA_ALPHA = 0.25;
+const KIMI_SEARCH_TURN_TIMEOUT_MS = 120_000;
+const PROVIDER_UPSTREAM_429_RETRY_LIMIT = 1;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -292,6 +303,241 @@ function releaseProviderCapacity(
   state.inflight = Math.max(0, state.inflight - 1);
 }
 
+function resolvePrimaryProviderKind(input: CreateRunStartTurnRunnerInput): string {
+  const directKind = input.runtimeModelConfig?.providerKind;
+  if (typeof directKind === "string" && directKind.trim().length > 0) {
+    return directKind.trim().toLowerCase();
+  }
+  for (const provider of input.runtimeProviderChain) {
+    const providerKind = provider.modelConfig.providerKind;
+    if (typeof providerKind === "string" && providerKind.trim().length > 0) {
+      return providerKind.trim().toLowerCase();
+    }
+  }
+  return "openai_compatible";
+}
+
+function hasExplicitMcpIntent(userText: string): boolean {
+  const normalized = userText.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+  if (/(^|[\s/])(mcp|mcp_call|\/mcp)([\s:.,;]|$)/i.test(normalized)) {
+    return true;
+  }
+  if (normalized.includes("grok-search") || normalized.includes("grok_search")) {
+    return true;
+  }
+  if (normalized.includes("联网mcp") || normalized.includes("mcp联网")) {
+    return true;
+  }
+  return false;
+}
+
+function hasSearchIntent(userText: string): boolean {
+  const normalized = userText.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+  const patterns = [
+    "联网",
+    "搜索",
+    "检索",
+    "最新",
+    "新闻",
+    "来源",
+    "链接",
+    "source",
+    "search",
+    "latest",
+    "today",
+    "news",
+    "citation",
+  ];
+  return patterns.some((pattern) => normalized.includes(pattern));
+}
+
+function hasGrokSearchServer(serverNames: readonly string[]): boolean {
+  return serverNames.some((name) => name.trim().toLowerCase() === "grok-search");
+}
+
+function shouldUseKimiMcpFirstRoute(input: {
+  policy: KimiSearchRoutingPolicy;
+  providerKind: string;
+  userText: string;
+  mcpServerNames: readonly string[];
+}): boolean {
+  if (input.policy === "builtin_only") {
+    return false;
+  }
+  if (input.providerKind !== "kimi") {
+    return false;
+  }
+  if (!hasSearchIntent(input.userText)) {
+    return false;
+  }
+  return hasGrokSearchServer(input.mcpServerNames);
+}
+
+function buildKimiSearchRoutingPrefix(input: {
+  policy: KimiSearchRoutingPolicy;
+  providerKind: string;
+  userText: string;
+  mcpServerNames: readonly string[];
+}): string {
+  if (input.providerKind !== "kimi") {
+    return "";
+  }
+  if (!hasSearchIntent(input.userText)) {
+    return "";
+  }
+  if (input.policy === "builtin_only") {
+    return [
+      "[Kimi Search Routing]",
+      "Use Kimi built-in $web_search directly for web lookup.",
+      "Do not call MCP tools in this turn.",
+    ].join("\n");
+  }
+  if (!hasGrokSearchServer(input.mcpServerNames)) {
+    return [
+      "[Kimi Search Routing]",
+      "grok-search MCP is currently unavailable in this session.",
+      input.policy === "mcp_only"
+        ? "Return an explicit tool_unavailable note without using built-in web search."
+        : "For web lookup requests, use Kimi built-in $web_search directly.",
+    ].join("\n");
+  }
+  if (input.policy === "mcp_only") {
+    return [
+      "[Kimi Search Routing]",
+      "When web lookup is needed, only use local MCP tool via mcp_call(server=\"grok-search\", tool=\"web_search\").",
+      "Do not fallback to Kimi built-in $web_search in this turn.",
+      "If MCP call fails or returns empty content, return an explicit tool_unavailable note.",
+    ].join("\n");
+  }
+  return [
+    "[Kimi Search Routing]",
+    "When web lookup is needed, execute search in this order:",
+    "1) First use local MCP tool via mcp_call(server=\"grok-search\", tool=\"web_search\").",
+    "2) If MCP call fails, times out, returns tool_unavailable, or returns empty content, fallback to Kimi built-in $web_search.",
+    "3) After successful search, answer with concise facts and include source URLs.",
+  ].join("\n");
+}
+
+function buildKimiBuiltinFallbackPrompt(basePrompt: string): string {
+  const fallbackPrefix = [
+    "[Kimi Search Fallback]",
+    "This retry is fallback mode.",
+    "Do not call MCP tools in this turn.",
+    "Use Kimi built-in $web_search directly and return concise facts with source URLs.",
+  ].join("\n");
+  return `${fallbackPrefix}\n\n${basePrompt}`;
+}
+
+function isKimiModelConfig(modelConfig: RuntimeModelConfig): boolean {
+  const providerKind = modelConfig.providerKind?.trim().toLowerCase() ?? "";
+  if (providerKind === "kimi") {
+    return true;
+  }
+  const baseUrl = modelConfig.baseUrl?.trim().toLowerCase() ?? "";
+  if (baseUrl.includes("moonshot.cn")) {
+    return true;
+  }
+  const model = modelConfig.model?.trim().toLowerCase() ?? "";
+  return model.startsWith("kimi") || model.startsWith("moonshot");
+}
+
+function resolveTurnModelConfig(
+  modelConfig: RuntimeModelConfig,
+  userText: string,
+): {
+  modelConfig: RuntimeModelConfig;
+  timeoutBoosted: boolean;
+} {
+  if (!isKimiModelConfig(modelConfig) || !hasSearchIntent(userText)) {
+    return {
+      modelConfig,
+      timeoutBoosted: false,
+    };
+  }
+  const currentTimeout = normalizePositiveInt(modelConfig.timeoutMs);
+  const targetTimeout = Math.max(currentTimeout ?? 0, KIMI_SEARCH_TURN_TIMEOUT_MS);
+  if (currentTimeout === targetTimeout) {
+    return {
+      modelConfig,
+      timeoutBoosted: false,
+    };
+  }
+  return {
+    modelConfig: {
+      ...modelConfig,
+      timeoutMs: targetTimeout,
+    },
+    timeoutBoosted: true,
+  };
+}
+
+function shouldInjectMcpInstructionPrefix(
+  input: CreateRunStartTurnRunnerInput,
+  userText: string,
+): {
+  inject: boolean;
+  reason: string;
+} {
+  const providerKind = resolvePrimaryProviderKind(input);
+  if (providerKind === "kimi") {
+    return {
+      inject: false,
+      reason: hasExplicitMcpIntent(userText) ? "kimi_skip_mcp_pack_explicit" : "kimi_skip_mcp_pack_default",
+    };
+  }
+  return {
+    inject: true,
+    reason: "provider_non_kimi",
+  };
+}
+
+function shouldRetryProviderRequest(
+  errorClass: string,
+  errorMessage: string,
+  retryCount: number,
+): boolean {
+  if (retryCount >= PROVIDER_UPSTREAM_429_RETRY_LIMIT) {
+    return false;
+  }
+  if (errorClass !== "upstream_http_error") {
+    return false;
+  }
+  return errorMessage.includes("status=429");
+}
+
+function shouldRetryWithKimiBuiltinFallback(input: {
+  provider: RuntimeProviderCandidate;
+  retryCount: number;
+  mcpFirstRouteEnabled: boolean;
+  policy: KimiSearchRoutingPolicy;
+}): boolean {
+  if (input.policy !== "mcp_first_fallback_builtin") {
+    return false;
+  }
+  if (!input.mcpFirstRouteEnabled) {
+    return false;
+  }
+  if (input.retryCount >= 1) {
+    return false;
+  }
+  if (!isKimiModelConfig(input.provider.modelConfig)) {
+    return false;
+  }
+  return true;
+}
+
+function sleepAsync(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 function resolveProviderOrder(input: {
   providers: readonly RuntimeProviderCandidate[];
   stickyProvider: string | undefined;
@@ -406,11 +652,57 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       } else {
         input.writeStdout("Session interrupted by management API. Current request skipped.\n");
       }
-      return 0;
-    }
+    return 0;
+  }
 
     const historyMessages = input.getHistoryMessages();
-    const prompt = buildPromptWithHistory(userText, historyMessages, Math.min(input.historyTurns, 6));
+    const basePrompt = buildPromptWithHistory(userText, historyMessages, Math.min(input.historyTurns, 6));
+    const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
+    const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
+    const providerKind = resolvePrimaryProviderKind(input);
+    const kimiMcpFirstRouteEnabled = shouldUseKimiMcpFirstRoute({
+      policy: input.kimiSearchRoutingPolicy,
+      providerKind,
+      userText,
+      mcpServerNames: input.mcpInstructionServerNames,
+    });
+    const kimiSearchRoutingPrefix = buildKimiSearchRoutingPrefix({
+      policy: input.kimiSearchRoutingPolicy,
+      providerKind,
+      userText,
+      mcpServerNames: input.mcpInstructionServerNames,
+    });
+    const kimiBuiltinFallbackPrompt = kimiMcpFirstRouteEnabled
+      ? buildKimiBuiltinFallbackPrompt(basePrompt)
+      : basePrompt;
+    const promptParts: string[] = [];
+    if (mcpInstructionPrefix.length > 0 && mcpInstructionDecision.inject) {
+      promptParts.push(mcpInstructionPrefix);
+    }
+    if (kimiSearchRoutingPrefix.length > 0) {
+      promptParts.push(kimiSearchRoutingPrefix);
+    }
+    promptParts.push(basePrompt);
+    const prompt = promptParts.join("\n\n");
+    if (kimiSearchRoutingPrefix.length > 0) {
+      input.writeStderr(
+        `[governance:search-route] event=policy_injected provider=${providerKind} policy=${input.kimiSearchRoutingPolicy} has_grok_search=${hasGrokSearchServer(input.mcpInstructionServerNames) ? "true" : "false"} chars=${String(kimiSearchRoutingPrefix.length)}\n`,
+      );
+    }
+    if (mcpInstructionPrefix.length > 0) {
+      const serversSummary = input.mcpInstructionServerNames.length > 0
+        ? input.mcpInstructionServerNames.join(",")
+        : "<none>";
+      if (mcpInstructionDecision.inject) {
+        input.writeStderr(
+          `[governance:mcp-instruction] event=prompt_injected servers=${serversSummary} chars=${String(mcpInstructionPrefix.length)} reason=${mcpInstructionDecision.reason}\n`,
+        );
+      } else {
+        input.writeStderr(
+          `[governance:mcp-instruction] event=prompt_skipped servers=${serversSummary} reason=${mcpInstructionDecision.reason}\n`,
+        );
+      }
+    }
     const parsedSession = parseSessionKeyPartsLoose(sessionKey);
     if (!parsedSession) {
       input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
@@ -443,11 +735,17 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     }
 
       const failures: ProviderAttemptFailure[] = [];
-      for (const provider of orderedProviders) {
-        const startedAtMs = Date.now();
-        const capacity = tryAcquireProviderCapacity({
-          provider,
-          stateMap: providerFlowStateMap,
+        for (const provider of orderedProviders) {
+          const startedAtMs = Date.now();
+          const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, userText);
+          if (turnModelConfig.timeoutBoosted) {
+            input.writeStderr(
+              `[runtime-model] timeout_boost provider=${provider.name} reason=search_intent timeout_ms=${String(turnModelConfig.modelConfig.timeoutMs)}\n`,
+            );
+          }
+          const capacity = tryAcquireProviderCapacity({
+            provider,
+            stateMap: providerFlowStateMap,
           nowMs: startedAtMs,
         });
         if (!capacity.ok) {
@@ -458,32 +756,69 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           });
           continue;
         }
-        try {
-          const report = await runGatewayTurn(
-          prompt,
-          {
-            platform: parsePlatform(parsedSession[0]),
-            tenant: parsedSession[1],
-            scope: parseScope(parsedSession[2]),
-            subject: parsedSession[3],
-          },
-          {
-            actorId: process.env.USER ?? input.subject,
-            projectId: input.projectName,
-          },
-          {
-            gatewayImpl: input.executionPlane.gatewayImpl,
-            runtimeImpl: input.executionPlane.runtimeImpl,
-            shadowMode: input.executionPlane.shadowMode,
-          },
-          {
-            modelConfig: provider.modelConfig,
-            toolContext: input.runtimeToolContext,
-          },
-        );
-          const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);
-          updateProviderEwmaState({
-            state,
+          try {
+              let providerRetryCount = 0;
+              let kimiBuiltinFallbackRetryCount = 0;
+              let turnPrompt = prompt;
+              let report;
+              while (true) {
+                try {
+                  report = await runGatewayTurn(
+                    turnPrompt,
+                    {
+                      platform: parsePlatform(parsedSession[0]),
+                      tenant: parsedSession[1],
+                    scope: parseScope(parsedSession[2]),
+                    subject: parsedSession[3],
+                  },
+                  {
+                    actorId: process.env.USER ?? input.subject,
+                    projectId: input.projectName,
+                  },
+                  {
+                    gatewayImpl: input.executionPlane.gatewayImpl,
+                    runtimeImpl: input.executionPlane.runtimeImpl,
+                    shadowMode: input.executionPlane.shadowMode,
+                  },
+                  {
+                    modelConfig: turnModelConfig.modelConfig,
+                    toolContext: input.runtimeToolContext,
+                  },
+                );
+                break;
+                } catch (error) {
+                  const retryMessage = String(error);
+                  const retryErrorClass = resolveErrorClass(retryMessage);
+                  if (shouldRetryWithKimiBuiltinFallback({
+                    provider,
+                    retryCount: kimiBuiltinFallbackRetryCount,
+                    mcpFirstRouteEnabled: kimiMcpFirstRouteEnabled,
+                    policy: input.kimiSearchRoutingPolicy,
+                  })) {
+                    kimiBuiltinFallbackRetryCount += 1;
+                    turnPrompt = kimiBuiltinFallbackPrompt;
+                    input.writeStderr(
+                      `[runtime-route] provider_retry provider=${provider.name} reason=kimi_mcp_unavailable fallback=builtin_web_search retry=${String(kimiBuiltinFallbackRetryCount)}\n`,
+                    );
+                    continue;
+                  }
+                  if (!shouldRetryProviderRequest(retryErrorClass, retryMessage, providerRetryCount)) {
+                    throw error;
+                  }
+                providerRetryCount += 1;
+                const backoffMs = providerRetryCount * 1_500;
+                input.writeStderr(
+                  `[runtime-route] provider_retry provider=${provider.name} reason=upstream_429 retry=${String(providerRetryCount)} backoff_ms=${String(backoffMs)}\n`,
+                );
+                await sleepAsync(backoffMs);
+              }
+            }
+            if (!report) {
+              throw new Error("provider response missing after retry");
+            }
+            const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);
+            updateProviderEwmaState({
+              state,
             latencyMs: Date.now() - startedAtMs,
             isError: false,
           });
@@ -510,7 +845,7 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           `[execution] gateway=${input.executionPlane.gatewayImpl}(${input.executionPlane.gatewayImplSource}) runtime=${input.executionPlane.runtimeImpl}(${input.executionPlane.runtimeImplSource}) shadow=${input.executionPlane.shadowMode ? "on" : "off"}(${input.executionPlane.shadowModeSource})\n`,
         );
         input.writeStderr(
-          `[runtime-model] base_url=${input.runtimeModelConfigSource.baseUrl} model=${input.runtimeModelConfigSource.model} api_key=${input.runtimeModelConfigSource.apiKey} timeout_ms=${input.runtimeModelConfigSource.timeoutMs}\n`,
+          `[runtime-model] base_url=${input.runtimeModelConfigSource.baseUrl} model=${input.runtimeModelConfigSource.model} provider_kind=${input.runtimeModelConfigSource.providerKind} api_key=${input.runtimeModelConfigSource.apiKey} timeout_ms=${input.runtimeModelConfigSource.timeoutMs}\n`,
         );
         input.writeStderr(
           `[runtime-route] provider=${provider.name} attempts=${String(failures.length + 1)} failovers=${String(failures.length)} sticky=${stickyProvider ?? "<none>"} strategy=sticky+score\n`,

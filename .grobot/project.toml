@@ -71,6 +71,14 @@ weight = 30
 allow = ["list", "glob", "search", "read", "write", "edit", "shell", "git", "rg", "python3", "cargo", "npm"]
 deny = ["git reset --hard", "git push --force", "rm -rf /"]
 
+[mcp.instructions]
+enabled = true
+scope = "project_first" # project_first | project_only | global_only
+strict = false
+
+[search.routing]
+kimi = "mcp_first_fallback_builtin" # mcp_first_fallback_builtin | builtin_only | mcp_only
+
 [hooks]
 enabled = true
 strict = false

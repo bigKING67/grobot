@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolveExecutionPlaneConfig } from "../../../execution-plane";
-import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
+import { type KimiWebSearchMode, type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
@@ -13,6 +13,7 @@ import {
   resolveProjectTomlPath,
   resolveWorkDir,
 } from "../services/runtime-paths";
+import { resolveMcpInstructionRuntime } from "../services/mcp-instruction-pack";
 import { createRunStartSessionStore } from "./run-start-session-store";
 import { sessionRegistryFilePath } from "./session-registry";
 import {
@@ -36,8 +37,12 @@ interface ResolvedRuntimeModelConfig {
     apiKey: string;
     model: string;
     timeoutMs: string;
+    providerKind: string;
   };
 }
+
+const DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_OPENAI_COMPATIBLE = 10_000;
+const DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_KIMI = 45_000;
 
 function stripInlineComment(line: string): string {
   let inQuote = false;
@@ -85,6 +90,15 @@ function parseTomlStringArray(raw: string): string[] {
     values.push(value);
   }
   return values;
+}
+
+function parseTomlString(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^"([^"]*)"$/);
+  if (!match || typeof match[1] !== "string") {
+    return undefined;
+  }
+  return match[1].trim();
 }
 
 function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
@@ -161,6 +175,125 @@ interface RuntimeFailoverConfig {
   stickyMode: "session_key";
 }
 
+type KimiSearchRoutingPolicy =
+  | "mcp_first_fallback_builtin"
+  | "builtin_only"
+  | "mcp_only";
+
+const DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST = [
+  "web-search",
+  "date",
+  "fetch",
+  "rethink",
+  "code_runner",
+];
+const DEFAULT_KIMI_SEARCH_ROUTING_POLICY: KimiSearchRoutingPolicy = "mcp_first_fallback_builtin";
+
+function normalizeProviderKind(rawKind: string | undefined, providerName?: string, baseUrl?: string): "openai_compatible" | "kimi" {
+  const normalizedKind = rawKind?.trim().toLowerCase();
+  if (normalizedKind === "kimi") {
+    return "kimi";
+  }
+  if (normalizedKind === "openai_compatible" || normalizedKind === "openai-compatible") {
+    return "openai_compatible";
+  }
+  const normalizedProviderName = providerName?.trim().toLowerCase() ?? "";
+  if (normalizedProviderName === "kimi") {
+    return "kimi";
+  }
+  const normalizedBaseUrl = baseUrl?.trim().toLowerCase() ?? "";
+  if (normalizedBaseUrl.includes("moonshot.cn")) {
+    return "kimi";
+  }
+  return "openai_compatible";
+}
+
+function normalizeKimiAllowlist(raw: string[] | undefined): string[] {
+  const fromConfig = Array.isArray(raw)
+    ? raw
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+    : [];
+  if (fromConfig.length > 0) {
+    return fromConfig;
+  }
+  return [...DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST];
+}
+
+function normalizeKimiWebSearchMode(raw: string | undefined): KimiWebSearchMode {
+  const normalized = raw?.trim().toLowerCase();
+  if (
+    normalized === "builtin_preferred" ||
+    normalized === "builtin_only" ||
+    normalized === "official_only" ||
+    normalized === "off"
+  ) {
+    return normalized;
+  }
+  return "builtin_preferred";
+}
+
+function normalizeKimiSearchRoutingPolicy(raw: string | undefined): KimiSearchRoutingPolicy | undefined {
+  const normalized = raw?.trim().toLowerCase();
+  if (
+    normalized === "mcp_first_fallback_builtin"
+    || normalized === "builtin_only"
+    || normalized === "mcp_only"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function readKimiSearchRoutingPolicyFromProjectToml(projectTomlPath?: string): KimiSearchRoutingPolicy {
+  if (!projectTomlPath) {
+    return DEFAULT_KIMI_SEARCH_ROUTING_POLICY;
+  }
+  let raw = "";
+  try {
+    raw = readFileSync(projectTomlPath, "utf8");
+  } catch {
+    return DEFAULT_KIMI_SEARCH_ROUTING_POLICY;
+  }
+  const lines = raw.split(/\r?\n/);
+  let inSearchRoutingSection = false;
+  for (const rawLine of lines) {
+    const line = stripInlineComment(rawLine).trim();
+    if (!line) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+    if (sectionMatch) {
+      inSearchRoutingSection = sectionMatch[1] === "search.routing";
+      continue;
+    }
+    if (!inSearchRoutingSection) {
+      continue;
+    }
+    const kvMatch = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
+    if (!kvMatch) {
+      continue;
+    }
+    const key = kvMatch[1];
+    if (key !== "kimi" && key !== "kimi_route") {
+      continue;
+    }
+    const parsedValue = parseTomlString(kvMatch[2]);
+    const policy = normalizeKimiSearchRoutingPolicy(parsedValue);
+    if (policy) {
+      return policy;
+    }
+  }
+  return DEFAULT_KIMI_SEARCH_ROUTING_POLICY;
+}
+
+function resolveDefaultRuntimeHttpTimeoutMs(providerKind: "openai_compatible" | "kimi"): number {
+  if (providerKind === "kimi") {
+    return DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_KIMI;
+  }
+  return DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_OPENAI_COMPATIBLE;
+}
+
 function parseRequiredPositiveInt(value: string | undefined, fallback: number): number {
   const parsed = parseOptionalPositiveInt(value);
   if (typeof parsed !== "number") {
@@ -204,6 +337,12 @@ function resolveRuntimeModelConfig(
         baseUrl?: string;
         apiKey?: string;
         model?: string;
+        providerKind?: string;
+        kimiWebSearchMode?: string;
+        kimiDisableThinkingOnBuiltinWebSearch?: boolean;
+        kimiOfficialToolsAllowlist?: string[];
+        kimiFilesEnabled?: boolean;
+        kimiAllowFileAdmin?: boolean;
         priority?: number;
         weight?: number;
         unitCost?: number;
@@ -243,9 +382,16 @@ function resolveRuntimeModelConfig(
   const baseUrl = baseUrlFromCli ?? baseUrlFromEnv ?? fallback?.baseUrl;
   const apiKey = apiKeyFromCli ?? apiKeyFromEnv ?? fallback?.apiKey;
   const model = modelFromCli ?? modelFromEnv ?? fallback?.model;
+  const defaultProviderKind = normalizeProviderKind(
+    hasDirectRuntimeOverride ? undefined : fallback?.providerKind,
+    fallback?.name,
+    baseUrl,
+  );
   const timeoutMs = parseOptionalPositiveInt(
     timeoutFromCli ?? timeoutFromEnv,
   );
+  const defaultTimeoutMs = resolveDefaultRuntimeHttpTimeoutMs(defaultProviderKind);
+  const resolvedTimeoutMs = timeoutMs ?? defaultTimeoutMs;
   const providerMaxInFlightDefault = parseOptionalPositiveInt(
     providerMaxInFlightFromCli ?? providerMaxInFlightFromEnv,
   );
@@ -262,8 +408,13 @@ function resolveRuntimeModelConfig(
     baseUrl: baseUrlFromCli ? "cli:base-url" : baseUrlFromEnv ? "env:GROBOT_BASE_URL" : fallback?.baseUrl ? "config_toml:provider.base_url" : "unset",
     apiKey: apiKeyFromCli ? "cli:api-key" : apiKeyFromEnv ? "env:GROBOT_API_KEY" : fallback?.apiKey ? "config_toml:provider.api_key" : "unset",
     model: modelFromCli ? "cli:model" : modelFromEnv ? "env:GROBOT_MODEL" : fallback?.model ? "config_toml:provider.model" : "unset",
-    timeoutMs: timeoutFromCli ? "cli:runtime-http-timeout-ms" : timeoutFromEnv ? "env:GROBOT_RUNTIME_HTTP_TIMEOUT_MS" : "unset",
-  };
+      timeoutMs: timeoutFromCli
+        ? "cli:runtime-http-timeout-ms"
+        : timeoutFromEnv
+          ? "env:GROBOT_RUNTIME_HTTP_TIMEOUT_MS"
+          : `default:${String(defaultTimeoutMs)}`,
+      providerKind: "derived",
+    };
 
   const modelConfig: RuntimeModelConfig = {};
   if (typeof baseUrl === "string" && baseUrl.trim().length > 0) {
@@ -277,7 +428,25 @@ function resolveRuntimeModelConfig(
   }
   if (typeof timeoutMs === "number") {
     modelConfig.timeoutMs = timeoutMs;
+  } else {
+    modelConfig.timeoutMs = resolvedTimeoutMs;
   }
+    modelConfig.providerKind = defaultProviderKind;
+  if (defaultProviderKind === "kimi") {
+    modelConfig.providerOptions = {
+      kimi: {
+        webSearchMode: normalizeKimiWebSearchMode(fallback?.kimiWebSearchMode),
+        disableThinkingOnBuiltinWebSearch:
+          fallback?.kimiDisableThinkingOnBuiltinWebSearch ?? true,
+        officialToolsAllowlist: normalizeKimiAllowlist(fallback?.kimiOfficialToolsAllowlist),
+        filesEnabled: fallback?.kimiFilesEnabled ?? true,
+        allowFileAdmin: fallback?.kimiAllowFileAdmin ?? false,
+      },
+    };
+  }
+  source.providerKind = defaultProviderKind === "kimi"
+    ? "derived:kimi"
+    : "derived:openai_compatible";
 
   const providerChain: RuntimeProviderCandidate[] = [];
   if (!hasDirectRuntimeOverride && fallbackPool && fallbackPool.providers.length > 0) {
@@ -293,8 +462,22 @@ function resolveRuntimeModelConfig(
         apiKey: providerApiKey,
         model: providerModel,
       };
-      if (typeof timeoutMs === "number") {
-        candidateModelConfig.timeoutMs = timeoutMs;
+        const providerKind = normalizeProviderKind(provider.providerKind, provider.name, providerBaseUrl);
+        candidateModelConfig.providerKind = providerKind;
+        candidateModelConfig.timeoutMs = typeof timeoutMs === "number"
+          ? timeoutMs
+          : resolveDefaultRuntimeHttpTimeoutMs(providerKind);
+        if (providerKind === "kimi") {
+        candidateModelConfig.providerOptions = {
+          kimi: {
+            webSearchMode: normalizeKimiWebSearchMode(provider.kimiWebSearchMode),
+            disableThinkingOnBuiltinWebSearch:
+              provider.kimiDisableThinkingOnBuiltinWebSearch ?? true,
+            officialToolsAllowlist: normalizeKimiAllowlist(provider.kimiOfficialToolsAllowlist),
+            filesEnabled: provider.kimiFilesEnabled ?? true,
+            allowFileAdmin: provider.kimiAllowFileAdmin ?? false,
+          },
+        };
       }
         providerChain.push({
           name: provider.name.trim(),
@@ -341,7 +524,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
-  const configTomlPath = resolveConfigTomlPath(options, homeDir);
+  const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const providerOverride = readOptionString(options, "provider");
   const providerPoolSnapshot = readProviderPoolFromToml(
@@ -384,6 +567,12 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     sessionNamespaceKey,
     historyTurns,
   });
+  const kimiSearchRoutingPolicy = readKimiSearchRoutingPolicyFromProjectToml(projectTomlPath);
+  const mcpInstructionRuntime = resolveMcpInstructionRuntime({
+    homeDir,
+    workDir,
+    projectTomlPath,
+  });
 
   return {
     homeDir,
@@ -405,5 +594,10 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     runtimeFailoverConfig: runtimeModelConfig.failoverConfig,
     runtimeModelConfigSource: runtimeModelConfig.modelConfigSource,
     runtimeToolContext: resolveRuntimeToolContext(workDir, projectTomlPath),
+    kimiSearchRoutingPolicy,
+    mcpInstructionPromptPrefix: mcpInstructionRuntime.promptPrefix,
+    mcpInstructionServerNames: mcpInstructionRuntime.loadedServerNames,
+    mcpInstructionEvents: mcpInstructionRuntime.events,
+    mcpInstructionStrictFailure: mcpInstructionRuntime.strictFailure,
   };
 }

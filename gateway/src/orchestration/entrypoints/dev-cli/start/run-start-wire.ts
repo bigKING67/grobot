@@ -5,6 +5,7 @@ import { createRunStartHandoff } from "./run-start-handoff";
 import { createRunStartSessionOps } from "./run-start-session-ops";
 import {
   createRunStartTurnRunner,
+  type KimiSearchRoutingPolicy,
   type RuntimeFailoverConfig,
   type RuntimeProviderCandidate,
 } from "./run-start-turn";
@@ -32,8 +33,12 @@ interface CreateRunStartWireInput {
     apiKey: string;
     model: string;
     timeoutMs: string;
+    providerKind: string;
   };
   runtimeToolContext?: RuntimeToolContext;
+  kimiSearchRoutingPolicy: KimiSearchRoutingPolicy;
+  mcpInstructionPromptPrefix?: string;
+  mcpInstructionServerNames: string[];
   runtimeState: RunStartRuntimeState;
   persistence: RunStartPersistence;
   writeStoreWarnings(warnings: readonly string[]): void;
@@ -91,8 +96,11 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     runtimeModelConfig: input.runtimeModelConfig,
     runtimeProviderChain: input.runtimeProviderChain,
     runtimeFailoverConfig: input.runtimeFailoverConfig,
-    runtimeModelConfigSource: input.runtimeModelConfigSource,
-    runtimeToolContext: input.runtimeToolContext,
+      runtimeModelConfigSource: input.runtimeModelConfigSource,
+      runtimeToolContext: input.runtimeToolContext,
+      kimiSearchRoutingPolicy: input.kimiSearchRoutingPolicy,
+      mcpInstructionPromptPrefix: input.mcpInstructionPromptPrefix,
+      mcpInstructionServerNames: input.mcpInstructionServerNames,
     getSessionKey: input.runtimeState.getSessionKey,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,

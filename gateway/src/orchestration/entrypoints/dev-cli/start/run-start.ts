@@ -106,14 +106,28 @@ export async function runStart(options: Record<string, OptionValue>): Promise<nu
     executionPlane,
     runtimeModelConfig,
     runtimeProviderChain,
-    runtimeFailoverConfig,
-    runtimeModelConfigSource,
-    runtimeToolContext,
+      runtimeFailoverConfig,
+      runtimeModelConfigSource,
+      runtimeToolContext,
+      kimiSearchRoutingPolicy,
+      mcpInstructionPromptPrefix,
+      mcpInstructionServerNames,
+    mcpInstructionEvents,
+    mcpInstructionStrictFailure,
     sessionNamespaceKey,
     sessionRegistryFilePathValue,
     sessionStore,
   } = context;
   const output = createRunStartOutput();
+  for (const event of mcpInstructionEvents) {
+    output.writeStderr(`[governance:mcp-instruction] ${event}\n`);
+  }
+  if (mcpInstructionStrictFailure) {
+    output.writeStderr(
+      `[governance:mcp-instruction] event=strict_failure reason=${mcpInstructionStrictFailure}\n`,
+    );
+    return 1;
+  }
 
   const bootstrapState = await bootstrapRunStartState({
     sessionNamespaceKey,
@@ -143,9 +157,12 @@ export async function runStart(options: Record<string, OptionValue>): Promise<nu
     executionPlane,
     runtimeModelConfig,
     runtimeProviderChain,
-    runtimeFailoverConfig,
-    runtimeModelConfigSource,
-    runtimeToolContext,
+      runtimeFailoverConfig,
+      runtimeModelConfigSource,
+      runtimeToolContext,
+      kimiSearchRoutingPolicy,
+      mcpInstructionPromptPrefix,
+      mcpInstructionServerNames,
     runtimeState,
     persistence,
     writeStoreWarnings: output.writeStoreWarnings,
