@@ -578,6 +578,139 @@ async function runGatewayContractSmoke() {
   ]);
   logStep("session-lifecycle-contract parse-args");
 
+  const sessionInteractiveDispatchResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/session-interactive-dispatch-contract.ts",
+  ]);
+  assertSuccess("session-interactive-dispatch-contract", sessionInteractiveDispatchResult);
+  const sessionInteractiveDispatchPayload = parseJsonOutput(
+    "session-interactive-dispatch-contract",
+    sessionInteractiveDispatchResult.stdout,
+  );
+  assert.equal(sessionInteractiveDispatchPayload.switch_prefix_miss_hits_run_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.switch_prefix_miss_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.continue_prefix_miss_hits_run_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.continue_prefix_miss_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.model_prefix_miss_hits_run_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.model_prefix_miss_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_prefix_miss_hits_run_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_prefix_miss_entered_plan, false);
+  assert.equal(sessionInteractiveDispatchPayload.switch_menu_opened, true);
+  assert.equal(sessionInteractiveDispatchPayload.continue_menu_opened, true);
+  assert.equal(sessionInteractiveDispatchPayload.model_reset_dispatched, true);
+  logStep("session-interactive-dispatch-contract");
+
+  const providerHealthFormatResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/provider-health-format-contract.ts",
+  ]);
+  assertSuccess("provider-health-format-contract", providerHealthFormatResult);
+  const providerHealthFormatPayload = parseJsonOutput(
+    "provider-health-format-contract",
+    providerHealthFormatResult.stdout,
+  );
+  assert.equal(providerHealthFormatPayload.has_header, true);
+  assert.equal(providerHealthFormatPayload.has_session, true);
+  assert.equal(providerHealthFormatPayload.has_sticky, true);
+  assert.equal(providerHealthFormatPayload.has_alpha_closed, true);
+  assert.equal(providerHealthFormatPayload.has_beta_open, true);
+  assert.equal(providerHealthFormatPayload.has_latency_field, true);
+  assert.equal(providerHealthFormatPayload.has_error_rate_field, true);
+  assert.equal(providerHealthFormatPayload.has_rpm_field, true);
+  logStep("provider-health-format-contract");
+
+  const interactiveBindingsResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-interactive-bindings-contract.ts",
+  ]);
+  assertSuccess("run-start-interactive-bindings-contract", interactiveBindingsResult);
+  const interactiveBindingsPayload = parseJsonOutput(
+    "run-start-interactive-bindings-contract",
+    interactiveBindingsResult.stdout,
+  );
+  assert.equal(interactiveBindingsPayload.pass_through_project_name, true);
+  assert.equal(interactiveBindingsPayload.pass_through_session_runtime, true);
+  assert.equal(Number(interactiveBindingsPayload.switch_calls), 2);
+  assert.equal(interactiveBindingsPayload.switch_first_call, "session-a:switch");
+  assert.equal(interactiveBindingsPayload.switch_second_call, "session-b:switch");
+  assert.equal(Number(interactiveBindingsPayload.model_override_count), 1);
+  assert.equal(interactiveBindingsPayload.health_has_header, true);
+  assert.equal(interactiveBindingsPayload.health_has_sticky_provider, true);
+  assert.equal(interactiveBindingsPayload.health_has_provider_row, true);
+  assert.equal(interactiveBindingsPayload.manual_handoff_reason, "manual-command");
+  assert.equal(interactiveBindingsPayload.manual_handoff_to_stderr, false);
+  assert.equal(interactiveBindingsPayload.auto_exit_to_stderr, false);
+  assert.equal(Number(interactiveBindingsPayload.history_count), 2);
+  assert.equal(interactiveBindingsPayload.help_text, "contract-help");
+  logStep("run-start-interactive-bindings-contract");
+
+  const modelOpsContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-model-ops-contract.ts",
+  ]);
+  assertSuccess("run-start-model-ops-contract", modelOpsContractResult);
+  const modelOpsContractPayload = parseJsonOutput(
+    "run-start-model-ops-contract",
+    modelOpsContractResult.stdout,
+  );
+  assert.equal(modelOpsContractPayload.initial_model, "model-default");
+  assert.equal(modelOpsContractPayload.initial_source, "config:provider:model");
+  assert.equal(modelOpsContractPayload.initial_session_title, "Main Session");
+  assert.equal(
+    modelOpsContractPayload.initial_session_summary,
+    "Trace model override and reset contract",
+  );
+  assert.equal(modelOpsContractPayload.main_model_after_use, "model-variant");
+  assert.equal(modelOpsContractPayload.main_source_after_use, "session:/model");
+  assert.equal(modelOpsContractPayload.main_session_id_after_use, "session-main");
+  assert.equal(modelOpsContractPayload.main_session_title_after_use, "Main Session");
+  assert.equal(
+    modelOpsContractPayload.main_session_summary_after_use,
+    "Trace model override and reset contract",
+  );
+  assert.equal(modelOpsContractPayload.main_model_after_reset, "model-default");
+  assert.equal(
+    modelOpsContractPayload.main_source_after_reset,
+    "config:provider:model",
+  );
+  assert.equal(modelOpsContractPayload.branch_model_after_switch, "model-default");
+  assert.equal(
+    modelOpsContractPayload.branch_source_after_switch,
+    "config:provider:model",
+  );
+  assert.equal(
+    modelOpsContractPayload.branch_session_id_after_switch,
+    "session-branch",
+  );
+  assert.equal(
+    modelOpsContractPayload.branch_session_title_after_switch,
+    "Branch Session",
+  );
+  assert.equal(
+    modelOpsContractPayload.branch_session_summary_after_switch,
+    "Follow-up fallback regression",
+  );
+  assert.equal(Number(modelOpsContractPayload.list_calls), 2);
+  assert.equal(modelOpsContractPayload.list_output_has_current_marker, true);
+  assert.equal(modelOpsContractPayload.list_output_has_variant, true);
+  assert.equal(
+    modelOpsContractPayload.runtime_source_after_switch,
+    "config:provider:model",
+  );
+  logStep("run-start-model-ops-contract");
+
   const historyCompactionResult = runContract("history-compaction-contract.mjs", "trim", [
     "--payload",
     JSON.stringify({
@@ -899,6 +1032,55 @@ async function runTsRustExecutionSmoke() {
     events: planModeFlowPayload.events_count,
   });
 
+  const sessionCommandFallbackResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-interactive-session-commands-fallback-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const sessionCommandFallbackPayload = parseJsonOutput(
+    "start-smoke-contract start-interactive-session-commands-fallback-flow",
+    sessionCommandFallbackResult.stdout,
+  );
+  assert.equal(sessionCommandFallbackPayload.exit_code, 0);
+  assert.equal(Number(sessionCommandFallbackPayload.session_count) >= 2, true);
+  assert.equal(sessionCommandFallbackPayload.has_switch_usage, true);
+  assert.equal(sessionCommandFallbackPayload.has_continue_usage, true);
+  assert.equal(sessionCommandFallbackPayload.has_sessions_overview, true);
+  assert.equal(sessionCommandFallbackPayload.has_session_title_main, true);
+  assert.equal(sessionCommandFallbackPayload.has_session_title_untitled, true);
+  logStep("start-smoke-contract start-interactive-session-commands-fallback-flow");
+
+  const sessionMenuViewModelResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-session-menu-view-model-contract",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const sessionMenuViewModelPayload = parseJsonOutput(
+    "start-smoke-contract start-session-menu-view-model-contract",
+    sessionMenuViewModelResult.stdout,
+  );
+  assert.equal(sessionMenuViewModelPayload.exit_code, 0);
+  assert.equal(sessionMenuViewModelPayload.sessions_title, "Session Manager");
+  assert.equal(sessionMenuViewModelPayload.switch_title, "Switch Session");
+  assert.equal(sessionMenuViewModelPayload.continue_title, "Continue From Session");
+  assert.equal(sessionMenuViewModelPayload.sessions_has_create_item, true);
+  assert.equal(sessionMenuViewModelPayload.continue_has_create_item, false);
+  assert.equal(sessionMenuViewModelPayload.sessions_summary_visible, true);
+  assert.equal(sessionMenuViewModelPayload.switch_includes_session_key, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_omits_session_key, true);
+  assert.equal(sessionMenuViewModelPayload.continue_current_skip_hint, true);
+  assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
+  assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);
+  assert.equal(Number(sessionMenuViewModelPayload.sessions_item_count), 3);
+  assert.equal(Number(sessionMenuViewModelPayload.continue_item_count), 2);
+  logStep("start-smoke-contract start-session-menu-view-model-contract");
+
   const planConcurrencyFlowResult = runContract("start-smoke-contract.mjs", "start-plan-concurrency-flow", [
     "--repo-root",
     repoRoot,
@@ -978,6 +1160,24 @@ async function runTsRustExecutionSmoke() {
     profile: planEventsPolicyGuardPayload?.profile,
     violations: planEventsPolicyGuardPayload?.violations_count,
   });
+
+  const mcpInstructionFlowResult = runContract("start-smoke-contract.mjs", "start-mcp-instruction-events-flow", [
+    "--repo-root",
+    repoRoot,
+  ]);
+  const mcpInstructionFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-mcp-instruction-events-flow",
+    mcpInstructionFlowResult.stdout,
+  );
+  assert.equal(mcpInstructionFlowPayload.project_pack_loaded_project, true);
+  assert.equal(mcpInstructionFlowPayload.project_prompt_injected, true);
+  assert.equal(mcpInstructionFlowPayload.fallback_used, true);
+  assert.equal(mcpInstructionFlowPayload.fallback_pack_loaded_global, true);
+  assert.equal(mcpInstructionFlowPayload.fallback_prompt_injected, true);
+  assert.equal(mcpInstructionFlowPayload.missing_pack_event, true);
+  assert.equal(mcpInstructionFlowPayload.missing_prompt_injected, false);
+  assert.equal(mcpInstructionFlowPayload.strict_failure_seen, false);
+  logStep("start-smoke-contract start-mcp-instruction-events-flow");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
