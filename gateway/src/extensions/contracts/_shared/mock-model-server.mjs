@@ -25,10 +25,11 @@ export async function startMockModelServer(options = {}) {
     const bodyText = await readUtf8Body(request);
     let model = "";
     let prompt = "";
+    let messages = [];
     try {
       const parsed = JSON.parse(bodyText);
       model = typeof parsed?.model === "string" ? parsed.model : "";
-      const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+      messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
       const firstUserMessage = messages.find((item) => item?.role === "user");
       prompt = typeof firstUserMessage?.content === "string" ? firstUserMessage.content : "";
     } catch {
@@ -69,6 +70,55 @@ export async function startMockModelServer(options = {}) {
                     },
                   },
                 ],
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
+    if (mode === "tool_loop_success") {
+      const hasToolResult = messages.some((item) => item?.role === "tool");
+      if (!hasToolResult) {
+        response.end(
+          JSON.stringify({
+            id: "mock-chatcmpl",
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      id: "call_1",
+                      type: "function",
+                      function: {
+                        name: "list",
+                        arguments: "{\"path\":\".\",\"max_entries\":16}",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          id: "mock-chatcmpl",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "TOOL_LOOP_RUNTIME_OK",
               },
             },
           ],

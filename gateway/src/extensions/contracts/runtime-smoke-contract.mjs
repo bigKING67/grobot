@@ -207,6 +207,41 @@ async function runToolCallFailFast(repoRoot) {
   }
 }
 
+async function runToolCallSuccess(repoRoot) {
+  const model = await startMockModelServer({ mode: "tool_loop_success" });
+  try {
+    const runResult = await runCommandAsync(
+      repoRoot,
+      [
+        "node",
+        "gateway/src/extensions/contracts/start-smoke-contract.mjs",
+        "failover-runs-ts-rust",
+        "--repo-root",
+        repoRoot,
+      ],
+      {
+        ...process.env,
+        GROBOT_BASE_URL: model.baseUrl,
+        GROBOT_API_KEY: "mock-runtime-key",
+        GROBOT_MODEL: "mock-runtime-model",
+        GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+      },
+      null,
+      240_000,
+    );
+    const payload = parseJsonOutput(
+      "runtime-smoke-contract tool-call-success",
+      runResult.stdout,
+    );
+    return {
+      ...payload,
+      runtime_call_count: model.getCalls().length,
+    };
+  } finally {
+    await model.close();
+  }
+}
+
 async function runToolCallDiagnosticEvents(repoRoot) {
   const model = await startMockModelServer({ mode: "tool_call" });
   try {
@@ -315,16 +350,19 @@ async function runCli(argv) {
   const { command, options } = parseArgs(argv);
   const repoRoot = resolve(requireOption(options, "repo-root"));
   let payload;
-    switch (command) {
-      case "provider-config-passthrough":
-        payload = await runProviderConfigPassthrough(repoRoot);
-        break;
-      case "provider-pool-load-balance":
-        payload = await runProviderPoolLoadBalance(repoRoot);
-        break;
-      case "tool-call-fail-fast":
-        payload = await runToolCallFailFast(repoRoot);
-        break;
+  switch (command) {
+    case "provider-config-passthrough":
+      payload = await runProviderConfigPassthrough(repoRoot);
+      break;
+    case "provider-pool-load-balance":
+      payload = await runProviderPoolLoadBalance(repoRoot);
+      break;
+    case "tool-call-fail-fast":
+      payload = await runToolCallFailFast(repoRoot);
+      break;
+    case "tool-call-success":
+      payload = await runToolCallSuccess(repoRoot);
+      break;
     case "tool-call-diagnostic-events":
       payload = await runToolCallDiagnosticEvents(repoRoot);
       break;

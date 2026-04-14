@@ -710,9 +710,24 @@ async function runTsRustExecutionSmoke() {
     toolCallFailureResult.stdout,
   );
   assert.equal(toolCallFailurePayload.exit_code !== 0, true);
-  assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_call_not_supported"), true);
+  assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_disabled"), true);
   assert.equal(Number(toolCallFailurePayload.runtime_call_count) >= 1, true);
   logStep("runtime-smoke-contract tool-call-fail-fast");
+
+  const toolCallSuccessResult = runContract(
+    "runtime-smoke-contract.mjs",
+    "tool-call-success",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const toolCallSuccessPayload = parseJsonOutput(
+    "runtime-smoke-contract tool-call-success",
+    toolCallSuccessResult.stdout,
+  );
+  assert.equal(toolCallSuccessPayload.exit_code, 0);
+  assert.equal(String(toolCallSuccessPayload.stdout).includes("TOOL_LOOP_RUNTIME_OK"), true);
+  assert.equal(Number(toolCallSuccessPayload.runtime_call_count) >= 2, true);
+  logStep("runtime-smoke-contract tool-call-success");
 
   const toolCallDiagnosticResult = runContract(
     "runtime-smoke-contract.mjs",
