@@ -50,6 +50,18 @@ function runCommand(repoRoot, argv, envPrefix = null, stdinText = null) {
   };
 }
 
+function runShellScript(repoRoot, shellBody) {
+  const shellScript = `cd ${shellEscape(repoRoot)} && ${shellBody}`;
+  const completed = spawnSync("bash", ["-lc", shellScript], {
+    encoding: "utf8",
+  });
+  return {
+    exit_code: completed.status ?? 1,
+    stdout: completed.stdout ?? "",
+    stderr: completed.stderr ?? "",
+  };
+}
+
 function shellEscape(value) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
@@ -223,6 +235,17 @@ function sanitizeSessionKey(sessionKey) {
   return String(sessionKey).replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+function sanitizePlanSessionSegment(raw) {
+  const normalized = String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+/g, "")
+    .replace(/-+$/g, "");
+  const resolved = normalized.length > 0 ? normalized : "main";
+  return resolved.slice(0, 64);
+}
+
 function readJsonFileSafe(path) {
   if (!existsSync(path)) {
     return null;
@@ -243,6 +266,23 @@ function readTextFileSafe(path) {
   } catch {
     return "";
   }
+}
+
+function countOccurrences(text, pattern) {
+  if (!text || !pattern) {
+    return 0;
+  }
+  let cursor = 0;
+  let count = 0;
+  while (cursor < text.length) {
+    const nextIndex = text.indexOf(pattern, cursor);
+    if (nextIndex < 0) {
+      break;
+    }
+    count += 1;
+    cursor = nextIndex + pattern.length;
+  }
+  return count;
 }
 
 function runPackageLauncherRejectsPython(repoRoot) {
@@ -371,6 +411,211 @@ function runStartInteractiveSessionFlow(repoRoot) {
     handoff_exists: handoffContent.length > 0,
     handoff_has_compact_instructions: handoffContent.includes("## Compact Instructions"),
     handoff_has_auto_exit_reason: handoffContent.includes("reason: auto-exit"),
+  };
+}
+
+function runStartPlanModeFlow(repoRoot) {
+  const workDir = createTempDir("grobot-plan-work");
+  const homeDir = createTempDir("grobot-plan-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commandResult = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "plan-smoke-user",
+      "--history-turns",
+      "8",
+    ],
+    null,
+    [
+      "/plan implement plan-mode skeleton",
+      "/plan options",
+      "none of these: add milestone for bridge /plan compatibility",
+      "/plan status",
+      "2",
+      "4",
+      "/exit",
+      "",
+    ].join("\n"),
+  );
+  const namespaceKey = "feishu:grobot:dm:plan-smoke-user";
+  const registryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPayload = readJsonFileSafe(registryPath);
+  const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
+  const activeSessionId = registryPayload && typeof registryPayload.active_id === "string" ? registryPayload.active_id : "";
+  let activeSessionKey = namespaceKey;
+  for (const item of sessions) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    if (String(item.id ?? "") !== activeSessionId) {
+      continue;
+    }
+    const key = typeof item.session_key === "string" ? item.session_key : "";
+    if (key.trim().length > 0) {
+      activeSessionKey = key.trim();
+      break;
+    }
+  }
+  const planDir = `${workDir}/.grobot/plans/${sanitizePlanSessionSegment(activeSessionKey)}`;
+  const planIndexPath = `${planDir}/index.json`;
+  const activePlanPath = `${planDir}/ACTIVE.md`;
+  const eventsPath = `${planDir}/events.jsonl`;
+  const planIndex = readJsonFileSafe(planIndexPath);
+  const planEntries = planIndex && Array.isArray(planIndex.entries) ? planIndex.entries : [];
+  const eventsContent = readTextFileSafe(eventsPath);
+  return {
+    ...commandResult,
+    registry_path: registryPath,
+    plan_dir: planDir,
+    plan_index_path: planIndexPath,
+    active_plan_path: activePlanPath,
+    events_path: eventsPath,
+    events_count: eventsContent ? eventsContent.trim().split("\n").filter((line) => line.trim().length > 0).length : 0,
+    session_count: sessions.length,
+    active_session_id: activeSessionId,
+    active_session_key: activeSessionKey,
+    plan_entry_count: planEntries.length,
+    plan_active_id: planIndex && typeof planIndex.active_plan_id === "string" ? planIndex.active_plan_id : "",
+    plan_active_exists: existsSync(activePlanPath),
+  };
+}
+
+function runStartPlanConcurrencyFlow(repoRoot) {
+  const appendAttempts = 8;
+  const maxAttempts = 3;
+  let lastPayload = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const workDir = createTempDir("grobot-plan-concurrency-work");
+    const homeDir = createTempDir("grobot-plan-concurrency-home");
+    const config = writeConfig(buildSmokeConfig(workDir));
+    const subject = "plan-concurrency-user";
+    const namespaceKey = `feishu:grobot:dm:${subject}`;
+    const sessionId = sanitizePlanSessionSegment(namespaceKey);
+    const baseArgs = [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      subject,
+      "--history-turns",
+      "8",
+    ];
+    const seedResult = runCommand(repoRoot, [...baseArgs, "--message", "/plan concurrency lock smoke"]);
+    const prefix = baseArgs.map(shellEscape).join(" ");
+    const shellLines = [
+      "set +e",
+      "fail=0",
+      "pids=''",
+    ];
+    for (let index = 1; index <= appendAttempts; index += 1) {
+      const message = `none of these: concurrent-note-${String(index)}`;
+      shellLines.push(`(${prefix} --message ${shellEscape(message)}) &`);
+      shellLines.push("pids=\"$pids $!\"");
+    }
+    shellLines.push("for pid in $pids; do");
+    shellLines.push("  wait \"$pid\" || fail=1");
+    shellLines.push("done");
+    shellLines.push("exit $fail");
+    const parallelResult = runShellScript(repoRoot, shellLines.join("\n"));
+    const planDir = `${workDir}/.grobot/plans/${sessionId}`;
+    const planIndexPath = `${planDir}/index.json`;
+    const planIndex = readJsonFileSafe(planIndexPath);
+    const planEntries = planIndex && Array.isArray(planIndex.entries) ? planIndex.entries : [];
+    const activePlanId = planIndex && typeof planIndex.active_plan_id === "string" ? planIndex.active_plan_id : "";
+    const activeEntry = planEntries.find((item) => item && typeof item === "object" && item.plan_id === activePlanId) || null;
+    const activePlanContent =
+      activeEntry && typeof activeEntry.filename === "string"
+        ? readTextFileSafe(`${planDir}/${activeEntry.filename}`)
+        : "";
+    const noteMatches = activePlanContent.match(/concurrent-note-\d+/g) ?? [];
+    const uniqueNotes = Array.from(new Set(noteMatches));
+    const eventsPath = `${planDir}/events.jsonl`;
+    const eventsContent = readTextFileSafe(eventsPath);
+    const combinedOutput = [
+      seedResult.stdout,
+      seedResult.stderr,
+      parallelResult.stdout,
+      parallelResult.stderr,
+    ].join("\n");
+    const lockTimeoutCount = countOccurrences(combinedOutput, "plan artifact lock timeout");
+    const payload = {
+      attempt,
+      max_attempts: maxAttempts,
+      seed_exit_code: seedResult.exit_code,
+      parallel_exit_code: parallelResult.exit_code,
+      append_attempts: appendAttempts,
+      append_hits: uniqueNotes.length,
+      plan_dir: planDir,
+      plan_index_path: planIndexPath,
+      events_path: eventsPath,
+      events_count: eventsContent ? eventsContent.trim().split("\n").filter((line) => line.trim().length > 0).length : 0,
+      lock_timeout_count: lockTimeoutCount,
+      plan_entry_count: planEntries.length,
+      active_plan_id: activePlanId,
+      active_plan_status: activeEntry && typeof activeEntry.status === "string" ? activeEntry.status : "",
+    };
+    const passed =
+      seedResult.exit_code === 0 &&
+      parallelResult.exit_code === 0 &&
+      payload.append_hits === payload.append_attempts &&
+      payload.lock_timeout_count === 0;
+    if (passed) {
+      return {
+        exit_code: 0,
+        ...payload,
+      };
+    }
+    lastPayload = payload;
+  }
+  if (!lastPayload) {
+    return {
+      exit_code: 1,
+      seed_exit_code: 1,
+      parallel_exit_code: 1,
+      append_attempts: appendAttempts,
+      append_hits: 0,
+      events_count: 0,
+      lock_timeout_count: 0,
+      plan_entry_count: 0,
+      active_plan_id: "",
+      active_plan_status: "",
+      attempt: maxAttempts,
+      max_attempts: maxAttempts,
+    };
+  }
+  return {
+    exit_code: 1,
+    ...lastPayload,
   };
 }
 
@@ -586,6 +831,12 @@ function runCli(argv) {
       break;
     case "start-interactive-session-flow":
       payload = runStartInteractiveSessionFlow(repoRoot);
+      break;
+    case "start-plan-mode-flow":
+      payload = runStartPlanModeFlow(repoRoot);
+      break;
+    case "start-plan-concurrency-flow":
+      payload = runStartPlanConcurrencyFlow(repoRoot);
       break;
     case "failover-rejects-python":
       payload = runFailoverRejectsPython(repoRoot);

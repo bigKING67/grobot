@@ -733,6 +733,78 @@ async function runTsRustExecutionSmoke() {
   assert.equal(toolCallDiagnosticPayload.event_types.includes("turn_failed"), true);
   logStep("runtime-smoke-contract tool-call-diagnostic-events");
 
+  const planModeFlowResult = runContract("start-smoke-contract.mjs", "start-plan-mode-flow", [
+    "--repo-root",
+    repoRoot,
+  ]);
+  const planModeFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-plan-mode-flow",
+    planModeFlowResult.stdout,
+  );
+  assert.equal(planModeFlowPayload.exit_code, 0);
+  assert.equal(Number(planModeFlowPayload.plan_entry_count) >= 1, true);
+  assert.equal(planModeFlowPayload.plan_active_exists, true);
+  assert.equal(String(planModeFlowPayload.plan_active_id || "").length === 0, true);
+  assert.equal(Number(planModeFlowPayload.events_count) >= 1, true);
+  assert.equal(typeof planModeFlowPayload.events_path, "string");
+  assert.equal(String(planModeFlowPayload.events_path).trim().length > 0, true);
+  logStep("start-smoke-contract start-plan-mode-flow", {
+    events: planModeFlowPayload.events_count,
+  });
+
+  const planConcurrencyFlowResult = runContract("start-smoke-contract.mjs", "start-plan-concurrency-flow", [
+    "--repo-root",
+    repoRoot,
+  ]);
+  const planConcurrencyPayload = parseJsonOutput(
+    "start-smoke-contract start-plan-concurrency-flow",
+    planConcurrencyFlowResult.stdout,
+  );
+  assert.equal(planConcurrencyPayload.exit_code, 0);
+  assert.equal(Number(planConcurrencyPayload.append_attempts) >= 4, true);
+  assert.equal(Number(planConcurrencyPayload.append_hits), Number(planConcurrencyPayload.append_attempts));
+  assert.equal(Number(planConcurrencyPayload.lock_timeout_count), 0);
+  assert.equal(Number(planConcurrencyPayload.events_count) >= 1, true);
+  assert.equal(typeof planConcurrencyPayload.events_path, "string");
+  assert.equal(String(planConcurrencyPayload.events_path).trim().length > 0, true);
+  logStep("start-smoke-contract start-plan-concurrency-flow", {
+    attempts: planConcurrencyPayload.append_attempts,
+    hits: planConcurrencyPayload.append_hits,
+  });
+
+  const planEventsReportResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/governance/evals/plan-events-report.ts",
+    "--events-path",
+    String(planModeFlowPayload.events_path),
+    "--events-path",
+    String(planConcurrencyPayload.events_path),
+    "--print-json",
+  ]);
+  assertSuccess("plan-events-report", planEventsReportResult);
+  const planEventsReportPayload = parseJsonOutput("plan-events-report", planEventsReportResult.stdout);
+  assert.equal(Number(planEventsReportPayload?.totals?.events_count) >= 2, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_mode_entered_count) >= 1, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_created_count) >= 1, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_progress_appended_count) >= 1, true);
+  assert.equal(
+    Number(planEventsReportPayload?.totals?.plan_apply_succeeded_count)
+      <= Number(planEventsReportPayload?.totals?.plan_apply_started_count),
+    true,
+  );
+  assert.equal(Number(planEventsReportPayload?.totals?.files_count), 2);
+  assert.equal(Number(planEventsReportPayload?.totals?.missing_files_count), 0);
+  assert.equal(Number(planEventsReportPayload?.totals?.invalid_lines), 0);
+  assert.equal(Number(planEventsReportPayload?.totals?.sessions_count) >= 1, true);
+  logStep("plan-events-report", {
+    files: planEventsReportPayload?.totals?.files_count,
+    events: planEventsReportPayload?.totals?.events_count,
+    sessions: planEventsReportPayload?.totals?.sessions_count,
+  });
+
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
     repoRoot,
