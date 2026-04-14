@@ -68,6 +68,41 @@ function parseTomlNumber(value: string): number | undefined {
   return parsed;
 }
 
+function parseTomlBoolean(value: string): boolean | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+  return undefined;
+}
+
+function parseTomlStringArray(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    return [];
+  }
+  const content = trimmed.slice(1, -1).trim();
+  if (!content) {
+    return [];
+  }
+  const items: string[] = [];
+  for (const token of content.split(",")) {
+    const parsed = parseTomlString(token);
+    if (!parsed) {
+      continue;
+    }
+    const normalized = parsed.trim();
+    if (!normalized) {
+      continue;
+    }
+    items.push(normalized);
+  }
+  return items;
+}
+
 function toAbsolutePath(rawPath: string, homeDir: string, baseDir: string): string {
   const trimmed = rawPath.trim();
   if (!trimmed) {
@@ -92,6 +127,8 @@ export interface ProviderProbeResult {
   modelCount?: number;
   selectedModel?: string;
   selectedFound?: boolean;
+  resolvedModel?: string;
+  autoSelected?: boolean;
 }
 
 interface MutableProvider {
@@ -99,6 +136,12 @@ interface MutableProvider {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  providerKind?: string;
+  kimiWebSearchMode?: string;
+  kimiDisableThinkingOnBuiltinWebSearch?: boolean;
+  kimiOfficialToolsAllowlist?: string[];
+  kimiFilesEnabled?: boolean;
+  kimiAllowFileAdmin?: boolean;
   priority?: number;
   weight?: number;
   unitCost?: number;
@@ -119,6 +162,12 @@ export interface ProviderSnapshot {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  providerKind?: string;
+  kimiWebSearchMode?: string;
+  kimiDisableThinkingOnBuiltinWebSearch?: boolean;
+  kimiOfficialToolsAllowlist?: string[];
+  kimiFilesEnabled?: boolean;
+  kimiAllowFileAdmin?: boolean;
   priority?: number;
   weight?: number;
   unitCost?: number;
@@ -213,12 +262,24 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
             currentProvider.name = value;
           } else if (key === "base_url") {
             currentProvider.baseUrl = value;
-        } else if (key === "api_key") {
-          currentProvider.apiKey = value;
-        } else if (key === "model") {
-          currentProvider.model = value;
-        } else if (key === "priority") {
-          currentProvider.priority = parseTomlNumber(kvMatch[2]);
+          } else if (key === "api_key") {
+            currentProvider.apiKey = value;
+          } else if (key === "model") {
+            currentProvider.model = value;
+          } else if (key === "provider_kind") {
+            currentProvider.providerKind = value;
+          } else if (key === "kimi_web_search_mode") {
+            currentProvider.kimiWebSearchMode = value;
+          } else if (key === "kimi_disable_thinking_on_builtin_web_search") {
+            currentProvider.kimiDisableThinkingOnBuiltinWebSearch = parseTomlBoolean(kvMatch[2]);
+          } else if (key === "kimi_official_tools_allowlist") {
+            currentProvider.kimiOfficialToolsAllowlist = parseTomlStringArray(kvMatch[2]);
+          } else if (key === "kimi_files_enabled") {
+            currentProvider.kimiFilesEnabled = parseTomlBoolean(kvMatch[2]);
+          } else if (key === "kimi_allow_file_admin") {
+            currentProvider.kimiAllowFileAdmin = parseTomlBoolean(kvMatch[2]);
+          } else if (key === "priority") {
+            currentProvider.priority = parseTomlNumber(kvMatch[2]);
           } else if (key === "weight") {
             currentProvider.weight = parseTomlNumber(kvMatch[2]);
           } else if (key === "unit_cost" || key === "cost_per_1k_tokens") {
@@ -269,18 +330,31 @@ function selectProject(
 
 function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): ProviderSnapshot {
   const resolvedName = raw.name?.trim();
+  const providerKind = raw.providerKind?.trim();
+  const kimiWebSearchMode = raw.kimiWebSearchMode?.trim();
+  const kimiOfficialToolsAllowlist = Array.isArray(raw.kimiOfficialToolsAllowlist)
+    ? raw.kimiOfficialToolsAllowlist
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+    : undefined;
   return {
     name: resolvedName && resolvedName.length > 0 ? resolvedName : fallbackName,
     baseUrl: raw.baseUrl?.trim(),
     apiKey: raw.apiKey?.trim(),
-      model: raw.model?.trim(),
-      priority: typeof raw.priority === "number" ? raw.priority : undefined,
-      weight: typeof raw.weight === "number" ? raw.weight : undefined,
-      unitCost: typeof raw.unitCost === "number" ? raw.unitCost : undefined,
-      maxInFlight: typeof raw.maxInFlight === "number" ? raw.maxInFlight : undefined,
-      requestsPerMinute: typeof raw.requestsPerMinute === "number" ? raw.requestsPerMinute : undefined,
-      burst: typeof raw.burst === "number" ? raw.burst : undefined,
-    };
+    model: raw.model?.trim(),
+    providerKind: providerKind && providerKind.length > 0 ? providerKind : undefined,
+    kimiWebSearchMode: kimiWebSearchMode && kimiWebSearchMode.length > 0 ? kimiWebSearchMode : undefined,
+    kimiDisableThinkingOnBuiltinWebSearch: raw.kimiDisableThinkingOnBuiltinWebSearch,
+    kimiOfficialToolsAllowlist,
+    kimiFilesEnabled: raw.kimiFilesEnabled,
+    kimiAllowFileAdmin: raw.kimiAllowFileAdmin,
+    priority: typeof raw.priority === "number" ? raw.priority : undefined,
+    weight: typeof raw.weight === "number" ? raw.weight : undefined,
+    unitCost: typeof raw.unitCost === "number" ? raw.unitCost : undefined,
+    maxInFlight: typeof raw.maxInFlight === "number" ? raw.maxInFlight : undefined,
+    requestsPerMinute: typeof raw.requestsPerMinute === "number" ? raw.requestsPerMinute : undefined,
+    burst: typeof raw.burst === "number" ? raw.burst : undefined,
+  };
 }
 
 function buildOrderedProviders(
@@ -413,6 +487,54 @@ function parseModelIdsFromProbePayload(payload: unknown): string[] {
   return [];
 }
 
+function pickAutoModel(modelIds: readonly string[]): string | undefined {
+  if (modelIds.length === 0) {
+    return undefined;
+  }
+  const kimiPreferred = modelIds.find((item) => /^(kimi|moonshot)[-_]/i.test(item));
+  if (kimiPreferred) {
+    return kimiPreferred;
+  }
+  const nonEmpty = modelIds.find((item) => item.trim().length > 0);
+  return nonEmpty;
+}
+
+function resolveProbeModelHint(
+  modelHint: string | undefined,
+  modelIds: readonly string[],
+): {
+  selectedModel?: string;
+  selectedFound?: boolean;
+  resolvedModel?: string;
+  autoSelected?: boolean;
+} {
+  const normalizedHint = modelHint?.trim();
+  if (!normalizedHint) {
+    return {
+      selectedModel: undefined,
+      selectedFound: undefined,
+      resolvedModel: undefined,
+      autoSelected: false,
+    };
+  }
+  if (normalizedHint.toLowerCase() === "auto") {
+    const resolvedModel = pickAutoModel(modelIds);
+    return {
+      selectedModel: normalizedHint,
+      selectedFound: typeof resolvedModel === "string" && resolvedModel.length > 0,
+      resolvedModel,
+      autoSelected: true,
+    };
+  }
+  const selectedFound = modelIds.some((item) => item === normalizedHint);
+  return {
+    selectedModel: normalizedHint,
+    selectedFound,
+    resolvedModel: normalizedHint,
+    autoSelected: false,
+  };
+}
+
 export async function probeProviderModels(
   baseUrl: string,
   apiKey: string,
@@ -462,19 +584,21 @@ export async function probeProviderModels(
         try {
           const payload = JSON.parse(body) as unknown;
           const modelIds = parseModelIdsFromProbePayload(payload);
-          const normalizedHint = modelHint?.trim();
-          const selectedFound = normalizedHint
-            ? modelIds.some((item) => item === normalizedHint)
-            : undefined;
+          const selected = resolveProbeModelHint(modelHint, modelIds);
+          const resolvedPart = selected.resolvedModel
+            ? ` resolved=${selected.resolvedModel}`
+            : "";
           resolve({
             state: "ok",
-            detail: normalizedHint
-              ? `models=${String(modelIds.length)} selected=${selectedFound ? "matched" : "missing"}`
+            detail: selected.selectedModel
+              ? `models=${String(modelIds.length)} selected=${selected.selectedFound ? "matched" : "missing"}${resolvedPart}`
               : `models=${String(modelIds.length)}`,
             httpStatus: statusCode,
             modelCount: modelIds.length,
-            selectedModel: normalizedHint,
-            selectedFound,
+            selectedModel: selected.selectedModel,
+            selectedFound: selected.selectedFound,
+            resolvedModel: selected.resolvedModel,
+            autoSelected: selected.autoSelected,
           });
         } catch (error) {
           resolve({

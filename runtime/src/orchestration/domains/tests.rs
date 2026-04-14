@@ -41,6 +41,7 @@ mod tests {
             context_lines: vec!["c1".to_string()],
             model_config: None,
             tool_context: None,
+            attachments: vec![],
         }
     }
 

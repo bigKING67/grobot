@@ -1,5 +1,6 @@
 use crate::models::engine::TurnExecuteInput;
 use globset::{Glob, GlobSetBuilder};
+use reqwest::blocking::Client;
 use regex::RegexBuilder;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -20,5 +21,6 @@ include!("domains/core/mod.rs");
 include!("domains/fs/mod.rs");
 include!("domains/shell/mod.rs");
 include!("domains/mcp/mod.rs");
+include!("domains/providers/kimi/mod.rs");
 include!("domains/dispatcher/mod.rs");
 include!("domains/tests.rs");

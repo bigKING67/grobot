@@ -32,6 +32,7 @@ export interface RuntimeRequest {
   contextLines: string[];
   modelConfig?: RuntimeModelConfig;
   toolContext?: RuntimeToolContext;
+  attachments?: RuntimeAttachment[];
   metadata: {
     platform: Platform;
     actorId: string;
@@ -42,11 +43,34 @@ export interface RuntimeRequest {
   };
 }
 
+export type RuntimeProviderKind = "openai_compatible" | "kimi";
+
+export type KimiWebSearchMode =
+  | "builtin_preferred"
+  | "builtin_only"
+  | "official_only"
+  | "off";
+
+export interface RuntimeKimiOptions {
+  webSearchMode?: KimiWebSearchMode;
+  disableThinkingOnBuiltinWebSearch?: boolean;
+  officialToolsAllowlist?: string[];
+  officialToolFormulas?: Record<string, string>;
+  filesEnabled?: boolean;
+  allowFileAdmin?: boolean;
+}
+
+export interface RuntimeProviderOptions {
+  kimi?: RuntimeKimiOptions;
+}
+
 export interface RuntimeModelConfig {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
   timeoutMs?: number;
+  providerKind?: RuntimeProviderKind;
+  providerOptions?: RuntimeProviderOptions;
 }
 
 export interface RuntimeToolContext {
@@ -54,6 +78,17 @@ export interface RuntimeToolContext {
   enabledTools?: string[];
   bashAllowlist?: string[];
   maxToolRounds?: number;
+}
+
+export type RuntimeAttachmentType = "file" | "image" | "video";
+export type RuntimeAttachmentSourceType = "path" | "url" | "file_id";
+
+export interface RuntimeAttachment {
+  type: RuntimeAttachmentType;
+  sourceType: RuntimeAttachmentSourceType;
+  source: string;
+  mimeType?: string;
+  filename?: string;
 }
 
 export type RuntimeEventType =

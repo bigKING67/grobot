@@ -94,6 +94,24 @@ function toRpcRequestLine(request: RuntimeRequest): string {
         api_key: runtimeModelConfig.apiKey,
         model: runtimeModelConfig.model,
         timeout_ms: runtimeModelConfig.timeoutMs,
+        provider_kind: runtimeModelConfig.providerKind,
+        provider_options: runtimeModelConfig.providerOptions
+          ? {
+              kimi: runtimeModelConfig.providerOptions.kimi
+                ? {
+                    web_search_mode: runtimeModelConfig.providerOptions.kimi.webSearchMode,
+                    disable_thinking_on_builtin_web_search:
+                      runtimeModelConfig.providerOptions.kimi.disableThinkingOnBuiltinWebSearch,
+                    official_tools_allowlist:
+                      runtimeModelConfig.providerOptions.kimi.officialToolsAllowlist,
+                    official_tool_formulas:
+                      runtimeModelConfig.providerOptions.kimi.officialToolFormulas,
+                    files_enabled: runtimeModelConfig.providerOptions.kimi.filesEnabled,
+                    allow_file_admin: runtimeModelConfig.providerOptions.kimi.allowFileAdmin,
+                  }
+                : undefined,
+            }
+          : undefined,
       }
     : undefined;
   const toolContextPayload = runtimeToolContext
@@ -115,6 +133,15 @@ function toRpcRequestLine(request: RuntimeRequest): string {
       context_lines: request.contextLines,
       model_config: modelConfigPayload,
       tool_context: toolContextPayload,
+      attachments: Array.isArray(request.attachments) && request.attachments.length > 0
+        ? request.attachments.map((item) => ({
+            type: item.type,
+            source_type: item.sourceType,
+            source: item.source,
+            mime_type: item.mimeType,
+            filename: item.filename,
+          }))
+        : undefined,
     },
   });
 }

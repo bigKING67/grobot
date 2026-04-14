@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
     use super::{
-        build_runtime_user_prompt, extract_response_content, ModelExecutor,
-        OpenAiCompatibleModelExecutor, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL,
-        ENV_RUNTIME_TIMEOUT_MS,
+        build_runtime_user_prompt, build_tool_definitions, extract_response_content,
+        load_runtime_model_config, should_disable_thinking_for_kimi_builtin_web_search,
+        ModelExecutor, OpenAiCompatibleModelExecutor, ENV_API_KEY, ENV_BASE_URL,
+        ENV_MODEL, ENV_RUNTIME_TIMEOUT_MS,
     };
     use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
     use crate::tools::tools::LocalToolExecutor;
@@ -262,12 +263,56 @@ mod tests {
             context_lines: vec!["A".to_string(), "B".to_string()],
             model_config: None,
             tool_context: None,
+            attachments: vec![],
         };
         let prompt = build_runtime_user_prompt(&input);
         assert!(prompt.contains("请总结一下"));
         assert!(prompt.contains("[Conversation Context]"));
         assert!(prompt.contains("A"));
         assert!(prompt.contains("B"));
+    }
+
+    #[test]
+    fn kimi_defaults_declare_builtin_web_search_and_disable_thinking() {
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some("https://api.moonshot.cn/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("kimi-k2.5".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("kimi".to_string()),
+            provider_options: None,
+        };
+        let resolved = load_runtime_model_config(Some(&model_config_input))
+            .expect("resolve kimi config");
+        let input = TurnExecuteInput {
+            request_id: "req_kimi_defaults".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            user_message: "请搜索今天的科技新闻".to_string(),
+            context_lines: vec![],
+            model_config: Some(model_config_input),
+            tool_context: None,
+            attachments: vec![],
+        };
+        let definitions = build_tool_definitions(&input, &resolved).expect("tool definitions");
+        let tool_entries = definitions.as_array().expect("tool array");
+        assert!(
+            tool_entries.iter().any(|entry| {
+                entry
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .map(|value| value == "builtin_function")
+                    .unwrap_or(false)
+                    && entry
+                        .get("function")
+                        .and_then(serde_json::Value::as_object)
+                        .and_then(|function| function.get("name"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(|name| name == "$web_search")
+                        .unwrap_or(false)
+            }),
+            "expected builtin $web_search in tool definitions"
+        );
+        assert!(should_disable_thinking_for_kimi_builtin_web_search(&resolved));
     }
 
     #[test]
@@ -294,8 +339,11 @@ mod tests {
                 api_key: Some("runtime-test-key".to_string()),
                 model: Some("runtime-test-model".to_string()),
                 timeout_ms: Some(5_000),
+                provider_kind: None,
+                provider_options: None,
             }),
             tool_context: None,
+            attachments: vec![],
         };
         let executor = OpenAiCompatibleModelExecutor;
         let output = executor
@@ -344,8 +392,11 @@ mod tests {
                 api_key: Some("runtime-test-key".to_string()),
                 model: Some("runtime-test-model".to_string()),
                 timeout_ms: Some(5_000),
+                provider_kind: None,
+                provider_options: None,
             }),
             tool_context: None,
+            attachments: vec![],
         };
         let executor = OpenAiCompatibleModelExecutor;
         let error = executor
@@ -374,6 +425,7 @@ mod tests {
             context_lines: vec![],
             model_config: None,
             tool_context: None,
+            attachments: vec![],
         };
         let executor = OpenAiCompatibleModelExecutor;
         let error = executor
@@ -407,8 +459,11 @@ mod tests {
                 api_key: Some("runtime-test-key".to_string()),
                 model: Some("runtime-test-model".to_string()),
                 timeout_ms: Some(5_000),
+                provider_kind: None,
+                provider_options: None,
             }),
             tool_context: None,
+            attachments: vec![],
         };
         let executor = OpenAiCompatibleModelExecutor;
         let error = executor

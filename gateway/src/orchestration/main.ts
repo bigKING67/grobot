@@ -7,6 +7,7 @@ import { buildSessionKey } from "../models/session-key";
 import { InMemorySessionPersister } from "../tools/state/session-persister";
 import {
   MigrationOptions,
+  RuntimeAttachment,
   RuntimeModelConfig,
   RuntimeToolContext,
   RuntimeEvent,
@@ -23,6 +24,7 @@ export interface GatewayContext {
 export interface GatewayRuntimeOptions {
   modelConfig?: RuntimeModelConfig;
   toolContext?: RuntimeToolContext;
+  attachments?: RuntimeAttachment[];
 }
 
 export function createTurnRequest(
@@ -80,5 +82,11 @@ export async function runGatewayTurn(
     persister: new InMemorySessionPersister(),
   });
 
-  return loop.runTurn(turn, migration, runtimeOptions?.modelConfig, runtimeOptions?.toolContext);
+  return loop.runTurn(
+    turn,
+    migration,
+    runtimeOptions?.modelConfig,
+    runtimeOptions?.toolContext,
+    runtimeOptions?.attachments,
+  );
 }

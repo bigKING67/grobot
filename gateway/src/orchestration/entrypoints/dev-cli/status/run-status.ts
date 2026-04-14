@@ -25,7 +25,17 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
-  const configTomlPath = resolveConfigTomlPath(options, homeDir);
+  const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
+  const configSource =
+    configTomlPath == null
+      ? "none"
+      : configTomlPath.startsWith(`${workDir}/.grobot/`)
+        ? "project_work_dir"
+        : configTomlPath.startsWith(`${projectRoot}/.grobot/`)
+          ? "project_root"
+          : configTomlPath.startsWith(`${homeDir}/`)
+            ? "home"
+            : "custom";
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const sessionScopeRaw = resolveSessionScopeOption(options);
   const sessionSubject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
@@ -72,6 +82,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(`project_root: ${projectRoot}\n`);
   process.stdout.write(`work_dir: ${workDir}\n`);
   process.stdout.write(`config_toml: ${configTomlPath ?? "<not-found>"}\n`);
+  process.stdout.write(`config_source: ${configSource}\n`);
   process.stdout.write(`project_toml: ${projectTomlPath ?? "<not-found>"}\n`);
   process.stdout.write(`project: ${projectName}\n`);
   process.stdout.write(`provider: ${providerName}\n`);
@@ -120,6 +131,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     if (typeof probe.selectedModel === "string" && probe.selectedModel.length > 0) {
       process.stdout.write(
         `probe_selected_model: ${probe.selectedModel} (${probe.selectedFound ? "found" : "missing"})\n`,
+      );
+    }
+    if (typeof probe.resolvedModel === "string" && probe.resolvedModel.length > 0) {
+      process.stdout.write(
+        `probe_resolved_model: ${probe.resolvedModel}${probe.autoSelected ? " (auto)" : ""}\n`,
       );
     }
     if (probe.state !== "ok") {

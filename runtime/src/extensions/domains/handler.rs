@@ -32,6 +32,20 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                     api_key: model_config.api_key,
                     model: model_config.model,
                     timeout_ms: model_config.timeout_ms,
+                    provider_kind: model_config.provider_kind,
+                    provider_options: model_config.provider_options.map(|options| {
+                        RuntimeProviderOptionsInput {
+                            kimi: options.kimi.map(|kimi| RuntimeKimiOptionsInput {
+                                web_search_mode: kimi.web_search_mode,
+                                disable_thinking_on_builtin_web_search: kimi
+                                    .disable_thinking_on_builtin_web_search,
+                                official_tools_allowlist: kimi.official_tools_allowlist,
+                                official_tool_formulas: kimi.official_tool_formulas,
+                                files_enabled: kimi.files_enabled,
+                                allow_file_admin: kimi.allow_file_admin,
+                            }),
+                        }
+                    }),
                 }),
                 tool_context: params.tool_context.map(|tool_context| RuntimeToolContextInput {
                     work_dir: tool_context.work_dir,
@@ -39,6 +53,17 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                     bash_allowlist: tool_context.bash_allowlist,
                     max_tool_rounds: tool_context.max_tool_rounds,
                 }),
+                attachments: params
+                    .attachments
+                    .into_iter()
+                    .map(|attachment| RuntimeAttachmentInput {
+                        attachment_type: attachment.attachment_type,
+                        source_type: attachment.source_type,
+                        source: attachment.source,
+                        mime_type: attachment.mime_type,
+                        filename: attachment.filename,
+                    })
+                    .collect(),
             });
             match execution_result {
                 Ok(execution) => Ok(success(

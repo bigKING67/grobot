@@ -1,4 +1,7 @@
-use crate::models::engine::{RuntimeModelConfigInput, RuntimeToolContextInput, TurnExecuteInput};
+use crate::models::engine::{
+    RuntimeAttachmentInput, RuntimeKimiOptionsInput, RuntimeModelConfigInput,
+    RuntimeProviderOptionsInput, RuntimeToolContextInput, TurnExecuteInput,
+};
 use crate::orchestration::orchestrator::execute_turn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

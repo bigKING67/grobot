@@ -1,5 +1,6 @@
 import {
   MigrationOptions,
+  RuntimeAttachment,
   RuntimeClient,
   RuntimeModelConfig,
   RuntimeRequest,
@@ -38,6 +39,7 @@ function buildRuntimeRequest(
   migration: MigrationOptions,
   runtimeModelConfig?: RuntimeModelConfig,
   runtimeToolContext?: RuntimeToolContext,
+  runtimeAttachments?: RuntimeAttachment[],
 ): RuntimeRequest {
   return {
     protocolVersion: "runtime.v1",
@@ -47,6 +49,7 @@ function buildRuntimeRequest(
     contextLines,
     modelConfig: runtimeModelConfig,
     toolContext: runtimeToolContext,
+    attachments: runtimeAttachments,
     metadata: {
       ...turn.metadata,
       gatewayImpl: migration.gatewayImpl,
@@ -80,6 +83,7 @@ export class AgentLoop {
     migration: MigrationOptions,
     runtimeModelConfig?: RuntimeModelConfig,
     runtimeToolContext?: RuntimeToolContext,
+    runtimeAttachments?: RuntimeAttachment[],
   ): Promise<TurnExecutionReport> {
     const startedAt = nowIso();
     const contextLines = await this.deps.contextAssembler.assemble(turn);
@@ -89,6 +93,7 @@ export class AgentLoop {
       migration,
       runtimeModelConfig,
       runtimeToolContext,
+      runtimeAttachments,
     );
 
     const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest);

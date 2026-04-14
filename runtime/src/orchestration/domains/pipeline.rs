@@ -40,6 +40,31 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
         "unknown_tool".to_string()
     }
 
+    fn resolve_provider_label(input: &TurnExecuteInput) -> &'static str {
+        let explicit = input
+            .model_config
+            .as_ref()
+            .and_then(|config| config.provider_kind.as_ref())
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        if explicit == "kimi" {
+            return "kimi";
+        }
+        if explicit == "openai_compatible" || explicit == "openai-compatible" {
+            return "openai-compatible";
+        }
+        let base_url = input
+            .model_config
+            .as_ref()
+            .and_then(|config| config.base_url.as_ref())
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        if base_url.contains("moonshot.cn") {
+            return "kimi";
+        }
+        "openai-compatible"
+    }
+
     pub fn execute_turn(
         &self,
         input: TurnExecuteInput,
@@ -61,7 +86,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                 "model_request",
                 &turn_id,
                 Some(json!({
-                    "provider": "openai-compatible"
+                    "provider": Self::resolve_provider_label(&input)
                 })),
             ),
         ];

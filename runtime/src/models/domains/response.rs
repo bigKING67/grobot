@@ -56,32 +56,6 @@ fn extract_response_content(response: &Value) -> Option<String> {
     None
 }
 
-fn extract_first_tool_call_name(response: &Value) -> Option<String> {
-    let choices = match response.get("choices").and_then(Value::as_array) {
-        Some(choices) => choices,
-        None => return None,
-    };
-    let first = match choices.first() {
-        Some(first) => first,
-        None => return None,
-    };
-    let message = match first.get("message") {
-        Some(message) => message,
-        None => return None,
-    };
-    let first_tool = message
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .and_then(|tool_calls| tool_calls.first())?;
-    let function = first_tool.get("function")?;
-    let name = function.get("name").and_then(Value::as_str)?;
-    let normalized = name.trim();
-    if normalized.is_empty() {
-        return None;
-    }
-    Some(normalized.to_string())
-}
-
 fn extract_first_assistant_message(response: &Value) -> Option<Value> {
     let choices = response.get("choices")?.as_array()?;
     let first = choices.first()?;

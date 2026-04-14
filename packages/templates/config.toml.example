@@ -108,6 +108,12 @@ name = "kimi"
 api_key = "replace-with-kimi-api-key"
 base_url = "https://api.moonshot.cn/v1"
 model = "auto" # auto = read from /models and pick first kimi/moonshot model
+provider_kind = "kimi"
+kimi_web_search_mode = "builtin_preferred" # builtin_preferred | builtin_only | official_only | off
+kimi_disable_thinking_on_builtin_web_search = true
+kimi_official_tools_allowlist = ["web-search", "date", "fetch", "rethink", "code_runner"]
+kimi_files_enabled = true
+kimi_allow_file_admin = false
 
 # Optional fallback provider example (used when primary fails)
 # [[projects.agent.providers]]

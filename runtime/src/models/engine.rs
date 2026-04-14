@@ -7,6 +7,23 @@ pub struct RuntimeModelConfigInput {
     pub api_key: Option<String>,
     pub model: Option<String>,
     pub timeout_ms: Option<u64>,
+    pub provider_kind: Option<String>,
+    pub provider_options: Option<RuntimeProviderOptionsInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeProviderOptionsInput {
+    pub kimi: Option<RuntimeKimiOptionsInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeKimiOptionsInput {
+    pub web_search_mode: Option<String>,
+    pub disable_thinking_on_builtin_web_search: Option<bool>,
+    pub official_tools_allowlist: Option<Vec<String>>,
+    pub official_tool_formulas: Option<Value>,
+    pub files_enabled: Option<bool>,
+    pub allow_file_admin: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -18,6 +35,15 @@ pub struct RuntimeToolContextInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct RuntimeAttachmentInput {
+    pub attachment_type: String,
+    pub source_type: String,
+    pub source: String,
+    pub mime_type: Option<String>,
+    pub filename: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TurnExecuteInput {
     pub request_id: String,
     pub session_key: String,
@@ -25,6 +51,7 @@ pub struct TurnExecuteInput {
     pub context_lines: Vec<String>,
     pub model_config: Option<RuntimeModelConfigInput>,
     pub tool_context: Option<RuntimeToolContextInput>,
+    pub attachments: Vec<RuntimeAttachmentInput>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -86,8 +86,8 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
     Ok(calls)
 }
 
-fn build_tool_definitions() -> Value {
-    json!([
+fn build_local_tool_definitions() -> Vec<Value> {
+    let definitions = json!([
         {
             "type": "function",
             "function": {
@@ -233,7 +233,196 @@ fn build_tool_definitions() -> Value {
                 }
             }
         }
-    ])
+    ]);
+    definitions
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn build_kimi_builtin_tool_definitions(config: &RuntimeModelConfig) -> Vec<Value> {
+    if config.provider_kind != ProviderKind::Kimi {
+        return Vec::new();
+    }
+    match config.provider_options.kimi.web_search_mode {
+        KimiWebSearchMode::BuiltinPreferred | KimiWebSearchMode::BuiltinOnly => {
+            vec![json!({
+                "type": "builtin_function",
+                "function": {
+                    "name": "$web_search"
+                }
+            })]
+        }
+        KimiWebSearchMode::OfficialOnly | KimiWebSearchMode::Off => Vec::new(),
+    }
+}
+
+fn build_kimi_official_tool_definitions(config: &RuntimeModelConfig) -> Vec<Value> {
+    if config.provider_kind != ProviderKind::Kimi {
+        return Vec::new();
+    }
+    let allowlist = &config.provider_options.kimi.official_tools_allowlist;
+    if allowlist.is_empty() {
+        return Vec::new();
+    }
+    let mut definitions = Vec::new();
+    let mut push_definition = |name: &str, description: &str| {
+        definitions.push(json!({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }));
+    };
+    for tool_name in allowlist {
+        let canonical = canonical_kimi_tool_name(tool_name);
+        match canonical.as_str() {
+            "web_search" => {
+                if matches!(
+                    config.provider_options.kimi.web_search_mode,
+                    KimiWebSearchMode::BuiltinOnly | KimiWebSearchMode::Off
+                ) {
+                    continue;
+                }
+                push_definition(
+                    "web_search",
+                    "Moonshot official web-search tool for real-time information retrieval.",
+                );
+            }
+            "date" => push_definition(
+                "date",
+                "Moonshot official date tool for date and time processing.",
+            ),
+            "fetch" => push_definition(
+                "fetch",
+                "Moonshot official fetch tool for URL content extraction.",
+            ),
+            "rethink" => push_definition(
+                "rethink",
+                "Moonshot official rethink tool for thought organization.",
+            ),
+            "code_runner" => push_definition(
+                "code_runner",
+                "Moonshot official Python code execution tool.",
+            ),
+            "kimi_files_list" => push_definition(
+                "kimi_files_list",
+                "List uploaded files in Kimi file storage (admin operation).",
+            ),
+            "kimi_files_delete" => push_definition(
+                "kimi_files_delete",
+                "Delete an uploaded file by file_id from Kimi file storage (admin operation).",
+            ),
+            _ => {
+                let description = format!("Moonshot official tool: {}", canonical);
+                push_definition(&canonical, &description);
+            }
+        }
+    }
+    if config.provider_options.kimi.allow_file_admin {
+        if !allowlist
+            .iter()
+            .any(|item| canonical_kimi_tool_name(item) == "kimi_files_list")
+        {
+            push_definition(
+                "kimi_files_list",
+                "List uploaded files in Kimi file storage (admin operation).",
+            );
+        }
+        if !allowlist
+            .iter()
+            .any(|item| canonical_kimi_tool_name(item) == "kimi_files_delete")
+        {
+            push_definition(
+                "kimi_files_delete",
+                "Delete an uploaded file by file_id from Kimi file storage (admin operation).",
+            );
+        }
+    }
+    definitions
+}
+
+fn build_tool_definitions(input: &TurnExecuteInput, config: &RuntimeModelConfig) -> Option<Value> {
+    let mut tools = Vec::new();
+    if input.tool_context.is_some() {
+        tools.extend(build_local_tool_definitions());
+    }
+    tools.extend(build_kimi_builtin_tool_definitions(config));
+    tools.extend(build_kimi_official_tool_definitions(config));
+    if tools.is_empty() {
+        return None;
+    }
+    Some(Value::Array(tools))
+}
+
+fn should_disable_thinking_for_kimi_builtin_web_search(config: &RuntimeModelConfig) -> bool {
+    if config.provider_kind != ProviderKind::Kimi {
+        return false;
+    }
+    if !config
+        .provider_options
+        .kimi
+        .disable_thinking_on_builtin_web_search
+    {
+        return false;
+    }
+    matches!(
+        config.provider_options.kimi.web_search_mode,
+        KimiWebSearchMode::BuiltinPreferred | KimiWebSearchMode::BuiltinOnly
+    )
+}
+
+fn is_kimi_tool_call_supported_without_local_context(
+    tool_call: &ToolCallInput,
+    config: &RuntimeModelConfig,
+) -> bool {
+    if config.provider_kind != ProviderKind::Kimi {
+        return false;
+    }
+    let raw_name = tool_call.name.trim();
+    if raw_name == "$web_search" {
+        return matches!(
+            config.provider_options.kimi.web_search_mode,
+            KimiWebSearchMode::BuiltinPreferred | KimiWebSearchMode::BuiltinOnly
+        );
+    }
+    let normalized_name = canonical_kimi_tool_name(raw_name);
+    if normalized_name.is_empty() {
+        return false;
+    }
+    match normalized_name.as_str() {
+        "web_search" => {
+            if matches!(
+                config.provider_options.kimi.web_search_mode,
+                KimiWebSearchMode::BuiltinOnly | KimiWebSearchMode::Off
+            ) {
+                return false;
+            }
+        }
+        "kimi_files_list" | "kimi_files_delete" => {
+            if !config.provider_options.kimi.allow_file_admin
+                || !config.provider_options.kimi.files_enabled
+            {
+                return false;
+            }
+        }
+        _ => {}
+    }
+    config
+        .provider_options
+        .kimi
+        .official_tools_allowlist
+        .iter()
+        .any(|tool_name| tool_name == &normalized_name)
+        || matches!(
+            normalized_name.as_str(),
+            "kimi_files_list" | "kimi_files_delete"
+        )
 }
 
 fn resolve_max_tool_rounds(input: &TurnExecuteInput) -> usize {

@@ -4,6 +4,9 @@ impl ToolExecutor for LocalToolExecutor {
         call: &ToolCallInput,
         input: &TurnExecuteInput,
     ) -> Result<ToolCallOutput, ToolExecutionError> {
+        if let Some(kimi_result) = execute_kimi_tool_call(call, input) {
+            return kimi_result;
+        }
         let tool_name = normalize_tool_name(&call.name);
         let context = parse_tool_context(input)?;
         if !context.enabled_tools.contains(&tool_name) {

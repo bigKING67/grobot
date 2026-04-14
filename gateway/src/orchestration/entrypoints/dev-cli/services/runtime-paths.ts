@@ -90,7 +90,16 @@ export function resolveProjectTomlPath(
   return undefined;
 }
 
-export function resolveConfigTomlPath(options: Record<string, OptionValue>, homeDir: string): string | undefined {
+interface ResolveConfigTomlPathContext {
+  workDir?: string;
+  projectRoot?: string;
+}
+
+export function resolveConfigTomlPath(
+  options: Record<string, OptionValue>,
+  homeDir: string,
+  context?: ResolveConfigTomlPathContext,
+): string | undefined {
   const explicit = readOptionStringAny(options, ["config", "config-path"]);
   if (explicit) {
     const explicitPath = toAbsolutePath(explicit, homeDir, process.cwd());
@@ -104,6 +113,22 @@ export function resolveConfigTomlPath(options: Record<string, OptionValue>, home
     if (fileReadable(envConfigPath)) {
       return envConfigPath;
     }
+  }
+  const workDirCandidate = context?.workDir
+    ? `${removeTrailingSlashes(context.workDir)}/.grobot/config.toml`
+    : `${removeTrailingSlashes(process.cwd())}/.grobot/config.toml`;
+  if (fileReadable(workDirCandidate)) {
+    return workDirCandidate;
+  }
+  const projectRootCandidate = context?.projectRoot
+    ? `${removeTrailingSlashes(context.projectRoot)}/.grobot/config.toml`
+    : undefined;
+  if (
+    projectRootCandidate &&
+    projectRootCandidate !== workDirCandidate &&
+    fileReadable(projectRootCandidate)
+  ) {
+    return projectRootCandidate;
   }
   const fromHome = `${homeDir}/config.toml`;
   if (fileReadable(fromHome)) {
