@@ -18,6 +18,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN_DIR_DEFAULT="${HOME}/.grobot/bin"
 BIN_DIR="${GROBOT_INSTALL_BIN_DIR:-$BIN_DIR_DEFAULT}"
 UPDATE_PROFILE=1
+RUN_BROWSER_NATIVE_SETUP=1
+BROWSER_NATIVE_SETUP_STRICT=0
 
 usage() {
   cat <<'EOF'
@@ -26,6 +28,10 @@ Usage: bash scripts/install-local.sh [options]
 Options:
   --bin-dir <dir>    Install symlink into custom directory (default: ~/.grobot/bin)
   --no-profile       Do not modify shell profile PATH
+  --no-browser-native-setup
+                     Skip browser native dependency setup
+  --browser-native-setup-strict
+                     Fail install when browser native setup fails
   -h, --help         Show help
 EOF
 }
@@ -42,6 +48,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-profile)
       UPDATE_PROFILE=0
+      shift
+      ;;
+    --no-browser-native-setup)
+      RUN_BROWSER_NATIVE_SETUP=0
+      shift
+      ;;
+    --browser-native-setup-strict)
+      BROWSER_NATIVE_SETUP_STRICT=1
       shift
       ;;
     -h|--help)
@@ -115,3 +129,38 @@ esac
 if command -v grobot >/dev/null 2>&1; then
   echo "  verify:    $(command -v grobot)"
 fi
+
+run_browser_native_setup() {
+  if [ "$RUN_BROWSER_NATIVE_SETUP" -ne 1 ]; then
+    echo "  browser:   native setup skipped (--no-browser-native-setup)"
+    return 0
+  fi
+
+  local setup_script
+  setup_script="$REPO_ROOT/adapters/browser-structured-mcp/native-deps-setup.mjs"
+  if [ ! -f "$setup_script" ]; then
+    echo "  browser:   native setup skipped (script not found: $setup_script)"
+    return 0
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  browser:   native setup skipped (node not found in PATH)"
+    return 0
+  fi
+
+  echo "  browser:   running native dependency setup..."
+  if node "$setup_script" --install --yes --quiet; then
+    echo "  browser:   native dependency setup completed"
+    return 0
+  fi
+
+  echo "  browser:   native dependency setup failed" >&2
+  echo "  browser:   run 'npm run browser:native:doctor' for details" >&2
+  if [ "$BROWSER_NATIVE_SETUP_STRICT" -eq 1 ]; then
+    echo "  browser:   strict mode enabled; aborting install" >&2
+    return 1
+  fi
+  echo "  browser:   continuing install (best-effort mode)" >&2
+  return 0
+}
+
+run_browser_native_setup

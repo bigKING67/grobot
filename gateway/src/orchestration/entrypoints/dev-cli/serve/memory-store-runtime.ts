@@ -124,12 +124,24 @@ export async function loadMemoryStoreRuntimeState(args: {
   runtimeInput: MemoryStoreRuntime;
   memoryStoreKey: string;
   memoryStorePath: string;
+  memoryStoreLegacyPath?: string;
   redisGetJson: (redisUrl: string, key: string) => Promise<Record<string, unknown> | undefined>;
 }): Promise<{
   runtime: MemoryStoreRuntime;
   store: Map<string, Record<string, unknown>[]>;
 }> {
-  const { runtimeInput, memoryStoreKey, memoryStorePath, redisGetJson } = args;
+  const { runtimeInput, memoryStoreKey, memoryStorePath, memoryStoreLegacyPath, redisGetJson } = args;
+  const loadFileStoreWithLegacy = (): Map<string, Record<string, unknown>[]> => {
+    const primary = loadMemoryStore(memoryStorePath);
+    if (primary.size > 0 || !memoryStoreLegacyPath) {
+      return primary;
+    }
+    const legacy = loadMemoryStore(memoryStoreLegacyPath);
+    if (legacy.size > 0) {
+      saveMemoryStore(memoryStorePath, legacy);
+    }
+    return legacy;
+  };
   if (runtimeInput.backend === "redis" && runtimeInput.redisUrl) {
     try {
       const payload = await redisGetJson(runtimeInput.redisUrl, memoryStoreKey);
@@ -144,13 +156,13 @@ export async function loadMemoryStoreRuntimeState(args: {
           backend: "file",
           fallbackReason: `redis bootstrap failed, fallback to file: ${String(error)}`,
         },
-        store: loadMemoryStore(memoryStorePath),
+        store: loadFileStoreWithLegacy(),
       };
     }
   }
   return {
     runtime: runtimeInput,
-    store: loadMemoryStore(memoryStorePath),
+    store: loadFileStoreWithLegacy(),
   };
 }
 

@@ -1,4 +1,5 @@
 import { type RunStartBootstrapState } from "./run-start-bootstrap";
+import { type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
 import { type ChatHistoryMessage } from "./session-history";
 import {
   type SessionPlanMeta,
@@ -31,9 +32,11 @@ export interface RunStartRuntimeState {
   setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
   getPlanMode(): SessionPlanMode;
   setPlanMode(value: SessionPlanMode): void;
-  getPlanMeta(): SessionPlanMeta | undefined;
-  setPlanMeta(value: SessionPlanMeta | undefined): void;
-}
+    getPlanMeta(): SessionPlanMeta | undefined;
+    setPlanMeta(value: SessionPlanMeta | undefined): void;
+    getGaState(): GaSessionStateSnapshot | undefined;
+    setGaState(value: GaSessionStateSnapshot | undefined): void;
+  }
 
 export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInput): RunStartRuntimeState {
   let sessionRegistry = input.bootstrapState.sessionRegistry;
@@ -47,6 +50,7 @@ export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInpu
   let providerRuntimeStates = input.bootstrapState.providerRuntimeStates;
   let planMode = input.bootstrapState.planMode;
   let planMeta = input.bootstrapState.planMeta;
+  let gaState = input.bootstrapState.gaState;
 
   return {
     getSessionRegistry: (): SessionRegistryPayload => sessionRegistry,
@@ -84,9 +88,13 @@ export function createRunStartRuntimeState(input: CreateRunStartRuntimeStateInpu
     setPlanMode: (value: SessionPlanMode): void => {
       planMode = value;
     },
-    getPlanMeta: (): SessionPlanMeta | undefined => planMeta,
-    setPlanMeta: (value: SessionPlanMeta | undefined): void => {
-      planMeta = value;
-    },
-  };
-}
+      getPlanMeta: (): SessionPlanMeta | undefined => planMeta,
+      setPlanMeta: (value: SessionPlanMeta | undefined): void => {
+        planMeta = value;
+      },
+      getGaState: (): GaSessionStateSnapshot | undefined => gaState,
+      setGaState: (value: GaSessionStateSnapshot | undefined): void => {
+        gaState = value;
+      },
+    };
+  }

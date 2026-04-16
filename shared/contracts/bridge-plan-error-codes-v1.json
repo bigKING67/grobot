@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grobot.dev/contracts/bridge-plan-error-codes-v1.json",
+  "title": "Grobot Bridge Plan Error Codes v1",
+  "description": "Canonical error-code registry for gateway/src/extensions/bridge-cli.ts plan-mode responses.",
+  "schema": "bridge_plan_error_codes",
+  "schema_version": 1,
+  "codes": [
+    {
+      "code": "PLAN_NO_ACTIVE",
+      "category": "plan_state",
+      "description": "No active plan exists for current session."
+    },
+    {
+      "code": "PLAN_APPLY_STATUS_BLOCKED",
+      "category": "plan_state",
+      "description": "Plan exists but current status cannot enter apply."
+    },
+    {
+      "code": "PLAN_REVIEW_PLAN_NOT_FOUND",
+      "category": "plan_review",
+      "description": "Active plan vanished during review commit step."
+    },
+    {
+      "code": "PLAN_REVIEW_FAILED",
+      "category": "plan_review",
+      "description": "Review failed with non-blocking findings."
+    },
+    {
+      "code": "PLAN_REVIEW_BLOCKED",
+      "category": "plan_review",
+      "description": "Review blocked due to unresolved-question findings."
+    },
+    {
+      "code": "PLAN_APPROVAL_FAILED",
+      "category": "plan_apply",
+      "description": "Plan approval artifacts could not be persisted."
+    },
+    {
+      "code": "PLAN_SET_APPLYING_FAILED",
+      "category": "plan_apply",
+      "description": "Plan status failed to transition into applying."
+    },
+    {
+      "code": "PLAN_APPLY_EXEC_FAILED",
+      "category": "plan_apply",
+      "description": "Apply execution failed after entering applying."
+    },
+    {
+      "code": "PLAN_APPEND_NOTE_FAILED",
+      "category": "plan_guard",
+      "description": "Plan-only guard could not append note."
+    },
+    {
+      "code": "PLAN_GUARD_DENIED",
+      "category": "plan_guard",
+      "description": "Plan-only guard denied normal execution and appended note."
+    },
+    {
+      "code": "BRIDGE_FATAL",
+      "category": "bridge",
+      "description": "Unexpected bridge-cli fatal error."
+    }
+  ]
+}

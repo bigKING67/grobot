@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { SessionScope } from "../../../../models/types";
+import { normalizeGaSessionStateSnapshot, type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
 import {
   ChatHistoryMessage,
   compactSingleLine,
@@ -15,10 +16,25 @@ export type SessionPlanMode = "normal" | "plan_only";
 
 export interface SessionPlanMeta {
   active_plan_id?: string;
-  active_plan_status?: "draft" | "approved" | "apply_failed" | "applied" | "discarded";
+  active_plan_status?:
+    | "draft"
+    | "blocked"
+    | "review_failed"
+    | "ready"
+    | "approved"
+    | "applying"
+    | "apply_failed"
+    | "applied"
+    | "discarded";
   active_plan_path?: string;
   active_plan_seq?: number;
   active_plan_title?: string;
+  review_status?: "blocked" | "review_failed" | "ready";
+  blocked_count?: number;
+  review_fail_count?: number;
+  approved_hash?: string;
+  approval_ticket_id?: string;
+  approved_snapshot_path?: string;
   updated_at?: string;
 }
 
@@ -44,6 +60,7 @@ export interface SessionRegistryRecord {
   provider_runtime_states?: SessionProviderRuntimeState[];
   plan_mode?: SessionPlanMode;
   plan_meta?: SessionPlanMeta;
+  ga_state?: GaSessionStateSnapshot;
 }
 
 export interface SessionRegistryPayload {
@@ -77,6 +94,17 @@ function parseOptionalPositiveInt(value: unknown): number | undefined {
   return normalized;
 }
 
+function parseOptionalNonNegativeInt(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const normalized = Math.floor(value);
+  if (normalized < 0) {
+    return undefined;
+  }
+  return normalized;
+}
+
 function parseNonNegativeInt(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
@@ -102,9 +130,33 @@ function parsePlanMode(value: unknown): SessionPlanMode {
   return "normal";
 }
 
-function parsePlanStatus(value: unknown): "draft" | "approved" | "apply_failed" | "applied" | "discarded" | undefined {
+function parsePlanStatus(
+  value: unknown,
+):
+  | "draft"
+  | "blocked"
+  | "review_failed"
+  | "ready"
+  | "approved"
+  | "applying"
+  | "apply_failed"
+  | "applied"
+  | "discarded"
+  | undefined {
+  if (value === "blocked") {
+    return "blocked";
+  }
+  if (value === "review_failed") {
+    return "review_failed";
+  }
+  if (value === "ready") {
+    return "ready";
+  }
   if (value === "approved") {
     return "approved";
+  }
+  if (value === "applying") {
+    return "applying";
   }
   if (value === "apply_failed") {
     return "apply_failed";
@@ -131,8 +183,31 @@ function normalizePlanMeta(raw: unknown): SessionPlanMeta | undefined {
   const activePlanPath = parseOptionalString(record.active_plan_path);
   const activePlanSeq = parseOptionalPositiveInt(record.active_plan_seq);
   const activePlanTitle = parseOptionalString(record.active_plan_title);
+  const reviewStatus = parsePlanStatus(record.review_status);
+  const blockedCount = parseOptionalNonNegativeInt(record.blocked_count);
+  const reviewFailCount = parseOptionalNonNegativeInt(record.review_fail_count);
+  const approvedHash = parseOptionalString(record.approved_hash);
+  const approvalTicketId = parseOptionalString(record.approval_ticket_id);
+  const approvedSnapshotPath = parseOptionalString(record.approved_snapshot_path);
   const updatedAt = parseOptionalString(record.updated_at);
-  if (!activePlanId && !activePlanPath && !activePlanSeq && !activePlanTitle && !activePlanStatus && !updatedAt) {
+  const normalizedReviewStatus =
+    reviewStatus === "ready" || reviewStatus === "blocked" || reviewStatus === "review_failed"
+      ? reviewStatus
+      : undefined;
+  if (
+    !activePlanId
+    && !activePlanPath
+    && !activePlanSeq
+    && !activePlanTitle
+    && !activePlanStatus
+    && !normalizedReviewStatus
+    && typeof blockedCount !== "number"
+    && typeof reviewFailCount !== "number"
+    && !approvedHash
+    && !approvalTicketId
+    && !approvedSnapshotPath
+    && !updatedAt
+  ) {
     return undefined;
   }
   return {
@@ -141,6 +216,12 @@ function normalizePlanMeta(raw: unknown): SessionPlanMeta | undefined {
     active_plan_path: activePlanPath,
     active_plan_seq: activePlanSeq,
     active_plan_title: activePlanTitle,
+    review_status: normalizedReviewStatus,
+    blocked_count: blockedCount,
+    review_fail_count: reviewFailCount,
+    approved_hash: approvedHash,
+    approval_ticket_id: approvalTicketId,
+    approved_snapshot_path: approvedSnapshotPath,
     updated_at: updatedAt,
   };
 }
@@ -293,9 +374,9 @@ export function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: stri
       if (!id || !sessionKey) {
         continue;
       }
-      sessions.push({
-        id,
-        session_key: sessionKey,
+        sessions.push({
+          id,
+          session_key: sessionKey,
         created_at: typeof record.created_at === "string" && record.created_at.trim().length > 0
           ? record.created_at
           : nowIsoUtc(),
@@ -304,11 +385,12 @@ export function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: stri
           : nowIsoUtc(),
         preview: typeof record.preview === "string" ? record.preview : "",
         sticky_provider: parseOptionalString(record.sticky_provider),
-        provider_runtime_states: normalizeProviderRuntimeStates(record.provider_runtime_states),
-        plan_mode: parsePlanMode(record.plan_mode),
-        plan_meta: normalizePlanMeta(record.plan_meta),
-      });
-    }
+          provider_runtime_states: normalizeProviderRuntimeStates(record.provider_runtime_states),
+          plan_mode: parsePlanMode(record.plan_mode),
+          plan_meta: normalizePlanMeta(record.plan_meta),
+          ga_state: normalizeGaSessionStateSnapshot(sessionKey, record.ga_state),
+        });
+      }
   }
   if (sessions.length === 0) {
     sessions.push(createSessionRecord(namespaceKey, SESSION_REGISTRY_MAIN_ID));
@@ -324,6 +406,10 @@ export function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: stri
 }
 
 function sessionRegistryRoot(homeDir: string): string {
+  return `${removeTrailingSlashes(homeDir)}/session`;
+}
+
+function legacySessionRegistryRoot(homeDir: string): string {
   return `${removeTrailingSlashes(homeDir)}/runtime/sessions`;
 }
 
@@ -332,20 +418,38 @@ export function sessionRegistryFilePath(homeDir: string, namespaceKey: string): 
   return `${root}/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
 }
 
+function legacySessionRegistryFilePath(homeDir: string, namespaceKey: string): string {
+  const root = legacySessionRegistryRoot(homeDir);
+  return `${root}/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+}
+
 export function historyStoreFilePath(homeDir: string, sessionKey: string): string {
   const root = sessionRegistryRoot(homeDir);
   return `${root}/${sanitizeSessionKey(sessionKey)}.history.json`;
 }
 
+function legacyHistoryStoreFilePath(homeDir: string, sessionKey: string): string {
+  const root = legacySessionRegistryRoot(homeDir);
+  return `${root}/${sanitizeSessionKey(sessionKey)}.history.json`;
+}
+
 export function loadSessionRegistry(homeDir: string, namespaceKey: string): LoadedSessionRegistry {
   const path = sessionRegistryFilePath(homeDir, namespaceKey);
+  const legacyPath = legacySessionRegistryFilePath(homeDir, namespaceKey);
   const warnings: string[] = [];
   let raw: unknown = {};
+  let sourcePath = path;
   if (fileReadable(path)) {
+    sourcePath = path;
+  } else if (fileReadable(legacyPath)) {
+    sourcePath = legacyPath;
+    warnings.push(`session registry migrated from legacy path (${legacyPath})`);
+  }
+  if (fileReadable(sourcePath)) {
     try {
-      raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+      raw = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;
     } catch (error) {
-      warnings.push(`session registry parse failed (${path}): ${String(error)}`);
+      warnings.push(`session registry parse failed (${sourcePath}): ${String(error)}`);
     }
   }
   const normalized = normalizeSessionRegistryPayload(raw, namespaceKey);
@@ -439,6 +543,23 @@ export function setSessionPlanState(
   };
 }
 
+export function setSessionGaState(
+  payload: SessionRegistryPayload,
+  sessionId: string,
+  gaState: GaSessionStateSnapshot | undefined,
+): void {
+  const index = payload.sessions.findIndex((item) => item.id === sessionId);
+  if (index < 0) {
+    return;
+  }
+  const record = payload.sessions[index];
+  payload.sessions[index] = {
+    ...record,
+    updated_at: nowIsoUtc(),
+    ga_state: gaState,
+  };
+}
+
 export function loadHistoryMessages(
   homeDir: string,
   sessionKey: string,
@@ -449,21 +570,26 @@ export function loadHistoryMessages(
   warnings: string[];
 } {
   const path = historyStoreFilePath(homeDir, sessionKey);
+  const legacyPath = legacyHistoryStoreFilePath(homeDir, sessionKey);
+  const sourcePath = fileReadable(path) ? path : legacyPath;
   const warnings: string[] = [];
-  if (!fileReadable(path)) {
+  if (!fileReadable(sourcePath)) {
     return {
       messages: [],
       source: "empty",
       warnings,
     };
   }
+  if (sourcePath === legacyPath) {
+    warnings.push(`history migrated from legacy path (${legacyPath})`);
+  }
   try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    const raw = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;
     if (typeof raw !== "object" || raw === null) {
       return {
         messages: [],
         source: "empty",
-        warnings: [`history payload is invalid object (${path})`],
+        warnings: [`history payload is invalid object (${sourcePath})`],
       };
     }
     const payload = raw as Record<string, unknown>;
@@ -474,7 +600,7 @@ export function loadHistoryMessages(
       warnings,
     };
   } catch (error) {
-    warnings.push(`history parse failed (${path}): ${String(error)}`);
+    warnings.push(`history parse failed (${sourcePath}): ${String(error)}`);
     return {
       messages: [],
       source: "empty",

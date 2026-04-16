@@ -1,4 +1,5 @@
 import { SessionStoreController } from "../services/session-store";
+import { type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
 import { type ChatHistoryMessage } from "./session-history";
 import {
   createSessionRecord,
@@ -28,6 +29,7 @@ export interface RunStartBootstrapState {
   providerRuntimeStates: SessionProviderRuntimeState[];
   planMode: SessionPlanMode;
   planMeta?: SessionPlanMeta;
+  gaState?: GaSessionStateSnapshot;
 }
 
 function ensureActiveSession(
@@ -69,5 +71,6 @@ export async function bootstrapRunStartState(
       : [],
     planMode: activeSessionRecord.plan_mode === "plan_only" ? "plan_only" : "normal",
     planMeta: activeSessionRecord.plan_meta,
+    gaState: activeSessionRecord.ga_state,
   };
 }

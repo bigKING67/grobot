@@ -10,6 +10,7 @@
     "min_plan_progress_appended_count": 1,
     "max_invalid_lines": 0,
     "max_missing_files": 0,
+    "max_review_failed_rate": 0.8,
     "max_guard_denied_rate": 1,
     "max_idempotent_hit_rate": 1,
     "max_stale_recovery_count": 0

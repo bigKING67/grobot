@@ -9,11 +9,16 @@
     "grobot",
     "packages/cli/bin/grobot",
     "packages/templates/config.toml.example",
+    "adapters/contextweaver/bridge/cli.mjs",
+    "adapters/contextweaver/vendor/contextweaver/dist",
+    "adapters/contextweaver/vendor/contextweaver/skills",
+    "shared/retrieval/contextweaver-retrieval.mjs",
     "README.md"
   ],
   "scripts": {
     "pack:list": "npm pack --dry-run",
     "install:local": "bash ./scripts/install-local.sh",
+    "install:local:strict-native": "bash ./scripts/install-local.sh --browser-native-setup-strict",
     "uninstall:local": "bash ./scripts/uninstall-local.sh",
     "core:install:binary": "bash ./scripts/install-core-binary.sh",
     "core:install:url": "bash ./scripts/install-core-from-url.sh",
@@ -37,6 +42,11 @@
     "check:gateway:runtime-smoke:baseline": "node gateway/tests/check-gateway-node.mjs --runtime-smoke-only --json-output /tmp/grobot-runtime-smoke-baseline.json",
     "check:gateway:runtime-smoke:report": "node gateway/tests/check-gateway-node.mjs --runtime-smoke-only --json-output /tmp/grobot-runtime-smoke-report.json",
     "check:gateway:runtime-smoke:diff": "node gateway/tests/check-gateway-node.mjs --runtime-smoke-only --json --baseline-json /tmp/grobot-runtime-smoke-baseline.json --json-output /tmp/grobot-runtime-smoke-report.json",
+    "check:browser-structured:mcp": "node gateway/src/extensions/contracts/browser-structured-mcp-contract.mjs && node gateway/src/extensions/contracts/browser-structured-mcp-hub-control-contract.mjs",
+    "check:browser-structured:mcp:hub-control": "node gateway/src/extensions/contracts/browser-structured-mcp-hub-control-contract.mjs",
+    "check:browser-structured:mcp:live": "node gateway/src/extensions/contracts/browser-structured-mcp-live-contract.mjs",
+    "check:browser-structured:mcp:live:doctor": "node gateway/src/extensions/contracts/browser-structured-mcp-live-doctor.mjs",
+    "check:browser-structured:mcp:live:gate": "node gateway/src/extensions/contracts/browser-structured-mcp-live-gate.mjs",
     "check:gateway:ts": "npx --yes --package typescript@5.6.3 tsc --project gateway/tsconfig.json --noEmit",
     "check:runtime": "cargo check --manifest-path runtime/Cargo.toml && cargo test --manifest-path runtime/Cargo.toml",
     "harness:sample": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts --cases gateway/evals/fixtures/cases.sample.jsonl --runs gateway/evals/fixtures/runs.sample.jsonl --gate-policy gateway/evals/gate_policy.default.json --output /tmp/grobot-harness-report.json",
@@ -70,6 +80,16 @@
     "harness:ci-label-policy:fingerprint": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/ci-label-policy-guard.ts --policy gateway/evals/ci_label_policy.json --print-json",
     "harness:ci-summary": "npm run harness:ci-summary:build -- --trace-report gateway/evals/data/trace_pipeline_ci_report.json --skill-router-report gateway/evals/data/skill_router_ci_report.json --print-json",
     "harness:ci-summary:build": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/ci-summary.ts",
-    "harness:ci-summary:export": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/ci-summary-export.ts"
+    "harness:ci-summary:export": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/ci-summary-export.ts",
+    "browser:tmwd:hub": "node adapters/browser-structured-mcp/tmwd-hub.mjs",
+    "browser:tmwd:hub:start": "node adapters/browser-structured-mcp/tmwd-hub-control.mjs start",
+    "browser:tmwd:hub:stop": "node adapters/browser-structured-mcp/tmwd-hub-control.mjs stop",
+    "browser:tmwd:hub:status": "node adapters/browser-structured-mcp/tmwd-hub-control.mjs status",
+    "browser:native:doctor": "node adapters/browser-structured-mcp/native-deps-setup.mjs",
+    "browser:native:setup": "node adapters/browser-structured-mcp/native-deps-setup.mjs --install --yes",
+    "browser:native:setup:json": "node adapters/browser-structured-mcp/native-deps-setup.mjs --install --yes --json"
+  },
+  "dependencies": {
+    "ws": "8.18.0"
   }
 }

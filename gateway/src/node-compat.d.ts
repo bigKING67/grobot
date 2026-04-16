@@ -27,6 +27,34 @@ declare class Buffer extends Uint8Array {
 }
 
 declare module "node:child_process" {
+  export interface SpawnOptions {
+    stdio?: ["pipe", "pipe", "pipe"];
+  }
+
+  export interface SpawnReadableStream {
+    setEncoding(encoding: "utf8"): void;
+    on(event: "data", listener: (chunk: string | Buffer) => void): void;
+  }
+
+  export interface SpawnWritableStream {
+    write(
+      data: string,
+      encoding: "utf8",
+      callback: (error?: Error | null) => void,
+    ): void;
+    end(): void;
+    on(event: "error", listener: (error: Error) => void): void;
+  }
+
+  export interface SpawnProcess {
+    stdin: SpawnWritableStream;
+    stdout: SpawnReadableStream;
+    stderr: SpawnReadableStream;
+    kill(signal?: string): boolean;
+    on(event: "error", listener: (error: Error) => void): SpawnProcess;
+    on(event: "close", listener: (code: number | null, signal: string | null) => void): SpawnProcess;
+  }
+
   export interface SpawnSyncOptions {
     input?: string;
     encoding?: "utf8";
@@ -47,6 +75,12 @@ declare module "node:child_process" {
     args?: string[],
     options?: SpawnSyncOptions,
   ): SpawnSyncReturns<string>;
+
+  export function spawn(
+    command: string,
+    args?: string[],
+    options?: SpawnOptions,
+  ): SpawnProcess;
 }
 
 declare module "node:crypto" {
@@ -178,4 +212,27 @@ declare module "node:readline" {
     input: unknown;
     output?: unknown;
   }): Interface;
+}
+
+declare module "./_shared/mock-model-server.mjs" {
+  export interface MockModelServerCall {
+    method: string;
+    path: string;
+    authorization: string;
+    model: string;
+    prompt: string;
+    bodyText: string;
+  }
+
+  export interface MockModelServerHandle {
+    baseUrl: string;
+    getCalls(): MockModelServerCall[];
+    close(): Promise<void>;
+  }
+
+  export function startMockModelServer(options?: {
+    mode?: string;
+    content?: string;
+    responseDelayMs?: number;
+  }): Promise<MockModelServerHandle>;
 }

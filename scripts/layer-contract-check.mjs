@@ -122,6 +122,34 @@ function collectForbiddenCratePrefixes(filePath, forbiddenPrefixes) {
   return [...seen];
 }
 
+function collectForbiddenImportPrefixes(filePath, forbiddenPrefixes) {
+  const text = readFileSync(filePath, "utf8");
+  const seen = new Set();
+  const pattern =
+    /\bfrom\s+["']([^"']+)["']|\brequire\(\s*["']([^"']+)["']\s*\)|\bimport\(\s*["']([^"']+)["']\s*\)/g;
+  for (const match of text.matchAll(pattern)) {
+    const specifier = (match[1] || match[2] || match[3] || "").trim();
+    if (!specifier) {
+      continue;
+    }
+    for (const prefix of forbiddenPrefixes) {
+      if (specifier.startsWith(prefix)) {
+        seen.add(prefix);
+      }
+    }
+  }
+  return [...seen];
+}
+
+function fileMatchesExtensions(path, extensions) {
+  for (const ext of extensions) {
+    if (path.endsWith(ext)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isImportAllowlisted(relativePath, cratePrefix, allowlist) {
   for (const rule of allowlist) {
     const expectedPrefix =
@@ -151,14 +179,16 @@ for (const layer of spec.layers ?? []) {
   }
   notices.push(`[layer:${layer.name}] ok: ${layer.path}`);
 
-  for (const requiredDir of layer.requiredDomainDirs ?? []) {
+  const requiredDirs =
+    layer.requiredDirs ?? layer.requiredCapabilityDirs ?? layer.requiredDomainDirs ?? [];
+  for (const requiredDir of requiredDirs) {
     const requiredPath = resolve(layerPath, requiredDir);
     if (!isDir(requiredPath)) {
-      warnings.push(`[layer:${layer.name}] missing domain directory: ${repoRel(requiredPath)}`);
+      warnings.push(`[layer:${layer.name}] missing required directory: ${repoRel(requiredPath)}`);
       continue;
     }
     if (countDirectoryEntries(requiredPath) === 0) {
-      warnings.push(`[layer:${layer.name}] empty domain directory: ${repoRel(requiredPath)}`);
+      warnings.push(`[layer:${layer.name}] empty required directory: ${repoRel(requiredPath)}`);
     }
   }
 }
@@ -197,16 +227,30 @@ for (const rule of spec.importPolicyWarnings ?? []) {
   }
   const files = [];
   walkFiles(baseDir, files);
+  const fileExtensions = Array.isArray(rule.fileExtensions) && rule.fileExtensions.length > 0
+    ? rule.fileExtensions
+    : Array.isArray(rule.forbiddenImportPrefixes) && rule.forbiddenImportPrefixes.length > 0
+      ? [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"]
+      : [".rs"];
   for (const filePath of files) {
-    if (!filePath.endsWith(".rs")) {
+    if (!fileMatchesExtensions(filePath, fileExtensions)) {
       continue;
     }
-    const hitPrefixes = collectForbiddenCratePrefixes(
+    const hitPrefixes = new Set();
+    for (const prefix of collectForbiddenCratePrefixes(
       filePath,
       rule.forbiddenCratePrefixes ?? []
-    );
+    )) {
+      hitPrefixes.add(prefix);
+    }
+    for (const prefix of collectForbiddenImportPrefixes(
+      filePath,
+      rule.forbiddenImportPrefixes ?? []
+    )) {
+      hitPrefixes.add(prefix);
+    }
     const relativePath = repoRel(filePath);
-    const actionablePrefixes = hitPrefixes.filter(
+    const actionablePrefixes = [...hitPrefixes].filter(
       (prefix) =>
         !isImportAllowlisted(
           relativePath,
@@ -218,7 +262,7 @@ for (const rule of spec.importPolicyWarnings ?? []) {
       continue;
     }
     warnings.push(
-      `[imports:${rule.name}] ${relativePath} references forbidden crate prefixes: ${actionablePrefixes.join(", ")}`
+      `[imports:${rule.name}] ${relativePath} references forbidden prefixes: ${actionablePrefixes.join(", ")}`
     );
   }
 }

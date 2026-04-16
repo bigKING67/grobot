@@ -1,19 +1,43 @@
 import { readFileSync } from "node:fs";
 import { runGatewayTurn } from "../orchestration/main";
 import { MigrationOptions, SessionKeyParts } from "../models/types";
-import { parsePlanCommand, parsePlanQuickReply } from "../orchestration/entrypoints/dev-cli/start/plan-command";
+import { parsePlanCommand } from "../orchestration/entrypoints/dev-cli/start/plan-command";
 import {
   appendPlanEvent,
   appendPlanProgressNote,
+  approvePlanArtifact,
   buildPlanApplyPrompt,
   createPlanArtifact,
   loadActivePlanArtifact,
   recoverStaleApprovedPlan,
+  recordPlanReviewResult,
+  reviewPlanContent,
   updatePlanArtifactStatus,
 } from "../orchestration/entrypoints/dev-cli/start/plan-artifact";
 import { removeTrailingSlashes } from "../orchestration/entrypoints/dev-cli/services/runtime-paths";
 
 const PLAN_GUARD_CODE = "PLAN_GUARD_DENIED";
+const PLAN_ERROR_NO_ACTIVE = "PLAN_NO_ACTIVE";
+const PLAN_ERROR_APPLY_BLOCKED = "PLAN_APPLY_STATUS_BLOCKED";
+const PLAN_ERROR_REVIEW_PLAN_NOT_FOUND = "PLAN_REVIEW_PLAN_NOT_FOUND";
+const PLAN_ERROR_REVIEW_FAILED = "PLAN_REVIEW_FAILED";
+const PLAN_ERROR_REVIEW_BLOCKED = "PLAN_REVIEW_BLOCKED";
+const PLAN_ERROR_APPROVAL_FAILED = "PLAN_APPROVAL_FAILED";
+const PLAN_ERROR_SET_APPLYING_FAILED = "PLAN_SET_APPLYING_FAILED";
+const PLAN_ERROR_APPLY_EXEC_FAILED = "PLAN_APPLY_EXEC_FAILED";
+const PLAN_ERROR_APPEND_NOTE_FAILED = "PLAN_APPEND_NOTE_FAILED";
+const BRIDGE_FATAL_ERROR = "BRIDGE_FATAL";
+
+type BridgePlanStatus =
+  | "draft"
+  | "blocked"
+  | "review_failed"
+  | "ready"
+  | "approved"
+  | "applying"
+  | "apply_failed"
+  | "applied"
+  | "discarded";
 
 interface BridgeInput {
   userMessage: string;
@@ -94,17 +118,25 @@ function resolveWorkDir(input: BridgeInput): string {
   return removeTrailingSlashes(process.cwd());
 }
 
+function isPlanOnlyStatus(status: BridgePlanStatus): boolean {
+  return status !== "applied" && status !== "discarded";
+}
+
 function currentPlanView(workDir: string, sessionId: string): {
   mode: "normal" | "plan_only";
   active_plan_id?: string;
-  active_plan_status?: "draft" | "approved" | "apply_failed" | "applied" | "discarded";
+  active_plan_status?: BridgePlanStatus;
   active_plan_path?: string;
+  active_plan_seq?: number;
+  active_plan_title?: string;
+  blocked_count?: number;
+  review_fail_count?: number;
+  approval_ticket_id?: string;
+  approved_hash?: string;
+  approved_snapshot_path?: string;
 } {
   const active = loadActivePlanArtifact(workDir, sessionId);
-  if (
-    !active ||
-    (active.entry.status !== "draft" && active.entry.status !== "approved" && active.entry.status !== "apply_failed")
-  ) {
+  if (!active || !isPlanOnlyStatus(active.entry.status)) {
     return {
       mode: "normal",
     };
@@ -114,18 +146,48 @@ function currentPlanView(workDir: string, sessionId: string): {
     active_plan_id: active.entry.plan_id,
     active_plan_status: active.entry.status,
     active_plan_path: active.planPath,
+    active_plan_seq: active.entry.seq,
+    active_plan_title: active.entry.title,
+    blocked_count: active.entry.blocked_count,
+    review_fail_count: active.entry.review_fail_count,
+    approval_ticket_id: active.entry.approval_ticket_id,
+    approved_hash: active.entry.approved_hash,
+    approved_snapshot_path: active.entry.approved_snapshot_path,
   };
 }
 
-function planOptionsMessage(): string {
+function planModeHintMessage(): string {
   return [
-    "[plan-options]",
-    "1) apply current plan (/plan apply)",
-    "2) show plan markdown (/plan show)",
-    "3) continue planning (send text to append)",
-    "4) discard plan (/plan discard)",
-    "none of these: <note> (append custom note)",
+    "[plan] commands:",
+    "  /plan status",
+    "  /plan apply [extra]",
+    "  /plan cancel",
+    "  (send plain text to refine the active plan)",
   ].join("\n");
+}
+
+function formatReviewFindings(findings: readonly { code: string; section?: string; message: string }[]): string {
+  if (findings.length === 0) {
+    return "none";
+  }
+  return findings
+    .map((item) => `${item.code}:${item.section ?? "global"}:${item.message}`)
+    .join(" | ");
+}
+
+function readApprovedPlanContent(snapshotPath: string | undefined, fallback: string): string {
+  if (!snapshotPath) {
+    return fallback;
+  }
+  try {
+    const snapshot = readFileSync(snapshotPath, "utf8");
+    if (snapshot.trim().length > 0) {
+      return snapshot;
+    }
+  } catch {
+    // fallback to active content when snapshot is unavailable.
+  }
+  return fallback;
 }
 
 async function main(): Promise<number> {
@@ -139,6 +201,7 @@ async function main(): Promise<number> {
     const workDir = resolveWorkDir(input);
     const sessionId = resolvePlanSessionId(input.session);
     const rawMessage = input.userMessage.trim();
+
     const applyActivePlan = async (
       activeInitial: NonNullable<ReturnType<typeof loadActivePlanArtifact>>,
       extra: string,
@@ -154,17 +217,18 @@ async function main(): Promise<number> {
           code: 1,
           payload: {
             status: "error",
+            error_code: PLAN_ERROR_NO_ACTIVE,
             detail: "no active plan to apply",
             plan: currentPlanView(workDir, sessionId),
           },
         };
       }
-      if (active.entry.status === "approved") {
+      if (active.entry.status === "applying") {
         appendPlanEvent(workDir, sessionId, {
           event: "plan_apply_idempotent_hit",
           plan_id: active.entry.plan_id,
           source,
-          detail: "status=approved",
+          detail: "status=applying",
         });
         return {
           code: 0,
@@ -176,36 +240,87 @@ async function main(): Promise<number> {
           },
         };
       }
-      if (active.entry.status !== "draft" && active.entry.status !== "apply_failed") {
+      if (active.entry.status === "applied" || active.entry.status === "discarded") {
         return {
           code: 1,
           payload: {
             status: "error",
+            error_code: PLAN_ERROR_APPLY_BLOCKED,
             detail: `apply blocked by status=${active.entry.status}`,
             plan: currentPlanView(workDir, sessionId),
           },
         };
       }
-      const approved = updatePlanArtifactStatus(workDir, sessionId, active.entry.plan_id, "approved");
-      if (!approved) {
+
+      const review = reviewPlanContent(active.content);
+      const reviewedEntry = recordPlanReviewResult(
+        workDir,
+        sessionId,
+        active.entry.plan_id,
+        review,
+        source,
+      );
+      if (!reviewedEntry) {
         return {
           code: 1,
           payload: {
             status: "error",
-            detail: `failed to mark approved for ${active.entry.plan_id}`,
+            error_code: PLAN_ERROR_REVIEW_PLAN_NOT_FOUND,
+            detail: `review failed, plan not found: ${active.entry.plan_id}`,
             plan: currentPlanView(workDir, sessionId),
           },
         };
       }
-      appendPlanEvent(workDir, sessionId, {
-        event: "plan_apply_started",
-        plan_id: active.entry.plan_id,
+      if (!review.ok) {
+        return {
+          code: 2,
+          payload: {
+            status: "error",
+            error_code: review.blocked ? PLAN_ERROR_REVIEW_BLOCKED : PLAN_ERROR_REVIEW_FAILED,
+            detail: `[plan-review] blocked=${review.blocked ? "yes" : "no"} findings=${formatReviewFindings(review.findings)}`,
+            plan: currentPlanView(workDir, sessionId),
+          },
+        };
+      }
+
+      const approval = approvePlanArtifact(workDir, sessionId, active.entry.plan_id, {
+        approvedBy: source,
         source,
-        detail: "status moved to approved",
       });
+      if (!approval.approved || !approval.entry || !approval.planHash || !approval.ticketId) {
+        return {
+          code: 1,
+          payload: {
+            status: "error",
+            error_code: PLAN_ERROR_APPROVAL_FAILED,
+            detail: `approval failed plan_id=${active.entry.plan_id}`,
+            plan: currentPlanView(workDir, sessionId),
+          },
+        };
+      }
+
+      const applying = updatePlanArtifactStatus(workDir, sessionId, active.entry.plan_id, "applying");
+      if (!applying) {
+        return {
+          code: 1,
+          payload: {
+            status: "error",
+            error_code: PLAN_ERROR_SET_APPLYING_FAILED,
+            detail: `failed to set applying status for ${active.entry.plan_id}`,
+            plan: currentPlanView(workDir, sessionId),
+          },
+        };
+      }
+
       try {
+        const approvedPlanContent = readApprovedPlanContent(approval.snapshotPath, active.content);
         const report = await runGatewayTurn(
-          buildPlanApplyPrompt(active.content, extra),
+          buildPlanApplyPrompt({
+            approvedPlanContent,
+            approvedHash: approval.planHash,
+            ticketId: approval.ticketId,
+            extra,
+          }),
           input.session,
           input.context,
           input.migration,
@@ -241,12 +356,14 @@ async function main(): Promise<number> {
           code: 1,
           payload: {
             status: "error",
+            error_code: PLAN_ERROR_APPLY_EXEC_FAILED,
             detail,
             plan: currentPlanView(workDir, sessionId),
           },
         };
       }
     };
+
     if (rawMessage.startsWith("/plan")) {
       const parsed = parsePlanCommand(rawMessage);
       if (parsed.kind === "invalid") {
@@ -271,7 +388,7 @@ async function main(): Promise<number> {
         process.stdout.write(
           `${JSON.stringify({
             status: "ok",
-            assistant_message: `[plan] entered PLAN_ONLY plan_id=${created.entry.plan_id} file=${created.planPath}\n${planOptionsMessage()}`,
+            assistant_message: `[plan] entered PLAN_ONLY plan_id=${created.entry.plan_id} file=${created.planPath}\n${planModeHintMessage()}`,
             report: null,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
@@ -283,58 +400,24 @@ async function main(): Promise<number> {
         process.stdout.write(
           `${JSON.stringify({
             status: "ok",
-            assistant_message: `[plan-status] mode=${plan.mode} plan_id=${plan.active_plan_id ?? "<none>"}`,
+            assistant_message: `[plan-status] mode=${plan.mode} plan_id=${plan.active_plan_id ?? "<none>"} status=${plan.active_plan_status ?? "<none>"}`,
             report: null,
             plan,
           })}\n`,
         );
         return 0;
       }
-      if (parsed.kind === "show") {
+      if (parsed.kind === "cancel") {
         const active = loadActivePlanArtifact(workDir, sessionId);
-        if (!active) {
-          process.stdout.write(
-            `${JSON.stringify({
-              status: "ok",
-              assistant_message: "[plan] no active plan. Use /plan <goal> first.",
-              report: null,
-              plan: currentPlanView(workDir, sessionId),
-            })}\n`,
-          );
-          return 0;
-        }
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "ok",
-            assistant_message: active.content,
-            report: null,
-            plan: currentPlanView(workDir, sessionId),
-          })}\n`,
-        );
-        return 0;
-      }
-      if (parsed.kind === "options") {
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "ok",
-            assistant_message: planOptionsMessage(),
-            report: null,
-            plan: currentPlanView(workDir, sessionId),
-          })}\n`,
-        );
-        return 0;
-      }
-      if (parsed.kind === "discard") {
-        const active = loadActivePlanArtifact(workDir, sessionId);
-        if (active) {
+        if (active && isPlanOnlyStatus(active.entry.status)) {
           updatePlanArtifactStatus(workDir, sessionId, active.entry.plan_id, "discarded");
         }
         process.stdout.write(
           `${JSON.stringify({
             status: "ok",
-            assistant_message: active
-              ? `[plan] discarded plan_id=${active.entry.plan_id}`
-              : "[plan] no active plan to discard.",
+            assistant_message: active && isPlanOnlyStatus(active.entry.status)
+              ? `[plan] cancelled plan_id=${active.entry.plan_id}`
+              : "[plan] no active plan to cancel.",
             report: null,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
@@ -346,7 +429,19 @@ async function main(): Promise<number> {
         process.stdout.write(
           `${JSON.stringify({
             status: "error",
+            error_code: PLAN_ERROR_NO_ACTIVE,
             detail: "no active plan to apply",
+            plan: currentPlanView(workDir, sessionId),
+          })}\n`,
+        );
+        return 1;
+      }
+      if (!isPlanOnlyStatus(active.entry.status)) {
+        process.stdout.write(
+          `${JSON.stringify({
+            status: "error",
+            error_code: PLAN_ERROR_APPLY_BLOCKED,
+            detail: `apply blocked by status=${active.entry.status}`,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
         );
@@ -356,82 +451,42 @@ async function main(): Promise<number> {
       process.stdout.write(`${JSON.stringify(applyResult.payload)}\n`);
       return applyResult.code;
     }
+
     const activeDraft = loadActivePlanArtifact(workDir, sessionId);
-    if (
-      activeDraft &&
-      (activeDraft.entry.status === "draft" ||
-        activeDraft.entry.status === "approved" ||
-        activeDraft.entry.status === "apply_failed")
-    ) {
-      const quickReply = parsePlanQuickReply(rawMessage);
-      if (quickReply.kind === "option") {
-        if (quickReply.value === 1) {
-          const applyResult = await applyActivePlan(activeDraft, "", "bridge");
-          process.stdout.write(`${JSON.stringify(applyResult.payload)}\n`);
-          return applyResult.code;
-        }
-        if (quickReply.value === 2) {
-          process.stdout.write(
-            `${JSON.stringify({
-              status: "ok",
-              assistant_message: activeDraft.content,
-              report: null,
-              guard_code: PLAN_GUARD_CODE,
-              plan: currentPlanView(workDir, sessionId),
-            })}\n`,
-          );
-          return 0;
-        }
-        if (quickReply.value === 3) {
-          process.stdout.write(
-            `${JSON.stringify({
-              status: "ok",
-              assistant_message: "[plan] continue planning. Send your update and it will be appended.",
-              report: null,
-              guard_code: PLAN_GUARD_CODE,
-              plan: currentPlanView(workDir, sessionId),
-            })}\n`,
-          );
-          return 0;
-        }
-        updatePlanArtifactStatus(workDir, sessionId, activeDraft.entry.plan_id, "discarded");
+    if (activeDraft && isPlanOnlyStatus(activeDraft.entry.status)) {
+      let appended: ReturnType<typeof appendPlanProgressNote>;
+      try {
+        appended = appendPlanProgressNote(
+          workDir,
+          sessionId,
+          activeDraft.entry.plan_id,
+          rawMessage,
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
         process.stdout.write(
           `${JSON.stringify({
-            status: "ok",
-            assistant_message: `[plan] discarded plan_id=${activeDraft.entry.plan_id}`,
-            report: null,
+            status: "error",
+            error_code: PLAN_ERROR_APPEND_NOTE_FAILED,
+            detail: `append plan note failed: ${detail}`,
             guard_code: PLAN_GUARD_CODE,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
         );
-        return 0;
+        return 1;
       }
-      if (quickReply.kind === "none" && !quickReply.note) {
+      if (!appended.updated) {
         process.stdout.write(
           `${JSON.stringify({
-            status: "ok",
-            assistant_message: "[plan] please provide note after `none of these:`.",
-            report: null,
+            status: "error",
+            error_code: PLAN_ERROR_APPEND_NOTE_FAILED,
+            detail: "failed to append plan note",
             guard_code: PLAN_GUARD_CODE,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
         );
-        return 0;
+        return 1;
       }
-      if (quickReply.kind === "empty") {
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "ok",
-            assistant_message: "[plan] empty input ignored in PLAN_ONLY mode.",
-            report: null,
-            guard_code: PLAN_GUARD_CODE,
-            plan: currentPlanView(workDir, sessionId),
-          })}\n`,
-        );
-        return 0;
-      }
-      const note = quickReply.kind === "none" ? quickReply.note : quickReply.note;
-      appendPlanProgressNote(workDir, sessionId, activeDraft.entry.plan_id, note);
       appendPlanEvent(workDir, sessionId, {
         event: "plan_guard_denied",
         plan_id: activeDraft.entry.plan_id,
@@ -442,14 +497,16 @@ async function main(): Promise<number> {
         `${JSON.stringify({
           status: "ok",
           assistant_message:
-            `[plan-guard] code=${PLAN_GUARD_CODE} plan_only blocks normal execution; note appended file=${activeDraft.planPath}`,
+            `[plan-guard] code=${PLAN_GUARD_CODE} plan_only blocks normal execution; note appended file=${appended.planPath ?? activeDraft.planPath}`,
           report: null,
+          error_code: PLAN_GUARD_CODE,
           guard_code: PLAN_GUARD_CODE,
           plan: currentPlanView(workDir, sessionId),
         })}\n`,
       );
       return 0;
     }
+
     const report = await runGatewayTurn(
       input.userMessage,
       input.session,
@@ -471,7 +528,7 @@ async function main(): Promise<number> {
     return 0;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    process.stdout.write(`${JSON.stringify({ status: "error", detail })}\n`);
+    process.stdout.write(`${JSON.stringify({ status: "error", error_code: BRIDGE_FATAL_ERROR, detail })}\n`);
     return 1;
   }
 }

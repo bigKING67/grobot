@@ -8,9 +8,13 @@ Required event types:
 4. `tool_start`
 5. `tool_end`
 6. `turn_stream_chunk`
-7. `turn_end`
-8. `turn_failed`
-9. `session_resume`
+7. `turn_interrupted`
+8. `turn_end`
+9. `turn_failed`
+10. `session_resume`
+11. `no_tool_fallback_triggered`
+12. `no_tool_fallback_succeeded`
+13. `no_tool_fallback_exhausted`
 
 Common envelope:
 

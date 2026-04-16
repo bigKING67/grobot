@@ -1,5 +1,6 @@
 import { createRunStartInteractiveModeInput } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
 import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
+import { type GaSessionStateSnapshot } from "../../orchestration/entrypoints/dev-cli/services/ga-mechanism-runtime";
 import {
   type SessionPlanMeta,
   type SessionPlanMode,
@@ -34,11 +35,12 @@ function createRuntimeStateMock(input: {
   let sessionKey = input.sessionKey;
   let historyMessages = [...input.historyMessages];
   let stickyProvider = input.stickyProvider;
-  let providerRuntimeStates = [...input.providerRuntimeStates];
-  let planMode: SessionPlanMode = "normal";
-  let planMeta: SessionPlanMeta | undefined;
-  let historyCompacted = false;
-  let failureObserved = false;
+    let providerRuntimeStates = [...input.providerRuntimeStates];
+    let planMode: SessionPlanMode = "normal";
+    let planMeta: SessionPlanMeta | undefined;
+    let gaState: GaSessionStateSnapshot | undefined;
+    let historyCompacted = false;
+    let failureObserved = false;
   return {
     getSessionRegistry: () => sessionRegistry,
     getActiveSessionId: () => activeSessionId,
@@ -75,12 +77,16 @@ function createRuntimeStateMock(input: {
     setPlanMode: (value) => {
       planMode = value;
     },
-    getPlanMeta: () => planMeta,
-    setPlanMeta: (value) => {
-      planMeta = value;
-    },
-  };
-}
+      getPlanMeta: () => planMeta,
+      setPlanMeta: (value) => {
+        planMeta = value;
+      },
+      getGaState: () => gaState,
+      setGaState: (value) => {
+        gaState = value;
+      },
+    };
+  }
 
 async function main(): Promise<void> {
   const stdoutChunks: string[] = [];
@@ -144,11 +150,14 @@ async function main(): Promise<void> {
     isPlanMode: () => false,
     enterPlan: async () => 0,
     showPlanStatus: async () => 0,
-    showPlanContent: async () => 0,
-    showPlanOptions: async () => 0,
     runPlanTurn: async () => 0,
     applyPlan: async () => 0,
-    discardPlan: async () => 0,
+    cancelPlan: async () => 0,
+    requestPlanInterrupt: async () => ({
+      code: "PLAN_INTERRUPT_NOT_RUNNING",
+      accepted: false,
+      phase: "idle",
+    }),
     handleMessageInput: async () => ({ handled: false, code: 0 }),
   };
 
@@ -187,7 +196,7 @@ async function main(): Promise<void> {
     workDir: "/tmp/work",
     sessionNamespaceKey: "feishu:grobot:dm:interactive-binding-contract",
     sessionStoreRuntime,
-    sessionRegistryFilePathValue: "/tmp/home/runtime/sessions/contract.sessions.json",
+    sessionRegistryFilePathValue: "/tmp/home/session/contract.sessions.json",
     handoffAutoOnExit: true,
     handoffRecentTurns: 6,
     handoffPath: "/tmp/work/HANDOFF.md",
@@ -204,6 +213,11 @@ async function main(): Promise<void> {
     sessionMenuOps,
     wire,
     planMode,
+    requestRuntimeInterrupt: () => ({
+      code: "TURN_INTERRUPT_NOT_RUNNING",
+      interrupted: false,
+    }),
+    executeTurn: wire.executeTurn,
   });
 
   await interactiveModeInput.switchActiveSession("session-a", "switch");

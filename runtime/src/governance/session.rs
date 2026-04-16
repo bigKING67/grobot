@@ -1,2 +1,2 @@
-include!("domains/config.rs");
-include!("domains/bootstrap.rs");
+include!("config.rs");
+include!("bootstrap.rs");

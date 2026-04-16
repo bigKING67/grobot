@@ -1,0 +1,25 @@
+[[servers]]
+name = "grok-search"
+command = "uvx"
+args = ["--from", "git+https://github.com/GuDaStudio/GrokSearch@grok-with-tavily", "grok-search"]
+enabled = true
+
+[servers.env]
+FIRECRAWL_API_KEY = "fc-146dc78b464044b594fb22764d723cc4"
+FIRECRAWL_API_URL = "https://api.firecrawl.dev/v2"
+GROK_API_KEY = "sixseven"
+GROK_API_URL = "https://grok2api.52671314.xyz/v1"
+TAVILY_API_KEY = "mcp_c939473f8953.d86a66667d8c7f26cf03d7bbfd70ee1ba3ad1f5b1ea474eb"
+TAVILY_API_URL = "https://tavily.52671314.xyz"
+
+[[servers]]
+name = "browser-structured"
+command = "node"
+args = ["adapters/browser-structured-mcp/server.mjs"]
+enabled = true
+
+[servers.env]
+BROWSER_STRUCTURED_TMWD_MODE = "auto"
+BROWSER_STRUCTURED_TMWD_TRANSPORT = "auto"
+BROWSER_STRUCTURED_TMWD_WS_ENDPOINT = "ws://127.0.0.1:18765"
+BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = "http://127.0.0.1:18766/link"

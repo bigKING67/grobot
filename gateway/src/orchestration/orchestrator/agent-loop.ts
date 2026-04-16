@@ -2,6 +2,7 @@ import {
   MigrationOptions,
   RuntimeAttachment,
   RuntimeClient,
+  RuntimeExecuteOptions,
   RuntimeModelConfig,
   RuntimeRequest,
   RuntimeToolContext,
@@ -84,6 +85,7 @@ export class AgentLoop {
     runtimeModelConfig?: RuntimeModelConfig,
     runtimeToolContext?: RuntimeToolContext,
     runtimeAttachments?: RuntimeAttachment[],
+    runtimeExecuteOptions?: RuntimeExecuteOptions,
   ): Promise<TurnExecutionReport> {
     const startedAt = nowIso();
     const contextLines = await this.deps.contextAssembler.assemble(turn);
@@ -96,11 +98,14 @@ export class AgentLoop {
       runtimeAttachments,
     );
 
-    const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest);
+    const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest, runtimeExecuteOptions);
 
     let shadowComparison: ShadowComparison | undefined;
     if (migration.shadowMode && this.deps.shadowRuntimeClient) {
-      const shadow = await this.deps.shadowRuntimeClient.executeTurn(runtimeRequest);
+      if (runtimeExecuteOptions?.signal?.aborted) {
+        throw new Error("runtime turn interrupted class=turn_interrupted detail=aborted_before_shadow_runtime_call");
+      }
+      const shadow = await this.deps.shadowRuntimeClient.executeTurn(runtimeRequest, runtimeExecuteOptions);
       shadowComparison = compareRuntimeResults(primary, shadow);
     }
 
@@ -115,6 +120,7 @@ export class AgentLoop {
       finishedAtIso: nowIso(),
       primaryRuntime: primary.runtimeLabel,
       assistantMessage: primary.assistantMessage,
+      runtimeInterrupt: primary.interrupt,
       verification,
       governance,
       shadowComparison,

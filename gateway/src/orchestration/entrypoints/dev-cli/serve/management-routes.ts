@@ -2,8 +2,25 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import { dispatchManagementMemoryRoutes } from "./management-routes-memory";
 import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
+import { type ExperienceRecordState } from "../../../../tools/state/experience-pool/types";
 
 export type { ManagementRoutesContext } from "./management-routes-types";
+
+function parseExperienceStates(raw: string): ExperienceRecordState[] | undefined {
+  const normalized = raw.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const states = normalized
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token): token is ExperienceRecordState =>
+      token === "active" || token === "quarantined" || token === "disabled");
+  if (states.length === 0) {
+    return undefined;
+  }
+  return Array.from(new Set(states));
+}
 
 export async function dispatchManagementRoutes(
   request: IncomingMessage,
@@ -18,6 +35,7 @@ export async function dispatchManagementRoutes(
     const executionPlane = context.getExecutionPlane();
     const configReadPolicy = context.getConfigReadPolicy();
     const memoryStoreRuntime = context.getMemoryStoreRuntime();
+    const experiencePoolState = context.getExperiencePoolState();
     context.writeJson(response, 200, {
       status: "ok",
       engine: "ts-dev-cli",
@@ -58,6 +76,9 @@ export async function dispatchManagementRoutes(
           "POST /api/v1/sessions/{id}/memory/forget",
           "POST /api/v1/sessions/{id}/memory/lifecycle",
           "POST /api/v1/memory/lifecycle/run",
+          "GET /api/v1/experience",
+          "GET /api/v1/experience/{id}",
+          "POST /api/v1/experience/{id}/state",
           "POST /api/v1/sessions/{id}/interrupt",
           "POST /api/v1/mcp/reset",
           "POST /api/v1/mcp/servers/{name}/reset",
@@ -73,6 +94,14 @@ export async function dispatchManagementRoutes(
         redis_key: context.memoryStoreKey,
         session_count: context.getMemorySessionCount(),
       },
+      experience_pool: {
+        path: experiencePoolState.path,
+        publish_mode: experiencePoolState.publishMode,
+        recall_limit: experiencePoolState.recallLimit,
+        team_default: experiencePoolState.teamDefault,
+        record_count: experiencePoolState.recordCount,
+        updated_at: experiencePoolState.updatedAt,
+      },
       endpoints: {
         status: "/api/v1/status",
         config: "/api/v1/config",
@@ -83,6 +112,9 @@ export async function dispatchManagementRoutes(
         session_memory_forget: "/api/v1/sessions/{id}/memory/forget",
         session_memory_lifecycle: "/api/v1/sessions/{id}/memory/lifecycle",
         memory_lifecycle_run: "/api/v1/memory/lifecycle/run",
+        experience_list: "/api/v1/experience",
+        experience_get: "/api/v1/experience/{id}",
+        experience_state: "/api/v1/experience/{id}/state",
         session_interrupt: "/api/v1/sessions/{id}/interrupt",
         mcp_reset_all: "/api/v1/mcp/reset",
         mcp_reset_server: "/api/v1/mcp/servers/{name}/reset",
@@ -161,6 +193,187 @@ export async function dispatchManagementRoutes(
     path,
   });
   if (memoryHandled) {
+    return true;
+  }
+
+  if (method === "GET" && path === "/api/v1/experience") {
+    if (!requireManagementToken(request, response, context)) {
+      return true;
+    }
+
+    const query = context.parseQueryParams(rawUrl);
+    const tenant = context.queryParamStr(query, "tenant", context.projectName).trim();
+    const team = context.queryParamStr(query, "team", context.getExperiencePoolState().teamDefault).trim();
+    const user = context.queryParamStr(query, "user", "").trim();
+    const q = context.queryParamStr(query, "q", "").trim();
+    const limit = context.queryParamInt(query, "limit", 10, 1, 100);
+    const statesRaw = context.queryParamStr(query, "states", "active");
+    const includeStates = parseExperienceStates(statesRaw);
+    if (!includeStates) {
+      context.writeJson(response, 400, {
+        error: "invalid_states",
+        detail: "states must be comma separated: active,quarantined,disabled",
+      });
+      return true;
+    }
+
+    if (q) {
+      const matches = context.searchExperienceRecords({
+        tenant,
+        team: team || undefined,
+        user: user || undefined,
+        query: q,
+        limit,
+        includeStates,
+      });
+      context.writeJson(response, 200, {
+        status: "ok",
+        tenant,
+        team: team || null,
+        user: user || null,
+        mode: "search",
+        total: matches.length,
+        items: matches.map((match) => ({
+          id: match.record.id,
+          tenant: match.record.tenant,
+          team: match.record.team,
+          user: match.record.user,
+          summary: match.record.summary,
+          signature: match.record.signature,
+          state: match.record.state,
+          confidence: match.record.confidence,
+          success_count: match.record.successCount,
+          failure_count: match.record.failureCount,
+          updated_at: match.record.updatedAt,
+          matched_tokens: match.matchedTokens,
+          score: match.score,
+        })),
+        experience_pool: context.getExperiencePoolState(),
+      });
+      return true;
+    }
+
+    const rows = context
+      .listExperienceRecords(tenant, team || undefined, user || undefined)
+      .filter((record) => includeStates.includes(record.state))
+      .slice(0, limit);
+    context.writeJson(response, 200, {
+      status: "ok",
+      tenant,
+      team: team || null,
+      user: user || null,
+      mode: "list",
+      total: rows.length,
+      items: rows.map((record) => ({
+        id: record.id,
+        tenant: record.tenant,
+        team: record.team,
+        user: record.user,
+        summary: record.summary,
+        signature: record.signature,
+        state: record.state,
+        confidence: record.confidence,
+        success_count: record.successCount,
+        failure_count: record.failureCount,
+        updated_at: record.updatedAt,
+      })),
+      experience_pool: context.getExperiencePoolState(),
+    });
+    return true;
+  }
+
+  const experienceGetMatch = path.match(/^\/api\/v1\/experience\/([^/]+)$/);
+  if (method === "GET" && experienceGetMatch) {
+    if (!requireManagementToken(request, response, context)) {
+      return true;
+    }
+    const id = decodeURIComponent(experienceGetMatch[1]).trim();
+    if (!id) {
+      context.writeJson(response, 400, {
+        error: "invalid_experience_id",
+      });
+      return true;
+    }
+    const record = context.getExperienceRecord(id);
+    if (!record) {
+      context.writeJson(response, 404, {
+        error: "experience_not_found",
+      });
+      return true;
+    }
+    context.writeJson(response, 200, {
+      status: "ok",
+      item: {
+        id: record.id,
+        tenant: record.tenant,
+        team: record.team,
+        user: record.user,
+        signature: record.signature,
+        summary: record.summary,
+        state: record.state,
+        confidence: record.confidence,
+        keywords: record.keywords,
+        sop: record.sop,
+        failure_signals: record.failureSignals,
+        success_count: record.successCount,
+        failure_count: record.failureCount,
+        verification_pass_count: record.verificationPassCount,
+        last_outcome: record.lastOutcome,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+        last_used_at: record.lastUsedAt,
+        evidence: record.evidence,
+      },
+      experience_pool: context.getExperiencePoolState(),
+    });
+    return true;
+  }
+
+  const experienceStateMatch = path.match(/^\/api\/v1\/experience\/([^/]+)\/state$/);
+  if (method === "POST" && experienceStateMatch) {
+    if (!requireManagementToken(request, response, context)) {
+      return true;
+    }
+    const id = decodeURIComponent(experienceStateMatch[1]).trim();
+    if (!id) {
+      context.writeJson(response, 400, {
+        error: "invalid_experience_id",
+      });
+      return true;
+    }
+    const rawBody = await context.readBody(request);
+    const parsedBody = context.parseJsonObjectBody(rawBody);
+    if (!parsedBody.ok) {
+      context.writeJson(response, 400, {
+        error: "bad_request",
+        detail: parsedBody.detail,
+      });
+      return true;
+    }
+    const stateRaw = typeof parsedBody.body.state === "string" ? parsedBody.body.state.trim() : "";
+    if (stateRaw !== "active" && stateRaw !== "quarantined" && stateRaw !== "disabled") {
+      context.writeJson(response, 400, {
+        error: "invalid_state",
+        detail: "state must be active | quarantined | disabled",
+      });
+      return true;
+    }
+    const reason = typeof parsedBody.body.reason === "string" ? parsedBody.body.reason.trim() : undefined;
+    const updated = context.setExperienceRecordState(id, stateRaw, reason);
+    if (!updated) {
+      context.writeJson(response, 404, {
+        error: "experience_not_found",
+      });
+      return true;
+    }
+    context.writeJson(response, 200, {
+      status: "ok",
+      id: updated.id,
+      state: updated.state,
+      updated_at: updated.updatedAt,
+      confidence: updated.confidence,
+      experience_pool: context.getExperiencePoolState(),
+    });
     return true;
   }
 

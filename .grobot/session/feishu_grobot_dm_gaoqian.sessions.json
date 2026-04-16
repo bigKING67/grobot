@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "namespace_key": "feishu:grobot:dm:gaoqian",
+  "active_id": "main",
+  "sessions": [
+    {
+      "id": "main",
+      "session_key": "feishu:grobot:dm:gaoqian",
+      "created_at": "2026-04-15T10:31:24.874Z",
+      "updated_at": "2026-04-15T10:31:30.319Z",
+      "preview": "",
+      "provider_runtime_states": [
+        {
+          "provider_name": "kimi",
+          "consecutive_failures": 1,
+          "circuit_open_until_ms": 0,
+          "last_error_class": "path_not_found",
+          "last_error_message": "Error: runtime rpc error -32001: runtime turn execution failed (class=path_not_found trace=trace_req_1776249084877 detail=path not found: /Users/gaoqian/Documents/sixseven/workman/groland/grobot/.grobot/state.json)",
+          "last_failed_at": "2026-04-15T10:31:30.319Z",
+          "ewma_latency_ms": 5442,
+          "ewma_error_rate": 0.25
+        }
+      ],
+      "plan_mode": "normal",
+      "ga_state": {
+        "memory": [
+          {
+            "id": "mem_mnzwuhou_hpum86",
+            "sessionKey": "feishu:grobot:dm:gaoqian",
+            "memoryLevel": "L2",
+            "text": "turn failure provider=kimi class=path_not_found detail=\"Error: runtime rpc error -32001: runtime turn execution failed (class=path_not_found trace=trace_req_1776249084877 detail=path not found: /Users/gaoqian/Documents/sixseven/workman/groland/grobot/.grobot/state.json)\"",
+            "sourceEventType": "turn_executed",
+            "executionVerified": true,
+            "evidenceRef": {
+              "source": "provider:kimi"
+            },
+            "tags": [
+              "turn",
+              "failure",
+              "path_not_found"
+            ],
+            "confidence": 0.85,
+            "createdAt": "2026-04-15T10:31:30.318Z"
+          }
+        ],
+        "skillCards": [],
+        "reflectionQueue": [],
+        "failureState": {
+          "consecutiveFailures": 1,
+          "recentErrors": [
+            "kimi:path_not_found:Error: runtime rpc error -32001: runtime turn execution failed (class=path_not_found trace=trace_req_1776249084877 detail=path not found: /Users/gaoqian/Documents/sixseven/workman/groland/grobot/.grobot/state.json)"
+          ],
+          "lastReflectionAtMs": 0
+        }
+      }
+    }
+  ]
+}

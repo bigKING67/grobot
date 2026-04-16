@@ -1,5 +1,7 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
+import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
+import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import { type SessionStoreController } from "../services/session-store";
 import { createRunStartHandoff } from "./run-start-handoff";
 import { createRunStartSessionOps } from "./run-start-session-ops";
@@ -7,12 +9,13 @@ import {
   createRunStartTurnRunner,
   type KimiSearchRoutingPolicy,
   type RuntimeFailoverConfig,
+  type RunStartTurnExecuteOptions,
   type RuntimeProviderCandidate,
 } from "./run-start-turn";
 import { type RunStartPersistence } from "./run-start-persistence";
 import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type ChatHistoryMessage } from "./session-history";
-import { setSessionProviderRuntime, type SessionRegistryPayload, touchSessionRecord } from "./session-registry";
+import { setSessionGaState, setSessionProviderRuntime, type SessionRegistryPayload, touchSessionRecord } from "./session-registry";
 
 interface CreateRunStartWireInput {
   sessionNamespaceKey: string;
@@ -36,9 +39,11 @@ interface CreateRunStartWireInput {
     providerKind: string;
   };
   runtimeToolContext?: RuntimeToolContext;
+  gaMechanismRuntime: GaMechanismRuntime;
   kimiSearchRoutingPolicy: KimiSearchRoutingPolicy;
   mcpInstructionPromptPrefix?: string;
   mcpInstructionServerNames: string[];
+  experiencePoolRuntime: ExperiencePoolRuntime;
   runtimeState: RunStartRuntimeState;
   persistence: RunStartPersistence;
   writeStoreWarnings(warnings: readonly string[]): void;
@@ -49,7 +54,11 @@ interface CreateRunStartWireInput {
 export interface RunStartWire {
   handoff: ReturnType<typeof createRunStartHandoff>;
   sessionOps: ReturnType<typeof createRunStartSessionOps>;
-  executeTurn: ReturnType<typeof createRunStartTurnRunner>;
+  executeTurn: (
+    userText: string,
+    interactiveMode: boolean,
+    options?: RunStartTurnExecuteOptions,
+  ) => Promise<number>;
 }
 
 export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire {
@@ -75,10 +84,11 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     setActiveSessionId: input.runtimeState.setActiveSessionId,
     setSessionKey: input.runtimeState.setSessionKey,
     setStickyProvider: input.runtimeState.setStickyProvider,
-    setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
-    setPlanMode: input.runtimeState.setPlanMode,
-    setPlanMeta: input.runtimeState.setPlanMeta,
-    getHistoryMessages: input.runtimeState.getHistoryMessages,
+      setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
+      setPlanMode: input.runtimeState.setPlanMode,
+      setPlanMeta: input.runtimeState.setPlanMeta,
+      setGaState: input.runtimeState.setGaState,
+      getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,
     onHistoryCompacted: input.runtimeState.markHistoryCompacted,
     persistSessionRegistryState: input.persistence.persistSessionRegistryState,
@@ -98,17 +108,21 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     runtimeFailoverConfig: input.runtimeFailoverConfig,
       runtimeModelConfigSource: input.runtimeModelConfigSource,
       runtimeToolContext: input.runtimeToolContext,
+      gaMechanismRuntime: input.gaMechanismRuntime,
       kimiSearchRoutingPolicy: input.kimiSearchRoutingPolicy,
       mcpInstructionPromptPrefix: input.mcpInstructionPromptPrefix,
       mcpInstructionServerNames: input.mcpInstructionServerNames,
+      experiencePoolRuntime: input.experiencePoolRuntime,
     getSessionKey: input.runtimeState.getSessionKey,
     getHistoryMessages: input.runtimeState.getHistoryMessages,
     setHistoryMessages: input.runtimeState.setHistoryMessages,
     getStickyProvider: input.runtimeState.getStickyProvider,
     setStickyProvider: input.runtimeState.setStickyProvider,
-    getProviderRuntimeStates: input.runtimeState.getProviderRuntimeStates,
-    setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
-    onHistoryCompacted: input.runtimeState.markHistoryCompacted,
+      getProviderRuntimeStates: input.runtimeState.getProviderRuntimeStates,
+      setProviderRuntimeStates: input.runtimeState.setProviderRuntimeStates,
+      getGaState: input.runtimeState.getGaState,
+      setGaState: input.runtimeState.setGaState,
+      onHistoryCompacted: input.runtimeState.markHistoryCompacted,
     onVerificationFailure: input.runtimeState.markFailureObserved,
     touchActiveSession: (userText) => {
       touchSessionRecord(
@@ -117,17 +131,24 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
         userText,
       );
     },
-    updateActiveSessionProviderRuntime: (stickyProvider, providerRuntimeStates) => {
-      setSessionProviderRuntime(
-        input.runtimeState.getSessionRegistry(),
+      updateActiveSessionProviderRuntime: (stickyProvider, providerRuntimeStates) => {
+        setSessionProviderRuntime(
+          input.runtimeState.getSessionRegistry(),
         input.runtimeState.getActiveSessionId(),
         {
           stickyProvider,
           providerRuntimeStates,
         },
-      );
-    },
-    persistHistoryState: input.persistence.persistHistoryState,
+        );
+      },
+      updateActiveSessionGaState: (gaState) => {
+        setSessionGaState(
+          input.runtimeState.getSessionRegistry(),
+          input.runtimeState.getActiveSessionId(),
+          gaState,
+        );
+      },
+      persistHistoryState: input.persistence.persistHistoryState,
     persistSessionRegistryState: input.persistence.persistSessionRegistryState,
     writeStdout: input.writeStdout,
     writeStderr: input.writeStderr,

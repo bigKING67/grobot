@@ -5,14 +5,22 @@ import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
 import {
+  resolveRuntimeBinaryPath,
+  runRuntimeToolsDescribe,
+} from "../runtime-health";
+import {
   basenameFromPath,
   resolveConfigTomlPath,
+  resolveExperiencePoolPath,
+  resolveLegacyExperiencePoolPath,
   resolveHomeDir,
   resolveInterruptStorePath,
+  resolveProjectStateRoot,
   resolveProjectRoot,
   resolveProjectTomlPath,
   resolveWorkDir,
 } from "../services/runtime-paths";
+import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
 import { resolveMcpInstructionRuntime } from "../services/mcp-instruction-pack";
 import { createRunStartSessionStore } from "./run-start-session-store";
 import { sessionRegistryFilePath } from "./session-registry";
@@ -142,6 +150,15 @@ function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
   return [];
 }
 
+function resolveRuntimeDefaultEnabledTools(): string[] | undefined {
+  const runtimeBinaryPath = resolveRuntimeBinaryPath();
+  const described = runRuntimeToolsDescribe(runtimeBinaryPath);
+  if (described.ok && described.defaultEnabledTools.length > 0) {
+    return [...described.defaultEnabledTools];
+  }
+  return undefined;
+}
+
 function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): RuntimeToolContext {
   const bashAllowlist = readToolsAllowlistFromProjectToml(projectTomlPath);
   const maxToolRoundsRaw = process.env.GROBOT_MAX_TOOL_ROUNDS;
@@ -153,12 +170,62 @@ function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): R
     typeof parsedMaxToolRounds === "number" && Number.isFinite(parsedMaxToolRounds)
       ? Math.min(Math.max(parsedMaxToolRounds, 1), 32)
       : 8;
+  const noToolFallbackModeRaw = process.env.GROBOT_NO_TOOL_FALLBACK_MODE?.trim().toLowerCase();
+  const noToolFallbackMode = noToolFallbackModeRaw === "off"
+    || noToolFallbackModeRaw === "safe"
+    || noToolFallbackModeRaw === "strict"
+    ? noToolFallbackModeRaw
+    : "safe";
+  const maxRecoveryRoundsRaw = process.env.GROBOT_MAX_RECOVERY_ROUNDS;
+  const parsedMaxRecoveryRounds =
+    typeof maxRecoveryRoundsRaw === "string" && /^\d+$/.test(maxRecoveryRoundsRaw.trim())
+      ? Number.parseInt(maxRecoveryRoundsRaw.trim(), 10)
+      : undefined;
+  const maxRecoveryRounds =
+    typeof parsedMaxRecoveryRounds === "number" && Number.isFinite(parsedMaxRecoveryRounds)
+      ? Math.min(Math.max(parsedMaxRecoveryRounds, 0), 8)
+      : 2;
+  const enabledTools = resolveRuntimeDefaultEnabledTools() ?? buildDefaultRuntimeEnabledTools();
   return {
     workDir,
-    enabledTools: ["list", "glob", "search", "read", "write", "edit", "bash", "mcp_servers", "mcp_call"],
+    enabledTools,
     bashAllowlist,
     maxToolRounds,
+    noToolFallbackMode,
+    maxRecoveryRounds,
   };
+}
+
+function resolveExperiencePublishMode(): "auto" | "off" {
+  const raw = process.env.GROBOT_EXPERIENCE_PUBLISH_MODE?.trim().toLowerCase();
+  if (raw === "off") {
+    return "off";
+  }
+  return "auto";
+}
+
+function resolveExperienceRecallLimit(): number {
+  const raw = process.env.GROBOT_EXPERIENCE_RECALL_LIMIT?.trim();
+  if (!raw || !/^\d+$/.test(raw)) {
+    return 2;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return 2;
+  }
+  return Math.min(Math.max(parsed, 1), 6);
+}
+
+function resolveExperienceTeam(options: Record<string, OptionValue>): string {
+  const fromOption = readOptionString(options, "team");
+  if (typeof fromOption === "string" && fromOption.trim().length > 0) {
+    return fromOption.trim();
+  }
+  const fromEnv = process.env.GROBOT_TEAM;
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return fromEnv.trim();
+  }
+  return "default";
 }
 
 interface RuntimeProviderCandidate {
@@ -561,6 +628,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const homeDir = resolveHomeDir(options);
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
+  const projectStateRoot = resolveProjectStateRoot(workDir);
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
   const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
@@ -580,7 +648,10 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const handoffRecentTurns = resolveHandoffRecentTurns(options);
   const handoffAutoOnExit = resolveHandoffAutoOnExit(options);
   const handoffPath = buildHandoffPath(projectRoot);
-  const interruptStorePath = resolveInterruptStorePath(homeDir);
+  const interruptStorePath = resolveInterruptStorePath(projectStateRoot);
+  const experiencePoolPathRaw = process.env.GROBOT_EXPERIENCE_POOL_PATH?.trim();
+  const experienceLegacyPoolPath = resolveLegacyExperiencePoolPath(homeDir);
+  const experienceTeam = resolveExperienceTeam(options);
   const subject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
   const executionPlane = resolveExecutionPlaneConfig({
     gatewayImplArg: readOptionString(options, "gateway-impl"),
@@ -596,12 +667,19 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     scope: parseScope(resolveSessionScopeOption(options)),
     subject,
   } as const;
+  const experiencePoolPath = experiencePoolPathRaw && experiencePoolPathRaw.length > 0
+    ? experiencePoolPathRaw
+    : resolveExperiencePoolPath(projectStateRoot, {
+      tenant: sessionNamespace.tenant,
+      team: experienceTeam,
+      user: sessionNamespace.subject,
+    });
   const sessionNamespaceKey = buildSessionKey(sessionNamespace);
-  const sessionRegistryFilePathValue = sessionRegistryFilePath(homeDir, sessionNamespaceKey);
+  const sessionRegistryFilePathValue = sessionRegistryFilePath(projectStateRoot, sessionNamespaceKey);
   const sessionStore = createRunStartSessionStore({
     options,
     projectTomlPath,
-    homeDir,
+    homeDir: projectStateRoot,
     sessionNamespaceKey,
     historyTurns,
   });
@@ -616,12 +694,18 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     homeDir,
     projectRoot,
     workDir,
+    projectTomlPath,
     projectName,
     historyTurns,
     handoffRecentTurns,
     handoffAutoOnExit,
     handoffPath,
     interruptStorePath,
+    experiencePoolPath,
+    experienceLegacyPoolPath,
+    experienceTeam,
+    experiencePublishMode: resolveExperiencePublishMode(),
+    experienceRecallLimit: resolveExperienceRecallLimit(),
     subject,
     executionPlane,
     sessionNamespaceKey,

@@ -6,7 +6,7 @@ use crate::orchestration::orchestrator::execute_turn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-include!("domains/contracts.rs");
-include!("domains/response.rs");
-include!("domains/handler.rs");
-include!("domains/tests.rs");
+include!("contracts.rs");
+include!("response.rs");
+include!("handler.rs");
+include!("tests.rs");

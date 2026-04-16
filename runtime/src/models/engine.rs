@@ -36,6 +36,8 @@ pub struct RuntimeToolContextInput {
     pub enabled_tools: Option<Vec<String>>,
     pub bash_allowlist: Option<Vec<String>>,
     pub max_tool_rounds: Option<u32>,
+    pub no_tool_fallback_mode: Option<String>,
+    pub max_recovery_rounds: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,11 +70,31 @@ pub struct RuntimeEventOutput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TurnInterruptAskUserOutput {
+    pub question_id: String,
+    pub blocking_node_id: String,
+    pub question: String,
+    pub options: Vec<String>,
+    pub default_on_timeout: String,
+    pub resume_token: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TurnInterruptOutput {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask_user: Option<TurnInterruptAskUserOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TurnExecuteOutput {
     pub trace_id: String,
     pub request_id: String,
     pub session_key: String,
     pub assistant_message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interrupt: Option<TurnInterruptOutput>,
     pub events: Vec<RuntimeEventOutput>,
 }
 

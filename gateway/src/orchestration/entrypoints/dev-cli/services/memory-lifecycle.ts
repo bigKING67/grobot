@@ -15,6 +15,10 @@ export const MEMORY_CLASSIFICATION_SECRET = "secret";
 
 export const MEMORY_STATE_ACTIVE = "active";
 export const MEMORY_STATE_ARCHIVED = "archived";
+export const MEMORY_LEVEL_L1 = "L1";
+export const MEMORY_LEVEL_L2 = "L2";
+export const MEMORY_LEVEL_L3 = "L3";
+export const MEMORY_LEVEL_L4 = "L4";
 
 export const MANAGEMENT_MEMORY_CURSOR_MAX = 200_000;
 export const MANAGEMENT_MEMORY_FETCH_MAX = 50_000;
@@ -50,6 +54,18 @@ export type MemoryClassification =
   | typeof MEMORY_CLASSIFICATION_SECRET;
 
 export type MemoryState = typeof MEMORY_STATE_ACTIVE | typeof MEMORY_STATE_ARCHIVED;
+export type MemoryLevel =
+  | typeof MEMORY_LEVEL_L1
+  | typeof MEMORY_LEVEL_L2
+  | typeof MEMORY_LEVEL_L3
+  | typeof MEMORY_LEVEL_L4;
+
+interface MemoryEvidenceRef {
+  trace_id?: string;
+  turn_id?: string;
+  tool_call_id?: string;
+  source?: string;
+}
 
 const MEMORY_SCOPES: readonly MemoryScope[] = [
   MEMORY_SCOPE_AUTO,
@@ -70,6 +86,13 @@ const MEMORY_CLASSIFICATIONS: readonly MemoryClassification[] = [
   MEMORY_CLASSIFICATION_INTERNAL,
   MEMORY_CLASSIFICATION_RESTRICTED,
   MEMORY_CLASSIFICATION_SECRET,
+];
+
+const MEMORY_LEVELS: readonly MemoryLevel[] = [
+  MEMORY_LEVEL_L1,
+  MEMORY_LEVEL_L2,
+  MEMORY_LEVEL_L3,
+  MEMORY_LEVEL_L4,
 ];
 
 export function normalizeMemoryScope(raw: string | undefined): MemoryScope | undefined {
@@ -114,6 +137,37 @@ export function normalizeMemoryState(raw: string | undefined): MemoryState | und
     return normalized;
   }
   return undefined;
+}
+
+export function normalizeMemoryLevel(raw: string | undefined): MemoryLevel | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw.trim().toUpperCase();
+  if (MEMORY_LEVELS.includes(normalized as MemoryLevel)) {
+    return normalized as MemoryLevel;
+  }
+  return undefined;
+}
+
+function normalizeMemoryEvidenceRef(raw: unknown): MemoryEvidenceRef | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const traceId = typeof record.trace_id === "string" ? record.trace_id.trim() : "";
+  const turnId = typeof record.turn_id === "string" ? record.turn_id.trim() : "";
+  const toolCallId = typeof record.tool_call_id === "string" ? record.tool_call_id.trim() : "";
+  const source = typeof record.source === "string" ? record.source.trim() : "";
+  if (!traceId && !turnId && !toolCallId && !source) {
+    return undefined;
+  }
+  return {
+    trace_id: traceId || undefined,
+    turn_id: turnId || undefined,
+    tool_call_id: toolCallId || undefined,
+    source: source || undefined,
+  };
 }
 
 function clampUnitNumber(raw: unknown, defaultValue: number): {
@@ -301,6 +355,10 @@ export function createMemoryOperations(
         state,
         kind,
         classification,
+        memory_level: normalizeMemoryLevel(typeof record.memory_level === "string" ? record.memory_level : undefined)
+          ?? MEMORY_LEVEL_L1,
+        execution_verified: record.execution_verified === true,
+        evidence_ref: normalizeMemoryEvidenceRef(record.evidence_ref),
       });
     }
     return rows;
@@ -493,6 +551,78 @@ export function createMemoryOperations(
         }
       }
 
+      let memoryLevel: MemoryLevel = MEMORY_LEVEL_L1;
+      if (row.memory_level !== undefined) {
+        if (typeof row.memory_level !== "string") {
+          rowErrors.push({
+            field: "memory_level",
+            reason: "must be string",
+          });
+        } else {
+          const parsedMemoryLevel = normalizeMemoryLevel(row.memory_level);
+          if (!parsedMemoryLevel) {
+            rowErrors.push({
+              field: "memory_level",
+              reason: `must be one of ${MEMORY_LEVELS.join(",")}`,
+            });
+          } else {
+            memoryLevel = parsedMemoryLevel;
+          }
+        }
+      }
+
+      let sourceEventType = "management_import";
+      if (row.source_event_type !== undefined) {
+        if (typeof row.source_event_type !== "string") {
+          rowErrors.push({
+            field: "source_event_type",
+            reason: "must be string",
+          });
+        } else {
+          const parsedSourceEventType = row.source_event_type.trim();
+          if (!parsedSourceEventType) {
+            rowErrors.push({
+              field: "source_event_type",
+              reason: "must be non-empty string",
+            });
+          } else {
+            sourceEventType = parsedSourceEventType;
+          }
+        }
+      }
+
+      let executionVerified = false;
+      if (row.execution_verified !== undefined) {
+        if (typeof row.execution_verified !== "boolean") {
+          rowErrors.push({
+            field: "execution_verified",
+            reason: "must be boolean",
+          });
+        } else {
+          executionVerified = row.execution_verified;
+        }
+      }
+
+      const evidenceRef = normalizeMemoryEvidenceRef(row.evidence_ref);
+      if (row.evidence_ref !== undefined && !evidenceRef) {
+        rowErrors.push({
+          field: "evidence_ref",
+          reason: "must include at least one non-empty field",
+        });
+      }
+      if (memoryLevel !== MEMORY_LEVEL_L1 && !executionVerified) {
+        rowErrors.push({
+          field: "execution_verified",
+          reason: "L2/L3/L4 memory requires execution_verified=true",
+        });
+      }
+      if (memoryLevel !== MEMORY_LEVEL_L1 && !evidenceRef) {
+        rowErrors.push({
+          field: "evidence_ref",
+          reason: "L2/L3/L4 memory requires evidence_ref",
+        });
+      }
+
       if (rowErrors.length > 0) {
         invalidRows.push({
           index: idx,
@@ -509,9 +639,13 @@ export function createMemoryOperations(
         state,
         tags,
         source: normalizedSource,
+        source_event_type: sourceEventType,
         importance: importanceParsed.value,
         confidence: confidenceParsed.value,
         scope,
+        memory_level: memoryLevel,
+        execution_verified: executionVerified,
+        evidence_ref: evidenceRef,
       });
     }
 
@@ -547,11 +681,15 @@ export function createMemoryOperations(
           summary: String(row.text ?? "").slice(0, 140),
           tags: row.tags,
           source: row.source,
+          source_event_type: row.source_event_type,
           session_key: sessionId,
           classification: row.classification,
           importance: row.importance,
           confidence: row.confidence,
           state: row.state,
+          memory_level: row.memory_level,
+          execution_verified: row.execution_verified,
+          evidence_ref: row.evidence_ref,
           updated_at: nowIso,
         };
         if (row.state === MEMORY_STATE_ARCHIVED) {

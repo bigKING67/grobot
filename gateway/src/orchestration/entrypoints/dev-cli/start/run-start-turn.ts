@@ -10,6 +10,14 @@ import {
 } from "./session-history";
 import { parseSessionKeyPartsLoose, type SessionProviderRuntimeState } from "./session-registry";
 import { parsePlatform, parseScope } from "./session-options";
+import { type GaMechanismRuntime, type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
+import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
+import {
+  type AskUserEnvelope,
+  createAskUserTurnPromptContext,
+  formatAskUserIssuedEvent,
+} from "../../../../tools/ask-user";
+import { applyLearnedPromptContext } from "../../../../tools/ga-skill";
 
 export interface RuntimeProviderCandidate {
   name: string;
@@ -34,6 +42,13 @@ export type KimiSearchRoutingPolicy =
   | "builtin_only"
   | "mcp_only";
 
+export const TURN_INTERRUPTED_ERROR_CLASS = "turn_interrupted";
+export const TURN_INTERRUPTED_EXIT_CODE = 130;
+
+export interface RunStartTurnExecuteOptions {
+  signal?: AbortSignal;
+}
+
 interface CreateRunStartTurnRunnerInput {
   interruptStorePath: string;
   historyTurns: number;
@@ -51,9 +66,11 @@ interface CreateRunStartTurnRunnerInput {
     providerKind: string;
   };
   runtimeToolContext?: RuntimeToolContext;
+  gaMechanismRuntime: GaMechanismRuntime;
   kimiSearchRoutingPolicy: KimiSearchRoutingPolicy;
   mcpInstructionPromptPrefix?: string;
   mcpInstructionServerNames: string[];
+  experiencePoolRuntime: ExperiencePoolRuntime;
   getSessionKey(): string;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
@@ -61,6 +78,8 @@ interface CreateRunStartTurnRunnerInput {
   setStickyProvider(value: string | undefined): void;
   getProviderRuntimeStates(): SessionProviderRuntimeState[];
   setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
+  getGaState(): GaSessionStateSnapshot | undefined;
+  setGaState(value: GaSessionStateSnapshot | undefined): void;
   onHistoryCompacted(): void;
   onVerificationFailure(): void;
   touchActiveSession(userText: string): void;
@@ -68,6 +87,7 @@ interface CreateRunStartTurnRunnerInput {
     stickyProvider: string | undefined,
     providerRuntimeStates: readonly SessionProviderRuntimeState[],
   ): void;
+  updateActiveSessionGaState(gaState: GaSessionStateSnapshot | undefined): void;
   persistHistoryState(): Promise<void>;
   persistSessionRegistryState(): Promise<void>;
   writeStdout(message: string): void;
@@ -548,10 +568,48 @@ function shouldRetryWithKimiBuiltinFallback(input: {
   return true;
 }
 
-function sleepAsync(delayMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
+function extractFirstUrl(raw: string): string | undefined {
+  const match = raw.match(/https?:\/\/[^\s)]+/i);
+  if (!match || typeof match[0] !== "string") {
+    return undefined;
+  }
+  const normalized = match[0].trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function sleepAsync(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) {
+    return Promise.resolve();
+  }
+  if (signal?.aborted) {
+    return Promise.reject(
+      new Error(`turn interrupted class=${TURN_INTERRUPTED_ERROR_CLASS} detail=aborted_before_backoff_sleep`),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    let onAbort: (() => void) | undefined;
+    const timer = setTimeout(() => {
+      if (signal && onAbort) {
+        signal.removeEventListener("abort", onAbort);
+      }
+      resolve();
+    }, delayMs);
+    onAbort = (): void => {
+      clearTimeout(timer);
+      reject(
+        new Error(`turn interrupted class=${TURN_INTERRUPTED_ERROR_CLASS} detail=aborted_during_backoff_sleep`),
+      );
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
   });
+}
+
+function throwIfTurnInterrupted(signal: AbortSignal | undefined, detail: string): void {
+  if (signal?.aborted) {
+    throw new Error(`turn interrupted class=${TURN_INTERRUPTED_ERROR_CLASS} detail=${detail}`);
+  }
 }
 
 function resolveProviderOrder(input: {
@@ -653,16 +711,26 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     if (trimmed.length < nextHistory.length) {
       input.onHistoryCompacted();
     }
-    input.setHistoryMessages(trimmed);
-    await input.persistHistoryState();
-    input.updateActiveSessionProviderRuntime(stickyProvider, providerRuntimeStates);
-    input.touchActiveSession(userText);
-    await input.persistSessionRegistryState();
-  };
+      input.setHistoryMessages(trimmed);
+      await input.persistHistoryState();
+      const gaState = input.gaMechanismRuntime.snapshotSession(input.getSessionKey());
+      input.setGaState(gaState);
+      input.updateActiveSessionProviderRuntime(stickyProvider, providerRuntimeStates);
+      input.updateActiveSessionGaState(gaState);
+      input.touchActiveSession(userText);
+      await input.persistSessionRegistryState();
+    };
 
-  return async (userText: string, interactiveMode: boolean): Promise<number> => {
-    const sessionKey = input.getSessionKey();
-    if (consumeInterruptFlag(input.interruptStorePath, sessionKey)) {
+    return async (
+      userText: string,
+      interactiveMode: boolean,
+      options?: RunStartTurnExecuteOptions,
+    ): Promise<number> => {
+      const turnSignal = options?.signal;
+      throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
+      const sessionKey = input.getSessionKey();
+      input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
+      if (consumeInterruptFlag(input.interruptStorePath, sessionKey)) {
       if (interactiveMode) {
         input.writeStdout("Session interrupted by management API. Current input skipped.\n\n");
       } else {
@@ -673,6 +741,18 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
 
     const historyMessages = input.getHistoryMessages();
     const basePrompt = buildPromptWithHistory(userText, historyMessages, Math.min(input.historyTurns, 6));
+      const askUserTurnContext = createAskUserTurnPromptContext({
+        runtime: input.gaMechanismRuntime,
+        sessionKey,
+        userText,
+      });
+      if (askUserTurnContext.resolvedEvent.length > 0) {
+        input.writeStderr(askUserTurnContext.resolvedEvent);
+      }
+    const experienceRecall = input.experiencePoolRuntime.buildRecallPrompt({
+      sessionKey,
+      userText,
+    });
     const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
     const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
     const providerKind = resolvePrimaryProviderKind(input);
@@ -682,16 +762,30 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       userText,
       mcpServerNames: input.mcpInstructionServerNames,
     });
-    const kimiSearchRoutingPrefix = buildKimiSearchRoutingPrefix({
-      policy: input.kimiSearchRoutingPolicy,
-      providerKind,
-      userText,
-      mcpServerNames: input.mcpInstructionServerNames,
-    });
-    const kimiBuiltinFallbackPrompt = kimiMcpFirstRouteEnabled
-      ? buildKimiBuiltinFallbackPrompt(basePrompt)
-      : basePrompt;
-    const promptParts: string[] = [];
+      const kimiSearchRoutingPrefix = buildKimiSearchRoutingPrefix({
+        policy: input.kimiSearchRoutingPolicy,
+        providerKind,
+        userText,
+        mcpServerNames: input.mcpInstructionServerNames,
+      });
+      const kimiBuiltinFallbackPrompt = kimiMcpFirstRouteEnabled
+        ? buildKimiBuiltinFallbackPrompt(basePrompt)
+        : basePrompt;
+      const promptContext = applyLearnedPromptContext({
+        promptParts: askUserTurnContext.promptParts,
+        userText,
+        gaSkillCards: input.gaMechanismRuntime.listSkillCards(sessionKey),
+        experienceRecall,
+      });
+      for (const event of promptContext.stderrEvents) {
+        input.writeStderr(event);
+      }
+      const promptParts = promptContext.promptParts;
+    const askUserClarificationHint = input.gaMechanismRuntime.buildAskUserClarificationHint(sessionKey, userText);
+    if (askUserClarificationHint.length > 0) {
+      promptParts.push(askUserClarificationHint);
+      input.writeStderr("[ask-user] event=clarification_hint_injected\n");
+    }
     if (mcpInstructionPrefix.length > 0 && mcpInstructionDecision.inject) {
       promptParts.push(mcpInstructionPrefix);
     }
@@ -719,11 +813,15 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         );
       }
     }
-    const parsedSession = parseSessionKeyPartsLoose(sessionKey);
-    if (!parsedSession) {
-      input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
-      return 1;
-    }
+      const parsedSession = parseSessionKeyPartsLoose(sessionKey);
+      if (!parsedSession) {
+        const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+        input.setGaState(gaState);
+        input.updateActiveSessionGaState(gaState);
+        await input.persistSessionRegistryState();
+        input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
+        return 1;
+      }
 
     const providers = input.runtimeProviderChain.length > 0
       ? input.runtimeProviderChain
@@ -745,15 +843,20 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       sessionKey,
       stateMap: providerStateMap,
     });
-    if (orderedProviders.length === 0) {
-      input.writeStderr("[runtime-route] all provider circuits are OPEN; no attempt executed\n");
-      return 1;
-    }
+      if (orderedProviders.length === 0) {
+        const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+        input.setGaState(gaState);
+        input.updateActiveSessionGaState(gaState);
+        await input.persistSessionRegistryState();
+        input.writeStderr("[runtime-route] all provider circuits are OPEN; no attempt executed\n");
+        return 1;
+      }
 
-      const failures: ProviderAttemptFailure[] = [];
-        for (const provider of orderedProviders) {
-          const startedAtMs = Date.now();
-          const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, userText);
+        const failures: ProviderAttemptFailure[] = [];
+          for (const provider of orderedProviders) {
+            throwIfTurnInterrupted(turnSignal, "aborted_before_provider_attempt");
+            const startedAtMs = Date.now();
+            const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, userText);
           if (turnModelConfig.timeoutBoosted) {
             input.writeStderr(
               `[runtime-model] timeout_boost provider=${provider.name} reason=search_intent timeout_ms=${String(turnModelConfig.modelConfig.timeoutMs)}\n`,
@@ -776,11 +879,12 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
               let providerRetryCount = 0;
               let kimiBuiltinFallbackRetryCount = 0;
               let turnPrompt = prompt;
-              let report;
-              while (true) {
-                try {
-                  report = await runGatewayTurn(
-                    turnPrompt,
+                let report;
+                while (true) {
+                  throwIfTurnInterrupted(turnSignal, "aborted_before_gateway_turn");
+                  try {
+                    report = await runGatewayTurn(
+                      turnPrompt,
                     {
                       platform: parsePlatform(parsedSession[0]),
                       tenant: parsedSession[1],
@@ -796,11 +900,12 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
                     runtimeImpl: input.executionPlane.runtimeImpl,
                     shadowMode: input.executionPlane.shadowMode,
                   },
-                  {
-                    modelConfig: turnModelConfig.modelConfig,
-                    toolContext: input.runtimeToolContext,
-                  },
-                );
+                    {
+                      modelConfig: turnModelConfig.modelConfig,
+                      toolContext: input.runtimeToolContext,
+                      abortSignal: turnSignal,
+                    },
+                  );
                 break;
                 } catch (error) {
                   const retryMessage = String(error);
@@ -821,14 +926,14 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
                   if (!shouldRetryProviderRequest(retryErrorClass, retryMessage, providerRetryCount)) {
                     throw error;
                   }
-                providerRetryCount += 1;
-                const backoffMs = providerRetryCount * 1_500;
-                input.writeStderr(
-                  `[runtime-route] provider_retry provider=${provider.name} reason=upstream_429 retry=${String(providerRetryCount)} backoff_ms=${String(backoffMs)}\n`,
-                );
-                await sleepAsync(backoffMs);
+                  providerRetryCount += 1;
+                  const backoffMs = providerRetryCount * 1_500;
+                  input.writeStderr(
+                    `[runtime-route] provider_retry provider=${provider.name} reason=upstream_429 retry=${String(providerRetryCount)} backoff_ms=${String(backoffMs)}\n`,
+                  );
+                  await sleepAsync(backoffMs, turnSignal);
+                }
               }
-            }
             if (!report) {
               throw new Error("provider response missing after retry");
             }
@@ -851,15 +956,76 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         input.setStickyProvider(stickyProvider);
         const providerStates = Array.from(providerStateMap.values());
         input.setProviderRuntimeStates(providerStates);
-
-        await recordTurn(userText, report.assistantMessage, stickyProvider, providerStates);
-        input.writeStdout(`${report.assistantMessage}\n`);
-        if (interactiveMode) {
-          input.writeStdout("\n");
+        const runtimeAskUser = report.runtimeInterrupt?.kind === "ask_user"
+          ? report.runtimeInterrupt.askUser
+          : undefined;
+        let assistantTextForHistory = report.assistantMessage;
+        let turnStdout = interactiveMode
+          ? `${report.assistantMessage}\n\n`
+          : `${report.assistantMessage}\n`;
+        let askUserEvent = "";
+        if (runtimeAskUser) {
+          const askUserEnvelope: AskUserEnvelope = {
+            questionId: runtimeAskUser.questionId || `askq_${Date.now().toString(36)}`,
+            blockingNodeId: runtimeAskUser.blockingNodeId || "node.unknown",
+            question: runtimeAskUser.question,
+            options: runtimeAskUser.options ?? [],
+            defaultOnTimeout: runtimeAskUser.defaultOnTimeout || "continue_with_best_effort",
+            resumeToken: runtimeAskUser.resumeToken || `resume_${Date.now().toString(36)}`,
+            createdAt: runtimeAskUser.createdAt || nowIso(),
+          };
+          input.gaMechanismRuntime.registerPendingAsk(sessionKey, askUserEnvelope);
+          assistantTextForHistory = `[ask-user] ${askUserEnvelope.question}`;
+          const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(askUserEnvelope);
+          turnStdout = interactiveMode ? `${askUserDisplay}\n` : askUserDisplay;
+          askUserEvent = formatAskUserIssuedEvent(askUserEnvelope);
+          input.writeStderr(
+            `[ask-user] event=interrupt_received question_id=${askUserEnvelope.questionId} blocking_node_id=${askUserEnvelope.blockingNodeId}\n`,
+          );
+          input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");
+        } else {
+          input.gaMechanismRuntime.registerTurnSuccess({
+            sessionKey,
+            userText,
+            assistantText: report.assistantMessage,
+            traceId: report.traceId,
+            providerName: provider.name,
+            verificationPass: report.verification.pass,
+          });
+          const experienceEvidenceRef = {
+            traceId: report.traceId,
+            runId: report.requestId,
+            url: extractFirstUrl(userText),
+            sourceType: "turn_success",
+            capturedAt: nowIso(),
+          };
+          const experiencePublish = input.experiencePoolRuntime.registerTurnSuccess({
+            sessionKey,
+            userText,
+            assistantText: report.assistantMessage,
+            traceId: report.traceId,
+            providerName: provider.name,
+            verificationPass: report.verification.pass,
+            evidenceRef: experienceEvidenceRef,
+          });
+          if (experiencePublish.skipped) {
+            input.writeStderr(
+              `[experience] event=publish_skipped reason=${experiencePublish.reason ?? "unknown"} gate_verification=${experiencePublish.verificationPassed ? "pass" : "fail"} gate_evidence_ref=${experiencePublish.evidenceRefPassed ? "pass" : "fail"} gate_redaction=${experiencePublish.redactionPassed ? "pass" : "fail"}\n`,
+            );
+          } else {
+            input.writeStderr(
+              `[experience] event=published id=${experiencePublish.recordId ?? "<unknown>"} created=${experiencePublish.created ? "true" : "false"} confidence=${typeof experiencePublish.confidence === "number" ? experiencePublish.confidence.toFixed(2) : "n/a"} gate_verification=${experiencePublish.verificationPassed ? "pass" : "fail"} gate_evidence_ref=${experiencePublish.evidenceRefPassed ? "pass" : "fail"} gate_redaction=${experiencePublish.redactionPassed ? "pass" : "fail"}\n`,
+            );
+          }
         }
-        input.writeStderr(
-          `[execution] gateway=${input.executionPlane.gatewayImpl}(${input.executionPlane.gatewayImplSource}) runtime=${input.executionPlane.runtimeImpl}(${input.executionPlane.runtimeImplSource}) shadow=${input.executionPlane.shadowMode ? "on" : "off"}(${input.executionPlane.shadowModeSource})\n`,
-        );
+          await recordTurn(userText, assistantTextForHistory, stickyProvider, providerStates);
+          input.writeStdout(turnStdout);
+          if (askUserEvent.length > 0) {
+            input.writeStderr(askUserEvent);
+          }
+          input.writeStderr(
+            `[execution] gateway=${input.executionPlane.gatewayImpl}(${input.executionPlane.gatewayImplSource}) runtime=${input.executionPlane.runtimeImpl}(${input.executionPlane.runtimeImplSource}) shadow=${input.executionPlane.shadowMode ? "on" : "off"}(${input.executionPlane.shadowModeSource})\n`,
+          );
         input.writeStderr(
           `[runtime-model] base_url=${input.runtimeModelConfigSource.baseUrl} model=${input.runtimeModelConfigSource.model} provider_kind=${input.runtimeModelConfigSource.providerKind} api_key=${input.runtimeModelConfigSource.apiKey} timeout_ms=${input.runtimeModelConfigSource.timeoutMs}\n`,
         );
@@ -871,17 +1037,68 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         );
           if (!report.verification.pass) {
             input.onVerificationFailure();
+            const experienceFeedback = input.experiencePoolRuntime.registerTurnFailure({
+              sessionKey,
+              userText,
+              providerName: provider.name,
+              errorClass: "verification_failed",
+              errorMessage: "turn verification failed",
+            });
+            if (experienceFeedback.matched) {
+              input.writeStderr(
+                `[experience] event=failure_feedback id=${experienceFeedback.recordId ?? "<unknown>"} score=${typeof experienceFeedback.score === "number" ? experienceFeedback.score.toFixed(2) : "n/a"} confidence=${typeof experienceFeedback.confidence === "number" ? experienceFeedback.confidence.toFixed(2) : "n/a"} quarantined=${experienceFeedback.quarantined ? "true" : "false"}\n`,
+              );
+            }
+          }
+          const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
+          for (const task of reflections) {
+            input.writeStderr(
+              `[reflection] trigger=${task.triggerType} id=${task.id} next_action="${task.nextActionHint}"\n`,
+            );
           }
           return report.verification.pass ? 0 : 1;
         } catch (error) {
-        const rawMessage = String(error);
-        const compactMessage = compactSingleLine(rawMessage, 240);
-        const errorClass = resolveErrorClass(rawMessage);
-          failures.push({
+          const rawMessage = String(error);
+          const compactMessage = compactSingleLine(rawMessage, 240);
+          const errorClass = resolveErrorClass(rawMessage);
+            if (errorClass === TURN_INTERRUPTED_ERROR_CLASS) {
+              const providerStates = Array.from(providerStateMap.values());
+              input.setProviderRuntimeStates(providerStates);
+              input.updateActiveSessionProviderRuntime(input.getStickyProvider(), providerStates);
+              const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+              input.setGaState(gaState);
+              input.updateActiveSessionGaState(gaState);
+              await input.persistSessionRegistryState();
+              if (interactiveMode) {
+                input.writeStdout("[interrupt] turn interrupted. You can send a new instruction.\n\n");
+              } else {
+                input.writeStderr("[interrupt] turn interrupted.\n");
+              }
+              return TURN_INTERRUPTED_EXIT_CODE;
+            }
+            failures.push({
+              providerName: provider.name,
+              errorClass,
+            errorMessage: compactMessage,
+          });
+          input.gaMechanismRuntime.registerTurnFailure({
+            sessionKey,
             providerName: provider.name,
             errorClass,
             errorMessage: compactMessage,
           });
+          const experienceFeedback = input.experiencePoolRuntime.registerTurnFailure({
+            sessionKey,
+            userText,
+            providerName: provider.name,
+            errorClass,
+            errorMessage: compactMessage,
+          });
+          if (experienceFeedback.matched) {
+            input.writeStderr(
+              `[experience] event=failure_feedback id=${experienceFeedback.recordId ?? "<unknown>"} score=${typeof experienceFeedback.score === "number" ? experienceFeedback.score.toFixed(2) : "n/a"} confidence=${typeof experienceFeedback.confidence === "number" ? experienceFeedback.confidence.toFixed(2) : "n/a"} quarantined=${experienceFeedback.quarantined ? "true" : "false"}\n`,
+            );
+          }
           const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);
           updateProviderEwmaState({
             state,
@@ -901,10 +1118,13 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         }
       }
 
-    const providerStates = Array.from(providerStateMap.values());
-    input.setProviderRuntimeStates(providerStates);
-    input.updateActiveSessionProviderRuntime(input.getStickyProvider(), providerStates);
-    await input.persistSessionRegistryState();
+      const providerStates = Array.from(providerStateMap.values());
+      input.setProviderRuntimeStates(providerStates);
+      input.updateActiveSessionProviderRuntime(input.getStickyProvider(), providerStates);
+      const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+      input.setGaState(gaState);
+      input.updateActiveSessionGaState(gaState);
+      await input.persistSessionRegistryState();
     const failureSummary = failures
       .map((item) => `${item.providerName}:${item.errorClass}`)
       .join(", ");
@@ -915,6 +1135,12 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     if (failures.length > 0) {
       const last = failures[failures.length - 1];
       input.writeStderr(`runtime failed: provider=${last.providerName} ${last.errorMessage}\n`);
+    }
+    const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
+    for (const task of reflections) {
+      input.writeStderr(
+        `[reflection] trigger=${task.triggerType} id=${task.id} next_action="${task.nextActionHint}"\n`,
+      );
     }
     return 1;
   };

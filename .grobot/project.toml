@@ -79,6 +79,14 @@ strict = false
 [search.routing]
 kimi = "mcp_first_fallback_builtin" # mcp_first_fallback_builtin | builtin_only | mcp_only
 
+[experience.scheduler]
+enabled = false
+interval_secs = 120
+tasks_dir = ".grobot/scheduler/tasks"
+done_dir = ".grobot/scheduler/done"
+log_path = ".grobot/scheduler/scheduler.log"
+default_max_delay_hours = 6
+
 [hooks]
 enabled = true
 strict = false

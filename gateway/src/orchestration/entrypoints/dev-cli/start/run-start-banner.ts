@@ -44,6 +44,6 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
   }
   process.stdout.write("\n");
   process.stdout.write(
-    "Enter message (`/sessions`, `/new`, `/switch <id>`, `/continue <id>`, `/health`, `/plan <goal>`, `/plan status`, `/plan show`, `/plan options`, `/plan apply`, `/plan discard`, `/handoff`, `/help`, `/exit`):\n",
+    "Enter message (`/sessions`, `/new`, `/switch [id]`, `/continue [id]`, `/health`, `/model`, `/model current`, `/model list`, `/model use <id>`, `/plan <goal>`, `/plan status`, `/plan apply`, `/plan cancel`, `/interrupt`, `/handoff`, `/help`, `/exit`; CLI Esc also requests turn interrupt; no id => open picker):\n",
   );
 }

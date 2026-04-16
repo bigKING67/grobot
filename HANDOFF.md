@@ -1,9 +1,9 @@
 # HANDOFF
 
-- generated_at: 2026-04-14T06:47:00.896Z
+- generated_at: 2026-04-16T07:31:02.090Z
 - reason: auto-exit
 - project: grobot
-- work_dir: /tmp/grobot-start-work-mny9dxug-j1b6
+- work_dir: /tmp/grobot-start-work-mo15u91e-lcko
 - session_key: feishu:grobot:dm:gaoqian
 
 ## Compact Instructions
@@ -14,23 +14,6 @@ When compressing, preserve in priority order:
 4. Open TODOs and rollback notes
 5. Tool outputs (can delete, keep pass/fail only)
 
-## Verification status
-- provider config passthrough smoke
-- provider config passthrough smoke
-- provider config passthrough smoke
-- provider config passthrough smoke
-
 ## Recent Turns
-- user: ts rust hard-cut
-- assistant: MOCK_RUNTIME_OK (prompt:671)
-- user: provider config passthrough smoke
-- assistant: CONFIG_PROVIDER_OK (prompt:688)
-- user: ts rust hard-cut
-- assistant: TOOL_LOOP_RUNTIME_OK
-- user: ts rust hard-cut
-- assistant: MOCK_RUNTIME_OK (prompt:671)
-- user: provider config passthrough smoke
-- assistant: CONFIG_PROVIDER_OK (prompt:688)
-- user: ts rust hard-cut
-- assistant: TOOL_LOOP_RUNTIME_OK
+- (none)
 

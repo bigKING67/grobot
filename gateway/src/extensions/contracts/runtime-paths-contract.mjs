@@ -89,7 +89,7 @@ function resolveRuntimePaths(options) {
     project_root: projectRoot,
     project_toml: pathJoin(projectDir, "project.toml"),
     config_toml: pathJoin(home, "config.toml"),
-    sessions_dir: pathJoin(home, "runtime", "sessions"),
+    sessions_dir: pathJoin(home, "session"),
     global_hooks_dir: pathJoin(home, "hooks"),
     project_hooks_dir: pathJoin(projectDir, "hooks"),
     project_memory_dir: pathJoin(projectDir, "memory")
@@ -114,7 +114,7 @@ function persistMemoryLayersScenario(payload) {
   const sessionKey = String(payload.session_key ?? "feishu:demo:dm:workspace");
   const projectMemoryDir = pathJoin(projectRoot, ".grobot", "memory");
   const globalMemoryDir = pathJoin(home, "memory", "global");
-  const sessionMemoryDir = pathJoin(home, "runtime", "memory", "session");
+  const sessionMemoryDir = pathJoin(home, "memory", "session");
   const slug = sessionKey.replace(/[^a-zA-Z0-9._-]/g, "_");
   const sessionSnapshot = pathJoin(sessionMemoryDir, `${slug}.json`);
   const projectLog = pathJoin(projectMemoryDir, "memory.jsonl");

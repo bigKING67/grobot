@@ -3,7 +3,13 @@ import { type OptionValue } from "../cli-args";
 import { createMemoryOperations } from "../services/memory-lifecycle";
 import { resolveConfigReadPolicy } from "../services/management-config";
 import { resolveMemoryStoreRuntime } from "../services/memory-store-config";
+import {
+  resolveExperiencePoolPath,
+  resolveLegacyExperiencePoolPath,
+  resolveLegacyMemoryStorePath,
+} from "../services/runtime-paths";
 import { redisGetJson, redisSetJson } from "../services/redis-client";
+import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import { type ManagementRoutesContext } from "./management-routes";
 import { type MCPRuntimeState } from "./mcp-runtime";
 import {
@@ -17,6 +23,34 @@ import { reloadRunServeRuntimeState } from "./run-serve-reload";
 import { createRunServeRuntimeState, type RunServeRuntimeState } from "./run-serve-runtime-state";
 
 const MEMORY_STORE_REDIS_TTL_SECS = 14 * 24 * 60 * 60;
+
+function resolveExperiencePublishMode(): "auto" | "off" {
+  const raw = process.env.GROBOT_EXPERIENCE_PUBLISH_MODE?.trim().toLowerCase();
+  if (raw === "off") {
+    return "off";
+  }
+  return "auto";
+}
+
+function resolveExperienceRecallLimit(): number {
+  const raw = process.env.GROBOT_EXPERIENCE_RECALL_LIMIT?.trim();
+  if (!raw || !/^\d+$/.test(raw)) {
+    return 2;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return 2;
+  }
+  return Math.min(Math.max(parsed, 1), 6);
+}
+
+function resolveExperienceTeamDefault(): string {
+  const raw = process.env.GROBOT_TEAM?.trim();
+  if (typeof raw === "string" && raw.length > 0) {
+    return raw;
+  }
+  return "default";
+}
 
 interface CreateRunServeWireInput {
   options: Record<string, OptionValue>;
@@ -36,6 +70,7 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
     runtimeInput: resolveMemoryStoreRuntime(input.options, context.projectTomlPath),
     memoryStoreKey: context.memoryStoreKey,
     memoryStorePath: context.memoryStorePath,
+    memoryStoreLegacyPath: resolveLegacyMemoryStorePath(context.homeDir),
     redisGetJson,
   });
   const memoryRecordsBySession = initialMemoryState.store;
@@ -69,6 +104,22 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
   };
 
   const memoryOperations = createMemoryOperations(memoryRecordsBySession);
+  const experiencePoolPathRaw = process.env.GROBOT_EXPERIENCE_POOL_PATH?.trim();
+  const experienceTeam = resolveExperienceTeamDefault();
+    const experiencePoolPath = experiencePoolPathRaw && experiencePoolPathRaw.length > 0
+      ? experiencePoolPathRaw
+      : resolveExperiencePoolPath(context.projectStateRoot, {
+        tenant: context.projectName,
+        team: experienceTeam,
+        user: process.env.USER ?? "server",
+      });
+  const experiencePoolRuntime = createExperiencePoolRuntime({
+    poolPath: experiencePoolPath,
+    legacyPoolPath: resolveLegacyExperiencePoolPath(context.homeDir),
+    publishMode: resolveExperiencePublishMode(),
+    recallLimit: resolveExperienceRecallLimit(),
+    teamDefault: experienceTeam,
+  });
   const applyMcpReset = createRunServeMcpReset({
     mcpSessions: input.mcpSessions,
     mcpServerStates: input.mcpServerStates,
@@ -84,6 +135,7 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
     memoryRecordsBySession,
     runtimeState,
     memoryOperations,
+    experiencePoolRuntime,
     persistMemoryStore,
     applyMcpReset,
   });

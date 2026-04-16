@@ -4,6 +4,47 @@ import { removeTrailingSlashes } from "../services/runtime-paths";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
 
+export interface SessionInputLoopControls {
+  withInputPaused<T>(operation: () => Promise<T>): Promise<T>;
+}
+
+export interface SessionInputLoopOptions {
+  onEscapeInterrupt?: () => void | Promise<void>;
+}
+
+export interface TerminalSelectMenuItem {
+  id: string;
+  label: string;
+  description?: string;
+  current?: boolean;
+}
+
+export interface TerminalSelectMenuInput {
+  title: string;
+  subtitle?: string;
+  hint?: string;
+  items: TerminalSelectMenuItem[];
+  initialIndex?: number;
+}
+
+export type TerminalSelectMenuResult =
+  | { kind: "selected"; item: TerminalSelectMenuItem; index: number }
+  | { kind: "cancelled" };
+
+interface PauseableInput {
+  pause?: () => void;
+  resume?: () => void;
+}
+
+interface MenuInputStream {
+  isTTY?: boolean;
+  setRawMode?: (enabled: boolean) => void;
+  on?: (event: "data", listener: (chunk: string) => void) => void;
+  off?: (event: "data", listener: (chunk: string) => void) => void;
+  resume?: () => void;
+  setEncoding?: (encoding: string) => void;
+}
+
 function dirname(path: string): string {
   const normalized = removeTrailingSlashes(path);
   const slash = normalized.lastIndexOf("/");
@@ -36,9 +77,13 @@ export function writeHandoffFile(path: string, content: string): { ok: true } | 
 }
 
 export async function runSessionInputLoop(
-  handler: (input: string) => Promise<"continue" | "break">,
+  handler: (input: string, controls: SessionInputLoopControls) => Promise<"continue" | "break">,
   prompt = "grobot> ",
+  options: SessionInputLoopOptions = {},
 ): Promise<void> {
+  const nonTtyControls: SessionInputLoopControls = {
+    withInputPaused: async <T>(operation: () => Promise<T>): Promise<T> => operation(),
+  };
   if (!process.stdin.isTTY) {
     let stdinContent = "";
     process.stdin.setEncoding("utf8");
@@ -47,7 +92,7 @@ export async function runSessionInputLoop(
     }
     const lines = stdinContent.split(/\r?\n/);
     for (const line of lines) {
-      const action = await handler(line);
+      const action = await handler(line, nonTtyControls);
       if (action === "break") {
         break;
       }
@@ -64,21 +109,276 @@ export async function runSessionInputLoop(
     sawSigint = true;
     rl.close();
   });
-  while (true) {
-    let rawInput = "";
-    try {
-      rawInput = await questionAsync(rl, prompt);
-    } catch {
+  const pauseableInput = process.stdin as unknown as PauseableInput;
+  const menuInput = process.stdin as unknown as MenuInputStream;
+  const controls: SessionInputLoopControls = {
+    withInputPaused: async <T>(operation: () => Promise<T>): Promise<T> => {
+      pauseableInput.pause?.();
+      try {
+        return await operation();
+      } finally {
+        pauseableInput.resume?.();
+      }
+      },
+    };
+    let handlerRunning = false;
+    let escListenerAttached = false;
+    let escArmedAt = 0;
+    const escInputSupported = Boolean(
+      options.onEscapeInterrupt
+      && typeof menuInput.setRawMode === "function"
+      && typeof menuInput.on === "function"
+      && typeof menuInput.off === "function",
+    );
+    const triggerEscInterrupt = (): void => {
+      if (typeof options.onEscapeInterrupt !== "function") {
+        return;
+      }
+      const maybePromise = options.onEscapeInterrupt();
+      if (typeof (maybePromise as Promise<void> | undefined)?.then === "function") {
+        void maybePromise;
+      }
+    };
+    const onEscData = (chunk: string): void => {
+      if (!handlerRunning) {
+        return;
+      }
+      const raw = String(chunk);
+      if (raw !== "\u001b") {
+        return;
+      }
+      const now = Date.now();
+      if (now - escArmedAt < 150) {
+        return;
+      }
+      escArmedAt = now;
+      process.stdout.write("\n");
+      triggerEscInterrupt();
+    };
+    const setEscListener = (enabled: boolean): void => {
+      if (!escInputSupported) {
+        return;
+      }
+      if (enabled) {
+        if (escListenerAttached) {
+          return;
+        }
+        menuInput.setEncoding?.("utf8");
+        menuInput.on?.("data", onEscData);
+        try {
+          menuInput.setRawMode?.(true);
+        } catch {
+          menuInput.off?.("data", onEscData);
+          return;
+        }
+        escListenerAttached = true;
+        menuInput.resume?.();
+        return;
+      }
+      if (!escListenerAttached) {
+        return;
+      }
+      menuInput.off?.("data", onEscData);
+      try {
+        menuInput.setRawMode?.(false);
+      } catch {
+        // ignore raw mode restore errors
+      }
+      escListenerAttached = false;
+    };
+    while (true) {
+      let rawInput = "";
+      try {
+        rawInput = await questionAsync(rl, prompt);
+      } catch {
       break;
     }
-    if (sawSigint) {
-      process.stdout.write("Interrupted\n");
-      break;
+      if (sawSigint) {
+        process.stdout.write("Interrupted\n");
+        break;
+      }
+      handlerRunning = true;
+      setEscListener(true);
+      let action: "continue" | "break";
+      try {
+        action = await handler(rawInput, controls);
+      } finally {
+        setEscListener(false);
+        handlerRunning = false;
+      }
+      if (action === "break") {
+        break;
+      }
     }
-    const action = await handler(rawInput);
-    if (action === "break") {
-      break;
+    setEscListener(false);
+    rl.close();
+  }
+
+function terminalSelectMenuRender(input: {
+  menu: TerminalSelectMenuInput;
+  activeIndex: number;
+}): string {
+  const lines: string[] = [];
+  lines.push(`\x1b[1m${input.menu.title}\x1b[0m`);
+  if (input.menu.subtitle && input.menu.subtitle.trim().length > 0) {
+    lines.push(input.menu.subtitle.trim());
+  }
+  lines.push("");
+  for (let index = 0; index < input.menu.items.length; index += 1) {
+    const item = input.menu.items[index];
+    const isActive = index === input.activeIndex;
+    const pointer = isActive ? "\x1b[92m›\x1b[0m" : " ";
+    const number = `${String(index + 1)}.`;
+    const label = isActive ? `\x1b[92m${item.label}\x1b[0m` : item.label;
+    const currentTag = item.current ? " \x1b[96m(current)\x1b[0m" : "";
+    const description = item.description && item.description.trim().length > 0
+      ? item.description.trim()
+      : "";
+    const firstLine = `${pointer} ${number.padEnd(3)} ${label}${currentTag}`;
+    if (description.length > 0) {
+      lines.push(`${firstLine}  ${description}`);
+    } else {
+      lines.push(firstLine);
     }
   }
-  rl.close();
+  lines.push("");
+  lines.push(input.menu.hint ?? "Use ↑/↓ (or j/k), Enter to confirm, Esc to cancel.");
+  return lines.join("\n");
+}
+
+function normalizeMenuIndex(itemsLength: number, initialIndex: number | undefined): number {
+  if (itemsLength <= 0) {
+    return 0;
+  }
+  if (typeof initialIndex !== "number" || !Number.isFinite(initialIndex)) {
+    return 0;
+  }
+  const rounded = Math.floor(initialIndex);
+  if (rounded < 0) {
+    return 0;
+  }
+  if (rounded >= itemsLength) {
+    return itemsLength - 1;
+  }
+  return rounded;
+}
+
+function decodeMenuInput(rawInput: string): "up" | "down" | "enter" | "cancel" | "ignore" {
+  if (rawInput.length === 0) {
+    return "ignore";
+  }
+  if (rawInput.length === 1) {
+    const firstChar = rawInput[0];
+    if (firstChar === "\u0003" || firstChar === "\u001b") {
+      return "cancel";
+    }
+    if (firstChar === "\r" || firstChar === "\n") {
+      return "enter";
+    }
+    if (firstChar === "k") {
+      return "up";
+    }
+    if (firstChar === "j") {
+      return "down";
+    }
+    return "ignore";
+  }
+  if (rawInput.startsWith("\u001b[A") || rawInput.startsWith("\u001bOA")) {
+    return "up";
+  }
+  if (rawInput.startsWith("\u001b[B") || rawInput.startsWith("\u001bOB")) {
+    return "down";
+  }
+  return "ignore";
+}
+
+export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Promise<TerminalSelectMenuResult> {
+  if (!process.stdin.isTTY || input.items.length === 0) {
+    return { kind: "cancelled" };
+  }
+  const stdin = process.stdin as unknown as MenuInputStream;
+  const setRawMode = stdin.setRawMode;
+  const onInput = stdin.on;
+  const offInput = stdin.off;
+  const resumeInput = stdin.resume;
+  if (
+    typeof setRawMode !== "function" ||
+    typeof onInput !== "function" ||
+    typeof offInput !== "function" ||
+    typeof resumeInput !== "function"
+  ) {
+    return { kind: "cancelled" };
+  }
+
+  const stdout = process.stdout;
+  let activeIndex = normalizeMenuIndex(input.items.length, input.initialIndex);
+  let resolved = false;
+
+  const render = (): void => {
+    stdout.write("\x1b[2J\x1b[H");
+    stdout.write(`${terminalSelectMenuRender({ menu: input, activeIndex })}\n`);
+  };
+
+  return await new Promise<TerminalSelectMenuResult>((resolve) => {
+    const cleanup = (): void => {
+      if (!resolved) {
+        return;
+      }
+      offInput.call(stdin, "data", onData);
+      try {
+        setRawMode.call(stdin, false);
+      } catch {
+        // ignore raw mode teardown errors
+      }
+      stdout.write("\x1b[?25h");
+      stdout.write("\x1b[?1049l");
+    };
+
+    const finish = (result: TerminalSelectMenuResult): void => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      cleanup();
+      resolve(result);
+    };
+
+    const onData = (chunk: string): void => {
+      const action = decodeMenuInput(chunk);
+      if (action === "up") {
+        activeIndex = (activeIndex - 1 + input.items.length) % input.items.length;
+        render();
+        return;
+      }
+      if (action === "down") {
+        activeIndex = (activeIndex + 1) % input.items.length;
+        render();
+        return;
+      }
+      if (action === "enter") {
+        finish({
+          kind: "selected",
+          item: input.items[activeIndex],
+          index: activeIndex,
+        });
+        return;
+      }
+      if (action === "cancel") {
+        finish({ kind: "cancelled" });
+      }
+    };
+
+    stdout.write("\x1b[?1049h");
+    stdout.write("\x1b[?25l");
+    stdin.setEncoding?.("utf8");
+    onInput.call(stdin, "data", onData);
+    try {
+      setRawMode.call(stdin, true);
+    } catch {
+      finish({ kind: "cancelled" });
+      return;
+    }
+    resumeInput.call(stdin);
+    render();
+  });
 }

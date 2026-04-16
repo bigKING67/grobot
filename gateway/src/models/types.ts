@@ -82,6 +82,74 @@ export interface RuntimeToolContext {
   enabledTools?: string[];
   bashAllowlist?: string[];
   maxToolRounds?: number;
+  noToolFallbackMode?: "off" | "safe" | "strict";
+  maxRecoveryRounds?: number;
+}
+
+export type MemoryLevel = "L1" | "L2" | "L3" | "L4";
+
+export interface MemoryEvidenceRef {
+  traceId?: string;
+  turnId?: string;
+  toolCallId?: string;
+  source?: string;
+}
+
+export interface MemoryWriteRequest {
+  sessionKey: string;
+  memoryLevel: MemoryLevel;
+  sourceEventType: "turn_executed" | "tool_executed" | "checkpoint_updated" | "reflection_generated" | "ask_user_resolved";
+  text: string;
+  executionVerified: boolean;
+  evidenceRef?: MemoryEvidenceRef;
+  confidence?: number;
+  tags?: string[];
+}
+
+export interface SkillCard {
+  id: string;
+  taskSignature: string;
+  preconditions: string[];
+  steps: string[];
+  failureSignals: string[];
+  rollback: string[];
+  successEvidenceRefs: MemoryEvidenceRef[];
+  confidence: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReflectionTask {
+  id: string;
+  sessionKey: string;
+  triggerType: "repeated_failure" | "verification_failure";
+  failureBundle: string[];
+  insightSchemaVersion: "v1";
+  nextActionHint: string;
+  createdAt: string;
+}
+
+export interface AskUserEnvelope {
+  questionId: string;
+  blockingNodeId: string;
+  question: string;
+  options: string[];
+  defaultOnTimeout: string;
+  resumeToken: string;
+  createdAt: string;
+}
+
+export interface BrowserExtractResult {
+  pageFingerprint: string;
+  actionableNodes: Array<{
+    id: string;
+    role: string;
+    text: string;
+    selector: string;
+  }>;
+  stateTransients: string[];
+  evidenceSnapshotRef: string;
+  fallbackUsed: "none" | "cdp";
 }
 
 export type RuntimeAttachmentType = "file" | "image" | "video";
@@ -95,6 +163,21 @@ export interface RuntimeAttachment {
   filename?: string;
 }
 
+export interface RuntimeAskUserInterrupt {
+  questionId: string;
+  blockingNodeId: string;
+  question: string;
+  options: string[];
+  defaultOnTimeout: string;
+  resumeToken: string;
+  createdAt: string;
+}
+
+export interface RuntimeTurnInterrupt {
+  kind: "ask_user";
+  askUser: RuntimeAskUserInterrupt;
+}
+
 export type RuntimeEventType =
   | "turn_start"
   | "model_request"
@@ -102,9 +185,13 @@ export type RuntimeEventType =
   | "tool_start"
   | "tool_end"
   | "turn_stream_chunk"
+  | "turn_interrupted"
   | "turn_end"
   | "turn_failed"
-  | "session_resume";
+  | "session_resume"
+  | "no_tool_fallback_triggered"
+  | "no_tool_fallback_succeeded"
+  | "no_tool_fallback_exhausted";
 
 export interface RuntimeEvent {
   traceId: string;
@@ -119,11 +206,16 @@ export interface RuntimeTurnResult {
   traceId: string;
   runtimeLabel: string;
   assistantMessage: string;
+  interrupt?: RuntimeTurnInterrupt;
   events: RuntimeEvent[];
 }
 
+export interface RuntimeExecuteOptions {
+  signal?: AbortSignal;
+}
+
 export interface RuntimeClient {
-  executeTurn(request: RuntimeRequest): Promise<RuntimeTurnResult>;
+  executeTurn(request: RuntimeRequest, options?: RuntimeExecuteOptions): Promise<RuntimeTurnResult>;
 }
 
 export interface TurnVerificationCheck {
@@ -171,6 +263,7 @@ export interface TurnExecutionReport {
   finishedAtIso: string;
   primaryRuntime: string;
   assistantMessage: string;
+  runtimeInterrupt?: RuntimeTurnInterrupt;
   verification: TurnVerificationResult;
   governance: GovernanceEvaluation;
   shadowComparison?: ShadowComparison;

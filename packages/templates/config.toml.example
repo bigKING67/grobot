@@ -36,11 +36,12 @@ base_url = "https://api.siliconflow.cn/v1"
 
 [retrieval.embedding]
 enabled = true
-model = "Qwen/Qwen3-Embedding-8B"
+model = "Qwen/Qwen3-Embedding-4B"
+dimensions = 2560
 
 [retrieval.rerank]
 enabled = true
-model = "Qwen/Qwen3-Reranker-4B"
+model = "Qwen/Qwen3-Reranker-0.6B"
 
 [bridge]
 enabled = true

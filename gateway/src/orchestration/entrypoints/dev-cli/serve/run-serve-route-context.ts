@@ -2,6 +2,7 @@ import { type MemoryOperations } from "../services/memory-lifecycle";
 import { setInterruptFlag } from "../services/interrupt-store";
 import { maskRedisUrl } from "../services/memory-store-config";
 import { readMaskedFile } from "../services/redaction";
+import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
   parseBearerToken,
   parseBodyBool,
@@ -30,6 +31,7 @@ interface CreateRunServeRouteContextInput {
   memoryRecordsBySession: Map<string, Record<string, unknown>[]>;
   runtimeState: RunServeRuntimeState;
   memoryOperations: MemoryOperations;
+  experiencePoolRuntime: ExperiencePoolRuntime;
   persistMemoryStore(): Promise<void>;
   applyMcpReset(targetServer?: string): Record<string, unknown>;
 }
@@ -56,6 +58,18 @@ export function createRunServeRouteContext(
       };
     },
     getMemorySessionCount: () => input.memoryRecordsBySession.size,
+    getExperiencePoolState: () => ({
+      path: input.experiencePoolRuntime.getPath(),
+      publishMode: input.experiencePoolRuntime.getPublishMode(),
+      recallLimit: input.experiencePoolRuntime.getRecallLimit(),
+      teamDefault: input.experiencePoolRuntime.getTeamDefault(),
+      recordCount: input.experiencePoolRuntime.getRecordCount(),
+      updatedAt: input.experiencePoolRuntime.getUpdatedAt(),
+    }),
+    searchExperienceRecords: input.experiencePoolRuntime.searchRecords,
+    listExperienceRecords: input.experiencePoolRuntime.listRecords,
+    getExperienceRecord: input.experiencePoolRuntime.getRecordById,
+    setExperienceRecordState: input.experiencePoolRuntime.setRecordState,
     readMaskedFile,
     listMemoryRows: input.memoryOperations.listMemoryRows,
     importMemoryRows: input.memoryOperations.importMemoryRows,

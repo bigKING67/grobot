@@ -1,5 +1,9 @@
 import { createServer } from "node:http";
 
+function sleep(delayMs) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs));
+}
+
 function readUtf8Body(request) {
   return new Promise((resolveBody, reject) => {
     const chunks = [];
@@ -14,6 +18,9 @@ function readUtf8Body(request) {
 export async function startMockModelServer(options = {}) {
   const mode = typeof options.mode === "string" ? options.mode : "text";
   const fixedContent = typeof options.content === "string" ? options.content : "MOCK_RUNTIME_OK";
+  const responseDelayMs = Number.isFinite(options.responseDelayMs)
+    ? Math.max(0, Math.floor(Number(options.responseDelayMs)))
+    : 0;
   const calls = [];
   const server = createServer(async (request, response) => {
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
@@ -47,6 +54,10 @@ export async function startMockModelServer(options = {}) {
       prompt,
       bodyText,
     });
+
+    if (responseDelayMs > 0) {
+      await sleep(responseDelayMs);
+    }
 
     response.writeHead(200, { "content-type": "application/json" });
     if (mode === "tool_call") {

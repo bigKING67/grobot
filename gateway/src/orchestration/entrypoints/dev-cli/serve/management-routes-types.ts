@@ -7,6 +7,11 @@ import {
   type MemoryScope,
   type MemoryStoreRuntime,
 } from "../services/memory-lifecycle";
+import {
+  type ExperienceRecord,
+  type ExperienceRecordState,
+  type ExperienceSearchMatch,
+} from "../../../../tools/state/experience-pool/types";
 
 export interface ExecutionPlaneState {
   gatewayImpl: string;
@@ -24,6 +29,15 @@ export interface ConfigReadPolicyState {
   reason: string;
 }
 
+export interface ExperiencePoolState {
+  path: string;
+  publishMode: "auto" | "off";
+  recallLimit: number;
+  teamDefault: string;
+  recordCount: number;
+  updatedAt: string;
+}
+
 export type QueryParams = Record<string, string[]>;
 
 export interface ManagementRoutesContext {
@@ -39,6 +53,22 @@ export interface ManagementRoutesContext {
   getConfigReadPolicy: () => ConfigReadPolicyState;
   getMemoryStoreRuntime: () => MemoryStoreRuntime;
   getMemorySessionCount: () => number;
+  getExperiencePoolState: () => ExperiencePoolState;
+  searchExperienceRecords: (input: {
+    tenant: string;
+    team?: string;
+    user?: string;
+    query: string;
+    limit: number;
+    includeStates?: ExperienceRecordState[];
+  }) => ExperienceSearchMatch[];
+  listExperienceRecords: (tenant?: string, team?: string, user?: string) => ExperienceRecord[];
+  getExperienceRecord: (id: string) => ExperienceRecord | undefined;
+  setExperienceRecordState: (
+    id: string,
+    state: ExperienceRecordState,
+    reason?: string,
+  ) => ExperienceRecord | undefined;
   readMaskedFile: (path: string | undefined) => string | undefined;
   listMemoryRows: (sessionId: string, options: MemoryListOptions) => Record<string, unknown>[];
   importMemoryRows: (

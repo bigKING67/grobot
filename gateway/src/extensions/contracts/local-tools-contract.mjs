@@ -105,6 +105,51 @@ function resolveScenario(command) {
         glob_blocked: true,
         search_blocked: true
       };
+    case "semantic-search-tool":
+      return {
+        tool: "semantic_search",
+        count: 2,
+        source_stats: [
+          { source: "code", status: "ok", count: 1 },
+          { source: "wiki", status: "ok", count: 1 }
+        ],
+        matches: [
+          {
+            source: "code",
+            path: "runtime/src/tools/dispatcher/mod.rs",
+            start_line: 10,
+            end_line: 30,
+            score: 0.92
+          },
+          {
+            source: "wiki",
+            path: ".grobot/wiki/shared/runtime-tools.md",
+            start_line: 1,
+            end_line: 12,
+            score: 0.73
+          }
+        ]
+      };
+    case "prompt-enhancer-tool":
+      return {
+        tool: "prompt_enhancer",
+        language: "zh",
+        technical_terms: ["RuntimeToolContext", "semantic_search"],
+        top_paths: [
+          "[code] runtime/src/models/tooling.rs",
+          "[memory] .grobot/memory/v1/users/demo/items.jsonl"
+        ],
+        evidence: [
+          {
+            source: "code",
+            path: "runtime/src/models/tooling.rs",
+            start_line: 100,
+            end_line: 150,
+            score: 0.88
+          }
+        ],
+        context_block: "[Enhanced Context]\nlanguage=zh\ntechnical_terms=RuntimeToolContext, semantic_search"
+      };
     case "resolve-mcp-call-policy":
       return {
         max_concurrency_per_server: 3,

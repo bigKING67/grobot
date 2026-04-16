@@ -25,6 +25,7 @@ export interface GatewayRuntimeOptions {
   modelConfig?: RuntimeModelConfig;
   toolContext?: RuntimeToolContext;
   attachments?: RuntimeAttachment[];
+  abortSignal?: AbortSignal;
 }
 
 export function createTurnRequest(
@@ -88,5 +89,8 @@ export async function runGatewayTurn(
     runtimeOptions?.modelConfig,
     runtimeOptions?.toolContext,
     runtimeOptions?.attachments,
+    {
+      signal: runtimeOptions?.abortSignal,
+    },
   );
 }

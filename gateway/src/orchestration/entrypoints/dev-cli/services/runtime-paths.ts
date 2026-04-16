@@ -163,12 +163,62 @@ export function resolveHomeDir(options?: Record<string, OptionValue>): string {
   return defaultHome;
 }
 
-export function resolveInterruptStorePath(homeDir?: string): string {
-  const root = homeDir ? removeTrailingSlashes(homeDir) : resolveHomeDir();
-  return `${root}/runtime/sessions/interrupts.json`;
+export function resolveProjectStateRoot(workDir: string): string {
+  return `${removeTrailingSlashes(workDir)}/.grobot`;
 }
 
-export function resolveMemoryStorePath(homeDir?: string): string {
+export function resolveInterruptStorePath(projectStateRoot?: string): string {
+  const root = projectStateRoot
+    ? removeTrailingSlashes(projectStateRoot)
+    : resolveProjectStateRoot(process.cwd());
+  return `${root}/session/interrupts.json`;
+}
+
+export function resolveMemoryStorePath(projectStateRoot?: string): string {
+  const root = projectStateRoot
+    ? removeTrailingSlashes(projectStateRoot)
+    : resolveProjectStateRoot(process.cwd());
+  return `${root}/memory/ts-dev-cli-memory.json`;
+}
+
+function sanitizePathSegment(value: string | undefined, fallback: string): string {
+  const source = typeof value === "string" ? value.trim() : "";
+  if (!source) {
+    return fallback;
+  }
+  const normalized = source
+    .replace(/[^\p{L}\p{N}._-]+/gu, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+  if (!normalized) {
+    return fallback;
+  }
+  return normalized;
+}
+
+export function resolveExperiencePoolPath(
+  projectStateRoot?: string,
+  scope?: {
+    tenant?: string;
+    team?: string;
+    user?: string;
+  },
+): string {
+  const root = projectStateRoot
+    ? removeTrailingSlashes(projectStateRoot)
+    : resolveProjectStateRoot(process.cwd());
+  const tenant = sanitizePathSegment(scope?.tenant, "default-tenant");
+  const team = sanitizePathSegment(scope?.team, "default-team");
+  const user = sanitizePathSegment(scope?.user, "default-user");
+  return `${root}/experience/tenant/${tenant}/team/${team}/user/${user}/experience-pool.json`;
+}
+
+export function resolveLegacyExperiencePoolPath(homeDir?: string): string {
+  const root = homeDir ? removeTrailingSlashes(homeDir) : resolveHomeDir();
+  return `${root}/runtime/experience/experience-pool.json`;
+}
+
+export function resolveLegacyMemoryStorePath(homeDir?: string): string {
   const root = homeDir ? removeTrailingSlashes(homeDir) : resolveHomeDir();
   return `${root}/runtime/memory/ts-dev-cli-memory.json`;
 }

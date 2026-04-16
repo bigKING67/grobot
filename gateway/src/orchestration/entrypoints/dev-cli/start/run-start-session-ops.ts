@@ -1,4 +1,5 @@
 import { SessionStoreController } from "../services/session-store";
+import { type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
 import {
   buildContinueBridgeMessage,
   trimHistoryMessages,
@@ -7,6 +8,7 @@ import {
 import {
   createSessionRecord,
   findSessionRecord,
+  SESSION_REGISTRY_MAIN_ID,
   type SessionPlanMeta,
   type SessionPlanMode,
   type SessionProviderRuntimeState,
@@ -26,6 +28,7 @@ interface CreateRunStartSessionOpsInput {
   setProviderRuntimeStates(rows: SessionProviderRuntimeState[]): void;
   setPlanMode(value: SessionPlanMode): void;
   setPlanMeta(value: SessionPlanMeta | undefined): void;
+  setGaState(value: GaSessionStateSnapshot | undefined): void;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
   onHistoryCompacted(): void;
@@ -35,7 +38,76 @@ interface CreateRunStartSessionOpsInput {
   writeStdout(message: string): void;
 }
 
+export interface RunStartSessionSummary {
+  id: string;
+  title: string;
+  summary: string;
+  sessionKey: string;
+  updatedAt: string;
+  active: boolean;
+}
+
+function parseUpdatedAtMs(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function trimSessionText(value: string, maxLength: number): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function resolveSessionTitle(input: {
+  id: string;
+  preview: string;
+  planTitle: string;
+}): string {
+  if (input.planTitle.length > 0) {
+    return trimSessionText(input.planTitle, 44);
+  }
+  if (input.preview.length > 0) {
+    return trimSessionText(input.preview, 44);
+  }
+  if (input.id === SESSION_REGISTRY_MAIN_ID) {
+    return "Main Session";
+  }
+  return "Untitled Session";
+}
+
 export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
+  const listSessions = (): RunStartSessionSummary[] => {
+    const sessionRegistry = input.getSessionRegistry();
+    const activeSessionId = input.getActiveSessionId();
+    const rows = sessionRegistry.sessions.map((record) => ({
+      title: resolveSessionTitle({
+        id: record.id,
+        preview: typeof record.preview === "string" ? record.preview : "",
+        planTitle: typeof record.plan_meta?.active_plan_title === "string"
+          ? record.plan_meta.active_plan_title
+          : "",
+      }),
+      summary: trimSessionText(typeof record.preview === "string" ? record.preview : "", 120),
+      id: record.id,
+      sessionKey: record.session_key,
+      updatedAt: record.updated_at,
+      active: record.id === activeSessionId,
+    }));
+    rows.sort((left, right) => {
+      if (left.active !== right.active) {
+        return left.active ? -1 : 1;
+      }
+      const updatedDiff = parseUpdatedAtMs(right.updatedAt) - parseUpdatedAtMs(left.updatedAt);
+      if (updatedDiff !== 0) {
+        return updatedDiff;
+      }
+      return left.id.localeCompare(right.id);
+    });
+    return rows;
+  };
+
   const switchActiveSession = async (targetSessionId: string, reason: string): Promise<boolean> => {
     const sessionRegistry = input.getSessionRegistry();
     const record = findSessionRecord(sessionRegistry, targetSessionId);
@@ -50,6 +122,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     input.setProviderRuntimeStates(Array.isArray(record.provider_runtime_states) ? [...record.provider_runtime_states] : []);
     input.setPlanMode(record.plan_mode === "plan_only" ? "plan_only" : "normal");
     input.setPlanMeta(record.plan_meta);
+    input.setGaState(record.ga_state);
     const historyLoad = await input.sessionStore.loadHistoryMessagesState(record.session_key);
     input.setHistoryMessages(historyLoad.messages);
     input.writeStoreWarnings(historyLoad.warnings);
@@ -67,27 +140,29 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     sessionRegistry.sessions.push(record);
     sessionRegistry.active_id = record.id;
     input.setStickyProvider(undefined);
-    input.setProviderRuntimeStates([]);
-    input.setPlanMode("normal");
-    input.setPlanMeta(undefined);
-    await input.persistSessionRegistryState();
-    return record.id;
-  };
+      input.setProviderRuntimeStates([]);
+      input.setPlanMode("normal");
+      input.setPlanMeta(undefined);
+      input.setGaState(undefined);
+      await input.persistSessionRegistryState();
+      return record.id;
+    };
 
   const printSessionOverview = (): void => {
-    const sessionRegistry = input.getSessionRegistry();
-    const activeSessionId = input.getActiveSessionId();
-    if (!sessionRegistry.sessions.length) {
+    const sessions = listSessions();
+    if (!sessions.length) {
       input.writeStdout("No sessions available.\n\n");
       return;
     }
     input.writeStdout(`Session namespace: ${input.sessionNamespaceKey}\n`);
-    for (const record of sessionRegistry.sessions) {
-      const marker = record.id === activeSessionId ? "*" : " ";
-      const previewPart = record.preview ? ` | ${record.preview}` : "";
+    for (const record of sessions) {
+      const marker = record.active ? "*" : " ";
       input.writeStdout(
-        `${marker} ${record.id} -> ${record.session_key} (${record.updated_at})${previewPart}\n`,
+        `${marker} ${record.id} | ${record.title} (${record.updatedAt})\n`,
       );
+      if (record.summary.length > 0) {
+        input.writeStdout(`    summary: ${record.summary}\n`);
+      }
     }
     input.writeStdout("\n");
   };
@@ -133,6 +208,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
   };
 
   return {
+    listSessions,
     switchActiveSession,
     createNewSession,
     printSessionOverview,

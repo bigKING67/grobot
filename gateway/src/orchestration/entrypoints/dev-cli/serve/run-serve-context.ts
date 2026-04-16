@@ -6,6 +6,7 @@ import {
   resolveHomeDir,
   resolveInterruptStorePath,
   resolveMemoryStorePath,
+  resolveProjectStateRoot,
   resolveProjectRoot,
   resolveProjectTomlPath,
   resolveWorkDir,
@@ -32,6 +33,7 @@ export interface RunServeContext {
   projectName: string;
   managementToken: string | undefined;
   executionPlaneInput: ExecutionPlaneConfigInput;
+  projectStateRoot: string;
   interruptStorePath: string;
   memoryStorePath: string;
   memoryStoreKey: string;
@@ -41,8 +43,9 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
   const homeDir = resolveHomeDir(options);
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
+  const projectStateRoot = resolveProjectStateRoot(workDir);
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
-  const configTomlPath = resolveConfigTomlPath(options, homeDir);
+  const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
   const bind = parseBind(readOptionString(options, "bind"));
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const managementToken =
@@ -56,8 +59,8 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     noShadowModeArg: hasFlag(options, "no-shadow-mode"),
     projectTomlPath,
   };
-  const interruptStorePath = resolveInterruptStorePath(homeDir);
-  const memoryStorePath = resolveMemoryStorePath(homeDir);
+  const interruptStorePath = resolveInterruptStorePath(projectStateRoot);
+  const memoryStorePath = resolveMemoryStorePath(projectStateRoot);
   const memoryStoreKey = memoryStoreRedisKey(projectName, workDir);
 
   return {
@@ -71,6 +74,7 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     projectName,
     managementToken,
     executionPlaneInput,
+    projectStateRoot,
     interruptStorePath,
     memoryStorePath,
     memoryStoreKey,

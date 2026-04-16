@@ -14,6 +14,8 @@ interface PlanEventCounter {
   plan_created_count: number;
   plan_progress_appended_count: number;
   plan_status_changed_count: number;
+  plan_review_passed_count: number;
+  plan_review_failed_count: number;
   plan_recovered_stale_approved_count: number;
   plan_apply_started_count: number;
   plan_apply_succeeded_count: number;
@@ -32,6 +34,7 @@ interface PlanEventsFileSummary extends PlanEventCounter {
 interface PlanEventsSessionSummary extends PlanEventCounter {
   session_id: string;
   apply_success_rate: number | null;
+  review_failed_rate: number | null;
 }
 
 interface PlanEventsTotals extends PlanEventCounter {
@@ -40,6 +43,7 @@ interface PlanEventsTotals extends PlanEventCounter {
   invalid_lines: number;
   sessions_count: number;
   apply_success_rate: number | null;
+  review_failed_rate: number | null;
   guard_denied_rate: number | null;
   idempotent_hit_rate: number | null;
 }
@@ -67,6 +71,8 @@ function createCounter(): PlanEventCounter {
     plan_created_count: 0,
     plan_progress_appended_count: 0,
     plan_status_changed_count: 0,
+    plan_review_passed_count: 0,
+    plan_review_failed_count: 0,
     plan_recovered_stale_approved_count: 0,
     plan_apply_started_count: 0,
     plan_apply_succeeded_count: 0,
@@ -171,6 +177,12 @@ function applyEvent(counter: PlanEventCounter, event: string): void {
     case "plan_status_changed":
       counter.plan_status_changed_count += 1;
       break;
+    case "plan_review_passed":
+      counter.plan_review_passed_count += 1;
+      break;
+    case "plan_review_failed":
+      counter.plan_review_failed_count += 1;
+      break;
     case "plan_recovered_stale_approved":
       counter.plan_recovered_stale_approved_count += 1;
       break;
@@ -264,6 +276,7 @@ function buildReport(input: ParsedCliArgs): PlanEventsReport {
       session_id: sessionId,
       ...counter,
       apply_success_rate: roundRate(counter.plan_apply_succeeded_count, counter.plan_apply_started_count),
+      review_failed_rate: roundRate(counter.plan_review_failed_count, counter.plan_mode_entered_count),
     }));
   const totals: PlanEventsTotals = {
     ...totalsCounter,
@@ -272,6 +285,7 @@ function buildReport(input: ParsedCliArgs): PlanEventsReport {
     invalid_lines: invalidLinesTotal,
     sessions_count: perSession.length,
     apply_success_rate: roundRate(totalsCounter.plan_apply_succeeded_count, totalsCounter.plan_apply_started_count),
+    review_failed_rate: roundRate(totalsCounter.plan_review_failed_count, totalsCounter.plan_mode_entered_count),
     guard_denied_rate: roundRate(totalsCounter.plan_guard_denied_count, totalsCounter.plan_mode_entered_count),
     idempotent_hit_rate: roundRate(
       totalsCounter.plan_apply_idempotent_hit_count,

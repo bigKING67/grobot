@@ -41,7 +41,7 @@ function baseSpec() {
       {
         name: "model",
         path: "runtime/src/models",
-        requiredDomainDirs: [],
+        requiredDirs: [],
       },
     ],
     docs: [],
@@ -100,9 +100,47 @@ function testAllowlistSuppressesWarning() {
   }
 }
 
+function testForbiddenTsImportTriggersWarning() {
+  const root = makeTempRepo();
+  try {
+    write("gateway/src/tools/example.ts", 'import { evaluateTurnGovernance } from "../governance/evaluator";\n', root);
+    const spec = baseSpec();
+    spec.layers = [
+      {
+        name: "gateway-tools",
+        path: "gateway/src/tools",
+        requiredDirs: [],
+      },
+    ];
+    spec.importPolicyWarnings = [
+      {
+        name: "gateway-tools",
+        path: "gateway/src/tools",
+        fileExtensions: [".ts"],
+        forbiddenImportPrefixes: ["../governance"],
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(Array.isArray(result.payload.warnings));
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway/src/tools/example.ts")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 function main() {
   testForbiddenImportTriggersWarning();
   testAllowlistSuppressesWarning();
+  testForbiddenTsImportTriggersWarning();
   process.stdout.write("layer-contract-check tests passed.\n");
 }
 

@@ -26,11 +26,11 @@ Governance plane is for runtime quality/safety guardrails and lifecycle control,
 
 - `main.rs`: process bootstrap + stdio loop.
 - `models/engine.rs`: shared turn input/output structs.
-- `models/model.rs`: models 聚合入口；能力文件在 `models/domains/*`。
-- `tools/tools.rs`: tools 聚合入口；能力文件在 `tools/domains/<capability>/*`。
-- `extensions/protocol.rs`: extensions 聚合入口；能力文件在 `extensions/domains/*`。
-- `orchestration/orchestrator.rs`: orchestration 聚合入口；能力文件在 `orchestration/domains/*`。
-- `governance/session.rs`: governance 聚合入口；能力文件在 `governance/domains/*`。
+- `models/model.rs`: models 聚合入口；能力文件在 `models/*`（如 `models/providers/*`）。
+- `tools/tools.rs`: tools 聚合入口；能力文件在 `tools/<capability>/*`。
+- `extensions/protocol.rs`: extensions 聚合入口；能力文件在 `extensions/*`。
+- `orchestration/orchestrator.rs`: orchestration 聚合入口；能力文件在 `orchestration/*`。
+- `governance/session.rs`: governance 聚合入口；能力文件在 `governance/*`。
 
 ## Layer Directory Contract (Runtime)
 
@@ -38,10 +38,10 @@ Governance plane is for runtime quality/safety guardrails and lifecycle control,
    - 执行面四层与治理平面必须分别落在 `runtime/src/{models,tools,extensions,orchestration,governance}`。
    - 每层入口文件仅负责聚合/装配，不承载大段业务实现。
 2. 目录规范
-   - 各层新增实现默认放在 `domains/` 能力域目录。
+   - 各层新增实现默认放在当前层的能力目录（例如 `tools/fs`、`models/providers`）。
    - 工具层必须按能力域拆分（如 `core/fs/shell/mcp`），禁止继续堆叠到 `tools.rs`。
 3. 新增模块流程
-   - 第一步：在对应层的 `domains/` 下创建能力文件。
+   - 第一步：在对应层下创建能力文件或能力子目录。
    - 第二步：在层入口文件接入 include/mod 聚合。
    - 第三步：补充该层 README 的职责与验证说明。
 4. 评审检查点
@@ -63,3 +63,55 @@ Governance plane is for runtime quality/safety guardrails and lifecycle control,
 - `runtime.turn.execute`
   - Input: `request_id`, `session_key`, `user_message`, `context_lines[]`
   - Output: placeholder assistant message + normalized event list.
+
+### Runtime Tool Recovery Knobs
+
+Runtime `turn.execute.tool_context` now supports GA-style no-tool recovery tuning:
+
+- `no_tool_fallback_mode`: `off | safe | strict` (default: `safe`)
+- `max_recovery_rounds`: `0..8` (default: `2`)
+
+When runtime is launched through gateway CLI, these can be set via:
+
+- `GROBOT_NO_TOOL_FALLBACK_MODE`
+- `GROBOT_MAX_RECOVERY_ROUNDS`
+
+Runtime event stream now emits lifecycle diagnostics for this mechanism:
+
+- `no_tool_fallback_triggered`
+- `no_tool_fallback_succeeded`
+- `no_tool_fallback_exhausted`
+
+## Semantic Tools (ContextWeaver Bridge)
+
+Runtime tool layer now includes:
+
+- `semantic_search`
+- `prompt_enhancer`
+
+### `semantic_search` arguments
+
+- Required: `query: string`
+- Optional:
+  - `sources: ("code" | "memory" | "wiki")[]` (default: all three)
+  - `technical_terms: string[]` (max 32 items)
+  - `per_source_limit: number` (default `6`, max `50`)
+  - `max_segments: number` (default `24`, max `200`)
+  - `refresh: "auto" | "force" | "skip"` (default `auto`)
+  - `include_org: boolean` (default `false`)
+  - `timeout_ms: number` (default `45000`, range `1000..180000`)
+  - `bridge_script: string` (optional override for bridge script path)
+
+### `prompt_enhancer` arguments
+
+- Required: `prompt: string`
+- Optional:
+  - `sources: ("code" | "memory" | "wiki")[]` (default: all three)
+  - `explicit_paths: string[]` (max 32 items)
+  - `explicit_symbols: string[]` (max 32 items)
+  - `max_evidence: number` (default `16`, max `200`)
+  - `include_org: boolean` (default `false`)
+  - `timeout_ms: number` (default `45000`, range `1000..180000`)
+  - `bridge_script: string` (optional override for bridge script path)
+
+Both tools resolve source roots from runtime context (`work_dir + session_key`) and then call bridge script `adapters/contextweaver/bridge/cli.mjs`.

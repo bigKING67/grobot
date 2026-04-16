@@ -17,10 +17,11 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
-include!("domains/core/mod.rs");
-include!("domains/fs/mod.rs");
-include!("domains/shell/mod.rs");
-include!("domains/mcp/mod.rs");
-include!("domains/providers/kimi/mod.rs");
-include!("domains/dispatcher/mod.rs");
-include!("domains/tests.rs");
+include!("core/mod.rs");
+include!("fs/mod.rs");
+include!("shell/mod.rs");
+include!("mcp/mod.rs");
+include!("semantic/mod.rs");
+include!("providers/kimi/mod.rs");
+include!("dispatcher/mod.rs");
+include!("tests.rs");

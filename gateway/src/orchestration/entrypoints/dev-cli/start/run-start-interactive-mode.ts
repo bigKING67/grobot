@@ -1,9 +1,11 @@
 import { SessionStoreRuntime } from "../services/session-store";
+import { SessionInteractiveControls, type SessionMenuMode } from "./session-interactive";
 import { printRunStartBanner } from "./run-start-banner";
 import { createRunStartInteractiveHandler } from "./run-start-interactive-handler";
 import { runSessionInputLoop } from "./run-start-io";
+import { type PlanInterruptSource } from "./run-start-plan-mode";
 
-interface RunStartInteractiveModeInput {
+export interface RunStartInteractiveModeInput {
   homeDir: string;
   projectRoot: string;
   projectName: string;
@@ -20,18 +22,23 @@ interface RunStartInteractiveModeInput {
   restoreSource: "store" | "empty";
   buildHelpText(): string;
   showHealthStatus(): void;
-  printSessionOverview(): void;
+  showModelCurrent(): Promise<void>;
+  listModels(): Promise<void>;
+  useModel(modelId: string): Promise<void>;
+  resetModel(): Promise<void>;
+  openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  openSessionMenu(mode: SessionMenuMode, withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
   continueFromSession(sourceSessionId: string): Promise<void>;
   writeManualHandoff(): void;
   isPlanMode(): boolean;
   showPlanStatus(): Promise<number>;
-  showPlanContent(): Promise<number>;
-  showPlanOptions(): Promise<number>;
   enterPlan(goal: string): Promise<number>;
   applyPlan(extra: string): Promise<number>;
-  discardPlan(): Promise<number>;
+  cancelPlan(): Promise<number>;
+  requestPlanInterrupt(source: PlanInterruptSource): Promise<void>;
+  requestRuntimeInterrupt(source: PlanInterruptSource): Promise<void>;
   runPlanTurn(userInput: string): Promise<number>;
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
   markFailureObserved(): void;
@@ -67,29 +74,42 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },
-    showHealthStatus: () => {
-      input.showHealthStatus();
+      showHealthStatus: () => {
+        input.showHealthStatus();
+      },
+      showModelCurrent: input.showModelCurrent,
+      listModels: input.listModels,
+      useModel: input.useModel,
+      resetModel: input.resetModel,
+      openModelMenu: input.openModelMenu,
+    openSessionMenu: async (mode, withInputPaused) => {
+      await input.openSessionMenu(mode, withInputPaused);
     },
-    showSessions: () => {
-      input.printSessionOverview();
-    },
-    createNewSession: input.createNewSession,
-    switchActiveSession: input.switchActiveSession,
-    continueFromSession: input.continueFromSession,
-    writeHandoff: input.writeManualHandoff,
-    isPlanMode: input.isPlanMode,
-    showPlanStatus: input.showPlanStatus,
-    showPlanContent: input.showPlanContent,
-    showPlanOptions: input.showPlanOptions,
-    enterPlan: input.enterPlan,
-    applyPlan: input.applyPlan,
-    discardPlan: input.discardPlan,
-    runPlanTurn: input.runPlanTurn,
-    executeTurn: input.executeTurn,
-    markFailureObserved: input.markFailureObserved,
-  });
+      createNewSession: input.createNewSession,
+      switchActiveSession: input.switchActiveSession,
+      continueFromSession: input.continueFromSession,
+      writeHandoff: input.writeManualHandoff,
+      isPlanMode: input.isPlanMode,
+      showPlanStatus: input.showPlanStatus,
+      enterPlan: input.enterPlan,
+      applyPlan: input.applyPlan,
+      cancelPlan: input.cancelPlan,
+      requestPlanInterrupt: input.requestPlanInterrupt,
+      requestRuntimeInterrupt: input.requestRuntimeInterrupt,
+      runPlanTurn: input.runPlanTurn,
+      executeTurn: input.executeTurn,
+      markFailureObserved: input.markFailureObserved,
+    });
 
-  await runSessionInputLoop(handleInteractiveInput, "grobot> ");
+  await runSessionInputLoop(handleInteractiveInput, "grobot> ", {
+    onEscapeInterrupt: async () => {
+      if (input.isPlanMode()) {
+        await input.requestPlanInterrupt("cli_esc");
+        return;
+      }
+      await input.requestRuntimeInterrupt("cli_esc");
+    },
+  });
 
   if (input.handoffAutoOnExit && input.getHistoryMessagesCount() > 0) {
     input.writeAutoExitHandoffIfNeeded();

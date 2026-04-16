@@ -1,5 +1,5 @@
 use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
-use crate::tools::tools::{ToolCallInput, ToolExecutor};
+use crate::tools::tools::{ToolCallInput, ToolCallOutput, ToolExecutor};
 use reqwest::blocking::multipart::{Form, Part};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
@@ -8,10 +8,10 @@ use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-include!("domains/contracts.rs");
-include!("domains/providers/kimi/mod.rs");
-include!("domains/config.rs");
-include!("domains/response.rs");
-include!("domains/tooling.rs");
-include!("domains/executor.rs");
-include!("domains/tests.rs");
+include!("contracts.rs");
+include!("providers/kimi/mod.rs");
+include!("config.rs");
+include!("response.rs");
+include!("tooling.rs");
+include!("executor.rs");
+include!("tests.rs");

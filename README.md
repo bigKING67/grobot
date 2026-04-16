@@ -44,10 +44,10 @@
 
 | 层 | 职责 | 目录规范（必须） | 新增模块流程（必须） | 评审检查点（必须） |
 | --- | --- | --- | --- | --- |
-| 模型层（Model Layer） | 模型配置、请求构建、响应解析、工具回合控制 | 放在 `models/domains/*`；`models/model.rs` 只保留薄入口/聚合 | 先在 `domains/` 建能力文件，再接入入口聚合 | 入口文件是否保持轻量；模型/工具接口是否保持兼容 |
-| 工具层（Tool Layer） | 本地工具、MCP、执行策略与审计状态 | 放在 `tools/domains/<capability>/*`；`tools/tools.rs` 只保留聚合与分发入口 | 新工具先入对应能力域（如 `fs`/`mcp`），禁止直接堆到聚合文件 | 是否按能力域落位；是否复用公共校验与错误分类 |
-| 扩展层（Extension Layer） | 协议边界、跨进程/跨语言扩展桥接 | 放在 `extensions/domains/*`；入口文件只做协议装配 | 新增扩展先建域文件，再挂载到协议处理入口 | 协议字段/错误码是否统一；是否避免把业务逻辑混入协议层 |
-| 编排层（Orchestration Layer） | `before -> model -> after -> events` 运行编排 | 放在 `orchestration/domains/*`；`orchestrator.rs` 只保留组装/入口 | 先拆分 pipeline 能力，再在入口组合 | 编排事件是否完整；失败路径是否可观测 |
+| 模型层（Model Layer） | 模型配置、请求构建、响应解析、工具回合控制 | 放在 `models/*`（如 `providers/<vendor>`）；`models/model.rs` 只保留薄入口/聚合 | 先建能力文件，再接入入口聚合 | 入口文件是否保持轻量；模型/工具接口是否保持兼容 |
+| 工具层（Tool Layer） | 本地工具、MCP、执行策略与审计状态 | 放在 `tools/<capability>/*`；`tools/tools.rs` 只保留聚合与分发入口 | 新工具先入对应能力目录（如 `fs`/`mcp`），禁止直接堆到聚合文件 | 是否按能力目录落位；是否复用公共校验与错误分类 |
+| 扩展层（Extension Layer） | 协议边界、跨进程/跨语言扩展桥接 | 放在 `extensions/*`；入口文件只做协议装配 | 新增扩展先建能力文件，再挂载到协议处理入口 | 协议字段/错误码是否统一；是否避免把业务逻辑混入协议层 |
+| 编排层（Orchestration Layer） | `before -> model -> after -> events` 运行编排 | 放在 `orchestration/*`；`orchestrator.rs` 只保留组装/入口 | 先拆分 pipeline 能力，再在入口组合 | 编排事件是否完整；失败路径是否可观测 |
 | 治理平面（Governance Plane） | 评估、测试、回归门禁、自动优化迭代 | 放在 `governance/**` 与 `gateway/evals/**` 的能力域目录 | 新治理能力先补 policy/脚本，再接 CI 或离线流程 | 是否与在线热路径解耦；是否可审计、可回放、可阻断 |
 
 执行方式：
@@ -80,11 +80,11 @@
 - 全局运行层（`~/.grobot/`）：
   - `~/.grobot/config.toml`：全局 agent/platform/provider 配置（含敏感信息，不进仓库）
   - `~/.grobot/rules/`、`~/.grobot/skills/`、`~/.grobot/hooks/`、`~/.grobot/mcp/servers.toml`
-  - `~/.grobot/runtime/sessions/`、`~/.grobot/runtime/memory/session/`、`~/.grobot/memory/global/`
 - 项目运行层（`<业务仓库>/.grobot/`）：
   - `.grobot/project.toml`：项目级架构/运行契约（source of truth）
   - `.grobot/mcp.toml`：项目级 MCP 覆盖
-  - `.grobot/rules/`、`.grobot/skills/`、`.grobot/hooks/`、`.grobot/memory/`、`.grobot/plans/`
+  - `.grobot/rules/`、`.grobot/skills/`、`.grobot/hooks/`
+  - `.grobot/session/`、`.grobot/memory/`、`.grobot/experience/`、`.grobot/wiki/`、`.grobot/plans/`、`.grobot/scheduler/`
 
 ### 配置初始化
 
@@ -143,6 +143,12 @@ bash scripts/install-local.sh
 # 验证
 grobot --help
 ```
+
+说明：
+- `install-local.sh` 默认会自动执行 browser native 依赖 setup（等价于 `browser:native:setup` 的 best-effort 版本）。
+- 如需严格门禁（native 依赖未就绪直接失败）：`npm run install:local:strict-native`。
+- 若仅做排障/探测：`npm run browser:native:doctor`。
+- Windows 环境无需 `cliclick`；请在部署 bootstrap 里执行 `npm run browser:native:setup`，依赖检查以 `powershell|pwsh` 就绪为准。
 
 可选参数：
 
@@ -363,17 +369,27 @@ grobot start \
   - 管理 API 可对会话设置 interrupt 标记，`start` 在下一轮调用前会消费该标记并跳过当次请求。
   - 支持 hooks 事件：`user-prompt-submit`、`before-tool-use`、`after-tool-use`。脚本目录支持全局（`~/.grobot/hooks/<event>/`）和项目层（`<repo>/.grobot/hooks/<event>/`）。
   - hooks 脚本读取 STDIN JSON（事件 payload）；可通过 `.grobot/project.toml` 的 `[hooks]` 配置 `enabled/strict/timeout_secs`。
-- 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
-- 交互命令新增 `/health`，用于查看 provider 粘性与熔断状态（CLOSED/OPEN/HALF_OPEN）。
-  - `/health` 同时展示 `ewma_latency_ms` 与 `ewma_error_rate`，可用于判断实时路由倾斜是否符合预期。
-- 交互命令新增 `/plan ...`，可进入 Plan Mode 并把计划工件落盘到 `.grobot/plans/<session_id>/`。
-  - `/plan <goal>`：进入 PLAN_ONLY 并创建结构化计划文件。
-  - `/plan status`：查看当前计划状态和文件路径。
-  - `/plan show`：打印当前计划 Markdown。
-  - `/plan apply [extra]`：审批并执行计划，执行后退出 PLAN_ONLY。
-  - `/plan discard`：废弃当前计划并退出 PLAN_ONLY。
-- 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
-- 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
+    - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
+    - 交互命令新增 `/health`，用于查看 provider 粘性与熔断状态（CLOSED/OPEN/HALF_OPEN）。
+      - `/health` 同时展示 `ewma_latency_ms` 与 `ewma_error_rate`，可用于判断实时路由倾斜是否符合预期。
+    - 交互命令新增 `/sessions`、`/switch [id]`、`/continue [id]`，支持在终端内通过 session picker 交互切换。
+      - `/sessions`：打开会话选择器（展示 `title + summary`），可直接切换或创建新会话。
+      - `/switch [id]`：传入 id 时直接切换；不传 id 时打开会话选择器。
+      - `/continue [id]`：传入 id 时注入 summary bridge；不传 id 时打开会话选择器。
+      - 非 TTY 下，`/switch` 与 `/continue`（不带 id）会回退为输出会话概览与用法提示。
+    - 交互命令新增 `/model`，可在当前 `start` 会话内以终端菜单方式切换模型（默认仅会话级生效，不写回 config）。
+      - `/model`：打开模型选择菜单（↑/↓, Enter, Esc）。
+      - `/model current`：查看当前 provider/model/source。
+      - `/model list`：拉取并打印上游 `/models` 可选模型列表。
+      - `/model use <id>`：校验后切换到指定模型。
+    - 交互命令新增 `/plan ...`，可进入 Plan Mode 并把计划工件落盘到 `.grobot/plans/<session_id>/`。
+      - `/plan <goal>`：进入 PLAN_ONLY 并创建结构化计划文件。
+      - `/plan status`：查看当前计划状态和文件路径。
+      - `/plan show`：打印当前计划 Markdown。
+      - `/plan apply [extra]`：审批并执行计划，执行后退出 PLAN_ONLY。
+      - `/plan discard`：废弃当前计划并退出 PLAN_ONLY。
+    - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
+    - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
   - 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。
 
 provider 高级字段（可选，定义在 `[[projects.agent.providers]]`）：
@@ -427,7 +443,7 @@ grobot wiki lint --project <project-name> --work-dir "$(pwd)"
 作用域与隔离：
 - `user`: `.grobot/wiki/users/<subject>/`（私有）
 - `group`: `.grobot/wiki/groups/<subject>/`（群级共享）
-- `org`: `~/.grobot/wiki/org/<tenant>/`（组织级，需显式开启 `allow_org_shared_read`）
+- `org`: `.grobot/wiki/org/<tenant>/`（组织级，需显式开启 `allow_org_shared_read`）
 - `shared`: `.grobot/wiki/shared/`（项目共享）
 
 ### Memory v1（个人/群组/组织记忆）
@@ -487,7 +503,7 @@ grobot memory lifecycle --project <project-name> --work-dir "$(pwd)" --dry-run
 记忆作用域（scope）：
 - `user`: `.grobot/memory/v1/users/<subject>/`
 - `group`: `.grobot/memory/v1/groups/<subject>/`
-- `org`: `~/.grobot/memory/global/v1/org/<tenant>/`（默认关闭，需显式开启）
+- `org`: `.grobot/memory/v1/org/<tenant>/`（默认关闭，需显式开启）
 
 隐私默认策略：
 - `restricted/secret` 记忆默认不参与普通 `query` 与会话上下文注入
@@ -599,7 +615,7 @@ grobot status \
 - 环境变量（`GROBOT_CONTEXT_RETRIEVAL_ENABLED`、`GROBOT_RETRIEVAL_*`、`GROBOT_EMBEDDING_*`、`GROBOT_RERANK_*`）
 - 项目层 `<repo>/.grobot/project.toml` 的 `[context_retrieval]`
 - 全局层 `~/.grobot/config.toml` 的 `[retrieval]`
-- 内置默认值（`selected_limit=4`、`candidate_limit=8`、SiliconFlow 默认模型）
+- 内置默认值（`selected_limit=4`、`candidate_limit=8`、`Qwen/Qwen3-Embedding-4B + Qwen/Qwen3-Reranker-0.6B`）
 
 示例（全局层）：
 
@@ -614,11 +630,12 @@ base_url = "https://api.siliconflow.cn/v1"
 
 [retrieval.embedding]
 enabled = true
-model = "Qwen/Qwen3-Embedding-8B"
+model = "Qwen/Qwen3-Embedding-4B"
+dimensions = 2560
 
 [retrieval.rerank]
 enabled = true
-model = "Qwen/Qwen3-Reranker-4B"
+model = "Qwen/Qwen3-Reranker-0.6B"
 ```
 
 可观测性：

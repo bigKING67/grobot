@@ -1,5 +1,6 @@
 import {
   RuntimeClient,
+  RuntimeExecuteOptions,
   RuntimeEvent,
   RuntimeRequest,
   RuntimeTurnResult,
@@ -31,7 +32,10 @@ export class DeterministicRuntimeClient implements RuntimeClient {
     this.runtimeLabel = runtimeLabel;
   }
 
-  public async executeTurn(request: RuntimeRequest): Promise<RuntimeTurnResult> {
+  public async executeTurn(request: RuntimeRequest, options?: RuntimeExecuteOptions): Promise<RuntimeTurnResult> {
+    if (options?.signal?.aborted) {
+      throw new Error("runtime turn interrupted class=turn_interrupted detail=aborted_before_runtime_call");
+    }
     const traceId = `trace_${request.requestId}`;
     const turnId = `turn_${request.requestId}`;
     const responseText =
@@ -59,10 +63,11 @@ export class DeterministicRuntimeClient implements RuntimeClient {
 
 export class BasicTurnVerifier implements TurnVerifier {
   public async verify(result: RuntimeTurnResult): Promise<TurnVerificationResult> {
+    const hasAskUserInterrupt = result.interrupt?.kind === "ask_user";
     const checks = [
       {
         name: "assistant_message_non_empty",
-        pass: result.assistantMessage.trim().length > 0,
+        pass: hasAskUserInterrupt || result.assistantMessage.trim().length > 0,
       },
       {
         name: "has_terminal_event",

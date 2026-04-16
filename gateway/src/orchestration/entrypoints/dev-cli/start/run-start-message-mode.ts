@@ -1,3 +1,5 @@
+import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
+
 interface RunStartMessageModeInput {
   message: string;
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
@@ -8,7 +10,7 @@ interface RunStartMessageModeInput {
 
 export async function runStartMessageMode(input: RunStartMessageModeInput): Promise<number> {
   const code = await input.executeTurn(input.message, false);
-  if (code !== 0) {
+  if (code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE) {
     input.markFailureObserved();
   }
   if (input.handoffAutoOnExit) {

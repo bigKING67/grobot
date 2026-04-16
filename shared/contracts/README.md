@@ -11,6 +11,7 @@ Current contract docs:
 1. `session-key.md`
 2. `runtime-events.md`
 3. `runtime-v1.json`
+4. `bridge-plan-error-codes-v1.json`
 
 ## Runtime v1
 

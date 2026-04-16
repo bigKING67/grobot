@@ -1,0 +1,18 @@
+node_modules
+openspec
+logs
+# dist is required in grobot vendored packaging
+.env
+.claude
+.ace-tool/
+.playwright-mcp/
+.snow
+test-*
+.codex
+.pnpm-store
+.opencode
+.kiro
+.vscode
+package-lock.json
+*.tgz
+*.log

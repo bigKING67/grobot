@@ -1,0 +1,11 @@
+{
+  "indexing": {
+    "includePatterns": [
+      "runtime/src/**",
+      "gateway/src/**",
+      "packages/**",
+      ".grobot/**"
+    ],
+    "ignorePatterns": []
+  }
+}

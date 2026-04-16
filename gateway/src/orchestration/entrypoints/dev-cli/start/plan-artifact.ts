@@ -1,7 +1,17 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { removeTrailingSlashes } from "../services/runtime-paths";
 
-export type PlanArtifactStatus = "draft" | "approved" | "apply_failed" | "applied" | "discarded";
+export type PlanArtifactStatus =
+  | "draft"
+  | "blocked"
+  | "review_failed"
+  | "ready"
+  | "approved"
+  | "applying"
+  | "apply_failed"
+  | "applied"
+  | "discarded";
 
 export interface PlanArtifactEntry {
   plan_id: string;
@@ -12,8 +22,15 @@ export interface PlanArtifactEntry {
   status: PlanArtifactStatus;
   created_at: string;
   updated_at: string;
+  reviewed_at?: string;
+  review_fail_count?: number;
+  blocked_count?: number;
   apply_started_at?: string;
   approved_at?: string;
+  approved_hash?: string;
+  approval_ticket_id?: string;
+  approved_snapshot_path?: string;
+  approved_by?: string;
   apply_failed_at?: string;
   applied_at?: string;
   discarded_at?: string;
@@ -53,7 +70,28 @@ export interface PlanArtifactEvent {
   status_to?: PlanArtifactStatus;
 }
 
-const PLAN_ARTIFACT_INDEX_VERSION = 1;
+export interface PlanReviewFinding {
+  code: string;
+  section?: string;
+  message: string;
+}
+
+export interface PlanReviewResult {
+  ok: boolean;
+  blocked: boolean;
+  findings: PlanReviewFinding[];
+  checked_at: string;
+}
+
+export interface PlanApprovalResult {
+  approved: boolean;
+  entry?: PlanArtifactEntry;
+  planHash?: string;
+  ticketId?: string;
+  snapshotPath?: string;
+}
+
+const PLAN_ARTIFACT_INDEX_VERSION = 2;
 const PLAN_PROGRESS_SECTION = "## Progress Log";
 const PLAN_LOCK_WAIT_MS = 20;
 const PLAN_LOCK_TIMEOUT_MS = 4_000;
@@ -62,6 +100,14 @@ const PLAN_EVENTS_DEFAULT_MAX_BYTES = 1_048_576;
 const PLAN_EVENTS_DEFAULT_ROTATE_KEEP = 5;
 const PLAN_APPLY_STALE_DEFAULT_MS = 10 * 60 * 1000;
 const SLEEP_SIGNAL = new Int32Array(new SharedArrayBuffer(4));
+const REQUIRED_PLAN_SECTIONS = [
+  "Goal",
+  "Scope In",
+  "Scope Out",
+  "Milestones",
+  "Validation",
+  "Risk & Rollback",
+] as const;
 
 function nowIsoUtc(): string {
   return new Date().toISOString();
@@ -311,8 +357,20 @@ function buildDefaultIndex(sessionId: string): PlanArtifactIndex {
 }
 
 function normalizeStatus(raw: unknown): PlanArtifactStatus {
+  if (raw === "blocked") {
+    return "blocked";
+  }
+  if (raw === "review_failed") {
+    return "review_failed";
+  }
+  if (raw === "ready") {
+    return "ready";
+  }
   if (raw === "approved") {
     return "approved";
+  }
+  if (raw === "applying") {
+    return "applying";
   }
   if (raw === "apply_failed") {
     return "apply_failed";
@@ -326,6 +384,22 @@ function normalizeStatus(raw: unknown): PlanArtifactStatus {
   return "draft";
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeOptionalCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const normalized = Math.max(0, Math.floor(value));
+  return normalized;
+}
+
 function normalizeEntry(raw: Record<string, unknown>): PlanArtifactEntry | undefined {
   const planId = typeof raw.plan_id === "string" ? raw.plan_id.trim() : "";
   const seq = typeof raw.seq === "number" && Number.isFinite(raw.seq) ? Math.max(1, Math.floor(raw.seq)) : 0;
@@ -335,27 +409,8 @@ function normalizeEntry(raw: Record<string, unknown>): PlanArtifactEntry | undef
   if (!planId || seq <= 0 || !title || !taskSlug || !filename) {
     return undefined;
   }
-  const createdAt = typeof raw.created_at === "string" && raw.created_at.trim().length > 0
-    ? raw.created_at
-    : nowIsoUtc();
-  const updatedAt = typeof raw.updated_at === "string" && raw.updated_at.trim().length > 0
-    ? raw.updated_at
-    : createdAt;
-  const appliedAt = typeof raw.applied_at === "string" && raw.applied_at.trim().length > 0
-    ? raw.applied_at
-    : undefined;
-  const applyStartedAt = typeof raw.apply_started_at === "string" && raw.apply_started_at.trim().length > 0
-    ? raw.apply_started_at
-    : undefined;
-  const approvedAt = typeof raw.approved_at === "string" && raw.approved_at.trim().length > 0
-    ? raw.approved_at
-    : undefined;
-  const applyFailedAt = typeof raw.apply_failed_at === "string" && raw.apply_failed_at.trim().length > 0
-    ? raw.apply_failed_at
-    : undefined;
-  const discardedAt = typeof raw.discarded_at === "string" && raw.discarded_at.trim().length > 0
-    ? raw.discarded_at
-    : undefined;
+  const createdAt = normalizeOptionalString(raw.created_at) ?? nowIsoUtc();
+  const updatedAt = normalizeOptionalString(raw.updated_at) ?? createdAt;
   return {
     plan_id: planId,
     seq,
@@ -365,11 +420,18 @@ function normalizeEntry(raw: Record<string, unknown>): PlanArtifactEntry | undef
     status: normalizeStatus(raw.status),
     created_at: createdAt,
     updated_at: updatedAt,
-    apply_started_at: applyStartedAt,
-    approved_at: approvedAt,
-    apply_failed_at: applyFailedAt,
-    applied_at: appliedAt,
-    discarded_at: discardedAt,
+    reviewed_at: normalizeOptionalString(raw.reviewed_at),
+    review_fail_count: normalizeOptionalCount(raw.review_fail_count),
+    blocked_count: normalizeOptionalCount(raw.blocked_count),
+    apply_started_at: normalizeOptionalString(raw.apply_started_at),
+    approved_at: normalizeOptionalString(raw.approved_at),
+    approved_hash: normalizeOptionalString(raw.approved_hash),
+    approval_ticket_id: normalizeOptionalString(raw.approval_ticket_id),
+    approved_snapshot_path: normalizeOptionalString(raw.approved_snapshot_path),
+    approved_by: normalizeOptionalString(raw.approved_by),
+    apply_failed_at: normalizeOptionalString(raw.apply_failed_at),
+    applied_at: normalizeOptionalString(raw.applied_at),
+    discarded_at: normalizeOptionalString(raw.discarded_at),
   };
 }
 
@@ -390,9 +452,7 @@ function normalizeIndex(raw: Record<string, unknown> | undefined, sessionId: str
   }
   const activePlanIdRaw = typeof raw.active_plan_id === "string" ? raw.active_plan_id.trim() : "";
   const activePlanId = activePlanIdRaw.length > 0 ? activePlanIdRaw : undefined;
-  const updatedAt = typeof raw.updated_at === "string" && raw.updated_at.trim().length > 0
-    ? raw.updated_at
-    : nowIsoUtc();
+  const updatedAt = normalizeOptionalString(raw.updated_at) ?? nowIsoUtc();
   return {
     version: PLAN_ARTIFACT_INDEX_VERSION,
     session_id: sessionId,
@@ -433,6 +493,14 @@ function buildPlanId(): string {
   return `p${stamp}-${random}`;
 }
 
+function buildApprovalTicketId(): string {
+  const bytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.map((item) => item.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function nextSeq(index: PlanArtifactIndex): number {
   let maxSeq = 0;
   for (const item of index.entries) {
@@ -468,28 +536,31 @@ function buildPlanMarkdown(args: {
     "",
     "## Scope In",
     "",
-    "- 待补充",
+    "- __REQUIRED__: 具体改动范围（模块/文件）。",
     "",
     "## Scope Out",
     "",
-    "- 待补充",
+    "- __REQUIRED__: 明确不改动范围。",
     "",
     "## Context Snapshot",
     "",
-    "- 待补充",
+    "- __REQUIRED__: 当前实现现状、关键约束、依赖。",
     "",
     "## Milestones",
     "",
-    "1. 待补充",
+    "1. [ ] __REQUIRED__: 里程碑名称",
+    "   - 完成判据: __REQUIRED__",
+    "   - 验证: __REQUIRED__",
+    "   - 回退: __REQUIRED__",
     "",
     "## Validation",
     "",
-    "- 待补充",
+    "- __REQUIRED__: 验证命令与预期结果。",
     "",
     "## Risk & Rollback",
     "",
-    "- 风险: 待补充",
-    "- 回退: 待补充",
+    "- 风险: __REQUIRED__",
+    "- 回退: __REQUIRED__",
     "",
     "## Decision Log",
     "",
@@ -500,6 +571,159 @@ function buildPlanMarkdown(args: {
     `- ${createdAt} 创建计划工件。`,
     "",
   ].join("\n");
+}
+
+function stripMarkdownNoise(sectionBody: string): string[] {
+  return sectionBody
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, "").trim())
+    .filter((line) => line.length > 0);
+}
+
+function extractSection(markdown: string, sectionTitle: string): string | undefined {
+  const escaped = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regexp = new RegExp(`(^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "m");
+  const match = regexp.exec(markdown);
+  if (!match) {
+    return undefined;
+  }
+  return match[2] ?? "";
+}
+
+function findPlaceholder(text: string): string | undefined {
+  const placeholders = [
+    "__REQUIRED__",
+    "待补充",
+    "TBD",
+    "TODO",
+    "请补充",
+    "to be filled",
+  ];
+  for (const token of placeholders) {
+    if (text.toLowerCase().includes(token.toLowerCase())) {
+      return token;
+    }
+  }
+  return undefined;
+}
+
+function hasUnresolvedQuestion(text: string): boolean {
+  return (
+    /\[ASK\]/i.test(text) ||
+    /待确认|待决定/i.test(text) ||
+    /\?\?/g.test(text)
+  );
+}
+
+export function reviewPlanContent(planContent: string): PlanReviewResult {
+  const findings: PlanReviewFinding[] = [];
+  const checkedAt = nowIsoUtc();
+  const sectionMap = new Map<string, string>();
+
+  for (const sectionName of REQUIRED_PLAN_SECTIONS) {
+    const body = extractSection(planContent, sectionName);
+    if (typeof body !== "string") {
+      findings.push({
+        code: "missing_section",
+        section: sectionName,
+        message: `缺少必填章节: ${sectionName}`,
+      });
+      continue;
+    }
+    sectionMap.set(sectionName, body);
+    const normalizedLines = stripMarkdownNoise(body);
+    if (normalizedLines.length === 0) {
+      findings.push({
+        code: "empty_section",
+        section: sectionName,
+        message: `章节内容为空: ${sectionName}`,
+      });
+      continue;
+    }
+    const placeholder = findPlaceholder(normalizedLines.join("\n"));
+    if (placeholder) {
+      findings.push({
+        code: "placeholder_detected",
+        section: sectionName,
+        message: `章节仍含占位词(${placeholder}): ${sectionName}`,
+      });
+    }
+    if (hasUnresolvedQuestion(normalizedLines.join("\n"))) {
+      findings.push({
+        code: "unresolved_question",
+        section: sectionName,
+        message: `章节存在未决问题，需先澄清: ${sectionName}`,
+      });
+    }
+  }
+
+  const milestones = sectionMap.get("Milestones");
+  if (typeof milestones === "string") {
+    const milestoneLines = milestones.split("\n").filter((line) => /^\s*\d+\.\s+/.test(line));
+    if (milestoneLines.length === 0) {
+      findings.push({
+        code: "milestones_missing_items",
+        section: "Milestones",
+        message: "Milestones 至少需要 1 条编号里程碑。",
+      });
+    }
+    if (!/完成判据/.test(milestones)) {
+      findings.push({
+        code: "milestones_missing_done_criteria",
+        section: "Milestones",
+        message: "Milestones 缺少“完成判据”。",
+      });
+    }
+    if (!/验证/.test(milestones)) {
+      findings.push({
+        code: "milestones_missing_validation",
+        section: "Milestones",
+        message: "Milestones 缺少“验证”。",
+      });
+    }
+    if (!/回退/.test(milestones)) {
+      findings.push({
+        code: "milestones_missing_rollback",
+        section: "Milestones",
+        message: "Milestones 缺少“回退”。",
+      });
+    }
+  }
+
+  const validation = sectionMap.get("Validation");
+  if (typeof validation === "string") {
+    const hasValidationItems = validation
+      .split("\n")
+      .some((line) => /^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line));
+    if (!hasValidationItems) {
+      findings.push({
+        code: "validation_missing_items",
+        section: "Validation",
+        message: "Validation 至少需要 1 条可执行验证项。",
+      });
+    }
+  }
+
+  const blocked = findings.some((item) => item.code === "unresolved_question");
+  const ok = findings.length === 0;
+  return {
+    ok,
+    blocked,
+    findings,
+    checked_at: checkedAt,
+  };
+}
+
+function clearApprovalFields(entry: PlanArtifactEntry): PlanArtifactEntry {
+  return {
+    ...entry,
+    approved_hash: undefined,
+    approval_ticket_id: undefined,
+    approved_snapshot_path: undefined,
+    approved_by: undefined,
+  };
 }
 
 export function loadPlanArtifactIndex(workDir: string, sessionId: string): PlanArtifactIndex {
@@ -610,10 +834,17 @@ export function appendPlanProgressNote(workDir: string, sessionId: string, planI
     }
     writeFileAtomic(planPath, updatedContent);
     syncActiveFile(workDir, sessionId, updatedContent);
-    const updatedEntry: PlanArtifactEntry = {
+
+    const nextStatus: PlanArtifactStatus =
+      entry.status === "applied" || entry.status === "discarded"
+        ? entry.status
+        : "draft";
+    const invalidatedApproval = Boolean(entry.approved_hash || entry.approval_ticket_id);
+    const updatedEntry: PlanArtifactEntry = clearApprovalFields({
       ...entry,
+      status: nextStatus,
       updated_at: timestamp,
-    };
+    });
     const nextEntries = [...index.entries];
     nextEntries[entryIndex] = updatedEntry;
     writeIndex(workDir, sessionId, {
@@ -628,7 +859,129 @@ export function appendPlanProgressNote(workDir: string, sessionId: string, planI
       source: "system",
       detail: safeNote,
     });
+    if (invalidatedApproval) {
+      appendPlanEventUnlocked(workDir, sessionId, {
+        event: "plan_approval_invalidated",
+        plan_id: planId,
+        source: "system",
+        detail: "plan content changed after approval metadata existed",
+      });
+    }
     return { updated: true, planPath };
+  });
+}
+
+export function recordPlanReviewResult(
+  workDir: string,
+  sessionId: string,
+  planId: string,
+  review: PlanReviewResult,
+  source: "cli" | "bridge" | "system" = "system",
+): PlanArtifactEntry | undefined {
+  return withSessionPlanLock(workDir, sessionId, () => {
+    const index = loadPlanArtifactIndex(workDir, sessionId);
+    const entryIndex = index.entries.findIndex((item) => item.plan_id === planId);
+    if (entryIndex < 0) {
+      return undefined;
+    }
+    const current = index.entries[entryIndex];
+    const timestamp = nowIsoUtc();
+    const nextStatus: PlanArtifactStatus = review.ok
+      ? "ready"
+      : review.blocked
+        ? "blocked"
+        : "review_failed";
+    const nextEntry: PlanArtifactEntry = clearApprovalFields({
+      ...current,
+      status: nextStatus,
+      reviewed_at: timestamp,
+      review_fail_count: review.ok ? current.review_fail_count : (current.review_fail_count ?? 0) + 1,
+      blocked_count: review.blocked ? (current.blocked_count ?? 0) + 1 : current.blocked_count,
+      updated_at: timestamp,
+    });
+    const nextEntries = [...index.entries];
+    nextEntries[entryIndex] = nextEntry;
+    writeIndex(workDir, sessionId, {
+      ...index,
+      entries: nextEntries,
+      active_plan_id: planId,
+      updated_at: timestamp,
+    });
+    appendPlanEventUnlocked(workDir, sessionId, {
+      event: review.ok ? "plan_review_passed" : "plan_review_failed",
+      plan_id: planId,
+      source,
+      status_from: current.status,
+      status_to: nextStatus,
+      detail: review.ok
+        ? "plan review passed"
+        : review.findings.map((item) => `${item.code}:${item.section ?? "global"}`).join(","),
+    });
+    return nextEntry;
+  });
+}
+
+export function approvePlanArtifact(
+  workDir: string,
+  sessionId: string,
+  planId: string,
+  options?: {
+    approvedBy?: string;
+    source?: "cli" | "bridge" | "system";
+  },
+): PlanApprovalResult {
+  return withSessionPlanLock(workDir, sessionId, () => {
+    const index = loadPlanArtifactIndex(workDir, sessionId);
+    const entryIndex = index.entries.findIndex((item) => item.plan_id === planId);
+    if (entryIndex < 0) {
+      return { approved: false };
+    }
+    const current = index.entries[entryIndex];
+    const planPath = planPathFromEntry(workDir, sessionId, current);
+    const content = readText(planPath);
+    if (typeof content !== "string") {
+      return { approved: false };
+    }
+    const timestamp = nowIsoUtc();
+    const planHash = createHash("sha256").update(content).digest("hex");
+      const ticketId = buildApprovalTicketId();
+    const snapshotName = `${String(current.seq).padStart(3, "0")}-approved-${current.plan_id}-${ticketId.slice(0, 8)}.md`;
+    const snapshotPath = `${sessionPlanDir(workDir, sessionId)}/${snapshotName}`;
+    writeFileAtomic(snapshotPath, content);
+
+    const nextEntry: PlanArtifactEntry = {
+      ...current,
+      status: "approved",
+      approved_at: timestamp,
+      approved_hash: planHash,
+      approval_ticket_id: ticketId,
+      approved_snapshot_path: snapshotPath,
+      approved_by: options?.approvedBy?.trim() || "system",
+      updated_at: timestamp,
+    };
+    const nextEntries = [...index.entries];
+    nextEntries[entryIndex] = nextEntry;
+    writeIndex(workDir, sessionId, {
+      ...index,
+      entries: nextEntries,
+      active_plan_id: planId,
+      updated_at: timestamp,
+    });
+    appendPlanEventUnlocked(workDir, sessionId, {
+      event: "plan_approved",
+      plan_id: planId,
+      source: options?.source ?? "system",
+      status_from: current.status,
+      status_to: "approved",
+      detail: `ticket=${ticketId} hash=${planHash.slice(0, 12)}`,
+    });
+    return {
+      approved: true,
+      entry: nextEntry,
+      planHash,
+      ticketId,
+      snapshotPath,
+    };
   });
 }
 
@@ -650,7 +1003,11 @@ export function updatePlanArtifactStatus(
       ...current,
       status,
       updated_at: timestamp,
-      apply_started_at: status === "approved" ? timestamp : current.apply_started_at,
+      reviewed_at:
+        status === "ready" || status === "blocked" || status === "review_failed"
+          ? timestamp
+          : current.reviewed_at,
+      apply_started_at: status === "applying" ? timestamp : current.apply_started_at,
       approved_at: status === "approved" ? timestamp : current.approved_at,
       apply_failed_at: status === "apply_failed" ? timestamp : current.apply_failed_at,
       applied_at: status === "applied" ? timestamp : current.applied_at,
@@ -701,7 +1058,7 @@ export function recoverStaleApprovedPlan(
       return { recovered: false };
     }
     const current = index.entries[entryIndex];
-    if (current.status !== "approved") {
+    if (current.status !== "approved" && current.status !== "applying") {
       return { recovered: false };
     }
     const staleAfterMs = Math.max(
@@ -735,10 +1092,10 @@ export function recoverStaleApprovedPlan(
     };
     writeIndex(workDir, sessionId, nextIndex);
     appendPlanEventUnlocked(workDir, sessionId, {
-      event: "plan_recovered_stale_approved",
+      event: "plan_recovered_stale_apply",
       plan_id: targetPlanId,
       source: options?.source ?? "system",
-      status_from: "approved",
+      status_from: current.status,
       status_to: "apply_failed",
       detail: `stale_ms=${String(staleMs)}`,
     });
@@ -746,9 +1103,9 @@ export function recoverStaleApprovedPlan(
       event: "plan_status_changed",
       plan_id: targetPlanId,
       source: options?.source ?? "system",
-      status_from: "approved",
+      status_from: current.status,
       status_to: "apply_failed",
-      detail: `transition approved->apply_failed stale_recovery stale_ms=${String(staleMs)}`,
+      detail: `transition ${current.status}->apply_failed stale_recovery stale_ms=${String(staleMs)}`,
     });
     return {
       recovered: true,
@@ -758,13 +1115,23 @@ export function recoverStaleApprovedPlan(
   });
 }
 
-export function buildPlanApplyPrompt(planContent: string, extra?: string): string {
+export function buildPlanApplyPrompt(input: {
+  approvedPlanContent: string;
+  approvedHash: string;
+  ticketId: string;
+  extra?: string;
+}): string {
   const lines = [
     "Implement the following approved plan exactly.",
     "",
-    planContent.trim(),
+    `Approval ticket: ${input.ticketId}`,
+    `Approved hash (sha256): ${input.approvedHash}`,
+    "",
+    "If you discover a conflict with the approved plan, STOP and return to planning mode instead of silently deviating.",
+    "",
+    input.approvedPlanContent.trim(),
   ];
-  const extraText = extra?.trim();
+  const extraText = input.extra?.trim();
   if (extraText) {
     lines.push("");
     lines.push("Additional user instruction:");

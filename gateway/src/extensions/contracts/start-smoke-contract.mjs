@@ -377,7 +377,7 @@ function runStartInteractiveSessionFlow(repoRoot) {
     ["/sessions", "/new", "/sessions", "TODO: interactive ts start", "/exit", ""].join("\n"),
   );
   const namespaceKey = "feishu:grobot:dm:smoke-user";
-  const registryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
   const registryPayload = readJsonFileSafe(registryPath);
   const handoffPath = `${workDir}/HANDOFF.md`;
   const handoffContent = readTextFileSafe(handoffPath);
@@ -397,7 +397,7 @@ function runStartInteractiveSessionFlow(repoRoot) {
       break;
     }
   }
-  const activeHistoryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(activeSessionKey)}.history.json`;
+  const activeHistoryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(activeSessionKey)}.history.json`;
   const activeHistoryPayload = readJsonFileSafe(activeHistoryPath);
   return {
     ...commandResult,
@@ -412,6 +412,154 @@ function runStartInteractiveSessionFlow(repoRoot) {
     handoff_has_compact_instructions: handoffContent.includes("## Compact Instructions"),
     handoff_has_auto_exit_reason: handoffContent.includes("reason: auto-exit"),
   };
+}
+
+function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-work");
+  const homeDir = createTempDir("grobot-start-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const subject = "session-command-fallback-user";
+  const commandResult = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      subject,
+      "--history-turns",
+      "8",
+    ],
+    null,
+    ["/new", "/switch", "/continue", "/sessions", "/exit", ""].join("\n"),
+  );
+  const namespaceKey = `feishu:grobot:dm:${subject}`;
+  const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPayload = readJsonFileSafe(registryPath);
+  const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
+  const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
+  return {
+    ...commandResult,
+    registry_path: registryPath,
+    session_count: sessions.length,
+    has_switch_usage: outputText.includes("Usage: /switch <session_id>"),
+    has_continue_usage: outputText.includes("Usage: /continue <session_id>"),
+    has_sessions_overview: outputText.includes("Session namespace:"),
+    has_session_title_main: outputText.includes("Main Session"),
+    has_session_title_untitled: outputText.includes("Untitled Session"),
+  };
+}
+
+function runStartInteractiveInterruptFlow(
+  repoRoot,
+  providerBaseUrl,
+  providerApiKey,
+  providerModel,
+) {
+  const workDir = createTempDir("grobot-start-interrupt-work");
+  const homeDir = createTempDir("grobot-start-interrupt-home");
+  const config = writeConfig(
+    buildSingleProviderConfig(workDir, {
+      name: "interrupt-provider",
+      baseUrl: providerBaseUrl,
+      apiKey: providerApiKey,
+      model: providerModel,
+    }),
+  );
+  const commandArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--project-root",
+    workDir,
+    "--work-dir",
+    workDir,
+    "--home",
+    homeDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "interrupt-smoke-user",
+    "--history-turns",
+    "8",
+    "--runtime-http-timeout-ms",
+    "12000",
+  ];
+  const commandLine = commandArgs.map(shellEscape).join(" ");
+  const commandResult = runShellScript(
+    repoRoot,
+    [
+      "{",
+      "  printf '%s\\n' 'interrupt smoke turn'",
+      "  sleep 0.80",
+      "  printf '%s\\n' '/interrupt'",
+      "  sleep 0.25",
+      "  printf '%s\\n' '/exit'",
+      "  printf '\\n'",
+      `} | ${commandLine}`,
+    ].join("\n"),
+  );
+  const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
+  return {
+    ...commandResult,
+    interrupt_requested_seen: combinedOutput.includes(
+      "[interrupt] code=TURN_INTERRUPT_OK detail=requested source=command",
+    ),
+    interrupt_event_requested_seen: combinedOutput.includes(
+      "[interrupt] event=requested source=command",
+    ),
+    interrupt_event_applied_seen: combinedOutput.includes(
+      "[interrupt] event=applied source=command",
+    ),
+    interrupt_notice_seen: combinedOutput.includes("[interrupt] turn interrupted"),
+    interrupt_continue_hint_seen: combinedOutput.includes("You can send a new instruction."),
+  };
+}
+
+function runStartSessionMenuViewModelContract(repoRoot) {
+  const scriptPath = resolve(repoRoot, "gateway/src/extensions/contracts/start-session-menu-contract.ts");
+  const contractResult = runCommand(repoRoot, [
+    "npx",
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    scriptPath,
+  ]);
+  if (contractResult.exit_code !== 0) {
+    return contractResult;
+  }
+  try {
+    const parsed = JSON.parse(contractResult.stdout);
+    return {
+      ...contractResult,
+      ...parsed,
+    };
+  } catch (error) {
+    return {
+      ...contractResult,
+      exit_code: 1,
+      parse_error: String(error),
+    };
+  }
 }
 
 function runStartPlanModeFlow(repoRoot) {
@@ -443,19 +591,19 @@ function runStartPlanModeFlow(repoRoot) {
       "8",
     ],
     null,
-    [
-      "/plan implement plan-mode skeleton",
-      "/plan options",
-      "none of these: add milestone for bridge /plan compatibility",
-      "/plan status",
-      "2",
-      "4",
-      "/exit",
-      "",
-    ].join("\n"),
+      [
+        "/plan implement plan-mode skeleton",
+        "add milestone for bridge /plan compatibility",
+        "/plan apply smoke-review-failure",
+        "/plan status",
+        "/plan cancel",
+        "/plan status",
+        "/exit",
+        "",
+      ].join("\n"),
   );
   const namespaceKey = "feishu:grobot:dm:plan-smoke-user";
-  const registryPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
   const registryPayload = readJsonFileSafe(registryPath);
   const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
   const activeSessionId = registryPayload && typeof registryPayload.active_id === "string" ? registryPayload.active_id : "";
@@ -479,7 +627,20 @@ function runStartPlanModeFlow(repoRoot) {
   const eventsPath = `${planDir}/events.jsonl`;
   const planIndex = readJsonFileSafe(planIndexPath);
   const planEntries = planIndex && Array.isArray(planIndex.entries) ? planIndex.entries : [];
+  const planEntry =
+    planEntries.length > 0 && planEntries[0] && typeof planEntries[0] === "object"
+      ? planEntries[0]
+      : null;
+  const reviewFailCount =
+    planEntry && Number.isFinite(Number(planEntry.review_fail_count))
+      ? Number(planEntry.review_fail_count)
+      : 0;
+  const blockedCount =
+    planEntry && Number.isFinite(Number(planEntry.blocked_count))
+      ? Number(planEntry.blocked_count)
+      : 0;
   const eventsContent = readTextFileSafe(eventsPath);
+  const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -494,6 +655,15 @@ function runStartPlanModeFlow(repoRoot) {
     plan_entry_count: planEntries.length,
     plan_active_id: planIndex && typeof planIndex.active_plan_id === "string" ? planIndex.active_plan_id : "",
     plan_active_exists: existsSync(activePlanPath),
+    review_failed_marker_seen: combinedOutput.includes("[plan-review] code=PLAN_REVIEW_FAILED"),
+    review_blocked_marker_seen: combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED"),
+    plan_cancelled_marker_seen: combinedOutput.includes("[plan] cancelled plan_id="),
+    plan_final_status_line_seen: combinedOutput.includes("[plan-status]\nmode: normal\nactive_plan_id: <none>"),
+    plan_last_status: planEntry && typeof planEntry.status === "string" ? planEntry.status : "",
+    plan_last_review_fail_count: reviewFailCount,
+    plan_last_blocked_count: blockedCount,
+    events_has_plan_review_failed: eventsContent.includes("\"event\":\"plan_review_failed\""),
+    events_has_plan_mode_cancelled: eventsContent.includes("\"event\":\"plan_mode_cancelled\""),
   };
 }
 
@@ -619,6 +789,126 @@ function runStartPlanConcurrencyFlow(repoRoot) {
   };
 }
 
+function writeMcpInstructionProjectToml(workDir) {
+  const grobotDir = `${workDir}/.grobot`;
+  mkdirSync(grobotDir, { recursive: true });
+  writeFileSync(
+    `${grobotDir}/project.toml`,
+    [
+      "schema_version = 1",
+      'mode = "mvp"',
+      "",
+      "[mcp.instructions]",
+      "enabled = true",
+      'scope = "project_first"',
+      "strict = false",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+function writeProjectMcpRegistry(workDir) {
+  const grobotDir = `${workDir}/.grobot`;
+  mkdirSync(grobotDir, { recursive: true });
+  writeFileSync(
+    `${grobotDir}/mcp.toml`,
+    [
+      "[[servers]]",
+      'name = "grok-search"',
+      'command = "uvx"',
+      "args = [\"--version\"]",
+      "enabled = true",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+function writeRulePack(path, content) {
+  mkdirSync(resolve(path, ".."), { recursive: true });
+  writeFileSync(path, content, "utf8");
+}
+
+function runStartMcpInstructionEventsFlow(repoRoot) {
+  const workDir = createTempDir("grobot-mcp-instruction-work");
+  const homeDir = createTempDir("grobot-mcp-instruction-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const projectRulePath = `${workDir}/.grobot/rules/mcp/grok-search.md`;
+  const globalRulePath = `${homeDir}/rules/mcp/grok-search.md`;
+
+  writeMcpInstructionProjectToml(workDir);
+  writeProjectMcpRegistry(workDir);
+  writeRulePack(projectRulePath, "PROJECT_GROK_SEARCH_RULE\n");
+  writeRulePack(globalRulePath, "GLOBAL_GROK_SEARCH_RULE\n");
+
+  const baseArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--project-root",
+    workDir,
+    "--work-dir",
+    workDir,
+    "--home",
+    homeDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "mcp-instruction-user",
+  ];
+
+  const projectResult = runCommand(
+    repoRoot,
+    [...baseArgs, "--message", "mcp instruction pack project source smoke"],
+  );
+
+  writeRulePack(projectRulePath, "\n");
+  writeRulePack(globalRulePath, "GLOBAL_GROK_SEARCH_RULE\n");
+  const fallbackResult = runCommand(
+    repoRoot,
+    [...baseArgs, "--message", "mcp instruction pack fallback source smoke"],
+  );
+
+  writeRulePack(projectRulePath, "\n");
+  writeRulePack(globalRulePath, "\n");
+  const missingResult = runCommand(
+    repoRoot,
+    [...baseArgs, "--message", "mcp instruction pack missing smoke"],
+  );
+
+  return {
+    project_exit_code: projectResult.exit_code,
+    fallback_exit_code: fallbackResult.exit_code,
+    missing_exit_code: missingResult.exit_code,
+    project_pack_loaded_project: projectResult.stderr.includes(
+      "event=pack_loaded server=grok-search source=project",
+    ),
+    project_prompt_injected: projectResult.stderr.includes(
+      "event=prompt_injected servers=grok-search",
+    ),
+    fallback_used: fallbackResult.stderr.includes(
+      "event=fallback_used server=grok-search from=project to=global",
+    ),
+    fallback_pack_loaded_global: fallbackResult.stderr.includes(
+      "event=pack_loaded server=grok-search source=global",
+    ),
+    fallback_prompt_injected: fallbackResult.stderr.includes(
+      "event=prompt_injected servers=grok-search",
+    ),
+    missing_pack_event: missingResult.stderr.includes(
+      "event=pack_missing server=grok-search strict=false",
+    ),
+    missing_prompt_injected: missingResult.stderr.includes("event=prompt_injected"),
+    strict_failure_seen: missingResult.stderr.includes("event=strict_failure"),
+  };
+}
+
 function runFailoverRejectsPython(repoRoot) {
   const workDir = createTempDir("grobot-start-work");
   const config = writeConfig(buildFailoverConfig(workDir));
@@ -713,7 +1003,7 @@ function runStartSessionStoreRedisFallback(repoRoot) {
   const homeDir = createTempDir("grobot-start-home");
   const config = writeConfig(buildSmokeConfig(workDir));
   const sessionKey = "feishu:grobot:dm:redis-fallback-user";
-  const historyPath = `${homeDir}/runtime/sessions/${sanitizeSessionKey(sessionKey)}.history.json`;
+  const historyPath = `${workDir}/.grobot/session/${sanitizeSessionKey(sessionKey)}.history.json`;
   const result = runCommand(repoRoot, [
     "./grobot",
     "start",
@@ -832,29 +1122,46 @@ function runCli(argv) {
     case "start-interactive-session-flow":
       payload = runStartInteractiveSessionFlow(repoRoot);
       break;
+    case "start-interactive-session-commands-fallback-flow":
+      payload = runStartInteractiveSessionCommandsFallbackFlow(repoRoot);
+      break;
+    case "start-interactive-interrupt-flow":
+      payload = runStartInteractiveInterruptFlow(
+        repoRoot,
+        requireOption(options, "provider-base-url"),
+        requireOption(options, "provider-api-key"),
+        requireOption(options, "provider-model"),
+      );
+      break;
+    case "start-session-menu-view-model-contract":
+      payload = runStartSessionMenuViewModelContract(repoRoot);
+      break;
     case "start-plan-mode-flow":
       payload = runStartPlanModeFlow(repoRoot);
       break;
     case "start-plan-concurrency-flow":
       payload = runStartPlanConcurrencyFlow(repoRoot);
       break;
+    case "start-mcp-instruction-events-flow":
+      payload = runStartMcpInstructionEventsFlow(repoRoot);
+      break;
     case "failover-rejects-python":
       payload = runFailoverRejectsPython(repoRoot);
       break;
-      case "failover-runs-ts-rust":
-        payload = runFailoverTsRust(repoRoot);
-        break;
-      case "provider-pool-multi-turn-ts-rust":
-        payload = runProviderPoolMultiTurnTsRust(
-          repoRoot,
-          requireOption(options, "provider-base-url"),
-          Number.parseInt(options.get("provider-count") ?? "10", 10),
-          Number.parseInt(options.get("turn-count") ?? "6", 10),
-        );
-        break;
-      case "start-session-store-redis-fallback":
-        payload = runStartSessionStoreRedisFallback(repoRoot);
-        break;
+    case "failover-runs-ts-rust":
+      payload = runFailoverTsRust(repoRoot);
+      break;
+    case "provider-pool-multi-turn-ts-rust":
+      payload = runProviderPoolMultiTurnTsRust(
+        repoRoot,
+        requireOption(options, "provider-base-url"),
+        Number.parseInt(options.get("provider-count") ?? "10", 10),
+        Number.parseInt(options.get("turn-count") ?? "6", 10),
+      );
+      break;
+    case "start-session-store-redis-fallback":
+      payload = runStartSessionStoreRedisFallback(repoRoot);
+      break;
     case "status-ts-rust":
       payload = runStatusTsRust(repoRoot);
       break;

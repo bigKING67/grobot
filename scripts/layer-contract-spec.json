@@ -2,29 +2,54 @@
   "schema": "layer_contract_v1",
   "layers": [
     {
-      "name": "model",
+      "name": "runtime-model",
       "path": "runtime/src/models",
-      "requiredDomainDirs": ["domains"]
+      "requiredDirs": ["providers"]
     },
     {
-      "name": "tools",
+      "name": "runtime-tools",
       "path": "runtime/src/tools",
-      "requiredDomainDirs": ["domains", "domains/core", "domains/fs", "domains/shell", "domains/mcp"]
+      "requiredDirs": ["core", "fs", "shell", "mcp", "semantic", "providers", "dispatcher"]
     },
     {
-      "name": "extensions",
+      "name": "runtime-extensions",
       "path": "runtime/src/extensions",
-      "requiredDomainDirs": ["domains"]
+      "requiredDirs": []
     },
     {
-      "name": "orchestration",
+      "name": "runtime-orchestration",
       "path": "runtime/src/orchestration",
-      "requiredDomainDirs": ["domains"]
+      "requiredDirs": []
     },
     {
-      "name": "governance",
+      "name": "runtime-governance",
       "path": "runtime/src/governance",
-      "requiredDomainDirs": ["domains"]
+      "requiredDirs": []
+    },
+    {
+      "name": "gateway-model",
+      "path": "gateway/src/models",
+      "requiredDirs": ["context"]
+    },
+    {
+      "name": "gateway-tools",
+      "path": "gateway/src/tools",
+      "requiredDirs": ["runtime", "state"]
+    },
+    {
+      "name": "gateway-extensions",
+      "path": "gateway/src/extensions",
+      "requiredDirs": ["contracts"]
+    },
+    {
+      "name": "gateway-orchestration",
+      "path": "gateway/src/orchestration",
+      "requiredDirs": ["entrypoints", "orchestrator"]
+    },
+    {
+      "name": "gateway-governance",
+      "path": "gateway/src/governance",
+      "requiredDirs": ["evals"]
     }
   ],
   "docs": [
@@ -85,34 +110,46 @@
   ],
   "importPolicyWarnings": [
     {
-      "name": "model",
+      "name": "runtime-model",
       "path": "runtime/src/models",
       "forbiddenCratePrefixes": ["extensions", "orchestration", "governance"]
     },
     {
-      "name": "tools",
+      "name": "runtime-tools",
       "path": "runtime/src/tools",
       "forbiddenCratePrefixes": ["extensions", "orchestration", "governance"]
     },
     {
-      "name": "extensions",
+      "name": "runtime-extensions",
       "path": "runtime/src/extensions",
       "forbiddenCratePrefixes": ["governance"]
     },
     {
-      "name": "orchestration",
+      "name": "runtime-orchestration",
       "path": "runtime/src/orchestration",
       "forbiddenCratePrefixes": ["extensions", "governance"]
     },
     {
-      "name": "governance",
+      "name": "runtime-governance",
       "path": "runtime/src/governance",
       "forbiddenCratePrefixes": ["models", "tools", "extensions", "orchestration"]
+    },
+    {
+      "name": "gateway-tools",
+      "path": "gateway/src/tools",
+      "fileExtensions": [".ts", ".tsx", ".mts", ".cts"],
+      "forbiddenImportPrefixes": ["../extensions", "../orchestration", "../governance"]
+    },
+    {
+      "name": "gateway-extensions",
+      "path": "gateway/src/extensions",
+      "fileExtensions": [".ts", ".tsx", ".mts", ".cts"],
+      "forbiddenImportPrefixes": ["../governance"]
     }
   ],
   "importPolicyAllowlist": [
     {
-      "pathEquals": "runtime/src/orchestration/domains/tests.rs",
+      "pathEquals": "runtime/src/orchestration/tests.rs",
       "cratePrefix": "extensions"
     }
   ]
