@@ -73,6 +73,8 @@ fn build_media_payload(
     line_end: usize,
     has_more: bool,
     next_offset: Option<usize>,
+    truncated: bool,
+    truncated_by: Option<&'static str>,
     extra_meta: Value,
 ) -> Value {
     let mut payload = json!({
@@ -83,8 +85,8 @@ fn build_media_payload(
         "line_end": line_end,
         "has_more": has_more,
         "next_offset": next_offset,
-        "truncated": false,
-        "truncated_by": Value::Null,
+        "truncated": truncated,
+        "truncated_by": truncated_by,
         "content": content,
     });
     if request.include_metadata {

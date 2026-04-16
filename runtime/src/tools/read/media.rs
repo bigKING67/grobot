@@ -41,6 +41,41 @@ fn parse_pdf_page_range(raw: Option<&str>) -> Option<(usize, usize)> {
     Some((page, page))
 }
 
+fn extract_pdf_text_with_pdftotext(
+    target: &Path,
+    page_range: Option<(usize, usize)>,
+) -> Result<String, ToolExecutionError> {
+    let mut command = Command::new("pdftotext");
+    command.arg("-q").arg("-enc").arg("UTF-8");
+    if let Some((first_page, last_page)) = page_range {
+        command
+            .arg("-f")
+            .arg(first_page.to_string())
+            .arg("-l")
+            .arg(last_page.to_string());
+    }
+    command.arg(target).arg("-");
+    let output = command.output().map_err(|error| {
+        ToolExecutionError::new(
+            "pdf_extract_unavailable",
+            format!("failed to execute pdftotext: {error}"),
+        )
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let reason = if stderr.is_empty() {
+            "unknown error".to_string()
+        } else {
+            stderr
+        };
+        return Err(ToolExecutionError::new(
+            "pdf_extract_failed",
+            format!("pdftotext failed: {reason}"),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 fn read_media_payload(
     kind: ReadKind,
     target: &Path,
@@ -118,6 +153,8 @@ fn read_media_payload(
                 end_index,
                 has_more,
                 next_offset,
+                false,
+                None,
                 json!({
                     "size_bytes": size_bytes,
                     "cell_count": total_cells,
@@ -126,32 +163,66 @@ fn read_media_payload(
             Ok(payload)
         }
         ReadKind::Pdf => {
-            let pages_note = request
-                .pages
-                .as_ref()
-                .map(|value| format!("requested_pages={value}"))
-                .unwrap_or_else(|| "requested_pages=all".to_string());
-            let content = format!(
-                "PDF file detected: {relative_path}\n{pages_note}\nPDF text extraction is not enabled in runtime read yet."
-            );
             let page_range = parse_pdf_page_range(request.pages.as_deref());
-            let payload = build_media_payload(
-                relative_path,
-                request,
-                target,
-                kind,
-                content,
-                1,
-                1,
-                false,
-                None,
-                json!({
-                    "size_bytes": size_bytes,
-                    "pages": request.pages,
-                    "page_range": page_range.map(|(first, last)| json!({"first_page": first, "last_page": last})),
-                }),
-            );
-            Ok(payload)
+            match extract_pdf_text_with_pdftotext(target, page_range) {
+                Ok(extracted_text) => {
+                    let text_result = read_text_window_from_content(extracted_text.as_str(), request)?;
+                    let payload = build_media_payload(
+                        relative_path,
+                        request,
+                        target,
+                        kind,
+                        text_result.content,
+                        text_result.line_start,
+                        text_result.line_end,
+                        text_result.has_more,
+                        text_result.next_offset,
+                        text_result.truncated_by.is_some(),
+                        text_result.truncated_by,
+                        json!({
+                            "size_bytes": size_bytes,
+                            "pages": request.pages,
+                            "page_range": page_range.map(|(first, last)| json!({"first_page": first, "last_page": last})),
+                            "extract_status": "extracted",
+                            "extractor": "pdftotext",
+                            "read_bytes": text_result.read_bytes,
+                        }),
+                    );
+                    Ok(payload)
+                }
+                Err(extract_error) => {
+                    let pages_note = request
+                        .pages
+                        .as_ref()
+                        .map(|value| format!("requested_pages={value}"))
+                        .unwrap_or_else(|| "requested_pages=all".to_string());
+                    let content = format!(
+                        "PDF file detected: {relative_path}\n{pages_note}\nPDF text extraction unavailable ({})",
+                        extract_error.message
+                    );
+                    let payload = build_media_payload(
+                        relative_path,
+                        request,
+                        target,
+                        kind,
+                        content,
+                        1,
+                        1,
+                        false,
+                        None,
+                        false,
+                        None,
+                        json!({
+                            "size_bytes": size_bytes,
+                            "pages": request.pages,
+                            "page_range": page_range.map(|(first, last)| json!({"first_page": first, "last_page": last})),
+                            "extract_status": "fallback",
+                            "extract_error_class": extract_error.error_class,
+                        }),
+                    );
+                    Ok(payload)
+                }
+            }
         }
         ReadKind::Image => {
             let extension = target
@@ -170,6 +241,8 @@ fn read_media_payload(
                 content,
                 1,
                 1,
+                false,
+                None,
                 false,
                 None,
                 json!({

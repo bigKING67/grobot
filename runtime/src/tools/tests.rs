@@ -694,6 +694,42 @@ allow_tools = ["echo"]
             payload["meta"]["extra"]["page_range"]["last_page"].as_u64(),
             Some(3)
         );
+        let extract_status = payload["meta"]["extra"]["extract_status"].as_str().unwrap_or_default();
+        assert!(extract_status == "extracted" || extract_status == "fallback");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_parse_pdf_page_range_accepts_valid_patterns() {
+        assert_eq!(parse_pdf_page_range(Some("3")), Some((3, 3)));
+        assert_eq!(parse_pdf_page_range(Some("2-5")), Some((2, 5)));
+        assert_eq!(parse_pdf_page_range(Some(" 7 - 9 ")), Some((7, 9)));
+        assert_eq!(parse_pdf_page_range(Some("0")), None);
+        assert_eq!(parse_pdf_page_range(Some("9-2")), None);
+        assert_eq!(parse_pdf_page_range(Some("abc")), None);
+    }
+
+    #[test]
+    fn read_v2_returns_empty_content_for_empty_text_file() {
+        let workspace = make_temp_workspace("read-v2-empty-file");
+        fs::write(workspace.join("empty.txt"), "").expect("write empty file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-empty".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "empty.txt"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed for empty file");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert_eq!(payload["line_start"].as_u64(), Some(1));
+        assert_eq!(payload["line_end"].as_u64(), Some(0));
+        assert_eq!(payload["content"].as_str(), Some(""));
+        assert_eq!(payload["has_more"].as_bool(), Some(false));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

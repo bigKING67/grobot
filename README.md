@@ -353,6 +353,7 @@ grobot start \
 - `read` 文本输出默认硬限制为 `2000` 行或 `50KB`（先命中先截断），超出时会返回 `has_more + next_offset` 便于继续读取。
 - `read` 会对二进制/特殊文件做阻断，并对相同文件同一 range 的重复读取返回 `kind=file_unchanged` 以减少重复上下文。
 - `read` 路径解析容错已对齐常见本机输入：支持 `@path`、Unicode 空格归一、macOS 截图 AM/PM 变体、弯引号文件名变体与 NFD 规范化候选。
+- `read` 对 PDF 会优先尝试 `pdftotext` 抽取正文（支持 `pages`），并在 `meta.extra.extract_status` 返回 `extracted|fallback`，便于上层决定是否降级处理。
 - `list/glob/search` 优先使用 `fd/rg`（不存在时自动回退到内置实现，不依赖 Python 运行时）。
 - `search` 支持 `context_before/context_after`，可直接返回命中行前后文（类似 `rg -B/-A`）。
 - 支持 `@文件名` 快速解析：在用户消息中写 `@xxx`，会先在 `--work-dir` 内做文件匹配并把解析结果注入 prompt（命中唯一路径可直接用于后续读写工具）。
