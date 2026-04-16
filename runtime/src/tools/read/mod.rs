@@ -2,6 +2,7 @@ const READ_MAX_OUTPUT_LINES: usize = 2000;
 const READ_MAX_OUTPUT_BYTES: usize = 50 * 1024;
 const READ_CACHE_MAX_ENTRIES: usize = 256;
 const READ_PDF_MAX_PAGES: usize = 20;
+const READ_PDF_OCR_MAX_PAGES: usize = 5;
 const READ_NOTEBOOK_DEFAULT_CELLS: usize = 20;
 const READ_NOTEBOOK_MAX_CELLS: usize = 200;
 

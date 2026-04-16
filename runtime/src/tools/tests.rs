@@ -752,6 +752,7 @@ allow_tools = ["echo"]
         let extract_status = payload["meta"]["extra"]["extract_status"].as_str().unwrap_or_default();
         assert!(
             extract_status == "extracted"
+                || extract_status == "extracted_ocr"
                 || extract_status == "extracted_no_text"
                 || extract_status == "fallback"
         );
@@ -767,6 +768,16 @@ allow_tools = ["echo"]
             assert_eq!(
                 payload["meta"]["extra"]["text_detected"].as_bool(),
                 Some(false)
+            );
+        }
+        if extract_status == "extracted_ocr" {
+            assert_eq!(
+                payload["meta"]["extra"]["ocr_applied"].as_bool(),
+                Some(true)
+            );
+            assert_eq!(
+                payload["meta"]["extra"]["text_detected"].as_bool(),
+                Some(true)
             );
         }
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
@@ -851,6 +862,16 @@ allow_tools = ["echo"]
     fn read_v2_pdf_has_visible_text_detects_non_whitespace() {
         assert!(!pdf_has_visible_text("   \n\t\r  "));
         assert!(pdf_has_visible_text(" \nA "));
+    }
+
+    #[test]
+    fn read_v2_should_attempt_pdf_ocr_respects_window_limit() {
+        assert!(should_attempt_pdf_ocr(true, READ_PDF_OCR_MAX_PAGES));
+        assert!(!should_attempt_pdf_ocr(
+            true,
+            READ_PDF_OCR_MAX_PAGES.saturating_add(1)
+        ));
+        assert!(!should_attempt_pdf_ocr(false, 1));
     }
 
     #[test]

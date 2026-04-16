@@ -100,15 +100,20 @@ fn parse_pdfimages_list_count(raw: &str) -> Option<usize> {
     None
 }
 
-fn read_pdf_embedded_image_count(target: &Path) -> Option<usize> {
+fn read_pdf_embedded_image_count(target: &Path, page_range: Option<(usize, usize)>) -> Option<usize> {
     if !command_available("pdfimages") {
         return None;
     }
-    let output = Command::new("pdfimages")
-        .arg("-list")
-        .arg(target)
-        .output()
-        .ok()?;
+    let mut command = Command::new("pdfimages");
+    command.arg("-list");
+    if let Some((first_page, last_page)) = page_range {
+        command
+            .arg("-f")
+            .arg(first_page.to_string())
+            .arg("-l")
+            .arg(last_page.to_string());
+    }
+    let output = command.arg(target).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -191,6 +196,10 @@ fn pdf_has_visible_text(raw: &str) -> bool {
     raw.chars().any(|ch| !ch.is_whitespace())
 }
 
+fn should_attempt_pdf_ocr(likely_image_only_pdf: bool, selected_page_count: usize) -> bool {
+    likely_image_only_pdf && selected_page_count <= READ_PDF_OCR_MAX_PAGES
+}
+
 fn extract_pdf_text_with_pdftotext(
     target: &Path,
     page_range: Option<(usize, usize)>,
@@ -224,6 +233,124 @@ fn extract_pdf_text_with_pdftotext(
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn extract_pdf_text_with_ocr(
+    target: &Path,
+    first_page: usize,
+    last_page: usize,
+) -> Result<String, ToolExecutionError> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let temp_dir = env::temp_dir().join(format!(
+        "grobot-read-ocr-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&temp_dir).map_err(|error| {
+        ToolExecutionError::new(
+            "pdf_ocr_failed",
+            format!("failed to create OCR temp dir: {error}"),
+        )
+    })?;
+    let output_prefix = temp_dir.join("page");
+
+    let pdftoppm_output = Command::new("pdftoppm")
+        .arg("-f")
+        .arg(first_page.to_string())
+        .arg("-l")
+        .arg(last_page.to_string())
+        .arg("-r")
+        .arg("200")
+        .arg("-png")
+        .arg(target)
+        .arg(&output_prefix)
+        .output()
+        .map_err(|error| {
+            ToolExecutionError::new(
+                "pdf_ocr_failed",
+                format!("failed to execute pdftoppm: {error}"),
+            )
+        })?;
+
+    if !pdftoppm_output.status.success() {
+        let stderr = String::from_utf8_lossy(&pdftoppm_output.stderr)
+            .trim()
+            .to_string();
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(ToolExecutionError::new(
+            "pdf_ocr_failed",
+            format!("pdftoppm failed: {}", if stderr.is_empty() { "unknown error" } else { stderr.as_str() }),
+        ));
+    }
+
+    let mut images = fs::read_dir(&temp_dir)
+        .map_err(|error| {
+            ToolExecutionError::new(
+                "pdf_ocr_failed",
+                format!("failed to list OCR temp dir: {error}"),
+            )
+        })?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_name()?.to_str()?.to_string();
+            if !name.starts_with("page-") || !name.ends_with(".png") {
+                return None;
+            }
+            Some(path)
+        })
+        .collect::<Vec<PathBuf>>();
+    images.sort();
+
+    if images.is_empty() {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(ToolExecutionError::new(
+            "pdf_ocr_failed",
+            "pdftoppm produced no page images for OCR",
+        ));
+    }
+
+    let mut chunks: Vec<String> = Vec::new();
+    for (index, image_path) in images.iter().enumerate() {
+        let tesseract_output = Command::new("tesseract")
+            .arg(image_path)
+            .arg("stdout")
+            .output()
+            .map_err(|error| {
+                ToolExecutionError::new(
+                    "pdf_ocr_failed",
+                    format!("failed to execute tesseract: {error}"),
+                )
+            })?;
+        if !tesseract_output.status.success() {
+            let stderr = String::from_utf8_lossy(&tesseract_output.stderr)
+                .trim()
+                .to_string();
+            let _ = fs::remove_dir_all(&temp_dir);
+            return Err(ToolExecutionError::new(
+                "pdf_ocr_failed",
+                format!(
+                    "tesseract failed: {}",
+                    if stderr.is_empty() { "unknown error" } else { stderr.as_str() }
+                ),
+            ));
+        }
+        let chunk = String::from_utf8_lossy(&tesseract_output.stdout).to_string();
+        if !pdf_has_visible_text(chunk.as_str()) {
+            continue;
+        }
+        let page_no = first_page.saturating_add(index);
+        chunks.push(format!("[OCR page {page_no}]\n{}", chunk.trim()));
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    if chunks.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(chunks.join("\n\n"))
 }
 
 fn read_media_payload(
@@ -366,13 +493,89 @@ fn read_media_payload(
             let extract_plan = compute_pdf_extract_plan(requested_range, total_pages)?;
             let selected_pages = format_pdf_page_range(extract_plan.first_page, extract_plan.last_page);
             let selected_range = Some((extract_plan.first_page, extract_plan.last_page));
+            let selected_page_count = extract_plan
+                .last_page
+                .saturating_sub(extract_plan.first_page)
+                .saturating_add(1);
+            let embedded_image_count = read_pdf_embedded_image_count(target, selected_range);
+            let likely_image_only_pdf = embedded_image_count
+                .map(|count| count > 0)
+                .unwrap_or(false);
+            let ocr_runtime_available = command_available("pdftoppm") && command_available("tesseract");
             match extract_pdf_text_with_pdftotext(target, selected_range) {
                 Ok(extracted_text) => {
-                    let embedded_image_count = read_pdf_embedded_image_count(target);
                     if !pdf_has_visible_text(extracted_text.as_str()) {
-                        let likely_image_only_pdf = embedded_image_count
-                            .map(|count| count > 0)
-                            .unwrap_or(false);
+                        let mut ocr_attempted = false;
+                        let mut ocr_applied = false;
+                        let mut ocr_error_class: Option<String> = None;
+                        let mut ocr_error_message: Option<String> = None;
+
+                        if should_attempt_pdf_ocr(likely_image_only_pdf, selected_page_count)
+                            && ocr_runtime_available
+                        {
+                            ocr_attempted = true;
+                            match extract_pdf_text_with_ocr(
+                                target,
+                                extract_plan.first_page,
+                                extract_plan.last_page,
+                            ) {
+                                Ok(ocr_text) if pdf_has_visible_text(ocr_text.as_str()) => {
+                                    let mut text_result =
+                                        read_text_window_from_content(ocr_text.as_str(), request)?;
+                                    if let Some(next_pages) = extract_plan.next_pages.as_ref() {
+                                        text_result.content.push_str(&format!(
+                                            "\n\n[More PDF pages available. Use pages=\"{}\" to continue.]",
+                                            next_pages
+                                        ));
+                                    }
+                                    ocr_applied = true;
+                                    let payload = build_media_payload(
+                                        relative_path,
+                                        request,
+                                        target,
+                                        kind,
+                                        text_result.content,
+                                        text_result.line_start,
+                                        text_result.line_end,
+                                        text_result.has_more,
+                                        text_result.next_offset,
+                                        text_result.truncated_by.is_some(),
+                                        text_result.truncated_by,
+                                        json!({
+                                            "size_bytes": size_bytes,
+                                            "pages": request.pages,
+                                            "selected_page_range": {
+                                                "first_page": extract_plan.first_page,
+                                                "last_page": extract_plan.last_page
+                                            },
+                                            "selected_pages": selected_pages,
+                                            "selected_page_count": selected_page_count,
+                                            "total_pages": total_pages,
+                                            "total_pages_known": total_pages.is_some(),
+                                            "has_more_pages": extract_plan.has_more_pages,
+                                            "next_pages": extract_plan.next_pages,
+                                            "extract_status": "extracted_ocr",
+                                            "extractor": "tesseract+pdftoppm",
+                                            "text_detected": true,
+                                            "embedded_image_count": embedded_image_count,
+                                            "likely_image_only_pdf": likely_image_only_pdf,
+                                            "ocr_runtime_available": ocr_runtime_available,
+                                            "ocr_attempted": ocr_attempted,
+                                            "ocr_applied": ocr_applied,
+                                            "ocr_page_limit": READ_PDF_OCR_MAX_PAGES,
+                                            "read_bytes": text_result.read_bytes,
+                                        }),
+                                    );
+                                    return Ok(payload);
+                                }
+                                Ok(_) => {}
+                                Err(error) => {
+                                    ocr_error_class = Some(error.error_class);
+                                    ocr_error_message = Some(error.message);
+                                }
+                            }
+                        }
+
                         let mut content = format!(
                             "PDF file detected: {relative_path}\nselected_pages={selected_pages}\nNo extractable text found in selected pages."
                         );
@@ -383,6 +586,23 @@ fn read_media_payload(
                             content.push_str(
                                 "\nLikely scanned/image-only PDF. OCR is required to extract text content.",
                             );
+                        }
+                        if ocr_attempted && !ocr_applied {
+                            if let Some(message) = ocr_error_message.as_ref() {
+                                content.push_str(&format!("\nOCR attempt failed: {message}"));
+                            } else {
+                                content.push_str("\nOCR attempt returned no visible text.");
+                            }
+                        } else if !ocr_runtime_available && likely_image_only_pdf {
+                            content.push_str(
+                                "\nOCR runtime unavailable (requires pdftoppm + tesseract).",
+                            );
+                        } else if selected_page_count > READ_PDF_OCR_MAX_PAGES && likely_image_only_pdf
+                        {
+                            content.push_str(&format!(
+                                "\nOCR skipped because selected page window ({selected_page_count}) exceeds max {} pages.",
+                                READ_PDF_OCR_MAX_PAGES
+                            ));
                         }
                         if let Some(next_pages) = extract_plan.next_pages.as_ref() {
                             content.push_str(&format!(
@@ -410,6 +630,7 @@ fn read_media_payload(
                                     "last_page": extract_plan.last_page
                                 },
                                 "selected_pages": selected_pages,
+                                "selected_page_count": selected_page_count,
                                 "total_pages": total_pages,
                                 "total_pages_known": total_pages.is_some(),
                                 "has_more_pages": extract_plan.has_more_pages,
@@ -419,7 +640,13 @@ fn read_media_payload(
                                 "text_detected": false,
                                 "embedded_image_count": embedded_image_count,
                                 "likely_image_only_pdf": likely_image_only_pdf,
-                                "ocr_guidance": "Run OCR first, then read again.",
+                                "ocr_runtime_available": ocr_runtime_available,
+                                "ocr_attempted": ocr_attempted,
+                                "ocr_applied": ocr_applied,
+                                "ocr_page_limit": READ_PDF_OCR_MAX_PAGES,
+                                "ocr_error_class": ocr_error_class,
+                                "ocr_error_message": ocr_error_message,
+                                "ocr_guidance": "Run OCR first, then read again. OCR auto-attempt only runs when likely image-only and selected page count is within OCR limit.",
                                 "read_bytes": 0,
                             }),
                         );
@@ -452,6 +679,7 @@ fn read_media_payload(
                                 "last_page": extract_plan.last_page
                             },
                             "selected_pages": selected_pages,
+                            "selected_page_count": selected_page_count,
                             "total_pages": total_pages,
                             "total_pages_known": total_pages.is_some(),
                             "has_more_pages": extract_plan.has_more_pages,
@@ -461,6 +689,10 @@ fn read_media_payload(
                             "text_detected": true,
                             "embedded_image_count": embedded_image_count,
                             "likely_image_only_pdf": false,
+                            "ocr_runtime_available": ocr_runtime_available,
+                            "ocr_attempted": false,
+                            "ocr_applied": false,
+                            "ocr_page_limit": READ_PDF_OCR_MAX_PAGES,
                             "read_bytes": text_result.read_bytes,
                         }),
                     );
@@ -498,6 +730,7 @@ fn read_media_payload(
                                 "last_page": extract_plan.last_page
                             },
                             "selected_pages": selected_pages,
+                            "selected_page_count": selected_page_count,
                             "total_pages": total_pages,
                             "total_pages_known": total_pages.is_some(),
                             "has_more_pages": extract_plan.has_more_pages,
@@ -506,6 +739,12 @@ fn read_media_payload(
                             "extract_error_class": extract_error.error_class,
                             "extract_error_message": extract_error_message,
                             "extract_guidance": extraction_hint,
+                            "embedded_image_count": embedded_image_count,
+                            "likely_image_only_pdf": likely_image_only_pdf,
+                            "ocr_runtime_available": ocr_runtime_available,
+                            "ocr_attempted": false,
+                            "ocr_applied": false,
+                            "ocr_page_limit": READ_PDF_OCR_MAX_PAGES,
                         }),
                     );
                     Ok(payload)
