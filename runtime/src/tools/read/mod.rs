@@ -12,6 +12,7 @@ enum ReadKind {
     Notebook,
     Pdf,
     Image,
+    Video,
 }
 
 impl ReadKind {
@@ -21,6 +22,7 @@ impl ReadKind {
             Self::Notebook => "notebook",
             Self::Pdf => "pdf",
             Self::Image => "image",
+            Self::Video => "video",
         }
     }
 }
@@ -66,6 +68,7 @@ struct ReadCacheStore {
 fn run_read(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
+    input: &TurnExecuteInput,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
     let request = parse_read_request(args)?;
     let target = resolve_read_target(context, &request.path)?;
@@ -102,6 +105,16 @@ fn run_read(
                 kind: "text",
             },
         );
+        return Ok(ToolCallOutput::from_payload(payload));
+    }
+
+    if let Some(payload) = maybe_read_media_payload_via_kimi(
+        kind,
+        &target,
+        &relative_path,
+        &request,
+        input,
+    )? {
         return Ok(ToolCallOutput::from_payload(payload));
     }
 

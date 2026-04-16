@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::engine::{RuntimeModelConfigInput, RuntimeToolContextInput, TurnExecuteInput};
+    use crate::models::engine::{
+        RuntimeKimiOptionsInput, RuntimeModelConfigInput, RuntimeProviderOptionsInput,
+        RuntimeToolContextInput, TurnExecuteInput,
+    };
     use serde_json::Value;
     use std::collections::HashMap as StdHashMap;
     use std::collections::HashSet as StdHashSet;
@@ -628,6 +631,32 @@ allow_tools = ["echo"]
     }
 
     #[test]
+    fn read_v2_routes_video_file_to_video_kind() {
+        let workspace = make_temp_workspace("read-v2-video-kind");
+        fs::write(workspace.join("clip.mp4"), vec![0_u8; 32]).expect("write video-like file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-video-1".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "clip.mp4"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("video read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("video"));
+        assert!(
+            payload["content"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Video file detected")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn read_v2_notebook_respects_offset_limit_window() {
         let workspace = make_temp_workspace("read-v2-notebook-window");
         let notebook = json!({
@@ -859,6 +888,15 @@ allow_tools = ["echo"]
     }
 
     #[test]
+    fn read_v2_build_pdf_extract_guidance_mentions_missing_tools() {
+        let guidance = build_pdf_extract_guidance(&["pdftotext", "pdftoppm"]);
+        assert!(guidance.contains("pdftotext"));
+        assert!(guidance.contains("pdftoppm"));
+        assert!(guidance.contains("poppler"));
+        assert!(guidance.contains("tesseract"));
+    }
+
+    #[test]
     fn read_v2_pdf_has_visible_text_detects_non_whitespace() {
         assert!(!pdf_has_visible_text("   \n\t\r  "));
         assert!(pdf_has_visible_text(" \nA "));
@@ -872,6 +910,162 @@ allow_tools = ["echo"]
             READ_PDF_OCR_MAX_PAGES.saturating_add(1)
         ));
         assert!(!should_attempt_pdf_ocr(false, 1));
+    }
+
+    #[test]
+    fn read_v2_should_use_kimi_multimodal_read_respects_provider_model_and_pages() {
+        let input = TurnExecuteInput {
+            request_id: "req-kimi-route".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "read".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some("https://api.moonshot.cn/v1".to_string()),
+                api_key: Some("sk-test".to_string()),
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(10_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: Some(RuntimeProviderOptionsInput {
+                    kimi: Some(RuntimeKimiOptionsInput {
+                        web_search_mode: None,
+                        disable_thinking_on_builtin_web_search: None,
+                        official_tools_allowlist: None,
+                        official_tool_formulas: None,
+                        max_tokens: None,
+                        stream: None,
+                        temperature: None,
+                        top_p: None,
+                        files_enabled: Some(true),
+                        allow_file_admin: None,
+                    }),
+                }),
+            }),
+            tool_context: None,
+            attachments: vec![],
+        };
+
+        let request_pdf = ReadRequest {
+            path: "invoice.pdf".to_string(),
+            start_line: 1,
+            line_limit: None,
+            include_metadata: true,
+            pages: None,
+            range_mode: "full",
+        };
+        let request_pdf_with_pages = ReadRequest {
+            pages: Some("1-2".to_string()),
+            ..request_pdf.clone()
+        };
+        let request_image = ReadRequest {
+            path: "snap.png".to_string(),
+            ..request_pdf.clone()
+        };
+        assert!(should_use_kimi_multimodal_read(
+            ReadKind::Pdf,
+            &request_pdf,
+            &input
+        ));
+        assert!(!should_use_kimi_multimodal_read(
+            ReadKind::Pdf,
+            &request_pdf_with_pages,
+            &input
+        ));
+        assert!(should_use_kimi_multimodal_read(
+            ReadKind::Image,
+            &request_image,
+            &input
+        ));
+
+        let non_k25 = TurnExecuteInput {
+            model_config: Some(RuntimeModelConfigInput {
+                model: Some("kimi-k2".to_string()),
+                ..input.model_config.clone().expect("model config")
+            }),
+            ..input.clone()
+        };
+        assert!(!should_use_kimi_multimodal_read(
+            ReadKind::Pdf,
+            &request_pdf,
+            &non_k25
+        ));
+    }
+
+    #[test]
+    #[ignore = "manual smoke: set READ_V2_MANUAL_FILE to an external PDF path"]
+    fn read_v2_manual_external_pdf_smoke_from_env() {
+        let pdf_path = env::var("READ_V2_MANUAL_FILE")
+            .expect("READ_V2_MANUAL_FILE is required for manual external pdf smoke");
+        let work_dir = env::var("READ_V2_MANUAL_WORKDIR").unwrap_or_else(|_| "/Users/gaoqian".to_string());
+        let pages = env::var("READ_V2_MANUAL_PAGES").ok();
+
+        let mut arguments = json!({
+            "path": pdf_path,
+        });
+        if let Some(pages_value) = pages {
+            arguments["pages"] = Value::String(pages_value);
+        }
+
+        let input = TurnExecuteInput {
+            request_id: "req-read-v2-manual-external-pdf".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "read pdf".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(work_dir),
+                enabled_tools: Some(vec!["read".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        };
+
+        let call = ToolCallInput {
+            id: "read-v2-manual-external-pdf".to_string(),
+            name: "read".to_string(),
+            arguments,
+        };
+
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("manual external pdf read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["tool"].as_str(), Some("read"));
+        assert_eq!(payload["kind"].as_str(), Some("pdf"));
+
+        let extract_status = payload["meta"]["extra"]["extract_status"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            matches!(
+                extract_status.as_str(),
+                "extracted"
+                    | "extracted_ocr"
+                    | "extracted_no_text"
+                    | "fallback"
+                    | "extracted_remote_kimi_file_extract"
+                    | "extracted_no_text_remote"
+            ),
+            "unexpected extract_status: {extract_status}"
+        );
+
+        eprintln!(
+            "[read_v2_manual_external_pdf_smoke_from_env] extract_status={} text_detected={:?} selected_page_range={:?}",
+            extract_status,
+            payload["meta"]["extra"]["text_detected"],
+            payload["meta"]["extra"]["selected_page_range"],
+        );
+        if let Some(content) = payload["content"].as_str() {
+            let preview = content
+                .lines()
+                .take(8)
+                .collect::<Vec<&str>>()
+                .join("\\n");
+            eprintln!("[read_v2_manual_external_pdf_smoke_from_env] preview={preview}");
+        }
     }
 
     #[test]

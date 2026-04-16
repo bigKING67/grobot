@@ -353,6 +353,486 @@ fn extract_pdf_text_with_ocr(
     Ok(chunks.join("\n\n"))
 }
 
+fn collect_missing_pdf_extract_tools() -> Vec<&'static str> {
+    let mut missing = Vec::new();
+    if !command_available("pdftotext") {
+        missing.push("pdftotext");
+    }
+    if !command_available("pdftoppm") {
+        missing.push("pdftoppm");
+    }
+    if !command_available("tesseract") {
+        missing.push("tesseract");
+    }
+    missing
+}
+
+fn build_pdf_extract_guidance(missing_tools: &[&str]) -> String {
+    if missing_tools.is_empty() {
+        return "Install poppler + tesseract if scanned PDF OCR is needed (macOS: brew install poppler tesseract; Debian/Ubuntu: apt-get install poppler-utils tesseract-ocr).".to_string();
+    }
+    let missing_list = missing_tools.join(", ");
+    format!(
+        "Missing runtime tools: {missing_list}. Install poppler + tesseract (macOS: brew install poppler tesseract; Debian/Ubuntu: apt-get install poppler-utils tesseract-ocr)."
+    )
+}
+
+fn is_kimi_k25_read_route(input: &TurnExecuteInput) -> bool {
+    if !is_kimi_provider(input) {
+        return false;
+    }
+    let model = input
+        .model_config
+        .as_ref()
+        .and_then(|config| config.model.as_ref())
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    if model.is_empty() {
+        return false;
+    }
+    model.contains("k2.5") || model.contains("k2_5")
+}
+
+fn resolve_kimi_model_name_for_read(input: &TurnExecuteInput) -> String {
+    input
+        .model_config
+        .as_ref()
+        .and_then(|config| config.model.as_ref())
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("kimi-k2.5")
+        .to_string()
+}
+
+fn should_use_kimi_multimodal_read(
+    kind: ReadKind,
+    request: &ReadRequest,
+    input: &TurnExecuteInput,
+) -> bool {
+    if !is_kimi_k25_read_route(input) {
+        return false;
+    }
+    if !resolve_kimi_files_enabled(input) {
+        return false;
+    }
+    match kind {
+        ReadKind::Pdf => request.pages.is_none(),
+        ReadKind::Image | ReadKind::Video => true,
+        _ => false,
+    }
+}
+
+fn guess_read_upload_mime(target: &Path, kind: ReadKind) -> &'static str {
+    match kind {
+        ReadKind::Pdf => "application/pdf",
+        ReadKind::Image => match target
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            "bmp" => "image/bmp",
+            "svg" => "image/svg+xml",
+            _ => "image/png",
+        },
+        ReadKind::Video => match target
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "mov" => "video/quicktime",
+            "webm" => "video/webm",
+            "m4v" => "video/x-m4v",
+            "avi" => "video/x-msvideo",
+            "mkv" => "video/x-matroska",
+            _ => "video/mp4",
+        },
+        _ => "application/octet-stream",
+    }
+}
+
+fn upload_kimi_file_for_read(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+    target: &Path,
+    purpose: &str,
+    mime: &str,
+) -> Result<String, ToolExecutionError> {
+    let file_bytes = fs::read(target).map_err(|error| {
+        ToolExecutionError::new(
+            "tool_execution_failed",
+            format!("failed to read file for kimi upload: {error}"),
+        )
+    })?;
+    let file_name = target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "read-upload.bin".to_string());
+    let endpoint = format!("{}/files", base_url.trim_end_matches('/'));
+    let part = reqwest::blocking::multipart::Part::bytes(file_bytes)
+        .file_name(file_name)
+        .mime_str(mime)
+        .map_err(|error| {
+            ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("invalid mime for kimi upload: {mime} ({error})"),
+            )
+        })?;
+    let form = reqwest::blocking::multipart::Form::new()
+        .part("file", part)
+        .text("purpose", purpose.to_string());
+    let response = client
+        .post(endpoint)
+        .bearer_auth(api_key)
+        .multipart(form)
+        .send()
+        .map_err(|error| {
+            let class = if error.is_timeout() {
+                "upstream_timeout"
+            } else if error.is_connect() {
+                "upstream_connect_failed"
+            } else {
+                "upstream_request_failed"
+            };
+            ToolExecutionError::new(class, format!("kimi file upload failed: {error}"))
+        })?;
+    let status = response.status();
+    let body_text = response.text().map_err(|error| {
+        ToolExecutionError::new(
+            "upstream_response_read_failed",
+            format!("failed to read kimi upload response: {error}"),
+        )
+    })?;
+    if !status.is_success() {
+        let detail = body_text.chars().take(240).collect::<String>();
+        return Err(ToolExecutionError::new(
+            "upstream_http_error",
+            format!("kimi file upload status={} body={detail}", status.as_u16()),
+        ));
+    }
+    let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
+        ToolExecutionError::new(
+            "upstream_invalid_json",
+            format!("invalid kimi upload response json: {error}"),
+        )
+    })?;
+    payload
+        .get("id")
+        .and_then(Value::as_str)
+        .map(|value| value.to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ToolExecutionError::new(
+                "upstream_invalid_response",
+                "missing file id in kimi upload response",
+            )
+        })
+}
+
+fn fetch_kimi_file_content_for_read(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+    file_id: &str,
+) -> Result<String, ToolExecutionError> {
+    let endpoint = format!(
+        "{}/files/{}/content",
+        base_url.trim_end_matches('/'),
+        file_id
+    );
+    let response = client
+        .get(endpoint)
+        .bearer_auth(api_key)
+        .send()
+        .map_err(|error| {
+            let class = if error.is_timeout() {
+                "upstream_timeout"
+            } else if error.is_connect() {
+                "upstream_connect_failed"
+            } else {
+                "upstream_request_failed"
+            };
+            ToolExecutionError::new(class, format!("kimi file content fetch failed: {error}"))
+        })?;
+    let status = response.status();
+    let body_text = response.text().map_err(|error| {
+        ToolExecutionError::new(
+            "upstream_response_read_failed",
+            format!("failed to read kimi file content response: {error}"),
+        )
+    })?;
+    if !status.is_success() {
+        let detail = body_text.chars().take(240).collect::<String>();
+        return Err(ToolExecutionError::new(
+            "upstream_http_error",
+            format!("kimi file content status={} body={detail}", status.as_u16()),
+        ));
+    }
+    Ok(body_text)
+}
+
+fn parse_kimi_chat_text_response(body_text: &str) -> Result<String, ToolExecutionError> {
+    let payload: Value = serde_json::from_str(body_text).map_err(|error| {
+        ToolExecutionError::new(
+            "upstream_invalid_json",
+            format!("invalid kimi chat response json: {error}"),
+        )
+    })?;
+    let content_value = payload
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("message"))
+        .and_then(|message| message.get("content"))
+        .cloned()
+        .ok_or_else(|| {
+            ToolExecutionError::new(
+                "upstream_invalid_response",
+                "missing choices[0].message.content in kimi chat response",
+            )
+        })?;
+    if let Some(text) = content_value.as_str() {
+        return Ok(text.to_string());
+    }
+    if let Some(items) = content_value.as_array() {
+        let merged = items
+            .iter()
+            .filter_map(|item| {
+                item.get("text")
+                    .and_then(Value::as_str)
+                    .map(|value| value.to_string())
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        return Ok(merged);
+    }
+    Err(ToolExecutionError::new(
+        "upstream_invalid_response",
+        "unsupported kimi chat message.content payload",
+    ))
+}
+
+fn run_kimi_multimodal_extract_for_read(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    kind: ReadKind,
+    media_url: &str,
+) -> Result<String, ToolExecutionError> {
+    let mut user_parts = vec![json!({
+        "type": "text",
+        "text": "Extract all useful information from this media. Return plain text only, include visible text and key structured fields."
+    })];
+    match kind {
+        ReadKind::Image => user_parts.push(json!({
+            "type": "image_url",
+            "image_url": { "url": media_url }
+        })),
+        ReadKind::Video => user_parts.push(json!({
+            "type": "video_url",
+            "video_url": { "url": media_url }
+        })),
+        _ => {
+            return Err(ToolExecutionError::new(
+                "tool_execution_failed",
+                "kimi multimodal extract only supports image/video",
+            ))
+        }
+    }
+    let body = json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": user_parts
+            }
+        ]
+    });
+    let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let response = client
+        .post(endpoint)
+        .bearer_auth(api_key)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|error| {
+            let class = if error.is_timeout() {
+                "upstream_timeout"
+            } else if error.is_connect() {
+                "upstream_connect_failed"
+            } else {
+                "upstream_request_failed"
+            };
+            ToolExecutionError::new(class, format!("kimi multimodal chat request failed: {error}"))
+        })?;
+    let status = response.status();
+    let body_text = response.text().map_err(|error| {
+        ToolExecutionError::new(
+            "upstream_response_read_failed",
+            format!("failed to read kimi multimodal chat response: {error}"),
+        )
+    })?;
+    if !status.is_success() {
+        let detail = body_text.chars().take(240).collect::<String>();
+        return Err(ToolExecutionError::new(
+            "upstream_http_error",
+            format!("kimi multimodal chat status={} body={detail}", status.as_u16()),
+        ));
+    }
+    parse_kimi_chat_text_response(&body_text)
+}
+
+fn maybe_read_media_payload_via_kimi(
+    kind: ReadKind,
+    target: &Path,
+    relative_path: &str,
+    request: &ReadRequest,
+    input: &TurnExecuteInput,
+) -> Result<Option<Value>, ToolExecutionError> {
+    if !should_use_kimi_multimodal_read(kind, request, input) {
+        return Ok(None);
+    }
+    let metadata = fs::metadata(target).map_err(|error| {
+        ToolExecutionError::new("tool_execution_failed", format!("failed to read file metadata: {error}"))
+    })?;
+    let size_bytes = metadata.len();
+    let (base_url, api_key, timeout_ms) = resolve_kimi_connection(input)?;
+    let client = Client::builder()
+        .timeout(Duration::from_millis(timeout_ms))
+        .build()
+        .map_err(|error| {
+            ToolExecutionError::new(
+                "client_init_failed",
+                format!("failed to init http client for kimi read route: {error}"),
+            )
+        })?;
+    let remote_model = resolve_kimi_model_name_for_read(input);
+    match kind {
+        ReadKind::Pdf => {
+            let file_id = upload_kimi_file_for_read(
+                &client,
+                &base_url,
+                &api_key,
+                target,
+                "file-extract",
+                guess_read_upload_mime(target, kind),
+            )?;
+            let extracted = fetch_kimi_file_content_for_read(&client, &base_url, &api_key, &file_id)?;
+            if !pdf_has_visible_text(extracted.as_str()) {
+                let payload = build_media_payload(
+                    relative_path,
+                    request,
+                    target,
+                    kind,
+                    format!(
+                        "PDF file detected: {relative_path}\nKimi file-extract returned no visible text.\nfile_id={file_id}\nTry local OCR route or provide pages with local read."
+                    ),
+                    1,
+                    0,
+                    false,
+                    None,
+                    false,
+                    None,
+                    json!({
+                        "size_bytes": size_bytes,
+                        "extract_status": "extracted_no_text_remote",
+                        "extractor": "kimi-files-content",
+                        "remote_provider": "kimi",
+                        "remote_model": remote_model,
+                        "remote_file_id": file_id,
+                        "text_detected": false,
+                    }),
+                );
+                return Ok(Some(payload));
+            }
+            let text_result = read_text_window_from_content(extracted.as_str(), request)?;
+            let payload = build_media_payload(
+                relative_path,
+                request,
+                target,
+                kind,
+                text_result.content,
+                text_result.line_start,
+                text_result.line_end,
+                text_result.has_more,
+                text_result.next_offset,
+                text_result.truncated_by.is_some(),
+                text_result.truncated_by,
+                json!({
+                    "size_bytes": size_bytes,
+                    "extract_status": "extracted_remote_kimi_file_extract",
+                    "extractor": "kimi-files-content",
+                    "remote_provider": "kimi",
+                    "remote_model": remote_model,
+                    "remote_file_id": file_id,
+                    "text_detected": true,
+                    "read_bytes": text_result.read_bytes,
+                }),
+            );
+            Ok(Some(payload))
+        }
+        ReadKind::Image | ReadKind::Video => {
+            let purpose = if kind == ReadKind::Image { "image" } else { "video" };
+            let file_id = upload_kimi_file_for_read(
+                &client,
+                &base_url,
+                &api_key,
+                target,
+                purpose,
+                guess_read_upload_mime(target, kind),
+            )?;
+            let media_url = format!("ms://{file_id}");
+            let mut extracted = run_kimi_multimodal_extract_for_read(
+                &client,
+                &base_url,
+                &api_key,
+                remote_model.as_str(),
+                kind,
+                media_url.as_str(),
+            )?;
+            if !pdf_has_visible_text(extracted.as_str()) {
+                extracted = "Kimi multimodal extraction returned empty content.".to_string();
+            }
+            let text_result = read_text_window_from_content(extracted.as_str(), request)?;
+            let payload = build_media_payload(
+                relative_path,
+                request,
+                target,
+                kind,
+                text_result.content,
+                text_result.line_start,
+                text_result.line_end,
+                text_result.has_more,
+                text_result.next_offset,
+                text_result.truncated_by.is_some(),
+                text_result.truncated_by,
+                json!({
+                    "size_bytes": size_bytes,
+                    "extract_status": "extracted_remote_kimi_multimodal",
+                    "extractor": "kimi-chat-completions",
+                    "remote_provider": "kimi",
+                    "remote_model": remote_model,
+                    "remote_file_id": file_id,
+                    "remote_media_url": media_url,
+                    "text_detected": true,
+                    "read_bytes": text_result.read_bytes,
+                }),
+            );
+            Ok(Some(payload))
+        }
+        _ => Ok(None),
+    }
+}
+
 fn read_media_payload(
     kind: ReadKind,
     target: &Path,
@@ -699,17 +1179,108 @@ fn read_media_payload(
                     Ok(payload)
                 }
                 Err(extract_error) => {
+                    let mut ocr_attempted = false;
+                    let mut ocr_applied = false;
+                    let mut ocr_error_class: Option<String> = None;
+                    let mut ocr_error_message: Option<String> = None;
+
+                    if selected_page_count <= READ_PDF_OCR_MAX_PAGES && ocr_runtime_available {
+                        ocr_attempted = true;
+                        match extract_pdf_text_with_ocr(
+                            target,
+                            extract_plan.first_page,
+                            extract_plan.last_page,
+                        ) {
+                            Ok(ocr_text) if pdf_has_visible_text(ocr_text.as_str()) => {
+                                let mut text_result = read_text_window_from_content(ocr_text.as_str(), request)?;
+                                if let Some(next_pages) = extract_plan.next_pages.as_ref() {
+                                    text_result.content.push_str(&format!(
+                                        "\n\n[More PDF pages available. Use pages=\"{}\" to continue.]",
+                                        next_pages
+                                    ));
+                                }
+                                ocr_applied = true;
+                                let payload = build_media_payload(
+                                    relative_path,
+                                    request,
+                                    target,
+                                    kind,
+                                    text_result.content,
+                                    text_result.line_start,
+                                    text_result.line_end,
+                                    text_result.has_more,
+                                    text_result.next_offset,
+                                    text_result.truncated_by.is_some(),
+                                    text_result.truncated_by,
+                                    json!({
+                                        "size_bytes": size_bytes,
+                                        "pages": request.pages,
+                                        "selected_page_range": {
+                                            "first_page": extract_plan.first_page,
+                                            "last_page": extract_plan.last_page
+                                        },
+                                        "selected_pages": selected_pages,
+                                        "selected_page_count": selected_page_count,
+                                        "total_pages": total_pages,
+                                        "total_pages_known": total_pages.is_some(),
+                                        "has_more_pages": extract_plan.has_more_pages,
+                                        "next_pages": extract_plan.next_pages,
+                                        "extract_status": "extracted_ocr",
+                                        "extractor": "tesseract+pdftoppm",
+                                        "extract_fallback_from": "pdftotext_unavailable",
+                                        "text_detected": true,
+                                        "embedded_image_count": embedded_image_count,
+                                        "likely_image_only_pdf": likely_image_only_pdf,
+                                        "ocr_runtime_available": ocr_runtime_available,
+                                        "ocr_attempted": ocr_attempted,
+                                        "ocr_applied": ocr_applied,
+                                        "ocr_page_limit": READ_PDF_OCR_MAX_PAGES,
+                                        "read_bytes": text_result.read_bytes,
+                                    }),
+                                );
+                                return Ok(payload);
+                            }
+                            Ok(_) => {
+                                ocr_error_message = Some("OCR returned no visible text.".to_string());
+                            }
+                            Err(error) => {
+                                ocr_error_class = Some(error.error_class);
+                                ocr_error_message = Some(error.message);
+                            }
+                        }
+                    }
+
                     let pages_note = request.pages.as_ref().map_or_else(
                         || format!("requested_pages=default({selected_pages})"),
                         |value| format!("requested_pages={value}"),
                     );
-                    let extraction_hint =
-                        "If pdftotext is unavailable, install poppler (macOS: brew install poppler; Debian/Ubuntu: apt-get install poppler-utils).";
+                    let missing_tools = collect_missing_pdf_extract_tools();
+                    let extraction_hint = build_pdf_extract_guidance(missing_tools.as_slice());
                     let extract_error_message = extract_error.message.clone();
-                    let content = format!(
+                    let mut content = format!(
                         "PDF file detected: {relative_path}\n{pages_note}\nselected_pages={selected_pages}\nPDF text extraction unavailable ({})\n{}",
                         extract_error_message, extraction_hint
                     );
+                    if ocr_attempted {
+                        if let Some(message) = ocr_error_message.as_ref() {
+                            content.push_str(&format!("\nOCR attempt failed: {message}"));
+                        } else if !ocr_applied {
+                            content.push_str("\nOCR attempt returned no visible text.");
+                        }
+                    } else if !ocr_runtime_available {
+                        content.push_str("\nOCR runtime unavailable (requires pdftoppm + tesseract).");
+                    } else if selected_page_count > READ_PDF_OCR_MAX_PAGES {
+                        content.push_str(&format!(
+                            "\nOCR skipped because selected page window ({selected_page_count}) exceeds max {} pages.",
+                            READ_PDF_OCR_MAX_PAGES
+                        ));
+                    }
+                    if let Some(next_pages) = extract_plan.next_pages.as_ref() {
+                        content.push_str(&format!(
+                            "\n\n[More PDF pages available. Use pages=\"{}\" to continue.]",
+                            next_pages
+                        ));
+                    }
                     let payload = build_media_payload(
                         relative_path,
                         request,
@@ -742,9 +1313,11 @@ fn read_media_payload(
                             "embedded_image_count": embedded_image_count,
                             "likely_image_only_pdf": likely_image_only_pdf,
                             "ocr_runtime_available": ocr_runtime_available,
-                            "ocr_attempted": false,
-                            "ocr_applied": false,
+                            "ocr_attempted": ocr_attempted,
+                            "ocr_applied": ocr_applied,
                             "ocr_page_limit": READ_PDF_OCR_MAX_PAGES,
+                            "ocr_error_class": ocr_error_class,
+                            "ocr_error_message": ocr_error_message,
                         }),
                     );
                     Ok(payload)
@@ -759,6 +1332,34 @@ fn read_media_payload(
                 .to_ascii_lowercase();
             let content = format!(
                 "Image file detected: {relative_path}\nformat={extension}\nsize_bytes={size_bytes}\nImage binary payload is intentionally not inlined."
+            );
+            let payload = build_media_payload(
+                relative_path,
+                request,
+                target,
+                kind,
+                content,
+                1,
+                1,
+                false,
+                None,
+                false,
+                None,
+                json!({
+                    "size_bytes": size_bytes,
+                    "format": extension,
+                }),
+            );
+            Ok(payload)
+        }
+        ReadKind::Video => {
+            let extension = target
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let content = format!(
+                "Video file detected: {relative_path}\nformat={extension}\nsize_bytes={size_bytes}\nVideo binary payload is intentionally not inlined."
             );
             let payload = build_media_payload(
                 relative_path,

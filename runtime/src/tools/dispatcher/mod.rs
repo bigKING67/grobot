@@ -44,7 +44,7 @@ impl ToolExecutor for LocalToolExecutor {
             TOOL_LIST => run_list(&context, args),
             TOOL_GLOB => run_glob(&context, args),
             TOOL_SEARCH => run_search(&context, args),
-            TOOL_READ => run_read(&context, args),
+            TOOL_READ => run_read(&context, args, input),
             TOOL_WRITE => run_write(&context, args),
             TOOL_EDIT => run_edit(&context, args),
             TOOL_BASH => run_bash(&context, args),

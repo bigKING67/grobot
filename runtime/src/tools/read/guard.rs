@@ -1,4 +1,5 @@
 const READ_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+const READ_VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "m4v"];
 const READ_BLOCKED_DEVICE_PATHS: &[&str] = &[
     "/dev/random",
     "/dev/urandom",
@@ -154,6 +155,7 @@ fn classify_read_kind(target: &Path) -> ReadKind {
         "ipynb" => ReadKind::Notebook,
         "pdf" => ReadKind::Pdf,
         value if READ_IMAGE_EXTENSIONS.iter().any(|item| *item == value) => ReadKind::Image,
+        value if READ_VIDEO_EXTENSIONS.iter().any(|item| *item == value) => ReadKind::Video,
         _ => ReadKind::Text,
     }
 }
