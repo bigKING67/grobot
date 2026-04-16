@@ -662,9 +662,59 @@ allow_tools = ["echo"]
         assert_eq!(payload["line_end"].as_u64(), Some(3));
         assert_eq!(payload["has_more"].as_bool(), Some(true));
         assert_eq!(payload["next_offset"].as_u64(), Some(4));
+        assert_eq!(
+            payload["meta"]["extra"]["selected_count"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(
+            payload["meta"]["extra"]["selected_cells"]
+                .as_array()
+                .map(|cells| cells.len()),
+            Some(2)
+        );
         let content = payload["content"].as_str().unwrap_or_default();
         assert!(content.contains("[2] code cell2"));
         assert!(content.contains("[3] markdown cell3"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_notebook_empty_file_returns_empty_window() {
+        let workspace = make_temp_workspace("read-v2-notebook-empty");
+        let notebook = json!({
+            "cells": []
+        });
+        fs::write(
+            workspace.join("empty.ipynb"),
+            serde_json::to_string(&notebook).expect("serialize notebook"),
+        )
+        .expect("write notebook file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-6c-empty".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "empty.ipynb"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("empty notebook read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("notebook"));
+        assert_eq!(payload["line_start"].as_u64(), Some(1));
+        assert_eq!(payload["line_end"].as_u64(), Some(0));
+        assert_eq!(payload["has_more"].as_bool(), Some(false));
+        assert_eq!(
+            payload["meta"]["extra"]["selected_count"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            payload["meta"]["extra"]["selected_cells"]
+                .as_array()
+                .map(|cells| cells.len()),
+            Some(0)
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -687,15 +737,69 @@ allow_tools = ["echo"]
         let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
         assert_eq!(payload["kind"].as_str(), Some("pdf"));
         assert_eq!(
-            payload["meta"]["extra"]["page_range"]["first_page"].as_u64(),
+            payload["meta"]["extra"]["selected_page_range"]["first_page"].as_u64(),
             Some(2)
         );
         assert_eq!(
-            payload["meta"]["extra"]["page_range"]["last_page"].as_u64(),
+            payload["meta"]["extra"]["selected_page_range"]["last_page"].as_u64(),
             Some(3)
         );
+        assert_eq!(
+            payload["meta"]["extra"]["selected_pages"].as_str(),
+            Some("2-3")
+        );
+        assert!(payload["meta"]["extra"]["total_pages_known"].is_boolean());
         let extract_status = payload["meta"]["extra"]["extract_status"].as_str().unwrap_or_default();
         assert!(extract_status == "extracted" || extract_status == "fallback");
+        if extract_status == "fallback" {
+            assert!(
+                payload["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("install poppler")
+            );
+        }
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_pdf_default_window_is_reflected_when_pages_not_provided() {
+        let workspace = make_temp_workspace("read-v2-pdf-default-window");
+        fs::write(workspace.join("default.pdf"), "%PDF-1.4\nplaceholder\n").expect("write pdf placeholder");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-6c-default".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "default.pdf"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("pdf read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("pdf"));
+        assert_eq!(
+            payload["meta"]["extra"]["selected_page_range"]["first_page"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            payload["meta"]["extra"]["selected_page_range"]["last_page"].as_u64(),
+            Some(20)
+        );
+        assert_eq!(
+            payload["meta"]["extra"]["selected_pages"].as_str(),
+            Some("1-20")
+        );
+        let extract_status = payload["meta"]["extra"]["extract_status"].as_str().unwrap_or_default();
+        if extract_status == "fallback" {
+            assert!(
+                payload["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("requested_pages=default(1-20)")
+            );
+        }
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -707,6 +811,66 @@ allow_tools = ["echo"]
         assert_eq!(parse_pdf_page_range(Some("0")), None);
         assert_eq!(parse_pdf_page_range(Some("9-2")), None);
         assert_eq!(parse_pdf_page_range(Some("abc")), None);
+    }
+
+    #[test]
+    fn read_v2_parse_pdf_total_pages_extracts_value() {
+        let raw = "Title: sample\nPages: 12\nEncrypted: no\n";
+        assert_eq!(parse_pdf_total_pages(raw), Some(12));
+        assert_eq!(parse_pdf_total_pages("Pages: 0"), None);
+        assert_eq!(parse_pdf_total_pages("No page metadata"), None);
+    }
+
+    #[test]
+    fn read_v2_compute_pdf_extract_plan_defaults_to_first_window() {
+        let plan = compute_pdf_extract_plan(None, Some(57)).expect("plan should succeed");
+        assert_eq!(plan.first_page, 1);
+        assert_eq!(plan.last_page, 20);
+        assert!(plan.has_more_pages);
+        assert_eq!(plan.next_pages.as_deref(), Some("21-40"));
+    }
+
+    #[test]
+    fn read_v2_compute_pdf_extract_plan_handles_requested_range() {
+        let plan = compute_pdf_extract_plan(Some((12, 25)), Some(18)).expect("plan should succeed");
+        assert_eq!(plan.first_page, 12);
+        assert_eq!(plan.last_page, 18);
+        assert!(!plan.has_more_pages);
+        assert_eq!(plan.next_pages, None);
+
+        let error = compute_pdf_extract_plan(Some((30, 35)), Some(18))
+            .expect_err("out of range should fail");
+        assert_eq!(error.error_class, "range_out_of_bounds");
+    }
+
+    #[test]
+    fn read_v2_blocks_device_and_proc_stdio_alias_paths() {
+        assert!(is_blocked_device_path(std::path::Path::new("/dev/stdout")));
+        assert!(is_blocked_device_path(std::path::Path::new("/dev/fd/1")));
+        assert!(is_blocked_device_path(std::path::Path::new("/proc/self/fd/2")));
+        assert!(!is_blocked_device_path(std::path::Path::new("/tmp/read-ok.txt")));
+    }
+
+    #[test]
+    fn read_v2_include_metadata_false_omits_meta_field() {
+        let workspace = make_temp_workspace("read-v2-no-meta");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-no-meta-1".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "sample.txt",
+                "include_metadata": false
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert!(payload.get("meta").is_none());
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
     #[test]

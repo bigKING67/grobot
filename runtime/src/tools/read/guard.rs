@@ -1,5 +1,18 @@
 const READ_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
-const READ_BLOCKED_DEVICE_PATHS: &[&str] = &["/dev/random", "/dev/urandom", "/dev/zero", "/dev/tty", "/dev/stdin"];
+const READ_BLOCKED_DEVICE_PATHS: &[&str] = &[
+    "/dev/random",
+    "/dev/urandom",
+    "/dev/zero",
+    "/dev/full",
+    "/dev/tty",
+    "/dev/stdin",
+    "/dev/stdout",
+    "/dev/stderr",
+    "/dev/console",
+    "/dev/fd/0",
+    "/dev/fd/1",
+    "/dev/fd/2",
+];
 
 fn normalize_read_input_path(raw_path: &str) -> String {
     let without_at = raw_path.strip_prefix('@').unwrap_or(raw_path);
@@ -14,7 +27,15 @@ fn normalize_read_input_path(raw_path: &str) -> String {
 
 fn is_blocked_device_path(path: &Path) -> bool {
     let value = path.to_string_lossy();
-    READ_BLOCKED_DEVICE_PATHS.iter().any(|item| *item == value)
+    if READ_BLOCKED_DEVICE_PATHS.iter().any(|item| *item == value) {
+        return true;
+    }
+    if value.starts_with("/proc/")
+        && (value.ends_with("/fd/0") || value.ends_with("/fd/1") || value.ends_with("/fd/2"))
+    {
+        return true;
+    }
+    false
 }
 
 fn try_macos_ampm_variant(file_path: &str) -> String {
