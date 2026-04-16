@@ -24,6 +24,7 @@ The product architecture follows `4 execution layers + 1 governance plane` in bo
 | [Directory Structure](./directory-structure.md) | Module boundaries and file layout | Updated v1.0 (2026-04-16) |
 | [Database Guidelines](./database-guidelines.md) | State persistence contracts (`file` / `redis`) and migration rules | Updated v1.0 (2026-04-16) |
 | [Error Handling](./error-handling.md) | Failure taxonomy, propagation, and operator-facing errors | Updated v1.0 (2026-04-16) |
+| [Type Safety](./type-safety.md) | Cross-layer type contracts, validation boundaries, and schema evolution rules | Updated v1.0 (2026-04-16) |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, review checks, and verification commands | Updated v1.0 (2026-04-16) |
 | [Logging Guidelines](./logging-guidelines.md) | Runtime/CLI observability and redaction requirements | Updated v1.0 (2026-04-16) |
 
@@ -34,8 +35,9 @@ The product architecture follows `4 execution layers + 1 governance plane` in bo
 1. Identify touched layer(s): `gateway`, `runtime`, and/or `.trellis/scripts`.
 2. Read `directory-structure.md` and `quality-guidelines.md` first.
 3. If state/config/session behavior changes, also read `database-guidelines.md`.
-4. If error/event/log behavior changes, also read `error-handling.md` and `logging-guidelines.md`.
-5. Keep contracts and docs synchronized in the same change.
+4. If type contracts or payload schema changes, also read `type-safety.md`.
+5. If error/event/log behavior changes, also read `error-handling.md` and `logging-guidelines.md`.
+6. Keep contracts and docs synchronized in the same change.
 
 ---
 
