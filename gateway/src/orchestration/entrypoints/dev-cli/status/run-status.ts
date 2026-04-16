@@ -3,8 +3,14 @@ import { resolveExecutionPlaneConfig } from "../../../execution-plane";
 import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { probeProviderModels, readProviderSnapshotFromToml } from "../provider-probe";
-import { resolveRuntimeBinaryPath, runRuntimeHealthcheck } from "../runtime-health";
+import {
+  buildToolsManifestFingerprint,
+  resolveRuntimeBinaryPath,
+  runRuntimeHealthcheck,
+  runRuntimeToolsDescribe,
+} from "../runtime-health";
 import { maskSecret } from "../services/redaction";
+import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
 import {
   basenameFromPath,
   resolveConfigTomlPath,
@@ -20,18 +26,6 @@ import {
   resolveSessionScopeOption,
   resolveSessionSubjectOption,
 } from "../start/session-options";
-
-const DEFAULT_RUNTIME_ENABLED_TOOLS = [
-  "list",
-  "glob",
-  "search",
-  "read",
-  "write",
-  "edit",
-  "bash",
-  "mcp_servers",
-  "mcp_call",
-];
 
 function stripInlineComment(rawLine: string): string {
   const hashIndex = rawLine.indexOf("#");
@@ -99,10 +93,17 @@ function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
   return [];
 }
 
-function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined): {
+function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, runtimeBinaryPath?: string): {
   enabledTools: string[];
+  enabledToolsSource: "runtime.tools.describe" | "start-default";
+  enabledToolsSourceDetail?: string;
+  manifestFingerprint: string;
+  manifestToolCount: number;
+  manifestDefaultEnabledCount: number;
   bashAllowlist: string[];
   maxToolRounds: number;
+  noToolFallbackMode: "off" | "safe" | "strict";
+  maxRecoveryRounds: number;
 } {
   const maxToolRoundsRaw = process.env.GROBOT_MAX_TOOL_ROUNDS;
   const parsedMaxToolRounds =
@@ -113,15 +114,57 @@ function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined): 
     typeof parsedMaxToolRounds === "number" && Number.isFinite(parsedMaxToolRounds)
       ? Math.min(Math.max(parsedMaxToolRounds, 1), 32)
       : 8;
+  const noToolFallbackModeRaw = process.env.GROBOT_NO_TOOL_FALLBACK_MODE?.trim().toLowerCase();
+  const noToolFallbackMode = noToolFallbackModeRaw === "off"
+    || noToolFallbackModeRaw === "safe"
+    || noToolFallbackModeRaw === "strict"
+    ? noToolFallbackModeRaw
+    : "safe";
+  const maxRecoveryRoundsRaw = process.env.GROBOT_MAX_RECOVERY_ROUNDS;
+  const parsedMaxRecoveryRounds =
+    typeof maxRecoveryRoundsRaw === "string" && /^\d+$/.test(maxRecoveryRoundsRaw.trim())
+      ? Number.parseInt(maxRecoveryRoundsRaw.trim(), 10)
+      : undefined;
+  const maxRecoveryRounds =
+    typeof parsedMaxRecoveryRounds === "number" && Number.isFinite(parsedMaxRecoveryRounds)
+      ? Math.min(Math.max(parsedMaxRecoveryRounds, 0), 8)
+      : 2;
+  const described = runtimeBinaryPath ? runRuntimeToolsDescribe(runtimeBinaryPath) : undefined;
+  const hasRuntimeDefaultEnabledTools = Boolean(
+    described?.ok && Array.isArray(described.defaultEnabledTools) && described.defaultEnabledTools.length > 0,
+  );
+  const enabledTools = hasRuntimeDefaultEnabledTools && described
+    ? [...described.defaultEnabledTools]
+    : buildDefaultRuntimeEnabledTools();
+  const manifestToolNames = hasRuntimeDefaultEnabledTools && described
+    ? [...described.toolNames]
+    : [...enabledTools];
+  const manifestFingerprint = hasRuntimeDefaultEnabledTools && described
+    ? described.manifestFingerprint
+    : `fallback:${buildToolsManifestFingerprint(manifestToolNames, enabledTools)}`;
+  const enabledToolsSource = hasRuntimeDefaultEnabledTools
+    ? "runtime.tools.describe"
+    : "start-default";
   const bashAllowlist = readToolsAllowlistFromProjectToml(projectTomlPath);
   return {
-    enabledTools: [...DEFAULT_RUNTIME_ENABLED_TOOLS],
+    enabledTools,
+    enabledToolsSource,
+    enabledToolsSourceDetail:
+      enabledToolsSource === "start-default" && described && described.detail
+        ? described.detail
+        : undefined,
+    manifestFingerprint,
+    manifestToolCount: manifestToolNames.length,
+    manifestDefaultEnabledCount: enabledTools.length,
     bashAllowlist,
     maxToolRounds,
+    noToolFallbackMode,
+    maxRecoveryRounds,
   };
 }
 
 export async function runStatus(options: Record<string, OptionValue>): Promise<number> {
+  const outputJson = hasFlag(options, "json");
   const homeDir = resolveHomeDir(options);
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
@@ -176,7 +219,128 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     noShadowModeArg: hasFlag(options, "no-shadow-mode"),
     projectTomlPath,
   });
-  const runtimeToolContextPreview = resolveRuntimeToolContextPreview(projectTomlPath);
+  const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
+  const runtimeToolContextPreview = resolveRuntimeToolContextPreview(projectTomlPath, runtimeBinaryPath);
+  const parsedScope = parseScope(sessionScopeRaw);
+  const maskedApiKey = maskSecret(apiKey);
+  const runtimeHealth =
+    executionPlane.runtimeImpl === "rust" && runtimeBinaryPath
+      ? runRuntimeHealthcheck(runtimeBinaryPath)
+      : undefined;
+
+  let probeResult:
+    | {
+      state: string;
+      detail: string;
+      httpStatus?: number;
+      modelCount?: number;
+      selectedModel?: string;
+      selectedFound?: boolean;
+      resolvedModel?: string;
+      autoSelected?: boolean;
+    }
+    | undefined;
+  let exitCode = 0;
+  if (hasFlag(options, "probe")) {
+    const probeBaseUrl = readOptionString(options, "base-url") ??
+      process.env.GROBOT_BASE_URL ??
+      projectProviderSnapshot?.provider?.baseUrl;
+    const probeApiKey = readOptionString(options, "api-key") ??
+      process.env.GROBOT_API_KEY ??
+      projectProviderSnapshot?.provider?.apiKey;
+    const probeModel = readOptionString(options, "model") ??
+      process.env.GROBOT_MODEL ??
+      projectProviderSnapshot?.provider?.model;
+    if (!probeBaseUrl || !probeApiKey) {
+      probeResult = {
+        state: "skipped",
+        detail: "(missing base_url/api_key)",
+      };
+      exitCode = 2;
+    } else {
+      const probe = await probeProviderModels(probeBaseUrl, probeApiKey, probeModel);
+      probeResult = {
+        state: probe.state,
+        detail: probe.detail,
+        httpStatus: probe.httpStatus,
+        modelCount: probe.modelCount,
+        selectedModel: probe.selectedModel,
+        selectedFound: probe.selectedFound,
+        resolvedModel: probe.resolvedModel,
+        autoSelected: probe.autoSelected,
+      };
+      if (probe.state !== "ok") {
+        exitCode = 1;
+      }
+    }
+  }
+
+  if (outputJson) {
+    const payload: Record<string, unknown> = {
+      status: "ok",
+      engine: "ts-dev-cli",
+      home: homeDir,
+      project_root: projectRoot,
+      work_dir: workDir,
+      config_toml: configTomlPath ?? null,
+      config_source: configSource,
+      project_toml: projectTomlPath ?? null,
+      project: projectName,
+      provider: providerName,
+      provider_source: projectProviderSnapshot?.source ?? null,
+      model: modelName,
+      base_url: baseUrl,
+      api_key: maskedApiKey,
+      session_scope: parsedScope,
+      session_subject: sessionSubject,
+      session_preview: sessionPreview,
+      execution: {
+        gateway_impl: executionPlane.gatewayImpl,
+        gateway_impl_source: executionPlane.gatewayImplSource,
+        runtime_impl: executionPlane.runtimeImpl,
+        runtime_impl_source: executionPlane.runtimeImplSource,
+        shadow_mode: executionPlane.shadowMode,
+        shadow_mode_source: executionPlane.shadowModeSource,
+      },
+      runtime_tools: {
+        context: "enabled",
+        enabled_tools_source: runtimeToolContextPreview.enabledToolsSource,
+        enabled_tools_source_detail: runtimeToolContextPreview.enabledToolsSourceDetail ?? null,
+        manifest_fingerprint: runtimeToolContextPreview.manifestFingerprint,
+        manifest_tool_count: runtimeToolContextPreview.manifestToolCount,
+        manifest_default_enabled_count: runtimeToolContextPreview.manifestDefaultEnabledCount,
+        work_dir: workDir,
+        enabled_tools: runtimeToolContextPreview.enabledTools,
+        bash_allowlist: runtimeToolContextPreview.bashAllowlist,
+        max_tool_rounds: runtimeToolContextPreview.maxToolRounds,
+        no_tool_fallback_mode: runtimeToolContextPreview.noToolFallbackMode,
+        max_recovery_rounds: runtimeToolContextPreview.maxRecoveryRounds,
+      },
+      runtime_health:
+        runtimeHealth && runtimeBinaryPath
+          ? {
+            ok: runtimeHealth.ok,
+            detail: runtimeHealth.detail,
+            binary_path: runtimeBinaryPath,
+          }
+          : null,
+      probe:
+        probeResult == null
+          ? null
+          : {
+            state: probeResult.state,
+            detail: probeResult.detail,
+            http_status: probeResult.httpStatus ?? null,
+            model_count: probeResult.modelCount ?? null,
+            selected_model: probeResult.selectedModel ?? null,
+            selected_found: probeResult.selectedFound ?? null,
+            resolved_model: probeResult.resolvedModel ?? null,
+            auto_selected: probeResult.autoSelected ?? null,
+          },
+    };
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return exitCode;
+  }
 
   process.stdout.write("status: ok\n");
   process.stdout.write("engine: ts-dev-cli\n");
@@ -193,14 +357,31 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   }
   process.stdout.write(`model: ${modelName}\n`);
   process.stdout.write(`base_url: ${baseUrl}\n`);
-  process.stdout.write(`api_key: ${maskSecret(apiKey)}\n`);
-  process.stdout.write(`session_scope: ${parseScope(sessionScopeRaw)}\n`);
+  process.stdout.write(`api_key: ${maskedApiKey}\n`);
+  process.stdout.write(`session_scope: ${parsedScope}\n`);
   process.stdout.write(`session_subject: ${sessionSubject}\n`);
   process.stdout.write(`session_preview: ${sessionPreview}\n`);
   process.stdout.write(
     `execution: gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
   );
-  process.stdout.write("runtime_tool_context: enabled (start-default)\n");
+  process.stdout.write(`runtime_tool_context: enabled (${runtimeToolContextPreview.enabledToolsSource})\n`);
+  process.stdout.write(
+    `runtime_tool_enabled_tools_source: ${runtimeToolContextPreview.enabledToolsSource}\n`,
+  );
+  if (runtimeToolContextPreview.enabledToolsSourceDetail) {
+    process.stdout.write(
+      `runtime_tool_enabled_tools_source_detail: ${runtimeToolContextPreview.enabledToolsSourceDetail}\n`,
+    );
+  }
+  process.stdout.write(
+    `runtime_tool_manifest_fingerprint: ${runtimeToolContextPreview.manifestFingerprint}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_manifest_tool_count: ${runtimeToolContextPreview.manifestToolCount}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_manifest_default_enabled_count: ${runtimeToolContextPreview.manifestDefaultEnabledCount}\n`,
+  );
   process.stdout.write(`runtime_tool_work_dir: ${workDir}\n`);
   process.stdout.write(
     `runtime_tool_enabled_tools: ${runtimeToolContextPreview.enabledTools.join(",")}\n`,
@@ -209,49 +390,32 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_bash_allowlist: ${runtimeToolContextPreview.bashAllowlist.length > 0 ? runtimeToolContextPreview.bashAllowlist.join(",") : "<empty>"}\n`,
   );
   process.stdout.write(`runtime_tool_max_tool_rounds: ${runtimeToolContextPreview.maxToolRounds}\n`);
+  process.stdout.write(`runtime_tool_no_tool_fallback_mode: ${runtimeToolContextPreview.noToolFallbackMode}\n`);
+  process.stdout.write(`runtime_tool_max_recovery_rounds: ${runtimeToolContextPreview.maxRecoveryRounds}\n`);
 
-  if (executionPlane.runtimeImpl === "rust") {
-    const runtimeBinaryPath = resolveRuntimeBinaryPath();
-    const health = runRuntimeHealthcheck(runtimeBinaryPath);
+  if (runtimeHealth && runtimeBinaryPath) {
     process.stdout.write(
-      `runtime_health: ${health.ok ? "ok" : "warn"} (${runtimeBinaryPath}) ${health.detail}\n`,
+      `runtime_health: ${runtimeHealth.ok ? "ok" : "warn"} (${runtimeBinaryPath}) ${runtimeHealth.detail}\n`,
     );
   }
-  if (hasFlag(options, "probe")) {
-    const probeBaseUrl = readOptionString(options, "base-url") ??
-      process.env.GROBOT_BASE_URL ??
-      projectProviderSnapshot?.provider?.baseUrl;
-    const probeApiKey = readOptionString(options, "api-key") ??
-      process.env.GROBOT_API_KEY ??
-      projectProviderSnapshot?.provider?.apiKey;
-    const probeModel = readOptionString(options, "model") ??
-      process.env.GROBOT_MODEL ??
-      projectProviderSnapshot?.provider?.model;
-    if (!probeBaseUrl || !probeApiKey) {
-      process.stdout.write("probe: skipped (missing base_url/api_key)\n");
-      return 2;
+  if (probeResult) {
+    process.stdout.write(`probe: ${probeResult.state} ${probeResult.detail}\n`);
+    if (typeof probeResult.httpStatus === "number" && probeResult.httpStatus > 0) {
+      process.stdout.write(`probe_http_status: ${probeResult.httpStatus}\n`);
     }
-    const probe = await probeProviderModels(probeBaseUrl, probeApiKey, probeModel);
-    process.stdout.write(`probe: ${probe.state} ${probe.detail}\n`);
-    if (typeof probe.httpStatus === "number" && probe.httpStatus > 0) {
-      process.stdout.write(`probe_http_status: ${probe.httpStatus}\n`);
+    if (typeof probeResult.modelCount === "number") {
+      process.stdout.write(`probe_model_count: ${probeResult.modelCount}\n`);
     }
-    if (typeof probe.modelCount === "number") {
-      process.stdout.write(`probe_model_count: ${probe.modelCount}\n`);
-    }
-    if (typeof probe.selectedModel === "string" && probe.selectedModel.length > 0) {
+    if (typeof probeResult.selectedModel === "string" && probeResult.selectedModel.length > 0) {
       process.stdout.write(
-        `probe_selected_model: ${probe.selectedModel} (${probe.selectedFound ? "found" : "missing"})\n`,
+        `probe_selected_model: ${probeResult.selectedModel} (${probeResult.selectedFound ? "found" : "missing"})\n`,
       );
     }
-    if (typeof probe.resolvedModel === "string" && probe.resolvedModel.length > 0) {
+    if (typeof probeResult.resolvedModel === "string" && probeResult.resolvedModel.length > 0) {
       process.stdout.write(
-        `probe_resolved_model: ${probe.resolvedModel}${probe.autoSelected ? " (auto)" : ""}\n`,
+        `probe_resolved_model: ${probeResult.resolvedModel}${probeResult.autoSelected ? " (auto)" : ""}\n`,
       );
-    }
-    if (probe.state !== "ok") {
-      return 1;
     }
   }
-  return 0;
+  return exitCode;
 }
