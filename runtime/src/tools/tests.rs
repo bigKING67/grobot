@@ -19,6 +19,25 @@ mod tests {
         root
     }
 
+    fn make_read_only_input(workspace: &PathBuf) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: "req-read-v2".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run read".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["read".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
     #[test]
     fn local_tool_catalog_keeps_schema_defaults_and_dispatch_aligned() {
         let definitions = local_tool_definitions();
@@ -82,6 +101,7 @@ allow_tools = ["echo"]
         .expect("write project policy");
 
         let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
             work_dir: workspace,
             enabled_tools: HashSet::new(),
             bash_allowlist: Vec::new(),
@@ -149,6 +169,7 @@ allow_tools = ["echo"]
         let canonical_workspace = fs::canonicalize(&workspace).expect("canonicalize workspace");
 
         let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
             work_dir: canonical_workspace,
             enabled_tools: HashSet::new(),
             bash_allowlist: Vec::new(),
@@ -177,6 +198,7 @@ allow_tools = ["echo"]
         .expect("write sample file");
         let canonical_workspace = fs::canonicalize(&workspace).expect("canonicalize workspace");
         let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
             work_dir: canonical_workspace,
             enabled_tools: HashSet::new(),
             bash_allowlist: Vec::new(),
@@ -436,6 +458,320 @@ allow_tools = ["echo"]
         assert_eq!(bash_payload["exit_code"].as_i64(), Some(0));
         assert_eq!(bash_payload["stdout"].as_str(), Some("kimi_ok"));
 
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_supports_offset_limit_and_next_offset() {
+        let workspace = make_temp_workspace("read-v2-offset-limit");
+        fs::write(
+            workspace.join("sample.txt"),
+            "line1\nline2\nline3\nline4\nline5\n",
+        )
+        .expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-1".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "sample.txt",
+                "offset": 2,
+                "limit": 2
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert_eq!(payload["line_start"].as_u64(), Some(2));
+        assert_eq!(payload["line_end"].as_u64(), Some(3));
+        assert_eq!(payload["has_more"].as_bool(), Some(true));
+        assert_eq!(payload["next_offset"].as_u64(), Some(4));
+        assert!(
+            payload["content"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("line2\nline3")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_rejects_mixed_legacy_and_offset_ranges() {
+        let workspace = make_temp_workspace("read-v2-mixed-ranges");
+        fs::write(workspace.join("mixed.txt"), "line1\nline2\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-2".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "mixed.txt",
+                "line_start": 1,
+                "offset": 1
+            }),
+        };
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("read should fail with mixed ranges");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_preserves_legacy_line_start_line_end_behavior() {
+        let workspace = make_temp_workspace("read-v2-legacy-range");
+        fs::write(workspace.join("legacy.txt"), "l1\nl2\nl3\nl4\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-3".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "legacy.txt",
+                "line_start": 2,
+                "line_end": 3
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert_eq!(payload["line_start"].as_u64(), Some(2));
+        assert_eq!(payload["line_end"].as_u64(), Some(3));
+        assert!(
+            payload["content"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("l2\nl3")
+        );
+        assert_eq!(payload["has_more"].as_bool(), Some(true));
+        assert_eq!(payload["next_offset"].as_u64(), Some(4));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_truncates_by_default_line_cap() {
+        let workspace = make_temp_workspace("read-v2-line-cap");
+        let mut content = String::new();
+        for index in 1..=2105 {
+            content.push_str(format!("line-{index}\n").as_str());
+        }
+        fs::write(workspace.join("large.txt"), content).expect("write large text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-4".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "large.txt"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert_eq!(payload["truncated"].as_bool(), Some(true));
+        assert_eq!(payload["truncated_by"].as_str(), Some("lines"));
+        assert_eq!(payload["line_end"].as_u64(), Some(2000));
+        assert_eq!(payload["next_offset"].as_u64(), Some(2001));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_rejects_binary_files() {
+        let workspace = make_temp_workspace("read-v2-binary");
+        fs::write(workspace.join("binary.dat"), vec![0_u8, 1, 2, 3, 4]).expect("write binary file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-5".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "binary.dat"
+            }),
+        };
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("binary read should fail");
+        assert_eq!(error.error_class, "binary_file_not_supported");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_routes_image_file_to_image_kind() {
+        let workspace = make_temp_workspace("read-v2-image-kind");
+        fs::write(
+            workspace.join("img.png"),
+            vec![137_u8, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0],
+        )
+        .expect("write image-like file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-6".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "img.png"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("image"));
+        assert!(
+            payload["content"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Image file detected")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_returns_file_unchanged_for_same_range_and_mtime() {
+        let workspace = make_temp_workspace("read-v2-dedup");
+        fs::write(workspace.join("dedup.txt"), "line1\nline2\nline3\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-7".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "dedup.txt",
+                "offset": 1,
+                "limit": 2
+            }),
+        };
+        let first = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("first read should succeed");
+        let first_payload: Value = serde_json::from_str(&first.content).expect("first read output should be json");
+        assert_eq!(first_payload["kind"].as_str(), Some("text"));
+
+        let second = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("second read should succeed");
+        let second_payload: Value = serde_json::from_str(&second.content).expect("second read output should be json");
+        assert_eq!(second_payload["kind"].as_str(), Some("file_unchanged"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_dedup_is_session_scoped() {
+        let workspace = make_temp_workspace("read-v2-dedup-session");
+        fs::write(workspace.join("session.txt"), "line1\nline2\nline3\n").expect("write sample text");
+        let input_a = make_read_only_input(&workspace);
+        let mut input_b = make_read_only_input(&workspace);
+        input_b.session_key = "feishu:grobot:dm:tester-b".to_string();
+        let call = ToolCallInput {
+            id: "read-v2-7b".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "session.txt",
+                "offset": 1,
+                "limit": 2
+            }),
+        };
+        let _first = LocalToolExecutor
+            .execute_tool_call(&call, &input_a)
+            .expect("first read should succeed");
+        let second_same_session = LocalToolExecutor
+            .execute_tool_call(&call, &input_a)
+            .expect("second read should succeed");
+        let payload_same: Value =
+            serde_json::from_str(&second_same_session.content).expect("same-session payload should be json");
+        assert_eq!(payload_same["kind"].as_str(), Some("file_unchanged"));
+
+        let cross_session = LocalToolExecutor
+            .execute_tool_call(&call, &input_b)
+            .expect("cross-session first read should succeed");
+        let payload_cross: Value =
+            serde_json::from_str(&cross_session.content).expect("cross-session payload should be json");
+        assert_eq!(payload_cross["kind"].as_str(), Some("text"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_supports_at_prefixed_path() {
+        let workspace = make_temp_workspace("read-v2-at-path");
+        fs::write(workspace.join("at.txt"), "hello\nworld\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-7c".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "@at.txt"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert!(payload["content"].as_str().unwrap_or_default().starts_with("hello\nworld"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_supports_curly_quote_filename_variant() {
+        let workspace = make_temp_workspace("read-v2-curly-quote");
+        let actual_name = "Capture d\u{2019}ecran.txt";
+        fs::write(workspace.join(actual_name), "variant\nok\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-7d".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "Capture d'ecran.txt"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed via curly quote variant");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert!(payload["content"].as_str().unwrap_or_default().starts_with("variant\nok"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_supports_macos_ampm_filename_variant() {
+        let workspace = make_temp_workspace("read-v2-ampm");
+        let actual_name = "Screenshot\u{202F}AM.txt";
+        fs::write(workspace.join(actual_name), "variant\nok\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-7e".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "Screenshot AM.txt"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("read should succeed via AM/PM variant");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert!(payload["content"].as_str().unwrap_or_default().starts_with("variant\nok"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_reports_offset_out_of_bounds() {
+        let workspace = make_temp_workspace("read-v2-oob");
+        fs::write(workspace.join("oob.txt"), "line1\nline2\n").expect("write sample text");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-8".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "oob.txt",
+                "offset": 9
+            }),
+        };
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("out of bounds read should fail");
+        assert_eq!(error.error_class, "range_out_of_bounds");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

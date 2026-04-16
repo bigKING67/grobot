@@ -762,57 +762,6 @@ fn run_search(
     Ok(ToolCallOutput::from_payload(payload))
 }
 
-fn run_read(
-    context: &ToolContextResolved,
-    args: &Map<String, Value>,
-) -> Result<ToolCallOutput, ToolExecutionError> {
-    let path = get_string_arg(args, "path")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "read.path is required"))?;
-    let line_start = get_usize_arg(args, "line_start", 1, usize::MAX);
-    let line_end_raw = args.get("line_end").and_then(Value::as_u64).map(|value| value as usize);
-    let target = ensure_within_workspace(&context.work_dir, &path, false)?;
-    if !target.is_file() {
-        return Err(ToolExecutionError::new(
-            "path_invalid",
-            format!("read target is not a file: {}", target.display()),
-        ));
-    }
-    if line_start == 0 {
-        return Err(ToolExecutionError::new(
-            "invalid_tool_arguments",
-            "line_start must be >= 1",
-        ));
-    }
-    let requested_end = line_end_raw.unwrap_or(usize::MAX).max(line_start);
-    let file = fs::File::open(&target).map_err(|error| {
-        ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}"))
-    })?;
-    let reader = BufReader::new(file);
-    let mut selected: Vec<String> = Vec::new();
-    for (index, line_result) in reader.lines().enumerate() {
-        let line_number = index + 1;
-        if line_number < line_start {
-            continue;
-        }
-        if line_number > requested_end {
-            break;
-        }
-        let line = line_result.map_err(|error| {
-            ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}"))
-        })?;
-        selected.push(line);
-    }
-    let selected_text = selected.join("\n");
-    let payload = json!({
-        "tool": TOOL_READ,
-        "path": relative_to_work_dir(&context.work_dir, &target),
-        "line_start": line_start,
-        "line_end": if selected.is_empty() { line_start.saturating_sub(1) } else { line_start + selected.len() - 1 },
-        "content": selected_text,
-    });
-    Ok(ToolCallOutput::from_payload(payload))
-}
-
 fn run_write(
     context: &ToolContextResolved,
     args: &Map<String, Value>,

@@ -82,6 +82,7 @@ impl ToolExecutionError {
 
 #[derive(Debug, Clone)]
 struct ToolContextResolved {
+    session_key: String,
     work_dir: PathBuf,
     enabled_tools: HashSet<String>,
     bash_allowlist: Vec<String>,
@@ -341,7 +342,11 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 "properties": {
                     "path": { "type": "string" },
                     "line_start": { "type": "integer" },
-                    "line_end": { "type": "integer" }
+                    "line_end": { "type": "integer" },
+                    "offset": { "type": "integer" },
+                    "limit": { "type": "integer" },
+                    "pages": { "type": "string" },
+                    "include_metadata": { "type": "boolean" }
                 },
                 "required": ["path"]
             }),
@@ -1217,7 +1222,12 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();
+    let session_key = input
+        .session_key
+        .trim()
+        .to_string();
     Ok(ToolContextResolved {
+        session_key,
         work_dir: canonical_work_dir,
         enabled_tools,
         bash_allowlist,

@@ -1,0 +1,95 @@
+fn file_size_for_meta(target: &Path) -> u64 {
+    fs::metadata(target).map(|meta| meta.len()).unwrap_or(0)
+}
+
+fn build_text_payload(
+    relative_path: &str,
+    request: &ReadRequest,
+    result: &ReadTextResult,
+    target: &Path,
+) -> Value {
+    let mut payload = json!({
+        "tool": TOOL_READ,
+        "kind": "text",
+        "path": relative_path,
+        "line_start": result.line_start,
+        "line_end": result.line_end,
+        "has_more": result.has_more,
+        "next_offset": result.next_offset,
+        "truncated": result.truncated_by.is_some(),
+        "truncated_by": result.truncated_by,
+        "content": result.content,
+    });
+    if request.include_metadata {
+        payload["meta"] = json!({
+            "kind": "text",
+            "range_mode": request.range_mode,
+            "start_line": request.start_line,
+            "line_limit": request.line_limit,
+            "size_bytes": file_size_for_meta(target),
+            "read_bytes": result.read_bytes,
+        });
+    }
+    payload
+}
+
+fn build_file_unchanged_payload(
+    relative_path: &str,
+    request: &ReadRequest,
+    cached: &ReadCacheEntry,
+    mtime_ms: u128,
+) -> Value {
+    let mut payload = json!({
+        "tool": TOOL_READ,
+        "kind": "file_unchanged",
+        "path": relative_path,
+        "line_start": cached.line_start,
+        "line_end": cached.line_end,
+        "has_more": cached.has_more,
+        "next_offset": cached.next_offset,
+        "truncated": false,
+        "truncated_by": Value::Null,
+        "content": "File unchanged for the same range since last read.",
+    });
+    if request.include_metadata {
+        payload["meta"] = json!({
+            "kind": cached.kind,
+            "range_mode": request.range_mode,
+            "line_limit": cached.line_limit,
+            "mtime_ms": mtime_ms.min(u128::from(u64::MAX)) as u64,
+            "cache": "hit",
+        });
+    }
+    payload
+}
+
+fn build_media_payload(
+    relative_path: &str,
+    request: &ReadRequest,
+    target: &Path,
+    kind: ReadKind,
+    content: String,
+    extra_meta: Value,
+) -> Value {
+    let mut payload = json!({
+        "tool": TOOL_READ,
+        "kind": kind.as_str(),
+        "path": relative_path,
+        "line_start": 1,
+        "line_end": 1,
+        "has_more": false,
+        "next_offset": Value::Null,
+        "truncated": false,
+        "truncated_by": Value::Null,
+        "content": content,
+    });
+    if request.include_metadata {
+        payload["meta"] = json!({
+            "kind": kind.as_str(),
+            "range_mode": request.range_mode,
+            "size_bytes": file_size_for_meta(target),
+            "extra": extra_meta,
+        });
+    }
+    payload
+}
