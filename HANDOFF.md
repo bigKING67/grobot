@@ -1,9 +1,9 @@
 # HANDOFF
 
-- generated_at: 2026-04-16T07:54:03.366Z
+- generated_at: 2026-04-16T07:56:45.908Z
 - reason: auto-exit
 - project: grobot
-- work_dir: /tmp/grobot-start-work-mo16nuxi-c059
+- work_dir: /tmp/grobot-start-work-mo16rccg-bicf
 - session_key: feishu:grobot:dm:gaoqian
 
 ## Compact Instructions
