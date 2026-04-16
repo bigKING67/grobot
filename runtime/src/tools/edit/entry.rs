@@ -10,7 +10,7 @@ fn run_edit(
     let target = resolve_read_target(context, &path)?;
     ensure_text_read_allowed(&target)?;
     let relative_path = relative_to_work_dir(&context.work_dir, &target);
-    let file_lock = acquire_edit_file_lock(&target)?;
+    let file_lock = acquire_file_mutation_lock(&target)?;
     let _file_guard = file_lock
         .lock()
         .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to acquire edit file lock"))?;
@@ -148,6 +148,7 @@ fn run_edit(
     let final_content = format!("{bom}{restored}");
     atomic_write_text_file(&target, final_content.as_bytes())?;
     clear_edit_read_snapshot(context.session_key.as_str(), &target);
+    clear_write_read_snapshot(context.session_key.as_str(), &target);
 
     let diff = build_edit_diff(&matches, &normalized_edits);
     let first_changed_line = matches.first().map(|item| item.start_line).unwrap_or(1);

@@ -3,9 +3,9 @@ fn edit_snapshot_store() -> &'static Mutex<EditReadSnapshotStore> {
     STORE.get_or_init(|| Mutex::new(EditReadSnapshotStore::default()))
 }
 
-fn edit_mutation_queue_store() -> &'static Mutex<EditMutationQueueStore> {
-    static STORE: OnceLock<Mutex<EditMutationQueueStore>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(EditMutationQueueStore::default()))
+fn file_mutation_queue_store() -> &'static Mutex<FileMutationQueueStore> {
+    static STORE: OnceLock<Mutex<FileMutationQueueStore>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(FileMutationQueueStore::default()))
 }
 
 fn build_edit_snapshot_key(session_key: &str, target: &Path) -> String {
@@ -47,12 +47,12 @@ fn clear_edit_read_snapshot(session_key: &str, target: &Path) {
     store.order.retain(|item| item != &key);
 }
 
-fn acquire_edit_file_lock(target: &Path) -> Result<Arc<Mutex<()>>, ToolExecutionError> {
+fn acquire_file_mutation_lock(target: &Path) -> Result<Arc<Mutex<()>>, ToolExecutionError> {
     let key = target.to_string_lossy().to_string();
-    let mut store = edit_mutation_queue_store()
+    let mut store = file_mutation_queue_store()
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to lock edit queue store"))?;
-    if store.locks.len() > EDIT_MUTATION_LOCK_MAX_TRACKED {
+        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to lock file mutation queue store"))?;
+    if store.locks.len() > FILE_MUTATION_LOCK_MAX_TRACKED {
         store.locks.retain(|_, lock| Arc::strong_count(lock) > 1);
     }
     Ok(store

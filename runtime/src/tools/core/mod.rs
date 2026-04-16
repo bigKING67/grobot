@@ -354,15 +354,15 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_WRITE,
-            description: "Write file content",
+            description: "Create or fully rewrite a text file. Existing files require a prior full read in the same session and stale targets are rejected.",
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "path": { "type": "string" },
-                    "content": { "type": "string" },
-                    "append": { "type": "boolean" }
+                    "content": { "type": "string" }
                 },
-                "required": ["path", "content"]
+                "required": ["path", "content"],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },

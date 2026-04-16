@@ -20,6 +20,7 @@ use walkdir::WalkDir;
 include!("core/mod.rs");
 include!("read/mod.rs");
 include!("fs/mod.rs");
+include!("write/mod.rs");
 include!("edit/mod.rs");
 include!("shell/mod.rs");
 include!("mcp/mod.rs");

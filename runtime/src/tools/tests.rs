@@ -60,6 +60,44 @@ mod tests {
         }
     }
 
+    fn make_read_write_input(workspace: &PathBuf) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: "req-read-write-v2".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run read and write".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["read".to_string(), "write".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
+    fn make_read_write_edit_input(workspace: &PathBuf) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: "req-read-write-edit-v2".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run read, write and edit".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["read".to_string(), "write".to_string(), "edit".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
     fn execute_tool_payload(
         executor: &LocalToolExecutor,
         input: &TurnExecuteInput,
@@ -500,6 +538,246 @@ allow_tools = ["echo"]
         assert_eq!(bash_payload["exit_code"].as_i64(), Some(0));
         assert_eq!(bash_payload["stdout"].as_str(), Some("kimi_ok"));
 
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_create_without_prior_read_succeeds() {
+        let workspace = make_temp_workspace("write-v2-create");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "new-file.txt",
+                "content": "hello\nworld\n"
+            }),
+        )
+        .expect("write create should succeed");
+        assert_eq!(payload["tool"].as_str(), Some("write"));
+        assert_eq!(payload["operation"].as_str(), Some("create"));
+        assert_eq!(
+            fs::read_to_string(workspace.join("new-file.txt")).expect("read created file"),
+            "hello\nworld\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_requires_prior_read_for_existing_file() {
+        let workspace = make_temp_workspace("write-v2-read-required");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2\n"
+            }),
+        )
+        .expect_err("write without prior read should fail");
+        assert_eq!(error.error_class, "write_read_required");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_rejects_partial_read_for_existing_file() {
+        let workspace = make_temp_workspace("write-v2-partial-read");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\nline3\n").expect("write sample file");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt",
+                "offset": 2,
+                "limit": 1
+            }),
+        )
+        .expect("partial read should succeed");
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2\nline3\n"
+            }),
+        )
+        .expect_err("write after partial read should fail");
+        assert_eq!(error.error_class, "write_partial_read_not_allowed");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_rejects_stale_target_after_read() {
+        let workspace = make_temp_workspace("write-v2-stale");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\n").expect("write sample file");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        std::thread::sleep(Duration::from_millis(3));
+        fs::write(&target, "line1\nline2-mutated\n").expect("mutate file to stale snapshot");
+
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2\n"
+            }),
+        )
+        .expect_err("stale write should fail");
+        assert_eq!(error.error_class, "write_stale_target");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_rejects_legacy_append_argument() {
+        let workspace = make_temp_workspace("write-v2-legacy-append");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "hello\n",
+                "append": true
+            }),
+        )
+        .expect_err("legacy append should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_rejects_noop_update() {
+        let workspace = make_temp_workspace("write-v2-noop");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nline2\n"
+            }),
+        )
+        .expect_err("noop write should fail");
+        assert_eq!(error.error_class, "write_no_changes");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_clears_read_snapshot_after_success() {
+        let workspace = make_temp_workspace("write-v2-clear-snapshot");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\n").expect("write sample file");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2\n"
+            }),
+        )
+        .expect("first write should succeed");
+        assert_eq!(payload["operation"].as_str(), Some("update"));
+
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2-AGAIN\n"
+            }),
+        )
+        .expect_err("second write without new read should fail");
+        assert_eq!(error.error_class, "write_read_required");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_clears_edit_snapshot_after_success() {
+        let workspace = make_temp_workspace("write-v2-clear-edit-snapshot");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
+        let input = make_read_write_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2\n"
+            }),
+        )
+        .expect("write should succeed");
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "LINE2\n", "new_text": "line2\n"}]
+            }),
+        )
+        .expect_err("edit should require re-read after write");
+        assert_eq!(error.error_class, "edit_read_required");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

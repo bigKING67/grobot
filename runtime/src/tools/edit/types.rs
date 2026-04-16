@@ -1,6 +1,6 @@
 const EDIT_MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const EDIT_READ_SNAPSHOT_MAX_ENTRIES: usize = 1024;
-const EDIT_MUTATION_LOCK_MAX_TRACKED: usize = 2048;
+const FILE_MUTATION_LOCK_MAX_TRACKED: usize = 2048;
 
 #[derive(Debug, Clone)]
 struct EditOperation {
@@ -26,7 +26,7 @@ struct EditReadSnapshotStore {
 }
 
 #[derive(Debug, Default)]
-struct EditMutationQueueStore {
+struct FileMutationQueueStore {
     locks: HashMap<String, Arc<Mutex<()>>>,
 }
 

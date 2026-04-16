@@ -65,6 +65,10 @@ struct ReadCacheStore {
     order: VecDeque<String>,
 }
 
+fn is_full_text_read_for_write(request: &ReadRequest, has_more: bool) -> bool {
+    request.range_mode == "full" && request.line_limit.is_none() && !has_more
+}
+
 fn run_read(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
@@ -88,6 +92,12 @@ fn run_read(
         let cache_key = build_read_cache_key(context.session_key.as_str(), &target, &request);
         if let Some(cached) = lookup_read_cache(&cache_key, mtime_ms) {
             record_edit_read_snapshot(context.session_key.as_str(), &target, mtime_ms);
+            record_write_read_snapshot(
+                context.session_key.as_str(),
+                &target,
+                mtime_ms,
+                is_full_text_read_for_write(&request, cached.has_more),
+            );
             let payload = build_file_unchanged_payload(&relative_path, &request, &cached, mtime_ms);
             return Ok(ToolCallOutput::from_payload(payload));
         }
@@ -107,6 +117,12 @@ fn run_read(
             },
         );
         record_edit_read_snapshot(context.session_key.as_str(), &target, mtime_ms);
+        record_write_read_snapshot(
+            context.session_key.as_str(),
+            &target,
+            mtime_ms,
+            is_full_text_read_for_write(&request, text_result.has_more),
+        );
         return Ok(ToolCallOutput::from_payload(payload));
     }
 
