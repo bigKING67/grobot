@@ -353,12 +353,13 @@ grobot start \
 - `read` 文本输出默认硬限制为 `2000` 行或 `50KB`（先命中先截断），超出时会返回 `has_more + next_offset` 便于继续读取。
 - `read` 会对二进制/特殊文件做阻断，并对相同文件同一 range 的重复读取返回 `kind=file_unchanged` 以减少重复上下文。
 - `read` 路径解析容错已对齐常见本机输入：支持 `@path`、Unicode 空格归一、macOS 截图 AM/PM 变体、弯引号文件名变体与 NFD 规范化候选。
-- `read` 对 PDF 会优先尝试 `pdftotext` 抽取正文（支持 `pages`）。若未传 `pages`，默认读取首个 20 页窗口，并在 `meta.extra` 输出 `selected_page_range/has_more_pages/next_pages` 用于续读。
+- `read` 对 PDF 在本地链路会优先尝试 `pdftotext` 抽取正文（支持 `pages`）。若未传 `pages`，默认读取首个 20 页窗口，并在 `meta.extra` 输出 `selected_page_range/has_more_pages/next_pages` 用于续读。
 - `read` 在 `meta.extra.extract_status` 返回 `extracted|extracted_ocr|extracted_no_text|fallback|extracted_remote_kimi_file_extract|extracted_remote_kimi_multimodal|extracted_no_text_remote`，并在 fallback 分支附带 `extract_error_message/extract_guidance`，便于上层快速定位环境问题。
 - 当 PDF 页面无法抽出可见文本时，`read` 会基于 `embedded_image_count/likely_image_only_pdf` 判断是否为扫描件；若满足条件且本机具备 `pdftoppm+tesseract`，会自动尝试 OCR（`extract_status=extracted_ocr`），否则返回 `extracted_no_text` 并给出 OCR 指引。若 `pdftotext` 不可用但 OCR 运行时可用，也会自动尝试 OCR 再回退。
 - `read` 支持视频媒体类型识别（`mp4/mov/avi/mkv/webm/m4v`）；默认本地返回结构化占位描述，不内联二进制 payload。
 - 当 provider 为 Kimi 且模型命中 `k2.5`（并开启 `provider_options.kimi.files_enabled`）时，`read` 会对 `PDF/image/video` 自动切换到 Kimi 文件+多模态链路；`meta.extra` 会附带 `remote_provider/remote_model/remote_file_id` 等可观测字段。
 - Kimi 远程 PDF 模式下不支持 `read.pages`（会返回参数错误）；请使用 `offset/limit` 对抽取后的文本窗口继续读取。
+- 当 `provider_kind=kimi` 但模型不是 `kimi-k2.5` 时，媒体读取会直接报配置错误，不会静默回退到本地依赖链路。
 - `read` 提供手工烟测入口（默认忽略）：`READ_V2_MANUAL_FILE=/abs/path/to/file.pdf READ_V2_MANUAL_WORKDIR=/workspace/root cargo test --manifest-path runtime/Cargo.toml read_v2_manual_external_pdf_smoke_from_env -- --ignored --nocapture --test-threads=1`。
 - `read` 会阻断高风险设备路径（如 `/dev/stdout`、`/dev/fd/1`、`/proc/*/fd/{0,1,2}`），避免阻塞或无限输出文件被误读。
 - `list/glob/search` 优先使用 `fd/rg`（不存在时自动回退到内置实现，不依赖 Python 运行时）。

@@ -582,6 +582,88 @@ fn fetch_kimi_file_content_for_read(
     Ok(body_text)
 }
 
+#[derive(Debug, Clone)]
+struct KimiFileExtractParseResult {
+    text: String,
+    content_source: &'static str,
+    file_type: Option<String>,
+    filename: Option<String>,
+    title: Option<String>,
+    was_json_payload: bool,
+}
+
+fn extract_text_from_json_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => Some(raw.to_string()),
+        Value::Array(items) => {
+            let merged = items
+                .iter()
+                .filter_map(extract_text_from_json_value)
+                .filter(|item| !item.trim().is_empty())
+                .collect::<Vec<String>>();
+            if merged.is_empty() {
+                return None;
+            }
+            Some(merged.join("\n"))
+        }
+        Value::Object(map) => {
+            if let Some(text) = map.get("text").and_then(extract_text_from_json_value) {
+                return Some(text);
+            }
+            map.get("content").and_then(extract_text_from_json_value)
+        }
+        _ => None,
+    }
+}
+
+fn parse_kimi_file_extract_response(body_text: &str) -> KimiFileExtractParseResult {
+    let mut parsed = KimiFileExtractParseResult {
+        text: body_text.to_string(),
+        content_source: "plain_text",
+        file_type: None,
+        filename: None,
+        title: None,
+        was_json_payload: false,
+    };
+
+    let Ok(payload) = serde_json::from_str::<Value>(body_text) else {
+        return parsed;
+    };
+    parsed.was_json_payload = true;
+
+    if let Some(object) = payload.as_object() {
+        if let Some(content) = object.get("content").and_then(extract_text_from_json_value) {
+            parsed.text = content;
+            parsed.content_source = "json.content";
+        } else if let Some(text) = object.get("text").and_then(extract_text_from_json_value) {
+            parsed.text = text;
+            parsed.content_source = "json.text";
+        } else if let Some(content) = extract_text_from_json_value(&payload) {
+            parsed.text = content;
+            parsed.content_source = "json.fallback";
+        }
+        parsed.file_type = object
+            .get("file_type")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string());
+        parsed.filename = object
+            .get("filename")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string());
+        parsed.title = object
+            .get("title")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string());
+        return parsed;
+    }
+
+    if let Some(content) = extract_text_from_json_value(&payload) {
+        parsed.text = content;
+        parsed.content_source = "json.value";
+    }
+    parsed
+}
+
 fn parse_kimi_chat_text_response(body_text: &str) -> Result<String, ToolExecutionError> {
     let payload: Value = serde_json::from_str(body_text).map_err(|error| {
         ToolExecutionError::new(
@@ -735,7 +817,9 @@ fn maybe_read_media_payload_via_kimi(
                 "file-extract",
                 guess_read_upload_mime(target, kind),
             )?;
-            let extracted = fetch_kimi_file_content_for_read(&client, &base_url, &api_key, &file_id)?;
+            let extracted_raw = fetch_kimi_file_content_for_read(&client, &base_url, &api_key, &file_id)?;
+            let extracted_parse = parse_kimi_file_extract_response(extracted_raw.as_str());
+            let extracted = extracted_parse.text;
             if !pdf_has_visible_text(extracted.as_str()) {
                 let payload = build_media_payload(
                     relative_path,
@@ -743,7 +827,8 @@ fn maybe_read_media_payload_via_kimi(
                     target,
                     kind,
                     format!(
-                        "PDF file detected: {relative_path}\nKimi file-extract returned no visible text.\nfile_id={file_id}\nTry local OCR route or provide pages with local read."
+                        "PDF file detected: {relative_path}\nKimi file-extract returned no visible text.\nfile_id={file_id}\ncontent_source={}\nTry improving source quality or re-exporting PDF with searchable text.",
+                        extracted_parse.content_source
                     ),
                     1,
                     0,
@@ -758,6 +843,11 @@ fn maybe_read_media_payload_via_kimi(
                         "remote_provider": "kimi",
                         "remote_model": remote_model,
                         "remote_file_id": file_id,
+                        "remote_content_source": extracted_parse.content_source,
+                        "remote_response_is_json": extracted_parse.was_json_payload,
+                        "remote_file_type": extracted_parse.file_type,
+                        "remote_filename": extracted_parse.filename,
+                        "remote_title": extracted_parse.title,
                         "text_detected": false,
                     }),
                 );
@@ -783,6 +873,11 @@ fn maybe_read_media_payload_via_kimi(
                     "remote_provider": "kimi",
                     "remote_model": remote_model,
                     "remote_file_id": file_id,
+                    "remote_content_source": extracted_parse.content_source,
+                    "remote_response_is_json": extracted_parse.was_json_payload,
+                    "remote_file_type": extracted_parse.file_type,
+                    "remote_filename": extracted_parse.filename,
+                    "remote_title": extracted_parse.title,
                     "text_detected": true,
                     "read_bytes": text_result.read_bytes,
                 }),
@@ -808,7 +903,8 @@ fn maybe_read_media_payload_via_kimi(
                 kind,
                 media_url.as_str(),
             )?;
-            if !pdf_has_visible_text(extracted.as_str()) {
+            let text_detected = pdf_has_visible_text(extracted.as_str());
+            if !text_detected {
                 extracted = "Kimi multimodal extraction returned empty content.".to_string();
             }
             let text_result = read_text_window_from_content(extracted.as_str(), request)?;
@@ -832,7 +928,7 @@ fn maybe_read_media_payload_via_kimi(
                     "remote_model": remote_model,
                     "remote_file_id": file_id,
                     "remote_media_url": media_url,
-                    "text_detected": true,
+                    "text_detected": text_detected,
                     "read_bytes": text_result.read_bytes,
                 }),
             );

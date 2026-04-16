@@ -897,6 +897,27 @@ allow_tools = ["echo"]
     }
 
     #[test]
+    fn read_v2_parse_kimi_file_extract_response_prefers_content_field() {
+        let parsed = parse_kimi_file_extract_response(
+            r#"{"content":"hello\nworld","file_type":"application/pdf","filename":"invoice.pdf","title":"invoice"}"#,
+        );
+        assert_eq!(parsed.text, "hello\nworld");
+        assert_eq!(parsed.content_source, "json.content");
+        assert_eq!(parsed.file_type.as_deref(), Some("application/pdf"));
+        assert_eq!(parsed.filename.as_deref(), Some("invoice.pdf"));
+        assert_eq!(parsed.title.as_deref(), Some("invoice"));
+        assert!(parsed.was_json_payload);
+    }
+
+    #[test]
+    fn read_v2_parse_kimi_file_extract_response_falls_back_to_plain_text() {
+        let parsed = parse_kimi_file_extract_response("plain text payload");
+        assert_eq!(parsed.text, "plain text payload");
+        assert_eq!(parsed.content_source, "plain_text");
+        assert!(!parsed.was_json_payload);
+    }
+
+    #[test]
     fn read_v2_pdf_has_visible_text_detects_non_whitespace() {
         assert!(!pdf_has_visible_text("   \n\t\r  "));
         assert!(pdf_has_visible_text(" \nA "));
@@ -1046,6 +1067,64 @@ allow_tools = ["echo"]
             .expect_err("kimi remote pdf mode should reject read.pages");
         assert_eq!(error.error_class, "invalid_tool_arguments");
         assert!(error.message.contains("read.pages is not supported in kimi remote pdf mode"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_kimi_media_requires_k25_model() {
+        let workspace = make_temp_workspace("read-v2-kimi-model-gate");
+        fs::write(workspace.join("invoice.pdf"), b"%PDF-1.4").expect("write minimal pdf-like bytes");
+
+        let input = TurnExecuteInput {
+            request_id: "req-kimi-model-gate".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "read".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some("https://api.moonshot.cn/v1".to_string()),
+                api_key: Some("sk-test".to_string()),
+                model: Some("kimi-k2".to_string()),
+                timeout_ms: Some(10_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: Some(RuntimeProviderOptionsInput {
+                    kimi: Some(RuntimeKimiOptionsInput {
+                        web_search_mode: None,
+                        disable_thinking_on_builtin_web_search: None,
+                        official_tools_allowlist: None,
+                        official_tool_formulas: None,
+                        max_tokens: None,
+                        stream: None,
+                        temperature: None,
+                        top_p: None,
+                        files_enabled: Some(true),
+                        allow_file_admin: None,
+                    }),
+                }),
+            }),
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["read".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        };
+
+        let call = ToolCallInput {
+            id: "read-v2-kimi-model-gate".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "invoice.pdf"
+            }),
+        };
+
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("kimi media read should require kimi-k2.5");
+        assert_eq!(error.error_class, "config_missing");
+        assert!(error.message.contains("model kimi-k2.5"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
