@@ -502,6 +502,69 @@ async function runGatewayContractSmoke() {
   assert.equal(localToolsPayload.lines.length >= 3, true);
   logStep("local-tools-contract file-mention-enrichment");
 
+  const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
+  const semanticSearchToolPayload = parseJsonOutput(
+    "local-tools-contract semantic-search-tool",
+    semanticSearchToolResult.stdout,
+  );
+  assert.equal(semanticSearchToolPayload.tool, "semantic_search");
+  assert.equal(Number(semanticSearchToolPayload.count) >= 1, true);
+  assert.equal(Array.isArray(semanticSearchToolPayload.source_stats), true);
+  assert.equal(Array.isArray(semanticSearchToolPayload.matches), true);
+  logStep("local-tools-contract semantic-search-tool");
+
+  const promptEnhancerToolResult = runContract("local-tools-contract.mjs", "prompt-enhancer-tool");
+  const promptEnhancerToolPayload = parseJsonOutput(
+    "local-tools-contract prompt-enhancer-tool",
+    promptEnhancerToolResult.stdout,
+  );
+  assert.equal(promptEnhancerToolPayload.tool, "prompt_enhancer");
+  assert.equal(Array.isArray(promptEnhancerToolPayload.technical_terms), true);
+  assert.equal(Array.isArray(promptEnhancerToolPayload.evidence), true);
+  assert.equal(typeof promptEnhancerToolPayload.context_block, "string");
+  logStep("local-tools-contract prompt-enhancer-tool");
+
+  const semanticSearchQualityRegressionResult = runContract(
+    "semantic-search-regression-contract.mjs",
+    "quality-regression",
+  );
+  const semanticSearchQualityRegressionPayload = parseJsonOutput(
+    "semantic-search-regression-contract quality-regression",
+    semanticSearchQualityRegressionResult.stdout,
+  );
+  assert.equal(semanticSearchQualityRegressionPayload.passed, true);
+  assert.equal(
+    String(semanticSearchQualityRegressionPayload.semantic_top_path),
+    "src/session-policy.ts",
+  );
+  assert.equal(
+    String(semanticSearchQualityRegressionPayload.fallback_top_path).endsWith("src/retry-policy.ts"),
+    true,
+  );
+  assert.equal(
+    Number(semanticSearchQualityRegressionPayload.fallback_warning_count) >= 1,
+    true,
+  );
+  logStep("semantic-search-regression-contract quality-regression");
+
+  const semanticSearchBenchmarkResult = runContract(
+    "semantic-search-regression-contract.mjs",
+    "benchmark",
+  );
+  const semanticSearchBenchmarkPayload = parseJsonOutput(
+    "semantic-search-regression-contract benchmark",
+    semanticSearchBenchmarkResult.stdout,
+  );
+  assert.equal(semanticSearchBenchmarkPayload.passed, true);
+  assert.equal(Array.isArray(semanticSearchBenchmarkPayload.rows), true);
+  assert.equal(Array.isArray(semanticSearchBenchmarkPayload.comparisons), true);
+  assert.equal(semanticSearchBenchmarkPayload.rows.length >= 8, true);
+  assert.equal(semanticSearchBenchmarkPayload.comparisons.length >= 4, true);
+  logStep("semantic-search-regression-contract benchmark", {
+    rows: semanticSearchBenchmarkPayload.rows.length,
+    comparisons: semanticSearchBenchmarkPayload.comparisons.length,
+  });
+
   const mcpPolicyResult = runContract("local-tools-contract.mjs", "resolve-mcp-call-policy");
   const mcpPolicyPayload = parseJsonOutput("local-tools-contract resolve-mcp-call-policy", mcpPolicyResult.stdout);
   assert.equal(Number(mcpPolicyPayload.max_concurrency_per_server) >= 1, true);
@@ -603,6 +666,86 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.model_reset_dispatched, true);
   logStep("session-interactive-dispatch-contract");
 
+  const bridgeCliContractResult = runCommand("node", [
+    "gateway/src/extensions/contracts/bridge-cli-contract.mjs",
+  ], {
+    timeoutMs: 120_000,
+  });
+  assertSuccess("bridge-cli-contract", bridgeCliContractResult);
+  const bridgeCliContractPayload = parseJsonOutput(
+    "bridge-cli-contract",
+    bridgeCliContractResult.stdout,
+  );
+  assert.equal(bridgeCliContractPayload.ok, true);
+  assert.equal(bridgeCliContractPayload.no_active_error_code, "PLAN_NO_ACTIVE");
+  assert.equal(bridgeCliContractPayload.guard_error_code, "PLAN_GUARD_DENIED");
+  assert.equal(bridgeCliContractPayload.append_note_error_code, "PLAN_APPEND_NOTE_FAILED");
+  assert.equal(
+    bridgeCliContractPayload.review_error_code === "PLAN_REVIEW_FAILED" ||
+      bridgeCliContractPayload.review_error_code === "PLAN_REVIEW_BLOCKED",
+    true,
+  );
+  assert.equal(Number(bridgeCliContractPayload.review_fail_count) >= 1, true);
+  assert.equal(bridgeCliContractPayload.apply_blocked_error_code, "PLAN_APPLY_STATUS_BLOCKED");
+  assert.equal(bridgeCliContractPayload.status_after_cancel_mode, "normal");
+  assert.equal(bridgeCliContractPayload.status_after_cancel_active_plan_id, null);
+  logStep("bridge-cli-contract");
+
+  const bridgeErrorCodesSchemaContractResult = runCommand("node", [
+    "gateway/src/extensions/contracts/bridge-error-codes-schema-contract.mjs",
+  ], {
+    timeoutMs: 120_000,
+  });
+  assertSuccess("bridge-error-codes-schema-contract", bridgeErrorCodesSchemaContractResult);
+  const bridgeErrorCodesSchemaContractPayload = parseJsonOutput(
+    "bridge-error-codes-schema-contract",
+    bridgeErrorCodesSchemaContractResult.stdout,
+  );
+  assert.equal(bridgeErrorCodesSchemaContractPayload.ok, true);
+  assert.equal(Number(bridgeErrorCodesSchemaContractPayload.registry_count) >= 8, true);
+  assert.equal(Number(bridgeErrorCodesSchemaContractPayload.source_codes_count) >= 8, true);
+  assert.equal(Array.isArray(bridgeErrorCodesSchemaContractPayload.source_codes), true);
+  assert.equal(Number(bridgeErrorCodesSchemaContractPayload.missing_in_schema_count), 0);
+  assert.equal(Number(bridgeErrorCodesSchemaContractPayload.extra_in_schema_count), 0);
+  assert.equal(Array.isArray(bridgeErrorCodesSchemaContractPayload.observed_codes), true);
+  assert.equal(bridgeErrorCodesSchemaContractPayload.fatal_error_code, "BRIDGE_FATAL");
+  logStep("bridge-error-codes-schema-contract");
+
+  const planEventsPolicyGuardContractResult = runCommand("node", [
+    "gateway/src/extensions/contracts/plan-events-policy-guard-contract.mjs",
+  ], {
+    timeoutMs: 120_000,
+  });
+  assertSuccess("plan-events-policy-guard-contract", planEventsPolicyGuardContractResult);
+  const planEventsPolicyGuardContractPayload = parseJsonOutput(
+    "plan-events-policy-guard-contract",
+    planEventsPolicyGuardContractResult.stdout,
+  );
+  assert.equal(planEventsPolicyGuardContractPayload.ok, true);
+  assert.equal(planEventsPolicyGuardContractPayload.baseline_allow_source, "default_all");
+  assert.equal(planEventsPolicyGuardContractPayload.baseline_deny_source, "default_none");
+  assert.equal(planEventsPolicyGuardContractPayload.scoped_allow_source, "env");
+  assert.equal(planEventsPolicyGuardContractPayload.scoped_deny_source, "env");
+  assert.equal(planEventsPolicyGuardContractPayload.overlap_rejected, true);
+  assert.equal(planEventsPolicyGuardContractPayload.text_mode_has_scope_counts, true);
+  logStep("plan-events-policy-guard-contract");
+
+  const browserStructuredContractResult = runCommand("node", [
+    "gateway/src/extensions/contracts/browser-structured-mcp-contract.mjs",
+  ], {
+    timeoutMs: 120_000,
+  });
+  assertSuccess("browser-structured-mcp-contract", browserStructuredContractResult);
+  const browserStructuredContractPayload = parseJsonOutput(
+    "browser-structured-mcp-contract",
+    browserStructuredContractResult.stdout,
+  );
+  assert.equal(browserStructuredContractPayload.ok, true);
+  assert.equal(typeof browserStructuredContractPayload.tool_call_error_code, "string");
+  assert.equal(typeof browserStructuredContractPayload.tool_call_retryable, "boolean");
+  assert.equal(Array.isArray(browserStructuredContractPayload.tool_call_transport_attempts), true);
+  logStep("browser-structured-mcp-contract");
+
   const providerHealthFormatResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -624,6 +767,52 @@ async function runGatewayContractSmoke() {
   assert.equal(providerHealthFormatPayload.has_error_rate_field, true);
   assert.equal(providerHealthFormatPayload.has_rpm_field, true);
   logStep("provider-health-format-contract");
+
+  const askUserToolContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/ask-user-tool-contract.ts",
+  ]);
+  assertSuccess("ask-user-tool-contract", askUserToolContractResult);
+  const askUserToolContractPayload = parseJsonOutput(
+    "ask-user-tool-contract",
+    askUserToolContractResult.stdout,
+  );
+  assert.equal(askUserToolContractPayload.protocol_prefix_removed, true);
+  assert.equal(askUserToolContractPayload.resolution_prompt_injected, true);
+  assert.equal(askUserToolContractPayload.resolution_prompt_builder_works, true);
+  assert.equal(askUserToolContractPayload.resolved_answer, "fast");
+  assert.equal(askUserToolContractPayload.resolved_event_has_question_id, true);
+  assert.equal(askUserToolContractPayload.issued_registered, true);
+  assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
+  assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
+  logStep("ask-user-tool-contract");
+
+  const gaSkillPromptContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/ga-skill-prompt-contract.ts",
+  ]);
+  assertSuccess("ga-skill-prompt-contract", gaSkillPromptContractResult);
+  const gaSkillPromptContractPayload = parseJsonOutput(
+    "ga-skill-prompt-contract",
+    gaSkillPromptContractResult.stdout,
+  );
+  assert.equal(gaSkillPromptContractPayload.direct_has_header, true);
+  assert.equal(Number(gaSkillPromptContractPayload.direct_matched) >= 1, true);
+  assert.equal(Number(gaSkillPromptContractPayload.direct_total), 2);
+  assert.equal(gaSkillPromptContractPayload.apply_keeps_existing_prefix, true);
+  assert.equal(gaSkillPromptContractPayload.apply_has_ga_prompt, true);
+  assert.equal(gaSkillPromptContractPayload.apply_has_experience_prompt, true);
+  assert.equal(gaSkillPromptContractPayload.apply_has_ga_event, true);
+  assert.equal(gaSkillPromptContractPayload.apply_has_experience_event, true);
+  assert.equal(gaSkillPromptContractPayload.no_match_skips_ga_prompt, true);
+  assert.equal(gaSkillPromptContractPayload.no_match_no_events, true);
+  logStep("ga-skill-prompt-contract");
 
   const interactiveBindingsResult = runCommand("npx", [
     "--yes",
@@ -722,6 +911,215 @@ async function runGatewayContractSmoke() {
   assert.equal(typeof historyCompactionPayload.header, "string");
   logStep("history-compaction-contract trim");
 
+  const historyResolveConfigResult = runContract("history-compaction-contract.mjs", "resolve-config", [
+    "--payload",
+    JSON.stringify({
+      project_toml: {
+        retrieval: {
+          enabled: true,
+          base_url: "https://api.siliconflow.cn/v1",
+          api_key: "retrieval-key",
+        },
+      },
+      global_toml: {},
+    }),
+  ], {
+    env: {
+      ...process.env,
+      CONTEXTWEAVER_API_KEY: "",
+      CONTEXTWEAVER_BASE_URL: "",
+      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "",
+      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "",
+      CONTEXTWEAVER_EMBEDDINGS_MODEL: "",
+      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
+      CONTEXTWEAVER_RERANK_API_KEY: "",
+      CONTEXTWEAVER_RERANK_BASE_URL: "",
+      CONTEXTWEAVER_RERANK_MODEL: "",
+      GROBOT_RETRIEVAL_API_KEY: "",
+      GROBOT_RETRIEVAL_BASE_URL: "",
+      GROBOT_EMBEDDING_API_KEY: "",
+      GROBOT_EMBEDDING_BASE_URL: "",
+      GROBOT_EMBEDDING_MODEL: "",
+      GROBOT_EMBEDDING_DIMENSIONS: "",
+      EMBEDDINGS_DIMENSIONS: "",
+      GROBOT_RERANK_API_KEY: "",
+      GROBOT_RERANK_BASE_URL: "",
+      GROBOT_RERANK_MODEL: "",
+    },
+  });
+  const historyResolveConfigPayload = parseJsonOutput(
+    "history-compaction-contract resolve-config",
+    historyResolveConfigResult.stdout,
+  );
+  assert.equal(historyResolveConfigPayload.enabled, true);
+  assert.equal(historyResolveConfigPayload.shared_base_url, "https://api.siliconflow.cn/v1");
+  assert.equal(historyResolveConfigPayload.shared_base_url_source, "project");
+  assert.equal(historyResolveConfigPayload.shared_api_key_source, "project");
+  assert.equal(historyResolveConfigPayload.embedding?.model, "Qwen/Qwen3-Embedding-4B");
+  assert.equal(historyResolveConfigPayload.embedding?.dimensions, 2560);
+  assert.equal(historyResolveConfigPayload.embedding?.base_url, "https://api.siliconflow.cn/v1/embeddings");
+  assert.equal(historyResolveConfigPayload.embedding_source, "default");
+  assert.equal(historyResolveConfigPayload.embedding_dimensions_source, "inferred");
+  assert.equal(historyResolveConfigPayload.rerank?.model, "Qwen/Qwen3-Reranker-0.6B");
+  assert.equal(historyResolveConfigPayload.rerank?.base_url, "https://api.siliconflow.cn/v1/rerank");
+  assert.equal(historyResolveConfigPayload.rerank_source, "default");
+  logStep("history-compaction-contract resolve-config");
+
+  const historyResolveConfigContextweaverEnvResult = runContract("history-compaction-contract.mjs", "resolve-config", [
+    "--payload",
+    JSON.stringify({
+      project_toml: {
+        retrieval: {
+          enabled: true,
+          base_url: "https://project-only.invalid/v1",
+          api_key: "project-only-key",
+          embedding: {
+            model: "Qwen/Qwen3-Embedding-4B",
+          },
+          rerank: {
+            model: "Qwen/Qwen3-Reranker-0.6B",
+          },
+        },
+      },
+      global_toml: {},
+    }),
+  ], {
+    env: {
+      ...process.env,
+      CONTEXTWEAVER_API_KEY: "env-shared-key",
+      CONTEXTWEAVER_BASE_URL: "https://env-shared.example.com/v1",
+      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "env-embed-key",
+      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "https://env-embed.example.com/v1",
+      CONTEXTWEAVER_EMBEDDINGS_MODEL: "Qwen/Qwen3-Embedding-0.6B",
+      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "1536",
+      CONTEXTWEAVER_RERANK_API_KEY: "",
+      CONTEXTWEAVER_RERANK_BASE_URL: "https://env-rerank.example.com/v1",
+      CONTEXTWEAVER_RERANK_MODEL: "Qwen/Qwen3-Reranker-8B",
+      GROBOT_RETRIEVAL_API_KEY: "",
+      GROBOT_RETRIEVAL_BASE_URL: "",
+      GROBOT_EMBEDDING_API_KEY: "",
+      GROBOT_EMBEDDING_BASE_URL: "",
+      GROBOT_EMBEDDING_MODEL: "",
+      GROBOT_EMBEDDING_DIMENSIONS: "",
+      EMBEDDINGS_DIMENSIONS: "",
+      GROBOT_RERANK_API_KEY: "",
+      GROBOT_RERANK_BASE_URL: "",
+      GROBOT_RERANK_MODEL: "",
+    },
+  });
+  const historyResolveConfigContextweaverEnvPayload = parseJsonOutput(
+    "history-compaction-contract resolve-config contextweaver env",
+    historyResolveConfigContextweaverEnvResult.stdout,
+  );
+  assert.equal(historyResolveConfigContextweaverEnvPayload.shared_base_url, "https://env-shared.example.com/v1");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.shared_base_url_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.shared_api_key_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding?.model, "Qwen/Qwen3-Embedding-0.6B");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding?.dimensions, 1536);
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding?.base_url, "https://env-embed.example.com/v1/embeddings");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_dimensions_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_api_key_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_base_url_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank?.model, "Qwen/Qwen3-Reranker-8B");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank?.base_url, "https://env-rerank.example.com/v1/rerank");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank_api_key_source, "env");
+  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank_base_url_source, "env");
+  logStep("history-compaction-contract resolve-config-contextweaver-env");
+
+  const historyResolveConfigPlaceholderKeyResult = runContract("history-compaction-contract.mjs", "resolve-config", [
+    "--payload",
+    JSON.stringify({
+      project_toml: {
+        retrieval: {
+          enabled: true,
+          base_url: "https://api.siliconflow.cn/v1",
+          api_key: "replace-with-retrieval-api-key",
+        },
+      },
+      global_toml: {},
+      fallback_api_key: "replace-with-retrieval-api-key",
+    }),
+  ], {
+    env: {
+      ...process.env,
+      CONTEXTWEAVER_API_KEY: "",
+      CONTEXTWEAVER_BASE_URL: "",
+      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "",
+      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "",
+      CONTEXTWEAVER_EMBEDDINGS_MODEL: "",
+      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
+      CONTEXTWEAVER_RERANK_API_KEY: "",
+      CONTEXTWEAVER_RERANK_BASE_URL: "",
+      CONTEXTWEAVER_RERANK_MODEL: "",
+      GROBOT_RETRIEVAL_API_KEY: "",
+      GROBOT_RETRIEVAL_BASE_URL: "",
+      GROBOT_EMBEDDING_API_KEY: "",
+      GROBOT_EMBEDDING_BASE_URL: "",
+      GROBOT_EMBEDDING_MODEL: "",
+      GROBOT_EMBEDDING_DIMENSIONS: "",
+      EMBEDDINGS_DIMENSIONS: "",
+      GROBOT_RERANK_API_KEY: "",
+      GROBOT_RERANK_BASE_URL: "",
+      GROBOT_RERANK_MODEL: "",
+    },
+  });
+  const historyResolveConfigPlaceholderKeyPayload = parseJsonOutput(
+    "history-compaction-contract resolve-config placeholder-key",
+    historyResolveConfigPlaceholderKeyResult.stdout,
+  );
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.shared_api_key_source, "default");
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.embedding, null);
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.rerank, null);
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.embedding_api_key_source, "off");
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.rerank_api_key_source, "off");
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.embedding_disabled_reason, "missing_embedding_config");
+  assert.equal(historyResolveConfigPlaceholderKeyPayload.rerank_disabled_reason, "missing_rerank_config");
+  logStep("history-compaction-contract resolve-config-placeholder-key");
+
+  const historyResolveConfigPlaceholderEnvOnlyResult = runContract("history-compaction-contract.mjs", "resolve-config", [
+    "--payload",
+    JSON.stringify({
+      project_toml: {},
+      global_toml: {},
+      fallback_api_key: "replace-with-retrieval-api-key",
+    }),
+  ], {
+    env: {
+      ...process.env,
+      CONTEXTWEAVER_API_KEY: "replace-with-contextweaver-key",
+      CONTEXTWEAVER_BASE_URL: "replace-with-contextweaver-base-url",
+      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "replace-with-embeddings-key",
+      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "replace-with-embeddings-base-url",
+      CONTEXTWEAVER_EMBEDDINGS_MODEL: "replace-with-embedding-model",
+      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
+      CONTEXTWEAVER_RERANK_API_KEY: "replace-with-rerank-key",
+      CONTEXTWEAVER_RERANK_BASE_URL: "replace-with-rerank-base-url",
+      CONTEXTWEAVER_RERANK_MODEL: "replace-with-rerank-model",
+      GROBOT_RETRIEVAL_API_KEY: "replace-with-retrieval-api-key",
+      GROBOT_RETRIEVAL_BASE_URL: "replace-with-retrieval-base-url",
+      GROBOT_EMBEDDING_API_KEY: "replace-with-embedding-key",
+      GROBOT_EMBEDDING_BASE_URL: "replace-with-embedding-base-url",
+      GROBOT_EMBEDDING_MODEL: "replace-with-embedding-model",
+      GROBOT_EMBEDDING_DIMENSIONS: "",
+      EMBEDDINGS_DIMENSIONS: "",
+      GROBOT_RERANK_API_KEY: "replace-with-rerank-key",
+      GROBOT_RERANK_BASE_URL: "replace-with-rerank-base-url",
+      GROBOT_RERANK_MODEL: "replace-with-rerank-model",
+    },
+  });
+  const historyResolveConfigPlaceholderEnvOnlyPayload = parseJsonOutput(
+    "history-compaction-contract resolve-config placeholder-env-only",
+    historyResolveConfigPlaceholderEnvOnlyResult.stdout,
+  );
+  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.source, "default");
+  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.enabled, false);
+  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.enabled_source, "default");
+  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.embedding, null);
+  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.rerank, null);
+  logStep("history-compaction-contract resolve-config-placeholder-env-only");
+
   const handoffSanitizeResult = runContract("handoff-contract.mjs", "sanitize", [
     "--text",
     "api_key=sk-123 token:abc Bearer xyz password = letmein",
@@ -747,6 +1145,29 @@ async function runTsRustExecutionSmoke() {
   });
   assertSuccess("runtime build for ts-rust smoke", runtimeBuildResult);
   logStep("runtime build for ts-rust smoke");
+
+  const runtimeInterruptContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-interrupt-contract.ts",
+  ]);
+  assertSuccess("runtime-interrupt-contract", runtimeInterruptContractResult);
+  const runtimeInterruptContractPayload = parseJsonOutput(
+    "runtime-interrupt-contract",
+    runtimeInterruptContractResult.stdout,
+  );
+  assert.equal(runtimeInterruptContractPayload.interrupted, true);
+  assert.equal(
+    String(runtimeInterruptContractPayload.error).includes("class=turn_interrupted"),
+    true,
+  );
+  assert.equal(Number(runtimeInterruptContractPayload.duration_ms) < 6_000, true);
+  logStep("runtime-interrupt-contract", {
+    duration_ms: runtimeInterruptContractPayload.duration_ms,
+    call_count: runtimeInterruptContractPayload.call_count,
+  });
 
   let statusPayload = null;
   let statusAttempts = 0;
@@ -1025,6 +1446,15 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(planModeFlowPayload.plan_entry_count) >= 1, true);
   assert.equal(planModeFlowPayload.plan_active_exists, true);
   assert.equal(String(planModeFlowPayload.plan_active_id || "").length === 0, true);
+  assert.equal(planModeFlowPayload.review_failed_marker_seen, true);
+  assert.equal(planModeFlowPayload.review_blocked_marker_seen, false);
+  assert.equal(planModeFlowPayload.plan_cancelled_marker_seen, true);
+  assert.equal(planModeFlowPayload.plan_final_status_line_seen, true);
+  assert.equal(planModeFlowPayload.plan_last_status, "discarded");
+  assert.equal(Number(planModeFlowPayload.plan_last_review_fail_count) >= 1, true);
+  assert.equal(Number(planModeFlowPayload.plan_last_blocked_count), 0);
+  assert.equal(planModeFlowPayload.events_has_plan_review_failed, true);
+  assert.equal(planModeFlowPayload.events_has_plan_mode_cancelled, true);
   assert.equal(Number(planModeFlowPayload.events_count) >= 1, true);
   assert.equal(typeof planModeFlowPayload.events_path, "string");
   assert.equal(String(planModeFlowPayload.events_path).trim().length > 0, true);
@@ -1131,13 +1561,83 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(planEventsReportPayload?.totals?.missing_files_count), 0);
   assert.equal(Number(planEventsReportPayload?.totals?.invalid_lines), 0);
   assert.equal(Number(planEventsReportPayload?.totals?.sessions_count) >= 1, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_review_failed_count) >= 1, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_review_passed_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.review_failed_rate ?? 0) >= 0, true);
   logStep("plan-events-report", {
     files: planEventsReportPayload?.totals?.files_count,
     events: planEventsReportPayload?.totals?.events_count,
     sessions: planEventsReportPayload?.totals?.sessions_count,
   });
 
-  const planEventsPolicyGuardResult = runCommand("npx", [
+  for (const policyPath of [
+    "gateway/evals/plan_events_policy.dev.json",
+    "gateway/evals/plan_events_policy.ci.json",
+    "gateway/evals/plan_events_policy.prod.json",
+  ]) {
+    const planEventsPolicyGuardResult = runCommand("npx", [
+      "--yes",
+      "--package",
+      "tsx@4.20.6",
+      "tsx",
+      "gateway/src/governance/evals/plan-events-policy-guard.ts",
+      "--policy",
+      policyPath,
+      "--report",
+      planEventsReportPath,
+      "--print-json",
+    ]);
+    assertSuccess(`plan-events-policy-guard ${policyPath}`, planEventsPolicyGuardResult);
+    const planEventsPolicyGuardPayload = parseJsonOutput(
+      `plan-events-policy-guard ${policyPath}`,
+      planEventsPolicyGuardResult.stdout,
+    );
+    assert.equal(planEventsPolicyGuardPayload?.status, "ok");
+    assert.equal(Number(planEventsPolicyGuardPayload?.violations_count), 0);
+    assert.equal(
+      Number(planEventsPolicyGuardPayload?.metrics?.review_failed_rate ?? 0) >= 0,
+      true,
+    );
+    assert.equal(
+      typeof planEventsPolicyGuardPayload?.policy_overrides,
+      "object",
+    );
+    assert.equal(
+      typeof planEventsPolicyGuardPayload?.policy_override_scope,
+      "object",
+    );
+    assert.equal(
+      planEventsPolicyGuardPayload?.policy_override_scope?.allow_source,
+      "default_all",
+    );
+    assert.equal(
+      planEventsPolicyGuardPayload?.policy_override_scope?.deny_source,
+      "default_none",
+    );
+    assert.equal(
+      Array.isArray(planEventsPolicyGuardPayload?.policy_override_scope?.allow_fields),
+      true,
+    );
+    assert.equal(
+      Array.isArray(planEventsPolicyGuardPayload?.policy_override_scope?.deny_fields),
+      true,
+    );
+    assert.equal(
+      planEventsPolicyGuardPayload?.policy_override_scope?.allow_fields?.includes("max_review_failed_rate"),
+      true,
+    );
+    assert.equal(
+      Number(planEventsPolicyGuardPayload?.policy_override_scope?.deny_fields?.length ?? 0),
+      0,
+    );
+    logStep("plan-events-policy-guard", {
+      profile: planEventsPolicyGuardPayload?.profile,
+      policy: policyPath,
+      violations: planEventsPolicyGuardPayload?.violations_count,
+    });
+  }
+
+  const strictPlanEventsPolicyGuardResult = runCommand("npx", [
     "--yes",
     "--package",
     "tsx@4.20.6",
@@ -1148,18 +1648,146 @@ async function runTsRustExecutionSmoke() {
     "--report",
     planEventsReportPath,
     "--print-json",
-  ]);
-  assertSuccess("plan-events-policy-guard", planEventsPolicyGuardResult);
-  const planEventsPolicyGuardPayload = parseJsonOutput(
-    "plan-events-policy-guard",
-    planEventsPolicyGuardResult.stdout,
-  );
-  assert.equal(planEventsPolicyGuardPayload?.status, "ok");
-  assert.equal(Number(planEventsPolicyGuardPayload?.violations_count), 0);
-  logStep("plan-events-policy-guard", {
-    profile: planEventsPolicyGuardPayload?.profile,
-    violations: planEventsPolicyGuardPayload?.violations_count,
+  ], {
+    env: {
+      ...process.env,
+      GROBOT_PLAN_EVENTS_MAX_REVIEW_FAILED_RATE: "0.2",
+    },
   });
+  assert.equal(strictPlanEventsPolicyGuardResult.code !== 0, true);
+  const strictPlanEventsPolicyGuardPayload = parseJsonOutput(
+    "plan-events-policy-guard strict env override",
+    strictPlanEventsPolicyGuardResult.stdout,
+  );
+  assert.equal(strictPlanEventsPolicyGuardPayload?.status, "error");
+  assert.equal(Number(strictPlanEventsPolicyGuardPayload?.violations_count) >= 1, true);
+  assert.equal(
+    Array.isArray(strictPlanEventsPolicyGuardPayload?.violations) &&
+      strictPlanEventsPolicyGuardPayload.violations.some((line) => String(line).includes("max_review_failed_rate 0.2")),
+    true,
+  );
+  assert.equal(
+    Number(strictPlanEventsPolicyGuardPayload?.policy_overrides?.max_review_failed_rate),
+    0.2,
+  );
+  assert.equal(
+    strictPlanEventsPolicyGuardPayload?.policy_override_scope?.allow_source,
+    "default_all",
+  );
+  assert.equal(
+    strictPlanEventsPolicyGuardPayload?.policy_override_scope?.deny_source,
+    "default_none",
+  );
+  logStep("plan-events-policy-guard env-override");
+
+  const scopedPlanEventsPolicyGuardResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/governance/evals/plan-events-policy-guard.ts",
+    "--policy",
+    "gateway/evals/plan_events_policy.ci.json",
+    "--report",
+    planEventsReportPath,
+    "--print-json",
+  ], {
+    env: {
+      ...process.env,
+      GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_ALLOW: "max_review_failed_rate,max_guard_denied_rate",
+      GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_DENY: "max_invalid_lines",
+      GROBOT_PLAN_EVENTS_MAX_REVIEW_FAILED_RATE: "0.99",
+    },
+  });
+  assertSuccess("plan-events-policy-guard scoped-env-override", scopedPlanEventsPolicyGuardResult);
+  const scopedPlanEventsPolicyGuardPayload = parseJsonOutput(
+    "plan-events-policy-guard scoped env override",
+    scopedPlanEventsPolicyGuardResult.stdout,
+  );
+  assert.equal(scopedPlanEventsPolicyGuardPayload?.status, "ok");
+  assert.equal(
+    Number(scopedPlanEventsPolicyGuardPayload?.policy_overrides?.max_review_failed_rate),
+    0.99,
+  );
+  assert.equal(
+    scopedPlanEventsPolicyGuardPayload?.policy_override_scope?.allow_source,
+    "env",
+  );
+  assert.equal(
+    scopedPlanEventsPolicyGuardPayload?.policy_override_scope?.deny_source,
+    "env",
+  );
+  assert.equal(
+    scopedPlanEventsPolicyGuardPayload?.policy_override_scope?.allow_fields?.includes("max_review_failed_rate"),
+    true,
+  );
+  assert.equal(
+    scopedPlanEventsPolicyGuardPayload?.policy_override_scope?.allow_fields?.includes("max_guard_denied_rate"),
+    true,
+  );
+  assert.equal(
+    scopedPlanEventsPolicyGuardPayload?.policy_override_scope?.deny_fields?.includes("max_invalid_lines"),
+    true,
+  );
+  logStep("plan-events-policy-guard scoped-env-override");
+
+  const allowBlockedPolicyGuardResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/governance/evals/plan-events-policy-guard.ts",
+    "--policy",
+    "gateway/evals/plan_events_policy.ci.json",
+    "--report",
+    planEventsReportPath,
+    "--print-json",
+  ], {
+    env: {
+      ...process.env,
+      GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_ALLOW: "max_guard_denied_rate",
+      GROBOT_PLAN_EVENTS_MAX_REVIEW_FAILED_RATE: "0.2",
+    },
+  });
+  assert.equal(allowBlockedPolicyGuardResult.code !== 0, true);
+  assert.equal(
+    allowBlockedPolicyGuardResult.stderr.includes("GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_ALLOW"),
+    true,
+  );
+  assert.equal(
+    allowBlockedPolicyGuardResult.stderr.includes("max_review_failed_rate"),
+    true,
+  );
+  logStep("plan-events-policy-guard allowlist-block");
+
+  const denyBlockedPolicyGuardResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/governance/evals/plan-events-policy-guard.ts",
+    "--policy",
+    "gateway/evals/plan_events_policy.ci.json",
+    "--report",
+    planEventsReportPath,
+    "--print-json",
+  ], {
+    env: {
+      ...process.env,
+      GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_DENY: "max_review_failed_rate",
+      GROBOT_PLAN_EVENTS_MAX_REVIEW_FAILED_RATE: "0.2",
+    },
+  });
+  assert.equal(denyBlockedPolicyGuardResult.code !== 0, true);
+  assert.equal(
+    denyBlockedPolicyGuardResult.stderr.includes("GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_DENY"),
+    true,
+  );
+  assert.equal(
+    denyBlockedPolicyGuardResult.stderr.includes("max_review_failed_rate"),
+    true,
+  );
+  logStep("plan-events-policy-guard denylist-block");
 
   const mcpInstructionFlowResult = runContract("start-smoke-contract.mjs", "start-mcp-instruction-events-flow", [
     "--repo-root",
@@ -1322,8 +1950,15 @@ function ensureContractsExist() {
     "serve-smoke-contract.mjs",
     "runtime-smoke-contract.mjs",
     "handoff-contract.mjs",
-    "history-compaction-contract.mjs",
-  ];
+      "history-compaction-contract.mjs",
+      "semantic-search-regression-contract.mjs",
+      "browser-structured-mcp-contract.mjs",
+      "bridge-cli-contract.mjs",
+      "bridge-error-codes-schema-contract.mjs",
+      "plan-events-policy-guard-contract.mjs",
+      "ask-user-tool-contract.ts",
+      "ga-skill-prompt-contract.ts",
+    ];
   for (const contractName of requiredContracts) {
     const path = resolve(contractsRoot, contractName);
     if (!existsSync(path)) {
