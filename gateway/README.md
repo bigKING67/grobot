@@ -50,7 +50,7 @@ Governance plane is intentionally separated from the request hot path. It drives
 15. Built-in config-view profiles (`operator` / `auditor` / `admin`) for faster role setup.
 16. Built-in management policy templates (`policy_template`: `ops_read_only` / `audit_read` / `full_admin`).
 17. Node contract checks for management policy-template defaults and execution smoke (`gateway/tests/check-gateway-node.mjs`).
-18. Local tool execution for `list` / `glob` / `search` / `read` / `write` / `edit` / `bash` in `grobot start` (OpenAI-compatible `tools` loop, `fd/rg` preferred with built-in fallback and no Python runtime dependency, `search` supports context lines, and `@file` mention pre-resolution is injected into prompt).
+18. Local tool execution for `list` / `glob` / `search` / `read` / `write` / `edit` / `semantic_search` / `prompt_enhancer` / `bash` in `grobot start` (OpenAI-compatible `tools` loop, `fd/rg` preferred with built-in fallback and no Python runtime dependency, `search` supports context lines, `semantic_search`/`prompt_enhancer` are bridged to ContextWeaver, and `@file` mention pre-resolution is injected into prompt).
 19. `@file` mention index acceleration: in-memory file-path index with incremental refresh (added/removed diff) and trigram-based candidate selection for large repositories.
 20. End-to-end smoke checks for `grobot start` / execution-plane contracts (`gateway/tests/check-gateway-node.mjs`, including `start-smoke-contract` scenarios).
 21. Agent-level eval harness v0 (`gateway/evals`): optimization/holdout split, multi-variant scoring, gate enforcement, and holdout regression guard.
@@ -78,6 +78,88 @@ Governance plane is intentionally separated from the request hot path. It drives
 43. `gateway/src/orchestration/dev-cli.ts` is now a thin entrypoint. The implementation moved to `gateway/src/orchestration/entrypoints/dev-cli/index.ts` to reduce single-file coupling while keeping CLI/API behavior compatible.
 44. Legacy Python execution retirement record is documented in `gateway/LEGACY_EXECUTION_BOUNDARY.md`.
 45. `orchestration/entrypoints/dev-cli` now separates argument parsing and runtime health probing into dedicated modules (`cli-args.ts`, `runtime-health.ts`) to reduce single-file coupling without changing command behavior.
+46. Runtime tool-context recovery knobs are wired end-to-end (`GROBOT_NO_TOOL_FALLBACK_MODE`, `GROBOT_MAX_RECOVERY_ROUNDS`) and forwarded to Rust runtime as `no_tool_fallback_mode` / `max_recovery_rounds`.
+47. Runtime event normalization now includes no-tool lifecycle diagnostics (`no_tool_fallback_triggered` / `no_tool_fallback_succeeded` / `no_tool_fallback_exhausted`) in addition to core turn/tool events.
+
+## Runtime Tool Context Env
+
+`grobot start` and `grobot status` support these runtime recovery envs:
+
+- `GROBOT_NO_TOOL_FALLBACK_MODE`: `off | safe | strict` (default `safe`)
+- `GROBOT_MAX_RECOVERY_ROUNDS`: `0..8` (default `2`)
+
+Use `grobot status` to confirm effective values:
+
+- `runtime_tool_no_tool_fallback_mode`
+- `runtime_tool_max_recovery_rounds`
+
+`grobot status` also exposes runtime-tools observability fields:
+
+- `runtime_tool_context` (enabled with source hint)
+- `runtime_tool_enabled_tools_source` (`runtime.tools.describe | start-default`)
+- `runtime_tool_enabled_tools_source_detail` (present when source falls back to `start-default`)
+- `runtime_tool_manifest_fingerprint`
+- `runtime_tool_manifest_tool_count`
+- `runtime_tool_manifest_default_enabled_count`
+- `runtime_tool_enabled_tools`
+
+Machine-readable status snapshot:
+
+- `grobot status --json` emits one JSON object (snapshot shape, not JSONL stream).
+- Default `grobot status` output remains line-based text for human readability.
+
+## Semantic Tool Bridge (ContextWeaver)
+
+`grobot start` now exposes two additional local tools:
+
+- `semantic_search`: semantic retrieval across `code | memory | wiki` sources.
+- `prompt_enhancer`: prompt enrichment with evidence snippets and extracted terms.
+
+### Bridge script resolution
+
+Runtime resolves bridge script in this order:
+
+1. Tool argument override: `bridge_script`
+2. Environment: `GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT`
+3. Built-in fallback path in checkout: `adapters/contextweaver/bridge/cli.mjs`
+
+### ContextWeaver runtime resolution
+
+Bridge resolves executable in this order:
+
+1. `CONTEXTWEAVER_BIN`
+2. `GROBOT_CONTEXTWEAVER_ROOT` or `CONTEXTWEAVER_ROOT` (expects `<root>/dist/index.js`)
+3. `contextweaver` from `PATH`
+
+### URL/Key/model fallback chain
+
+For embedding and rerank settings, bridge fallback order is:
+
+1. `CONTEXTWEAVER_*` env
+2. `GROBOT_*` retrieval env
+3. `.grobot/project.toml` (`[context_retrieval]` and nested sections)
+4. `<repo>/.grobot/config.toml` (`[retrieval]` and nested sections)
+5. `<repo>/.grobot/config.toml` (`[projects.agent.options]` base URL/key reuse)
+6. `~/.grobot/config.toml` (`[retrieval]` and nested sections)
+
+Bridge also reads:
+- project-level `<repo>/config.toml` retrieval sections when present.
+- template defaults from `<repo>/.grobot/config.toml.example` and `<repo>/packages/templates/config.toml.example` (default pair: `Qwen/Qwen3-Embedding-4B` + `Qwen/Qwen3-Reranker-0.6B`).
+- `retrieval.embedding.dimensions` from project/global config (or model-based inference when absent).
+- shared `retrieval.base_url = https://.../v1` is accepted; bridge normalizes to endpoint URLs for ContextWeaver (`.../v1/embeddings`, `.../v1/rerank`).
+
+Model resolution priority for semantic retrieval:
+- retrieval embedding/rerank models (env/config/template)
+- agent chat model only as last resort fallback.
+
+### Common semantic bridge failures
+
+- `semantic_index_required`: run `cw index <repo-path> -y`.
+- `semantic_index_config_invalid`: update `cwconfig.json` include patterns so files can be indexed.
+- `semantic_config_missing`: configure retrieval credentials via env/config fallback chain above.
+- `semantic_config_missing` with `Embedding API HTTP 404`: current URL/model likely does not expose embedding endpoint; set retrieval-specific embedding base URL/model.
+
+When those retrieval/index failures happen, bridge performs lexical fallback via `rg` and returns degraded-but-usable evidence instead of hard-failing the tool call.
 
 ## Verification
 
