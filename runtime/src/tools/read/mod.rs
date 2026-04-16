@@ -108,6 +108,16 @@ fn run_read(
         return Ok(ToolCallOutput::from_payload(payload));
     }
 
+    if matches!(kind, ReadKind::Pdf | ReadKind::Image | ReadKind::Video)
+        && is_kimi_k25_read_route(input)
+        && !resolve_kimi_files_enabled(input)
+    {
+        return Err(ToolExecutionError::new(
+            "config_missing",
+            "kimi media read requires provider_options.kimi.files_enabled=true",
+        ));
+    }
+
     if let Some(payload) = maybe_read_media_payload_via_kimi(
         kind,
         &target,

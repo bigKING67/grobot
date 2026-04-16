@@ -416,7 +416,10 @@ fn should_use_kimi_multimodal_read(
         return false;
     }
     match kind {
-        ReadKind::Pdf => request.pages.is_none(),
+        ReadKind::Pdf => {
+            let _ = request;
+            true
+        }
         ReadKind::Image | ReadKind::Video => true,
         _ => false,
     }
@@ -718,6 +721,12 @@ fn maybe_read_media_payload_via_kimi(
     let remote_model = resolve_kimi_model_name_for_read(input);
     match kind {
         ReadKind::Pdf => {
+            if request.pages.is_some() {
+                return Err(ToolExecutionError::new(
+                    "invalid_tool_arguments",
+                    "read.pages is not supported in kimi remote pdf mode; remove pages and use offset/limit on extracted text",
+                ));
+            }
             let file_id = upload_kimi_file_for_read(
                 &client,
                 &base_url,
