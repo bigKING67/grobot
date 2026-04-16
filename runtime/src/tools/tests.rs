@@ -628,6 +628,76 @@ allow_tools = ["echo"]
     }
 
     #[test]
+    fn read_v2_notebook_respects_offset_limit_window() {
+        let workspace = make_temp_workspace("read-v2-notebook-window");
+        let notebook = json!({
+            "cells": [
+                { "cell_type": "markdown", "source": ["cell1"] },
+                { "cell_type": "code", "source": ["cell2"] },
+                { "cell_type": "markdown", "source": ["cell3"] },
+                { "cell_type": "code", "source": ["cell4"] }
+            ]
+        });
+        fs::write(
+            workspace.join("nb.ipynb"),
+            serde_json::to_string(&notebook).expect("serialize notebook"),
+        )
+        .expect("write notebook file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-6b".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "nb.ipynb",
+                "offset": 2,
+                "limit": 2
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("notebook read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("notebook"));
+        assert_eq!(payload["line_start"].as_u64(), Some(2));
+        assert_eq!(payload["line_end"].as_u64(), Some(3));
+        assert_eq!(payload["has_more"].as_bool(), Some(true));
+        assert_eq!(payload["next_offset"].as_u64(), Some(4));
+        let content = payload["content"].as_str().unwrap_or_default();
+        assert!(content.contains("[2] code cell2"));
+        assert!(content.contains("[3] markdown cell3"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_pdf_pages_is_reflected_in_meta() {
+        let workspace = make_temp_workspace("read-v2-pdf-pages");
+        fs::write(workspace.join("report.pdf"), "%PDF-1.4\nplaceholder\n").expect("write pdf placeholder");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-6c".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "report.pdf",
+                "pages": "2-3"
+            }),
+        };
+        let output = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect("pdf read should succeed");
+        let payload: Value = serde_json::from_str(&output.content).expect("read output should be json");
+        assert_eq!(payload["kind"].as_str(), Some("pdf"));
+        assert_eq!(
+            payload["meta"]["extra"]["page_range"]["first_page"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(
+            payload["meta"]["extra"]["page_range"]["last_page"].as_u64(),
+            Some(3)
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn read_v2_returns_file_unchanged_for_same_range_and_mtime() {
         let workspace = make_temp_workspace("read-v2-dedup");
         fs::write(workspace.join("dedup.txt"), "line1\nline2\nline3\n").expect("write sample text");
