@@ -10,7 +10,7 @@ mod tests {
     use std::collections::HashSet as StdHashSet;
     use std::fs;
     use std::process;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     fn make_temp_workspace(prefix: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -39,6 +39,45 @@ mod tests {
             }),
             attachments: vec![],
         }
+    }
+
+    fn make_read_edit_input(workspace: &PathBuf) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: "req-read-edit-v2".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run read and edit".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["read".to_string(), "edit".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
+    fn execute_tool_payload(
+        executor: &LocalToolExecutor,
+        input: &TurnExecuteInput,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, ToolExecutionError> {
+        let call = ToolCallInput {
+            id: format!("tool-{name}"),
+            name: name.to_string(),
+            arguments,
+        };
+        let output = executor.execute_tool_call(&call, input)?;
+        serde_json::from_str(&output.content).map_err(|error| {
+            ToolExecutionError::new(
+                "tool_execution_failed",
+                format!("failed to decode tool output json: {error}"),
+            )
+        })
     }
 
     #[test]
@@ -1464,6 +1503,261 @@ allow_tools = ["echo"]
             .execute_tool_call(&call, &input)
             .expect_err("out of bounds read should fail");
         assert_eq!(error.error_class, "range_out_of_bounds");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_requires_prior_read_in_same_session() {
+        let workspace = make_temp_workspace("edit-v2-read-gate");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+            }),
+        )
+        .expect_err("edit without read should fail");
+        assert_eq!(error.error_class, "edit_read_required");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_rejects_stale_target_after_read() {
+        let workspace = make_temp_workspace("edit-v2-stale");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        std::thread::sleep(Duration::from_millis(3));
+        fs::write(&target, "line1\nline2-modified\n").expect("mutate file to stale snapshot");
+
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+            }),
+        )
+        .expect_err("stale edit should fail");
+        assert_eq!(error.error_class, "edit_stale_target");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_matches_all_edits_against_original_baseline() {
+        let workspace = make_temp_workspace("edit-v2-original-baseline");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "alpha\nfoo\nbar\nomega\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [
+                    {"old_text": "foo\n", "new_text": "foo bar\n"},
+                    {"old_text": "bar\n", "new_text": "BAR\n"}
+                ]
+            }),
+        )
+        .expect("edit should succeed");
+
+        assert_eq!(payload["blocks_requested"].as_u64(), Some(2));
+        assert_eq!(payload["replacements"].as_u64(), Some(2));
+        assert_eq!(payload["fuzzy_fallback_used"].as_bool(), Some(false));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "alpha\nfoo bar\nBAR\nomega\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_rejects_overlapping_ranges() {
+        let workspace = make_temp_workspace("edit-v2-overlap");
+        fs::write(workspace.join("sample.txt"), "one\ntwo\nthree\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [
+                    {"old_text": "one\ntwo\n", "new_text": "ONE\nTWO\n"},
+                    {"old_text": "two\nthree\n", "new_text": "TWO\nTHREE\n"}
+                ]
+            }),
+        )
+        .expect_err("overlap should fail");
+        assert_eq!(error.error_class, "edit_overlap");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_supports_safe_fuzzy_quote_matching() {
+        let workspace = make_temp_workspace("edit-v2-fuzzy-quotes");
+        let target = workspace.join("sample.js");
+        fs::write(&target, "console.log(“hello”);\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.js"
+            }),
+        )
+        .expect("read should succeed");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.js",
+                "edits": [{"old_text": "console.log(\"hello\");\n", "new_text": "console.log(\"world\");\n"}]
+            }),
+        )
+        .expect("fuzzy edit should succeed");
+
+        assert_eq!(payload["fuzzy_fallback_used"].as_bool(), Some(true));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "console.log(\"world\");\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_preserves_utf8_bom_and_crlf_endings() {
+        let workspace = make_temp_workspace("edit-v2-bom-crlf");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "\u{FEFF}first\r\nsecond\r\nthird\r\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "second\n", "new_text": "SECOND\n"}]
+            }),
+        )
+        .expect("edit should succeed");
+
+        assert_eq!(payload["first_changed_line"].as_u64(), Some(2));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "\u{FEFF}first\r\nSECOND\r\nthird\r\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_rejects_legacy_arguments() {
+        let workspace = make_temp_workspace("edit-v2-legacy-args");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "old_text": "line2\n",
+                "new_text": "LINE2\n",
+                "replace_all": false
+            }),
+        )
+        .expect_err("legacy arguments should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_rejects_noop_replacements() {
+        let workspace = make_temp_workspace("edit-v2-noop");
+        fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "line2\n"}]
+            }),
+        )
+        .expect_err("noop replacement should fail");
+        assert_eq!(error.error_class, "edit_no_changes");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

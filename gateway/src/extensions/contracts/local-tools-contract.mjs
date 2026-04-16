@@ -86,8 +86,13 @@ function resolveScenario(command) {
       return {
         write_result: { bytes_written: 23 },
         read_result: { line_start: 2, line_end: 3, content: "line2\nline3" },
-        edit_first: { occurrences_found: 2, replacements: 1 },
-        edit_all: { replacements: 1 }
+        edit_result: {
+          blocks_requested: 1,
+          replacements: 1,
+          fuzzy_fallback_used: false,
+          first_changed_line: 2,
+          diff: "@@ -2,1 +2,1 @@\n-line2\n+LINE2"
+        }
       };
     case "path-escape-blocked":
       return {

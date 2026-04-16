@@ -368,16 +368,26 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_EDIT,
-            description: "Replace text in file",
+            description: "Apply one or more targeted text replacements in a text file. Requires a prior read in the same session and rejects stale targets.",
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "path": { "type": "string" },
-                    "old_text": { "type": "string" },
-                    "new_text": { "type": "string" },
-                    "replace_all": { "type": "boolean" }
+                    "edits": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "old_text": { "type": "string" },
+                                "new_text": { "type": "string" }
+                            },
+                            "required": ["old_text", "new_text"],
+                            "additionalProperties": false
+                        }
+                    }
                 },
-                "required": ["path", "old_text"]
+                "required": ["path", "edits"],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },

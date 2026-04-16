@@ -87,6 +87,7 @@ fn run_read(
         let mtime_ms = read_file_mtime_ms(&target)?;
         let cache_key = build_read_cache_key(context.session_key.as_str(), &target, &request);
         if let Some(cached) = lookup_read_cache(&cache_key, mtime_ms) {
+            record_edit_read_snapshot(context.session_key.as_str(), &target, mtime_ms);
             let payload = build_file_unchanged_payload(&relative_path, &request, &cached, mtime_ms);
             return Ok(ToolCallOutput::from_payload(payload));
         }
@@ -105,6 +106,7 @@ fn run_read(
                 kind: "text",
             },
         );
+        record_edit_read_snapshot(context.session_key.as_str(), &target, mtime_ms);
         return Ok(ToolCallOutput::from_payload(payload));
     }
 
