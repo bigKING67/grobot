@@ -69,6 +69,53 @@ fn read_pdf_total_pages(target: &Path) -> Option<usize> {
     parse_pdf_total_pages(stdout.as_ref())
 }
 
+fn parse_pdfimages_list_count(raw: &str) -> Option<usize> {
+    let mut count = 0usize;
+    let mut saw_header = false;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lowered = trimmed.to_ascii_lowercase();
+        if lowered.starts_with("page") && lowered.contains("num") && lowered.contains("type") {
+            saw_header = true;
+            continue;
+        }
+        if trimmed.starts_with('-') {
+            continue;
+        }
+        if trimmed
+            .split_whitespace()
+            .next()
+            .and_then(|token| token.parse::<usize>().ok())
+            .is_some()
+        {
+            count = count.saturating_add(1);
+        }
+    }
+    if saw_header || count > 0 {
+        return Some(count);
+    }
+    None
+}
+
+fn read_pdf_embedded_image_count(target: &Path) -> Option<usize> {
+    if !command_available("pdfimages") {
+        return None;
+    }
+    let output = Command::new("pdfimages")
+        .arg("-list")
+        .arg(target)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_pdfimages_list_count(stdout.as_ref())
+}
+
 #[derive(Debug, Clone)]
 struct PdfExtractPlan {
     first_page: usize,
@@ -138,6 +185,10 @@ fn format_pdf_page_range(first_page: usize, last_page: usize) -> String {
         return first_page.to_string();
     }
     format!("{first_page}-{last_page}")
+}
+
+fn pdf_has_visible_text(raw: &str) -> bool {
+    raw.chars().any(|ch| !ch.is_whitespace())
 }
 
 fn extract_pdf_text_with_pdftotext(
@@ -317,6 +368,63 @@ fn read_media_payload(
             let selected_range = Some((extract_plan.first_page, extract_plan.last_page));
             match extract_pdf_text_with_pdftotext(target, selected_range) {
                 Ok(extracted_text) => {
+                    let embedded_image_count = read_pdf_embedded_image_count(target);
+                    if !pdf_has_visible_text(extracted_text.as_str()) {
+                        let likely_image_only_pdf = embedded_image_count
+                            .map(|count| count > 0)
+                            .unwrap_or(false);
+                        let mut content = format!(
+                            "PDF file detected: {relative_path}\nselected_pages={selected_pages}\nNo extractable text found in selected pages."
+                        );
+                        if let Some(count) = embedded_image_count {
+                            content.push_str(&format!("\nembedded_image_count={count}"));
+                        }
+                        if likely_image_only_pdf {
+                            content.push_str(
+                                "\nLikely scanned/image-only PDF. OCR is required to extract text content.",
+                            );
+                        }
+                        if let Some(next_pages) = extract_plan.next_pages.as_ref() {
+                            content.push_str(&format!(
+                                "\n\n[More PDF pages available. Use pages=\"{}\" to continue.]",
+                                next_pages
+                            ));
+                        }
+                        let payload = build_media_payload(
+                            relative_path,
+                            request,
+                            target,
+                            kind,
+                            content,
+                            1,
+                            0,
+                            false,
+                            None,
+                            false,
+                            None,
+                            json!({
+                                "size_bytes": size_bytes,
+                                "pages": request.pages,
+                                "selected_page_range": {
+                                    "first_page": extract_plan.first_page,
+                                    "last_page": extract_plan.last_page
+                                },
+                                "selected_pages": selected_pages,
+                                "total_pages": total_pages,
+                                "total_pages_known": total_pages.is_some(),
+                                "has_more_pages": extract_plan.has_more_pages,
+                                "next_pages": extract_plan.next_pages,
+                                "extract_status": "extracted_no_text",
+                                "extractor": "pdftotext",
+                                "text_detected": false,
+                                "embedded_image_count": embedded_image_count,
+                                "likely_image_only_pdf": likely_image_only_pdf,
+                                "ocr_guidance": "Run OCR first, then read again.",
+                                "read_bytes": 0,
+                            }),
+                        );
+                        return Ok(payload);
+                    }
                     let mut text_result = read_text_window_from_content(extracted_text.as_str(), request)?;
                     if let Some(next_pages) = extract_plan.next_pages.as_ref() {
                         text_result.content.push_str(&format!(
@@ -350,6 +458,9 @@ fn read_media_payload(
                             "next_pages": extract_plan.next_pages,
                             "extract_status": "extracted",
                             "extractor": "pdftotext",
+                            "text_detected": true,
+                            "embedded_image_count": embedded_image_count,
+                            "likely_image_only_pdf": false,
                             "read_bytes": text_result.read_bytes,
                         }),
                     );

@@ -750,13 +750,23 @@ allow_tools = ["echo"]
         );
         assert!(payload["meta"]["extra"]["total_pages_known"].is_boolean());
         let extract_status = payload["meta"]["extra"]["extract_status"].as_str().unwrap_or_default();
-        assert!(extract_status == "extracted" || extract_status == "fallback");
+        assert!(
+            extract_status == "extracted"
+                || extract_status == "extracted_no_text"
+                || extract_status == "fallback"
+        );
         if extract_status == "fallback" {
             assert!(
                 payload["content"]
                     .as_str()
                     .unwrap_or_default()
                     .contains("install poppler")
+            );
+        }
+        if extract_status == "extracted_no_text" {
+            assert_eq!(
+                payload["meta"]["extra"]["text_detected"].as_bool(),
+                Some(false)
             );
         }
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
@@ -819,6 +829,28 @@ allow_tools = ["echo"]
         assert_eq!(parse_pdf_total_pages(raw), Some(12));
         assert_eq!(parse_pdf_total_pages("Pages: 0"), None);
         assert_eq!(parse_pdf_total_pages("No page metadata"), None);
+    }
+
+    #[test]
+    fn read_v2_parse_pdfimages_list_count_extracts_rows() {
+        let raw = "page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio\n\
+---------------------\n\
+1      0    image   1600  2300  rgb     3   8  image  no         8  0    300   300  121K 0.8%\n\
+2      1    image   1600  2300  rgb     3   8  image  no         9  0    300   300  119K 0.8%\n";
+        assert_eq!(parse_pdfimages_list_count(raw), Some(2));
+        assert_eq!(
+            parse_pdfimages_list_count(
+                "page num type\n---------------------\n",
+            ),
+            Some(0)
+        );
+        assert_eq!(parse_pdfimages_list_count("not a pdfimages output"), None);
+    }
+
+    #[test]
+    fn read_v2_pdf_has_visible_text_detects_non_whitespace() {
+        assert!(!pdf_has_visible_text("   \n\t\r  "));
+        assert!(pdf_has_visible_text(" \nA "));
     }
 
     #[test]
