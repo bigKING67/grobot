@@ -1,67 +1,68 @@
 # Quality Guidelines
 
-> Quality baseline for current backend/workflow scripts.
+> Quality baseline for backend and platform code in `grobot`.
 
 ---
 
 ## Overview
 
-Quality gates apply across Python, TypeScript, and Rust layers in this repo.
+Quality gates must protect three dimensions simultaneously:
 
-Core principles:
-
-1. Read specs before write (`.trellis/spec/*` + task PRD).
-2. Keep contracts explicit across gateway/runtime/workflow boundaries.
-3. Prefer small, composable modules over monolithic handlers.
-4. Verify changed layer(s) with the closest available command-level checks.
+1. Layer boundary correctness (`models/tools/extensions/orchestration/governance`).
+2. Contract correctness (types, runtime events, management payload shape).
+3. Operational safety (path safety, redaction, explicit fallback behavior).
 
 ---
 
 ## Forbidden Patterns
 
-1. Unsafe filesystem operations without path validation.
+1. Cross-layer leakage (for example runtime execution logic inside gateway orchestration glue).
 2. Silent failure paths that hide root causes.
-3. Duplicated constants/contracts across modules instead of shared source.
-4. Mixing unrelated concerns into one command handler/module.
+3. Unsafe path handling without workspace boundary checks.
+4. Hardcoded secrets/tokens in source.
+5. Weak typing workarounds (`any` without strict justification, unchecked casts from `unknown`).
+6. Inline dynamic import patterns that bypass static module contracts.
 
 ---
 
 ## Required Patterns
 
-1. Type annotations on public/helper functions (Python/TS/Rust signatures).
-2. Command functions return explicit exit/result semantics.
-3. Shared workflow constants imported from `common/paths.py`.
-4. Session/event contracts come from shared contract files, not ad-hoc strings.
+1. Keep entrypoint files thin; move logic to dedicated modules.
+2. Validate and normalize external inputs before business logic.
+3. Use canonical shared types from `gateway/src/models/types.ts` and runtime contracts.
+4. Emit explicit warnings when fallback/degrade behavior is triggered.
+5. Preserve deterministic naming and source tracking fields in status/config payloads.
 
 ---
 
-## Testing Requirements
+## Verification Requirements
 
-Current minimum validation:
-
-1. Workflow script changes:
-   - run impacted CLI command (`--help` + realistic invocation),
-   - run `python3 ./.trellis/scripts/task.py validate <task-dir>` if context touched.
-2. Rust runtime changes:
-   - run `cargo check` in `runtime/`.
-3. Node/TS package changes:
-   - run package-level `npm run check` once scripts are defined.
+1. After non-doc code changes, run repository check pipeline:
+   - `npm run check`
+2. For runtime-focused iteration, at minimum confirm Rust compile path:
+   - `cargo check --manifest-path runtime/Cargo.toml`
+3. For gateway TypeScript compile contract:
+   - `npm run check:gateway:ts`
+4. For workflow/task context changes:
+   - `python3 ./.trellis/scripts/task.py validate <task-dir>`
 
 ---
 
 ## Code Review Checklist
 
-1. Does the change preserve state integrity and path/session safety?
-2. Are errors explicit, actionable, and non-silent?
-3. Are shared contracts/constants centralized and reused?
-4. Are related docs/specs updated in the same change?
-5. Is verification evidence attached for the changed layer?
+1. Is the touched file in the correct architecture layer?
+2. Are error/fallback paths explicit and observable?
+3. Are secrets redacted in logs/status/config outputs?
+4. Are storage payloads backward-tolerant and version-aware?
+5. Are related docs/contracts updated together with code changes?
+6. Is verification evidence attached for the changed layer?
 
 ---
 
 ## Examples
 
-1. `.trellis/scripts/common/paths.py`: centralized workflow constants/path helpers.
-2. `.trellis/scripts/task.py`: command decomposition into `cmd_*` handlers.
-3. `gateway/src/types.ts` + `shared/contracts/runtime-events.md`: explicit event/session contract surface.
-4. `runtime/Cargo.toml` + `runtime/src/main.rs`: Rust runtime validation baseline via `cargo check`.
+1. `gateway/src/orchestration/entrypoints/dev-cli/index.ts` (thin command dispatch)
+2. `gateway/src/orchestration/entrypoints/dev-cli/services/runtime-paths.ts` (input normalization + path resolution)
+3. `gateway/src/orchestration/entrypoints/dev-cli/services/redaction.ts` (safe output surface)
+4. `runtime/src/tools/core/mod.rs` (tool context validation + workspace boundary checks)
+5. `runtime/src/orchestration/pipeline.rs` (deterministic event lifecycle)

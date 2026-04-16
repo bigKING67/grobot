@@ -1,51 +1,67 @@
 # Quality Guidelines
 
-> Code quality standards for frontend development.
+> Quality baseline for terminal interaction and prompt UX code.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
+Frontend quality in `grobot` means:
 
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
-
-(To be filled by the team)
+1. Deterministic command/interaction behavior.
+2. Explicit and observable fallback/error paths.
+3. Clear separation between pure formatting/parsing and side-effect execution.
+4. Strong typed contracts at all interaction boundaries.
 
 ---
 
 ## Forbidden Patterns
 
-<!-- Patterns that should never be used and why -->
-
-(To be filled by the team)
+1. Mixing persistence/network side effects into pure parser or formatter functions.
+2. Silent fallback behavior without warning output (for example redis -> file fallback without surfaced reason).
+3. TTY-only assumptions in command flows that also run in non-interactive contexts.
+4. Session switch operations that skip history/runtime synchronization.
+5. Hardcoded secrets/tokens in output or source.
+6. Weak typing shortcuts (`any`, unchecked JSON casts, ad-hoc object shapes).
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
-
-(To be filled by the team)
+1. Keep entrypoint handlers thin and delegate logic to focused modules (`create*`, `run*`, `build*` patterns).
+2. Use explicit result unions for interactive flows (`selected`/`cancelled`, `continue`/`break`).
+3. Surface warnings through existing output channels (`writeSessionWarnings`, `writeStoreWarnings`).
+4. Keep ask-user interactions resumable with stable identifiers (`questionId`, `resumeToken`, `blockingNodeId`).
+5. Provide explicit usage/help text for invalid command shapes.
 
 ---
 
-## Testing Requirements
+## Verification Requirements
 
-<!-- What level of testing is expected -->
-
-(To be filled by the team)
+1. After non-doc code changes, run repository checks:
+   - `npm run check`
+2. For gateway-focused type/contract iteration, confirm:
+   - `npm run check:gateway:ts`
+3. For task workflow/spec updates, validate task metadata:
+   - `python3 ./.trellis/scripts/task.py validate <task-dir>`
 
 ---
 
 ## Code Review Checklist
 
-<!-- What reviewers should check -->
+1. Does each interaction module preserve parse/build/run separation?
+2. Are cancellation and non-TTY branches implemented and user-visible?
+3. Are state transitions synchronized across runtime + persistence layers?
+4. Are fallback/error paths explicit and logged with actionable detail?
+5. Are new/changed payload fields normalized at boundaries?
+6. Are docs/spec files updated for new interaction contracts?
 
-(To be filled by the team)
+---
+
+## Examples
+
+1. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-interactive-handler.ts`
+2. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-session-menu-ops.ts`
+3. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-io.ts`
+4. `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts`
+5. `gateway/src/tools/ask-user/runtime.ts`

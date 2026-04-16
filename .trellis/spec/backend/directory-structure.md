@@ -1,20 +1,17 @@
 # Directory Structure
 
-> How backend code is currently organized in this repository.
+> How backend code is organized in this repository.
 
 ---
 
 ## Overview
 
-This repository now has both:
+`grobot` keeps strict separation between product runtime code and workflow automation code.
 
-1. Product backend skeleton:
-   - `gateway/` (TypeScript)
-   - `runtime/` (Rust)
-2. Workflow backend tooling:
-   - `.trellis/scripts/` (Python)
+- Product backend: `gateway/` (TypeScript) + `runtime/` (Rust)
+- Workflow backend: `.trellis/scripts/` (Python)
 
-Design rule: business/runtime code and workflow tooling must stay separated.
+Do not mix product execution logic into Trellis scripts.
 
 ---
 
@@ -23,52 +20,66 @@ Design rule: business/runtime code and workflow tooling must stay separated.
 ```text
 gateway/
 └── src/
-    ├── main.ts
-    ├── session-key.ts
-    └── types.ts
+    ├── models/
+    ├── tools/
+    ├── extensions/
+    ├── orchestration/
+    │   ├── entrypoints/dev-cli/
+    │   │   ├── start/
+    │   │   ├── serve/
+    │   │   ├── services/
+    │   │   └── status/
+    │   └── orchestrator/
+    └── governance/evals/
 
 runtime/
 └── src/
-    └── main.rs
+    ├── models/
+    ├── tools/
+    │   ├── core/
+    │   ├── dispatcher/
+    │   ├── fs/
+    │   ├── mcp/
+    │   ├── shell/
+    │   └── semantic/
+    ├── extensions/
+    ├── orchestration/
+    └── governance/
 
 .trellis/
-├── scripts/
-│   ├── task.py
-│   ├── get_context.py
-│   ├── add_session.py
-│   ├── common/
-│   └── multi_agent/
-├── tasks/
-└── spec/
+└── scripts/
+    ├── task.py
+    ├── add_session.py
+    ├── common/
+    └── multi_agent/
 ```
 
 ---
 
-## Module Organization
+## Module Organization Rules
 
-Use these placement rules:
-
-1. Gateway transport/session contracts go under `gateway/src/`.
-2. Runtime execution/scheduler primitives go under `runtime/src/`.
-3. Trellis automation logic stays in `.trellis/scripts/`.
-4. Shared workflow constants stay in `.trellis/scripts/common/paths.py`.
-
-Do not mix runtime business concerns into Trellis workflow scripts.
+1. Gateway `models/` holds canonical TS types and contracts.
+2. Gateway `orchestration/entrypoints/dev-cli/*` composes command flows, not low-level execution details.
+3. Gateway `tools/` provides adapters and persistence interfaces; core execution belongs to runtime.
+4. Runtime `tools/*` implements local tool dispatch and safety checks.
+5. Runtime `orchestration/*` controls turn pipeline and event sequence.
+6. `.trellis/scripts/*` manages developer workflow only (task/session/context automation).
 
 ---
 
 ## Naming Conventions
 
-1. Python modules/files: `snake_case`.
-2. TypeScript modules/files: `kebab-case` or `snake_case`, consistent per package.
-3. Rust modules/files: `snake_case` (standard Rust style).
-4. Workflow command handlers in `task.py`: `cmd_<action>`.
+1. TypeScript files: kebab-case (`run-start-context.ts`, `management-routes.ts`).
+2. Rust module files: snake_case (`orchestrator.rs`, `session.rs`, `dispatcher/mod.rs`).
+3. Python workflow scripts: snake_case (`add_session.py`, `task_context.py`).
+4. CLI command handlers use explicit verbs (`runStart`, `dispatchManagementRoutes`, `cmd_*` in Trellis scripts).
 
 ---
 
 ## Examples
 
-1. `gateway/src/session-key.ts`: canonical SessionKey build/parse contract.
-2. `runtime/src/main.rs`: runtime bootstrap and config baseline.
-3. `.trellis/scripts/task.py`: command-router style workflow CLI.
-4. `.trellis/scripts/common/paths.py`: shared workflow path constants.
+1. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-context.ts`: start-path context assembly and option resolution.
+2. `gateway/src/orchestration/entrypoints/dev-cli/serve/management-routes.ts`: management API route dispatch.
+3. `runtime/src/orchestration/pipeline.rs`: turn pipeline (`turn_start -> model_* -> tool_* -> turn_end/fail`).
+4. `runtime/src/tools/dispatcher/mod.rs`: tool dispatch table and enablement checks.
+5. `.trellis/scripts/task.py`: workflow task lifecycle command entrypoint.

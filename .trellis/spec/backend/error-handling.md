@@ -1,76 +1,64 @@
 # Error Handling
 
-> Error-handling conventions for current Python workflow tooling.
+> Error-handling conventions across gateway, runtime, and workflow tooling.
 
 ---
 
 ## Overview
 
-Error handling follows language- and layer-specific contracts:
+Error handling follows fail-fast plus explicit fallback boundaries:
 
-1. Python CLI workflow scripts:
-   - return `0/1`,
-   - print actionable `Error:` messages,
-   - exit via `sys.exit(main())`.
-2. TypeScript gateway modules:
-   - throw typed `Error` with clear context,
-   - avoid silent fallbacks.
-3. Rust runtime modules:
-   - prefer `Result`-based propagation,
-   - reserve `panic` for truly unrecoverable programmer errors.
+1. Input/contract violations fail immediately with actionable messages.
+2. Recoverable infrastructure failures can degrade mode (for example redis -> file), but must emit warnings.
+3. Runtime turn failures must produce normalized failure events (`turn_failed`, then `turn_end` with failed status).
 
 ---
 
-## Error Types
+## Error Categories
 
-Current practical categories:
-
-1. Input/precondition errors:
-   missing args, invalid session key format, missing task/developer identity.
-2. Filesystem/state errors:
-   path not found, unsafe path, read/write failures.
-3. Parse/contract errors:
-   JSON decode failures, malformed event/session payloads, unsupported values.
-
-Guard clauses + explicit error branching are the dominant pattern.
+1. Contract/input errors:
+   - invalid CLI options, malformed session/model commands, invalid tool arguments.
+2. IO/state errors:
+   - missing files, unreadable config, redis/runtime process failures.
+3. Upstream/provider errors:
+   - timeout, auth/HTTP errors, invalid JSON responses.
+4. Runtime execution errors:
+   - tool disabled, unsupported tool call, interrupted turn, model execution failure.
 
 ---
 
-## Error Handling Patterns
+## Handling Patterns
 
-1. Guard early, fail fast on contract violations.
-2. Catch narrow exception groups where possible.
-3. Fallback only where safe:
-   config read may fallback, but task/runtime integrity violations must abort.
-4. Include enough context in error text to diagnose quickly (key ids/paths/fields).
+1. Validate and normalize at boundaries (`parse*`, `normalize*`, `resolve*` helpers).
+2. Return structured error classes where possible (runtime model/tool error classes).
+3. Preserve context in error text (provider, timeout source, trace/class identifiers).
+4. Only degrade on explicitly recoverable paths (store backends, config read fallback).
+5. Keep user-facing stdout concise, send diagnostics to stderr.
 
 ---
 
-## API Error Responses
+## API and Runtime Failure Contracts
 
-Current output contracts:
-
-1. CLI commands:
-   human-readable error + non-zero exit.
-2. Runtime streams:
-   emit failure event (`turn_failed`) when turn cannot complete.
-3. Management/API layer (when implemented):
-   must define stable JSON error envelope before public exposure.
+1. TS dev CLI command dispatch returns explicit exit codes for unsupported/invalid commands.
+2. Management routes should return consistent JSON error envelopes via route helpers.
+3. Rust runtime pipeline emits `turn_failed` and terminal `turn_end` events on failure.
+4. Stdio runtime client converts JSON-RPC errors into typed, contextual JS errors.
 
 ---
 
 ## Common Mistakes
 
-1. Catching broad exceptions without preserving actionable context.
-2. Returning success after partial failure.
-3. Writing fatal errors to stdout instead of stderr (CLI).
-4. Throwing raw string errors without context in gateway modules.
+1. Swallowing error context (`catch {}` without warning/error output).
+2. Returning success after partial write failure.
+3. Throwing opaque `Error("failed")` without class/source details.
+4. Logging sensitive values while printing debug failures.
 
 ---
 
 ## Examples
 
-1. `.trellis/scripts/task.py`: explicit non-zero returns on invalid arguments/state.
-2. `.trellis/scripts/common/task_utils.py`: path-safety checks and error-first branching.
-3. `gateway/src/session-key.ts`: strict parse/validate and explicit thrown errors for malformed keys.
-4. `shared/contracts/runtime-events.md`: `turn_failed` as normalized runtime failure event.
+1. `gateway/src/orchestration/entrypoints/dev-cli/index.ts` (exit-code based command error handling)
+2. `gateway/src/tools/runtime/stdio-client.ts` (spawn timeout, abort, JSON-RPC error normalization)
+3. `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts` (redis failure fallback)
+4. `runtime/src/orchestration/pipeline.rs` (failure-to-event mapping)
+5. `runtime/src/models/config.rs` (provider/config parse and upstream error classes)

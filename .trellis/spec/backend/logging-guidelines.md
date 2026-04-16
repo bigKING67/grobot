@@ -1,65 +1,59 @@
 # Logging Guidelines
 
-> Logging patterns used in current Trellis workflow scripts.
+> Observability and log-safety rules for backend/runtime flows.
 
 ---
 
 ## Overview
 
-Current logging is split by layer:
+Logging in this repo has three forms:
 
-1. Workflow CLI (`.trellis/scripts/*`): console-first, human-readable.
-2. Multi-agent tooling: tagged console logs (`[INFO]/[WARN]/[ERROR]/[SUCCESS]`).
-3. Runtime/gateway contract: normalized event envelope in shared contracts (stream-oriented observability).
-
-This is acceptable for bootstrap. Structured centralized logging will be added
-when long-running runtime services are implemented.
+1. Human-readable CLI stderr/stdout diagnostics in gateway workflows.
+2. Structured runtime event stream (`RuntimeEvent`) for turn-level tracing.
+3. Task/workflow logs in `.trellis/tasks/*/*.jsonl` and Trellis script output.
 
 ---
 
-## Log Levels
+## Level Semantics
 
-Use these semantics:
-
-1. `INFO`: phase transitions, routing decisions, key identifiers.
-2. `WARN`: recoverable degradation or partial issues.
-3. `ERROR`: failed operation requiring abort/retry/human action.
-4. `SUCCESS`: explicit milestone completion for operator confidence.
+1. INFO: lifecycle transitions, selected route/provider, session context.
+2. WARN: degraded mode or fallback (for example redis fallback to file).
+3. ERROR: operation failed and requires retry or operator action.
+4. SUCCESS/OK-style messages: explicit completion checkpoints for workflows.
 
 ---
 
-## Structured Logging
+## Logging Patterns
 
-Current format is lightweight and grep-friendly:
-
-1. Prefix tags (`[INFO]`, `[WARN]`, `[ERROR]`) for CLI flows.
-2. Keep one event per line where possible.
-3. Include identifiers (task dir, branch, worktree, PID, trace/turn/session ids).
-4. Runtime event payloads must follow shared envelope definitions.
+1. Prefer one event per line and stable prefixes for grep (`[ask-user]`, `[runtime-route]`).
+2. Include identifiers (`session_key`, `question_id`, `trace_id`, `blocking_node_id`) when available.
+3. Keep stdout for user-facing flow; use stderr for diagnostics and route details.
+4. Runtime events should preserve canonical event type names (`turn_start`, `tool_end`, `turn_failed`).
 
 ---
 
-## What to Log
+## Redaction and Sensitive Data
 
-1. Start/end of pipeline phases.
-2. Validation failures and missing prerequisites.
-3. Runtime coordinates: worktree path, PID, trace id, session key, turn id.
-4. Tool lifecycle events (`tool_start`, `tool_end`) when runtime event stream is available.
+1. Never print raw API keys, bearer tokens, cookies, or passwords.
+2. Use masking/redaction helpers for config/status surfaces.
+3. Truncate oversized payloads before emitting diagnostics.
+4. Redaction is mandatory for management config snapshots and file previews.
 
 ---
 
 ## What NOT to Log
 
-1. Secrets, tokens, credentials, private keys.
-2. Sensitive environment variable values.
-3. Full unredacted user content when not required for debugging.
-4. Oversized raw payload dumps when concise summaries are sufficient.
+1. Full unredacted credentials from config/env.
+2. Raw provider request bodies containing secrets.
+3. Verbose duplicated payload dumps that hide actionable signal.
+4. Stack traces without request/session context.
 
 ---
 
 ## Examples
 
-1. `.trellis/scripts/multi_agent/start.py`: tagged phase logs and operator guidance.
-2. `.trellis/scripts/multi_agent/cleanup.py`: explicit warning/error channels before cleanup actions.
-3. `.trellis/scripts/common/developer.py`: stderr error logs for bootstrap failures.
-4. `shared/contracts/runtime-events.md`: normalized runtime event envelope for observability.
+1. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-turn.ts` (runtime-route diagnostics)
+2. `gateway/src/tools/ask-user/runtime.ts` (ask-user issued/resolved events)
+3. `gateway/src/orchestration/entrypoints/dev-cli/services/redaction.ts` (secret masking/redaction)
+4. `runtime/src/orchestration/pipeline.rs` (normalized runtime event emission)
+5. `.trellis/tasks/00-bootstrap-guidelines/*.jsonl` (workflow activity journaling)
