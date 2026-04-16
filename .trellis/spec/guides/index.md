@@ -1,66 +1,79 @@
-# Thinking and Architecture Guides
+# Thinking Guides
 
-> Purpose: Provide decision-ready guidance before implementation, with emphasis on reliability, cross-layer correctness, and operational safety.
+> **Purpose**: Expand your thinking to catch things you might not have considered.
 
 ---
 
-## Guide Index
+## Why Thinking Guides?
+
+**Most bugs and tech debt come from "didn't think of that"**, not from lack of skill:
+
+- Didn't think about what happens at layer boundaries → cross-layer bugs
+- Didn't think about code patterns repeating → duplicated code everywhere
+- Didn't think about edge cases → runtime errors
+- Didn't think about future maintainers → unreadable code
+
+These guides help you **ask the right questions before coding**.
+
+---
+
+## Available Guides
 
 | Guide | Purpose | When to Use |
-| --- | --- | --- |
-| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | Before adding new utility, constant, helper, or repeated logic |
-| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Validate data flow and boundary contracts | Features spanning frontend/backend/db/tool boundaries |
-| [Agent Platform Blueprint](./agent-platform-blueprint.md) | Master architecture for TS+Rust multi-channel agent platform | Before major architecture decisions or scope planning |
-| [Agent Gateway and Runtime Guide](./agent-gateway-runtime-guide.md) | Runtime contracts, session control, concurrency, routing | When implementing adapters, gateway API, scheduler, failover |
-| [Agent Memory and Context Guide](./agent-memory-context-guide.md) | Memory lifecycle, retrieval, compaction, context layering | When implementing memory ingest/recall or context engineering |
-| [Agent Eval, Observability, and Security Guide](./agent-eval-observability-security-guide.md) | Release gates, trace schema, SLOs, security controls | Before production rollout or policy-sensitive features |
-| [Agent Implementation Roadmap](./agent-implementation-roadmap.md) | MVP to enterprise phase plan with entry/exit criteria | For milestone planning, sequencing, and risk management |
-| [Runtime Real Execution v1 Spec](./runtime-real-execution-v1-spec.md) | Doc-first spec for Rust runtime real-model execution (no tools) | Before implementing or reviewing runtime model call path changes |
+|-------|---------|-------------|
+| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
+| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
 
 ---
 
-## Quick Triggers
+## Quick Reference: Thinking Triggers
 
-### Use Cross-Layer Guide If
+### When to Think About Cross-Layer Issues
 
-- Feature touches 3+ subsystems.
-- Data formats change across service boundaries.
-- You need explicit input/output contracts.
+- [ ] Feature touches 3+ layers (API, Service, Component, Database)
+- [ ] Data format changes between layers
+- [ ] Multiple consumers need the same data
+- [ ] You're not sure where to put some logic
 
-### Use Code Reuse Guide If
+→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
 
-- Similar code appears in 3+ places.
-- You are introducing new constants/config values.
-- You are about to create a new helper without searching first.
+### When to Think About Code Reuse
 
-### Use Agent Blueprint and Runtime Guides If
+- [ ] You're writing similar code to something that exists
+- [ ] You see the same pattern repeated 3+ times
+- [ ] You're adding a new field to multiple places
+- [ ] **You're modifying any constant or config**
+- [ ] **You're creating a new utility/helper function** ← Search first!
 
-- You are changing session lifecycle, queueing, or channel adapters.
-- You are introducing new provider routing or tool policy logic.
-- You are changing runtime interfaces between TypeScript and Rust.
-- You need to align model/tool/orchestration/extension four-layer boundaries.
-
-### Use Memory and Eval/Security Guides If
-
-- You are changing memory recall/ingest behavior.
-- You are introducing compaction, summarization, or context policies.
-- You are preparing deployment, release gates, or security controls.
+→ Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
 
 ---
 
-## Pre-Modification Rule (Critical)
+## Pre-Modification Rule (CRITICAL)
 
-Before changing any contract/config/value, search for all references first:
+> **Before changing ANY value, ALWAYS search first!**
 
 ```bash
-rg -n "value_or_symbol_to_change" .
+# Search for the value you're about to change
+grep -r "value_to_change" .
 ```
+
+This single habit prevents most "forgot to update X" bugs.
 
 ---
 
-## Usage Pattern
+## How to Use This Directory
 
-1. Start with the guide nearest your current task boundary.
-2. Confirm constraints and contracts before coding.
-3. Add checklist evidence in task/PR notes.
-4. Update the relevant guide when a new stable pattern is discovered.
+1. **Before coding**: Skim the relevant thinking guide
+2. **During coding**: If something feels repetitive or complex, check the guides
+3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
+
+---
+
+## Contributing
+
+Found a new "didn't think of that" moment? Add it to the relevant guide.
+
+---
+
+**Core Principle**: 30 minutes of thinking saves 3 hours of debugging.

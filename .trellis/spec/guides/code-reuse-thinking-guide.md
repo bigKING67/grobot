@@ -1,109 +1,105 @@
 # Code Reuse Thinking Guide
 
-> Purpose: Avoid copy-paste growth and preserve maintainability by reusing stable patterns before adding new helpers, constants, or adapters.
+> **Purpose**: Stop and think before creating new code - does it already exist?
 
 ---
 
-## 1. Core Rule
+## The Problem
 
-Before adding any new utility or abstraction, search for existing behavior first.
+**Duplicated code is the #1 source of inconsistency bugs.**
+
+When you copy-paste or rewrite existing logic:
+- Bug fixes don't propagate
+- Behavior diverges over time
+- Codebase becomes harder to understand
+
+---
+
+## Before Writing New Code
+
+### Step 1: Search First
 
 ```bash
-rg -n "keyword_or_behavior" .
+# Search for similar function names
+grep -r "functionName" .
+
+# Search for similar logic
+grep -r "keyword" .
 ```
 
-If the behavior already exists, prefer extension over duplication.
+### Step 2: Ask These Questions
+
+| Question | If Yes... |
+|----------|-----------|
+| Does a similar function exist? | Use or extend it |
+| Is this pattern used elsewhere? | Follow the existing pattern |
+| Could this be a shared utility? | Create it in the right place |
+| Am I copying code from another file? | **STOP** - extract to shared |
 
 ---
 
-## 2. Reuse Decision Framework
+## Common Duplication Patterns
 
-Use this decision order:
+### Pattern 1: Copy-Paste Functions
 
-1. Existing function can be reused as-is.
-2. Existing function can be reused with a parameterized extension.
-3. Existing function can be split into composable pieces.
-4. Create new implementation only when 1-3 are infeasible.
+**Bad**: Copying a validation function to another file
 
----
+**Good**: Extract to shared utilities, import where needed
 
-## 3. Duplicate Detection Signals
+### Pattern 2: Similar Components
 
-Strong duplicate signals:
+**Bad**: Creating a new component that's 80% similar to existing
 
-- Similar branch logic appears in 3+ files.
-- Identical constants diverge by naming only.
-- Same validation/parsing logic appears in gateway, runtime, and tools.
-- Same error message mapping repeated with slight variations.
+**Good**: Extend existing component with props/variants
 
-Weak duplicate signals (do not force abstraction yet):
+### Pattern 3: Repeated Constants
 
-- One-off logic for a temporary migration.
-- Domain-specific behavior with incompatible constraints.
+**Bad**: Defining the same constant in multiple files
+
+**Good**: Single source of truth, import everywhere
 
 ---
 
-## 4. Reuse Priority by Artifact Type
+## When to Abstract
 
-Apply reuse in this priority:
+**Abstract when**:
+- Same code appears 3+ times
+- Logic is complex enough to have bugs
+- Multiple people might need this
 
-1. Domain contracts and schemas (highest reuse value).
-2. Error code and response envelope mapping.
-3. Validation and normalization logic.
-4. Low-level utility wrappers.
-5. Presentation-only formatting helpers.
-
----
-
-## 5. Safe Refactor Pattern
-
-When converging duplicates:
-
-1. Identify all callers and behavior variants.
-2. Write characterization tests for current behavior.
-3. Introduce shared implementation behind stable interface.
-4. Migrate callers incrementally.
-5. Delete dead paths after tests pass.
-
-Never merge duplicates blindly without preserving variant semantics.
+**Don't abstract when**:
+- Only used once
+- Trivial one-liner
+- Abstraction would be more complex than duplication
 
 ---
 
-## 6. Naming and Ownership Rules
+## After Batch Modifications
 
-- Reusable modules must have domain-driven names, not task-ticket names.
-- Shared contracts live near boundaries, not deep inside feature folders.
-- Utility ownership must be clear: gateway-shared, runtime-shared, or project-local.
+When you've made similar changes to multiple files:
 
----
-
-## 7. Review Checklist
-
-Before merging code with new helpers/constants:
-
-- Did we search for existing implementation?
-- Is there a single source of truth for this contract?
-- Are we introducing a generic helper without 2+ real call sites?
-- Did we preserve error and telemetry semantics?
-- Is there any dead code left after reuse migration?
+1. **Review**: Did you catch all instances?
+2. **Search**: Run grep to find any missed
+3. **Consider**: Should this be abstracted?
 
 ---
 
-## 8. Anti-Patterns
+## Gotcha: Asymmetric Mechanisms Producing Same Output
 
-- Creating `utils/common.ts` as a dump for unrelated helpers.
-- Premature abstractions based on guessed future needs.
-- Rewriting stable reused logic because local style differs.
-- Duplicating schemas between TypeScript and Rust without contract generation.
+**Problem**: When two different mechanisms must produce the same file set (e.g., recursive directory copy for init vs. manual `files.set()` for update), structural changes (renaming, moving, adding subdirectories) only propagate through the automatic mechanism. The manual one silently drifts.
+
+**Symptom**: Init works perfectly, but update creates files at wrong paths or misses files entirely.
+
+**Prevention checklist**:
+- [ ] When migrating directory structures, search for ALL code paths that reference the old structure
+- [ ] If one path is auto-derived (glob/copy) and another is manually listed, the manual one needs updating
+- [ ] Add a regression test that compares outputs from both mechanisms
 
 ---
 
-## 9. Project-Specific Application
+## Checklist Before Commit
 
-For this agent platform:
-
-- Keep session/event/tool contracts centralized and versioned.
-- Share policy error codes across gateway and runtime.
-- Keep provider routing schema as single config truth.
-- Reuse memory lifecycle primitives across ingestion and recall paths.
-
+- [ ] Searched for existing similar code
+- [ ] No copy-pasted logic that should be shared
+- [ ] Constants defined in one place
+- [ ] Similar patterns follow same structure

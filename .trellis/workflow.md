@@ -58,35 +58,30 @@ git status && git log --oneline -10              # Git state
 **CRITICAL**: Read guidelines before writing any code:
 
 ```bash
-# Read frontend guidelines index (if applicable)
-cat .trellis/spec/frontend/index.md
+# Discover available packages and spec layers
+python3 ./.trellis/scripts/get_context.py --mode packages
 
-# Read backend guidelines index (if applicable)
-cat .trellis/spec/backend/index.md
+# Read the spec index for each relevant module
+cat .trellis/spec/<package>/<layer>/index.md
+
+# Always read shared guides
+cat .trellis/spec/guides/index.md
 ```
 
-**Why read both?**
-- Understand the full project architecture
-- Know coding standards for the entire codebase
-- See how frontend and backend interact
+**Why this matters?**
+- Understand which spec layers apply to your task
+- Know coding standards for the packages you'll modify
 - Learn the overall code quality requirements
 
 ### Step 3: Before Coding - Read Specific Guidelines (Required)
 
-Based on your task, read the **detailed** guidelines:
+Based on your task, read the **detailed** guideline files listed in each spec index's **Pre-Development Checklist**:
 
-**Frontend Task**:
 ```bash
-cat .trellis/spec/frontend/hook-guidelines.md      # For hooks
-cat .trellis/spec/frontend/component-guidelines.md # For components
-cat .trellis/spec/frontend/type-safety.md          # For types
-```
-
-**Backend Task**:
-```bash
-cat .trellis/spec/backend/database-guidelines.md   # For DB operations
-cat .trellis/spec/backend/type-safety.md           # For types
-cat .trellis/spec/backend/logging-guidelines.md    # For logging
+# The index points to specific files — read those, not just the index
+cat .trellis/spec/<package>/<layer>/error-handling.md
+cat .trellis/spec/<package>/<layer>/conventions.md
+# etc. — based on what the Pre-Development Checklist lists
 ```
 
 ---
@@ -168,21 +163,14 @@ python3 ./.trellis/scripts/get_context.py --json
 
 Based on what you'll develop, read the corresponding guidelines:
 
-**Frontend Development** (if applicable):
 ```bash
-# Read index first, then specific docs based on task
-cat .trellis/spec/frontend/index.md
-```
+# Discover available packages and spec layers
+python3 ./.trellis/scripts/get_context.py --mode packages
 
-**Backend Development** (if applicable):
-```bash
-# Read index first, then specific docs based on task
-cat .trellis/spec/backend/index.md
-```
+# Read spec indexes for relevant modules
+cat .trellis/spec/<package>/<layer>/index.md
 
-**Cross-Layer Features**:
-```bash
-# For features spanning multiple layers
+# For cross-layer features
 cat .trellis/spec/guides/cross-layer-thinking-guide.md
 ```
 
@@ -208,21 +196,30 @@ python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>
 1. Create or select task
    --> python3 ./.trellis/scripts/task.py create "<title>" --slug <name> or list
 
-2. Write code according to guidelines
+2. Start task (mark as current)
+   --> python3 ./.trellis/scripts/task.py start <name>
+   --> Writes .trellis/.current-task; future sessions see it in <current-state>
+
+3. Write code according to guidelines
    --> Read .trellis/spec/ docs relevant to your task
    --> For cross-layer: read .trellis/spec/guides/
 
-3. Self-test
+4. Self-test
    --> Run project's lint/test commands (see spec docs)
    --> Manual feature testing
 
-4. Commit code
+5. Commit code
    --> git add <files>
    --> git commit -m "type(scope): description"
        Format: feat/fix/docs/refactor/test/chore
 
-5. Record session (one command)
+6. Record session (one command)
    --> python3 ./.trellis/scripts/add_session.py --title "Title" --commit "hash"
+
+7. Finish task (clear current)
+   --> python3 ./.trellis/scripts/task.py finish
+   --> Only when the task is fully done; otherwise leave it set so the
+       next session resumes where you left off
 ```
 
 ### Code Quality Checklist
@@ -233,8 +230,7 @@ python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>
 - [OK] Manual feature testing passes
 
 **Project-specific checks**:
-- See `.trellis/spec/frontend/quality-guidelines.md` for frontend
-- See `.trellis/spec/backend/quality-guidelines.md` for backend
+- See `.trellis/spec/<package>/<layer>/quality-guidelines.md` for package-specific checks
 
 ---
 
@@ -328,10 +324,14 @@ tasks/
 **Commands**:
 ```bash
 python3 ./.trellis/scripts/task.py create "<title>" [--slug <name>]   # Create task directory
+python3 ./.trellis/scripts/task.py start <name>    # Set as current task (writes .current-task, triggers after_start hooks)
+python3 ./.trellis/scripts/task.py finish          # Clear current task (triggers after_finish hooks)
 python3 ./.trellis/scripts/task.py archive <name>  # Archive to archive/{year-month}/
 python3 ./.trellis/scripts/task.py list            # List active tasks
 python3 ./.trellis/scripts/task.py list-archive    # List archived tasks
 ```
+
+**Current task mechanism**: `task.py start <name>` writes the selected task path to `.trellis/.current-task`. The SessionStart hook reads this file to inject `## CURRENT TASK` into every new session's context, so the AI immediately knows what you're working on without being told. Run `task.py finish` when you're done — subsequent sessions will show `(none)` until you start another task.
 
 ---
 

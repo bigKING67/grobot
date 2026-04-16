@@ -1,123 +1,94 @@
 # Cross-Layer Thinking Guide
 
-> Purpose: Prevent local fixes from breaking end-to-end behavior by validating contracts across channel, gateway, runtime, tool, memory, and data layers.
+> **Purpose**: Think through data flow across layers before implementing.
 
 ---
 
-## 1. Cross-Layer First Principle
+## The Problem
 
-Any change that touches an interface boundary must be analyzed as a flow, not a file.
+**Most bugs happen at layer boundaries**, not within layers.
 
-Typical boundaries:
-
-- Channel adapter -> gateway request schema
-- Gateway -> runtime event contract
-- Runtime -> tool execution contract
-- Runtime -> memory ingestion and recall
-- Runtime/gateway -> observability and audit pipeline
+Common cross-layer bugs:
+- API returns format A, frontend expects format B
+- Database stores X, service transforms to Y, but loses data
+- Multiple layers implement the same logic differently
 
 ---
 
-## 2. End-to-End Flow Map
+## Before Implementing Cross-Layer Features
 
-Before coding, map the exact path:
+### Step 1: Map the Data Flow
 
-1. Input shape and trust level
-2. Validation and normalization point
-3. Contract transformation point
-4. Persistence and caching point
-5. Output and user-visible side effect
+Draw out how data moves:
 
-If any step is ambiguous, freeze and define the contract first.
+```
+Source → Transform → Store → Retrieve → Transform → Display
+```
 
----
+For each arrow, ask:
+- What format is the data in?
+- What could go wrong?
+- Who is responsible for validation?
 
-## 3. Contract Invariants
+### Step 2: Identify Boundaries
 
-Every cross-layer contract should define:
+| Boundary | Common Issues |
+|----------|---------------|
+| API ↔ Service | Type mismatches, missing fields |
+| Service ↔ Database | Format conversions, null handling |
+| Backend ↔ Frontend | Serialization, date formats |
+| Component ↔ Component | Props shape changes |
 
-- Required fields and optional fields
-- Allowed enum values
-- Error code semantics
-- Version compatibility policy
-- Idempotency and retry behavior
+### Step 3: Define Contracts
 
-For session systems, also define ordering and cancellation semantics.
-
----
-
-## 4. Change Impact Matrix
-
-For each planned change, answer:
-
-- Which upstream producers are affected?
-- Which downstream consumers are affected?
-- Does storage schema need migration?
-- Does telemetry schema need update?
-- Do eval/replay fixtures need regeneration?
-
-No boundary change should merge without explicit answers.
+For each boundary:
+- What is the exact input format?
+- What is the exact output format?
+- What errors can occur?
 
 ---
 
-## 5. Failure Mode Analysis
+## Common Cross-Layer Mistakes
 
-Evaluate at least these failure modes:
+### Mistake 1: Implicit Format Assumptions
 
-- partial timeout (model succeeds, tool fails)
-- duplicate delivery (retry on network split)
-- stale state (cache/data race)
-- schema drift (producer and consumer mismatch)
-- policy mismatch (gateway allows, runtime denies)
+**Bad**: Assuming date format without checking
 
-Define fallback behavior and audit visibility for each.
+**Good**: Explicit format conversion at boundaries
 
----
+### Mistake 2: Scattered Validation
 
-## 6. Observability Requirements
+**Bad**: Validating the same thing in multiple layers
 
-Cross-layer changes must preserve:
+**Good**: Validate once at the entry point
 
-- trace continuity (`trace_id` and `turn_id`)
-- event completeness (`turn_start` to `turn_end` or `turn_failed`)
-- consistent error code propagation
-- actionable logs with layer attribution
+### Mistake 3: Leaky Abstractions
 
-If observability breaks, rollback risk increases sharply.
+**Bad**: Component knows about database schema
+
+**Good**: Each layer only knows its neighbors
 
 ---
 
-## 7. Validation Strategy
+## Checklist for Cross-Layer Features
 
-Minimum validation stack for boundary changes:
+Before implementation:
+- [ ] Mapped the complete data flow
+- [ ] Identified all layer boundaries
+- [ ] Defined format at each boundary
+- [ ] Decided where validation happens
 
-1. Contract tests (schema compatibility)
-2. Integration test through affected layers
-3. Replay test for known historical failures
-4. One negative-path test (timeout/invalid input/denied action)
-
-Only unit tests are insufficient for cross-layer modifications.
-
----
-
-## 8. Common Anti-Patterns
-
-- Fixing UI/API symptoms while leaving runtime contract mismatch unresolved.
-- Silent schema extension without version bump or default handling.
-- Adding fallback logic that hides root-cause errors.
-- Updating one side of a contract and relying on "eventual sync."
+After implementation:
+- [ ] Tested with edge cases (null, empty, invalid)
+- [ ] Verified error handling at each boundary
+- [ ] Checked data survives round-trip
 
 ---
 
-## 9. Project-Specific Application
+## When to Create Flow Documentation
 
-In this repository, treat these as high-risk cross-layer changes:
-
-- SessionKey format changes
-- Turn event schema changes
-- Provider routing policy and failover code changes
-- Tool capability model changes
-- Memory recall injection format changes
-
-Each requires contract test updates plus trace/eval verification.
-
+Create detailed flow docs when:
+- Feature spans 3+ layers
+- Multiple teams are involved
+- Data format is complex
+- Feature has caused bugs before
