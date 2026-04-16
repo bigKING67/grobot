@@ -4,8 +4,8 @@ mod models;
 mod orchestration;
 mod tools;
 
-use std::io::{self, BufRead, Write};
 use governance::session::{bootstrap, default_runtime_config};
+use std::io::{self, BufRead, Write};
 
 fn main() {
     let config = default_runtime_config();
