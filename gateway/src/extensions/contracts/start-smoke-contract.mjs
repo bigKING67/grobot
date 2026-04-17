@@ -1118,10 +1118,10 @@ function writeContextEngineTrimProjectToml(workDir) {
   );
 }
 
-function runStatusTsRust(repoRoot) {
+function runStatusTsRust(repoRoot, windowSize) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
-  const result = runCommand(repoRoot, [
+  const commandArgs = [
     "./grobot",
     "status",
     "--json",
@@ -1131,7 +1131,11 @@ function runStatusTsRust(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
-  ]);
+  ];
+  if (typeof windowSize === "number" && Number.isFinite(windowSize) && windowSize > 0) {
+    commandArgs.push("--context-graph-cache-window-size", String(Math.floor(windowSize)));
+  }
+  const result = runCommand(repoRoot, commandArgs);
   const parsedStatus = parseJsonObjectSafe(result.stdout);
   const routeDecision = isObject(parsedStatus?.route_decision)
     ? parsedStatus.route_decision
@@ -1193,6 +1197,12 @@ function runStatusTsRust(repoRoot) {
   const dependencyImportWindowDeltaStats = isObject(contextGraphCacheWindowDeltaTotals?.dependency_import)
     ? contextGraphCacheWindowDeltaTotals.dependency_import
     : null;
+  const contextGraphCacheWindowQueryTotals = isObject(contextGraphCacheWindow?.query_totals)
+    ? contextGraphCacheWindow.query_totals
+    : null;
+  const contextGraphCacheWindowOverallTotals = isObject(contextGraphCacheWindow?.overall_totals)
+    ? contextGraphCacheWindow.overall_totals
+    : null;
   const contextEngine = isObject(parsedStatus?.context_engine)
     ? parsedStatus.context_engine
     : null;
@@ -1233,6 +1243,10 @@ function runStatusTsRust(repoRoot) {
     status_has_context_graph_cache_window: Boolean(contextGraphCacheWindow),
     status_context_graph_cache_window_path_type: typeof contextGraphCacheWindow?.path,
     status_context_graph_cache_window_configured_size_type: typeof contextGraphCacheWindow?.configured_size,
+    status_context_graph_cache_window_configured_size_value:
+      typeof contextGraphCacheWindow?.configured_size === "number"
+        ? contextGraphCacheWindow.configured_size
+        : null,
     status_context_graph_cache_window_entries_type: typeof contextGraphCacheWindow?.entries,
     status_context_graph_cache_window_from_ts_type: contextGraphCacheWindow?.from_ts === null
       ? "null"
@@ -1244,6 +1258,14 @@ function runStatusTsRust(repoRoot) {
     status_context_graph_cache_window_delta_symbol_declaration_write_type: typeof symbolDeclarationWindowDeltaStats?.write,
     status_context_graph_cache_window_delta_dependency_query_miss_type: typeof dependencyQueryWindowDeltaStats?.miss,
     status_context_graph_cache_window_delta_dependency_import_evict_type: typeof dependencyImportWindowDeltaStats?.evict,
+    status_context_graph_cache_window_query_totals_hit_type: typeof contextGraphCacheWindowQueryTotals?.hit,
+    status_context_graph_cache_window_overall_totals_hit_type: typeof contextGraphCacheWindowOverallTotals?.hit,
+    status_context_graph_cache_window_query_hit_rate_type: contextGraphCacheWindow?.query_hit_rate === null
+      ? "null"
+      : typeof contextGraphCacheWindow?.query_hit_rate,
+    status_context_graph_cache_window_overall_hit_rate_type: contextGraphCacheWindow?.overall_hit_rate === null
+      ? "null"
+      : typeof contextGraphCacheWindow?.overall_hit_rate,
     status_has_context_engine: Boolean(contextEngine),
     status_context_engine_enabled_type: typeof contextEngine?.enabled,
     status_context_engine_profile_type: typeof contextEngine?.profile,
@@ -1390,6 +1412,13 @@ function runCli(argv) {
     case "status-ts-rust":
       payload = runStatusTsRust(repoRoot);
       break;
+    case "status-ts-rust-window-size": {
+      const parsedWindowSize = Number.parseInt(options.get("window-size") ?? "7", 10);
+      const normalizedWindowSize =
+        Number.isFinite(parsedWindowSize) && parsedWindowSize > 0 ? parsedWindowSize : 7;
+      payload = runStatusTsRust(repoRoot, normalizedWindowSize);
+      break;
+    }
     case "start-context-pre-send-head-trim-flow":
       payload = runStartContextPreSendHeadTrimFlow(repoRoot);
       break;

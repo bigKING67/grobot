@@ -31,6 +31,10 @@ export interface GraphCacheWindowSummary {
   fromTs: string | null;
   toTs: string | null;
   deltaTotals: GraphCacheWindowBucketSet;
+  queryTotals: GraphCacheBucketCounter;
+  overallTotals: GraphCacheBucketCounter;
+  queryHitRate: number | null;
+  overallHitRate: number | null;
 }
 
 const GRAPH_CACHE_WINDOW_RELATIVE_PATH = ".grobot/context/graph-cache-window.jsonl";
@@ -172,6 +176,22 @@ function sumBucketSet(target: GraphCacheWindowBucketSet, delta: GraphCacheWindow
   sumCounter(target.dependencyImport, delta.dependencyImport);
 }
 
+function sumBucketCounters(counters: readonly GraphCacheBucketCounter[]): GraphCacheBucketCounter {
+  const output = createEmptyCounter();
+  for (const row of counters) {
+    sumCounter(output, row);
+  }
+  return output;
+}
+
+function computeHitRate(counter: GraphCacheBucketCounter): number | null {
+  const denominator = counter.hit + counter.miss;
+  if (denominator <= 0) {
+    return null;
+  }
+  return counter.hit / denominator;
+}
+
 function maybeTrimWindowFile(path: string): void {
   if (!existsSync(path)) {
     return;
@@ -226,6 +246,16 @@ export function readGraphCacheWindowSummary(input: {
   for (const row of entries) {
     sumBucketSet(deltaTotals, row.delta);
   }
+  const queryTotals = sumBucketCounters([
+    deltaTotals.symbolQuery,
+    deltaTotals.dependencyQuery,
+  ]);
+  const overallTotals = sumBucketCounters([
+    deltaTotals.symbolQuery,
+    deltaTotals.symbolDeclaration,
+    deltaTotals.dependencyQuery,
+    deltaTotals.dependencyImport,
+  ]);
   return {
     path,
     configuredSize,
@@ -233,5 +263,9 @@ export function readGraphCacheWindowSummary(input: {
     fromTs: entries[0]?.ts ?? null,
     toTs: entries[entries.length - 1]?.ts ?? null,
     deltaTotals,
+    queryTotals,
+    overallTotals,
+    queryHitRate: computeHitRate(queryTotals),
+    overallHitRate: computeHitRate(overallTotals),
   };
 }

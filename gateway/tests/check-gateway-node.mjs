@@ -1607,6 +1607,16 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_context_graph_cache_window_delta_symbol_declaration_write_type, "number");
   assert.equal(statusPayload.status_context_graph_cache_window_delta_dependency_query_miss_type, "number");
   assert.equal(statusPayload.status_context_graph_cache_window_delta_dependency_import_evict_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_query_totals_hit_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_overall_totals_hit_type, "number");
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_graph_cache_window_query_hit_rate_type)),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_graph_cache_window_overall_hit_rate_type)),
+    true,
+  );
   assert.equal(statusPayload.status_has_context_engine, true);
   assert.equal(statusPayload.status_context_engine_enabled_type, "boolean");
   assert.equal(statusPayload.status_context_engine_profile_type, "string");
@@ -1617,6 +1627,24 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_context_engine_workspace_signals_enabled_type, "boolean");
   assert.equal(statusPayload.status_route_reason_type, "string");
   logStep("start-smoke-contract status-ts-rust", { attempts: statusAttempts });
+
+  const statusWindowSizeResult = runContract("start-smoke-contract.mjs", "status-ts-rust-window-size", [
+    "--repo-root",
+    repoRoot,
+    "--window-size",
+    "7",
+  ], {
+    timeoutMs: 240_000,
+  });
+  const statusWindowSizePayload = parseJsonOutput(
+    "start-smoke-contract status-ts-rust-window-size",
+    statusWindowSizeResult.stdout,
+  );
+  assert.equal(statusWindowSizePayload.exit_code, 0);
+  assert.equal(statusWindowSizePayload.status_json_parse_ok, true);
+  assert.equal(statusWindowSizePayload.status_context_graph_cache_window_configured_size_type, "number");
+  assert.equal(statusWindowSizePayload.status_context_graph_cache_window_configured_size_value, 7);
+  logStep("start-smoke-contract status-ts-rust-window-size");
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [
     "--repo-root",
