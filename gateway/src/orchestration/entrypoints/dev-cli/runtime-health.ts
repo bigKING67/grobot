@@ -23,6 +23,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function asNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const normalized = Math.floor(value);
+  if (normalized < 0) {
+    return null;
+  }
+  return normalized;
+}
+
+export interface RuntimeOverlapGuardMetrics {
+  blockedTotal: number;
+  blockedSearch: number;
+  blockedSemantic: number;
+  recordedBroadSearch: number;
+  recordedBroadSemantic: number;
+  trackedTurnKeys: number;
+  trackedTurnOrder: number;
+  maxTurnKeys: number;
+}
+
 function parseRuntimeJsonRpcResult(stdout: string): {
   ok: boolean;
   detail: string;
@@ -109,6 +131,7 @@ export function buildToolsManifestFingerprint(toolNames: string[], defaultEnable
 export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
   ok: boolean;
   detail: string;
+  overlapGuardMetrics?: RuntimeOverlapGuardMetrics;
 } {
   const input = JSON.stringify({
     jsonrpc: "2.0",
@@ -139,7 +162,45 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
   if (status !== "ok") {
     return { ok: false, detail: `runtime_status=${String(status)}` };
   }
-  return { ok: true, detail: "runtime.health=ok" };
+  let overlapGuardMetrics: RuntimeOverlapGuardMetrics | undefined;
+  const runtimeTools = parsed.result.runtime_tools;
+  if (isRecord(runtimeTools) && isRecord(runtimeTools.overlap_guard)) {
+    const overlap = runtimeTools.overlap_guard;
+    const blockedTotal = asNonNegativeInteger(overlap.blocked_total);
+    const blockedSearch = asNonNegativeInteger(overlap.blocked_search);
+    const blockedSemantic = asNonNegativeInteger(overlap.blocked_semantic);
+    const recordedBroadSearch = asNonNegativeInteger(overlap.recorded_broad_search);
+    const recordedBroadSemantic = asNonNegativeInteger(overlap.recorded_broad_semantic);
+    const trackedTurnKeys = asNonNegativeInteger(overlap.tracked_turn_keys);
+    const trackedTurnOrder = asNonNegativeInteger(overlap.tracked_turn_order);
+    const maxTurnKeys = asNonNegativeInteger(overlap.max_turn_keys);
+    if (
+      blockedTotal != null
+      && blockedSearch != null
+      && blockedSemantic != null
+      && recordedBroadSearch != null
+      && recordedBroadSemantic != null
+      && trackedTurnKeys != null
+      && trackedTurnOrder != null
+      && maxTurnKeys != null
+    ) {
+      overlapGuardMetrics = {
+        blockedTotal,
+        blockedSearch,
+        blockedSemantic,
+        recordedBroadSearch,
+        recordedBroadSemantic,
+        trackedTurnKeys,
+        trackedTurnOrder,
+        maxTurnKeys,
+      };
+    }
+  }
+  return {
+    ok: true,
+    detail: "runtime.health=ok",
+    overlapGuardMetrics,
+  };
 }
 
 export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {

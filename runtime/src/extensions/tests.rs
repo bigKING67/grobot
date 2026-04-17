@@ -10,6 +10,12 @@ mod tests {
         let payload: Value = serde_json::from_str(&output).expect("valid json");
         assert_eq!(payload["result"]["status"], "ok");
         assert_eq!(payload["result"]["protocol_version"], "runtime.v1");
+        assert!(
+            payload["result"]["runtime_tools"]["overlap_guard"]["max_turn_keys"]
+                .as_u64()
+                .is_some(),
+            "runtime.health should expose overlap_guard metrics"
+        );
     }
 
     #[test]

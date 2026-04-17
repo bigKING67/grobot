@@ -321,7 +321,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_GLOB,
-            description: "Find workspace paths by glob pattern",
+            description: "Find workspace paths by glob pattern. Prefer this for filename/path lookup questions.",
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -336,7 +336,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_SEARCH,
-            description: "Search text in workspace files",
+            description: "Literal lexical content search in workspace files (grep/rg style). Prefer for exact strings, symbols, errors, or scoped paths; this is not a filename finder.",
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -471,7 +471,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_SEMANTIC_SEARCH,
-            description: "Run semantic retrieval across code, memory, and wiki sources",
+            description: "Conceptual semantic retrieval across code, memory, and wiki sources. Prefer for intent/topic questions over literal text matching; not intended for direct filename/path lookup.",
             parameters: json!({
                 "type": "object",
                 "properties": {

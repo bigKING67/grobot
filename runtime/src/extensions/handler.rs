@@ -9,7 +9,10 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             json!({
                 "protocol_version": RUNTIME_PROTOCOL_VERSION,
                 "runtime": "rust",
-                "status": "ok"
+                "status": "ok",
+                "runtime_tools": {
+                    "overlap_guard": crate::tools::tools::overlap_guard_metrics_snapshot()
+                }
             }),
         )),
         "runtime.tools.describe" => Ok(success(

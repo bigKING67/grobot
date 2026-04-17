@@ -141,6 +141,25 @@ mod tests {
         }
     }
 
+    fn make_search_semantic_input(workspace: &PathBuf, request_suffix: &str) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: format!("req-search-semantic-{request_suffix}"),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run search and semantic_search".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["search".to_string(), "semantic_search".to_string()]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
     fn execute_tool_payload(
         executor: &LocalToolExecutor,
         input: &TurnExecuteInput,
@@ -660,6 +679,129 @@ audit_redact_secrets = false
             .and_then(|items| items.first())
             .expect("at least one search match");
         assert_eq!(first["text_truncated"].as_bool(), Some(true));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_semantic_overlap_guard_blocks_broad_duplicate_query() {
+        let workspace = make_temp_workspace("search-semantic-overlap-guard");
+        fs::write(workspace.join("notes.txt"), "team growth and retention\n").expect("write notes");
+        let input = make_search_semantic_input(&workspace, "broad-guard");
+        let executor = LocalToolExecutor;
+
+        let search_payload = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "query": "team growth and retention"
+            }),
+        )
+        .expect("broad search should succeed");
+        assert_eq!(search_payload["tool"].as_str(), Some("search"));
+
+        let overlap_error = execute_tool_payload(
+            &executor,
+            &input,
+            "semantic_search",
+            json!({
+                "query": "team growth and retention"
+            }),
+        )
+        .expect_err("broad semantic duplicate should be blocked");
+        assert_eq!(overlap_error.error_class, "tool_overlap_blocked");
+        assert!(
+            overlap_error.message.contains("overlapping broad query"),
+            "unexpected overlap error message: {}",
+            overlap_error.message
+        );
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_semantic_overlap_guard_allows_refined_semantic_query() {
+        let workspace = make_temp_workspace("search-semantic-overlap-refined");
+        fs::write(workspace.join("notes.txt"), "retention uplift in q4\n").expect("write notes");
+        let input = make_search_semantic_input(&workspace, "refined-allow");
+        let executor = LocalToolExecutor;
+
+        let _search_payload = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "query": "retention uplift in q4"
+            }),
+        )
+        .expect("broad search should succeed");
+
+        let refined_semantic_result = execute_tool_payload(
+            &executor,
+            &input,
+            "semantic_search",
+            json!({
+                "query": "retention uplift in q4",
+                "technical_terms": ["retention"],
+                "sources": ["code"]
+            }),
+        );
+        match refined_semantic_result {
+            Ok(payload) => {
+                assert_eq!(payload["tool"].as_str(), Some("semantic_search"));
+            }
+            Err(error) => {
+                assert_ne!(error.error_class, "tool_overlap_blocked");
+            }
+        }
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_semantic_overlap_guard_file_lookup_query_suggests_glob_and_updates_metrics() {
+        let workspace = make_temp_workspace("search-semantic-overlap-file-lookup");
+        fs::write(workspace.join("notes.txt"), "billing and invoice note\n").expect("write notes");
+        let input = make_search_semantic_input(&workspace, "file-lookup-guard");
+        let executor = LocalToolExecutor;
+        let query = "500元API充值发票在哪个文件夹，地址是啥";
+        let blocked_before = overlap_guard_metrics_snapshot()["blocked_total"]
+            .as_u64()
+            .unwrap_or(0);
+
+        let _search_payload = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "query": query
+            }),
+        )
+        .expect("broad search should succeed");
+
+        let overlap_error = execute_tool_payload(
+            &executor,
+            &input,
+            "semantic_search",
+            json!({
+                "query": query
+            }),
+        )
+        .expect_err("broad semantic duplicate should be blocked");
+        assert_eq!(overlap_error.error_class, "tool_overlap_blocked");
+        assert!(
+            overlap_error.message.contains("prefer glob"),
+            "expected file lookup guard hint in overlap error: {}",
+            overlap_error.message
+        );
+        let blocked_after = overlap_guard_metrics_snapshot()["blocked_total"]
+            .as_u64()
+            .unwrap_or(blocked_before);
+        assert!(
+            blocked_after >= blocked_before.saturating_add(1),
+            "expected blocked_total to increase, before={blocked_before}, after={blocked_after}"
+        );
+
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2381,7 +2523,12 @@ audit_redact_secrets = false
     fn read_v2_manual_external_pdf_smoke_from_env() {
         let pdf_path = env::var("READ_V2_MANUAL_FILE")
             .expect("READ_V2_MANUAL_FILE is required for manual external pdf smoke");
-        let work_dir = env::var("READ_V2_MANUAL_WORKDIR").unwrap_or_else(|_| "/Users/gaoqian".to_string());
+        let work_dir = env::var("READ_V2_MANUAL_WORKDIR").unwrap_or_else(|_| {
+            env::current_dir()
+                .ok()
+                .and_then(|path| path.to_str().map(|text| text.to_string()))
+                .unwrap_or_else(|| ".".to_string())
+        });
         let pages = env::var("READ_V2_MANUAL_PAGES").ok();
         let use_kimi = env::var("READ_V2_MANUAL_USE_KIMI")
             .ok()

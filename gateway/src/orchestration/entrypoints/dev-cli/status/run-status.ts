@@ -322,6 +322,18 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
             ok: runtimeHealth.ok,
             detail: runtimeHealth.detail,
             binary_path: runtimeBinaryPath,
+            overlap_guard_metrics: runtimeHealth.overlapGuardMetrics
+              ? {
+                blocked_total: runtimeHealth.overlapGuardMetrics.blockedTotal,
+                blocked_search: runtimeHealth.overlapGuardMetrics.blockedSearch,
+                blocked_semantic: runtimeHealth.overlapGuardMetrics.blockedSemantic,
+                recorded_broad_search: runtimeHealth.overlapGuardMetrics.recordedBroadSearch,
+                recorded_broad_semantic: runtimeHealth.overlapGuardMetrics.recordedBroadSemantic,
+                tracked_turn_keys: runtimeHealth.overlapGuardMetrics.trackedTurnKeys,
+                tracked_turn_order: runtimeHealth.overlapGuardMetrics.trackedTurnOrder,
+                max_turn_keys: runtimeHealth.overlapGuardMetrics.maxTurnKeys,
+              }
+              : null,
           }
           : null,
       probe:
@@ -397,6 +409,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     process.stdout.write(
       `runtime_health: ${runtimeHealth.ok ? "ok" : "warn"} (${runtimeBinaryPath}) ${runtimeHealth.detail}\n`,
     );
+    if (runtimeHealth.overlapGuardMetrics) {
+      process.stdout.write(
+        `runtime_overlap_guard: blocked_total=${runtimeHealth.overlapGuardMetrics.blockedTotal} blocked_search=${runtimeHealth.overlapGuardMetrics.blockedSearch} blocked_semantic=${runtimeHealth.overlapGuardMetrics.blockedSemantic} recorded_broad_search=${runtimeHealth.overlapGuardMetrics.recordedBroadSearch} recorded_broad_semantic=${runtimeHealth.overlapGuardMetrics.recordedBroadSemantic} tracked_turn_keys=${runtimeHealth.overlapGuardMetrics.trackedTurnKeys}/${runtimeHealth.overlapGuardMetrics.maxTurnKeys}\n`,
+      );
+    }
   }
   if (probeResult) {
     process.stdout.write(`probe: ${probeResult.state} ${probeResult.detail}\n`);
