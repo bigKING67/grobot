@@ -624,16 +624,29 @@ grobot status \
 
 ### 上下文检索配置（Embedding + Rerank）
 
-检索配置支持四层优先级（高到低）：
-- 环境变量（`GROBOT_CONTEXT_RETRIEVAL_ENABLED`、`GROBOT_RETRIEVAL_*`、`GROBOT_EMBEDDING_*`、`GROBOT_RERANK_*`）
-- 项目层 `<repo>/.grobot/project.toml` 的 `[context_retrieval]`
-- 全局层 `~/.grobot/config.toml` 的 `[retrieval]`
-- 内置默认值（`selected_limit=4`、`candidate_limit=8`、`Qwen/Qwen3-Embedding-4B + Qwen/Qwen3-Reranker-0.6B`）
+语义检索桥接现在只读取当前仓库的 `<repo>/.grobot/config.toml`：
+- `[retrieval]`
+- `[retrieval.embedding]`
+- `[retrieval.rerank]`
 
-示例（全局层）：
+不再支持以下配置来源：
+- 环境变量注入检索配置（`CONTEXTWEAVER_*` / `GROBOT_RETRIEVAL_*` / `GROBOT_EMBEDDING_*` / `GROBOT_RERANK_*`）
+- `<repo>/.grobot/project.toml` 的 `[context_retrieval]`
+- `<repo>/config.toml` 的 `[context_retrieval]`
+- 全局 `~/.grobot/config.toml` 检索配置兜底
+- 内置默认 embedding/rerank 模型推断
+
+必填字段（缺失或占位符会直接失败）：
+- `retrieval.base_url`
+- `retrieval.api_key`
+- `retrieval.embedding.model`
+- `retrieval.embedding.dimensions`
+- `retrieval.rerank.model`
+
+示例（项目层）：
 
 ```toml
-# ~/.grobot/config.toml
+# <repo>/.grobot/config.toml
 [retrieval]
 enabled = true
 selected_limit = 4

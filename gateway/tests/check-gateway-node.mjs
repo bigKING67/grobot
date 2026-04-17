@@ -553,11 +553,15 @@ async function runGatewayContractSmoke() {
     "src/session-policy.ts",
   );
   assert.equal(
-    String(semanticSearchQualityRegressionPayload.fallback_top_path).endsWith("src/retry-policy.ts"),
+    String(semanticSearchQualityRegressionPayload.index_required_error).includes("semantic_index_required"),
     true,
   );
   assert.equal(
-    Number(semanticSearchQualityRegressionPayload.fallback_warning_count) >= 1,
+    String(semanticSearchQualityRegressionPayload.zh_index_required_error).includes("semantic_index_required"),
+    true,
+  );
+  assert.equal(
+    String(semanticSearchQualityRegressionPayload.legacy_section_error).includes("legacy [context_retrieval]"),
     true,
   );
   logStep("semantic-search-regression-contract quality-regression");
@@ -926,40 +930,65 @@ async function runGatewayContractSmoke() {
   assert.equal(typeof historyCompactionPayload.header, "string");
   logStep("history-compaction-contract trim");
 
+  const historyResolveConfigEnvBaseline = {
+    CONTEXTWEAVER_API_KEY: "",
+    CONTEXTWEAVER_BASE_URL: "",
+    CONTEXTWEAVER_EMBEDDINGS_API_KEY: "",
+    CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "",
+    CONTEXTWEAVER_EMBEDDINGS_MODEL: "",
+    CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
+    CONTEXTWEAVER_RERANK_API_KEY: "",
+    CONTEXTWEAVER_RERANK_BASE_URL: "",
+    CONTEXTWEAVER_RERANK_MODEL: "",
+    GROBOT_RETRIEVAL_API_KEY: "",
+    GROBOT_RETRIEVAL_BASE_URL: "",
+    GROBOT_EMBEDDING_API_KEY: "",
+    GROBOT_EMBEDDING_BASE_URL: "",
+    GROBOT_EMBEDDING_MODEL: "",
+    GROBOT_EMBEDDING_DIMENSIONS: "",
+    EMBEDDINGS_DIMENSIONS: "",
+    GROBOT_RERANK_API_KEY: "",
+    GROBOT_RERANK_BASE_URL: "",
+    GROBOT_RERANK_MODEL: "",
+  };
   const historyResolveConfigResult = runContract("history-compaction-contract.mjs", "resolve-config", [
     "--payload",
     JSON.stringify({
       project_toml: {
         retrieval: {
           enabled: true,
+          selected_limit: 5,
+          candidate_limit: 9,
           base_url: "https://api.siliconflow.cn/v1",
           api_key: "retrieval-key",
+          embedding: {
+            enabled: true,
+            model: "Qwen/Qwen3-Embedding-4B",
+            dimensions: 2560,
+          },
+          rerank: {
+            enabled: true,
+            model: "Qwen/Qwen3-Reranker-0.6B",
+          },
         },
       },
-      global_toml: {},
+      global_toml: {
+        retrieval: {
+          base_url: "https://global-should-be-ignored.invalid/v1",
+          api_key: "global-should-be-ignored",
+          embedding: {
+            model: "ignored-global-embedding-model",
+          },
+          rerank: {
+            model: "ignored-global-rerank-model",
+          },
+        },
+      },
     }),
   ], {
     env: {
       ...process.env,
-      CONTEXTWEAVER_API_KEY: "",
-      CONTEXTWEAVER_BASE_URL: "",
-      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "",
-      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "",
-      CONTEXTWEAVER_EMBEDDINGS_MODEL: "",
-      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
-      CONTEXTWEAVER_RERANK_API_KEY: "",
-      CONTEXTWEAVER_RERANK_BASE_URL: "",
-      CONTEXTWEAVER_RERANK_MODEL: "",
-      GROBOT_RETRIEVAL_API_KEY: "",
-      GROBOT_RETRIEVAL_BASE_URL: "",
-      GROBOT_EMBEDDING_API_KEY: "",
-      GROBOT_EMBEDDING_BASE_URL: "",
-      GROBOT_EMBEDDING_MODEL: "",
-      GROBOT_EMBEDDING_DIMENSIONS: "",
-      EMBEDDINGS_DIMENSIONS: "",
-      GROBOT_RERANK_API_KEY: "",
-      GROBOT_RERANK_BASE_URL: "",
-      GROBOT_RERANK_MODEL: "",
+      ...historyResolveConfigEnvBaseline,
     },
   });
   const historyResolveConfigPayload = parseJsonOutput(
@@ -967,20 +996,32 @@ async function runGatewayContractSmoke() {
     historyResolveConfigResult.stdout,
   );
   assert.equal(historyResolveConfigPayload.enabled, true);
+  assert.equal(historyResolveConfigPayload.source, "project");
+  assert.equal(historyResolveConfigPayload.enabled_source, "project");
+  assert.equal(historyResolveConfigPayload.selected_limit, 5);
+  assert.equal(historyResolveConfigPayload.candidate_limit, 9);
+  assert.equal(historyResolveConfigPayload.selected_limit_source, "project");
+  assert.equal(historyResolveConfigPayload.candidate_limit_source, "project");
   assert.equal(historyResolveConfigPayload.shared_base_url, "https://api.siliconflow.cn/v1");
   assert.equal(historyResolveConfigPayload.shared_base_url_source, "project");
   assert.equal(historyResolveConfigPayload.shared_api_key_source, "project");
   assert.equal(historyResolveConfigPayload.embedding?.model, "Qwen/Qwen3-Embedding-4B");
   assert.equal(historyResolveConfigPayload.embedding?.dimensions, 2560);
   assert.equal(historyResolveConfigPayload.embedding?.base_url, "https://api.siliconflow.cn/v1/embeddings");
-  assert.equal(historyResolveConfigPayload.embedding_source, "default");
-  assert.equal(historyResolveConfigPayload.embedding_dimensions_source, "inferred");
+  assert.equal(historyResolveConfigPayload.embedding_source, "project");
+  assert.equal(historyResolveConfigPayload.embedding_dimensions_source, "project");
   assert.equal(historyResolveConfigPayload.rerank?.model, "Qwen/Qwen3-Reranker-0.6B");
   assert.equal(historyResolveConfigPayload.rerank?.base_url, "https://api.siliconflow.cn/v1/rerank");
-  assert.equal(historyResolveConfigPayload.rerank_source, "default");
+  assert.equal(historyResolveConfigPayload.rerank_source, "project");
+  assert.equal(historyResolveConfigPayload.embedding_api_key_source, "project");
+  assert.equal(historyResolveConfigPayload.embedding_base_url_source, "project");
+  assert.equal(historyResolveConfigPayload.rerank_api_key_source, "project");
+  assert.equal(historyResolveConfigPayload.rerank_base_url_source, "project");
+  assert.equal(historyResolveConfigPayload.embedding_disabled_reason, null);
+  assert.equal(historyResolveConfigPayload.rerank_disabled_reason, null);
   logStep("history-compaction-contract resolve-config");
 
-  const historyResolveConfigContextweaverEnvResult = runContract("history-compaction-contract.mjs", "resolve-config", [
+  const historyResolveConfigEnvIgnoredResult = runContract("history-compaction-contract.mjs", "resolve-config", [
     "--payload",
     JSON.stringify({
       project_toml: {
@@ -988,6 +1029,139 @@ async function runGatewayContractSmoke() {
           enabled: true,
           base_url: "https://project-only.invalid/v1",
           api_key: "project-only-key",
+          embedding: {
+            model: "Qwen/Qwen3-Embedding-4B",
+            dimensions: 2560,
+          },
+          rerank: {
+            model: "Qwen/Qwen3-Reranker-0.6B",
+          },
+        },
+      },
+      global_toml: {},
+    }),
+  ], {
+    env: {
+      ...process.env,
+      ...historyResolveConfigEnvBaseline,
+      CONTEXTWEAVER_API_KEY: "env-shared-key",
+      CONTEXTWEAVER_BASE_URL: "https://env-shared.example.com/v1",
+      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "env-embed-key",
+      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "https://env-embed.example.com/v1",
+      CONTEXTWEAVER_EMBEDDINGS_MODEL: "Qwen/Qwen3-Embedding-0.6B",
+      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "1536",
+      CONTEXTWEAVER_RERANK_API_KEY: "env-rerank-key",
+      CONTEXTWEAVER_RERANK_BASE_URL: "https://env-rerank.example.com/v1",
+      CONTEXTWEAVER_RERANK_MODEL: "Qwen/Qwen3-Reranker-8B",
+      GROBOT_RETRIEVAL_API_KEY: "env-grobot-key",
+      GROBOT_RETRIEVAL_BASE_URL: "https://env-grobot.example.com/v1",
+      GROBOT_EMBEDDING_API_KEY: "env-grobot-embedding-key",
+      GROBOT_EMBEDDING_BASE_URL: "https://env-grobot-embedding.example.com/v1",
+      GROBOT_EMBEDDING_MODEL: "env-grobot-embedding-model",
+      GROBOT_EMBEDDING_DIMENSIONS: "1024",
+      GROBOT_RERANK_API_KEY: "env-grobot-rerank-key",
+      GROBOT_RERANK_BASE_URL: "https://env-grobot-rerank.example.com/v1",
+      GROBOT_RERANK_MODEL: "env-grobot-rerank-model",
+    },
+  });
+  const historyResolveConfigEnvIgnoredPayload = parseJsonOutput(
+    "history-compaction-contract resolve-config env ignored",
+    historyResolveConfigEnvIgnoredResult.stdout,
+  );
+  assert.equal(historyResolveConfigEnvIgnoredPayload.shared_base_url, "https://project-only.invalid/v1");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.shared_base_url_source, "project");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.shared_api_key_source, "project");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.embedding?.model, "Qwen/Qwen3-Embedding-4B");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.embedding?.dimensions, 2560);
+  assert.equal(historyResolveConfigEnvIgnoredPayload.embedding?.base_url, "https://project-only.invalid/v1/embeddings");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.embedding_source, "project");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.rerank?.model, "Qwen/Qwen3-Reranker-0.6B");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.rerank?.base_url, "https://project-only.invalid/v1/rerank");
+  assert.equal(historyResolveConfigEnvIgnoredPayload.rerank_source, "project");
+  logStep("history-compaction-contract resolve-config-env-ignored");
+
+  const historyCompactionContractPath = resolve(contractsRoot, "history-compaction-contract.mjs");
+  const historyResolveConfigPlaceholderKeyResult = runCommand("node", [
+    historyCompactionContractPath,
+    "resolve-config",
+    "--payload",
+    JSON.stringify({
+      project_toml: {
+        retrieval: {
+          enabled: true,
+          base_url: "https://api.siliconflow.cn/v1",
+          api_key: "replace-with-retrieval-api-key",
+          embedding: {
+            model: "Qwen/Qwen3-Embedding-4B",
+            dimensions: 2560,
+          },
+          rerank: {
+            model: "Qwen/Qwen3-Reranker-0.6B",
+          },
+        },
+      },
+      global_toml: {},
+    }),
+  ], {
+    env: {
+      ...process.env,
+      ...historyResolveConfigEnvBaseline,
+    },
+  });
+  assert.notEqual(historyResolveConfigPlaceholderKeyResult.code, 0);
+  assert.match(
+    historyResolveConfigPlaceholderKeyResult.stderr,
+    /invalid \[retrieval\.\*\] in project_toml; missing required fields: retrieval\.api_key/,
+  );
+  logStep("history-compaction-contract resolve-config-placeholder-key-fails");
+
+  const historyResolveConfigEnvOnlyResult = runCommand("node", [
+    historyCompactionContractPath,
+    "resolve-config",
+    "--payload",
+    JSON.stringify({
+      project_toml: {},
+      global_toml: {},
+    }),
+  ], {
+    env: {
+      ...process.env,
+      ...historyResolveConfigEnvBaseline,
+      CONTEXTWEAVER_API_KEY: "env-shared-key",
+      CONTEXTWEAVER_BASE_URL: "https://env-shared.example.com/v1",
+      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "env-embed-key",
+      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "https://env-embed.example.com/v1",
+      CONTEXTWEAVER_EMBEDDINGS_MODEL: "Qwen/Qwen3-Embedding-0.6B",
+      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "1536",
+      CONTEXTWEAVER_RERANK_API_KEY: "env-rerank-key",
+      CONTEXTWEAVER_RERANK_BASE_URL: "https://env-rerank.example.com/v1",
+      CONTEXTWEAVER_RERANK_MODEL: "Qwen/Qwen3-Reranker-8B",
+      GROBOT_RETRIEVAL_API_KEY: "env-grobot-key",
+      GROBOT_RETRIEVAL_BASE_URL: "https://env-grobot.example.com/v1",
+      GROBOT_EMBEDDING_API_KEY: "env-grobot-embedding-key",
+      GROBOT_EMBEDDING_BASE_URL: "https://env-grobot-embedding.example.com/v1",
+      GROBOT_EMBEDDING_MODEL: "env-grobot-embedding-model",
+      GROBOT_EMBEDDING_DIMENSIONS: "1024",
+      GROBOT_RERANK_API_KEY: "env-grobot-rerank-key",
+      GROBOT_RERANK_BASE_URL: "https://env-grobot-rerank.example.com/v1",
+      GROBOT_RERANK_MODEL: "env-grobot-rerank-model",
+    },
+  });
+  assert.notEqual(historyResolveConfigEnvOnlyResult.code, 0);
+  assert.match(historyResolveConfigEnvOnlyResult.stderr, /missing \[retrieval\] in project_toml/);
+  logStep("history-compaction-contract resolve-config-env-only-fails");
+
+  const historyResolveConfigLegacyKeyResult = runCommand("node", [
+    historyCompactionContractPath,
+    "resolve-config",
+    "--payload",
+    JSON.stringify({
+      project_toml: {
+        context_retrieval: {},
+        retrieval: {
+          enabled: true,
+          base_url: "https://api.siliconflow.cn/v1",
+          api_key: "retrieval-key",
           embedding: {
             model: "Qwen/Qwen3-Embedding-4B",
           },
@@ -1001,139 +1175,42 @@ async function runGatewayContractSmoke() {
   ], {
     env: {
       ...process.env,
-      CONTEXTWEAVER_API_KEY: "env-shared-key",
-      CONTEXTWEAVER_BASE_URL: "https://env-shared.example.com/v1",
-      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "env-embed-key",
-      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "https://env-embed.example.com/v1",
-      CONTEXTWEAVER_EMBEDDINGS_MODEL: "Qwen/Qwen3-Embedding-0.6B",
-      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "1536",
-      CONTEXTWEAVER_RERANK_API_KEY: "",
-      CONTEXTWEAVER_RERANK_BASE_URL: "https://env-rerank.example.com/v1",
-      CONTEXTWEAVER_RERANK_MODEL: "Qwen/Qwen3-Reranker-8B",
-      GROBOT_RETRIEVAL_API_KEY: "",
-      GROBOT_RETRIEVAL_BASE_URL: "",
-      GROBOT_EMBEDDING_API_KEY: "",
-      GROBOT_EMBEDDING_BASE_URL: "",
-      GROBOT_EMBEDDING_MODEL: "",
-      GROBOT_EMBEDDING_DIMENSIONS: "",
-      EMBEDDINGS_DIMENSIONS: "",
-      GROBOT_RERANK_API_KEY: "",
-      GROBOT_RERANK_BASE_URL: "",
-      GROBOT_RERANK_MODEL: "",
+      ...historyResolveConfigEnvBaseline,
     },
   });
-  const historyResolveConfigContextweaverEnvPayload = parseJsonOutput(
-    "history-compaction-contract resolve-config contextweaver env",
-    historyResolveConfigContextweaverEnvResult.stdout,
-  );
-  assert.equal(historyResolveConfigContextweaverEnvPayload.shared_base_url, "https://env-shared.example.com/v1");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.shared_base_url_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.shared_api_key_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding?.model, "Qwen/Qwen3-Embedding-0.6B");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding?.dimensions, 1536);
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding?.base_url, "https://env-embed.example.com/v1/embeddings");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_dimensions_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_api_key_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.embedding_base_url_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank?.model, "Qwen/Qwen3-Reranker-8B");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank?.base_url, "https://env-rerank.example.com/v1/rerank");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank_api_key_source, "env");
-  assert.equal(historyResolveConfigContextweaverEnvPayload.rerank_base_url_source, "env");
-  logStep("history-compaction-contract resolve-config-contextweaver-env");
+  assert.notEqual(historyResolveConfigLegacyKeyResult.code, 0);
+  assert.match(historyResolveConfigLegacyKeyResult.stderr, /legacy \[context_retrieval\] is not supported/);
+  logStep("history-compaction-contract resolve-config-legacy-key-fails");
 
-  const historyResolveConfigPlaceholderKeyResult = runContract("history-compaction-contract.mjs", "resolve-config", [
+  const historyResolveConfigDisabledResult = runCommand("node", [
+    historyCompactionContractPath,
+    "resolve-config",
     "--payload",
     JSON.stringify({
       project_toml: {
         retrieval: {
-          enabled: true,
+          enabled: false,
           base_url: "https://api.siliconflow.cn/v1",
-          api_key: "replace-with-retrieval-api-key",
+          api_key: "retrieval-key",
+          embedding: {
+            model: "Qwen/Qwen3-Embedding-4B",
+          },
+          rerank: {
+            model: "Qwen/Qwen3-Reranker-0.6B",
+          },
         },
       },
       global_toml: {},
-      fallback_api_key: "replace-with-retrieval-api-key",
     }),
   ], {
     env: {
       ...process.env,
-      CONTEXTWEAVER_API_KEY: "",
-      CONTEXTWEAVER_BASE_URL: "",
-      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "",
-      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "",
-      CONTEXTWEAVER_EMBEDDINGS_MODEL: "",
-      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
-      CONTEXTWEAVER_RERANK_API_KEY: "",
-      CONTEXTWEAVER_RERANK_BASE_URL: "",
-      CONTEXTWEAVER_RERANK_MODEL: "",
-      GROBOT_RETRIEVAL_API_KEY: "",
-      GROBOT_RETRIEVAL_BASE_URL: "",
-      GROBOT_EMBEDDING_API_KEY: "",
-      GROBOT_EMBEDDING_BASE_URL: "",
-      GROBOT_EMBEDDING_MODEL: "",
-      GROBOT_EMBEDDING_DIMENSIONS: "",
-      EMBEDDINGS_DIMENSIONS: "",
-      GROBOT_RERANK_API_KEY: "",
-      GROBOT_RERANK_BASE_URL: "",
-      GROBOT_RERANK_MODEL: "",
+      ...historyResolveConfigEnvBaseline,
     },
   });
-  const historyResolveConfigPlaceholderKeyPayload = parseJsonOutput(
-    "history-compaction-contract resolve-config placeholder-key",
-    historyResolveConfigPlaceholderKeyResult.stdout,
-  );
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.shared_api_key_source, "default");
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.embedding, null);
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.rerank, null);
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.embedding_api_key_source, "off");
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.rerank_api_key_source, "off");
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.embedding_disabled_reason, "missing_embedding_config");
-  assert.equal(historyResolveConfigPlaceholderKeyPayload.rerank_disabled_reason, "missing_rerank_config");
-  logStep("history-compaction-contract resolve-config-placeholder-key");
-
-  const historyResolveConfigPlaceholderEnvOnlyResult = runContract("history-compaction-contract.mjs", "resolve-config", [
-    "--payload",
-    JSON.stringify({
-      project_toml: {},
-      global_toml: {},
-      fallback_api_key: "replace-with-retrieval-api-key",
-    }),
-  ], {
-    env: {
-      ...process.env,
-      CONTEXTWEAVER_API_KEY: "replace-with-contextweaver-key",
-      CONTEXTWEAVER_BASE_URL: "replace-with-contextweaver-base-url",
-      CONTEXTWEAVER_EMBEDDINGS_API_KEY: "replace-with-embeddings-key",
-      CONTEXTWEAVER_EMBEDDINGS_BASE_URL: "replace-with-embeddings-base-url",
-      CONTEXTWEAVER_EMBEDDINGS_MODEL: "replace-with-embedding-model",
-      CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS: "",
-      CONTEXTWEAVER_RERANK_API_KEY: "replace-with-rerank-key",
-      CONTEXTWEAVER_RERANK_BASE_URL: "replace-with-rerank-base-url",
-      CONTEXTWEAVER_RERANK_MODEL: "replace-with-rerank-model",
-      GROBOT_RETRIEVAL_API_KEY: "replace-with-retrieval-api-key",
-      GROBOT_RETRIEVAL_BASE_URL: "replace-with-retrieval-base-url",
-      GROBOT_EMBEDDING_API_KEY: "replace-with-embedding-key",
-      GROBOT_EMBEDDING_BASE_URL: "replace-with-embedding-base-url",
-      GROBOT_EMBEDDING_MODEL: "replace-with-embedding-model",
-      GROBOT_EMBEDDING_DIMENSIONS: "",
-      EMBEDDINGS_DIMENSIONS: "",
-      GROBOT_RERANK_API_KEY: "replace-with-rerank-key",
-      GROBOT_RERANK_BASE_URL: "replace-with-rerank-base-url",
-      GROBOT_RERANK_MODEL: "replace-with-rerank-model",
-    },
-  });
-  const historyResolveConfigPlaceholderEnvOnlyPayload = parseJsonOutput(
-    "history-compaction-contract resolve-config placeholder-env-only",
-    historyResolveConfigPlaceholderEnvOnlyResult.stdout,
-  );
-  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.source, "default");
-  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.enabled, false);
-  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.enabled_source, "default");
-  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.embedding, null);
-  assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.rerank, null);
-  logStep("history-compaction-contract resolve-config-placeholder-env-only");
+  assert.notEqual(historyResolveConfigDisabledResult.code, 0);
+  assert.match(historyResolveConfigDisabledResult.stderr, /\[retrieval\]\.enabled=false is not supported/);
+  logStep("history-compaction-contract resolve-config-disabled-fails");
 
   const contextEngineTomlDir = makeTempDir("context-engine-contract");
   const contextEngineTomlPath = resolve(contextEngineTomlDir, "project.toml");
@@ -1144,6 +1221,7 @@ async function runGatewayContractSmoke() {
     "context_window_tokens = 64000",
     "reserved_output_tokens = 9000",
     "safety_margin_tokens = 1800",
+    "auto_compact_token_limit = 50000",
     "proactive_ratio = 0.82",
     "forced_ratio = 0.89",
     "hard_ratio = 0.95",
@@ -1181,6 +1259,9 @@ async function runGatewayContractSmoke() {
   assert.equal(contextEngineResolveConfigPayload.context_window_tokens, 64000);
   assert.equal(contextEngineResolveConfigPayload.reserved_output_tokens, 9000);
   assert.equal(contextEngineResolveConfigPayload.safety_margin_tokens, 1800);
+  assert.equal(contextEngineResolveConfigPayload.auto_compact_token_limit, 50000);
+  assert.equal(contextEngineResolveConfigPayload.target_token_limit, 50000);
+  assert.equal(contextEngineResolveConfigPayload.effective_window_tokens, 53200);
   assert.equal(contextEngineResolveConfigPayload.proactive_ratio, 0.82);
   assert.equal(contextEngineResolveConfigPayload.forced_ratio, 0.89);
   assert.equal(contextEngineResolveConfigPayload.hard_ratio, 0.95);
@@ -1292,7 +1373,101 @@ async function runGatewayContractSmoke() {
     Number(contextEnginePreparePromptPayload.effective_window_tokens) > 0,
     true,
   );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.auto_compact_token_limit) > 0,
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.target_token_limit) > 0,
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePreparePromptPayload.auto_limit_triggered === "boolean",
+    true,
+  );
   logStep("context-engine-contract prepare-prompt");
+
+  const contextEngineAutoLimitGuardHistory = Array.from({ length: 8 }).map((_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `auto-limit-guard-${String(index)} ${"context details ".repeat(36)}`,
+  }));
+  const contextEngineAutoLimitGuardResult = runTsContract("context-engine-contract.ts", "prepare-prompt", [
+    "--payload",
+    JSON.stringify({
+      user_text: "继续处理上下文压缩并保留关键回滚线索",
+      history_turns: 6,
+      history: contextEngineAutoLimitGuardHistory,
+      config: {
+        enabled: true,
+        profile: "balanced",
+        contextWindowTokens: 6400,
+        reservedOutputTokens: 500,
+        safetyMarginTokens: 200,
+        autoCompactTokenLimit: 450,
+        thresholds: {
+          proactiveRatio: 0.92,
+          forcedRatio: 0.96,
+          hardRatio: 0.98,
+        },
+        recovery: {
+          reactiveMaxRetries: 1,
+          ptlMaxRetries: 2,
+          circuitBreakerFailures: 3,
+        },
+        lineage: {
+          enabled: false,
+          maxRows: 1,
+          maxCommits: 20,
+          cacheTtlMs: 1000,
+        },
+        workspaceSignals: {
+          enabled: false,
+          maxRows: 1,
+          includeUntracked: false,
+          cacheTtlMs: 200,
+        },
+        semanticPrefetch: {
+          enabled: false,
+          timeoutMs: 500,
+          maxEvidence: 2,
+        },
+        dependencyGraph: {
+          enabled: false,
+          maxRows: 1,
+        },
+        symbolGraph: {
+          enabled: false,
+          maxRows: 1,
+        },
+        reactiveOnPromptTooLong: true,
+      },
+    }),
+  ]);
+  const contextEngineAutoLimitGuardPayload = parseJsonOutput(
+    "context-engine-contract prepare-prompt auto-limit-guard",
+    contextEngineAutoLimitGuardResult.stdout,
+  );
+  assert.equal(contextEngineAutoLimitGuardPayload.threshold_stage, "proactive");
+  assert.equal(contextEngineAutoLimitGuardPayload.auto_limit_triggered, true);
+  logStep("context-engine-contract prepare-prompt auto-limit-guard");
+
+  const contextEngineDownshiftGuardResult = runTsContract("context-engine-contract.ts", "downshift-guard", [
+    "--payload",
+    JSON.stringify({
+      allow_proactive_compaction: true,
+      previous_target_token_limit: 6000,
+      current_target_token_limit: 4200,
+      total_estimated_tokens: 5600,
+      selected_stage: "normal",
+    }),
+  ]);
+  const contextEngineDownshiftGuardPayload = parseJsonOutput(
+    "context-engine-contract downshift-guard",
+    contextEngineDownshiftGuardResult.stdout,
+  );
+  assert.equal(contextEngineDownshiftGuardPayload.triggered, true);
+  assert.equal(contextEngineDownshiftGuardPayload.promoted_stage, "proactive");
+  logStep("context-engine-contract downshift-guard");
 
   const contextEngineGraphCacheContractPayload = JSON.stringify({
     query: "add payment logging and retry context",
@@ -1433,6 +1608,7 @@ async function runGatewayContractSmoke() {
       query: "add payment logging and retry context",
       max_rows: 4,
       repeat: 8,
+      burst: 6,
       snapshot: {
         root_path: "/tmp/context-graph-cache-contract",
         files: [
@@ -1475,6 +1651,7 @@ async function runGatewayContractSmoke() {
   assert.equal(graphCacheHotLoopPayload.cache_reuse_observed, true);
   assert.equal(Array.isArray(graphCacheHotLoopPayload.turns), true);
   assert.equal(Number(graphCacheHotLoopPayload.turns.length), 8);
+  assert.equal(Number(graphCacheHotLoopPayload.burst), 6);
   assert.deepEqual(
     graphCacheHotLoopPayload.last_rows?.symbol_rows,
     graphCacheHotLoopPayload.first_rows?.symbol_rows,
@@ -1490,11 +1667,12 @@ async function runGatewayContractSmoke() {
     const dependencyHit = Number(row?.dependency_query?.hit);
     assert.equal(Number.isFinite(symbolHit), true);
     assert.equal(Number.isFinite(dependencyHit), true);
+    assert.equal(row?.rows_consistent, true);
     if (prevSymbolHit >= 0) {
-      assert.equal(symbolHit >= prevSymbolHit, true);
+      assert.equal(symbolHit >= prevSymbolHit + Number(graphCacheHotLoopPayload.burst), true);
     }
     if (prevDependencyHit >= 0) {
-      assert.equal(dependencyHit >= prevDependencyHit, true);
+      assert.equal(dependencyHit >= prevDependencyHit + Number(graphCacheHotLoopPayload.burst), true);
     }
     prevSymbolHit = symbolHit;
     prevDependencyHit = dependencyHit;
@@ -1704,6 +1882,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_has_context_engine, true);
   assert.equal(statusPayload.status_context_engine_enabled_type, "boolean");
   assert.equal(statusPayload.status_context_engine_profile_type, "string");
+  assert.equal(statusPayload.status_context_engine_auto_limit_type, "number");
+  assert.equal(statusPayload.status_context_engine_target_limit_type, "number");
   assert.equal(statusPayload.status_context_engine_effective_window_type, "number");
   assert.equal(statusPayload.status_context_engine_threshold_hard_type, "number");
   assert.equal(statusPayload.status_context_engine_recovery_ptl_type, "number");

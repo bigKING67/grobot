@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveContextWeaverRetrieval } from "../../../shared/retrieval/contextweaver-retrieval.mjs";
+import {
+  hasTomlPath,
+  readTomlBoolean,
+  readTomlConfig,
+  readTomlNumberOrString,
+  readTomlString,
+} from "../../../shared/config/toml-config.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,13 +22,8 @@ const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 180_000;
 const MAX_EVIDENCE_TEXT_CHARS = 2_000;
 const MAX_WARNING_CHARS = 600;
-const MAX_LEXICAL_RESULTS_PER_SOURCE = 40;
 const DEFAULT_SOURCE_CONCURRENCY = 3;
 const MAX_SOURCE_CONCURRENCY = 8;
-const LEXICAL_SCORE_MAX = 0.42;
-const LEXICAL_SCORE_MIN = 0.12;
-
-let queryWordSegmenter = null;
 const contextWeaverLocalApiCache = new Map();
 
 function parseArgs(argv) {
@@ -88,13 +90,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
-function clampFloat(value, min, max) {
-  if (!Number.isFinite(value)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, value));
-}
-
 function toStringArray(value, maxItems = 64) {
   if (!Array.isArray(value)) {
     return [];
@@ -137,14 +132,42 @@ function truncateText(value, maxChars) {
   return `${value.slice(0, maxChars)}...`;
 }
 
+const RETRIEVAL_ENV_KEYS = [
+  "EMBEDDINGS_API_KEY",
+  "EMBEDDINGS_BASE_URL",
+  "EMBEDDINGS_MODEL",
+  "EMBEDDINGS_DIMENSIONS",
+  "EMBEDDINGS_BATCH_SIZE",
+  "EMBEDDINGS_MAX_CONCURRENCY",
+  "EMBEDDINGS_MAX_INPUT_TOKENS",
+  "RERANK_API_KEY",
+  "RERANK_BASE_URL",
+  "RERANK_MODEL",
+  "RERANK_TOP_N",
+  "CONTEXTWEAVER_API_KEY",
+  "CONTEXTWEAVER_BASE_URL",
+  "CONTEXTWEAVER_EMBEDDINGS_API_KEY",
+  "CONTEXTWEAVER_EMBEDDINGS_BASE_URL",
+  "CONTEXTWEAVER_EMBEDDINGS_MODEL",
+  "CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS",
+  "CONTEXTWEAVER_RERANK_API_KEY",
+  "CONTEXTWEAVER_RERANK_BASE_URL",
+  "CONTEXTWEAVER_RERANK_MODEL",
+  "GROBOT_RETRIEVAL_API_KEY",
+  "GROBOT_RETRIEVAL_BASE_URL",
+  "GROBOT_EMBEDDING_API_KEY",
+  "GROBOT_EMBEDDING_BASE_URL",
+  "GROBOT_EMBEDDING_MODEL",
+  "GROBOT_EMBEDDING_DIMENSIONS",
+  "GROBOT_RERANK_API_KEY",
+  "GROBOT_RERANK_BASE_URL",
+  "GROBOT_RERANK_MODEL",
+];
+
 function isContextWeaverEnvKey(key) {
   return key === "HOME"
     || key.startsWith("EMBEDDINGS_")
-    || key.startsWith("RERANK_")
-    || key.startsWith("CONTEXTWEAVER_")
-    || key.startsWith("GROBOT_RETRIEVAL_")
-    || key.startsWith("GROBOT_EMBEDDING_")
-    || key.startsWith("GROBOT_RERANK_");
+    || key.startsWith("RERANK_");
 }
 
 function buildContextWeaverEnvPatch(env) {
@@ -416,33 +439,6 @@ function normalizeSemanticScore(value) {
   return Number((numeric / (numeric + 1)).toFixed(6));
 }
 
-function computeLexicalScore(termIndex, matchIndex) {
-  const numericTermIndex = Number.isFinite(termIndex) ? Math.max(0, Math.floor(termIndex)) : 0;
-  const numericMatchIndex = Number.isFinite(matchIndex) ? Math.max(0, Math.floor(matchIndex)) : 0;
-  const score = LEXICAL_SCORE_MAX - numericTermIndex * 0.03 - numericMatchIndex * 0.008;
-  return Number(Math.max(LEXICAL_SCORE_MIN, score).toFixed(6));
-}
-
-function computeLexicalMatchScore(termIndex, matchIndex, lineText, query) {
-  let score = computeLexicalScore(termIndex, matchIndex);
-  const normalizedLine = normalizeMatchText(lineText);
-  const normalizedQuery = normalizeMatchText(query);
-  if (normalizedQuery.length >= 4 && normalizedLine.includes(normalizedQuery)) {
-    score += 0.04;
-  }
-  const cjkTerms = collectCjkTerms(query, 4);
-  if (cjkTerms.length > 0 && normalizedLine) {
-    let cjkHits = 0;
-    for (const term of cjkTerms) {
-      if (normalizedLine.includes(normalizeMatchText(term))) {
-        cjkHits += 1;
-      }
-    }
-    score += Math.min(0.02, cjkHits * 0.006);
-  }
-  return Number(clampFloat(score, LEXICAL_SCORE_MIN, 0.52).toFixed(6));
-}
-
 function shouldRetryWithRefresh(errorClass) {
   return errorClass === "semantic_index_required" || errorClass === "semantic_index_config_invalid";
 }
@@ -454,73 +450,6 @@ function normalizeToolErrorClass(value, fallback) {
   return fallback;
 }
 
-function stripInlineComment(line) {
-  let inQuote = false;
-  let escaped = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (char === "\"") {
-      inQuote = !inQuote;
-      continue;
-    }
-    if (char === "#" && !inQuote) {
-      return line.slice(0, index);
-    }
-  }
-  return line;
-}
-
-function parseTomlString(raw) {
-  const trimmed = String(raw ?? "").trim();
-  const quotedMatch = trimmed.match(/^"([^"]*)"$/);
-  if (quotedMatch && typeof quotedMatch[1] === "string") {
-    return quotedMatch[1].trim();
-  }
-  return trimmed;
-}
-
-function readTomlValue(path, sectionName, keyName) {
-  if (!path || !existsSync(path)) {
-    return "";
-  }
-  let raw = "";
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    return "";
-  }
-  const lines = raw.split(/\r?\n/);
-  let currentSection = "";
-  for (const rawLine of lines) {
-    const line = stripInlineComment(rawLine).trim();
-    if (!line) {
-      continue;
-    }
-    const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
-    if (sectionMatch) {
-      currentSection = sectionMatch[1];
-      continue;
-    }
-    if (currentSection !== sectionName) {
-      continue;
-    }
-    const kvMatch = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
-    if (!kvMatch || kvMatch[1] !== keyName) {
-      continue;
-    }
-    return parseTomlString(kvMatch[2]);
-  }
-  return "";
-}
-
 function findProjectRootBySourceRoots(sourceRoots) {
   for (const row of sourceRoots) {
     const rootPath = String(row?.rootPath ?? "").trim();
@@ -528,20 +457,11 @@ function findProjectRootBySourceRoots(sourceRoots) {
       continue;
     }
     let cursor = isAbsolute(rootPath) ? rootPath : resolve(process.cwd(), rootPath);
-    let configFallbackRoot = "";
-    let grobotConfigFallbackRoot = "";
     while (true) {
-      const projectToml = resolve(cursor, ".grobot/project.toml");
-      if (existsSync(projectToml)) {
-        return cursor;
-      }
       const projectGrobotConfig = resolve(cursor, ".grobot/config.toml");
-      if (!grobotConfigFallbackRoot && existsSync(projectGrobotConfig)) {
-        grobotConfigFallbackRoot = cursor;
-      }
-      const projectConfig = resolve(cursor, "config.toml");
-      if (!configFallbackRoot && existsSync(projectConfig)) {
-        configFallbackRoot = cursor;
+      const projectToml = resolve(cursor, ".grobot/project.toml");
+      if (existsSync(projectGrobotConfig) || existsSync(projectToml)) {
+        return cursor;
       }
       const parent = resolve(cursor, "..");
       if (parent === cursor) {
@@ -549,154 +469,151 @@ function findProjectRootBySourceRoots(sourceRoots) {
       }
       cursor = parent;
     }
-    if (configFallbackRoot) {
-      return configFallbackRoot;
-    }
-    if (grobotConfigFallbackRoot) {
-      return grobotConfigFallbackRoot;
-    }
   }
   return "";
 }
 
+function loadTomlOptional(path) {
+  try {
+    return readTomlConfig(path, { required: false });
+  } catch (error) {
+    throw createError(
+      "semantic_config_missing",
+      String(error?.message ?? error),
+    );
+  }
+}
+
+function loadTomlRequired(path) {
+  try {
+    return readTomlConfig(path, { required: true });
+  } catch (error) {
+    throw createError(
+      "semantic_config_missing",
+      String(error?.message ?? error),
+    );
+  }
+}
+
+function hasLegacyContextRetrievalSection(tomlDoc) {
+  if (!isRecord(tomlDoc)) {
+    return false;
+  }
+  return hasTomlPath(tomlDoc, "context_retrieval");
+}
+
 function buildContextWeaverEnv(sourceRoots) {
   const env = { ...process.env };
+  for (const key of RETRIEVAL_ENV_KEYS) {
+    delete env[key];
+  }
+
   const projectRoot = findProjectRootBySourceRoots(sourceRoots);
-  const projectToml = projectRoot ? resolve(projectRoot, ".grobot/project.toml") : "";
-  const projectGrobotConfigToml = projectRoot ? resolve(projectRoot, ".grobot/config.toml") : "";
-  const projectGrobotConfigTemplateToml = projectRoot ? resolve(projectRoot, ".grobot/config.toml.example") : "";
-  const projectConfigToml = projectRoot ? resolve(projectRoot, "config.toml") : "";
-  const projectTemplateToml = projectRoot ? resolve(projectRoot, "packages", "templates", "config.toml.example") : "";
-  const globalToml = resolve(os.homedir(), ".grobot/config.toml");
+  if (!projectRoot) {
+    throw createError(
+      "semantic_config_missing",
+      "cannot resolve project root for semantic retrieval config",
+    );
+  }
+  const projectGrobotConfigToml = resolve(projectRoot, ".grobot/config.toml");
+  if (!existsSync(projectGrobotConfigToml)) {
+    throw createError(
+      "semantic_config_missing",
+      `missing semantic retrieval config: ${projectGrobotConfigToml}`,
+    );
+  }
+  const projectConfigDoc = loadTomlRequired(projectGrobotConfigToml);
 
-  const projectContextBaseUrl = readTomlValue(projectToml, "context_retrieval", "base_url");
-  const projectContextApiKey = readTomlValue(projectToml, "context_retrieval", "api_key");
-  const projectContextEmbeddingModel = readTomlValue(projectToml, "context_retrieval.embedding", "model");
-  const projectContextEmbeddingDimensions = readTomlValue(projectToml, "context_retrieval.embedding", "dimensions");
-  const projectContextRerankModel = readTomlValue(projectToml, "context_retrieval.rerank", "model");
+  const projectToml = resolve(projectRoot, ".grobot/project.toml");
+  const projectConfigToml = resolve(projectRoot, "config.toml");
+  const projectTomlDoc = loadTomlOptional(projectToml);
+  const projectConfigTomlDoc = loadTomlOptional(projectConfigToml);
+  if (
+    hasLegacyContextRetrievalSection(projectConfigDoc)
+    || hasLegacyContextRetrievalSection(projectTomlDoc)
+    || hasLegacyContextRetrievalSection(projectConfigTomlDoc)
+  ) {
+    throw createError(
+      "semantic_config_missing",
+      "legacy [context_retrieval] is no longer supported; migrate all retrieval settings to .grobot/config.toml [retrieval.*]",
+    );
+  }
 
-  const projectConfigContextBaseUrl = readTomlValue(projectConfigToml, "context_retrieval", "base_url");
-  const projectConfigContextApiKey = readTomlValue(projectConfigToml, "context_retrieval", "api_key");
-  const projectConfigContextEmbeddingModel = readTomlValue(projectConfigToml, "context_retrieval.embedding", "model");
-  const projectConfigContextEmbeddingDimensions = readTomlValue(projectConfigToml, "context_retrieval.embedding", "dimensions");
-  const projectConfigContextRerankModel = readTomlValue(projectConfigToml, "context_retrieval.rerank", "model");
+  const retrievalEnabled = readTomlBoolean(projectConfigDoc, "retrieval.enabled");
+  if (retrievalEnabled === false) {
+    throw createError(
+      "semantic_config_missing",
+      "semantic retrieval is disabled in .grobot/config.toml [retrieval].enabled",
+    );
+  }
+  const embeddingEnabled = readTomlBoolean(projectConfigDoc, "retrieval.embedding.enabled");
+  if (embeddingEnabled === false) {
+    throw createError(
+      "semantic_config_missing",
+      "semantic retrieval embedding is disabled in .grobot/config.toml [retrieval.embedding].enabled",
+    );
+  }
+  const rerankEnabled = readTomlBoolean(projectConfigDoc, "retrieval.rerank.enabled");
+  if (rerankEnabled === false) {
+    throw createError(
+      "semantic_config_missing",
+      "semantic retrieval rerank is disabled in .grobot/config.toml [retrieval.rerank].enabled",
+    );
+  }
 
-  const projectRetrievalBaseUrl = readTomlValue(projectConfigToml, "retrieval", "base_url");
-  const projectRetrievalApiKey = readTomlValue(projectConfigToml, "retrieval", "api_key");
-  const projectRetrievalEmbeddingModel = readTomlValue(projectConfigToml, "retrieval.embedding", "model");
-  const projectRetrievalEmbeddingDimensions = readTomlValue(projectConfigToml, "retrieval.embedding", "dimensions");
-  const projectRetrievalRerankModel = readTomlValue(projectConfigToml, "retrieval.rerank", "model");
-
-  const projectGrobotRetrievalBaseUrl = readTomlValue(projectGrobotConfigToml, "retrieval", "base_url");
-  const projectGrobotRetrievalApiKey = readTomlValue(projectGrobotConfigToml, "retrieval", "api_key");
-  const projectGrobotRetrievalEmbeddingModel = readTomlValue(projectGrobotConfigToml, "retrieval.embedding", "model");
-  const projectGrobotRetrievalEmbeddingDimensions = readTomlValue(projectGrobotConfigToml, "retrieval.embedding", "dimensions");
-  const projectGrobotRetrievalRerankModel = readTomlValue(projectGrobotConfigToml, "retrieval.rerank", "model");
-
-  const projectGrobotTemplateRetrievalBaseUrl = readTomlValue(projectGrobotConfigTemplateToml, "retrieval", "base_url");
-  const projectGrobotTemplateRetrievalApiKey = readTomlValue(projectGrobotConfigTemplateToml, "retrieval", "api_key");
-  const projectGrobotTemplateRetrievalEmbeddingModel = readTomlValue(projectGrobotConfigTemplateToml, "retrieval.embedding", "model");
-  const projectGrobotTemplateRetrievalEmbeddingDimensions = readTomlValue(projectGrobotConfigTemplateToml, "retrieval.embedding", "dimensions");
-  const projectGrobotTemplateRetrievalRerankModel = readTomlValue(projectGrobotConfigTemplateToml, "retrieval.rerank", "model");
-
-  const projectTemplateRetrievalBaseUrl = readTomlValue(projectTemplateToml, "retrieval", "base_url");
-  const projectTemplateRetrievalApiKey = readTomlValue(projectTemplateToml, "retrieval", "api_key");
-  const projectTemplateRetrievalEmbeddingModel = readTomlValue(projectTemplateToml, "retrieval.embedding", "model");
-  const projectTemplateRetrievalEmbeddingDimensions = readTomlValue(projectTemplateToml, "retrieval.embedding", "dimensions");
-  const projectTemplateRetrievalRerankModel = readTomlValue(projectTemplateToml, "retrieval.rerank", "model");
-
-  const projectAgentBaseUrl = readTomlValue(projectGrobotConfigToml, "projects.agent.options", "base_url");
-  const projectAgentApiKey = readTomlValue(projectGrobotConfigToml, "projects.agent.options", "api_key");
-  const projectAgentModel = readTomlValue(projectGrobotConfigToml, "projects.agent.options", "model");
-
-  const globalBaseUrl = readTomlValue(globalToml, "retrieval", "base_url");
-  const globalApiKey = readTomlValue(globalToml, "retrieval", "api_key");
-  const globalEmbeddingModel = readTomlValue(globalToml, "retrieval.embedding", "model");
-  const globalEmbeddingDimensions = readTomlValue(globalToml, "retrieval.embedding", "dimensions");
-  const globalRerankModel = readTomlValue(globalToml, "retrieval.rerank", "model");
+  const retrievalBaseUrl = readTomlString(projectConfigDoc, "retrieval.base_url");
+  const retrievalApiKey = readTomlString(projectConfigDoc, "retrieval.api_key");
+  const retrievalEmbeddingModel = readTomlString(projectConfigDoc, "retrieval.embedding.model");
+  const retrievalEmbeddingDimensions = readTomlNumberOrString(projectConfigDoc, "retrieval.embedding.dimensions");
+  const retrievalRerankModel = readTomlString(projectConfigDoc, "retrieval.rerank.model");
 
   const retrievalResolved = resolveContextWeaverRetrieval({
-    defaultEmbeddingModel: "",
-    defaultRerankModel: "",
     sharedBaseUrlCandidates: [
-      process.env.CONTEXTWEAVER_BASE_URL,
-      process.env.GROBOT_RETRIEVAL_BASE_URL,
-      projectContextBaseUrl,
-      projectConfigContextBaseUrl,
-      projectRetrievalBaseUrl,
-      projectGrobotRetrievalBaseUrl,
-      projectGrobotTemplateRetrievalBaseUrl,
-      projectTemplateRetrievalBaseUrl,
-      projectAgentBaseUrl,
-      globalBaseUrl,
+      { value: retrievalBaseUrl, source: "project_config" },
     ],
     sharedApiKeyCandidates: [
-      process.env.CONTEXTWEAVER_API_KEY,
-      process.env.GROBOT_RETRIEVAL_API_KEY,
-      projectContextApiKey,
-      projectConfigContextApiKey,
-      projectRetrievalApiKey,
-      projectGrobotRetrievalApiKey,
-      projectGrobotTemplateRetrievalApiKey,
-      projectTemplateRetrievalApiKey,
-      projectAgentApiKey,
-      globalApiKey,
+      { value: retrievalApiKey, source: "project_config" },
     ],
-    embeddingBaseUrlCandidates: [
-      process.env.CONTEXTWEAVER_EMBEDDINGS_BASE_URL,
-      process.env.GROBOT_EMBEDDING_BASE_URL,
-    ],
-    embeddingApiKeyCandidates: [
-      process.env.CONTEXTWEAVER_EMBEDDINGS_API_KEY,
-      process.env.GROBOT_EMBEDDING_API_KEY,
-    ],
+    embeddingBaseUrlCandidates: [],
+    embeddingApiKeyCandidates: [],
     embeddingModelCandidates: [
-      process.env.CONTEXTWEAVER_EMBEDDINGS_MODEL,
-      process.env.GROBOT_EMBEDDING_MODEL,
-      projectContextEmbeddingModel,
-      projectConfigContextEmbeddingModel,
-      projectRetrievalEmbeddingModel,
-      projectGrobotRetrievalEmbeddingModel,
-      projectGrobotTemplateRetrievalEmbeddingModel,
-      projectTemplateRetrievalEmbeddingModel,
-      // keep agent chat model as last resort only
-      projectAgentModel,
-      globalEmbeddingModel,
+      { value: retrievalEmbeddingModel, source: "project_config" },
     ],
     embeddingDimensionsCandidates: [
-      process.env.CONTEXTWEAVER_EMBEDDINGS_DIMENSIONS,
-      process.env.GROBOT_EMBEDDING_DIMENSIONS,
-      process.env.EMBEDDINGS_DIMENSIONS,
-      projectContextEmbeddingDimensions,
-      projectConfigContextEmbeddingDimensions,
-      projectRetrievalEmbeddingDimensions,
-      projectGrobotRetrievalEmbeddingDimensions,
-      projectGrobotTemplateRetrievalEmbeddingDimensions,
-      projectTemplateRetrievalEmbeddingDimensions,
-      globalEmbeddingDimensions,
+      { value: retrievalEmbeddingDimensions, source: "project_config" },
     ],
-    rerankBaseUrlCandidates: [
-      process.env.CONTEXTWEAVER_RERANK_BASE_URL,
-      process.env.GROBOT_RERANK_BASE_URL,
-    ],
-    rerankApiKeyCandidates: [
-      process.env.CONTEXTWEAVER_RERANK_API_KEY,
-      process.env.GROBOT_RERANK_API_KEY,
-    ],
+    rerankBaseUrlCandidates: [],
+    rerankApiKeyCandidates: [],
     rerankModelCandidates: [
-      process.env.CONTEXTWEAVER_RERANK_MODEL,
-      process.env.GROBOT_RERANK_MODEL,
-      projectContextRerankModel,
-      projectConfigContextRerankModel,
-      projectRetrievalRerankModel,
-      projectGrobotRetrievalRerankModel,
-      projectGrobotTemplateRetrievalRerankModel,
-      projectTemplateRetrievalRerankModel,
-      // keep agent chat model as last resort only
-      projectAgentModel,
-      globalRerankModel,
+      { value: retrievalRerankModel, source: "project_config" },
     ],
   });
+
+  if (!retrievalResolved.embedding || !retrievalResolved.rerank || retrievalResolved.embeddingDimensions <= 0) {
+    const missingFields = [];
+    if (!retrievalResolved.sharedBaseUrl) {
+      missingFields.push("retrieval.base_url");
+    }
+    if (!retrievalResolved.sharedApiKey) {
+      missingFields.push("retrieval.api_key");
+    }
+    if (!retrievalResolved.embeddingModel) {
+      missingFields.push("retrieval.embedding.model");
+    }
+    if (retrievalResolved.embeddingDimensions <= 0) {
+      missingFields.push("retrieval.embedding.dimensions");
+    }
+    if (!retrievalResolved.rerankModel) {
+      missingFields.push("retrieval.rerank.model");
+    }
+    const missingHint = missingFields.length > 0
+      ? `missing required fields: ${missingFields.join(", ")}`
+      : "retrieval values are empty or placeholders";
+    throw createError(
+      "semantic_config_missing",
+      `invalid semantic retrieval config in ${projectGrobotConfigToml}; ${missingHint}`,
+    );
+  }
 
   if (retrievalResolved.embeddingApiKey) {
     env.EMBEDDINGS_API_KEY = retrievalResolved.embeddingApiKey;
@@ -769,7 +686,7 @@ function classifyContextWeaverFailure(rawText, fallbackErrorClass) {
   ) {
     return {
       errorClass: "semantic_config_missing",
-      message: "Embedding endpoint is not available for current URL/model. Configure CONTEXTWEAVER_EMBEDDINGS_BASE_URL / CONTEXTWEAVER_EMBEDDINGS_MODEL or retrieval embedding settings in project/global config.",
+      message: "Embedding endpoint is not available for current URL/model. Update .grobot/config.toml retrieval.base_url and retrieval.embedding.model.",
     };
   }
   if (
@@ -791,218 +708,12 @@ function classifyContextWeaverFailure(rawText, fallbackErrorClass) {
   ) {
     return {
       errorClass: "semantic_config_missing",
-      message: "ContextWeaver retrieval credentials are missing; configure CONTEXTWEAVER_*, GROBOT_RETRIEVAL_*, or retrieval sections in project/global config.",
+      message: "ContextWeaver retrieval credentials are missing; configure .grobot/config.toml retrieval.api_key.",
     };
   }
   return {
     errorClass: fallbackErrorClass,
     message: truncateText(cleaned || "contextweaver command failed", MAX_WARNING_CHARS),
-  };
-}
-
-function getQueryWordSegmenter() {
-  if (queryWordSegmenter !== null) {
-    return queryWordSegmenter;
-  }
-  try {
-    queryWordSegmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
-  } catch {
-    queryWordSegmenter = null;
-  }
-  return queryWordSegmenter;
-}
-
-function sanitizeQueryForLexicalTerms(query) {
-  return String(query ?? "")
-    .replace(/[():"*^./\\:@#$%&=+[\]{}<>|~`!?,;]/g, " ")
-    .replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function toSnakeCase(value) {
-  return String(value ?? "")
-    .replace(/([a-z])([A-Z])/g, "$1_$2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-    .toLowerCase();
-}
-
-function toCamelCase(value) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-function generateLexicalTermVariants(value) {
-  const source = String(value ?? "").trim();
-  if (!source) {
-    return [];
-  }
-  const variants = [];
-  const dedup = new Set();
-  const push = (candidate) => {
-    const normalized = String(candidate ?? "").trim();
-    if (!normalized) {
-      return;
-    }
-    const key = normalized.toLowerCase();
-    if (dedup.has(key)) {
-      return;
-    }
-    dedup.add(key);
-    variants.push(normalized);
-  };
-  push(source);
-  const lowered = source.toLowerCase();
-  push(lowered);
-  if (/[a-z][A-Z]/.test(source)) {
-    push(toSnakeCase(source));
-  }
-  if (source.includes("_")) {
-    push(toCamelCase(source));
-  }
-  if (/[./_-]/.test(source)) {
-    push(source.replace(/[./_-]+/g, ""));
-  }
-  if (source.includes("/")) {
-    for (const part of source.split("/")) {
-      push(part);
-    }
-  }
-  return variants;
-}
-
-function collectCjkTerms(text, maxItems = 10) {
-  const rows = [];
-  const seen = new Set();
-  const sequences = String(text ?? "").match(/[\u3400-\u4DBF\u4E00-\u9FFF]+/g) ?? [];
-  const push = (value) => {
-    const normalized = String(value ?? "").trim();
-    if (!normalized || normalized.length < 2) {
-      return;
-    }
-    if (seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    rows.push(normalized);
-  };
-  for (const sequenceRaw of sequences) {
-    const sequence = String(sequenceRaw ?? "").trim();
-    if (sequence.length < 2) {
-      continue;
-    }
-    push(sequence);
-    const windowSizes = [4, 3, 2];
-    for (const windowSize of windowSizes) {
-      if (sequence.length <= windowSize) {
-        continue;
-      }
-      for (let index = 0; index <= sequence.length - windowSize; index += 1) {
-        push(sequence.slice(index, index + windowSize));
-        if (rows.length >= maxItems) {
-          return rows.slice(0, maxItems);
-        }
-      }
-    }
-    if (rows.length >= maxItems) {
-      break;
-    }
-  }
-  return rows.slice(0, maxItems);
-}
-
-function collectQueryTerms(query, maxTerms = 8) {
-  const normalized = String(query ?? "").trim();
-  if (!normalized) {
-    return [];
-  }
-  const terms = [];
-  const seen = new Set();
-  const pushTerm = (value) => {
-    const variants = generateLexicalTermVariants(value);
-    for (const term of variants) {
-      if (!term || term.length < 2) {
-        continue;
-      }
-      const key = term.toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      terms.push(term);
-      if (terms.length >= maxTerms) {
-        return;
-      }
-    }
-  };
-  pushTerm(normalized);
-  if (terms.length >= maxTerms) {
-    return terms.slice(0, maxTerms);
-  }
-  for (const token of normalized.split(/[\s,.;:()[\]{}<>/\\|"'`]+/)) {
-    const cleaned = token.trim();
-    if (!cleaned || cleaned.length < 2) {
-      continue;
-    }
-    pushTerm(cleaned);
-    if (terms.length >= maxTerms) {
-      break;
-    }
-  }
-  if (terms.length < maxTerms) {
-    const cleanForSegment = sanitizeQueryForLexicalTerms(normalized);
-    const segmenter = getQueryWordSegmenter();
-    if (segmenter && cleanForSegment) {
-      for (const row of segmenter.segment(cleanForSegment)) {
-        if (!row.isWordLike) {
-          continue;
-        }
-        pushTerm(row.segment);
-        if (terms.length >= maxTerms) {
-          break;
-        }
-      }
-    } else if (cleanForSegment) {
-      for (const token of cleanForSegment.split(/[\s\p{P}]+/u)) {
-        const cleaned = token.trim();
-        if (!cleaned) {
-          continue;
-        }
-        pushTerm(cleaned);
-        if (terms.length >= maxTerms) {
-          break;
-        }
-      }
-    }
-  }
-  if (terms.length < maxTerms) {
-    const cjkTerms = collectCjkTerms(normalized, maxTerms * 2);
-    for (const term of cjkTerms) {
-      pushTerm(term);
-      if (terms.length >= maxTerms) {
-        break;
-      }
-    }
-  }
-  return terms.slice(0, maxTerms);
-}
-
-function parseRipgrepLine(line) {
-  const match = String(line ?? "").match(/^(.+?):(\d+):(.*)$/);
-  if (!match) {
-    return null;
-  }
-  const filePath = String(match[1] ?? "").trim();
-  const lineNoRaw = Number.parseInt(String(match[2] ?? ""), 10);
-  if (!filePath || !Number.isFinite(lineNoRaw) || lineNoRaw <= 0) {
-    return null;
-  }
-  const text = String(match[3] ?? "");
-  return {
-    path: filePath,
-    line: lineNoRaw,
-    text,
   };
 }
 
@@ -1122,86 +833,6 @@ async function mapWithConcurrency(items, concurrency, worker) {
   }
   await Promise.all(runners);
   return results;
-}
-
-async function runLexicalFallbackSearch(rootPath, query, maxResults, timeoutMs) {
-  const terms = collectQueryTerms(query, 12);
-  if (terms.length === 0) {
-    return { matches: [], warnings: [] };
-  }
-  const warnings = [];
-  const dedup = new Set();
-  const matches = [];
-  for (let index = 0; index < terms.length; index += 1) {
-    const term = terms[index];
-    const result = await runCommand("rg", [
-      "--line-number",
-      "--no-heading",
-      "--color",
-      "never",
-      "--with-filename",
-      "--fixed-strings",
-      "--max-count",
-      String(MAX_LEXICAL_RESULTS_PER_SOURCE),
-      term,
-      rootPath,
-    ], {
-      cwd: rootPath,
-      timeoutMs,
-    });
-    if (result.error) {
-      if (String(result.error.code ?? "") === "ENOENT") {
-        warnings.push("rg is not installed; lexical fallback unavailable");
-        break;
-      }
-      warnings.push(`rg failed for term "${term}": ${String(result.error.message ?? result.error)}`);
-      continue;
-    }
-    const status = typeof result.status === "number" ? result.status : 1;
-    if (status !== 0 && status !== 1) {
-      const stderr = truncateText(stripAnsi(String(result.stderr ?? "")), MAX_WARNING_CHARS);
-      warnings.push(`rg exited with code ${String(status)} for term "${term}"${stderr ? `: ${stderr}` : ""}`);
-      continue;
-    }
-    if (status === 1) {
-      continue;
-    }
-    const lines = String(result.stdout ?? "").split(/\r?\n/);
-    for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
-      const parsed = parseRipgrepLine(line);
-      if (!parsed) {
-        continue;
-      }
-      const key = `${parsed.path}:${String(parsed.line)}:${parsed.text}`;
-      if (dedup.has(key)) {
-        continue;
-      }
-      dedup.add(key);
-      const score = computeLexicalMatchScore(index, matches.length, parsed.text, query);
-      matches.push({
-        path: parsed.path,
-        start_line: parsed.line,
-        end_line: parsed.line,
-        score,
-        breadcrumb: "lexical_fallback",
-        text: truncateText(parsed.text, MAX_EVIDENCE_TEXT_CHARS),
-      });
-      if (matches.length >= maxResults) {
-        return { matches, warnings };
-      }
-    }
-  }
-  return { matches, warnings };
-}
-
-function normalizeMatchText(value) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function deduplicateSemanticMatches(matches) {
@@ -1607,14 +1238,6 @@ async function runSemanticSearch(payload, timeoutMs) {
     warnings.push(runtime.warning);
   }
   const errorClasses = [];
-  const fallbackEligible = new Set([
-    "semantic_index_required",
-    "semantic_index_config_invalid",
-    "semantic_index_confirmation_required",
-    "semantic_config_missing",
-    "semantic_invalid_response",
-    "semantic_refresh_failed",
-  ]);
   const sourceResults = await mapWithConcurrency(sourceRoots, sourceConcurrency, async (sourceRoot) => {
     const { source, rootPath } = sourceRoot;
     if (!existsSync(rootPath)) {
@@ -1700,8 +1323,6 @@ async function runSemanticSearch(payload, timeoutMs) {
           status: "ok",
           count: selected.length,
           semantic_count: selected.length,
-          lexical_count: 0,
-          fusion: "semantic_only",
         },
         matches: selected,
         warnings: [],
@@ -1710,41 +1331,6 @@ async function runSemanticSearch(payload, timeoutMs) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const errorClass = normalizeToolErrorClass(error?.errorClass, "semantic_search_failed");
-      if (fallbackEligible.has(errorClass)) {
-        const fallback = await runLexicalFallbackSearch(
-          rootPath,
-          query,
-          Math.max(perSourceLimit, 6),
-          timeoutMs,
-        );
-        if (fallback.matches.length > 0) {
-          const normalizedMatches = fallback.matches.map((item) => ({
-            source,
-            root_path: rootPath,
-            path: item.path,
-            start_line: item.start_line,
-            end_line: item.end_line,
-            score: normalizeSemanticScore(item.score),
-            breadcrumb: item.breadcrumb,
-            text: item.text,
-          }));
-          return {
-            sourceStat: {
-              source,
-              root_path: rootPath,
-              status: "degraded",
-              count: normalizedMatches.length,
-              error_class: errorClass,
-            },
-            matches: normalizedMatches,
-            warnings: [
-              `source ${source} fallback to lexical search: ${truncateText(message, MAX_WARNING_CHARS)}`,
-              ...fallback.warnings.map((item) => `source ${source} fallback warning: ${item}`),
-            ],
-            errorClass: "",
-          };
-        }
-      }
       return {
         sourceStat: {
           source,
@@ -1769,7 +1355,7 @@ async function runSemanticSearch(payload, timeoutMs) {
     }
   }
 
-  const okCount = sourceStats.filter((row) => row.status === "ok" || row.status === "degraded").length;
+  const okCount = sourceStats.filter((row) => row.status === "ok").length;
   if (okCount === 0) {
     const errorClass = pickDominantErrorClass(errorClasses, "semantic_search_failed");
     throw createError(
@@ -1817,14 +1403,6 @@ async function runPromptEnhancer(payload, timeoutMs) {
   }
   const errorClasses = [];
   let language = "en";
-  const fallbackEligible = new Set([
-    "semantic_index_required",
-    "semantic_index_config_invalid",
-    "semantic_index_confirmation_required",
-    "semantic_config_missing",
-    "semantic_invalid_response",
-    "semantic_refresh_failed",
-  ]);
   const sourceResults = await mapWithConcurrency(sourceRoots, sourceConcurrency, async (sourceRoot) => {
     const { source, rootPath } = sourceRoot;
     if (!existsSync(rootPath)) {
@@ -1909,114 +1487,44 @@ async function runPromptEnhancer(payload, timeoutMs) {
         });
       }
       const retrievalStatus = String(retrieval.status ?? "ok").trim() || "ok";
-      let retrievalErrorClass = "";
+      const normalizedRetrievalStatus = retrievalStatus.toLowerCase();
       const retrievalWarnings = [];
       const retrievalError = typeof retrieval.error === "string" ? retrieval.error.trim() : "";
-      if (retrievalError) {
-        const classified = classifyContextWeaverFailure(retrievalError, "prompt_enhancer_failed");
-        retrievalErrorClass = classified.errorClass;
-        if (fallbackEligible.has(retrievalErrorClass)) {
-          const fallback = await runLexicalFallbackSearch(
-            rootPath,
-            prompt,
-            Math.max(maxEvidence, 8),
-            timeoutMs,
-          );
-          if (fallback.matches.length > 0) {
-            for (const item of fallback.matches) {
-              evidenceRows.push({
-                source,
-                root_path: rootPath,
-                path: item.path,
-                start_line: item.start_line,
-                end_line: item.end_line,
-                score: normalizeSemanticScore(item.score),
-                breadcrumb: item.breadcrumb,
-                text: item.text,
-              });
-              pathRows.push(`[${source}] ${item.path}`);
-            }
-            retrievalWarnings.push(
-              `source ${source} fallback to lexical search: ${truncateText(classified.message, MAX_WARNING_CHARS)}`,
-            );
-            retrievalWarnings.push(...fallback.warnings.map((item) => `source ${source} fallback warning: ${item}`));
-            return {
-              sourceStat: {
-                source,
-                root_path: rootPath,
-                status: "degraded",
-                error_class: retrievalErrorClass,
-              },
-              evidence: evidenceRows,
-              topPaths: pathRows,
-              technicalTerms: [...termRows, ...extractTechnicalTerms(prompt, 24), ...explicitSymbols],
-              warnings: retrievalWarnings,
-              errorClass: "",
-              language: languageHint,
-            };
-          }
-        }
-        retrievalWarnings.push(`source ${source} retrieval error: ${truncateText(classified.message, MAX_WARNING_CHARS)}`);
+      if (retrievalError || normalizedRetrievalStatus !== "ok") {
+        const rawFailure = retrievalError || `contextweaver retrieval status=${retrievalStatus}`;
+        const classified = classifyContextWeaverFailure(rawFailure, "prompt_enhancer_failed");
+        retrievalWarnings.push(`source ${source} retrieval failed: ${truncateText(classified.message, MAX_WARNING_CHARS)}`);
+        return {
+          sourceStat: {
+            source,
+            root_path: rootPath,
+            status: "error",
+            error_class: classified.errorClass,
+          },
+          evidence: [],
+          topPaths: [],
+          technicalTerms: [],
+          warnings: retrievalWarnings,
+          errorClass: classified.errorClass,
+          language: languageHint,
+        };
       }
       return {
         sourceStat: {
           source,
           root_path: rootPath,
-          status: retrievalStatus,
-          ...(retrievalErrorClass ? { error_class: retrievalErrorClass } : {}),
+          status: "ok",
         },
         evidence: evidenceRows,
         topPaths: pathRows,
         technicalTerms: termRows,
         warnings: retrievalWarnings,
-        errorClass: retrievalErrorClass,
+        errorClass: "",
         language: languageHint,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const errorClass = normalizeToolErrorClass(error?.errorClass, "prompt_enhancer_failed");
-      if (fallbackEligible.has(errorClass)) {
-        const fallback = await runLexicalFallbackSearch(
-          rootPath,
-          prompt,
-          Math.max(maxEvidence, 8),
-          timeoutMs,
-        );
-        if (fallback.matches.length > 0) {
-          const fallbackEvidence = [];
-          const fallbackTopPaths = [];
-          for (const item of fallback.matches) {
-            fallbackEvidence.push({
-              source,
-              root_path: rootPath,
-              path: item.path,
-              start_line: item.start_line,
-              end_line: item.end_line,
-              score: normalizeSemanticScore(item.score),
-              breadcrumb: item.breadcrumb,
-              text: item.text,
-            });
-            fallbackTopPaths.push(`[${source}] ${item.path}`);
-          }
-          return {
-            sourceStat: {
-              source,
-              root_path: rootPath,
-              status: "degraded",
-              error_class: errorClass,
-            },
-            evidence: fallbackEvidence,
-            topPaths: fallbackTopPaths,
-            technicalTerms: [...extractTechnicalTerms(prompt, 24), ...explicitSymbols],
-            warnings: [
-              `source ${source} fallback to lexical search: ${truncateText(message, MAX_WARNING_CHARS)}`,
-              ...fallback.warnings.map((item) => `source ${source} fallback warning: ${item}`),
-            ],
-            errorClass: "",
-            language: "",
-          };
-        }
-      }
       return {
         sourceStat: {
           source,
@@ -2052,7 +1560,7 @@ async function runPromptEnhancer(payload, timeoutMs) {
 
   const okCount = sourceStats.filter((row) => {
     const status = String(row.status ?? "").trim().toLowerCase();
-    return status !== "error" && status !== "failed" && status !== "skipped";
+    return status === "ok";
   }).length;
   if (okCount === 0) {
     const errorClass = pickDominantErrorClass(errorClasses, "prompt_enhancer_failed");

@@ -131,35 +131,30 @@ Bridge resolves executable in this order:
 2. `GROBOT_CONTEXTWEAVER_ROOT` or `CONTEXTWEAVER_ROOT` (expects `<root>/dist/index.js`)
 3. `contextweaver` from `PATH`
 
-### URL/Key/model fallback chain
+### Retrieval config source of truth
 
-For embedding and rerank settings, bridge fallback order is:
+For embedding/rerank settings, bridge now reads **only**:
 
-1. `CONTEXTWEAVER_*` env
-2. `GROBOT_*` retrieval env
-3. `.grobot/project.toml` (`[context_retrieval]` and nested sections)
-4. `<repo>/.grobot/config.toml` (`[retrieval]` and nested sections)
-5. `<repo>/.grobot/config.toml` (`[projects.agent.options]` base URL/key reuse)
-6. `~/.grobot/config.toml` (`[retrieval]` and nested sections)
+1. `<repo>/.grobot/config.toml` `[retrieval]`
+2. `<repo>/.grobot/config.toml` `[retrieval.embedding]`
+3. `<repo>/.grobot/config.toml` `[retrieval.rerank]`
 
-Bridge also reads:
-- project-level `<repo>/config.toml` retrieval sections when present.
-- template defaults from `<repo>/.grobot/config.toml.example` and `<repo>/packages/templates/config.toml.example` (default pair: `Qwen/Qwen3-Embedding-4B` + `Qwen/Qwen3-Reranker-0.6B`).
-- `retrieval.embedding.dimensions` from project/global config (or model-based inference when absent).
-- shared `retrieval.base_url = https://.../v1` is accepted; bridge normalizes to endpoint URLs for ContextWeaver (`.../v1/embeddings`, `.../v1/rerank`).
+Hard constraints:
+- Missing `<repo>/.grobot/config.toml` fails fast.
+- Legacy `[context_retrieval]` in `.grobot/config.toml`, `.grobot/project.toml`, or `<repo>/config.toml` fails fast.
+- `retrieval.base_url`, `retrieval.api_key`, `retrieval.embedding.model`, `retrieval.embedding.dimensions`, `retrieval.rerank.model` are required (placeholder values are treated as missing).
+- No env override precedence for retrieval settings.
+- No global `~/.grobot/config.toml` fallback.
+- No default model inference.
 
-Model resolution priority for semantic retrieval:
-- retrieval embedding/rerank models (env/config/template)
-- agent chat model only as last resort fallback.
+`retrieval.base_url = https://.../v1` is still normalized to endpoint URLs (`.../v1/embeddings`, `.../v1/rerank`).
 
 ### Common semantic bridge failures
 
 - `semantic_index_required`: run `cw index <repo-path> -y`.
 - `semantic_index_config_invalid`: update `cwconfig.json` include patterns so files can be indexed.
-- `semantic_config_missing`: configure retrieval credentials via env/config fallback chain above.
+- `semantic_config_missing`: check `<repo>/.grobot/config.toml` `[retrieval.*]` fields.
 - `semantic_config_missing` with `Embedding API HTTP 404`: current URL/model likely does not expose embedding endpoint; set retrieval-specific embedding base URL/model.
-
-When those retrieval/index failures happen, bridge performs lexical fallback via `rg` and returns degraded-but-usable evidence instead of hard-failing the tool call.
 
 ## Verification
 

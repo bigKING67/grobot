@@ -47,6 +47,46 @@ function writeFixtureTree(rootPath, sourceCount = 8) {
   return sourceRoots;
 }
 
+function writeSemanticRetrievalConfig(projectRoot, options = {}) {
+  const includeLegacySection = options.includeLegacySection === true;
+  const grobotDir = resolve(projectRoot, ".grobot");
+  mkdirSync(grobotDir, { recursive: true });
+  const configRows = [
+    "[retrieval]",
+    "enabled = true",
+    "base_url = \"https://api.siliconflow.cn/v1\"",
+    "api_key = \"test-key\"",
+    "",
+    "[retrieval.embedding]",
+    "enabled = true",
+    "model = \"Qwen/Qwen3-Embedding-4B\"",
+    "dimensions = 2560",
+    "",
+    "[retrieval.rerank]",
+    "enabled = true",
+    "model = \"Qwen/Qwen3-Reranker-0.6B\"",
+    "",
+  ];
+  if (includeLegacySection) {
+    configRows.push("[context_retrieval]");
+    configRows.push("");
+  }
+  writeFileSync(
+    resolve(grobotDir, "config.toml"),
+    configRows.join("\n"),
+    "utf8",
+  );
+  writeFileSync(
+    resolve(grobotDir, "project.toml"),
+    [
+      "[project]",
+      "name = \"semantic-regression-contract\"",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 function writeQualityFixtures(rootPath) {
   const codeRoot = resolve(rootPath, "code");
   const srcDir = resolve(codeRoot, "src");
@@ -313,6 +353,7 @@ function mean(values) {
 function runQualityRegression() {
   const tempRoot = makeTempDir("semantic-quality");
   try {
+    writeSemanticRetrievalConfig(tempRoot);
     const codeRoot = writeQualityFixtures(tempRoot);
     const fakeBin = writeFakeContextWeaverBin(tempRoot);
     const semanticPayload = runBridge(
@@ -340,9 +381,8 @@ function runQualityRegression() {
     assert.equal(Number(semanticPayload.count) >= 3, true);
     assert.equal(Array.isArray(semanticPayload.source_stats), true);
     const semanticSource = Array.isArray(semanticPayload.source_stats) ? semanticPayload.source_stats[0] : null;
-    assert.equal(String(semanticSource?.fusion ?? ""), "semantic_only");
+    assert.equal(String(semanticSource?.status ?? ""), "ok");
     assert.equal(Number(semanticSource?.semantic_count ?? 0) >= 1, true);
-    assert.equal(Number(semanticSource?.lexical_count ?? 0), 0);
 
     const rerankedPayload = runBridge(
       "semantic-search",
@@ -391,51 +431,74 @@ function runQualityRegression() {
     assert.equal(String(zhTop.path ?? ""), "docs/retry-guide.zh.md");
     assert.equal(String(zhTop.text ?? "").includes("重试预算溢出处理"), true);
 
-    const fallbackPayload = runBridge(
-      "semantic-search",
-      {
-        query: "retry budget overflow handling",
-        sourceRoots: [{ source: "code", rootPath: codeRoot }],
-        perSourceLimit: 4,
-        maxSegments: 8,
-        refresh: "auto",
-      },
-      {
-        CONTEXTWEAVER_BIN: fakeBin,
-        CW_FAKE_MODE: "index-missing",
-      },
-      codeRoot,
-    );
-    assert.equal(fallbackPayload.tool, "semantic_search");
-    assert.equal(Array.isArray(fallbackPayload.matches), true);
-    assert.equal(fallbackPayload.matches.length >= 1, true);
-    const fallbackTop = fallbackPayload.matches[0];
-    assert.equal(String(fallbackTop.path ?? "").endsWith("src/retry-policy.ts"), true);
-    assert.equal(String(fallbackTop.breadcrumb ?? ""), "lexical_fallback");
-    assert.equal(String(fallbackTop.text ?? "").includes("retry budget overflow handling"), true);
+    let indexRequiredError = "";
+    try {
+      runBridge(
+        "semantic-search",
+        {
+          query: "retry budget overflow handling",
+          sourceRoots: [{ source: "code", rootPath: codeRoot }],
+          perSourceLimit: 4,
+          maxSegments: 8,
+          refresh: "auto",
+        },
+        {
+          CONTEXTWEAVER_BIN: fakeBin,
+          CW_FAKE_MODE: "index-missing",
+        },
+        codeRoot,
+      );
+    } catch (error) {
+      indexRequiredError = String(error?.message ?? error);
+    }
+    assert.equal(indexRequiredError.includes("semantic_index_required"), true);
 
-    const zhFallbackPayload = runBridge(
-      "semantic-search",
-      {
-        query: "重试预算溢出处理",
-        sourceRoots: [{ source: "code", rootPath: codeRoot }],
-        perSourceLimit: 4,
-        maxSegments: 8,
-        refresh: "auto",
-      },
-      {
-        CONTEXTWEAVER_BIN: fakeBin,
-        CW_FAKE_MODE: "index-missing",
-      },
-      codeRoot,
-    );
-    assert.equal(zhFallbackPayload.tool, "semantic_search");
-    assert.equal(Array.isArray(zhFallbackPayload.matches), true);
-    assert.equal(zhFallbackPayload.matches.length >= 1, true);
-    const zhFallbackTop = zhFallbackPayload.matches[0];
-    assert.equal(String(zhFallbackTop.path ?? "").endsWith("docs/retry-guide.zh.md"), true);
-    assert.equal(String(zhFallbackTop.breadcrumb ?? ""), "lexical_fallback");
-    assert.equal(String(zhFallbackTop.text ?? "").includes("重试预算溢出处理"), true);
+    let zhIndexRequiredError = "";
+    try {
+      runBridge(
+        "semantic-search",
+        {
+          query: "重试预算溢出处理",
+          sourceRoots: [{ source: "code", rootPath: codeRoot }],
+          perSourceLimit: 4,
+          maxSegments: 8,
+          refresh: "auto",
+        },
+        {
+          CONTEXTWEAVER_BIN: fakeBin,
+          CW_FAKE_MODE: "index-missing",
+        },
+        codeRoot,
+      );
+    } catch (error) {
+      zhIndexRequiredError = String(error?.message ?? error);
+    }
+    assert.equal(zhIndexRequiredError.includes("semantic_index_required"), true);
+
+    writeSemanticRetrievalConfig(tempRoot, { includeLegacySection: true });
+    let legacySectionError = "";
+    try {
+      runBridge(
+        "semantic-search",
+        {
+          query: "legacy context retrieval should fail",
+          sourceRoots: [{ source: "code", rootPath: codeRoot }],
+          perSourceLimit: 4,
+          maxSegments: 8,
+          refresh: "skip",
+        },
+        {
+          CONTEXTWEAVER_BIN: fakeBin,
+          CW_FAKE_MODE: "semantic",
+        },
+        codeRoot,
+      );
+    } catch (error) {
+      legacySectionError = String(error?.message ?? error);
+    }
+    assert.equal(legacySectionError.includes("semantic_config_missing"), true);
+    assert.equal(legacySectionError.includes("legacy [context_retrieval]"), true);
+    writeSemanticRetrievalConfig(tempRoot);
 
     return {
       passed: true,
@@ -446,12 +509,9 @@ function runQualityRegression() {
       reranked_count: rerankedPayload.count,
       zh_top_path: zhTop.path,
       zh_top_score: zhTop.score,
-      fallback_top_path: fallbackTop.path,
-      fallback_top_score: fallbackTop.score,
-      fallback_warning_count: Array.isArray(fallbackPayload.warnings) ? fallbackPayload.warnings.length : 0,
-      zh_fallback_top_path: zhFallbackTop.path,
-      zh_fallback_top_score: zhFallbackTop.score,
-      zh_fallback_warning_count: Array.isArray(zhFallbackPayload.warnings) ? zhFallbackPayload.warnings.length : 0,
+      index_required_error: indexRequiredError,
+      zh_index_required_error: zhIndexRequiredError,
+      legacy_section_error: legacySectionError,
     };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -461,6 +521,7 @@ function runQualityRegression() {
 function runBenchmark() {
   const tempRoot = makeTempDir("semantic-benchmark");
   try {
+    writeSemanticRetrievalConfig(tempRoot);
     const sourceRootsAll = writeFixtureTree(tempRoot, 8);
     const fakeBin = writeFakeContextWeaverBin(tempRoot);
     const sourceCounts = [1, 2, 4, 8];

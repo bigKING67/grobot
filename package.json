@@ -12,6 +12,7 @@
     "adapters/contextweaver/bridge/cli.mjs",
     "adapters/contextweaver/vendor/contextweaver/dist",
     "adapters/contextweaver/vendor/contextweaver/skills",
+    "shared/config/toml-config.mjs",
     "shared/retrieval/contextweaver-retrieval.mjs",
     "README.md"
   ],
@@ -90,6 +91,7 @@
     "browser:native:setup:json": "node adapters/browser-structured-mcp/native-deps-setup.mjs --install --yes --json"
   },
   "dependencies": {
+    "toml": "^3.0.0",
     "ws": "8.18.0"
   }
 }

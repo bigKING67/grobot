@@ -139,23 +139,6 @@ function hasEffectiveCandidate(candidates, options = {}) {
   return false;
 }
 
-function inferEmbeddingDimensionsFromModel(modelName) {
-  const model = String(modelName ?? "").trim().toLowerCase();
-  if (!model) {
-    return 0;
-  }
-  if (model.includes("qwen3-embedding-0.6b")) {
-    return 1024;
-  }
-  if (model.includes("qwen3-embedding-4b")) {
-    return 2560;
-  }
-  if (model.includes("qwen3-embedding-8b")) {
-    return 4096;
-  }
-  return 0;
-}
-
 function normalizeContextWeaverEndpointBaseUrl(rawBaseUrl, endpointName) {
   const endpoint = String(endpointName ?? "").trim().replace(/^\/+/, "");
   const baseUrl = String(rawBaseUrl ?? "").trim();
@@ -188,9 +171,6 @@ function normalizeContextWeaverEndpointBaseUrl(rawBaseUrl, endpointName) {
 }
 
 function resolveContextWeaverRetrieval(options = {}) {
-  const defaultEmbeddingModel = String(options.defaultEmbeddingModel ?? "").trim();
-  const defaultRerankModel = String(options.defaultRerankModel ?? "").trim();
-
   const sharedBaseUrlResolved = resolveStringCandidate(options.sharedBaseUrlCandidates, {
     offSource: "default",
     skipPlaceholders: true,
@@ -201,26 +181,15 @@ function resolveContextWeaverRetrieval(options = {}) {
   });
 
   const embeddingModelResolved = resolveStringCandidate(options.embeddingModelCandidates, {
-    defaultValue: defaultEmbeddingModel,
-    defaultSource: "default",
     offSource: "off",
     skipPlaceholders: true,
   });
   const rerankModelResolved = resolveStringCandidate(options.rerankModelCandidates, {
-    defaultValue: defaultRerankModel,
-    defaultSource: "default",
     offSource: "off",
     skipPlaceholders: true,
   });
 
-  const embeddingDimensionsCandidates = [
-    ...normalizeCandidateRows(options.embeddingDimensionsCandidates),
-    {
-      value: inferEmbeddingDimensionsFromModel(embeddingModelResolved.value),
-      source: "inferred",
-    },
-  ];
-  const embeddingDimensionsResolved = resolvePositiveIntCandidate(embeddingDimensionsCandidates, {
+  const embeddingDimensionsResolved = resolvePositiveIntCandidate(options.embeddingDimensionsCandidates, {
     offSource: "off",
   });
 
@@ -324,7 +293,6 @@ function resolveContextWeaverRetrieval(options = {}) {
 
 export {
   hasEffectiveCandidate,
-  inferEmbeddingDimensionsFromModel,
   isPlaceholderValue,
   normalizeContextWeaverEndpointBaseUrl,
   resolveContextWeaverRetrieval,
