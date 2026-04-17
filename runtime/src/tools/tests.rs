@@ -118,6 +118,29 @@ mod tests {
         }
     }
 
+    fn make_fs_input(workspace: &PathBuf) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: "req-fs-v2".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run list/glob/search".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec![
+                    "list".to_string(),
+                    "glob".to_string(),
+                    "search".to_string(),
+                ]),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
     fn execute_tool_payload(
         executor: &LocalToolExecutor,
         input: &TurnExecuteInput,
@@ -340,20 +363,24 @@ audit_redact_secrets = false
             enabled_tools: HashSet::new(),
             bash_allowlist: Vec::new(),
         };
+        let request = SearchRequest {
+            query: "keyword".to_string(),
+            path: "context.txt".to_string(),
+            max_results: 4,
+            context_before: 1,
+            context_after: 1,
+            fixed_mode: true,
+            case_sensitive: false,
+        };
         let mut matches: Vec<Value> = Vec::new();
         let reached_limit = collect_builtin_search_matches_for_file(
             &context,
             &file_path,
-            true,
-            false,
-            "keyword",
+            &request,
             None,
             Some("keyword"),
             None,
-            1,
-            1,
             &mut matches,
-            4,
         );
         assert!(!reached_limit);
         assert_eq!(matches.len(), 2);
@@ -368,6 +395,271 @@ audit_redact_secrets = false
             Some(3)
         );
 
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn list_v2_rejects_unknown_arguments() {
+        let workspace = make_temp_workspace("list-v2-unknown-arg");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "list",
+            json!({
+                "unexpected": true
+            }),
+        )
+        .expect_err("unknown list argument should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn list_v2_reports_limit_reached_metadata() {
+        let workspace = make_temp_workspace("list-v2-limit");
+        fs::write(workspace.join("z.txt"), "z").expect("write z");
+        fs::write(workspace.join("a.txt"), "a").expect("write a");
+        fs::write(workspace.join("m.txt"), "m").expect("write m");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "list",
+            json!({
+                "max_entries": 2
+            }),
+        )
+        .expect("list should succeed");
+        assert_eq!(payload["tool"].as_str(), Some("list"));
+        assert_eq!(payload["count"].as_u64(), Some(2));
+        assert_eq!(payload["entries"].as_array().map(|items| items.len()), Some(2));
+        assert_eq!(
+            payload["entries"]
+                .as_array()
+                .expect("list entries should be array")
+                .iter()
+                .map(|item| item.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<String>>(),
+            vec!["a.txt".to_string(), "m.txt".to_string()]
+        );
+        assert_eq!(payload["limit_reached"].as_bool(), Some(true));
+        assert_eq!(
+            payload["truncation"]["truncated"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(payload["truncation"]["max_entries"].as_u64(), Some(2));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn glob_v2_rejects_unknown_arguments() {
+        let workspace = make_temp_workspace("glob-v2-unknown-arg");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "glob",
+            json!({
+                "pattern": "*.rs",
+                "unexpected": true
+            }),
+        )
+        .expect_err("unknown glob argument should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn glob_v2_reports_limit_reached_metadata() {
+        let workspace = make_temp_workspace("glob-v2-limit");
+        fs::write(workspace.join("zeta.txt"), "zeta").expect("write zeta");
+        fs::write(workspace.join("alpha.txt"), "alpha").expect("write alpha");
+        fs::write(workspace.join("beta.txt"), "beta").expect("write beta");
+        fs::write(workspace.join("skip.md"), "skip").expect("write skip");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "glob",
+            json!({
+                "pattern": "*.txt",
+                "max_entries": 2
+            }),
+        )
+        .expect("glob should succeed");
+        assert_eq!(payload["tool"].as_str(), Some("glob"));
+        assert_eq!(payload["count"].as_u64(), Some(2));
+        assert_eq!(payload["matches"].as_array().map(|items| items.len()), Some(2));
+        assert_eq!(
+            payload["matches"]
+                .as_array()
+                .expect("glob matches should be array")
+                .iter()
+                .map(|item| item.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<String>>(),
+            vec!["alpha.txt".to_string(), "beta.txt".to_string()]
+        );
+        assert_eq!(payload["limit_reached"].as_bool(), Some(true));
+        assert_eq!(
+            payload["truncation"]["truncated"].as_bool(),
+            Some(true)
+        );
+        assert!(
+            matches!(payload["engine"].as_str(), Some("fd") | Some("builtin")),
+            "unexpected glob engine: {}",
+            payload["engine"]
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_v2_rejects_unknown_arguments() {
+        let workspace = make_temp_workspace("search-v2-unknown-arg");
+        fs::write(workspace.join("notes.txt"), "keyword").expect("write notes");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "query": "keyword",
+                "unexpected": true
+            }),
+        )
+        .expect_err("unknown search argument should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_v2_rejects_context_above_max() {
+        let workspace = make_temp_workspace("search-v2-context-upper-bound");
+        fs::write(workspace.join("notes.txt"), "keyword").expect("write notes");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "query": "keyword",
+                "context_before": (MAX_SEARCH_CONTEXT_LINES as u64).saturating_add(1)
+            }),
+        )
+        .expect_err("context_before above max should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        assert!(
+            error.message.contains("must be <="),
+            "unexpected context upper-bound error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_v2_honors_fixed_and_regex_modes() {
+        let workspace = make_temp_workspace("search-v2-fixed-regex");
+        fs::write(
+            workspace.join("sample.txt"),
+            "alpha.*beta\nalphaZZbeta\n",
+        )
+        .expect("write sample file");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        let fixed_payload = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "path": "sample.txt",
+                "query": "alpha.*beta",
+                "fixed": true,
+                "max_results": 10
+            }),
+        )
+        .expect("fixed search should succeed");
+        assert_eq!(fixed_payload["count"].as_u64(), Some(1));
+        assert_eq!(fixed_payload["preferred_engine"].as_str(), Some("rg"));
+        assert!(
+            fixed_payload["fallback"]["used"].as_bool().is_some(),
+            "search fallback.used should be bool"
+        );
+        if fixed_payload["fallback"]["used"].as_bool() == Some(true) {
+            assert_eq!(fixed_payload["fallback"]["to"].as_str(), Some("builtin"));
+            assert!(fixed_payload["fallback"]["reason"].as_str().is_some());
+        }
+
+        let regex_payload = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "path": "sample.txt",
+                "query": "alpha.*beta",
+                "regex": true,
+                "max_results": 10
+            }),
+        )
+        .expect("regex search should succeed");
+        assert_eq!(regex_payload["count"].as_u64(), Some(2));
+        assert_eq!(regex_payload["preferred_engine"].as_str(), Some("rg"));
+        assert!(
+            regex_payload["fallback"]["used"].as_bool().is_some(),
+            "search fallback.used should be bool"
+        );
+        if regex_payload["fallback"]["used"].as_bool() == Some(true) {
+            assert_eq!(regex_payload["fallback"]["to"].as_str(), Some("builtin"));
+            assert!(regex_payload["fallback"]["reason"].as_str().is_some());
+        }
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn search_v2_reports_truncation_metadata_and_text_truncation() {
+        let workspace = make_temp_workspace("search-v2-truncation");
+        let long_segment = "k".repeat(SEARCH_MAX_MATCH_TEXT_CHARS.saturating_add(64));
+        fs::write(
+            workspace.join("sample.txt"),
+            format!("{long_segment} keyword\nkeyword short\n"),
+        )
+        .expect("write sample file");
+        let input = make_fs_input(&workspace);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "search",
+            json!({
+                "path": "sample.txt",
+                "query": "keyword",
+                "max_results": 1
+            }),
+        )
+        .expect("search should succeed");
+        assert_eq!(payload["count"].as_u64(), Some(1));
+        assert_eq!(payload["limit_reached"].as_bool(), Some(true));
+        assert_eq!(
+            payload["truncation"]["max_results_reached"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(payload["preferred_engine"].as_str(), Some("rg"));
+        assert!(
+            payload["fallback"]["used"].as_bool().is_some(),
+            "search fallback.used should be bool"
+        );
+        let first = payload["matches"]
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("at least one search match");
+        assert_eq!(first["text_truncated"].as_bool(), Some(true));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

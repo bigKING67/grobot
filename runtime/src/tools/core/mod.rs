@@ -15,6 +15,7 @@ const DEFAULT_MAX_RESULTS: usize = 50;
 const MAX_RESULTS_LIMIT: usize = 1_000;
 const DEFAULT_MAX_ENTRIES: usize = 200;
 const MAX_ENTRIES_LIMIT: usize = 5_000;
+const MAX_SEARCH_CONTEXT_LINES: usize = 16;
 
 const DEFAULT_MCP_MAX_CONCURRENCY_PER_SERVER: usize = 1;
 const MIN_MCP_MAX_CONCURRENCY_PER_SERVER: usize = 1;
@@ -310,10 +311,11 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string" },
+                    "path": { "type": "string", "minLength": 1 },
                     "recursive": { "type": "boolean" },
-                    "max_entries": { "type": "integer" }
-                }
+                    "max_entries": { "type": "integer", "minimum": 1, "maximum": MAX_ENTRIES_LIMIT }
+                },
+                "additionalProperties": false
             }),
             default_enabled: true,
         },
@@ -323,11 +325,12 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "pattern": { "type": "string" },
-                    "path": { "type": "string" },
-                    "max_entries": { "type": "integer" }
+                    "pattern": { "type": "string", "minLength": 1 },
+                    "path": { "type": "string", "minLength": 1 },
+                    "max_entries": { "type": "integer", "minimum": 1, "maximum": MAX_ENTRIES_LIMIT }
                 },
-                "required": ["pattern"]
+                "required": ["pattern"],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },
@@ -337,16 +340,17 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "query": { "type": "string" },
-                    "path": { "type": "string" },
+                    "query": { "type": "string", "minLength": 1 },
+                    "path": { "type": "string", "minLength": 1 },
                     "fixed": { "type": "boolean" },
                     "regex": { "type": "boolean" },
                     "case_sensitive": { "type": "boolean" },
-                    "context_before": { "type": "integer" },
-                    "context_after": { "type": "integer" },
-                    "max_results": { "type": "integer" }
+                    "context_before": { "type": "integer", "minimum": 0, "maximum": MAX_SEARCH_CONTEXT_LINES },
+                    "context_after": { "type": "integer", "minimum": 0, "maximum": MAX_SEARCH_CONTEXT_LINES },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": MAX_RESULTS_LIMIT }
                 },
-                "required": ["query"]
+                "required": ["query"],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },
@@ -1311,11 +1315,6 @@ fn get_usize_arg(args: &Map<String, Value>, key: &str, fallback: usize, max: usi
         .map(|value| value as usize)
         .unwrap_or(fallback);
     parsed.clamp(1, max)
-}
-
-fn get_i64_arg(args: &Map<String, Value>, key: &str, fallback: i64, min: i64, max: i64) -> i64 {
-    let parsed = args.get(key).and_then(Value::as_i64).unwrap_or(fallback);
-    parsed.clamp(min, max)
 }
 
 fn get_string_array_arg_with_char_limit(
