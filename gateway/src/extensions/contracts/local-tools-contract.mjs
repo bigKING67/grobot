@@ -84,7 +84,7 @@ function resolveScenario(command) {
       };
     case "read-write-edit-roundtrip":
       return {
-        write_result: { bytes_written: 23 },
+        write_result: { bytes_written: 23, operation: "create" },
         read_result: { line_start: 2, line_end: 3, content: "line2\nline3" },
         edit_result: {
           blocks_requested: 1,

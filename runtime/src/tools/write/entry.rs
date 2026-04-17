@@ -5,7 +5,6 @@ fn run_write(
     let request = parse_write_request(args)?;
     let target = ensure_within_workspace(&context.work_dir, &request.path, true)?;
     let relative_path = relative_to_work_dir(&context.work_dir, &target);
-    let existed_before = target.exists();
 
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -21,6 +20,7 @@ fn run_write(
         .lock()
         .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to acquire write file lock"))?;
 
+    let existed_before = target.exists();
     let (operation, preserved_permissions) = if existed_before {
         let metadata = fs::metadata(&target).map_err(|error| {
             ToolExecutionError::new(
@@ -48,15 +48,6 @@ fn run_write(
                 format!("write requires a full read before updating existing file: {relative_path}"),
             ));
         }
-        if snapshot.mtime_ms != current_mtime_ms {
-            return Err(ToolExecutionError::new(
-                "write_stale_target",
-                format!(
-                    "write target changed since last read for {} (expected mtime_ms={}, actual mtime_ms={})",
-                    relative_path, snapshot.mtime_ms, current_mtime_ms
-                ),
-            ));
-        }
         let current_bytes = fs::read(&target).map_err(|error| {
             ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}"))
         })?;
@@ -72,6 +63,23 @@ fn run_write(
                 "write only supports utf-8 text files",
             )
         })?;
+        let current_hash = hash_write_guard_text(current_content.as_str());
+        let snapshot_hash = snapshot.content_hash.ok_or_else(|| {
+            ToolExecutionError::new(
+                "write_stale_target",
+                format!("write read snapshot missing content hash for {relative_path}"),
+            )
+        })?;
+        let mtime_changed = snapshot.mtime_ms != current_mtime_ms;
+        if snapshot_hash != current_hash {
+            return Err(ToolExecutionError::new(
+                "write_stale_target",
+                format!(
+                    "write target content changed since last read for {} (expected hash={}, actual hash={}, expected mtime_ms={}, actual mtime_ms={}, mtime_changed={})",
+                    relative_path, snapshot_hash, current_hash, snapshot.mtime_ms, current_mtime_ms, mtime_changed
+                ),
+            ));
+        }
         if current_content == request.content {
             return Err(ToolExecutionError::new(
                 "write_no_changes",
@@ -85,7 +93,6 @@ fn run_write(
 
     atomic_write_text_file_v2(&target, request.content.as_bytes(), preserved_permissions)?;
     clear_write_read_snapshot(context.session_key.as_str(), &target);
-    clear_edit_read_snapshot(context.session_key.as_str(), &target);
 
     let payload = json!({
         "tool": TOOL_WRITE,

@@ -57,6 +57,7 @@ struct ReadCacheEntry {
     has_more: bool,
     next_offset: Option<usize>,
     kind: &'static str,
+    content_hash: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -67,6 +68,42 @@ struct ReadCacheStore {
 
 fn is_full_text_read_for_write(request: &ReadRequest, has_more: bool) -> bool {
     request.range_mode == "full" && request.line_limit.is_none() && !has_more
+}
+
+fn should_try_small_file_full_read_for_hash(request: &ReadRequest, target: &Path) -> bool {
+    if request.range_mode != "full" || request.line_limit.is_some() || request.start_line != 1 {
+        return false;
+    }
+    let Ok(metadata) = fs::metadata(target) else {
+        return false;
+    };
+    metadata.len() <= READ_MAX_OUTPUT_BYTES as u64
+}
+
+fn read_text_window_with_guard_hash(
+    target: &Path,
+    request: &ReadRequest,
+) -> Result<(ReadTextResult, Option<u64>), ToolExecutionError> {
+    if !should_try_small_file_full_read_for_hash(request, target) {
+        let text_result = read_text_window(target, request)?;
+        return Ok((text_result, None));
+    }
+
+    let file_bytes = fs::read(target)
+        .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+    let file_content = String::from_utf8(file_bytes).map_err(|_| {
+        ToolExecutionError::new(
+            "binary_file_not_supported",
+            "read only supports utf-8 text files",
+        )
+    })?;
+    let text_result = read_text_window_from_content(file_content.as_str(), request)?;
+    let content_hash = if is_full_text_read_for_write(request, text_result.has_more) {
+        Some(hash_write_guard_text(file_content.as_str()))
+    } else {
+        None
+    };
+    Ok((text_result, content_hash))
 }
 
 fn run_read(
@@ -91,19 +128,37 @@ fn run_read(
         let mtime_ms = read_file_mtime_ms(&target)?;
         let cache_key = build_read_cache_key(context.session_key.as_str(), &target, &request);
         if let Some(cached) = lookup_read_cache(&cache_key, mtime_ms) {
-            record_edit_read_snapshot(context.session_key.as_str(), &target, mtime_ms);
+            let full_view = is_full_text_read_for_write(&request, cached.has_more);
+            let content_hash = if full_view {
+                match cached.content_hash {
+                    Some(value) => Some(value),
+                    None => Some(compute_write_guard_hash_for_file(&target)?),
+                }
+            } else {
+                None
+            };
             record_write_read_snapshot(
                 context.session_key.as_str(),
                 &target,
                 mtime_ms,
-                is_full_text_read_for_write(&request, cached.has_more),
+                full_view,
+                content_hash,
             );
             let payload = build_file_unchanged_payload(&relative_path, &request, &cached, mtime_ms);
             return Ok(ToolCallOutput::from_payload(payload));
         }
 
-        let text_result = read_text_window(&target, &request)?;
+        let (text_result, precomputed_content_hash) = read_text_window_with_guard_hash(&target, &request)?;
         let payload = build_text_payload(&relative_path, &request, &text_result, &target);
+        let full_view = is_full_text_read_for_write(&request, text_result.has_more);
+        let content_hash = if full_view {
+            match precomputed_content_hash {
+                Some(value) => Some(value),
+                None => Some(compute_write_guard_hash_for_file(&target)?),
+            }
+        } else {
+            None
+        };
         store_read_cache(
             cache_key,
             ReadCacheEntry {
@@ -114,14 +169,15 @@ fn run_read(
                 has_more: text_result.has_more,
                 next_offset: text_result.next_offset,
                 kind: "text",
+                content_hash,
             },
         );
-        record_edit_read_snapshot(context.session_key.as_str(), &target, mtime_ms);
         record_write_read_snapshot(
             context.session_key.as_str(),
             &target,
             mtime_ms,
-            is_full_text_read_for_write(&request, text_result.has_more),
+            full_view,
+            content_hash,
         );
         return Ok(ToolCallOutput::from_payload(payload));
     }

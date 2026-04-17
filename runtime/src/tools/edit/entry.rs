@@ -38,15 +38,6 @@ fn run_edit(
             format!("edit requires a prior read in the same session: {relative_path}"),
         )
     })?;
-    if snapshot.mtime_ms != current_mtime_ms {
-        return Err(ToolExecutionError::new(
-            "edit_stale_target",
-            format!(
-                "edit target changed since last read for {} (expected mtime_ms={}, actual mtime_ms={})",
-                relative_path, snapshot.mtime_ms, current_mtime_ms
-            ),
-        ));
-    }
 
     let file_bytes = fs::read(&target)
         .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
@@ -62,6 +53,27 @@ fn run_edit(
             "edit only supports utf-8 text files",
         )
     })?;
+    let current_hash = hash_write_guard_text(file_content.as_str());
+    let mtime_changed = snapshot.mtime_ms != current_mtime_ms;
+    if let Some(expected_hash) = snapshot.content_hash {
+        if expected_hash != current_hash {
+            return Err(ToolExecutionError::new(
+                "edit_stale_target",
+                format!(
+                    "edit target content changed since last read for {} (expected hash={}, actual hash={}, expected mtime_ms={}, actual mtime_ms={}, mtime_changed={})",
+                    relative_path, expected_hash, current_hash, snapshot.mtime_ms, current_mtime_ms, mtime_changed
+                ),
+            ));
+        }
+    } else if mtime_changed {
+        return Err(ToolExecutionError::new(
+            "edit_stale_target",
+            format!(
+                "edit target changed since last read for {} (expected mtime_ms={}, actual mtime_ms={})",
+                relative_path, snapshot.mtime_ms, current_mtime_ms
+            ),
+        ));
+    }
     let (bom, raw_without_bom) = split_utf8_bom(&file_content);
     let original_line_ending = detect_line_ending(raw_without_bom);
     let base_content = normalize_to_lf(raw_without_bom);
@@ -147,7 +159,6 @@ fn run_edit(
     let restored = restore_line_endings(&updated_content, original_line_ending);
     let final_content = format!("{bom}{restored}");
     atomic_write_text_file(&target, final_content.as_bytes())?;
-    clear_edit_read_snapshot(context.session_key.as_str(), &target);
     clear_write_read_snapshot(context.session_key.as_str(), &target);
 
     let diff = build_edit_diff(&matches, &normalized_edits);

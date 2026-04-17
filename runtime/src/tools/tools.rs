@@ -18,8 +18,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
 include!("core/mod.rs");
+include!("file_snapshot/mod.rs");
 include!("read/mod.rs");
 include!("fs/mod.rs");
+include!("file_mutation/mod.rs");
 include!("write/mod.rs");
 include!("edit/mod.rs");
 include!("shell/mod.rs");

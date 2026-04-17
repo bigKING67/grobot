@@ -10,6 +10,7 @@ mod tests {
     use std::collections::HashSet as StdHashSet;
     use std::fs;
     use std::process;
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     fn make_temp_workspace(prefix: &str) -> PathBuf {
@@ -671,6 +672,26 @@ allow_tools = ["echo"]
     }
 
     #[test]
+    fn write_v2_rejects_extra_arguments() {
+        let workspace = make_temp_workspace("write-v2-extra-args");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "hello\n",
+                "unexpected": true
+            }),
+        )
+        .expect_err("extra write arguments should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn write_v2_rejects_noop_update() {
         let workspace = make_temp_workspace("write-v2-noop");
         fs::write(workspace.join("sample.txt"), "line1\nline2\n").expect("write sample file");
@@ -696,6 +717,40 @@ allow_tools = ["echo"]
         )
         .expect_err("noop write should fail");
         assert_eq!(error.error_class, "write_no_changes");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_allows_mtime_drift_when_content_unchanged() {
+        let workspace = make_temp_workspace("write-v2-mtime-drift");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\n").expect("write sample file");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        std::thread::sleep(Duration::from_millis(3));
+        fs::write(&target, "line1\nline2\n").expect("rewrite same content to bump mtime");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "sample.txt",
+                "content": "line1\nLINE2\n"
+            }),
+        )
+        .expect("write should still succeed when only mtime drifted");
+        assert_eq!(payload["operation"].as_str(), Some("update"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -778,6 +833,37 @@ allow_tools = ["echo"]
         )
         .expect_err("edit should require re-read after write");
         assert_eq!(error.error_class, "edit_read_required");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn file_snapshot_roundtrip_preserves_hash_and_flags() {
+        let workspace = make_temp_workspace("file-snapshot-roundtrip");
+        let target = workspace.join("roundtrip.txt");
+        let session_key = "test:file-snapshot-roundtrip";
+        record_file_read_snapshot(session_key, &target, 123, true, Some(789));
+
+        let snapshot = lookup_file_read_snapshot(session_key, &target).expect("snapshot should exist");
+        assert_eq!(snapshot.mtime_ms, 123);
+        assert!(snapshot.full_view);
+        assert_eq!(snapshot.content_hash, Some(789));
+
+        clear_file_read_snapshot(session_key, &target);
+        assert!(
+            lookup_file_read_snapshot(session_key, &target).is_none(),
+            "snapshot should be cleared"
+        );
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn file_mutation_lock_reuses_lock_for_same_path() {
+        let workspace = make_temp_workspace("file-mutation-lock");
+        let target = workspace.join("shared.txt");
+        let lock_a = acquire_file_mutation_lock(&target).expect("acquire first lock");
+        let lock_b = acquire_file_mutation_lock(&target).expect("acquire second lock");
+        assert!(Arc::ptr_eq(&lock_a, &lock_b));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -1834,6 +1920,81 @@ allow_tools = ["echo"]
             }),
         )
         .expect_err("stale edit should fail");
+        assert_eq!(error.error_class, "edit_stale_target");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_allows_mtime_drift_when_content_unchanged() {
+        let workspace = make_temp_workspace("edit-v2-mtime-drift");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        std::thread::sleep(Duration::from_millis(3));
+        fs::write(&target, "line1\nline2\n").expect("rewrite same content to bump mtime");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+            }),
+        )
+        .expect("edit should succeed when only mtime drifted");
+
+        assert_eq!(payload["replacements"].as_u64(), Some(1));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "line1\nLINE2\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_partial_read_snapshot_still_uses_mtime_guard() {
+        let workspace = make_temp_workspace("edit-v2-partial-read-mtime-guard");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\nline3\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt",
+                "offset": 1,
+                "limit": 1
+            }),
+        )
+        .expect("partial read should succeed");
+
+        std::thread::sleep(Duration::from_millis(3));
+        fs::write(&target, "line1\nline2\nline3\n").expect("rewrite same content to bump mtime");
+
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+            }),
+        )
+        .expect_err("edit should fail for partial-read snapshot mtime drift");
         assert_eq!(error.error_class, "edit_stale_target");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
