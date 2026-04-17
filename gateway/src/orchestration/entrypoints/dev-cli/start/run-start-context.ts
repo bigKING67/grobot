@@ -3,6 +3,7 @@ import { resolveExecutionPlaneConfig } from "../../../execution-plane";
 import {
   type KimiWebSearchMode,
   type RuntimeModelConfig,
+  type RuntimePromptCacheCapability,
   type RuntimePromptCacheStrategy,
   type RuntimeToolContext,
 } from "../../../../models/types";
@@ -63,6 +64,7 @@ const DEFAULT_KIMI_TEMPERATURE = 1.0;
 const DEFAULT_KIMI_TOP_P = 0.95;
 const DEFAULT_PROMPT_CACHE_STRATEGY: RuntimePromptCacheStrategy = "user_last_n";
 const DEFAULT_PROMPT_CACHE_USER_LAST_N = 2;
+const DEFAULT_PROMPT_CACHE_CAPABILITY: RuntimePromptCacheCapability = "unsupported";
 
 function stripInlineComment(line: string): string {
   let inQuote = false;
@@ -350,19 +352,33 @@ function normalizePromptCacheUserLastN(raw: number | undefined): number {
   return Math.min(Math.max(normalized, 1), 12);
 }
 
+function normalizePromptCacheCapability(raw: string | undefined): RuntimePromptCacheCapability {
+  const normalized = raw?.trim().toLowerCase();
+  if (normalized === "anthropic_compatible" || normalized === "anthropic-compatible") {
+    return "anthropic_compatible";
+  }
+  if (normalized === "unsupported" || normalized === "off" || normalized === "none") {
+    return "unsupported";
+  }
+  return DEFAULT_PROMPT_CACHE_CAPABILITY;
+}
+
 function resolvePromptCacheOptions(input: {
   enabled?: boolean;
   strategy?: string;
   userLastN?: number;
+  capability?: string;
 }): {
   enabled: boolean;
   strategy: RuntimePromptCacheStrategy;
   userLastN: number;
+  capability: RuntimePromptCacheCapability;
 } | undefined {
   const hasConfigSignal =
     typeof input.enabled === "boolean"
     || typeof input.strategy === "string"
-    || typeof input.userLastN === "number";
+    || typeof input.userLastN === "number"
+    || typeof input.capability === "string";
   if (!hasConfigSignal) {
     return undefined;
   }
@@ -370,6 +386,7 @@ function resolvePromptCacheOptions(input: {
     enabled: input.enabled ?? false,
     strategy: normalizePromptCacheStrategy(input.strategy),
     userLastN: normalizePromptCacheUserLastN(input.userLastN),
+    capability: normalizePromptCacheCapability(input.capability),
   };
 }
 
@@ -490,6 +507,7 @@ function resolveRuntimeModelConfig(
         promptCacheEnabled?: boolean;
         promptCacheStrategy?: string;
         promptCacheUserLastN?: number;
+        promptCacheCapability?: string;
         priority?: number;
         weight?: number;
         unitCost?: number;
@@ -590,6 +608,7 @@ function resolveRuntimeModelConfig(
           enabled: fallback?.promptCacheEnabled,
           strategy: fallback?.promptCacheStrategy,
           userLastN: fallback?.promptCacheUserLastN,
+          capability: fallback?.promptCacheCapability,
         }),
         maxTokens: normalizeKimiMaxTokens(fallback?.kimiMaxTokens),
         stream: fallback?.kimiStream ?? DEFAULT_KIMI_STREAM,
@@ -634,6 +653,7 @@ function resolveRuntimeModelConfig(
               enabled: provider.promptCacheEnabled,
               strategy: provider.promptCacheStrategy,
               userLastN: provider.promptCacheUserLastN,
+              capability: provider.promptCacheCapability,
             }),
             maxTokens: normalizeKimiMaxTokens(provider.kimiMaxTokens),
             stream: provider.kimiStream ?? DEFAULT_KIMI_STREAM,

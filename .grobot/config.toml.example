@@ -119,6 +119,7 @@ base_url = "https://api.moonshot.cn/v1"
 model = "auto" # auto = read from /models and pick first kimi/moonshot model
 # Optional prompt cache hints (effective only on Anthropic-compatible upstream payloads)
 # prompt_cache_enabled = true
+# prompt_cache_capability = "anthropic_compatible" # required for deterministic hint injection
 # prompt_cache_strategy = "user_last_n"
 # prompt_cache_user_last_n = 2
 

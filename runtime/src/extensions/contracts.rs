@@ -88,6 +88,16 @@ pub struct TurnExecutePromptCacheOptionsParams {
     pub strategy: Option<String>,
     #[serde(default)]
     pub user_last_n: Option<u32>,
+    #[serde(default)]
+    pub capability: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct RuntimeHealthParams {
+    #[serde(default)]
+    pub cache_stats_window_ms: Option<u64>,
+    #[serde(default)]
+    pub cache_stats_reset_window: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

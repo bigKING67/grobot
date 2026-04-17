@@ -131,6 +131,20 @@ fn parse_prompt_cache_strategy(raw: Option<&str>) -> PromptCacheStrategy {
     }
 }
 
+fn parse_prompt_cache_capability(raw: Option<&str>) -> PromptCacheCapability {
+    let normalized = raw
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    match normalized.as_str() {
+        "anthropic_compatible" | "anthropic-compatible" => {
+            PromptCacheCapability::AnthropicCompatible
+        }
+        "unsupported" | "none" | "off" => PromptCacheCapability::Unsupported,
+        _ => PromptCacheCapability::Unsupported,
+    }
+}
+
 fn normalize_kimi_max_tokens(raw: Option<u32>) -> u32 {
     const DEFAULT_KIMI_MAX_TOKENS: u32 = 262_144;
     const MIN_KIMI_MAX_TOKENS: u32 = 1_024;
@@ -213,6 +227,9 @@ fn resolve_kimi_options(input_config: Option<&RuntimeModelConfigInput>) -> KimiP
             ),
             user_last_n: normalize_prompt_cache_user_last_n(
                 prompt_cache_input.and_then(|options| options.user_last_n),
+            ),
+            capability: parse_prompt_cache_capability(
+                prompt_cache_input.and_then(|options| options.capability.as_deref()),
             ),
         },
         max_tokens: normalize_kimi_max_tokens(input_kimi.and_then(|options| options.max_tokens)),

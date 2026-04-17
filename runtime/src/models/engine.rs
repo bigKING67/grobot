@@ -36,6 +36,7 @@ pub struct RuntimePromptCacheOptionsInput {
     pub enabled: Option<bool>,
     pub strategy: Option<String>,
     pub user_last_n: Option<u32>,
+    pub capability: Option<String>,
 }
 
 #[derive(Debug, Clone)]

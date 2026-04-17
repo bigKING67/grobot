@@ -4,18 +4,29 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
     }
 
     match request.method.as_str() {
-        "runtime.health" => Ok(success(
-            request.id,
-            json!({
-                "protocol_version": RUNTIME_PROTOCOL_VERSION,
-                "runtime": "rust",
-                "status": "ok",
-                "runtime_tools": {
-                    "overlap_guard": crate::tools::tools::overlap_guard_metrics_snapshot()
-                },
-                "cache_stats": crate::models::model::runtime_cache_stats_snapshot()
-            }),
-        )),
+        "runtime.health" => {
+            let params: RuntimeHealthParams = if request.params.is_null() {
+                RuntimeHealthParams::default()
+            } else {
+                serde_json::from_value(request.params.clone())
+                    .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?
+            };
+            Ok(success(
+                request.id,
+                json!({
+                    "protocol_version": RUNTIME_PROTOCOL_VERSION,
+                    "runtime": "rust",
+                    "status": "ok",
+                    "runtime_tools": {
+                        "overlap_guard": crate::tools::tools::overlap_guard_metrics_snapshot()
+                    },
+                    "cache_stats": crate::models::model::runtime_cache_stats_snapshot_with_options(crate::models::model::RuntimeCacheStatsSnapshotOptions {
+                        window_ms: params.cache_stats_window_ms,
+                        reset_window: params.cache_stats_reset_window.unwrap_or(false),
+                    })
+                }),
+            ))
+        }
         "runtime.tools.describe" => Ok(success(
             request.id,
             json!({
@@ -57,6 +68,7 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                                     enabled: prompt_cache.enabled,
                                     strategy: prompt_cache.strategy,
                                     user_last_n: prompt_cache.user_last_n,
+                                    capability: prompt_cache.capability,
                                 }),
                                 max_tokens: kimi.max_tokens,
                                 stream: kimi.stream,

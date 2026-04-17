@@ -115,11 +115,18 @@ enum PromptCacheStrategy {
     UserLastN,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptCacheCapability {
+    AnthropicCompatible,
+    Unsupported,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct PromptCacheOptions {
     enabled: bool,
     strategy: PromptCacheStrategy,
     user_last_n: usize,
+    capability: PromptCacheCapability,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +150,30 @@ struct PromptCacheMetrics {
     hint_applied_total: u64,
     usage_observed_total: u64,
     cached_tokens_total: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RuntimeCacheWindowState {
+    since_unix_ms: u128,
+    model_baseline: ModelCatalogCacheMetrics,
+    prompt_baseline: PromptCacheMetrics,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuntimeCacheStatsSnapshotOptions {
+    pub window_ms: Option<u64>,
+    pub reset_window: bool,
+}
+
+fn runtime_cache_window_state() -> &'static Mutex<RuntimeCacheWindowState> {
+    static WINDOW: OnceLock<Mutex<RuntimeCacheWindowState>> = OnceLock::new();
+    WINDOW.get_or_init(|| {
+        Mutex::new(RuntimeCacheWindowState {
+            since_unix_ms: now_epoch_millis(),
+            model_baseline: ModelCatalogCacheMetrics::default(),
+            prompt_baseline: PromptCacheMetrics::default(),
+        })
+    })
 }
 
 fn model_catalog_cache_metrics() -> &'static Mutex<ModelCatalogCacheMetrics> {
@@ -201,7 +232,45 @@ pub(crate) fn record_prompt_cache_usage(cached_tokens: u64) {
     }
 }
 
-pub(crate) fn runtime_cache_stats_snapshot() -> Value {
+fn subtract_model_catalog_metrics(
+    current: ModelCatalogCacheMetrics,
+    baseline: ModelCatalogCacheMetrics,
+) -> ModelCatalogCacheMetrics {
+    ModelCatalogCacheMetrics {
+        hit_total: current.hit_total.saturating_sub(baseline.hit_total),
+        miss_total: current.miss_total.saturating_sub(baseline.miss_total),
+        stale_total: current.stale_total.saturating_sub(baseline.stale_total),
+        write_total: current.write_total.saturating_sub(baseline.write_total),
+    }
+}
+
+fn subtract_prompt_cache_metrics(
+    current: PromptCacheMetrics,
+    baseline: PromptCacheMetrics,
+) -> PromptCacheMetrics {
+    PromptCacheMetrics {
+        enabled_total: current
+            .enabled_total
+            .saturating_sub(baseline.enabled_total),
+        hint_attempted_total: current
+            .hint_attempted_total
+            .saturating_sub(baseline.hint_attempted_total),
+        hint_applied_total: current
+            .hint_applied_total
+            .saturating_sub(baseline.hint_applied_total),
+        usage_observed_total: current
+            .usage_observed_total
+            .saturating_sub(baseline.usage_observed_total),
+        cached_tokens_total: current
+            .cached_tokens_total
+            .saturating_sub(baseline.cached_tokens_total),
+    }
+}
+
+pub(crate) fn runtime_cache_stats_snapshot_with_options(
+    options: RuntimeCacheStatsSnapshotOptions,
+) -> Value {
+    let now_ms = now_epoch_millis();
     let model_metrics = model_catalog_cache_metrics()
         .lock()
         .map(|guard| *guard)
@@ -214,13 +283,52 @@ pub(crate) fn runtime_cache_stats_snapshot() -> Value {
         .lock()
         .map(|guard| guard.len() as u64)
         .unwrap_or(0);
+    let (window_since_unix_ms, model_window_metrics, prompt_window_metrics) =
+        if let Ok(mut window_guard) = runtime_cache_window_state().lock() {
+            let should_rotate_by_window = options
+                .window_ms
+                .map(|window_ms| {
+                    window_ms > 0
+                        && now_ms
+                            .saturating_sub(window_guard.since_unix_ms)
+                            >= u128::from(window_ms)
+                })
+                .unwrap_or(false);
+            if options.reset_window || should_rotate_by_window {
+                window_guard.since_unix_ms = now_ms;
+                window_guard.model_baseline = model_metrics;
+                window_guard.prompt_baseline = prompt_metrics;
+            }
+            (
+                window_guard.since_unix_ms,
+                subtract_model_catalog_metrics(model_metrics, window_guard.model_baseline),
+                subtract_prompt_cache_metrics(prompt_metrics, window_guard.prompt_baseline),
+            )
+        } else {
+            (
+                now_ms,
+                ModelCatalogCacheMetrics::default(),
+                PromptCacheMetrics::default(),
+            )
+        };
+    let window_duration_ms = now_ms.saturating_sub(window_since_unix_ms) as u64;
     json!({
+        "process_since_unix_ms": now_ms,
+        "window_since_unix_ms": window_since_unix_ms,
+        "window_duration_ms": window_duration_ms,
+        "window_policy_ms": options.window_ms,
         "model_catalog": {
             "cache_entries": model_catalog_entries,
             "hit_total": model_metrics.hit_total,
             "miss_total": model_metrics.miss_total,
             "stale_total": model_metrics.stale_total,
             "write_total": model_metrics.write_total,
+            "window": {
+                "hit_total": model_window_metrics.hit_total,
+                "miss_total": model_window_metrics.miss_total,
+                "stale_total": model_window_metrics.stale_total,
+                "write_total": model_window_metrics.write_total,
+            }
         },
         "prompt_cache": {
             "enabled_total": prompt_metrics.enabled_total,
@@ -228,6 +336,13 @@ pub(crate) fn runtime_cache_stats_snapshot() -> Value {
             "hint_applied_total": prompt_metrics.hint_applied_total,
             "usage_observed_total": prompt_metrics.usage_observed_total,
             "cached_tokens_total": prompt_metrics.cached_tokens_total,
+            "window": {
+                "enabled_total": prompt_window_metrics.enabled_total,
+                "hint_attempted_total": prompt_window_metrics.hint_attempted_total,
+                "hint_applied_total": prompt_window_metrics.hint_applied_total,
+                "usage_observed_total": prompt_window_metrics.usage_observed_total,
+                "cached_tokens_total": prompt_window_metrics.cached_tokens_total,
+            }
         }
     })
 }

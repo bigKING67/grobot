@@ -1112,11 +1112,14 @@ function runStatusTsRust(repoRoot) {
   const runtimeHealthCacheStats = isObject(runtimeHealth?.cache_stats)
     ? runtimeHealth.cache_stats
     : null;
-  const topLevelCacheStats = isObject(parsedStatus?.cache_stats)
-    ? parsedStatus.cache_stats
+  const runtimePromptCache = isObject(runtimeHealthCacheStats?.prompt_cache)
+    ? runtimeHealthCacheStats.prompt_cache
     : null;
-  const topLevelPromptCache = isObject(topLevelCacheStats?.prompt_cache)
-    ? topLevelCacheStats.prompt_cache
+  const runtimePromptCacheWindow = isObject(runtimePromptCache?.window)
+    ? runtimePromptCache.window
+    : null;
+  const cacheStatsLocation = typeof parsedStatus?.cache_stats_location === "string"
+    ? parsedStatus.cache_stats_location
     : null;
   return {
     ...result,
@@ -1125,8 +1128,9 @@ function runStatusTsRust(repoRoot) {
     status_has_route_ordered_providers: Array.isArray(routeDecision?.ordered_providers),
     status_has_route_failover: Boolean(routeFailover),
     status_has_runtime_health_cache_stats: Boolean(runtimeHealthCacheStats),
-    status_has_top_level_cache_stats: Boolean(topLevelCacheStats),
-    status_prompt_cache_hint_attempted_type: typeof topLevelPromptCache?.hint_attempted_total,
+    status_cache_stats_location: cacheStatsLocation,
+    status_prompt_cache_hint_attempted_type: typeof runtimePromptCache?.hint_attempted_total,
+    status_prompt_cache_window_hint_attempted_type: typeof runtimePromptCacheWindow?.hint_attempted_total,
     status_route_reason_type: typeof routeDecision?.reason,
   };
 }

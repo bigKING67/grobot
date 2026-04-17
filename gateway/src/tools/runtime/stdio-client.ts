@@ -194,6 +194,7 @@ function toRpcRequestLine(request: RuntimeRequest): string {
                           enabled: runtimeModelConfig.providerOptions.kimi.promptCache.enabled,
                           strategy: runtimeModelConfig.providerOptions.kimi.promptCache.strategy,
                           user_last_n: runtimeModelConfig.providerOptions.kimi.promptCache.userLastN,
+                          capability: runtimeModelConfig.providerOptions.kimi.promptCache.capability,
                         }
                       : undefined,
                     max_tokens: runtimeModelConfig.providerOptions.kimi.maxTokens,

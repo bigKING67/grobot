@@ -55,6 +55,7 @@ Optional params:
     - `prompt_cache.enabled`
     - `prompt_cache.strategy` (`user_last_n`)
     - `prompt_cache.user_last_n` (`1..12`, default `2`)
+    - `prompt_cache.capability` (`anthropic_compatible` | `unsupported`, default `unsupported`)
 
 Resolution priority per field:
 
@@ -79,8 +80,15 @@ When `provider_options.kimi.prompt_cache.enabled=true`, runtime may emit extra t
 - `prompt_cache_hint_applied`
 - `prompt_cache_usage_observed`
 
-`prompt_cache_hint_applied` reports whether hint injection is supported/applied for current provider payload.
+`prompt_cache_hint_applied` reports whether hint injection is supported/applied for current provider capability.
 `prompt_cache_usage_observed` reports cache usage signals observed from upstream `usage` payload.
+
+Hint injection support is explicit-capability driven:
+
+- `prompt_cache.capability=anthropic_compatible` -> runtime can inject hints.
+- missing/unknown capability defaults to `unsupported` -> runtime does not inject hints.
+
+If upstream rejects `cache_control` on hinted requests, runtime retries once without prompt-cache hints and emits fallback telemetry.
 
 Response keeps existing fields:
 
@@ -141,10 +149,15 @@ RPC error:
 - On RPC error, gateway should surface `error_class` and `trace_id` in thrown error message.
 - No change to `RuntimeTurnResult` public shape in TypeScript types.
 - `runtime.health` should expose `cache_stats.model_catalog` and `cache_stats.prompt_cache`.
+- `runtime.health` supports optional params:
+  - `cache_stats_window_ms`
+  - `cache_stats_reset_window`
+  and returns `cache_stats.window_*` metrics.
 - `grobot status --json` should expose:
   - `route_decision`
-  - `runtime_health.cache_stats`
-  - top-level `cache_stats` (mirrors runtime cache snapshot)
+  - `route_decision.observed` (active session sticky/circuit runtime state)
+  - `runtime_health.cache_stats` (canonical cache stats)
+  - `cache_stats_location` (`runtime_health.cache_stats`)
 
 ---
 
@@ -160,9 +173,13 @@ Acceptance:
 - `npm run check` passes in a default local environment without real provider credentials.
 - Rust runtime unit tests cover both success-event ordering and failure-event ordering at orchestrator level.
 - Rust runtime unit tests cover request-level provider pass-through, prompt-cache hint/usage telemetry, and `tool_call_not_supported` fail-fast.
+- Rust runtime unit tests cover:
+  - explicit prompt-cache capability gating
+  - upstream cache-control rejection fallback retry
+  - cache-window/runtime.health params path
 - Node gateway checks include:
   - local mock model server proving `failover-runs-ts-rust` real-model content path,
   - provider config (`config.toml`) pass-through path,
-  - status contract path (`route_decision` + `cache_stats` presence/type),
+  - status contract path (`route_decision.observed` + `runtime_health.cache_stats` canonical field/type),
   - explicit upstream failure mapping path (`upstream_connect_failed`),
   - tool-call fail-fast path (`tool_call_not_supported`).

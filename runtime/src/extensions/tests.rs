@@ -28,6 +28,30 @@ mod tests {
                 .is_some(),
             "runtime.health should expose prompt cache metrics"
         );
+        assert!(
+            payload["result"]["cache_stats"]["window_since_unix_ms"]
+                .as_u64()
+                .is_some(),
+            "runtime.health should expose cache stats window start"
+        );
+        assert!(
+            payload["result"]["cache_stats"]["model_catalog"]["window"]["hit_total"]
+                .as_u64()
+                .is_some(),
+            "runtime.health should expose model catalog window metrics"
+        );
+    }
+
+    #[test]
+    fn health_accepts_window_and_reset_params() {
+        let input = r#"{"jsonrpc":"2.0","id":"health-window","method":"runtime.health","params":{"cache_stats_window_ms":1000,"cache_stats_reset_window":true}}"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["result"]["status"], "ok");
+        assert_eq!(
+            payload["result"]["cache_stats"]["window_policy_ms"].as_u64(),
+            Some(1000)
+        );
     }
 
     #[test]

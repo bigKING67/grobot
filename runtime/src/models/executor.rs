@@ -466,16 +466,38 @@ struct PromptCacheUsageObservation {
     payload: Value,
 }
 
+fn prompt_cache_capability_label(capability: PromptCacheCapability) -> &'static str {
+    match capability {
+        PromptCacheCapability::AnthropicCompatible => "anthropic_compatible",
+        PromptCacheCapability::Unsupported => "unsupported",
+    }
+}
+
 fn supports_prompt_cache_hints(config: &RuntimeModelConfig) -> bool {
-    if config.provider_kind != ProviderKind::OpenAiCompatible {
+    config.provider_kind == ProviderKind::OpenAiCompatible
+        && config.provider_options.kimi.prompt_cache.capability
+            == PromptCacheCapability::AnthropicCompatible
+}
+
+fn is_prompt_cache_hint_rejected(error: &ModelExecutionError) -> bool {
+    if error.error_class != "upstream_http_error" {
         return false;
     }
-    let model = config.model.trim().to_ascii_lowercase();
-    if model.contains("claude") {
-        return true;
+    let normalized = error.message.to_ascii_lowercase();
+    let status_mismatch = !normalized.contains("status=400") && !normalized.contains("status=422");
+    if status_mismatch {
+        return false;
     }
-    let base_url = config.base_url.trim().to_ascii_lowercase();
-    base_url.contains("anthropic") || base_url.contains("claude")
+    let mentions_cache_control = normalized.contains("cache_control")
+        || normalized.contains("cache control")
+        || normalized.contains("ephemeral");
+    if !mentions_cache_control {
+        return false;
+    }
+    normalized.contains("unsupported")
+        || normalized.contains("unknown")
+        || normalized.contains("invalid")
+        || normalized.contains("not allowed")
 }
 
 fn ensure_ephemeral_cache_control(block: &mut serde_json::Map<String, Value>) -> bool {
@@ -1137,6 +1159,12 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             ensure_kimi_reasoning_content_for_assistant_messages(&mut messages, &config);
             let prompt_cache_enabled = config.provider_options.kimi.prompt_cache.enabled;
             let prompt_cache_supported = prompt_cache_enabled && supports_prompt_cache_hints(&config);
+            let prompt_cache_capability =
+                prompt_cache_capability_label(config.provider_options.kimi.prompt_cache.capability);
+            let prompt_cache_strategy = match config.provider_options.kimi.prompt_cache.strategy {
+                PromptCacheStrategy::UserLastN => "user_last_n",
+            };
+            let unhinted_messages = messages.clone();
             let prompt_cache_applied_messages = if prompt_cache_supported {
                 apply_prompt_cache_hints(&mut messages, config.provider_options.kimi.prompt_cache)
             } else {
@@ -1144,14 +1172,11 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             };
             if prompt_cache_enabled {
                 record_prompt_cache_hint_attempt(prompt_cache_applied_messages > 0);
-                let prompt_cache_strategy =
-                    match config.provider_options.kimi.prompt_cache.strategy {
-                        PromptCacheStrategy::UserLastN => "user_last_n",
-                    };
                 telemetry_events.push(ModelTelemetryEvent {
                     event_type: "prompt_cache_hint_applied".to_string(),
                     payload: Some(json!({
                         "supported": prompt_cache_supported,
+                        "capability": prompt_cache_capability,
                         "strategy": prompt_cache_strategy,
                         "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
                         "applied_message_count": prompt_cache_applied_messages,
@@ -1206,13 +1231,42 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                     }
                 }
             }
-            let body_text = send_chat_completion_with_optional_kimi_retry(
+            let body_text = match send_chat_completion_with_optional_kimi_retry(
                 &client,
                 &endpoint,
                 &config.api_key,
                 &body,
                 config.provider_kind,
-            )?;
+            ) {
+                Ok(value) => value,
+                Err(error)
+                    if prompt_cache_applied_messages > 0
+                        && is_prompt_cache_hint_rejected(&error) =>
+                {
+                    let mut fallback_body = body.clone();
+                    fallback_body["messages"] = Value::Array(unhinted_messages);
+                    telemetry_events.push(ModelTelemetryEvent {
+                        event_type: "prompt_cache_hint_applied".to_string(),
+                        payload: Some(json!({
+                            "supported": false,
+                            "capability": "unsupported",
+                            "strategy": prompt_cache_strategy,
+                            "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
+                            "applied_message_count": 0,
+                            "fallback_retry": true,
+                            "fallback_reason": "upstream_rejected_cache_control",
+                        })),
+                    });
+                    send_chat_completion_with_optional_kimi_retry(
+                        &client,
+                        &endpoint,
+                        &config.api_key,
+                        &fallback_body,
+                        config.provider_kind,
+                    )?
+                }
+                Err(error) => return Err(error.with_telemetry_events(telemetry_events)),
+            };
             let payload = parse_model_response_payload(&body_text, config.provider_kind)?;
             if let Some(observation) = extract_prompt_cache_usage_observation(&payload) {
                 record_prompt_cache_usage(observation.cached_tokens_total);

@@ -51,6 +51,12 @@ export interface RuntimeModelCatalogCacheStats {
   missTotal: number;
   staleTotal: number;
   writeTotal: number;
+  window: {
+    hitTotal: number;
+    missTotal: number;
+    staleTotal: number;
+    writeTotal: number;
+  };
 }
 
 export interface RuntimePromptCacheStats {
@@ -59,11 +65,27 @@ export interface RuntimePromptCacheStats {
   hintAppliedTotal: number;
   usageObservedTotal: number;
   cachedTokensTotal: number;
+  window: {
+    enabledTotal: number;
+    hintAttemptedTotal: number;
+    hintAppliedTotal: number;
+    usageObservedTotal: number;
+    cachedTokensTotal: number;
+  };
 }
 
 export interface RuntimeCacheStats {
+  processSinceUnixMs: number;
+  windowSinceUnixMs: number;
+  windowDurationMs: number;
+  windowPolicyMs: number | null;
   modelCatalog: RuntimeModelCatalogCacheStats;
   promptCache: RuntimePromptCacheStats;
+}
+
+export interface RuntimeHealthcheckOptions {
+  cacheStatsWindowMs?: number;
+  resetCacheStatsWindow?: boolean;
 }
 
 function parseRuntimeJsonRpcResult(stdout: string): {
@@ -149,17 +171,27 @@ export function buildToolsManifestFingerprint(toolNames: string[], defaultEnable
   return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }
 
-export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
+export function runRuntimeHealthcheck(
+  runtimeBinaryPath: string,
+  options?: RuntimeHealthcheckOptions,
+): {
   ok: boolean;
   detail: string;
   overlapGuardMetrics?: RuntimeOverlapGuardMetrics;
   cacheStats?: RuntimeCacheStats;
 } {
+  const requestParams: Record<string, unknown> = {};
+  if (typeof options?.cacheStatsWindowMs === "number") {
+    requestParams.cache_stats_window_ms = options.cacheStatsWindowMs;
+  }
+  if (options?.resetCacheStatsWindow) {
+    requestParams.cache_stats_reset_window = true;
+  }
   const input = JSON.stringify({
     jsonrpc: "2.0",
     id: "health-1",
     method: "runtime.health",
-    params: {},
+    params: requestParams,
   });
   const run = spawnSync(runtimeBinaryPath, [], {
     input: `${input}\n`,
@@ -227,6 +259,18 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
     const promptCacheRaw = isRecord(cacheStatsRaw.prompt_cache)
       ? cacheStatsRaw.prompt_cache
       : undefined;
+    const modelCatalogWindowRaw = modelCatalogRaw && isRecord(modelCatalogRaw.window)
+      ? modelCatalogRaw.window
+      : undefined;
+    const promptCacheWindowRaw = promptCacheRaw && isRecord(promptCacheRaw.window)
+      ? promptCacheRaw.window
+      : undefined;
+    const processSinceUnixMs = asNonNegativeInteger(cacheStatsRaw.process_since_unix_ms);
+    const windowSinceUnixMs = asNonNegativeInteger(cacheStatsRaw.window_since_unix_ms);
+    const windowDurationMs = asNonNegativeInteger(cacheStatsRaw.window_duration_ms);
+    const windowPolicyMs = cacheStatsRaw.window_policy_ms == null
+      ? null
+      : asNonNegativeInteger(cacheStatsRaw.window_policy_ms);
     const modelCatalog = modelCatalogRaw
       ? {
           cacheEntries: asNonNegativeInteger(modelCatalogRaw.cache_entries),
@@ -234,6 +278,12 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
           missTotal: asNonNegativeInteger(modelCatalogRaw.miss_total),
           staleTotal: asNonNegativeInteger(modelCatalogRaw.stale_total),
           writeTotal: asNonNegativeInteger(modelCatalogRaw.write_total),
+          window: {
+            hitTotal: asNonNegativeInteger(modelCatalogWindowRaw?.hit_total),
+            missTotal: asNonNegativeInteger(modelCatalogWindowRaw?.miss_total),
+            staleTotal: asNonNegativeInteger(modelCatalogWindowRaw?.stale_total),
+            writeTotal: asNonNegativeInteger(modelCatalogWindowRaw?.write_total),
+          },
         }
       : undefined;
     const promptCache = promptCacheRaw
@@ -243,27 +293,57 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
           hintAppliedTotal: asNonNegativeInteger(promptCacheRaw.hint_applied_total),
           usageObservedTotal: asNonNegativeInteger(promptCacheRaw.usage_observed_total),
           cachedTokensTotal: asNonNegativeInteger(promptCacheRaw.cached_tokens_total),
+          window: {
+            enabledTotal: asNonNegativeInteger(promptCacheWindowRaw?.enabled_total),
+            hintAttemptedTotal: asNonNegativeInteger(promptCacheWindowRaw?.hint_attempted_total),
+            hintAppliedTotal: asNonNegativeInteger(promptCacheWindowRaw?.hint_applied_total),
+            usageObservedTotal: asNonNegativeInteger(promptCacheWindowRaw?.usage_observed_total),
+            cachedTokensTotal: asNonNegativeInteger(promptCacheWindowRaw?.cached_tokens_total),
+          },
         }
       : undefined;
     if (
-      modelCatalog?.cacheEntries != null
+      processSinceUnixMs != null
+      && windowSinceUnixMs != null
+      && windowDurationMs != null
+      && (windowPolicyMs == null || windowPolicyMs >= 0)
+      && modelCatalog?.cacheEntries != null
       && modelCatalog.hitTotal != null
       && modelCatalog.missTotal != null
       && modelCatalog.staleTotal != null
       && modelCatalog.writeTotal != null
+      && modelCatalog.window.hitTotal != null
+      && modelCatalog.window.missTotal != null
+      && modelCatalog.window.staleTotal != null
+      && modelCatalog.window.writeTotal != null
       && promptCache?.enabledTotal != null
       && promptCache.hintAttemptedTotal != null
       && promptCache.hintAppliedTotal != null
       && promptCache.usageObservedTotal != null
       && promptCache.cachedTokensTotal != null
+      && promptCache.window.enabledTotal != null
+      && promptCache.window.hintAttemptedTotal != null
+      && promptCache.window.hintAppliedTotal != null
+      && promptCache.window.usageObservedTotal != null
+      && promptCache.window.cachedTokensTotal != null
     ) {
       cacheStats = {
+        processSinceUnixMs,
+        windowSinceUnixMs,
+        windowDurationMs,
+        windowPolicyMs,
         modelCatalog: {
           cacheEntries: modelCatalog.cacheEntries,
           hitTotal: modelCatalog.hitTotal,
           missTotal: modelCatalog.missTotal,
           staleTotal: modelCatalog.staleTotal,
           writeTotal: modelCatalog.writeTotal,
+          window: {
+            hitTotal: modelCatalog.window.hitTotal,
+            missTotal: modelCatalog.window.missTotal,
+            staleTotal: modelCatalog.window.staleTotal,
+            writeTotal: modelCatalog.window.writeTotal,
+          },
         },
         promptCache: {
           enabledTotal: promptCache.enabledTotal,
@@ -271,6 +351,13 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
           hintAppliedTotal: promptCache.hintAppliedTotal,
           usageObservedTotal: promptCache.usageObservedTotal,
           cachedTokensTotal: promptCache.cachedTokensTotal,
+          window: {
+            enabledTotal: promptCache.window.enabledTotal,
+            hintAttemptedTotal: promptCache.window.hintAttemptedTotal,
+            hintAppliedTotal: promptCache.window.hintAppliedTotal,
+            usageObservedTotal: promptCache.window.usageObservedTotal,
+            cachedTokensTotal: promptCache.window.cachedTokensTotal,
+          },
         },
       };
     }

@@ -52,11 +52,13 @@ export type KimiWebSearchMode =
   | "off";
 
 export type RuntimePromptCacheStrategy = "user_last_n";
+export type RuntimePromptCacheCapability = "anthropic_compatible" | "unsupported";
 
 export interface RuntimePromptCacheOptions {
   enabled?: boolean;
   strategy?: RuntimePromptCacheStrategy;
   userLastN?: number;
+  capability?: RuntimePromptCacheCapability;
 }
 
 export interface RuntimeKimiOptions {

@@ -156,6 +156,7 @@ interface MutableProvider {
   promptCacheEnabled?: boolean;
   promptCacheStrategy?: string;
   promptCacheUserLastN?: number;
+  promptCacheCapability?: string;
   priority?: number;
   weight?: number;
   unitCost?: number;
@@ -189,6 +190,7 @@ export interface ProviderSnapshot {
   promptCacheEnabled?: boolean;
   promptCacheStrategy?: string;
   promptCacheUserLastN?: number;
+  promptCacheCapability?: string;
   priority?: number;
   weight?: number;
   unitCost?: number;
@@ -313,6 +315,8 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
             currentProvider.promptCacheStrategy = value;
           } else if (key === "prompt_cache_user_last_n" || key === "kimi_prompt_cache_user_last_n") {
             currentProvider.promptCacheUserLastN = parseTomlNumber(kvMatch[2]);
+          } else if (key === "prompt_cache_capability" || key === "kimi_prompt_cache_capability") {
+            currentProvider.promptCacheCapability = value;
           } else if (key === "priority") {
             currentProvider.priority = parseTomlNumber(kvMatch[2]);
           } else if (key === "weight") {
@@ -368,6 +372,7 @@ function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): 
   const providerKind = raw.providerKind?.trim();
   const kimiWebSearchMode = raw.kimiWebSearchMode?.trim();
   const promptCacheStrategy = raw.promptCacheStrategy?.trim();
+  const promptCacheCapability = raw.promptCacheCapability?.trim();
   const kimiOfficialToolsAllowlist = Array.isArray(raw.kimiOfficialToolsAllowlist)
     ? raw.kimiOfficialToolsAllowlist
       .map((item) => item.trim())
@@ -393,6 +398,10 @@ function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): 
     promptCacheUserLastN:
       typeof raw.promptCacheUserLastN === "number"
         ? raw.promptCacheUserLastN
+        : undefined,
+    promptCacheCapability:
+      promptCacheCapability && promptCacheCapability.length > 0
+        ? promptCacheCapability
         : undefined,
     priority: typeof raw.priority === "number" ? raw.priority : undefined,
     weight: typeof raw.weight === "number" ? raw.weight : undefined,

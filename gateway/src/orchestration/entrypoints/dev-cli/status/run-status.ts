@@ -19,10 +19,17 @@ import {
   basenameFromPath,
   resolveConfigTomlPath,
   resolveHomeDir,
+  resolveProjectStateRoot,
   resolveProjectRoot,
   resolveProjectTomlPath,
   resolveWorkDir,
 } from "../services/runtime-paths";
+import {
+  findSessionRecord,
+  normalizeSessionRegistryPayload,
+  sessionRegistryFilePath,
+  type SessionProviderRuntimeState,
+} from "../start/session-registry";
 import {
   parsePlatform,
   parseScope,
@@ -120,13 +127,138 @@ function parseRequiredPositiveInt(value: string | undefined, fallback: number): 
   return parsed;
 }
 
+interface ObservedProviderRuntimeState {
+  providerName: string;
+  consecutiveFailures: number;
+  circuitOpenUntilMs: number;
+  circuitOpen: boolean;
+  lastErrorClass?: string;
+  lastErrorMessage?: string;
+  lastFailedAt?: string;
+  lastSucceededAt?: string;
+  ewmaLatencyMs?: number;
+  ewmaErrorRate?: number;
+}
+
+interface RouteObservedRuntimeSummary {
+  source: string | null;
+  activeSessionId: string | null;
+  updatedAt: string | null;
+  stickyProvider: string | null;
+  selectedProvider: string | null;
+  reason: string;
+  providerRuntimeStates: ObservedProviderRuntimeState[];
+}
+
+function readRouteObservedRuntimeSummary(input: {
+  projectStateRoot: string;
+  sessionNamespaceKey: string;
+  orderedProviders: string[];
+}): RouteObservedRuntimeSummary {
+  const registryPath = sessionRegistryFilePath(input.projectStateRoot, input.sessionNamespaceKey);
+  let rawRegistry: unknown;
+  try {
+    rawRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as unknown;
+  } catch {
+    return {
+      source: null,
+      activeSessionId: null,
+      updatedAt: null,
+      stickyProvider: null,
+      selectedProvider: input.orderedProviders[0] ?? null,
+      reason: "session_registry_unavailable",
+      providerRuntimeStates: [],
+    };
+  }
+  const registry = normalizeSessionRegistryPayload(rawRegistry, input.sessionNamespaceKey);
+  const activeRecord = findSessionRecord(registry, registry.active_id);
+  if (!activeRecord) {
+    return {
+      source: `session_registry:${registryPath}`,
+      activeSessionId: null,
+      updatedAt: null,
+      stickyProvider: null,
+      selectedProvider: input.orderedProviders[0] ?? null,
+      reason: "session_registry_missing_active_record",
+      providerRuntimeStates: [],
+    };
+  }
+  const nowMs = Date.now();
+  const providerStates = Array.isArray(activeRecord.provider_runtime_states)
+    ? activeRecord.provider_runtime_states
+    : [];
+  const stateMap = new Map<string, SessionProviderRuntimeState>();
+  const normalizedStates: ObservedProviderRuntimeState[] = [];
+  for (const state of providerStates) {
+    const providerName = state.provider_name?.trim();
+    if (!providerName) {
+      continue;
+    }
+    stateMap.set(providerName, state);
+    normalizedStates.push({
+      providerName,
+      consecutiveFailures: state.consecutive_failures,
+      circuitOpenUntilMs: state.circuit_open_until_ms,
+      circuitOpen: state.circuit_open_until_ms > nowMs,
+      lastErrorClass: state.last_error_class,
+      lastErrorMessage: state.last_error_message,
+      lastFailedAt: state.last_failed_at,
+      lastSucceededAt: state.last_succeeded_at,
+      ewmaLatencyMs: state.ewma_latency_ms,
+      ewmaErrorRate: state.ewma_error_rate,
+    });
+  }
+  const stickyProvider = activeRecord.sticky_provider?.trim() || null;
+  let selectedProvider: string | null = null;
+  let reason = "session_first_open_provider";
+  if (stickyProvider && input.orderedProviders.includes(stickyProvider)) {
+    const stickyState = stateMap.get(stickyProvider);
+    if (!stickyState || stickyState.circuit_open_until_ms <= nowMs) {
+      selectedProvider = stickyProvider;
+      reason = "session_sticky_provider";
+    } else {
+      reason = "session_sticky_circuit_open";
+    }
+  }
+  if (!selectedProvider) {
+    const firstOpenProvider = input.orderedProviders.find((providerName) => {
+      const state = stateMap.get(providerName);
+      return !state || state.circuit_open_until_ms <= nowMs;
+    });
+    if (firstOpenProvider) {
+      selectedProvider = firstOpenProvider;
+      if (reason !== "session_first_open_provider") {
+        reason = `${reason}_fallback_open_provider`;
+      }
+    }
+  }
+  if (!selectedProvider && input.orderedProviders.length > 0) {
+    selectedProvider = input.orderedProviders[0];
+    reason = `${reason}_fallback_first_provider`;
+  }
+  if (!selectedProvider) {
+    reason = "session_no_provider_candidate";
+  }
+  return {
+    source: `session_registry:${registryPath}`,
+    activeSessionId: activeRecord.id,
+    updatedAt: activeRecord.updated_at,
+    stickyProvider,
+    selectedProvider,
+    reason,
+    providerRuntimeStates: normalizedStates,
+  };
+}
+
 interface RouteDecisionSummary {
   strategy: "sticky+score";
   primaryProvider: string | null;
+  configuredPrimaryProvider: string | null;
   requestedProvider: string | null;
   orderedProviders: string[];
   source: string | null;
   reason: string;
+  observed: RouteObservedRuntimeSummary;
   failover: {
     circuitFailures: number;
     circuitCooldownSecs: number;
@@ -142,6 +274,7 @@ function resolveRouteDecisionSummary(input: {
     providerName?: string;
     providers: Array<{ name: string }>;
   };
+  observedRuntime: RouteObservedRuntimeSummary;
   hasDirectRuntimeOverride: boolean;
   circuitFailures: number;
   circuitCooldownSecs: number;
@@ -154,10 +287,12 @@ function resolveRouteDecisionSummary(input: {
     return {
       strategy: "sticky+score",
       primaryProvider: directProvider,
+      configuredPrimaryProvider: directProvider,
       requestedProvider: directProvider,
       orderedProviders: [directProvider],
       source: "direct-runtime-override",
       reason: "direct_runtime_override",
+      observed: input.observedRuntime,
       failover: {
         circuitFailures: input.circuitFailures,
         circuitCooldownSecs: input.circuitCooldownSecs,
@@ -170,7 +305,8 @@ function resolveRouteDecisionSummary(input: {
     .map((provider) => provider.name.trim())
     .filter((name) => name.length > 0);
   const requestedProvider = providerOverride || providerEnv || input.providerPoolSnapshot?.providerName || null;
-  const primaryProvider = orderedProviders[0] ?? requestedProvider ?? null;
+  const configuredPrimaryProvider = orderedProviders[0] ?? requestedProvider ?? null;
+  const primaryProvider = input.observedRuntime.selectedProvider ?? configuredPrimaryProvider;
   let reason = "pool_first_provider";
   if (providerOverride) {
     reason = "cli_provider_override";
@@ -181,14 +317,19 @@ function resolveRouteDecisionSummary(input: {
   } else if (orderedProviders.length === 0) {
     reason = "no_provider_pool";
   }
+  const resolvedReason = input.observedRuntime.source
+    ? input.observedRuntime.reason
+    : reason;
 
   return {
     strategy: "sticky+score",
     primaryProvider,
+    configuredPrimaryProvider,
     requestedProvider,
     orderedProviders,
-    source: input.providerPoolSnapshot?.source ?? null,
-    reason,
+    source: input.observedRuntime.source ?? input.providerPoolSnapshot?.source ?? null,
+    reason: resolvedReason,
+    observed: input.observedRuntime,
     failover: {
       circuitFailures: input.circuitFailures,
       circuitCooldownSecs: input.circuitCooldownSecs,
@@ -272,6 +413,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const homeDir = resolveHomeDir(options);
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
+  const projectStateRoot = resolveProjectStateRoot(workDir);
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
   const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
   const configSource =
@@ -338,6 +480,21 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     readOptionString(options, "circuit-cooldown-secs"),
     30,
   );
+  const cacheStatsWindowMs = parseOptionalPositiveInt(
+    readOptionString(options, "cache-stats-window-ms"),
+  );
+  const resetCacheStatsWindow = hasFlag(options, "cache-stats-reset-window");
+  const sessionPreview = buildSessionKey({
+    platform: parsePlatform(resolveSessionPlatformOption(options)),
+    tenant: readOptionString(options, "tenant") ?? projectName,
+    scope: parseScope(sessionScopeRaw),
+    subject: sessionSubject,
+  });
+  const observedRuntime = readRouteObservedRuntimeSummary({
+    projectStateRoot,
+    sessionNamespaceKey: sessionPreview,
+    orderedProviders: projectProviderPoolSnapshot?.providers.map((provider) => provider.name) ?? [],
+  });
   const routeDecision = resolveRouteDecisionSummary({
     providerOverride: providerOverrideFromCli,
     providerEnv: providerOverrideFromEnv,
@@ -350,15 +507,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           })),
         }
       : undefined,
+    observedRuntime,
     hasDirectRuntimeOverride,
     circuitFailures,
     circuitCooldownSecs,
-  });
-  const sessionPreview = buildSessionKey({
-    platform: parsePlatform(resolveSessionPlatformOption(options)),
-    tenant: readOptionString(options, "tenant") ?? projectName,
-    scope: parseScope(sessionScopeRaw),
-    subject: sessionSubject,
   });
   const executionPlane = resolveExecutionPlaneConfig({
     gatewayImplArg: readOptionString(options, "gateway-impl"),
@@ -373,7 +525,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const maskedApiKey = maskSecret(apiKey);
   const runtimeHealth =
     executionPlane.runtimeImpl === "rust" && runtimeBinaryPath
-      ? runRuntimeHealthcheck(runtimeBinaryPath)
+      ? runRuntimeHealthcheck(runtimeBinaryPath, {
+        cacheStatsWindowMs,
+        resetCacheStatsWindow,
+      })
       : undefined;
 
   let probeResult:
@@ -445,10 +600,31 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       route_decision: {
         strategy: routeDecision.strategy,
         primary_provider: routeDecision.primaryProvider,
+        configured_primary_provider: routeDecision.configuredPrimaryProvider,
         requested_provider: routeDecision.requestedProvider,
         ordered_providers: routeDecision.orderedProviders,
         source: routeDecision.source,
         reason: routeDecision.reason,
+        observed: {
+          source: routeDecision.observed.source,
+          active_session_id: routeDecision.observed.activeSessionId,
+          updated_at: routeDecision.observed.updatedAt,
+          sticky_provider: routeDecision.observed.stickyProvider,
+          selected_provider: routeDecision.observed.selectedProvider,
+          reason: routeDecision.observed.reason,
+          provider_runtime_states: routeDecision.observed.providerRuntimeStates.map((state) => ({
+            provider_name: state.providerName,
+            consecutive_failures: state.consecutiveFailures,
+            circuit_open_until_ms: state.circuitOpenUntilMs,
+            circuit_open: state.circuitOpen,
+            last_error_class: state.lastErrorClass ?? null,
+            last_error_message: state.lastErrorMessage ?? null,
+            last_failed_at: state.lastFailedAt ?? null,
+            last_succeeded_at: state.lastSucceededAt ?? null,
+            ewma_latency_ms: state.ewmaLatencyMs ?? null,
+            ewma_error_rate: state.ewmaErrorRate ?? null,
+          })),
+        },
         failover: {
           circuit_failures: routeDecision.failover.circuitFailures,
           circuit_cooldown_secs: routeDecision.failover.circuitCooldownSecs,
@@ -497,12 +673,22 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
               : null,
             cache_stats: runtimeHealth.cacheStats
               ? {
+                  process_since_unix_ms: runtimeHealth.cacheStats.processSinceUnixMs,
+                  window_since_unix_ms: runtimeHealth.cacheStats.windowSinceUnixMs,
+                  window_duration_ms: runtimeHealth.cacheStats.windowDurationMs,
+                  window_policy_ms: runtimeHealth.cacheStats.windowPolicyMs,
                   model_catalog: {
                     cache_entries: runtimeHealth.cacheStats.modelCatalog.cacheEntries,
                     hit_total: runtimeHealth.cacheStats.modelCatalog.hitTotal,
                     miss_total: runtimeHealth.cacheStats.modelCatalog.missTotal,
                     stale_total: runtimeHealth.cacheStats.modelCatalog.staleTotal,
                     write_total: runtimeHealth.cacheStats.modelCatalog.writeTotal,
+                    window: {
+                      hit_total: runtimeHealth.cacheStats.modelCatalog.window.hitTotal,
+                      miss_total: runtimeHealth.cacheStats.modelCatalog.window.missTotal,
+                      stale_total: runtimeHealth.cacheStats.modelCatalog.window.staleTotal,
+                      write_total: runtimeHealth.cacheStats.modelCatalog.window.writeTotal,
+                    },
                   },
                   prompt_cache: {
                     enabled_total: runtimeHealth.cacheStats.promptCache.enabledTotal,
@@ -510,30 +696,19 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
                     hint_applied_total: runtimeHealth.cacheStats.promptCache.hintAppliedTotal,
                     usage_observed_total: runtimeHealth.cacheStats.promptCache.usageObservedTotal,
                     cached_tokens_total: runtimeHealth.cacheStats.promptCache.cachedTokensTotal,
+                    window: {
+                      enabled_total: runtimeHealth.cacheStats.promptCache.window.enabledTotal,
+                      hint_attempted_total: runtimeHealth.cacheStats.promptCache.window.hintAttemptedTotal,
+                      hint_applied_total: runtimeHealth.cacheStats.promptCache.window.hintAppliedTotal,
+                      usage_observed_total: runtimeHealth.cacheStats.promptCache.window.usageObservedTotal,
+                      cached_tokens_total: runtimeHealth.cacheStats.promptCache.window.cachedTokensTotal,
+                    },
                   },
                 }
               : null,
           }
           : null,
-      cache_stats:
-        runtimeHealth?.cacheStats
-          ? {
-            model_catalog: {
-              cache_entries: runtimeHealth.cacheStats.modelCatalog.cacheEntries,
-              hit_total: runtimeHealth.cacheStats.modelCatalog.hitTotal,
-              miss_total: runtimeHealth.cacheStats.modelCatalog.missTotal,
-              stale_total: runtimeHealth.cacheStats.modelCatalog.staleTotal,
-              write_total: runtimeHealth.cacheStats.modelCatalog.writeTotal,
-            },
-            prompt_cache: {
-              enabled_total: runtimeHealth.cacheStats.promptCache.enabledTotal,
-              hint_attempted_total: runtimeHealth.cacheStats.promptCache.hintAttemptedTotal,
-              hint_applied_total: runtimeHealth.cacheStats.promptCache.hintAppliedTotal,
-              usage_observed_total: runtimeHealth.cacheStats.promptCache.usageObservedTotal,
-              cached_tokens_total: runtimeHealth.cacheStats.promptCache.cachedTokensTotal,
-            },
-          }
-          : null,
+      cache_stats_location: runtimeHealth?.cacheStats ? "runtime_health.cache_stats" : null,
       probe:
         probeResult == null
           ? null
@@ -572,10 +747,13 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(`session_subject: ${sessionSubject}\n`);
   process.stdout.write(`session_preview: ${sessionPreview}\n`);
   process.stdout.write(
-    `route_decision: strategy=${routeDecision.strategy} primary=${routeDecision.primaryProvider ?? "<none>"} requested=${routeDecision.requestedProvider ?? "<none>"} reason=${routeDecision.reason} source=${routeDecision.source ?? "<none>"}\n`,
+    `route_decision: strategy=${routeDecision.strategy} primary=${routeDecision.primaryProvider ?? "<none>"} configured=${routeDecision.configuredPrimaryProvider ?? "<none>"} requested=${routeDecision.requestedProvider ?? "<none>"} reason=${routeDecision.reason} source=${routeDecision.source ?? "<none>"}\n`,
   );
   process.stdout.write(
     `route_ordered_providers: ${routeDecision.orderedProviders.length > 0 ? routeDecision.orderedProviders.join(" -> ") : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `route_observed: selected=${routeDecision.observed.selectedProvider ?? "<none>"} sticky=${routeDecision.observed.stickyProvider ?? "<none>"} reason=${routeDecision.observed.reason} session_id=${routeDecision.observed.activeSessionId ?? "<none>"}\n`,
   );
   process.stdout.write(
     `route_failover: circuit_failures=${routeDecision.failover.circuitFailures} circuit_cooldown_secs=${routeDecision.failover.circuitCooldownSecs} sticky_mode=${routeDecision.failover.stickyMode}\n`,
@@ -622,11 +800,15 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       );
     }
     if (runtimeHealth.cacheStats) {
+      process.stdout.write("cache_stats_location: runtime_health.cache_stats\n");
       process.stdout.write(
-        `runtime_cache_model_catalog: entries=${runtimeHealth.cacheStats.modelCatalog.cacheEntries} hit_total=${runtimeHealth.cacheStats.modelCatalog.hitTotal} miss_total=${runtimeHealth.cacheStats.modelCatalog.missTotal} stale_total=${runtimeHealth.cacheStats.modelCatalog.staleTotal} write_total=${runtimeHealth.cacheStats.modelCatalog.writeTotal}\n`,
+        `runtime_cache_window: since_unix_ms=${runtimeHealth.cacheStats.windowSinceUnixMs} duration_ms=${runtimeHealth.cacheStats.windowDurationMs} policy_ms=${runtimeHealth.cacheStats.windowPolicyMs ?? "<none>"}\n`,
       );
       process.stdout.write(
-        `runtime_cache_prompt: enabled_total=${runtimeHealth.cacheStats.promptCache.enabledTotal} hint_attempted_total=${runtimeHealth.cacheStats.promptCache.hintAttemptedTotal} hint_applied_total=${runtimeHealth.cacheStats.promptCache.hintAppliedTotal} usage_observed_total=${runtimeHealth.cacheStats.promptCache.usageObservedTotal} cached_tokens_total=${runtimeHealth.cacheStats.promptCache.cachedTokensTotal}\n`,
+        `runtime_cache_model_catalog: entries=${runtimeHealth.cacheStats.modelCatalog.cacheEntries} hit_total=${runtimeHealth.cacheStats.modelCatalog.hitTotal} miss_total=${runtimeHealth.cacheStats.modelCatalog.missTotal} stale_total=${runtimeHealth.cacheStats.modelCatalog.staleTotal} write_total=${runtimeHealth.cacheStats.modelCatalog.writeTotal} window_hit_total=${runtimeHealth.cacheStats.modelCatalog.window.hitTotal} window_miss_total=${runtimeHealth.cacheStats.modelCatalog.window.missTotal} window_stale_total=${runtimeHealth.cacheStats.modelCatalog.window.staleTotal} window_write_total=${runtimeHealth.cacheStats.modelCatalog.window.writeTotal}\n`,
+      );
+      process.stdout.write(
+        `runtime_cache_prompt: enabled_total=${runtimeHealth.cacheStats.promptCache.enabledTotal} hint_attempted_total=${runtimeHealth.cacheStats.promptCache.hintAttemptedTotal} hint_applied_total=${runtimeHealth.cacheStats.promptCache.hintAppliedTotal} usage_observed_total=${runtimeHealth.cacheStats.promptCache.usageObservedTotal} cached_tokens_total=${runtimeHealth.cacheStats.promptCache.cachedTokensTotal} window_enabled_total=${runtimeHealth.cacheStats.promptCache.window.enabledTotal} window_hint_attempted_total=${runtimeHealth.cacheStats.promptCache.window.hintAttemptedTotal} window_hint_applied_total=${runtimeHealth.cacheStats.promptCache.window.hintAppliedTotal} window_usage_observed_total=${runtimeHealth.cacheStats.promptCache.window.usageObservedTotal} window_cached_tokens_total=${runtimeHealth.cacheStats.promptCache.window.cachedTokensTotal}\n`,
       );
     }
   }

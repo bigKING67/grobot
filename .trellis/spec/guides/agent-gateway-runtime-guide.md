@@ -159,13 +159,28 @@ Gateway status output should include route and cache observability fields:
   - `ordered_providers`
   - `source`
   - `reason`
+  - `configured_primary_provider`
+  - `observed`:
+    - `source`
+    - `active_session_id`
+    - `updated_at`
+    - `sticky_provider`
+    - `selected_provider`
+    - `reason`
+    - `provider_runtime_states`
   - `failover.circuit_failures`
   - `failover.circuit_cooldown_secs`
   - `failover.sticky_mode`
 - `runtime_health.cache_stats`
+  - `process_since_unix_ms`
+  - `window_since_unix_ms`
+  - `window_duration_ms`
+  - `window_policy_ms`
   - `model_catalog` (`cache_entries/hit_total/miss_total/stale_total/write_total`)
+    - `window` (`hit_total/miss_total/stale_total/write_total`)
   - `prompt_cache` (`enabled_total/hint_attempted_total/hint_applied_total/usage_observed_total/cached_tokens_total`)
-- top-level `cache_stats` (same schema as `runtime_health.cache_stats`)
+    - `window` (`enabled_total/hint_attempted_total/hint_applied_total/usage_observed_total/cached_tokens_total`)
+- `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 ---
 
@@ -229,6 +244,8 @@ Failover order:
 3. explicit failure event if budget exhausted
 
 Status and diagnostics should expose routing decisions with explicit reason/source to support postmortem and policy tuning.
+
+Prompt-cache support should use explicit provider capability flags rather than model/base-url substring heuristics.
 
 ### 3.5 Tool Execution
 
