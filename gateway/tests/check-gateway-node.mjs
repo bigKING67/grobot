@@ -1196,8 +1196,9 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_has_route_ordered_providers, true);
   assert.equal(statusPayload.status_has_route_failover, true);
   assert.equal(statusPayload.status_has_runtime_health_cache_stats, true);
-  assert.equal(statusPayload.status_has_top_level_cache_stats, true);
+  assert.equal(statusPayload.status_cache_stats_location, "runtime_health.cache_stats");
   assert.equal(statusPayload.status_prompt_cache_hint_attempted_type, "number");
+  assert.equal(statusPayload.status_prompt_cache_window_hint_attempted_type, "number");
   assert.equal(statusPayload.status_route_reason_type, "string");
   logStep("start-smoke-contract status-ts-rust", { attempts: statusAttempts });
 
