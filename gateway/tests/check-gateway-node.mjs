@@ -1527,9 +1527,16 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.exit_code, 0);
   assert.equal(statusPayload.status_json_parse_ok, true);
   assert.equal(statusPayload.status_has_route_decision, true);
+  assert.equal(statusPayload.status_has_route_observed, true);
+  assert.equal(statusPayload.status_has_route_observed_provider_runtime_states, true);
   assert.equal(statusPayload.status_has_route_ordered_providers, true);
   assert.equal(statusPayload.status_has_route_failover, true);
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_route_observed_source_type)),
+    true,
+  );
   assert.equal(statusPayload.status_has_runtime_health_cache_stats, true);
+  assert.equal(statusPayload.status_has_top_level_cache_stats, false);
   assert.equal(statusPayload.status_cache_stats_location, "runtime_health.cache_stats");
   assert.equal(statusPayload.status_prompt_cache_hint_attempted_type, "number");
   assert.equal(statusPayload.status_prompt_cache_window_hint_attempted_type, "number");

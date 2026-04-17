@@ -1136,8 +1136,17 @@ function runStatusTsRust(repoRoot) {
   const routeDecision = isObject(parsedStatus?.route_decision)
     ? parsedStatus.route_decision
     : null;
+  const routeObserved = isObject(routeDecision?.observed)
+    ? routeDecision.observed
+    : null;
+  const routeObservedProviderRuntimeStates = Array.isArray(routeObserved?.provider_runtime_states)
+    ? routeObserved.provider_runtime_states
+    : null;
   const routeFailover = isObject(routeDecision?.failover)
     ? routeDecision.failover
+    : null;
+  const topLevelCacheStats = isObject(parsedStatus?.cache_stats)
+    ? parsedStatus.cache_stats
     : null;
   const runtimeHealth = isObject(parsedStatus?.runtime_health)
     ? parsedStatus.runtime_health
@@ -1188,9 +1197,13 @@ function runStatusTsRust(repoRoot) {
     ...result,
     status_json_parse_ok: Boolean(parsedStatus),
     status_has_route_decision: Boolean(routeDecision),
+    status_has_route_observed: Boolean(routeObserved),
+    status_has_route_observed_provider_runtime_states: Array.isArray(routeObservedProviderRuntimeStates),
     status_has_route_ordered_providers: Array.isArray(routeDecision?.ordered_providers),
     status_has_route_failover: Boolean(routeFailover),
+    status_route_observed_source_type: typeof routeObserved?.source,
     status_has_runtime_health_cache_stats: Boolean(runtimeHealthCacheStats),
+    status_has_top_level_cache_stats: Boolean(topLevelCacheStats),
     status_cache_stats_location: cacheStatsLocation,
     status_prompt_cache_hint_attempted_type: typeof runtimePromptCache?.hint_attempted_total,
     status_prompt_cache_window_hint_attempted_type: typeof runtimePromptCacheWindow?.hint_attempted_total,
