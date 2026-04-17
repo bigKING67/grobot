@@ -768,6 +768,99 @@ audit_redact_secrets = false
     }
 
     #[test]
+    fn bash_v2_blocks_unbalanced_single_quote() {
+        let workspace = make_temp_workspace("bash-v2-unbalanced-single-quote");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf 'oops"
+            }),
+        )
+        .expect_err("unbalanced single quote should be blocked");
+        assert_eq!(error.error_class, "bash_security_denied");
+        assert!(
+            error.message.contains("single quote"),
+            "unexpected unbalanced single quote error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_unbalanced_double_quote() {
+        let workspace = make_temp_workspace("bash-v2-unbalanced-double-quote");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf \"oops"
+            }),
+        )
+        .expect_err("unbalanced double quote should be blocked");
+        assert_eq!(error.error_class, "bash_security_denied");
+        assert!(
+            error.message.contains("double quote"),
+            "unexpected unbalanced double quote error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_trailing_escape() {
+        let workspace = make_temp_workspace("bash-v2-trailing-escape");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok\\"
+            }),
+        )
+        .expect_err("trailing escape should be blocked");
+        assert_eq!(error.error_class, "bash_security_denied");
+        assert!(
+            error.message.contains("trailing escape"),
+            "unexpected trailing escape error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_disallowed_control_characters() {
+        let workspace = make_temp_workspace("bash-v2-control-char");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let command = format!("printf ok{}", '\u{0007}');
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": command
+            }),
+        )
+        .expect_err("control characters should be blocked");
+        assert_eq!(error.error_class, "bash_security_denied");
+        assert!(
+            error.message.contains("control character"),
+            "unexpected control char error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn bash_v2_returns_timeout_error_for_long_running_command() {
         let workspace = make_temp_workspace("bash-v2-timeout");
         let input = make_bash_input(&workspace, vec!["sleep".to_string()]);

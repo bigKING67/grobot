@@ -5,12 +5,31 @@ fn validate_bash_command_security(command: &str) -> Result<(), ToolExecutionErro
             "bash command contains NUL byte",
         ));
     }
+    if let Some(index) = first_disallowed_control_char_index(command) {
+        return Err(ToolExecutionError::new(
+            "bash_security_denied",
+            format!("bash command contains disallowed control character at index {index}"),
+        ));
+    }
 
     if let Some(reason) = find_bash_security_violation(command) {
         return Err(ToolExecutionError::new("bash_security_denied", reason));
     }
 
     Ok(())
+}
+
+fn first_disallowed_control_char_index(command: &str) -> Option<usize> {
+    for (index, ch) in command.char_indices() {
+        if ch == '\t' || ch == '\n' || ch == '\r' {
+            continue;
+        }
+        let code = ch as u32;
+        if code == 0x7f || code < 0x20 {
+            return Some(index);
+        }
+    }
+    None
 }
 
 fn find_bash_security_violation(command: &str) -> Option<&'static str> {
@@ -74,6 +93,16 @@ fn find_bash_security_violation(command: &str) -> Option<&'static str> {
         }
 
         index += 1;
+    }
+
+    if escaped {
+        return Some("trailing escape is blocked");
+    }
+    if in_single_quote {
+        return Some("unbalanced single quote is blocked");
+    }
+    if in_double_quote {
+        return Some("unbalanced double quote is blocked");
     }
 
     None
