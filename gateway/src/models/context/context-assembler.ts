@@ -1,5 +1,6 @@
 import { TurnContextAssembler } from "../../orchestration/orchestrator/agent-loop";
 import { TurnRequest } from "../types";
+import { buildContextLines } from "../../tools/context";
 
 export class SimpleContextAssembler implements TurnContextAssembler {
   private readonly staticFacts: string[];
@@ -9,12 +10,9 @@ export class SimpleContextAssembler implements TurnContextAssembler {
   }
 
   public async assemble(turn: TurnRequest): Promise<string[]> {
-    const messageFingerprint = `user:${turn.userMessage.slice(0, 128)}`;
-    return [
-      ...this.staticFacts,
-      `session:${turn.sessionKey}`,
-      `project:${turn.metadata.projectId}`,
-      messageFingerprint,
-    ];
+    return buildContextLines({
+      turn,
+      staticFacts: this.staticFacts,
+    });
   }
 }

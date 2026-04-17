@@ -1,5 +1,6 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
+import { type ContextEngineConfig } from "../../../../tools/context";
 import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import { type SessionStoreController } from "../services/session-store";
@@ -31,6 +32,7 @@ interface CreateRunStartWireInput {
   runtimeModelConfig?: RuntimeModelConfig;
   runtimeProviderChain: RuntimeProviderCandidate[];
   runtimeFailoverConfig: RuntimeFailoverConfig;
+  contextEngineConfig: ContextEngineConfig;
   runtimeModelConfigSource: {
     baseUrl: string;
     apiKey: string;
@@ -106,6 +108,7 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     runtimeModelConfig: input.runtimeModelConfig,
     runtimeProviderChain: input.runtimeProviderChain,
     runtimeFailoverConfig: input.runtimeFailoverConfig,
+    contextEngineConfig: input.contextEngineConfig,
       runtimeModelConfigSource: input.runtimeModelConfigSource,
       runtimeToolContext: input.runtimeToolContext,
       gaMechanismRuntime: input.gaMechanismRuntime,

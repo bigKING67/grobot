@@ -22,6 +22,7 @@ import {
 } from "../services/runtime-paths";
 import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
 import { resolveMcpInstructionRuntime } from "../services/mcp-instruction-pack";
+import { resolveContextEngineConfig, type ContextEngineConfig } from "../../../../tools/context";
 import { createRunStartSessionStore } from "./run-start-session-store";
 import { sessionRegistryFilePath } from "./session-registry";
 import {
@@ -644,6 +645,10 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     source: providerPoolSnapshot.source,
     providers: providerPoolSnapshot.providers,
   } : undefined);
+  const contextEngineConfig: ContextEngineConfig = resolveContextEngineConfig({
+    projectTomlPath,
+    runtimeModelConfig: runtimeModelConfig.modelConfig,
+  });
   const historyTurns = resolveHistoryTurns(options);
   const handoffRecentTurns = resolveHandoffRecentTurns(options);
   const handoffAutoOnExit = resolveHandoffAutoOnExit(options);
@@ -715,6 +720,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     runtimeProviderChain: runtimeModelConfig.providerChain,
     runtimeFailoverConfig: runtimeModelConfig.failoverConfig,
     runtimeModelConfigSource: runtimeModelConfig.modelConfigSource,
+    contextEngineConfig,
     runtimeToolContext: resolveRuntimeToolContext(workDir, projectTomlPath),
     kimiSearchRoutingPolicy,
     mcpInstructionPromptPrefix: mcpInstructionRuntime.promptPrefix,

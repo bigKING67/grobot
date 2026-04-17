@@ -49,6 +49,7 @@ export async function runStart(
     runtimeProviderChain,
     runtimeFailoverConfig,
     runtimeModelConfigSource,
+    contextEngineConfig,
     runtimeToolContext,
     kimiSearchRoutingPolicy,
     mcpInstructionPromptPrefix,
@@ -112,6 +113,7 @@ export async function runStart(
     runtimeProviderChain,
     runtimeFailoverConfig,
     runtimeModelConfigSource,
+    contextEngineConfig,
     runtimeToolContext,
     gaMechanismRuntime,
     kimiSearchRoutingPolicy,
@@ -125,6 +127,9 @@ export async function runStart(
     writeStderr: output.writeStderr,
   });
   const { handoff, sessionOps } = wire;
+  output.writeStderr(
+    `[context-engine] enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,
+  );
   let turnQueue: Promise<unknown> = Promise.resolve();
   let activeTurnAbortController: AbortController | undefined;
   let pendingRuntimeInterruptSource: "command" | "cli_esc" | undefined;

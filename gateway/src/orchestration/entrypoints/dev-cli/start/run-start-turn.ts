@@ -3,7 +3,6 @@ import { runGatewayTurn } from "../../../main";
 import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { consumeInterruptFlag } from "../services/interrupt-store";
 import {
-  buildPromptWithHistory,
   compactSingleLine,
   trimHistoryMessages,
   type ChatHistoryMessage,
@@ -18,6 +17,15 @@ import {
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
 import { applyLearnedPromptContext } from "../../../../tools/ga-skill";
+import {
+  classifyPromptOverflow,
+  escalatePromptVariant,
+  prepareTurnPrompt,
+  truncatePromptHeadForPtlRetry,
+  type ContextEngineConfig,
+  type PromptCompactionStage,
+  type PromptVariant,
+} from "../../../../tools/context";
 
 export interface RuntimeProviderCandidate {
   name: string;
@@ -58,6 +66,7 @@ interface CreateRunStartTurnRunnerInput {
   runtimeModelConfig?: RuntimeModelConfig;
   runtimeProviderChain: RuntimeProviderCandidate[];
   runtimeFailoverConfig: RuntimeFailoverConfig;
+  contextEngineConfig: ContextEngineConfig;
   runtimeModelConfigSource: {
     baseUrl: string;
     apiKey: string;
@@ -694,6 +703,7 @@ function resolveProviderOrder(input: {
 
 export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
   const providerFlowStateMap = new Map<string, ProviderFlowState>();
+  let consecutiveCompactionFailures = 0;
 
   const recordTurn = async (
     userText: string,
@@ -739,8 +749,36 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     return 0;
   }
 
-    const historyMessages = input.getHistoryMessages();
-    const basePrompt = buildPromptWithHistory(userText, historyMessages, Math.min(input.historyTurns, 6));
+      const historyMessages = input.getHistoryMessages();
+      const allowProactiveCompaction =
+        input.contextEngineConfig.enabled &&
+        consecutiveCompactionFailures < input.contextEngineConfig.recovery.circuitBreakerFailures;
+      if (
+        input.contextEngineConfig.enabled &&
+        !allowProactiveCompaction &&
+        consecutiveCompactionFailures >= input.contextEngineConfig.recovery.circuitBreakerFailures
+      ) {
+        input.writeStderr(
+          `[context-engine] event=circuit_open failures=${String(consecutiveCompactionFailures)} limit=${String(input.contextEngineConfig.recovery.circuitBreakerFailures)}\n`,
+        );
+      }
+      const promptPreparation = prepareTurnPrompt({
+        userText,
+        historyMessages,
+        historyTurns: input.historyTurns,
+        config: {
+          ...input.contextEngineConfig,
+          enabled: allowProactiveCompaction,
+        },
+      });
+      const selectedStage = promptPreparation.selected.stage;
+      let basePrompt = promptPreparation.selected.prompt;
+      if (selectedStage !== "normal") {
+        input.onHistoryCompacted();
+      }
+      input.writeStderr(
+        `[context-engine] event=prompt_prepared stage=${selectedStage} utilization=${promptPreparation.utilization.toFixed(3)} estimated_tokens=${String(promptPreparation.totalEstimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)}\n`,
+      );
       const askUserTurnContext = createAskUserTurnPromptContext({
         runtime: input.gaMechanismRuntime,
         sessionKey,
@@ -768,9 +806,6 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         userText,
         mcpServerNames: input.mcpInstructionServerNames,
       });
-      const kimiBuiltinFallbackPrompt = kimiMcpFirstRouteEnabled
-        ? buildKimiBuiltinFallbackPrompt(basePrompt)
-        : basePrompt;
       const promptContext = applyLearnedPromptContext({
         promptParts: askUserTurnContext.promptParts,
         userText,
@@ -792,8 +827,20 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     if (kimiSearchRoutingPrefix.length > 0) {
       promptParts.push(kimiSearchRoutingPrefix);
     }
-    promptParts.push(basePrompt);
-    const prompt = promptParts.join("\n\n");
+      const composeTurnPrompt = (conversationPrompt: string): string => {
+        const merged = [...promptParts, conversationPrompt];
+        return merged.join("\n\n");
+      };
+      const preparedPromptVariants: PromptVariant[] = promptPreparation.variants.map((variant) => ({
+        stage: variant.stage,
+        prompt: composeTurnPrompt(variant.prompt),
+        estimatedTokens: variant.estimatedTokens,
+      }));
+      basePrompt = composeTurnPrompt(basePrompt);
+      const kimiBuiltinFallbackPrompt = kimiMcpFirstRouteEnabled
+        ? composeTurnPrompt(buildKimiBuiltinFallbackPrompt(promptPreparation.selected.prompt))
+        : basePrompt;
+      const prompt = basePrompt;
     if (kimiSearchRoutingPrefix.length > 0) {
       input.writeStderr(
         `[governance:search-route] event=policy_injected provider=${providerKind} policy=${input.kimiSearchRoutingPolicy} has_grok_search=${hasGrokSearchServer(input.mcpInstructionServerNames) ? "true" : "false"} chars=${String(kimiSearchRoutingPrefix.length)}\n`,
@@ -878,6 +925,9 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           try {
               let providerRetryCount = 0;
               let kimiBuiltinFallbackRetryCount = 0;
+              let reactiveRetryCount = 0;
+              let ptlRetryCount = 0;
+              let activeCompactionStage: PromptCompactionStage = selectedStage;
               let turnPrompt = prompt;
                 let report;
                 while (true) {
@@ -923,6 +973,63 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
                     );
                     continue;
                   }
+                  const overflow = classifyPromptOverflow(retryErrorClass, retryMessage);
+                  const canUseReactiveCompaction =
+                    consecutiveCompactionFailures < input.contextEngineConfig.recovery.circuitBreakerFailures;
+                  if (
+                    overflow.overflow &&
+                    input.contextEngineConfig.reactiveOnPromptTooLong &&
+                    canUseReactiveCompaction
+                  ) {
+                    if (reactiveRetryCount < input.contextEngineConfig.recovery.reactiveMaxRetries) {
+                      const escalated = escalatePromptVariant(preparedPromptVariants, activeCompactionStage);
+                      if (escalated && escalated.prompt !== turnPrompt) {
+                        reactiveRetryCount += 1;
+                        activeCompactionStage = escalated.stage;
+                        turnPrompt = escalated.prompt;
+                        input.onHistoryCompacted();
+                        input.writeStderr(
+                          `[context-engine] event=reactive_compact_retry provider=${provider.name} reason=${overflow.reason} stage=${activeCompactionStage} retry=${String(reactiveRetryCount)}\n`,
+                        );
+                        continue;
+                      }
+                    }
+                    if (ptlRetryCount < input.contextEngineConfig.recovery.ptlMaxRetries) {
+                      const truncatedPrompt = truncatePromptHeadForPtlRetry(
+                        turnPrompt,
+                        ptlRetryCount + 1,
+                      );
+                      if (truncatedPrompt !== turnPrompt) {
+                        ptlRetryCount += 1;
+                        turnPrompt = truncatedPrompt;
+                        input.onHistoryCompacted();
+                        input.writeStderr(
+                          `[context-engine] event=ptl_retry provider=${provider.name} reason=${overflow.reason} retry=${String(ptlRetryCount)}\n`,
+                        );
+                        continue;
+                      }
+                    }
+                    consecutiveCompactionFailures += 1;
+                    input.writeStderr(
+                      `[context-engine] event=reactive_compact_failed provider=${provider.name} failures=${String(consecutiveCompactionFailures)} reason=${overflow.reason}\n`,
+                    );
+                    if (
+                      consecutiveCompactionFailures >=
+                      input.contextEngineConfig.recovery.circuitBreakerFailures
+                    ) {
+                      input.writeStderr(
+                        `[context-engine] event=circuit_open failures=${String(consecutiveCompactionFailures)} limit=${String(input.contextEngineConfig.recovery.circuitBreakerFailures)}\n`,
+                      );
+                    }
+                  } else if (
+                    overflow.overflow &&
+                    input.contextEngineConfig.reactiveOnPromptTooLong &&
+                    !canUseReactiveCompaction
+                  ) {
+                    input.writeStderr(
+                      `[context-engine] event=reactive_compact_skipped reason=circuit_open failures=${String(consecutiveCompactionFailures)}\n`,
+                    );
+                  }
                   if (!shouldRetryProviderRequest(retryErrorClass, retryMessage, providerRetryCount)) {
                     throw error;
                   }
@@ -937,6 +1044,7 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
             if (!report) {
               throw new Error("provider response missing after retry");
             }
+            consecutiveCompactionFailures = 0;
             const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);
             updateProviderEwmaState({
               state,
