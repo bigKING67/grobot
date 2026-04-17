@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { resolve } from "node:path";
 
 export interface GraphCacheBucketCounter {
@@ -40,6 +49,7 @@ export interface GraphCacheWindowSummary {
 const GRAPH_CACHE_WINDOW_RELATIVE_PATH = ".grobot/context/graph-cache-window.jsonl";
 const MAX_PERSISTED_ENTRIES = 512;
 const TRIM_TRIGGER_BYTES = 1_000_000;
+const TRIM_LOCK_SUFFIX = ".trim.lock";
 
 function createEmptyCounter(): GraphCacheBucketCounter {
   return {
@@ -196,26 +206,48 @@ function maybeTrimWindowFile(path: string): void {
   if (!existsSync(path)) {
     return;
   }
-  let fileBytes = 0;
+  const lockPath = `${path}${TRIM_LOCK_SUFFIX}`;
+  let lockFd = -1;
   try {
-    const raw = readFileSync(path, "utf8");
-    fileBytes = raw.length;
+    lockFd = openSync(lockPath, "wx");
   } catch {
     return;
   }
-  if (fileBytes < TRIM_TRIGGER_BYTES) {
-    return;
-  }
-  const entries = readWindowEntries(path);
-  if (entries.length <= MAX_PERSISTED_ENTRIES) {
-    return;
-  }
-  const trimmed = entries.slice(-MAX_PERSISTED_ENTRIES);
-  const content = trimmed.map((entry) => JSON.stringify(entry)).join("\n");
   try {
-    writeFileSync(path, `${content}\n`, "utf8");
-  } catch {
-    // best effort only
+    let fileBytes = 0;
+    try {
+      const raw = readFileSync(path, "utf8");
+      fileBytes = raw.length;
+    } catch {
+      return;
+    }
+    if (fileBytes < TRIM_TRIGGER_BYTES) {
+      return;
+    }
+    const entries = readWindowEntries(path);
+    if (entries.length <= MAX_PERSISTED_ENTRIES) {
+      return;
+    }
+    const trimmed = entries.slice(-MAX_PERSISTED_ENTRIES);
+    const content = trimmed.map((entry) => JSON.stringify(entry)).join("\n");
+    try {
+      writeFileSync(path, `${content}\n`, "utf8");
+    } catch {
+      // best effort only
+    }
+  } finally {
+    try {
+      if (lockFd >= 0) {
+        closeSync(lockFd);
+      }
+    } catch {
+      // ignore lock close failure
+    }
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // ignore lock cleanup failure
+    }
   }
 }
 
@@ -227,8 +259,12 @@ export function appendGraphCacheWindowEntry(input: {
   try {
     mkdirSync(resolveParentDir(path), { recursive: true });
     const serialized = `${JSON.stringify(input.entry)}\n`;
-    const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-    writeFileSync(path, `${existing}${serialized}`, "utf8");
+    const fd = openSync(path, "a");
+    try {
+      writeSync(fd, serialized, undefined, "utf8");
+    } finally {
+      closeSync(fd);
+    }
   } catch {
     return;
   }

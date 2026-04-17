@@ -133,6 +133,29 @@ function parseRequiredPositiveInt(value: string | undefined, fallback: number): 
   return parsed;
 }
 
+function parseOptionalRatio(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseRequiredRatio(value: string | undefined, fallback: number): number {
+  const parsed = parseOptionalRatio(value);
+  if (typeof parsed !== "number") {
+    return fallback;
+  }
+  return parsed;
+}
+
 function readGraphCacheCounter(
   stats: Record<string, { hit?: number; miss?: number; write?: number; evict?: number }>,
   bucket: string,
@@ -148,6 +171,63 @@ function readGraphCacheCounter(
     miss: Number.isFinite(row?.miss) ? Number(row?.miss) : 0,
     write: Number.isFinite(row?.write) ? Number(row?.write) : 0,
     evict: Number.isFinite(row?.evict) ? Number(row?.evict) : 0,
+  };
+}
+
+interface GraphCacheWindowDegradation {
+  degraded: boolean;
+  reason: string;
+  thresholdQueryHitRate: number;
+  minEntries: number;
+  observedEntries: number;
+  observedQueryHitRate: number | null;
+  observedQueryHit: number;
+  observedQueryMiss: number;
+}
+
+function assessGraphCacheWindowDegradation(input: {
+  summary: ReturnType<typeof readGraphCacheWindowSummary>;
+  thresholdQueryHitRate: number;
+  minEntries: number;
+}): GraphCacheWindowDegradation {
+  const observedEntries = input.summary.entries;
+  const observedQueryHitRate = input.summary.queryHitRate;
+  const observedQueryHit = input.summary.queryTotals.hit;
+  const observedQueryMiss = input.summary.queryTotals.miss;
+  if (observedEntries < input.minEntries) {
+    return {
+      degraded: false,
+      reason: "insufficient_entries",
+      thresholdQueryHitRate: input.thresholdQueryHitRate,
+      minEntries: input.minEntries,
+      observedEntries,
+      observedQueryHitRate,
+      observedQueryHit,
+      observedQueryMiss,
+    };
+  }
+  if (typeof observedQueryHitRate !== "number") {
+    return {
+      degraded: false,
+      reason: "no_query_traffic",
+      thresholdQueryHitRate: input.thresholdQueryHitRate,
+      minEntries: input.minEntries,
+      observedEntries,
+      observedQueryHitRate,
+      observedQueryHit,
+      observedQueryMiss,
+    };
+  }
+  const degraded = observedQueryHitRate < input.thresholdQueryHitRate;
+  return {
+    degraded,
+    reason: degraded ? "query_hit_rate_below_threshold" : "ok",
+    thresholdQueryHitRate: input.thresholdQueryHitRate,
+    minEntries: input.minEntries,
+    observedEntries,
+    observedQueryHitRate,
+    observedQueryHit,
+    observedQueryMiss,
   };
 }
 
@@ -545,6 +625,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE,
     20,
   );
+  const contextGraphCacheDegradeHitRateThreshold = parseRequiredRatio(
+    readOptionString(options, "context-graph-cache-degrade-hit-rate")
+      ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_DEGRADE_HIT_RATE,
+    0.3,
+  );
+  const contextGraphCacheDegradeMinEntries = parseRequiredPositiveInt(
+    readOptionString(options, "context-graph-cache-degrade-min-entries")
+      ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_DEGRADE_MIN_ENTRIES,
+    8,
+  );
   const sessionPreview = buildSessionKey({
     platform: parsePlatform(resolveSessionPlatformOption(options)),
     tenant: readOptionString(options, "tenant") ?? projectName,
@@ -616,6 +706,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const contextGraphCacheWindowSummary = readGraphCacheWindowSummary({
     workDir,
     size: contextGraphCacheWindowSize,
+  });
+  const contextGraphCacheWindowDegradation = assessGraphCacheWindowDegradation({
+    summary: contextGraphCacheWindowSummary,
+    thresholdQueryHitRate: contextGraphCacheDegradeHitRateThreshold,
+    minEntries: contextGraphCacheDegradeMinEntries,
   });
 
   let probeResult:
@@ -761,6 +856,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           overall_totals: contextGraphCacheWindowSummary.overallTotals,
           query_hit_rate: contextGraphCacheWindowSummary.queryHitRate,
           overall_hit_rate: contextGraphCacheWindowSummary.overallHitRate,
+          degradation: {
+            degraded: contextGraphCacheWindowDegradation.degraded,
+            reason: contextGraphCacheWindowDegradation.reason,
+            threshold_query_hit_rate: contextGraphCacheWindowDegradation.thresholdQueryHitRate,
+            min_entries: contextGraphCacheWindowDegradation.minEntries,
+            observed_entries: contextGraphCacheWindowDegradation.observedEntries,
+            observed_query_hit_rate: contextGraphCacheWindowDegradation.observedQueryHitRate,
+            observed_query_hit: contextGraphCacheWindowDegradation.observedQueryHit,
+            observed_query_miss: contextGraphCacheWindowDegradation.observedQueryMiss,
+          },
         },
       },
       context_engine: {
@@ -928,6 +1033,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `context_graph_cache_window: size=${contextGraphCacheWindowSummary.configuredSize} entries=${contextGraphCacheWindowSummary.entries} range=${contextGraphCacheWindowSummary.fromTs ?? "<none>"}..${contextGraphCacheWindowSummary.toTs ?? "<none>"} delta_symbol_query=${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.evict} delta_symbol_declaration=${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.evict} delta_dependency_query=${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.evict} delta_dependency_import=${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.evict} query_hit_rate=${typeof contextGraphCacheWindowSummary.queryHitRate === "number" ? contextGraphCacheWindowSummary.queryHitRate.toFixed(3) : "<none>"} overall_hit_rate=${typeof contextGraphCacheWindowSummary.overallHitRate === "number" ? contextGraphCacheWindowSummary.overallHitRate.toFixed(3) : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `context_graph_cache_window_guard: degraded=${contextGraphCacheWindowDegradation.degraded ? "yes" : "no"} reason=${contextGraphCacheWindowDegradation.reason} threshold_query_hit_rate=${contextGraphCacheWindowDegradation.thresholdQueryHitRate.toFixed(3)} min_entries=${contextGraphCacheWindowDegradation.minEntries} observed_entries=${contextGraphCacheWindowDegradation.observedEntries} observed_query_hit_rate=${typeof contextGraphCacheWindowDegradation.observedQueryHitRate === "number" ? contextGraphCacheWindowDegradation.observedQueryHitRate.toFixed(3) : "<none>"}\n`,
   );
   process.stdout.write(
     `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,

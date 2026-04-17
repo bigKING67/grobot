@@ -109,6 +109,14 @@ declare module "node:fs" {
 
   export function readFileSync(path: number | string, encoding: "utf8"): string;
   export function writeFileSync(path: string, data: string, encoding: "utf8"): void;
+  export function openSync(path: string, flags: string): number;
+  export function closeSync(fd: number): void;
+  export function writeSync(
+    fd: number,
+    data: string,
+    position?: number,
+    encoding?: "utf8",
+  ): number;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
   export function chmodSync(path: string, mode: number): void;
   export function existsSync(path: string): boolean;

@@ -288,6 +288,78 @@ function runGraphCache(payload: Record<string, unknown>): Record<string, unknown
   };
 }
 
+function runGraphCacheHotLoop(payload: Record<string, unknown>): Record<string, unknown> {
+  const query = typeof payload.query === "string" ? payload.query.trim() : "";
+  if (!query) {
+    throw new Error("payload.query must be non-empty");
+  }
+  const maxRows = typeof payload.max_rows === "number" && Number.isFinite(payload.max_rows)
+    ? Math.max(1, Math.min(20, Math.floor(payload.max_rows)))
+    : 4;
+  const repeat = typeof payload.repeat === "number" && Number.isFinite(payload.repeat)
+    ? Math.max(3, Math.min(24, Math.floor(payload.repeat)))
+    : 8;
+  const snapshot = readChangedCodeSnapshot(payload.snapshot);
+  resetContextGraphCacheStats();
+  const turns: Array<{
+    turn: number;
+    duration_ms: number;
+    symbol_query: ContextGraphCacheStats;
+    dependency_query: ContextGraphCacheStats;
+  }> = [];
+  let firstSymbolRows: string[] = [];
+  let firstDependencyRows: string[] = [];
+  let lastSymbolRows: string[] = [];
+  let lastDependencyRows: string[] = [];
+  for (let turn = 1; turn <= repeat; turn += 1) {
+    const startedAtMs = Date.now();
+    const symbolRows = retrieveSymbolGraphHints(query, {
+      maxRows,
+      changedCodeSnapshot: snapshot,
+    });
+    const dependencyRows = retrieveDependencyGraphHints(query, {
+      maxRows,
+      changedCodeSnapshot: snapshot,
+    });
+    const durationMs = Math.max(0, Date.now() - startedAtMs);
+    const stats = readContextGraphCacheStats();
+    const symbolQuery = readBucketStat(stats, "symbol_query");
+    const dependencyQuery = readBucketStat(stats, "dependency_query");
+    if (turn === 1) {
+      firstSymbolRows = symbolRows;
+      firstDependencyRows = dependencyRows;
+    }
+    lastSymbolRows = symbolRows;
+    lastDependencyRows = dependencyRows;
+    turns.push({
+      turn,
+      duration_ms: durationMs,
+      symbol_query: symbolQuery,
+      dependency_query: dependencyQuery,
+    });
+  }
+  const firstTurn = turns[0] ?? {
+    symbol_query: { hit: 0, miss: 0, write: 0, evict: 0 },
+    dependency_query: { hit: 0, miss: 0, write: 0, evict: 0 },
+  };
+  const lastTurn = turns[turns.length - 1] ?? firstTurn;
+  return {
+    repeat,
+    cache_reuse_observed:
+      lastTurn.symbol_query.hit > firstTurn.symbol_query.hit
+      && lastTurn.dependency_query.hit > firstTurn.dependency_query.hit,
+    first_rows: {
+      symbol_rows: firstSymbolRows,
+      dependency_rows: firstDependencyRows,
+    },
+    last_rows: {
+      symbol_rows: lastSymbolRows,
+      dependency_rows: lastDependencyRows,
+    },
+    turns,
+  };
+}
+
 function runCli(argv: string[]): number {
   const { command, options } = parseArgs(argv);
   const payload = parseJsonArg(requireOption(options, "payload"), "--payload");
@@ -302,6 +374,10 @@ function runCli(argv: string[]): number {
     }
     case "graph-cache": {
       process.stdout.write(`${JSON.stringify(runGraphCache(payload))}\n`);
+      return 0;
+    }
+    case "graph-cache-hot-loop": {
+      process.stdout.write(`${JSON.stringify(runGraphCacheHotLoop(payload))}\n`);
       return 0;
     }
     default:

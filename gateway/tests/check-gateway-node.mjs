@@ -1427,6 +1427,80 @@ async function runGatewayContractSmoke() {
     concurrency: graphCacheConcurrency,
   });
 
+  const graphCacheHotLoopResult = runTsContract("context-engine-contract.ts", "graph-cache-hot-loop", [
+    "--payload",
+    JSON.stringify({
+      query: "add payment logging and retry context",
+      max_rows: 4,
+      repeat: 8,
+      snapshot: {
+        root_path: "/tmp/context-graph-cache-contract",
+        files: [
+          {
+            path: "src/payments/service.ts",
+            content: [
+              "import { requestPayment } from \"./gateway\";",
+              "import { writeLog } from \"../infra/logger\";",
+              "export async function processPayment(orderId: string) {",
+              "  writeLog(orderId);",
+              "  return requestPayment(orderId);",
+              "}",
+              "export const processRetry = async (orderId: string) => processPayment(orderId);",
+            ].join("\n"),
+          },
+          {
+            path: "src/payments/gateway.ts",
+            content: [
+              "export function requestPayment(orderId: string) {",
+              "  return `ok:${orderId}`;",
+              "}",
+            ].join("\n"),
+          },
+          {
+            path: "src/infra/logger.ts",
+            content: [
+              "export function writeLog(input: string) {",
+              "  return input;",
+              "}",
+            ].join("\n"),
+          },
+        ],
+      },
+    }),
+  ]);
+  const graphCacheHotLoopPayload = parseJsonOutput(
+    "context-engine-contract graph-cache-hot-loop",
+    graphCacheHotLoopResult.stdout,
+  );
+  assert.equal(graphCacheHotLoopPayload.cache_reuse_observed, true);
+  assert.equal(Array.isArray(graphCacheHotLoopPayload.turns), true);
+  assert.equal(Number(graphCacheHotLoopPayload.turns.length), 8);
+  assert.deepEqual(
+    graphCacheHotLoopPayload.last_rows?.symbol_rows,
+    graphCacheHotLoopPayload.first_rows?.symbol_rows,
+  );
+  assert.deepEqual(
+    graphCacheHotLoopPayload.last_rows?.dependency_rows,
+    graphCacheHotLoopPayload.first_rows?.dependency_rows,
+  );
+  let prevSymbolHit = -1;
+  let prevDependencyHit = -1;
+  for (const row of graphCacheHotLoopPayload.turns) {
+    const symbolHit = Number(row?.symbol_query?.hit);
+    const dependencyHit = Number(row?.dependency_query?.hit);
+    assert.equal(Number.isFinite(symbolHit), true);
+    assert.equal(Number.isFinite(dependencyHit), true);
+    if (prevSymbolHit >= 0) {
+      assert.equal(symbolHit >= prevSymbolHit, true);
+    }
+    if (prevDependencyHit >= 0) {
+      assert.equal(dependencyHit >= prevDependencyHit, true);
+    }
+    prevSymbolHit = symbolHit;
+    prevDependencyHit = dependencyHit;
+  }
+  logStep("context-engine-contract graph-cache-hot-loop");
+
   const symbolAstExtractResult = runTsContract("symbol-ast-contract.ts", "extract", [
     "--payload",
     JSON.stringify({
@@ -1615,6 +1689,16 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(
     ["number", "null"].includes(String(statusPayload.status_context_graph_cache_window_overall_hit_rate_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_context_graph_cache_window_has_degradation, true);
+  assert.equal(statusPayload.status_context_graph_cache_window_degradation_degraded_type, "boolean");
+  assert.equal(statusPayload.status_context_graph_cache_window_degradation_reason_type, "string");
+  assert.equal(statusPayload.status_context_graph_cache_window_degradation_threshold_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_degradation_min_entries_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_degradation_observed_entries_type, "number");
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_graph_cache_window_degradation_observed_query_hit_rate_type)),
     true,
   );
   assert.equal(statusPayload.status_has_context_engine, true);

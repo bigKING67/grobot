@@ -1203,6 +1203,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const contextGraphCacheWindowOverallTotals = isObject(contextGraphCacheWindow?.overall_totals)
     ? contextGraphCacheWindow.overall_totals
     : null;
+  const contextGraphCacheWindowDegradation = isObject(contextGraphCacheWindow?.degradation)
+    ? contextGraphCacheWindow.degradation
+    : null;
   const contextEngine = isObject(parsedStatus?.context_engine)
     ? parsedStatus.context_engine
     : null;
@@ -1266,6 +1269,19 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_context_graph_cache_window_overall_hit_rate_type: contextGraphCacheWindow?.overall_hit_rate === null
       ? "null"
       : typeof contextGraphCacheWindow?.overall_hit_rate,
+    status_context_graph_cache_window_has_degradation: Boolean(contextGraphCacheWindowDegradation),
+    status_context_graph_cache_window_degradation_degraded_type: typeof contextGraphCacheWindowDegradation?.degraded,
+    status_context_graph_cache_window_degradation_reason_type: typeof contextGraphCacheWindowDegradation?.reason,
+    status_context_graph_cache_window_degradation_threshold_type:
+      typeof contextGraphCacheWindowDegradation?.threshold_query_hit_rate,
+    status_context_graph_cache_window_degradation_min_entries_type:
+      typeof contextGraphCacheWindowDegradation?.min_entries,
+    status_context_graph_cache_window_degradation_observed_entries_type:
+      typeof contextGraphCacheWindowDegradation?.observed_entries,
+    status_context_graph_cache_window_degradation_observed_query_hit_rate_type:
+      contextGraphCacheWindowDegradation?.observed_query_hit_rate === null
+        ? "null"
+        : typeof contextGraphCacheWindowDegradation?.observed_query_hit_rate,
     status_has_context_engine: Boolean(contextEngine),
     status_context_engine_enabled_type: typeof contextEngine?.enabled,
     status_context_engine_profile_type: typeof contextEngine?.profile,
