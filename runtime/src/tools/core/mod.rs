@@ -413,10 +413,26 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "command": { "type": "string" },
-                    "timeout_ms": { "type": "integer" },
-                    "max_output_bytes": { "type": "integer" },
-                    "max_output_lines": { "type": "integer" }
+                    "command": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": MAX_BASH_COMMAND_CHARS
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": MIN_BASH_TIMEOUT_MS,
+                        "maximum": MAX_BASH_TIMEOUT_MS
+                    },
+                    "max_output_bytes": {
+                        "type": "integer",
+                        "minimum": MIN_BASH_MAX_OUTPUT_BYTES,
+                        "maximum": MAX_BASH_MAX_OUTPUT_BYTES
+                    },
+                    "max_output_lines": {
+                        "type": "integer",
+                        "minimum": MIN_BASH_MAX_OUTPUT_LINES,
+                        "maximum": MAX_BASH_MAX_OUTPUT_LINES
+                    }
                 },
                 "required": ["command"],
                 "additionalProperties": false

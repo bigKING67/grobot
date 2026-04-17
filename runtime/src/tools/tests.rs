@@ -666,6 +666,54 @@ audit_redact_secrets = false
     }
 
     #[test]
+    fn bash_v2_rejects_max_output_bytes_above_max() {
+        let workspace = make_temp_workspace("bash-v2-output-bytes-above-max");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok",
+                "max_output_bytes": (MAX_BASH_MAX_OUTPUT_BYTES as u64).saturating_add(1)
+            }),
+        )
+        .expect_err("max_output_bytes above max should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        assert!(
+            error.message.contains("must be <="),
+            "unexpected max_output_bytes upper-bound error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_rejects_max_output_lines_above_max() {
+        let workspace = make_temp_workspace("bash-v2-output-lines-above-max");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok",
+                "max_output_lines": (MAX_BASH_MAX_OUTPUT_LINES as u64).saturating_add(1)
+            }),
+        )
+        .expect_err("max_output_lines above max should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        assert!(
+            error.message.contains("must be <="),
+            "unexpected max_output_lines upper-bound error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn bash_v2_allowlist_blocks_non_allowlisted_segments() {
         let workspace = make_temp_workspace("bash-v2-segment-allowlist");
         let input = make_bash_input(&workspace, vec!["printf".to_string()]);
