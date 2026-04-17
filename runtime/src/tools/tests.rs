@@ -99,6 +99,25 @@ mod tests {
         }
     }
 
+    fn make_bash_input(workspace: &PathBuf, bash_allowlist: Vec<String>) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: "req-bash-v2".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            user_message: "run bash".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec!["bash".to_string()]),
+                bash_allowlist: Some(bash_allowlist),
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
     fn execute_tool_payload(
         executor: &LocalToolExecutor,
         input: &TurnExecuteInput,
@@ -199,6 +218,43 @@ allow_tools = ["echo"]
         assert_eq!(policy.call_timeout_ms, MIN_MCP_CALL_TIMEOUT_MS);
         assert_eq!(policy.session_idle_ttl_secs, MIN_MCP_SESSION_IDLE_TTL_SECS);
         assert_eq!(policy.allow_tools, vec!["echo".to_string()]);
+
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn load_bash_runtime_policy_clamps_fields() {
+        let root = make_temp_workspace("bash-policy");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        let project_toml = grobot_dir.join("project.toml");
+        fs::write(
+            &project_toml,
+            r#"
+[tools.bash]
+output_ttl_secs = 999999999
+output_max_files = 1
+audit_preview_chars = 1
+audit_segment_chars = 90000
+audit_redact_secrets = false
+"#,
+        )
+        .expect("write bash policy");
+
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace,
+            enabled_tools: HashSet::new(),
+            bash_allowlist: Vec::new(),
+        };
+        let policy = load_bash_runtime_policy(&context);
+        assert_eq!(policy.output_ttl_secs, MAX_BASH_OUTPUT_TTL_SECS);
+        assert_eq!(policy.output_max_files, MIN_BASH_OUTPUT_MAX_FILES);
+        assert_eq!(policy.audit_preview_chars, MIN_BASH_AUDIT_PREVIEW_CHARS);
+        assert_eq!(policy.audit_segment_chars, MAX_BASH_AUDIT_SEGMENT_CHARS);
+        assert!(!policy.audit_redact_secrets);
 
         fs::remove_dir_all(&root).expect("cleanup temp workspace");
     }
@@ -539,6 +595,362 @@ allow_tools = ["echo"]
         assert_eq!(bash_payload["exit_code"].as_i64(), Some(0));
         assert_eq!(bash_payload["stdout"].as_str(), Some("kimi_ok"));
 
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_rejects_unknown_arguments() {
+        let workspace = make_temp_workspace("bash-v2-unknown-arg");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok",
+                "unexpected": true
+            }),
+        )
+        .expect_err("unknown argument should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_rejects_oversized_command() {
+        let workspace = make_temp_workspace("bash-v2-oversized-command");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let oversized = "x".repeat(MAX_BASH_COMMAND_CHARS.saturating_add(1));
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": oversized
+            }),
+        )
+        .expect_err("oversized command should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        assert!(
+            error.message.contains("exceeds max length"),
+            "unexpected oversized command error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_rejects_timeout_above_max() {
+        let workspace = make_temp_workspace("bash-v2-timeout-above-max");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok",
+                "timeout_ms": MAX_BASH_TIMEOUT_MS.saturating_add(1)
+            }),
+        )
+        .expect_err("timeout above max should fail");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        assert!(
+            error.message.contains("must be <="),
+            "unexpected timeout upper-bound error: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_allowlist_blocks_non_allowlisted_segments() {
+        let workspace = make_temp_workspace("bash-v2-segment-allowlist");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok && uname"
+            }),
+        )
+        .expect_err("compound command should fail when any segment is not allowlisted");
+        assert_eq!(error.error_class, "bash_not_allowed");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_allowlist_blocks_background_separator_segments() {
+        let workspace = make_temp_workspace("bash-v2-bg-segment-allowlist");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf ok & uname"
+            }),
+        )
+        .expect_err("background-separated commands should be checked per segment");
+        assert_eq!(error.error_class, "bash_not_allowed");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_command_substitution() {
+        let workspace = make_temp_workspace("bash-v2-security");
+        let input = make_bash_input(&workspace, vec!["*".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf $(whoami)"
+            }),
+        )
+        .expect_err("command substitution should be blocked");
+        assert_eq!(error.error_class, "bash_security_denied");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_returns_timeout_error_for_long_running_command() {
+        let workspace = make_temp_workspace("bash-v2-timeout");
+        let input = make_bash_input(&workspace, vec!["sleep".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "sleep 1",
+                "timeout_ms": 100
+            }),
+        )
+        .expect_err("sleep command should time out");
+        assert_eq!(error.error_class, "bash_timeout");
+        assert!(
+            error.message.contains("timed out"),
+            "timeout error message should mention timeout, got: {}",
+            error.message
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_reports_truncation_and_persists_full_output() {
+        let workspace = make_temp_workspace("bash-v2-truncation");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf 'line-%s\\n' {1..40}",
+                "max_output_lines": 5
+            }),
+        )
+        .expect("bash should succeed with truncation");
+
+        assert_eq!(payload["tool"].as_str(), Some("bash"));
+        assert_eq!(payload["exit_code"].as_i64(), Some(0));
+        assert_eq!(payload["timed_out"].as_bool(), Some(false));
+        assert_eq!(payload["audit"]["policy"].as_str(), Some("bash_v2_strict"));
+        assert_eq!(
+            payload["audit"]["allowlist_matches"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(
+            payload["truncation"]["stdout"]["truncated"].as_bool(),
+            Some(true),
+            "stdout should be truncated when max_output_lines is small"
+        );
+
+        let full_output_path = payload["full_output_path"]
+            .as_str()
+            .expect("full_output_path should exist when output is truncated");
+        assert!(
+            fs::metadata(full_output_path).is_ok(),
+            "persisted full output path should exist: {full_output_path}"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(full_output_path)
+                .expect("read full output metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "persisted full output file should be owner-only readable/writable"
+            );
+        }
+        let full_output = fs::read_to_string(full_output_path).expect("read persisted full output");
+        assert!(
+            full_output.contains("line-40"),
+            "full output should contain tail lines from command output"
+        );
+
+        let _ = fs::remove_file(full_output_path);
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_audit_redacts_secret_like_values() {
+        let workspace = make_temp_workspace("bash-v2-audit-redaction");
+        fs::create_dir_all(workspace.join(".grobot")).expect("create project .grobot");
+        fs::write(
+            workspace.join(".grobot/project.toml"),
+            r#"
+[tools.bash]
+audit_redact_secrets = true
+"#,
+        )
+        .expect("write project bash policy");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf 'token=%s' 'sk-abcdefgh1234567890'"
+            }),
+        )
+        .expect("bash should succeed");
+        let preview = payload["audit"]["command_preview"]
+            .as_str()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        assert!(preview.contains("token"));
+        assert!(
+            preview.contains("<redacted>"),
+            "audit preview should redact secret-like token values, got: {preview}"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_audit_redacts_quoted_password_values() {
+        let workspace = make_temp_workspace("bash-v2-audit-quoted-redaction");
+        fs::create_dir_all(workspace.join(".grobot")).expect("create project .grobot");
+        fs::write(
+            workspace.join(".grobot/project.toml"),
+            r#"
+[tools.bash]
+audit_redact_secrets = true
+"#,
+        )
+        .expect("write project bash policy");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf '%s' \"password='UltraSecretValue987'\""
+            }),
+        )
+        .expect("bash should succeed");
+        let preview = payload["audit"]["command_preview"]
+            .as_str()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        assert!(
+            preview.contains("password=<redacted>"),
+            "quoted password value should be redacted in audit preview, got: {preview}"
+        );
+        assert!(
+            !preview.contains("ultrasecretvalue987"),
+            "audit preview must not expose quoted password value, got: {preview}"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_audit_can_disable_redaction() {
+        let workspace = make_temp_workspace("bash-v2-audit-no-redaction");
+        fs::create_dir_all(workspace.join(".grobot")).expect("create project .grobot");
+        fs::write(
+            workspace.join(".grobot/project.toml"),
+            r#"
+[tools.bash]
+audit_redact_secrets = false
+"#,
+        )
+        .expect("write project bash policy");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf 'token=%s' 'sk-abcdefgh1234567890'"
+            }),
+        )
+        .expect("bash should succeed");
+        let preview = payload["audit"]["command_preview"]
+            .as_str()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        assert!(
+            !preview.contains("<redacted>"),
+            "audit preview should keep original value when redaction is disabled, got: {preview}"
+        );
+        assert!(
+            preview.contains("sk-abcdefgh1234567890"),
+            "audit preview should retain token when redaction is disabled, got: {preview}"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_keeps_operators_inside_quotes_single_segment() {
+        let workspace = make_temp_workspace("bash-v2-quoted-segment");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf '%s' 'a && b; c | d'"
+            }),
+        )
+        .expect("quoted operators should not split command segments");
+        assert_eq!(payload["exit_code"].as_i64(), Some(0));
+        assert_eq!(payload["stdout"].as_str(), Some("a && b; c | d"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_keeps_escaped_separator_single_segment() {
+        let workspace = make_temp_workspace("bash-v2-escaped-separator");
+        let input = make_bash_input(&workspace, vec!["printf".to_string()]);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf '%s' a\\;b"
+            }),
+        )
+        .expect("escaped separators should stay in same command segment");
+        assert_eq!(payload["exit_code"].as_i64(), Some(0));
+        assert_eq!(payload["stdout"].as_str(), Some("a;b"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

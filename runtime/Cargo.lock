@@ -199,6 +199,7 @@ name = "grobot-runtime"
 version = "0.1.0"
 dependencies = [
  "globset",
+ "libc",
  "regex",
  "reqwest",
  "serde",

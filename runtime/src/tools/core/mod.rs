@@ -217,6 +217,8 @@ struct ProjectPolicyConfigFile {
 struct ProjectToolsPolicy {
     #[serde(default)]
     mcp: ProjectMcpPolicy,
+    #[serde(default)]
+    bash: ProjectBashPolicy,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -237,6 +239,20 @@ struct ProjectMcpPolicy {
     session_idle_ttl_secs: Option<u64>,
     #[serde(default)]
     allow_tools: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ProjectBashPolicy {
+    #[serde(default)]
+    output_ttl_secs: Option<u64>,
+    #[serde(default)]
+    output_max_files: Option<usize>,
+    #[serde(default)]
+    audit_preview_chars: Option<usize>,
+    #[serde(default)]
+    audit_segment_chars: Option<usize>,
+    #[serde(default)]
+    audit_redact_secrets: Option<bool>,
 }
 
 pub trait ToolExecutor {
@@ -393,13 +409,17 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_BASH,
-            description: "Run an allowlisted shell command",
+            description: "Run an allowlisted shell command with timeout and output truncation safeguards",
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "command": { "type": "string" }
+                    "command": { "type": "string" },
+                    "timeout_ms": { "type": "integer" },
+                    "max_output_bytes": { "type": "integer" },
+                    "max_output_lines": { "type": "integer" }
                 },
-                "required": ["command"]
+                "required": ["command"],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },

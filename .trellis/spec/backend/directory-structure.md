@@ -40,7 +40,7 @@ runtime/
     │   ├── dispatcher/
     │   ├── fs/
     │   ├── mcp/
-    │   ├── shell/
+    │   ├── bash/
     │   └── semantic/
     ├── extensions/
     ├── orchestration/

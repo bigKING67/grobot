@@ -24,7 +24,7 @@ include!("fs/mod.rs");
 include!("file_mutation/mod.rs");
 include!("write/mod.rs");
 include!("edit/mod.rs");
-include!("shell/mod.rs");
+include!("bash/mod.rs");
 include!("mcp/mod.rs");
 include!("semantic/mod.rs");
 include!("providers/kimi/mod.rs");
