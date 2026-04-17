@@ -1294,45 +1294,46 @@ async function runGatewayContractSmoke() {
   );
   logStep("context-engine-contract prepare-prompt");
 
+  const contextEngineGraphCacheContractPayload = JSON.stringify({
+    query: "add payment logging and retry context",
+    max_rows: 4,
+    snapshot: {
+      root_path: "/tmp/context-graph-cache-contract",
+      files: [
+        {
+          path: "src/payments/service.ts",
+          content: [
+            "import { requestPayment } from \"./gateway\";",
+            "import { writeLog } from \"../infra/logger\";",
+            "export async function processPayment(orderId: string) {",
+            "  writeLog(orderId);",
+            "  return requestPayment(orderId);",
+            "}",
+            "export const processRetry = async (orderId: string) => processPayment(orderId);",
+          ].join("\n"),
+        },
+        {
+          path: "src/payments/gateway.ts",
+          content: [
+            "export function requestPayment(orderId: string) {",
+            "  return `ok:${orderId}`;",
+            "}",
+          ].join("\n"),
+        },
+        {
+          path: "src/infra/logger.ts",
+          content: [
+            "export function writeLog(input: string) {",
+            "  return input;",
+            "}",
+          ].join("\n"),
+        },
+      ],
+    },
+  });
   const contextEngineGraphCacheResult = runTsContract("context-engine-contract.ts", "graph-cache", [
     "--payload",
-    JSON.stringify({
-      query: "add payment logging and retry context",
-      max_rows: 4,
-      snapshot: {
-        root_path: "/tmp/context-graph-cache-contract",
-        files: [
-          {
-            path: "src/payments/service.ts",
-            content: [
-              "import { requestPayment } from \"./gateway\";",
-              "import { writeLog } from \"../infra/logger\";",
-              "export async function processPayment(orderId: string) {",
-              "  writeLog(orderId);",
-              "  return requestPayment(orderId);",
-              "}",
-              "export const processRetry = async (orderId: string) => processPayment(orderId);",
-            ].join("\n"),
-          },
-          {
-            path: "src/payments/gateway.ts",
-            content: [
-              "export function requestPayment(orderId: string) {",
-              "  return `ok:${orderId}`;",
-              "}",
-            ].join("\n"),
-          },
-          {
-            path: "src/infra/logger.ts",
-            content: [
-              "export function writeLog(input: string) {",
-              "  return input;",
-              "}",
-            ].join("\n"),
-          },
-        ],
-      },
-    }),
+    contextEngineGraphCacheContractPayload,
   ]);
   const contextEngineGraphCachePayload = parseJsonOutput(
     "context-engine-contract graph-cache",
@@ -1380,6 +1381,51 @@ async function runGatewayContractSmoke() {
     true,
   );
   logStep("context-engine-contract graph-cache");
+
+  const graphCacheConcurrency = 4;
+  const graphCacheConcurrentResults = await Promise.all(
+    Array.from({ length: graphCacheConcurrency }).map(() => runCommandAsync("npx", [
+      "--yes",
+      "--package",
+      "tsx@4.20.6",
+      "tsx",
+      "gateway/src/extensions/contracts/context-engine-contract.ts",
+      "graph-cache",
+      "--payload",
+      contextEngineGraphCacheContractPayload,
+    ], { timeoutMs: 120_000 })),
+  );
+  for (let index = 0; index < graphCacheConcurrentResults.length; index += 1) {
+    const concurrentResult = graphCacheConcurrentResults[index];
+    assertSuccess(`context-engine-contract graph-cache concurrent-${String(index + 1)}`, concurrentResult);
+    const concurrentPayload = parseJsonOutput(
+      `context-engine-contract graph-cache concurrent-${String(index + 1)}`,
+      concurrentResult.stdout,
+    );
+    assert.equal(concurrentPayload.cache_reuse_observed, true);
+    assert.deepEqual(
+      concurrentPayload.first_pass?.symbol_rows,
+      contextEngineGraphCachePayload.first_pass?.symbol_rows,
+    );
+    assert.deepEqual(
+      concurrentPayload.first_pass?.dependency_rows,
+      contextEngineGraphCachePayload.first_pass?.dependency_rows,
+    );
+    assert.deepEqual(
+      concurrentPayload.second_pass?.symbol_rows,
+      contextEngineGraphCachePayload.second_pass?.symbol_rows,
+    );
+    assert.deepEqual(
+      concurrentPayload.second_pass?.dependency_rows,
+      contextEngineGraphCachePayload.second_pass?.dependency_rows,
+    );
+    const concurrentTiming = concurrentPayload.timing ?? {};
+    assert.equal(Number.isFinite(Number(concurrentTiming.first_pass_duration_ms)), true);
+    assert.equal(Number.isFinite(Number(concurrentTiming.second_pass_duration_ms)), true);
+  }
+  logStep("context-engine-contract graph-cache-concurrency", {
+    concurrency: graphCacheConcurrency,
+  });
 
   const symbolAstExtractResult = runTsContract("symbol-ast-contract.ts", "extract", [
     "--payload",
@@ -1545,6 +1591,22 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_symbol_declaration_cache_write_type, "number");
   assert.equal(statusPayload.status_dependency_query_cache_miss_type, "number");
   assert.equal(statusPayload.status_dependency_import_cache_evict_type, "number");
+  assert.equal(statusPayload.status_has_context_graph_cache_window, true);
+  assert.equal(statusPayload.status_context_graph_cache_window_path_type, "string");
+  assert.equal(statusPayload.status_context_graph_cache_window_configured_size_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_entries_type, "number");
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_graph_cache_window_from_ts_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_graph_cache_window_to_ts_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_context_graph_cache_window_delta_symbol_query_hit_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_delta_symbol_declaration_write_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_delta_dependency_query_miss_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_window_delta_dependency_import_evict_type, "number");
   assert.equal(statusPayload.status_has_context_engine, true);
   assert.equal(statusPayload.status_context_engine_enabled_type, "boolean");
   assert.equal(statusPayload.status_context_engine_profile_type, "string");

@@ -15,7 +15,11 @@ import {
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
 import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
-import { readContextGraphCacheStats, resolveContextEngineConfig } from "../../../../tools/context";
+import {
+  readContextGraphCacheStats,
+  readGraphCacheWindowSummary,
+  resolveContextEngineConfig,
+} from "../../../../tools/context";
 import { type RuntimeModelConfig } from "../../../../models/types";
 import {
   basenameFromPath,
@@ -536,6 +540,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     readOptionString(options, "cache-stats-window-ms"),
   );
   const resetCacheStatsWindow = hasFlag(options, "cache-stats-reset-window");
+  const contextGraphCacheWindowSize = parseRequiredPositiveInt(
+    readOptionString(options, "context-graph-cache-window-size")
+      ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE,
+    20,
+  );
   const sessionPreview = buildSessionKey({
     platform: parsePlatform(resolveSessionPlatformOption(options)),
     tenant: readOptionString(options, "tenant") ?? projectName,
@@ -604,6 +613,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const symbolDeclarationGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_declaration");
   const dependencyQueryGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "dependency_query");
   const dependencyImportGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "dependency_import");
+  const contextGraphCacheWindowSummary = readGraphCacheWindowSummary({
+    workDir,
+    size: contextGraphCacheWindowSize,
+  });
 
   let probeResult:
     | {
@@ -732,6 +745,19 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         symbol_declaration: symbolDeclarationGraphCacheStats,
         dependency_query: dependencyQueryGraphCacheStats,
         dependency_import: dependencyImportGraphCacheStats,
+        window: {
+          path: contextGraphCacheWindowSummary.path,
+          configured_size: contextGraphCacheWindowSummary.configuredSize,
+          entries: contextGraphCacheWindowSummary.entries,
+          from_ts: contextGraphCacheWindowSummary.fromTs,
+          to_ts: contextGraphCacheWindowSummary.toTs,
+          delta_totals: {
+            symbol_query: contextGraphCacheWindowSummary.deltaTotals.symbolQuery,
+            symbol_declaration: contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration,
+            dependency_query: contextGraphCacheWindowSummary.deltaTotals.dependencyQuery,
+            dependency_import: contextGraphCacheWindowSummary.deltaTotals.dependencyImport,
+          },
+        },
       },
       context_engine: {
         enabled: contextEngineConfig.enabled,
@@ -895,6 +921,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(`runtime_tool_max_recovery_rounds: ${runtimeToolContextPreview.maxRecoveryRounds}\n`);
   process.stdout.write(
     `context_graph_cache_stats: symbol_query=${symbolQueryGraphCacheStats.hit}/${symbolQueryGraphCacheStats.miss}/${symbolQueryGraphCacheStats.write}/${symbolQueryGraphCacheStats.evict} symbol_declaration=${symbolDeclarationGraphCacheStats.hit}/${symbolDeclarationGraphCacheStats.miss}/${symbolDeclarationGraphCacheStats.write}/${symbolDeclarationGraphCacheStats.evict} dependency_query=${dependencyQueryGraphCacheStats.hit}/${dependencyQueryGraphCacheStats.miss}/${dependencyQueryGraphCacheStats.write}/${dependencyQueryGraphCacheStats.evict} dependency_import=${dependencyImportGraphCacheStats.hit}/${dependencyImportGraphCacheStats.miss}/${dependencyImportGraphCacheStats.write}/${dependencyImportGraphCacheStats.evict}\n`,
+  );
+  process.stdout.write(
+    `context_graph_cache_window: size=${contextGraphCacheWindowSummary.configuredSize} entries=${contextGraphCacheWindowSummary.entries} range=${contextGraphCacheWindowSummary.fromTs ?? "<none>"}..${contextGraphCacheWindowSummary.toTs ?? "<none>"} delta_symbol_query=${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.evict} delta_symbol_declaration=${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.evict} delta_dependency_query=${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.evict} delta_dependency_import=${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.evict}\n`,
   );
   process.stdout.write(
     `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,

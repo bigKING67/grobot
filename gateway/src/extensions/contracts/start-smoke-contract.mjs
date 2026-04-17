@@ -1175,6 +1175,24 @@ function runStatusTsRust(repoRoot) {
   const dependencyImportGraphCacheStats = isObject(contextGraphCacheStats?.dependency_import)
     ? contextGraphCacheStats.dependency_import
     : null;
+  const contextGraphCacheWindow = isObject(contextGraphCacheStats?.window)
+    ? contextGraphCacheStats.window
+    : null;
+  const contextGraphCacheWindowDeltaTotals = isObject(contextGraphCacheWindow?.delta_totals)
+    ? contextGraphCacheWindow.delta_totals
+    : null;
+  const symbolQueryWindowDeltaStats = isObject(contextGraphCacheWindowDeltaTotals?.symbol_query)
+    ? contextGraphCacheWindowDeltaTotals.symbol_query
+    : null;
+  const symbolDeclarationWindowDeltaStats = isObject(contextGraphCacheWindowDeltaTotals?.symbol_declaration)
+    ? contextGraphCacheWindowDeltaTotals.symbol_declaration
+    : null;
+  const dependencyQueryWindowDeltaStats = isObject(contextGraphCacheWindowDeltaTotals?.dependency_query)
+    ? contextGraphCacheWindowDeltaTotals.dependency_query
+    : null;
+  const dependencyImportWindowDeltaStats = isObject(contextGraphCacheWindowDeltaTotals?.dependency_import)
+    ? contextGraphCacheWindowDeltaTotals.dependency_import
+    : null;
   const contextEngine = isObject(parsedStatus?.context_engine)
     ? parsedStatus.context_engine
     : null;
@@ -1212,6 +1230,20 @@ function runStatusTsRust(repoRoot) {
     status_symbol_declaration_cache_write_type: typeof symbolDeclarationGraphCacheStats?.write,
     status_dependency_query_cache_miss_type: typeof dependencyQueryGraphCacheStats?.miss,
     status_dependency_import_cache_evict_type: typeof dependencyImportGraphCacheStats?.evict,
+    status_has_context_graph_cache_window: Boolean(contextGraphCacheWindow),
+    status_context_graph_cache_window_path_type: typeof contextGraphCacheWindow?.path,
+    status_context_graph_cache_window_configured_size_type: typeof contextGraphCacheWindow?.configured_size,
+    status_context_graph_cache_window_entries_type: typeof contextGraphCacheWindow?.entries,
+    status_context_graph_cache_window_from_ts_type: contextGraphCacheWindow?.from_ts === null
+      ? "null"
+      : typeof contextGraphCacheWindow?.from_ts,
+    status_context_graph_cache_window_to_ts_type: contextGraphCacheWindow?.to_ts === null
+      ? "null"
+      : typeof contextGraphCacheWindow?.to_ts,
+    status_context_graph_cache_window_delta_symbol_query_hit_type: typeof symbolQueryWindowDeltaStats?.hit,
+    status_context_graph_cache_window_delta_symbol_declaration_write_type: typeof symbolDeclarationWindowDeltaStats?.write,
+    status_context_graph_cache_window_delta_dependency_query_miss_type: typeof dependencyQueryWindowDeltaStats?.miss,
+    status_context_graph_cache_window_delta_dependency_import_evict_type: typeof dependencyImportWindowDeltaStats?.evict,
     status_has_context_engine: Boolean(contextEngine),
     status_context_engine_enabled_type: typeof contextEngine?.enabled,
     status_context_engine_profile_type: typeof contextEngine?.profile,

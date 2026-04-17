@@ -6,6 +6,10 @@ export {
   resetContextGraphCacheStats,
 } from "./graph/cache-utils";
 export {
+  appendGraphCacheWindowEntry,
+  readGraphCacheWindowSummary,
+} from "./graph/cache-window";
+export {
   escalatePromptVariant,
   nextCompactionStage,
   truncatePromptHeadForPtlRetry,

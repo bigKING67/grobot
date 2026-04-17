@@ -18,6 +18,7 @@ import {
 } from "../../../../tools/ask-user";
 import { applyLearnedPromptContext } from "../../../../tools/ga-skill";
 import {
+  appendGraphCacheWindowEntry,
   buildSemanticPrefetchBlock,
   classifyPromptOverflow,
   computeUtilization,
@@ -1062,6 +1063,27 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       input.writeStderr(
         `[context-engine] event=graph_cache_stats delta_symbol_query=${symbolQueryDeltaStats.hit}/${symbolQueryDeltaStats.miss}/${symbolQueryDeltaStats.write}/${symbolQueryDeltaStats.evict} delta_symbol_decl=${symbolDeclarationDeltaStats.hit}/${symbolDeclarationDeltaStats.miss}/${symbolDeclarationDeltaStats.write}/${symbolDeclarationDeltaStats.evict} delta_dependency_query=${dependencyQueryDeltaStats.hit}/${dependencyQueryDeltaStats.miss}/${dependencyQueryDeltaStats.write}/${dependencyQueryDeltaStats.evict} delta_dependency_import=${dependencyImportDeltaStats.hit}/${dependencyImportDeltaStats.miss}/${dependencyImportDeltaStats.write}/${dependencyImportDeltaStats.evict} total_symbol_query=${symbolQueryStats.hit}/${symbolQueryStats.miss}/${symbolQueryStats.write}/${symbolQueryStats.evict} total_symbol_decl=${symbolDeclarationStats.hit}/${symbolDeclarationStats.miss}/${symbolDeclarationStats.write}/${symbolDeclarationStats.evict} total_dependency_query=${dependencyQueryStats.hit}/${dependencyQueryStats.miss}/${dependencyQueryStats.write}/${dependencyQueryStats.evict} total_dependency_import=${dependencyImportStats.hit}/${dependencyImportStats.miss}/${dependencyImportStats.write}/${dependencyImportStats.evict}\n`,
       );
+      appendGraphCacheWindowEntry({
+        workDir: input.workDir,
+        entry: {
+          ts: nowIso(),
+          sessionKey,
+          stage: selectedStage,
+          selectionReason,
+          delta: {
+            symbolQuery: symbolQueryDeltaStats,
+            symbolDeclaration: symbolDeclarationDeltaStats,
+            dependencyQuery: dependencyQueryDeltaStats,
+            dependencyImport: dependencyImportDeltaStats,
+          },
+          total: {
+            symbolQuery: symbolQueryStats,
+            symbolDeclaration: symbolDeclarationStats,
+            dependencyQuery: dependencyQueryStats,
+            dependencyImport: dependencyImportStats,
+          },
+        },
+      });
       const selectedConversationVariant = promptPreparation.variants.find(
         (variant) => variant.stage === selectedStage,
       ) ?? promptPreparation.selected;
