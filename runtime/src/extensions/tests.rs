@@ -16,6 +16,18 @@ mod tests {
                 .is_some(),
             "runtime.health should expose overlap_guard metrics"
         );
+        assert!(
+            payload["result"]["cache_stats"]["model_catalog"]["hit_total"]
+                .as_u64()
+                .is_some(),
+            "runtime.health should expose model catalog cache metrics"
+        );
+        assert!(
+            payload["result"]["cache_stats"]["prompt_cache"]["hint_attempted_total"]
+                .as_u64()
+                .is_some(),
+            "runtime.health should expose prompt cache metrics"
+        );
     }
 
     #[test]

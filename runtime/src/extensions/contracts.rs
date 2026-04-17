@@ -65,6 +65,8 @@ pub struct TurnExecuteKimiOptionsParams {
     #[serde(default)]
     pub official_tool_formulas: Option<Value>,
     #[serde(default)]
+    pub prompt_cache: Option<TurnExecutePromptCacheOptionsParams>,
+    #[serde(default)]
     pub max_tokens: Option<u32>,
     #[serde(default)]
     pub stream: Option<bool>,
@@ -76,6 +78,16 @@ pub struct TurnExecuteKimiOptionsParams {
     pub files_enabled: Option<bool>,
     #[serde(default)]
     pub allow_file_admin: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TurnExecutePromptCacheOptionsParams {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub strategy: Option<String>,
+    #[serde(default)]
+    pub user_last_n: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

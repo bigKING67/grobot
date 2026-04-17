@@ -51,11 +51,20 @@ export type KimiWebSearchMode =
   | "official_only"
   | "off";
 
+export type RuntimePromptCacheStrategy = "user_last_n";
+
+export interface RuntimePromptCacheOptions {
+  enabled?: boolean;
+  strategy?: RuntimePromptCacheStrategy;
+  userLastN?: number;
+}
+
 export interface RuntimeKimiOptions {
   webSearchMode?: KimiWebSearchMode;
   disableThinkingOnBuiltinWebSearch?: boolean;
   officialToolsAllowlist?: string[];
   officialToolFormulas?: Record<string, string>;
+  promptCache?: RuntimePromptCacheOptions;
   maxTokens?: number;
   stream?: boolean;
   temperature?: number;
@@ -184,6 +193,8 @@ export type RuntimeEventType =
   | "model_response"
   | "tool_start"
   | "tool_end"
+  | "prompt_cache_hint_applied"
+  | "prompt_cache_usage_observed"
   | "turn_stream_chunk"
   | "turn_interrupted"
   | "turn_end"

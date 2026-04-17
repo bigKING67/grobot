@@ -6,6 +6,34 @@ function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function parseJsonObjectSafe(raw) {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    // ignore and try line-based fallback
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      if (isObject(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // continue probing
+    }
+  }
+  return null;
+}
+
 function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
@@ -1060,9 +1088,10 @@ function writeExecutionProjectToml(workDir) {
 function runStatusTsRust(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
-  return runCommand(repoRoot, [
+  const result = runCommand(repoRoot, [
     "./grobot",
     "status",
+    "--json",
     "--work-dir",
     workDir,
     "--gateway-impl",
@@ -1070,6 +1099,36 @@ function runStatusTsRust(repoRoot) {
     "--runtime-impl",
     "rust",
   ]);
+  const parsedStatus = parseJsonObjectSafe(result.stdout);
+  const routeDecision = isObject(parsedStatus?.route_decision)
+    ? parsedStatus.route_decision
+    : null;
+  const routeFailover = isObject(routeDecision?.failover)
+    ? routeDecision.failover
+    : null;
+  const runtimeHealth = isObject(parsedStatus?.runtime_health)
+    ? parsedStatus.runtime_health
+    : null;
+  const runtimeHealthCacheStats = isObject(runtimeHealth?.cache_stats)
+    ? runtimeHealth.cache_stats
+    : null;
+  const topLevelCacheStats = isObject(parsedStatus?.cache_stats)
+    ? parsedStatus.cache_stats
+    : null;
+  const topLevelPromptCache = isObject(topLevelCacheStats?.prompt_cache)
+    ? topLevelCacheStats.prompt_cache
+    : null;
+  return {
+    ...result,
+    status_json_parse_ok: Boolean(parsedStatus),
+    status_has_route_decision: Boolean(routeDecision),
+    status_has_route_ordered_providers: Array.isArray(routeDecision?.ordered_providers),
+    status_has_route_failover: Boolean(routeFailover),
+    status_has_runtime_health_cache_stats: Boolean(runtimeHealthCacheStats),
+    status_has_top_level_cache_stats: Boolean(topLevelCacheStats),
+    status_prompt_cache_hint_attempted_type: typeof topLevelPromptCache?.hint_attempted_total,
+    status_route_reason_type: typeof routeDecision?.reason,
+  };
 }
 
 function runStatusTsRustDeprecatedFlag(repoRoot) {

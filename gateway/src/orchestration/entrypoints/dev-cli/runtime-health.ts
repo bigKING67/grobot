@@ -45,6 +45,27 @@ export interface RuntimeOverlapGuardMetrics {
   maxTurnKeys: number;
 }
 
+export interface RuntimeModelCatalogCacheStats {
+  cacheEntries: number;
+  hitTotal: number;
+  missTotal: number;
+  staleTotal: number;
+  writeTotal: number;
+}
+
+export interface RuntimePromptCacheStats {
+  enabledTotal: number;
+  hintAttemptedTotal: number;
+  hintAppliedTotal: number;
+  usageObservedTotal: number;
+  cachedTokensTotal: number;
+}
+
+export interface RuntimeCacheStats {
+  modelCatalog: RuntimeModelCatalogCacheStats;
+  promptCache: RuntimePromptCacheStats;
+}
+
 function parseRuntimeJsonRpcResult(stdout: string): {
   ok: boolean;
   detail: string;
@@ -132,6 +153,7 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
   ok: boolean;
   detail: string;
   overlapGuardMetrics?: RuntimeOverlapGuardMetrics;
+  cacheStats?: RuntimeCacheStats;
 } {
   const input = JSON.stringify({
     jsonrpc: "2.0",
@@ -163,6 +185,7 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
     return { ok: false, detail: `runtime_status=${String(status)}` };
   }
   let overlapGuardMetrics: RuntimeOverlapGuardMetrics | undefined;
+  let cacheStats: RuntimeCacheStats | undefined;
   const runtimeTools = parsed.result.runtime_tools;
   if (isRecord(runtimeTools) && isRecord(runtimeTools.overlap_guard)) {
     const overlap = runtimeTools.overlap_guard;
@@ -196,10 +219,67 @@ export function runRuntimeHealthcheck(runtimeBinaryPath: string): {
       };
     }
   }
+  const cacheStatsRaw = parsed.result.cache_stats;
+  if (isRecord(cacheStatsRaw)) {
+    const modelCatalogRaw = isRecord(cacheStatsRaw.model_catalog)
+      ? cacheStatsRaw.model_catalog
+      : undefined;
+    const promptCacheRaw = isRecord(cacheStatsRaw.prompt_cache)
+      ? cacheStatsRaw.prompt_cache
+      : undefined;
+    const modelCatalog = modelCatalogRaw
+      ? {
+          cacheEntries: asNonNegativeInteger(modelCatalogRaw.cache_entries),
+          hitTotal: asNonNegativeInteger(modelCatalogRaw.hit_total),
+          missTotal: asNonNegativeInteger(modelCatalogRaw.miss_total),
+          staleTotal: asNonNegativeInteger(modelCatalogRaw.stale_total),
+          writeTotal: asNonNegativeInteger(modelCatalogRaw.write_total),
+        }
+      : undefined;
+    const promptCache = promptCacheRaw
+      ? {
+          enabledTotal: asNonNegativeInteger(promptCacheRaw.enabled_total),
+          hintAttemptedTotal: asNonNegativeInteger(promptCacheRaw.hint_attempted_total),
+          hintAppliedTotal: asNonNegativeInteger(promptCacheRaw.hint_applied_total),
+          usageObservedTotal: asNonNegativeInteger(promptCacheRaw.usage_observed_total),
+          cachedTokensTotal: asNonNegativeInteger(promptCacheRaw.cached_tokens_total),
+        }
+      : undefined;
+    if (
+      modelCatalog?.cacheEntries != null
+      && modelCatalog.hitTotal != null
+      && modelCatalog.missTotal != null
+      && modelCatalog.staleTotal != null
+      && modelCatalog.writeTotal != null
+      && promptCache?.enabledTotal != null
+      && promptCache.hintAttemptedTotal != null
+      && promptCache.hintAppliedTotal != null
+      && promptCache.usageObservedTotal != null
+      && promptCache.cachedTokensTotal != null
+    ) {
+      cacheStats = {
+        modelCatalog: {
+          cacheEntries: modelCatalog.cacheEntries,
+          hitTotal: modelCatalog.hitTotal,
+          missTotal: modelCatalog.missTotal,
+          staleTotal: modelCatalog.staleTotal,
+          writeTotal: modelCatalog.writeTotal,
+        },
+        promptCache: {
+          enabledTotal: promptCache.enabledTotal,
+          hintAttemptedTotal: promptCache.hintAttemptedTotal,
+          hintAppliedTotal: promptCache.hintAppliedTotal,
+          usageObservedTotal: promptCache.usageObservedTotal,
+          cachedTokensTotal: promptCache.cachedTokensTotal,
+        },
+      };
+    }
+  }
   return {
     ok: true,
     detail: "runtime.health=ok",
     overlapGuardMetrics,
+    cacheStats,
   };
 }
 

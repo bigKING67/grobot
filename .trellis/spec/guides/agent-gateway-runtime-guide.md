@@ -72,6 +72,11 @@ Required event types:
 - `turn_failed`
 - `session_resume`
 
+Optional observability event types:
+
+- `prompt_cache_hint_applied`
+- `prompt_cache_usage_observed`
+
 ### 1.4 ToolCallContract
 
 ```json
@@ -143,6 +148,25 @@ or
 { "ok": false, "error": "message" }
 ```
 
+### 2.5 `grobot status --json` Observability Contract
+
+Gateway status output should include route and cache observability fields:
+
+- `route_decision`
+  - `strategy` (`sticky+score`)
+  - `primary_provider`
+  - `requested_provider`
+  - `ordered_providers`
+  - `source`
+  - `reason`
+  - `failover.circuit_failures`
+  - `failover.circuit_cooldown_secs`
+  - `failover.sticky_mode`
+- `runtime_health.cache_stats`
+  - `model_catalog` (`cache_entries/hit_total/miss_total/stale_total/write_total`)
+  - `prompt_cache` (`enabled_total/hint_attempted_total/hint_applied_total/usage_observed_total/cached_tokens_total`)
+- top-level `cache_stats` (same schema as `runtime_health.cache_stats`)
+
 ---
 
 ## 3. Rust Runtime Core Responsibilities
@@ -203,6 +227,8 @@ Failover order:
 1. next target in same priority group
 2. next priority group
 3. explicit failure event if budget exhausted
+
+Status and diagnostics should expose routing decisions with explicit reason/source to support postmortem and policy tuning.
 
 ### 3.5 Tool Execution
 

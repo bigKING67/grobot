@@ -50,6 +50,8 @@ function normalizeRuntimeEventType(raw: unknown): RuntimeEventType {
     "model_response",
     "tool_start",
     "tool_end",
+    "prompt_cache_hint_applied",
+    "prompt_cache_usage_observed",
     "turn_stream_chunk",
     "turn_interrupted",
     "turn_end",
@@ -187,6 +189,13 @@ function toRpcRequestLine(request: RuntimeRequest): string {
                       runtimeModelConfig.providerOptions.kimi.officialToolsAllowlist,
                     official_tool_formulas:
                       runtimeModelConfig.providerOptions.kimi.officialToolFormulas,
+                    prompt_cache: runtimeModelConfig.providerOptions.kimi.promptCache
+                      ? {
+                          enabled: runtimeModelConfig.providerOptions.kimi.promptCache.enabled,
+                          strategy: runtimeModelConfig.providerOptions.kimi.promptCache.strategy,
+                          user_last_n: runtimeModelConfig.providerOptions.kimi.promptCache.userLastN,
+                        }
+                      : undefined,
                     max_tokens: runtimeModelConfig.providerOptions.kimi.maxTokens,
                     stream: runtimeModelConfig.providerOptions.kimi.stream,
                     temperature: runtimeModelConfig.providerOptions.kimi.temperature,

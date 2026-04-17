@@ -1,6 +1,6 @@
 # Runtime Real Execution v1 Spec
 
-> Scope: Rust runtime `runtime.turn.execute` real-model execution (OpenAI-compatible), with v1.1 provider pass-through and explicit tool-call fail-fast.
+> Scope: Rust runtime `runtime.turn.execute` real-model execution (OpenAI-compatible), with v1.2 provider pass-through, prompt-cache hints, runtime cache telemetry, and explicit tool-call fail-fast.
 
 ---
 
@@ -46,6 +46,15 @@ Optional params:
   - `api_key`
   - `model`
   - `timeout_ms`
+  - `provider_kind`
+  - `provider_options.kimi`:
+    - `web_search_mode`
+    - `disable_thinking_on_builtin_web_search`
+    - `official_tools_allowlist`
+    - `official_tool_formulas`
+    - `prompt_cache.enabled`
+    - `prompt_cache.strategy` (`user_last_n`)
+    - `prompt_cache.user_last_n` (`1..12`, default `2`)
 
 Resolution priority per field:
 
@@ -64,6 +73,14 @@ Event order:
 2. `model_request`
 3. `model_response`
 4. `turn_end` (`status=ok`)
+
+When `provider_options.kimi.prompt_cache.enabled=true`, runtime may emit extra telemetry events:
+
+- `prompt_cache_hint_applied`
+- `prompt_cache_usage_observed`
+
+`prompt_cache_hint_applied` reports whether hint injection is supported/applied for current provider payload.
+`prompt_cache_usage_observed` reports cache usage signals observed from upstream `usage` payload.
 
 Response keeps existing fields:
 
@@ -120,9 +137,14 @@ RPC error:
 ## 4. Gateway Compatibility Rules
 
 - `gateway/src/tools/runtime/stdio-client.ts` must keep JSON-RPC parsing compatible.
-- `gateway/src/tools/runtime/stdio-client.ts` must forward optional `model_config` without changing protocol version.
+- `gateway/src/tools/runtime/stdio-client.ts` must forward optional `model_config` (including `provider_options.kimi.prompt_cache`) without changing protocol version.
 - On RPC error, gateway should surface `error_class` and `trace_id` in thrown error message.
 - No change to `RuntimeTurnResult` public shape in TypeScript types.
+- `runtime.health` should expose `cache_stats.model_catalog` and `cache_stats.prompt_cache`.
+- `grobot status --json` should expose:
+  - `route_decision`
+  - `runtime_health.cache_stats`
+  - top-level `cache_stats` (mirrors runtime cache snapshot)
 
 ---
 
@@ -137,9 +159,10 @@ Acceptance:
 
 - `npm run check` passes in a default local environment without real provider credentials.
 - Rust runtime unit tests cover both success-event ordering and failure-event ordering at orchestrator level.
-- Rust runtime unit tests cover request-level provider pass-through and `tool_call_not_supported` fail-fast.
+- Rust runtime unit tests cover request-level provider pass-through, prompt-cache hint/usage telemetry, and `tool_call_not_supported` fail-fast.
 - Node gateway checks include:
   - local mock model server proving `failover-runs-ts-rust` real-model content path,
   - provider config (`config.toml`) pass-through path,
+  - status contract path (`route_decision` + `cache_stats` presence/type),
   - explicit upstream failure mapping path (`upstream_connect_failed`),
   - tool-call fail-fast path (`tool_call_not_supported`).

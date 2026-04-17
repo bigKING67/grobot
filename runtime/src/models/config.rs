@@ -120,6 +120,17 @@ fn parse_kimi_web_search_mode(raw: Option<&str>) -> KimiWebSearchMode {
     }
 }
 
+fn parse_prompt_cache_strategy(raw: Option<&str>) -> PromptCacheStrategy {
+    let normalized = raw
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    match normalized.as_str() {
+        "user_last_n" => PromptCacheStrategy::UserLastN,
+        _ => PromptCacheStrategy::UserLastN,
+    }
+}
+
 fn normalize_kimi_max_tokens(raw: Option<u32>) -> u32 {
     const DEFAULT_KIMI_MAX_TOKENS: u32 = 262_144;
     const MIN_KIMI_MAX_TOKENS: u32 = 1_024;
@@ -149,6 +160,20 @@ fn normalize_kimi_top_p(raw: Option<f64>) -> f64 {
     value.clamp(0.0, 1.0)
 }
 
+fn normalize_prompt_cache_user_last_n(raw: Option<u32>) -> usize {
+    const DEFAULT_PROMPT_CACHE_USER_LAST_N: usize = 2;
+    const MIN_PROMPT_CACHE_USER_LAST_N: usize = 1;
+    const MAX_PROMPT_CACHE_USER_LAST_N: usize = 12;
+    let Some(value) = raw else {
+        return DEFAULT_PROMPT_CACHE_USER_LAST_N;
+    };
+    let normalized = value as usize;
+    normalized.clamp(
+        MIN_PROMPT_CACHE_USER_LAST_N,
+        MAX_PROMPT_CACHE_USER_LAST_N,
+    )
+}
+
 fn default_kimi_official_tools_allowlist() -> Vec<String> {
     vec![
         "web_search".to_string(),
@@ -166,6 +191,7 @@ fn resolve_kimi_options(input_config: Option<&RuntimeModelConfigInput>) -> KimiP
     let allowlist = input_kimi
         .and_then(|options| options.official_tools_allowlist.clone())
         .unwrap_or_else(default_kimi_official_tools_allowlist);
+    let prompt_cache_input = input_kimi.and_then(|options| options.prompt_cache.as_ref());
     KimiProviderOptions {
         web_search_mode: parse_kimi_web_search_mode(
             input_kimi.and_then(|options| options.web_search_mode.as_deref()),
@@ -178,6 +204,17 @@ fn resolve_kimi_options(input_config: Option<&RuntimeModelConfigInput>) -> KimiP
             .map(|item| canonical_kimi_tool_name(&item))
             .filter(|item| !item.is_empty())
             .collect(),
+        prompt_cache: PromptCacheOptions {
+            enabled: prompt_cache_input
+                .and_then(|options| options.enabled)
+                .unwrap_or(false),
+            strategy: parse_prompt_cache_strategy(
+                prompt_cache_input.and_then(|options| options.strategy.as_deref()),
+            ),
+            user_last_n: normalize_prompt_cache_user_last_n(
+                prompt_cache_input.and_then(|options| options.user_last_n),
+            ),
+        },
         max_tokens: normalize_kimi_max_tokens(input_kimi.and_then(|options| options.max_tokens)),
         stream: input_kimi.and_then(|options| options.stream).unwrap_or(true),
         temperature: normalize_kimi_temperature(input_kimi.and_then(|options| options.temperature)),
@@ -288,11 +325,14 @@ fn load_model_catalog_with_cache(
             if let Some(entry) = guard.get(&cache_key) {
                 let expires_at = entry.cached_at_millis + (cache_ttl_secs as u128 * 1_000);
                 if now_millis <= expires_at {
+                    record_model_catalog_cache_hit();
                     return Ok(entry.model_ids.clone());
                 }
+                record_model_catalog_cache_stale();
             }
         }
     }
+    record_model_catalog_cache_miss();
     let model_ids = fetch_model_catalog(base_url, api_key, timeout_ms)?;
     if cache_ttl_secs > 0 {
         if let Ok(mut guard) = model_catalog_cache().lock() {
@@ -304,6 +344,7 @@ fn load_model_catalog_with_cache(
                 },
             );
         }
+        record_model_catalog_cache_write();
     }
     Ok(model_ids)
 }

@@ -1,15 +1,21 @@
 #[cfg(test)]
 mod tests {
     use super::{
+        apply_prompt_cache_hints,
         build_runtime_user_prompt, build_tool_definitions, extract_response_content,
+        extract_prompt_cache_usage_observation,
         load_runtime_model_config, parse_model_response_payload, pick_auto_model,
+        PromptCacheOptions, PromptCacheStrategy,
         should_disable_thinking_for_kimi_builtin_web_search, ModelExecutor,
         OpenAiCompatibleModelExecutor, ProviderKind, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL,
         ENV_RUNTIME_TIMEOUT_MS,
     };
-    use crate::models::engine::{RuntimeModelConfigInput, RuntimeToolContextInput, TurnExecuteInput};
+    use crate::models::engine::{
+        RuntimeKimiOptionsInput, RuntimeModelConfigInput, RuntimePromptCacheOptionsInput,
+        RuntimeProviderOptionsInput, RuntimeToolContextInput, TurnExecuteInput,
+    };
     use crate::tools::tools::LocalToolExecutor;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::env;
     use std::ffi::OsString;
     use std::io::{ErrorKind, Read, Write};
@@ -349,6 +355,178 @@ mod tests {
         let selected =
             pick_auto_model(&models, ProviderKind::OpenAiCompatible).expect("selected model");
         assert_eq!(selected, "model-a");
+    }
+
+    #[test]
+    fn prompt_cache_hints_target_latest_user_messages_only() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "system prompt" }),
+            json!({ "role": "user", "content": "first user" }),
+            json!({ "role": "assistant", "content": "assistant reply" }),
+            json!({ "role": "user", "content": "second user" }),
+            json!({ "role": "user", "content": [ { "type": "text", "text": "third user" } ] }),
+        ];
+
+        let applied = apply_prompt_cache_hints(
+            &mut messages,
+            PromptCacheOptions {
+                enabled: true,
+                strategy: PromptCacheStrategy::UserLastN,
+                user_last_n: 2,
+            },
+        );
+        assert_eq!(applied, 2);
+
+        let first_user = &messages[1];
+        let second_user = &messages[3];
+        let third_user = &messages[4];
+
+        assert_eq!(
+            first_user
+                .get("content")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or(""),
+            "first user"
+        );
+        assert_eq!(
+            second_user
+                .get("content")
+                .and_then(Value::as_array)
+                .and_then(|parts| parts.first())
+                .and_then(Value::as_object)
+                .and_then(|part| part.get("cache_control"))
+                .and_then(Value::as_object)
+                .and_then(|cache| cache.get("type"))
+                .and_then(Value::as_str),
+            Some("ephemeral")
+        );
+        assert_eq!(
+            third_user
+                .get("content")
+                .and_then(Value::as_array)
+                .and_then(|parts| parts.first())
+                .and_then(Value::as_object)
+                .and_then(|part| part.get("cache_control"))
+                .and_then(Value::as_object)
+                .and_then(|cache| cache.get("type"))
+                .and_then(Value::as_str),
+            Some("ephemeral")
+        );
+    }
+
+    #[test]
+    fn prompt_cache_usage_observation_parses_cached_token_signals() {
+        let payload = json!({
+            "usage": {
+                "cache_read_input_tokens": 24,
+                "cache_creation_input_tokens": 8,
+                "input_tokens_details": {
+                    "cached_tokens": 20
+                }
+            }
+        });
+        let observation = extract_prompt_cache_usage_observation(&payload)
+            .expect("expected prompt cache observation");
+        assert_eq!(observation.cached_tokens_total, 24);
+        assert_eq!(
+            observation
+                .payload
+                .get("cache_creation_input_tokens")
+                .and_then(Value::as_u64),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn executor_emits_prompt_cache_telemetry_for_anthropic_compatible_requests() {
+        let _env_guard = env_lock().lock().expect("lock env");
+        let server = start_mock_http_server(
+            "200 OK",
+            r#"{"id":"mock","usage":{"cache_read_input_tokens":9},"choices":[{"message":{"content":"PROMPT_CACHE_OK"}}]}"#,
+        );
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+
+        let input = TurnExecuteInput {
+            request_id: "req_prompt_cache_telemetry".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            user_message: "please summarize".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(server.base_url.clone()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("claude-3.7-sonnet".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: Some("openai_compatible".to_string()),
+                provider_options: Some(RuntimeProviderOptionsInput {
+                    kimi: Some(RuntimeKimiOptionsInput {
+                        web_search_mode: None,
+                        disable_thinking_on_builtin_web_search: None,
+                        official_tools_allowlist: None,
+                        official_tool_formulas: None,
+                        prompt_cache: Some(RuntimePromptCacheOptionsInput {
+                            enabled: Some(true),
+                            strategy: Some("user_last_n".to_string()),
+                            user_last_n: Some(1),
+                        }),
+                        max_tokens: None,
+                        stream: None,
+                        temperature: None,
+                        top_p: None,
+                        files_enabled: None,
+                        allow_file_admin: None,
+                    }),
+                }),
+            }),
+            tool_context: None,
+            attachments: vec![],
+        };
+
+        let executor = OpenAiCompatibleModelExecutor;
+        let output = executor
+            .generate_assistant_message(&input, &LocalToolExecutor)
+            .expect("expected prompt cache request success");
+        assert_eq!(output.assistant_message, "PROMPT_CACHE_OK");
+        assert!(
+            output
+                .telemetry_events
+                .iter()
+                .any(|event| event.event_type == "prompt_cache_hint_applied")
+        );
+        assert!(
+            output
+                .telemetry_events
+                .iter()
+                .any(|event| event.event_type == "prompt_cache_usage_observed")
+        );
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 1);
+        let body_payload: Value =
+            serde_json::from_str(&calls[0].body).expect("request body should be json");
+        let first_message = body_payload["messages"]
+            .as_array()
+            .and_then(|messages| messages.first())
+            .expect("first message should exist");
+        let content_part = first_message
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|parts| parts.first())
+            .and_then(Value::as_object)
+            .expect("first message content should be structured");
+        assert_eq!(
+            content_part
+                .get("cache_control")
+                .and_then(Value::as_object)
+                .and_then(|cache| cache.get("type"))
+                .and_then(Value::as_str),
+            Some("ephemeral")
+        );
     }
 
     #[test]

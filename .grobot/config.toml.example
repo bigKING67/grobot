@@ -4,6 +4,9 @@
 # 1) cp .grobot/config.toml.example .grobot/config.toml
 # 2) Fill credentials in .grobot/config.toml
 # 3) Keep .grobot/config.toml out of git (contains secrets)
+#
+# Context Engine policy (auto-compaction/lineage/graph/prefetch) is configured in:
+# .grobot/project.toml -> [context_engine]
 
 # =============================================================================
 # Global
@@ -114,6 +117,10 @@ name = "kimi"
 api_key = "replace-with-kimi-api-key"
 base_url = "https://api.moonshot.cn/v1"
 model = "auto" # auto = read from /models and pick first kimi/moonshot model
+# Optional prompt cache hints (effective only on Anthropic-compatible upstream payloads)
+# prompt_cache_enabled = true
+# prompt_cache_strategy = "user_last_n"
+# prompt_cache_user_last_n = 2
 
 # Optional fallback provider example (used when primary fails)
 # [[projects.agent.providers]]

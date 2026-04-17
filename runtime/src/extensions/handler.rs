@@ -12,7 +12,8 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 "status": "ok",
                 "runtime_tools": {
                     "overlap_guard": crate::tools::tools::overlap_guard_metrics_snapshot()
-                }
+                },
+                "cache_stats": crate::models::model::runtime_cache_stats_snapshot()
             }),
         )),
         "runtime.tools.describe" => Ok(success(
@@ -52,6 +53,11 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                                     .disable_thinking_on_builtin_web_search,
                                 official_tools_allowlist: kimi.official_tools_allowlist,
                                 official_tool_formulas: kimi.official_tool_formulas,
+                                prompt_cache: kimi.prompt_cache.map(|prompt_cache| RuntimePromptCacheOptionsInput {
+                                    enabled: prompt_cache.enabled,
+                                    strategy: prompt_cache.strategy,
+                                    user_last_n: prompt_cache.user_last_n,
+                                }),
                                 max_tokens: kimi.max_tokens,
                                 stream: kimi.stream,
                                 temperature: kimi.temperature,

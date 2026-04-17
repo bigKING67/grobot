@@ -153,6 +153,9 @@ interface MutableProvider {
   kimiTopP?: number;
   kimiFilesEnabled?: boolean;
   kimiAllowFileAdmin?: boolean;
+  promptCacheEnabled?: boolean;
+  promptCacheStrategy?: string;
+  promptCacheUserLastN?: number;
   priority?: number;
   weight?: number;
   unitCost?: number;
@@ -183,6 +186,9 @@ export interface ProviderSnapshot {
   kimiTopP?: number;
   kimiFilesEnabled?: boolean;
   kimiAllowFileAdmin?: boolean;
+  promptCacheEnabled?: boolean;
+  promptCacheStrategy?: string;
+  promptCacheUserLastN?: number;
   priority?: number;
   weight?: number;
   unitCost?: number;
@@ -301,6 +307,12 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
             currentProvider.kimiFilesEnabled = parseTomlBoolean(kvMatch[2]);
           } else if (key === "kimi_allow_file_admin") {
             currentProvider.kimiAllowFileAdmin = parseTomlBoolean(kvMatch[2]);
+          } else if (key === "prompt_cache_enabled" || key === "kimi_prompt_cache_enabled") {
+            currentProvider.promptCacheEnabled = parseTomlBoolean(kvMatch[2]);
+          } else if (key === "prompt_cache_strategy" || key === "kimi_prompt_cache_strategy") {
+            currentProvider.promptCacheStrategy = value;
+          } else if (key === "prompt_cache_user_last_n" || key === "kimi_prompt_cache_user_last_n") {
+            currentProvider.promptCacheUserLastN = parseTomlNumber(kvMatch[2]);
           } else if (key === "priority") {
             currentProvider.priority = parseTomlNumber(kvMatch[2]);
           } else if (key === "weight") {
@@ -355,6 +367,7 @@ function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): 
   const resolvedName = raw.name?.trim();
   const providerKind = raw.providerKind?.trim();
   const kimiWebSearchMode = raw.kimiWebSearchMode?.trim();
+  const promptCacheStrategy = raw.promptCacheStrategy?.trim();
   const kimiOfficialToolsAllowlist = Array.isArray(raw.kimiOfficialToolsAllowlist)
     ? raw.kimiOfficialToolsAllowlist
       .map((item) => item.trim())
@@ -375,6 +388,12 @@ function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): 
     kimiTopP: typeof raw.kimiTopP === "number" ? raw.kimiTopP : undefined,
     kimiFilesEnabled: raw.kimiFilesEnabled,
     kimiAllowFileAdmin: raw.kimiAllowFileAdmin,
+    promptCacheEnabled: raw.promptCacheEnabled,
+    promptCacheStrategy: promptCacheStrategy && promptCacheStrategy.length > 0 ? promptCacheStrategy : undefined,
+    promptCacheUserLastN:
+      typeof raw.promptCacheUserLastN === "number"
+        ? raw.promptCacheUserLastN
+        : undefined,
     priority: typeof raw.priority === "number" ? raw.priority : undefined,
     weight: typeof raw.weight === "number" ? raw.weight : undefined,
     unitCost: typeof raw.unitCost === "number" ? raw.unitCost : undefined,

@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolveExecutionPlaneConfig } from "../../../execution-plane";
 import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
-import { probeProviderModels, readProviderSnapshotFromToml } from "../provider-probe";
+import {
+  probeProviderModels,
+  readProviderPoolFromToml,
+  readProviderSnapshotFromToml,
+} from "../provider-probe";
 import {
   buildToolsManifestFingerprint,
   resolveRuntimeBinaryPath,
@@ -91,6 +95,106 @@ function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
     return parseTomlStringArray(kvMatch[2]);
   }
   return [];
+}
+
+function parseOptionalPositiveInt(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseRequiredPositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = parseOptionalPositiveInt(value);
+  if (typeof parsed !== "number") {
+    return fallback;
+  }
+  return parsed;
+}
+
+interface RouteDecisionSummary {
+  strategy: "sticky+score";
+  primaryProvider: string | null;
+  requestedProvider: string | null;
+  orderedProviders: string[];
+  source: string | null;
+  reason: string;
+  failover: {
+    circuitFailures: number;
+    circuitCooldownSecs: number;
+    stickyMode: "session_key";
+  };
+}
+
+function resolveRouteDecisionSummary(input: {
+  providerOverride?: string;
+  providerEnv?: string;
+  providerPoolSnapshot?: {
+    source: string;
+    providerName?: string;
+    providers: Array<{ name: string }>;
+  };
+  hasDirectRuntimeOverride: boolean;
+  circuitFailures: number;
+  circuitCooldownSecs: number;
+}): RouteDecisionSummary {
+  const providerOverride = input.providerOverride?.trim();
+  const providerEnv = input.providerEnv?.trim();
+  const poolProviders = input.providerPoolSnapshot?.providers ?? [];
+  if (input.hasDirectRuntimeOverride) {
+    const directProvider = providerOverride || providerEnv || "direct-override";
+    return {
+      strategy: "sticky+score",
+      primaryProvider: directProvider,
+      requestedProvider: directProvider,
+      orderedProviders: [directProvider],
+      source: "direct-runtime-override",
+      reason: "direct_runtime_override",
+      failover: {
+        circuitFailures: input.circuitFailures,
+        circuitCooldownSecs: input.circuitCooldownSecs,
+        stickyMode: "session_key",
+      },
+    };
+  }
+
+  const orderedProviders = poolProviders
+    .map((provider) => provider.name.trim())
+    .filter((name) => name.length > 0);
+  const requestedProvider = providerOverride || providerEnv || input.providerPoolSnapshot?.providerName || null;
+  const primaryProvider = orderedProviders[0] ?? requestedProvider ?? null;
+  let reason = "pool_first_provider";
+  if (providerOverride) {
+    reason = "cli_provider_override";
+  } else if (providerEnv) {
+    reason = "env_provider_override";
+  } else if (input.providerPoolSnapshot?.providerName) {
+    reason = "config_selected_provider";
+  } else if (orderedProviders.length === 0) {
+    reason = "no_provider_pool";
+  }
+
+  return {
+    strategy: "sticky+score",
+    primaryProvider,
+    requestedProvider,
+    orderedProviders,
+    source: input.providerPoolSnapshot?.source ?? null,
+    reason,
+    failover: {
+      circuitFailures: input.circuitFailures,
+      circuitCooldownSecs: input.circuitCooldownSecs,
+      stickyMode: "session_key",
+    },
+  };
 }
 
 function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, runtimeBinaryPath?: string): {
@@ -183,29 +287,73 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const sessionScopeRaw = resolveSessionScopeOption(options);
   const sessionSubject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
-  const providerOverride = readOptionString(options, "provider");
+  const providerOverrideFromCli = readOptionString(options, "provider");
+  const providerOverrideFromEnv = process.env.GROBOT_PROVIDER;
+  const modelFromCli = readOptionString(options, "model");
+  const modelFromEnv = process.env.GROBOT_MODEL;
+  const baseUrlFromCli = readOptionString(options, "base-url");
+  const baseUrlFromEnv = process.env.GROBOT_BASE_URL;
+  const apiKeyFromCli = readOptionString(options, "api-key");
+  const apiKeyFromEnv = process.env.GROBOT_API_KEY;
+  const projectProviderPoolSnapshot = readProviderPoolFromToml(
+    configTomlPath,
+    projectName,
+    workDir,
+    homeDir,
+    providerOverrideFromCli,
+  );
   const projectProviderSnapshot = readProviderSnapshotFromToml(
     configTomlPath,
     projectName,
     workDir,
     homeDir,
-    providerOverride,
+    providerOverrideFromCli,
   );
-  const providerName = providerOverride ??
-    process.env.GROBOT_PROVIDER ??
+  const providerName = providerOverrideFromCli ??
+    providerOverrideFromEnv ??
     projectProviderSnapshot?.providerName ??
     "<auto>";
-  const modelName = readOptionString(options, "model") ??
-    process.env.GROBOT_MODEL ??
+  const modelName = modelFromCli ??
+    modelFromEnv ??
     projectProviderSnapshot?.provider?.model ??
     "<auto>";
-  const baseUrl = readOptionString(options, "base-url") ??
-    process.env.GROBOT_BASE_URL ??
+  const baseUrl = baseUrlFromCli ??
+    baseUrlFromEnv ??
     projectProviderSnapshot?.provider?.baseUrl ??
     "<auto>";
-  const apiKey = readOptionString(options, "api-key") ??
-    process.env.GROBOT_API_KEY ??
+  const apiKey = apiKeyFromCli ??
+    apiKeyFromEnv ??
     projectProviderSnapshot?.provider?.apiKey;
+  const hasDirectRuntimeOverride = Boolean(baseUrlFromCli)
+    || Boolean(baseUrlFromEnv)
+    || Boolean(apiKeyFromCli)
+    || Boolean(apiKeyFromEnv)
+    || Boolean(modelFromCli)
+    || Boolean(modelFromEnv);
+  const circuitFailures = parseRequiredPositiveInt(
+    readOptionString(options, "circuit-failures"),
+    2,
+  );
+  const circuitCooldownSecs = parseRequiredPositiveInt(
+    readOptionString(options, "circuit-cooldown-secs"),
+    30,
+  );
+  const routeDecision = resolveRouteDecisionSummary({
+    providerOverride: providerOverrideFromCli,
+    providerEnv: providerOverrideFromEnv,
+    providerPoolSnapshot: projectProviderPoolSnapshot
+      ? {
+          source: projectProviderPoolSnapshot.source,
+          providerName: projectProviderPoolSnapshot.providerName,
+          providers: projectProviderPoolSnapshot.providers.map((provider) => ({
+            name: provider.name,
+          })),
+        }
+      : undefined,
+    hasDirectRuntimeOverride,
+    circuitFailures,
+    circuitCooldownSecs,
+  });
   const sessionPreview = buildSessionKey({
     platform: parsePlatform(resolveSessionPlatformOption(options)),
     tenant: readOptionString(options, "tenant") ?? projectName,
@@ -242,14 +390,14 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     | undefined;
   let exitCode = 0;
   if (hasFlag(options, "probe")) {
-    const probeBaseUrl = readOptionString(options, "base-url") ??
-      process.env.GROBOT_BASE_URL ??
+    const probeBaseUrl = baseUrlFromCli ??
+      baseUrlFromEnv ??
       projectProviderSnapshot?.provider?.baseUrl;
-    const probeApiKey = readOptionString(options, "api-key") ??
-      process.env.GROBOT_API_KEY ??
+    const probeApiKey = apiKeyFromCli ??
+      apiKeyFromEnv ??
       projectProviderSnapshot?.provider?.apiKey;
-    const probeModel = readOptionString(options, "model") ??
-      process.env.GROBOT_MODEL ??
+    const probeModel = modelFromCli ??
+      modelFromEnv ??
       projectProviderSnapshot?.provider?.model;
     if (!probeBaseUrl || !probeApiKey) {
       probeResult = {
@@ -294,6 +442,19 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       session_scope: parsedScope,
       session_subject: sessionSubject,
       session_preview: sessionPreview,
+      route_decision: {
+        strategy: routeDecision.strategy,
+        primary_provider: routeDecision.primaryProvider,
+        requested_provider: routeDecision.requestedProvider,
+        ordered_providers: routeDecision.orderedProviders,
+        source: routeDecision.source,
+        reason: routeDecision.reason,
+        failover: {
+          circuit_failures: routeDecision.failover.circuitFailures,
+          circuit_cooldown_secs: routeDecision.failover.circuitCooldownSecs,
+          sticky_mode: routeDecision.failover.stickyMode,
+        },
+      },
       execution: {
         gateway_impl: executionPlane.gatewayImpl,
         gateway_impl_source: executionPlane.gatewayImplSource,
@@ -334,6 +495,43 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
                 max_turn_keys: runtimeHealth.overlapGuardMetrics.maxTurnKeys,
               }
               : null,
+            cache_stats: runtimeHealth.cacheStats
+              ? {
+                  model_catalog: {
+                    cache_entries: runtimeHealth.cacheStats.modelCatalog.cacheEntries,
+                    hit_total: runtimeHealth.cacheStats.modelCatalog.hitTotal,
+                    miss_total: runtimeHealth.cacheStats.modelCatalog.missTotal,
+                    stale_total: runtimeHealth.cacheStats.modelCatalog.staleTotal,
+                    write_total: runtimeHealth.cacheStats.modelCatalog.writeTotal,
+                  },
+                  prompt_cache: {
+                    enabled_total: runtimeHealth.cacheStats.promptCache.enabledTotal,
+                    hint_attempted_total: runtimeHealth.cacheStats.promptCache.hintAttemptedTotal,
+                    hint_applied_total: runtimeHealth.cacheStats.promptCache.hintAppliedTotal,
+                    usage_observed_total: runtimeHealth.cacheStats.promptCache.usageObservedTotal,
+                    cached_tokens_total: runtimeHealth.cacheStats.promptCache.cachedTokensTotal,
+                  },
+                }
+              : null,
+          }
+          : null,
+      cache_stats:
+        runtimeHealth?.cacheStats
+          ? {
+            model_catalog: {
+              cache_entries: runtimeHealth.cacheStats.modelCatalog.cacheEntries,
+              hit_total: runtimeHealth.cacheStats.modelCatalog.hitTotal,
+              miss_total: runtimeHealth.cacheStats.modelCatalog.missTotal,
+              stale_total: runtimeHealth.cacheStats.modelCatalog.staleTotal,
+              write_total: runtimeHealth.cacheStats.modelCatalog.writeTotal,
+            },
+            prompt_cache: {
+              enabled_total: runtimeHealth.cacheStats.promptCache.enabledTotal,
+              hint_attempted_total: runtimeHealth.cacheStats.promptCache.hintAttemptedTotal,
+              hint_applied_total: runtimeHealth.cacheStats.promptCache.hintAppliedTotal,
+              usage_observed_total: runtimeHealth.cacheStats.promptCache.usageObservedTotal,
+              cached_tokens_total: runtimeHealth.cacheStats.promptCache.cachedTokensTotal,
+            },
           }
           : null,
       probe:
@@ -374,6 +572,15 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(`session_subject: ${sessionSubject}\n`);
   process.stdout.write(`session_preview: ${sessionPreview}\n`);
   process.stdout.write(
+    `route_decision: strategy=${routeDecision.strategy} primary=${routeDecision.primaryProvider ?? "<none>"} requested=${routeDecision.requestedProvider ?? "<none>"} reason=${routeDecision.reason} source=${routeDecision.source ?? "<none>"}\n`,
+  );
+  process.stdout.write(
+    `route_ordered_providers: ${routeDecision.orderedProviders.length > 0 ? routeDecision.orderedProviders.join(" -> ") : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `route_failover: circuit_failures=${routeDecision.failover.circuitFailures} circuit_cooldown_secs=${routeDecision.failover.circuitCooldownSecs} sticky_mode=${routeDecision.failover.stickyMode}\n`,
+  );
+  process.stdout.write(
     `execution: gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
   );
   process.stdout.write(`runtime_tool_context: enabled (${runtimeToolContextPreview.enabledToolsSource})\n`);
@@ -412,6 +619,14 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     if (runtimeHealth.overlapGuardMetrics) {
       process.stdout.write(
         `runtime_overlap_guard: blocked_total=${runtimeHealth.overlapGuardMetrics.blockedTotal} blocked_search=${runtimeHealth.overlapGuardMetrics.blockedSearch} blocked_semantic=${runtimeHealth.overlapGuardMetrics.blockedSemantic} recorded_broad_search=${runtimeHealth.overlapGuardMetrics.recordedBroadSearch} recorded_broad_semantic=${runtimeHealth.overlapGuardMetrics.recordedBroadSemantic} tracked_turn_keys=${runtimeHealth.overlapGuardMetrics.trackedTurnKeys}/${runtimeHealth.overlapGuardMetrics.maxTurnKeys}\n`,
+      );
+    }
+    if (runtimeHealth.cacheStats) {
+      process.stdout.write(
+        `runtime_cache_model_catalog: entries=${runtimeHealth.cacheStats.modelCatalog.cacheEntries} hit_total=${runtimeHealth.cacheStats.modelCatalog.hitTotal} miss_total=${runtimeHealth.cacheStats.modelCatalog.missTotal} stale_total=${runtimeHealth.cacheStats.modelCatalog.staleTotal} write_total=${runtimeHealth.cacheStats.modelCatalog.writeTotal}\n`,
+      );
+      process.stdout.write(
+        `runtime_cache_prompt: enabled_total=${runtimeHealth.cacheStats.promptCache.enabledTotal} hint_attempted_total=${runtimeHealth.cacheStats.promptCache.hintAttemptedTotal} hint_applied_total=${runtimeHealth.cacheStats.promptCache.hintAppliedTotal} usage_observed_total=${runtimeHealth.cacheStats.promptCache.usageObservedTotal} cached_tokens_total=${runtimeHealth.cacheStats.promptCache.cachedTokensTotal}\n`,
       );
     }
   }

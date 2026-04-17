@@ -460,6 +460,155 @@ fn parse_model_response_payload(
     ))
 }
 
+#[derive(Debug, Clone)]
+struct PromptCacheUsageObservation {
+    cached_tokens_total: u64,
+    payload: Value,
+}
+
+fn supports_prompt_cache_hints(config: &RuntimeModelConfig) -> bool {
+    if config.provider_kind != ProviderKind::OpenAiCompatible {
+        return false;
+    }
+    let model = config.model.trim().to_ascii_lowercase();
+    if model.contains("claude") {
+        return true;
+    }
+    let base_url = config.base_url.trim().to_ascii_lowercase();
+    base_url.contains("anthropic") || base_url.contains("claude")
+}
+
+fn ensure_ephemeral_cache_control(block: &mut serde_json::Map<String, Value>) -> bool {
+    if block.get("cache_control").is_some() {
+        return true;
+    }
+    block.insert("cache_control".to_string(), json!({ "type": "ephemeral" }));
+    true
+}
+
+fn stamp_user_message_prompt_cache_hint(message: &mut Value) -> bool {
+    let Some(message_object) = message.as_object_mut() else {
+        return false;
+    };
+    let role = message_object
+        .get("role")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    if role != "user" {
+        return false;
+    }
+    if let Some(content) = message_object.get_mut("content") {
+        if let Some(text) = content.as_str() {
+            let normalized = text.trim();
+            if normalized.is_empty() {
+                return false;
+            }
+            let raw = text.to_string();
+            *content = Value::Array(vec![json!({
+                "type": "text",
+                "text": raw,
+                "cache_control": {
+                    "type": "ephemeral"
+                }
+            })]);
+            return true;
+        }
+        if let Some(parts) = content.as_array_mut() {
+            for part in parts.iter_mut() {
+                let Some(block) = part.as_object_mut() else {
+                    continue;
+                };
+                let has_text_content = block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .map(|value| !value.is_empty())
+                    .unwrap_or(false)
+                    || block
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .map(|value| !value.is_empty())
+                        .unwrap_or(false);
+                if !has_text_content {
+                    continue;
+                }
+                return ensure_ephemeral_cache_control(block);
+            }
+        }
+    }
+    false
+}
+
+fn apply_prompt_cache_hints(
+    messages: &mut [Value],
+    prompt_cache: PromptCacheOptions,
+) -> usize {
+    if !prompt_cache.enabled {
+        return 0;
+    }
+    let max_user_messages = match prompt_cache.strategy {
+        PromptCacheStrategy::UserLastN => prompt_cache.user_last_n,
+    };
+    if max_user_messages == 0 {
+        return 0;
+    }
+    let mut applied = 0usize;
+    let mut remaining = max_user_messages;
+    for message in messages.iter_mut().rev() {
+        if remaining == 0 {
+            break;
+        }
+        if stamp_user_message_prompt_cache_hint(message) {
+            applied += 1;
+            remaining = remaining.saturating_sub(1);
+        }
+    }
+    applied
+}
+
+fn parse_u64_value(value: Option<&Value>) -> u64 {
+    value.and_then(Value::as_u64).unwrap_or(0)
+}
+
+fn extract_prompt_cache_usage_observation(response: &Value) -> Option<PromptCacheUsageObservation> {
+    let usage = response.get("usage")?;
+    let usage_object = usage.as_object()?;
+    let cache_read_input_tokens = parse_u64_value(usage_object.get("cache_read_input_tokens"));
+    let cache_creation_input_tokens = parse_u64_value(usage_object.get("cache_creation_input_tokens"));
+    let cached_tokens_from_input_details = usage_object
+        .get("input_tokens_details")
+        .and_then(Value::as_object)
+        .map(|details| parse_u64_value(details.get("cached_tokens")))
+        .unwrap_or(0);
+    let cached_tokens_from_prompt_details = usage_object
+        .get("prompt_tokens_details")
+        .and_then(Value::as_object)
+        .map(|details| parse_u64_value(details.get("cached_tokens")))
+        .unwrap_or(0);
+    let cached_tokens_total = cache_read_input_tokens
+        .max(cached_tokens_from_input_details)
+        .max(cached_tokens_from_prompt_details);
+    let observed = cache_read_input_tokens > 0
+        || cache_creation_input_tokens > 0
+        || cached_tokens_from_input_details > 0
+        || cached_tokens_from_prompt_details > 0;
+    if !observed {
+        return None;
+    }
+    Some(PromptCacheUsageObservation {
+        cached_tokens_total,
+        payload: json!({
+            "cached_tokens_total": cached_tokens_total,
+            "cache_read_input_tokens": cache_read_input_tokens,
+            "cache_creation_input_tokens": cache_creation_input_tokens,
+            "input_details_cached_tokens": cached_tokens_from_input_details,
+            "prompt_details_cached_tokens": cached_tokens_from_prompt_details,
+        }),
+    })
+}
+
 fn has_kimi_search_intent(user_text: &str) -> bool {
     let normalized = user_text.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -981,8 +1130,34 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
         let mut telemetry_events: Vec<ModelTelemetryEvent> = Vec::new();
         let mut last_recovery_reason: Option<String> = None;
         let kimi_search_intent = has_kimi_search_intent(&input.user_message);
+        if config.provider_options.kimi.prompt_cache.enabled {
+            record_prompt_cache_enabled();
+        }
         loop {
             ensure_kimi_reasoning_content_for_assistant_messages(&mut messages, &config);
+            let prompt_cache_enabled = config.provider_options.kimi.prompt_cache.enabled;
+            let prompt_cache_supported = prompt_cache_enabled && supports_prompt_cache_hints(&config);
+            let prompt_cache_applied_messages = if prompt_cache_supported {
+                apply_prompt_cache_hints(&mut messages, config.provider_options.kimi.prompt_cache)
+            } else {
+                0
+            };
+            if prompt_cache_enabled {
+                record_prompt_cache_hint_attempt(prompt_cache_applied_messages > 0);
+                let prompt_cache_strategy =
+                    match config.provider_options.kimi.prompt_cache.strategy {
+                        PromptCacheStrategy::UserLastN => "user_last_n",
+                    };
+                telemetry_events.push(ModelTelemetryEvent {
+                    event_type: "prompt_cache_hint_applied".to_string(),
+                    payload: Some(json!({
+                        "supported": prompt_cache_supported,
+                        "strategy": prompt_cache_strategy,
+                        "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
+                        "applied_message_count": prompt_cache_applied_messages,
+                    })),
+                });
+            }
             let mut body = json!({
                 "model": config.model,
                 "messages": messages.clone(),
@@ -1039,6 +1214,13 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 config.provider_kind,
             )?;
             let payload = parse_model_response_payload(&body_text, config.provider_kind)?;
+            if let Some(observation) = extract_prompt_cache_usage_observation(&payload) {
+                record_prompt_cache_usage(observation.cached_tokens_total);
+                telemetry_events.push(ModelTelemetryEvent {
+                    event_type: "prompt_cache_usage_observed".to_string(),
+                    payload: Some(observation.payload),
+                });
+            }
             let tool_calls = extract_tool_calls(&payload)?;
             if !tool_calls.is_empty() {
                 if input.tool_context.is_none() {

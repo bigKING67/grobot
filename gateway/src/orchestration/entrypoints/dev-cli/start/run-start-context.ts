@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolveExecutionPlaneConfig } from "../../../execution-plane";
-import { type KimiWebSearchMode, type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
+import {
+  type KimiWebSearchMode,
+  type RuntimeModelConfig,
+  type RuntimePromptCacheStrategy,
+  type RuntimeToolContext,
+} from "../../../../models/types";
 import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
@@ -56,6 +61,8 @@ const DEFAULT_KIMI_MAX_TOKENS = 262_144;
 const DEFAULT_KIMI_STREAM = true;
 const DEFAULT_KIMI_TEMPERATURE = 1.0;
 const DEFAULT_KIMI_TOP_P = 0.95;
+const DEFAULT_PROMPT_CACHE_STRATEGY: RuntimePromptCacheStrategy = "user_last_n";
+const DEFAULT_PROMPT_CACHE_USER_LAST_N = 2;
 
 function stripInlineComment(line: string): string {
   let inQuote = false;
@@ -327,6 +334,45 @@ function normalizeKimiTopP(raw: number | undefined): number {
   return Math.min(Math.max(raw, 0), 1);
 }
 
+function normalizePromptCacheStrategy(raw: string | undefined): RuntimePromptCacheStrategy {
+  const normalized = raw?.trim().toLowerCase();
+  if (normalized === "user_last_n") {
+    return "user_last_n";
+  }
+  return DEFAULT_PROMPT_CACHE_STRATEGY;
+}
+
+function normalizePromptCacheUserLastN(raw: number | undefined): number {
+  const normalized = normalizePositiveInt(raw);
+  if (typeof normalized !== "number") {
+    return DEFAULT_PROMPT_CACHE_USER_LAST_N;
+  }
+  return Math.min(Math.max(normalized, 1), 12);
+}
+
+function resolvePromptCacheOptions(input: {
+  enabled?: boolean;
+  strategy?: string;
+  userLastN?: number;
+}): {
+  enabled: boolean;
+  strategy: RuntimePromptCacheStrategy;
+  userLastN: number;
+} | undefined {
+  const hasConfigSignal =
+    typeof input.enabled === "boolean"
+    || typeof input.strategy === "string"
+    || typeof input.userLastN === "number";
+  if (!hasConfigSignal) {
+    return undefined;
+  }
+  return {
+    enabled: input.enabled ?? false,
+    strategy: normalizePromptCacheStrategy(input.strategy),
+    userLastN: normalizePromptCacheUserLastN(input.userLastN),
+  };
+}
+
 function normalizeKimiSearchRoutingPolicy(raw: string | undefined): KimiSearchRoutingPolicy | undefined {
   const normalized = raw?.trim().toLowerCase();
   if (
@@ -441,6 +487,9 @@ function resolveRuntimeModelConfig(
         kimiTopP?: number;
         kimiFilesEnabled?: boolean;
         kimiAllowFileAdmin?: boolean;
+        promptCacheEnabled?: boolean;
+        promptCacheStrategy?: string;
+        promptCacheUserLastN?: number;
         priority?: number;
         weight?: number;
         unitCost?: number;
@@ -537,6 +586,11 @@ function resolveRuntimeModelConfig(
         disableThinkingOnBuiltinWebSearch:
           fallback?.kimiDisableThinkingOnBuiltinWebSearch ?? true,
         officialToolsAllowlist: normalizeKimiAllowlist(fallback?.kimiOfficialToolsAllowlist),
+        promptCache: resolvePromptCacheOptions({
+          enabled: fallback?.promptCacheEnabled,
+          strategy: fallback?.promptCacheStrategy,
+          userLastN: fallback?.promptCacheUserLastN,
+        }),
         maxTokens: normalizeKimiMaxTokens(fallback?.kimiMaxTokens),
         stream: fallback?.kimiStream ?? DEFAULT_KIMI_STREAM,
         temperature: normalizeKimiTemperature(fallback?.kimiTemperature),
@@ -576,6 +630,11 @@ function resolveRuntimeModelConfig(
             disableThinkingOnBuiltinWebSearch:
               provider.kimiDisableThinkingOnBuiltinWebSearch ?? true,
             officialToolsAllowlist: normalizeKimiAllowlist(provider.kimiOfficialToolsAllowlist),
+            promptCache: resolvePromptCacheOptions({
+              enabled: provider.promptCacheEnabled,
+              strategy: provider.promptCacheStrategy,
+              userLastN: provider.promptCacheUserLastN,
+            }),
             maxTokens: normalizeKimiMaxTokens(provider.kimiMaxTokens),
             stream: provider.kimiStream ?? DEFAULT_KIMI_STREAM,
             temperature: normalizeKimiTemperature(provider.kimiTemperature),

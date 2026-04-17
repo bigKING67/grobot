@@ -22,12 +22,20 @@ pub struct RuntimeKimiOptionsInput {
     pub disable_thinking_on_builtin_web_search: Option<bool>,
     pub official_tools_allowlist: Option<Vec<String>>,
     pub official_tool_formulas: Option<Value>,
+    pub prompt_cache: Option<RuntimePromptCacheOptionsInput>,
     pub max_tokens: Option<u32>,
     pub stream: Option<bool>,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub files_enabled: Option<bool>,
     pub allow_file_admin: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimePromptCacheOptionsInput {
+    pub enabled: Option<bool>,
+    pub strategy: Option<String>,
+    pub user_last_n: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
