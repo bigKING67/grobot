@@ -29,12 +29,14 @@ export function prepareTurnPrompt(args: {
   userText: string;
   historyMessages: readonly ContextHistoryMessage[];
   historyTurns: number;
+  workDir?: string;
   config: ContextEngineConfig;
 }): PromptPreparationResult {
   return preparePromptWithBudget({
     userText: args.userText,
     history: args.historyMessages,
     historyTurns: args.historyTurns,
+    workDir: args.workDir,
     config: args.config,
   });
 }

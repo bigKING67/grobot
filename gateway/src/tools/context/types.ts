@@ -12,6 +12,36 @@ export interface ContextRecoveryConfig {
   circuitBreakerFailures: number;
 }
 
+export interface ContextLineageConfig {
+  enabled: boolean;
+  maxRows: number;
+  maxCommits: number;
+  cacheTtlMs: number;
+}
+
+export interface ContextWorkspaceSignalsConfig {
+  enabled: boolean;
+  maxRows: number;
+  includeUntracked: boolean;
+  cacheTtlMs: number;
+}
+
+export interface ContextSemanticPrefetchConfig {
+  enabled: boolean;
+  timeoutMs: number;
+  maxEvidence: number;
+}
+
+export interface ContextDependencyGraphConfig {
+  enabled: boolean;
+  maxRows: number;
+}
+
+export interface ContextSymbolGraphConfig {
+  enabled: boolean;
+  maxRows: number;
+}
+
 export interface ContextEngineConfig {
   enabled: boolean;
   profile: ContextCompressionProfile;
@@ -20,6 +50,11 @@ export interface ContextEngineConfig {
   safetyMarginTokens: number;
   thresholds: ContextCompressionThresholds;
   recovery: ContextRecoveryConfig;
+  lineage: ContextLineageConfig;
+  workspaceSignals: ContextWorkspaceSignalsConfig;
+  semanticPrefetch: ContextSemanticPrefetchConfig;
+  dependencyGraph: ContextDependencyGraphConfig;
+  symbolGraph: ContextSymbolGraphConfig;
   reactiveOnPromptTooLong: boolean;
 }
 
@@ -34,7 +69,10 @@ export interface PromptVariant {
 export interface PromptPreparationResult {
   selected: PromptVariant;
   variants: PromptVariant[];
+  thresholdStage: PromptCompactionStage;
+  selectionReason: "threshold" | "budget_guard";
   utilization: number;
+  selectedUtilization: number;
   effectiveWindowTokens: number;
   totalEstimatedTokens: number;
 }

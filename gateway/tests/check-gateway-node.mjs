@@ -346,6 +346,21 @@ function runContract(scriptName, command, args = [], options = {}) {
   return result;
 }
 
+function runTsContract(scriptName, command, args = [], options = {}) {
+  const scriptPath = resolve(contractsRoot, scriptName);
+  const result = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    scriptPath,
+    command,
+    ...args,
+  ], options);
+  assertSuccess(`${scriptName} ${command}`, result);
+  return result;
+}
+
 async function runContractAsync(scriptName, command, args = [], options = {}) {
   const scriptPath = resolve(contractsRoot, scriptName);
   const result = await runCommandAsync("node", [scriptPath, command, ...args], options);
@@ -1120,6 +1135,325 @@ async function runGatewayContractSmoke() {
   assert.equal(historyResolveConfigPlaceholderEnvOnlyPayload.rerank, null);
   logStep("history-compaction-contract resolve-config-placeholder-env-only");
 
+  const contextEngineTomlDir = makeTempDir("context-engine-contract");
+  const contextEngineTomlPath = resolve(contextEngineTomlDir, "project.toml");
+  writeFileSync(contextEngineTomlPath, [
+    "[context_engine]",
+    "enabled = true",
+    "profile = \"aggressive\"",
+    "context_window_tokens = 64000",
+    "reserved_output_tokens = 9000",
+    "safety_margin_tokens = 1800",
+    "proactive_ratio = 0.82",
+    "forced_ratio = 0.89",
+    "hard_ratio = 0.95",
+    "reactive_max_retries = 2",
+    "ptl_max_retries = 4",
+    "circuit_breaker_failures = 5",
+    "reactive_on_prompt_too_long = true",
+    "lineage_enabled = false",
+    "lineage_max_rows = 2",
+    "workspace_signals_enabled = false",
+    "workspace_signals_max_rows = 2",
+    "dependency_graph_enabled = false",
+    "dependency_graph_max_rows = 2",
+    "symbol_graph_enabled = false",
+    "symbol_graph_max_rows = 2",
+    "semantic_prefetch_enabled = true",
+    "semantic_prefetch_timeout_ms = 4200",
+    "semantic_prefetch_max_evidence = 9",
+  ].join("\n"), "utf8");
+  const contextEngineResolveConfigResult = runTsContract("context-engine-contract.ts", "resolve-config", [
+    "--payload",
+    JSON.stringify({
+      project_toml_path: contextEngineTomlPath,
+      runtime_model_config: {
+        providerKind: "openai_compatible",
+      },
+    }),
+  ]);
+  const contextEngineResolveConfigPayload = parseJsonOutput(
+    "context-engine-contract resolve-config",
+    contextEngineResolveConfigResult.stdout,
+  );
+  assert.equal(contextEngineResolveConfigPayload.enabled, true);
+  assert.equal(contextEngineResolveConfigPayload.profile, "aggressive");
+  assert.equal(contextEngineResolveConfigPayload.context_window_tokens, 64000);
+  assert.equal(contextEngineResolveConfigPayload.reserved_output_tokens, 9000);
+  assert.equal(contextEngineResolveConfigPayload.safety_margin_tokens, 1800);
+  assert.equal(contextEngineResolveConfigPayload.proactive_ratio, 0.82);
+  assert.equal(contextEngineResolveConfigPayload.forced_ratio, 0.89);
+  assert.equal(contextEngineResolveConfigPayload.hard_ratio, 0.95);
+  assert.equal(contextEngineResolveConfigPayload.reactive_max_retries, 2);
+  assert.equal(contextEngineResolveConfigPayload.ptl_max_retries, 4);
+  assert.equal(contextEngineResolveConfigPayload.circuit_breaker_failures, 5);
+  assert.equal(contextEngineResolveConfigPayload.reactive_on_prompt_too_long, true);
+  assert.equal(contextEngineResolveConfigPayload.lineage?.enabled, false);
+  assert.equal(contextEngineResolveConfigPayload.workspace_signals?.enabled, false);
+  assert.equal(contextEngineResolveConfigPayload.dependency_graph?.enabled, false);
+  assert.equal(contextEngineResolveConfigPayload.symbol_graph?.enabled, false);
+  assert.equal(contextEngineResolveConfigPayload.semantic_prefetch?.enabled, true);
+  assert.equal(contextEngineResolveConfigPayload.semantic_prefetch?.timeoutMs, 4200);
+  assert.equal(contextEngineResolveConfigPayload.semantic_prefetch?.maxEvidence, 9);
+  logStep("context-engine-contract resolve-config");
+
+  const contextEnginePreparePromptHistory = Array.from({ length: 12 }).map((_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `turn-${String(index)}: please keep detailed architecture notes, modified files list, verification matrix, and rollback checklist for context engine hard-limit compaction regression coverage.`,
+  }));
+  const contextEnginePreparePromptResult = runTsContract("context-engine-contract.ts", "prepare-prompt", [
+    "--payload",
+    JSON.stringify({
+      user_text: "请继续修复 context engine 的压缩失败，并保持关键文件和验证结论。",
+      history_turns: 6,
+      history: contextEnginePreparePromptHistory,
+      config: {
+        enabled: true,
+        profile: "balanced",
+        contextWindowTokens: 160,
+        reservedOutputTokens: 60,
+        safetyMarginTokens: 20,
+        thresholds: {
+          proactiveRatio: 0.7,
+          forcedRatio: 0.8,
+          hardRatio: 0.9,
+        },
+        recovery: {
+          reactiveMaxRetries: 1,
+          ptlMaxRetries: 2,
+          circuitBreakerFailures: 3,
+        },
+        lineage: {
+          enabled: false,
+          maxRows: 1,
+          maxCommits: 20,
+          cacheTtlMs: 1000,
+        },
+        workspaceSignals: {
+          enabled: false,
+          maxRows: 1,
+          includeUntracked: false,
+          cacheTtlMs: 200,
+        },
+        semanticPrefetch: {
+          enabled: false,
+          timeoutMs: 500,
+          maxEvidence: 2,
+        },
+        dependencyGraph: {
+          enabled: false,
+          maxRows: 1,
+        },
+        symbolGraph: {
+          enabled: false,
+          maxRows: 1,
+        },
+        reactiveOnPromptTooLong: true,
+      },
+    }),
+  ]);
+  const contextEnginePreparePromptPayload = parseJsonOutput(
+    "context-engine-contract prepare-prompt",
+    contextEnginePreparePromptResult.stdout,
+  );
+  assert.equal(
+    ["normal", "proactive", "forced", "minimal"].includes(String(contextEnginePreparePromptPayload.selected_stage)),
+    true,
+  );
+  assert.equal(
+    ["normal", "proactive", "forced", "minimal"].includes(String(contextEnginePreparePromptPayload.threshold_stage)),
+    true,
+  );
+  assert.equal(
+    ["threshold", "budget_guard"].includes(String(contextEnginePreparePromptPayload.selection_reason)),
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.variant_tokens?.normal)
+      >= Number(contextEnginePreparePromptPayload.variant_tokens?.proactive),
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.variant_tokens?.proactive)
+      >= Number(contextEnginePreparePromptPayload.variant_tokens?.forced),
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.variant_tokens?.forced)
+      >= Number(contextEnginePreparePromptPayload.variant_tokens?.minimal),
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.selected_utilization)
+      <= Number(contextEnginePreparePromptPayload.utilization),
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePreparePromptPayload.effective_window_tokens) > 0,
+    true,
+  );
+  logStep("context-engine-contract prepare-prompt");
+
+  const contextEngineGraphCacheResult = runTsContract("context-engine-contract.ts", "graph-cache", [
+    "--payload",
+    JSON.stringify({
+      query: "add payment logging and retry context",
+      max_rows: 4,
+      snapshot: {
+        root_path: "/tmp/context-graph-cache-contract",
+        files: [
+          {
+            path: "src/payments/service.ts",
+            content: [
+              "import { requestPayment } from \"./gateway\";",
+              "import { writeLog } from \"../infra/logger\";",
+              "export async function processPayment(orderId: string) {",
+              "  writeLog(orderId);",
+              "  return requestPayment(orderId);",
+              "}",
+              "export const processRetry = async (orderId: string) => processPayment(orderId);",
+            ].join("\n"),
+          },
+          {
+            path: "src/payments/gateway.ts",
+            content: [
+              "export function requestPayment(orderId: string) {",
+              "  return `ok:${orderId}`;",
+              "}",
+            ].join("\n"),
+          },
+          {
+            path: "src/infra/logger.ts",
+            content: [
+              "export function writeLog(input: string) {",
+              "  return input;",
+              "}",
+            ].join("\n"),
+          },
+        ],
+      },
+    }),
+  ]);
+  const contextEngineGraphCachePayload = parseJsonOutput(
+    "context-engine-contract graph-cache",
+    contextEngineGraphCacheResult.stdout,
+  );
+  assert.equal(Array.isArray(contextEngineGraphCachePayload.first_pass?.symbol_rows), true);
+  assert.equal(Array.isArray(contextEngineGraphCachePayload.first_pass?.dependency_rows), true);
+  assert.equal(
+    Array.isArray(contextEngineGraphCachePayload.second_pass?.symbol_rows),
+    true,
+  );
+  assert.equal(
+    Array.isArray(contextEngineGraphCachePayload.second_pass?.dependency_rows),
+    true,
+  );
+  assert.deepEqual(
+    contextEngineGraphCachePayload.second_pass?.symbol_rows,
+    contextEngineGraphCachePayload.first_pass?.symbol_rows,
+  );
+  assert.deepEqual(
+    contextEngineGraphCachePayload.second_pass?.dependency_rows,
+    contextEngineGraphCachePayload.first_pass?.dependency_rows,
+  );
+  const firstStats = contextEngineGraphCachePayload.first_pass?.stats ?? {};
+  const secondStats = contextEngineGraphCachePayload.second_pass?.stats ?? {};
+  assert.equal(Number(firstStats.symbol_query?.miss) >= 1, true);
+  assert.equal(Number(firstStats.dependency_query?.miss) >= 1, true);
+  assert.equal(
+    Number(secondStats.symbol_query?.hit)
+      > Number(firstStats.symbol_query?.hit),
+    true,
+  );
+  assert.equal(
+    Number(secondStats.dependency_query?.hit)
+      > Number(firstStats.dependency_query?.hit),
+    true,
+  );
+  assert.equal(contextEngineGraphCachePayload.cache_reuse_observed, true);
+  const graphCacheTiming = contextEngineGraphCachePayload.timing ?? {};
+  assert.equal(Number.isFinite(Number(graphCacheTiming.first_pass_duration_ms)), true);
+  assert.equal(Number.isFinite(Number(graphCacheTiming.second_pass_duration_ms)), true);
+  assert.equal(
+    Number(graphCacheTiming.second_pass_duration_ms)
+      <= Number(graphCacheTiming.first_pass_duration_ms) + 500,
+    true,
+  );
+  logStep("context-engine-contract graph-cache");
+
+  const symbolAstExtractResult = runTsContract("symbol-ast-contract.ts", "extract", [
+    "--payload",
+    JSON.stringify({
+      file_path: "sample.ts",
+      content: [
+        "export interface ReportInput {",
+        "  id: string;",
+        "}",
+        "export type ReportMode = \"fast\" | \"safe\";",
+        "export enum ReportState { Draft, Done }",
+        "export class ReportBuilder {}",
+        "export function buildReport(input: ReportInput) {",
+        "  return input.id;",
+        "}",
+        "const runAsync = async () => buildReport({ id: \"1\" });",
+      ].join("\n"),
+    }),
+  ]);
+  const symbolAstExtractPayload = parseJsonOutput(
+    "symbol-ast-contract extract",
+    symbolAstExtractResult.stdout,
+  );
+  assert.equal(typeof symbolAstExtractPayload.ast_runtime_available, "boolean");
+  assert.equal(Array.isArray(symbolAstExtractPayload.symbols), true);
+  if (symbolAstExtractPayload.ast_runtime_available === true) {
+    const symbolPairs = new Set(
+      symbolAstExtractPayload.symbols.map(
+        (row) => `${String(row.kind)}:${String(row.symbol)}`,
+      ),
+    );
+    assert.equal(symbolPairs.has("interface:ReportInput"), true);
+    assert.equal(symbolPairs.has("type:ReportMode"), true);
+    assert.equal(symbolPairs.has("enum:ReportState"), true);
+    assert.equal(symbolPairs.has("class:ReportBuilder"), true);
+    assert.equal(symbolPairs.has("fn:buildReport"), true);
+    assert.equal(symbolPairs.has("const-fn:runAsync"), true);
+  }
+  logStep("symbol-ast-contract extract");
+
+  const dependencyAstExtractResult = runTsContract("dependency-ast-contract.ts", "extract", [
+    "--payload",
+    JSON.stringify({
+      file_path: "sample.ts",
+      content: [
+        "import fs from \"node:fs\";",
+        "export { run } from \"./runner\";",
+        "const pkg = require(\"./pkg\");",
+        "async function load() {",
+        "  return import(\"./lazy\");",
+        "}",
+        "void fs;",
+        "void pkg;",
+        "void load;",
+      ].join("\n"),
+    }),
+  ]);
+  const dependencyAstExtractPayload = parseJsonOutput(
+    "dependency-ast-contract extract",
+    dependencyAstExtractResult.stdout,
+  );
+  assert.equal(typeof dependencyAstExtractPayload.ast_runtime_available, "boolean");
+  assert.equal(Array.isArray(dependencyAstExtractPayload.targets), true);
+  if (dependencyAstExtractPayload.ast_runtime_available === true) {
+    const targets = new Set(
+      dependencyAstExtractPayload.targets.map((row) => String(row)),
+    );
+    assert.equal(targets.has("node:fs"), true);
+    assert.equal(targets.has("./runner"), true);
+    assert.equal(targets.has("./pkg"), true);
+    assert.equal(targets.has("./lazy"), true);
+  }
+  logStep("dependency-ast-contract extract");
+
   const handoffSanitizeResult = runContract("handoff-contract.mjs", "sanitize", [
     "--text",
     "api_key=sk-123 token:abc Bearer xyz password = letmein",
@@ -1199,6 +1533,19 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_cache_stats_location, "runtime_health.cache_stats");
   assert.equal(statusPayload.status_prompt_cache_hint_attempted_type, "number");
   assert.equal(statusPayload.status_prompt_cache_window_hint_attempted_type, "number");
+  assert.equal(statusPayload.status_has_context_graph_cache_stats, true);
+  assert.equal(statusPayload.status_symbol_query_cache_hit_type, "number");
+  assert.equal(statusPayload.status_symbol_declaration_cache_write_type, "number");
+  assert.equal(statusPayload.status_dependency_query_cache_miss_type, "number");
+  assert.equal(statusPayload.status_dependency_import_cache_evict_type, "number");
+  assert.equal(statusPayload.status_has_context_engine, true);
+  assert.equal(statusPayload.status_context_engine_enabled_type, "boolean");
+  assert.equal(statusPayload.status_context_engine_profile_type, "string");
+  assert.equal(statusPayload.status_context_engine_effective_window_type, "number");
+  assert.equal(statusPayload.status_context_engine_threshold_hard_type, "number");
+  assert.equal(statusPayload.status_context_engine_recovery_ptl_type, "number");
+  assert.equal(statusPayload.status_context_engine_lineage_enabled_type, "boolean");
+  assert.equal(statusPayload.status_context_engine_workspace_signals_enabled_type, "boolean");
   assert.equal(statusPayload.status_route_reason_type, "string");
   logStep("start-smoke-contract status-ts-rust", { attempts: statusAttempts });
 
@@ -1815,6 +2162,36 @@ async function runTsRustExecutionSmoke() {
   assert.equal(mcpInstructionFlowPayload.missing_prompt_injected, false);
   assert.equal(mcpInstructionFlowPayload.strict_failure_seen, false);
   logStep("start-smoke-contract start-mcp-instruction-events-flow");
+
+  const preSendHeadTrimResult = runContract("start-smoke-contract.mjs", "start-context-pre-send-head-trim-flow", [
+    "--repo-root",
+    repoRoot,
+  ]);
+  const preSendHeadTrimPayload = parseJsonOutput(
+    "start-smoke-contract start-context-pre-send-head-trim-flow",
+    preSendHeadTrimResult.stdout,
+  );
+  assert.equal(preSendHeadTrimPayload.pre_send_head_trim_seen, true);
+  assert.equal(
+    Number(preSendHeadTrimPayload.pre_send_head_trim_retries) >= 1,
+    true,
+  );
+  assert.equal(
+    Number(preSendHeadTrimPayload.prompt_prepared_pretrim_retries) >= 1,
+    true,
+  );
+  assert.equal(
+    Number(preSendHeadTrimPayload.pre_send_estimated_tokens)
+      > Number(preSendHeadTrimPayload.pre_send_effective_window),
+    true,
+  );
+  assert.equal(
+    ["normal", "proactive", "forced", "minimal"].includes(
+      String(preSendHeadTrimPayload.pre_send_head_trim_stage),
+    ),
+    true,
+  );
+  logStep("start-smoke-contract start-context-pre-send-head-trim-flow");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",

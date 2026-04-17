@@ -15,6 +15,8 @@ import {
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
 import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
+import { readContextGraphCacheStats, resolveContextEngineConfig } from "../../../../tools/context";
+import { type RuntimeModelConfig } from "../../../../models/types";
 import {
   basenameFromPath,
   resolveConfigTomlPath,
@@ -125,6 +127,56 @@ function parseRequiredPositiveInt(value: string | undefined, fallback: number): 
     return fallback;
   }
   return parsed;
+}
+
+function readGraphCacheCounter(
+  stats: Record<string, { hit?: number; miss?: number; write?: number; evict?: number }>,
+  bucket: string,
+): {
+  hit: number;
+  miss: number;
+  write: number;
+  evict: number;
+} {
+  const row = stats[bucket];
+  return {
+    hit: Number.isFinite(row?.hit) ? Number(row?.hit) : 0,
+    miss: Number.isFinite(row?.miss) ? Number(row?.miss) : 0,
+    write: Number.isFinite(row?.write) ? Number(row?.write) : 0,
+    evict: Number.isFinite(row?.evict) ? Number(row?.evict) : 0,
+  };
+}
+
+function resolveContextEngineRuntimeModelConfig(input: {
+  providerSnapshot?: {
+    provider?: {
+      providerKind?: string;
+      baseUrl?: string;
+      model?: string;
+    };
+  };
+  baseUrlFromCli?: string;
+  baseUrlFromEnv?: string;
+  modelFromCli?: string;
+  modelFromEnv?: string;
+}): RuntimeModelConfig | undefined {
+  const providerKind = input.providerSnapshot?.provider?.providerKind?.trim();
+  const baseUrl = (input.baseUrlFromCli ?? input.baseUrlFromEnv ?? input.providerSnapshot?.provider?.baseUrl)?.trim();
+  const model = (input.modelFromCli ?? input.modelFromEnv ?? input.providerSnapshot?.provider?.model)?.trim();
+  if (!providerKind && !baseUrl && !model) {
+    return undefined;
+  }
+  const runtimeModelConfig: RuntimeModelConfig = {};
+  if (providerKind && providerKind.length > 0) {
+    runtimeModelConfig.providerKind = providerKind as RuntimeModelConfig["providerKind"];
+  }
+  if (baseUrl && baseUrl.length > 0) {
+    runtimeModelConfig.baseUrl = baseUrl;
+  }
+  if (model && model.length > 0) {
+    runtimeModelConfig.model = model;
+  }
+  return runtimeModelConfig;
 }
 
 interface ObservedProviderRuntimeState {
@@ -530,6 +582,28 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         resetCacheStatsWindow,
       })
       : undefined;
+  const contextEngineRuntimeModelConfig = resolveContextEngineRuntimeModelConfig({
+    providerSnapshot: projectProviderSnapshot,
+    baseUrlFromCli,
+    baseUrlFromEnv,
+    modelFromCli,
+    modelFromEnv,
+  });
+  const contextEngineConfig = resolveContextEngineConfig({
+    projectTomlPath,
+    runtimeModelConfig: contextEngineRuntimeModelConfig,
+  });
+  const contextEngineEffectiveWindowTokens = Math.max(
+    1_024,
+    contextEngineConfig.contextWindowTokens
+      - contextEngineConfig.reservedOutputTokens
+      - contextEngineConfig.safetyMarginTokens,
+  );
+  const contextGraphCacheStats = readContextGraphCacheStats();
+  const symbolQueryGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_query");
+  const symbolDeclarationGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_declaration");
+  const dependencyQueryGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "dependency_query");
+  const dependencyImportGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "dependency_import");
 
   let probeResult:
     | {
@@ -652,6 +726,36 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         max_tool_rounds: runtimeToolContextPreview.maxToolRounds,
         no_tool_fallback_mode: runtimeToolContextPreview.noToolFallbackMode,
         max_recovery_rounds: runtimeToolContextPreview.maxRecoveryRounds,
+      },
+      context_graph_cache_stats: {
+        symbol_query: symbolQueryGraphCacheStats,
+        symbol_declaration: symbolDeclarationGraphCacheStats,
+        dependency_query: dependencyQueryGraphCacheStats,
+        dependency_import: dependencyImportGraphCacheStats,
+      },
+      context_engine: {
+        enabled: contextEngineConfig.enabled,
+        profile: contextEngineConfig.profile,
+        context_window_tokens: contextEngineConfig.contextWindowTokens,
+        reserved_output_tokens: contextEngineConfig.reservedOutputTokens,
+        safety_margin_tokens: contextEngineConfig.safetyMarginTokens,
+        effective_window_tokens: contextEngineEffectiveWindowTokens,
+        thresholds: {
+          proactive_ratio: contextEngineConfig.thresholds.proactiveRatio,
+          forced_ratio: contextEngineConfig.thresholds.forcedRatio,
+          hard_ratio: contextEngineConfig.thresholds.hardRatio,
+        },
+        recovery: {
+          reactive_max_retries: contextEngineConfig.recovery.reactiveMaxRetries,
+          ptl_max_retries: contextEngineConfig.recovery.ptlMaxRetries,
+          circuit_breaker_failures: contextEngineConfig.recovery.circuitBreakerFailures,
+          reactive_on_prompt_too_long: contextEngineConfig.reactiveOnPromptTooLong,
+        },
+        lineage: contextEngineConfig.lineage,
+        workspace_signals: contextEngineConfig.workspaceSignals,
+        dependency_graph: contextEngineConfig.dependencyGraph,
+        symbol_graph: contextEngineConfig.symbolGraph,
+        semantic_prefetch: contextEngineConfig.semanticPrefetch,
       },
       runtime_health:
         runtimeHealth && runtimeBinaryPath
@@ -789,6 +893,12 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(`runtime_tool_max_tool_rounds: ${runtimeToolContextPreview.maxToolRounds}\n`);
   process.stdout.write(`runtime_tool_no_tool_fallback_mode: ${runtimeToolContextPreview.noToolFallbackMode}\n`);
   process.stdout.write(`runtime_tool_max_recovery_rounds: ${runtimeToolContextPreview.maxRecoveryRounds}\n`);
+  process.stdout.write(
+    `context_graph_cache_stats: symbol_query=${symbolQueryGraphCacheStats.hit}/${symbolQueryGraphCacheStats.miss}/${symbolQueryGraphCacheStats.write}/${symbolQueryGraphCacheStats.evict} symbol_declaration=${symbolDeclarationGraphCacheStats.hit}/${symbolDeclarationGraphCacheStats.miss}/${symbolDeclarationGraphCacheStats.write}/${symbolDeclarationGraphCacheStats.evict} dependency_query=${dependencyQueryGraphCacheStats.hit}/${dependencyQueryGraphCacheStats.miss}/${dependencyQueryGraphCacheStats.write}/${dependencyQueryGraphCacheStats.evict} dependency_import=${dependencyImportGraphCacheStats.hit}/${dependencyImportGraphCacheStats.miss}/${dependencyImportGraphCacheStats.write}/${dependencyImportGraphCacheStats.evict}\n`,
+  );
+  process.stdout.write(
+    `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,
+  );
 
   if (runtimeHealth && runtimeBinaryPath) {
     process.stdout.write(

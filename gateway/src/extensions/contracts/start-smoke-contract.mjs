@@ -1085,6 +1085,39 @@ function writeExecutionProjectToml(workDir) {
   );
 }
 
+function writeContextEngineTrimProjectToml(workDir) {
+  const grobotDir = `${workDir}/.grobot`;
+  mkdirSync(grobotDir, { recursive: true });
+  writeFileSync(
+    `${grobotDir}/project.toml`,
+    [
+      "schema_version = 1",
+      'mode = "mvp"',
+      "",
+      "[context_engine]",
+      "enabled = true",
+      'profile = "aggressive"',
+      "context_window_tokens = 1800",
+      "reserved_output_tokens = 700",
+      "safety_margin_tokens = 50",
+      "proactive_ratio = 0.78",
+      "forced_ratio = 0.84",
+      "hard_ratio = 0.90",
+      "reactive_max_retries = 1",
+      "ptl_max_retries = 3",
+      "circuit_breaker_failures = 3",
+      "reactive_on_prompt_too_long = true",
+      "lineage_enabled = false",
+      "workspace_signals_enabled = false",
+      "dependency_graph_enabled = false",
+      "symbol_graph_enabled = false",
+      "semantic_prefetch_enabled = false",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 function runStatusTsRust(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
@@ -1118,6 +1151,36 @@ function runStatusTsRust(repoRoot) {
   const runtimePromptCacheWindow = isObject(runtimePromptCache?.window)
     ? runtimePromptCache.window
     : null;
+  const contextGraphCacheStats = isObject(parsedStatus?.context_graph_cache_stats)
+    ? parsedStatus.context_graph_cache_stats
+    : null;
+  const symbolQueryGraphCacheStats = isObject(contextGraphCacheStats?.symbol_query)
+    ? contextGraphCacheStats.symbol_query
+    : null;
+  const symbolDeclarationGraphCacheStats = isObject(contextGraphCacheStats?.symbol_declaration)
+    ? contextGraphCacheStats.symbol_declaration
+    : null;
+  const dependencyQueryGraphCacheStats = isObject(contextGraphCacheStats?.dependency_query)
+    ? contextGraphCacheStats.dependency_query
+    : null;
+  const dependencyImportGraphCacheStats = isObject(contextGraphCacheStats?.dependency_import)
+    ? contextGraphCacheStats.dependency_import
+    : null;
+  const contextEngine = isObject(parsedStatus?.context_engine)
+    ? parsedStatus.context_engine
+    : null;
+  const contextEngineThresholds = isObject(contextEngine?.thresholds)
+    ? contextEngine.thresholds
+    : null;
+  const contextEngineRecovery = isObject(contextEngine?.recovery)
+    ? contextEngine.recovery
+    : null;
+  const contextEngineLineage = isObject(contextEngine?.lineage)
+    ? contextEngine.lineage
+    : null;
+  const contextEngineWorkspaceSignals = isObject(contextEngine?.workspace_signals)
+    ? contextEngine.workspace_signals
+    : null;
   const cacheStatsLocation = typeof parsedStatus?.cache_stats_location === "string"
     ? parsedStatus.cache_stats_location
     : null;
@@ -1131,7 +1194,61 @@ function runStatusTsRust(repoRoot) {
     status_cache_stats_location: cacheStatsLocation,
     status_prompt_cache_hint_attempted_type: typeof runtimePromptCache?.hint_attempted_total,
     status_prompt_cache_window_hint_attempted_type: typeof runtimePromptCacheWindow?.hint_attempted_total,
+    status_has_context_graph_cache_stats: Boolean(contextGraphCacheStats),
+    status_symbol_query_cache_hit_type: typeof symbolQueryGraphCacheStats?.hit,
+    status_symbol_declaration_cache_write_type: typeof symbolDeclarationGraphCacheStats?.write,
+    status_dependency_query_cache_miss_type: typeof dependencyQueryGraphCacheStats?.miss,
+    status_dependency_import_cache_evict_type: typeof dependencyImportGraphCacheStats?.evict,
+    status_has_context_engine: Boolean(contextEngine),
+    status_context_engine_enabled_type: typeof contextEngine?.enabled,
+    status_context_engine_profile_type: typeof contextEngine?.profile,
+    status_context_engine_effective_window_type: typeof contextEngine?.effective_window_tokens,
+    status_context_engine_threshold_hard_type: typeof contextEngineThresholds?.hard_ratio,
+    status_context_engine_recovery_ptl_type: typeof contextEngineRecovery?.ptl_max_retries,
+    status_context_engine_lineage_enabled_type: typeof contextEngineLineage?.enabled,
+    status_context_engine_workspace_signals_enabled_type: typeof contextEngineWorkspaceSignals?.enabled,
     status_route_reason_type: typeof routeDecision?.reason,
+  };
+}
+
+function runStartContextPreSendHeadTrimFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-pretrim-work");
+  writeContextEngineTrimProjectToml(workDir);
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const longMessage = "context engine retry compaction needs deterministic head trim behavior. ".repeat(340);
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--history-turns",
+    "8",
+    "--message",
+    longMessage,
+  ]);
+  const preTrimEvent = result.stderr.match(
+    /event=pre_send_head_trim stage=([a-z_]+) retries=(\d+) estimated_tokens=(\d+) effective_window=(\d+)/,
+  );
+  const promptPrepared = result.stderr.match(
+    /event=prompt_prepared[^\n]*pretrim_retries=(\d+)/,
+  );
+  return {
+    ...result,
+    pre_send_head_trim_seen: Boolean(preTrimEvent),
+    pre_send_head_trim_stage: preTrimEvent?.[1] ?? "",
+    pre_send_head_trim_retries: Number.parseInt(preTrimEvent?.[2] ?? "0", 10),
+    pre_send_estimated_tokens: Number.parseInt(preTrimEvent?.[3] ?? "0", 10),
+    pre_send_effective_window: Number.parseInt(preTrimEvent?.[4] ?? "0", 10),
+    prompt_prepared_seen: result.stderr.includes("event=prompt_prepared"),
+    prompt_prepared_pretrim_retries: Number.parseInt(promptPrepared?.[1] ?? "0", 10),
   };
 }
 
@@ -1227,6 +1344,9 @@ function runCli(argv) {
       break;
     case "status-ts-rust":
       payload = runStatusTsRust(repoRoot);
+      break;
+    case "start-context-pre-send-head-trim-flow":
+      payload = runStartContextPreSendHeadTrimFlow(repoRoot);
       break;
     case "status-ts-rust-deprecated-flag":
       payload = runStatusTsRustDeprecatedFlag(repoRoot);

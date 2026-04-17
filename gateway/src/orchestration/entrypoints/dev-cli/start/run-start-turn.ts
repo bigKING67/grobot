@@ -18,9 +18,13 @@ import {
 } from "../../../../tools/ask-user";
 import { applyLearnedPromptContext } from "../../../../tools/ga-skill";
 import {
+  buildSemanticPrefetchBlock,
   classifyPromptOverflow,
+  computeUtilization,
+  estimateTokensFromText,
   escalatePromptVariant,
   prepareTurnPrompt,
+  readContextGraphCacheStats,
   truncatePromptHeadForPtlRetry,
   type ContextEngineConfig,
   type PromptCompactionStage,
@@ -61,6 +65,7 @@ interface CreateRunStartTurnRunnerInput {
   interruptStorePath: string;
   historyTurns: number;
   projectName: string;
+  workDir: string;
   subject: string;
   executionPlane: ExecutionPlaneConfig;
   runtimeModelConfig?: RuntimeModelConfig;
@@ -153,6 +158,51 @@ function normalizeErrorRate(value: number | undefined): number {
     return 1;
   }
   return value;
+}
+
+function readGraphCacheCounter(
+  stats: Record<string, { hit?: number; miss?: number; write?: number; evict?: number }>,
+  bucket: string,
+): {
+  hit: number;
+  miss: number;
+  write: number;
+  evict: number;
+} {
+  const row = stats[bucket];
+  return {
+    hit: Number.isFinite(row?.hit) ? Number(row?.hit) : 0,
+    miss: Number.isFinite(row?.miss) ? Number(row?.miss) : 0,
+    write: Number.isFinite(row?.write) ? Number(row?.write) : 0,
+    evict: Number.isFinite(row?.evict) ? Number(row?.evict) : 0,
+  };
+}
+
+function diffGraphCacheCounter(
+  before: {
+    hit: number;
+    miss: number;
+    write: number;
+    evict: number;
+  },
+  after: {
+    hit: number;
+    miss: number;
+    write: number;
+    evict: number;
+  },
+): {
+  hit: number;
+  miss: number;
+  write: number;
+  evict: number;
+} {
+  return {
+    hit: Math.max(0, after.hit - before.hit),
+    miss: Math.max(0, after.miss - before.miss),
+    write: Math.max(0, after.write - before.write),
+    evict: Math.max(0, after.evict - before.evict),
+  };
 }
 
 function updateProviderEwmaState(input: {
@@ -621,19 +671,45 @@ function throwIfTurnInterrupted(signal: AbortSignal | undefined, detail: string)
   }
 }
 
+interface RouteDecisionTrace {
+  stickyProvider: string | undefined;
+  stickyHit: boolean;
+  stickyReason: "none" | "applied" | "not_found" | "circuit_open";
+  scoreOrder: Array<{
+    name: string;
+    score: number;
+  }>;
+  circuitSkipped: Array<{
+    name: string;
+    reopenAtMs: number;
+  }>;
+  probeProvider?: string;
+}
+
 function resolveProviderOrder(input: {
   providers: readonly RuntimeProviderCandidate[];
   stickyProvider: string | undefined;
   sessionKey: string;
   stateMap: Map<string, SessionProviderRuntimeState>;
-}): RuntimeProviderCandidate[] {
+}): {
+  orderedProviders: RuntimeProviderCandidate[];
+  trace: RouteDecisionTrace;
+} {
   const ordered: RuntimeProviderCandidate[] = [];
   const openProviders: RuntimeProviderCandidate[] = [];
+  const circuitSkipped: Array<{ name: string; reopenAtMs: number }> = [];
   const nowMs = Date.now();
+  let stickyHit = false;
+  let stickyReason: RouteDecisionTrace["stickyReason"] = "none";
   const pushOpenProvider = (provider: RuntimeProviderCandidate): void => {
     if (openProviders.some((item) => item.name === provider.name)) {
       return;
     }
+    const reopenAtMs = input.stateMap.get(provider.name)?.circuit_open_until_ms ?? 0;
+    circuitSkipped.push({
+      name: provider.name,
+      reopenAtMs,
+    });
     openProviders.push(provider);
   };
   if (input.stickyProvider) {
@@ -641,10 +717,15 @@ function resolveProviderOrder(input: {
     if (sticky) {
       const stickyState = input.stateMap.get(sticky.name);
       if (!stickyState || stickyState.circuit_open_until_ms <= nowMs) {
+        stickyHit = true;
+        stickyReason = "applied";
         ordered.push(sticky);
       } else {
+        stickyReason = "circuit_open";
         pushOpenProvider(sticky);
       }
+    } else {
+      stickyReason = "not_found";
     }
   }
   for (const provider of input.providers) {
@@ -658,6 +739,7 @@ function resolveProviderOrder(input: {
     }
     ordered.push(provider);
   }
+  let probeProvider: string | undefined;
   if (ordered.length === 0 && openProviders.length > 0) {
     const probe = openProviders
       .map((provider, index) => ({
@@ -677,11 +759,33 @@ function resolveProviderOrder(input: {
         return left.score - right.score;
       })[0]?.provider;
     if (probe) {
+      probeProvider = probe.name;
       ordered.push(probe);
     }
   }
+  const scoreOrder = ordered
+    .map((provider, index) => ({
+      name: provider.name,
+      score: resolveCandidateScore({
+        provider,
+        providerState: input.stateMap.get(provider.name),
+        fallbackPriority: index + 1,
+        sessionKey: input.sessionKey,
+      }),
+    }))
+    .sort((left, right) => left.score - right.score);
   if (ordered.length <= 1) {
-    return ordered;
+    return {
+      orderedProviders: ordered,
+      trace: {
+        stickyProvider: input.stickyProvider,
+        stickyHit,
+        stickyReason,
+        scoreOrder,
+        circuitSkipped,
+        probeProvider,
+      },
+    };
   }
   const stickyName = input.stickyProvider;
   const head = stickyName ? ordered.filter((item) => item.name === stickyName) : [];
@@ -695,10 +799,20 @@ function resolveProviderOrder(input: {
         fallbackPriority: index + 1,
         sessionKey: input.sessionKey,
       }),
-    }))
+      }))
     .sort((left, right) => left.score - right.score)
     .map((item) => item.provider);
-  return [...head, ...tail];
+  return {
+    orderedProviders: [...head, ...tail],
+    trace: {
+      stickyProvider: input.stickyProvider,
+      stickyHit,
+      stickyReason,
+      scoreOrder,
+      circuitSkipped,
+      probeProvider,
+    },
+  };
 }
 
 export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
@@ -762,23 +876,20 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           `[context-engine] event=circuit_open failures=${String(consecutiveCompactionFailures)} limit=${String(input.contextEngineConfig.recovery.circuitBreakerFailures)}\n`,
         );
       }
+      const graphCacheStatsBefore = readContextGraphCacheStats();
       const promptPreparation = prepareTurnPrompt({
         userText,
         historyMessages,
         historyTurns: input.historyTurns,
+        workDir: input.workDir,
         config: {
           ...input.contextEngineConfig,
           enabled: allowProactiveCompaction,
         },
       });
-      const selectedStage = promptPreparation.selected.stage;
+      let selectedStage = promptPreparation.selected.stage;
       let basePrompt = promptPreparation.selected.prompt;
-      if (selectedStage !== "normal") {
-        input.onHistoryCompacted();
-      }
-      input.writeStderr(
-        `[context-engine] event=prompt_prepared stage=${selectedStage} utilization=${promptPreparation.utilization.toFixed(3)} estimated_tokens=${String(promptPreparation.totalEstimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)}\n`,
-      );
+      let selectionReason: "threshold" | "budget_guard" = promptPreparation.selectionReason;
       const askUserTurnContext = createAskUserTurnPromptContext({
         runtime: input.gaMechanismRuntime,
         sessionKey,
@@ -821,6 +932,34 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       promptParts.push(askUserClarificationHint);
       input.writeStderr("[ask-user] event=clarification_hint_injected\n");
     }
+    const semanticPrefetch = buildSemanticPrefetchBlock({
+      enabled: input.contextEngineConfig.semanticPrefetch.enabled,
+      workDir: input.workDir,
+      userText,
+      timeoutMs: input.contextEngineConfig.semanticPrefetch.timeoutMs,
+      maxEvidence: input.contextEngineConfig.semanticPrefetch.maxEvidence,
+    });
+    if (semanticPrefetch.block && semanticPrefetch.block.trim().length > 0) {
+      promptParts.push(semanticPrefetch.block);
+      input.writeStderr(
+        `[context-engine] event=semantic_prefetch status=applied evidence=${String(semanticPrefetch.evidenceCount)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
+      );
+      if (semanticPrefetch.warning) {
+        input.writeStderr(
+          `[context-engine] event=semantic_prefetch status=warning message=${compactSingleLine(semanticPrefetch.warning, 140)}\n`,
+        );
+      }
+    } else if (input.contextEngineConfig.semanticPrefetch.enabled) {
+      if (semanticPrefetch.warning) {
+        input.writeStderr(
+          `[context-engine] event=semantic_prefetch status=degraded message=${compactSingleLine(semanticPrefetch.warning, 140)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
+        );
+      } else {
+        input.writeStderr(
+          `[context-engine] event=semantic_prefetch status=empty duration_ms=${String(semanticPrefetch.durationMs)}\n`,
+        );
+      }
+    }
     if (mcpInstructionPrefix.length > 0 && mcpInstructionDecision.inject) {
       promptParts.push(mcpInstructionPrefix);
     }
@@ -834,11 +973,100 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       const preparedPromptVariants: PromptVariant[] = promptPreparation.variants.map((variant) => ({
         stage: variant.stage,
         prompt: composeTurnPrompt(variant.prompt),
-        estimatedTokens: variant.estimatedTokens,
+        estimatedTokens: estimateTokensFromText(composeTurnPrompt(variant.prompt)),
       }));
-      basePrompt = composeTurnPrompt(basePrompt);
+      const findPreparedVariantByStage = (stage: PromptCompactionStage): PromptVariant => {
+        const matched = preparedPromptVariants.find((item) => item.stage === stage);
+        return matched ?? preparedPromptVariants[0] as PromptVariant;
+      };
+      let selectedPrepared = findPreparedVariantByStage(selectedStage);
+      if (
+        allowProactiveCompaction &&
+        selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens
+      ) {
+        let stageCursor = selectedPrepared.stage;
+        let escalated = false;
+        while (selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens) {
+          const next = escalatePromptVariant(preparedPromptVariants, stageCursor);
+          if (!next) {
+            break;
+          }
+          selectedPrepared = next;
+          stageCursor = next.stage;
+          escalated = true;
+        }
+        if (escalated) {
+          selectedStage = selectedPrepared.stage;
+          selectionReason = "budget_guard";
+        }
+      }
+      let preSendHeadTrimRetries = 0;
+      if (
+        allowProactiveCompaction &&
+        selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens
+      ) {
+        while (
+          selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens &&
+          preSendHeadTrimRetries < input.contextEngineConfig.recovery.ptlMaxRetries
+        ) {
+          const trimmedPrompt = truncatePromptHeadForPtlRetry(
+            selectedPrepared.prompt,
+            preSendHeadTrimRetries + 1,
+          );
+          if (trimmedPrompt === selectedPrepared.prompt) {
+            break;
+          }
+          preSendHeadTrimRetries += 1;
+          selectedPrepared = {
+            ...selectedPrepared,
+            prompt: trimmedPrompt,
+            estimatedTokens: estimateTokensFromText(trimmedPrompt),
+          };
+          selectionReason = "budget_guard";
+        }
+      }
+      basePrompt = selectedPrepared.prompt;
+      if (selectedStage !== "normal" || preSendHeadTrimRetries > 0) {
+        input.onHistoryCompacted();
+      }
+      if (preSendHeadTrimRetries > 0) {
+        input.writeStderr(
+          `[context-engine] event=pre_send_head_trim stage=${selectedStage} retries=${String(preSendHeadTrimRetries)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)}\n`,
+        );
+      }
+      input.writeStderr(
+        `[context-engine] event=prompt_prepared stage=${selectedStage} threshold_stage=${promptPreparation.thresholdStage} reason=${selectionReason} utilization=${promptPreparation.utilization.toFixed(3)} selected_utilization=${computeUtilization(selectedPrepared.estimatedTokens, promptPreparation.effectiveWindowTokens).toFixed(3)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)} pretrim_retries=${String(preSendHeadTrimRetries)}\n`,
+      );
+      const graphCacheStats = readContextGraphCacheStats();
+      const symbolQueryStatsBefore = readGraphCacheCounter(graphCacheStatsBefore, "symbol_query");
+      const symbolDeclarationStatsBefore = readGraphCacheCounter(graphCacheStatsBefore, "symbol_declaration");
+      const dependencyQueryStatsBefore = readGraphCacheCounter(graphCacheStatsBefore, "dependency_query");
+      const dependencyImportStatsBefore = readGraphCacheCounter(graphCacheStatsBefore, "dependency_import");
+      const symbolQueryStats = readGraphCacheCounter(graphCacheStats, "symbol_query");
+      const symbolDeclarationStats = readGraphCacheCounter(graphCacheStats, "symbol_declaration");
+      const dependencyQueryStats = readGraphCacheCounter(graphCacheStats, "dependency_query");
+      const dependencyImportStats = readGraphCacheCounter(graphCacheStats, "dependency_import");
+      const symbolQueryDeltaStats = diffGraphCacheCounter(symbolQueryStatsBefore, symbolQueryStats);
+      const symbolDeclarationDeltaStats = diffGraphCacheCounter(
+        symbolDeclarationStatsBefore,
+        symbolDeclarationStats,
+      );
+      const dependencyQueryDeltaStats = diffGraphCacheCounter(
+        dependencyQueryStatsBefore,
+        dependencyQueryStats,
+      );
+      const dependencyImportDeltaStats = diffGraphCacheCounter(
+        dependencyImportStatsBefore,
+        dependencyImportStats,
+      );
+      input.writeStderr(
+        `[context-engine] event=graph_cache_stats delta_symbol_query=${symbolQueryDeltaStats.hit}/${symbolQueryDeltaStats.miss}/${symbolQueryDeltaStats.write}/${symbolQueryDeltaStats.evict} delta_symbol_decl=${symbolDeclarationDeltaStats.hit}/${symbolDeclarationDeltaStats.miss}/${symbolDeclarationDeltaStats.write}/${symbolDeclarationDeltaStats.evict} delta_dependency_query=${dependencyQueryDeltaStats.hit}/${dependencyQueryDeltaStats.miss}/${dependencyQueryDeltaStats.write}/${dependencyQueryDeltaStats.evict} delta_dependency_import=${dependencyImportDeltaStats.hit}/${dependencyImportDeltaStats.miss}/${dependencyImportDeltaStats.write}/${dependencyImportDeltaStats.evict} total_symbol_query=${symbolQueryStats.hit}/${symbolQueryStats.miss}/${symbolQueryStats.write}/${symbolQueryStats.evict} total_symbol_decl=${symbolDeclarationStats.hit}/${symbolDeclarationStats.miss}/${symbolDeclarationStats.write}/${symbolDeclarationStats.evict} total_dependency_query=${dependencyQueryStats.hit}/${dependencyQueryStats.miss}/${dependencyQueryStats.write}/${dependencyQueryStats.evict} total_dependency_import=${dependencyImportStats.hit}/${dependencyImportStats.miss}/${dependencyImportStats.write}/${dependencyImportStats.evict}\n`,
+      );
+      const selectedConversationVariant = promptPreparation.variants.find(
+        (variant) => variant.stage === selectedStage,
+      ) ?? promptPreparation.selected;
       const kimiBuiltinFallbackPrompt = kimiMcpFirstRouteEnabled
-        ? composeTurnPrompt(buildKimiBuiltinFallbackPrompt(promptPreparation.selected.prompt))
+        ? composeTurnPrompt(buildKimiBuiltinFallbackPrompt(selectedConversationVariant.prompt))
         : basePrompt;
       const prompt = basePrompt;
     if (kimiSearchRoutingPrefix.length > 0) {
@@ -884,12 +1112,22 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     const currentStickyProvider = input.runtimeFailoverConfig.stickyMode === "session_key"
       ? input.getStickyProvider()
       : undefined;
-    const orderedProviders = resolveProviderOrder({
+    const routeDecision = resolveProviderOrder({
       providers,
       stickyProvider: currentStickyProvider,
       sessionKey,
       stateMap: providerStateMap,
     });
+    const orderedProviders = routeDecision.orderedProviders;
+    const routeScoreOrder = routeDecision.trace.scoreOrder
+      .map((entry) => `${entry.name}:${entry.score.toFixed(2)}`)
+      .join(",");
+    const routeCircuitSkipped = routeDecision.trace.circuitSkipped
+      .map((entry) => `${entry.name}@${String(entry.reopenAtMs)}`)
+      .join(",");
+    input.writeStderr(
+      `[runtime-route] event=decision sticky=${routeDecision.trace.stickyProvider ?? "<none>"} sticky_hit=${routeDecision.trace.stickyHit ? "true" : "false"} sticky_reason=${routeDecision.trace.stickyReason} selected=${orderedProviders[0]?.name ?? "<none>"} score_order=${routeScoreOrder || "<none>"} circuit_skipped=${routeCircuitSkipped || "<none>"} probe=${routeDecision.trace.probeProvider ?? "<none>"} strategy=sticky+score\n`,
+    );
       if (orderedProviders.length === 0) {
         const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
         input.setGaState(gaState);

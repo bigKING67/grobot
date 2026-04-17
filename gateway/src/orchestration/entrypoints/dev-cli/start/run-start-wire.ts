@@ -103,6 +103,7 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     interruptStorePath: input.interruptStorePath,
     historyTurns: input.historyTurns,
     projectName: input.projectName,
+    workDir: input.workDir,
     subject: input.subject,
     executionPlane: input.executionPlane,
     runtimeModelConfig: input.runtimeModelConfig,

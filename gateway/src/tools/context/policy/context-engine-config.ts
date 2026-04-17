@@ -9,6 +9,15 @@ const DEFAULT_CONTEXT_WINDOW_OPENAI_COMPATIBLE = 128_000;
 const DEFAULT_CONTEXT_WINDOW_KIMI = 262_144;
 const DEFAULT_RESERVED_OUTPUT_TOKENS = 20_000;
 const DEFAULT_SAFETY_MARGIN_TOKENS = 3_000;
+const DEFAULT_LINEAGE_MAX_ROWS = 3;
+const DEFAULT_LINEAGE_MAX_COMMITS = 120;
+const DEFAULT_LINEAGE_CACHE_TTL_MS = 30_000;
+const DEFAULT_WORKSPACE_SIGNALS_MAX_ROWS = 4;
+const DEFAULT_WORKSPACE_SIGNALS_CACHE_TTL_MS = 2_000;
+const DEFAULT_SEMANTIC_PREFETCH_TIMEOUT_MS = 2_500;
+const DEFAULT_SEMANTIC_PREFETCH_MAX_EVIDENCE = 6;
+const DEFAULT_DEPENDENCY_GRAPH_MAX_ROWS = 4;
+const DEFAULT_SYMBOL_GRAPH_MAX_ROWS = 4;
 
 type ThresholdProfile = {
   proactive: number;
@@ -169,6 +178,21 @@ interface TomlOverrides {
   ptlMaxRetries?: number;
   circuitBreakerFailures?: number;
   reactiveOnPromptTooLong?: boolean;
+  lineageEnabled?: boolean;
+  lineageMaxRows?: number;
+  lineageMaxCommits?: number;
+  lineageCacheTtlMs?: number;
+  workspaceSignalsEnabled?: boolean;
+  workspaceSignalsMaxRows?: number;
+  workspaceSignalsIncludeUntracked?: boolean;
+  workspaceSignalsCacheTtlMs?: number;
+  semanticPrefetchEnabled?: boolean;
+  semanticPrefetchTimeoutMs?: number;
+  semanticPrefetchMaxEvidence?: number;
+  dependencyGraphEnabled?: boolean;
+  dependencyGraphMaxRows?: number;
+  symbolGraphEnabled?: boolean;
+  symbolGraphMaxRows?: number;
 }
 
 function readTomlOverrides(projectTomlPath?: string): TomlOverrides {
@@ -239,6 +263,51 @@ function readTomlOverrides(projectTomlPath?: string): TomlOverrides {
         break;
       case "reactive_on_prompt_too_long":
         overrides.reactiveOnPromptTooLong = parseTomlBoolean(valueRaw);
+        break;
+      case "lineage_enabled":
+        overrides.lineageEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "lineage_max_rows":
+        overrides.lineageMaxRows = parseTomlNumber(valueRaw);
+        break;
+      case "lineage_max_commits":
+        overrides.lineageMaxCommits = parseTomlNumber(valueRaw);
+        break;
+      case "lineage_cache_ttl_ms":
+        overrides.lineageCacheTtlMs = parseTomlNumber(valueRaw);
+        break;
+      case "workspace_signals_enabled":
+        overrides.workspaceSignalsEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "workspace_signals_max_rows":
+        overrides.workspaceSignalsMaxRows = parseTomlNumber(valueRaw);
+        break;
+      case "workspace_signals_include_untracked":
+        overrides.workspaceSignalsIncludeUntracked = parseTomlBoolean(valueRaw);
+        break;
+      case "workspace_signals_cache_ttl_ms":
+        overrides.workspaceSignalsCacheTtlMs = parseTomlNumber(valueRaw);
+        break;
+      case "semantic_prefetch_enabled":
+        overrides.semanticPrefetchEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "semantic_prefetch_timeout_ms":
+        overrides.semanticPrefetchTimeoutMs = parseTomlNumber(valueRaw);
+        break;
+      case "semantic_prefetch_max_evidence":
+        overrides.semanticPrefetchMaxEvidence = parseTomlNumber(valueRaw);
+        break;
+      case "dependency_graph_enabled":
+        overrides.dependencyGraphEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "dependency_graph_max_rows":
+        overrides.dependencyGraphMaxRows = parseTomlNumber(valueRaw);
+        break;
+      case "symbol_graph_enabled":
+        overrides.symbolGraphEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "symbol_graph_max_rows":
+        overrides.symbolGraphMaxRows = parseTomlNumber(valueRaw);
         break;
       default:
         break;
@@ -317,6 +386,129 @@ export function resolveContextEngineConfig(input: {
     parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_REACTIVE_ON_PTL)
     ?? fromToml.reactiveOnPromptTooLong
     ?? true;
+  const lineageEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_LINEAGE_ENABLED)
+    ?? fromToml.lineageEnabled
+    ?? true;
+  const lineageMaxRows = Math.min(
+    16,
+    clampPositiveInt(
+      parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_LINEAGE_MAX_ROWS)
+      ?? fromToml.lineageMaxRows
+      ?? DEFAULT_LINEAGE_MAX_ROWS,
+      DEFAULT_LINEAGE_MAX_ROWS,
+    ),
+  );
+  const lineageMaxCommits = Math.min(
+    500,
+    clampPositiveInt(
+      parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_LINEAGE_MAX_COMMITS)
+      ?? fromToml.lineageMaxCommits
+      ?? DEFAULT_LINEAGE_MAX_COMMITS,
+      DEFAULT_LINEAGE_MAX_COMMITS,
+    ),
+  );
+  const lineageCacheTtlMs = Math.max(
+    1_000,
+    Math.min(
+      600_000,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_LINEAGE_CACHE_TTL_MS)
+        ?? fromToml.lineageCacheTtlMs
+        ?? DEFAULT_LINEAGE_CACHE_TTL_MS,
+        DEFAULT_LINEAGE_CACHE_TTL_MS,
+      ),
+    ),
+  );
+  const workspaceSignalsEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_WORKSPACE_SIGNALS_ENABLED)
+    ?? fromToml.workspaceSignalsEnabled
+    ?? true;
+  const workspaceSignalsMaxRows = Math.min(
+    20,
+    clampPositiveInt(
+      parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_WORKSPACE_SIGNALS_MAX_ROWS)
+      ?? fromToml.workspaceSignalsMaxRows
+      ?? DEFAULT_WORKSPACE_SIGNALS_MAX_ROWS,
+      DEFAULT_WORKSPACE_SIGNALS_MAX_ROWS,
+    ),
+  );
+  const workspaceSignalsIncludeUntracked =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_WORKSPACE_SIGNALS_INCLUDE_UNTRACKED)
+    ?? fromToml.workspaceSignalsIncludeUntracked
+    ?? true;
+  const workspaceSignalsCacheTtlMs = Math.max(
+    200,
+    Math.min(
+      60_000,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_WORKSPACE_SIGNALS_CACHE_TTL_MS)
+        ?? fromToml.workspaceSignalsCacheTtlMs
+        ?? DEFAULT_WORKSPACE_SIGNALS_CACHE_TTL_MS,
+        DEFAULT_WORKSPACE_SIGNALS_CACHE_TTL_MS,
+      ),
+    ),
+  );
+  const semanticPrefetchEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_SEMANTIC_PREFETCH_ENABLED)
+    ?? fromToml.semanticPrefetchEnabled
+    ?? false;
+  const semanticPrefetchTimeoutMs = Math.max(
+    300,
+    Math.min(
+      15_000,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_SEMANTIC_PREFETCH_TIMEOUT_MS)
+        ?? fromToml.semanticPrefetchTimeoutMs
+        ?? DEFAULT_SEMANTIC_PREFETCH_TIMEOUT_MS,
+        DEFAULT_SEMANTIC_PREFETCH_TIMEOUT_MS,
+      ),
+    ),
+  );
+  const semanticPrefetchMaxEvidence = Math.max(
+    1,
+    Math.min(
+      24,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_SEMANTIC_PREFETCH_MAX_EVIDENCE)
+        ?? fromToml.semanticPrefetchMaxEvidence
+        ?? DEFAULT_SEMANTIC_PREFETCH_MAX_EVIDENCE,
+        DEFAULT_SEMANTIC_PREFETCH_MAX_EVIDENCE,
+      ),
+    ),
+  );
+  const dependencyGraphEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_DEPENDENCY_GRAPH_ENABLED)
+    ?? fromToml.dependencyGraphEnabled
+    ?? true;
+  const dependencyGraphMaxRows = Math.max(
+    1,
+    Math.min(
+      20,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_DEPENDENCY_GRAPH_MAX_ROWS)
+        ?? fromToml.dependencyGraphMaxRows
+        ?? DEFAULT_DEPENDENCY_GRAPH_MAX_ROWS,
+        DEFAULT_DEPENDENCY_GRAPH_MAX_ROWS,
+      ),
+    ),
+  );
+  const symbolGraphEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_SYMBOL_GRAPH_ENABLED)
+    ?? fromToml.symbolGraphEnabled
+    ?? true;
+  const symbolGraphMaxRows = Math.max(
+    1,
+    Math.min(
+      20,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_SYMBOL_GRAPH_MAX_ROWS)
+        ?? fromToml.symbolGraphMaxRows
+        ?? DEFAULT_SYMBOL_GRAPH_MAX_ROWS,
+        DEFAULT_SYMBOL_GRAPH_MAX_ROWS,
+      ),
+    ),
+  );
 
   return {
     enabled,
@@ -333,6 +525,31 @@ export function resolveContextEngineConfig(input: {
       reactiveMaxRetries,
       ptlMaxRetries,
       circuitBreakerFailures,
+    },
+    lineage: {
+      enabled: lineageEnabled,
+      maxRows: lineageMaxRows,
+      maxCommits: lineageMaxCommits,
+      cacheTtlMs: lineageCacheTtlMs,
+    },
+    workspaceSignals: {
+      enabled: workspaceSignalsEnabled,
+      maxRows: workspaceSignalsMaxRows,
+      includeUntracked: workspaceSignalsIncludeUntracked,
+      cacheTtlMs: workspaceSignalsCacheTtlMs,
+    },
+    semanticPrefetch: {
+      enabled: semanticPrefetchEnabled,
+      timeoutMs: semanticPrefetchTimeoutMs,
+      maxEvidence: semanticPrefetchMaxEvidence,
+    },
+    dependencyGraph: {
+      enabled: dependencyGraphEnabled,
+      maxRows: dependencyGraphMaxRows,
+    },
+    symbolGraph: {
+      enabled: symbolGraphEnabled,
+      maxRows: symbolGraphMaxRows,
     },
     reactiveOnPromptTooLong,
   };
