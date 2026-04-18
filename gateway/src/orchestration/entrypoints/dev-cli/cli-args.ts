@@ -9,11 +9,13 @@ export interface ParsedArgs {
 export function usage(): string {
   return [
     "Grobot TS dev CLI (source-checkout fallback)",
-    "No subcommand => enter local interactive CLI (same as `grobot start`).",
+    "No subcommand => enter local interactive CLI (bare `grobot`).",
     "",
     "Commands:",
     "  (default)            Local interactive CLI (stdin TTY required for full UX)",
     "  status [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--provider <name>] [--api-key <key>] [--base-url <url>] [--model <id>] [--probe] [--json] [--context-graph-cache-window-size <n>] [--context-graph-cache-degrade-hit-rate <0..1>] [--context-graph-cache-degrade-min-entries <n>] [--context-persistent-graph-degrade-parsed-rate <0..1>] [--context-persistent-graph-degrade-reused-rate <0..1>] [--context-persistent-graph-degrade-removed-rate <0..1>] [--context-persistent-graph-degrade-min-entries <n>] [--context-persistent-graph-degrade-min-scanned-files <n>] [--gateway-impl ts] [--runtime-impl rust] [--shadow-mode|--no-shadow-mode]",
+    "  init --global [--home <dir>] | --project [--project-root <dir>] [--hooks-samples]",
+    "  gc [--scope global|project|all] [--retention-days <n>] [--keep-recent-sessions <n>] [--keep-recent-plans-per-session <n>] [--dry-run|--apply] [--json]",
     "  start [--message <text>] [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--provider <name>] [--session-scope dm|group] [--session-subject <id>] [--history-turns <n>] [--handoff-recent-turns <n>] [--handoff-auto-on-exit|--no-handoff-auto-on-exit] [--circuit-failures <n>] [--circuit-cooldown-secs <n>] [--provider-max-inflight <n>] [--provider-requests-per-minute <n>] [--provider-burst <n>] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
     "  serve [--project <name>] [--work-dir <dir>] [--home <dir>] [--project-root <dir>] [--config <path>] [--bind 127.0.0.1:8080] [--management-token <token>] [--config-read-policy auto|public|auth|disabled] [--session-backend auto|file|redis] [--redis-url <url>] [--gateway-impl ts] [--runtime-impl rust]",
     "",
@@ -29,6 +31,8 @@ export function usage(): string {
     "  --context-persistent-graph-degrade-min-entries sets minimum persistent window entries (default 8, env GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_ENTRIES).",
     "  --context-persistent-graph-degrade-min-scanned-files sets minimum scanned files for persistent degradation checks (default 40, env GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_SCANNED_FILES).",
     "  `start` is IM-only. Without explicit platform/session context it exits with code 2 and suggests bare `grobot`.",
+    "  `gc` defaults to dry-run. pass `--apply` to actually delete aged runtime artifacts.",
+    "  `gc` policy source: CLI args > [storage.cleanup] in config.toml > built-in defaults.",
     "",
     "Optional session args for start:",
     "  --platform feishu|telegram --tenant <id> --scope dm|group --subject <id> (legacy aliases; prefer --session-scope/--session-subject)",

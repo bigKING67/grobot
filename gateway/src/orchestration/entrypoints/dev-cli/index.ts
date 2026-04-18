@@ -6,6 +6,8 @@ import {
   usage,
   validateHardCutExecutionOptions,
 } from "./cli-args";
+import { runGc } from "./gc/run-gc";
+import { runInit } from "./init/run-init";
 import { runServe } from "./serve/run-serve";
 import { runStart } from "./start/run-start";
 import { runStatus } from "./status/run-status";
@@ -51,6 +53,12 @@ export async function runDevCli(argv: string[]): Promise<number> {
 
   if (command === "status") {
     return runStatus(parsed.options);
+  }
+  if (command === "init") {
+    return runInit(parsed.options);
+  }
+  if (command === "gc") {
+    return runGc(parsed.options);
   }
   if (command === "start") {
     if (!hasStartImContext(parsed.options)) {

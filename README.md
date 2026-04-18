@@ -79,12 +79,15 @@
   - 治理平面：`governance/`（评估、测试、自动优化）
 - 全局运行层（`~/.grobot/`）：
   - `~/.grobot/config.toml`：全局 agent/platform/provider 配置（含敏感信息，不进仓库）
-  - `~/.grobot/rules/`、`~/.grobot/skills/`、`~/.grobot/hooks/`、`~/.grobot/mcp/servers.toml`
+  - `~/.grobot/config.toml.example`、`~/.grobot/mcp/servers.toml`
+  - `~/.grobot/hooks/`、`~/.grobot/skills/`、`~/.grobot/memory/`、`~/.grobot/wiki/`
+  - `~/.grobot/rules/`、`~/.grobot/plans/`、`~/.grobot/experience/`、`~/.grobot/sessions/`
+  - 运行时内部目录（如 `runtime/`、`context/`）与系统缓存目录由运行时按需创建，不属于用户手工维护骨架
 - 项目运行层（`<业务仓库>/.grobot/`）：
   - `.grobot/project.toml`：项目级架构/运行契约（source of truth）
   - `.grobot/mcp.toml`：项目级 MCP 覆盖
   - `.grobot/rules/`、`.grobot/skills/`、`.grobot/hooks/`
-  - `.grobot/session/`、`.grobot/memory/`、`.grobot/experience/`、`.grobot/wiki/`、`.grobot/plans/`、`.grobot/scheduler/`
+  - `.grobot/sessions/`、`.grobot/memory/`、`.grobot/experience/`、`.grobot/wiki/`、`.grobot/plans/`、`.grobot/scheduler/`
 
 ### 配置初始化
 
@@ -124,6 +127,7 @@ grobot init --project
 - `grobot init --global` 会自动创建 `~/.grobot/mcp/servers.toml`（全局 MCP 注册表）。
 - `grobot init --project` 会自动创建 `<repo>/.grobot/mcp.toml`（项目级 MCP 覆盖）。
 - `grobot init` 会同时创建 hooks 目录：`hooks/user-prompt-submit/`、`hooks/before-tool-use/`、`hooks/after-tool-use/`（全局和项目层都会有）。
+- `grobot gc` 默认 dry-run；需要实际清理时显式传 `--apply`。策略支持 `CLI > config.toml[storage.cleanup] > 默认值`。
 
 ### 下载源码后直接运行（不走 npm）
 
@@ -149,10 +153,14 @@ grobot --help
 ```
 
 说明：
-- `~/.grobot` 是数据目录（配置、会话、日志、缓存）；`grobot` 是可执行命令（位于 PATH 的某个 bin 目录）。
+- `~/.grobot` 是数据目录（配置与持久状态）；`grobot` 是可执行命令（位于 PATH 的某个 bin 目录）。
 - `claude`/`codex` 也是同一模型：命令在 PATH，状态数据在 `~/.claude` / `~/.codex`。
-- 如需沿用历史默认目录（`~/.grobot/bin`）：直接执行 `bash scripts/install-local.sh`。
+- `install-local.sh` 默认会自动补齐全局 home 骨架（幂等，不覆盖已有文件）：`config.toml`、`config.toml.example`、`mcp/servers.toml` 与 `hooks/skills/memory/wiki/mcp/rules/plans/experience/sessions`。
+- TS dev CLI 编译缓存默认写入系统缓存目录（macOS：`~/Library/Caches/grobot/ts-dev-cli`）；重装时会尝试从旧 `~/.grobot/cache/ts-dev-cli` 自动迁移。
+- 安装时会自动迁移 legacy 会话目录：`~/.grobot/session/* -> ~/.grobot/sessions/*`（目标已存在时跳过同名文件）。
+- `install-local.sh` 默认把命令安装到 `~/.local/bin`；如需沿用历史目录可显式传 `--bin-dir "$HOME/.grobot/bin"`。
 - `install-local.sh` 默认会自动执行 browser native 依赖 setup（等价于 `browser:native:setup` 的 best-effort 版本）。
+- 只想补齐 `~/.grobot` 骨架（不改 PATH、不装软链接、不做 native setup）可用：`bash scripts/install-local.sh --bootstrap-only`。
 - 如需严格门禁（native 依赖未就绪直接失败）：`npm run install:local:strict-native`。
 - 若仅做排障/探测：`npm run browser:native:doctor`。
 - Windows 环境无需 `cliclick`；请在部署 bootstrap 里执行 `npm run browser:native:setup`，依赖检查以 `powershell|pwsh` 就绪为准。
@@ -164,8 +172,42 @@ grobot --help
 # 自定义安装目录（例如 /usr/local/bin）
 bash scripts/install-local.sh --bin-dir /usr/local/bin --no-profile
 
+# 自定义全局 home（默认 ~/.grobot）
+bash scripts/install-local.sh --home "$HOME/.grobot"
+
+# 明确跳过全局 home 骨架补齐（不推荐）
+bash scripts/install-local.sh --no-home-bootstrap
+
+# 仅补齐全局 home 骨架（不执行命令安装）
+bash scripts/install-local.sh --bootstrap-only
+
 # 卸载源码安装的软链接
 bash scripts/uninstall-local.sh --bin-dir "$HOME/.local/bin"
+```
+
+### 运行时缓存治理（gc）
+
+```bash
+# 默认 dry-run（只输出候选清理项）
+grobot gc --json
+
+# 实际清理（默认 scope=all）
+grobot gc --apply
+
+# 仅清理全局目录
+grobot gc --scope global --apply
+
+# 自定义策略
+grobot gc --retention-days 14 --keep-recent-sessions 20 --keep-recent-plans-per-session 8 --apply
+```
+
+可选全局配置（`~/.grobot/config.toml`）：
+
+```toml
+[storage.cleanup]
+retention_days = 30
+keep_recent_sessions = 40
+keep_recent_plans_per_session = 12
 ```
 
 ### 核心分发（闭源发布预备）

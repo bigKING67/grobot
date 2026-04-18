@@ -43,6 +43,11 @@ dimensions = 2560
 enabled = true
 model = "Qwen/Qwen3-Reranker-0.6B"
 
+[storage.cleanup]
+retention_days = 30
+keep_recent_sessions = 40
+keep_recent_plans_per_session = 12
+
 [bridge]
 enabled = true
 port = 9810
