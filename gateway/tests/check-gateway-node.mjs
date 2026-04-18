@@ -2881,6 +2881,12 @@ async function runGatewayContractSmoke() {
     contextEngineGraphCachePayload.second_pass?.dependency_rows,
     contextEngineGraphCachePayload.first_pass?.dependency_rows,
   );
+  assert.equal(
+    (contextEngineGraphCachePayload.first_pass?.symbol_rows ?? []).some(
+      (row) => String(row).includes("bridge=") && String(row).includes("breadth="),
+    ),
+    true,
+  );
   const firstStats = contextEngineGraphCachePayload.first_pass?.stats ?? {};
   const secondStats = contextEngineGraphCachePayload.second_pass?.stats ?? {};
   assert.equal(Number(firstStats.symbol_query?.miss) >= 1, true);
@@ -2905,6 +2911,67 @@ async function runGatewayContractSmoke() {
     true,
   );
   logStep("context-engine-contract graph-cache");
+
+  const contextEngineGraphCacheMultiHopPayloadRaw = JSON.stringify({
+    query: "trace payment call chain",
+    max_rows: 8,
+    snapshot: {
+      root_path: "/tmp/context-graph-cache-contract-hop",
+      files: [
+        {
+          path: "src/payments/entry.ts",
+          content: [
+            "import { settlePayment } from \"./service\";",
+            "export const runEntry = async (orderId: string) => settlePayment(orderId);",
+          ].join("\n"),
+        },
+        {
+          path: "src/payments/service.ts",
+          content: [
+            "import { requestPayment } from \"./gateway\";",
+            "export const settlePayment = async (orderId: string) => requestPayment(orderId);",
+          ].join("\n"),
+        },
+        {
+          path: "src/payments/gateway.ts",
+          content: [
+            "import { writeLog } from \"../infra/logger\";",
+            "export function requestPayment(orderId: string) {",
+            "  writeLog(orderId);",
+            "  return `ok:${orderId}`;",
+            "}",
+          ].join("\n"),
+        },
+        {
+          path: "src/infra/logger.ts",
+          content: [
+            "export function writeLog(input: string) {",
+            "  return input;",
+            "}",
+          ].join("\n"),
+        },
+      ],
+    },
+  });
+  const contextEngineGraphCacheMultiHopResult = runTsContract("context-engine-contract.ts", "graph-cache", [
+    "--payload",
+    contextEngineGraphCacheMultiHopPayloadRaw,
+  ]);
+  const contextEngineGraphCacheMultiHopPayload = parseJsonOutput(
+    "context-engine-contract graph-cache multi-hop",
+    contextEngineGraphCacheMultiHopResult.stdout,
+  );
+  const multiHopRows = contextEngineGraphCacheMultiHopPayload.first_pass?.dependency_rows ?? [];
+  assert.equal(
+    multiHopRows.some((row) => String(row).split("->").length >= 3),
+    true,
+  );
+  assert.equal(contextEngineGraphCacheMultiHopPayload.cache_reuse_observed, true);
+  assert.deepEqual(
+    contextEngineGraphCacheMultiHopPayload.second_pass?.dependency_rows,
+    contextEngineGraphCacheMultiHopPayload.first_pass?.dependency_rows,
+  );
+  logStep("context-engine-contract graph-cache-multi-hop");
 
   const graphCacheConcurrency = 4;
   const graphCacheConcurrentResults = await Promise.all(
