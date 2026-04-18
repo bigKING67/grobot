@@ -12,6 +12,25 @@ export interface ContextRecoveryConfig {
   circuitBreakerFailures: number;
 }
 
+export interface ContextPromptQualityConfig {
+  lowQualityThreshold: number;
+  degradeOverallThreshold: number;
+  degradeLowQualityRateThreshold: number;
+  degradeMinEntries: number;
+  guardEnabled: boolean;
+  guardAdaptiveEnabled: boolean;
+  guardAdaptiveModeAllowlist: ContextPromptQualityGuardAdaptiveMode[];
+  guardPromoteStreak: number;
+  guardSeverePromoteStreak: number;
+  guardReleaseStreak: number;
+  guardHoldTurns: number;
+  guardMaxFloorStage: PromptCompactionStage;
+  guardSevereOverallThreshold: number;
+  guardSevereLowQualityRateThreshold: number;
+}
+
+export type ContextPromptQualityGuardAdaptiveMode = "harden" | "relax";
+
 export interface ContextLineageConfig {
   enabled: boolean;
   maxRows: number;
@@ -48,8 +67,10 @@ export interface ContextEngineConfig {
   contextWindowTokens: number;
   reservedOutputTokens: number;
   safetyMarginTokens: number;
+  autoCompactTokenLimit?: number;
   thresholds: ContextCompressionThresholds;
   recovery: ContextRecoveryConfig;
+  promptQuality?: ContextPromptQualityConfig;
   lineage: ContextLineageConfig;
   workspaceSignals: ContextWorkspaceSignalsConfig;
   semanticPrefetch: ContextSemanticPrefetchConfig;
@@ -71,6 +92,9 @@ export interface PromptPreparationResult {
   variants: PromptVariant[];
   thresholdStage: PromptCompactionStage;
   selectionReason: "threshold" | "budget_guard";
+  autoCompactTokenLimit: number;
+  targetTokenLimit: number;
+  autoCompactLimitTriggered: boolean;
   utilization: number;
   selectedUtilization: number;
   effectiveWindowTokens: number;

@@ -1240,6 +1240,20 @@ async function runGatewayContractSmoke() {
     "semantic_prefetch_enabled = true",
     "semantic_prefetch_timeout_ms = 4200",
     "semantic_prefetch_max_evidence = 9",
+    "prompt_quality_low_quality_threshold = 0.58",
+    "prompt_quality_degrade_overall_threshold = 0.61",
+    "prompt_quality_degrade_low_quality_rate_threshold = 0.35",
+    "prompt_quality_degrade_min_entries = 6",
+    "prompt_quality_guard_enabled = true",
+    "prompt_quality_guard_adaptive_enabled = false",
+    "prompt_quality_guard_adaptive_mode_allowlist = [\"harden\"]",
+    "prompt_quality_guard_promote_streak = 2",
+    "prompt_quality_guard_severe_promote_streak = 3",
+    "prompt_quality_guard_release_streak = 4",
+    "prompt_quality_guard_hold_turns = 3",
+    "prompt_quality_guard_max_floor_stage = \"forced\"",
+    "prompt_quality_guard_severe_overall_threshold = 0.42",
+    "prompt_quality_guard_severe_low_quality_rate_threshold = 0.77",
   ].join("\n"), "utf8");
   const contextEngineResolveConfigResult = runTsContract("context-engine-contract.ts", "resolve-config", [
     "--payload",
@@ -1276,6 +1290,20 @@ async function runGatewayContractSmoke() {
   assert.equal(contextEngineResolveConfigPayload.semantic_prefetch?.enabled, true);
   assert.equal(contextEngineResolveConfigPayload.semantic_prefetch?.timeoutMs, 4200);
   assert.equal(contextEngineResolveConfigPayload.semantic_prefetch?.maxEvidence, 9);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.lowQualityThreshold, 0.58);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.degradeOverallThreshold, 0.61);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.degradeLowQualityRateThreshold, 0.35);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.degradeMinEntries, 6);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardEnabled, true);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardAdaptiveEnabled, false);
+  assert.deepEqual(contextEngineResolveConfigPayload.prompt_quality?.guardAdaptiveModeAllowlist, ["harden"]);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardPromoteStreak, 2);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardSeverePromoteStreak, 3);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardReleaseStreak, 4);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardHoldTurns, 3);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardMaxFloorStage, "forced");
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardSevereOverallThreshold, 0.42);
+  assert.equal(contextEngineResolveConfigPayload.prompt_quality?.guardSevereLowQualityRateThreshold, 0.77);
   logStep("context-engine-contract resolve-config");
 
   const contextEnginePreparePromptHistory = Array.from({ length: 12 }).map((_, index) => ({
@@ -1468,6 +1496,1317 @@ async function runGatewayContractSmoke() {
   assert.equal(contextEngineDownshiftGuardPayload.triggered, true);
   assert.equal(contextEngineDownshiftGuardPayload.promoted_stage, "proactive");
   logStep("context-engine-contract downshift-guard");
+
+  const contextEngineTrimRecentTurnsPrompt = [
+    "[Conversation Context]",
+    "[Compact Context Snapshot v2]",
+    "[Architecture decisions]",
+    "- keep retry guard strict and observable",
+    "[Recent Turns]",
+    "user: " + "请继续细化上下文压缩策略并解释回滚方案。".repeat(8),
+    "assistant: " + "已补充自动压缩阈值与预算守卫。".repeat(8),
+    "user: " + "再细化一下结构化压缩，不要只做头部截断。".repeat(8),
+    "assistant: " + "可以先裁剪 Recent Turns，再做 head trim。".repeat(8),
+    "",
+    "[Current User Message]",
+    "继续打磨上下文工程，质量优先。",
+  ].join("\n");
+  const contextEngineTrimRecentTurnsResult = runTsContract("context-engine-contract.ts", "trim-recent-turns", [
+    "--payload",
+    JSON.stringify({
+      prompt: contextEngineTrimRecentTurnsPrompt,
+      target_token_limit: 90,
+      min_recent_rows: 1,
+    }),
+  ]);
+  const contextEngineTrimRecentTurnsPayload = parseJsonOutput(
+    "context-engine-contract trim-recent-turns",
+    contextEngineTrimRecentTurnsResult.stdout,
+  );
+  assert.equal(contextEngineTrimRecentTurnsPayload.has_recent_turns_section, true);
+  assert.equal(contextEngineTrimRecentTurnsPayload.changed, true);
+  assert.equal(Number(contextEngineTrimRecentTurnsPayload.removed_recent_rows) >= 1, true);
+  assert.equal(
+    Number(contextEngineTrimRecentTurnsPayload.trimmed_estimated_tokens)
+      < Number(contextEngineTrimRecentTurnsPayload.original_estimated_tokens),
+    true,
+  );
+  logStep("context-engine-contract trim-recent-turns");
+
+  const contextEngineTrimSnapshotSectionsPrompt = [
+    "[Conversation Context]",
+    "[Compact Context Snapshot v2]",
+    "[Architecture decisions]",
+    "- payment logging should keep request trace id and retry attempt",
+    "[Dependency graph hints]",
+    "- web/payment.ts -> api/payments.ts -> service/payment-core.ts -> db/order_log",
+    "[Symbol graph hints]",
+    "- fn trackPaymentTrace @ service/payment-core.ts:42 refs=3",
+    "[Live workspace changes]",
+    "- M service/payment-core.ts; M api/payments.ts; A docs/payment-observability.md",
+    "[Commit lineage hints]",
+    "- a1b2c3d4 refined payment retry envelope and audit fields",
+    "[Modified files and key changes]",
+    "- service/payment-core.ts added trace_id and retry_count propagation",
+    "[Current verification status]",
+    "- PASS: npm run check:gateway:ts",
+    "[Open TODOs and rollback notes]",
+    "- TODO: verify legacy webhook branch fallback",
+    "[Tool outputs (pass/fail only)]",
+    "- FAIL: payment webhook e2e timeout on staging",
+    "[Recent Turns]",
+    "user: 请继续强化上下文压缩，优先保留架构和变更链路。",
+    "",
+    "[Current User Message]",
+    "继续打磨压缩策略。",
+  ].join("\n");
+  const contextEngineTrimSnapshotSectionsResult = runTsContract("context-engine-contract.ts", "trim-snapshot-sections", [
+    "--payload",
+    JSON.stringify({
+      prompt: contextEngineTrimSnapshotSectionsPrompt,
+      target_token_limit: 130,
+    }),
+  ]);
+  const contextEngineTrimSnapshotSectionsPayload = parseJsonOutput(
+    "context-engine-contract trim-snapshot-sections",
+    contextEngineTrimSnapshotSectionsResult.stdout,
+  );
+  assert.equal(contextEngineTrimSnapshotSectionsPayload.has_snapshot, true);
+  assert.equal(contextEngineTrimSnapshotSectionsPayload.changed, true);
+  assert.equal(Number(contextEngineTrimSnapshotSectionsPayload.removed_sections_count) >= 1, true);
+  assert.equal(
+    Number(contextEngineTrimSnapshotSectionsPayload.trimmed_estimated_tokens)
+      < Number(contextEngineTrimSnapshotSectionsPayload.original_estimated_tokens),
+    true,
+  );
+  logStep("context-engine-contract trim-snapshot-sections");
+
+  const contextEngineSemanticCompressSnapshotPrompt = [
+    "[Conversation Context]",
+    "[Compact Context Snapshot v2]",
+    "[Architecture decisions]",
+    "- keep architecture and changed-files evidence stable first",
+    "[Dependency graph hints]",
+    "- web/payment.ts -> api/payments.ts -> service/payment-core.ts -> db/order_log -> webhook/notify.ts",
+    "- web/refund.ts -> api/refunds.ts -> service/payment-core.ts -> db/refund_log -> webhook/notify.ts",
+    "[Symbol graph hints]",
+    "- fn trackPaymentTrace(request, envelope, retryAttempt) @ service/payment-core.ts:42 refs=7",
+    "- fn emitPaymentAuditTrail(payload, traceId, retryCount) @ service/payment-core.ts:96 refs=5",
+    "[Live workspace changes]",
+    "- M service/payment-core.ts; M api/payments.ts; M api/refunds.ts; A docs/payment-observability.md",
+    "- M gateway/src/tools/context/compress/prompt-compaction.ts; M run-start-turn.ts",
+    "[Commit lineage hints]",
+    "- a1b2c3d4 refined payment retry envelope and audit fields for webhook retries and observability",
+    "- d4e5f6a7 moved webhook retry branch to shared payment-core with unified trace propagation",
+    "[Modified files and key changes]",
+    "- service/payment-core.ts added trace_id and retry_count propagation",
+    "[Current verification status]",
+    "- PASS: npm run check:gateway:ts",
+    "- FAIL: payment webhook e2e timeout on staging retry branch",
+    "[Open TODOs and rollback notes]",
+    "- TODO: verify legacy webhook branch fallback after retry envelope migration",
+    "- TODO: add contract test for semantic snapshot compression",
+    "[Tool outputs (pass/fail only)]",
+    "- FAIL: payment webhook e2e timeout on staging with retry_count=5 and trace_id propagation mismatch",
+    "- PASS: unit contract for prompt pre-send budget guard",
+    "[Recent Turns]",
+    "user: 请继续强化上下文压缩，优先保留架构和变更链路。",
+    "",
+    "[Current User Message]",
+    "继续打磨压缩策略。",
+  ].join("\n");
+  const contextEngineSemanticCompressSnapshotResult = runTsContract(
+    "context-engine-contract.ts",
+    "semantic-compress-snapshot-sections",
+    [
+      "--payload",
+      JSON.stringify({
+        prompt: contextEngineSemanticCompressSnapshotPrompt,
+        target_token_limit: 110,
+      }),
+    ],
+  );
+  const contextEngineSemanticCompressSnapshotPayload = parseJsonOutput(
+    "context-engine-contract semantic-compress-snapshot-sections",
+    contextEngineSemanticCompressSnapshotResult.stdout,
+  );
+  assert.equal(contextEngineSemanticCompressSnapshotPayload.has_snapshot, true);
+  assert.equal(contextEngineSemanticCompressSnapshotPayload.changed, true);
+  assert.equal(Number(contextEngineSemanticCompressSnapshotPayload.compressed_sections_count) >= 1, true);
+  logStep("context-engine-contract semantic-compress-snapshot-sections");
+
+  const contextEnginePromptQualityWorkDir = makeTempDir("context-engine-prompt-quality");
+  const contextEnginePromptQualityResult = runTsContract("context-engine-contract.ts", "prompt-quality-window", [
+    "--payload",
+    JSON.stringify({
+      work_dir: contextEnginePromptQualityWorkDir,
+      session_key: "contract:prompt-quality",
+      size: 12,
+      low_quality_threshold: 0.6,
+      threshold_overall: 0.8,
+      threshold_low_quality_rate: 0.2,
+      min_entries: 2,
+      samples: [
+        {
+          stage: "proactive",
+          prompt: [
+            "[Conversation Context]",
+            "[Compact Context Snapshot v2]",
+            "[Architecture decisions]",
+            "- keep deterministic prompt budget routing",
+            "[Modified files and key changes]",
+            "- gateway/src/tools/context/compress/prompt-compaction.ts",
+            "[Current verification status]",
+            "- PASS: npm run check:gateway:ts",
+            "[Open TODOs and rollback notes]",
+            "- TODO: add dedicated prompt quality contract gate",
+            "[Recent Turns]",
+            "user: 请继续优化上下文压缩策略",
+            "assistant: 已补齐 pre-send trim 和状态观测",
+            "[Current User Message]",
+            "继续打磨。",
+          ].join("\\n"),
+          target_token_limit: 500,
+          pre_send_strategy: "quality_first",
+          pre_send_overflow_ratio: 0.04,
+          pre_send_pressure_score: 0.26,
+        },
+        {
+          stage: "minimal",
+          prompt: [
+            "[Conversation Context]",
+            "[Compact Context Snapshot v2]",
+            "[Architecture decisions]",
+            "- minimal fallback only",
+            "[Current User Message]",
+            "继续。",
+          ].join("\\n"),
+          target_token_limit: 40,
+          pre_send_strategy: "hard_budget",
+          pre_send_overflow_ratio: 0.32,
+          pre_send_pressure_score: 0.78,
+        },
+      ],
+    }),
+  ]);
+  const contextEnginePromptQualityPayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-window",
+    contextEnginePromptQualityResult.stdout,
+  );
+  assert.equal(Number(contextEnginePromptQualityPayload.wrote_entries), 2);
+  assert.equal(Number(contextEnginePromptQualityPayload.summary?.entries) >= 2, true);
+  assert.equal(typeof contextEnginePromptQualityPayload.summary?.average_scores?.overall, "number");
+  assert.equal(typeof contextEnginePromptQualityPayload.summary?.low_quality?.rate, "number");
+  assert.equal(typeof contextEnginePromptQualityPayload.summary?.stage_counts?.proactive, "number");
+  assert.equal(typeof contextEnginePromptQualityPayload.summary?.signal_averages?.recent_trim_rows, "number");
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.signal_averages?.snapshot_semantic_compress_sections,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.compression_activity?.snapshot_semantic_compress_rate,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.signal_averages?.pre_send_overflow_ratio,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.signal_averages?.pre_send_pressure_score,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.strategy_activity?.hard_budget_rate,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.strategy_activity?.quality_first_rate,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.token_budget?.average_utilization_ratio,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.strategy_trends?.short?.window_size,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.strategy_trends?.medium?.window_size,
+    "number",
+  );
+  const promptQualityStrategyTrendDeltaHardBudget =
+    contextEnginePromptQualityPayload.summary?.strategy_trends?.delta?.hard_budget_rate;
+  assert.equal(
+    typeof promptQualityStrategyTrendDeltaHardBudget === "number"
+      || promptQualityStrategyTrendDeltaHardBudget === null,
+    true,
+  );
+  const promptQualityStrategyOutcomeHardBudgetFollowupDelta =
+    contextEnginePromptQualityPayload.summary?.strategy_outcomes?.hard_budget_followup_overall_delta;
+  assert.equal(
+    typeof promptQualityStrategyOutcomeHardBudgetFollowupDelta === "number"
+      || promptQualityStrategyOutcomeHardBudgetFollowupDelta === null,
+    true,
+  );
+  const promptQualityStrategyOutcomeQualityFirstFollowupDelta =
+    contextEnginePromptQualityPayload.summary?.strategy_outcomes?.quality_first_followup_overall_delta;
+  assert.equal(
+    typeof promptQualityStrategyOutcomeQualityFirstFollowupDelta === "number"
+      || promptQualityStrategyOutcomeQualityFirstFollowupDelta === null,
+    true,
+  );
+  const promptQualityStrategyOutcomeHardBudgetRecoveryRate =
+    contextEnginePromptQualityPayload.summary?.strategy_outcomes?.hard_budget_recovery_rate;
+  assert.equal(
+    typeof promptQualityStrategyOutcomeHardBudgetRecoveryRate === "number"
+      || promptQualityStrategyOutcomeHardBudgetRecoveryRate === null,
+    true,
+  );
+  const promptQualityStrategyOutcomeQualityFirstImprovedRate =
+    contextEnginePromptQualityPayload.summary?.strategy_outcomes?.quality_first_improved_rate;
+  assert.equal(
+    typeof promptQualityStrategyOutcomeQualityFirstImprovedRate === "number"
+      || promptQualityStrategyOutcomeQualityFirstImprovedRate === null,
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.strategy_outcomes?.hard_budget_transition_count,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.strategy_outcomes?.quality_first_transition_count,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.pressure_trends?.short?.window_size,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityPayload.summary?.pressure_trends?.medium?.window_size,
+    "number",
+  );
+  const promptQualityPressureTrendDeltaUtilization =
+    contextEnginePromptQualityPayload.summary?.pressure_trends?.delta?.average_utilization_ratio;
+  assert.equal(
+    typeof promptQualityPressureTrendDeltaUtilization === "number"
+      || promptQualityPressureTrendDeltaUtilization === null,
+    true,
+  );
+  assert.equal(typeof contextEnginePromptQualityPayload.degradation?.degraded, "boolean");
+  assert.equal(contextEnginePromptQualityPayload.degradation?.degraded, true);
+  assert.equal(
+    ["overall_below_threshold", "low_quality_rate_above_threshold"].includes(
+      String(contextEnginePromptQualityPayload.degradation?.reason),
+    ),
+    true,
+  );
+  logStep("context-engine-contract prompt-quality-window");
+
+  const contextEnginePromptQualityGuardResult = runTsContract("context-engine-contract.ts", "prompt-quality-guard", [
+    "--payload",
+    JSON.stringify({
+      selected_stage: "normal",
+      policy: {
+        enabled: true,
+        promote_streak: 1,
+        severe_promote_streak: 2,
+        release_streak: 2,
+        hold_turns: 1,
+        max_floor_stage: "minimal",
+        severe_overall_threshold: 0.45,
+        severe_low_quality_rate_threshold: 0.7,
+      },
+      observations: [
+        {
+          degraded: true,
+          reason: "overall_below_threshold",
+          observed_overall: 0.7,
+          observed_low_quality_rate: 0.2,
+        },
+        {
+          degraded: true,
+          reason: "overall_below_threshold",
+          observed_overall: 0.32,
+          observed_low_quality_rate: 0.6,
+        },
+        {
+          degraded: true,
+          reason: "low_quality_rate_above_threshold",
+          observed_overall: 0.3,
+          observed_low_quality_rate: 0.85,
+        },
+        {
+          degraded: false,
+          reason: "healthy",
+          observed_overall: 0.82,
+          observed_low_quality_rate: 0.1,
+        },
+        {
+          degraded: false,
+          reason: "healthy",
+          observed_overall: 0.88,
+          observed_low_quality_rate: 0.08,
+        },
+      ],
+    }),
+  ]);
+  const contextEnginePromptQualityGuardPayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard",
+    contextEnginePromptQualityGuardResult.stdout,
+  );
+  assert.equal(Array.isArray(contextEnginePromptQualityGuardPayload.timeline), true);
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline.length >= 5, true);
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline[0]?.floor_stage, "proactive");
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline[1]?.floor_stage, "forced");
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline[2]?.floor_stage, "minimal");
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline[2]?.severe_escalated, true);
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline[4]?.released, true);
+  assert.equal(contextEnginePromptQualityGuardPayload.timeline[4]?.floor_stage, "forced");
+  logStep("context-engine-contract prompt-quality-guard");
+
+  const contextEnginePromptQualityGuardRuntimeResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-runtime",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          severe_overall_threshold: 0.45,
+          severe_low_quality_rate_threshold: 0.7,
+        },
+        state: {
+          floorStage: "forced",
+          degradedStreak: 2,
+          severeStreak: 2,
+          healthyStreak: 0,
+          holdTurnsRemaining: 2,
+          lastReason: "low_quality_rate_above_threshold",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: true,
+        reason: "low_quality_rate_above_threshold",
+        observed_overall: 0.31,
+        observed_low_quality_rate: 0.86,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardRuntimePayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-runtime",
+    contextEnginePromptQualityGuardRuntimeResult.stdout,
+  );
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.enabled, true);
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.phase, "escalating");
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.transition, "promote");
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.severe, true);
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.floor_stage, "forced");
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.proposed_floor_stage, "minimal");
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.promote_remaining, 0);
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.severe_promote_remaining, 0);
+  assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.release_remaining, 3);
+  logStep("context-engine-contract prompt-quality-guard-runtime");
+
+  const contextEnginePromptQualityGuardAdaptivePolicyResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "forced",
+          degradedStreak: 2,
+          severeStreak: 2,
+          healthyStreak: 0,
+          holdTurnsRemaining: 2,
+          lastReason: "low_quality_rate_above_threshold",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: true,
+        reason: "low_quality_rate_above_threshold",
+        low_quality_rate: 0.9,
+        average_overall: 0.34,
+        observed_overall: 0.3,
+        observed_low_quality_rate: 0.9,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptivePolicyPayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy",
+    contextEnginePromptQualityGuardAdaptivePolicyResult.stdout,
+  );
+  assert.equal(contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.enabled, true);
+  assert.equal(contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.mode, "stable");
+  assert.equal(contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.mode_blocked, true);
+  assert.equal(contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.blocked_mode, "harden");
+  assert.deepEqual(contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.allowlist, ["relax"]);
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.adjustment?.promote_streak_delta,
+    0,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.adjustment?.release_streak_delta,
+    0,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.effective_policy?.promote_streak,
+    2,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.outcome_drift_guard
+      ?.high_evidence_harden_bias,
+    "boolean",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.outcome_drift_guard
+      ?.recommendation,
+    "string",
+  );
+  assert.equal(
+    Array.isArray(
+      contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.outcome_drift_guard
+        ?.recent_auto_action_levels,
+    ),
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.outcome_drift_guard
+      ?.window_summary?.entries,
+    "number",
+  );
+  assert.equal(
+    ["green", "yellow", "red"].includes(
+      String(
+        contextEnginePromptQualityGuardAdaptivePolicyPayload.decision?.outcome_drift_guard
+          ?.window_summary?.alert_level,
+      ),
+    ),
+    true,
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy");
+
+  const contextEnginePromptQualityGuardAdaptiveCompressionPressureResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "normal",
+          degradedStreak: 0,
+          severeStreak: 0,
+          healthyStreak: 0,
+          holdTurnsRemaining: 0,
+          lastReason: "healthy",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: false,
+        reason: "healthy",
+        low_quality_rate: 0.2,
+        average_overall: 0.8,
+        observed_overall: 0.8,
+        observed_low_quality_rate: 0.2,
+        snapshot_semantic_compress_rate: 0.42,
+        auto_limit_triggered_rate: 0.35,
+        average_utilization_ratio: 0.92,
+        short_snapshot_semantic_compress_rate: 0.58,
+        medium_snapshot_semantic_compress_rate: 0.34,
+        short_auto_limit_triggered_rate: 0.46,
+        medium_auto_limit_triggered_rate: 0.29,
+        short_average_utilization_ratio: 0.95,
+        medium_average_utilization_ratio: 0.85,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy compression-pressure",
+    contextEnginePromptQualityGuardAdaptiveCompressionPressureResult.stdout,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.mode,
+    "harden",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.reason,
+    "compression_window_pressure",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.mode_blocked,
+    false,
+  );
+  const compressionPressureLearnAlpha = Number(
+    contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.pressure_policy?.learn_alpha,
+  );
+  assert.equal(Number.isFinite(compressionPressureLearnAlpha), true);
+  assert.equal(compressionPressureLearnAlpha >= 0.18, true);
+  assert.equal(compressionPressureLearnAlpha <= 0.68, true);
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.pressure_policy?.trend_momentum,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.pressure_policy?.trend_flip_suppressed,
+    "boolean",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveCompressionPressurePayload.decision?.effective_policy?.promote_streak,
+    1,
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy compression-pressure");
+
+  const contextEnginePromptQualityGuardAdaptiveStrategyPressureResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "normal",
+          degradedStreak: 0,
+          severeStreak: 0,
+          healthyStreak: 0,
+          holdTurnsRemaining: 0,
+          lastReason: "healthy",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: false,
+        reason: "healthy",
+        low_quality_rate: 0.16,
+        average_overall: 0.88,
+        observed_overall: 0.88,
+        observed_low_quality_rate: 0.16,
+        snapshot_semantic_compress_rate: 0.21,
+        auto_limit_triggered_rate: 0.18,
+        average_utilization_ratio: 0.74,
+        short_snapshot_semantic_compress_rate: 0.22,
+        medium_snapshot_semantic_compress_rate: 0.20,
+        short_auto_limit_triggered_rate: 0.19,
+        medium_auto_limit_triggered_rate: 0.17,
+        short_average_utilization_ratio: 0.76,
+        medium_average_utilization_ratio: 0.73,
+        hard_budget_strategy_rate: 0.66,
+        quality_first_strategy_rate: 0.26,
+        average_pre_send_overflow_ratio: 0.23,
+        average_pre_send_pressure_score: 0.71,
+        short_hard_budget_strategy_rate: 0.78,
+        medium_hard_budget_strategy_rate: 0.52,
+        short_average_pre_send_overflow_ratio: 0.29,
+        medium_average_pre_send_overflow_ratio: 0.18,
+        short_average_pre_send_pressure_score: 0.81,
+        medium_average_pre_send_pressure_score: 0.63,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveStrategyPressurePayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy strategy-pressure",
+    contextEnginePromptQualityGuardAdaptiveStrategyPressureResult.stdout,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyPressurePayload.decision?.mode,
+    "harden",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyPressurePayload.decision?.reason,
+    "strategy_window_pressure",
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy strategy-pressure");
+
+  const contextEnginePromptQualityGuardAdaptiveStrategyEffectiveResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "normal",
+          degradedStreak: 0,
+          severeStreak: 0,
+          healthyStreak: 0,
+          holdTurnsRemaining: 0,
+          lastReason: "healthy",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: false,
+        reason: "healthy",
+        low_quality_rate: 0.22,
+        average_overall: 0.82,
+        observed_overall: 0.82,
+        observed_low_quality_rate: 0.22,
+        snapshot_semantic_compress_rate: 0.18,
+        auto_limit_triggered_rate: 0.15,
+        average_utilization_ratio: 0.74,
+        hard_budget_strategy_rate: 0.72,
+        quality_first_strategy_rate: 0.24,
+        average_pre_send_overflow_ratio: 0.24,
+        average_pre_send_pressure_score: 0.74,
+        short_hard_budget_strategy_rate: 0.81,
+        medium_hard_budget_strategy_rate: 0.58,
+        short_average_pre_send_overflow_ratio: 0.28,
+        medium_average_pre_send_overflow_ratio: 0.19,
+        short_average_pre_send_pressure_score: 0.83,
+        medium_average_pre_send_pressure_score: 0.67,
+        hard_budget_followup_overall_delta: 0.07,
+        quality_first_followup_overall_delta: 0.02,
+        hard_budget_recovery_rate: 0.78,
+        quality_first_improved_rate: 0.64,
+        hard_budget_transition_count: 6,
+        quality_first_transition_count: 5,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy strategy-effective",
+    contextEnginePromptQualityGuardAdaptiveStrategyEffectiveResult.stdout,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.mode,
+    "stable",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.reason,
+    "window_stable",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.outcome_reliability
+      ?.required_transitions,
+    "number",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.outcome_reliability
+      ?.required_transitions,
+    6,
+  );
+  const strategyEffectiveNextRequiredTransitions = Number(
+    contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.outcome_reliability
+      ?.next_required_transitions,
+  );
+  assert.equal(Number.isFinite(strategyEffectiveNextRequiredTransitions), true);
+  assert.equal(
+    strategyEffectiveNextRequiredTransitions <= 3,
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.outcome_reliability
+      ?.combined_evidence_score,
+    "number",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyEffectivePayload.decision?.outcome_reliability
+      ?.hard_budget_reliable,
+    true,
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy strategy-effective");
+
+  const contextEnginePromptQualityGuardAdaptiveStrategyLowEvidenceResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "normal",
+          degradedStreak: 0,
+          severeStreak: 0,
+          healthyStreak: 0,
+          holdTurnsRemaining: 0,
+          lastReason: "healthy",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: false,
+        reason: "healthy",
+        low_quality_rate: 0.22,
+        average_overall: 0.82,
+        observed_overall: 0.82,
+        observed_low_quality_rate: 0.22,
+        snapshot_semantic_compress_rate: 0.18,
+        auto_limit_triggered_rate: 0.15,
+        average_utilization_ratio: 0.74,
+        hard_budget_strategy_rate: 0.72,
+        quality_first_strategy_rate: 0.24,
+        average_pre_send_overflow_ratio: 0.24,
+        average_pre_send_pressure_score: 0.74,
+        short_hard_budget_strategy_rate: 0.81,
+        medium_hard_budget_strategy_rate: 0.58,
+        short_average_pre_send_overflow_ratio: 0.28,
+        medium_average_pre_send_overflow_ratio: 0.19,
+        short_average_pre_send_pressure_score: 0.83,
+        medium_average_pre_send_pressure_score: 0.67,
+        hard_budget_followup_overall_delta: 0.09,
+        quality_first_followup_overall_delta: 0.03,
+        hard_budget_recovery_rate: 0.82,
+        quality_first_improved_rate: 0.68,
+        hard_budget_transition_count: 1,
+        quality_first_transition_count: 1,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy strategy-low-evidence",
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidenceResult.stdout,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload.decision?.mode,
+    "harden",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload.decision?.reason,
+    "strategy_window_pressure",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload.decision?.outcome_reliability
+      ?.hard_budget_reliable,
+    false,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload.decision?.outcome_reliability
+      ?.required_transitions,
+    6,
+  );
+  const strategyLowEvidenceNextRequiredTransitions = Number(
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload.decision?.outcome_reliability
+      ?.next_required_transitions,
+  );
+  assert.equal(Number.isFinite(strategyLowEvidenceNextRequiredTransitions), true);
+  assert.equal(
+    strategyLowEvidenceNextRequiredTransitions >= strategyEffectiveNextRequiredTransitions,
+    true,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveStrategyLowEvidencePayload.decision?.outcome_reliability
+      ?.quality_first_reliable,
+    false,
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy strategy-low-evidence");
+
+  const contextEnginePromptQualityGuardAdaptiveTrendRisingResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "normal",
+          degradedStreak: 0,
+          severeStreak: 0,
+          healthyStreak: 0,
+          holdTurnsRemaining: 0,
+          lastReason: "healthy",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: false,
+        reason: "healthy",
+        low_quality_rate: 0.12,
+        average_overall: 0.9,
+        observed_overall: 0.9,
+        observed_low_quality_rate: 0.12,
+        snapshot_semantic_compress_rate: 0.26,
+        auto_limit_triggered_rate: 0.31,
+        average_utilization_ratio: 0.87,
+        short_snapshot_semantic_compress_rate: 0.31,
+        medium_snapshot_semantic_compress_rate: 0.21,
+        short_auto_limit_triggered_rate: 0.35,
+        medium_auto_limit_triggered_rate: 0.24,
+        short_average_utilization_ratio: 0.90,
+        medium_average_utilization_ratio: 0.82,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveTrendRisingPayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy trend-rising",
+    contextEnginePromptQualityGuardAdaptiveTrendRisingResult.stdout,
+  );
+  const trendRisingLearnAlpha = Number(
+    contextEnginePromptQualityGuardAdaptiveTrendRisingPayload.decision?.pressure_policy?.learn_alpha,
+  );
+  assert.equal(Number.isFinite(trendRisingLearnAlpha), true);
+  assert.equal(trendRisingLearnAlpha >= 0.36, true);
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy trend-rising");
+
+  const contextEnginePromptQualityGuardAdaptiveTrendFallingResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-policy",
+    [
+      "--payload",
+      JSON.stringify({
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        state: {
+          floorStage: "normal",
+          degradedStreak: 0,
+          severeStreak: 0,
+          healthyStreak: 0,
+          holdTurnsRemaining: 0,
+          lastReason: "healthy",
+          updatedAt: "2026-04-18T00:00:00.000Z",
+        },
+        degraded: false,
+        reason: "healthy",
+        low_quality_rate: 0.12,
+        average_overall: 0.9,
+        observed_overall: 0.9,
+        observed_low_quality_rate: 0.12,
+        snapshot_semantic_compress_rate: 0.26,
+        auto_limit_triggered_rate: 0.31,
+        average_utilization_ratio: 0.87,
+        short_snapshot_semantic_compress_rate: 0.18,
+        medium_snapshot_semantic_compress_rate: 0.30,
+        short_auto_limit_triggered_rate: 0.17,
+        medium_auto_limit_triggered_rate: 0.31,
+        short_average_utilization_ratio: 0.80,
+        medium_average_utilization_ratio: 0.90,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveTrendFallingPayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-policy trend-falling",
+    contextEnginePromptQualityGuardAdaptiveTrendFallingResult.stdout,
+  );
+  const trendFallingLearnAlpha = Number(
+    contextEnginePromptQualityGuardAdaptiveTrendFallingPayload.decision?.pressure_policy?.learn_alpha,
+  );
+  assert.equal(Number.isFinite(trendFallingLearnAlpha), true);
+  assert.equal(trendFallingLearnAlpha <= 0.29, true);
+  logStep("context-engine-contract prompt-quality-guard-adaptive-policy trend-falling");
+
+  const adaptiveSequenceWindows = [];
+  for (let index = 0; index < 40; index += 1) {
+    adaptiveSequenceWindows.push({
+      degraded: false,
+      reason: "healthy",
+      low_quality_rate: 0.12,
+      average_overall: 0.9,
+      observed_overall: 0.9,
+      observed_low_quality_rate: 0.12,
+      snapshot_semantic_compress_rate: 0.18,
+      auto_limit_triggered_rate: 0.12,
+      average_utilization_ratio: 0.78,
+      short_snapshot_semantic_compress_rate: 0.16,
+      medium_snapshot_semantic_compress_rate: 0.20,
+      short_auto_limit_triggered_rate: 0.10,
+      medium_auto_limit_triggered_rate: 0.14,
+      short_average_utilization_ratio: 0.76,
+      medium_average_utilization_ratio: 0.80,
+    });
+  }
+  for (let index = 0; index < 40; index += 1) {
+    adaptiveSequenceWindows.push({
+      degraded: true,
+      reason: "compression_window_pressure",
+      low_quality_rate: 0.35,
+      average_overall: 0.72,
+      observed_overall: 0.69,
+      observed_low_quality_rate: 0.35,
+      snapshot_semantic_compress_rate: 0.46,
+      auto_limit_triggered_rate: 0.39,
+      average_utilization_ratio: 0.93,
+      short_snapshot_semantic_compress_rate: 0.53,
+      medium_snapshot_semantic_compress_rate: 0.40,
+      short_auto_limit_triggered_rate: 0.45,
+      medium_auto_limit_triggered_rate: 0.34,
+      short_average_utilization_ratio: 0.96,
+      medium_average_utilization_ratio: 0.89,
+    });
+  }
+  for (let index = 0; index < 40; index += 1) {
+    adaptiveSequenceWindows.push({
+      degraded: false,
+      reason: "window_recovered",
+      low_quality_rate: 0.14,
+      average_overall: 0.88,
+      observed_overall: 0.86,
+      observed_low_quality_rate: 0.14,
+      snapshot_semantic_compress_rate: 0.22,
+      auto_limit_triggered_rate: 0.18,
+      average_utilization_ratio: 0.81,
+      short_snapshot_semantic_compress_rate: 0.19,
+      medium_snapshot_semantic_compress_rate: 0.28,
+      short_auto_limit_triggered_rate: 0.16,
+      medium_auto_limit_triggered_rate: 0.25,
+      short_average_utilization_ratio: 0.79,
+      medium_average_utilization_ratio: 0.87,
+    });
+  }
+  const contextEnginePromptQualityGuardAdaptiveSequenceResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-sequence",
+    [
+      "--payload",
+      JSON.stringify({
+        selected_stage: "normal",
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        windows: adaptiveSequenceWindows,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveSequencePayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-sequence",
+    contextEnginePromptQualityGuardAdaptiveSequenceResult.stdout,
+  );
+  assert.equal(contextEnginePromptQualityGuardAdaptiveSequencePayload.turns, 120);
+  assert.equal(
+    Number.isFinite(Number(contextEnginePromptQualityGuardAdaptiveSequencePayload.mode_transitions?.count)),
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePromptQualityGuardAdaptiveSequencePayload.mode_transitions?.count) <= 85,
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePromptQualityGuardAdaptiveSequencePayload.pressure_alpha?.min) >= 0.18,
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePromptQualityGuardAdaptiveSequencePayload.pressure_alpha?.max) <= 0.68,
+    true,
+  );
+  assert.equal(
+    Number(contextEnginePromptQualityGuardAdaptiveSequencePayload.pressure_threshold_steps?.max_utilization_step) <= 0.045,
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.final_state?.pressureTrendMomentum,
+    "number",
+  );
+  assert.equal(
+    Number.isFinite(
+      Number(
+        contextEnginePromptQualityGuardAdaptiveSequencePayload.outcome_reliability?.required_transitions?.avg,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(
+      Number(
+        contextEnginePromptQualityGuardAdaptiveSequencePayload.outcome_reliability?.next_required_transitions?.avg,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    Number(
+      contextEnginePromptQualityGuardAdaptiveSequencePayload.outcome_reliability?.next_required_transitions?.transitions,
+    ) >= 1,
+    true,
+  );
+  assert.equal(
+    Number(
+      contextEnginePromptQualityGuardAdaptiveSequencePayload.outcome_reliability?.combined_evidence_score?.avg,
+    ) >= 0,
+    true,
+  );
+  assert.equal(
+    Number(
+      contextEnginePromptQualityGuardAdaptiveSequencePayload.outcome_reliability?.combined_evidence_score?.avg,
+    ) <= 1,
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.final_state?.outcomeRequiredTransitions,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.final_state?.outcomeCombinedEvidenceScore,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.high_evidence_harden_bias,
+    "boolean",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.high_evidence_harden_rate,
+    "number",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.recommendation,
+    "string",
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.auto_action_level,
+    "string",
+  );
+  assert.equal(
+    Array.isArray(
+      contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.recent_auto_action_levels,
+    ),
+    true,
+  );
+  assert.equal(
+    typeof contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.window_summary?.entries,
+    "number",
+  );
+  assert.equal(
+    ["green", "yellow", "red"].includes(
+      String(contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.window_summary?.alert_level),
+    ),
+    true,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.high_evidence_harden_bias,
+    false,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.recommendation,
+    "none",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveSequencePayload.drift_guard?.auto_action_level,
+    "none",
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-sequence");
+
+  const adaptiveSequenceHighEvidenceHardenWindows = [];
+  for (let index = 0; index < 24; index += 1) {
+    adaptiveSequenceHighEvidenceHardenWindows.push({
+      degraded: false,
+      reason: "compression_window_pressure",
+      low_quality_rate: 0.16,
+      average_overall: 0.86,
+      observed_overall: 0.84,
+      observed_low_quality_rate: 0.16,
+      snapshot_semantic_compress_rate: 0.52,
+      auto_limit_triggered_rate: 0.43,
+      average_utilization_ratio: 0.95,
+      short_snapshot_semantic_compress_rate: 0.58,
+      medium_snapshot_semantic_compress_rate: 0.44,
+      short_auto_limit_triggered_rate: 0.48,
+      medium_auto_limit_triggered_rate: 0.37,
+      short_average_utilization_ratio: 0.97,
+      medium_average_utilization_ratio: 0.90,
+      hard_budget_strategy_rate: 0.68,
+      quality_first_strategy_rate: 0.24,
+      average_pre_send_overflow_ratio: 0.22,
+      average_pre_send_pressure_score: 0.69,
+      short_hard_budget_strategy_rate: 0.76,
+      medium_hard_budget_strategy_rate: 0.52,
+      short_average_pre_send_overflow_ratio: 0.27,
+      medium_average_pre_send_overflow_ratio: 0.17,
+      short_average_pre_send_pressure_score: 0.77,
+      medium_average_pre_send_pressure_score: 0.59,
+      hard_budget_followup_overall_delta: 0.06,
+      quality_first_followup_overall_delta: 0.03,
+      hard_budget_recovery_rate: 0.76,
+      quality_first_improved_rate: 0.64,
+      hard_budget_transition_count: 8,
+      quality_first_transition_count: 8,
+    });
+  }
+  const contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardResult = runTsContract(
+    "context-engine-contract.ts",
+    "prompt-quality-guard-adaptive-sequence",
+    [
+      "--payload",
+      JSON.stringify({
+        selected_stage: "normal",
+        policy: {
+          enabled: true,
+          promote_streak: 2,
+          severe_promote_streak: 2,
+          release_streak: 3,
+          hold_turns: 2,
+          max_floor_stage: "minimal",
+          adaptive_mode_allowlist: ["harden", "relax"],
+        },
+        adaptive_enabled: true,
+        windows: adaptiveSequenceHighEvidenceHardenWindows,
+      }),
+    ],
+  );
+  const contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload = parseJsonOutput(
+    "context-engine-contract prompt-quality-guard-adaptive-sequence drift-guard",
+    contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardResult.stdout,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.high_evidence_harden_bias,
+    true,
+  );
+  assert.equal(
+    Number(
+      contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.high_evidence_turns,
+    ) >= 10,
+    true,
+  );
+  assert.equal(
+    Number(
+      contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.high_evidence_harden_rate,
+    ) >= 0.7,
+    true,
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.reason,
+    "high_evidence_harden_bias",
+  );
+  assert.equal(
+    contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.recommendation,
+    "prefer_relax",
+  );
+  assert.equal(
+    ["soft", "medium", "hard"].includes(
+      String(contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.auto_action_level),
+    ),
+    true,
+  );
+  assert.equal(
+    Array.isArray(
+      contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.recent_auto_action_levels,
+    ),
+    true,
+  );
+  assert.equal(
+    Number(
+      contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.window_summary?.entries,
+    ) >= 1,
+    true,
+  );
+  assert.equal(
+    ["green", "yellow", "red"].includes(
+      String(
+        contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.window_summary
+          ?.alert_level,
+      ),
+    ),
+    true,
+  );
+  logStep("context-engine-contract prompt-quality-guard-adaptive-sequence drift-guard");
+
+  const preSendPlanQualityFirstResult = runTsContract(
+    "context-engine-contract.ts",
+    "pre-send-compression-plan",
+    [
+      "--payload",
+      JSON.stringify({
+        selected_stage: "proactive",
+        estimated_tokens: 10_150,
+        target_token_limit: 10_000,
+        quality_guard_active: false,
+        quality_guard_severe: false,
+        pressure_trend_momentum: 0.08,
+      }),
+    ],
+  );
+  const preSendPlanQualityFirstPayload = parseJsonOutput(
+    "context-engine-contract pre-send-compression-plan quality-first",
+    preSendPlanQualityFirstResult.stdout,
+  );
+  assert.equal(preSendPlanQualityFirstPayload.strategy, "quality_first");
+  assert.equal(Array.isArray(preSendPlanQualityFirstPayload.order), true);
+  assert.equal(preSendPlanQualityFirstPayload.order[0], "recent_trim");
+  assert.equal(preSendPlanQualityFirstPayload.order[1], "snapshot_semantic_compress");
+  assert.equal(preSendPlanQualityFirstPayload.order[2], "snapshot_trim");
+  assert.equal(typeof preSendPlanQualityFirstPayload.overflow_ratio, "number");
+  assert.equal(typeof preSendPlanQualityFirstPayload.pressure_score, "number");
+  logStep("context-engine-contract pre-send-compression-plan quality-first");
+
+  const preSendPlanHardBudgetResult = runTsContract(
+    "context-engine-contract.ts",
+    "pre-send-compression-plan",
+    [
+      "--payload",
+      JSON.stringify({
+        selected_stage: "minimal",
+        estimated_tokens: 13_600,
+        target_token_limit: 10_000,
+        quality_guard_active: true,
+        quality_guard_severe: true,
+        pressure_trend_momentum: 0.82,
+      }),
+    ],
+  );
+  const preSendPlanHardBudgetPayload = parseJsonOutput(
+    "context-engine-contract pre-send-compression-plan hard-budget",
+    preSendPlanHardBudgetResult.stdout,
+  );
+  assert.equal(preSendPlanHardBudgetPayload.strategy, "hard_budget");
+  assert.equal(Array.isArray(preSendPlanHardBudgetPayload.order), true);
+  assert.equal(preSendPlanHardBudgetPayload.order[0], "recent_trim");
+  assert.equal(preSendPlanHardBudgetPayload.order[1], "snapshot_trim");
+  assert.equal(preSendPlanHardBudgetPayload.order.includes("snapshot_semantic_compress"), true);
+  assert.equal(preSendPlanHardBudgetPayload.order.at(-1), "head_trim");
+  assert.equal(Number(preSendPlanHardBudgetPayload.overflow_ratio) >= 0.3, true);
+  assert.equal(Number(preSendPlanHardBudgetPayload.pressure_score) >= 0.62, true);
+  logStep("context-engine-contract pre-send-compression-plan hard-budget");
 
   const contextEngineGraphCacheContractPayload = JSON.stringify({
     query: "add payment logging and retry context",
@@ -1887,8 +3226,760 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_context_engine_effective_window_type, "number");
   assert.equal(statusPayload.status_context_engine_threshold_hard_type, "number");
   assert.equal(statusPayload.status_context_engine_recovery_ptl_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_low_quality_threshold_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_degrade_overall_threshold_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_degrade_low_quality_rate_threshold_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_degrade_min_entries_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_enabled_type, "boolean");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_adaptive_enabled_type, "boolean");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_adaptive_mode_allowlist_type, "array");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_promote_streak_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_severe_promote_streak_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_release_streak_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_hold_turns_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_max_floor_stage_type, "string");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_severe_overall_threshold_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_severe_low_quality_rate_threshold_type, "number");
+  assert.equal(statusPayload.status_context_engine_has_prompt_quality_guard_state, true);
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_state_floor_stage_type, "string");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_state_degraded_streak_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_state_severe_streak_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_state_healthy_streak_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_state_hold_turns_remaining_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_state_last_reason_type, "string");
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_guard_state_updated_at_type)),
+    true,
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_utilization_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_semantic_rate_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_auto_limit_rate_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_joint_rate_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_trend_utilization_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_trend_semantic_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_trend_auto_limit_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_pressure_trend_momentum_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_outcome_required_transitions_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_outcome_combined_evidence_score_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_outcome_high_evidence_turns_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_outcome_high_evidence_harden_turns_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_outcome_drift_recent_auto_action_levels_type,
+    "array",
+  );
+  assert.equal(statusPayload.status_context_engine_has_prompt_quality_guard_runtime_assessment, true);
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_enabled_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_phase_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_transition_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_degraded_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_severe_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_reason_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_triggered_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_floor_stage_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_proposed_floor_stage_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_promote_remaining_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_severe_promote_remaining_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_release_remaining_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_hold_turns_remaining_type,
+    "number",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_observed_overall_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_runtime_assessment_observed_low_quality_rate_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_has_prompt_quality_guard_adaptive_policy, true);
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_mode_type, "string");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_reason_type, "string");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_allowlist_type, "array");
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_mode_blocked_type,
+    "boolean",
+  );
+  assert.equal(
+    ["string", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_blocked_mode_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_base_promote_type, "number");
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_effective_promote_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_effective_release_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_effective_hold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_adjustment_promote_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_adjustment_release_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_adjustment_hold_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_source_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_updated_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_learn_alpha_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_utilization_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_semantic_rate_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_auto_limit_rate_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_joint_rate_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_utilization_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_semantic_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_auto_limit_delta_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_momentum_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_flip_suppressed_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_required_transitions_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_next_required_transitions_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_hard_budget_transitions_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_quality_first_transitions_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_hard_budget_evidence_score_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_quality_first_evidence_score_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_combined_evidence_score_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_hard_budget_reliable_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_outcome_quality_first_reliable_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_harden_bias_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_turn_type,
+    "boolean",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_turns_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_harden_turns_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_harden_rate_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_threshold_harden_rate_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_min_high_evidence_turns_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_reason_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_auto_action_level_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_recent_auto_action_levels_type,
+    "array",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_entries_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_latest_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_dominant_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_alert_level_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_transition_count_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_active_rate_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_medium_or_hard_rate_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_hard_rate_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_level_counts_type,
+    "object",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_drift_recommendation_type,
+    "string",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_semantic_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_short_semantic_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_semantic_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_short_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_short_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_strategy_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_strategy_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_avg_pre_send_overflow_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_avg_pre_send_pressure_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_followup_delta_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_followup_delta_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_recovery_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_improved_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_transition_count_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_transition_count_type,
+      ),
+    ),
+    true,
+  );
   assert.equal(statusPayload.status_context_engine_lineage_enabled_type, "boolean");
   assert.equal(statusPayload.status_context_engine_workspace_signals_enabled_type, "boolean");
+  assert.equal(statusPayload.status_context_engine_has_prompt_quality_window, true);
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_path_type, "string");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_configured_size_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_entries_type, "number");
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_from_ts_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_to_ts_type)),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_average_overall_type)),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_latest_overall_type)),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_low_quality_rate_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_low_quality_threshold_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_stage_normal_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_stage_proactive_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_stage_forced_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_stage_minimal_type, "number");
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_signal_avg_recent_trim_rows_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_signal_avg_snapshot_semantic_compress_sections_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_signal_avg_pre_send_overflow_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_signal_avg_pre_send_pressure_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_compression_snapshot_semantic_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_compression_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_token_budget_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_quality_first_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_hard_budget_rate_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_has_strategy_outcomes, true);
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_strategy_outcomes_hard_budget_followup_delta_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_strategy_outcomes_quality_first_followup_delta_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_strategy_outcomes_hard_budget_recovery_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_strategy_outcomes_quality_first_improved_rate_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_strategy_outcomes_hard_budget_transition_count_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(
+        statusPayload.status_context_engine_prompt_quality_window_strategy_outcomes_quality_first_transition_count_type,
+      ),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_has_strategy_trends, true);
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_window_strategy_trends_short_window_size_type,
+    "number",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_short_hard_budget_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_short_avg_overflow_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_short_avg_pressure_type),
+    ),
+    true,
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_window_strategy_trends_medium_window_size_type,
+    "number",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_medium_hard_budget_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_delta_hard_budget_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_delta_avg_overflow_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_strategy_trends_delta_avg_pressure_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_has_pressure_trends, true);
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_window_pressure_trends_short_window_size_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_window_pressure_trends_short_entries_type,
+    "number",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_short_semantic_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_short_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_short_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_window_pressure_trends_medium_window_size_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_window_pressure_trends_medium_entries_type,
+    "number",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_medium_semantic_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_medium_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_medium_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_delta_semantic_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_delta_auto_limit_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_engine_prompt_quality_window_pressure_trends_delta_avg_utilization_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_has_degradation, true);
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_degradation_degraded_type, "boolean");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_degradation_reason_type, "string");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_degradation_threshold_overall_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_degradation_threshold_low_quality_rate_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_degradation_min_entries_type, "number");
+  assert.equal(statusPayload.status_context_engine_prompt_quality_window_degradation_observed_entries_type, "number");
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_degradation_observed_overall_type)),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(String(statusPayload.status_context_engine_prompt_quality_window_degradation_observed_low_quality_rate_type)),
+    true,
+  );
   assert.equal(statusPayload.status_route_reason_type, "string");
   logStep("start-smoke-contract status-ts-rust", { attempts: statusAttempts });
 
@@ -2542,6 +4633,18 @@ async function runTsRustExecutionSmoke() {
     true,
   );
   assert.equal(
+    Number(preSendHeadTrimPayload.prompt_prepared_recent_trim_rows) >= 0,
+    true,
+  );
+  assert.equal(
+    Number(preSendHeadTrimPayload.prompt_prepared_snapshot_trim_sections) >= 0,
+    true,
+  );
+  assert.equal(
+    Number(preSendHeadTrimPayload.prompt_prepared_snapshot_semantic_compress_sections) >= 0,
+    true,
+  );
+  assert.equal(
     Number(preSendHeadTrimPayload.pre_send_estimated_tokens)
       > Number(preSendHeadTrimPayload.pre_send_effective_window),
     true,
@@ -2553,6 +4656,27 @@ async function runTsRustExecutionSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-pre-send-head-trim-flow");
+
+  const qualityGuardFlowResult = runContract("start-smoke-contract.mjs", "start-context-quality-guard-flow", [
+    "--repo-root",
+    repoRoot,
+  ]);
+  const qualityGuardFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-quality-guard-flow",
+    qualityGuardFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(qualityGuardFlowPayload.exit_code)),
+    true,
+  );
+  assert.equal(qualityGuardFlowPayload.quality_guard_seen, true);
+  assert.equal(String(qualityGuardFlowPayload.quality_guard_stage), "minimal");
+  assert.equal(
+    ["overall_below_threshold", "low_quality_rate_above_threshold"].includes(String(qualityGuardFlowPayload.quality_guard_reason)),
+    true,
+  );
+  assert.equal(String(qualityGuardFlowPayload.prompt_prepared_quality_guard), "true");
+  logStep("start-smoke-contract start-context-quality-guard-flow");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",

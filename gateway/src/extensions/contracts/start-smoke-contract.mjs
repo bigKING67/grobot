@@ -1118,6 +1118,51 @@ function writeContextEngineTrimProjectToml(workDir) {
   );
 }
 
+function writeContextEngineQualityGuardProjectToml(workDir) {
+  const grobotDir = `${workDir}/.grobot`;
+  mkdirSync(grobotDir, { recursive: true });
+  writeFileSync(
+    `${grobotDir}/project.toml`,
+    [
+      "schema_version = 1",
+      'mode = "mvp"',
+      "",
+      "[context_engine]",
+      "enabled = true",
+      'profile = "conservative"',
+      "context_window_tokens = 64000",
+      "reserved_output_tokens = 9000",
+      "safety_margin_tokens = 1800",
+      "proactive_ratio = 0.96",
+      "forced_ratio = 0.98",
+      "hard_ratio = 0.99",
+      "reactive_max_retries = 1",
+      "ptl_max_retries = 3",
+      "circuit_breaker_failures = 3",
+      "reactive_on_prompt_too_long = true",
+      "lineage_enabled = false",
+      "workspace_signals_enabled = false",
+      "dependency_graph_enabled = false",
+      "symbol_graph_enabled = false",
+      "semantic_prefetch_enabled = false",
+      "prompt_quality_low_quality_threshold = 0.70",
+      "prompt_quality_degrade_overall_threshold = 0.92",
+      "prompt_quality_degrade_low_quality_rate_threshold = 0.20",
+      "prompt_quality_degrade_min_entries = 2",
+      "prompt_quality_guard_enabled = true",
+      "prompt_quality_guard_promote_streak = 1",
+      "prompt_quality_guard_severe_promote_streak = 1",
+      "prompt_quality_guard_release_streak = 2",
+      "prompt_quality_guard_hold_turns = 2",
+      'prompt_quality_guard_max_floor_stage = "minimal"',
+      "prompt_quality_guard_severe_overall_threshold = 0.50",
+      "prompt_quality_guard_severe_low_quality_rate_threshold = 0.80",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 function runStatusTsRust(repoRoot, windowSize) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
@@ -1215,11 +1260,134 @@ function runStatusTsRust(repoRoot, windowSize) {
   const contextEngineRecovery = isObject(contextEngine?.recovery)
     ? contextEngine.recovery
     : null;
+  const contextEnginePromptQuality = isObject(contextEngine?.prompt_quality)
+    ? contextEngine.prompt_quality
+    : null;
+  const contextEnginePromptQualityGuardAdaptiveModeAllowlist = Array.isArray(
+    contextEnginePromptQuality?.guard_adaptive_mode_allowlist,
+  )
+    ? contextEnginePromptQuality.guard_adaptive_mode_allowlist
+    : null;
+  const contextEnginePromptQualityGuardState = isObject(contextEngine?.prompt_quality_guard_state)
+    ? contextEngine.prompt_quality_guard_state
+    : null;
+  const contextEnginePromptQualityGuardRuntimeAssessment = isObject(
+    contextEngine?.prompt_quality_guard_runtime_assessment,
+  )
+    ? contextEngine.prompt_quality_guard_runtime_assessment
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicy = isObject(
+    contextEngine?.prompt_quality_guard_adaptive_policy,
+  )
+    ? contextEngine.prompt_quality_guard_adaptive_policy
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyAllowlist = Array.isArray(
+    contextEnginePromptQualityGuardAdaptivePolicy?.allowlist,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.allowlist
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyBase = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.base_policy,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.base_policy
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyEffective = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.effective_policy,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.effective_policy
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyAdjustment = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.adjustment,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.adjustment
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.pressure_policy,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.pressure_policy
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.outcome_reliability,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.outcome_reliability
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.outcome_drift_guard,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.outcome_drift_guard
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.window_summary,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard.window_summary
+    : null;
+  const contextEnginePromptQualityGuardAdaptivePolicyWindow = isObject(
+    contextEnginePromptQualityGuardAdaptivePolicy?.window,
+  )
+    ? contextEnginePromptQualityGuardAdaptivePolicy.window
+    : null;
   const contextEngineLineage = isObject(contextEngine?.lineage)
     ? contextEngine.lineage
     : null;
   const contextEngineWorkspaceSignals = isObject(contextEngine?.workspace_signals)
     ? contextEngine.workspace_signals
+    : null;
+  const promptQualityWindow = isObject(contextEngine?.prompt_quality_window)
+    ? contextEngine.prompt_quality_window
+    : null;
+  const promptQualityWindowAverageScores = isObject(promptQualityWindow?.average_scores)
+    ? promptQualityWindow.average_scores
+    : null;
+  const promptQualityWindowLatestScores = isObject(promptQualityWindow?.latest_scores)
+    ? promptQualityWindow.latest_scores
+    : null;
+  const promptQualityWindowLowQuality = isObject(promptQualityWindow?.low_quality)
+    ? promptQualityWindow.low_quality
+    : null;
+  const promptQualityWindowStageCounts = isObject(promptQualityWindow?.stage_counts)
+    ? promptQualityWindow.stage_counts
+    : null;
+  const promptQualityWindowSignalAverages = isObject(promptQualityWindow?.signal_averages)
+    ? promptQualityWindow.signal_averages
+    : null;
+  const promptQualityWindowCompressionActivity = isObject(promptQualityWindow?.compression_activity)
+    ? promptQualityWindow.compression_activity
+    : null;
+  const promptQualityWindowTokenBudget = isObject(promptQualityWindow?.token_budget)
+    ? promptQualityWindow.token_budget
+    : null;
+  const promptQualityWindowStrategyActivity = isObject(promptQualityWindow?.strategy_activity)
+    ? promptQualityWindow.strategy_activity
+    : null;
+  const promptQualityWindowStrategyTrends = isObject(promptQualityWindow?.strategy_trends)
+    ? promptQualityWindow.strategy_trends
+    : null;
+  const promptQualityWindowStrategyTrendsShort = isObject(promptQualityWindowStrategyTrends?.short)
+    ? promptQualityWindowStrategyTrends.short
+    : null;
+  const promptQualityWindowStrategyTrendsMedium = isObject(promptQualityWindowStrategyTrends?.medium)
+    ? promptQualityWindowStrategyTrends.medium
+    : null;
+  const promptQualityWindowStrategyTrendsDelta = isObject(promptQualityWindowStrategyTrends?.delta)
+    ? promptQualityWindowStrategyTrends.delta
+    : null;
+  const promptQualityWindowStrategyOutcomes = isObject(promptQualityWindow?.strategy_outcomes)
+    ? promptQualityWindow.strategy_outcomes
+    : null;
+  const promptQualityWindowPressureTrends = isObject(promptQualityWindow?.pressure_trends)
+    ? promptQualityWindow.pressure_trends
+    : null;
+  const promptQualityWindowPressureTrendsShort = isObject(promptQualityWindowPressureTrends?.short)
+    ? promptQualityWindowPressureTrends.short
+    : null;
+  const promptQualityWindowPressureTrendsMedium = isObject(promptQualityWindowPressureTrends?.medium)
+    ? promptQualityWindowPressureTrends.medium
+    : null;
+  const promptQualityWindowPressureTrendsDelta = isObject(promptQualityWindowPressureTrends?.delta)
+    ? promptQualityWindowPressureTrends.delta
+    : null;
+  const promptQualityWindowDegradation = isObject(promptQualityWindow?.degradation)
+    ? promptQualityWindow.degradation
     : null;
   const cacheStatsLocation = typeof parsedStatus?.cache_stats_location === "string"
     ? parsedStatus.cache_stats_location
@@ -1285,11 +1453,531 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_has_context_engine: Boolean(contextEngine),
     status_context_engine_enabled_type: typeof contextEngine?.enabled,
     status_context_engine_profile_type: typeof contextEngine?.profile,
+    status_context_engine_auto_limit_type: typeof contextEngine?.auto_compact_token_limit,
+    status_context_engine_target_limit_type: typeof contextEngine?.target_token_limit,
     status_context_engine_effective_window_type: typeof contextEngine?.effective_window_tokens,
     status_context_engine_threshold_hard_type: typeof contextEngineThresholds?.hard_ratio,
     status_context_engine_recovery_ptl_type: typeof contextEngineRecovery?.ptl_max_retries,
+    status_context_engine_prompt_quality_low_quality_threshold_type:
+      typeof contextEnginePromptQuality?.low_quality_threshold,
+    status_context_engine_prompt_quality_degrade_overall_threshold_type:
+      typeof contextEnginePromptQuality?.degrade_overall_threshold,
+    status_context_engine_prompt_quality_degrade_low_quality_rate_threshold_type:
+      typeof contextEnginePromptQuality?.degrade_low_quality_rate_threshold,
+    status_context_engine_prompt_quality_degrade_min_entries_type:
+      typeof contextEnginePromptQuality?.degrade_min_entries,
+    status_context_engine_prompt_quality_guard_enabled_type:
+      typeof contextEnginePromptQuality?.guard_enabled,
+    status_context_engine_prompt_quality_guard_adaptive_enabled_type:
+      typeof contextEnginePromptQuality?.guard_adaptive_enabled,
+    status_context_engine_prompt_quality_guard_adaptive_mode_allowlist_type:
+      Array.isArray(contextEnginePromptQualityGuardAdaptiveModeAllowlist) ? "array" : "undefined",
+    status_context_engine_prompt_quality_guard_promote_streak_type:
+      typeof contextEnginePromptQuality?.guard_promote_streak,
+    status_context_engine_prompt_quality_guard_severe_promote_streak_type:
+      typeof contextEnginePromptQuality?.guard_severe_promote_streak,
+    status_context_engine_prompt_quality_guard_release_streak_type:
+      typeof contextEnginePromptQuality?.guard_release_streak,
+    status_context_engine_prompt_quality_guard_hold_turns_type:
+      typeof contextEnginePromptQuality?.guard_hold_turns,
+    status_context_engine_prompt_quality_guard_max_floor_stage_type:
+      typeof contextEnginePromptQuality?.guard_max_floor_stage,
+    status_context_engine_prompt_quality_guard_severe_overall_threshold_type:
+      typeof contextEnginePromptQuality?.guard_severe_overall_threshold,
+    status_context_engine_prompt_quality_guard_severe_low_quality_rate_threshold_type:
+      typeof contextEnginePromptQuality?.guard_severe_low_quality_rate_threshold,
+    status_context_engine_has_prompt_quality_guard_state:
+      Boolean(contextEnginePromptQualityGuardState),
+    status_context_engine_prompt_quality_guard_state_floor_stage_type:
+      typeof contextEnginePromptQualityGuardState?.floor_stage,
+    status_context_engine_prompt_quality_guard_state_degraded_streak_type:
+      typeof contextEnginePromptQualityGuardState?.degraded_streak,
+    status_context_engine_prompt_quality_guard_state_severe_streak_type:
+      typeof contextEnginePromptQualityGuardState?.severe_streak,
+    status_context_engine_prompt_quality_guard_state_healthy_streak_type:
+      typeof contextEnginePromptQualityGuardState?.healthy_streak,
+    status_context_engine_prompt_quality_guard_state_hold_turns_remaining_type:
+      typeof contextEnginePromptQualityGuardState?.hold_turns_remaining,
+    status_context_engine_prompt_quality_guard_state_last_reason_type:
+      typeof contextEnginePromptQualityGuardState?.last_reason,
+    status_context_engine_prompt_quality_guard_state_updated_at_type:
+      contextEnginePromptQualityGuardState?.updated_at === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardState?.updated_at,
+    status_context_engine_prompt_quality_guard_state_pressure_utilization_threshold_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_utilization_threshold,
+    status_context_engine_prompt_quality_guard_state_pressure_semantic_rate_threshold_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_semantic_rate_threshold,
+    status_context_engine_prompt_quality_guard_state_pressure_auto_limit_rate_threshold_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_auto_limit_rate_threshold,
+    status_context_engine_prompt_quality_guard_state_pressure_joint_rate_threshold_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_joint_rate_threshold,
+    status_context_engine_prompt_quality_guard_state_pressure_trend_utilization_delta_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_trend_utilization_delta,
+    status_context_engine_prompt_quality_guard_state_pressure_trend_semantic_delta_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_trend_semantic_delta,
+    status_context_engine_prompt_quality_guard_state_pressure_trend_auto_limit_delta_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_trend_auto_limit_delta,
+    status_context_engine_prompt_quality_guard_state_pressure_trend_momentum_type:
+      typeof contextEnginePromptQualityGuardState?.pressure_trend_momentum,
+    status_context_engine_prompt_quality_guard_state_outcome_required_transitions_type:
+      typeof contextEnginePromptQualityGuardState?.outcome_required_transitions,
+    status_context_engine_prompt_quality_guard_state_outcome_combined_evidence_score_type:
+      typeof contextEnginePromptQualityGuardState?.outcome_combined_evidence_score,
+    status_context_engine_prompt_quality_guard_state_outcome_high_evidence_turns_type:
+      typeof contextEnginePromptQualityGuardState?.outcome_high_evidence_turns,
+    status_context_engine_prompt_quality_guard_state_outcome_high_evidence_harden_turns_type:
+      typeof contextEnginePromptQualityGuardState?.outcome_high_evidence_harden_turns,
+    status_context_engine_prompt_quality_guard_state_outcome_drift_recent_auto_action_levels_type:
+      Array.isArray(contextEnginePromptQualityGuardState?.outcome_drift_recent_auto_action_levels)
+        ? "array"
+        : typeof contextEnginePromptQualityGuardState?.outcome_drift_recent_auto_action_levels,
+    status_context_engine_has_prompt_quality_guard_runtime_assessment:
+      Boolean(contextEnginePromptQualityGuardRuntimeAssessment),
+    status_context_engine_prompt_quality_guard_runtime_assessment_enabled_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.enabled,
+    status_context_engine_prompt_quality_guard_runtime_assessment_phase_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.phase,
+    status_context_engine_prompt_quality_guard_runtime_assessment_transition_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.transition,
+    status_context_engine_prompt_quality_guard_runtime_assessment_degraded_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.degraded,
+    status_context_engine_prompt_quality_guard_runtime_assessment_severe_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.severe,
+    status_context_engine_prompt_quality_guard_runtime_assessment_reason_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.reason,
+    status_context_engine_prompt_quality_guard_runtime_assessment_triggered_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.triggered,
+    status_context_engine_prompt_quality_guard_runtime_assessment_floor_stage_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.floor_stage,
+    status_context_engine_prompt_quality_guard_runtime_assessment_proposed_floor_stage_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.proposed_floor_stage,
+    status_context_engine_prompt_quality_guard_runtime_assessment_promote_remaining_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.promote_remaining,
+    status_context_engine_prompt_quality_guard_runtime_assessment_severe_promote_remaining_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.severe_promote_remaining,
+    status_context_engine_prompt_quality_guard_runtime_assessment_release_remaining_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.release_remaining,
+    status_context_engine_prompt_quality_guard_runtime_assessment_hold_turns_remaining_type:
+      typeof contextEnginePromptQualityGuardRuntimeAssessment?.hold_turns_remaining,
+    status_context_engine_prompt_quality_guard_runtime_assessment_observed_overall_type:
+      contextEnginePromptQualityGuardRuntimeAssessment?.observed_overall === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardRuntimeAssessment?.observed_overall,
+    status_context_engine_prompt_quality_guard_runtime_assessment_observed_low_quality_rate_type:
+      contextEnginePromptQualityGuardRuntimeAssessment?.observed_low_quality_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardRuntimeAssessment?.observed_low_quality_rate,
+    status_context_engine_has_prompt_quality_guard_adaptive_policy:
+      Boolean(contextEnginePromptQualityGuardAdaptivePolicy),
+    status_context_engine_prompt_quality_guard_adaptive_policy_mode_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicy?.mode,
+    status_context_engine_prompt_quality_guard_adaptive_policy_reason_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicy?.reason,
+    status_context_engine_prompt_quality_guard_adaptive_policy_allowlist_type:
+      Array.isArray(contextEnginePromptQualityGuardAdaptivePolicyAllowlist) ? "array" : "undefined",
+    status_context_engine_prompt_quality_guard_adaptive_policy_mode_blocked_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicy?.mode_blocked,
+    status_context_engine_prompt_quality_guard_adaptive_policy_blocked_mode_type:
+      contextEnginePromptQualityGuardAdaptivePolicy?.blocked_mode === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicy?.blocked_mode,
+    status_context_engine_prompt_quality_guard_adaptive_policy_base_promote_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyBase?.promote_streak,
+    status_context_engine_prompt_quality_guard_adaptive_policy_effective_promote_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyEffective?.promote_streak,
+    status_context_engine_prompt_quality_guard_adaptive_policy_effective_release_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyEffective?.release_streak,
+    status_context_engine_prompt_quality_guard_adaptive_policy_effective_hold_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyEffective?.hold_turns,
+    status_context_engine_prompt_quality_guard_adaptive_policy_adjustment_promote_delta_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyAdjustment?.promote_streak_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_adjustment_release_delta_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyAdjustment?.release_streak_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_adjustment_hold_delta_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyAdjustment?.hold_turns_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_source_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.source,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_updated_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.updated,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_learn_alpha_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.learn_alpha,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_utilization_threshold_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.utilization_threshold,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_semantic_rate_threshold_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.semantic_rate_threshold,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_auto_limit_rate_threshold_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.auto_limit_rate_threshold,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_joint_rate_threshold_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.joint_rate_threshold,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_utilization_delta_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.trend_utilization_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_semantic_delta_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.trend_semantic_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_auto_limit_delta_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.trend_auto_limit_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_momentum_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.trend_momentum,
+    status_context_engine_prompt_quality_guard_adaptive_policy_pressure_policy_trend_flip_suppressed_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyPressurePolicy?.trend_flip_suppressed,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_required_transitions_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.required_transitions,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_next_required_transitions_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.next_required_transitions,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_hard_budget_transitions_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.hard_budget_transitions,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_quality_first_transitions_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.quality_first_transitions,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_hard_budget_evidence_score_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.hard_budget_evidence_score,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_quality_first_evidence_score_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.quality_first_evidence_score,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_combined_evidence_score_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.combined_evidence_score,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_hard_budget_reliable_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.hard_budget_reliable,
+    status_context_engine_prompt_quality_guard_adaptive_policy_outcome_quality_first_reliable_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeReliability?.quality_first_reliable,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_harden_bias_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.high_evidence_harden_bias,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_turn_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.high_evidence_turn,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_turns_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.high_evidence_turns,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_harden_turns_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.high_evidence_harden_turns,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_high_evidence_harden_rate_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.high_evidence_harden_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_threshold_harden_rate_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.threshold_harden_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_min_high_evidence_turns_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.min_high_evidence_turns,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_reason_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.reason,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_auto_action_level_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.auto_action_level,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_recent_auto_action_levels_type:
+      Array.isArray(contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.recent_auto_action_levels)
+        ? "array"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.recent_auto_action_levels,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_entries_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.entries,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_latest_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.latest,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_dominant_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.dominant,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_alert_level_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.alert_level,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_transition_count_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.transition_count,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_active_rate_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.active_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_medium_or_hard_rate_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.medium_or_hard_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_hard_rate_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.hard_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_window_level_counts_type:
+      isObject(contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.level_counts)
+        ? "object"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftWindowSummary?.level_counts,
+    status_context_engine_prompt_quality_guard_adaptive_policy_drift_recommendation_type:
+      typeof contextEnginePromptQualityGuardAdaptivePolicyOutcomeDriftGuard?.recommendation,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_semantic_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_auto_limit_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.auto_limit_triggered_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_avg_utilization_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.average_utilization_ratio === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.average_utilization_ratio,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_short_semantic_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_semantic_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_short_auto_limit_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_auto_limit_triggered_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_auto_limit_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_auto_limit_triggered_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_short_avg_utilization_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_average_utilization_ratio === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_average_utilization_ratio,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_avg_utilization_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_average_utilization_ratio === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_average_utilization_ratio,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_strategy_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_strategy_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_strategy_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_strategy_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_strategy_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_strategy_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_avg_pre_send_overflow_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.average_pre_send_overflow_ratio === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.average_pre_send_overflow_ratio,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_avg_pre_send_pressure_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.average_pre_send_pressure_score === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.average_pre_send_pressure_score,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_short_hard_budget_strategy_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_hard_budget_strategy_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_hard_budget_strategy_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_hard_budget_strategy_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_hard_budget_strategy_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_hard_budget_strategy_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_short_avg_pre_send_overflow_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_average_pre_send_overflow_ratio === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_average_pre_send_overflow_ratio,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_avg_pre_send_overflow_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_average_pre_send_overflow_ratio === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_average_pre_send_overflow_ratio,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_short_avg_pre_send_pressure_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_average_pre_send_pressure_score === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.short_average_pre_send_pressure_score,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_medium_avg_pre_send_pressure_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_average_pre_send_pressure_score === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.medium_average_pre_send_pressure_score,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_followup_delta_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_followup_overall_delta === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_followup_overall_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_followup_delta_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_followup_overall_delta === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_followup_overall_delta,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_recovery_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_recovery_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_recovery_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_improved_rate_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_improved_rate === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_improved_rate,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_hard_budget_transition_count_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_transition_count === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.hard_budget_transition_count,
+    status_context_engine_prompt_quality_guard_adaptive_policy_window_quality_first_transition_count_type:
+      contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_transition_count === null
+        ? "null"
+        : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_transition_count,
     status_context_engine_lineage_enabled_type: typeof contextEngineLineage?.enabled,
     status_context_engine_workspace_signals_enabled_type: typeof contextEngineWorkspaceSignals?.enabled,
+    status_context_engine_has_prompt_quality_window: Boolean(promptQualityWindow),
+    status_context_engine_prompt_quality_window_path_type: typeof promptQualityWindow?.path,
+    status_context_engine_prompt_quality_window_configured_size_type: typeof promptQualityWindow?.configured_size,
+    status_context_engine_prompt_quality_window_entries_type: typeof promptQualityWindow?.entries,
+    status_context_engine_prompt_quality_window_from_ts_type: promptQualityWindow?.from_ts === null
+      ? "null"
+      : typeof promptQualityWindow?.from_ts,
+    status_context_engine_prompt_quality_window_to_ts_type: promptQualityWindow?.to_ts === null
+      ? "null"
+      : typeof promptQualityWindow?.to_ts,
+    status_context_engine_prompt_quality_window_average_overall_type: promptQualityWindow?.average_scores === null
+      ? "null"
+      : typeof promptQualityWindowAverageScores?.overall,
+    status_context_engine_prompt_quality_window_latest_overall_type: promptQualityWindow?.latest_scores === null
+      ? "null"
+      : typeof promptQualityWindowLatestScores?.overall,
+    status_context_engine_prompt_quality_window_low_quality_rate_type:
+      promptQualityWindowLowQuality?.rate === null
+        ? "null"
+        : typeof promptQualityWindowLowQuality?.rate,
+    status_context_engine_prompt_quality_window_low_quality_threshold_type:
+      typeof promptQualityWindowLowQuality?.threshold_overall,
+    status_context_engine_prompt_quality_window_stage_normal_type:
+      typeof promptQualityWindowStageCounts?.normal,
+    status_context_engine_prompt_quality_window_stage_proactive_type:
+      typeof promptQualityWindowStageCounts?.proactive,
+    status_context_engine_prompt_quality_window_stage_forced_type:
+      typeof promptQualityWindowStageCounts?.forced,
+    status_context_engine_prompt_quality_window_stage_minimal_type:
+      typeof promptQualityWindowStageCounts?.minimal,
+    status_context_engine_prompt_quality_window_signal_avg_recent_trim_rows_type:
+      promptQualityWindowSignalAverages === null
+        ? "null"
+        : typeof promptQualityWindowSignalAverages?.recent_trim_rows,
+    status_context_engine_prompt_quality_window_signal_avg_snapshot_semantic_compress_sections_type:
+      promptQualityWindowSignalAverages === null
+        ? "null"
+        : typeof promptQualityWindowSignalAverages?.snapshot_semantic_compress_sections,
+    status_context_engine_prompt_quality_window_signal_avg_pre_send_overflow_type:
+      promptQualityWindowSignalAverages === null
+        ? "null"
+        : typeof promptQualityWindowSignalAverages?.pre_send_overflow_ratio,
+    status_context_engine_prompt_quality_window_signal_avg_pre_send_pressure_type:
+      promptQualityWindowSignalAverages === null
+        ? "null"
+        : typeof promptQualityWindowSignalAverages?.pre_send_pressure_score,
+    status_context_engine_prompt_quality_window_compression_snapshot_semantic_rate_type:
+      promptQualityWindowCompressionActivity?.snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof promptQualityWindowCompressionActivity?.snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_window_compression_auto_limit_rate_type:
+      promptQualityWindowCompressionActivity?.auto_limit_triggered_rate === null
+        ? "null"
+        : typeof promptQualityWindowCompressionActivity?.auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_window_token_budget_avg_utilization_type:
+      promptQualityWindowTokenBudget?.average_utilization_ratio === null
+        ? "null"
+        : typeof promptQualityWindowTokenBudget?.average_utilization_ratio,
+    status_context_engine_prompt_quality_window_strategy_quality_first_rate_type:
+      promptQualityWindowStrategyActivity?.quality_first_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyActivity?.quality_first_rate,
+    status_context_engine_prompt_quality_window_strategy_hard_budget_rate_type:
+      promptQualityWindowStrategyActivity?.hard_budget_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyActivity?.hard_budget_rate,
+    status_context_engine_prompt_quality_window_has_strategy_outcomes:
+      Boolean(promptQualityWindowStrategyOutcomes),
+    status_context_engine_prompt_quality_window_strategy_outcomes_hard_budget_followup_delta_type:
+      promptQualityWindowStrategyOutcomes?.hard_budget_followup_overall_delta === null
+        ? "null"
+        : typeof promptQualityWindowStrategyOutcomes?.hard_budget_followup_overall_delta,
+    status_context_engine_prompt_quality_window_strategy_outcomes_quality_first_followup_delta_type:
+      promptQualityWindowStrategyOutcomes?.quality_first_followup_overall_delta === null
+        ? "null"
+        : typeof promptQualityWindowStrategyOutcomes?.quality_first_followup_overall_delta,
+    status_context_engine_prompt_quality_window_strategy_outcomes_hard_budget_recovery_rate_type:
+      promptQualityWindowStrategyOutcomes?.hard_budget_recovery_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyOutcomes?.hard_budget_recovery_rate,
+    status_context_engine_prompt_quality_window_strategy_outcomes_quality_first_improved_rate_type:
+      promptQualityWindowStrategyOutcomes?.quality_first_improved_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyOutcomes?.quality_first_improved_rate,
+    status_context_engine_prompt_quality_window_strategy_outcomes_hard_budget_transition_count_type:
+      promptQualityWindowStrategyOutcomes?.hard_budget_transition_count === null
+        ? "null"
+        : typeof promptQualityWindowStrategyOutcomes?.hard_budget_transition_count,
+    status_context_engine_prompt_quality_window_strategy_outcomes_quality_first_transition_count_type:
+      promptQualityWindowStrategyOutcomes?.quality_first_transition_count === null
+        ? "null"
+        : typeof promptQualityWindowStrategyOutcomes?.quality_first_transition_count,
+    status_context_engine_prompt_quality_window_has_strategy_trends:
+      Boolean(promptQualityWindowStrategyTrends),
+    status_context_engine_prompt_quality_window_strategy_trends_short_window_size_type:
+      typeof promptQualityWindowStrategyTrendsShort?.window_size,
+    status_context_engine_prompt_quality_window_strategy_trends_short_hard_budget_rate_type:
+      promptQualityWindowStrategyTrendsShort?.hard_budget_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsShort?.hard_budget_rate,
+    status_context_engine_prompt_quality_window_strategy_trends_short_avg_overflow_type:
+      promptQualityWindowStrategyTrendsShort?.average_overflow_ratio === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsShort?.average_overflow_ratio,
+    status_context_engine_prompt_quality_window_strategy_trends_short_avg_pressure_type:
+      promptQualityWindowStrategyTrendsShort?.average_pressure_score === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsShort?.average_pressure_score,
+    status_context_engine_prompt_quality_window_strategy_trends_medium_window_size_type:
+      typeof promptQualityWindowStrategyTrendsMedium?.window_size,
+    status_context_engine_prompt_quality_window_strategy_trends_medium_hard_budget_rate_type:
+      promptQualityWindowStrategyTrendsMedium?.hard_budget_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsMedium?.hard_budget_rate,
+    status_context_engine_prompt_quality_window_strategy_trends_delta_hard_budget_rate_type:
+      promptQualityWindowStrategyTrendsDelta?.hard_budget_rate === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsDelta?.hard_budget_rate,
+    status_context_engine_prompt_quality_window_strategy_trends_delta_avg_overflow_type:
+      promptQualityWindowStrategyTrendsDelta?.average_overflow_ratio === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsDelta?.average_overflow_ratio,
+    status_context_engine_prompt_quality_window_strategy_trends_delta_avg_pressure_type:
+      promptQualityWindowStrategyTrendsDelta?.average_pressure_score === null
+        ? "null"
+        : typeof promptQualityWindowStrategyTrendsDelta?.average_pressure_score,
+    status_context_engine_prompt_quality_window_has_pressure_trends:
+      Boolean(promptQualityWindowPressureTrends),
+    status_context_engine_prompt_quality_window_pressure_trends_short_window_size_type:
+      typeof promptQualityWindowPressureTrendsShort?.window_size,
+    status_context_engine_prompt_quality_window_pressure_trends_short_entries_type:
+      typeof promptQualityWindowPressureTrendsShort?.entries,
+    status_context_engine_prompt_quality_window_pressure_trends_short_semantic_rate_type:
+      promptQualityWindowPressureTrendsShort?.snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsShort?.snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_window_pressure_trends_short_auto_limit_rate_type:
+      promptQualityWindowPressureTrendsShort?.auto_limit_triggered_rate === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsShort?.auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_window_pressure_trends_short_avg_utilization_type:
+      promptQualityWindowPressureTrendsShort?.average_utilization_ratio === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsShort?.average_utilization_ratio,
+    status_context_engine_prompt_quality_window_pressure_trends_medium_window_size_type:
+      typeof promptQualityWindowPressureTrendsMedium?.window_size,
+    status_context_engine_prompt_quality_window_pressure_trends_medium_entries_type:
+      typeof promptQualityWindowPressureTrendsMedium?.entries,
+    status_context_engine_prompt_quality_window_pressure_trends_medium_semantic_rate_type:
+      promptQualityWindowPressureTrendsMedium?.snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsMedium?.snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_window_pressure_trends_medium_auto_limit_rate_type:
+      promptQualityWindowPressureTrendsMedium?.auto_limit_triggered_rate === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsMedium?.auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_window_pressure_trends_medium_avg_utilization_type:
+      promptQualityWindowPressureTrendsMedium?.average_utilization_ratio === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsMedium?.average_utilization_ratio,
+    status_context_engine_prompt_quality_window_pressure_trends_delta_semantic_rate_type:
+      promptQualityWindowPressureTrendsDelta?.snapshot_semantic_compress_rate === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsDelta?.snapshot_semantic_compress_rate,
+    status_context_engine_prompt_quality_window_pressure_trends_delta_auto_limit_rate_type:
+      promptQualityWindowPressureTrendsDelta?.auto_limit_triggered_rate === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsDelta?.auto_limit_triggered_rate,
+    status_context_engine_prompt_quality_window_pressure_trends_delta_avg_utilization_type:
+      promptQualityWindowPressureTrendsDelta?.average_utilization_ratio === null
+        ? "null"
+        : typeof promptQualityWindowPressureTrendsDelta?.average_utilization_ratio,
+    status_context_engine_prompt_quality_window_has_degradation:
+      Boolean(promptQualityWindowDegradation),
+    status_context_engine_prompt_quality_window_degradation_degraded_type:
+      typeof promptQualityWindowDegradation?.degraded,
+    status_context_engine_prompt_quality_window_degradation_reason_type:
+      typeof promptQualityWindowDegradation?.reason,
+    status_context_engine_prompt_quality_window_degradation_threshold_overall_type:
+      typeof promptQualityWindowDegradation?.threshold_overall,
+    status_context_engine_prompt_quality_window_degradation_threshold_low_quality_rate_type:
+      typeof promptQualityWindowDegradation?.threshold_low_quality_rate,
+    status_context_engine_prompt_quality_window_degradation_min_entries_type:
+      typeof promptQualityWindowDegradation?.min_entries,
+    status_context_engine_prompt_quality_window_degradation_observed_entries_type:
+      typeof promptQualityWindowDegradation?.observed_entries,
+    status_context_engine_prompt_quality_window_degradation_observed_overall_type:
+      promptQualityWindowDegradation?.observed_overall === null
+        ? "null"
+        : typeof promptQualityWindowDegradation?.observed_overall,
+    status_context_engine_prompt_quality_window_degradation_observed_low_quality_rate_type:
+      promptQualityWindowDegradation?.observed_low_quality_rate === null
+        ? "null"
+        : typeof promptQualityWindowDegradation?.observed_low_quality_rate,
     status_route_reason_type: typeof routeDecision?.reason,
   };
 }
@@ -1320,8 +2008,17 @@ function runStartContextPreSendHeadTrimFlow(repoRoot) {
   const preTrimEvent = result.stderr.match(
     /event=pre_send_head_trim stage=([a-z_]+) retries=(\d+) estimated_tokens=(\d+) effective_window=(\d+)/,
   );
+  const recentTrimEvent = result.stderr.match(
+    /event=pre_send_recent_trim stage=([a-z_]+) removed_rows=(\d+) estimated_tokens=(\d+) target_limit=(\d+)/,
+  );
+  const snapshotTrimEvent = result.stderr.match(
+    /event=pre_send_snapshot_trim stage=([a-z_]+) removed_sections=(\d+) estimated_tokens=(\d+) target_limit=(\d+)/,
+  );
+  const snapshotSemanticCompressEvent = result.stderr.match(
+    /event=pre_send_snapshot_semantic_compress stage=([a-z_]+) compressed_sections=(\d+) estimated_tokens=(\d+) target_limit=(\d+)/,
+  );
   const promptPrepared = result.stderr.match(
-    /event=prompt_prepared[^\n]*pretrim_retries=(\d+)/,
+    /event=prompt_prepared[^\n]*recent_trim_rows=(\d+)[^\n]*snapshot_trim_sections=(\d+)[^\n]*snapshot_semantic_compress_sections=(\d+)[^\n]*pretrim_retries=(\d+)/,
   );
   return {
     ...result,
@@ -1330,8 +2027,127 @@ function runStartContextPreSendHeadTrimFlow(repoRoot) {
     pre_send_head_trim_retries: Number.parseInt(preTrimEvent?.[2] ?? "0", 10),
     pre_send_estimated_tokens: Number.parseInt(preTrimEvent?.[3] ?? "0", 10),
     pre_send_effective_window: Number.parseInt(preTrimEvent?.[4] ?? "0", 10),
+    pre_send_recent_trim_seen: Boolean(recentTrimEvent),
+    pre_send_recent_trim_stage: recentTrimEvent?.[1] ?? "",
+    pre_send_recent_trim_removed_rows: Number.parseInt(recentTrimEvent?.[2] ?? "0", 10),
+    pre_send_recent_trim_estimated_tokens: Number.parseInt(recentTrimEvent?.[3] ?? "0", 10),
+    pre_send_recent_trim_target_limit: Number.parseInt(recentTrimEvent?.[4] ?? "0", 10),
+    pre_send_snapshot_trim_seen: Boolean(snapshotTrimEvent),
+    pre_send_snapshot_trim_stage: snapshotTrimEvent?.[1] ?? "",
+    pre_send_snapshot_trim_removed_sections: Number.parseInt(snapshotTrimEvent?.[2] ?? "0", 10),
+    pre_send_snapshot_trim_estimated_tokens: Number.parseInt(snapshotTrimEvent?.[3] ?? "0", 10),
+    pre_send_snapshot_trim_target_limit: Number.parseInt(snapshotTrimEvent?.[4] ?? "0", 10),
+    pre_send_snapshot_semantic_compress_seen: Boolean(snapshotSemanticCompressEvent),
+    pre_send_snapshot_semantic_compress_stage: snapshotSemanticCompressEvent?.[1] ?? "",
+    pre_send_snapshot_semantic_compress_sections: Number.parseInt(snapshotSemanticCompressEvent?.[2] ?? "0", 10),
+    pre_send_snapshot_semantic_compress_estimated_tokens: Number.parseInt(
+      snapshotSemanticCompressEvent?.[3] ?? "0",
+      10,
+    ),
+    pre_send_snapshot_semantic_compress_target_limit: Number.parseInt(
+      snapshotSemanticCompressEvent?.[4] ?? "0",
+      10,
+    ),
     prompt_prepared_seen: result.stderr.includes("event=prompt_prepared"),
-    prompt_prepared_pretrim_retries: Number.parseInt(promptPrepared?.[1] ?? "0", 10),
+    prompt_prepared_recent_trim_rows: Number.parseInt(promptPrepared?.[1] ?? "0", 10),
+    prompt_prepared_snapshot_trim_sections: Number.parseInt(promptPrepared?.[2] ?? "0", 10),
+    prompt_prepared_snapshot_semantic_compress_sections: Number.parseInt(promptPrepared?.[3] ?? "0", 10),
+    prompt_prepared_pretrim_retries: Number.parseInt(promptPrepared?.[4] ?? "0", 10),
+  };
+}
+
+function runStartContextQualityGuardFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-quality-guard-work");
+  writeContextEngineQualityGuardProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  mkdirSync(contextDir, { recursive: true });
+  const seedPath = `${contextDir}/prompt-quality-window.jsonl`;
+  const seedNowMs = Date.now();
+  const seedRows = [
+    {
+      ts: new Date(seedNowMs - 2_000).toISOString(),
+      sessionKey: "seed:quality-guard",
+      stage: "normal",
+      selectionReason: "seed",
+      estimatedTokens: 2100,
+      targetTokenLimit: 2000,
+      scores: {
+        coverage: 0.35,
+        recency: 0.30,
+        size: 0.20,
+        overall: 0.30,
+      },
+      signals: {
+        recentRows: 1,
+        snapshotSections: 1,
+        recentTrimRows: 0,
+        snapshotTrimSections: 0,
+        headTrimRetries: 0,
+        autoLimitTriggered: false,
+        downshiftGuardTriggered: false,
+      },
+    },
+    {
+      ts: new Date(seedNowMs - 1_000).toISOString(),
+      sessionKey: "seed:quality-guard",
+      stage: "normal",
+      selectionReason: "seed",
+      estimatedTokens: 2300,
+      targetTokenLimit: 2000,
+      scores: {
+        coverage: 0.30,
+        recency: 0.20,
+        size: 0.10,
+        overall: 0.22,
+      },
+      signals: {
+        recentRows: 0,
+        snapshotSections: 1,
+        recentTrimRows: 0,
+        snapshotTrimSections: 0,
+        headTrimRetries: 0,
+        autoLimitTriggered: false,
+        downshiftGuardTriggered: false,
+      },
+    },
+  ];
+  writeFileSync(
+    seedPath,
+    `${seedRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--history-turns",
+    "8",
+    "--message",
+    "quality guard should proactively escalate compaction when recent prompt quality window is degraded",
+  ]);
+  const qualityGuardEvent = result.stderr.match(
+    /event=quality_guard_precompact stage=([a-z_]+).* reason=([a-z_]+)/,
+  );
+  const promptPreparedEvent = result.stderr.match(
+    /event=prompt_prepared[^\n]*quality_guard=(true|false)/,
+  );
+  return {
+    ...result,
+    quality_guard_seen: Boolean(qualityGuardEvent),
+    quality_guard_stage: qualityGuardEvent?.[1] ?? "",
+    quality_guard_reason: qualityGuardEvent?.[2] ?? "",
+    prompt_prepared_quality_guard: promptPreparedEvent?.[1] ?? "",
+    seed_path: seedPath,
   };
 }
 
@@ -1437,6 +2253,9 @@ function runCli(argv) {
     }
     case "start-context-pre-send-head-trim-flow":
       payload = runStartContextPreSendHeadTrimFlow(repoRoot);
+      break;
+    case "start-context-quality-guard-flow":
+      payload = runStartContextQualityGuardFlow(repoRoot);
       break;
     case "status-ts-rust-deprecated-flag":
       payload = runStatusTsRustDeprecatedFlag(repoRoot);

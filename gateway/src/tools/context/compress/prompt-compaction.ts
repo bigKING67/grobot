@@ -1,5 +1,9 @@
 import { buildPromptWithHistory } from "../../../orchestration/entrypoints/dev-cli/start/session-history";
-import { estimateTokensFromText, computeUtilization, resolveEffectiveContextWindow } from "../budget/token-budget";
+import {
+  estimateTokensFromText,
+  computeUtilization,
+  resolvePromptTargetTokenLimit,
+} from "../budget/token-budget";
 import { buildCompactSnapshot, buildPromptFromSnapshot } from "../curation/history-curation";
 import { getChangedCodeSnapshot } from "../graph/changed-code-snapshot";
 import {
@@ -36,6 +40,64 @@ export function nextCompactionStage(stage: PromptCompactionStage): PromptCompact
     return "minimal";
   }
   return undefined;
+}
+
+export type PromptPreSendCompressionStep =
+  | "recent_trim"
+  | "snapshot_semantic_compress"
+  | "snapshot_trim"
+  | "head_trim";
+
+export interface PromptPreSendCompressionPlan {
+  strategy: "quality_first" | "hard_budget";
+  overflowRatio: number;
+  pressureScore: number;
+  order: PromptPreSendCompressionStep[];
+}
+
+function roundMetric(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.round(value * 1000) / 1000;
+}
+
+export function derivePromptPreSendCompressionPlan(args: {
+  selectedStage: PromptCompactionStage;
+  estimatedTokens: number;
+  targetTokenLimit: number;
+  qualityGuardActive: boolean;
+  qualityGuardSevere: boolean;
+  pressureTrendMomentum?: number | null;
+}): PromptPreSendCompressionPlan {
+  const safeTargetTokenLimit = Math.max(1, Math.floor(args.targetTokenLimit));
+  const overflowTokens = Math.max(0, Math.floor(args.estimatedTokens) - safeTargetTokenLimit);
+  const overflowRatio = overflowTokens / safeTargetTokenLimit;
+  const stagePressure = stageWeight(args.selectedStage) / stageWeight("minimal");
+  const trendMomentum = typeof args.pressureTrendMomentum === "number"
+    && Number.isFinite(args.pressureTrendMomentum)
+    ? Math.max(-1, Math.min(1, args.pressureTrendMomentum))
+    : 0;
+  const trendPressure = Math.max(0, trendMomentum) * 0.2;
+  const guardPressure = args.qualityGuardActive ? 0.18 : 0;
+  const severePressure = args.qualityGuardSevere ? 0.12 : 0;
+  const pressureScore = Math.min(
+    1,
+    overflowRatio * 0.75 + stagePressure * 0.35 + trendPressure + guardPressure + severePressure,
+  );
+  const strategy: PromptPreSendCompressionPlan["strategy"] =
+    overflowRatio >= 0.18 || pressureScore >= 0.62
+      ? "hard_budget"
+      : "quality_first";
+  const order: PromptPreSendCompressionStep[] = strategy === "hard_budget"
+    ? ["recent_trim", "snapshot_trim", "snapshot_semantic_compress", "head_trim"]
+    : ["recent_trim", "snapshot_semantic_compress", "snapshot_trim", "head_trim"];
+  return {
+    strategy,
+    overflowRatio: roundMetric(overflowRatio),
+    pressureScore: roundMetric(pressureScore),
+    order,
+  };
 }
 
 function normalizeHistory(history: readonly ContextHistoryMessage[]): ContextHistoryMessage[] {
@@ -164,6 +226,51 @@ function selectStageByUtilization(
   return "normal";
 }
 
+function applyAutoCompactGuardToStage(args: {
+  baseStage: PromptCompactionStage;
+  totalEstimatedTokens: number;
+  autoCompactTokenLimit: number;
+}): {
+  stage: PromptCompactionStage;
+  autoCompactLimitTriggered: boolean;
+} {
+  const autoCompactLimitTriggered = args.totalEstimatedTokens >= args.autoCompactTokenLimit;
+  if (!autoCompactLimitTriggered) {
+    return {
+      stage: args.baseStage,
+      autoCompactLimitTriggered: false,
+    };
+  }
+  if (stageWeight(args.baseStage) >= stageWeight("proactive")) {
+    return {
+      stage: args.baseStage,
+      autoCompactLimitTriggered: true,
+    };
+  }
+  return {
+    stage: "proactive",
+    autoCompactLimitTriggered: true,
+  };
+}
+
+export function shouldTriggerDownshiftPrecompact(args: {
+  allowProactiveCompaction: boolean;
+  previousTargetTokenLimit?: number;
+  currentTargetTokenLimit: number;
+  totalEstimatedTokens: number;
+}): boolean {
+  if (!args.allowProactiveCompaction) {
+    return false;
+  }
+  if (typeof args.previousTargetTokenLimit !== "number") {
+    return false;
+  }
+  if (args.currentTargetTokenLimit >= args.previousTargetTokenLimit) {
+    return false;
+  }
+  return args.totalEstimatedTokens > args.currentTargetTokenLimit;
+}
+
 function findVariant(
   variants: readonly PromptVariant[],
   stage: PromptCompactionStage,
@@ -178,13 +285,13 @@ function findVariant(
 function selectVariantWithBudgetGuard(args: {
   variants: readonly PromptVariant[];
   thresholdStage: PromptCompactionStage;
-  effectiveWindowTokens: number;
+  targetTokenLimit: number;
 }): {
   selected: PromptVariant;
   selectionReason: "threshold" | "budget_guard";
 } {
   const thresholdVariant = findVariant(args.variants, args.thresholdStage);
-  if (thresholdVariant.estimatedTokens <= args.effectiveWindowTokens) {
+  if (thresholdVariant.estimatedTokens <= args.targetTokenLimit) {
     return {
       selected: thresholdVariant,
       selectionReason: "threshold",
@@ -201,7 +308,7 @@ function selectVariantWithBudgetGuard(args: {
     if (candidate.estimatedTokens < fallback.estimatedTokens) {
       fallback = candidate;
     }
-    if (candidate.estimatedTokens <= args.effectiveWindowTokens) {
+    if (candidate.estimatedTokens <= args.targetTokenLimit) {
       return {
         selected: candidate,
         selectionReason: "budget_guard",
@@ -229,17 +336,29 @@ export function preparePromptWithBudget(args: {
     workDir: args.workDir,
     config: args.config,
   });
-  const effectiveWindowTokens = resolveEffectiveContextWindow(args.config);
+  const { effectiveWindowTokens, autoCompactTokenLimit, targetTokenLimit } =
+    resolvePromptTargetTokenLimit(args.config);
   const totalEstimatedTokens = variants[0]?.estimatedTokens ?? 0;
   const utilization = computeUtilization(totalEstimatedTokens, effectiveWindowTokens);
-  const thresholdStage = args.config.enabled
+  const utilizationStage = args.config.enabled
     ? selectStageByUtilization(utilization, args.config)
     : "normal";
+  const stageGuard = args.config.enabled
+    ? applyAutoCompactGuardToStage({
+      baseStage: utilizationStage,
+      totalEstimatedTokens,
+      autoCompactTokenLimit,
+    })
+    : {
+      stage: utilizationStage,
+      autoCompactLimitTriggered: false,
+    };
+  const thresholdStage = stageGuard.stage;
   const selection = args.config.enabled
     ? selectVariantWithBudgetGuard({
       variants,
       thresholdStage,
-      effectiveWindowTokens,
+      targetTokenLimit,
     })
     : {
       selected: findVariant(variants, thresholdStage),
@@ -250,6 +369,9 @@ export function preparePromptWithBudget(args: {
     variants: [...variants],
     thresholdStage,
     selectionReason: selection.selectionReason,
+    autoCompactTokenLimit,
+    targetTokenLimit,
+    autoCompactLimitTriggered: stageGuard.autoCompactLimitTriggered,
     utilization,
     selectedUtilization: computeUtilization(selection.selected.estimatedTokens, effectiveWindowTokens),
     effectiveWindowTokens,
@@ -292,4 +414,518 @@ export function truncatePromptHeadForPtlRetry(prompt: string, attempt: number): 
     ...lines.slice(userHeaderIndex),
   ];
   return rebuilt.join("\n");
+}
+
+export function trimPromptRecentTurnsForBudget(args: {
+  prompt: string;
+  targetTokenLimit: number;
+  minRecentRows?: number;
+}): {
+  prompt: string;
+  removedRows: number;
+  estimatedTokens: number;
+} {
+  const targetTokenLimit = Math.max(1, Math.floor(args.targetTokenLimit));
+  const minRecentRows = Math.max(0, Math.floor(args.minRecentRows ?? 1));
+  const originalPrompt = args.prompt;
+  let estimatedTokens = estimateTokensFromText(originalPrompt);
+  if (estimatedTokens <= targetTokenLimit) {
+    return {
+      prompt: originalPrompt,
+      removedRows: 0,
+      estimatedTokens,
+    };
+  }
+
+  const lines = originalPrompt.split(/\r?\n/);
+  const recentHeaderIndex = lines.findIndex((line) => line.trim() === "[Recent Turns]");
+  const userHeaderIndex = lines.findIndex((line) => line.trim() === "[Current User Message]");
+  if (recentHeaderIndex < 0 || userHeaderIndex <= recentHeaderIndex + 1) {
+    return {
+      prompt: originalPrompt,
+      removedRows: 0,
+      estimatedTokens,
+    };
+  }
+
+  const recentRows = lines.slice(recentHeaderIndex + 1, userHeaderIndex);
+  const nonEmptyRows = recentRows.filter((line) => line.trim().length > 0);
+  if (nonEmptyRows.length <= minRecentRows) {
+    return {
+      prompt: originalPrompt,
+      removedRows: 0,
+      estimatedTokens,
+    };
+  }
+
+  const prefix = lines.slice(0, recentHeaderIndex + 1);
+  const suffix = lines.slice(userHeaderIndex);
+  const maxRemovableRows = Math.max(0, nonEmptyRows.length - minRecentRows);
+  let removedRows = 0;
+  let currentRows = [...nonEmptyRows];
+  let currentPrompt = originalPrompt;
+
+  while (removedRows < maxRemovableRows) {
+    currentRows = currentRows.slice(1);
+    removedRows += 1;
+    const marker = removedRows > 0
+      ? ["[earlier recent turns truncated for budget]"]
+      : [];
+    currentPrompt = [
+      ...prefix,
+      ...marker,
+      ...currentRows,
+      ...suffix,
+    ].join("\n");
+    estimatedTokens = estimateTokensFromText(currentPrompt);
+    if (estimatedTokens <= targetTokenLimit) {
+      return {
+        prompt: currentPrompt,
+        removedRows,
+        estimatedTokens,
+      };
+    }
+  }
+
+  return {
+    prompt: currentPrompt,
+    removedRows,
+    estimatedTokens,
+  };
+}
+
+function normalizeSectionKey(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+const SNAPSHOT_SECTION_DROP_ORDER = [
+  "tool outputs (pass/fail only)",
+  "live workspace changes",
+  "symbol graph hints",
+  "dependency graph hints",
+  "commit lineage hints",
+  "current verification status",
+  "open todos and rollback notes",
+  "modified files and key changes",
+] as const;
+
+const SNAPSHOT_SECTION_MANDATORY = new Set<string>([
+  "architecture decisions",
+  "modified files and key changes",
+]);
+
+const SNAPSHOT_SECTION_SEMANTIC_COMPRESS_ORDER = [
+  "tool outputs (pass/fail only)",
+  "live workspace changes",
+  "symbol graph hints",
+  "dependency graph hints",
+  "commit lineage hints",
+  "current verification status",
+  "open todos and rollback notes",
+] as const;
+
+const SNAPSHOT_SECTION_SEMANTIC_COMPRESS_MAX_ROWS: Record<string, number> = {
+  "tool outputs (pass/fail only)": 1,
+  "live workspace changes": 2,
+  "symbol graph hints": 2,
+  "dependency graph hints": 2,
+  "commit lineage hints": 2,
+  "current verification status": 2,
+  "open todos and rollback notes": 2,
+};
+
+const SNAPSHOT_SECTION_SEMANTIC_MAX_CHARS = 160;
+
+function compactSemanticLine(raw: string, maxChars: number): string {
+  const normalized = raw.replace(/\s+/g, " ").trim().replace(/^[-*]\s+/, "");
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  const headLength = Math.max(40, Math.floor(maxChars * 0.72));
+  const tailLength = Math.max(24, maxChars - headLength - 5);
+  const head = normalized.slice(0, headLength).trimEnd();
+  const tail = normalized.slice(Math.max(0, normalized.length - tailLength)).trimStart();
+  return `${head} ... ${tail}`;
+}
+
+function collectSemanticSignalTokens(lines: readonly string[]): string[] {
+  const tokens: string[] = [];
+  const seen = new Set<string>();
+  const patterns = [
+    /[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/g,
+    /\b[a-f0-9]{7,40}\b/gi,
+    /\b(?:PASS|FAIL|TODO|WARN|ERROR|SKIP)\b/g,
+    /[A-Za-z_][A-Za-z0-9_]*(?=\s*\()/g,
+  ];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    for (const pattern of patterns) {
+      const matched = line.match(pattern) ?? [];
+      for (const candidate of matched) {
+        const token = candidate.trim();
+        if (!token) {
+          continue;
+        }
+        const key = token.toLowerCase();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        tokens.push(token);
+        if (tokens.length >= 8) {
+          return tokens;
+        }
+      }
+    }
+  }
+  return tokens;
+}
+
+function compressSnapshotSectionLines(args: {
+  sectionKey: string;
+  lines: readonly string[];
+}): {
+  lines: string[];
+  changed: boolean;
+} {
+  if (args.lines.length <= 1) {
+    return {
+      lines: [...args.lines],
+      changed: false,
+    };
+  }
+  const header = args.lines[0] ?? "";
+  const rawContentRows = args.lines.slice(1).filter((line) => line.trim().length > 0);
+  if (rawContentRows.length === 0) {
+    return {
+      lines: [header],
+      changed: args.lines.length > 1,
+    };
+  }
+  if (rawContentRows.some((line) => line.includes("[compressed]"))) {
+    return {
+      lines: [...args.lines],
+      changed: false,
+    };
+  }
+  const maxRows = SNAPSHOT_SECTION_SEMANTIC_COMPRESS_MAX_ROWS[args.sectionKey] ?? 2;
+  const keepRows = rawContentRows.slice(0, Math.max(1, maxRows)).map((line) => {
+    const compacted = compactSemanticLine(line, SNAPSHOT_SECTION_SEMANTIC_MAX_CHARS);
+    return `- ${compacted}`;
+  });
+  const tailRows = rawContentRows.slice(keepRows.length);
+  const tailTokens = collectSemanticSignalTokens(tailRows).slice(0, 6);
+  const omittedRows = Math.max(0, rawContentRows.length - keepRows.length);
+  const summaryRows: string[] = [];
+  if (omittedRows > 0 || tailTokens.length > 0) {
+    const parts = [`[compressed] omitted=${String(omittedRows)}`];
+    if (tailTokens.length > 0) {
+      parts.push(`key=${tailTokens.join(", ")}`);
+    }
+    summaryRows.push(`- ${parts.join("; ")}`);
+  }
+  const rebuilt = [header, ...keepRows, ...summaryRows];
+  const changed = rebuilt.join("\n").length < args.lines.join("\n").length;
+  return {
+    lines: changed ? rebuilt : [...args.lines],
+    changed,
+  };
+}
+
+export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
+  prompt: string;
+  targetTokenLimit: number;
+}): {
+  prompt: string;
+  compressedSections: string[];
+  estimatedTokens: number;
+} {
+  const targetTokenLimit = Math.max(1, Math.floor(args.targetTokenLimit));
+  const originalPrompt = args.prompt;
+  let estimatedTokens = estimateTokensFromText(originalPrompt);
+  if (estimatedTokens <= targetTokenLimit) {
+    return {
+      prompt: originalPrompt,
+      compressedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const lines = originalPrompt.split(/\r?\n/);
+  const contextHeaderIndex = lines.findIndex((line) => line.trim() === "[Conversation Context]");
+  const userHeaderIndex = lines.findIndex((line) => line.trim() === "[Current User Message]");
+  if (contextHeaderIndex < 0 || userHeaderIndex <= contextHeaderIndex + 1) {
+    return {
+      prompt: originalPrompt,
+      compressedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const contextLines = lines.slice(contextHeaderIndex + 1, userHeaderIndex);
+  const snapshotHeaderIndex = contextLines.findIndex(
+    (line) => line.trim() === "[Compact Context Snapshot v2]",
+  );
+  if (snapshotHeaderIndex < 0) {
+    return {
+      prompt: originalPrompt,
+      compressedSections: [],
+      estimatedTokens,
+    };
+  }
+  const recentHeaderIndex = contextLines.findIndex((line) => line.trim() === "[Recent Turns]");
+  const snapshotTailIndex = recentHeaderIndex >= 0 ? recentHeaderIndex : contextLines.length;
+  if (snapshotTailIndex <= snapshotHeaderIndex + 1) {
+    return {
+      prompt: originalPrompt,
+      compressedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const snapshotPrefix = contextLines.slice(0, snapshotHeaderIndex + 1);
+  const snapshotBody = contextLines.slice(snapshotHeaderIndex + 1, snapshotTailIndex);
+  const snapshotSuffix = contextLines.slice(snapshotTailIndex);
+  const sectionBlocks: Array<{
+    title: string;
+    lines: string[];
+  }> = [];
+  let cursor = 0;
+  while (cursor < snapshotBody.length) {
+    const line = snapshotBody[cursor]?.trim() ?? "";
+    const headerMatch = line.match(/^\[(.+)\]$/);
+    if (!headerMatch || typeof headerMatch[1] !== "string") {
+      cursor += 1;
+      continue;
+    }
+    const title = headerMatch[1].trim();
+    const blockLines: string[] = [snapshotBody[cursor] ?? ""];
+    cursor += 1;
+    while (cursor < snapshotBody.length) {
+      const nextLine = snapshotBody[cursor] ?? "";
+      if (/^\[(.+)\]$/.test(nextLine.trim())) {
+        break;
+      }
+      blockLines.push(nextLine);
+      cursor += 1;
+    }
+    sectionBlocks.push({
+      title,
+      lines: blockLines,
+    });
+  }
+  if (sectionBlocks.length === 0) {
+    return {
+      prompt: originalPrompt,
+      compressedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const compressedTitles: string[] = [];
+  const keepBlocks = [...sectionBlocks];
+  let currentPrompt = originalPrompt;
+  for (const key of SNAPSHOT_SECTION_SEMANTIC_COMPRESS_ORDER) {
+    for (let index = 0; index < keepBlocks.length; index += 1) {
+      const block = keepBlocks[index];
+      if (!block) {
+        continue;
+      }
+      if (normalizeSectionKey(block.title) !== key) {
+        continue;
+      }
+      const compressed = compressSnapshotSectionLines({
+        sectionKey: key,
+        lines: block.lines,
+      });
+      if (!compressed.changed) {
+        continue;
+      }
+      keepBlocks[index] = {
+        ...block,
+        lines: compressed.lines,
+      };
+      compressedTitles.push(block.title);
+      const marker = compressedTitles.length > 0
+        ? ["[snapshot sections semantically compressed for budget]"]
+        : [];
+      const rebuiltContext = [
+        ...snapshotPrefix,
+        ...marker,
+        ...keepBlocks.flatMap((row) => row.lines),
+        ...snapshotSuffix,
+      ];
+      currentPrompt = [
+        ...lines.slice(0, contextHeaderIndex + 1),
+        ...rebuiltContext,
+        ...lines.slice(userHeaderIndex),
+      ].join("\n");
+      estimatedTokens = estimateTokensFromText(currentPrompt);
+      if (estimatedTokens <= targetTokenLimit) {
+        return {
+          prompt: currentPrompt,
+          compressedSections: compressedTitles,
+          estimatedTokens,
+        };
+      }
+    }
+  }
+
+  return {
+    prompt: currentPrompt,
+    compressedSections: compressedTitles,
+    estimatedTokens,
+  };
+}
+
+export function trimPromptSnapshotSectionsForBudget(args: {
+  prompt: string;
+  targetTokenLimit: number;
+}): {
+  prompt: string;
+  removedSections: string[];
+  estimatedTokens: number;
+} {
+  const targetTokenLimit = Math.max(1, Math.floor(args.targetTokenLimit));
+  const originalPrompt = args.prompt;
+  let estimatedTokens = estimateTokensFromText(originalPrompt);
+  if (estimatedTokens <= targetTokenLimit) {
+    return {
+      prompt: originalPrompt,
+      removedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const lines = originalPrompt.split(/\r?\n/);
+  const contextHeaderIndex = lines.findIndex((line) => line.trim() === "[Conversation Context]");
+  const userHeaderIndex = lines.findIndex((line) => line.trim() === "[Current User Message]");
+  if (contextHeaderIndex < 0 || userHeaderIndex <= contextHeaderIndex + 1) {
+    return {
+      prompt: originalPrompt,
+      removedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const contextLines = lines.slice(contextHeaderIndex + 1, userHeaderIndex);
+  const snapshotHeaderIndex = contextLines.findIndex(
+    (line) => line.trim() === "[Compact Context Snapshot v2]",
+  );
+  if (snapshotHeaderIndex < 0) {
+    return {
+      prompt: originalPrompt,
+      removedSections: [],
+      estimatedTokens,
+    };
+  }
+  const recentHeaderIndex = contextLines.findIndex((line) => line.trim() === "[Recent Turns]");
+  const snapshotTailIndex = recentHeaderIndex >= 0 ? recentHeaderIndex : contextLines.length;
+  if (snapshotTailIndex <= snapshotHeaderIndex + 1) {
+    return {
+      prompt: originalPrompt,
+      removedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const snapshotPrefix = contextLines.slice(0, snapshotHeaderIndex + 1);
+  const snapshotBody = contextLines.slice(snapshotHeaderIndex + 1, snapshotTailIndex);
+  const snapshotSuffix = contextLines.slice(snapshotTailIndex);
+  const sectionBlocks: Array<{
+    title: string;
+    lines: string[];
+  }> = [];
+  let cursor = 0;
+  while (cursor < snapshotBody.length) {
+    const line = snapshotBody[cursor]?.trim() ?? "";
+    const headerMatch = line.match(/^\[(.+)\]$/);
+    if (!headerMatch || typeof headerMatch[1] !== "string") {
+      cursor += 1;
+      continue;
+    }
+    const title = headerMatch[1].trim();
+    const blockLines: string[] = [snapshotBody[cursor] ?? ""];
+    cursor += 1;
+    while (cursor < snapshotBody.length) {
+      const nextLine = snapshotBody[cursor] ?? "";
+      if (/^\[(.+)\]$/.test(nextLine.trim())) {
+        break;
+      }
+      blockLines.push(nextLine);
+      cursor += 1;
+    }
+    sectionBlocks.push({
+      title,
+      lines: blockLines,
+    });
+  }
+  if (sectionBlocks.length === 0) {
+    return {
+      prompt: originalPrompt,
+      removedSections: [],
+      estimatedTokens,
+    };
+  }
+
+  const removableKeys = new Set<string>(SNAPSHOT_SECTION_DROP_ORDER);
+  const droppedTitles: string[] = [];
+  const keepBlocks = [...sectionBlocks];
+
+  const removeOneSectionByKey = (key: string): boolean => {
+    for (let index = 0; index < keepBlocks.length; index += 1) {
+      const title = keepBlocks[index]?.title ?? "";
+      const normalizedTitle = normalizeSectionKey(title);
+      if (normalizedTitle !== key) {
+        continue;
+      }
+      if (SNAPSHOT_SECTION_MANDATORY.has(normalizedTitle)) {
+        return false;
+      }
+      keepBlocks.splice(index, 1);
+      droppedTitles.push(title);
+      return true;
+    }
+    return false;
+  };
+
+  let currentPrompt = originalPrompt;
+  for (const key of SNAPSHOT_SECTION_DROP_ORDER) {
+    if (!removableKeys.has(key)) {
+      continue;
+    }
+    while (removeOneSectionByKey(key)) {
+      const marker = droppedTitles.length > 0
+        ? ["[snapshot sections truncated for budget]"]
+        : [];
+      const rebuiltContext = [
+        ...snapshotPrefix,
+        ...marker,
+        ...keepBlocks.flatMap((block) => block.lines),
+        ...snapshotSuffix,
+      ];
+      currentPrompt = [
+        ...lines.slice(0, contextHeaderIndex + 1),
+        ...rebuiltContext,
+        ...lines.slice(userHeaderIndex),
+      ].join("\n");
+      estimatedTokens = estimateTokensFromText(currentPrompt);
+      if (estimatedTokens <= targetTokenLimit) {
+        return {
+          prompt: currentPrompt,
+          removedSections: droppedTitles,
+          estimatedTokens,
+        };
+      }
+    }
+  }
+
+  return {
+    prompt: currentPrompt,
+    removedSections: droppedTitles,
+    estimatedTokens,
+  };
 }

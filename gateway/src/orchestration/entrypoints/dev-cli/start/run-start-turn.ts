@@ -18,15 +18,29 @@ import {
 } from "../../../../tools/ask-user";
 import { applyLearnedPromptContext } from "../../../../tools/ga-skill";
 import {
+  compressPromptSnapshotSectionsSemanticallyForBudget,
+  applyPromptQualityGuardFloor,
+  assessPromptQualityWindowDegradation,
+  appendPromptQualityWindowEntry,
   appendGraphCacheWindowEntry,
   buildSemanticPrefetchBlock,
   classifyPromptOverflow,
+  computePromptQualitySample,
   computeUtilization,
+  derivePromptPreSendCompressionPlan,
+  derivePromptQualityGuardAdaptivePolicy,
+  evaluatePromptQualityGuard,
   estimateTokensFromText,
   escalatePromptVariant,
   prepareTurnPrompt,
   readContextGraphCacheStats,
+  readPromptQualityGuardState,
+  readPromptQualityWindowSummary,
+  shouldTriggerDownshiftPrecompact,
+  trimPromptRecentTurnsForBudget,
+  trimPromptSnapshotSectionsForBudget,
   truncatePromptHeadForPtlRetry,
+  writePromptQualityGuardState,
   type ContextEngineConfig,
   type PromptCompactionStage,
   type PromptVariant,
@@ -819,6 +833,7 @@ function resolveProviderOrder(input: {
 export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
   const providerFlowStateMap = new Map<string, ProviderFlowState>();
   let consecutiveCompactionFailures = 0;
+  let previousTargetTokenLimit: number | undefined;
 
   const recordTurn = async (
     userText: string,
@@ -891,6 +906,196 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       let selectedStage = promptPreparation.selected.stage;
       let basePrompt = promptPreparation.selected.prompt;
       let selectionReason: "threshold" | "budget_guard" = promptPreparation.selectionReason;
+      const targetTokenLimit = promptPreparation.targetTokenLimit;
+      const promptQualityConfig = input.contextEngineConfig.promptQuality;
+      const promptQualityWindowSummary = readPromptQualityWindowSummary({
+        workDir: input.workDir,
+        size: Math.max(
+          20,
+          Math.min(256, promptQualityConfig?.degradeMinEntries ?? 8),
+        ),
+        lowQualityThreshold: promptQualityConfig?.lowQualityThreshold,
+      });
+      const promptQualityWindowDegradation = assessPromptQualityWindowDegradation({
+        summary: promptQualityWindowSummary,
+        thresholdOverall: promptQualityConfig?.degradeOverallThreshold ?? 0.62,
+        thresholdLowQualityRate:
+          promptQualityConfig?.degradeLowQualityRateThreshold ?? 0.4,
+        minEntries: promptQualityConfig?.degradeMinEntries ?? 8,
+      });
+      const qualityGuardState = readPromptQualityGuardState({
+        workDir: input.workDir,
+      });
+      const baseGuardPolicy = {
+        enabled: allowProactiveCompaction && (promptQualityConfig?.guardEnabled ?? true),
+        promoteStreak: promptQualityConfig?.guardPromoteStreak ?? 2,
+        severePromoteStreak: promptQualityConfig?.guardSeverePromoteStreak ?? 2,
+        releaseStreak: promptQualityConfig?.guardReleaseStreak ?? 3,
+        holdTurns: promptQualityConfig?.guardHoldTurns ?? 2,
+        maxFloorStage: promptQualityConfig?.guardMaxFloorStage ?? "minimal",
+        severeOverallThreshold: promptQualityConfig?.guardSevereOverallThreshold ?? 0.45,
+        severeLowQualityRateThreshold:
+          promptQualityConfig?.guardSevereLowQualityRateThreshold ?? 0.7,
+      };
+      const adaptiveGuardPolicyDecision = derivePromptQualityGuardAdaptivePolicy({
+        basePolicy: baseGuardPolicy,
+        adaptiveEnabled: promptQualityConfig?.guardAdaptiveEnabled ?? true,
+        adaptiveModeAllowlist: promptQualityConfig?.guardAdaptiveModeAllowlist,
+        currentState: qualityGuardState,
+        window: {
+          degraded: promptQualityWindowDegradation.degraded,
+          reason: promptQualityWindowDegradation.reason,
+          lowQualityRate: promptQualityWindowSummary.lowQualityRate,
+          averageOverall: promptQualityWindowSummary.averageScores?.overall ?? null,
+          observedOverall: promptQualityWindowDegradation.observedOverall,
+          observedLowQualityRate: promptQualityWindowDegradation.observedLowQualityRate,
+          snapshotSemanticCompressRate:
+            promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate,
+          autoLimitTriggeredRate:
+            promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate,
+          averageUtilizationRatio:
+            promptQualityWindowSummary.tokenBudget.averageUtilizationRatio,
+          shortSnapshotSemanticCompressRate:
+            promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate,
+          mediumSnapshotSemanticCompressRate:
+            promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate,
+          shortAutoLimitTriggeredRate:
+            promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate,
+          mediumAutoLimitTriggeredRate:
+            promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate,
+          shortAverageUtilizationRatio:
+            promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio,
+          mediumAverageUtilizationRatio:
+            promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio,
+          hardBudgetStrategyRate:
+            promptQualityWindowSummary.strategyActivity.hardBudgetRate,
+          qualityFirstStrategyRate:
+            promptQualityWindowSummary.strategyActivity.qualityFirstRate,
+          averagePreSendOverflowRatio:
+            promptQualityWindowSummary.signalAverages?.preSendOverflowRatio ?? null,
+          averagePreSendPressureScore:
+            promptQualityWindowSummary.signalAverages?.preSendPressureScore ?? null,
+          shortHardBudgetStrategyRate:
+            promptQualityWindowSummary.strategyTrends.short.hardBudgetRate,
+          mediumHardBudgetStrategyRate:
+            promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate,
+          shortAveragePreSendOverflowRatio:
+            promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio,
+          mediumAveragePreSendOverflowRatio:
+            promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio,
+          shortAveragePreSendPressureScore:
+            promptQualityWindowSummary.strategyTrends.short.averagePressureScore,
+          mediumAveragePreSendPressureScore:
+            promptQualityWindowSummary.strategyTrends.medium.averagePressureScore,
+          hardBudgetFollowupOverallDelta:
+            promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta,
+          qualityFirstFollowupOverallDelta:
+            promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta,
+          hardBudgetRecoveryRate:
+            promptQualityWindowSummary.strategyOutcomes.hardBudgetRecoveryRate,
+          qualityFirstImprovedRate:
+            promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate,
+          hardBudgetTransitionCount:
+            promptQualityWindowSummary.strategyOutcomes.hardBudgetTransitions,
+          qualityFirstTransitionCount:
+            promptQualityWindowSummary.strategyOutcomes.qualityFirstTransitions,
+        },
+      });
+      if (adaptiveGuardPolicyDecision.mode !== "stable" && adaptiveGuardPolicyDecision.mode !== "disabled") {
+        input.writeStderr(
+          `[context-engine] event=quality_guard_policy_adaptive mode=${adaptiveGuardPolicyDecision.mode} reason=${adaptiveGuardPolicyDecision.reason} allowlist=${adaptiveGuardPolicyDecision.allowlist.join(",")} mode_blocked=${adaptiveGuardPolicyDecision.modeBlocked ? "true" : "false"} blocked_mode=${adaptiveGuardPolicyDecision.blockedMode ?? "<none>"} promote_streak=${String(adaptiveGuardPolicyDecision.effectivePolicy.promoteStreak)} severe_promote_streak=${String(adaptiveGuardPolicyDecision.effectivePolicy.severePromoteStreak)} release_streak=${String(adaptiveGuardPolicyDecision.effectivePolicy.releaseStreak)} hold_turns=${String(adaptiveGuardPolicyDecision.effectivePolicy.holdTurns)} pressure_source=${adaptiveGuardPolicyDecision.pressurePolicy.source} pressure_updated=${adaptiveGuardPolicyDecision.pressurePolicy.updated ? "true" : "false"} pressure_alpha=${adaptiveGuardPolicyDecision.pressurePolicy.learnAlpha.toFixed(3)} pressure_thresholds=${adaptiveGuardPolicyDecision.pressurePolicy.utilizationThreshold.toFixed(3)}/${adaptiveGuardPolicyDecision.pressurePolicy.semanticRateThreshold.toFixed(3)}/${adaptiveGuardPolicyDecision.pressurePolicy.autoLimitRateThreshold.toFixed(3)}/${adaptiveGuardPolicyDecision.pressurePolicy.jointRateThreshold.toFixed(3)} semantic_rate=${typeof promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate.toFixed(3) : "<none>"} auto_limit_rate=${typeof promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate.toFixed(3) : "<none>"} avg_utilization=${typeof promptQualityWindowSummary.tokenBudget.averageUtilizationRatio === "number" ? promptQualityWindowSummary.tokenBudget.averageUtilizationRatio.toFixed(3) : "<none>"} hard_budget_rate=${typeof promptQualityWindowSummary.strategyActivity.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyActivity.hardBudgetRate.toFixed(3) : "<none>"} quality_first_rate=${typeof promptQualityWindowSummary.strategyActivity.qualityFirstRate === "number" ? promptQualityWindowSummary.strategyActivity.qualityFirstRate.toFixed(3) : "<none>"} pre_send_overflow=${typeof promptQualityWindowSummary.signalAverages?.preSendOverflowRatio === "number" ? promptQualityWindowSummary.signalAverages.preSendOverflowRatio.toFixed(3) : "<none>"} pre_send_pressure=${typeof promptQualityWindowSummary.signalAverages?.preSendPressureScore === "number" ? promptQualityWindowSummary.signalAverages.preSendPressureScore.toFixed(3) : "<none>"} trend_delta_utilization=${typeof promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio.toFixed(3) : "<none>"} trend_delta_semantic=${typeof promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate.toFixed(3) : "<none>"} trend_delta_auto_limit=${typeof promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate.toFixed(3) : "<none>"} strategy_trend_delta_hard_budget=${typeof promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate.toFixed(3) : "<none>"} strategy_trend_delta_overflow=${typeof promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio.toFixed(3) : "<none>"} strategy_trend_delta_pressure=${typeof promptQualityWindowSummary.strategyTrends.delta.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.delta.averagePressureScore.toFixed(3) : "<none>"} outcome_reliability=${String(adaptiveGuardPolicyDecision.outcomeReliability.requiredTransitions)}->${String(adaptiveGuardPolicyDecision.outcomeReliability.nextRequiredTransitions)}/${String(adaptiveGuardPolicyDecision.outcomeReliability.hardBudgetTransitions)}/${String(adaptiveGuardPolicyDecision.outcomeReliability.qualityFirstTransitions)}/${adaptiveGuardPolicyDecision.outcomeReliability.combinedEvidenceScore.toFixed(3)} hard_budget_reliable=${adaptiveGuardPolicyDecision.outcomeReliability.hardBudgetReliable ? "true" : "false"} quality_first_reliable=${adaptiveGuardPolicyDecision.outcomeReliability.qualityFirstReliable ? "true" : "false"} drift_guard=${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceTurns}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenTurns}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenRate.toFixed(3)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenBias ? "bias" : "ok"}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.autoActionLevel}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.alertLevel}/${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.entries)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.latest}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.dominant}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.activeRate.toFixed(3)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.mediumOrHardRate.toFixed(3)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.hardRate.toFixed(3)}/${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.transitionCount)}\n`,
+        );
+      }
+      if (adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenBias) {
+        input.writeStderr(
+          `[context-engine] event=quality_guard_policy_drift_guard reason=${adaptiveGuardPolicyDecision.outcomeDriftGuard.reason} recommendation=${adaptiveGuardPolicyDecision.outcomeDriftGuard.recommendation} auto_action_level=${adaptiveGuardPolicyDecision.outcomeDriftGuard.autoActionLevel} window_alert=${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.alertLevel} high_evidence_turns=${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceTurns)} high_evidence_harden_turns=${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenTurns)} high_evidence_harden_rate=${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenRate.toFixed(3)}\n`,
+        );
+      }
+      const qualityGuardDecision = evaluatePromptQualityGuard({
+        policy: adaptiveGuardPolicyDecision.effectivePolicy,
+        currentState: qualityGuardState,
+        observation: {
+          degraded: promptQualityWindowDegradation.degraded,
+          reason: promptQualityWindowDegradation.reason,
+          observedOverall: promptQualityWindowDegradation.observedOverall,
+          observedLowQualityRate: promptQualityWindowDegradation.observedLowQualityRate,
+        },
+      });
+      const persistedQualityGuardState = {
+        ...qualityGuardDecision.state,
+        pressureUtilizationThreshold:
+          adaptiveGuardPolicyDecision.pressurePolicy.utilizationThreshold,
+        pressureSemanticRateThreshold:
+          adaptiveGuardPolicyDecision.pressurePolicy.semanticRateThreshold,
+        pressureAutoLimitRateThreshold:
+          adaptiveGuardPolicyDecision.pressurePolicy.autoLimitRateThreshold,
+        pressureJointRateThreshold:
+          adaptiveGuardPolicyDecision.pressurePolicy.jointRateThreshold,
+        pressureTrendUtilizationDelta:
+          adaptiveGuardPolicyDecision.pressurePolicy.trendUtilizationDelta,
+        pressureTrendSemanticDelta:
+          adaptiveGuardPolicyDecision.pressurePolicy.trendSemanticDelta,
+        pressureTrendAutoLimitDelta:
+          adaptiveGuardPolicyDecision.pressurePolicy.trendAutoLimitDelta,
+        pressureTrendMomentum:
+          adaptiveGuardPolicyDecision.pressurePolicy.trendMomentum,
+        outcomeRequiredTransitions:
+          adaptiveGuardPolicyDecision.outcomeReliability.nextRequiredTransitions,
+        outcomeCombinedEvidenceScore:
+          adaptiveGuardPolicyDecision.outcomeReliability.combinedEvidenceScore,
+        outcomeHighEvidenceTurns:
+          adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceTurns,
+        outcomeHighEvidenceHardenTurns:
+          adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenTurns,
+        outcomeDriftRecentAutoActionLevels:
+          adaptiveGuardPolicyDecision.outcomeDriftGuard.recentAutoActionLevels,
+      };
+      writePromptQualityGuardState({
+        workDir: input.workDir,
+        state: persistedQualityGuardState,
+      });
+      const guardedStage = applyPromptQualityGuardFloor({
+        selectedStage,
+        floorStage: qualityGuardDecision.floorStage,
+      });
+      const qualityGuardActive = qualityGuardDecision.triggered;
+      let qualityGuardEscalated = false;
+      if (guardedStage !== selectedStage) {
+        const guardedVariant = promptPreparation.variants.find((variant) => variant.stage === guardedStage);
+        if (guardedVariant) {
+          selectedStage = guardedVariant.stage;
+          basePrompt = guardedVariant.prompt;
+          selectionReason = "budget_guard";
+          qualityGuardEscalated = true;
+        }
+      }
+      if (
+        qualityGuardEscalated
+        || qualityGuardDecision.promoted
+        || qualityGuardDecision.released
+      ) {
+        input.writeStderr(
+          `[context-engine] event=quality_guard_precompact stage=${selectedStage} floor=${qualityGuardDecision.floorStage} reason=${promptQualityWindowDegradation.reason} severe=${qualityGuardDecision.severe ? "true" : "false"} promoted=${qualityGuardDecision.promoted ? "true" : "false"} released=${qualityGuardDecision.released ? "true" : "false"} degraded_streak=${String(qualityGuardDecision.state.degradedStreak)} healthy_streak=${String(qualityGuardDecision.state.healthyStreak)} hold_turns=${String(qualityGuardDecision.state.holdTurnsRemaining)} observed_overall=${typeof promptQualityWindowDegradation.observedOverall === "number" ? promptQualityWindowDegradation.observedOverall.toFixed(3) : "<none>"} observed_low_quality_rate=${typeof promptQualityWindowDegradation.observedLowQualityRate === "number" ? promptQualityWindowDegradation.observedLowQualityRate.toFixed(3) : "<none>"}\n`,
+        );
+      }
+      const downshiftGuardTriggered = shouldTriggerDownshiftPrecompact({
+        allowProactiveCompaction,
+        previousTargetTokenLimit,
+        currentTargetTokenLimit: targetTokenLimit,
+        totalEstimatedTokens: promptPreparation.totalEstimatedTokens,
+      });
+      if (downshiftGuardTriggered) {
+        const escalated = escalatePromptVariant(promptPreparation.variants, selectedStage);
+        if (escalated) {
+          selectedStage = escalated.stage;
+          basePrompt = escalated.prompt;
+          selectionReason = "budget_guard";
+          input.writeStderr(
+            `[context-engine] event=downshift_precompact stage=${selectedStage} previous_limit=${String(previousTargetTokenLimit)} current_limit=${String(targetTokenLimit)}\n`,
+          );
+        }
+      }
+      previousTargetTokenLimit = targetTokenLimit;
       const askUserTurnContext = createAskUserTurnPromptContext({
         runtime: input.gaMechanismRuntime,
         sessionKey,
@@ -983,11 +1188,11 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       let selectedPrepared = findPreparedVariantByStage(selectedStage);
       if (
         allowProactiveCompaction &&
-        selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens
+        selectedPrepared.estimatedTokens > targetTokenLimit
       ) {
         let stageCursor = selectedPrepared.stage;
         let escalated = false;
-        while (selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens) {
+        while (selectedPrepared.estimatedTokens > targetTokenLimit) {
           const next = escalatePromptVariant(preparedPromptVariants, stageCursor);
           if (!next) {
             break;
@@ -1002,42 +1207,165 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         }
       }
       let preSendHeadTrimRetries = 0;
+      let preSendRecentTrimRows = 0;
+      let preSendSnapshotTrimSections = 0;
+      let preSendSnapshotSemanticCompressSections = 0;
+      let preSendCompressionStrategy: "quality_first" | "hard_budget" = "quality_first";
+      let preSendCompressionOverflowRatio = 0;
+      let preSendCompressionPressureScore = 0;
+      let preSendCompressionOrder = "recent_trim,snapshot_semantic_compress,snapshot_trim,head_trim";
       if (
         allowProactiveCompaction &&
-        selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens
+        selectedPrepared.estimatedTokens > targetTokenLimit
       ) {
-        while (
-          selectedPrepared.estimatedTokens > promptPreparation.effectiveWindowTokens &&
-          preSendHeadTrimRetries < input.contextEngineConfig.recovery.ptlMaxRetries
-        ) {
-          const trimmedPrompt = truncatePromptHeadForPtlRetry(
-            selectedPrepared.prompt,
-            preSendHeadTrimRetries + 1,
-          );
-          if (trimmedPrompt === selectedPrepared.prompt) {
+        const preSendCompressionPlan = derivePromptPreSendCompressionPlan({
+          selectedStage,
+          estimatedTokens: selectedPrepared.estimatedTokens,
+          targetTokenLimit,
+          qualityGuardActive,
+          qualityGuardSevere: qualityGuardDecision.severe,
+          pressureTrendMomentum: adaptiveGuardPolicyDecision.pressurePolicy.trendMomentum,
+        });
+        preSendCompressionStrategy = preSendCompressionPlan.strategy;
+        preSendCompressionOverflowRatio = preSendCompressionPlan.overflowRatio;
+        preSendCompressionPressureScore = preSendCompressionPlan.pressureScore;
+        preSendCompressionOrder = preSendCompressionPlan.order.join(",");
+        input.writeStderr(
+          `[context-engine] event=pre_send_plan stage=${selectedStage} strategy=${preSendCompressionStrategy} overflow_ratio=${preSendCompressionOverflowRatio.toFixed(3)} pressure_score=${preSendCompressionPressureScore.toFixed(3)} order=${preSendCompressionOrder}\n`,
+        );
+        for (const step of preSendCompressionPlan.order) {
+          if (selectedPrepared.estimatedTokens <= targetTokenLimit) {
             break;
           }
-          preSendHeadTrimRetries += 1;
-          selectedPrepared = {
-            ...selectedPrepared,
-            prompt: trimmedPrompt,
-            estimatedTokens: estimateTokensFromText(trimmedPrompt),
-          };
-          selectionReason = "budget_guard";
+          if (step === "recent_trim") {
+            const recentTrimmed = trimPromptRecentTurnsForBudget({
+              prompt: selectedPrepared.prompt,
+              targetTokenLimit,
+              minRecentRows: 1,
+            });
+            if (recentTrimmed.removedRows > 0) {
+              preSendRecentTrimRows = recentTrimmed.removedRows;
+              selectedPrepared = {
+                ...selectedPrepared,
+                prompt: recentTrimmed.prompt,
+                estimatedTokens: recentTrimmed.estimatedTokens,
+              };
+              selectionReason = "budget_guard";
+              input.writeStderr(
+                `[context-engine] event=pre_send_recent_trim stage=${selectedStage} removed_rows=${String(preSendRecentTrimRows)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
+              );
+            }
+            continue;
+          }
+          if (step === "snapshot_semantic_compress") {
+            const snapshotSemanticCompressed = compressPromptSnapshotSectionsSemanticallyForBudget({
+              prompt: selectedPrepared.prompt,
+              targetTokenLimit,
+            });
+            if (snapshotSemanticCompressed.compressedSections.length > 0) {
+              preSendSnapshotSemanticCompressSections =
+                snapshotSemanticCompressed.compressedSections.length;
+              selectedPrepared = {
+                ...selectedPrepared,
+                prompt: snapshotSemanticCompressed.prompt,
+                estimatedTokens: snapshotSemanticCompressed.estimatedTokens,
+              };
+              selectionReason = "budget_guard";
+              input.writeStderr(
+                `[context-engine] event=pre_send_snapshot_semantic_compress stage=${selectedStage} compressed_sections=${String(preSendSnapshotSemanticCompressSections)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
+              );
+            }
+            continue;
+          }
+          if (step === "snapshot_trim") {
+            const snapshotTrimmed = trimPromptSnapshotSectionsForBudget({
+              prompt: selectedPrepared.prompt,
+              targetTokenLimit,
+            });
+            if (snapshotTrimmed.removedSections.length > 0) {
+              preSendSnapshotTrimSections = snapshotTrimmed.removedSections.length;
+              selectedPrepared = {
+                ...selectedPrepared,
+                prompt: snapshotTrimmed.prompt,
+                estimatedTokens: snapshotTrimmed.estimatedTokens,
+              };
+              selectionReason = "budget_guard";
+              input.writeStderr(
+                `[context-engine] event=pre_send_snapshot_trim stage=${selectedStage} removed_sections=${String(preSendSnapshotTrimSections)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
+              );
+            }
+            continue;
+          }
+          while (
+            selectedPrepared.estimatedTokens > targetTokenLimit &&
+            preSendHeadTrimRetries < input.contextEngineConfig.recovery.ptlMaxRetries
+          ) {
+            const trimmedPrompt = truncatePromptHeadForPtlRetry(
+              selectedPrepared.prompt,
+              preSendHeadTrimRetries + 1,
+            );
+            if (trimmedPrompt === selectedPrepared.prompt) {
+              break;
+            }
+            preSendHeadTrimRetries += 1;
+            selectedPrepared = {
+              ...selectedPrepared,
+              prompt: trimmedPrompt,
+              estimatedTokens: estimateTokensFromText(trimmedPrompt),
+            };
+            selectionReason = "budget_guard";
+          }
         }
       }
       basePrompt = selectedPrepared.prompt;
-      if (selectedStage !== "normal" || preSendHeadTrimRetries > 0) {
+      if (
+        selectedStage !== "normal"
+        || preSendRecentTrimRows > 0
+        || preSendSnapshotTrimSections > 0
+        || preSendSnapshotSemanticCompressSections > 0
+        || preSendHeadTrimRetries > 0
+      ) {
         input.onHistoryCompacted();
       }
       if (preSendHeadTrimRetries > 0) {
         input.writeStderr(
-          `[context-engine] event=pre_send_head_trim stage=${selectedStage} retries=${String(preSendHeadTrimRetries)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)}\n`,
+          `[context-engine] event=pre_send_head_trim stage=${selectedStage} retries=${String(preSendHeadTrimRetries)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)} target_limit=${String(targetTokenLimit)}\n`,
         );
       }
       input.writeStderr(
-        `[context-engine] event=prompt_prepared stage=${selectedStage} threshold_stage=${promptPreparation.thresholdStage} reason=${selectionReason} utilization=${promptPreparation.utilization.toFixed(3)} selected_utilization=${computeUtilization(selectedPrepared.estimatedTokens, promptPreparation.effectiveWindowTokens).toFixed(3)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)} pretrim_retries=${String(preSendHeadTrimRetries)}\n`,
+        `[context-engine] event=prompt_prepared stage=${selectedStage} threshold_stage=${promptPreparation.thresholdStage} reason=${selectionReason} utilization=${promptPreparation.utilization.toFixed(3)} selected_utilization=${computeUtilization(selectedPrepared.estimatedTokens, promptPreparation.effectiveWindowTokens).toFixed(3)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} auto_compact_limit=${String(promptPreparation.autoCompactTokenLimit)} target_limit=${String(targetTokenLimit)} effective_window=${String(promptPreparation.effectiveWindowTokens)} auto_limit_triggered=${promptPreparation.autoCompactLimitTriggered ? "true" : "false"} downshift_guard=${downshiftGuardTriggered ? "true" : "false"} quality_guard=${qualityGuardActive ? "true" : "false"} pre_send_strategy=${preSendCompressionStrategy} pre_send_overflow_ratio=${preSendCompressionOverflowRatio.toFixed(3)} pre_send_pressure_score=${preSendCompressionPressureScore.toFixed(3)} pre_send_order=${preSendCompressionOrder} recent_trim_rows=${String(preSendRecentTrimRows)} snapshot_trim_sections=${String(preSendSnapshotTrimSections)} snapshot_semantic_compress_sections=${String(preSendSnapshotSemanticCompressSections)} pretrim_retries=${String(preSendHeadTrimRetries)}\n`,
       );
+      const promptQualitySample = computePromptQualitySample({
+        prompt: selectedPrepared.prompt,
+        stage: selectedStage,
+        estimatedTokens: selectedPrepared.estimatedTokens,
+        targetTokenLimit,
+        recentTrimRows: preSendRecentTrimRows,
+        snapshotTrimSections: preSendSnapshotTrimSections,
+        snapshotSemanticCompressSections: preSendSnapshotSemanticCompressSections,
+        headTrimRetries: preSendHeadTrimRetries,
+        autoLimitTriggered: promptPreparation.autoCompactLimitTriggered,
+        downshiftGuardTriggered,
+        preSendStrategy: preSendCompressionStrategy,
+        preSendOverflowRatio: preSendCompressionOverflowRatio,
+        preSendPressureScore: preSendCompressionPressureScore,
+      });
+      input.writeStderr(
+        `[context-engine] event=prompt_quality coverage=${promptQualitySample.scores.coverage.toFixed(3)} recency=${promptQualitySample.scores.recency.toFixed(3)} size=${promptQualitySample.scores.size.toFixed(3)} overall=${promptQualitySample.scores.overall.toFixed(3)} recent_rows=${String(promptQualitySample.signals.recentRows)} snapshot_sections=${String(promptQualitySample.signals.snapshotSections)} recent_trim_rows=${String(promptQualitySample.signals.recentTrimRows)} snapshot_trim_sections=${String(promptQualitySample.signals.snapshotTrimSections)} snapshot_semantic_compress_sections=${String(promptQualitySample.signals.snapshotSemanticCompressSections)} head_trim_retries=${String(promptQualitySample.signals.headTrimRetries)} pre_send_strategy=${promptQualitySample.signals.preSendStrategy} pre_send_overflow_ratio=${promptQualitySample.signals.preSendOverflowRatio.toFixed(3)} pre_send_pressure_score=${promptQualitySample.signals.preSendPressureScore.toFixed(3)}\n`,
+      );
+      appendPromptQualityWindowEntry({
+        workDir: input.workDir,
+        entry: {
+          ts: nowIso(),
+          sessionKey,
+          stage: selectedStage,
+          selectionReason,
+          estimatedTokens: selectedPrepared.estimatedTokens,
+          targetTokenLimit,
+          scores: promptQualitySample.scores,
+          signals: promptQualitySample.signals,
+        },
+      });
       const graphCacheStats = readContextGraphCacheStats();
       const symbolQueryStatsBefore = readGraphCacheCounter(graphCacheStatsBefore, "symbol_query");
       const symbolDeclarationStatsBefore = readGraphCacheCounter(graphCacheStatsBefore, "symbol_declaration");

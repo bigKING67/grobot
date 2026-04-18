@@ -16,9 +16,15 @@ import {
 import { maskSecret } from "../services/redaction";
 import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
 import {
+  derivePromptQualityGuardAdaptivePolicy,
+  assessPromptQualityGuardRuntime,
+  assessPromptQualityWindowDegradation,
   readContextGraphCacheStats,
   readGraphCacheWindowSummary,
+  readPromptQualityGuardState,
+  readPromptQualityWindowSummary,
   resolveContextEngineConfig,
+  resolvePromptTargetTokenLimit,
 } from "../../../../tools/context";
 import { type RuntimeModelConfig } from "../../../../models/types";
 import {
@@ -692,12 +698,8 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     projectTomlPath,
     runtimeModelConfig: contextEngineRuntimeModelConfig,
   });
-  const contextEngineEffectiveWindowTokens = Math.max(
-    1_024,
-    contextEngineConfig.contextWindowTokens
-      - contextEngineConfig.reservedOutputTokens
-      - contextEngineConfig.safetyMarginTokens,
-  );
+  const contextEngineTokenBudget = resolvePromptTargetTokenLimit(contextEngineConfig);
+  const contextEngineEffectiveWindowTokens = contextEngineTokenBudget.effectiveWindowTokens;
   const contextGraphCacheStats = readContextGraphCacheStats();
   const symbolQueryGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_query");
   const symbolDeclarationGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_declaration");
@@ -711,6 +713,114 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     summary: contextGraphCacheWindowSummary,
     thresholdQueryHitRate: contextGraphCacheDegradeHitRateThreshold,
     minEntries: contextGraphCacheDegradeMinEntries,
+  });
+  const promptQualityWindowSummary = readPromptQualityWindowSummary({
+    workDir,
+    size: contextGraphCacheWindowSize,
+    lowQualityThreshold: contextEngineConfig.promptQuality?.lowQualityThreshold,
+  });
+  const promptQualityWindowDegradation = assessPromptQualityWindowDegradation({
+    summary: promptQualityWindowSummary,
+    thresholdOverall: contextEngineConfig.promptQuality?.degradeOverallThreshold ?? 0.62,
+    thresholdLowQualityRate: contextEngineConfig.promptQuality?.degradeLowQualityRateThreshold ?? 0.4,
+    minEntries: contextEngineConfig.promptQuality?.degradeMinEntries ?? 8,
+  });
+  const promptQualityGuardState = readPromptQualityGuardState({
+    workDir,
+  });
+  const promptQualityGuardRuntimeAssessment = assessPromptQualityGuardRuntime({
+    policy: {
+      enabled: contextEngineConfig.promptQuality?.guardEnabled ?? true,
+      promoteStreak: contextEngineConfig.promptQuality?.guardPromoteStreak ?? 2,
+      severePromoteStreak: contextEngineConfig.promptQuality?.guardSeverePromoteStreak ?? 2,
+      releaseStreak: contextEngineConfig.promptQuality?.guardReleaseStreak ?? 3,
+      holdTurns: contextEngineConfig.promptQuality?.guardHoldTurns ?? 2,
+      maxFloorStage: contextEngineConfig.promptQuality?.guardMaxFloorStage ?? "minimal",
+      severeOverallThreshold: contextEngineConfig.promptQuality?.guardSevereOverallThreshold ?? 0.45,
+      severeLowQualityRateThreshold:
+        contextEngineConfig.promptQuality?.guardSevereLowQualityRateThreshold ?? 0.7,
+    },
+    currentState: promptQualityGuardState,
+    observation: {
+      degraded: promptQualityWindowDegradation.degraded,
+      reason: promptQualityWindowDegradation.reason,
+      observedOverall: promptQualityWindowDegradation.observedOverall,
+      observedLowQualityRate: promptQualityWindowDegradation.observedLowQualityRate,
+    },
+  });
+  const promptQualityGuardAdaptivePolicy = derivePromptQualityGuardAdaptivePolicy({
+    basePolicy: {
+      enabled: contextEngineConfig.promptQuality?.guardEnabled ?? true,
+      promoteStreak: contextEngineConfig.promptQuality?.guardPromoteStreak ?? 2,
+      severePromoteStreak: contextEngineConfig.promptQuality?.guardSeverePromoteStreak ?? 2,
+      releaseStreak: contextEngineConfig.promptQuality?.guardReleaseStreak ?? 3,
+      holdTurns: contextEngineConfig.promptQuality?.guardHoldTurns ?? 2,
+      maxFloorStage: contextEngineConfig.promptQuality?.guardMaxFloorStage ?? "minimal",
+      severeOverallThreshold: contextEngineConfig.promptQuality?.guardSevereOverallThreshold ?? 0.45,
+      severeLowQualityRateThreshold:
+        contextEngineConfig.promptQuality?.guardSevereLowQualityRateThreshold ?? 0.7,
+    },
+    adaptiveEnabled: contextEngineConfig.promptQuality?.guardAdaptiveEnabled ?? true,
+    adaptiveModeAllowlist: contextEngineConfig.promptQuality?.guardAdaptiveModeAllowlist,
+    currentState: promptQualityGuardState,
+    window: {
+      degraded: promptQualityWindowDegradation.degraded,
+      reason: promptQualityWindowDegradation.reason,
+      lowQualityRate: promptQualityWindowSummary.lowQualityRate,
+      averageOverall: promptQualityWindowSummary.averageScores?.overall ?? null,
+      observedOverall: promptQualityWindowDegradation.observedOverall,
+      observedLowQualityRate: promptQualityWindowDegradation.observedLowQualityRate,
+      snapshotSemanticCompressRate:
+        promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate,
+      autoLimitTriggeredRate:
+        promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate,
+      averageUtilizationRatio:
+        promptQualityWindowSummary.tokenBudget.averageUtilizationRatio,
+      shortSnapshotSemanticCompressRate:
+        promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate,
+      mediumSnapshotSemanticCompressRate:
+        promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate,
+      shortAutoLimitTriggeredRate:
+        promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate,
+      mediumAutoLimitTriggeredRate:
+        promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate,
+      shortAverageUtilizationRatio:
+        promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio,
+      mediumAverageUtilizationRatio:
+        promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio,
+      hardBudgetStrategyRate:
+        promptQualityWindowSummary.strategyActivity.hardBudgetRate,
+      qualityFirstStrategyRate:
+        promptQualityWindowSummary.strategyActivity.qualityFirstRate,
+      averagePreSendOverflowRatio:
+        promptQualityWindowSummary.signalAverages?.preSendOverflowRatio ?? null,
+      averagePreSendPressureScore:
+        promptQualityWindowSummary.signalAverages?.preSendPressureScore ?? null,
+      shortHardBudgetStrategyRate:
+        promptQualityWindowSummary.strategyTrends.short.hardBudgetRate,
+      mediumHardBudgetStrategyRate:
+        promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate,
+      shortAveragePreSendOverflowRatio:
+        promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio,
+      mediumAveragePreSendOverflowRatio:
+        promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio,
+      shortAveragePreSendPressureScore:
+        promptQualityWindowSummary.strategyTrends.short.averagePressureScore,
+      mediumAveragePreSendPressureScore:
+        promptQualityWindowSummary.strategyTrends.medium.averagePressureScore,
+      hardBudgetFollowupOverallDelta:
+        promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta,
+      qualityFirstFollowupOverallDelta:
+        promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta,
+      hardBudgetRecoveryRate:
+        promptQualityWindowSummary.strategyOutcomes.hardBudgetRecoveryRate,
+      qualityFirstImprovedRate:
+        promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate,
+      hardBudgetTransitionCount:
+        promptQualityWindowSummary.strategyOutcomes.hardBudgetTransitions,
+      qualityFirstTransitionCount:
+        promptQualityWindowSummary.strategyOutcomes.qualityFirstTransitions,
+    },
   });
 
   let probeResult:
@@ -874,11 +984,254 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         context_window_tokens: contextEngineConfig.contextWindowTokens,
         reserved_output_tokens: contextEngineConfig.reservedOutputTokens,
         safety_margin_tokens: contextEngineConfig.safetyMarginTokens,
+        auto_compact_token_limit: contextEngineTokenBudget.autoCompactTokenLimit,
+        target_token_limit: contextEngineTokenBudget.targetTokenLimit,
         effective_window_tokens: contextEngineEffectiveWindowTokens,
         thresholds: {
           proactive_ratio: contextEngineConfig.thresholds.proactiveRatio,
           forced_ratio: contextEngineConfig.thresholds.forcedRatio,
           hard_ratio: contextEngineConfig.thresholds.hardRatio,
+        },
+        prompt_quality: {
+          low_quality_threshold: contextEngineConfig.promptQuality?.lowQualityThreshold ?? null,
+          degrade_overall_threshold: contextEngineConfig.promptQuality?.degradeOverallThreshold ?? null,
+          degrade_low_quality_rate_threshold:
+            contextEngineConfig.promptQuality?.degradeLowQualityRateThreshold ?? null,
+          degrade_min_entries: contextEngineConfig.promptQuality?.degradeMinEntries ?? null,
+          guard_enabled: contextEngineConfig.promptQuality?.guardEnabled ?? null,
+          guard_adaptive_enabled: contextEngineConfig.promptQuality?.guardAdaptiveEnabled ?? null,
+          guard_adaptive_mode_allowlist:
+            contextEngineConfig.promptQuality?.guardAdaptiveModeAllowlist ?? null,
+          guard_promote_streak: contextEngineConfig.promptQuality?.guardPromoteStreak ?? null,
+          guard_severe_promote_streak:
+            contextEngineConfig.promptQuality?.guardSeverePromoteStreak ?? null,
+          guard_release_streak: contextEngineConfig.promptQuality?.guardReleaseStreak ?? null,
+          guard_hold_turns: contextEngineConfig.promptQuality?.guardHoldTurns ?? null,
+          guard_max_floor_stage:
+            contextEngineConfig.promptQuality?.guardMaxFloorStage ?? null,
+          guard_severe_overall_threshold:
+            contextEngineConfig.promptQuality?.guardSevereOverallThreshold ?? null,
+          guard_severe_low_quality_rate_threshold:
+            contextEngineConfig.promptQuality?.guardSevereLowQualityRateThreshold ?? null,
+        },
+        prompt_quality_guard_state: {
+          floor_stage: promptQualityGuardState.floorStage,
+          degraded_streak: promptQualityGuardState.degradedStreak,
+          severe_streak: promptQualityGuardState.severeStreak,
+          healthy_streak: promptQualityGuardState.healthyStreak,
+          hold_turns_remaining: promptQualityGuardState.holdTurnsRemaining,
+          last_reason: promptQualityGuardState.lastReason,
+          updated_at: promptQualityGuardState.updatedAt,
+          pressure_utilization_threshold: promptQualityGuardState.pressureUtilizationThreshold,
+          pressure_semantic_rate_threshold: promptQualityGuardState.pressureSemanticRateThreshold,
+          pressure_auto_limit_rate_threshold: promptQualityGuardState.pressureAutoLimitRateThreshold,
+          pressure_joint_rate_threshold: promptQualityGuardState.pressureJointRateThreshold,
+          pressure_trend_utilization_delta: promptQualityGuardState.pressureTrendUtilizationDelta,
+          pressure_trend_semantic_delta: promptQualityGuardState.pressureTrendSemanticDelta,
+          pressure_trend_auto_limit_delta: promptQualityGuardState.pressureTrendAutoLimitDelta,
+          pressure_trend_momentum: promptQualityGuardState.pressureTrendMomentum,
+          outcome_required_transitions: promptQualityGuardState.outcomeRequiredTransitions,
+          outcome_combined_evidence_score: promptQualityGuardState.outcomeCombinedEvidenceScore,
+          outcome_high_evidence_turns: promptQualityGuardState.outcomeHighEvidenceTurns,
+          outcome_high_evidence_harden_turns:
+            promptQualityGuardState.outcomeHighEvidenceHardenTurns,
+          outcome_drift_recent_auto_action_levels:
+            promptQualityGuardState.outcomeDriftRecentAutoActionLevels,
+        },
+        prompt_quality_guard_runtime_assessment: {
+          enabled: promptQualityGuardRuntimeAssessment.enabled,
+          phase: promptQualityGuardRuntimeAssessment.phase,
+          transition: promptQualityGuardRuntimeAssessment.transition,
+          degraded: promptQualityGuardRuntimeAssessment.degraded,
+          severe: promptQualityGuardRuntimeAssessment.severe,
+          reason: promptQualityGuardRuntimeAssessment.reason,
+          triggered: promptQualityGuardRuntimeAssessment.triggered,
+          floor_stage: promptQualityGuardRuntimeAssessment.floorStage,
+          proposed_floor_stage: promptQualityGuardRuntimeAssessment.proposedFloorStage,
+          promote_remaining: promptQualityGuardRuntimeAssessment.promoteRemaining,
+          severe_promote_remaining: promptQualityGuardRuntimeAssessment.severePromoteRemaining,
+          release_remaining: promptQualityGuardRuntimeAssessment.releaseRemaining,
+          hold_turns_remaining: promptQualityGuardRuntimeAssessment.holdTurnsRemaining,
+          observed_overall: promptQualityGuardRuntimeAssessment.observedOverall,
+          observed_low_quality_rate: promptQualityGuardRuntimeAssessment.observedLowQualityRate,
+        },
+        prompt_quality_guard_adaptive_policy: {
+          enabled: promptQualityGuardAdaptivePolicy.enabled,
+          mode: promptQualityGuardAdaptivePolicy.mode,
+          reason: promptQualityGuardAdaptivePolicy.reason,
+          allowlist: promptQualityGuardAdaptivePolicy.allowlist,
+          mode_blocked: promptQualityGuardAdaptivePolicy.modeBlocked,
+          blocked_mode: promptQualityGuardAdaptivePolicy.blockedMode,
+          base_policy: {
+            enabled: promptQualityGuardAdaptivePolicy.basePolicy.enabled,
+            promote_streak: promptQualityGuardAdaptivePolicy.basePolicy.promoteStreak,
+            severe_promote_streak: promptQualityGuardAdaptivePolicy.basePolicy.severePromoteStreak,
+            release_streak: promptQualityGuardAdaptivePolicy.basePolicy.releaseStreak,
+            hold_turns: promptQualityGuardAdaptivePolicy.basePolicy.holdTurns,
+            max_floor_stage: promptQualityGuardAdaptivePolicy.basePolicy.maxFloorStage,
+            severe_overall_threshold: promptQualityGuardAdaptivePolicy.basePolicy.severeOverallThreshold,
+            severe_low_quality_rate_threshold:
+              promptQualityGuardAdaptivePolicy.basePolicy.severeLowQualityRateThreshold,
+          },
+          effective_policy: {
+            enabled: promptQualityGuardAdaptivePolicy.effectivePolicy.enabled,
+            promote_streak: promptQualityGuardAdaptivePolicy.effectivePolicy.promoteStreak,
+            severe_promote_streak: promptQualityGuardAdaptivePolicy.effectivePolicy.severePromoteStreak,
+            release_streak: promptQualityGuardAdaptivePolicy.effectivePolicy.releaseStreak,
+            hold_turns: promptQualityGuardAdaptivePolicy.effectivePolicy.holdTurns,
+            max_floor_stage: promptQualityGuardAdaptivePolicy.effectivePolicy.maxFloorStage,
+            severe_overall_threshold:
+              promptQualityGuardAdaptivePolicy.effectivePolicy.severeOverallThreshold,
+            severe_low_quality_rate_threshold:
+              promptQualityGuardAdaptivePolicy.effectivePolicy.severeLowQualityRateThreshold,
+          },
+          adjustment: {
+            promote_streak_delta: promptQualityGuardAdaptivePolicy.adjustment.promoteStreakDelta,
+            severe_promote_streak_delta:
+              promptQualityGuardAdaptivePolicy.adjustment.severePromoteStreakDelta,
+            release_streak_delta: promptQualityGuardAdaptivePolicy.adjustment.releaseStreakDelta,
+            hold_turns_delta: promptQualityGuardAdaptivePolicy.adjustment.holdTurnsDelta,
+          },
+          pressure_policy: {
+            source: promptQualityGuardAdaptivePolicy.pressurePolicy.source,
+            updated: promptQualityGuardAdaptivePolicy.pressurePolicy.updated,
+            learn_alpha: promptQualityGuardAdaptivePolicy.pressurePolicy.learnAlpha,
+            utilization_threshold:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.utilizationThreshold,
+            semantic_rate_threshold:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.semanticRateThreshold,
+            auto_limit_rate_threshold:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.autoLimitRateThreshold,
+            joint_rate_threshold:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.jointRateThreshold,
+            trend_utilization_delta:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.trendUtilizationDelta,
+            trend_semantic_delta:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.trendSemanticDelta,
+            trend_auto_limit_delta:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.trendAutoLimitDelta,
+            trend_momentum:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.trendMomentum,
+            trend_flip_suppressed:
+              promptQualityGuardAdaptivePolicy.pressurePolicy.trendFlipSuppressed,
+          },
+          outcome_reliability: {
+            required_transitions:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.requiredTransitions,
+            next_required_transitions:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.nextRequiredTransitions,
+            hard_budget_transitions:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetTransitions,
+            quality_first_transitions:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstTransitions,
+            hard_budget_evidence_score:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetEvidenceScore,
+            quality_first_evidence_score:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstEvidenceScore,
+            combined_evidence_score:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.combinedEvidenceScore,
+            hard_budget_reliable:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetReliable,
+            quality_first_reliable:
+              promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstReliable,
+          },
+          outcome_drift_guard: {
+            high_evidence_harden_bias:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenBias,
+            high_evidence_turn:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceTurn,
+            high_evidence_turns:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceTurns,
+            high_evidence_harden_turns:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenTurns,
+            high_evidence_harden_rate:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenRate,
+            threshold_harden_rate:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.thresholdHardenRate,
+            min_high_evidence_turns:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.minHighEvidenceTurns,
+            reason: promptQualityGuardAdaptivePolicy.outcomeDriftGuard.reason,
+            auto_action_level:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.autoActionLevel,
+            recent_auto_action_levels:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.recentAutoActionLevels,
+            window_summary: {
+              window_size:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.windowSize,
+              entries:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.entries,
+              latest:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.latest,
+              dominant:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.dominant,
+              alert_level:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.alertLevel,
+              transition_count:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.transitionCount,
+              active_rate:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.activeRate,
+              medium_or_hard_rate:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.mediumOrHardRate,
+              hard_rate:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.hardRate,
+              level_counts:
+                promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.levelCounts,
+            },
+            recommendation:
+              promptQualityGuardAdaptivePolicy.outcomeDriftGuard.recommendation,
+          },
+          window: {
+            snapshot_semantic_compress_rate:
+              promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate,
+            auto_limit_triggered_rate:
+              promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate,
+            average_utilization_ratio:
+              promptQualityWindowSummary.tokenBudget.averageUtilizationRatio,
+            short_snapshot_semantic_compress_rate:
+              promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate,
+            medium_snapshot_semantic_compress_rate:
+              promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate,
+            short_auto_limit_triggered_rate:
+              promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate,
+            medium_auto_limit_triggered_rate:
+              promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate,
+            short_average_utilization_ratio:
+              promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio,
+            medium_average_utilization_ratio:
+              promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio,
+            hard_budget_strategy_rate:
+              promptQualityWindowSummary.strategyActivity.hardBudgetRate,
+            quality_first_strategy_rate:
+              promptQualityWindowSummary.strategyActivity.qualityFirstRate,
+            average_pre_send_overflow_ratio:
+              promptQualityWindowSummary.signalAverages?.preSendOverflowRatio ?? null,
+            average_pre_send_pressure_score:
+              promptQualityWindowSummary.signalAverages?.preSendPressureScore ?? null,
+            short_hard_budget_strategy_rate:
+              promptQualityWindowSummary.strategyTrends.short.hardBudgetRate,
+            medium_hard_budget_strategy_rate:
+              promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate,
+            short_average_pre_send_overflow_ratio:
+              promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio,
+            medium_average_pre_send_overflow_ratio:
+              promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio,
+            short_average_pre_send_pressure_score:
+              promptQualityWindowSummary.strategyTrends.short.averagePressureScore,
+            medium_average_pre_send_pressure_score:
+              promptQualityWindowSummary.strategyTrends.medium.averagePressureScore,
+            hard_budget_followup_overall_delta:
+              promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta,
+            quality_first_followup_overall_delta:
+              promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta,
+            hard_budget_recovery_rate:
+              promptQualityWindowSummary.strategyOutcomes.hardBudgetRecoveryRate,
+            quality_first_improved_rate:
+              promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate,
+            hard_budget_transition_count:
+              promptQualityWindowSummary.strategyOutcomes.hardBudgetTransitions,
+            quality_first_transition_count:
+              promptQualityWindowSummary.strategyOutcomes.qualityFirstTransitions,
+          },
         },
         recovery: {
           reactive_max_retries: contextEngineConfig.recovery.reactiveMaxRetries,
@@ -891,6 +1244,154 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         dependency_graph: contextEngineConfig.dependencyGraph,
         symbol_graph: contextEngineConfig.symbolGraph,
         semantic_prefetch: contextEngineConfig.semanticPrefetch,
+        prompt_quality_window: {
+          path: promptQualityWindowSummary.path,
+          configured_size: promptQualityWindowSummary.configuredSize,
+          entries: promptQualityWindowSummary.entries,
+          from_ts: promptQualityWindowSummary.fromTs,
+          to_ts: promptQualityWindowSummary.toTs,
+          average_scores: promptQualityWindowSummary.averageScores == null
+            ? null
+            : {
+              coverage: promptQualityWindowSummary.averageScores.coverage,
+              recency: promptQualityWindowSummary.averageScores.recency,
+              size: promptQualityWindowSummary.averageScores.size,
+              overall: promptQualityWindowSummary.averageScores.overall,
+            },
+          latest_scores: promptQualityWindowSummary.latestScores == null
+            ? null
+            : {
+              coverage: promptQualityWindowSummary.latestScores.coverage,
+              recency: promptQualityWindowSummary.latestScores.recency,
+              size: promptQualityWindowSummary.latestScores.size,
+              overall: promptQualityWindowSummary.latestScores.overall,
+            },
+          low_quality: {
+            count: promptQualityWindowSummary.lowQualityCount,
+            rate: promptQualityWindowSummary.lowQualityRate,
+            threshold_overall: promptQualityWindowSummary.lowQualityThreshold,
+          },
+          stage_counts: promptQualityWindowSummary.stageCounts,
+          signal_averages: promptQualityWindowSummary.signalAverages == null
+            ? null
+            : {
+              recent_rows: promptQualityWindowSummary.signalAverages.recentRows,
+              snapshot_sections: promptQualityWindowSummary.signalAverages.snapshotSections,
+              recent_trim_rows: promptQualityWindowSummary.signalAverages.recentTrimRows,
+              snapshot_trim_sections: promptQualityWindowSummary.signalAverages.snapshotTrimSections,
+              snapshot_semantic_compress_sections:
+                promptQualityWindowSummary.signalAverages.snapshotSemanticCompressSections,
+              head_trim_retries: promptQualityWindowSummary.signalAverages.headTrimRetries,
+              pre_send_overflow_ratio:
+                promptQualityWindowSummary.signalAverages.preSendOverflowRatio,
+              pre_send_pressure_score:
+                promptQualityWindowSummary.signalAverages.preSendPressureScore,
+            },
+          compression_activity: {
+            recent_trim_rate: promptQualityWindowSummary.compressionActivity.recentTrimRate,
+            snapshot_trim_rate: promptQualityWindowSummary.compressionActivity.snapshotTrimRate,
+            snapshot_semantic_compress_rate:
+              promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate,
+            head_trim_rate: promptQualityWindowSummary.compressionActivity.headTrimRate,
+            auto_limit_triggered_rate:
+              promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate,
+            downshift_guard_triggered_rate:
+              promptQualityWindowSummary.compressionActivity.downshiftGuardTriggeredRate,
+          },
+          strategy_activity: {
+            quality_first_rate: promptQualityWindowSummary.strategyActivity.qualityFirstRate,
+            hard_budget_rate: promptQualityWindowSummary.strategyActivity.hardBudgetRate,
+          },
+          token_budget: {
+            average_estimated_tokens: promptQualityWindowSummary.tokenBudget.averageEstimatedTokens,
+            average_target_token_limit: promptQualityWindowSummary.tokenBudget.averageTargetTokenLimit,
+            average_utilization_ratio: promptQualityWindowSummary.tokenBudget.averageUtilizationRatio,
+          },
+          strategy_trends: {
+            short: {
+              window_size: promptQualityWindowSummary.strategyTrends.short.windowSize,
+              entries: promptQualityWindowSummary.strategyTrends.short.entries,
+              hard_budget_rate:
+                promptQualityWindowSummary.strategyTrends.short.hardBudgetRate,
+              average_overflow_ratio:
+                promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio,
+              average_pressure_score:
+                promptQualityWindowSummary.strategyTrends.short.averagePressureScore,
+            },
+            medium: {
+              window_size: promptQualityWindowSummary.strategyTrends.medium.windowSize,
+              entries: promptQualityWindowSummary.strategyTrends.medium.entries,
+              hard_budget_rate:
+                promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate,
+              average_overflow_ratio:
+                promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio,
+              average_pressure_score:
+                promptQualityWindowSummary.strategyTrends.medium.averagePressureScore,
+            },
+            delta: {
+              hard_budget_rate:
+                promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate,
+              average_overflow_ratio:
+                promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio,
+              average_pressure_score:
+                promptQualityWindowSummary.strategyTrends.delta.averagePressureScore,
+            },
+          },
+          strategy_outcomes: {
+            hard_budget_followup_overall_delta:
+              promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta,
+            quality_first_followup_overall_delta:
+              promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta,
+            hard_budget_recovery_rate:
+              promptQualityWindowSummary.strategyOutcomes.hardBudgetRecoveryRate,
+            quality_first_improved_rate:
+              promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate,
+            hard_budget_transition_count:
+              promptQualityWindowSummary.strategyOutcomes.hardBudgetTransitions,
+            quality_first_transition_count:
+              promptQualityWindowSummary.strategyOutcomes.qualityFirstTransitions,
+          },
+          pressure_trends: {
+            short: {
+              window_size: promptQualityWindowSummary.pressureTrends.short.windowSize,
+              entries: promptQualityWindowSummary.pressureTrends.short.entries,
+              snapshot_semantic_compress_rate:
+                promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate,
+              auto_limit_triggered_rate:
+                promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate,
+              average_utilization_ratio:
+                promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio,
+            },
+            medium: {
+              window_size: promptQualityWindowSummary.pressureTrends.medium.windowSize,
+              entries: promptQualityWindowSummary.pressureTrends.medium.entries,
+              snapshot_semantic_compress_rate:
+                promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate,
+              auto_limit_triggered_rate:
+                promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate,
+              average_utilization_ratio:
+                promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio,
+            },
+            delta: {
+              snapshot_semantic_compress_rate:
+                promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate,
+              auto_limit_triggered_rate:
+                promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate,
+              average_utilization_ratio:
+                promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio,
+            },
+          },
+          degradation: {
+            degraded: promptQualityWindowDegradation.degraded,
+            reason: promptQualityWindowDegradation.reason,
+            threshold_overall: promptQualityWindowDegradation.thresholdOverall,
+            threshold_low_quality_rate: promptQualityWindowDegradation.thresholdLowQualityRate,
+            min_entries: promptQualityWindowDegradation.minEntries,
+            observed_entries: promptQualityWindowDegradation.observedEntries,
+            observed_overall: promptQualityWindowDegradation.observedOverall,
+            observed_low_quality_rate: promptQualityWindowDegradation.observedLowQualityRate,
+          },
+        },
       },
       runtime_health:
         runtimeHealth && runtimeBinaryPath
@@ -1038,7 +1539,28 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `context_graph_cache_window_guard: degraded=${contextGraphCacheWindowDegradation.degraded ? "yes" : "no"} reason=${contextGraphCacheWindowDegradation.reason} threshold_query_hit_rate=${contextGraphCacheWindowDegradation.thresholdQueryHitRate.toFixed(3)} min_entries=${contextGraphCacheWindowDegradation.minEntries} observed_entries=${contextGraphCacheWindowDegradation.observedEntries} observed_query_hit_rate=${typeof contextGraphCacheWindowDegradation.observedQueryHitRate === "number" ? contextGraphCacheWindowDegradation.observedQueryHitRate.toFixed(3) : "<none>"}\n`,
   );
   process.stdout.write(
-    `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,
+    `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} auto_limit=${contextEngineTokenBudget.autoCompactTokenLimit} target=${contextEngineTokenBudget.targetTokenLimit} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_config: low_quality_threshold=${(contextEngineConfig.promptQuality?.lowQualityThreshold ?? 0.6).toFixed(3)} degrade_overall=${(contextEngineConfig.promptQuality?.degradeOverallThreshold ?? 0.62).toFixed(3)} degrade_low_quality_rate=${(contextEngineConfig.promptQuality?.degradeLowQualityRateThreshold ?? 0.4).toFixed(3)} degrade_min_entries=${String(contextEngineConfig.promptQuality?.degradeMinEntries ?? 8)} guard_enabled=${contextEngineConfig.promptQuality?.guardEnabled === false ? "false" : "true"} guard_adaptive_enabled=${contextEngineConfig.promptQuality?.guardAdaptiveEnabled === false ? "false" : "true"} guard_adaptive_allowlist=${(contextEngineConfig.promptQuality?.guardAdaptiveModeAllowlist ?? ["harden", "relax"]).join(",")} guard_promote_streak=${String(contextEngineConfig.promptQuality?.guardPromoteStreak ?? 2)} guard_severe_promote_streak=${String(contextEngineConfig.promptQuality?.guardSeverePromoteStreak ?? 2)} guard_release_streak=${String(contextEngineConfig.promptQuality?.guardReleaseStreak ?? 3)} guard_hold_turns=${String(contextEngineConfig.promptQuality?.guardHoldTurns ?? 2)} guard_max_floor=${contextEngineConfig.promptQuality?.guardMaxFloorStage ?? "minimal"} guard_severe_overall=${(contextEngineConfig.promptQuality?.guardSevereOverallThreshold ?? 0.45).toFixed(3)} guard_severe_low_quality_rate=${(contextEngineConfig.promptQuality?.guardSevereLowQualityRateThreshold ?? 0.7).toFixed(3)}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_guard_state: floor=${promptQualityGuardState.floorStage} degraded_streak=${String(promptQualityGuardState.degradedStreak)} severe_streak=${String(promptQualityGuardState.severeStreak)} healthy_streak=${String(promptQualityGuardState.healthyStreak)} hold_turns_remaining=${String(promptQualityGuardState.holdTurnsRemaining)} pressure_thresholds=${promptQualityGuardState.pressureUtilizationThreshold.toFixed(3)}/${promptQualityGuardState.pressureSemanticRateThreshold.toFixed(3)}/${promptQualityGuardState.pressureAutoLimitRateThreshold.toFixed(3)}/${promptQualityGuardState.pressureJointRateThreshold.toFixed(3)} pressure_trend_state=${promptQualityGuardState.pressureTrendMomentum.toFixed(3)}/${promptQualityGuardState.pressureTrendUtilizationDelta.toFixed(3)}/${promptQualityGuardState.pressureTrendSemanticDelta.toFixed(3)}/${promptQualityGuardState.pressureTrendAutoLimitDelta.toFixed(3)} outcome_state=${String(promptQualityGuardState.outcomeRequiredTransitions)}/${promptQualityGuardState.outcomeCombinedEvidenceScore.toFixed(3)}/${String(promptQualityGuardState.outcomeHighEvidenceTurns)}/${String(promptQualityGuardState.outcomeHighEvidenceHardenTurns)}/${String(promptQualityGuardState.outcomeDriftRecentAutoActionLevels.length)}/${promptQualityGuardState.outcomeDriftRecentAutoActionLevels[promptQualityGuardState.outcomeDriftRecentAutoActionLevels.length - 1] ?? "none"} last_reason=${promptQualityGuardState.lastReason || "<none>"} updated_at=${promptQualityGuardState.updatedAt ?? "<none>"}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_guard_runtime: phase=${promptQualityGuardRuntimeAssessment.phase} transition=${promptQualityGuardRuntimeAssessment.transition} degraded=${promptQualityGuardRuntimeAssessment.degraded ? "true" : "false"} severe=${promptQualityGuardRuntimeAssessment.severe ? "true" : "false"} reason=${promptQualityGuardRuntimeAssessment.reason} triggered=${promptQualityGuardRuntimeAssessment.triggered ? "true" : "false"} floor=${promptQualityGuardRuntimeAssessment.floorStage} proposed_floor=${promptQualityGuardRuntimeAssessment.proposedFloorStage} promote_remaining=${String(promptQualityGuardRuntimeAssessment.promoteRemaining)} severe_promote_remaining=${String(promptQualityGuardRuntimeAssessment.severePromoteRemaining)} release_remaining=${String(promptQualityGuardRuntimeAssessment.releaseRemaining)} hold_turns_remaining=${String(promptQualityGuardRuntimeAssessment.holdTurnsRemaining)} observed_overall=${typeof promptQualityGuardRuntimeAssessment.observedOverall === "number" ? promptQualityGuardRuntimeAssessment.observedOverall.toFixed(3) : "<none>"} observed_low_quality_rate=${typeof promptQualityGuardRuntimeAssessment.observedLowQualityRate === "number" ? promptQualityGuardRuntimeAssessment.observedLowQualityRate.toFixed(3) : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_guard_adaptive: mode=${promptQualityGuardAdaptivePolicy.mode} reason=${promptQualityGuardAdaptivePolicy.reason} allowlist=${promptQualityGuardAdaptivePolicy.allowlist.join(",")} mode_blocked=${promptQualityGuardAdaptivePolicy.modeBlocked ? "true" : "false"} blocked_mode=${promptQualityGuardAdaptivePolicy.blockedMode ?? "<none>"} base_promote=${String(promptQualityGuardAdaptivePolicy.basePolicy.promoteStreak)} base_release=${String(promptQualityGuardAdaptivePolicy.basePolicy.releaseStreak)} effective_promote=${String(promptQualityGuardAdaptivePolicy.effectivePolicy.promoteStreak)} effective_release=${String(promptQualityGuardAdaptivePolicy.effectivePolicy.releaseStreak)} effective_hold=${String(promptQualityGuardAdaptivePolicy.effectivePolicy.holdTurns)} delta=${String(promptQualityGuardAdaptivePolicy.adjustment.promoteStreakDelta)}/${String(promptQualityGuardAdaptivePolicy.adjustment.releaseStreakDelta)}/${String(promptQualityGuardAdaptivePolicy.adjustment.holdTurnsDelta)} pressure_policy=${promptQualityGuardAdaptivePolicy.pressurePolicy.source}/${promptQualityGuardAdaptivePolicy.pressurePolicy.updated ? "updated" : "stable"}/${promptQualityGuardAdaptivePolicy.pressurePolicy.learnAlpha.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.utilizationThreshold.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.semanticRateThreshold.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.autoLimitRateThreshold.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.jointRateThreshold.toFixed(3)} trend=${promptQualityGuardAdaptivePolicy.pressurePolicy.trendMomentum.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.trendUtilizationDelta.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.trendSemanticDelta.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.trendAutoLimitDelta.toFixed(3)} flip_suppressed=${promptQualityGuardAdaptivePolicy.pressurePolicy.trendFlipSuppressed ? "true" : "false"} outcome_reliability=${String(promptQualityGuardAdaptivePolicy.outcomeReliability.requiredTransitions)}->${String(promptQualityGuardAdaptivePolicy.outcomeReliability.nextRequiredTransitions)}/${String(promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetTransitions)}/${String(promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstTransitions)}/${promptQualityGuardAdaptivePolicy.outcomeReliability.combinedEvidenceScore.toFixed(3)} hard_budget_reliable=${promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetReliable ? "true" : "false"} quality_first_reliable=${promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstReliable ? "true" : "false"} drift_guard=${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceTurns)}/${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenTurns)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenRate.toFixed(3)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenBias ? "bias" : "ok"}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.autoActionLevel}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.recommendation}/${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.entries)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.latest}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.dominant}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.alertLevel}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.activeRate.toFixed(3)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.mediumOrHardRate.toFixed(3)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.hardRate.toFixed(3)}/${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.transitionCount)} semantic_rate=${typeof promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate.toFixed(3) : "<none>"} auto_limit_rate=${typeof promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate.toFixed(3) : "<none>"} hard_budget_rate=${typeof promptQualityWindowSummary.strategyActivity.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyActivity.hardBudgetRate.toFixed(3) : "<none>"} quality_first_rate=${typeof promptQualityWindowSummary.strategyActivity.qualityFirstRate === "number" ? promptQualityWindowSummary.strategyActivity.qualityFirstRate.toFixed(3) : "<none>"} avg_pre_send_overflow=${typeof promptQualityWindowSummary.signalAverages?.preSendOverflowRatio === "number" ? promptQualityWindowSummary.signalAverages.preSendOverflowRatio.toFixed(3) : "<none>"} avg_pre_send_pressure=${typeof promptQualityWindowSummary.signalAverages?.preSendPressureScore === "number" ? promptQualityWindowSummary.signalAverages.preSendPressureScore.toFixed(3) : "<none>"} avg_utilization=${typeof promptQualityWindowSummary.tokenBudget.averageUtilizationRatio === "number" ? promptQualityWindowSummary.tokenBudget.averageUtilizationRatio.toFixed(3) : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_window: size=${promptQualityWindowSummary.configuredSize} entries=${promptQualityWindowSummary.entries} range=${promptQualityWindowSummary.fromTs ?? "<none>"}..${promptQualityWindowSummary.toTs ?? "<none>"} avg_overall=${typeof promptQualityWindowSummary.averageScores?.overall === "number" ? promptQualityWindowSummary.averageScores.overall.toFixed(3) : "<none>"} latest_overall=${typeof promptQualityWindowSummary.latestScores?.overall === "number" ? promptQualityWindowSummary.latestScores.overall.toFixed(3) : "<none>"} low_quality_rate=${typeof promptQualityWindowSummary.lowQualityRate === "number" ? promptQualityWindowSummary.lowQualityRate.toFixed(3) : "<none>"} degraded=${promptQualityWindowDegradation.degraded ? "yes" : "no"} reason=${promptQualityWindowDegradation.reason}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_window_signals: avg_recent_rows=${typeof promptQualityWindowSummary.signalAverages?.recentRows === "number" ? promptQualityWindowSummary.signalAverages.recentRows.toFixed(3) : "<none>"} avg_snapshot_sections=${typeof promptQualityWindowSummary.signalAverages?.snapshotSections === "number" ? promptQualityWindowSummary.signalAverages.snapshotSections.toFixed(3) : "<none>"} avg_recent_trim_rows=${typeof promptQualityWindowSummary.signalAverages?.recentTrimRows === "number" ? promptQualityWindowSummary.signalAverages.recentTrimRows.toFixed(3) : "<none>"} avg_snapshot_trim_sections=${typeof promptQualityWindowSummary.signalAverages?.snapshotTrimSections === "number" ? promptQualityWindowSummary.signalAverages.snapshotTrimSections.toFixed(3) : "<none>"} avg_snapshot_semantic_compress_sections=${typeof promptQualityWindowSummary.signalAverages?.snapshotSemanticCompressSections === "number" ? promptQualityWindowSummary.signalAverages.snapshotSemanticCompressSections.toFixed(3) : "<none>"} avg_head_trim_retries=${typeof promptQualityWindowSummary.signalAverages?.headTrimRetries === "number" ? promptQualityWindowSummary.signalAverages.headTrimRetries.toFixed(3) : "<none>"} avg_pre_send_overflow=${typeof promptQualityWindowSummary.signalAverages?.preSendOverflowRatio === "number" ? promptQualityWindowSummary.signalAverages.preSendOverflowRatio.toFixed(3) : "<none>"} avg_pre_send_pressure=${typeof promptQualityWindowSummary.signalAverages?.preSendPressureScore === "number" ? promptQualityWindowSummary.signalAverages.preSendPressureScore.toFixed(3) : "<none>"} semantic_rate=${typeof promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate.toFixed(3) : "<none>"} auto_limit_rate=${typeof promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate.toFixed(3) : "<none>"} hard_budget_rate=${typeof promptQualityWindowSummary.strategyActivity.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyActivity.hardBudgetRate.toFixed(3) : "<none>"} quality_first_rate=${typeof promptQualityWindowSummary.strategyActivity.qualityFirstRate === "number" ? promptQualityWindowSummary.strategyActivity.qualityFirstRate.toFixed(3) : "<none>"} avg_utilization=${typeof promptQualityWindowSummary.tokenBudget.averageUtilizationRatio === "number" ? promptQualityWindowSummary.tokenBudget.averageUtilizationRatio.toFixed(3) : "<none>"} trend_short=${typeof promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate.toFixed(3) : "<none>"} trend_medium=${typeof promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate.toFixed(3) : "<none>"} trend_delta=${typeof promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate.toFixed(3) : "<none>"} strategy_trend_short=${typeof promptQualityWindowSummary.strategyTrends.short.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.short.hardBudgetRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.short.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.short.averagePressureScore.toFixed(3) : "<none>"} strategy_trend_medium=${typeof promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.medium.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.medium.averagePressureScore.toFixed(3) : "<none>"} strategy_trend_delta=${typeof promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.delta.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.delta.averagePressureScore.toFixed(3) : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `context_engine_prompt_quality_strategy_outcomes: hard_budget_followup_delta=${typeof promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta === "number" ? promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta.toFixed(3) : "<none>"} quality_first_followup_delta=${typeof promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta === "number" ? promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta.toFixed(3) : "<none>"} hard_budget_recovery_rate=${typeof promptQualityWindowSummary.strategyOutcomes.hardBudgetRecoveryRate === "number" ? promptQualityWindowSummary.strategyOutcomes.hardBudgetRecoveryRate.toFixed(3) : "<none>"} quality_first_improved_rate=${typeof promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate === "number" ? promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate.toFixed(3) : "<none>"} hard_budget_transitions=${String(promptQualityWindowSummary.strategyOutcomes.hardBudgetTransitions)} quality_first_transitions=${String(promptQualityWindowSummary.strategyOutcomes.qualityFirstTransitions)}\n`,
   );
 
   if (runtimeHealth && runtimeBinaryPath) {

@@ -3,12 +3,15 @@ import { type RuntimeModelConfig } from "../../../models/types";
 import {
   type ContextCompressionProfile,
   type ContextEngineConfig,
+  type ContextPromptQualityGuardAdaptiveMode,
+  type PromptCompactionStage,
 } from "../types";
 
 const DEFAULT_CONTEXT_WINDOW_OPENAI_COMPATIBLE = 128_000;
 const DEFAULT_CONTEXT_WINDOW_KIMI = 262_144;
 const DEFAULT_RESERVED_OUTPUT_TOKENS = 20_000;
 const DEFAULT_SAFETY_MARGIN_TOKENS = 3_000;
+const DEFAULT_AUTO_COMPACT_RATIO = 0.9;
 const DEFAULT_LINEAGE_MAX_ROWS = 3;
 const DEFAULT_LINEAGE_MAX_COMMITS = 120;
 const DEFAULT_LINEAGE_CACHE_TTL_MS = 30_000;
@@ -18,6 +21,23 @@ const DEFAULT_SEMANTIC_PREFETCH_TIMEOUT_MS = 2_500;
 const DEFAULT_SEMANTIC_PREFETCH_MAX_EVIDENCE = 6;
 const DEFAULT_DEPENDENCY_GRAPH_MAX_ROWS = 4;
 const DEFAULT_SYMBOL_GRAPH_MAX_ROWS = 4;
+const DEFAULT_PROMPT_QUALITY_LOW_QUALITY_THRESHOLD = 0.6;
+const DEFAULT_PROMPT_QUALITY_DEGRADE_OVERALL_THRESHOLD = 0.62;
+const DEFAULT_PROMPT_QUALITY_DEGRADE_LOW_RATE_THRESHOLD = 0.4;
+const DEFAULT_PROMPT_QUALITY_DEGRADE_MIN_ENTRIES = 8;
+const DEFAULT_PROMPT_QUALITY_GUARD_ENABLED = true;
+const DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_ENABLED = true;
+const DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST: ContextPromptQualityGuardAdaptiveMode[] = [
+  "harden",
+  "relax",
+];
+const DEFAULT_PROMPT_QUALITY_GUARD_PROMOTE_STREAK = 2;
+const DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_PROMOTE_STREAK = 2;
+const DEFAULT_PROMPT_QUALITY_GUARD_RELEASE_STREAK = 3;
+const DEFAULT_PROMPT_QUALITY_GUARD_HOLD_TURNS = 2;
+const DEFAULT_PROMPT_QUALITY_GUARD_MAX_FLOOR_STAGE: PromptCompactionStage = "minimal";
+const DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_OVERALL_THRESHOLD = 0.45;
+const DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_LOW_RATE_THRESHOLD = 0.7;
 
 type ThresholdProfile = {
   proactive: number;
@@ -76,6 +96,25 @@ function parseTomlString(raw: string): string | undefined {
   return match[1].trim();
 }
 
+function parseTomlStringArray(raw: string): string[] | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    return undefined;
+  }
+  const content = trimmed.slice(1, -1).trim();
+  if (!content) {
+    return [];
+  }
+  const values: string[] = [];
+  for (const segment of content.split(",")) {
+    const value = parseTomlString(segment);
+    if (typeof value === "string") {
+      values.push(value);
+    }
+  }
+  return values;
+}
+
 function parseTomlNumber(raw: string): number | undefined {
   const trimmed = raw.trim();
   if (!/^[-+]?\d+(\.\d+)?$/.test(trimmed)) {
@@ -124,11 +163,29 @@ function parseEnvNumber(raw: string | undefined): number | undefined {
   return parsed;
 }
 
+function parseEnvStringList(raw: string | undefined): string[] | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const values = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return values.length > 0 ? values : [];
+}
+
 function clampRatio(value: number, fallback: number): number {
   if (!Number.isFinite(value)) {
     return fallback;
   }
   return Math.min(0.995, Math.max(0.5, value));
+}
+
+function clampUnitRatio(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(1, Math.max(0, value));
 }
 
 function clampPositiveInt(value: number, fallback: number): number {
@@ -153,6 +210,54 @@ function normalizeProfile(raw: string | undefined): ContextCompressionProfile {
   return "balanced";
 }
 
+function normalizePromptQualityGuardMaxFloorStage(
+  raw: string | undefined,
+): PromptCompactionStage {
+  const normalized = raw?.trim().toLowerCase();
+  if (normalized === "proactive") {
+    return "proactive";
+  }
+  if (normalized === "forced") {
+    return "forced";
+  }
+  if (normalized === "minimal") {
+    return "minimal";
+  }
+  return DEFAULT_PROMPT_QUALITY_GUARD_MAX_FLOOR_STAGE;
+}
+
+function normalizePromptQualityGuardAdaptiveMode(
+  raw: string | undefined,
+): ContextPromptQualityGuardAdaptiveMode | undefined {
+  const normalized = raw?.trim().toLowerCase();
+  if (normalized === "harden") {
+    return "harden";
+  }
+  if (normalized === "relax") {
+    return "relax";
+  }
+  return undefined;
+}
+
+function normalizePromptQualityGuardAdaptiveModeAllowlist(
+  raw: string[] | undefined,
+): ContextPromptQualityGuardAdaptiveMode[] {
+  if (!Array.isArray(raw)) {
+    return [...DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST];
+  }
+  const unique = new Set<ContextPromptQualityGuardAdaptiveMode>();
+  for (const value of raw) {
+    const normalized = normalizePromptQualityGuardAdaptiveMode(value);
+    if (normalized) {
+      unique.add(normalized);
+    }
+  }
+  if (unique.size === 0) {
+    return [...DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST];
+  }
+  return Array.from(unique.values());
+}
+
 function resolveDefaultContextWindow(modelConfig?: RuntimeModelConfig): number {
   const providerKind = modelConfig?.providerKind?.trim().toLowerCase();
   if (providerKind === "kimi") {
@@ -171,6 +276,7 @@ interface TomlOverrides {
   contextWindowTokens?: number;
   reservedOutputTokens?: number;
   safetyMarginTokens?: number;
+  autoCompactTokenLimit?: number;
   proactiveRatio?: number;
   forcedRatio?: number;
   hardRatio?: number;
@@ -193,6 +299,20 @@ interface TomlOverrides {
   dependencyGraphMaxRows?: number;
   symbolGraphEnabled?: boolean;
   symbolGraphMaxRows?: number;
+  promptQualityLowQualityThreshold?: number;
+  promptQualityDegradeOverallThreshold?: number;
+  promptQualityDegradeLowQualityRateThreshold?: number;
+  promptQualityDegradeMinEntries?: number;
+  promptQualityGuardEnabled?: boolean;
+  promptQualityGuardAdaptiveEnabled?: boolean;
+  promptQualityGuardAdaptiveModeAllowlist?: ContextPromptQualityGuardAdaptiveMode[];
+  promptQualityGuardPromoteStreak?: number;
+  promptQualityGuardSeverePromoteStreak?: number;
+  promptQualityGuardReleaseStreak?: number;
+  promptQualityGuardHoldTurns?: number;
+  promptQualityGuardMaxFloorStage?: PromptCompactionStage;
+  promptQualityGuardSevereOverallThreshold?: number;
+  promptQualityGuardSevereLowQualityRateThreshold?: number;
 }
 
 function readTomlOverrides(projectTomlPath?: string): TomlOverrides {
@@ -242,6 +362,9 @@ function readTomlOverrides(projectTomlPath?: string): TomlOverrides {
         break;
       case "safety_margin_tokens":
         overrides.safetyMarginTokens = parseTomlNumber(valueRaw);
+        break;
+      case "auto_compact_token_limit":
+        overrides.autoCompactTokenLimit = parseTomlNumber(valueRaw);
         break;
       case "proactive_ratio":
         overrides.proactiveRatio = parseTomlNumber(valueRaw);
@@ -309,6 +432,55 @@ function readTomlOverrides(projectTomlPath?: string): TomlOverrides {
       case "symbol_graph_max_rows":
         overrides.symbolGraphMaxRows = parseTomlNumber(valueRaw);
         break;
+      case "prompt_quality_low_quality_threshold":
+        overrides.promptQualityLowQualityThreshold = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_degrade_overall_threshold":
+        overrides.promptQualityDegradeOverallThreshold = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_degrade_low_quality_rate_threshold":
+        overrides.promptQualityDegradeLowQualityRateThreshold = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_degrade_min_entries":
+        overrides.promptQualityDegradeMinEntries = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_guard_enabled":
+        overrides.promptQualityGuardEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "prompt_quality_guard_adaptive_enabled":
+        overrides.promptQualityGuardAdaptiveEnabled = parseTomlBoolean(valueRaw);
+        break;
+      case "prompt_quality_guard_adaptive_mode_allowlist": {
+        const rawValues = parseTomlStringArray(valueRaw);
+        if (Array.isArray(rawValues)) {
+          overrides.promptQualityGuardAdaptiveModeAllowlist =
+            normalizePromptQualityGuardAdaptiveModeAllowlist(rawValues);
+        }
+        break;
+      }
+      case "prompt_quality_guard_promote_streak":
+        overrides.promptQualityGuardPromoteStreak = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_guard_severe_promote_streak":
+        overrides.promptQualityGuardSeverePromoteStreak = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_guard_release_streak":
+        overrides.promptQualityGuardReleaseStreak = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_guard_hold_turns":
+        overrides.promptQualityGuardHoldTurns = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_guard_max_floor_stage":
+        overrides.promptQualityGuardMaxFloorStage = normalizePromptQualityGuardMaxFloorStage(
+          parseTomlString(valueRaw),
+        );
+        break;
+      case "prompt_quality_guard_severe_overall_threshold":
+        overrides.promptQualityGuardSevereOverallThreshold = parseTomlNumber(valueRaw);
+        break;
+      case "prompt_quality_guard_severe_low_quality_rate_threshold":
+        overrides.promptQualityGuardSevereLowQualityRateThreshold = parseTomlNumber(valueRaw);
+        break;
       default:
         break;
     }
@@ -345,6 +517,26 @@ export function resolveContextEngineConfig(input: {
       ?? fromToml.safetyMarginTokens
       ?? DEFAULT_SAFETY_MARGIN_TOKENS,
     DEFAULT_SAFETY_MARGIN_TOKENS,
+  );
+  const effectiveWindowTokens = Math.max(
+    1_024,
+    contextWindowTokens - reservedOutputTokens - safetyMarginTokens,
+  );
+  const defaultAutoCompactTokenLimit = Math.max(
+    1,
+    Math.floor(contextWindowTokens * DEFAULT_AUTO_COMPACT_RATIO),
+  );
+  const autoCompactTokenLimit = Math.max(
+    1,
+    Math.min(
+      effectiveWindowTokens,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_AUTO_COMPACT_TOKEN_LIMIT)
+          ?? fromToml.autoCompactTokenLimit
+          ?? defaultAutoCompactTokenLimit,
+        defaultAutoCompactTokenLimit,
+      ),
+    ),
   );
   const proactiveRatio = clampRatio(
     parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROACTIVE_RATIO)
@@ -386,6 +578,110 @@ export function resolveContextEngineConfig(input: {
     parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_REACTIVE_ON_PTL)
     ?? fromToml.reactiveOnPromptTooLong
     ?? true;
+  const promptQualityLowQualityThreshold = clampUnitRatio(
+    parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_LOW_QUALITY_THRESHOLD)
+      ?? fromToml.promptQualityLowQualityThreshold
+      ?? DEFAULT_PROMPT_QUALITY_LOW_QUALITY_THRESHOLD,
+    DEFAULT_PROMPT_QUALITY_LOW_QUALITY_THRESHOLD,
+  );
+  const promptQualityDegradeOverallThreshold = clampUnitRatio(
+    parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_DEGRADE_OVERALL_THRESHOLD)
+      ?? fromToml.promptQualityDegradeOverallThreshold
+      ?? DEFAULT_PROMPT_QUALITY_DEGRADE_OVERALL_THRESHOLD,
+    DEFAULT_PROMPT_QUALITY_DEGRADE_OVERALL_THRESHOLD,
+  );
+  const promptQualityDegradeLowQualityRateThreshold = clampUnitRatio(
+    parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_DEGRADE_LOW_QUALITY_RATE_THRESHOLD)
+      ?? fromToml.promptQualityDegradeLowQualityRateThreshold
+      ?? DEFAULT_PROMPT_QUALITY_DEGRADE_LOW_RATE_THRESHOLD,
+    DEFAULT_PROMPT_QUALITY_DEGRADE_LOW_RATE_THRESHOLD,
+  );
+  const promptQualityDegradeMinEntries = Math.max(
+    1,
+    Math.min(
+      512,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_DEGRADE_MIN_ENTRIES)
+          ?? fromToml.promptQualityDegradeMinEntries
+          ?? DEFAULT_PROMPT_QUALITY_DEGRADE_MIN_ENTRIES,
+        DEFAULT_PROMPT_QUALITY_DEGRADE_MIN_ENTRIES,
+      ),
+    ),
+  );
+  const promptQualityGuardEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_ENABLED)
+    ?? fromToml.promptQualityGuardEnabled
+    ?? DEFAULT_PROMPT_QUALITY_GUARD_ENABLED;
+  const promptQualityGuardAdaptiveEnabled =
+    parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_ADAPTIVE_ENABLED)
+    ?? fromToml.promptQualityGuardAdaptiveEnabled
+    ?? DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_ENABLED;
+  const promptQualityGuardAdaptiveModeAllowlist =
+    normalizePromptQualityGuardAdaptiveModeAllowlist(
+      parseEnvStringList(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST)
+      ?? fromToml.promptQualityGuardAdaptiveModeAllowlist
+      ?? DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST,
+    );
+  const promptQualityGuardPromoteStreak = Math.max(
+    1,
+    Math.min(
+      32,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_PROMOTE_STREAK)
+          ?? fromToml.promptQualityGuardPromoteStreak
+          ?? DEFAULT_PROMPT_QUALITY_GUARD_PROMOTE_STREAK,
+        DEFAULT_PROMPT_QUALITY_GUARD_PROMOTE_STREAK,
+      ),
+    ),
+  );
+  const promptQualityGuardSeverePromoteStreak = Math.max(
+    1,
+    Math.min(
+      32,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_SEVERE_PROMOTE_STREAK)
+          ?? fromToml.promptQualityGuardSeverePromoteStreak
+          ?? DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_PROMOTE_STREAK,
+        DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_PROMOTE_STREAK,
+      ),
+    ),
+  );
+  const promptQualityGuardReleaseStreak = Math.max(
+    1,
+    Math.min(
+      64,
+      clampPositiveInt(
+        parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_RELEASE_STREAK)
+          ?? fromToml.promptQualityGuardReleaseStreak
+          ?? DEFAULT_PROMPT_QUALITY_GUARD_RELEASE_STREAK,
+        DEFAULT_PROMPT_QUALITY_GUARD_RELEASE_STREAK,
+      ),
+    ),
+  );
+  const promptQualityGuardHoldTurnsRaw =
+    parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_HOLD_TURNS)
+    ?? fromToml.promptQualityGuardHoldTurns
+    ?? DEFAULT_PROMPT_QUALITY_GUARD_HOLD_TURNS;
+  const promptQualityGuardHoldTurns =
+    Number.isFinite(promptQualityGuardHoldTurnsRaw)
+      ? Math.max(0, Math.min(64, Math.floor(promptQualityGuardHoldTurnsRaw)))
+      : DEFAULT_PROMPT_QUALITY_GUARD_HOLD_TURNS;
+  const promptQualityGuardMaxFloorStage = normalizePromptQualityGuardMaxFloorStage(
+    process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_MAX_FLOOR_STAGE
+      ?? fromToml.promptQualityGuardMaxFloorStage,
+  );
+  const promptQualityGuardSevereOverallThreshold = clampUnitRatio(
+    parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_SEVERE_OVERALL_THRESHOLD)
+      ?? fromToml.promptQualityGuardSevereOverallThreshold
+      ?? DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_OVERALL_THRESHOLD,
+    DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_OVERALL_THRESHOLD,
+  );
+  const promptQualityGuardSevereLowQualityRateThreshold = clampUnitRatio(
+    parseEnvNumber(process.env.GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_SEVERE_LOW_QUALITY_RATE_THRESHOLD)
+      ?? fromToml.promptQualityGuardSevereLowQualityRateThreshold
+      ?? DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_LOW_RATE_THRESHOLD,
+    DEFAULT_PROMPT_QUALITY_GUARD_SEVERE_LOW_RATE_THRESHOLD,
+  );
   const lineageEnabled =
     parseEnvBoolean(process.env.GROBOT_CONTEXT_ENGINE_LINEAGE_ENABLED)
     ?? fromToml.lineageEnabled
@@ -516,6 +812,7 @@ export function resolveContextEngineConfig(input: {
     contextWindowTokens,
     reservedOutputTokens,
     safetyMarginTokens,
+    autoCompactTokenLimit,
     thresholds: {
       proactiveRatio: proactiveRatio,
       forcedRatio: Math.max(forcedRatio, proactiveRatio + 0.01),
@@ -525,6 +822,22 @@ export function resolveContextEngineConfig(input: {
       reactiveMaxRetries,
       ptlMaxRetries,
       circuitBreakerFailures,
+    },
+    promptQuality: {
+      lowQualityThreshold: promptQualityLowQualityThreshold,
+      degradeOverallThreshold: promptQualityDegradeOverallThreshold,
+      degradeLowQualityRateThreshold: promptQualityDegradeLowQualityRateThreshold,
+      degradeMinEntries: promptQualityDegradeMinEntries,
+      guardEnabled: promptQualityGuardEnabled,
+      guardAdaptiveEnabled: promptQualityGuardAdaptiveEnabled,
+      guardAdaptiveModeAllowlist: promptQualityGuardAdaptiveModeAllowlist,
+      guardPromoteStreak: promptQualityGuardPromoteStreak,
+      guardSeverePromoteStreak: promptQualityGuardSeverePromoteStreak,
+      guardReleaseStreak: promptQualityGuardReleaseStreak,
+      guardHoldTurns: promptQualityGuardHoldTurns,
+      guardMaxFloorStage: promptQualityGuardMaxFloorStage,
+      guardSevereOverallThreshold: promptQualityGuardSevereOverallThreshold,
+      guardSevereLowQualityRateThreshold: promptQualityGuardSevereLowQualityRateThreshold,
     },
     lineage: {
       enabled: lineageEnabled,

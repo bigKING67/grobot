@@ -10,13 +10,39 @@ export {
   readGraphCacheWindowSummary,
 } from "./graph/cache-window";
 export {
+  compressPromptSnapshotSectionsSemanticallyForBudget,
+  derivePromptPreSendCompressionPlan,
   escalatePromptVariant,
   nextCompactionStage,
+  shouldTriggerDownshiftPrecompact,
+  trimPromptRecentTurnsForBudget,
+  trimPromptSnapshotSectionsForBudget,
   truncatePromptHeadForPtlRetry,
 } from "./compress/prompt-compaction";
 export {
+  appendPromptQualityWindowEntry,
+  assessPromptQualityWindowDegradation,
+  computePromptQualitySample,
+  readPromptQualityWindowSummary,
+} from "./compress/prompt-quality-window";
+export {
+  advancePromptQualityGuardOutcomeDriftGuard,
+  applyPromptQualityGuardFloor,
+  assessPromptQualityGuardRuntime,
+  defaultPromptQualityGuardState,
+  derivePromptQualityGuardOutcomeDriftGuard,
+  derivePromptQualityGuardAdaptivePolicy,
+  evaluatePromptQualityGuard,
+  normalizePromptQualityGuardPolicy,
+  normalizePromptQualityGuardState,
+  readPromptQualityGuardState,
+  writePromptQualityGuardState,
+} from "./compress/prompt-quality-guard";
+export {
   computeUtilization,
   estimateTokensFromText,
+  resolveAutoCompactTokenLimit,
+  resolvePromptTargetTokenLimit,
 } from "./budget/token-budget";
 export { classifyPromptOverflow } from "./compress/reactive-recovery";
 export type {
