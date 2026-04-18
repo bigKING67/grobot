@@ -1261,6 +1261,10 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
             const snapshotSemanticCompressed = compressPromptSnapshotSectionsSemanticallyForBudget({
               prompt: selectedPrepared.prompt,
               targetTokenLimit,
+              workDir: input.workDir,
+              userText,
+              generativeTimeoutMs: input.contextEngineConfig.semanticPrefetch.timeoutMs,
+              generativeMaxEvidence: input.contextEngineConfig.semanticPrefetch.maxEvidence,
             });
             if (snapshotSemanticCompressed.compressedSections.length > 0) {
               preSendSnapshotSemanticCompressSections =
@@ -1273,6 +1277,16 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
               selectionReason = "budget_guard";
               input.writeStderr(
                 `[context-engine] event=pre_send_snapshot_semantic_compress stage=${selectedStage} compressed_sections=${String(preSendSnapshotSemanticCompressSections)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
+              );
+            }
+            if (snapshotSemanticCompressed.generativeUsed) {
+              input.writeStderr(
+                `[context-engine] event=pre_send_snapshot_semantic_generate stage=${selectedStage} generated_sections=${String(snapshotSemanticCompressed.generativeSections.length)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
+              );
+            }
+            if (snapshotSemanticCompressed.warnings.length > 0) {
+              input.writeStderr(
+                `[context-engine] event=pre_send_snapshot_semantic_generate status=degraded message=${compactSingleLine(snapshotSemanticCompressed.warnings.join("; "), 180)}\n`,
               );
             }
             continue;

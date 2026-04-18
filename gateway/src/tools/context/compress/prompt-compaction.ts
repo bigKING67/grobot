@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { buildPromptWithHistory } from "../../../orchestration/entrypoints/dev-cli/start/session-history";
 import {
   estimateTokensFromText,
@@ -535,6 +538,237 @@ const SNAPSHOT_SECTION_SEMANTIC_COMPRESS_MAX_ROWS: Record<string, number> = {
 };
 
 const SNAPSHOT_SECTION_SEMANTIC_MAX_CHARS = 160;
+const SNAPSHOT_GENERATIVE_SUMMARY_MAX_CHARS = 128;
+const SNAPSHOT_GENERATIVE_DEFAULT_TIMEOUT_MS = 1_200;
+const SNAPSHOT_GENERATIVE_MIN_TIMEOUT_MS = 300;
+const SNAPSHOT_GENERATIVE_MAX_TIMEOUT_MS = 8_000;
+const SNAPSHOT_GENERATIVE_DEFAULT_MAX_EVIDENCE = 6;
+const SNAPSHOT_GENERATIVE_MAX_EVIDENCE = 16;
+
+interface PromptSemanticGenerationContext {
+  available: boolean;
+  warning?: string;
+  technicalTerms: string[];
+  topPaths: string[];
+  evidencePaths: string[];
+}
+
+function clampInteger(value: number, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  const normalized = Math.floor(value);
+  if (normalized < min) {
+    return min;
+  }
+  if (normalized > max) {
+    return max;
+  }
+  return normalized;
+}
+
+function normalizeWarning(raw: string): string | undefined {
+  const compact = raw.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return undefined;
+  }
+  if (compact.length <= 220) {
+    return compact;
+  }
+  return `${compact.slice(0, 219).trimEnd()}...`;
+}
+
+function toStringArray(raw: unknown, maxRows: number): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const normalized = item.trim();
+    if (!normalized) {
+      continue;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(normalized);
+    if (output.length >= maxRows) {
+      break;
+    }
+  }
+  return output;
+}
+
+function resolveContextWeaverBridgeScriptPath(workDir: string): string | undefined {
+  const bridgeRelativePath = ["adapters", "contextweaver", "bridge", "cli.mjs"];
+  let cursor = resolve(workDir);
+  while (true) {
+    const candidate = resolve(cursor, ...bridgeRelativePath);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = resolve(cursor, "..");
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+  return undefined;
+}
+
+function readFirstJsonObjectLine(stdout: string): Record<string, unknown> | undefined {
+  const line = stdout
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find((item) => item.length > 0);
+  if (!line) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(line);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function collectPathHintsFromEvidence(raw: unknown, maxRows: number): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      continue;
+    }
+    const row = item as Record<string, unknown>;
+    const path = typeof row.path === "string" ? row.path.trim() : "";
+    if (!path) {
+      continue;
+    }
+    const key = path.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(path);
+    if (output.length >= maxRows) {
+      break;
+    }
+  }
+  return output;
+}
+
+function loadPromptSemanticGenerationContext(args: {
+  workDir?: string;
+  prompt: string;
+  timeoutMs?: number;
+  maxEvidence?: number;
+}): PromptSemanticGenerationContext {
+  const workDir = typeof args.workDir === "string" ? args.workDir.trim() : "";
+  if (!workDir) {
+    return {
+      available: false,
+      warning: "semantic generation skipped: missing work dir",
+      technicalTerms: [],
+      topPaths: [],
+      evidencePaths: [],
+    };
+  }
+  const bridgeScriptPath = resolveContextWeaverBridgeScriptPath(workDir);
+  if (!bridgeScriptPath) {
+    return {
+      available: false,
+      warning: "semantic generation skipped: contextweaver bridge not found",
+      technicalTerms: [],
+      topPaths: [],
+      evidencePaths: [],
+    };
+  }
+  const timeoutMs = clampInteger(
+    typeof args.timeoutMs === "number" ? args.timeoutMs : SNAPSHOT_GENERATIVE_DEFAULT_TIMEOUT_MS,
+    SNAPSHOT_GENERATIVE_DEFAULT_TIMEOUT_MS,
+    SNAPSHOT_GENERATIVE_MIN_TIMEOUT_MS,
+    SNAPSHOT_GENERATIVE_MAX_TIMEOUT_MS,
+  );
+  const maxEvidence = clampInteger(
+    typeof args.maxEvidence === "number" ? args.maxEvidence : SNAPSHOT_GENERATIVE_DEFAULT_MAX_EVIDENCE,
+    SNAPSHOT_GENERATIVE_DEFAULT_MAX_EVIDENCE,
+    1,
+    SNAPSHOT_GENERATIVE_MAX_EVIDENCE,
+  );
+  const payload = JSON.stringify({
+    prompt: args.prompt.trim(),
+    maxEvidence,
+    sourceConcurrency: 1,
+    refresh: "auto",
+    sourceRoots: [
+      {
+        source: "code",
+        rootPath: workDir,
+      },
+    ],
+  });
+  const nodeBinary = typeof process.argv[0] === "string" && process.argv[0].trim().length > 0
+    ? process.argv[0].trim()
+    : "node";
+  const spawnOptions = {
+    cwd: workDir,
+    encoding: "utf8",
+    timeout: timeoutMs + 500,
+    maxBuffer: 1_000_000,
+    env: process.env,
+  } as unknown as Parameters<typeof spawnSync>[2];
+  const run = spawnSync(nodeBinary, [
+    bridgeScriptPath,
+    "prompt-enhancer",
+    "--payload",
+    payload,
+    "--timeout-ms",
+    String(timeoutMs),
+  ], spawnOptions);
+  if (run.error || run.status !== 0) {
+    const runErrorMessage = run.error instanceof Error ? run.error.message : "";
+    return {
+      available: false,
+      warning: normalizeWarning(String((run.stderr ?? runErrorMessage) || "semantic generation bridge failed")),
+      technicalTerms: [],
+      topPaths: [],
+      evidencePaths: [],
+    };
+  }
+  const parsed = readFirstJsonObjectLine(String(run.stdout ?? ""));
+  if (!parsed) {
+    return {
+      available: false,
+      warning: "semantic generation skipped: bridge returned empty JSON",
+      technicalTerms: [],
+      topPaths: [],
+      evidencePaths: [],
+    };
+  }
+  const technicalTerms = toStringArray(parsed.technical_terms, 8);
+  const topPaths = toStringArray(parsed.top_paths, 8);
+  const evidencePaths = collectPathHintsFromEvidence(parsed.evidence, 8);
+  const warnings = toStringArray(parsed.warnings, 2);
+  return {
+    available: true,
+    warning: warnings[0],
+    technicalTerms,
+    topPaths,
+    evidencePaths,
+  };
+}
 
 function compactSemanticLine(raw: string, maxChars: number): string {
   const normalized = raw.replace(/\s+/g, " ").trim().replace(/^[-*]\s+/, "");
@@ -635,21 +869,211 @@ function compressSnapshotSectionLines(args: {
   };
 }
 
+function tokenizeText(raw: string): string[] {
+  return raw
+    .toLowerCase()
+    .split(/[^a-z0-9\u4e00-\u9fff]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+}
+
+function collectPathHintsFromLines(lines: readonly string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  const pattern = /[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/g;
+  for (const row of lines) {
+    const matches = row.match(pattern) ?? [];
+    for (const matched of matches) {
+      const value = matched.trim();
+      if (!value) {
+        continue;
+      }
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      output.push(value);
+      if (output.length >= 8) {
+        return output;
+      }
+    }
+  }
+  return output;
+}
+
+function collectIdentifierHints(lines: readonly string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  const pattern = /[A-Za-z_][A-Za-z0-9_]*/g;
+  for (const row of lines) {
+    const matches = row.match(pattern) ?? [];
+    for (const matched of matches) {
+      const value = matched.trim();
+      if (value.length < 3) {
+        continue;
+      }
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      output.push(value);
+      if (output.length >= 12) {
+        return output;
+      }
+    }
+  }
+  return output;
+}
+
+function scoreSectionLineForSynthesis(args: {
+  row: string;
+  terms: ReadonlySet<string>;
+  paths: ReadonlySet<string>;
+}): number {
+  const normalized = args.row.replace(/^[-*]\s+/, "").trim();
+  if (!normalized) {
+    return 0;
+  }
+  const tokens = new Set(tokenizeText(normalized));
+  let score = 1;
+  for (const token of tokens) {
+    if (args.terms.has(token)) {
+      score += 2;
+    }
+  }
+  for (const path of args.paths) {
+    if (normalized.toLowerCase().includes(path)) {
+      score += 3;
+    }
+  }
+  if (/[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/.test(normalized)) {
+    score += 2;
+  }
+  if (/\b(pass|fail|warn|error|todo)\b/i.test(normalized)) {
+    score += 1;
+  }
+  return score;
+}
+
+function synthesizeSnapshotSectionLines(args: {
+  sectionKey: string;
+  lines: readonly string[];
+  generationContext: PromptSemanticGenerationContext;
+}): {
+  lines: string[];
+  changed: boolean;
+} {
+  if (args.lines.length <= 1) {
+    return {
+      lines: [...args.lines],
+      changed: false,
+    };
+  }
+  const header = args.lines[0] ?? "";
+  const rawContentRows = args.lines
+    .slice(1)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (rawContentRows.length <= 1) {
+    return {
+      lines: [...args.lines],
+      changed: false,
+    };
+  }
+  if (
+    rawContentRows.some((line) => line.includes("[generated]"))
+    || rawContentRows.some((line) => line.includes("[synth]"))
+  ) {
+    return {
+      lines: [...args.lines],
+      changed: false,
+    };
+  }
+  const topPathHints = [
+    ...args.generationContext.topPaths,
+    ...args.generationContext.evidencePaths,
+    ...collectPathHintsFromLines(rawContentRows),
+  ].slice(0, 8);
+  const topPathSet = new Set(topPathHints.map((item) => item.toLowerCase()));
+  const termHints = [
+    ...args.generationContext.technicalTerms,
+    ...collectIdentifierHints(rawContentRows),
+  ].slice(0, 12);
+  const termSet = new Set(termHints.map((item) => item.toLowerCase()));
+  const scoredRows = rawContentRows
+    .map((row) => ({
+      row,
+      score: scoreSectionLineForSynthesis({
+        row,
+        terms: termSet,
+        paths: topPathSet,
+      }),
+    }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 2);
+  if (scoredRows.length === 0) {
+    return {
+      lines: [...args.lines],
+      changed: false,
+    };
+  }
+  const summaryRows = scoredRows.map((item) =>
+    `- [synth] ${compactSemanticLine(item.row, SNAPSHOT_GENERATIVE_SUMMARY_MAX_CHARS)}`
+  );
+  const sectionHint = args.sectionKey.replace(/\s+/g, "_");
+  const pathFocus = topPathHints.slice(0, 3);
+  const termFocus = termHints.slice(0, 4);
+  const focusParts: string[] = [];
+  focusParts.push(`section=${sectionHint}`);
+  if (pathFocus.length > 0) {
+    focusParts.push(`paths=${pathFocus.join(" | ")}`);
+  }
+  if (termFocus.length > 0) {
+    focusParts.push(`terms=${termFocus.join(", ")}`);
+  }
+  if (focusParts.length > 0) {
+    summaryRows.push(`- [generated] ${focusParts.join("; ")}`);
+  }
+  const rebuilt = [header, ...summaryRows];
+  const changed =
+    rebuilt.join("\n").length < args.lines.join("\n").length
+    || rebuilt.length < args.lines.length;
+  return {
+    lines: changed ? rebuilt : [...args.lines],
+    changed,
+  };
+}
+
 export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
   prompt: string;
   targetTokenLimit: number;
+  workDir?: string;
+  userText?: string;
+  generativeTimeoutMs?: number;
+  generativeMaxEvidence?: number;
 }): {
   prompt: string;
   compressedSections: string[];
+  generativeSections: string[];
+  generativeUsed: boolean;
+  warnings: string[];
   estimatedTokens: number;
 } {
   const targetTokenLimit = Math.max(1, Math.floor(args.targetTokenLimit));
   const originalPrompt = args.prompt;
+  const workDir = typeof args.workDir === "string" ? args.workDir.trim() : "";
+  const userText = typeof args.userText === "string" ? args.userText.trim() : "";
+  const warnings: string[] = [];
   let estimatedTokens = estimateTokensFromText(originalPrompt);
   if (estimatedTokens <= targetTokenLimit) {
     return {
       prompt: originalPrompt,
       compressedSections: [],
+      generativeSections: [],
+      generativeUsed: false,
+      warnings,
       estimatedTokens,
     };
   }
@@ -661,6 +1085,9 @@ export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
     return {
       prompt: originalPrompt,
       compressedSections: [],
+      generativeSections: [],
+      generativeUsed: false,
+      warnings,
       estimatedTokens,
     };
   }
@@ -673,6 +1100,9 @@ export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
     return {
       prompt: originalPrompt,
       compressedSections: [],
+      generativeSections: [],
+      generativeUsed: false,
+      warnings,
       estimatedTokens,
     };
   }
@@ -682,6 +1112,9 @@ export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
     return {
       prompt: originalPrompt,
       compressedSections: [],
+      generativeSections: [],
+      generativeUsed: false,
+      warnings,
       estimatedTokens,
     };
   }
@@ -721,13 +1154,42 @@ export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
     return {
       prompt: originalPrompt,
       compressedSections: [],
+      generativeSections: [],
+      generativeUsed: false,
+      warnings,
       estimatedTokens,
     };
   }
 
   const compressedTitles: string[] = [];
+  const generativeTitles: string[] = [];
   const keepBlocks = [...sectionBlocks];
   let currentPrompt = originalPrompt;
+  const rebuildPrompt = (): string => {
+    const markerLines: string[] = [];
+    if (compressedTitles.length > 0) {
+      markerLines.push("[snapshot sections semantically compressed for budget]");
+    }
+    if (generativeTitles.length > 0) {
+      markerLines.push("[snapshot sections generatively compressed for budget]");
+    }
+    const rebuiltContext = [
+      ...snapshotPrefix,
+      ...markerLines,
+      ...keepBlocks.flatMap((row) => row.lines),
+      ...snapshotSuffix,
+    ];
+    return [
+      ...lines.slice(0, contextHeaderIndex + 1),
+      ...rebuiltContext,
+      ...lines.slice(userHeaderIndex),
+    ].join("\n");
+  };
+  const pushUniqueTitle = (rows: string[], title: string): void => {
+    if (!rows.includes(title)) {
+      rows.push(title);
+    }
+  };
   for (const key of SNAPSHOT_SECTION_SEMANTIC_COMPRESS_ORDER) {
     for (let index = 0; index < keepBlocks.length; index += 1) {
       const block = keepBlocks[index];
@@ -748,28 +1210,69 @@ export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
         ...block,
         lines: compressed.lines,
       };
-      compressedTitles.push(block.title);
-      const marker = compressedTitles.length > 0
-        ? ["[snapshot sections semantically compressed for budget]"]
-        : [];
-      const rebuiltContext = [
-        ...snapshotPrefix,
-        ...marker,
-        ...keepBlocks.flatMap((row) => row.lines),
-        ...snapshotSuffix,
-      ];
-      currentPrompt = [
-        ...lines.slice(0, contextHeaderIndex + 1),
-        ...rebuiltContext,
-        ...lines.slice(userHeaderIndex),
-      ].join("\n");
+      pushUniqueTitle(compressedTitles, block.title);
+      currentPrompt = rebuildPrompt();
       estimatedTokens = estimateTokensFromText(currentPrompt);
       if (estimatedTokens <= targetTokenLimit) {
         return {
           prompt: currentPrompt,
           compressedSections: compressedTitles,
+          generativeSections: generativeTitles,
+          generativeUsed: generativeTitles.length > 0,
+          warnings,
           estimatedTokens,
         };
+      }
+    }
+  }
+
+  if (estimatedTokens > targetTokenLimit) {
+    const generationContext = loadPromptSemanticGenerationContext({
+      workDir,
+      prompt: userText || originalPrompt,
+      timeoutMs: args.generativeTimeoutMs,
+      maxEvidence: args.generativeMaxEvidence,
+    });
+    if (generationContext.warning) {
+      warnings.push(generationContext.warning);
+    }
+    if (generationContext.available) {
+      for (const key of SNAPSHOT_SECTION_SEMANTIC_COMPRESS_ORDER) {
+        for (let index = 0; index < keepBlocks.length; index += 1) {
+          const block = keepBlocks[index];
+          if (!block) {
+            continue;
+          }
+          if (normalizeSectionKey(block.title) !== key) {
+            continue;
+          }
+          const synthesized = synthesizeSnapshotSectionLines({
+            sectionKey: key,
+            lines: block.lines,
+            generationContext,
+          });
+          if (!synthesized.changed) {
+            continue;
+          }
+          keepBlocks[index] = {
+            ...block,
+            lines: synthesized.lines,
+          };
+          pushUniqueTitle(compressedTitles, block.title);
+          pushUniqueTitle(generativeTitles, block.title);
+          currentPrompt = rebuildPrompt();
+          estimatedTokens = estimateTokensFromText(currentPrompt);
+          if (estimatedTokens <= targetTokenLimit) {
+            return {
+              prompt: currentPrompt,
+              compressedSections: compressedTitles,
+              generativeSections: generativeTitles,
+              generativeUsed: generativeTitles.length > 0,
+              warnings,
+              estimatedTokens,
+            };
+          }
+        }
       }
     }
   }
@@ -777,6 +1280,9 @@ export function compressPromptSnapshotSectionsSemanticallyForBudget(args: {
   return {
     prompt: currentPrompt,
     compressedSections: compressedTitles,
+    generativeSections: generativeTitles,
+    generativeUsed: generativeTitles.length > 0,
+    warnings,
     estimatedTokens,
   };
 }

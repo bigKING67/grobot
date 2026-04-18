@@ -1633,6 +1633,16 @@ async function runGatewayContractSmoke() {
   assert.equal(contextEngineSemanticCompressSnapshotPayload.has_snapshot, true);
   assert.equal(contextEngineSemanticCompressSnapshotPayload.changed, true);
   assert.equal(Number(contextEngineSemanticCompressSnapshotPayload.compressed_sections_count) >= 1, true);
+  assert.equal(typeof contextEngineSemanticCompressSnapshotPayload.generative_used, "boolean");
+  assert.equal(
+    Array.isArray(contextEngineSemanticCompressSnapshotPayload.generative_sections),
+    true,
+  );
+  assert.equal(
+    typeof contextEngineSemanticCompressSnapshotPayload.generative_sections_count,
+    "number",
+  );
+  assert.equal(Array.isArray(contextEngineSemanticCompressSnapshotPayload.warnings), true);
   logStep("context-engine-contract semantic-compress-snapshot-sections");
 
   const contextEnginePromptQualityWorkDir = makeTempDir("context-engine-prompt-quality");

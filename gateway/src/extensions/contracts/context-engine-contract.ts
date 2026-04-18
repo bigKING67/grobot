@@ -524,10 +524,28 @@ function runSemanticCompressSnapshotSections(payload: Record<string, unknown>): 
     && Number.isFinite(payload.target_token_limit)
     ? Math.max(1, Math.floor(payload.target_token_limit))
     : 1;
+  const workDir = typeof payload.work_dir === "string" && payload.work_dir.trim().length > 0
+    ? payload.work_dir.trim()
+    : undefined;
+  const userText = typeof payload.user_text === "string" && payload.user_text.trim().length > 0
+    ? payload.user_text.trim()
+    : undefined;
+  const generativeTimeoutMs = typeof payload.generative_timeout_ms === "number"
+    && Number.isFinite(payload.generative_timeout_ms)
+    ? payload.generative_timeout_ms
+    : undefined;
+  const generativeMaxEvidence = typeof payload.generative_max_evidence === "number"
+    && Number.isFinite(payload.generative_max_evidence)
+    ? payload.generative_max_evidence
+    : undefined;
   const originalEstimatedTokens = estimateTokensFromText(prompt);
   const compressed = compressPromptSnapshotSectionsSemanticallyForBudget({
     prompt,
     targetTokenLimit,
+    workDir,
+    userText,
+    generativeTimeoutMs,
+    generativeMaxEvidence,
   });
   return {
     target_token_limit: targetTokenLimit,
@@ -535,6 +553,10 @@ function runSemanticCompressSnapshotSections(payload: Record<string, unknown>): 
     compressed_estimated_tokens: compressed.estimatedTokens,
     compressed_sections: compressed.compressedSections,
     compressed_sections_count: compressed.compressedSections.length,
+    generative_used: compressed.generativeUsed,
+    generative_sections: compressed.generativeSections,
+    generative_sections_count: compressed.generativeSections.length,
+    warnings: compressed.warnings,
     changed: compressed.prompt !== prompt,
     has_snapshot: prompt.includes("[Compact Context Snapshot v2]"),
   };

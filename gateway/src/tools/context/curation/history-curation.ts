@@ -167,6 +167,134 @@ function pushSection(
   }
 }
 
+function tokenizeForGraphFusion(raw: string): string[] {
+  return raw
+    .toLowerCase()
+    .split(/[^a-z0-9\u4e00-\u9fff]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+}
+
+function extractPathHints(raw: string): string[] {
+  const matches = raw.match(/[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/g) ?? [];
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const item of matches) {
+    const normalized = item.trim();
+    if (!normalized) {
+      continue;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(normalized);
+    if (output.length >= 8) {
+      break;
+    }
+  }
+  return output;
+}
+
+interface GraphFusionRow {
+  row: string;
+  source: "dependency" | "symbol";
+  index: number;
+  tokens: Set<string>;
+  paths: Set<string>;
+}
+
+function buildGraphFusionRows(
+  source: "dependency" | "symbol",
+  rows: readonly string[],
+): GraphFusionRow[] {
+  return rows.map((row, index) => {
+    const normalized = row.trim();
+    const paths = extractPathHints(normalized).map((item) => item.toLowerCase());
+    return {
+      row: normalized,
+      source,
+      index,
+      tokens: new Set(tokenizeForGraphFusion(normalized)),
+      paths: new Set(paths),
+    };
+  }).filter((row) => row.row.length > 0);
+}
+
+function fuseGraphHints(args: {
+  query: string;
+  dependencyRows: readonly string[];
+  symbolRows: readonly string[];
+  maxRowsPerSection: number;
+}): {
+  dependencyGraph: string[];
+  symbolGraph: string[];
+} {
+  const maxRows = Math.max(1, Math.min(args.maxRowsPerSection, 20));
+  const dependency = buildGraphFusionRows("dependency", args.dependencyRows);
+  const symbol = buildGraphFusionRows("symbol", args.symbolRows);
+  if (dependency.length === 0 && symbol.length === 0) {
+    return {
+      dependencyGraph: [],
+      symbolGraph: [],
+    };
+  }
+  const allRows = [...dependency, ...symbol];
+  const queryTokens = new Set(tokenizeForGraphFusion(args.query));
+  const pathFrequency = new Map<string, number>();
+  for (const row of allRows) {
+    for (const path of row.paths) {
+      pathFrequency.set(path, (pathFrequency.get(path) ?? 0) + 1);
+    }
+  }
+  const dependencyPathSet = new Set(dependency.flatMap((row) => Array.from(row.paths)));
+  const symbolPathSet = new Set(symbol.flatMap((row) => Array.from(row.paths)));
+  const scoreRow = (row: GraphFusionRow): number => {
+    let score = 1;
+    for (const token of queryTokens) {
+      if (row.tokens.has(token)) {
+        score += 1.8;
+      }
+    }
+    let centrality = 0;
+    for (const path of row.paths) {
+      centrality += pathFrequency.get(path) ?? 0;
+    }
+    score += Math.min(4, centrality * 0.35);
+    const oppositePathSet = row.source === "dependency" ? symbolPathSet : dependencyPathSet;
+    let overlapCount = 0;
+    for (const path of row.paths) {
+      if (oppositePathSet.has(path)) {
+        overlapCount += 1;
+      }
+    }
+    score += Math.min(3, overlapCount * 1.2);
+    if (row.source === "symbol" && /\brefs=\d+\b/i.test(row.row)) {
+      score += 0.8;
+    }
+    return score;
+  };
+  const sortRows = (rows: GraphFusionRow[]): string[] =>
+    rows
+      .map((row) => ({
+        row,
+        score: scoreRow(row),
+      }))
+      .sort((left, right) => {
+        if (left.score !== right.score) {
+          return right.score - left.score;
+        }
+        return left.row.index - right.row.index;
+      })
+      .slice(0, maxRows)
+      .map((item) => item.row.row);
+  return {
+    dependencyGraph: sortRows(dependency),
+    symbolGraph: sortRows(symbol),
+  };
+}
+
 export function buildCompactSnapshot(
   userText: string,
   history: readonly ContextHistoryMessage[],
@@ -191,6 +319,8 @@ export function buildCompactSnapshot(
   },
 ): string {
   const sections = createEmptySections();
+  let dependencyRows: string[] = [];
+  let symbolRows: string[] = [];
   const structuralHintsEnabled =
     typeof options?.forceStructuralHints === "boolean"
       ? options.forceStructuralHints
@@ -216,20 +346,28 @@ export function buildCompactSnapshot(
     sections.workspace.push(...workspaceRows.map((row) => row.summary));
   }
   if (structuralHintsEnabled && options?.dependencyGraphEnabled) {
-    const graphRows = retrieveDependencyGraphHints(userText, {
+    dependencyRows = retrieveDependencyGraphHints(userText, {
       workDir: options.workDir,
       maxRows: options.dependencyGraphMaxRows,
       changedCodeSnapshot: options.changedCodeSnapshot,
     });
-    sections.dependencyGraph.push(...graphRows);
   }
   if (structuralHintsEnabled && options?.symbolGraphEnabled) {
-    const symbolRows = retrieveSymbolGraphHints(userText, {
+    symbolRows = retrieveSymbolGraphHints(userText, {
       workDir: options.workDir,
       maxRows: options.symbolGraphMaxRows,
       changedCodeSnapshot: options.changedCodeSnapshot,
     });
-    sections.symbolGraph.push(...symbolRows);
+  }
+  if (dependencyRows.length > 0 || symbolRows.length > 0) {
+    const fused = fuseGraphHints({
+      query: userText,
+      dependencyRows,
+      symbolRows,
+      maxRowsPerSection,
+    });
+    sections.dependencyGraph.push(...fused.dependencyGraph);
+    sections.symbolGraph.push(...fused.symbolGraph);
   }
   if (structuralHintsEnabled && options?.lineageEnabled) {
     const lineageRows = retrieveLineageSummaries(
