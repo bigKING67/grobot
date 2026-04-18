@@ -2887,6 +2887,26 @@ async function runGatewayContractSmoke() {
     ),
     true,
   );
+  const firstQuality = contextEngineGraphCachePayload.first_pass?.quality ?? {};
+  const secondQuality = contextEngineGraphCachePayload.second_pass?.quality ?? {};
+  assert.equal(Number(firstQuality.dependency?.max_chain_depth) >= 2, true);
+  assert.equal(Number(firstQuality.dependency?.unique_nodes) >= 2, true);
+  assert.equal(
+    Number(firstQuality.symbol?.rows_with_bridge)
+      >= 1,
+    true,
+  );
+  assert.equal(Number(firstQuality.symbol?.rows_with_breadth) >= 1, true);
+  assert.equal(
+    Number(secondQuality.dependency?.max_chain_depth)
+      >= Number(firstQuality.dependency?.max_chain_depth),
+    true,
+  );
+  assert.equal(
+    Number(secondQuality.symbol?.avg_bridge)
+      >= Number(firstQuality.symbol?.avg_bridge),
+    true,
+  );
   const firstStats = contextEngineGraphCachePayload.first_pass?.stats ?? {};
   const secondStats = contextEngineGraphCachePayload.second_pass?.stats ?? {};
   assert.equal(Number(firstStats.symbol_query?.miss) >= 1, true);
@@ -2966,6 +2986,13 @@ async function runGatewayContractSmoke() {
     multiHopRows.some((row) => String(row).split("->").length >= 3),
     true,
   );
+  assert.equal(
+    multiHopRows.some((row) => String(row).split("->").length >= 4),
+    true,
+  );
+  const multiHopQuality = contextEngineGraphCacheMultiHopPayload.first_pass?.quality?.dependency ?? {};
+  assert.equal(Number(multiHopQuality.max_chain_depth) >= 4, true);
+  assert.equal(Number(multiHopQuality.depth_histogram?.depth_4_plus) >= 1, true);
   assert.equal(contextEngineGraphCacheMultiHopPayload.cache_reuse_observed, true);
   assert.deepEqual(
     contextEngineGraphCacheMultiHopPayload.second_pass?.dependency_rows,

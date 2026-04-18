@@ -182,6 +182,108 @@ function readBucketStat(
   };
 }
 
+function summarizeDependencyRows(rows: readonly string[]): {
+  total_rows: number;
+  multi_hop_rows: number;
+  max_chain_depth: number;
+  depth_histogram: Record<string, number>;
+  unique_nodes: number;
+} {
+  const depthHistogram = {
+    depth_2: 0,
+    depth_3: 0,
+    depth_4_plus: 0,
+  };
+  let multiHopRows = 0;
+  let maxChainDepth = 0;
+  const uniqueNodes = new Set<string>();
+  for (const row of rows) {
+    const nodes = row
+      .split("->")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (nodes.length < 2) {
+      continue;
+    }
+    for (const node of nodes) {
+      uniqueNodes.add(node.toLowerCase());
+    }
+    if (nodes.length >= 3) {
+      multiHopRows += 1;
+    }
+    maxChainDepth = Math.max(maxChainDepth, nodes.length);
+    if (nodes.length >= 4) {
+      depthHistogram.depth_4_plus += 1;
+    } else if (nodes.length === 3) {
+      depthHistogram.depth_3 += 1;
+    } else {
+      depthHistogram.depth_2 += 1;
+    }
+  }
+  return {
+    total_rows: rows.length,
+    multi_hop_rows: multiHopRows,
+    max_chain_depth: maxChainDepth,
+    depth_histogram: depthHistogram,
+    unique_nodes: uniqueNodes.size,
+  };
+}
+
+function summarizeSymbolRows(rows: readonly string[]): {
+  total_rows: number;
+  rows_with_bridge: number;
+  rows_with_breadth: number;
+  avg_bridge: number;
+  avg_breadth: number;
+  avg_refs: number;
+  max_refs: number;
+} {
+  let rowsWithBridge = 0;
+  let rowsWithBreadth = 0;
+  let bridgeTotal = 0;
+  let breadthTotal = 0;
+  let refsTotal = 0;
+  let refsCount = 0;
+  let maxRefs = 0;
+  for (const row of rows) {
+    const bridgeMatch = row.match(/\bbridge=(\d+)\b/i);
+    const breadthMatch = row.match(/\bbreadth=(\d+)\b/i);
+    const refsMatch = row.match(/\brefs=(\d+)\b/i);
+    if (bridgeMatch) {
+      const value = Number.parseInt(bridgeMatch[1] ?? "0", 10);
+      if (Number.isFinite(value)) {
+        bridgeTotal += Math.max(0, value);
+        rowsWithBridge += 1;
+      }
+    }
+    if (breadthMatch) {
+      const value = Number.parseInt(breadthMatch[1] ?? "0", 10);
+      if (Number.isFinite(value)) {
+        breadthTotal += Math.max(0, value);
+        rowsWithBreadth += 1;
+      }
+    }
+    if (refsMatch) {
+      const value = Number.parseInt(refsMatch[1] ?? "0", 10);
+      if (Number.isFinite(value)) {
+        const normalized = Math.max(0, value);
+        refsTotal += normalized;
+        refsCount += 1;
+        maxRefs = Math.max(maxRefs, normalized);
+      }
+    }
+  }
+  return {
+    total_rows: rows.length,
+    rows_with_bridge: rowsWithBridge,
+    rows_with_breadth: rowsWithBreadth,
+    avg_bridge: rowsWithBridge > 0 ? bridgeTotal / rowsWithBridge : 0,
+    avg_breadth: rowsWithBreadth > 0 ? breadthTotal / rowsWithBreadth : 0,
+    avg_refs: refsCount > 0 ? refsTotal / refsCount : 0,
+    max_refs: maxRefs,
+  };
+}
+
 function runResolveConfig(payload: Record<string, unknown>): Record<string, unknown> {
   const runtimeModelConfig = readRuntimeModelConfig(payload.runtime_model_config);
   const projectTomlPath = typeof payload.project_toml_path === "string"
@@ -285,6 +387,14 @@ function runGraphCache(payload: Record<string, unknown>): Record<string, unknown
   const firstDependencyQuery = readBucketStat(firstStats, "dependency_query");
   const secondSymbolQuery = readBucketStat(secondStats, "symbol_query");
   const secondDependencyQuery = readBucketStat(secondStats, "dependency_query");
+  const firstQuality = {
+    dependency: summarizeDependencyRows(firstDependencyRows),
+    symbol: summarizeSymbolRows(firstSymbolRows),
+  };
+  const secondQuality = {
+    dependency: summarizeDependencyRows(secondDependencyRows),
+    symbol: summarizeSymbolRows(secondSymbolRows),
+  };
   return {
     timing: {
       first_pass_duration_ms: firstDurationMs,
@@ -296,6 +406,7 @@ function runGraphCache(payload: Record<string, unknown>): Record<string, unknown
     first_pass: {
       symbol_rows: firstSymbolRows,
       dependency_rows: firstDependencyRows,
+      quality: firstQuality,
       stats: {
         symbol_query: firstSymbolQuery,
         symbol_declaration: readBucketStat(firstStats, "symbol_declaration"),
@@ -306,6 +417,7 @@ function runGraphCache(payload: Record<string, unknown>): Record<string, unknown
     second_pass: {
       symbol_rows: secondSymbolRows,
       dependency_rows: secondDependencyRows,
+      quality: secondQuality,
       stats: {
         symbol_query: secondSymbolQuery,
         symbol_declaration: readBucketStat(secondStats, "symbol_declaration"),

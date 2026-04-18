@@ -8,18 +8,32 @@ export interface LineageSummaryRow {
   summary: string;
 }
 
+type LineageIntentTag =
+  | "feature"
+  | "fix"
+  | "refactor"
+  | "test"
+  | "perf"
+  | "docs"
+  | "chore"
+  | "security"
+  | "deps"
+  | "ci";
+
 interface LineageCommitRow {
   commitId: string;
   author: string;
   timestamp: string;
   subject: string;
   files: string[];
+  normalizedFiles: string[];
   insertions: number;
   deletions: number;
   fileChangeCount: number;
   subjectTokens: Set<string>;
   fileTokens: Set<string>;
   normalizedSubject: string;
+  intentTags: Set<LineageIntentTag>;
 }
 
 interface LineageCacheEntry {
@@ -68,6 +82,112 @@ function tokenize(raw: string): string[] {
 
 function normalizeText(raw: string): string {
   return raw.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function normalizePath(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .replace(/:(\d+)(?::\d+)?$/, "")
+    .toLowerCase();
+}
+
+function extractPathHints(raw: string): string[] {
+  const matches = raw.match(/[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/g) ?? [];
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const item of matches) {
+    const normalized = normalizePath(item);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(normalized);
+    if (output.length >= 10) {
+      break;
+    }
+  }
+  return output;
+}
+
+function isPathOverlap(left: string, right: string): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  if (left === right) {
+    return true;
+  }
+  return left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+function inferIntentTags(raw: string): Set<LineageIntentTag> {
+  const text = normalizeText(raw);
+  const tags = new Set<LineageIntentTag>();
+  const add = (tag: LineageIntentTag): void => {
+    tags.add(tag);
+  };
+  if (
+    /(^|\s)(feat|feature|add|introduce|implement|support)(\(|:|\s)/.test(text)
+    || /(新增|实现|支持|功能)/.test(text)
+  ) {
+    add("feature");
+  }
+  if (
+    /(^|\s)(fix|bug|hotfix|repair|resolve|patch)(\(|:|\s)/.test(text)
+    || /(修复|修正|补丁|故障)/.test(text)
+  ) {
+    add("fix");
+  }
+  if (
+    /(^|\s)(refactor|cleanup|rename|restructure|reorg)(\(|:|\s)/.test(text)
+    || /(重构|整理|重命名)/.test(text)
+  ) {
+    add("refactor");
+  }
+  if (
+    /(^|\s)(test|spec|contract|e2e|unit)(\(|:|\s)/.test(text)
+    || /(测试|回归|验收)/.test(text)
+  ) {
+    add("test");
+  }
+  if (
+    /(^|\s)(perf|optimi[sz]e|latency|throughput|cache)(\(|:|\s)/.test(text)
+    || /(性能|优化|延迟|吞吐|缓存)/.test(text)
+  ) {
+    add("perf");
+  }
+  if (
+    /(^|\s)(docs|readme|comment|guide|manual)(\(|:|\s)/.test(text)
+    || /(文档|说明|注释)/.test(text)
+  ) {
+    add("docs");
+  }
+  if (
+    /(^|\s)(chore|infra|build|tooling)(\(|:|\s)/.test(text)
+    || /(工程|脚本|工具链)/.test(text)
+  ) {
+    add("chore");
+  }
+  if (
+    /(^|\s)(security|auth|permission|rbac|abac|vuln|cve)(\(|:|\s)/.test(text)
+    || /(安全|权限|鉴权|漏洞|风控)/.test(text)
+  ) {
+    add("security");
+  }
+  if (
+    /(^|\s)(deps?|dependency|upgrade|bump)(\(|:|\s)/.test(text)
+    || /(依赖|升级|版本)/.test(text)
+  ) {
+    add("deps");
+  }
+  if (
+    /(^|\s)(ci|pipeline|workflow|action)(\(|:|\s)/.test(text)
+    || /(流水线|发布流程|工作流)/.test(text)
+  ) {
+    add("ci");
+  }
+  return tags;
 }
 
 function truncateSummary(text: string, maxLength = 240): string {
@@ -129,18 +249,22 @@ function parseGitLogRows(raw: string): LineageCommitRow[] {
     }
     if (line.startsWith(LOG_MARKER)) {
       if (current) {
+        const normalizedFiles = current.files.map((item) => normalizePath(item)).filter((item) => item.length > 0);
+        const rowIntentTags = inferIntentTags(`${current.subject} ${current.files.join(" ")}`);
         rows.push({
           commitId: current.commitId,
           author: current.author,
           timestamp: current.timestamp,
           subject: current.subject,
           files: [...current.files],
+          normalizedFiles,
           insertions: current.insertions,
           deletions: current.deletions,
           fileChangeCount: current.files.length,
           subjectTokens: new Set(tokenize(current.subject)),
           fileTokens: new Set(tokenize(current.files.join(" "))),
           normalizedSubject: normalizeText(current.subject),
+          intentTags: rowIntentTags,
         });
       }
       const fields = line.slice(LOG_MARKER.length).split(LOG_FIELD_SEPARATOR);
@@ -183,18 +307,22 @@ function parseGitLogRows(raw: string): LineageCommitRow[] {
     current.files.push(line.trim());
   }
   if (current) {
+    const normalizedFiles = current.files.map((item) => normalizePath(item)).filter((item) => item.length > 0);
+    const rowIntentTags = inferIntentTags(`${current.subject} ${current.files.join(" ")}`);
     rows.push({
       commitId: current.commitId,
       author: current.author,
       timestamp: current.timestamp,
       subject: current.subject,
       files: [...current.files],
+      normalizedFiles,
       insertions: current.insertions,
       deletions: current.deletions,
       fileChangeCount: current.files.length,
       subjectTokens: new Set(tokenize(current.subject)),
       fileTokens: new Set(tokenize(current.files.join(" "))),
       normalizedSubject: normalizeText(current.subject),
+      intentTags: rowIntentTags,
     });
   }
   return rows;
@@ -236,6 +364,8 @@ function getCachedLineageRows(rootPath: string, maxCommits: number, cacheTtlMs: 
 function scoreLineageRow(
   row: LineageCommitRow,
   queryTokens: Set<string>,
+  queryIntentTags: Set<LineageIntentTag>,
+  queryPathHints: readonly string[],
   normalizedQuery: string,
   recencyIndex: number,
 ): number {
@@ -255,10 +385,28 @@ function scoreLineageRow(
       score += 1;
     }
   }
-  const recencyBonus = Math.max(0, 2 - recencyIndex * 0.02);
+  let intentOverlap = 0;
+  for (const tag of queryIntentTags) {
+    if (row.intentTags.has(tag)) {
+      intentOverlap += 1;
+    }
+  }
+  score += Math.min(5.6, intentOverlap * 2.2);
+  let pathOverlap = 0;
+  if (queryPathHints.length > 0 && row.normalizedFiles.length > 0) {
+    for (const queryPath of queryPathHints) {
+      if (row.normalizedFiles.some((rowPath) => isPathOverlap(queryPath, rowPath))) {
+        pathOverlap += 1;
+      }
+    }
+  }
+  score += Math.min(6, pathOverlap * 2.1);
+  const recencyBonus = 2.3 * Math.exp(-recencyIndex / 72);
   const changeMagnitude = row.insertions + row.deletions;
-  const changeBonus = Math.min(2, Math.log10(changeMagnitude + 1));
-  return score + recencyBonus + changeBonus;
+  const changeBonus = Math.min(2.4, Math.log10(changeMagnitude + 1));
+  const focusedChangeBonus = row.fileChangeCount > 0 && row.fileChangeCount <= 6 ? 0.6 : 0;
+  const broadChangePenalty = row.fileChangeCount >= 24 && pathOverlap === 0 ? -1 : 0;
+  return score + recencyBonus + changeBonus + focusedChangeBonus + broadChangePenalty;
 }
 
 function buildLineageSummary(row: LineageCommitRow): string {
@@ -275,7 +423,11 @@ function buildLineageSummary(row: LineageCommitRow): string {
   const changeStats = row.fileChangeCount > 0
     ? ` | delta: +${String(row.insertions)}/-${String(row.deletions)} in ${String(row.fileChangeCount)} files`
     : "";
-  return truncateSummary(`${row.subject}${changeStats} | files: ${filePreview.join(", ")}${fileSuffix}`);
+  const intentTags = Array.from(row.intentTags).slice(0, 2);
+  const intentSuffix = intentTags.length > 0
+    ? ` | intent: ${intentTags.join("/")}`
+    : "";
+  return truncateSummary(`${row.subject}${changeStats} | files: ${filePreview.join(", ")}${fileSuffix}${intentSuffix}`);
 }
 
 export function retrieveLineageSummaries(
@@ -309,11 +461,20 @@ export function retrieveLineageSummaries(
     return [];
   }
   const queryTokens = new Set(tokenize(query));
+  const queryIntentTags = inferIntentTags(query);
+  const queryPathHints = extractPathHints(query);
   const normalizedQuery = normalizeText(query);
   const ranked = rows
     .map((row, index) => ({
       row,
-      score: scoreLineageRow(row, queryTokens, normalizedQuery, index),
+      score: scoreLineageRow(
+        row,
+        queryTokens,
+        queryIntentTags,
+        queryPathHints,
+        normalizedQuery,
+        index,
+      ),
       index,
     }))
     .filter((item) => item.score > 0)

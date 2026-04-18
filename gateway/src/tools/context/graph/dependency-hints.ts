@@ -309,6 +309,35 @@ function countPathTokenMatches(path: string, queryTokens: ReadonlySet<string>): 
   return matched;
 }
 
+function shouldPreferDeepChains(queryTokens: ReadonlySet<string>): boolean {
+  if (queryTokens.size === 0) {
+    return false;
+  }
+  const deepTokens = new Set([
+    "trace",
+    "chain",
+    "call",
+    "flow",
+    "pipeline",
+    "path",
+    "route",
+    "link",
+    "lineage",
+    "dependency",
+    "依赖",
+    "链路",
+    "调用",
+    "路径",
+    "追踪",
+  ]);
+  for (const token of queryTokens) {
+    if (deepTokens.has(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildLocalAdjacency(
   edges: readonly DependencyEdge[],
 ): {
@@ -380,6 +409,9 @@ function buildMultiHopDependencyRows(args: {
   reverse: ReadonlyMap<string, readonly string[]>;
   changedPathSet: ReadonlySet<string>;
 }): Array<{ line: string; score: number }> {
+  const maxDepth = shouldPreferDeepChains(args.queryTokens) ? 4 : 3;
+  const maxBranchesPerStep = 4;
+  const maxChainCandidates = MAX_QUERY_CACHE_ROWS * 4;
   const degree = new Map<string, number>();
   const accumulateDegree = (map: ReadonlyMap<string, readonly string[]>): void => {
     for (const [key, values] of map.entries()) {
@@ -411,43 +443,115 @@ function buildMultiHopDependencyRows(args: {
     const bridgeNodes = uniqueNodes.slice(1, Math.max(1, uniqueNodes.length - 1));
     const centrality = bridgeNodes.reduce((acc, node) => acc + (degree.get(node) ?? 0), 0);
     score += Math.min(3, centrality * 0.25);
+    let changedTransitions = 0;
+    for (let index = 0; index < nodes.length - 1; index += 1) {
+      const left = nodes[index]?.toLowerCase() ?? "";
+      const right = nodes[index + 1]?.toLowerCase() ?? "";
+      if (!left || !right) {
+        continue;
+      }
+      if (args.changedPathSet.has(left) || args.changedPathSet.has(right)) {
+        changedTransitions += 1;
+      }
+    }
+    score += Math.min(2.5, changedTransitions * 0.7);
+    if (uniqueNodes.length >= 4) {
+      score += 0.9;
+    }
     return score;
   };
-  const pushChain = (nodes: string[]): void => {
+  const pushChain = (nodes: string[]): boolean => {
     if (nodes.length < 2) {
-      return;
+      return false;
     }
     if (new Set(nodes).size !== nodes.length) {
-      return;
+      return false;
     }
     const line = nodes.join(" -> ");
     if (seen.has(line)) {
-      return;
+      return false;
     }
     seen.add(line);
     rows.push({
       line,
       score: scoreChain(nodes),
     });
+    return rows.length >= maxChainCandidates;
+  };
+  const sortNodesByPriority = (nodes: readonly string[]): string[] =>
+    [...nodes].sort((left, right) => {
+      const leftTokenScore = countPathTokenMatches(left, args.queryTokens);
+      const rightTokenScore = countPathTokenMatches(right, args.queryTokens);
+      if (leftTokenScore !== rightTokenScore) {
+        return rightTokenScore - leftTokenScore;
+      }
+      const leftChanged = args.changedPathSet.has(left.toLowerCase()) ? 1 : 0;
+      const rightChanged = args.changedPathSet.has(right.toLowerCase()) ? 1 : 0;
+      if (leftChanged !== rightChanged) {
+        return rightChanged - leftChanged;
+      }
+      const leftDegree = degree.get(left) ?? 0;
+      const rightDegree = degree.get(right) ?? 0;
+      if (leftDegree !== rightDegree) {
+        return rightDegree - leftDegree;
+      }
+      return left.localeCompare(right);
+    });
+  const collectForwardChains = (seed: string): string[][] => {
+    const output: string[][] = [];
+    const walk = (path: string[]): void => {
+      if (path.length >= 2) {
+        output.push([...path]);
+      }
+      if (path.length >= maxDepth || output.length >= maxChainCandidates) {
+        return;
+      }
+      const current = path[path.length - 1];
+      if (!current) {
+        return;
+      }
+      const neighbors = sortNodesByPriority(args.forward.get(current) ?? [])
+        .filter((next) => !path.includes(next))
+        .slice(0, maxBranchesPerStep);
+      for (const next of neighbors) {
+        walk([...path, next]);
+      }
+    };
+    walk([seed]);
+    return output;
   };
   for (const seed of args.seeds) {
-    const forwardLevel1 = args.forward.get(seed) ?? [];
-    const reverseLevel1 = args.reverse.get(seed) ?? [];
-    for (const next of forwardLevel1) {
-      pushChain([seed, next]);
-      const forwardLevel2 = args.forward.get(next) ?? [];
-      for (const next2 of forwardLevel2) {
-        pushChain([seed, next, next2]);
+    const forwardChains = collectForwardChains(seed);
+    for (const chain of forwardChains) {
+      if (pushChain(chain)) {
+        break;
       }
     }
+    if (rows.length >= maxChainCandidates) {
+      break;
+    }
+    const reverseLevel1 = sortNodesByPriority(args.reverse.get(seed) ?? [])
+      .slice(0, maxBranchesPerStep);
     for (const prev of reverseLevel1) {
-      pushChain([prev, seed]);
-      for (const next of forwardLevel1) {
-        if (next === prev) {
+      if (pushChain([prev, seed])) {
+        break;
+      }
+      for (const chain of forwardChains) {
+        if (chain.includes(prev)) {
           continue;
         }
-        pushChain([prev, seed, next]);
+        const merged = [prev, ...chain];
+        const limited = merged.slice(0, maxDepth);
+        if (pushChain(limited)) {
+          break;
+        }
       }
+      if (rows.length >= maxChainCandidates) {
+        break;
+      }
+    }
+    if (rows.length >= maxChainCandidates) {
+      break;
     }
   }
   return rows
