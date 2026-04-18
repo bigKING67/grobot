@@ -175,6 +175,54 @@ function tokenizeForGraphFusion(raw: string): string[] {
     .filter((item) => item.length >= 2);
 }
 
+function hasDeepChainIntent(queryTokens: ReadonlySet<string>): boolean {
+  if (queryTokens.size === 0) {
+    return false;
+  }
+  const deepTokens = new Set([
+    "trace",
+    "chain",
+    "call",
+    "flow",
+    "path",
+    "route",
+    "lineage",
+    "dependency",
+    "依赖",
+    "链路",
+    "调用",
+    "路径",
+    "追踪",
+  ]);
+  for (const token of queryTokens) {
+    if (deepTokens.has(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function parseMetricValue(row: string, key: string): number {
+  const match = row.match(new RegExp(`\\b${key}=(\\d+)\\b`, "i"));
+  if (!match) {
+    return 0;
+  }
+  const parsed = Number.parseInt(match[1] ?? "0", 10);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, parsed);
+}
+
+function parseDependencyDepth(row: string): number {
+  const depth = row
+    .split("->")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .length;
+  return Math.max(0, depth);
+}
+
 function normalizePathHint(raw: string): string {
   return raw
     .trim()
@@ -276,6 +324,10 @@ interface GraphFusionRow {
   tokens: Set<string>;
   paths: Set<string>;
   pathList: string[];
+  dependencyDepth: number;
+  symbolRefs: number;
+  symbolBridge: number;
+  symbolBreadth: number;
 }
 
 function buildGraphFusionRows(
@@ -285,6 +337,18 @@ function buildGraphFusionRows(
   return rows.map((row, index) => {
     const normalized = row.trim();
     const paths = extractPathHints(normalized).map((item) => normalizePathHint(item).toLowerCase());
+    const dependencyDepth = source === "dependency"
+      ? parseDependencyDepth(normalized)
+      : 0;
+    const symbolRefs = source === "symbol"
+      ? parseMetricValue(normalized, "refs")
+      : 0;
+    const symbolBridge = source === "symbol"
+      ? parseMetricValue(normalized, "bridge")
+      : 0;
+    const symbolBreadth = source === "symbol"
+      ? parseMetricValue(normalized, "breadth")
+      : 0;
     return {
       row: normalized,
       source,
@@ -292,6 +356,10 @@ function buildGraphFusionRows(
       tokens: new Set(tokenizeForGraphFusion(normalized)),
       paths: new Set(paths),
       pathList: paths,
+      dependencyDepth,
+      symbolRefs,
+      symbolBridge,
+      symbolBreadth,
     };
   }).filter((row) => row.row.length > 0);
 }
@@ -319,6 +387,7 @@ function fuseGraphHints(args: {
   }
   const allRows = [...dependency, ...symbol];
   const queryTokens = new Set(tokenizeForGraphFusion(args.query));
+  const deepChainIntent = hasDeepChainIntent(queryTokens);
   const lineagePathSet = new Set(collectNormalizedPathHints(args.lineageRows ?? []));
   const workspacePathSet = new Set(collectNormalizedPathHints(args.workspaceRows ?? []));
   const changedPathSet = new Set(
@@ -357,6 +426,22 @@ function fuseGraphHints(args: {
     score += Math.min(3, overlapCount * 1.2);
     if (row.source === "symbol" && /\brefs=\d+\b/i.test(row.row)) {
       score += 0.8;
+    }
+    if (row.source === "dependency") {
+      score += Math.min(4, Math.max(0, row.dependencyDepth - 1) * 0.95);
+      if (deepChainIntent) {
+        score += Math.min(3.2, Math.max(0, row.dependencyDepth - 2) * 1.2);
+        if (row.dependencyDepth <= 2) {
+          score -= 0.4;
+        }
+      }
+    } else {
+      score += Math.min(3.2, row.symbolBridge * 0.85);
+      score += Math.min(2.6, row.symbolBreadth * 0.65);
+      score += Math.min(2.8, row.symbolRefs * 0.38);
+      if (deepChainIntent && row.symbolBridge <= 0) {
+        score -= 0.3;
+      }
     }
     const lineageOverlap = countPathSetOverlap(row.paths, lineagePathSet);
     if (lineageOverlap > 0) {
