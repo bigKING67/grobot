@@ -333,6 +333,8 @@ function runStartMessageSmoke(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "start-message-smoke-user",
     "--no-shadow-mode",
     "--message",
     "ts rust execution smoke",
@@ -367,6 +369,8 @@ function runStartMessageProviderConfigTsRust(
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "provider-config-smoke-user",
     "--no-shadow-mode",
     "--message",
     "provider config passthrough smoke",
@@ -442,6 +446,78 @@ function runStartInteractiveSessionFlow(repoRoot) {
   };
 }
 
+function runStartBareInteractiveSessionFlow(repoRoot) {
+  const workDir = createTempDir("grobot-bare-start-work");
+  const homeDir = createTempDir("grobot-bare-start-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commandResult = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "bare-command-user",
+      "--history-turns",
+      "8",
+    ],
+    null,
+    ["/status", "/exit", ""].join("\n"),
+  );
+  const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
+  return {
+    ...commandResult,
+    has_start_banner: outputText.includes("Grobot started"),
+    has_status_snapshot: outputText.includes("[status]"),
+    has_command_hint: outputText.includes("Enter message ("),
+    has_prompt_prefix: outputText.includes("grobot> "),
+    has_no_unsupported_command_error: outputText.includes("unsupported command for ts-dev-cli") === false,
+  };
+}
+
+function runStartImOnlyRejectFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-im-only-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commandResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--message",
+    "start im-only guard should reject local no-context invocation",
+  ]);
+  const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
+  return {
+    ...commandResult,
+    has_im_only_error: outputText.includes("`grobot start` is IM-only"),
+    has_im_only_hint_context: outputText.includes(
+      "pass one of --platform/--tenant/--session-scope/--session-subject",
+    ),
+    has_im_only_hint_bare: outputText.includes("run `grobot` (no subcommand)"),
+    has_start_banner: outputText.includes("Grobot started"),
+  };
+}
+
 function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
   const workDir = createTempDir("grobot-start-work");
   const homeDir = createTempDir("grobot-start-home");
@@ -472,7 +548,19 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
       "8",
     ],
     null,
-    ["/new", "/switch", "/continue", "/sessions", "/exit", ""].join("\n"),
+    [
+      "/new",
+      "/switch",
+      "/continue",
+      "/sessions",
+      "/status",
+      "/status theme nerd",
+      "/status layout compact",
+      "/status segment tokens off",
+      "/status current",
+      "/exit",
+      "",
+    ].join("\n"),
   );
   const namespaceKey = `feishu:grobot:dm:${subject}`;
   const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
@@ -488,6 +576,13 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
     has_sessions_overview: outputText.includes("Session namespace:"),
     has_session_title_main: outputText.includes("Main Session"),
     has_session_title_untitled: outputText.includes("Untitled Session"),
+    has_status_snapshot: outputText.includes("[status]"),
+    has_status_theme_set: outputText.includes("[status] theme set to nerd_font"),
+    has_status_layout_set: outputText.includes("[status] layout_mode set to compact"),
+    has_status_tokens_off: outputText.includes("[status] segment tokens off"),
+    has_status_theme_current: outputText.includes("theme: nerd_font"),
+    has_status_layout_current: outputText.includes("layout_mode: compact"),
+    has_status_tokens_current_off: outputText.includes("tokens=off"),
   };
 }
 
@@ -953,6 +1048,8 @@ function runFailoverRejectsPython(repoRoot) {
     "python",
     "--runtime-impl",
     "python",
+    "--session-subject",
+    "failover-reject-user",
     "--message",
     "legacy path should be rejected",
   ]);
@@ -974,6 +1071,8 @@ function runFailoverTsRust(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "failover-ts-rust-user",
     "--no-shadow-mode",
     "--provider",
     "failing",
@@ -1299,6 +1398,30 @@ function runStatusTsRust(repoRoot, windowSize) {
   const contextGraphCacheWindowDegradation = isObject(contextGraphCacheWindow?.degradation)
     ? contextGraphCacheWindow.degradation
     : null;
+  const contextPersistentGraphIndex = isObject(parsedStatus?.context_persistent_graph_index)
+    ? parsedStatus.context_persistent_graph_index
+    : null;
+  const contextPersistentGraphIndexLastRefresh = isObject(contextPersistentGraphIndex?.last_refresh)
+    ? contextPersistentGraphIndex.last_refresh
+    : null;
+  const contextPersistentGraphIndexWindow = isObject(contextPersistentGraphIndex?.window)
+    ? contextPersistentGraphIndex.window
+    : null;
+  const contextPersistentGraphIndexWindowModeCounts = isObject(contextPersistentGraphIndexWindow?.mode_counts)
+    ? contextPersistentGraphIndexWindow.mode_counts
+    : null;
+  const contextPersistentGraphIndexWindowTotals = isObject(contextPersistentGraphIndexWindow?.totals)
+    ? contextPersistentGraphIndexWindow.totals
+    : null;
+  const contextPersistentGraphIndexWindowRates = isObject(contextPersistentGraphIndexWindow?.rates)
+    ? contextPersistentGraphIndexWindow.rates
+    : null;
+  const contextPersistentGraphIndexWindowLatest = isObject(contextPersistentGraphIndexWindow?.latest)
+    ? contextPersistentGraphIndexWindow.latest
+    : null;
+  const contextPersistentGraphIndexDegradation = isObject(contextPersistentGraphIndex?.degradation)
+    ? contextPersistentGraphIndex.degradation
+    : null;
   const contextEngine = isObject(parsedStatus?.context_engine)
     ? parsedStatus.context_engine
     : null;
@@ -1373,6 +1496,17 @@ function runStatusTsRust(repoRoot, windowSize) {
     contextEnginePromptQualityGuardAdaptivePolicy?.window,
   )
     ? contextEnginePromptQualityGuardAdaptivePolicy.window
+    : null;
+  const contextEngineGraphQualitySignals = isObject(contextEngine?.graph_quality_signals)
+    ? contextEngine.graph_quality_signals
+    : null;
+  const contextEngineGraphQualitySignalsCombined = isObject(contextEngineGraphQualitySignals?.combined)
+    ? contextEngineGraphQualitySignals.combined
+    : null;
+  const contextEngineGraphQualitySignalsCombinedDegradedSources = Array.isArray(
+    contextEngineGraphQualitySignalsCombined?.degraded_sources,
+  )
+    ? contextEngineGraphQualitySignalsCombined.degraded_sources
     : null;
   const contextEngineLineage = isObject(contextEngine?.lineage)
     ? contextEngine.lineage
@@ -1474,6 +1608,28 @@ function runStatusTsRust(repoRoot, windowSize) {
       contextGraphCacheAutotuneState?.updated_at === null
         ? "null"
         : typeof contextGraphCacheAutotuneState?.updated_at,
+    status_context_graph_cache_autotune_state_adaptive_cache_threshold_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_cache_query_hit_rate_threshold,
+    status_context_graph_cache_autotune_state_adaptive_parsed_max_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_persistent_parsed_per_scanned_max,
+    status_context_graph_cache_autotune_state_adaptive_reused_min_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_persistent_reused_per_scanned_min,
+    status_context_graph_cache_autotune_state_adaptive_removed_max_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_persistent_removed_per_scanned_max,
+    status_context_graph_cache_autotune_state_adaptive_alpha_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_learn_alpha,
+    status_context_graph_cache_autotune_state_adaptive_updates_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_updates,
+    status_context_graph_cache_autotune_state_adaptive_source_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_source,
+    status_context_graph_cache_autotune_state_adaptive_action_scale_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_action_scale,
+    status_context_graph_cache_autotune_state_adaptive_action_updates_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_action_updates,
+    status_context_graph_cache_autotune_state_adaptive_action_source_type:
+      typeof contextGraphCacheAutotuneState?.adaptive_action_source,
+    status_context_graph_cache_autotune_state_persistence_domain_type:
+      typeof contextGraphCacheAutotuneState?.persistence_domain,
     status_has_context_graph_cache_window: Boolean(contextGraphCacheWindow),
     status_context_graph_cache_window_path_type: typeof contextGraphCacheWindow?.path,
     status_context_graph_cache_window_configured_size_type: typeof contextGraphCacheWindow?.configured_size,
@@ -1544,6 +1700,103 @@ function runStatusTsRust(repoRoot, windowSize) {
       contextGraphCacheWindowDegradation?.observed_query_hit_rate === null
         ? "null"
         : typeof contextGraphCacheWindowDegradation?.observed_query_hit_rate,
+    status_has_context_persistent_graph_index: Boolean(contextPersistentGraphIndex),
+    status_context_persistent_graph_index_enabled_type: typeof contextPersistentGraphIndex?.enabled,
+    status_context_persistent_graph_index_root_path_type: typeof contextPersistentGraphIndex?.root_path,
+    status_context_persistent_graph_index_index_path_type: typeof contextPersistentGraphIndex?.index_path,
+    status_context_persistent_graph_index_updated_at_type:
+      contextPersistentGraphIndex?.updated_at === null
+        ? "null"
+        : typeof contextPersistentGraphIndex?.updated_at,
+    status_context_persistent_graph_index_file_count_type: typeof contextPersistentGraphIndex?.file_count,
+    status_context_persistent_graph_index_symbol_count_type: typeof contextPersistentGraphIndex?.symbol_count,
+    status_context_persistent_graph_index_edge_count_type: typeof contextPersistentGraphIndex?.edge_count,
+    status_context_persistent_graph_index_has_last_refresh: Boolean(contextPersistentGraphIndexLastRefresh),
+    status_context_persistent_graph_index_last_refresh_mode_type:
+      typeof contextPersistentGraphIndexLastRefresh?.mode,
+    status_context_persistent_graph_index_last_refresh_parsed_files_type:
+      typeof contextPersistentGraphIndexLastRefresh?.parsed_files,
+    status_context_persistent_graph_index_last_refresh_reused_files_type:
+      typeof contextPersistentGraphIndexLastRefresh?.reused_files,
+    status_context_persistent_graph_index_last_refresh_removed_files_type:
+      typeof contextPersistentGraphIndexLastRefresh?.removed_files,
+    status_context_persistent_graph_index_has_window: Boolean(contextPersistentGraphIndexWindow),
+    status_context_persistent_graph_index_window_path_type:
+      typeof contextPersistentGraphIndexWindow?.path,
+    status_context_persistent_graph_index_window_configured_size_type:
+      typeof contextPersistentGraphIndexWindow?.configured_size,
+    status_context_persistent_graph_index_window_configured_size_value:
+      typeof contextPersistentGraphIndexWindow?.configured_size === "number"
+        ? contextPersistentGraphIndexWindow.configured_size
+        : null,
+    status_context_persistent_graph_index_window_entries_type:
+      typeof contextPersistentGraphIndexWindow?.entries,
+    status_context_persistent_graph_index_window_from_ts_type:
+      contextPersistentGraphIndexWindow?.from_ts === null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindow?.from_ts,
+    status_context_persistent_graph_index_window_to_ts_type:
+      contextPersistentGraphIndexWindow?.to_ts === null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindow?.to_ts,
+    status_context_persistent_graph_index_window_mode_counts_incremental_type:
+      typeof contextPersistentGraphIndexWindowModeCounts?.incremental,
+    status_context_persistent_graph_index_window_totals_parsed_files_type:
+      typeof contextPersistentGraphIndexWindowTotals?.parsed_files,
+    status_context_persistent_graph_index_window_totals_reused_files_type:
+      typeof contextPersistentGraphIndexWindowTotals?.reused_files,
+    status_context_persistent_graph_index_window_rates_parsed_per_scanned_type:
+      contextPersistentGraphIndexWindowRates?.parsed_per_scanned === null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindowRates?.parsed_per_scanned,
+    status_context_persistent_graph_index_window_rates_reused_per_scanned_type:
+      contextPersistentGraphIndexWindowRates?.reused_per_scanned === null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindowRates?.reused_per_scanned,
+    status_context_persistent_graph_index_window_rates_removed_per_scanned_type:
+      contextPersistentGraphIndexWindowRates?.removed_per_scanned === null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindowRates?.removed_per_scanned,
+    status_context_persistent_graph_index_window_has_latest:
+      contextPersistentGraphIndexWindow?.latest === null
+        ? true
+        : Boolean(contextPersistentGraphIndexWindowLatest),
+    status_context_persistent_graph_index_window_latest_mode_type:
+      contextPersistentGraphIndexWindowLatest == null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindowLatest?.mode,
+    status_context_persistent_graph_index_window_latest_parsed_files_type:
+      contextPersistentGraphIndexWindowLatest == null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindowLatest?.parsed_files,
+    status_context_persistent_graph_index_window_latest_file_count_type:
+      contextPersistentGraphIndexWindowLatest == null
+        ? "null"
+        : typeof contextPersistentGraphIndexWindowLatest?.file_count,
+    status_context_persistent_graph_index_has_degradation:
+      Boolean(contextPersistentGraphIndexDegradation),
+    status_context_persistent_graph_index_degradation_degraded_type:
+      typeof contextPersistentGraphIndexDegradation?.degraded,
+    status_context_persistent_graph_index_degradation_reason_type:
+      typeof contextPersistentGraphIndexDegradation?.reason,
+    status_context_persistent_graph_index_degradation_threshold_parsed_type:
+      typeof contextPersistentGraphIndexDegradation?.threshold_parsed_per_scanned_max,
+    status_context_persistent_graph_index_degradation_threshold_reused_type:
+      typeof contextPersistentGraphIndexDegradation?.threshold_reused_per_scanned_min,
+    status_context_persistent_graph_index_degradation_threshold_removed_type:
+      typeof contextPersistentGraphIndexDegradation?.threshold_removed_per_scanned_max,
+    status_context_persistent_graph_index_degradation_observed_parsed_type:
+      contextPersistentGraphIndexDegradation?.observed_parsed_per_scanned === null
+        ? "null"
+        : typeof contextPersistentGraphIndexDegradation?.observed_parsed_per_scanned,
+    status_context_persistent_graph_index_degradation_observed_reused_type:
+      contextPersistentGraphIndexDegradation?.observed_reused_per_scanned === null
+        ? "null"
+        : typeof contextPersistentGraphIndexDegradation?.observed_reused_per_scanned,
+    status_context_persistent_graph_index_degradation_observed_removed_type:
+      contextPersistentGraphIndexDegradation?.observed_removed_per_scanned === null
+        ? "null"
+        : typeof contextPersistentGraphIndexDegradation?.observed_removed_per_scanned,
     status_has_context_engine: Boolean(contextEngine),
     status_context_engine_enabled_type: typeof contextEngine?.enabled,
     status_context_engine_profile_type: typeof contextEngine?.profile,
@@ -1626,6 +1879,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       Array.isArray(contextEnginePromptQualityGuardState?.outcome_drift_recent_auto_action_levels)
         ? "array"
         : typeof contextEnginePromptQualityGuardState?.outcome_drift_recent_auto_action_levels,
+    status_context_engine_prompt_quality_guard_state_persistence_domain_type:
+      typeof contextEnginePromptQualityGuardState?.persistence_domain,
     status_context_engine_has_prompt_quality_guard_runtime_assessment:
       Boolean(contextEnginePromptQualityGuardRuntimeAssessment),
     status_context_engine_prompt_quality_guard_runtime_assessment_enabled_type:
@@ -1879,6 +2134,17 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_context_engine_lineage_enabled_type: typeof contextEngineLineage?.enabled,
     status_context_engine_workspace_signals_enabled_type: typeof contextEngineWorkspaceSignals?.enabled,
     status_context_engine_has_prompt_quality_window: Boolean(promptQualityWindow),
+    status_context_engine_has_graph_quality_signals: Boolean(contextEngineGraphQualitySignals),
+    status_context_engine_graph_quality_combined_state_type:
+      typeof contextEngineGraphQualitySignalsCombined?.state,
+    status_context_engine_graph_quality_combined_reason_type:
+      typeof contextEngineGraphQualitySignalsCombined?.reason,
+    status_context_engine_graph_quality_combined_recommended_action_type:
+      typeof contextEngineGraphQualitySignalsCombined?.recommended_action,
+    status_context_engine_graph_quality_combined_degraded_sources_type:
+      Array.isArray(contextEngineGraphQualitySignalsCombinedDegradedSources)
+        ? "array"
+        : typeof contextEngineGraphQualitySignalsCombinedDegradedSources,
     status_context_engine_prompt_quality_window_path_type: typeof promptQualityWindow?.path,
     status_context_engine_prompt_quality_window_configured_size_type: typeof promptQualityWindow?.configured_size,
     status_context_engine_prompt_quality_window_entries_type: typeof promptQualityWindow?.entries,
@@ -2094,6 +2360,8 @@ function runStartContextPreSendHeadTrimFlow(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "pretrim-quality-user",
     "--history-turns",
     "8",
     "--message",
@@ -2224,6 +2492,8 @@ function runStartContextQualityGuardFlow(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "quality-guard-user",
     "--history-turns",
     "8",
     "--message",
@@ -2245,30 +2515,119 @@ function runStartContextQualityGuardFlow(repoRoot) {
   };
 }
 
+function extractGraphAutotuneTelemetry(stderr) {
+  const graphAutotuneEvent = stderr.match(
+    /event=graph_quality_autotune action=([a-z_]+) reason=([a-z_+]+) suppressed=([a-z_]+) dep_rows=(\d+)->(\d+) symbol_rows=(\d+)->(\d+) entries=(\d+) quality_entries=(\d+)/,
+  );
+  const graphAutotuneAdaptiveEvent = stderr.match(
+    /adaptive_threshold_source=([a-z_]+) adaptive_updated=(true|false) adaptive_alpha=([0-9.]+) adaptive_updates=(\d+) adaptive_thresholds=([0-9.]+)\/([0-9.]+)\/([0-9.]+)\/([0-9.]+)/,
+  );
+  const graphAutotuneAdaptiveActionEvent = stderr.match(
+    /adaptive_action_source=([a-z_]+) adaptive_action_updated=(true|false) adaptive_action_scale=([0-9.]+) adaptive_action_updates=(\d+)/,
+  );
+  return {
+    graph_autotune_seen: Boolean(graphAutotuneEvent),
+    graph_autotune_action: graphAutotuneEvent?.[1] ?? "",
+    graph_autotune_reason: graphAutotuneEvent?.[2] ?? "",
+    graph_autotune_suppressed: graphAutotuneEvent?.[3] ?? "",
+    graph_autotune_dep_rows_from: Number.parseInt(graphAutotuneEvent?.[4] ?? "0", 10),
+    graph_autotune_dep_rows_to: Number.parseInt(graphAutotuneEvent?.[5] ?? "0", 10),
+    graph_autotune_symbol_rows_from: Number.parseInt(graphAutotuneEvent?.[6] ?? "0", 10),
+    graph_autotune_symbol_rows_to: Number.parseInt(graphAutotuneEvent?.[7] ?? "0", 10),
+    graph_autotune_entries: Number.parseInt(graphAutotuneEvent?.[8] ?? "0", 10),
+    graph_autotune_quality_entries: Number.parseInt(graphAutotuneEvent?.[9] ?? "0", 10),
+    graph_autotune_adaptive_source: graphAutotuneAdaptiveEvent?.[1] ?? "",
+    graph_autotune_adaptive_updated: graphAutotuneAdaptiveEvent?.[2] ?? "",
+    graph_autotune_adaptive_alpha: Number.parseFloat(graphAutotuneAdaptiveEvent?.[3] ?? "0"),
+    graph_autotune_adaptive_updates: Number.parseInt(graphAutotuneAdaptiveEvent?.[4] ?? "0", 10),
+    graph_autotune_adaptive_cache_threshold:
+      Number.parseFloat(graphAutotuneAdaptiveEvent?.[5] ?? "0"),
+    graph_autotune_adaptive_parsed_max:
+      Number.parseFloat(graphAutotuneAdaptiveEvent?.[6] ?? "0"),
+    graph_autotune_adaptive_reused_min:
+      Number.parseFloat(graphAutotuneAdaptiveEvent?.[7] ?? "0"),
+    graph_autotune_adaptive_removed_max:
+      Number.parseFloat(graphAutotuneAdaptiveEvent?.[8] ?? "0"),
+    graph_autotune_adaptive_action_source: graphAutotuneAdaptiveActionEvent?.[1] ?? "",
+    graph_autotune_adaptive_action_updated: graphAutotuneAdaptiveActionEvent?.[2] ?? "",
+    graph_autotune_adaptive_action_scale:
+      Number.parseFloat(graphAutotuneAdaptiveActionEvent?.[3] ?? "0"),
+    graph_autotune_adaptive_action_updates:
+      Number.parseInt(graphAutotuneAdaptiveActionEvent?.[4] ?? "0", 10),
+  };
+}
+
+function writeGraphAutotuneSeedRows(seedPath, input) {
+  const seedNowMs = Date.now();
+  const rows = [0, 1].map((index) => ({
+    ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
+    sessionKey: input.sessionKey,
+    stage: "normal",
+    selectionReason: "seed",
+    delta: {
+      symbolQuery: { hit: input.queryHit, miss: input.queryMiss, write: 0, evict: 0 },
+      symbolDeclaration: { hit: input.queryHit, miss: input.queryMiss, write: 0, evict: 0 },
+      dependencyQuery: { hit: input.queryHit, miss: input.queryMiss, write: 0, evict: 0 },
+      dependencyImport: { hit: input.queryHit, miss: input.queryMiss, write: 0, evict: 0 },
+    },
+    total: {
+      symbolQuery: {
+        hit: input.queryHit + index,
+        miss: input.queryMiss + 1,
+        write: 1,
+        evict: 0,
+      },
+      symbolDeclaration: {
+        hit: input.queryHit + index,
+        miss: input.queryMiss + 1,
+        write: 1,
+        evict: 0,
+      },
+      dependencyQuery: {
+        hit: input.queryHit + index,
+        miss: input.queryMiss + 1,
+        write: 1,
+        evict: 0,
+      },
+      dependencyImport: {
+        hit: input.queryHit + index,
+        miss: input.queryMiss + 1,
+        write: 1,
+        evict: 0,
+      },
+    },
+    quality: {
+      dependency: {
+        rows: input.quality.dependency.rows,
+        multiHopRows: input.quality.dependency.multiHopRows,
+        depth4PlusRows: input.quality.dependency.depth4PlusRows,
+        maxChainDepth: input.quality.dependency.maxChainDepth,
+      },
+      symbol: {
+        rows: input.quality.symbol.rows,
+        rowsWithBridge: input.quality.symbol.rowsWithBridge,
+        rowsWithBreadth: input.quality.symbol.rowsWithBreadth,
+        bridgeTotal: input.quality.symbol.bridgeTotal,
+        breadthTotal: input.quality.symbol.breadthTotal,
+        refsTotal: input.quality.symbol.refsTotal,
+        refsCount: input.quality.symbol.refsCount,
+        maxRefs: input.quality.symbol.maxRefs,
+      },
+    },
+  }));
+  writeFileSync(seedPath, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
+}
+
 function runStartContextGraphQualityAutotuneFlow(repoRoot) {
   const workDir = createTempDir("grobot-start-graph-autotune-work");
   writeContextEngineGraphAutotuneProjectToml(workDir);
   const contextDir = `${workDir}/.grobot/context`;
   mkdirSync(contextDir, { recursive: true });
   const seedPath = `${contextDir}/graph-cache-window.jsonl`;
-  const seedNowMs = Date.now();
-  const seedRows = [0, 1].map((index) => ({
-    ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
+  writeGraphAutotuneSeedRows(seedPath, {
     sessionKey: "seed:graph-autotune",
-    stage: "normal",
-    selectionReason: "seed",
-    delta: {
-      symbolQuery: { hit: 1, miss: 0, write: 0, evict: 0 },
-      symbolDeclaration: { hit: 1, miss: 0, write: 0, evict: 0 },
-      dependencyQuery: { hit: 1, miss: 0, write: 0, evict: 0 },
-      dependencyImport: { hit: 1, miss: 0, write: 0, evict: 0 },
-    },
-    total: {
-      symbolQuery: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
-      symbolDeclaration: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
-      dependencyQuery: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
-      dependencyImport: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
-    },
+    queryHit: 1,
+    queryMiss: 0,
     quality: {
       dependency: {
         rows: 1,
@@ -2287,12 +2646,7 @@ function runStartContextGraphQualityAutotuneFlow(repoRoot) {
         maxRefs: 1,
       },
     },
-  }));
-  writeFileSync(
-    seedPath,
-    `${seedRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
-    "utf8",
-  );
+  });
   const config = writeConfig(buildSmokeConfig(workDir));
   const result = runCommand(repoRoot, [
     "./grobot",
@@ -2307,26 +2661,16 @@ function runStartContextGraphQualityAutotuneFlow(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "graph-autotune-user",
     "--history-turns",
     "6",
     "--message",
     "graph quality autotune should raise graph hint rows when evidence quality is poor",
   ]);
-  const graphAutotuneEvent = result.stderr.match(
-    /event=graph_quality_autotune action=([a-z_]+) reason=([a-z_+]+) suppressed=([a-z_]+) dep_rows=(\d+)->(\d+) symbol_rows=(\d+)->(\d+) entries=(\d+) quality_entries=(\d+)/,
-  );
   return {
     ...result,
-    graph_autotune_seen: Boolean(graphAutotuneEvent),
-    graph_autotune_action: graphAutotuneEvent?.[1] ?? "",
-    graph_autotune_reason: graphAutotuneEvent?.[2] ?? "",
-    graph_autotune_suppressed: graphAutotuneEvent?.[3] ?? "",
-    graph_autotune_dep_rows_from: Number.parseInt(graphAutotuneEvent?.[4] ?? "0", 10),
-    graph_autotune_dep_rows_to: Number.parseInt(graphAutotuneEvent?.[5] ?? "0", 10),
-    graph_autotune_symbol_rows_from: Number.parseInt(graphAutotuneEvent?.[6] ?? "0", 10),
-    graph_autotune_symbol_rows_to: Number.parseInt(graphAutotuneEvent?.[7] ?? "0", 10),
-    graph_autotune_entries: Number.parseInt(graphAutotuneEvent?.[8] ?? "0", 10),
-    graph_autotune_quality_entries: Number.parseInt(graphAutotuneEvent?.[9] ?? "0", 10),
+    ...extractGraphAutotuneTelemetry(result.stderr),
     seed_path: seedPath,
   };
 }
@@ -2335,28 +2679,17 @@ function runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot) {
   const workDir = createTempDir("grobot-start-graph-autotune-hysteresis-work");
   writeContextEngineGraphAutotuneProjectToml(workDir);
   const contextDir = `${workDir}/.grobot/context`;
+  const memoryContextEngineDir = `${workDir}/.grobot/memory/context-engine`;
   mkdirSync(contextDir, { recursive: true });
+  mkdirSync(memoryContextEngineDir, { recursive: true });
   const graphSeedPath = `${contextDir}/graph-cache-window.jsonl`;
   const promptSeedPath = `${contextDir}/prompt-quality-window.jsonl`;
-  const stateSeedPath = `${contextDir}/graph-quality-autotune-state.json`;
+  const stateSeedPath = `${memoryContextEngineDir}/graph-quality-autotune-state.json`;
   const seedNowMs = Date.now();
-  const graphRows = [0, 1].map((index) => ({
-    ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
+  writeGraphAutotuneSeedRows(graphSeedPath, {
     sessionKey: "seed:graph-autotune-hysteresis",
-    stage: "normal",
-    selectionReason: "seed",
-    delta: {
-      symbolQuery: { hit: 2, miss: 0, write: 0, evict: 0 },
-      symbolDeclaration: { hit: 2, miss: 0, write: 0, evict: 0 },
-      dependencyQuery: { hit: 2, miss: 0, write: 0, evict: 0 },
-      dependencyImport: { hit: 2, miss: 0, write: 0, evict: 0 },
-    },
-    total: {
-      symbolQuery: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
-      symbolDeclaration: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
-      dependencyQuery: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
-      dependencyImport: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
-    },
+    queryHit: 2,
+    queryMiss: 0,
     quality: {
       dependency: {
         rows: 4,
@@ -2375,7 +2708,7 @@ function runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot) {
         maxRefs: 8,
       },
     },
-  }));
+  });
   const promptRows = [0, 1].map((index) => ({
     ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
     sessionKey: "seed:graph-autotune-hysteresis",
@@ -2411,11 +2744,6 @@ function runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot) {
     updatedAt: new Date(seedNowMs - 3_000).toISOString(),
   };
   writeFileSync(
-    graphSeedPath,
-    `${graphRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
-    "utf8",
-  );
-  writeFileSync(
     promptSeedPath,
     `${promptRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
     "utf8",
@@ -2435,29 +2763,224 @@ function runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot) {
     "ts",
     "--runtime-impl",
     "rust",
+    "--session-subject",
+    "graph-autotune-hysteresis-user",
     "--history-turns",
     "6",
     "--message",
     "graph quality autotune hysteresis should suppress instant direction flip",
   ]);
-  const graphAutotuneEvent = result.stderr.match(
-    /event=graph_quality_autotune action=([a-z_]+) reason=([a-z_+]+) suppressed=([a-z_]+) dep_rows=(\d+)->(\d+) symbol_rows=(\d+)->(\d+) entries=(\d+) quality_entries=(\d+)/,
-  );
   return {
     ...result,
-    graph_autotune_seen: Boolean(graphAutotuneEvent),
-    graph_autotune_action: graphAutotuneEvent?.[1] ?? "",
-    graph_autotune_reason: graphAutotuneEvent?.[2] ?? "",
-    graph_autotune_suppressed: graphAutotuneEvent?.[3] ?? "",
-    graph_autotune_dep_rows_from: Number.parseInt(graphAutotuneEvent?.[4] ?? "0", 10),
-    graph_autotune_dep_rows_to: Number.parseInt(graphAutotuneEvent?.[5] ?? "0", 10),
-    graph_autotune_symbol_rows_from: Number.parseInt(graphAutotuneEvent?.[6] ?? "0", 10),
-    graph_autotune_symbol_rows_to: Number.parseInt(graphAutotuneEvent?.[7] ?? "0", 10),
-    graph_autotune_entries: Number.parseInt(graphAutotuneEvent?.[8] ?? "0", 10),
-    graph_autotune_quality_entries: Number.parseInt(graphAutotuneEvent?.[9] ?? "0", 10),
+    ...extractGraphAutotuneTelemetry(result.stderr),
     graph_seed_path: graphSeedPath,
     prompt_seed_path: promptSeedPath,
     state_seed_path: stateSeedPath,
+  };
+}
+
+function runStartContextGraphQualityAutotuneAdaptiveSequenceFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-graph-autotune-adaptive-seq-work");
+  writeContextEngineGraphAutotuneProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  const memoryContextEngineDir = `${workDir}/.grobot/memory/context-engine`;
+  mkdirSync(contextDir, { recursive: true });
+  mkdirSync(memoryContextEngineDir, { recursive: true });
+  const graphSeedPath = `${contextDir}/graph-cache-window.jsonl`;
+  const statePath = `${memoryContextEngineDir}/graph-quality-autotune-state.json`;
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const runTurn = (message) => runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "graph-autotune-adaptive-seq-user",
+    "--history-turns",
+    "6",
+    "--message",
+    message,
+  ]);
+  const readAdaptiveSnapshot = (raw) => {
+    if (!isObject(raw)) {
+      return {
+        present: false,
+        adaptive_updates: 0,
+        adaptive_cache_threshold: null,
+        adaptive_alpha: null,
+        adaptive_source: "",
+        adaptive_action_scale: null,
+        adaptive_action_updates: 0,
+        adaptive_action_source: "",
+      };
+    }
+    return {
+      present: true,
+      adaptive_updates: Number.isFinite(raw.adaptiveUpdates) ? Number(raw.adaptiveUpdates) : 0,
+      adaptive_cache_threshold:
+        Number.isFinite(raw.cacheDegradeQueryHitRateThreshold)
+          ? Number(raw.cacheDegradeQueryHitRateThreshold)
+          : null,
+      adaptive_alpha: Number.isFinite(raw.adaptiveLearnAlpha) ? Number(raw.adaptiveLearnAlpha) : null,
+      adaptive_source: typeof raw.adaptiveSource === "string" ? raw.adaptiveSource : "",
+      adaptive_action_scale: Number.isFinite(raw.adaptiveActionScale)
+        ? Number(raw.adaptiveActionScale)
+        : null,
+      adaptive_action_updates: Number.isFinite(raw.adaptiveActionUpdates)
+        ? Number(raw.adaptiveActionUpdates)
+        : 0,
+      adaptive_action_source: typeof raw.adaptiveActionSource === "string"
+        ? raw.adaptiveActionSource
+        : "",
+    };
+  };
+
+  writeGraphAutotuneSeedRows(graphSeedPath, {
+    sessionKey: "seed:graph-autotune-adaptive-seq-high",
+    queryHit: 18,
+    queryMiss: 2,
+    quality: {
+      dependency: {
+        rows: 4,
+        multiHopRows: 3,
+        depth4PlusRows: 2,
+        maxChainDepth: 4,
+      },
+      symbol: {
+        rows: 4,
+        rowsWithBridge: 4,
+        rowsWithBreadth: 4,
+        bridgeTotal: 15,
+        breadthTotal: 12,
+        refsTotal: 20,
+        refsCount: 4,
+        maxRefs: 8,
+      },
+    },
+  });
+  const firstResult = runTurn(
+    "graph autotune adaptive sequence pass 1 should learn from high cache hit rate evidence",
+  );
+  const firstTelemetry = extractGraphAutotuneTelemetry(firstResult.stderr);
+  const firstState = readAdaptiveSnapshot(readJsonFileSafe(statePath));
+
+  writeGraphAutotuneSeedRows(graphSeedPath, {
+    sessionKey: "seed:graph-autotune-adaptive-seq-low",
+    queryHit: 2,
+    queryMiss: 18,
+    quality: {
+      dependency: {
+        rows: 1,
+        multiHopRows: 0,
+        depth4PlusRows: 0,
+        maxChainDepth: 1,
+      },
+      symbol: {
+        rows: 1,
+        rowsWithBridge: 0,
+        rowsWithBreadth: 0,
+        bridgeTotal: 0,
+        breadthTotal: 0,
+        refsTotal: 0.5,
+        refsCount: 1,
+        maxRefs: 1,
+      },
+    },
+  });
+  const secondResult = runTurn(
+    "graph autotune adaptive sequence pass 2 should adjust thresholds downward under low hit evidence",
+  );
+  const secondTelemetry = extractGraphAutotuneTelemetry(secondResult.stderr);
+  const secondState = readAdaptiveSnapshot(readJsonFileSafe(statePath));
+
+  writeGraphAutotuneSeedRows(graphSeedPath, {
+    sessionKey: "seed:graph-autotune-adaptive-seq-rebound",
+    queryHit: 14,
+    queryMiss: 3,
+    quality: {
+      dependency: {
+        rows: 3,
+        multiHopRows: 2,
+        depth4PlusRows: 1,
+        maxChainDepth: 3,
+      },
+      symbol: {
+        rows: 3,
+        rowsWithBridge: 2,
+        rowsWithBreadth: 3,
+        bridgeTotal: 8,
+        breadthTotal: 9,
+        refsTotal: 11,
+        refsCount: 3,
+        maxRefs: 5,
+      },
+    },
+  });
+  const thirdResult = runTurn(
+    "graph autotune adaptive sequence pass 3 should rebound smoothly without oscillation spike",
+  );
+  const thirdTelemetry = extractGraphAutotuneTelemetry(thirdResult.stderr);
+  const thirdState = readAdaptiveSnapshot(readJsonFileSafe(statePath));
+
+  const secondMinusFirstActionScale = (
+    Number.isFinite(secondState.adaptive_action_scale)
+    && Number.isFinite(firstState.adaptive_action_scale)
+  )
+    ? Number(secondState.adaptive_action_scale) - Number(firstState.adaptive_action_scale)
+    : null;
+  const thirdMinusSecondActionScale = (
+    Number.isFinite(thirdState.adaptive_action_scale)
+    && Number.isFinite(secondState.adaptive_action_scale)
+  )
+    ? Number(thirdState.adaptive_action_scale) - Number(secondState.adaptive_action_scale)
+    : null;
+
+  return {
+    first_exit_code: firstResult.exit_code,
+    second_exit_code: secondResult.exit_code,
+    third_exit_code: thirdResult.exit_code,
+    first_graph_autotune_seen: firstTelemetry.graph_autotune_seen,
+    second_graph_autotune_seen: secondTelemetry.graph_autotune_seen,
+    third_graph_autotune_seen: thirdTelemetry.graph_autotune_seen,
+    first_graph_autotune_adaptive_updated: firstTelemetry.graph_autotune_adaptive_updated,
+    second_graph_autotune_adaptive_updated: secondTelemetry.graph_autotune_adaptive_updated,
+    third_graph_autotune_adaptive_updated: thirdTelemetry.graph_autotune_adaptive_updated,
+    first_state_present: firstState.present,
+    second_state_present: secondState.present,
+    third_state_present: thirdState.present,
+    first_state_adaptive_updates: firstState.adaptive_updates,
+    second_state_adaptive_updates: secondState.adaptive_updates,
+    third_state_adaptive_updates: thirdState.adaptive_updates,
+    first_state_adaptive_cache_threshold: firstState.adaptive_cache_threshold,
+    second_state_adaptive_cache_threshold: secondState.adaptive_cache_threshold,
+    third_state_adaptive_cache_threshold: thirdState.adaptive_cache_threshold,
+    first_state_adaptive_alpha: firstState.adaptive_alpha,
+    second_state_adaptive_alpha: secondState.adaptive_alpha,
+    third_state_adaptive_alpha: thirdState.adaptive_alpha,
+    first_state_adaptive_source: firstState.adaptive_source,
+    second_state_adaptive_source: secondState.adaptive_source,
+    third_state_adaptive_source: thirdState.adaptive_source,
+    first_state_adaptive_action_scale: firstState.adaptive_action_scale,
+    second_state_adaptive_action_scale: secondState.adaptive_action_scale,
+    third_state_adaptive_action_scale: thirdState.adaptive_action_scale,
+    first_state_adaptive_action_updates: firstState.adaptive_action_updates,
+    second_state_adaptive_action_updates: secondState.adaptive_action_updates,
+    third_state_adaptive_action_updates: thirdState.adaptive_action_updates,
+    first_state_adaptive_action_source: firstState.adaptive_action_source,
+    second_state_adaptive_action_source: secondState.adaptive_action_source,
+    third_state_adaptive_action_source: thirdState.adaptive_action_source,
+    second_minus_first_action_scale: secondMinusFirstActionScale,
+    third_minus_second_action_scale: thirdMinusSecondActionScale,
+    state_path: statePath,
+    graph_seed_path: graphSeedPath,
   };
 }
 
@@ -2510,6 +3033,12 @@ function runCli(argv) {
       break;
     case "start-interactive-session-flow":
       payload = runStartInteractiveSessionFlow(repoRoot);
+      break;
+    case "start-bare-interactive-session-flow":
+      payload = runStartBareInteractiveSessionFlow(repoRoot);
+      break;
+    case "start-im-only-reject-flow":
+      payload = runStartImOnlyRejectFlow(repoRoot);
       break;
     case "start-interactive-session-commands-fallback-flow":
       payload = runStartInteractiveSessionCommandsFallbackFlow(repoRoot);
@@ -2572,6 +3101,9 @@ function runCli(argv) {
       break;
     case "start-context-graph-quality-autotune-hysteresis-flow":
       payload = runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot);
+      break;
+    case "start-context-graph-quality-autotune-adaptive-sequence-flow":
+      payload = runStartContextGraphQualityAutotuneAdaptiveSequenceFlow(repoRoot);
       break;
     case "status-ts-rust-deprecated-flag":
       payload = runStatusTsRustDeprecatedFlag(repoRoot);

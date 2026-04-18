@@ -136,19 +136,27 @@ cd /path/to/grobot
 ### 源码一键安装到终端命令
 
 ```bash
-# 安装到 ~/.grobot/bin/grobot，并尝试写入当前 shell profile 的 PATH
+# 推荐（与 claude/codex 一样：命令放 PATH，数据仍在 ~/.grobot）
 cd /path/to/grobot
-bash scripts/install-local.sh
+bash scripts/install-local.sh --bin-dir "$HOME/.local/bin" --no-profile
+
+# 让当前终端立即生效
+export PATH="$HOME/.local/bin:$PATH"
 
 # 验证
+which grobot
 grobot --help
 ```
 
 说明：
+- `~/.grobot` 是数据目录（配置、会话、日志、缓存）；`grobot` 是可执行命令（位于 PATH 的某个 bin 目录）。
+- `claude`/`codex` 也是同一模型：命令在 PATH，状态数据在 `~/.claude` / `~/.codex`。
+- 如需沿用历史默认目录（`~/.grobot/bin`）：直接执行 `bash scripts/install-local.sh`。
 - `install-local.sh` 默认会自动执行 browser native 依赖 setup（等价于 `browser:native:setup` 的 best-effort 版本）。
 - 如需严格门禁（native 依赖未就绪直接失败）：`npm run install:local:strict-native`。
 - 若仅做排障/探测：`npm run browser:native:doctor`。
 - Windows 环境无需 `cliclick`；请在部署 bootstrap 里执行 `npm run browser:native:setup`，依赖检查以 `powershell|pwsh` 就绪为准。
+- 完整安装/更新说明见：[docs/local-install.md](docs/local-install.md)。
 
 可选参数：
 
@@ -157,7 +165,7 @@ grobot --help
 bash scripts/install-local.sh --bin-dir /usr/local/bin --no-profile
 
 # 卸载源码安装的软链接
-bash scripts/uninstall-local.sh
+bash scripts/uninstall-local.sh --bin-dir "$HOME/.local/bin"
 ```
 
 ### 核心分发（闭源发布预备）
@@ -299,28 +307,28 @@ npm run core:release:prepare -- \
   --report-dir dist/core-artifacts/reports
 ```
 
-### 本地启动 grobot（可在任意业务目录触发）
+### 本地启动 grobot（裸命令，推荐）
 
 ```bash
 # 一次性问答
-grobot start \
+grobot \
   --project <project-name> \
   --work-dir "$(pwd)" \
   --message "请介绍当前目录要做什么"
 
 # 交互模式
-grobot start \
+grobot \
   --project <project-name> \
   --work-dir "$(pwd)"
 
 # 交互模式（控制上下文重放窗口，默认 12 轮）
-grobot start \
+grobot \
   --project <project-name> \
   --work-dir "$(pwd)" \
   --history-turns 16
 
 # 交互模式（启用 Redis 会话持久化 + 熔断参数）
-grobot start \
+grobot \
   --project <project-name> \
   --work-dir "$(pwd)" \
   --session-backend redis \
@@ -333,21 +341,34 @@ grobot start \
   --provider-burst 120
 
 # 若你在任意目录启动，但希望强制使用某个项目根目录
-grobot start \
+grobot \
   --project <project-name> \
   --work-dir /path/to/business-dir \
   --project-root /path/to/project-root
 ```
 
+### IM / Bridge 启动（`start` 子命令，IM-only）
+
+```bash
+# start 只用于 IM 会话入口，必须显式提供平台/会话上下文
+grobot start \
+  --platform feishu \
+  --session-scope dm \
+  --session-subject <open_id_or_user_id> \
+  --project <project-name> \
+  --work-dir "$(pwd)"
+```
+
 说明：
-- `start` 现在会自动构建 provider failover 链（主 provider 失败时自动切后备）。
+- `start` 已切换为 IM-only。若缺少平台/会话上下文，命令会返回 `exit code 2` 并提示改用裸命令 `grobot`。
+- 裸命令 `grobot` 与 `grobot start`（IM-only）都会自动构建 provider failover 链（主 provider 失败时自动切后备）。
 - provider 选择默认按 `session_key` 粘性：同一会话优先复用上轮成功 provider；不可用时才故障转移。
 - provider 链路策略为 `sticky + score + failover + circuit`：优先 sticky，候选按评分排序，失败自动切换，达到阈值后熔断并在冷却后半开探测恢复。
 - score 会综合：`priority`、连续失败惩罚、成本惩罚、`EWMA latency` 与 `EWMA error rate`（再叠加少量确定性抖动），用于在多 provider 间自动倾斜流量。
 - 切换 provider 时会重放当前会话历史消息（最近 N 轮），用于尽量保持上下文连续。
 - 若显式传入 `--base-url/--api-key/--model`（或对应 `GROBOT_*` 环境变量），则按单 provider 直连执行，不走 config provider 链。
 - 会话持久化支持 `file` 与 `redis`（生产建议 Redis）。
-- `start` 已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`（通过 Chat Completions `tools` 调用）。
+- 运行态已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`（通过 Chat Completions `tools` 调用）。
 - `bash` 放行受 `.grobot/project.toml` 的 `[tools].allow` 控制；`read/write/edit` 仅允许访问 `--work-dir` 目录内路径。
 - `read` 支持两套范围参数：兼容旧版 `line_start/line_end`，以及推荐的 `offset/limit`；两套参数不可混用。
 - `read` 文本输出默认硬限制为 `2000` 行或 `50KB`（先命中先截断），超出时会返回 `has_more + next_offset` 便于继续读取。
@@ -591,7 +612,7 @@ shadow_mode = false
 
 ### MCP 工具调用示例（会话内）
 
-当你在 `grobot start` 交互里让模型调用本地工具时，可按下述参数约定触发：
+当你在 `grobot` / `grobot start` 交互里让模型调用本地工具时，可按下述参数约定触发：
 
 ```json
 {

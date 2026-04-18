@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -242,6 +242,11 @@ function makeTempDir(prefix) {
   const path = mkdtempSync(resolve(tmpdir(), `${prefix}-`));
   tempDirs.push(path);
   return path;
+}
+
+function writeFixtureFile(path, content) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, "utf8");
 }
 
 function runCommand(command, args, options = {}) {
@@ -833,6 +838,52 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliTurnScreenContractPayload.failure_summary_ends_with_newline, true);
   logStep("dev-cli-turn-screen-contract");
 
+  const devCliStatusLineContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-status-line-contract.ts",
+  ]);
+  assertSuccess("dev-cli-status-line-contract", devCliStatusLineContractResult);
+  const devCliStatusLineContractPayload = parseJsonOutput(
+    "dev-cli-status-line-contract",
+    devCliStatusLineContractResult.stdout,
+  );
+  assert.equal(devCliStatusLineContractPayload.wide_has_model, true);
+  assert.equal(devCliStatusLineContractPayload.wide_has_project, true);
+  assert.equal(devCliStatusLineContractPayload.wide_has_ctx_percent, true);
+  assert.equal(devCliStatusLineContractPayload.wide_has_token_counter, true);
+  assert.equal(devCliStatusLineContractPayload.wide_has_short_session_id, true);
+  assert.equal(devCliStatusLineContractPayload.wide_has_no_s_colon_prefix, true);
+  assert.equal(devCliStatusLineContractPayload.wide_has_session_topic, true);
+  assert.equal(devCliStatusLineContractPayload.prompt_line_matches, true);
+  assert.equal(devCliStatusLineContractPayload.narrow_line_within_width, true);
+  assert.equal(devCliStatusLineContractPayload.narrow_has_short_session_id, true);
+  logStep("dev-cli-status-line-contract");
+
+  const devCliStatusLineStabilityContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-status-line-stability-contract.ts",
+  ]);
+  assertSuccess("dev-cli-status-line-stability-contract", devCliStatusLineStabilityContractResult);
+  const devCliStatusLineStabilityPayload = parseJsonOutput(
+    "dev-cli-status-line-stability-contract",
+    devCliStatusLineStabilityContractResult.stdout,
+  );
+  assert.equal(devCliStatusLineStabilityPayload.deterministic_stable, true);
+  assert.equal(devCliStatusLineStabilityPayload.warning_stable, true);
+  assert.equal(devCliStatusLineStabilityPayload.widths_within_columns, true);
+  assert.equal(devCliStatusLineStabilityPayload.no_invalid_tokens, true);
+  assert.equal(devCliStatusLineStabilityPayload.warning_has_separate_line, true);
+  assert.equal(Number(devCliStatusLineStabilityPayload.high_frequency_render_count), 2500);
+  assert.equal(Number.isFinite(Number(devCliStatusLineStabilityPayload.high_frequency_average_ms)), true);
+  assert.equal(devCliStatusLineStabilityPayload.performance_within_soft_budget, true);
+  logStep("dev-cli-status-line-stability-contract");
+
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -905,6 +956,13 @@ async function runGatewayContractSmoke() {
   assert.equal(interactiveBindingsPayload.auto_exit_to_stderr, false);
   assert.equal(Number(interactiveBindingsPayload.history_count), 2);
   assert.equal(interactiveBindingsPayload.help_text, "contract-help");
+  assert.equal(interactiveBindingsPayload.active_session_id, "main");
+  assert.equal(interactiveBindingsPayload.active_session_topic, "");
+  assert.equal(interactiveBindingsPayload.model_snapshot_model, "alpha-model");
+  assert.equal(interactiveBindingsPayload.model_snapshot_provider, "alpha");
+  assert.equal(Number(interactiveBindingsPayload.prompt_budget_ctx_ratio), 0.42);
+  assert.equal(Number(interactiveBindingsPayload.prompt_budget_estimated_tokens), 512);
+  assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
   logStep("run-start-interactive-bindings-contract");
 
   const modelOpsContractResult = runCommand("npx", [
@@ -919,6 +977,9 @@ async function runGatewayContractSmoke() {
     "run-start-model-ops-contract",
     modelOpsContractResult.stdout,
   );
+  assert.equal(modelOpsContractPayload.initial_snapshot_provider, "provider-main");
+  assert.equal(modelOpsContractPayload.initial_snapshot_model, "model-default");
+  assert.equal(modelOpsContractPayload.initial_snapshot_source, "config:provider:model");
   assert.equal(modelOpsContractPayload.initial_model, "model-default");
   assert.equal(modelOpsContractPayload.initial_source, "config:provider:model");
   assert.equal(modelOpsContractPayload.initial_session_title, "Main Session");
@@ -3046,49 +3107,69 @@ async function runGatewayContractSmoke() {
   );
   logStep("context-engine-contract graph-cache-multi-hop");
 
-  const graphCacheConcurrency = 4;
-  const graphCacheConcurrentResults = await Promise.all(
-    Array.from({ length: graphCacheConcurrency }).map(() => runCommandAsync("npx", [
-      "--yes",
-      "--package",
-      "tsx@4.20.6",
-      "tsx",
-      "gateway/src/extensions/contracts/context-engine-contract.ts",
-      "graph-cache",
-      "--payload",
-      contextEngineGraphCacheContractPayload,
-    ], { timeoutMs: 120_000 })),
-  );
-  for (let index = 0; index < graphCacheConcurrentResults.length; index += 1) {
-    const concurrentResult = graphCacheConcurrentResults[index];
-    assertSuccess(`context-engine-contract graph-cache concurrent-${String(index + 1)}`, concurrentResult);
-    const concurrentPayload = parseJsonOutput(
-      `context-engine-contract graph-cache concurrent-${String(index + 1)}`,
-      concurrentResult.stdout,
+  const graphCacheConcurrency = 6;
+  const graphCacheConcurrencyRounds = 2;
+  const expectedFirstSymbolSignature = JSON.stringify(contextEngineGraphCachePayload.first_pass?.symbol_rows ?? []);
+  const expectedFirstDependencySignature = JSON.stringify(contextEngineGraphCachePayload.first_pass?.dependency_rows ?? []);
+  const expectedSecondSymbolSignature = JSON.stringify(contextEngineGraphCachePayload.second_pass?.symbol_rows ?? []);
+  const expectedSecondDependencySignature = JSON.stringify(contextEngineGraphCachePayload.second_pass?.dependency_rows ?? []);
+  for (let round = 1; round <= graphCacheConcurrencyRounds; round += 1) {
+    const graphCacheConcurrentResults = await Promise.all(
+      Array.from({ length: graphCacheConcurrency }).map(() => runCommandAsync("npx", [
+        "--yes",
+        "--package",
+        "tsx@4.20.6",
+        "tsx",
+        "gateway/src/extensions/contracts/context-engine-contract.ts",
+        "graph-cache",
+        "--payload",
+        contextEngineGraphCacheContractPayload,
+      ], { timeoutMs: 120_000 })),
     );
-    assert.equal(concurrentPayload.cache_reuse_observed, true);
-    assert.deepEqual(
-      concurrentPayload.first_pass?.symbol_rows,
-      contextEngineGraphCachePayload.first_pass?.symbol_rows,
-    );
-    assert.deepEqual(
-      concurrentPayload.first_pass?.dependency_rows,
-      contextEngineGraphCachePayload.first_pass?.dependency_rows,
-    );
-    assert.deepEqual(
-      concurrentPayload.second_pass?.symbol_rows,
-      contextEngineGraphCachePayload.second_pass?.symbol_rows,
-    );
-    assert.deepEqual(
-      concurrentPayload.second_pass?.dependency_rows,
-      contextEngineGraphCachePayload.second_pass?.dependency_rows,
-    );
-    const concurrentTiming = concurrentPayload.timing ?? {};
-    assert.equal(Number.isFinite(Number(concurrentTiming.first_pass_duration_ms)), true);
-    assert.equal(Number.isFinite(Number(concurrentTiming.second_pass_duration_ms)), true);
+    for (let index = 0; index < graphCacheConcurrentResults.length; index += 1) {
+      const concurrentResult = graphCacheConcurrentResults[index];
+      assertSuccess(
+        `context-engine-contract graph-cache concurrent-r${String(round)}-${String(index + 1)}`,
+        concurrentResult,
+      );
+      const concurrentPayload = parseJsonOutput(
+        `context-engine-contract graph-cache concurrent-r${String(round)}-${String(index + 1)}`,
+        concurrentResult.stdout,
+      );
+      assert.equal(concurrentPayload.cache_reuse_observed, true);
+      const firstSymbolSignature = JSON.stringify(concurrentPayload.first_pass?.symbol_rows ?? []);
+      const firstDependencySignature = JSON.stringify(concurrentPayload.first_pass?.dependency_rows ?? []);
+      const secondSymbolSignature = JSON.stringify(concurrentPayload.second_pass?.symbol_rows ?? []);
+      const secondDependencySignature = JSON.stringify(concurrentPayload.second_pass?.dependency_rows ?? []);
+      assert.equal(firstSymbolSignature, expectedFirstSymbolSignature);
+      assert.equal(firstDependencySignature, expectedFirstDependencySignature);
+      assert.equal(secondSymbolSignature, expectedSecondSymbolSignature);
+      assert.equal(secondDependencySignature, expectedSecondDependencySignature);
+      const firstConcurrentStats = concurrentPayload.first_pass?.stats ?? {};
+      const secondConcurrentStats = concurrentPayload.second_pass?.stats ?? {};
+      assert.equal(
+        Number(secondConcurrentStats.symbol_query?.hit)
+          > Number(firstConcurrentStats.symbol_query?.hit),
+        true,
+      );
+      assert.equal(
+        Number(secondConcurrentStats.dependency_query?.hit)
+          > Number(firstConcurrentStats.dependency_query?.hit),
+        true,
+      );
+      const concurrentTiming = concurrentPayload.timing ?? {};
+      assert.equal(Number.isFinite(Number(concurrentTiming.first_pass_duration_ms)), true);
+      assert.equal(Number.isFinite(Number(concurrentTiming.second_pass_duration_ms)), true);
+      assert.equal(
+        Number(concurrentTiming.second_pass_duration_ms)
+          <= Number(concurrentTiming.first_pass_duration_ms) + 600,
+        true,
+      );
+    }
   }
   logStep("context-engine-contract graph-cache-concurrency", {
     concurrency: graphCacheConcurrency,
+    rounds: graphCacheConcurrencyRounds,
   });
 
   const graphCacheHotLoopResult = runTsContract("context-engine-contract.ts", "graph-cache-hot-loop", [
@@ -3167,6 +3248,182 @@ async function runGatewayContractSmoke() {
     prevDependencyHit = dependencyHit;
   }
   logStep("context-engine-contract graph-cache-hot-loop");
+
+  const persistentGraphRepoDir = makeTempDir("context-graph-persistent-index");
+  const gitInitPersistentGraphResult = runCommand("git", ["init"], { cwd: persistentGraphRepoDir });
+  assertSuccess("context-engine-contract graph-persistent-index git-init", gitInitPersistentGraphResult);
+  writeFixtureFile(
+    resolve(persistentGraphRepoDir, "src/payments/entry.ts"),
+    [
+      "import { settlePayment } from \"./service\";",
+      "export const runEntry = async (orderId: string) => settlePayment(orderId);",
+    ].join("\n"),
+  );
+  writeFixtureFile(
+    resolve(persistentGraphRepoDir, "src/payments/service.ts"),
+    [
+      "import { requestPayment } from \"./gateway\";",
+      "export const settlePayment = async (orderId: string) => requestPayment(orderId);",
+    ].join("\n"),
+  );
+  writeFixtureFile(
+    resolve(persistentGraphRepoDir, "src/payments/gateway.ts"),
+    [
+      "import { writeLog } from \"../infra/logger\";",
+      "export function requestPayment(orderId: string) {",
+      "  writeLog(orderId);",
+      "  return `ok:${orderId}`;",
+      "}",
+    ].join("\n"),
+  );
+  writeFixtureFile(
+    resolve(persistentGraphRepoDir, "src/infra/logger.ts"),
+    [
+      "export function writeLog(input: string) {",
+      "  return input;",
+      "}",
+    ].join("\n"),
+  );
+  const persistentGraphPayloadRaw = JSON.stringify({
+    work_dir: persistentGraphRepoDir,
+    query: "trace payment call chain",
+    max_rows: 8,
+  });
+  const persistentGraphResult = runTsContract("context-engine-contract.ts", "graph-persistent-index", [
+    "--payload",
+    persistentGraphPayloadRaw,
+  ]);
+  const persistentGraphPayload = parseJsonOutput(
+    "context-engine-contract graph-persistent-index",
+    persistentGraphResult.stdout,
+  );
+  assert.equal(persistentGraphPayload.cache_reuse_observed, true);
+  assert.deepEqual(
+    persistentGraphPayload.second_pass?.dependency_rows,
+    persistentGraphPayload.first_pass?.dependency_rows,
+  );
+  assert.deepEqual(
+    persistentGraphPayload.second_pass?.symbol_rows,
+    persistentGraphPayload.first_pass?.symbol_rows,
+  );
+  const persistentFirstStatus = persistentGraphPayload.first_pass?.status ?? {};
+  assert.equal(persistentFirstStatus.enabled, true);
+  assert.equal(Number(persistentFirstStatus.file_count) >= 4, true);
+  assert.equal(Number(persistentFirstStatus.symbol_count) >= 4, true);
+  assert.equal(
+    ["cold", "incremental", "steady", "skipped"].includes(
+      String(persistentFirstStatus.last_refresh?.mode ?? ""),
+    ),
+    true,
+  );
+  const persistentIndexPath = String(persistentFirstStatus.index_path ?? "");
+  assert.equal(persistentIndexPath.length > 0, true);
+  assert.equal(existsSync(persistentIndexPath), true);
+
+  writeFixtureFile(
+    resolve(persistentGraphRepoDir, "src/payments/entry.ts"),
+    [
+      "import { settlePayment } from \"./service\";",
+      "import { sendWebhook } from \"./webhook\";",
+      "export const runEntry = async (orderId: string) => {",
+      "  const result = await settlePayment(orderId);",
+      "  sendWebhook(orderId);",
+      "  return result;",
+      "};",
+    ].join("\n"),
+  );
+  writeFixtureFile(
+    resolve(persistentGraphRepoDir, "src/payments/webhook.ts"),
+    [
+      "export function sendWebhook(orderId: string) {",
+      "  return `webhook:${orderId}`;",
+      "}",
+    ].join("\n"),
+  );
+  const persistentGraphAfterUpdateResult = runTsContract("context-engine-contract.ts", "graph-persistent-index", [
+    "--payload",
+    persistentGraphPayloadRaw,
+  ]);
+  const persistentGraphAfterUpdatePayload = parseJsonOutput(
+    "context-engine-contract graph-persistent-index after-update",
+    persistentGraphAfterUpdateResult.stdout,
+  );
+  const persistentAfterStatus = persistentGraphAfterUpdatePayload.first_pass?.status ?? {};
+  assert.equal(persistentAfterStatus.enabled, true);
+  assert.equal(Number(persistentAfterStatus.file_count) >= Number(persistentFirstStatus.file_count), true);
+  assert.equal(Number(persistentAfterStatus.last_refresh?.parsed_files) >= 1, true);
+  assert.equal(
+    (persistentGraphAfterUpdatePayload.first_pass?.dependency_rows ?? [])
+      .some((row) => String(row).includes("webhook")),
+    true,
+  );
+  assert.equal(
+    (persistentGraphAfterUpdatePayload.first_pass?.symbol_rows ?? [])
+      .some((row) => String(row).includes("sendWebhook")),
+    true,
+  );
+  const persistentGraphExtraRepoDir = makeTempDir("context-graph-persistent-index-extra");
+  const gitInitPersistentGraphExtraResult = runCommand("git", ["init"], {
+    cwd: persistentGraphExtraRepoDir,
+  });
+  assertSuccess(
+    "context-engine-contract graph-persistent-index extra git-init",
+    gitInitPersistentGraphExtraResult,
+  );
+  writeFixtureFile(
+    resolve(persistentGraphExtraRepoDir, "src/billing/entry.ts"),
+    [
+      "import { buildInvoice } from \"./service\";",
+      "export const runBilling = async (billId: string) => buildInvoice(billId);",
+    ].join("\n"),
+  );
+  writeFixtureFile(
+    resolve(persistentGraphExtraRepoDir, "src/billing/service.ts"),
+    [
+      "import { requestBilling } from \"./gateway\";",
+      "export function buildInvoice(billId: string) {",
+      "  return requestBilling(billId);",
+      "}",
+    ].join("\n"),
+  );
+  writeFixtureFile(
+    resolve(persistentGraphExtraRepoDir, "src/billing/gateway.ts"),
+    [
+      "export function requestBilling(billId: string) {",
+      "  return `bill:${billId}`;",
+      "}",
+    ].join("\n"),
+  );
+  const persistentGraphCrossRepoResult = runTsContract("context-engine-contract.ts", "graph-persistent-index", [
+    "--payload",
+    JSON.stringify({
+      work_dir: persistentGraphRepoDir,
+      extra_work_dirs: [persistentGraphExtraRepoDir],
+      query: "trace billing payment call chain",
+      max_rows: 8,
+    }),
+  ]);
+  const persistentGraphCrossRepoPayload = parseJsonOutput(
+    "context-engine-contract graph-persistent-index cross-repo",
+    persistentGraphCrossRepoResult.stdout,
+  );
+  assert.equal(persistentGraphCrossRepoPayload.cross_repo_observed, true);
+  assert.equal(Array.isArray(persistentGraphCrossRepoPayload.extra_roots), true);
+  assert.equal(Number(persistentGraphCrossRepoPayload.extra_roots.length) >= 1, true);
+  const persistentGraphExtraRoot = persistentGraphCrossRepoPayload.extra_roots[0] ?? {};
+  assert.equal(persistentGraphExtraRoot.work_dir, persistentGraphExtraRepoDir);
+  assert.equal(persistentGraphExtraRoot.status?.enabled, true);
+  assert.equal(
+    (persistentGraphExtraRoot.dependency_rows ?? [])
+      .some((row) => String(row).toLowerCase().includes("billing")),
+    true,
+  );
+  assert.equal(
+    (persistentGraphExtraRoot.symbol_rows ?? [])
+      .some((row) => String(row).includes("buildInvoice")),
+    true,
+  );
+  logStep("context-engine-contract graph-persistent-index");
 
   const symbolAstExtractResult = runTsContract("symbol-ast-contract.ts", "extract", [
     "--payload",
@@ -3332,6 +3589,66 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_symbol_declaration_cache_write_type, "number");
   assert.equal(statusPayload.status_dependency_query_cache_miss_type, "number");
   assert.equal(statusPayload.status_dependency_import_cache_evict_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_autotune_state_present, true);
+  assert.equal(statusPayload.status_context_graph_cache_autotune_state_last_direction_type, "string");
+  assert.equal(statusPayload.status_context_graph_cache_autotune_state_hold_turns_remaining_type, "number");
+  assert.equal(statusPayload.status_context_graph_cache_autotune_state_downshift_warmup_streak_type, "number");
+  assert.equal(
+    ["string", "null"].includes(
+      String(statusPayload.status_context_graph_cache_autotune_state_last_reason_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["string", "null"].includes(
+      String(statusPayload.status_context_graph_cache_autotune_state_updated_at_type),
+    ),
+    true,
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_cache_threshold_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_parsed_max_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_reused_min_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_removed_max_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_alpha_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_updates_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_source_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_action_scale_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_action_updates_type,
+    "number",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_adaptive_action_source_type,
+    "string",
+  );
+  assert.equal(
+    statusPayload.status_context_graph_cache_autotune_state_persistence_domain_type,
+    "string",
+  );
   assert.equal(statusPayload.status_has_context_graph_cache_window, true);
   assert.equal(statusPayload.status_context_graph_cache_window_path_type, "string");
   assert.equal(statusPayload.status_context_graph_cache_window_configured_size_type, "number");
@@ -3413,6 +3730,101 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_context_graph_cache_window_degradation_observed_entries_type, "number");
   assert.equal(
     ["number", "null"].includes(String(statusPayload.status_context_graph_cache_window_degradation_observed_query_hit_rate_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_has_context_persistent_graph_index, true);
+  assert.equal(statusPayload.status_context_persistent_graph_index_enabled_type, "boolean");
+  assert.equal(statusPayload.status_context_persistent_graph_index_root_path_type, "string");
+  assert.equal(statusPayload.status_context_persistent_graph_index_index_path_type, "string");
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_persistent_graph_index_updated_at_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_context_persistent_graph_index_file_count_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_symbol_count_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_edge_count_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_has_last_refresh, true);
+  assert.equal(statusPayload.status_context_persistent_graph_index_last_refresh_mode_type, "string");
+  assert.equal(statusPayload.status_context_persistent_graph_index_last_refresh_parsed_files_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_last_refresh_reused_files_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_last_refresh_removed_files_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_has_window, true);
+  assert.equal(statusPayload.status_context_persistent_graph_index_window_path_type, "string");
+  assert.equal(statusPayload.status_context_persistent_graph_index_window_configured_size_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_window_entries_type, "number");
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_persistent_graph_index_window_from_ts_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "null"].includes(String(statusPayload.status_context_persistent_graph_index_window_to_ts_type)),
+    true,
+  );
+  assert.equal(
+    statusPayload.status_context_persistent_graph_index_window_mode_counts_incremental_type,
+    "number",
+  );
+  assert.equal(statusPayload.status_context_persistent_graph_index_window_totals_parsed_files_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_window_totals_reused_files_type, "number");
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_window_rates_parsed_per_scanned_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_window_rates_reused_per_scanned_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_window_rates_removed_per_scanned_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_persistent_graph_index_window_has_latest, true);
+  assert.equal(
+    ["string", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_window_latest_mode_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_window_latest_parsed_files_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_window_latest_file_count_type),
+    ),
+    true,
+  );
+  assert.equal(statusPayload.status_context_persistent_graph_index_has_degradation, true);
+  assert.equal(statusPayload.status_context_persistent_graph_index_degradation_degraded_type, "boolean");
+  assert.equal(statusPayload.status_context_persistent_graph_index_degradation_reason_type, "string");
+  assert.equal(statusPayload.status_context_persistent_graph_index_degradation_threshold_parsed_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_degradation_threshold_reused_type, "number");
+  assert.equal(statusPayload.status_context_persistent_graph_index_degradation_threshold_removed_type, "number");
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_degradation_observed_parsed_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_degradation_observed_reused_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_persistent_graph_index_degradation_observed_removed_type),
+    ),
     true,
   );
   assert.equal(statusPayload.status_has_context_engine, true);
@@ -3499,6 +3911,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(
     statusPayload.status_context_engine_prompt_quality_guard_state_outcome_drift_recent_auto_action_levels_type,
     "array",
+  );
+  assert.equal(
+    statusPayload.status_context_engine_prompt_quality_guard_state_persistence_domain_type,
+    "string",
   );
   assert.equal(statusPayload.status_context_engine_has_prompt_quality_guard_runtime_assessment, true);
   assert.equal(
@@ -3905,6 +4321,11 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_context_engine_lineage_enabled_type, "boolean");
   assert.equal(statusPayload.status_context_engine_workspace_signals_enabled_type, "boolean");
   assert.equal(statusPayload.status_context_engine_has_prompt_quality_window, true);
+  assert.equal(statusPayload.status_context_engine_has_graph_quality_signals, true);
+  assert.equal(statusPayload.status_context_engine_graph_quality_combined_state_type, "string");
+  assert.equal(statusPayload.status_context_engine_graph_quality_combined_reason_type, "string");
+  assert.equal(statusPayload.status_context_engine_graph_quality_combined_recommended_action_type, "string");
+  assert.equal(statusPayload.status_context_engine_graph_quality_combined_degraded_sources_type, "array");
   assert.equal(statusPayload.status_context_engine_prompt_quality_window_path_type, "string");
   assert.equal(statusPayload.status_context_engine_prompt_quality_window_configured_size_type, "number");
   assert.equal(statusPayload.status_context_engine_prompt_quality_window_entries_type, "number");
@@ -4196,6 +4617,14 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusWindowSizePayload.status_json_parse_ok, true);
   assert.equal(statusWindowSizePayload.status_context_graph_cache_window_configured_size_type, "number");
   assert.equal(statusWindowSizePayload.status_context_graph_cache_window_configured_size_value, 7);
+  assert.equal(
+    statusWindowSizePayload.status_context_persistent_graph_index_window_configured_size_type,
+    "number",
+  );
+  assert.equal(
+    statusWindowSizePayload.status_context_persistent_graph_index_window_configured_size_value,
+    7,
+  );
   logStep("start-smoke-contract status-ts-rust-window-size");
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [
@@ -4467,6 +4896,44 @@ async function runTsRustExecutionSmoke() {
     events: planModeFlowPayload.events_count,
   });
 
+  const bareInteractiveFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-bare-interactive-session-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const bareInteractiveFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-bare-interactive-session-flow",
+    bareInteractiveFlowResult.stdout,
+  );
+  assert.equal(bareInteractiveFlowPayload.exit_code, 0);
+  assert.equal(bareInteractiveFlowPayload.has_start_banner, true);
+  assert.equal(bareInteractiveFlowPayload.has_status_snapshot, true);
+  assert.equal(bareInteractiveFlowPayload.has_command_hint, true);
+  assert.equal(bareInteractiveFlowPayload.has_no_unsupported_command_error, true);
+  logStep("start-smoke-contract start-bare-interactive-session-flow");
+
+  const startImOnlyRejectFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-im-only-reject-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const startImOnlyRejectFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-im-only-reject-flow",
+    startImOnlyRejectFlowResult.stdout,
+  );
+  assert.equal(Number(startImOnlyRejectFlowPayload.exit_code), 2);
+  assert.equal(startImOnlyRejectFlowPayload.has_im_only_error, true);
+  assert.equal(startImOnlyRejectFlowPayload.has_im_only_hint_context, true);
+  assert.equal(startImOnlyRejectFlowPayload.has_im_only_hint_bare, true);
+  assert.equal(startImOnlyRejectFlowPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-im-only-reject-flow");
+
   const sessionCommandFallbackResult = runContract(
     "start-smoke-contract.mjs",
     "start-interactive-session-commands-fallback-flow",
@@ -4486,6 +4953,13 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionCommandFallbackPayload.has_sessions_overview, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_main, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_untitled, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_snapshot, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_theme_set, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_layout_set, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_tokens_off, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_theme_current, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_layout_current, true);
+  assert.equal(sessionCommandFallbackPayload.has_status_tokens_current_off, true);
   logStep("start-smoke-contract start-interactive-session-commands-fallback-flow");
 
   const sessionMenuViewModelResult = runContract(
@@ -4874,6 +5348,353 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(String(qualityGuardFlowPayload.prompt_prepared_quality_guard), "true");
   logStep("start-smoke-contract start-context-quality-guard-flow");
+
+  const graphAutotuneFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-context-graph-quality-autotune-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const graphAutotuneFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-graph-quality-autotune-flow",
+    graphAutotuneFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(graphAutotuneFlowPayload.exit_code)),
+    true,
+  );
+  assert.equal(graphAutotuneFlowPayload.graph_autotune_seen, true);
+  assert.equal(
+    ["upshift", "mixed"].includes(String(graphAutotuneFlowPayload.graph_autotune_action)),
+    true,
+  );
+  assert.equal(
+    String(graphAutotuneFlowPayload.graph_autotune_suppressed),
+    "none",
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_dep_rows_to)
+      >= Number(graphAutotuneFlowPayload.graph_autotune_dep_rows_from),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_symbol_rows_to)
+      >= Number(graphAutotuneFlowPayload.graph_autotune_symbol_rows_from),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_entries) >= 2,
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_quality_entries) >= 2,
+    true,
+  );
+  assert.equal(
+    ["adaptive_ewma", "state_reuse"].includes(
+      String(graphAutotuneFlowPayload.graph_autotune_adaptive_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["true", "false"].includes(
+      String(graphAutotuneFlowPayload.graph_autotune_adaptive_updated),
+    ),
+    true,
+  );
+  assert.equal(Number.isFinite(Number(graphAutotuneFlowPayload.graph_autotune_adaptive_alpha)), true);
+  assert.equal(Number.isFinite(Number(graphAutotuneFlowPayload.graph_autotune_adaptive_updates)), true);
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_adaptive_cache_threshold) > 0,
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_adaptive_parsed_max) > 0,
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_adaptive_reused_min) >= 0,
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneFlowPayload.graph_autotune_adaptive_removed_max) > 0,
+    true,
+  );
+  assert.equal(
+    ["adaptive_action_ewma", "adaptive_action_ewma_guarded", "state_reuse"].includes(
+      String(graphAutotuneFlowPayload.graph_autotune_adaptive_action_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["true", "false"].includes(
+      String(graphAutotuneFlowPayload.graph_autotune_adaptive_action_updated),
+    ),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneFlowPayload.graph_autotune_adaptive_action_scale)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneFlowPayload.graph_autotune_adaptive_action_updates)),
+    true,
+  );
+  logStep("start-smoke-contract start-context-graph-quality-autotune-flow");
+
+  const graphAutotuneHysteresisFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-context-graph-quality-autotune-hysteresis-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const graphAutotuneHysteresisFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-graph-quality-autotune-hysteresis-flow",
+    graphAutotuneHysteresisFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(graphAutotuneHysteresisFlowPayload.exit_code)),
+    true,
+  );
+  assert.equal(graphAutotuneHysteresisFlowPayload.graph_autotune_seen, true);
+  assert.equal(
+    String(graphAutotuneHysteresisFlowPayload.graph_autotune_action),
+    "none",
+  );
+  assert.equal(
+    ["flip_hold", "downshift_warmup"].includes(
+      String(graphAutotuneHysteresisFlowPayload.graph_autotune_suppressed),
+    ),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneHysteresisFlowPayload.graph_autotune_dep_rows_to),
+    Number(graphAutotuneHysteresisFlowPayload.graph_autotune_dep_rows_from),
+  );
+  assert.equal(
+    Number(graphAutotuneHysteresisFlowPayload.graph_autotune_symbol_rows_to),
+    Number(graphAutotuneHysteresisFlowPayload.graph_autotune_symbol_rows_from),
+  );
+  assert.equal(
+    ["adaptive_ewma", "state_reuse"].includes(
+      String(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["true", "false"].includes(
+      String(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_updated),
+    ),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_alpha)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_updates)),
+    true,
+  );
+  assert.equal(
+    ["adaptive_action_ewma", "adaptive_action_ewma_guarded", "state_reuse"].includes(
+      String(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_action_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["true", "false"].includes(
+      String(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_action_updated),
+    ),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_action_scale)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneHysteresisFlowPayload.graph_autotune_adaptive_action_updates)),
+    true,
+  );
+  logStep("start-smoke-contract start-context-graph-quality-autotune-hysteresis-flow");
+
+  const graphAutotuneAdaptiveSequenceFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-context-graph-quality-autotune-adaptive-sequence-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const graphAutotuneAdaptiveSequenceFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-graph-quality-autotune-adaptive-sequence-flow",
+    graphAutotuneAdaptiveSequenceFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(graphAutotuneAdaptiveSequenceFlowPayload.first_exit_code)),
+    true,
+  );
+  assert.equal(
+    [0, 1].includes(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_exit_code)),
+    true,
+  );
+  assert.equal(
+    [0, 1].includes(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_exit_code)),
+    true,
+  );
+  assert.equal(
+    graphAutotuneAdaptiveSequenceFlowPayload.first_state_present,
+    true,
+  );
+  assert.equal(
+    graphAutotuneAdaptiveSequenceFlowPayload.second_state_present,
+    true,
+  );
+  assert.equal(
+    graphAutotuneAdaptiveSequenceFlowPayload.third_state_present,
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_updates)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_updates)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_updates)),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_updates)
+      > Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_updates),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_updates)
+      >= Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_updates),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_cache_threshold)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_cache_threshold)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_cache_threshold)),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_cache_threshold)
+      < Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_cache_threshold),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_alpha)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_alpha)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_alpha)),
+    true,
+  );
+  assert.equal(
+    ["adaptive_ewma", "state_reuse"].includes(
+      String(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["adaptive_ewma", "state_reuse"].includes(
+      String(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["adaptive_ewma", "state_reuse"].includes(
+      String(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_source),
+    ),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_action_scale)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_action_scale)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_action_scale)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_action_updates)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_action_updates)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_action_updates)),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_action_updates)
+      >= Number(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_action_updates),
+    true,
+  );
+  assert.equal(
+    Number(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_action_updates)
+      >= Number(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_action_updates),
+    true,
+  );
+  assert.equal(
+    ["adaptive_action_ewma", "adaptive_action_ewma_guarded", "state_reuse", "bootstrap"].includes(
+      String(graphAutotuneAdaptiveSequenceFlowPayload.first_state_adaptive_action_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["adaptive_action_ewma", "adaptive_action_ewma_guarded", "state_reuse", "bootstrap"].includes(
+      String(graphAutotuneAdaptiveSequenceFlowPayload.second_state_adaptive_action_source),
+    ),
+    true,
+  );
+  assert.equal(
+    ["adaptive_action_ewma", "adaptive_action_ewma_guarded", "state_reuse", "bootstrap"].includes(
+      String(graphAutotuneAdaptiveSequenceFlowPayload.third_state_adaptive_action_source),
+    ),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_minus_first_action_scale)),
+    true,
+  );
+  assert.equal(
+    Number.isFinite(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_minus_second_action_scale)),
+    true,
+  );
+  assert.equal(
+    Math.abs(Number(graphAutotuneAdaptiveSequenceFlowPayload.second_minus_first_action_scale)) <= 0.29,
+    true,
+  );
+  assert.equal(
+    Math.abs(Number(graphAutotuneAdaptiveSequenceFlowPayload.third_minus_second_action_scale)) <= 0.29,
+    true,
+  );
+  logStep("start-smoke-contract start-context-graph-quality-autotune-adaptive-sequence-flow");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
