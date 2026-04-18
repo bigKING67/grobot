@@ -12,6 +12,14 @@ export {
   summarizeGraphHintQualityFromPrompt,
 } from "./graph/cache-window";
 export {
+  defaultGraphQualityAutotuneState,
+  normalizeGraphQualityAutotuneState,
+  readGraphQualityAutotuneState,
+  writeGraphQualityAutotuneState,
+  type GraphQualityAutotuneDirection,
+  type GraphQualityAutotuneState,
+} from "./graph/autotune-state";
+export {
   compressPromptSnapshotSectionsSemanticallyForBudget,
   derivePromptPreSendCompressionPlan,
   escalatePromptVariant,

@@ -21,6 +21,7 @@ import {
   assessPromptQualityWindowDegradation,
   readContextGraphCacheStats,
   readGraphCacheWindowSummary,
+  readGraphQualityAutotuneState,
   readPromptQualityGuardState,
   readPromptQualityWindowSummary,
   resolveContextEngineConfig,
@@ -714,6 +715,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     thresholdQueryHitRate: contextGraphCacheDegradeHitRateThreshold,
     minEntries: contextGraphCacheDegradeMinEntries,
   });
+  const graphQualityAutotuneState = readGraphQualityAutotuneState({
+    workDir,
+  });
   const promptQualityWindowSummary = readPromptQualityWindowSummary({
     workDir,
     size: contextGraphCacheWindowSize,
@@ -950,6 +954,13 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         symbol_declaration: symbolDeclarationGraphCacheStats,
         dependency_query: dependencyQueryGraphCacheStats,
         dependency_import: dependencyImportGraphCacheStats,
+        autotune_state: {
+          last_direction: graphQualityAutotuneState.lastDirection,
+          hold_turns_remaining: graphQualityAutotuneState.holdTurnsRemaining,
+          downshift_warmup_streak: graphQualityAutotuneState.downshiftWarmupStreak,
+          last_reason: graphQualityAutotuneState.lastReason || null,
+          updated_at: graphQualityAutotuneState.updatedAt,
+        },
         window: {
           path: contextGraphCacheWindowSummary.path,
           configured_size: contextGraphCacheWindowSummary.configuredSize,
@@ -1550,6 +1561,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(`runtime_tool_max_recovery_rounds: ${runtimeToolContextPreview.maxRecoveryRounds}\n`);
   process.stdout.write(
     `context_graph_cache_stats: symbol_query=${symbolQueryGraphCacheStats.hit}/${symbolQueryGraphCacheStats.miss}/${symbolQueryGraphCacheStats.write}/${symbolQueryGraphCacheStats.evict} symbol_declaration=${symbolDeclarationGraphCacheStats.hit}/${symbolDeclarationGraphCacheStats.miss}/${symbolDeclarationGraphCacheStats.write}/${symbolDeclarationGraphCacheStats.evict} dependency_query=${dependencyQueryGraphCacheStats.hit}/${dependencyQueryGraphCacheStats.miss}/${dependencyQueryGraphCacheStats.write}/${dependencyQueryGraphCacheStats.evict} dependency_import=${dependencyImportGraphCacheStats.hit}/${dependencyImportGraphCacheStats.miss}/${dependencyImportGraphCacheStats.write}/${dependencyImportGraphCacheStats.evict}\n`,
+  );
+  process.stdout.write(
+    `context_graph_cache_autotune_state: direction=${graphQualityAutotuneState.lastDirection} hold_turns_remaining=${String(graphQualityAutotuneState.holdTurnsRemaining)} downshift_warmup_streak=${String(graphQualityAutotuneState.downshiftWarmupStreak)} last_reason=${graphQualityAutotuneState.lastReason || "<none>"} updated_at=${graphQualityAutotuneState.updatedAt ?? "<none>"}\n`,
   );
   process.stdout.write(
     `context_graph_cache_window: size=${contextGraphCacheWindowSummary.configuredSize} entries=${contextGraphCacheWindowSummary.entries} range=${contextGraphCacheWindowSummary.fromTs ?? "<none>"}..${contextGraphCacheWindowSummary.toTs ?? "<none>"} delta_symbol_query=${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.evict} delta_symbol_declaration=${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.evict} delta_dependency_query=${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.evict} delta_dependency_import=${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.evict} query_hit_rate=${typeof contextGraphCacheWindowSummary.queryHitRate === "number" ? contextGraphCacheWindowSummary.queryHitRate.toFixed(3) : "<none>"} overall_hit_rate=${typeof contextGraphCacheWindowSummary.overallHitRate === "number" ? contextGraphCacheWindowSummary.overallHitRate.toFixed(3) : "<none>"}\n`,

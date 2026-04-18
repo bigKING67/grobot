@@ -1163,6 +1163,42 @@ function writeContextEngineQualityGuardProjectToml(workDir) {
   );
 }
 
+function writeContextEngineGraphAutotuneProjectToml(workDir) {
+  const grobotDir = `${workDir}/.grobot`;
+  mkdirSync(grobotDir, { recursive: true });
+  writeFileSync(
+    `${grobotDir}/project.toml`,
+    [
+      "schema_version = 1",
+      'mode = "mvp"',
+      "",
+      "[context_engine]",
+      "enabled = true",
+      'profile = "balanced"',
+      "context_window_tokens = 64000",
+      "reserved_output_tokens = 9000",
+      "safety_margin_tokens = 1800",
+      "proactive_ratio = 0.90",
+      "forced_ratio = 0.95",
+      "hard_ratio = 0.98",
+      "reactive_max_retries = 1",
+      "ptl_max_retries = 2",
+      "circuit_breaker_failures = 3",
+      "reactive_on_prompt_too_long = true",
+      "lineage_enabled = false",
+      "workspace_signals_enabled = false",
+      "dependency_graph_enabled = true",
+      "dependency_graph_max_rows = 2",
+      "symbol_graph_enabled = true",
+      "symbol_graph_max_rows = 2",
+      "semantic_prefetch_enabled = false",
+      "prompt_quality_degrade_min_entries = 2",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 function runStatusTsRust(repoRoot, windowSize) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
@@ -1226,6 +1262,9 @@ function runStatusTsRust(repoRoot, windowSize) {
     : null;
   const contextGraphCacheWindow = isObject(contextGraphCacheStats?.window)
     ? contextGraphCacheStats.window
+    : null;
+  const contextGraphCacheAutotuneState = isObject(contextGraphCacheStats?.autotune_state)
+    ? contextGraphCacheStats.autotune_state
     : null;
   const contextGraphCacheWindowDeltaTotals = isObject(contextGraphCacheWindow?.delta_totals)
     ? contextGraphCacheWindow.delta_totals
@@ -1420,6 +1459,21 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_symbol_declaration_cache_write_type: typeof symbolDeclarationGraphCacheStats?.write,
     status_dependency_query_cache_miss_type: typeof dependencyQueryGraphCacheStats?.miss,
     status_dependency_import_cache_evict_type: typeof dependencyImportGraphCacheStats?.evict,
+    status_context_graph_cache_autotune_state_present: Boolean(contextGraphCacheAutotuneState),
+    status_context_graph_cache_autotune_state_last_direction_type:
+      typeof contextGraphCacheAutotuneState?.last_direction,
+    status_context_graph_cache_autotune_state_hold_turns_remaining_type:
+      typeof contextGraphCacheAutotuneState?.hold_turns_remaining,
+    status_context_graph_cache_autotune_state_downshift_warmup_streak_type:
+      typeof contextGraphCacheAutotuneState?.downshift_warmup_streak,
+    status_context_graph_cache_autotune_state_last_reason_type:
+      contextGraphCacheAutotuneState?.last_reason === null
+        ? "null"
+        : typeof contextGraphCacheAutotuneState?.last_reason,
+    status_context_graph_cache_autotune_state_updated_at_type:
+      contextGraphCacheAutotuneState?.updated_at === null
+        ? "null"
+        : typeof contextGraphCacheAutotuneState?.updated_at,
     status_has_context_graph_cache_window: Boolean(contextGraphCacheWindow),
     status_context_graph_cache_window_path_type: typeof contextGraphCacheWindow?.path,
     status_context_graph_cache_window_configured_size_type: typeof contextGraphCacheWindow?.configured_size,
@@ -2191,6 +2245,222 @@ function runStartContextQualityGuardFlow(repoRoot) {
   };
 }
 
+function runStartContextGraphQualityAutotuneFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-graph-autotune-work");
+  writeContextEngineGraphAutotuneProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  mkdirSync(contextDir, { recursive: true });
+  const seedPath = `${contextDir}/graph-cache-window.jsonl`;
+  const seedNowMs = Date.now();
+  const seedRows = [0, 1].map((index) => ({
+    ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
+    sessionKey: "seed:graph-autotune",
+    stage: "normal",
+    selectionReason: "seed",
+    delta: {
+      symbolQuery: { hit: 1, miss: 0, write: 0, evict: 0 },
+      symbolDeclaration: { hit: 1, miss: 0, write: 0, evict: 0 },
+      dependencyQuery: { hit: 1, miss: 0, write: 0, evict: 0 },
+      dependencyImport: { hit: 1, miss: 0, write: 0, evict: 0 },
+    },
+    total: {
+      symbolQuery: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
+      symbolDeclaration: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
+      dependencyQuery: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
+      dependencyImport: { hit: 2 + index, miss: 1, write: 1, evict: 0 },
+    },
+    quality: {
+      dependency: {
+        rows: 1,
+        multiHopRows: 0,
+        depth4PlusRows: 0,
+        maxChainDepth: 1,
+      },
+      symbol: {
+        rows: 1,
+        rowsWithBridge: 0,
+        rowsWithBreadth: 0,
+        bridgeTotal: 0,
+        breadthTotal: 0,
+        refsTotal: 0.2,
+        refsCount: 1,
+        maxRefs: 1,
+      },
+    },
+  }));
+  writeFileSync(
+    seedPath,
+    `${seedRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--history-turns",
+    "6",
+    "--message",
+    "graph quality autotune should raise graph hint rows when evidence quality is poor",
+  ]);
+  const graphAutotuneEvent = result.stderr.match(
+    /event=graph_quality_autotune action=([a-z_]+) reason=([a-z_+]+) suppressed=([a-z_]+) dep_rows=(\d+)->(\d+) symbol_rows=(\d+)->(\d+) entries=(\d+) quality_entries=(\d+)/,
+  );
+  return {
+    ...result,
+    graph_autotune_seen: Boolean(graphAutotuneEvent),
+    graph_autotune_action: graphAutotuneEvent?.[1] ?? "",
+    graph_autotune_reason: graphAutotuneEvent?.[2] ?? "",
+    graph_autotune_suppressed: graphAutotuneEvent?.[3] ?? "",
+    graph_autotune_dep_rows_from: Number.parseInt(graphAutotuneEvent?.[4] ?? "0", 10),
+    graph_autotune_dep_rows_to: Number.parseInt(graphAutotuneEvent?.[5] ?? "0", 10),
+    graph_autotune_symbol_rows_from: Number.parseInt(graphAutotuneEvent?.[6] ?? "0", 10),
+    graph_autotune_symbol_rows_to: Number.parseInt(graphAutotuneEvent?.[7] ?? "0", 10),
+    graph_autotune_entries: Number.parseInt(graphAutotuneEvent?.[8] ?? "0", 10),
+    graph_autotune_quality_entries: Number.parseInt(graphAutotuneEvent?.[9] ?? "0", 10),
+    seed_path: seedPath,
+  };
+}
+
+function runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-graph-autotune-hysteresis-work");
+  writeContextEngineGraphAutotuneProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  mkdirSync(contextDir, { recursive: true });
+  const graphSeedPath = `${contextDir}/graph-cache-window.jsonl`;
+  const promptSeedPath = `${contextDir}/prompt-quality-window.jsonl`;
+  const stateSeedPath = `${contextDir}/graph-quality-autotune-state.json`;
+  const seedNowMs = Date.now();
+  const graphRows = [0, 1].map((index) => ({
+    ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
+    sessionKey: "seed:graph-autotune-hysteresis",
+    stage: "normal",
+    selectionReason: "seed",
+    delta: {
+      symbolQuery: { hit: 2, miss: 0, write: 0, evict: 0 },
+      symbolDeclaration: { hit: 2, miss: 0, write: 0, evict: 0 },
+      dependencyQuery: { hit: 2, miss: 0, write: 0, evict: 0 },
+      dependencyImport: { hit: 2, miss: 0, write: 0, evict: 0 },
+    },
+    total: {
+      symbolQuery: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
+      symbolDeclaration: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
+      dependencyQuery: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
+      dependencyImport: { hit: 4 + index, miss: 1, write: 1, evict: 0 },
+    },
+    quality: {
+      dependency: {
+        rows: 4,
+        multiHopRows: 3,
+        depth4PlusRows: 2,
+        maxChainDepth: 4,
+      },
+      symbol: {
+        rows: 4,
+        rowsWithBridge: 4,
+        rowsWithBreadth: 4,
+        bridgeTotal: 16,
+        breadthTotal: 14,
+        refsTotal: 22,
+        refsCount: 4,
+        maxRefs: 8,
+      },
+    },
+  }));
+  const promptRows = [0, 1].map((index) => ({
+    ts: new Date(seedNowMs - (2 - index) * 1_000).toISOString(),
+    sessionKey: "seed:graph-autotune-hysteresis",
+    stage: "minimal",
+    selectionReason: "seed",
+    estimatedTokens: 7800 + index * 200,
+    targetTokenLimit: 5000,
+    scores: {
+      coverage: 0.60,
+      recency: 0.55,
+      size: 0.32,
+      overall: 0.49,
+    },
+    signals: {
+      recentRows: 1,
+      snapshotSections: 2,
+      recentTrimRows: 1,
+      snapshotTrimSections: 1,
+      snapshotSemanticCompressSections: 2,
+      headTrimRetries: 0,
+      autoLimitTriggered: true,
+      downshiftGuardTriggered: false,
+      preSendStrategy: "hard_budget",
+      preSendOverflowRatio: 0.35,
+      preSendPressureScore: 0.82,
+    },
+  }));
+  const stateSeed = {
+    lastDirection: "upshift",
+    holdTurnsRemaining: 2,
+    downshiftWarmupStreak: 0,
+    lastReason: "seed",
+    updatedAt: new Date(seedNowMs - 3_000).toISOString(),
+  };
+  writeFileSync(
+    graphSeedPath,
+    `${graphRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    promptSeedPath,
+    `${promptRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  writeFileSync(stateSeedPath, `${JSON.stringify(stateSeed, null, 2)}\n`, "utf8");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--history-turns",
+    "6",
+    "--message",
+    "graph quality autotune hysteresis should suppress instant direction flip",
+  ]);
+  const graphAutotuneEvent = result.stderr.match(
+    /event=graph_quality_autotune action=([a-z_]+) reason=([a-z_+]+) suppressed=([a-z_]+) dep_rows=(\d+)->(\d+) symbol_rows=(\d+)->(\d+) entries=(\d+) quality_entries=(\d+)/,
+  );
+  return {
+    ...result,
+    graph_autotune_seen: Boolean(graphAutotuneEvent),
+    graph_autotune_action: graphAutotuneEvent?.[1] ?? "",
+    graph_autotune_reason: graphAutotuneEvent?.[2] ?? "",
+    graph_autotune_suppressed: graphAutotuneEvent?.[3] ?? "",
+    graph_autotune_dep_rows_from: Number.parseInt(graphAutotuneEvent?.[4] ?? "0", 10),
+    graph_autotune_dep_rows_to: Number.parseInt(graphAutotuneEvent?.[5] ?? "0", 10),
+    graph_autotune_symbol_rows_from: Number.parseInt(graphAutotuneEvent?.[6] ?? "0", 10),
+    graph_autotune_symbol_rows_to: Number.parseInt(graphAutotuneEvent?.[7] ?? "0", 10),
+    graph_autotune_entries: Number.parseInt(graphAutotuneEvent?.[8] ?? "0", 10),
+    graph_autotune_quality_entries: Number.parseInt(graphAutotuneEvent?.[9] ?? "0", 10),
+    graph_seed_path: graphSeedPath,
+    prompt_seed_path: promptSeedPath,
+    state_seed_path: stateSeedPath,
+  };
+}
+
 function runStatusTsRustDeprecatedFlag(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
@@ -2296,6 +2566,12 @@ function runCli(argv) {
       break;
     case "start-context-quality-guard-flow":
       payload = runStartContextQualityGuardFlow(repoRoot);
+      break;
+    case "start-context-graph-quality-autotune-flow":
+      payload = runStartContextGraphQualityAutotuneFlow(repoRoot);
+      break;
+    case "start-context-graph-quality-autotune-hysteresis-flow":
+      payload = runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot);
       break;
     case "status-ts-rust-deprecated-flag":
       payload = runStatusTsRustDeprecatedFlag(repoRoot);

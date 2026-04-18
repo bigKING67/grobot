@@ -37,8 +37,10 @@ import {
   evaluatePromptQualityGuard,
   estimateTokensFromText,
   escalatePromptVariant,
+  readGraphQualityAutotuneState,
   prepareTurnPrompt,
   readContextGraphCacheStats,
+  readGraphCacheWindowSummary,
   readPromptQualityGuardState,
   readPromptQualityWindowSummary,
   shouldTriggerDownshiftPrecompact,
@@ -46,8 +48,10 @@ import {
   trimPromptRecentTurnsForBudget,
   trimPromptSnapshotSectionsForBudget,
   truncatePromptHeadForPtlRetry,
+  writeGraphQualityAutotuneState,
   writePromptQualityGuardState,
   type ContextEngineConfig,
+  type GraphQualityAutotuneState,
   type PromptCompactionStage,
   type PromptVariant,
 } from "../../../../tools/context";
@@ -80,6 +84,12 @@ export const TURN_INTERRUPTED_EXIT_CODE = 130;
 
 export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
+}
+
+export interface RunStartTurnPromptBudgetSnapshot {
+  contextWindowUsageRatio?: number;
+  estimatedTokens?: number;
+  targetTokenLimit?: number;
 }
 
 interface CreateRunStartTurnRunnerInput {
@@ -127,6 +137,7 @@ interface CreateRunStartTurnRunnerInput {
   persistSessionRegistryState(): Promise<void>;
   writeStdout(message: string): void;
   writeStderr(message: string): void;
+  onPromptBudgetSnapshot?(snapshot: RunStartTurnPromptBudgetSnapshot): void;
 }
 
 interface ProviderAttemptFailure {
@@ -144,6 +155,34 @@ interface ProviderFlowState {
 const EWMA_ALPHA = 0.25;
 const KIMI_SEARCH_TURN_TIMEOUT_MS = 120_000;
 const PROVIDER_UPSTREAM_429_RETRY_LIMIT = 1;
+const GRAPH_AUTOTUNE_MAX_ROWS = 20;
+const GRAPH_AUTOTUNE_FLIP_HOLD_TURNS = 2;
+const GRAPH_AUTOTUNE_DOWNSHIFT_WARMUP_TURNS = 2;
+
+interface GraphQualityAutotuneDecision {
+  adjustedConfig: ContextEngineConfig;
+  changed: boolean;
+  action: "none" | "upshift" | "downshift" | "mixed";
+  reason: string;
+  suppressedBy: "none" | "flip_hold" | "downshift_warmup";
+  dependencyRowsFrom: number;
+  dependencyRowsTo: number;
+  symbolRowsFrom: number;
+  symbolRowsTo: number;
+  evidenceEntries: number;
+  evidenceQualityEntries: number;
+  stateBefore: GraphQualityAutotuneState;
+  stateAfter: GraphQualityAutotuneState;
+  metrics: {
+    dependencyDepth: number | null;
+    dependencyMultiHopRate: number | null;
+    symbolBridgeCoverageRate: number | null;
+    symbolBreadthCoverageRate: number | null;
+    pressureUtilization: number | null;
+    pressureAutoLimitRate: number | null;
+    pressureSemanticRate: number | null;
+  };
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -223,6 +262,247 @@ function diffGraphCacheCounter(
     miss: Math.max(0, after.miss - before.miss),
     write: Math.max(0, after.write - before.write),
     evict: Math.max(0, after.evict - before.evict),
+  };
+}
+
+function clampGraphRows(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.max(1, Math.min(GRAPH_AUTOTUNE_MAX_ROWS, Math.floor(value)));
+}
+
+function formatOptionalMetric(value: number | null): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "<none>";
+  }
+  return value.toFixed(3);
+}
+
+function resolveGraphQualityAutotuneDecision(input: {
+  baseConfig: ContextEngineConfig;
+  allowProactiveCompaction: boolean;
+  graphWindowSummary: ReturnType<typeof readGraphCacheWindowSummary>;
+  promptQualityWindowSummary: ReturnType<typeof readPromptQualityWindowSummary>;
+  state: GraphQualityAutotuneState;
+}): GraphQualityAutotuneDecision {
+  const stateBefore: GraphQualityAutotuneState = {
+    ...input.state,
+  };
+  let stateAfter: GraphQualityAutotuneState = {
+    ...input.state,
+  };
+  const dependencyRowsFrom = clampGraphRows(input.baseConfig.dependencyGraph.maxRows);
+  const symbolRowsFrom = clampGraphRows(input.baseConfig.symbolGraph.maxRows);
+  const dependencyDepth = input.graphWindowSummary.quality.dependency.avgMaxChainDepth;
+  const dependencyMultiHopRate = input.graphWindowSummary.quality.dependency.multiHopRate;
+  const symbolBridgeCoverageRate = input.graphWindowSummary.quality.symbol.bridgeCoverageRate;
+  const symbolBreadthCoverageRate = input.graphWindowSummary.quality.symbol.breadthCoverageRate;
+  const pressureUtilization = input.promptQualityWindowSummary.tokenBudget.averageUtilizationRatio;
+  const pressureAutoLimitRate = input.promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate;
+  const pressureSemanticRate =
+    input.promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate;
+  const baseDecision: GraphQualityAutotuneDecision = {
+    adjustedConfig: input.baseConfig,
+    changed: false,
+    action: "none",
+    reason: "stable",
+    suppressedBy: "none",
+    dependencyRowsFrom,
+    dependencyRowsTo: dependencyRowsFrom,
+    symbolRowsFrom,
+    symbolRowsTo: symbolRowsFrom,
+    evidenceEntries: input.graphWindowSummary.entries,
+    evidenceQualityEntries: input.graphWindowSummary.quality.entriesWithQuality,
+    stateBefore,
+    stateAfter,
+    metrics: {
+      dependencyDepth,
+      dependencyMultiHopRate,
+      symbolBridgeCoverageRate,
+      symbolBreadthCoverageRate,
+      pressureUtilization,
+      pressureAutoLimitRate,
+      pressureSemanticRate,
+    },
+  };
+
+  const applyStateNoAction = (reason: string): GraphQualityAutotuneDecision => {
+    stateAfter = {
+      ...stateAfter,
+      holdTurnsRemaining: Math.max(0, stateAfter.holdTurnsRemaining - 1),
+      downshiftWarmupStreak: 0,
+      lastReason: reason,
+      updatedAt: nowIso(),
+    };
+    return {
+      ...baseDecision,
+      reason,
+      stateAfter,
+    };
+  };
+
+  if (!input.allowProactiveCompaction || !input.baseConfig.enabled) {
+    return applyStateNoAction("disabled");
+  }
+  if (!input.baseConfig.dependencyGraph.enabled && !input.baseConfig.symbolGraph.enabled) {
+    return applyStateNoAction("graph_disabled");
+  }
+  const minEvidenceEntries = Math.max(
+    2,
+    Math.min(64, input.baseConfig.promptQuality?.degradeMinEntries ?? 8),
+  );
+  if (
+    input.graphWindowSummary.entries < minEvidenceEntries
+    || input.graphWindowSummary.quality.entriesWithQuality < minEvidenceEntries
+  ) {
+    return applyStateNoAction("insufficient_evidence");
+  }
+
+  const highPressure =
+    (typeof pressureUtilization === "number" && pressureUtilization >= 0.92)
+    || (typeof pressureAutoLimitRate === "number" && pressureAutoLimitRate >= 0.45)
+    || (typeof pressureSemanticRate === "number" && pressureSemanticRate >= 0.55);
+  const lowDependencyDepth = typeof dependencyDepth === "number" && dependencyDepth < 2.4;
+  const veryLowDependencyDepth = typeof dependencyDepth === "number" && dependencyDepth < 1.8;
+  const lowDependencyMultiHop =
+    typeof dependencyMultiHopRate === "number" && dependencyMultiHopRate < 0.22;
+  const veryLowDependencyMultiHop =
+    typeof dependencyMultiHopRate === "number" && dependencyMultiHopRate < 0.10;
+  const poorDependency = lowDependencyDepth || lowDependencyMultiHop;
+  const severeDependency = veryLowDependencyDepth || veryLowDependencyMultiHop;
+  const strongDependency =
+    typeof dependencyDepth === "number"
+    && dependencyDepth >= 3.2
+    && typeof dependencyMultiHopRate === "number"
+    && dependencyMultiHopRate >= 0.45;
+
+  const lowSymbolBridge =
+    typeof symbolBridgeCoverageRate === "number" && symbolBridgeCoverageRate < 0.58;
+  const veryLowSymbolBridge =
+    typeof symbolBridgeCoverageRate === "number" && symbolBridgeCoverageRate < 0.35;
+  const lowSymbolBreadth =
+    typeof symbolBreadthCoverageRate === "number" && symbolBreadthCoverageRate < 0.55;
+  const veryLowSymbolBreadth =
+    typeof symbolBreadthCoverageRate === "number" && symbolBreadthCoverageRate < 0.35;
+  const poorSymbol = lowSymbolBridge || lowSymbolBreadth;
+  const severeSymbol = veryLowSymbolBridge || veryLowSymbolBreadth;
+  const strongSymbol =
+    typeof symbolBridgeCoverageRate === "number"
+    && symbolBridgeCoverageRate >= 0.78
+    && typeof symbolBreadthCoverageRate === "number"
+    && symbolBreadthCoverageRate >= 0.74;
+
+  let dependencyDelta = 0;
+  let symbolDelta = 0;
+  const reasonParts: string[] = [];
+
+  if (input.baseConfig.dependencyGraph.enabled && poorDependency) {
+    dependencyDelta += severeDependency ? 2 : 1;
+    reasonParts.push("dependency_low_quality");
+  }
+  if (input.baseConfig.symbolGraph.enabled && poorSymbol) {
+    symbolDelta += severeSymbol ? 2 : 1;
+    reasonParts.push("symbol_low_quality");
+  }
+  if (highPressure) {
+    reasonParts.push("token_pressure");
+    if (strongDependency && input.baseConfig.dependencyGraph.enabled) {
+      dependencyDelta -= 1;
+    }
+    if (strongSymbol && input.baseConfig.symbolGraph.enabled) {
+      symbolDelta -= 1;
+    }
+    dependencyDelta = Math.min(dependencyDelta, 1);
+    symbolDelta = Math.min(symbolDelta, 1);
+  }
+
+  const dependencyRowsTo = input.baseConfig.dependencyGraph.enabled
+    ? clampGraphRows(dependencyRowsFrom + dependencyDelta)
+    : dependencyRowsFrom;
+  const symbolRowsTo = input.baseConfig.symbolGraph.enabled
+    ? clampGraphRows(symbolRowsFrom + symbolDelta)
+    : symbolRowsFrom;
+
+  const candidateChanged = dependencyRowsTo !== dependencyRowsFrom || symbolRowsTo !== symbolRowsFrom;
+  const candidateRaised = dependencyRowsTo > dependencyRowsFrom || symbolRowsTo > symbolRowsFrom;
+  const candidateLowered = dependencyRowsTo < dependencyRowsFrom || symbolRowsTo < symbolRowsFrom;
+  const candidateAction: GraphQualityAutotuneDecision["action"] = !candidateChanged
+    ? "none"
+    : candidateRaised && candidateLowered
+      ? "mixed"
+      : candidateRaised
+        ? "upshift"
+        : "downshift";
+  const candidateDirection = candidateAction;
+
+  let suppressedBy: GraphQualityAutotuneDecision["suppressedBy"] = "none";
+  if (candidateChanged) {
+    const reversal =
+      (candidateDirection === "upshift" && stateAfter.lastDirection === "downshift")
+      || (candidateDirection === "downshift" && stateAfter.lastDirection === "upshift");
+    if (reversal && stateAfter.holdTurnsRemaining > 0) {
+      suppressedBy = "flip_hold";
+    } else if (candidateDirection === "downshift") {
+      const nextWarmupStreak = stateAfter.downshiftWarmupStreak + 1;
+      stateAfter.downshiftWarmupStreak = nextWarmupStreak;
+      if (nextWarmupStreak < GRAPH_AUTOTUNE_DOWNSHIFT_WARMUP_TURNS) {
+        suppressedBy = "downshift_warmup";
+      }
+    } else {
+      stateAfter.downshiftWarmupStreak = 0;
+    }
+  } else {
+    stateAfter.downshiftWarmupStreak = 0;
+  }
+
+  const changed = candidateChanged && suppressedBy === "none";
+  const finalDependencyRowsTo = changed ? dependencyRowsTo : dependencyRowsFrom;
+  const finalSymbolRowsTo = changed ? symbolRowsTo : symbolRowsFrom;
+  const finalAction: GraphQualityAutotuneDecision["action"] = changed ? candidateAction : "none";
+  const reason = reasonParts.length > 0 ? reasonParts.join("+") : "stable";
+  const finalReason = suppressedBy === "none" ? reason : `${reason}+${suppressedBy}`;
+
+  if (changed) {
+    stateAfter = {
+      ...stateAfter,
+      lastDirection: candidateDirection,
+      holdTurnsRemaining: GRAPH_AUTOTUNE_FLIP_HOLD_TURNS,
+      downshiftWarmupStreak: 0,
+      lastReason: finalReason,
+      updatedAt: nowIso(),
+    };
+  } else {
+    stateAfter = {
+      ...stateAfter,
+      holdTurnsRemaining: Math.max(0, stateAfter.holdTurnsRemaining - 1),
+      lastReason: finalReason,
+      updatedAt: nowIso(),
+    };
+  }
+
+  const adjustedConfig: ContextEngineConfig = {
+    ...input.baseConfig,
+    dependencyGraph: {
+      ...input.baseConfig.dependencyGraph,
+      maxRows: finalDependencyRowsTo,
+    },
+    symbolGraph: {
+      ...input.baseConfig.symbolGraph,
+      maxRows: finalSymbolRowsTo,
+    },
+  };
+
+  return {
+    ...baseDecision,
+    adjustedConfig,
+    changed,
+    action: finalAction,
+    reason: finalReason,
+    suppressedBy,
+    dependencyRowsTo: finalDependencyRowsTo,
+    symbolRowsTo: finalSymbolRowsTo,
+    stateAfter,
   };
 }
 
@@ -894,21 +1174,6 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           `[context-engine] event=circuit_open failures=${String(consecutiveCompactionFailures)} limit=${String(input.contextEngineConfig.recovery.circuitBreakerFailures)}\n`,
         );
       }
-      const graphCacheStatsBefore = readContextGraphCacheStats();
-      const promptPreparation = prepareTurnPrompt({
-        userText,
-        historyMessages,
-        historyTurns: input.historyTurns,
-        workDir: input.workDir,
-        config: {
-          ...input.contextEngineConfig,
-          enabled: allowProactiveCompaction,
-        },
-      });
-      let selectedStage = promptPreparation.selected.stage;
-      let basePrompt = promptPreparation.selected.prompt;
-      let selectionReason: "threshold" | "budget_guard" = promptPreparation.selectionReason;
-      const targetTokenLimit = promptPreparation.targetTokenLimit;
       const promptQualityConfig = input.contextEngineConfig.promptQuality;
       const promptQualityWindowSummary = readPromptQualityWindowSummary({
         workDir: input.workDir,
@@ -918,6 +1183,48 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         ),
         lowQualityThreshold: promptQualityConfig?.lowQualityThreshold,
       });
+      const graphAutotuneWindowSize = Math.max(
+        8,
+        Math.min(128, (promptQualityConfig?.degradeMinEntries ?? 8) * 4),
+      );
+      const graphWindowSummary = readGraphCacheWindowSummary({
+        workDir: input.workDir,
+        size: graphAutotuneWindowSize,
+      });
+      const graphAutotuneState = readGraphQualityAutotuneState({
+        workDir: input.workDir,
+      });
+      const graphAutotuneDecision = resolveGraphQualityAutotuneDecision({
+        baseConfig: input.contextEngineConfig,
+        allowProactiveCompaction,
+        graphWindowSummary,
+        promptQualityWindowSummary,
+        state: graphAutotuneState,
+      });
+      writeGraphQualityAutotuneState({
+        workDir: input.workDir,
+        state: graphAutotuneDecision.stateAfter,
+      });
+      if (graphAutotuneDecision.changed || graphAutotuneDecision.suppressedBy !== "none") {
+        input.writeStderr(
+          `[context-engine] event=graph_quality_autotune action=${graphAutotuneDecision.action} reason=${graphAutotuneDecision.reason} suppressed=${graphAutotuneDecision.suppressedBy} dep_rows=${String(graphAutotuneDecision.dependencyRowsFrom)}->${String(graphAutotuneDecision.dependencyRowsTo)} symbol_rows=${String(graphAutotuneDecision.symbolRowsFrom)}->${String(graphAutotuneDecision.symbolRowsTo)} entries=${String(graphAutotuneDecision.evidenceEntries)} quality_entries=${String(graphAutotuneDecision.evidenceQualityEntries)} hold=${String(graphAutotuneDecision.stateBefore.holdTurnsRemaining)}->${String(graphAutotuneDecision.stateAfter.holdTurnsRemaining)} direction=${graphAutotuneDecision.stateBefore.lastDirection}->${graphAutotuneDecision.stateAfter.lastDirection} downshift_warmup=${String(graphAutotuneDecision.stateBefore.downshiftWarmupStreak)}->${String(graphAutotuneDecision.stateAfter.downshiftWarmupStreak)} dep_depth=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyDepth)} dep_multi_hop=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyMultiHopRate)} symbol_bridge=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBridgeCoverageRate)} symbol_breadth=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBreadthCoverageRate)} pressure_utilization=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureUtilization)} pressure_auto_limit=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureAutoLimitRate)} pressure_semantic=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureSemanticRate)}\n`,
+        );
+      }
+      const graphCacheStatsBefore = readContextGraphCacheStats();
+      const promptPreparation = prepareTurnPrompt({
+        userText,
+        historyMessages,
+        historyTurns: input.historyTurns,
+        workDir: input.workDir,
+        config: {
+          ...graphAutotuneDecision.adjustedConfig,
+          enabled: allowProactiveCompaction,
+        },
+      });
+      let selectedStage = promptPreparation.selected.stage;
+      let basePrompt = promptPreparation.selected.prompt;
+      let selectionReason: "threshold" | "budget_guard" = promptPreparation.selectionReason;
+      const targetTokenLimit = promptPreparation.targetTokenLimit;
       const promptQualityWindowDegradation = assessPromptQualityWindowDegradation({
         summary: promptQualityWindowSummary,
         thresholdOverall: promptQualityConfig?.degradeOverallThreshold ?? 0.62,
@@ -1348,8 +1655,17 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           `[context-engine] event=pre_send_head_trim stage=${selectedStage} retries=${String(preSendHeadTrimRetries)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)} target_limit=${String(targetTokenLimit)}\n`,
         );
       }
+      const selectedUtilizationRatio = computeUtilization(
+        selectedPrepared.estimatedTokens,
+        promptPreparation.effectiveWindowTokens,
+      );
+      input.onPromptBudgetSnapshot?.({
+        contextWindowUsageRatio: selectedUtilizationRatio,
+        estimatedTokens: selectedPrepared.estimatedTokens,
+        targetTokenLimit,
+      });
       input.writeStderr(
-        `[context-engine] event=prompt_prepared stage=${selectedStage} threshold_stage=${promptPreparation.thresholdStage} reason=${selectionReason} utilization=${promptPreparation.utilization.toFixed(3)} selected_utilization=${computeUtilization(selectedPrepared.estimatedTokens, promptPreparation.effectiveWindowTokens).toFixed(3)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} auto_compact_limit=${String(promptPreparation.autoCompactTokenLimit)} target_limit=${String(targetTokenLimit)} effective_window=${String(promptPreparation.effectiveWindowTokens)} auto_limit_triggered=${promptPreparation.autoCompactLimitTriggered ? "true" : "false"} downshift_guard=${downshiftGuardTriggered ? "true" : "false"} quality_guard=${qualityGuardActive ? "true" : "false"} pre_send_strategy=${preSendCompressionStrategy} pre_send_overflow_ratio=${preSendCompressionOverflowRatio.toFixed(3)} pre_send_pressure_score=${preSendCompressionPressureScore.toFixed(3)} pre_send_order=${preSendCompressionOrder} recent_trim_rows=${String(preSendRecentTrimRows)} snapshot_trim_sections=${String(preSendSnapshotTrimSections)} snapshot_semantic_compress_sections=${String(preSendSnapshotSemanticCompressSections)} pretrim_retries=${String(preSendHeadTrimRetries)}\n`,
+        `[context-engine] event=prompt_prepared stage=${selectedStage} threshold_stage=${promptPreparation.thresholdStage} reason=${selectionReason} utilization=${promptPreparation.utilization.toFixed(3)} selected_utilization=${selectedUtilizationRatio.toFixed(3)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} auto_compact_limit=${String(promptPreparation.autoCompactTokenLimit)} target_limit=${String(targetTokenLimit)} effective_window=${String(promptPreparation.effectiveWindowTokens)} auto_limit_triggered=${promptPreparation.autoCompactLimitTriggered ? "true" : "false"} downshift_guard=${downshiftGuardTriggered ? "true" : "false"} quality_guard=${qualityGuardActive ? "true" : "false"} pre_send_strategy=${preSendCompressionStrategy} pre_send_overflow_ratio=${preSendCompressionOverflowRatio.toFixed(3)} pre_send_pressure_score=${preSendCompressionPressureScore.toFixed(3)} pre_send_order=${preSendCompressionOrder} recent_trim_rows=${String(preSendRecentTrimRows)} snapshot_trim_sections=${String(preSendSnapshotTrimSections)} snapshot_semantic_compress_sections=${String(preSendSnapshotSemanticCompressSections)} pretrim_retries=${String(preSendHeadTrimRetries)}\n`,
       );
       const promptQualitySample = computePromptQualitySample({
         prompt: selectedPrepared.prompt,
