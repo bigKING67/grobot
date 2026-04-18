@@ -147,7 +147,11 @@ TS_DEV_CLI_AVAILABLE=0
 if [ -x "$DEV_TS_CLI_RUNNER" ]; then
   TS_DEV_CLI_AVAILABLE=1
   set +e
-  "$DEV_TS_CLI_RUNNER" "${FORWARD_ARGS[@]}"
+  if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
+    "$DEV_TS_CLI_RUNNER" "${FORWARD_ARGS[@]}"
+  else
+    "$DEV_TS_CLI_RUNNER"
+  fi
   TS_DEV_CLI_EXIT_CODE=$?
   set -e
   if [ "$TS_DEV_CLI_EXIT_CODE" -eq 0 ]; then

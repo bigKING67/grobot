@@ -89,7 +89,11 @@ run_ts_dev_cli() {
   if [ ! -x "$TS_DEV_CLI_RUNNER" ]; then
     return 86
   fi
-  "$TS_DEV_CLI_RUNNER" "${FORWARD_ARGS[@]}"
+  if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
+    "$TS_DEV_CLI_RUNNER" "${FORWARD_ARGS[@]}"
+  else
+    "$TS_DEV_CLI_RUNNER"
+  fi
 }
 
 set +e
