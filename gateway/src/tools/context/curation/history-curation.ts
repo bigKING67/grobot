@@ -175,12 +175,20 @@ function tokenizeForGraphFusion(raw: string): string[] {
     .filter((item) => item.length >= 2);
 }
 
+function normalizePathHint(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .replace(/:(\d+)(?::\d+)?$/, "");
+}
+
 function extractPathHints(raw: string): string[] {
   const matches = raw.match(/[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/g) ?? [];
   const output: string[] = [];
   const seen = new Set<string>();
   for (const item of matches) {
-    const normalized = item.trim();
+    const normalized = normalizePathHint(item);
     if (!normalized) {
       continue;
     }
@@ -197,12 +205,77 @@ function extractPathHints(raw: string): string[] {
   return output;
 }
 
+function collectNormalizedPathHints(rows: readonly string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const path of extractPathHints(row)) {
+      const normalized = normalizePathHint(path).toLowerCase();
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      output.push(normalized);
+      if (output.length >= 128) {
+        return output;
+      }
+    }
+  }
+  return output;
+}
+
+function isPathOverlap(left: string, right: string): boolean {
+  if (!left || !right) {
+    return false;
+  }
+  if (left === right) {
+    return true;
+  }
+  return left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+function countPathSetOverlap(paths: ReadonlySet<string>, targets: ReadonlySet<string>): number {
+  if (paths.size === 0 || targets.size === 0) {
+    return 0;
+  }
+  let overlapCount = 0;
+  for (const path of paths) {
+    let matched = false;
+    for (const target of targets) {
+      if (isPathOverlap(path, target)) {
+        matched = true;
+        break;
+      }
+    }
+    if (matched) {
+      overlapCount += 1;
+    }
+  }
+  return overlapCount;
+}
+
+function toPathClusterKey(path: string): string {
+  const normalized = normalizePathHint(path).toLowerCase();
+  if (!normalized) {
+    return "__none__";
+  }
+  const segments = normalized.split("/").filter((item) => item.length > 0);
+  if (segments.length === 0) {
+    return "__none__";
+  }
+  if (segments.length === 1) {
+    return segments[0] as string;
+  }
+  return `${segments[0]}/${segments[1]}`;
+}
+
 interface GraphFusionRow {
   row: string;
   source: "dependency" | "symbol";
   index: number;
   tokens: Set<string>;
   paths: Set<string>;
+  pathList: string[];
 }
 
 function buildGraphFusionRows(
@@ -211,13 +284,14 @@ function buildGraphFusionRows(
 ): GraphFusionRow[] {
   return rows.map((row, index) => {
     const normalized = row.trim();
-    const paths = extractPathHints(normalized).map((item) => item.toLowerCase());
+    const paths = extractPathHints(normalized).map((item) => normalizePathHint(item).toLowerCase());
     return {
       row: normalized,
       source,
       index,
       tokens: new Set(tokenizeForGraphFusion(normalized)),
       paths: new Set(paths),
+      pathList: paths,
     };
   }).filter((row) => row.row.length > 0);
 }
@@ -227,6 +301,9 @@ function fuseGraphHints(args: {
   dependencyRows: readonly string[];
   symbolRows: readonly string[];
   maxRowsPerSection: number;
+  lineageRows?: readonly string[];
+  workspaceRows?: readonly string[];
+  changedCodeSnapshot?: ChangedCodeSnapshot;
 }): {
   dependencyGraph: string[];
   symbolGraph: string[];
@@ -242,6 +319,14 @@ function fuseGraphHints(args: {
   }
   const allRows = [...dependency, ...symbol];
   const queryTokens = new Set(tokenizeForGraphFusion(args.query));
+  const lineagePathSet = new Set(collectNormalizedPathHints(args.lineageRows ?? []));
+  const workspacePathSet = new Set(collectNormalizedPathHints(args.workspaceRows ?? []));
+  const changedPathSet = new Set(
+    (args.changedCodeSnapshot?.files ?? [])
+      .map((row) => normalizePathHint(row.path).toLowerCase())
+      .filter((row) => row.length > 0)
+      .slice(0, 240),
+  );
   const pathFrequency = new Map<string, number>();
   for (const row of allRows) {
     for (const path of row.paths) {
@@ -273,10 +358,70 @@ function fuseGraphHints(args: {
     if (row.source === "symbol" && /\brefs=\d+\b/i.test(row.row)) {
       score += 0.8;
     }
+    const lineageOverlap = countPathSetOverlap(row.paths, lineagePathSet);
+    if (lineageOverlap > 0) {
+      score += Math.min(3, lineageOverlap * 1.3);
+    }
+    const workspaceOverlap = countPathSetOverlap(row.paths, workspacePathSet);
+    if (workspaceOverlap > 0) {
+      score += Math.min(2.4, workspaceOverlap * 1.1);
+    }
+    const changedOverlap = countPathSetOverlap(row.paths, changedPathSet);
+    if (changedOverlap > 0) {
+      score += Math.min(3.2, changedOverlap * 1.6);
+      if (row.source === "dependency") {
+        score += 0.6;
+      }
+    }
     return score;
   };
+  const resolveClusterKey = (row: GraphFusionRow): string => {
+    if (row.pathList.length > 0) {
+      return `path:${toPathClusterKey(row.pathList[0] ?? "")}`;
+    }
+    const firstToken = Array.from(row.tokens).find((token) => token.length >= 3);
+    if (firstToken) {
+      return `token:${row.source}:${firstToken}`;
+    }
+    return `fallback:${row.source}:${String(row.index)}`;
+  };
+  const selectDiverseRows = (rows: Array<{ row: GraphFusionRow; score: number }>): string[] => {
+    const output: string[] = [];
+    const usedRows = new Set<number>();
+    const seenClusters = new Set<string>();
+    for (let index = 0; index < rows.length; index += 1) {
+      if (output.length >= maxRows) {
+        break;
+      }
+      const item = rows[index];
+      if (!item) {
+        continue;
+      }
+      const clusterKey = resolveClusterKey(item.row);
+      if (seenClusters.has(clusterKey)) {
+        continue;
+      }
+      seenClusters.add(clusterKey);
+      usedRows.add(index);
+      output.push(item.row.row);
+    }
+    for (let index = 0; index < rows.length; index += 1) {
+      if (output.length >= maxRows) {
+        break;
+      }
+      if (usedRows.has(index)) {
+        continue;
+      }
+      const item = rows[index];
+      if (!item) {
+        continue;
+      }
+      output.push(item.row.row);
+    }
+    return output.slice(0, maxRows);
+  };
   const sortRows = (rows: GraphFusionRow[]): string[] =>
-    rows
+    selectDiverseRows(rows
       .map((row) => ({
         row,
         score: scoreRow(row),
@@ -286,9 +431,7 @@ function fuseGraphHints(args: {
           return right.score - left.score;
         }
         return left.row.index - right.row.index;
-      })
-      .slice(0, maxRows)
-      .map((item) => item.row.row);
+      }));
   return {
     dependencyGraph: sortRows(dependency),
     symbolGraph: sortRows(symbol),
@@ -321,6 +464,8 @@ export function buildCompactSnapshot(
   const sections = createEmptySections();
   let dependencyRows: string[] = [];
   let symbolRows: string[] = [];
+  let workspaceSignalRows: ReturnType<typeof retrieveWorkspaceSignals> = [];
+  let lineageRows: ReturnType<typeof retrieveLineageSummaries> = [];
   const structuralHintsEnabled =
     typeof options?.forceStructuralHints === "boolean"
       ? options.forceStructuralHints
@@ -334,7 +479,7 @@ export function buildCompactSnapshot(
     classifyRow(content, sections);
   }
   if (structuralHintsEnabled && options?.workspaceSignalsEnabled) {
-    const workspaceRows = retrieveWorkspaceSignals(
+    workspaceSignalRows = retrieveWorkspaceSignals(
       userText,
       Math.max(1, Math.min(options.workspaceSignalsMaxRows ?? 4, 20)),
       {
@@ -343,7 +488,18 @@ export function buildCompactSnapshot(
         cacheTtlMs: options.workspaceSignalsCacheTtlMs,
       },
     );
-    sections.workspace.push(...workspaceRows.map((row) => row.summary));
+    sections.workspace.push(...workspaceSignalRows.map((row) => row.summary));
+  }
+  if (structuralHintsEnabled && options?.lineageEnabled) {
+    lineageRows = retrieveLineageSummaries(
+      userText,
+      Math.max(1, Math.min(options.lineageMaxRows ?? 3, 16)),
+      {
+        workDir: options.workDir,
+        maxCommits: options.lineageMaxCommits,
+        cacheTtlMs: options.lineageCacheTtlMs,
+      },
+    );
   }
   if (structuralHintsEnabled && options?.dependencyGraphEnabled) {
     dependencyRows = retrieveDependencyGraphHints(userText, {
@@ -365,20 +521,14 @@ export function buildCompactSnapshot(
       dependencyRows,
       symbolRows,
       maxRowsPerSection,
+      lineageRows: lineageRows.map((row) => row.summary),
+      workspaceRows: workspaceSignalRows.map((row) => row.path),
+      changedCodeSnapshot: options?.changedCodeSnapshot,
     });
     sections.dependencyGraph.push(...fused.dependencyGraph);
     sections.symbolGraph.push(...fused.symbolGraph);
   }
   if (structuralHintsEnabled && options?.lineageEnabled) {
-    const lineageRows = retrieveLineageSummaries(
-      userText,
-      Math.max(1, Math.min(options.lineageMaxRows ?? 3, 16)),
-      {
-        workDir: options.workDir,
-        maxCommits: options.lineageMaxCommits,
-        cacheTtlMs: options.lineageCacheTtlMs,
-      },
-    );
     for (const row of lineageRows) {
       const commitShort = row.commitId.slice(0, 8);
       const timestamp = row.timestamp ? row.timestamp.slice(0, 10) : "";

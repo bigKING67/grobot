@@ -622,21 +622,37 @@ function resolveContextWeaverBridgeScriptPath(workDir: string): string | undefin
   return undefined;
 }
 
+function stripAnsiSequences(raw: string): string {
+  return raw.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
 function readFirstJsonObjectLine(stdout: string): Record<string, unknown> | undefined {
-  const line = stdout
+  const lines = stdout
     .split(/\r?\n/)
-    .map((item) => item.trim())
-    .find((item) => item.length > 0);
-  if (!line) {
-    return undefined;
-  }
-  try {
-    const parsed = JSON.parse(line);
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
+    .map((item) => stripAnsiSequences(item).trim())
+    .filter((item) => item.length > 0);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index] as string;
+    try {
+      const parsed = JSON.parse(line);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      const firstBrace = line.indexOf("{");
+      const lastBrace = line.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const candidate = line.slice(firstBrace, lastBrace + 1);
+        try {
+          const parsed = JSON.parse(candidate);
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+          }
+        } catch {
+          // ignore and continue scanning lines.
+        }
+      }
     }
-  } catch {
-    return undefined;
   }
   return undefined;
 }

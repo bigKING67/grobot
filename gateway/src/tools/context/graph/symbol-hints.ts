@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import { getChangedCodeSnapshot, type ChangedCodeSnapshot } from "./changed-code-snapshot";
+import { extractTypeScriptAstDependencyTargets } from "./dependency-ts-ast";
 import { extractTypeScriptAstSymbols } from "./symbol-ts-ast";
 import {
   computeSnapshotFingerprint,
@@ -76,6 +78,165 @@ function tokenizeIdentifier(raw: string): string[] {
   const spaced = compact.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
   const tokens = [...tokenize(compact), ...tokenize(spaced)];
   return Array.from(new Set(tokens));
+}
+
+function normalizePath(raw: string): string {
+  return raw.replace(/\\/g, "/").replace(/^\.\/+/, "").trim();
+}
+
+function getDirPath(filePath: string): string {
+  const normalized = normalizePath(filePath);
+  const slash = normalized.lastIndexOf("/");
+  if (slash < 0) {
+    return ".";
+  }
+  return normalized.slice(0, slash);
+}
+
+function resolveRelativeImportInSnapshot(
+  fromPath: string,
+  importPath: string,
+  snapshotPathSet: ReadonlySet<string>,
+): string | undefined {
+  if (!importPath.startsWith(".")) {
+    return undefined;
+  }
+  const baseDir = getDirPath(fromPath);
+  const resolvedBase = normalizePath(resolve("/", baseDir, importPath)).replace(/^\//, "");
+  const candidates = [
+    resolvedBase,
+    `${resolvedBase}.ts`,
+    `${resolvedBase}.tsx`,
+    `${resolvedBase}.js`,
+    `${resolvedBase}.jsx`,
+    `${resolvedBase}.mjs`,
+    `${resolvedBase}.cjs`,
+    `${resolvedBase}.py`,
+    `${resolvedBase}.rs`,
+    `${resolvedBase}.go`,
+    `${resolvedBase}.java`,
+    `${resolvedBase}/index.ts`,
+    `${resolvedBase}/index.tsx`,
+    `${resolvedBase}/index.js`,
+    `${resolvedBase}/index.mjs`,
+    `${resolvedBase}/index.py`,
+    `${resolvedBase}/mod.rs`,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePath(candidate);
+    if (!normalized) {
+      continue;
+    }
+    if (snapshotPathSet.has(normalized.toLowerCase())) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function extractRegexImports(content: string): string[] {
+  const rows: string[] = [];
+  const push = (value: string): void => {
+    const normalized = value.trim();
+    if (!normalized) {
+      return;
+    }
+    rows.push(normalized);
+  };
+  const esmRegex = /from\s+["']([^"']+)["']/g;
+  let esmMatch: RegExpExecArray | null = esmRegex.exec(content);
+  while (esmMatch) {
+    if (typeof esmMatch[1] === "string") {
+      push(esmMatch[1]);
+    }
+    esmMatch = esmRegex.exec(content);
+  }
+  const requireRegex = /require\(\s*["']([^"']+)["']\s*\)/g;
+  let requireMatch: RegExpExecArray | null = requireRegex.exec(content);
+  while (requireMatch) {
+    if (typeof requireMatch[1] === "string") {
+      push(requireMatch[1]);
+    }
+    requireMatch = requireRegex.exec(content);
+  }
+  return rows.slice(0, 120);
+}
+
+function dedupeStrings(rows: readonly string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const normalized = row.trim();
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(normalized);
+    if (output.length >= 160) {
+      break;
+    }
+  }
+  return output;
+}
+
+function extractImportTargets(
+  filePath: string,
+  content: string,
+  snapshotPathSet: ReadonlySet<string>,
+): string[] {
+  const astTargets = extractTypeScriptAstDependencyTargets(filePath, content);
+  const rawTargets = astTargets.length > 0 ? astTargets : extractRegexImports(content);
+  const resolved = rawTargets.map((row) => {
+    const normalized = normalizePath(row);
+    const resolvedRelative = resolveRelativeImportInSnapshot(filePath, normalized, snapshotPathSet);
+    if (resolvedRelative) {
+      return resolvedRelative;
+    }
+    return normalized;
+  });
+  return dedupeStrings(resolved);
+}
+
+function buildFileImportGraph(
+  snapshot: ChangedCodeSnapshot,
+): Map<string, Set<string>> {
+  const graph = new Map<string, Set<string>>();
+  const snapshotPathSet = new Set(snapshot.files.map((file) => normalizePath(file.path).toLowerCase()));
+  for (const file of snapshot.files) {
+    const fromPath = normalizePath(file.path);
+    const targets = extractImportTargets(file.path, file.content, snapshotPathSet)
+      .filter((target) => snapshotPathSet.has(target.toLowerCase()))
+      .slice(0, 80);
+    graph.set(fromPath, new Set(targets));
+  }
+  return graph;
+}
+
+function toPathCluster(path: string): string {
+  const normalized = normalizePath(path);
+  const parts = normalized.split("/").filter((item) => item.length > 0);
+  if (parts.length <= 1) {
+    return normalized || "__root__";
+  }
+  return `${parts[0]}/${parts[1]}`;
+}
+
+function extractPathHints(raw: string): string[] {
+  const matched = raw.match(/[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+(?::\d+)?/g) ?? [];
+  return dedupeStrings(matched.map((row) => normalizePath(row).replace(/:(\d+)(?::\d+)?$/, "")));
+}
+
+function isPathOverlap(left: string, right: string): boolean {
+  const normalizedLeft = normalizePath(left).toLowerCase();
+  const normalizedRight = normalizePath(right).toLowerCase();
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  return normalizedLeft.startsWith(`${normalizedRight}/`) || normalizedRight.startsWith(`${normalizedLeft}/`);
 }
 
 function buildLineStartOffsets(content: string): number[] {
@@ -230,6 +391,9 @@ function rankDeclaration(
   references: Array<{ path: string; hits: number }>,
   queryRaw: string,
   queryTokens: Set<string>,
+  queryPathHints: ReadonlySet<string>,
+  graphBridgeCount: number,
+  referenceBreadth: number,
 ): SymbolRankRow {
   const symbolTokens = new Set(tokenizeIdentifier(declaration.symbol));
   const pathTokens = new Set(tokenize(declaration.filePath));
@@ -247,16 +411,24 @@ function rankDeclaration(
       score += 1;
     }
   }
+  for (const pathHint of queryPathHints) {
+    if (isPathOverlap(pathHint, declaration.filePath)) {
+      score += 2.2;
+      break;
+    }
+  }
   const totalRefHits = references.reduce((acc, row) => acc + row.hits, 0);
   score += Math.min(4, totalRefHits * 0.4);
+  score += Math.min(3.6, graphBridgeCount * 1.2);
+  score += Math.min(2.5, referenceBreadth * 0.75);
   const refPreview = references
     .sort((left, right) => right.hits - left.hits)
     .slice(0, 2)
     .map((row) => `${row.path}(${String(row.hits)})`)
     .join(", ");
   const line = refPreview.length > 0
-    ? `${declaration.kind} ${declaration.symbol} @ ${declaration.filePath}:${String(declaration.line)} refs=${String(totalRefHits)} -> ${refPreview}`
-    : `${declaration.kind} ${declaration.symbol} @ ${declaration.filePath}:${String(declaration.line)} refs=${String(totalRefHits)}`;
+    ? `${declaration.kind} ${declaration.symbol} @ ${declaration.filePath}:${String(declaration.line)} refs=${String(totalRefHits)} bridge=${String(graphBridgeCount)} breadth=${String(referenceBreadth)} -> ${refPreview}`
+    : `${declaration.kind} ${declaration.symbol} @ ${declaration.filePath}:${String(declaration.line)} refs=${String(totalRefHits)} bridge=${String(graphBridgeCount)} breadth=${String(referenceBreadth)}`;
   return { score, line };
 }
 
@@ -349,6 +521,7 @@ export function retrieveSymbolGraphHints(
   const fileContents = new Map<string, string>();
   const declarations: SymbolDeclaration[] = [];
   const referenceHitCache = new Map<string, number>();
+  const importGraph = buildFileImportGraph(snapshot);
   for (const file of snapshot.files) {
     fileContents.set(file.path, file.content);
     declarations.push(...extractSymbolDeclarationsWithCache(file.path, file.content));
@@ -358,6 +531,7 @@ export function retrieveSymbolGraphHints(
     return [];
   }
   const queryTokens = new Set(tokenize(query));
+  const queryPathHints = new Set(extractPathHints(query).map((row) => row.toLowerCase()));
   const ranked = declarations
     .map((declaration) => {
       const references: Array<{ path: string; hits: number }> = [];
@@ -378,9 +552,34 @@ export function retrieveSymbolGraphHints(
         }
         references.push({ path, hits });
       }
-      return rankDeclaration(declaration, references, query, queryTokens);
+      const declarationPath = normalizePath(declaration.filePath);
+      const declarationImports = importGraph.get(declarationPath) ?? new Set<string>();
+      let graphBridgeCount = 0;
+      const breadthClusters = new Set<string>();
+      for (const reference of references) {
+        const referencePath = normalizePath(reference.path);
+        breadthClusters.add(toPathCluster(referencePath));
+        const referenceImports = importGraph.get(referencePath) ?? new Set<string>();
+        if (declarationImports.has(referencePath) || referenceImports.has(declarationPath)) {
+          graphBridgeCount += 1;
+        }
+      }
+      return rankDeclaration(
+        declaration,
+        references,
+        query,
+        queryTokens,
+        queryPathHints,
+        graphBridgeCount,
+        breadthClusters.size,
+      );
     })
-    .sort((left, right) => right.score - left.score)
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return right.score - left.score;
+      }
+      return left.line.localeCompare(right.line);
+    })
     .map((row) => row.line);
   const deduped = dedupeLines(ranked);
   writeQueryCacheRows(cacheKey, snapshotFingerprint, deduped);

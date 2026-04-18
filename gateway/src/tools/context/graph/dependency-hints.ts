@@ -24,6 +24,7 @@ interface DependencyEdge {
   fromPath: string;
   target: string;
   score: number;
+  targetIsLocal: boolean;
 }
 
 interface DependencyQueryCacheEntry {
@@ -123,6 +124,47 @@ function resolveRelativeTarget(rootPath: string, fromPath: string, importPath: s
     return relative;
   }
   return normalizePath(importPath);
+}
+
+function resolveRelativeTargetInSnapshot(
+  fromPath: string,
+  importPath: string,
+  snapshotPathSet: ReadonlySet<string>,
+): string | undefined {
+  if (!importPath.startsWith(".")) {
+    return undefined;
+  }
+  const baseDir = getDirPath(fromPath);
+  const resolvedBase = normalizePath(resolve("/", baseDir, importPath)).replace(/^\//, "");
+  const candidates = [
+    resolvedBase,
+    `${resolvedBase}.ts`,
+    `${resolvedBase}.tsx`,
+    `${resolvedBase}.js`,
+    `${resolvedBase}.jsx`,
+    `${resolvedBase}.mjs`,
+    `${resolvedBase}.cjs`,
+    `${resolvedBase}.py`,
+    `${resolvedBase}.rs`,
+    `${resolvedBase}.go`,
+    `${resolvedBase}.java`,
+    `${resolvedBase}/index.ts`,
+    `${resolvedBase}/index.tsx`,
+    `${resolvedBase}/index.js`,
+    `${resolvedBase}/index.mjs`,
+    `${resolvedBase}/index.py`,
+    `${resolvedBase}/mod.rs`,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePath(candidate);
+    if (!normalized) {
+      continue;
+    }
+    if (snapshotPathSet.has(normalized.toLowerCase())) {
+      return normalized;
+    }
+  }
+  return undefined;
 }
 
 function dedupeTargets(rows: readonly string[]): string[] {
@@ -230,6 +272,9 @@ function scoreEdge(queryTokens: Set<string>, fromPath: string, target: string): 
   if (target.startsWith(".")) {
     score += 1;
   }
+  if (target.includes("/") && /\.[A-Za-z0-9_]+$/.test(target)) {
+    score += 1;
+  }
   return score;
 }
 
@@ -248,6 +293,171 @@ function dedupeRows(rows: readonly string[], maxRows?: number): string[] {
     }
   }
   return output;
+}
+
+function countPathTokenMatches(path: string, queryTokens: ReadonlySet<string>): number {
+  if (queryTokens.size === 0) {
+    return 0;
+  }
+  const pathTokens = new Set(tokenize(path));
+  let matched = 0;
+  for (const token of queryTokens) {
+    if (pathTokens.has(token)) {
+      matched += 1;
+    }
+  }
+  return matched;
+}
+
+function buildLocalAdjacency(
+  edges: readonly DependencyEdge[],
+): {
+  forward: Map<string, string[]>;
+  reverse: Map<string, string[]>;
+} {
+  const forward = new Map<string, Set<string>>();
+  const reverse = new Map<string, Set<string>>();
+  const push = (map: Map<string, Set<string>>, key: string, value: string): void => {
+    const current = map.get(key) ?? new Set<string>();
+    current.add(value);
+    map.set(key, current);
+  };
+  for (const edge of edges) {
+    if (!edge.targetIsLocal) {
+      continue;
+    }
+    push(forward, edge.fromPath, edge.target);
+    push(reverse, edge.target, edge.fromPath);
+  }
+  const sortMap = (source: Map<string, Set<string>>): Map<string, string[]> =>
+    new Map(Array.from(source.entries()).map(([key, value]) => [key, Array.from(value).sort()]));
+  return {
+    forward: sortMap(forward),
+    reverse: sortMap(reverse),
+  };
+}
+
+function collectSeedPaths(args: {
+  queryTokens: ReadonlySet<string>;
+  snapshotPaths: readonly string[];
+  edges: readonly DependencyEdge[];
+}): string[] {
+  const scores = new Map<string, number>();
+  const add = (path: string, delta: number): void => {
+    if (!path) {
+      return;
+    }
+    const current = scores.get(path) ?? 0;
+    scores.set(path, current + delta);
+  };
+  for (const path of args.snapshotPaths) {
+    const tokenMatches = countPathTokenMatches(path, args.queryTokens);
+    if (tokenMatches > 0) {
+      add(path, 2 + tokenMatches * 1.1);
+    }
+  }
+  for (const edge of args.edges) {
+    add(edge.fromPath, edge.score * 0.65);
+    if (edge.targetIsLocal) {
+      add(edge.target, edge.score * 0.7);
+    }
+  }
+  return Array.from(scores.entries())
+    .sort((left, right) => {
+      if (left[1] !== right[1]) {
+        return right[1] - left[1];
+      }
+      return left[0].localeCompare(right[0]);
+    })
+    .slice(0, 12)
+    .map((item) => item[0]);
+}
+
+function buildMultiHopDependencyRows(args: {
+  queryTokens: ReadonlySet<string>;
+  seeds: readonly string[];
+  forward: ReadonlyMap<string, readonly string[]>;
+  reverse: ReadonlyMap<string, readonly string[]>;
+  changedPathSet: ReadonlySet<string>;
+}): Array<{ line: string; score: number }> {
+  const degree = new Map<string, number>();
+  const accumulateDegree = (map: ReadonlyMap<string, readonly string[]>): void => {
+    for (const [key, values] of map.entries()) {
+      degree.set(key, (degree.get(key) ?? 0) + values.length);
+      for (const value of values) {
+        degree.set(value, (degree.get(value) ?? 0) + 1);
+      }
+    }
+  };
+  accumulateDegree(args.forward);
+  accumulateDegree(args.reverse);
+  const rows: Array<{ line: string; score: number }> = [];
+  const seen = new Set<string>();
+  const scoreChain = (nodes: readonly string[]): number => {
+    const uniqueNodes = Array.from(new Set(nodes));
+    let score = 1 + Math.max(0, nodes.length - 1) * 0.9;
+    let tokenHits = 0;
+    for (const node of uniqueNodes) {
+      tokenHits += countPathTokenMatches(node, args.queryTokens);
+    }
+    score += Math.min(4, tokenHits * 1.2);
+    let changedHits = 0;
+    for (const node of uniqueNodes) {
+      if (args.changedPathSet.has(node.toLowerCase())) {
+        changedHits += 1;
+      }
+    }
+    score += Math.min(4, changedHits * 1.4);
+    const bridgeNodes = uniqueNodes.slice(1, Math.max(1, uniqueNodes.length - 1));
+    const centrality = bridgeNodes.reduce((acc, node) => acc + (degree.get(node) ?? 0), 0);
+    score += Math.min(3, centrality * 0.25);
+    return score;
+  };
+  const pushChain = (nodes: string[]): void => {
+    if (nodes.length < 2) {
+      return;
+    }
+    if (new Set(nodes).size !== nodes.length) {
+      return;
+    }
+    const line = nodes.join(" -> ");
+    if (seen.has(line)) {
+      return;
+    }
+    seen.add(line);
+    rows.push({
+      line,
+      score: scoreChain(nodes),
+    });
+  };
+  for (const seed of args.seeds) {
+    const forwardLevel1 = args.forward.get(seed) ?? [];
+    const reverseLevel1 = args.reverse.get(seed) ?? [];
+    for (const next of forwardLevel1) {
+      pushChain([seed, next]);
+      const forwardLevel2 = args.forward.get(next) ?? [];
+      for (const next2 of forwardLevel2) {
+        pushChain([seed, next, next2]);
+      }
+    }
+    for (const prev of reverseLevel1) {
+      pushChain([prev, seed]);
+      for (const next of forwardLevel1) {
+        if (next === prev) {
+          continue;
+        }
+        pushChain([prev, seed, next]);
+      }
+    }
+  }
+  return rows
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return right.score - left.score;
+      }
+      return left.line.localeCompare(right.line);
+    })
+    .slice(0, MAX_QUERY_CACHE_ROWS);
 }
 
 function readQueryCacheRows(cacheKey: string, snapshotFingerprint: string): string[] | undefined {
@@ -320,6 +530,7 @@ export function retrieveDependencyGraphHints(
     return cachedRows.slice(0, maxRows);
   }
   const queryTokens = new Set(tokenize(query));
+  const snapshotPathSet = new Set(snapshot.files.map((file) => normalizePath(file.path).toLowerCase()));
   const resolvedTargetCache = new Map<string, string>();
   const edges: DependencyEdge[] = [];
   for (const file of snapshot.files) {
@@ -335,11 +546,25 @@ export function retrieveDependencyGraphHints(
         target = resolveRelativeTarget(snapshot.rootPath, file.path, importPath) ?? importPath;
         resolvedTargetCache.set(resolveCacheKey, target);
       }
-      const score = scoreEdge(queryTokens, file.path, target);
+      let normalizedTarget = normalizePath(target);
+      let targetIsLocal = snapshotPathSet.has(normalizedTarget.toLowerCase());
+      if (!targetIsLocal) {
+        const resolvedInSnapshot = resolveRelativeTargetInSnapshot(
+          file.path,
+          importPath,
+          snapshotPathSet,
+        );
+        if (resolvedInSnapshot) {
+          normalizedTarget = resolvedInSnapshot;
+          targetIsLocal = true;
+        }
+      }
+      const score = scoreEdge(queryTokens, file.path, normalizedTarget) + (targetIsLocal ? 1.5 : 0);
       edges.push({
         fromPath: file.path,
-        target,
+        target: normalizedTarget,
         score,
+        targetIsLocal,
       });
     }
   }
@@ -347,7 +572,7 @@ export function retrieveDependencyGraphHints(
     writeQueryCacheRows(cacheKey, snapshotFingerprint, []);
     return [];
   }
-  const ranked = edges
+  const rankedDirect = edges
     .sort((left, right) => {
       if (left.score !== right.score) {
         return right.score - left.score;
@@ -356,8 +581,32 @@ export function retrieveDependencyGraphHints(
       const rightKey = `${right.fromPath}->${right.target}`;
       return leftKey.localeCompare(rightKey);
     })
-    .map((edge) => `${edge.fromPath} -> ${edge.target}`);
-  const deduped = dedupeRows(ranked);
+    .map((edge) => ({
+      line: `${edge.fromPath} -> ${edge.target}`,
+      score: edge.score,
+    }));
+  const adjacency = buildLocalAdjacency(edges);
+  const seedPaths = collectSeedPaths({
+    queryTokens,
+    snapshotPaths: snapshot.files.map((file) => file.path),
+    edges,
+  });
+  const rankedChains = buildMultiHopDependencyRows({
+    queryTokens,
+    seeds: seedPaths,
+    forward: adjacency.forward,
+    reverse: adjacency.reverse,
+    changedPathSet: snapshotPathSet,
+  });
+  const merged = [...rankedChains, ...rankedDirect]
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return right.score - left.score;
+      }
+      return left.line.localeCompare(right.line);
+    })
+    .map((row) => row.line);
+  const deduped = dedupeRows(merged);
   writeQueryCacheRows(cacheKey, snapshotFingerprint, deduped);
   return deduped.slice(0, maxRows);
 }

@@ -53,6 +53,10 @@ function normalizeWarning(raw: string): string | undefined {
   return `${compact.slice(0, MAX_WARN_CHARS - 1).trimEnd()}…`;
 }
 
+function stripAnsiSequences(raw: string): string {
+  return raw.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
 function toEvidenceLine(item: Record<string, unknown>): string | undefined {
   const path = typeof item.path === "string" ? item.path.trim() : "";
   if (!path) {
@@ -84,11 +88,19 @@ function parseBridgeResponse(stdout: string): {
   evidenceCount: number;
   warning?: string;
 } {
-  const firstLine = stdout
+  const lines = stdout
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-  if (!firstLine) {
+    .map((line) => stripAnsiSequences(line).trim())
+    .filter((line) => line.length > 0);
+  let parsedLine: string | undefined;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index] as string;
+    if (line.includes("{") && line.includes("}")) {
+      parsedLine = line;
+      break;
+    }
+  }
+  if (!parsedLine) {
     return {
       evidenceCount: 0,
       warning: "bridge returned empty stdout",
@@ -96,12 +108,25 @@ function parseBridgeResponse(stdout: string): {
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(firstLine);
+    parsed = JSON.parse(parsedLine);
   } catch (error) {
-    return {
-      evidenceCount: 0,
-      warning: normalizeWarning(`bridge returned invalid JSON: ${String(error)}`),
-    };
+    const firstBrace = parsedLine.indexOf("{");
+    const lastBrace = parsedLine.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      try {
+        parsed = JSON.parse(parsedLine.slice(firstBrace, lastBrace + 1));
+      } catch (innerError) {
+        return {
+          evidenceCount: 0,
+          warning: normalizeWarning(`bridge returned invalid JSON: ${String(innerError)}`),
+        };
+      }
+    } else {
+      return {
+        evidenceCount: 0,
+        warning: normalizeWarning(`bridge returned invalid JSON: ${String(error)}`),
+      };
+    }
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return {
