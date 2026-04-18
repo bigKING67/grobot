@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { type ContextHistoryMessage } from "../types";
 import { retrieveDependencyGraphHints } from "../graph/dependency-hints";
 import { retrieveSymbolGraphHints } from "../graph/symbol-hints";
@@ -317,6 +318,59 @@ function toPathClusterKey(path: string): string {
   return `${segments[0]}/${segments[1]}`;
 }
 
+function resolveRepoLabel(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const slashIndex = normalized.lastIndexOf("/");
+  if (slashIndex < 0) {
+    return normalized || "repo";
+  }
+  const label = normalized.slice(slashIndex + 1).trim();
+  return label || "repo";
+}
+
+function resolveGraphExtraRepoRoots(workDir?: string): string[] {
+  const configured = process.env.GROBOT_CONTEXT_ENGINE_GRAPH_EXTRA_REPOS;
+  if (!configured || !configured.trim()) {
+    return [];
+  }
+  const base = resolve(workDir ?? process.cwd());
+  const items = configured
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 5);
+  const output: string[] = [];
+  const seen = new Set<string>([base]);
+  for (const item of items) {
+    const resolved = item.startsWith("/")
+      ? resolve(item)
+      : resolve(base, item);
+    if (seen.has(resolved)) {
+      continue;
+    }
+    seen.add(resolved);
+    output.push(resolved);
+  }
+  return output;
+}
+
+function dedupeGraphRows(rows: readonly string[], maxRows: number): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const normalized = row.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(normalized);
+    if (output.length >= maxRows) {
+      break;
+    }
+  }
+  return output;
+}
+
 interface GraphFusionRow {
   row: string;
   source: "dependency" | "symbol";
@@ -592,6 +646,20 @@ export function buildCompactSnapshot(
       maxRows: options.dependencyGraphMaxRows,
       changedCodeSnapshot: options.changedCodeSnapshot,
     });
+    const extraRoots = resolveGraphExtraRepoRoots(options.workDir);
+    const extraMaxRows = Math.max(2, Math.min(options.dependencyGraphMaxRows ?? 4, 8));
+    for (const root of extraRoots) {
+      const rows = retrieveDependencyGraphHints(userText, {
+        workDir: root,
+        maxRows: extraMaxRows,
+      });
+      if (rows.length === 0) {
+        continue;
+      }
+      const repoLabel = resolveRepoLabel(root);
+      dependencyRows.push(...rows.map((row) => `[${repoLabel}] ${row}`));
+    }
+    dependencyRows = dedupeGraphRows(dependencyRows, 48);
   }
   if (structuralHintsEnabled && options?.symbolGraphEnabled) {
     symbolRows = retrieveSymbolGraphHints(userText, {
@@ -599,6 +667,20 @@ export function buildCompactSnapshot(
       maxRows: options.symbolGraphMaxRows,
       changedCodeSnapshot: options.changedCodeSnapshot,
     });
+    const extraRoots = resolveGraphExtraRepoRoots(options.workDir);
+    const extraMaxRows = Math.max(2, Math.min(options.symbolGraphMaxRows ?? 4, 8));
+    for (const root of extraRoots) {
+      const rows = retrieveSymbolGraphHints(userText, {
+        workDir: root,
+        maxRows: extraMaxRows,
+      });
+      if (rows.length === 0) {
+        continue;
+      }
+      const repoLabel = resolveRepoLabel(root);
+      symbolRows.push(...rows.map((row) => `[${repoLabel}] ${row}`));
+    }
+    symbolRows = dedupeGraphRows(symbolRows, 48);
   }
   if (dependencyRows.length > 0 || symbolRows.length > 0) {
     const fused = fuseGraphHints({
