@@ -86,6 +86,8 @@ async function main(): Promise<void> {
     },
   });
 
+  const initialModelSnapshot = ops.getCurrentModelSnapshot();
+
   const captureOutput = async (operation: () => Promise<void>): Promise<string> => {
     const start = stdoutChunks.length;
     await operation();
@@ -120,6 +122,9 @@ async function main(): Promise<void> {
   });
 
   const payload = {
+    initial_snapshot_provider: initialModelSnapshot.providerName,
+    initial_snapshot_model: initialModelSnapshot.model,
+    initial_snapshot_source: initialModelSnapshot.source,
     initial_model: parseModelField(initialSnapshot, "model"),
     initial_source: parseModelField(initialSnapshot, "source"),
     initial_session_title: parseModelField(initialSnapshot, "session_title"),

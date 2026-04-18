@@ -1,6 +1,9 @@
 import { type SessionStoreRuntime } from "../services/session-store";
 import { type RunStartInteractiveModeInput } from "./run-start-interactive-mode";
-import { type RunStartModelOps } from "./run-start-model-ops";
+import {
+  type RunStartModelOps,
+  type RunStartModelSnapshot,
+} from "./run-start-model-ops";
 import { type RunStartOutput } from "./run-start-output";
 import { type RunStartPlanMode } from "./run-start-plan-mode";
 import { formatProviderHealthSnapshot } from "./run-start-provider-health";
@@ -41,9 +44,38 @@ interface CreateRunStartInteractiveModeInput {
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
 }
 
+function resolveActiveSessionTopic(input: {
+  wire: RunStartWire;
+  activeSessionId: string;
+}): string | undefined {
+  const activeSession = input.wire.sessionOps
+    .listSessions()
+    .find((session) => session.id === input.activeSessionId);
+  if (!activeSession) {
+    return undefined;
+  }
+  const title = activeSession.title.trim();
+  if (title.length > 0) {
+    return title;
+  }
+  const summary = activeSession.summary.trim();
+  return summary.length > 0 ? summary : undefined;
+}
+
 export function createRunStartInteractiveModeInput(
   input: CreateRunStartInteractiveModeInput,
 ): RunStartInteractiveModeInput {
+  const getModelSnapshot = (): RunStartModelSnapshot =>
+    input.modelOps.getCurrentModelSnapshot();
+
+  const getActiveSessionTopic = (): string | undefined => {
+    const activeSessionId = input.runtimeState.getActiveSessionId();
+    return resolveActiveSessionTopic({
+      wire: input.wire,
+      activeSessionId,
+    });
+  };
+
   return {
     homeDir: input.homeDir,
     projectRoot: input.projectRoot,
@@ -60,10 +92,10 @@ export function createRunStartInteractiveModeInput(
     restoredTurns: input.runtimeState.getRestoredTurns(),
     restoreSource: input.runtimeState.getRestoreSource(),
     buildHelpText: input.buildHelpText,
-      showHealthStatus: () => {
-        input.output.writeStdout(
-          formatProviderHealthSnapshot({
-            sessionKey: input.runtimeState.getSessionKey(),
+    showHealthStatus: () => {
+      input.output.writeStdout(
+        formatProviderHealthSnapshot({
+          sessionKey: input.runtimeState.getSessionKey(),
           stickyProvider: input.runtimeState.getStickyProvider(),
           failureThreshold: input.runtimeFailoverConfig.circuitFailures,
           cooldownSecs: input.runtimeFailoverConfig.circuitCooldownSecs,
@@ -74,14 +106,14 @@ export function createRunStartInteractiveModeInput(
             burst: provider.burst,
           })),
           states: input.runtimeState.getProviderRuntimeStates(),
-          }),
-        );
-      },
-      showModelCurrent: input.modelOps.showModelCurrent,
-      listModels: input.modelOps.listModels,
-      useModel: input.modelOps.useModel,
-      resetModel: input.modelOps.resetModel,
-      openModelMenu: input.modelOps.openModelMenu,
+        }),
+      );
+    },
+    showModelCurrent: input.modelOps.showModelCurrent,
+    listModels: input.modelOps.listModels,
+    useModel: input.modelOps.useModel,
+    resetModel: input.modelOps.resetModel,
+    openModelMenu: input.modelOps.openModelMenu,
     openSessionMenu: input.sessionMenuOps.openSessionMenu,
     createNewSession: input.wire.sessionOps.createNewSession,
     switchActiveSession: async (targetSessionId, reason) => {
@@ -116,5 +148,8 @@ export function createRunStartInteractiveModeInput(
     writeAutoExitHandoffIfNeeded: () => {
       input.wire.handoff.writeAutoExitHandoffIfNeeded(false);
     },
+    getActiveSessionId: input.runtimeState.getActiveSessionId,
+    getActiveSessionTopic,
+    getModelSnapshot,
   };
 }

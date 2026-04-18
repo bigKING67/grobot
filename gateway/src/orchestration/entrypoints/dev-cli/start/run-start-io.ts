@@ -5,6 +5,7 @@ import { createCliUiRenderer } from "../ui/kernel/renderer";
 import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../ui/screens/select-menu-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
+const DEFAULT_SESSION_PROMPT = "grobot> ";
 
 export type {
   TerminalSelectMenuInput,
@@ -19,6 +20,8 @@ export interface SessionInputLoopControls {
 export interface SessionInputLoopOptions {
   onEscapeInterrupt?: () => void | Promise<void>;
 }
+
+export type SessionInputPrompt = string | (() => string);
 
 interface PauseableInput {
   pause?: () => void;
@@ -67,7 +70,7 @@ export function writeHandoffFile(path: string, content: string): { ok: true } | 
 
 export async function runSessionInputLoop(
   handler: (input: string, controls: SessionInputLoopControls) => Promise<"continue" | "break">,
-  prompt = "grobot> ",
+  prompt: SessionInputPrompt = DEFAULT_SESSION_PROMPT,
   options: SessionInputLoopOptions = {},
 ): Promise<void> {
   const nonTtyControls: SessionInputLoopControls = {
@@ -175,11 +178,24 @@ export async function runSessionInputLoop(
       }
       escListenerAttached = false;
     };
-    while (true) {
-      let rawInput = "";
-      try {
-        rawInput = await questionAsync(rl, prompt);
-      } catch {
+  while (true) {
+    let rawInput = "";
+    try {
+      const promptText = typeof prompt === "function"
+        ? (() => {
+          try {
+            const dynamicPrompt = prompt();
+            if (typeof dynamicPrompt === "string" && dynamicPrompt.length > 0) {
+              return dynamicPrompt;
+            }
+          } catch {
+            // fallback to default prompt
+          }
+          return DEFAULT_SESSION_PROMPT;
+        })()
+        : prompt;
+      rawInput = await questionAsync(rl, promptText);
+    } catch {
       break;
     }
       if (sawSigint) {

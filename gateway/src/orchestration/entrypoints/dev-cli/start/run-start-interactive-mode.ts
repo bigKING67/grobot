@@ -3,7 +3,55 @@ import { SessionInteractiveControls, type SessionMenuMode } from "./session-inte
 import { printRunStartBanner } from "./run-start-banner";
 import { createRunStartInteractiveHandler } from "./run-start-interactive-handler";
 import { runSessionInputLoop } from "./run-start-io";
+import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
+import { readPromptQualityWindowSummary } from "../../../../tools/context";
+import { renderStatusLinePrompt } from "../ui/screens/status-line-screen";
+
+function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
+  const normalized = projectRoot.replace(/[\\/]+$/, "");
+  const slashIndex = normalized.lastIndexOf("/");
+  if (slashIndex >= 0 && slashIndex < normalized.length - 1) {
+    return normalized.slice(slashIndex + 1);
+  }
+  return fallbackName;
+}
+
+function resolveTerminalColumns(): number | undefined {
+  const stdout = process.stdout as unknown as {
+    isTTY?: boolean;
+    columns?: number;
+  };
+  if (
+    stdout.isTTY
+    && typeof stdout.columns === "number"
+    && Number.isFinite(stdout.columns)
+    && stdout.columns > 0
+  ) {
+    return stdout.columns;
+  }
+  return undefined;
+}
+
+function resolvePromptBudgetSnapshot(workDir: string): {
+  contextWindowUsageRatio?: number;
+  estimatedTokens?: number;
+  targetTokenLimit?: number;
+} {
+  try {
+    const summary = readPromptQualityWindowSummary({
+      workDir,
+      size: 1,
+    });
+    return {
+      contextWindowUsageRatio: summary.tokenBudget.averageUtilizationRatio ?? undefined,
+      estimatedTokens: summary.tokenBudget.averageEstimatedTokens ?? undefined,
+      targetTokenLimit: summary.tokenBudget.averageTargetTokenLimit ?? undefined,
+    };
+  } catch {
+    return {};
+  }
+}
 
 export interface RunStartInteractiveModeInput {
   homeDir: string;
@@ -44,6 +92,9 @@ export interface RunStartInteractiveModeInput {
   markFailureObserved(): void;
   getHistoryMessagesCount(): number;
   writeAutoExitHandoffIfNeeded(): void;
+  getActiveSessionId(): string;
+  getActiveSessionTopic(): string | undefined;
+  getModelSnapshot(): RunStartModelSnapshot;
 }
 
 export async function runStartInteractiveMode(input: RunStartInteractiveModeInput): Promise<void> {
@@ -74,34 +125,51 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },
-      showHealthStatus: () => {
-        input.showHealthStatus();
-      },
-      showModelCurrent: input.showModelCurrent,
-      listModels: input.listModels,
-      useModel: input.useModel,
-      resetModel: input.resetModel,
-      openModelMenu: input.openModelMenu,
+    showHealthStatus: () => {
+      input.showHealthStatus();
+    },
+    showModelCurrent: input.showModelCurrent,
+    listModels: input.listModels,
+    useModel: input.useModel,
+    resetModel: input.resetModel,
+    openModelMenu: input.openModelMenu,
     openSessionMenu: async (mode, withInputPaused) => {
       await input.openSessionMenu(mode, withInputPaused);
     },
-      createNewSession: input.createNewSession,
-      switchActiveSession: input.switchActiveSession,
-      continueFromSession: input.continueFromSession,
-      writeHandoff: input.writeManualHandoff,
-      isPlanMode: input.isPlanMode,
-      showPlanStatus: input.showPlanStatus,
-      enterPlan: input.enterPlan,
-      applyPlan: input.applyPlan,
-      cancelPlan: input.cancelPlan,
-      requestPlanInterrupt: input.requestPlanInterrupt,
-      requestRuntimeInterrupt: input.requestRuntimeInterrupt,
-      runPlanTurn: input.runPlanTurn,
-      executeTurn: input.executeTurn,
-      markFailureObserved: input.markFailureObserved,
-    });
+    createNewSession: input.createNewSession,
+    switchActiveSession: input.switchActiveSession,
+    continueFromSession: input.continueFromSession,
+    writeHandoff: input.writeManualHandoff,
+    isPlanMode: input.isPlanMode,
+    showPlanStatus: input.showPlanStatus,
+    enterPlan: input.enterPlan,
+    applyPlan: input.applyPlan,
+    cancelPlan: input.cancelPlan,
+    requestPlanInterrupt: input.requestPlanInterrupt,
+    requestRuntimeInterrupt: input.requestRuntimeInterrupt,
+    runPlanTurn: input.runPlanTurn,
+    executeTurn: input.executeTurn,
+    markFailureObserved: input.markFailureObserved,
+  });
 
-  await runSessionInputLoop(handleInteractiveInput, "grobot> ", {
+  const projectFolder = resolveProjectFolder(input.projectRoot, input.projectName);
+  const dynamicPrompt = (): string => {
+    const modelSnapshot = input.getModelSnapshot();
+    const budgetSnapshot = resolvePromptBudgetSnapshot(input.workDir);
+    return renderStatusLinePrompt({
+      model: `${modelSnapshot.providerName}/${modelSnapshot.model}`,
+      projectFolder,
+      contextWindowUsageRatio: budgetSnapshot.contextWindowUsageRatio,
+      estimatedTokens: budgetSnapshot.estimatedTokens,
+      targetTokenLimit: budgetSnapshot.targetTokenLimit,
+      sessionId: input.getActiveSessionId(),
+      sessionTopic: input.getActiveSessionTopic(),
+      terminalColumns: resolveTerminalColumns(),
+      promptLabel: "grobot> ",
+    });
+  };
+
+  await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
     onEscapeInterrupt: async () => {
       if (input.isPlanMode()) {
         await input.requestPlanInterrupt("cli_esc");

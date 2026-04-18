@@ -133,6 +133,11 @@ async function main(): Promise<void> {
 
   let applyModelOverrideCount = 0;
   const modelOps: RunStartModelOps = {
+    getCurrentModelSnapshot: () => ({
+      providerName: "alpha",
+      model: "alpha-model",
+      source: "contract:model",
+    }),
     showModelCurrent: async () => undefined,
     listModels: async () => undefined,
     useModel: async () => undefined,
@@ -244,6 +249,10 @@ async function main(): Promise<void> {
     auto_exit_to_stderr: autoExitToStderr,
     history_count: interactiveModeInput.getHistoryMessagesCount(),
     help_text: interactiveModeInput.buildHelpText(),
+    active_session_id: interactiveModeInput.getActiveSessionId(),
+    active_session_topic: interactiveModeInput.getActiveSessionTopic() ?? "",
+    model_snapshot_model: interactiveModeInput.getModelSnapshot().model,
+    model_snapshot_provider: interactiveModeInput.getModelSnapshot().providerName,
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

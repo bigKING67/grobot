@@ -59,7 +59,14 @@ interface ModelConnection {
   apiKey?: string;
 }
 
+export interface RunStartModelSnapshot {
+  providerName: string;
+  model: string;
+  source: string;
+}
+
 export interface RunStartModelOps {
+  getCurrentModelSnapshot(): RunStartModelSnapshot;
   showModelCurrent(): Promise<void>;
   listModels(): Promise<void>;
   useModel(modelIdRaw: string): Promise<void>;
@@ -174,6 +181,21 @@ export function createRunStartModelOps(
     applyModelOverrideForSession(input.getActiveSessionId());
   };
 
+  const getCurrentModelSnapshot = (): RunStartModelSnapshot => {
+    const connection = resolveModelConnection();
+    const activeSessionId = input.getActiveSessionId();
+    const source = resolveModelSourceLabel({
+      sessionId: activeSessionId,
+      sessionModelOverrides,
+      defaultModelSource,
+    });
+    return {
+      providerName: connection.providerName,
+      model: connection.currentModel ?? "<unset>",
+      source,
+    };
+  };
+
   const resolveModelConnection = (): ModelConnection => {
     const target = resolvePrimaryModelTarget();
     return {
@@ -218,13 +240,8 @@ export function createRunStartModelOps(
   };
 
   const showModelCurrent = async (): Promise<void> => {
-    const connection = resolveModelConnection();
+    const snapshot = getCurrentModelSnapshot();
     const activeSessionId = input.getActiveSessionId();
-    const source = resolveModelSourceLabel({
-      sessionId: activeSessionId,
-      sessionModelOverrides,
-      defaultModelSource,
-    });
       const activeSessionMetadata = input.getActiveSessionMetadata?.();
       const sessionTitle = normalizeSessionMetadataValue(
         activeSessionMetadata?.title,
@@ -235,7 +252,7 @@ export function createRunStartModelOps(
         "<none>",
       );
       input.writeStdout(
-        `[model]\nprovider: ${connection.providerName}\nmodel: ${connection.currentModel ?? "<unset>"}\nsource: ${source}\nsession_id: ${activeSessionId}\nsession_title: ${sessionTitle}\nsession_summary: ${sessionSummary}\n\n`,
+        `[model]\nprovider: ${snapshot.providerName}\nmodel: ${snapshot.model}\nsource: ${snapshot.source}\nsession_id: ${activeSessionId}\nsession_title: ${sessionTitle}\nsession_summary: ${sessionSummary}\n\n`,
       );
     };
 
@@ -339,6 +356,7 @@ export function createRunStartModelOps(
   };
 
     return {
+      getCurrentModelSnapshot,
       showModelCurrent,
       listModels,
       useModel,
