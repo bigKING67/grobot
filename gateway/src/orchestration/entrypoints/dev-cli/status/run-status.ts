@@ -966,6 +966,25 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           overall_totals: contextGraphCacheWindowSummary.overallTotals,
           query_hit_rate: contextGraphCacheWindowSummary.queryHitRate,
           overall_hit_rate: contextGraphCacheWindowSummary.overallHitRate,
+          quality: {
+            entries_with_quality: contextGraphCacheWindowSummary.quality.entriesWithQuality,
+            dependency: {
+              avg_rows: contextGraphCacheWindowSummary.quality.dependency.avgRows,
+              avg_multi_hop_rows: contextGraphCacheWindowSummary.quality.dependency.avgMultiHopRows,
+              avg_max_chain_depth: contextGraphCacheWindowSummary.quality.dependency.avgMaxChainDepth,
+              multi_hop_rate: contextGraphCacheWindowSummary.quality.dependency.multiHopRate,
+              depth_4_plus_rate: contextGraphCacheWindowSummary.quality.dependency.depth4PlusRate,
+            },
+            symbol: {
+              avg_rows: contextGraphCacheWindowSummary.quality.symbol.avgRows,
+              bridge_coverage_rate: contextGraphCacheWindowSummary.quality.symbol.bridgeCoverageRate,
+              breadth_coverage_rate: contextGraphCacheWindowSummary.quality.symbol.breadthCoverageRate,
+              avg_bridge: contextGraphCacheWindowSummary.quality.symbol.avgBridge,
+              avg_breadth: contextGraphCacheWindowSummary.quality.symbol.avgBreadth,
+              avg_refs: contextGraphCacheWindowSummary.quality.symbol.avgRefs,
+              max_refs: contextGraphCacheWindowSummary.quality.symbol.maxRefs,
+            },
+          },
           degradation: {
             degraded: contextGraphCacheWindowDegradation.degraded,
             reason: contextGraphCacheWindowDegradation.reason,
@@ -1534,6 +1553,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `context_graph_cache_window: size=${contextGraphCacheWindowSummary.configuredSize} entries=${contextGraphCacheWindowSummary.entries} range=${contextGraphCacheWindowSummary.fromTs ?? "<none>"}..${contextGraphCacheWindowSummary.toTs ?? "<none>"} delta_symbol_query=${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.evict} delta_symbol_declaration=${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.evict} delta_dependency_query=${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.evict} delta_dependency_import=${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.evict} query_hit_rate=${typeof contextGraphCacheWindowSummary.queryHitRate === "number" ? contextGraphCacheWindowSummary.queryHitRate.toFixed(3) : "<none>"} overall_hit_rate=${typeof contextGraphCacheWindowSummary.overallHitRate === "number" ? contextGraphCacheWindowSummary.overallHitRate.toFixed(3) : "<none>"}\n`,
+  );
+  process.stdout.write(
+    `context_graph_cache_window_quality: entries_with_quality=${String(contextGraphCacheWindowSummary.quality.entriesWithQuality)} dependency_avg_rows=${typeof contextGraphCacheWindowSummary.quality.dependency.avgRows === "number" ? contextGraphCacheWindowSummary.quality.dependency.avgRows.toFixed(3) : "<none>"} dependency_avg_multi_hop_rows=${typeof contextGraphCacheWindowSummary.quality.dependency.avgMultiHopRows === "number" ? contextGraphCacheWindowSummary.quality.dependency.avgMultiHopRows.toFixed(3) : "<none>"} dependency_avg_max_chain_depth=${typeof contextGraphCacheWindowSummary.quality.dependency.avgMaxChainDepth === "number" ? contextGraphCacheWindowSummary.quality.dependency.avgMaxChainDepth.toFixed(3) : "<none>"} dependency_multi_hop_rate=${typeof contextGraphCacheWindowSummary.quality.dependency.multiHopRate === "number" ? contextGraphCacheWindowSummary.quality.dependency.multiHopRate.toFixed(3) : "<none>"} dependency_depth_4_plus_rate=${typeof contextGraphCacheWindowSummary.quality.dependency.depth4PlusRate === "number" ? contextGraphCacheWindowSummary.quality.dependency.depth4PlusRate.toFixed(3) : "<none>"} symbol_avg_rows=${typeof contextGraphCacheWindowSummary.quality.symbol.avgRows === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgRows.toFixed(3) : "<none>"} symbol_bridge_coverage_rate=${typeof contextGraphCacheWindowSummary.quality.symbol.bridgeCoverageRate === "number" ? contextGraphCacheWindowSummary.quality.symbol.bridgeCoverageRate.toFixed(3) : "<none>"} symbol_breadth_coverage_rate=${typeof contextGraphCacheWindowSummary.quality.symbol.breadthCoverageRate === "number" ? contextGraphCacheWindowSummary.quality.symbol.breadthCoverageRate.toFixed(3) : "<none>"} symbol_avg_bridge=${typeof contextGraphCacheWindowSummary.quality.symbol.avgBridge === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgBridge.toFixed(3) : "<none>"} symbol_avg_breadth=${typeof contextGraphCacheWindowSummary.quality.symbol.avgBreadth === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgBreadth.toFixed(3) : "<none>"} symbol_avg_refs=${typeof contextGraphCacheWindowSummary.quality.symbol.avgRefs === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgRefs.toFixed(3) : "<none>"} symbol_max_refs=${typeof contextGraphCacheWindowSummary.quality.symbol.maxRefs === "number" ? contextGraphCacheWindowSummary.quality.symbol.maxRefs.toFixed(3) : "<none>"}\n`,
   );
   process.stdout.write(
     `context_graph_cache_window_guard: degraded=${contextGraphCacheWindowDegradation.degraded ? "yes" : "no"} reason=${contextGraphCacheWindowDegradation.reason} threshold_query_hit_rate=${contextGraphCacheWindowDegradation.thresholdQueryHitRate.toFixed(3)} min_entries=${contextGraphCacheWindowDegradation.minEntries} observed_entries=${contextGraphCacheWindowDegradation.observedEntries} observed_query_hit_rate=${typeof contextGraphCacheWindowDegradation.observedQueryHitRate === "number" ? contextGraphCacheWindowDegradation.observedQueryHitRate.toFixed(3) : "<none>"}\n`,

@@ -1248,6 +1248,15 @@ function runStatusTsRust(repoRoot, windowSize) {
   const contextGraphCacheWindowOverallTotals = isObject(contextGraphCacheWindow?.overall_totals)
     ? contextGraphCacheWindow.overall_totals
     : null;
+  const contextGraphCacheWindowQuality = isObject(contextGraphCacheWindow?.quality)
+    ? contextGraphCacheWindow.quality
+    : null;
+  const contextGraphCacheWindowQualityDependency = isObject(contextGraphCacheWindowQuality?.dependency)
+    ? contextGraphCacheWindowQuality.dependency
+    : null;
+  const contextGraphCacheWindowQualitySymbol = isObject(contextGraphCacheWindowQuality?.symbol)
+    ? contextGraphCacheWindowQuality.symbol
+    : null;
   const contextGraphCacheWindowDegradation = isObject(contextGraphCacheWindow?.degradation)
     ? contextGraphCacheWindow.degradation
     : null;
@@ -1437,6 +1446,37 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_context_graph_cache_window_overall_hit_rate_type: contextGraphCacheWindow?.overall_hit_rate === null
       ? "null"
       : typeof contextGraphCacheWindow?.overall_hit_rate,
+    status_context_graph_cache_window_has_quality: Boolean(contextGraphCacheWindowQuality),
+    status_context_graph_cache_window_quality_entries_with_quality_type:
+      typeof contextGraphCacheWindowQuality?.entries_with_quality,
+    status_context_graph_cache_window_quality_dependency_avg_rows_type:
+      contextGraphCacheWindowQualityDependency?.avg_rows === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualityDependency?.avg_rows,
+    status_context_graph_cache_window_quality_dependency_avg_max_chain_depth_type:
+      contextGraphCacheWindowQualityDependency?.avg_max_chain_depth === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualityDependency?.avg_max_chain_depth,
+    status_context_graph_cache_window_quality_dependency_multi_hop_rate_type:
+      contextGraphCacheWindowQualityDependency?.multi_hop_rate === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualityDependency?.multi_hop_rate,
+    status_context_graph_cache_window_quality_symbol_bridge_coverage_rate_type:
+      contextGraphCacheWindowQualitySymbol?.bridge_coverage_rate === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualitySymbol?.bridge_coverage_rate,
+    status_context_graph_cache_window_quality_symbol_breadth_coverage_rate_type:
+      contextGraphCacheWindowQualitySymbol?.breadth_coverage_rate === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualitySymbol?.breadth_coverage_rate,
+    status_context_graph_cache_window_quality_symbol_avg_refs_type:
+      contextGraphCacheWindowQualitySymbol?.avg_refs === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualitySymbol?.avg_refs,
+    status_context_graph_cache_window_quality_symbol_max_refs_type:
+      contextGraphCacheWindowQualitySymbol?.max_refs === null
+        ? "null"
+        : typeof contextGraphCacheWindowQualitySymbol?.max_refs,
     status_context_graph_cache_window_has_degradation: Boolean(contextGraphCacheWindowDegradation),
     status_context_graph_cache_window_degradation_degraded_type: typeof contextGraphCacheWindowDegradation?.degraded,
     status_context_graph_cache_window_degradation_reason_type: typeof contextGraphCacheWindowDegradation?.reason,

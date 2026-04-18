@@ -24,6 +24,29 @@ export interface GraphCacheWindowBucketSet {
   dependencyImport: GraphCacheBucketCounter;
 }
 
+export interface GraphCacheWindowDependencyQuality {
+  rows: number;
+  multiHopRows: number;
+  depth4PlusRows: number;
+  maxChainDepth: number;
+}
+
+export interface GraphCacheWindowSymbolQuality {
+  rows: number;
+  rowsWithBridge: number;
+  rowsWithBreadth: number;
+  bridgeTotal: number;
+  breadthTotal: number;
+  refsTotal: number;
+  refsCount: number;
+  maxRefs: number;
+}
+
+export interface GraphCacheWindowTurnQuality {
+  dependency: GraphCacheWindowDependencyQuality;
+  symbol: GraphCacheWindowSymbolQuality;
+}
+
 export interface GraphCacheWindowTurnEntry {
   ts: string;
   sessionKey: string;
@@ -31,6 +54,27 @@ export interface GraphCacheWindowTurnEntry {
   selectionReason: string;
   delta: GraphCacheWindowBucketSet;
   total: GraphCacheWindowBucketSet;
+  quality?: GraphCacheWindowTurnQuality;
+}
+
+export interface GraphCacheWindowQualitySummary {
+  entriesWithQuality: number;
+  dependency: {
+    avgRows: number | null;
+    avgMultiHopRows: number | null;
+    avgMaxChainDepth: number | null;
+    multiHopRate: number | null;
+    depth4PlusRate: number | null;
+  };
+  symbol: {
+    avgRows: number | null;
+    bridgeCoverageRate: number | null;
+    breadthCoverageRate: number | null;
+    avgBridge: number | null;
+    avgBreadth: number | null;
+    avgRefs: number | null;
+    maxRefs: number | null;
+  };
 }
 
 export interface GraphCacheWindowSummary {
@@ -44,6 +88,7 @@ export interface GraphCacheWindowSummary {
   overallTotals: GraphCacheBucketCounter;
   queryHitRate: number | null;
   overallHitRate: number | null;
+  quality: GraphCacheWindowQualitySummary;
 }
 
 const GRAPH_CACHE_WINDOW_RELATIVE_PATH = ".grobot/context/graph-cache-window.jsonl";
@@ -67,6 +112,49 @@ function createEmptyBucketSet(): GraphCacheWindowBucketSet {
     dependencyQuery: createEmptyCounter(),
     dependencyImport: createEmptyCounter(),
   };
+}
+
+function createEmptyDependencyQuality(): GraphCacheWindowDependencyQuality {
+  return {
+    rows: 0,
+    multiHopRows: 0,
+    depth4PlusRows: 0,
+    maxChainDepth: 0,
+  };
+}
+
+function createEmptySymbolQuality(): GraphCacheWindowSymbolQuality {
+  return {
+    rows: 0,
+    rowsWithBridge: 0,
+    rowsWithBreadth: 0,
+    bridgeTotal: 0,
+    breadthTotal: 0,
+    refsTotal: 0,
+    refsCount: 0,
+    maxRefs: 0,
+  };
+}
+
+function createEmptyTurnQuality(): GraphCacheWindowTurnQuality {
+  return {
+    dependency: createEmptyDependencyQuality(),
+    symbol: createEmptySymbolQuality(),
+  };
+}
+
+function parseNonNegativeInteger(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function parseNonNegativeNumber(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, value);
 }
 
 function normalizeCounter(raw: unknown): GraphCacheBucketCounter {
@@ -101,6 +189,44 @@ function normalizeBucketSet(raw: unknown): GraphCacheWindowBucketSet {
   };
 }
 
+function normalizeTurnQuality(raw: unknown): GraphCacheWindowTurnQuality | undefined {
+  if (typeof raw !== "object" || raw == null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const row = raw as Record<string, unknown>;
+  const dependencyRaw = typeof row.dependency === "object" && row.dependency != null && !Array.isArray(row.dependency)
+    ? row.dependency as Record<string, unknown>
+    : null;
+  const symbolRaw = typeof row.symbol === "object" && row.symbol != null && !Array.isArray(row.symbol)
+    ? row.symbol as Record<string, unknown>
+    : null;
+  if (!dependencyRaw && !symbolRaw) {
+    return undefined;
+  }
+  const dependency = createEmptyDependencyQuality();
+  const symbol = createEmptySymbolQuality();
+  if (dependencyRaw) {
+    dependency.rows = parseNonNegativeInteger(dependencyRaw.rows);
+    dependency.multiHopRows = parseNonNegativeInteger(dependencyRaw.multiHopRows);
+    dependency.depth4PlusRows = parseNonNegativeInteger(dependencyRaw.depth4PlusRows);
+    dependency.maxChainDepth = parseNonNegativeInteger(dependencyRaw.maxChainDepth);
+  }
+  if (symbolRaw) {
+    symbol.rows = parseNonNegativeInteger(symbolRaw.rows);
+    symbol.rowsWithBridge = parseNonNegativeInteger(symbolRaw.rowsWithBridge);
+    symbol.rowsWithBreadth = parseNonNegativeInteger(symbolRaw.rowsWithBreadth);
+    symbol.bridgeTotal = parseNonNegativeNumber(symbolRaw.bridgeTotal);
+    symbol.breadthTotal = parseNonNegativeNumber(symbolRaw.breadthTotal);
+    symbol.refsTotal = parseNonNegativeNumber(symbolRaw.refsTotal);
+    symbol.refsCount = parseNonNegativeInteger(symbolRaw.refsCount);
+    symbol.maxRefs = parseNonNegativeInteger(symbolRaw.maxRefs);
+  }
+  return {
+    dependency,
+    symbol,
+  };
+}
+
 function parseWindowEntry(raw: string): GraphCacheWindowTurnEntry | null {
   const line = raw.trim();
   if (!line) {
@@ -130,6 +256,7 @@ function parseWindowEntry(raw: string): GraphCacheWindowTurnEntry | null {
     selectionReason,
     delta: normalizeBucketSet(row.delta),
     total: normalizeBucketSet(row.total),
+    quality: normalizeTurnQuality(row.quality),
   };
 }
 
@@ -200,6 +327,115 @@ function computeHitRate(counter: GraphCacheBucketCounter): number | null {
     return null;
   }
   return counter.hit / denominator;
+}
+
+function computeRatio(numerator: number, denominator: number): number | null {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+    return null;
+  }
+  return numerator / denominator;
+}
+
+function parseMetricValue(row: string, key: string): number {
+  const match = row.match(new RegExp(`\\b${key}=(\\d+)\\b`, "i"));
+  if (!match) {
+    return 0;
+  }
+  const parsed = Number.parseInt(match[1] ?? "0", 10);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, parsed);
+}
+
+function parseSectionRowsFromPrompt(prompt: string, sectionTitle: string): string[] {
+  const lines = prompt.split(/\r?\n/);
+  const normalizedTarget = sectionTitle.trim().toLowerCase();
+  const output: string[] = [];
+  let inSection = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!inSection) {
+      if (/^\[[^\]]+\]$/.test(line)) {
+        const title = line.slice(1, -1).trim().toLowerCase();
+        if (title === normalizedTarget) {
+          inSection = true;
+        }
+      }
+      continue;
+    }
+    if (/^\[[^\]]+\]$/.test(line)) {
+      break;
+    }
+    const bulletMatch = line.match(/^-+\s*(.+)$/);
+    if (!bulletMatch) {
+      continue;
+    }
+    const value = String(bulletMatch[1] ?? "").trim();
+    if (!value || value === "(none)") {
+      continue;
+    }
+    output.push(value);
+  }
+  return output;
+}
+
+export function summarizeGraphHintQuality(args: {
+  dependencyRows: readonly string[];
+  symbolRows: readonly string[];
+}): GraphCacheWindowTurnQuality {
+  const dependency = createEmptyDependencyQuality();
+  for (const row of args.dependencyRows) {
+    const depth = row
+      .split("->")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .length;
+    if (depth < 2) {
+      continue;
+    }
+    dependency.rows += 1;
+    dependency.maxChainDepth = Math.max(dependency.maxChainDepth, depth);
+    if (depth >= 3) {
+      dependency.multiHopRows += 1;
+    }
+    if (depth >= 4) {
+      dependency.depth4PlusRows += 1;
+    }
+  }
+  const symbol = createEmptySymbolQuality();
+  for (const row of args.symbolRows) {
+    symbol.rows += 1;
+    const bridge = parseMetricValue(row, "bridge");
+    const breadth = parseMetricValue(row, "breadth");
+    const refs = parseMetricValue(row, "refs");
+    if (bridge > 0) {
+      symbol.rowsWithBridge += 1;
+      symbol.bridgeTotal += bridge;
+    }
+    if (breadth > 0) {
+      symbol.rowsWithBreadth += 1;
+      symbol.breadthTotal += breadth;
+    }
+    if (refs > 0) {
+      symbol.refsTotal += refs;
+      symbol.refsCount += 1;
+      symbol.maxRefs = Math.max(symbol.maxRefs, refs);
+    }
+  }
+  return {
+    dependency,
+    symbol,
+  };
+}
+
+export function summarizeGraphHintQualityFromPrompt(prompt: string): GraphCacheWindowTurnQuality {
+  const dependencyRows = parseSectionRowsFromPrompt(prompt, "Dependency graph hints");
+  const symbolRows = parseSectionRowsFromPrompt(prompt, "Symbol graph hints");
+  return summarizeGraphHintQuality({
+    dependencyRows,
+    symbolRows,
+  });
 }
 
 function maybeTrimWindowFile(path: string): void {
@@ -292,6 +528,92 @@ export function readGraphCacheWindowSummary(input: {
     deltaTotals.dependencyQuery,
     deltaTotals.dependencyImport,
   ]);
+  const qualityAccumulator = {
+    entriesWithQuality: 0,
+    dependencyRowsTotal: 0,
+    dependencyMultiHopRowsTotal: 0,
+    dependencyDepth4PlusRowsTotal: 0,
+    dependencyMaxDepthTotal: 0,
+    symbolRowsTotal: 0,
+    symbolRowsWithBridgeTotal: 0,
+    symbolRowsWithBreadthTotal: 0,
+    symbolBridgeTotal: 0,
+    symbolBreadthTotal: 0,
+    symbolRefsTotal: 0,
+    symbolRefsCountTotal: 0,
+    symbolMaxRefs: 0,
+  };
+  for (const row of entries) {
+    if (!row.quality) {
+      continue;
+    }
+    qualityAccumulator.entriesWithQuality += 1;
+    qualityAccumulator.dependencyRowsTotal += row.quality.dependency.rows;
+    qualityAccumulator.dependencyMultiHopRowsTotal += row.quality.dependency.multiHopRows;
+    qualityAccumulator.dependencyDepth4PlusRowsTotal += row.quality.dependency.depth4PlusRows;
+    qualityAccumulator.dependencyMaxDepthTotal += row.quality.dependency.maxChainDepth;
+    qualityAccumulator.symbolRowsTotal += row.quality.symbol.rows;
+    qualityAccumulator.symbolRowsWithBridgeTotal += row.quality.symbol.rowsWithBridge;
+    qualityAccumulator.symbolRowsWithBreadthTotal += row.quality.symbol.rowsWithBreadth;
+    qualityAccumulator.symbolBridgeTotal += row.quality.symbol.bridgeTotal;
+    qualityAccumulator.symbolBreadthTotal += row.quality.symbol.breadthTotal;
+    qualityAccumulator.symbolRefsTotal += row.quality.symbol.refsTotal;
+    qualityAccumulator.symbolRefsCountTotal += row.quality.symbol.refsCount;
+    qualityAccumulator.symbolMaxRefs = Math.max(
+      qualityAccumulator.symbolMaxRefs,
+      row.quality.symbol.maxRefs,
+    );
+  }
+  const quality: GraphCacheWindowQualitySummary = {
+    entriesWithQuality: qualityAccumulator.entriesWithQuality,
+    dependency: {
+      avgRows: qualityAccumulator.entriesWithQuality > 0
+        ? qualityAccumulator.dependencyRowsTotal / qualityAccumulator.entriesWithQuality
+        : null,
+      avgMultiHopRows: qualityAccumulator.entriesWithQuality > 0
+        ? qualityAccumulator.dependencyMultiHopRowsTotal / qualityAccumulator.entriesWithQuality
+        : null,
+      avgMaxChainDepth: qualityAccumulator.entriesWithQuality > 0
+        ? qualityAccumulator.dependencyMaxDepthTotal / qualityAccumulator.entriesWithQuality
+        : null,
+      multiHopRate: computeRatio(
+        qualityAccumulator.dependencyMultiHopRowsTotal,
+        qualityAccumulator.dependencyRowsTotal,
+      ),
+      depth4PlusRate: computeRatio(
+        qualityAccumulator.dependencyDepth4PlusRowsTotal,
+        qualityAccumulator.dependencyRowsTotal,
+      ),
+    },
+    symbol: {
+      avgRows: qualityAccumulator.entriesWithQuality > 0
+        ? qualityAccumulator.symbolRowsTotal / qualityAccumulator.entriesWithQuality
+        : null,
+      bridgeCoverageRate: computeRatio(
+        qualityAccumulator.symbolRowsWithBridgeTotal,
+        qualityAccumulator.symbolRowsTotal,
+      ),
+      breadthCoverageRate: computeRatio(
+        qualityAccumulator.symbolRowsWithBreadthTotal,
+        qualityAccumulator.symbolRowsTotal,
+      ),
+      avgBridge: computeRatio(
+        qualityAccumulator.symbolBridgeTotal,
+        qualityAccumulator.symbolRowsWithBridgeTotal,
+      ),
+      avgBreadth: computeRatio(
+        qualityAccumulator.symbolBreadthTotal,
+        qualityAccumulator.symbolRowsWithBreadthTotal,
+      ),
+      avgRefs: computeRatio(
+        qualityAccumulator.symbolRefsTotal,
+        qualityAccumulator.symbolRefsCountTotal,
+      ),
+      maxRefs: qualityAccumulator.entriesWithQuality > 0
+        ? qualityAccumulator.symbolMaxRefs
+        : null,
+    },
+  };
   return {
     path,
     configuredSize,
@@ -303,5 +625,6 @@ export function readGraphCacheWindowSummary(input: {
     overallTotals,
     queryHitRate: computeHitRate(queryTotals),
     overallHitRate: computeHitRate(overallTotals),
+    quality,
   };
 }

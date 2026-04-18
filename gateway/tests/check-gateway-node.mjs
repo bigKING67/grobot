@@ -787,6 +787,31 @@ async function runGatewayContractSmoke() {
   assert.equal(providerHealthFormatPayload.has_rpm_field, true);
   logStep("provider-health-format-contract");
 
+  const devCliUiRendererContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-ui-renderer-contract.ts",
+  ]);
+  assertSuccess("dev-cli-ui-renderer-contract", devCliUiRendererContractResult);
+  const devCliUiRendererContractPayload = parseJsonOutput(
+    "dev-cli-ui-renderer-contract",
+    devCliUiRendererContractResult.stdout,
+  );
+  assert.equal(devCliUiRendererContractPayload.interactive_mode, "interactive_tty");
+  assert.equal(devCliUiRendererContractPayload.plain_mode, "plain_tty");
+  assert.equal(devCliUiRendererContractPayload.non_tty_mode, "non_tty");
+  assert.equal(devCliUiRendererContractPayload.startup_has_title, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_session_line, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_command_hint, true);
+  assert.equal(devCliUiRendererContractPayload.menu_interactive_has_ansi, true);
+  assert.equal(devCliUiRendererContractPayload.menu_plain_has_ansi, false);
+  assert.equal(devCliUiRendererContractPayload.menu_non_tty_has_ansi, false);
+  assert.equal(devCliUiRendererContractPayload.menu_plain_has_pointer, true);
+  assert.equal(devCliUiRendererContractPayload.menu_interactive_has_current_tag, true);
+  logStep("dev-cli-ui-renderer-contract");
+
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -3310,6 +3335,53 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(
     ["number", "null"].includes(String(statusPayload.status_context_graph_cache_window_overall_hit_rate_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_context_graph_cache_window_has_quality, true);
+  assert.equal(
+    statusPayload.status_context_graph_cache_window_quality_entries_with_quality_type,
+    "number",
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_dependency_avg_rows_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_dependency_avg_max_chain_depth_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_dependency_multi_hop_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_symbol_bridge_coverage_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_symbol_breadth_coverage_rate_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_symbol_avg_refs_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["number", "null"].includes(
+      String(statusPayload.status_context_graph_cache_window_quality_symbol_max_refs_type),
+    ),
     true,
   );
   assert.equal(statusPayload.status_context_graph_cache_window_has_degradation, true);

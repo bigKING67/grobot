@@ -8,6 +8,8 @@ export {
 export {
   appendGraphCacheWindowEntry,
   readGraphCacheWindowSummary,
+  summarizeGraphHintQuality,
+  summarizeGraphHintQualityFromPrompt,
 } from "./graph/cache-window";
 export {
   compressPromptSnapshotSectionsSemanticallyForBudget,
