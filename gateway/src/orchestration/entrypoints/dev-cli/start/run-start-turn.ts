@@ -12,6 +12,11 @@ import { parsePlatform, parseScope } from "./session-options";
 import { type GaMechanismRuntime, type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
 import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
+  renderManagementInterruptNotice,
+  renderRuntimeFailureSummary,
+  renderTurnInterruptedNotice,
+} from "../ui/screens/turn-screen";
+import {
   type AskUserEnvelope,
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
@@ -872,13 +877,9 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       const sessionKey = input.getSessionKey();
       input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
       if (consumeInterruptFlag(input.interruptStorePath, sessionKey)) {
-      if (interactiveMode) {
-        input.writeStdout("Session interrupted by management API. Current input skipped.\n\n");
-      } else {
-        input.writeStdout("Session interrupted by management API. Current request skipped.\n");
+        input.writeStdout(renderManagementInterruptNotice(interactiveMode));
+        return 0;
       }
-    return 0;
-  }
 
       const historyMessages = input.getHistoryMessages();
       const allowProactiveCompaction =
@@ -1783,9 +1784,9 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
               input.updateActiveSessionGaState(gaState);
               await input.persistSessionRegistryState();
               if (interactiveMode) {
-                input.writeStdout("[interrupt] turn interrupted. You can send a new instruction.\n\n");
+                input.writeStdout(renderTurnInterruptedNotice(true));
               } else {
-                input.writeStderr("[interrupt] turn interrupted.\n");
+                input.writeStderr(renderTurnInterruptedNotice(false));
               }
               return TURN_INTERRUPTED_EXIT_CODE;
             }
@@ -1838,17 +1839,12 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       input.setGaState(gaState);
       input.updateActiveSessionGaState(gaState);
       await input.persistSessionRegistryState();
-    const failureSummary = failures
-      .map((item) => `${item.providerName}:${item.errorClass}`)
-      .join(", ");
-    const attemptedProviders = orderedProviders.map((item) => item.name).join(" -> ");
     input.writeStderr(
-      `[runtime-route] failed attempts=${String(failures.length)} providers=${attemptedProviders || "<none>"} errors=${failureSummary || "<none>"}\n`,
+      renderRuntimeFailureSummary({
+        failures,
+        orderedProviders,
+      }),
     );
-    if (failures.length > 0) {
-      const last = failures[failures.length - 1];
-      input.writeStderr(`runtime failed: provider=${last.providerName} ${last.errorMessage}\n`);
-    }
     const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
     for (const task of reflections) {
       input.writeStderr(

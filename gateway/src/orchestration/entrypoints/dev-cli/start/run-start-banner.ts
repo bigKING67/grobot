@@ -1,5 +1,7 @@
 import { SessionStoreRuntime } from "../services/session-store";
 import { maskRedisUrl } from "../services/memory-store-config";
+import { createCliUiRenderer } from "../ui/kernel/renderer";
+import { type StartScreenViewModel } from "../ui/screens/startup-screen";
 
 interface RunStartBannerInput {
   homeDir: string;
@@ -19,31 +21,39 @@ interface RunStartBannerInput {
 }
 
 export function printRunStartBanner(input: RunStartBannerInput): void {
-  process.stdout.write("Grobot started\n");
-  process.stdout.write(`  home:      ${input.homeDir}\n`);
-  process.stdout.write(`  root:      ${input.projectRoot}\n`);
-  process.stdout.write(`  project:   ${input.projectName}\n`);
-  process.stdout.write(`  work_dir:  ${input.workDir}\n`);
-  process.stdout.write(`  session:   ${input.sessionKey}\n`);
-  process.stdout.write(`  namespace: ${input.sessionNamespaceKey}\n`);
-  process.stdout.write(`  session_id:${input.activeSessionId}\n`);
-  process.stdout.write(
-    `  store:     ${input.sessionStoreRuntime.backend} (source=${input.sessionStoreRuntime.source}, registry=${input.sessionRegistryFilePathValue})\n`,
+  const rows: string[] = [];
+  rows.push(`  home:      ${input.homeDir}`);
+  rows.push(`  root:      ${input.projectRoot}`);
+  rows.push(`  project:   ${input.projectName}`);
+  rows.push(`  work_dir:  ${input.workDir}`);
+  rows.push(`  session:   ${input.sessionKey}`);
+  rows.push(`  namespace: ${input.sessionNamespaceKey}`);
+  rows.push(`  session_id:${input.activeSessionId}`);
+  rows.push(
+    `  store:     ${input.sessionStoreRuntime.backend} (source=${input.sessionStoreRuntime.source}, registry=${input.sessionRegistryFilePathValue})`,
   );
   if (input.sessionStoreRuntime.redisUrl) {
-    process.stdout.write(`  store_redis:${maskRedisUrl(input.sessionStoreRuntime.redisUrl)}\n`);
+    rows.push(`  store_redis:${maskRedisUrl(input.sessionStoreRuntime.redisUrl)}`);
   }
   if (input.sessionStoreRuntime.fallbackReason) {
-    process.stdout.write(`  store_fallback:${input.sessionStoreRuntime.fallbackReason}\n`);
+    rows.push(`  store_fallback:${input.sessionStoreRuntime.fallbackReason}`);
   }
-  process.stdout.write(
-    `  handoff:   auto=${input.handoffAutoOnExit ? "on" : "off"} recent_turns=${String(input.handoffRecentTurns)} path=${input.handoffPath}\n`,
+  rows.push(
+    `  handoff:   auto=${input.handoffAutoOnExit ? "on" : "off"} recent_turns=${String(input.handoffRecentTurns)} path=${input.handoffPath}`,
   );
   if (input.restoredTurns > 0) {
-    process.stdout.write(`  restored:  ${String(input.restoredTurns)} turns from ${input.restoreSource}\n`);
+    rows.push(`  restored:  ${String(input.restoredTurns)} turns from ${input.restoreSource}`);
   }
-  process.stdout.write("\n");
+  const viewModel: StartScreenViewModel = {
+    title: "Grobot started",
+    rows,
+    commandHint:
+      "Enter message (`/sessions`, `/new`, `/switch [id]`, `/continue [id]`, `/health`, `/model`, `/model current`, `/model list`, `/model use <id>`, `/plan <goal>`, `/plan status`, `/plan apply`, `/plan cancel`, `/interrupt`, `/handoff`, `/help`, `/exit`; CLI Esc also requests turn interrupt; no id => open picker):",
+  };
+  const uiRenderer = createCliUiRenderer({
+    stdinIsTTY: process.stdin.isTTY,
+  });
   process.stdout.write(
-    "Enter message (`/sessions`, `/new`, `/switch [id]`, `/continue [id]`, `/health`, `/model`, `/model current`, `/model list`, `/model use <id>`, `/plan <goal>`, `/plan status`, `/plan apply`, `/plan cancel`, `/interrupt`, `/handoff`, `/help`, `/exit`; CLI Esc also requests turn interrupt; no id => open picker):\n",
+    uiRenderer.renderStartupScreen(viewModel),
   );
 }

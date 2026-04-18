@@ -1,8 +1,16 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface, Interface } from "node:readline";
 import { removeTrailingSlashes } from "../services/runtime-paths";
+import { createCliUiRenderer } from "../ui/kernel/renderer";
+import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../ui/screens/select-menu-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
+
+export type {
+  TerminalSelectMenuInput,
+  TerminalSelectMenuItem,
+  TerminalSelectMenuResult,
+} from "../ui/screens/select-menu-screen";
 
 export interface SessionInputLoopControls {
   withInputPaused<T>(operation: () => Promise<T>): Promise<T>;
@@ -11,25 +19,6 @@ export interface SessionInputLoopControls {
 export interface SessionInputLoopOptions {
   onEscapeInterrupt?: () => void | Promise<void>;
 }
-
-export interface TerminalSelectMenuItem {
-  id: string;
-  label: string;
-  description?: string;
-  current?: boolean;
-}
-
-export interface TerminalSelectMenuInput {
-  title: string;
-  subtitle?: string;
-  hint?: string;
-  items: TerminalSelectMenuItem[];
-  initialIndex?: number;
-}
-
-export type TerminalSelectMenuResult =
-  | { kind: "selected"; item: TerminalSelectMenuItem; index: number }
-  | { kind: "cancelled" };
 
 interface PauseableInput {
   pause?: () => void;
@@ -214,38 +203,6 @@ export async function runSessionInputLoop(
     rl.close();
   }
 
-function terminalSelectMenuRender(input: {
-  menu: TerminalSelectMenuInput;
-  activeIndex: number;
-}): string {
-  const lines: string[] = [];
-  lines.push(`\x1b[1m${input.menu.title}\x1b[0m`);
-  if (input.menu.subtitle && input.menu.subtitle.trim().length > 0) {
-    lines.push(input.menu.subtitle.trim());
-  }
-  lines.push("");
-  for (let index = 0; index < input.menu.items.length; index += 1) {
-    const item = input.menu.items[index];
-    const isActive = index === input.activeIndex;
-    const pointer = isActive ? "\x1b[92m›\x1b[0m" : " ";
-    const number = `${String(index + 1)}.`;
-    const label = isActive ? `\x1b[92m${item.label}\x1b[0m` : item.label;
-    const currentTag = item.current ? " \x1b[96m(current)\x1b[0m" : "";
-    const description = item.description && item.description.trim().length > 0
-      ? item.description.trim()
-      : "";
-    const firstLine = `${pointer} ${number.padEnd(3)} ${label}${currentTag}`;
-    if (description.length > 0) {
-      lines.push(`${firstLine}  ${description}`);
-    } else {
-      lines.push(firstLine);
-    }
-  }
-  lines.push("");
-  lines.push(input.menu.hint ?? "Use ↑/↓ (or j/k), Enter to confirm, Esc to cancel.");
-  return lines.join("\n");
-}
-
 function normalizeMenuIndex(itemsLength: number, initialIndex: number | undefined): number {
   if (itemsLength <= 0) {
     return 0;
@@ -311,12 +268,15 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   }
 
   const stdout = process.stdout;
+  const uiRenderer = createCliUiRenderer({
+    stdinIsTTY: process.stdin.isTTY,
+  });
   let activeIndex = normalizeMenuIndex(input.items.length, input.initialIndex);
   let resolved = false;
 
   const render = (): void => {
     stdout.write("\x1b[2J\x1b[H");
-    stdout.write(`${terminalSelectMenuRender({ menu: input, activeIndex })}\n`);
+    stdout.write(`${uiRenderer.renderSelectMenu(input, activeIndex)}\n`);
   };
 
   return await new Promise<TerminalSelectMenuResult>((resolve) => {

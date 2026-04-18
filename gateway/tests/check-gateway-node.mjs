@@ -812,6 +812,27 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_current_tag, true);
   logStep("dev-cli-ui-renderer-contract");
 
+  const devCliTurnScreenContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-turn-screen-contract.ts",
+  ]);
+  assertSuccess("dev-cli-turn-screen-contract", devCliTurnScreenContractResult);
+  const devCliTurnScreenContractPayload = parseJsonOutput(
+    "dev-cli-turn-screen-contract",
+    devCliTurnScreenContractResult.stdout,
+  );
+  assert.equal(devCliTurnScreenContractPayload.management_interactive_matches, true);
+  assert.equal(devCliTurnScreenContractPayload.management_non_interactive_matches, true);
+  assert.equal(devCliTurnScreenContractPayload.turn_interrupted_interactive_matches, true);
+  assert.equal(devCliTurnScreenContractPayload.turn_interrupted_non_interactive_matches, true);
+  assert.equal(devCliTurnScreenContractPayload.failure_summary_has_route_line, true);
+  assert.equal(devCliTurnScreenContractPayload.failure_summary_has_last_error_line, true);
+  assert.equal(devCliTurnScreenContractPayload.failure_summary_ends_with_newline, true);
+  logStep("dev-cli-turn-screen-contract");
+
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
     "--package",
