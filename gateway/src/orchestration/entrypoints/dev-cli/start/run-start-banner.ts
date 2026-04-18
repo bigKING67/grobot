@@ -48,7 +48,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     title: "Grobot started",
     rows,
     commandHint:
-      "Enter message (`/sessions`, `/new`, `/switch [id]`, `/continue [id]`, `/health`, `/model`, `/model current`, `/model list`, `/model use <id>`, `/plan <goal>`, `/plan status`, `/plan apply`, `/plan cancel`, `/interrupt`, `/handoff`, `/help`, `/exit`; CLI Esc also requests turn interrupt; no id => open picker):",
+      "Enter message (`/sessions`, `/new`, `/switch [id]`, `/continue [id]`, `/health`, `/model`, `/model current`, `/model list`, `/model use <id>`, `/status`, `/status layout <adaptive|full|compact>`, `/status theme <plain|nerd>`, `/status segment <id> <on|off>`, `/plan <goal>`, `/plan status`, `/plan apply`, `/plan cancel`, `/interrupt`, `/handoff`, `/help`, `/exit`; CLI Esc also requests turn interrupt; no id => open picker):",
   };
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,

@@ -17,6 +17,10 @@ interface CreateRunStartInteractiveHandlerInput {
   useModel(modelId: string): Promise<void>;
   resetModel(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  showStatusCurrent(): void;
+  setStatusTheme(theme: string): void;
+  setStatusLayoutMode(layoutMode: string): void;
+  setStatusSegmentEnabled(segmentId: string, enabled: boolean): void;
   openSessionMenu(
     mode: SessionMenuMode,
     withInputPaused: SessionInteractiveControls["withInputPaused"],
@@ -61,6 +65,18 @@ export function createRunStartInteractiveHandler(
         openModelMenu: async (withInputPaused) => {
           await input.openModelMenu(withInputPaused);
         },
+      showStatusCurrent: () => {
+        input.showStatusCurrent();
+      },
+      setStatusTheme: (theme) => {
+        input.setStatusTheme(theme);
+      },
+      setStatusLayoutMode: (layoutMode) => {
+        input.setStatusLayoutMode(layoutMode);
+      },
+      setStatusSegmentEnabled: (segmentId, enabled) => {
+        input.setStatusSegmentEnabled(segmentId, enabled);
+      },
       openSessionMenu: async (mode, withInputPaused) => {
         await input.openSessionMenu(mode, withInputPaused);
       },

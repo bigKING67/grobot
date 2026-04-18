@@ -38,9 +38,21 @@ async function runDispatchCase(input: string): Promise<DispatchCaseResult> {
       resetModel: async () => {
         events.push("resetModel");
       },
-      openModelMenu: async () => {
-        events.push("openModelMenu");
-      },
+    openModelMenu: async () => {
+      events.push("openModelMenu");
+    },
+    showStatusCurrent: () => {
+      events.push("showStatusCurrent");
+    },
+    setStatusTheme: (theme) => {
+      events.push(`setStatusTheme:${theme}`);
+    },
+    setStatusLayoutMode: (layoutMode) => {
+      events.push(`setStatusLayoutMode:${layoutMode}`);
+    },
+    setStatusSegmentEnabled: (segmentId, enabled) => {
+      events.push(`setStatusSegmentEnabled:${segmentId}:${enabled ? "on" : "off"}`);
+    },
     openSessionMenu: async (mode) => {
       events.push(`openSessionMenu:${mode}`);
     },
@@ -101,6 +113,10 @@ async function main(): Promise<void> {
   const switchMenu = await runDispatchCase("/switch");
   const continueMenu = await runDispatchCase("/continue");
   const modelReset = await runDispatchCase("/model reset");
+  const statusCurrent = await runDispatchCase("/status");
+  const statusTheme = await runDispatchCase("/status theme nerd");
+  const statusLayoutAlias = await runDispatchCase("/status compact");
+  const statusSegment = await runDispatchCase("/status segment tokens off");
   const interruptCommand = await runDispatchCase("/interrupt");
 
   const payload = {
@@ -115,6 +131,10 @@ async function main(): Promise<void> {
     switch_menu_opened: includesEvent(switchMenu.events, "openSessionMenu:switch"),
     continue_menu_opened: includesEvent(continueMenu.events, "openSessionMenu:continue"),
     model_reset_dispatched: includesEvent(modelReset.events, "resetModel"),
+    status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
+    status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
+    status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
+    status_segment_dispatched: includesEvent(statusSegment.events, "setStatusSegmentEnabled:tokens:off"),
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
   };
 

@@ -42,6 +42,7 @@ import {
   resolveSessionSubjectOption,
 } from "./session-options";
 import { buildHandoffPath } from "./run-start-io";
+import { type StatusLineConfigInput } from "../ui/screens/status-line-screen";
 
 interface ResolvedRuntimeModelConfig {
   modelConfig?: RuntimeModelConfig;
@@ -121,6 +122,209 @@ function parseTomlString(raw: string): string | undefined {
     return undefined;
   }
   return match[1].trim();
+}
+
+function parseTomlBoolean(raw: string): boolean | undefined {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+  return undefined;
+}
+
+function parseTomlNumber(raw: string): number | undefined {
+  const normalized = raw.trim();
+  if (!normalized || !/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseTomlInteger(raw: string): number | undefined {
+  const normalized = raw.trim();
+  if (!normalized || !/^-?\d+$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function parsePercentageAsRatio(raw: string): number | undefined {
+  const parsed = parseTomlNumber(raw);
+  if (typeof parsed !== "number") {
+    return undefined;
+  }
+  return parsed / 100;
+}
+
+function readStatusLineConfigFromProjectToml(
+  projectTomlPath?: string,
+): StatusLineConfigInput | undefined {
+  if (!projectTomlPath) {
+    return undefined;
+  }
+  let raw = "";
+  try {
+    raw = readFileSync(projectTomlPath, "utf8");
+  } catch {
+    return undefined;
+  }
+  const lines = raw.split(/\r?\n/);
+  const statusLineConfig: StatusLineConfigInput = {};
+  const statusLineSegments: Partial<
+    Record<"model" | "project" | "context" | "tokens" | "session", boolean>
+  > = {};
+  let activeSection = "";
+  let hasSignal = false;
+  for (const rawLine of lines) {
+    const line = stripInlineComment(rawLine).trim();
+    if (!line) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+    if (sectionMatch) {
+      activeSection = sectionMatch[1];
+      continue;
+    }
+    const kvMatch = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
+    if (!kvMatch) {
+      continue;
+    }
+    const key = kvMatch[1];
+    const rawValue = kvMatch[2];
+    if (activeSection === "statusline") {
+      if (key === "enabled") {
+        const parsed = parseTomlBoolean(rawValue);
+        if (typeof parsed === "boolean") {
+          statusLineConfig.enabled = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "layout_mode" || key === "layout") {
+        const parsed = parseTomlString(rawValue);
+        if (typeof parsed === "string" && parsed.length > 0) {
+          statusLineConfig.layoutMode = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "theme") {
+        const parsed = parseTomlString(rawValue);
+        if (typeof parsed === "string" && parsed.length > 0) {
+          statusLineConfig.theme = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "separator") {
+        const parsed = parseTomlString(rawValue);
+        if (typeof parsed === "string" && parsed.length > 0) {
+          statusLineConfig.separator = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "segment_order") {
+        const parsed = parseTomlStringArray(rawValue);
+        if (parsed.length > 0) {
+          statusLineConfig.segmentOrder = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "warning_threshold_ratio") {
+        const parsed = parseTomlNumber(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.warningThresholdRatio = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "critical_threshold_ratio") {
+        const parsed = parseTomlNumber(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.criticalThresholdRatio = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "warning_threshold_percent") {
+        const parsed = parsePercentageAsRatio(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.warningThresholdRatio = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "critical_threshold_percent") {
+        const parsed = parsePercentageAsRatio(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.criticalThresholdRatio = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "budget_snapshot_cache_ttl_ms") {
+        const parsed = parseTomlInteger(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.budgetSnapshotCacheTtlMs = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "session_topic_cache_ttl_ms") {
+        const parsed = parseTomlInteger(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.sessionTopicCacheTtlMs = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      if (key === "session_topic_max_width") {
+        const parsed = parseTomlInteger(rawValue);
+        if (typeof parsed === "number") {
+          statusLineConfig.sessionTopicMaxWidth = parsed;
+          hasSignal = true;
+        }
+        continue;
+      }
+      continue;
+    }
+    if (activeSection === "statusline.segments") {
+      const parsed = parseTomlBoolean(rawValue);
+      if (typeof parsed !== "boolean") {
+        continue;
+      }
+      if (
+        key === "model"
+        || key === "project"
+        || key === "context"
+        || key === "tokens"
+        || key === "session"
+      ) {
+        statusLineSegments[key] = parsed;
+        hasSignal = true;
+      }
+    }
+  }
+  if (!hasSignal) {
+    return undefined;
+  }
+  if (Object.keys(statusLineSegments).length > 0) {
+    statusLineConfig.segments = statusLineSegments;
+  }
+  return statusLineConfig;
 }
 
 function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
@@ -768,6 +972,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     historyTurns,
   });
   const kimiSearchRoutingPolicy = readKimiSearchRoutingPolicyFromProjectToml(projectTomlPath);
+  const statusLineConfig = readStatusLineConfigFromProjectToml(projectTomlPath);
   const mcpInstructionRuntime = resolveMcpInstructionRuntime({
     homeDir,
     workDir,
@@ -802,6 +1007,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     contextEngineConfig,
     runtimeToolContext: resolveRuntimeToolContext(workDir, projectTomlPath),
     kimiSearchRoutingPolicy,
+    statusLineConfig,
     mcpInstructionPromptPrefix: mcpInstructionRuntime.promptPrefix,
     mcpInstructionServerNames: mcpInstructionRuntime.loadedServerNames,
     mcpInstructionEvents: mcpInstructionRuntime.events,

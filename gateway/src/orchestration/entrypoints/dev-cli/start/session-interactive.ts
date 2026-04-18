@@ -14,6 +14,15 @@ interface ParsedModelCommand {
   reason?: string;
 }
 
+interface ParsedStatusCommand {
+  kind: "current" | "theme" | "segment" | "layout" | "invalid";
+  theme?: string;
+  segmentId?: string;
+  segmentEnabled?: boolean;
+  layoutMode?: string;
+  reason?: string;
+}
+
 function matchesInteractiveCommand(input: string, command: string): boolean {
   return input === command || input.startsWith(`${command} `);
 }
@@ -27,6 +36,10 @@ export interface SessionInteractiveHandlers {
   useModel(modelId: string): Promise<void>;
   resetModel(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  showStatusCurrent(): void;
+  setStatusTheme(theme: string): void;
+  setStatusLayoutMode(layoutMode: string): void;
+  setStatusSegmentEnabled(segmentId: string, enabled: boolean): void;
   openSessionMenu(
     mode: SessionMenuMode,
     withInputPaused: SessionInteractiveControls["withInputPaused"],
@@ -75,6 +88,65 @@ function parseModelCommand(inputRaw: string): ParsedModelCommand {
     return { kind: "reset" };
   }
   return { kind: "invalid", reason: "usage: /model | /model current | /model list | /model use <model_id> | /model reset" };
+}
+
+function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith("/status")) {
+    return { kind: "invalid", reason: "command must start with /status" };
+  }
+  const rest = input.slice("/status".length).trim();
+  if (!rest || rest.toLowerCase() === "current") {
+    return { kind: "current" };
+  }
+  if (rest === "full" || rest === "compact" || rest === "adaptive") {
+    return {
+      kind: "layout",
+      layoutMode: rest,
+    };
+  }
+  const firstSpace = rest.indexOf(" ");
+  const head = (firstSpace >= 0 ? rest.slice(0, firstSpace) : rest).trim().toLowerCase();
+  const tail = (firstSpace >= 0 ? rest.slice(firstSpace + 1) : "").trim();
+  if (head === "layout") {
+    if (!tail) {
+      return { kind: "invalid", reason: "usage: /status layout <adaptive|full|compact>" };
+    }
+    return { kind: "layout", layoutMode: tail };
+  }
+  if (head === "theme") {
+    if (!tail) {
+      return { kind: "invalid", reason: "usage: /status theme <plain|nerd>" };
+    }
+    return { kind: "theme", theme: tail };
+  }
+  if (head === "segment") {
+    const segmentTokens = tail.split(/\s+/).filter((token) => token.length > 0);
+    if (segmentTokens.length !== 2) {
+      return {
+        kind: "invalid",
+        reason: "usage: /status segment <model|project|context|tokens|session> <on|off>",
+      };
+    }
+    const segmentId = segmentTokens[0];
+    const state = segmentTokens[1].toLowerCase();
+    if (state !== "on" && state !== "off") {
+      return {
+        kind: "invalid",
+        reason: "usage: /status segment <model|project|context|tokens|session> <on|off>",
+      };
+    }
+    return {
+      kind: "segment",
+      segmentId,
+      segmentEnabled: state === "on",
+    };
+  }
+  return {
+    kind: "invalid",
+    reason:
+      "usage: /status | /status current | /status layout <adaptive|full|compact> | /status theme <plain|nerd> | /status segment <model|project|context|tokens|session> <on|off>",
+  };
 }
 
 export function buildInteractiveHelpText(): string {
@@ -129,6 +201,27 @@ export async function dispatchSessionInteractiveInput(
       return "continue";
     }
     await handlers.useModel(parsed.modelId ?? "");
+    return "continue";
+  }
+  if (matchesInteractiveCommand(userInput, "/status")) {
+    const parsed = parseStatusCommand(userInput);
+    if (parsed.kind === "invalid") {
+      handlers.writeStdout(`${parsed.reason ?? "invalid status command"}\n\n`);
+      return "continue";
+    }
+    if (parsed.kind === "current") {
+      handlers.showStatusCurrent();
+      return "continue";
+    }
+    if (parsed.kind === "theme") {
+      handlers.setStatusTheme(parsed.theme ?? "");
+      return "continue";
+    }
+    if (parsed.kind === "layout") {
+      handlers.setStatusLayoutMode(parsed.layoutMode ?? "");
+      return "continue";
+    }
+    handlers.setStatusSegmentEnabled(parsed.segmentId ?? "", parsed.segmentEnabled ?? true);
     return "continue";
   }
   if (matchesInteractiveCommand(userInput, "/plan")) {

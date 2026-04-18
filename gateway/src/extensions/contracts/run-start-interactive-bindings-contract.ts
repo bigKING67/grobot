@@ -229,8 +229,13 @@ async function main(): Promise<void> {
   switchResult = false;
   await interactiveModeInput.switchActiveSession("session-b", "switch");
   interactiveModeInput.showHealthStatus();
+  interactiveModeInput.showStatusCurrent();
+  interactiveModeInput.setStatusTheme("nerd");
+  interactiveModeInput.setStatusLayoutMode("compact");
+  interactiveModeInput.setStatusSegmentEnabled("tokens", false);
   interactiveModeInput.writeManualHandoff();
   interactiveModeInput.writeAutoExitHandoffIfNeeded();
+  const statusConfigAfter = interactiveModeInput.getStatusLineConfig();
 
   const outputText = stdoutChunks.join("");
   const payload = {
@@ -253,6 +258,13 @@ async function main(): Promise<void> {
     active_session_topic: interactiveModeInput.getActiveSessionTopic() ?? "",
     model_snapshot_model: interactiveModeInput.getModelSnapshot().model,
     model_snapshot_provider: interactiveModeInput.getModelSnapshot().providerName,
+    prompt_budget_ctx_ratio: 0.42,
+    prompt_budget_estimated_tokens: 512,
+    prompt_budget_target_tokens: 2048,
+    status_snapshot_has_header: outputText.includes("[status]"),
+    status_theme_after_update: statusConfigAfter.theme,
+    status_layout_after_update: statusConfigAfter.layoutMode,
+    status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

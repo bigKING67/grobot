@@ -14,6 +14,14 @@ import {
   type RuntimeProviderCandidate,
 } from "./run-start-turn";
 import { type RunStartWire } from "./run-start-wire";
+import {
+  normalizeStatusLineConfig,
+  type StatusLineConfig,
+  type StatusLineConfigInput,
+  type StatusLineLayoutMode,
+  type StatusLineSegmentId,
+  type StatusLineTheme,
+} from "../ui/screens/status-line-screen";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -27,6 +35,7 @@ interface CreateRunStartInteractiveModeInput {
   handoffRecentTurns: number;
   handoffPath: string;
   buildHelpText(): string;
+  statusLineConfig?: StatusLineConfigInput;
   runtimeProviderChain: ReadonlyArray<RuntimeProviderCandidate>;
   runtimeFailoverConfig: RuntimeFailoverConfig;
   runtimeState: RunStartRuntimeState;
@@ -44,22 +53,75 @@ interface CreateRunStartInteractiveModeInput {
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
 }
 
-function resolveActiveSessionTopic(input: {
+function resolveSessionTopicBySessionId(input: {
   wire: RunStartWire;
-  activeSessionId: string;
+  sessionId: string;
 }): string | undefined {
-  const activeSession = input.wire.sessionOps
+  const session = input.wire.sessionOps
     .listSessions()
-    .find((session) => session.id === input.activeSessionId);
-  if (!activeSession) {
+    .find((entry) => entry.id === input.sessionId);
+  if (!session) {
     return undefined;
   }
-  const title = activeSession.title.trim();
+  const title = session.title.trim();
   if (title.length > 0) {
     return title;
   }
-  const summary = activeSession.summary.trim();
+  const summary = session.summary.trim();
   return summary.length > 0 ? summary : undefined;
+}
+
+function normalizeStatusSegmentId(raw: string): StatusLineSegmentId | undefined {
+  const normalized = raw.trim().toLowerCase();
+  if (
+    normalized === "model"
+    || normalized === "project"
+    || normalized === "context"
+    || normalized === "tokens"
+    || normalized === "session"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function formatStatusLineCurrentSnapshot(config: StatusLineConfig): string {
+  const segmentText = config.segmentOrder
+    .map((segmentId) => `${segmentId}=${config.segments[segmentId] ? "on" : "off"}`)
+    .join(", ");
+  return [
+    "[status]",
+    `enabled: ${config.enabled ? "on" : "off"}`,
+    `layout_mode: ${config.layoutMode}`,
+    `theme: ${config.theme}`,
+    `separator: ${JSON.stringify(config.separator)}`,
+    `segments: ${segmentText}`,
+    `warning_threshold: ${String(Math.round(config.warningThresholdRatio * 100))}%`,
+    `critical_threshold: ${String(Math.round(config.criticalThresholdRatio * 100))}%`,
+    `budget_snapshot_cache_ttl_ms: ${String(config.budgetSnapshotCacheTtlMs)}`,
+    `session_topic_cache_ttl_ms: ${String(config.sessionTopicCacheTtlMs)}`,
+    `session_topic_max_width: ${String(config.sessionTopicMaxWidth)}`,
+    "",
+  ].join("\n");
+}
+
+function resolveStatusTheme(input: string): StatusLineTheme | undefined {
+  const normalized = input.trim().toLowerCase();
+  if (normalized === "plain") {
+    return "plain";
+  }
+  if (normalized === "nerd" || normalized === "nerd_font" || normalized === "nerd-font") {
+    return "nerd_font";
+  }
+  return undefined;
+}
+
+function resolveStatusLayoutMode(input: string): StatusLineLayoutMode | undefined {
+  const normalized = input.trim().toLowerCase();
+  if (normalized === "adaptive" || normalized === "full" || normalized === "compact") {
+    return normalized;
+  }
+  return undefined;
 }
 
 export function createRunStartInteractiveModeInput(
@@ -67,13 +129,52 @@ export function createRunStartInteractiveModeInput(
 ): RunStartInteractiveModeInput {
   const getModelSnapshot = (): RunStartModelSnapshot =>
     input.modelOps.getCurrentModelSnapshot();
+  let statusLineConfigState = normalizeStatusLineConfig(input.statusLineConfig);
+  const updateStatusLineConfig = (partial: StatusLineConfigInput): void => {
+    statusLineConfigState = normalizeStatusLineConfig({
+      ...statusLineConfigState,
+      ...partial,
+      segmentOrder: partial.segmentOrder ?? statusLineConfigState.segmentOrder,
+      segments: {
+        ...statusLineConfigState.segments,
+        ...(partial.segments ?? {}),
+      },
+    });
+  };
+  const getStatusLineConfig = (): StatusLineConfig => statusLineConfigState;
+
+  const sessionTopicCache: {
+    sessionId: string;
+    topic: string | undefined;
+    resolvedAtMs: number;
+  } = {
+    sessionId: "",
+    topic: undefined,
+    resolvedAtMs: 0,
+  };
+
+  const refreshSessionTopic = (sessionId: string): string | undefined => {
+    const topic = resolveSessionTopicBySessionId({
+      wire: input.wire,
+      sessionId,
+    });
+    sessionTopicCache.sessionId = sessionId;
+    sessionTopicCache.topic = topic;
+    sessionTopicCache.resolvedAtMs = Date.now();
+    return topic;
+  };
 
   const getActiveSessionTopic = (): string | undefined => {
     const activeSessionId = input.runtimeState.getActiveSessionId();
-    return resolveActiveSessionTopic({
-      wire: input.wire,
-      activeSessionId,
-    });
+    const ttlMs = getStatusLineConfig().sessionTopicCacheTtlMs;
+    const now = Date.now();
+    if (
+      sessionTopicCache.sessionId === activeSessionId
+      && now - sessionTopicCache.resolvedAtMs <= ttlMs
+    ) {
+      return sessionTopicCache.topic;
+    }
+    return refreshSessionTopic(activeSessionId);
   };
 
   return {
@@ -123,6 +224,7 @@ export function createRunStartInteractiveModeInput(
       );
       if (switched) {
         input.modelOps.applyModelOverrideForActiveSession();
+        refreshSessionTopic(targetSessionId);
       }
       return switched;
     },
@@ -151,5 +253,48 @@ export function createRunStartInteractiveModeInput(
     getActiveSessionId: input.runtimeState.getActiveSessionId,
     getActiveSessionTopic,
     getModelSnapshot,
+    getStatusLineConfig,
+    showStatusCurrent: () => {
+      input.output.writeStdout(formatStatusLineCurrentSnapshot(getStatusLineConfig()));
+    },
+    setStatusTheme: (rawTheme) => {
+      const theme = resolveStatusTheme(rawTheme);
+      if (!theme) {
+        input.output.writeStdout(
+          "invalid status theme; usage: /status theme <plain|nerd>\n\n",
+        );
+        return;
+      }
+      updateStatusLineConfig({ theme });
+      input.output.writeStdout(`[status] theme set to ${theme}\n\n`);
+    },
+    setStatusLayoutMode: (rawLayoutMode) => {
+      const layoutMode = resolveStatusLayoutMode(rawLayoutMode);
+      if (!layoutMode) {
+        input.output.writeStdout(
+          "invalid status layout; usage: /status layout <adaptive|full|compact>\n\n",
+        );
+        return;
+      }
+      updateStatusLineConfig({ layoutMode });
+      input.output.writeStdout(`[status] layout_mode set to ${layoutMode}\n\n`);
+    },
+    setStatusSegmentEnabled: (rawSegmentId, enabled) => {
+      const segmentId = normalizeStatusSegmentId(rawSegmentId);
+      if (!segmentId) {
+        input.output.writeStdout(
+          "invalid status segment; usage: /status segment <model|project|context|tokens|session> <on|off>\n\n",
+        );
+        return;
+      }
+      updateStatusLineConfig({
+        segments: {
+          [segmentId]: enabled,
+        },
+      });
+      input.output.writeStdout(
+        `[status] segment ${segmentId} ${enabled ? "on" : "off"}\n\n`,
+      );
+    },
   };
 }

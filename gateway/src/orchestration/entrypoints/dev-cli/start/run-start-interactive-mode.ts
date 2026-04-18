@@ -6,7 +6,7 @@ import { runSessionInputLoop } from "./run-start-io";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
-import { renderStatusLinePrompt } from "../ui/screens/status-line-screen";
+import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
 
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
@@ -38,19 +38,74 @@ function resolvePromptBudgetSnapshot(workDir: string): {
   estimatedTokens?: number;
   targetTokenLimit?: number;
 } {
-  try {
-    const summary = readPromptQualityWindowSummary({
-      workDir,
-      size: 1,
-    });
-    return {
-      contextWindowUsageRatio: summary.tokenBudget.averageUtilizationRatio ?? undefined,
-      estimatedTokens: summary.tokenBudget.averageEstimatedTokens ?? undefined,
-      targetTokenLimit: summary.tokenBudget.averageTargetTokenLimit ?? undefined,
-    };
-  } catch {
-    return {};
-  }
+  const summary = readPromptQualityWindowSummary({
+    workDir,
+    size: 1,
+  });
+  return {
+    contextWindowUsageRatio: summary.tokenBudget.averageUtilizationRatio ?? undefined,
+    estimatedTokens: summary.tokenBudget.averageEstimatedTokens ?? undefined,
+    targetTokenLimit: summary.tokenBudget.averageTargetTokenLimit ?? undefined,
+  };
+}
+
+function hasBudgetSnapshotValue(input: {
+  contextWindowUsageRatio?: number;
+  estimatedTokens?: number;
+  targetTokenLimit?: number;
+}): boolean {
+  return (
+    typeof input.contextWindowUsageRatio === "number"
+    || typeof input.estimatedTokens === "number"
+    || typeof input.targetTokenLimit === "number"
+  );
+}
+
+function createPromptBudgetSnapshotReader(input: {
+  workDir: string;
+}): (config: StatusLineConfig) => {
+  contextWindowUsageRatio?: number;
+  estimatedTokens?: number;
+  targetTokenLimit?: number;
+} {
+  let cacheResolvedAtMs = 0;
+  let cachedSnapshot: {
+    contextWindowUsageRatio?: number;
+    estimatedTokens?: number;
+    targetTokenLimit?: number;
+  } = {};
+  let lastKnownGoodSnapshot: {
+    contextWindowUsageRatio?: number;
+    estimatedTokens?: number;
+    targetTokenLimit?: number;
+  } | undefined;
+
+  return (config: StatusLineConfig): {
+    contextWindowUsageRatio?: number;
+    estimatedTokens?: number;
+    targetTokenLimit?: number;
+  } => {
+    const now = Date.now();
+    if (now - cacheResolvedAtMs <= config.budgetSnapshotCacheTtlMs) {
+      return cachedSnapshot;
+    }
+    cacheResolvedAtMs = now;
+    try {
+      const snapshot = resolvePromptBudgetSnapshot(input.workDir);
+      cachedSnapshot = snapshot;
+      if (hasBudgetSnapshotValue(snapshot)) {
+        lastKnownGoodSnapshot = snapshot;
+      }
+      return snapshot;
+    } catch {
+      if (lastKnownGoodSnapshot) {
+        cachedSnapshot = lastKnownGoodSnapshot;
+        return lastKnownGoodSnapshot;
+      }
+      cachedSnapshot = {};
+      return cachedSnapshot;
+    }
+  };
 }
 
 export interface RunStartInteractiveModeInput {
@@ -75,6 +130,10 @@ export interface RunStartInteractiveModeInput {
   useModel(modelId: string): Promise<void>;
   resetModel(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  showStatusCurrent(): void;
+  setStatusTheme(theme: string): void;
+  setStatusLayoutMode(layoutMode: string): void;
+  setStatusSegmentEnabled(segmentId: string, enabled: boolean): void;
   openSessionMenu(mode: SessionMenuMode, withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
@@ -95,6 +154,7 @@ export interface RunStartInteractiveModeInput {
   getActiveSessionId(): string;
   getActiveSessionTopic(): string | undefined;
   getModelSnapshot(): RunStartModelSnapshot;
+  getStatusLineConfig(): StatusLineConfig;
 }
 
 export async function runStartInteractiveMode(input: RunStartInteractiveModeInput): Promise<void> {
@@ -133,6 +193,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     useModel: input.useModel,
     resetModel: input.resetModel,
     openModelMenu: input.openModelMenu,
+    showStatusCurrent: input.showStatusCurrent,
+    setStatusTheme: input.setStatusTheme,
+    setStatusLayoutMode: input.setStatusLayoutMode,
+    setStatusSegmentEnabled: input.setStatusSegmentEnabled,
     openSessionMenu: async (mode, withInputPaused) => {
       await input.openSessionMenu(mode, withInputPaused);
     },
@@ -153,9 +217,13 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   });
 
   const projectFolder = resolveProjectFolder(input.projectRoot, input.projectName);
+  const readPromptBudgetSnapshot = createPromptBudgetSnapshotReader({
+    workDir: input.workDir,
+  });
   const dynamicPrompt = (): string => {
     const modelSnapshot = input.getModelSnapshot();
-    const budgetSnapshot = resolvePromptBudgetSnapshot(input.workDir);
+    const statusLineConfig = input.getStatusLineConfig();
+    const budgetSnapshot = readPromptBudgetSnapshot(statusLineConfig);
     return renderStatusLinePrompt({
       model: `${modelSnapshot.providerName}/${modelSnapshot.model}`,
       projectFolder,
@@ -166,6 +234,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       sessionTopic: input.getActiveSessionTopic(),
       terminalColumns: resolveTerminalColumns(),
       promptLabel: "grobot> ",
+      config: statusLineConfig,
     });
   };
 
