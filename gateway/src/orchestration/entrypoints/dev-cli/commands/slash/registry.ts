@@ -25,6 +25,17 @@ function matchesInteractiveCommand(input: string, command: string): boolean {
   return input === command || input.startsWith(`${command} `);
 }
 
+function matchesUserCommandsManagementCommand(inputRaw: string): boolean {
+  const input = inputRaw.trim();
+  if (/^\/commands(?:\s|$)/i.test(input)) {
+    return true;
+  }
+  if (/^\/(?:create|new)\s+commands(?:\s|$)/i.test(input)) {
+    return true;
+  }
+  return /^\/(?:create|new)\s+command(?:\s|$)/i.test(input);
+}
+
 function parseModelCommand(inputRaw: string): ParsedModelCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/model")) {
@@ -143,6 +154,19 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     },
     helpLines: [
       "  /sessions            Open session picker (title + summary)",
+    ],
+  },
+  {
+    id: "commands",
+    matches: (userInput) => matchesUserCommandsManagementCommand(userInput),
+    execute: async ({ userInput, handlers }) => {
+      await handlers.handleUserCommandsCommand(userInput);
+      return "continue";
+    },
+    helpLines: [
+      "  /commands            Manage user-defined slash commands (only ~/.grobot/commands)",
+      "  /commands new ...    Create a user command",
+      "  /commands delete ... Delete a user command",
     ],
   },
   {
@@ -330,6 +354,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 
 const HELP_ORDER: readonly string[] = [
   "sessions",
+  "commands",
   "new",
   "switch",
   "continue",
@@ -344,6 +369,10 @@ const HELP_ORDER: readonly string[] = [
 
 const COMMAND_HINT_TOKENS: readonly string[] = [
   "/sessions",
+  "/commands",
+  "/commands new <name> <prompt>",
+  "/commands list",
+  "/commands delete <name>",
   "/new",
   "/switch [id]",
   "/continue [id]",

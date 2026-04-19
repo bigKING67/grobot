@@ -37,6 +37,8 @@ export interface SessionInteractiveHandlers {
   requestPlanInterrupt(source: "command"): Promise<void>;
   requestRuntimeInterrupt(source: "command"): Promise<void>;
   runPlanTurn(userInput: string): Promise<void>;
+  handleUserCommandsCommand(userInput: string): Promise<void>;
+  tryRunUserCommand(userInput: string): Promise<boolean>;
   runTurn(userInput: string): Promise<void>;
   onTurnError(error: unknown): void;
 }
@@ -58,6 +60,9 @@ export async function dispatchSessionInteractiveInput(
   const slashAction = await dispatchSlashCommand(userInput, controls, handlers);
   if (slashAction) {
     return slashAction;
+  }
+  if (await handlers.tryRunUserCommand(userInput)) {
+    return "continue";
   }
   if (handlers.isPlanMode()) {
     await handlers.runPlanTurn(userInput);

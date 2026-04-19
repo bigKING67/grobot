@@ -22,6 +22,7 @@ import {
   type StatusLineSegmentId,
   type StatusLineTheme,
 } from "../ui/screens/status-line-screen";
+import { createRunStartUserCommandsRuntime } from "./run-start-user-commands";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -127,6 +128,12 @@ function resolveStatusLayoutMode(input: string): StatusLineLayoutMode | undefine
 export function createRunStartInteractiveModeInput(
   input: CreateRunStartInteractiveModeInput,
 ): RunStartInteractiveModeInput {
+  const userCommandsRuntime = createRunStartUserCommandsRuntime({
+    homeDir: input.homeDir,
+    writeStdout: input.output.writeStdout,
+    executeTurn: input.executeTurn,
+    markFailureObserved: input.runtimeState.markFailureObserved,
+  });
   const getModelSnapshot = (): RunStartModelSnapshot =>
     input.modelOps.getCurrentModelSnapshot();
   let statusLineConfigState = normalizeStatusLineConfig(input.statusLineConfig);
@@ -244,6 +251,8 @@ export function createRunStartInteractiveModeInput(
       input.requestRuntimeInterrupt(source);
     },
     runPlanTurn: input.planMode.runPlanTurn,
+    handleUserCommandsCommand: userCommandsRuntime.handleManagementCommand,
+    tryRunUserCommand: userCommandsRuntime.tryRunUserCommand,
     executeTurn: input.executeTurn,
     markFailureObserved: input.runtimeState.markFailureObserved,
     getHistoryMessagesCount: () => input.runtimeState.getHistoryMessages().length,

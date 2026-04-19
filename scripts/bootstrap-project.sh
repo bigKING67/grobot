@@ -85,6 +85,7 @@ required_dirs=(
   "$GROBOT_DIR/hooks/after-tool-use"
   "$GROBOT_DIR/rules"
   "$GROBOT_DIR/skills"
+  "$GROBOT_DIR/commands"
   "$GROBOT_DIR/memory"
   "$GROBOT_DIR/wiki"
   "$GROBOT_DIR/sessions"
@@ -157,6 +158,13 @@ write_text_file_if_missing "$GROBOT_DIR/skills/README.md" <<'EOF'
 # Skills
 
 Put project-local reusable skill files in this directory.
+EOF
+
+write_text_file_if_missing "$GROBOT_DIR/commands/README.md" <<'EOF'
+# Commands
+
+Project-local user-defined slash commands managed via `/commands`.
+Built-in commands are immutable and not managed in this directory.
 EOF
 
 write_text_file_if_missing "$GROBOT_DIR/memory/README.md" <<'EOF'

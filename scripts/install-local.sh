@@ -336,6 +336,7 @@ bootstrap_global_home() {
     "$normalized_home/hooks/after-tool-use"
     "$normalized_home/rules"
     "$normalized_home/skills"
+    "$normalized_home/commands"
     "$normalized_home/memory"
     "$normalized_home/wiki"
     "$normalized_home/sessions"
@@ -395,6 +396,13 @@ EOF
 # Skills
 
 Put reusable local skill files in this directory.
+EOF
+
+  write_text_file_if_missing "$normalized_home/commands/README.md" <<'EOF'
+# Commands
+
+User-defined slash commands managed via `/commands`.
+Only files in this directory are user-manageable; built-in commands are immutable.
 EOF
 
   write_text_file_if_missing "$normalized_home/memory/README.md" <<'EOF'

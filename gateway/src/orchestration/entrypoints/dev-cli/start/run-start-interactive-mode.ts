@@ -147,6 +147,8 @@ export interface RunStartInteractiveModeInput {
   requestPlanInterrupt(source: PlanInterruptSource): Promise<void>;
   requestRuntimeInterrupt(source: PlanInterruptSource): Promise<void>;
   runPlanTurn(userInput: string): Promise<number>;
+  handleUserCommandsCommand(userInput: string): Promise<void>;
+  tryRunUserCommand(userInput: string): Promise<boolean>;
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
   markFailureObserved(): void;
   getHistoryMessagesCount(): number;
@@ -212,6 +214,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     requestPlanInterrupt: input.requestPlanInterrupt,
     requestRuntimeInterrupt: input.requestRuntimeInterrupt,
     runPlanTurn: input.runPlanTurn,
+    handleUserCommandsCommand: input.handleUserCommandsCommand,
+    tryRunUserCommand: input.tryRunUserCommand,
     executeTurn: input.executeTurn,
     markFailureObserved: input.markFailureObserved,
   });

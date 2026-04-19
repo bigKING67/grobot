@@ -90,6 +90,13 @@ async function runDispatchCase(input: string): Promise<DispatchCaseResult> {
     runPlanTurn: async () => {
       events.push("runPlanTurn");
     },
+    handleUserCommandsCommand: async () => {
+      events.push("handleUserCommandsCommand");
+    },
+    tryRunUserCommand: async (userInput) => {
+      events.push(`tryRunUserCommand:${userInput}`);
+      return userInput === "/shipit";
+    },
     runTurn: async (userInput) => {
       events.push(`runTurn:${userInput}`);
     },
@@ -118,6 +125,8 @@ async function main(): Promise<void> {
   const statusLayoutAlias = await runDispatchCase("/status compact");
   const statusSegment = await runDispatchCase("/status segment tokens off");
   const interruptCommand = await runDispatchCase("/interrupt");
+  const commandsList = await runDispatchCase("/commands list");
+  const userCommandInvocation = await runDispatchCase("/shipit");
 
   const payload = {
     switch_prefix_miss_hits_run_turn: includesEvent(switchPrefixMiss.events, "runTurn:/switcher"),
@@ -136,6 +145,9 @@ async function main(): Promise<void> {
     status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
     status_segment_dispatched: includesEvent(statusSegment.events, "setStatusSegmentEnabled:tokens:off"),
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
+    commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
+    user_command_checked: includesEvent(userCommandInvocation.events, "tryRunUserCommand:/shipit"),
+    user_command_hits_run_turn: includesEvent(userCommandInvocation.events, "runTurn:/shipit"),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);
