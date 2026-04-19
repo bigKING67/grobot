@@ -249,8 +249,8 @@ function renderTwoColumnCard(
 
   const dividerWidth = 1;
   const leftMin = 32;
-  const leftMax = 58;
-  const rightMin = 28;
+  const rightMin = 24;
+  const leftMax = Math.max(58, maxContentWidth - dividerWidth - rightMin);
   if (maxContentWidth < leftMin + dividerWidth + rightMin) {
     return undefined;
   }

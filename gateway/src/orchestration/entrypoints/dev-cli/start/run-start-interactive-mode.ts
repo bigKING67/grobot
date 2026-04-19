@@ -60,11 +60,14 @@ function buildInteractivePromptLayout(input: {
   const promptBlockStartIndex = lines.findIndex(
     (line) => line.includes("╭") && line.includes("╮"),
   );
-  const statusLine = lines[0] ?? "";
-  const infoLines = promptBlockStartIndex > 1
-    ? lines.slice(1, promptBlockStartIndex)
-    : [];
+  const statusLines = promptBlockStartIndex > 0
+    ? lines.slice(0, promptBlockStartIndex)
+    : lines.slice(0, 1);
+  const promptTopBorder = promptBlockStartIndex >= 0
+    ? lines[promptBlockStartIndex] ?? ""
+    : "";
   const dividerWidth = (() => {
+    const firstStatusLine = statusLines[0] ?? "";
     if (
       typeof input.terminalColumns === "number"
       && Number.isFinite(input.terminalColumns)
@@ -72,14 +75,19 @@ function buildInteractivePromptLayout(input: {
     ) {
       return Math.max(16, Math.floor(input.terminalColumns) - 4);
     }
-    return Math.max(48, stripAnsi(statusLine).length + 6);
+    return Math.max(48, stripAnsi(firstStatusLine).length + 6);
   })();
   const divider = `\u001B[90m${"─".repeat(dividerWidth)}\u001B[0m`;
+  const prefixLines = [
+    divider,
+    ...statusLines,
+    promptTopBorder,
+  ].filter((line) => line.length > 0);
   return {
-    prefix: divider,
+    prefix: prefixLines.join("\n"),
     inlinePrompt: input.promptLabel,
-    suffix: [divider, statusLine, ...infoLines].filter((line) => line.length > 0).join("\n"),
-    renderSuffixWhileTyping: true,
+    suffix: "",
+    renderSuffixWhileTyping: false,
   };
 }
 
@@ -176,6 +184,8 @@ export interface RunStartInteractiveModeInput {
   contextWindowTokens?: number;
   buildHelpText(): string;
   showHealthStatus(): void;
+  getCachedModelContextWindowTokens(modelId: string): number | undefined;
+  refreshModelCatalogCache(): Promise<void>;
   showModelCurrent(): Promise<void>;
   listModels(): Promise<void>;
   useModel(modelId: string): Promise<void>;
@@ -217,12 +227,37 @@ export interface RunStartInteractiveModeInput {
   listSessionSummaries(): RunStartSessionSummary[];
 }
 
+function resolveModelContextWindowTokens(input: {
+  modelName: string;
+  fallback?: number;
+  getCachedModelContextWindowTokens(modelId: string): number | undefined;
+}): number | undefined {
+  const cachedTokens = input.getCachedModelContextWindowTokens(input.modelName);
+  if (
+    typeof cachedTokens === "number"
+    && Number.isFinite(cachedTokens)
+    && cachedTokens > 0
+  ) {
+    return Math.floor(cachedTokens);
+  }
+  return inferModelApiContextWindowTokens({
+    modelName: input.modelName,
+    fallback: input.fallback,
+  });
+}
+
 export async function runStartInteractiveMode(input: RunStartInteractiveModeInput): Promise<void> {
+  try {
+    await input.refreshModelCatalogCache();
+  } catch {
+    // keep interactive mode available even if model catalog prefetch fails
+  }
   const startupModelSnapshot = input.getModelSnapshot();
   const startupSessionTopic = input.getActiveSessionTopic();
   const startupPromptBudget = resolvePromptBudgetSnapshot(input.workDir);
-  const startupContextWindowTokens = inferModelApiContextWindowTokens({
+  const startupContextWindowTokens = resolveModelContextWindowTokens({
     modelName: startupModelSnapshot.model,
+    getCachedModelContextWindowTokens: input.getCachedModelContextWindowTokens,
     fallback:
       typeof input.contextWindowTokens === "number"
       && Number.isFinite(input.contextWindowTokens)
@@ -371,8 +406,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     const statusLineConfig = input.getStatusLineConfig();
     const budgetSnapshot = readPromptBudgetSnapshot(statusLineConfig);
     const terminalColumns = resolveTerminalColumns();
-    const statusContextWindowTokens = inferModelApiContextWindowTokens({
+    const statusContextWindowTokens = resolveModelContextWindowTokens({
       modelName: modelSnapshot.model,
+      getCachedModelContextWindowTokens: input.getCachedModelContextWindowTokens,
       fallback: input.contextWindowTokens,
     });
     const renderedPrompt = renderStatusLinePrompt({

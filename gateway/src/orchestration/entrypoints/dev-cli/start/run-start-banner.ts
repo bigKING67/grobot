@@ -166,20 +166,12 @@ function resolveDisplayProjectPath(input: {
   homeDir: string;
   projectRoot: string;
 }): string {
-  const homeDir = input.homeDir.trim().replace(/[\\/]+$/, "");
   const projectRoot = input.projectRoot.trim();
   if (!projectRoot) {
-    return "~";
+    const homeDir = input.homeDir.trim().replace(/[\\/]+$/, "");
+    return homeDir.length > 0 ? homeDir : "~";
   }
-  if (!homeDir) {
-    return projectRoot;
-  }
-  if (projectRoot === homeDir) {
-    return "~";
-  }
-  if (projectRoot.startsWith(`${homeDir}/`)) {
-    return `~${projectRoot.slice(homeDir.length)}`;
-  }
+  // Keep absolute path visible like Claude/Codex startup screen.
   return projectRoot;
 }
 

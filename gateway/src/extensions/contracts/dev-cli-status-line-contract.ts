@@ -100,7 +100,7 @@ const payload = {
   prompt_line_matches:
     widePromptLine.includes("› ")
     && widePromptLine.includes("\u001B[90m│\u001B[0m")
-    && /\u001B\[[0-9]+D$/.test(widePromptLine),
+    && /\u001B\[[0-9]+D$/.test(widePromptLine) === false,
   narrow_line_within_width: measureDisplayWidth(narrowStatusLine) <= 64,
   narrow_has_short_session_id: narrowStatusLine.includes(sessionShortId),
   cjk_line_within_width: measureDisplayWidth(cjkStatusLine) <= 48,

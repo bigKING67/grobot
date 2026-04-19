@@ -705,15 +705,10 @@ function buildPromptBlock(input: {
   if (terminalColumns > 0) {
     innerWidth = Math.min(innerWidth, Math.max(8, terminalColumns - 2));
   }
-  const promptLabelWidth = measureDisplayWidth(input.promptLabel);
-  const trailingPaddingWidth = Math.max(0, innerWidth - 1 - promptLabelWidth);
-  const trailingPadding = " ".repeat(trailingPaddingWidth);
-  const cursorBack = trailingPaddingWidth + 1;
   return {
     topBorder: `${ANSI_DIM}╭${"─".repeat(innerWidth)}╮${ANSI_RESET}`,
-    promptLine:
-      `${ANSI_DIM}│${ANSI_RESET} ${input.promptLabel}${trailingPadding}`
-      + `${ANSI_DIM}│${ANSI_RESET}\u001B[${String(cursorBack)}D`,
+    // Keep the prompt line open-ended so long inputs can wrap naturally.
+    promptLine: `${ANSI_DIM}│${ANSI_RESET} ${input.promptLabel}`,
   };
 }
 

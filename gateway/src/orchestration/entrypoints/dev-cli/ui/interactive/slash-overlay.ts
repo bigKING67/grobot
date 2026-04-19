@@ -1,13 +1,11 @@
 import {
-  measureDisplayWidth,
   padToDisplayWidth,
   truncateDisplayWidth,
 } from "./display-width";
 
 const ANSI_RESET = "\u001B[0m";
-const ANSI_SELECTED_BG = "\u001B[46m";
-const ANSI_SELECTED_FG = "\u001B[30m";
 const ANSI_BOLD = "\u001B[1m";
+const ANSI_SUGGESTION = "\u001B[96m";
 const ANSI_DIM = "\u001B[90m";
 
 export interface SlashOverlaySuggestion {
@@ -43,26 +41,40 @@ export function normalizeSuggestionIndex(itemsLength: number, index: number): nu
   return normalized;
 }
 
-function commandHasArgumentPlaceholder(command: string): boolean {
-  return /<[^>]+>|\[[^\]]+\]/.test(command);
+function normalizeDescription(input: SlashOverlaySuggestion): string {
+  const detail = (input.description ?? "").trim().replace(/\s+/g, " ");
+  if (detail.length === 0) {
+    return "";
+  }
+  if (input.source && input.source.trim().length > 0) {
+    return `${detail} (${input.source.trim()})`;
+  }
+  return detail;
 }
 
-function toOverlayBoxLine(
-  content: string,
-  innerWidth: number,
-  tone: "normal" | "selected" | "muted" = "normal",
-): string {
-  const normalized = truncateDisplayWidth(content, innerWidth, {
+function formatSuggestionRow(input: {
+  item: SlashOverlaySuggestion;
+  commandColumnWidth: number;
+  descriptionColumnWidth: number;
+  selected: boolean;
+}): string {
+  const commandText = truncateDisplayWidth(input.item.command.trim(), input.commandColumnWidth, {
     compact: false,
   });
-  const padded = padToDisplayWidth(normalized, innerWidth);
-  if (tone === "selected") {
-    return `│ ${ANSI_BOLD}${ANSI_SELECTED_BG}${ANSI_SELECTED_FG}${padded}${ANSI_RESET} │`;
+  const commandColumn = padToDisplayWidth(commandText, input.commandColumnWidth);
+  const description = normalizeDescription(input.item);
+  const descriptionColumn = description.length > 0
+    ? truncateDisplayWidth(description, input.descriptionColumnWidth, {
+      compact: false,
+    })
+    : "";
+  const line = descriptionColumn.length > 0
+    ? `${commandColumn}  ${descriptionColumn}`
+    : commandColumn;
+  if (input.selected) {
+    return `${ANSI_BOLD}${ANSI_SUGGESTION}${line}${ANSI_RESET}`;
   }
-  if (tone === "muted") {
-    return `│ ${ANSI_DIM}${padded}${ANSI_RESET} │`;
-  }
-  return `│ ${padded} │`;
+  return `${ANSI_DIM}${line}${ANSI_RESET}`;
 }
 
 export function formatSlashSuggestionPanel(
@@ -80,49 +92,27 @@ export function formatSlashSuggestionPanel(
   }
   const limited = suggestions.slice(0, 8);
   const normalizedSelectedIndex = normalizeSuggestionIndex(limited.length, selectedIndex);
-  const selected = limited[normalizedSelectedIndex];
-  const rows = limited.map((item, index) => {
-    const isSelected = index === normalizedSelectedIndex;
-    const source = item.source ? ` (${item.source})` : "";
-    const detail = item.description?.trim().length ? ` - ${item.description.trim()}` : "";
-    const pointer = isSelected ? "›" : " ";
-    return {
-      text: `${pointer} ${item.command}${source}${detail}`,
-      isSelected,
-    };
-  });
-  const selectedHint = selected
-    ? commandHasArgumentPlaceholder(selected.command)
-      ? `hint: fill args for ${selected.command}`
-      : `hint: ready to run ${selected.command}`
-    : "hint: select a command";
-  const keyHint = "keys: Up/Down select | Tab complete | Enter run selected";
-  const title = `commands ${suggestions.length > limited.length
-    ? `(${String(limited.length)}/${String(suggestions.length)})`
-    : `(${String(limited.length)})`}`;
-
-  const allLines = [title, ...rows.map((row) => row.text), selectedHint, keyHint];
-  const desiredInnerWidth = allLines.reduce((max, line) => Math.max(max, measureDisplayWidth(line)), 0);
-  const maxInnerWidth = Math.max(16, terminalColumns - 4);
-  const innerWidth = Math.min(Math.max(16, desiredInnerWidth), maxInnerWidth);
-  const divider = "─".repeat(innerWidth + 2);
-  const top = `┌${divider}┐`;
-  const middle = `├${divider}┤`;
-  const bottom = `└${divider}┘`;
+  const commandColumnWidth = Math.min(
+    36,
+    Math.max(
+      14,
+      Math.floor(Math.max(terminalColumns, 40) * 0.28),
+    ),
+  );
+  const descriptionColumnWidth = Math.max(16, terminalColumns - commandColumnWidth - 2);
   const lines: string[] = [];
-  lines.push(top);
-  lines.push(toOverlayBoxLine(title, innerWidth));
-  lines.push(middle);
-  for (const row of rows) {
-    lines.push(toOverlayBoxLine(
-      row.text,
-      innerWidth,
-      row.isSelected ? "selected" : "normal",
-    ));
+  for (let index = 0; index < limited.length; index += 1) {
+    const item = limited[index];
+    lines.push(formatSuggestionRow({
+      item,
+      commandColumnWidth,
+      descriptionColumnWidth,
+      selected: index === normalizedSelectedIndex,
+    }));
   }
-  lines.push(middle);
-  lines.push(toOverlayBoxLine(selectedHint, innerWidth, "muted"));
-  lines.push(toOverlayBoxLine(keyHint, innerWidth, "muted"));
-  lines.push(bottom);
+  const hiddenCount = suggestions.length - limited.length;
+  if (hiddenCount > 0) {
+    lines.push(`${ANSI_DIM}… and ${String(hiddenCount)} more${ANSI_RESET}`);
+  }
   return `${lines.join("\n")}\n`;
 }

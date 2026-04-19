@@ -28,9 +28,6 @@ export function resolveModelDisplayName(modelName: string): string {
 export function inferModelApiContextWindowTokens(
   input: InferModelApiContextWindowTokensInput,
 ): number | undefined {
-  if (hasModelHint(input.modelName, KIMI_K2_5_MODEL_HINTS)) {
-    return 262_144;
-  }
   if (
     typeof input.fallback === "number"
     && Number.isFinite(input.fallback)

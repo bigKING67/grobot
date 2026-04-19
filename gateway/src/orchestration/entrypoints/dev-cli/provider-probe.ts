@@ -136,6 +136,7 @@ export interface ProviderModelListResult {
   detail: string;
   httpStatus?: number;
   modelIds: string[];
+  modelContextWindowTokensById?: Record<string, number>;
 }
 
 interface MutableProvider {
@@ -507,39 +508,127 @@ function normalizeProbeBaseUrl(rawBaseUrl: string): URL {
   return url;
 }
 
-function parseModelIdsFromProbePayload(payload: unknown): string[] {
+function parsePositiveInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value.trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return undefined;
+}
+
+function readModelContextWindowTokens(rawModel: Record<string, unknown>): number | undefined {
+  const directCandidates: unknown[] = [
+    rawModel.context_window_tokens,
+    rawModel.contextWindowTokens,
+    rawModel.context_window,
+    rawModel.contextWindow,
+    rawModel.max_context_length,
+    rawModel.maxContextLength,
+    rawModel.max_input_tokens,
+    rawModel.maxInputTokens,
+    rawModel.input_token_limit,
+    rawModel.inputTokenLimit,
+  ];
+  for (const candidate of directCandidates) {
+    const parsed = parsePositiveInteger(candidate);
+    if (typeof parsed === "number") {
+      return parsed;
+    }
+  }
+  const capabilities = rawModel.capabilities;
+  if (typeof capabilities === "object" && capabilities !== null) {
+    const capabilitiesRecord = capabilities as Record<string, unknown>;
+    const capabilityCandidates: unknown[] = [
+      capabilitiesRecord.context_window_tokens,
+      capabilitiesRecord.contextWindowTokens,
+      capabilitiesRecord.context_window,
+      capabilitiesRecord.contextWindow,
+      capabilitiesRecord.max_context_length,
+      capabilitiesRecord.maxContextLength,
+      capabilitiesRecord.max_input_tokens,
+      capabilitiesRecord.maxInputTokens,
+      capabilitiesRecord.input_token_limit,
+      capabilitiesRecord.inputTokenLimit,
+    ];
+    for (const candidate of capabilityCandidates) {
+      const parsed = parsePositiveInteger(candidate);
+      if (typeof parsed === "number") {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function parseModelCatalogFromProbePayload(payload: unknown): {
+  modelIds: string[];
+  modelContextWindowTokensById: Record<string, number>;
+} {
+  const modelIds: string[] = [];
+  const modelContextWindowTokensById: Record<string, number> = {};
   if (typeof payload !== "object" || payload === null) {
-    return [];
+    return {
+      modelIds,
+      modelContextWindowTokensById,
+    };
   }
   const parsed = payload as Record<string, unknown>;
   const rawData = parsed.data;
   if (Array.isArray(rawData)) {
-    return rawData
-      .map((item) => {
-        if (typeof item !== "object" || item === null) {
-          return "";
-        }
-        const id = (item as Record<string, unknown>).id;
-        return typeof id === "string" ? id.trim() : "";
-      })
-      .filter((id) => id.length > 0);
+    for (const item of rawData) {
+      if (typeof item !== "object" || item === null) {
+        continue;
+      }
+      const modelRecord = item as Record<string, unknown>;
+      const id = typeof modelRecord.id === "string" ? modelRecord.id.trim() : "";
+      if (!id) {
+        continue;
+      }
+      modelIds.push(id);
+      const contextWindowTokens = readModelContextWindowTokens(modelRecord);
+      if (typeof contextWindowTokens === "number") {
+        modelContextWindowTokensById[id] = contextWindowTokens;
+      }
+    }
+    return {
+      modelIds,
+      modelContextWindowTokensById,
+    };
   }
   const rawModels = parsed.models;
   if (Array.isArray(rawModels)) {
-    return rawModels
-      .map((item) => {
-        if (typeof item === "string") {
-          return item.trim();
+    for (const item of rawModels) {
+      if (typeof item === "string") {
+        const id = item.trim();
+        if (id.length > 0) {
+          modelIds.push(id);
         }
-        if (typeof item === "object" && item !== null) {
-          const id = (item as Record<string, unknown>).id;
-          return typeof id === "string" ? id.trim() : "";
-        }
-        return "";
-      })
-      .filter((id) => id.length > 0);
+        continue;
+      }
+      if (typeof item !== "object" || item === null) {
+        continue;
+      }
+      const modelRecord = item as Record<string, unknown>;
+      const id = typeof modelRecord.id === "string" ? modelRecord.id.trim() : "";
+      if (!id) {
+        continue;
+      }
+      modelIds.push(id);
+      const contextWindowTokens = readModelContextWindowTokens(modelRecord);
+      if (typeof contextWindowTokens === "number") {
+        modelContextWindowTokensById[id] = contextWindowTokens;
+      }
+    }
   }
-  return [];
+  return {
+    modelIds,
+    modelContextWindowTokensById,
+  };
 }
 
 function pickAutoModel(modelIds: readonly string[]): string | undefined {
@@ -685,12 +774,14 @@ export async function listProviderModels(
         }
         try {
           const payload = JSON.parse(body) as unknown;
-          const modelIds = parseModelIdsFromProbePayload(payload);
+          const parsedCatalog = parseModelCatalogFromProbePayload(payload);
+          const modelIds = parsedCatalog.modelIds;
           resolve({
             state: "ok",
             detail: `models=${String(modelIds.length)}`,
             httpStatus: statusCode,
             modelIds,
+            modelContextWindowTokensById: parsedCatalog.modelContextWindowTokensById,
           });
         } catch (error) {
           resolve({

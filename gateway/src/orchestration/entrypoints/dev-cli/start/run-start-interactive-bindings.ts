@@ -229,6 +229,8 @@ export function createRunStartInteractiveModeInput(
         }),
       );
     },
+    getCachedModelContextWindowTokens: input.modelOps.getCachedModelContextWindowTokens,
+    refreshModelCatalogCache: input.modelOps.refreshModelCatalogCache,
     showModelCurrent: input.modelOps.showModelCurrent,
     listModels: input.modelOps.listModels,
     useModel: input.modelOps.useModel,

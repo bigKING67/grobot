@@ -138,6 +138,8 @@ async function main(): Promise<void> {
       model: "alpha-model",
       source: "contract:model",
     }),
+    getCachedModelContextWindowTokens: () => undefined,
+    refreshModelCatalogCache: async () => undefined,
     showModelCurrent: async () => undefined,
     listModels: async () => undefined,
     useModel: async () => undefined,

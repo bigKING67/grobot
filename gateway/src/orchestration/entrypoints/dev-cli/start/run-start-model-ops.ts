@@ -41,6 +41,7 @@ interface FetchAvailableModelsOk {
   providerName: string;
   currentModel?: string;
   modelIds: string[];
+  modelContextWindowTokensById: Record<string, number>;
 }
 
 interface FetchAvailableModelsFailure {
@@ -67,6 +68,8 @@ export interface RunStartModelSnapshot {
 
 export interface RunStartModelOps {
   getCurrentModelSnapshot(): RunStartModelSnapshot;
+  getCachedModelContextWindowTokens(modelId: string): number | undefined;
+  refreshModelCatalogCache(): Promise<void>;
   showModelCurrent(): Promise<void>;
   listModels(): Promise<void>;
   useModel(modelIdRaw: string): Promise<void>;
@@ -140,6 +143,7 @@ export function createRunStartModelOps(
   const listProviderModelsByConnection =
     input.listProviderModelsByConnection ?? listProviderModels;
   const sessionModelOverrides = new Map<string, string>();
+  const modelContextWindowTokensCache = new Map<string, number>();
   const resolvePrimaryModelTarget = (): PrimaryModelTarget => {
     if (input.runtimeProviderChain.length > 0) {
       const firstProvider = input.runtimeProviderChain[0];
@@ -230,8 +234,41 @@ export function createRunStartModelOps(
         providerName: connection.providerName,
         currentModel: connection.currentModel,
         modelIds: normalizeModelIds(listed.modelIds),
+        modelContextWindowTokensById: listed.modelContextWindowTokensById ?? {},
       };
     };
+
+  const updateModelContextWindowTokensCache = (
+    modelContextWindowTokensById: Record<string, number>,
+  ): void => {
+    for (const [modelId, tokens] of Object.entries(modelContextWindowTokensById)) {
+      const normalizedModelId = modelId.trim();
+      if (
+        normalizedModelId.length === 0
+        || !Number.isFinite(tokens)
+        || tokens <= 0
+      ) {
+        continue;
+      }
+      modelContextWindowTokensCache.set(normalizedModelId, Math.floor(tokens));
+    }
+  };
+
+  const getCachedModelContextWindowTokens = (modelId: string): number | undefined => {
+    const normalizedModelId = modelId.trim();
+    if (normalizedModelId.length === 0) {
+      return undefined;
+    }
+    return modelContextWindowTokensCache.get(normalizedModelId);
+  };
+
+  const refreshModelCatalogCache = async (): Promise<void> => {
+    const available = await fetchAvailableModels();
+    if (!available.ok) {
+      return;
+    }
+    updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
+  };
 
   const applyModelToActiveSession = (modelId: string): void => {
     const activeSessionId = input.getActiveSessionId();
@@ -262,6 +299,7 @@ export function createRunStartModelOps(
       input.writeStdout(`[model] list failed: ${available.message}\n\n`);
       return;
     }
+    updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
       input.writeStdout(
         `[model] provider=${available.providerName} returned no models.\n\n`,
@@ -289,6 +327,7 @@ export function createRunStartModelOps(
       input.writeStdout(`[model] switch failed: ${available.message}\n\n`);
       return;
     }
+    updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(requestedModelId)) {
       input.writeStdout(
         `[model] switch failed: "${requestedModelId}" not found for provider=${available.providerName}\n`,
@@ -322,6 +361,7 @@ export function createRunStartModelOps(
         input.writeStdout(`[model] picker unavailable: ${available.message}\n\n`);
       return;
     }
+    updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
       input.writeStdout(
         `[model] provider=${available.providerName} returned no models.\n\n`,
@@ -357,6 +397,8 @@ export function createRunStartModelOps(
 
     return {
       getCurrentModelSnapshot,
+      getCachedModelContextWindowTokens,
+      refreshModelCatalogCache,
       showModelCurrent,
       listModels,
       useModel,
