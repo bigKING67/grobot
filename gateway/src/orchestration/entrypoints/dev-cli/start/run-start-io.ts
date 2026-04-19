@@ -25,6 +25,10 @@ const ANSI_RESET = "\u001B[0m";
 const ANSI_INLINE_IMAGE_TOKEN_PLAIN = "\u001B[96m";
 const ANSI_INLINE_IMAGE_TOKEN_NERD = "\u001B[94m";
 const ANSI_INLINE_IMAGE_TOKEN_CCLINE = "\u001B[1m\u001B[96m";
+const BRACKETED_PASTE_START = "\u001B[200~";
+const BRACKETED_PASTE_END = "\u001B[201~";
+const BRACKETED_PASTE_BLOCK_PATTERN = /\u001B\[200~([\s\S]*?)\u001B\[201~/g;
+const BRACKETED_PASTE_BUFFER_LIMIT = 16_384;
 
 const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
 let nextInlineImageId = 1;
@@ -247,6 +251,17 @@ function highlightInlineImageToken(
   );
 }
 
+function stripBracketedPasteMarkers(value: string): string {
+  if (!value || !value.includes("\u001B[")) {
+    return value;
+  }
+  return value
+    .split(BRACKETED_PASTE_START)
+    .join("")
+    .split(BRACKETED_PASTE_END)
+    .join("");
+}
+
 function dirname(path: string): string {
   const normalized = removeTrailingSlashes(path);
   const slash = normalized.lastIndexOf("/");
@@ -395,6 +410,7 @@ export async function runSessionInputLoop(
   let lastSlashLineInput = "";
   let slashOverlayPanel = "";
   let lowerDecorationSignature = "<empty>";
+  let bracketedPasteBuffer = "";
   const escInputSupported = Boolean(
     options.onEscapeInterrupt
     && typeof menuInput.setRawMode === "function"
@@ -549,6 +565,74 @@ export async function runSessionInputLoop(
     return true;
   };
 
+  const stripBracketedPasteMarkersFromInputLine = (): boolean => {
+    const lineBefore = readlineState.line ?? "";
+    const lineAfter = stripBracketedPasteMarkers(lineBefore);
+    if (lineAfter === lineBefore) {
+      return false;
+    }
+    replaceReadlineInputLine(rl, lineAfter);
+    return true;
+  };
+
+  const handleBracketedPastePayload = (payload: string): void => {
+    queueMicrotask(() => {
+      if (handlerRunning) {
+        return;
+      }
+      const stripped = stripBracketedPasteMarkersFromInputLine();
+      if (payload.trim().length > 0) {
+        if (stripped) {
+          refreshSlashSuggestionOverlay();
+        }
+        return;
+      }
+      const pasted = tryPasteInlineClipboardImage();
+      if (pasted || stripped) {
+        refreshSlashSuggestionOverlay();
+      }
+    });
+  };
+
+  const onInputData = (chunk: string): void => {
+    if (handlerRunning) {
+      return;
+    }
+    const raw = String(chunk ?? "");
+    if (raw.length === 0) {
+      return;
+    }
+    if (!raw.includes(BRACKETED_PASTE_START) && !raw.includes(BRACKETED_PASTE_END) && bracketedPasteBuffer.length === 0) {
+      return;
+    }
+    bracketedPasteBuffer = `${bracketedPasteBuffer}${raw}`;
+    if (bracketedPasteBuffer.length > BRACKETED_PASTE_BUFFER_LIMIT) {
+      bracketedPasteBuffer = bracketedPasteBuffer.slice(-BRACKETED_PASTE_BUFFER_LIMIT);
+    }
+    let matched = false;
+    let lastConsumedIndex = 0;
+    BRACKETED_PASTE_BLOCK_PATTERN.lastIndex = 0;
+    for (const match of bracketedPasteBuffer.matchAll(BRACKETED_PASTE_BLOCK_PATTERN)) {
+      const payload = match[1] ?? "";
+      matched = true;
+      lastConsumedIndex = (match.index ?? 0) + match[0].length;
+      handleBracketedPastePayload(payload);
+    }
+    if (matched) {
+      bracketedPasteBuffer = bracketedPasteBuffer.slice(lastConsumedIndex);
+      return;
+    }
+    const startIndex = bracketedPasteBuffer.lastIndexOf(BRACKETED_PASTE_START);
+    if (startIndex >= 0) {
+      bracketedPasteBuffer = bracketedPasteBuffer.slice(startIndex);
+      return;
+    }
+    const tailLength = Math.max(BRACKETED_PASTE_START.length - 1, BRACKETED_PASTE_END.length - 1);
+    if (bracketedPasteBuffer.length > tailLength) {
+      bracketedPasteBuffer = bracketedPasteBuffer.slice(-tailLength);
+    }
+  };
+
   const onKeypress = (_chunk: string, key: KeypressPayload): void => {
     if (handlerRunning) {
       return;
@@ -621,6 +705,8 @@ export async function runSessionInputLoop(
   };
 
   emitKeypressEventsCompat(process.stdin, rl);
+  menuInput.setEncoding?.("utf8");
+  menuInput.on?.("data", onInputData);
   keypressInput.on?.("keypress", onKeypress);
 
   while (true) {
@@ -705,6 +791,7 @@ export async function runSessionInputLoop(
 
   clearSlashSuggestionOverlay();
   keypressInput.off?.("keypress", onKeypress);
+  menuInput.off?.("data", onInputData);
   setEscListener(false);
   if (originalWriteToOutput) {
     readlineState._writeToOutput = originalWriteToOutput;
