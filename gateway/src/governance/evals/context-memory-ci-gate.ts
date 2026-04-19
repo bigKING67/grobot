@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolveBaseSha } from "./skill-router-baseline-report";
 import { loadReport, saveReport } from "./skill-router-trend-meta";
+import { buildContextMemoryBaselineReport } from "./context-memory-baseline-report";
 
 type JsonObject = Record<string, unknown>;
 const TSX_PACKAGE = "tsx@4.20.6";
@@ -55,6 +56,8 @@ interface TrendCompareResult {
   deltas: JsonObject;
 }
 
+type BaselineAvailabilityMode = "force_on" | "force_off" | "auto";
+
 function normalizeBool(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -63,6 +66,37 @@ function normalizeBool(value: unknown): boolean {
     return false;
   }
   return value.trim().toLowerCase() === "true";
+}
+
+function parseBaselineAvailabilityMode(value: unknown): BaselineAvailabilityMode {
+  if (typeof value !== "string") {
+    return "auto";
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
+    return "force_on";
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
+    return "force_off";
+  }
+  return "auto";
+}
+
+function resolveBaselineAvailability(input: {
+  mode: BaselineAvailabilityMode;
+  baseSha: string | undefined;
+  baseReportPath: string;
+}): boolean {
+  if (input.mode === "force_on") {
+    return true;
+  }
+  if (input.mode === "force_off") {
+    return false;
+  }
+  if (existsSync(input.baseReportPath)) {
+    return true;
+  }
+  return typeof input.baseSha === "string";
 }
 
 function normalizeOptionalText(value: unknown): string | undefined {
@@ -183,7 +217,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   let eventName = "";
   let prBaseSha = "";
   let beforeSha = "";
-  let baselineAvailable = "false";
+  let baselineAvailable = "auto";
   let repoRoot = ".";
   let outputPath = "gateway/evals/data/context_memory_ci_report.json";
   let baseReportPath = "gateway/evals/data/context_memory_ci_report.base.json";
@@ -212,7 +246,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (token === "--baseline-available") {
-      baselineAvailable = argv[index + 1] ?? "false";
+      baselineAvailable = argv[index + 1] ?? "auto";
       index += 1;
       continue;
     }
@@ -407,7 +441,7 @@ function buildTrendMeta(input: {
   trendMode: string;
   trendReason: string;
   trendRequired: boolean;
-  baselineAvailable: unknown;
+  baselineAvailable: boolean;
   baseSha: string | undefined;
   currentPolicyBlob: string | undefined;
   basePolicyBlob: string | undefined;
@@ -425,7 +459,7 @@ function buildTrendMeta(input: {
     reason: input.trendReason,
     required: input.trendRequired,
     executed: input.trendMode === "gate_and_trend",
-    baseline_available: normalizeBool(input.baselineAvailable),
+    baseline_available: input.baselineAvailable,
     base_sha: input.baseSha ?? null,
     policy_blob_current: input.currentPolicyBlob ?? null,
     policy_blob_base: input.basePolicyBlob ?? null,
@@ -461,12 +495,33 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
     };
   }
 
-  const baselineAvailableFlag = normalizeBool(input.baselineAvailable);
   const baseSha = resolveBaseSha({
     eventName: input.eventName,
     prBaseSha: input.prBaseSha,
     beforeSha: input.beforeSha,
+    repoRoot,
   });
+  const baselineMode = parseBaselineAvailabilityMode(input.baselineAvailable);
+  let baselineAvailableFlag = resolveBaselineAvailability({
+    mode: baselineMode,
+    baseSha,
+    baseReportPath,
+  });
+
+  let baselineBuildAttempted = false;
+  let baselineBuildSucceeded = false;
+  if (baselineAvailableFlag && !existsSync(baseReportPath) && typeof baseSha === "string") {
+    baselineBuildAttempted = true;
+    const baselineBuild = buildContextMemoryBaselineReport({
+      eventName: input.eventName,
+      prBaseSha: input.prBaseSha,
+      beforeSha: input.beforeSha,
+      repoRoot,
+      outputPath: input.baseReportPath,
+    });
+    baselineBuildSucceeded = baselineBuild.available === true && existsSync(baseReportPath);
+    baselineAvailableFlag = baselineBuildSucceeded;
+  }
 
   const currentPolicyBlob = runCapture(["git", "-C", repoRoot, "rev-parse", `HEAD:${input.policyBlobPath}`]);
   let basePolicyBlob: string | undefined;
@@ -501,6 +556,10 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
         }
       }
     }
+  } else if (baselineBuildAttempted && !baselineBuildSucceeded) {
+    trendReason = "baseline_build_failed";
+  } else if (baselineMode !== "force_off" && typeof baseSha !== "string") {
+    trendReason = "baseline_no_base_sha";
   }
 
   const trendMeta = buildTrendMeta({
@@ -509,7 +568,7 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
     trendMode,
     trendReason,
     trendRequired,
-    baselineAvailable: input.baselineAvailable,
+    baselineAvailable: baselineAvailableFlag,
     baseSha,
     currentPolicyBlob,
     basePolicyBlob,

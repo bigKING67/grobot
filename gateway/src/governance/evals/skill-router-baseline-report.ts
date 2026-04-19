@@ -31,11 +31,33 @@ export function resolveBaseSha(input: {
   eventName: string;
   prBaseSha: unknown;
   beforeSha: unknown;
+  repoRoot?: string;
 }): string | undefined {
-  if (input.eventName === "pull_request") {
-    return normalizeOptionalText(input.prBaseSha);
+  const preferred =
+    input.eventName === "pull_request"
+      ? normalizeOptionalText(input.prBaseSha)
+      : normalizeOptionalText(input.beforeSha);
+  if (preferred) {
+    return preferred;
   }
-  return normalizeOptionalText(input.beforeSha);
+  const repoRoot = normalizeOptionalText(input.repoRoot) ?? ".";
+  const candidates = ["HEAD^", "HEAD~1"];
+  for (const candidate of candidates) {
+    const result = spawnSync("git", ["-C", repoRoot, "rev-parse", candidate], {
+      encoding: "utf8",
+      maxBuffer: 256 * 1024,
+      timeout: 60_000,
+    });
+    if (result.status !== 0) {
+      continue;
+    }
+    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+    const sha = normalizeOptionalText(stdout);
+    if (sha) {
+      return sha;
+    }
+  }
+  return undefined;
 }
 
 function dirname(path: string): string {
@@ -170,6 +192,7 @@ export function buildSkillRouterBaselineReport(input: BuildBaselineInput): JsonO
     eventName: input.eventName,
     prBaseSha: input.prBaseSha,
     beforeSha: input.beforeSha,
+    repoRoot: input.repoRoot,
   });
   if (!baseSha) {
     return { available: false, reason: "no_base_sha", base_sha: null };

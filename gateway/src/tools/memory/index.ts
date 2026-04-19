@@ -50,6 +50,7 @@ export {
   normalizeMemoryStrategyAutotuneState,
   readMemoryStrategyAutotuneState,
   writeMemoryStrategyAutotuneState,
+  type MemoryStrategyAutotuneProfile,
   type MemoryStrategyAutotuneQualitySnapshot,
   type MemoryStrategyAutotuneState,
   type MemoryStrategyAutotuneUpdateResult,

@@ -249,6 +249,7 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
     eventName: input.eventName,
     prBaseSha: input.prBaseSha,
     beforeSha: input.beforeSha,
+    repoRoot,
   });
   const baselineAvailableFlag = normalizeBool(input.baselineAvailable);
 

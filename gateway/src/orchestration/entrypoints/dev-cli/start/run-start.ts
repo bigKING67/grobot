@@ -29,6 +29,7 @@ import {
   writeMemoryStrategyAutotuneState,
   type MemoryOrchestratorExperienceAdapter,
   type MemoryOrchestratorGaAdapter,
+  type MemoryStrategyAutotuneProfile,
 } from "../../../../tools/memory";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import {
@@ -39,6 +40,46 @@ import {
 function isTruthyEnvFlag(value: string | undefined): boolean {
   const normalized = (value ?? "").trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function normalizeMemoryStrategyProfile(
+  raw: string | undefined,
+): MemoryStrategyAutotuneProfile | undefined {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (
+    normalized === "general"
+    || normalized === "debug_heavy"
+    || normalized === "delivery"
+    || normalized === "docs"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function resolveMemoryStrategyProfile(input: {
+  envProfile: string | undefined;
+  activeSessionKey: string;
+  activeSessionPreview: string | undefined;
+}): MemoryStrategyAutotuneProfile {
+  const envProfile = normalizeMemoryStrategyProfile(input.envProfile);
+  if (envProfile) {
+    return envProfile;
+  }
+  const text = `${input.activeSessionKey} ${input.activeSessionPreview ?? ""}`.toLowerCase();
+  if (/(debug|bug|fix|故障|排查|报错|修复|flaky)/.test(text)) {
+    return "debug_heavy";
+  }
+  if (/(release|deploy|上线|发版|交付|deadline)/.test(text)) {
+    return "delivery";
+  }
+  if (/(doc|readme|文档|总结|报告|spec)/.test(text)) {
+    return "docs";
+  }
+  return "general";
 }
 
 export async function runStart(
@@ -190,7 +231,7 @@ export async function runStart(
   });
   const memoryPolicy = memoryOrchestrator.policySnapshot();
   writeStartupDiagnostics(
-    `[memory-orchestrator] enabled=${memoryPolicy.enabled ? "on" : "off"} version=${memoryPolicy.version} budget_ratio=${memoryPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryPolicy.injectBudgetMinTokens)} budget_max=${String(memoryPolicy.injectBudgetMaxTokens)} section_max=${String(memoryPolicy.maxSectionTokens)} ga_rows=${String(memoryPolicy.maxGaMemoryRows)} team_rows=${String(memoryPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryPolicy.minTeamExperienceScore)} decay_enabled=${memoryPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryPolicy.decayMaxAgeHoursL1)}/${String(memoryPolicy.decayMaxAgeHoursL2)}/${String(memoryPolicy.decayMaxAgeHoursL3)}/${String(memoryPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryPolicy.decayMinConfidenceUnverified.toFixed(2)} decay_autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} decay_autotune_reason=${memoryDecayAutotuneState.lastReason} strategy_autotune_updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} strategy_autotune_reason=${memoryStrategyAutotuneState.lastReason} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)}\n`,
+    `[memory-orchestrator] enabled=${memoryPolicy.enabled ? "on" : "off"} version=${memoryPolicy.version} budget_ratio=${memoryPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryPolicy.injectBudgetMinTokens)} budget_max=${String(memoryPolicy.injectBudgetMaxTokens)} section_max=${String(memoryPolicy.maxSectionTokens)} ga_rows=${String(memoryPolicy.maxGaMemoryRows)} team_rows=${String(memoryPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryPolicy.minTeamExperienceScore)} decay_enabled=${memoryPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryPolicy.decayMaxAgeHoursL1)}/${String(memoryPolicy.decayMaxAgeHoursL2)}/${String(memoryPolicy.decayMaxAgeHoursL3)}/${String(memoryPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryPolicy.decayMinConfidenceUnverified.toFixed(2)} decay_autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} decay_autotune_reason=${memoryDecayAutotuneState.lastReason} strategy_autotune_updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} strategy_autotune_reason=${memoryStrategyAutotuneState.lastReason} strategy_profile=${memoryStrategyAutotuneState.profile} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)} strategy_outcome=${memoryStrategyAutotuneState.lastOutcomeGain.toFixed(3)}/${memoryStrategyAutotuneState.outcomeConfidenceEma.toFixed(3)}/${String(memoryStrategyAutotuneState.outcomeRollbackCount)}\n`,
   );
 
   const wire = createRunStartWire({
@@ -266,6 +307,14 @@ export async function runStart(
       const sessionRegistry = runtimeState.getSessionRegistry();
       const activeSessionId = runtimeState.getActiveSessionId();
       const activeSessionKey = runtimeState.getSessionKey();
+      const activeSessionRecord = sessionRegistry.sessions.find(
+        (item) => item.id === activeSessionId || item.session_key === activeSessionKey,
+      );
+      const strategyProfile = resolveMemoryStrategyProfile({
+        envProfile: process.env.GROBOT_MEMORY_STRATEGY_PROFILE,
+        activeSessionKey,
+        activeSessionPreview: activeSessionRecord?.preview,
+      });
       const maintenanceNowMs = Date.now();
       let sessionsScanned = 0;
       let sessionsUpdated = 0;
@@ -412,6 +461,7 @@ export async function runStart(
         basePolicy: baseMemoryPolicy,
         currentState: memoryStrategyAutotuneState,
         quality: qualitySnapshot,
+        profile: strategyProfile,
       });
       let strategyAutotuneUpdated = false;
       if (strategyAutotuneResult.changed) {
@@ -435,11 +485,11 @@ export async function runStart(
           state: memoryStrategyAutotuneState,
         });
         writeStartupDiagnostics(
-          `[memory-orchestrator] event=strategy_autotune_updated reason=${strategyAutotuneResult.reason} updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} budget_ratio=${tunedPolicy.injectBudgetRatio.toFixed(3)} section_max=${String(tunedPolicy.maxSectionTokens)} ga_rows=${String(tunedPolicy.maxGaMemoryRows)} team_rows=${String(tunedPolicy.maxTeamExperienceRows)} team_score_min=${String(tunedPolicy.minTeamExperienceScore)} pressure_ema=${memoryStrategyAutotuneState.averageUtilizationRatioEma.toFixed(3)}/${memoryStrategyAutotuneState.autoLimitTriggeredRateEma.toFixed(3)}/${memoryStrategyAutotuneState.snapshotSemanticCompressRateEma.toFixed(3)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)}\n`,
+          `[memory-orchestrator] event=strategy_autotune_updated reason=${strategyAutotuneResult.reason} updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} profile=${memoryStrategyAutotuneState.profile} budget_ratio=${tunedPolicy.injectBudgetRatio.toFixed(3)} section_max=${String(tunedPolicy.maxSectionTokens)} ga_rows=${String(tunedPolicy.maxGaMemoryRows)} team_rows=${String(tunedPolicy.maxTeamExperienceRows)} team_score_min=${String(tunedPolicy.minTeamExperienceScore)} pressure_ema=${memoryStrategyAutotuneState.averageUtilizationRatioEma.toFixed(3)}/${memoryStrategyAutotuneState.autoLimitTriggeredRateEma.toFixed(3)}/${memoryStrategyAutotuneState.snapshotSemanticCompressRateEma.toFixed(3)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)} outcome=${memoryStrategyAutotuneState.lastOutcomeGain.toFixed(3)}/${memoryStrategyAutotuneState.outcomeConfidenceEma.toFixed(3)}/${String(memoryStrategyAutotuneState.outcomeRollbackCount)}/${String(memoryStrategyAutotuneState.outcomeNegativeStreak)}\n`,
         );
       }
       writeStartupDiagnostics(
-        `[memory-orchestrator] event=maintenance reason=${reason} sessions_scanned=${String(sessionsScanned)} sessions_updated=${String(sessionsUpdated)} deduplicated_rows=${String(deduplicatedRows)} total_rows=${String(totalRowsBefore)}->${String(totalRowsAfter)} decay_sessions_pruned=${String(decaySessionsPruned)} decay_dropped_rows=${String(decayDroppedRows)} decay_action=${decayAction} decay_reason=${decayReason} quality_low_rate=${formatQualityValue(qualitySnapshot.lowQualityRate)} quality_pressure=${formatQualityValue(qualitySnapshot.averagePreSendPressureScore)} quality_hard_budget_rate=${formatQualityValue(qualitySnapshot.hardBudgetRate)} quality_first_improved_rate=${formatQualityValue(qualitySnapshot.qualityFirstImprovedRate)} quality_followup_delta=${formatQualityValue(qualitySnapshot.hardBudgetFollowupOverallDelta)}/${formatQualityValue(qualitySnapshot.qualityFirstFollowupOverallDelta)} pressure_utilization=${formatQualityValue(qualitySnapshot.averageUtilizationRatio)} pressure_auto_limit_rate=${formatQualityValue(qualitySnapshot.autoLimitTriggeredRate)} pressure_semantic_rate=${formatQualityValue(qualitySnapshot.snapshotSemanticCompressRate)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)} decay_autotune_updated=${decayAutotuneUpdated ? "true" : "false"} decay_autotune_reason=${decayAutotuneResult.reason} strategy_autotune_updated=${strategyAutotuneUpdated ? "true" : "false"} strategy_autotune_reason=${strategyAutotuneResult.reason} strategy_budget_ratio=${policyAfterAutotune.injectBudgetRatio.toFixed(3)} strategy_section_max=${String(policyAfterAutotune.maxSectionTokens)} strategy_ga_rows=${String(policyAfterAutotune.maxGaMemoryRows)} strategy_team_rows=${String(policyAfterAutotune.maxTeamExperienceRows)} strategy_team_score_min=${String(policyAfterAutotune.minTeamExperienceScore)} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)}\n`,
+        `[memory-orchestrator] event=maintenance reason=${reason} sessions_scanned=${String(sessionsScanned)} sessions_updated=${String(sessionsUpdated)} deduplicated_rows=${String(deduplicatedRows)} total_rows=${String(totalRowsBefore)}->${String(totalRowsAfter)} decay_sessions_pruned=${String(decaySessionsPruned)} decay_dropped_rows=${String(decayDroppedRows)} decay_action=${decayAction} decay_reason=${decayReason} quality_low_rate=${formatQualityValue(qualitySnapshot.lowQualityRate)} quality_pressure=${formatQualityValue(qualitySnapshot.averagePreSendPressureScore)} quality_hard_budget_rate=${formatQualityValue(qualitySnapshot.hardBudgetRate)} quality_first_improved_rate=${formatQualityValue(qualitySnapshot.qualityFirstImprovedRate)} quality_followup_delta=${formatQualityValue(qualitySnapshot.hardBudgetFollowupOverallDelta)}/${formatQualityValue(qualitySnapshot.qualityFirstFollowupOverallDelta)} pressure_utilization=${formatQualityValue(qualitySnapshot.averageUtilizationRatio)} pressure_auto_limit_rate=${formatQualityValue(qualitySnapshot.autoLimitTriggeredRate)} pressure_semantic_rate=${formatQualityValue(qualitySnapshot.snapshotSemanticCompressRate)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)} decay_autotune_updated=${decayAutotuneUpdated ? "true" : "false"} decay_autotune_reason=${decayAutotuneResult.reason} strategy_autotune_updated=${strategyAutotuneUpdated ? "true" : "false"} strategy_autotune_reason=${strategyAutotuneResult.reason} strategy_profile=${memoryStrategyAutotuneState.profile} strategy_budget_ratio=${policyAfterAutotune.injectBudgetRatio.toFixed(3)} strategy_section_max=${String(policyAfterAutotune.maxSectionTokens)} strategy_ga_rows=${String(policyAfterAutotune.maxGaMemoryRows)} strategy_team_rows=${String(policyAfterAutotune.maxTeamExperienceRows)} strategy_team_score_min=${String(policyAfterAutotune.minTeamExperienceScore)} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)} strategy_outcome=${memoryStrategyAutotuneState.lastOutcomeGain.toFixed(3)}/${memoryStrategyAutotuneState.outcomeConfidenceEma.toFixed(3)}/${String(memoryStrategyAutotuneState.outcomeRollbackCount)}/${String(memoryStrategyAutotuneState.outcomeNegativeStreak)}\n`,
       );
     } catch (error) {
       output.writeStderr(
@@ -687,6 +737,7 @@ export async function runStart(
         handoffAutoOnExit,
         handoffRecentTurns,
           handoffPath,
+        contextWindowTokens: contextEngineConfig.contextWindowTokens,
           buildHelpText: buildInteractiveHelpText,
         statusLineConfig,
         runtimeProviderChain,

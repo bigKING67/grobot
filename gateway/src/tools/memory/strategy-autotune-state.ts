@@ -6,8 +6,12 @@ import {
 import type { MemoryOrchestratorPolicySnapshot } from "./orchestrator";
 
 export type MemoryStrategyAutotuneActionDirection = "tighten" | "relax" | "neutral";
+export type MemoryStrategyAutotuneProfile = "general" | "debug_heavy" | "delivery" | "docs";
+const MEMORY_STRATEGY_AUTOTUNE_STATE_VERSION = 2;
 
 export interface MemoryStrategyAutotuneState {
+  schemaVersion: number;
+  profile: MemoryStrategyAutotuneProfile;
   injectBudgetRatio: number;
   maxSectionTokens: number;
   maxGaMemoryRows: number;
@@ -29,6 +33,25 @@ export interface MemoryStrategyAutotuneState {
   tightenSignalStreak: number;
   relaxSignalStreak: number;
   adaptiveActionScale: number;
+  pendingEvaluationDirection: MemoryStrategyAutotuneActionDirection;
+  pendingEvaluationWarmupTurns: number;
+  pendingBaselineInjectBudgetRatio: number;
+  pendingBaselineMaxSectionTokens: number;
+  pendingBaselineMaxGaMemoryRows: number;
+  pendingBaselineMaxTeamExperienceRows: number;
+  pendingBaselineMinTeamExperienceScore: number;
+  pendingBaselineQualityLowRateEma: number;
+  pendingBaselineQualityPressureEma: number;
+  pendingBaselineAverageUtilizationRatioEma: number;
+  pendingBaselineAutoLimitTriggeredRateEma: number;
+  pendingBaselineSnapshotSemanticCompressRateEma: number;
+  pendingBaselineHardBudgetFollowupDeltaEma: number;
+  pendingBaselineQualityFirstFollowupDeltaEma: number;
+  pendingBaselineQualityFirstImprovedRateEma: number;
+  outcomeConfidenceEma: number;
+  lastOutcomeGain: number;
+  outcomeRollbackCount: number;
+  outcomeNegativeStreak: number;
   lastReason: string;
   updatedAt: string | null;
 }
@@ -204,10 +227,19 @@ function inferActionDirectionFromReason(
   return "neutral";
 }
 
+function normalizeProfile(raw: unknown): MemoryStrategyAutotuneProfile {
+  if (raw === "debug_heavy" || raw === "delivery" || raw === "docs" || raw === "general") {
+    return raw;
+  }
+  return "general";
+}
+
 export function defaultMemoryStrategyAutotuneState(
   basePolicy: MemoryOrchestratorPolicySnapshot,
 ): MemoryStrategyAutotuneState {
   return {
+    schemaVersion: MEMORY_STRATEGY_AUTOTUNE_STATE_VERSION,
+    profile: "general",
     injectBudgetRatio: basePolicy.injectBudgetRatio,
     maxSectionTokens: basePolicy.maxSectionTokens,
     maxGaMemoryRows: basePolicy.maxGaMemoryRows,
@@ -229,6 +261,25 @@ export function defaultMemoryStrategyAutotuneState(
     tightenSignalStreak: 0,
     relaxSignalStreak: 0,
     adaptiveActionScale: 1,
+    pendingEvaluationDirection: "neutral",
+    pendingEvaluationWarmupTurns: 0,
+    pendingBaselineInjectBudgetRatio: basePolicy.injectBudgetRatio,
+    pendingBaselineMaxSectionTokens: basePolicy.maxSectionTokens,
+    pendingBaselineMaxGaMemoryRows: basePolicy.maxGaMemoryRows,
+    pendingBaselineMaxTeamExperienceRows: basePolicy.maxTeamExperienceRows,
+    pendingBaselineMinTeamExperienceScore: basePolicy.minTeamExperienceScore,
+    pendingBaselineQualityLowRateEma: 0,
+    pendingBaselineQualityPressureEma: 0,
+    pendingBaselineAverageUtilizationRatioEma: 0,
+    pendingBaselineAutoLimitTriggeredRateEma: 0,
+    pendingBaselineSnapshotSemanticCompressRateEma: 0,
+    pendingBaselineHardBudgetFollowupDeltaEma: 0,
+    pendingBaselineQualityFirstFollowupDeltaEma: 0,
+    pendingBaselineQualityFirstImprovedRateEma: 0,
+    outcomeConfidenceEma: 0,
+    lastOutcomeGain: 0,
+    outcomeRollbackCount: 0,
+    outcomeNegativeStreak: 0,
     lastReason: "bootstrap",
     updatedAt: null,
   };
@@ -250,6 +301,12 @@ export function normalizeMemoryStrategyAutotuneState(
       : defaults.lastReason;
   const inferredDirection = inferActionDirectionFromReason(reason);
   return {
+    schemaVersion: clampToIntRange(
+      Number(row.schemaVersion),
+      1,
+      MEMORY_STRATEGY_AUTOTUNE_STATE_VERSION,
+    ),
+    profile: normalizeProfile(row.profile),
     injectBudgetRatio: clampRatio(
       row.injectBudgetRatio,
       defaults.injectBudgetRatio,
@@ -335,6 +392,95 @@ export function normalizeMemoryStrategyAutotuneState(
       0.5,
       2.5,
     ),
+    pendingEvaluationDirection:
+      row.pendingEvaluationDirection === "tighten"
+      || row.pendingEvaluationDirection === "relax"
+      || row.pendingEvaluationDirection === "neutral"
+        ? row.pendingEvaluationDirection
+        : "neutral",
+    pendingEvaluationWarmupTurns: clampToIntRange(
+      Number(row.pendingEvaluationWarmupTurns),
+      0,
+      8,
+    ),
+    pendingBaselineInjectBudgetRatio: clampRatio(
+      row.pendingBaselineInjectBudgetRatio,
+      defaults.pendingBaselineInjectBudgetRatio,
+      ranges.budgetRatioMin,
+      ranges.budgetRatioMax,
+    ),
+    pendingBaselineMaxSectionTokens: clampToIntRange(
+      Number(row.pendingBaselineMaxSectionTokens),
+      ranges.sectionMin,
+      ranges.sectionMax,
+    ),
+    pendingBaselineMaxGaMemoryRows: clampToIntRange(
+      Number(row.pendingBaselineMaxGaMemoryRows),
+      ranges.gaRowsMin,
+      ranges.gaRowsMax,
+    ),
+    pendingBaselineMaxTeamExperienceRows: clampToIntRange(
+      Number(row.pendingBaselineMaxTeamExperienceRows),
+      ranges.teamRowsMin,
+      ranges.teamRowsMax,
+    ),
+    pendingBaselineMinTeamExperienceScore: clampToIntRange(
+      Number(row.pendingBaselineMinTeamExperienceScore),
+      ranges.teamScoreMin,
+      ranges.teamScoreMax,
+    ),
+    pendingBaselineQualityLowRateEma: clampRatio(
+      row.pendingBaselineQualityLowRateEma,
+      defaults.pendingBaselineQualityLowRateEma,
+    ),
+    pendingBaselineQualityPressureEma: clampRatio(
+      row.pendingBaselineQualityPressureEma,
+      defaults.pendingBaselineQualityPressureEma,
+    ),
+    pendingBaselineAverageUtilizationRatioEma: clampRatio(
+      row.pendingBaselineAverageUtilizationRatioEma,
+      defaults.pendingBaselineAverageUtilizationRatioEma,
+    ),
+    pendingBaselineAutoLimitTriggeredRateEma: clampRatio(
+      row.pendingBaselineAutoLimitTriggeredRateEma,
+      defaults.pendingBaselineAutoLimitTriggeredRateEma,
+    ),
+    pendingBaselineSnapshotSemanticCompressRateEma: clampRatio(
+      row.pendingBaselineSnapshotSemanticCompressRateEma,
+      defaults.pendingBaselineSnapshotSemanticCompressRateEma,
+    ),
+    pendingBaselineHardBudgetFollowupDeltaEma: clampSigned(
+      row.pendingBaselineHardBudgetFollowupDeltaEma,
+      defaults.pendingBaselineHardBudgetFollowupDeltaEma,
+      -1,
+      1,
+    ),
+    pendingBaselineQualityFirstFollowupDeltaEma: clampSigned(
+      row.pendingBaselineQualityFirstFollowupDeltaEma,
+      defaults.pendingBaselineQualityFirstFollowupDeltaEma,
+      -1,
+      1,
+    ),
+    pendingBaselineQualityFirstImprovedRateEma: clampRatio(
+      row.pendingBaselineQualityFirstImprovedRateEma,
+      defaults.pendingBaselineQualityFirstImprovedRateEma,
+    ),
+    outcomeConfidenceEma: clampRatio(
+      row.outcomeConfidenceEma,
+      defaults.outcomeConfidenceEma,
+    ),
+    lastOutcomeGain: clampSigned(
+      row.lastOutcomeGain,
+      defaults.lastOutcomeGain,
+      -1,
+      1,
+    ),
+    outcomeRollbackCount: clampNonNegativeInt(row.outcomeRollbackCount),
+    outcomeNegativeStreak: clampToIntRange(
+      Number(row.outcomeNegativeStreak),
+      0,
+      32,
+    ),
     lastReason: reason,
     updatedAt:
       typeof row.updatedAt === "string" && row.updatedAt.trim().length > 0
@@ -408,16 +554,87 @@ export function applyMemoryStrategyAutotuneToPolicy(input: {
   };
 }
 
+function resolveProfileThresholdOffset(profile: MemoryStrategyAutotuneProfile): {
+  tightenOffset: number;
+  relaxOffset: number;
+} {
+  if (profile === "delivery") {
+    return {
+      tightenOffset: -0.03,
+      relaxOffset: -0.02,
+    };
+  }
+  if (profile === "debug_heavy") {
+    return {
+      tightenOffset: 0.035,
+      relaxOffset: 0.02,
+    };
+  }
+  if (profile === "docs") {
+    return {
+      tightenOffset: 0.045,
+      relaxOffset: 0.03,
+    };
+  }
+  return {
+    tightenOffset: 0,
+    relaxOffset: 0,
+  };
+}
+
+function deriveOutcomeEvidenceStrength(input: {
+  quality?: MemoryStrategyAutotuneQualitySnapshot;
+  pressureTrendUpCount: number;
+  pressureTrendMomentum: number;
+}): number {
+  const quality = input.quality;
+  if (!quality) {
+    return 0;
+  }
+  let signals = 0;
+  let total = 0;
+  const ratioCandidates = [
+    quality.shortAverageUtilizationRatio,
+    quality.mediumAverageUtilizationRatio,
+    quality.shortAutoLimitTriggeredRate,
+    quality.mediumAutoLimitTriggeredRate,
+    quality.shortSnapshotSemanticCompressRate,
+    quality.mediumSnapshotSemanticCompressRate,
+    quality.deltaAverageUtilizationRatio,
+    quality.deltaAutoLimitTriggeredRate,
+    quality.deltaSnapshotSemanticCompressRate,
+    quality.hardBudgetFollowupOverallDelta,
+    quality.qualityFirstFollowupOverallDelta,
+  ];
+  for (const value of ratioCandidates) {
+    total += 1;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      signals += 1;
+    }
+  }
+  if (input.pressureTrendUpCount > 0) {
+    signals += 1;
+  }
+  total += 1;
+  if (input.pressureTrendMomentum >= 0.08) {
+    signals += 1;
+  }
+  total += 1;
+  return total > 0 ? clampRatio(signals / total, 0, 0, 1) : 0;
+}
+
 export function deriveMemoryStrategyAutotuneState(input: {
   basePolicy: MemoryOrchestratorPolicySnapshot;
   currentState: MemoryStrategyAutotuneState;
   quality?: MemoryStrategyAutotuneQualitySnapshot;
+  profile?: MemoryStrategyAutotuneProfile;
   nowIso?: string;
 }): MemoryStrategyAutotuneUpdateResult {
   const current = normalizeMemoryStrategyAutotuneState(input.currentState, input.basePolicy);
   const next = {
     ...current,
   };
+  next.profile = normalizeProfile(input.profile ?? current.profile);
   const alpha = current.adaptiveLearnAlpha;
   const ranges = resolveStrategyRanges(input.basePolicy);
 
@@ -518,6 +735,10 @@ export function deriveMemoryStrategyAutotuneState(input: {
   );
 
   const reasons: string[] = [];
+  if (next.profile !== current.profile) {
+    reasons.push(`profile_switched_${next.profile}`);
+  }
+  const profileOffset = resolveProfileThresholdOffset(next.profile);
   const qualityVolatility = clampToFloatRange(
     Math.max(
       Math.abs(qualityLowRate - current.qualityLowRateEma),
@@ -549,21 +770,31 @@ export function deriveMemoryStrategyAutotuneState(input: {
     next.adaptiveLearnAlpha = alphaAdjusted;
     reasons.push("alpha_rebalanced");
   }
+  const qualityTightenLowRateThreshold = clampToFloatRange(
+    0.34 + profileOffset.tightenOffset,
+    0.24,
+    0.56,
+  );
+  const qualitySignalRelaxLowRateThreshold = clampToFloatRange(
+    0.18 + profileOffset.relaxOffset,
+    0.08,
+    0.36,
+  );
   const qualityPressureTighten =
-    next.qualityLowRateEma >= 0.34
+    next.qualityLowRateEma >= qualityTightenLowRateThreshold
     && (
-      next.qualityPressureEma >= 0.58
-      || next.hardBudgetRateEma >= 0.46
-      || next.averageUtilizationRatioEma >= 0.92
-      || next.autoLimitTriggeredRateEma >= 0.42
+      next.qualityPressureEma >= clampToFloatRange(0.58 + profileOffset.tightenOffset, 0.42, 0.8)
+      || next.hardBudgetRateEma >= clampToFloatRange(0.46 + profileOffset.tightenOffset, 0.3, 0.72)
+      || next.averageUtilizationRatioEma >= clampToFloatRange(0.92 + profileOffset.tightenOffset, 0.78, 0.98)
+      || next.autoLimitTriggeredRateEma >= clampToFloatRange(0.42 + profileOffset.tightenOffset, 0.22, 0.7)
       || next.hardBudgetFollowupDeltaEma <= -0.03
     );
   const qualitySignalRelax =
-    next.qualityLowRateEma <= 0.18
-    && next.qualityPressureEma <= 0.34
-    && next.averageUtilizationRatioEma <= 0.72
-    && next.autoLimitTriggeredRateEma <= 0.16
-    && next.hardBudgetRateEma <= 0.22
+    next.qualityLowRateEma <= qualitySignalRelaxLowRateThreshold
+    && next.qualityPressureEma <= clampToFloatRange(0.34 + profileOffset.relaxOffset, 0.2, 0.54)
+    && next.averageUtilizationRatioEma <= clampToFloatRange(0.72 + profileOffset.relaxOffset, 0.52, 0.9)
+    && next.autoLimitTriggeredRateEma <= clampToFloatRange(0.16 + profileOffset.relaxOffset, 0.05, 0.34)
+    && next.hardBudgetRateEma <= clampToFloatRange(0.22 + profileOffset.relaxOffset, 0.08, 0.42)
     && next.qualityFirstImprovedRateEma >= 0.58
     && next.qualityFirstFollowupDeltaEma >= -0.01;
 
@@ -595,16 +826,16 @@ export function deriveMemoryStrategyAutotuneState(input: {
   const budgetPressureTighten =
     (
       (
-        next.averageUtilizationRatioEma >= 0.88
-        && next.autoLimitTriggeredRateEma >= 0.28
+        next.averageUtilizationRatioEma >= clampToFloatRange(0.88 + profileOffset.tightenOffset, 0.72, 0.98)
+        && next.autoLimitTriggeredRateEma >= clampToFloatRange(0.28 + profileOffset.tightenOffset, 0.16, 0.56)
       )
       || (
-        next.averageUtilizationRatioEma >= 0.87
-        && next.snapshotSemanticCompressRateEma >= 0.24
+        next.averageUtilizationRatioEma >= clampToFloatRange(0.87 + profileOffset.tightenOffset, 0.72, 0.98)
+        && next.snapshotSemanticCompressRateEma >= clampToFloatRange(0.24 + profileOffset.tightenOffset, 0.12, 0.5)
       )
       || (
-        next.autoLimitTriggeredRateEma >= 0.34
-        && next.snapshotSemanticCompressRateEma >= 0.26
+        next.autoLimitTriggeredRateEma >= clampToFloatRange(0.34 + profileOffset.tightenOffset, 0.18, 0.58)
+        && next.snapshotSemanticCompressRateEma >= clampToFloatRange(0.26 + profileOffset.tightenOffset, 0.12, 0.5)
       )
       || budgetPressureSeverity >= 0.93
     )
@@ -639,8 +870,96 @@ export function deriveMemoryStrategyAutotuneState(input: {
     0,
     1,
   );
+  const outcomeEvidenceStrength = deriveOutcomeEvidenceStrength({
+    quality: input.quality,
+    pressureTrendUpCount,
+    pressureTrendMomentum,
+  });
+  next.outcomeConfidenceEma = mixEma(
+    current.outcomeConfidenceEma,
+    outcomeEvidenceStrength,
+    0.18,
+  );
+
+  let rollbackApplied = false;
+  const hasPendingOutcome = current.pendingEvaluationDirection !== "neutral";
+  if (hasPendingOutcome) {
+    if (current.pendingEvaluationWarmupTurns > 0) {
+      next.pendingEvaluationWarmupTurns = current.pendingEvaluationWarmupTurns - 1;
+      reasons.push("outcome_warmup");
+    } else {
+      const direction = current.pendingEvaluationDirection;
+      const qualityGain =
+        ((current.pendingBaselineQualityLowRateEma - next.qualityLowRateEma) * 0.95)
+        + ((next.qualityFirstImprovedRateEma - current.pendingBaselineQualityFirstImprovedRateEma) * 0.8)
+        + ((next.hardBudgetFollowupDeltaEma - current.pendingBaselineHardBudgetFollowupDeltaEma) * 1.45)
+        + ((next.qualityFirstFollowupDeltaEma - current.pendingBaselineQualityFirstFollowupDeltaEma) * 1.2);
+      const tightenPressureRelief =
+        ((current.pendingBaselineAverageUtilizationRatioEma - next.averageUtilizationRatioEma) * 0.8)
+        + ((current.pendingBaselineAutoLimitTriggeredRateEma - next.autoLimitTriggeredRateEma) * 0.8)
+        + ((current.pendingBaselineSnapshotSemanticCompressRateEma - next.snapshotSemanticCompressRateEma) * 0.6);
+      const relaxPressurePenalty =
+        (Math.max(0, next.averageUtilizationRatioEma - current.pendingBaselineAverageUtilizationRatioEma) * 0.45)
+        + (Math.max(0, next.autoLimitTriggeredRateEma - current.pendingBaselineAutoLimitTriggeredRateEma) * 0.45)
+        + (Math.max(0, next.snapshotSemanticCompressRateEma - current.pendingBaselineSnapshotSemanticCompressRateEma) * 0.35);
+      const outcomeGain = clampSigned(
+        direction === "tighten"
+          ? qualityGain + tightenPressureRelief
+          : qualityGain - relaxPressurePenalty,
+        0,
+        -1,
+        1,
+      );
+      next.lastOutcomeGain = outcomeGain;
+      const rollbackThreshold = clampSigned(
+        direction === "tighten"
+          ? -0.03 - (0.03 * (1 - next.outcomeConfidenceEma))
+          : -0.04 - (0.03 * (1 - next.outcomeConfidenceEma)),
+        -0.06,
+        -0.2,
+        0,
+      );
+
+      next.pendingEvaluationDirection = "neutral";
+      next.pendingEvaluationWarmupTurns = 0;
+      if (outcomeGain < rollbackThreshold) {
+        next.injectBudgetRatio = current.pendingBaselineInjectBudgetRatio;
+        next.maxSectionTokens = current.pendingBaselineMaxSectionTokens;
+        next.maxGaMemoryRows = current.pendingBaselineMaxGaMemoryRows;
+        next.maxTeamExperienceRows = current.pendingBaselineMaxTeamExperienceRows;
+        next.minTeamExperienceScore = current.pendingBaselineMinTeamExperienceScore;
+        next.cooldownTurnsRemaining = Math.max(next.cooldownTurnsRemaining, 2);
+        next.lastActionDirection = "neutral";
+        next.outcomeRollbackCount = current.outcomeRollbackCount + 1;
+        next.outcomeNegativeStreak = clampToIntRange(
+          current.outcomeNegativeStreak + 1,
+          0,
+          32,
+        );
+        rollbackApplied = true;
+        reasons.push(`outcome_rollback_${direction}`);
+      } else if (outcomeGain < 0) {
+        next.outcomeNegativeStreak = clampToIntRange(
+          current.outcomeNegativeStreak + 1,
+          0,
+          32,
+        );
+        reasons.push(`outcome_negative_${direction}`);
+      } else {
+        next.outcomeNegativeStreak = Math.max(0, current.outcomeNegativeStreak - 1);
+        reasons.push(`outcome_positive_${direction}`);
+      }
+    }
+  } else {
+    next.pendingEvaluationDirection = "neutral";
+    next.pendingEvaluationWarmupTurns = 0;
+    next.outcomeNegativeStreak = Math.max(0, current.outcomeNegativeStreak - 1);
+  }
+
   let signalDirection: MemoryStrategyAutotuneActionDirection = "neutral";
-  if (qualityPressureTighten || budgetPressureTighten) {
+  if (rollbackApplied) {
+    signalDirection = "neutral";
+  } else if (qualityPressureTighten || budgetPressureTighten) {
     signalDirection = "tighten";
   } else if (qualitySignalRelax) {
     signalDirection = "relax";
@@ -734,11 +1053,26 @@ export function deriveMemoryStrategyAutotuneState(input: {
     );
     next.lastActionDirection = "tighten";
     next.cooldownTurnsRemaining = severeTighten ? 3 : 2;
+    next.pendingEvaluationDirection = "tighten";
+    next.pendingEvaluationWarmupTurns = severeTighten ? 2 : 1;
+    next.pendingBaselineInjectBudgetRatio = current.injectBudgetRatio;
+    next.pendingBaselineMaxSectionTokens = current.maxSectionTokens;
+    next.pendingBaselineMaxGaMemoryRows = current.maxGaMemoryRows;
+    next.pendingBaselineMaxTeamExperienceRows = current.maxTeamExperienceRows;
+    next.pendingBaselineMinTeamExperienceScore = current.minTeamExperienceScore;
+    next.pendingBaselineQualityLowRateEma = current.qualityLowRateEma;
+    next.pendingBaselineQualityPressureEma = current.qualityPressureEma;
+    next.pendingBaselineAverageUtilizationRatioEma = current.averageUtilizationRatioEma;
+    next.pendingBaselineAutoLimitTriggeredRateEma = current.autoLimitTriggeredRateEma;
+    next.pendingBaselineSnapshotSemanticCompressRateEma = current.snapshotSemanticCompressRateEma;
+    next.pendingBaselineHardBudgetFollowupDeltaEma = current.hardBudgetFollowupDeltaEma;
+    next.pendingBaselineQualityFirstFollowupDeltaEma = current.qualityFirstFollowupDeltaEma;
+    next.pendingBaselineQualityFirstImprovedRateEma = current.qualityFirstImprovedRateEma;
     const tightenReason =
       budgetPressureTighten && !qualityPressureTighten
         ? "budget_pressure_tighten"
         : "quality_pressure_tighten";
-    reasons.push(severeTighten ? `${tightenReason}_severe` : tightenReason);
+    reasons.push(severeTighten ? `${tightenReason}_severe` : tightenReason, "outcome_watch_started");
   } else if (signalDirection === "relax") {
     const sectionStep = Math.max(40, Math.round(96 * next.adaptiveActionScale));
     const rowStep = Math.max(1, Math.round(next.adaptiveActionScale));
@@ -771,9 +1105,29 @@ export function deriveMemoryStrategyAutotuneState(input: {
     );
     next.lastActionDirection = "relax";
     next.cooldownTurnsRemaining = severeRelax ? 2 : 1;
-    reasons.push(severeRelax ? "quality_signal_relax_severe" : "quality_signal_relax");
+    next.pendingEvaluationDirection = "relax";
+    next.pendingEvaluationWarmupTurns = severeRelax ? 2 : 1;
+    next.pendingBaselineInjectBudgetRatio = current.injectBudgetRatio;
+    next.pendingBaselineMaxSectionTokens = current.maxSectionTokens;
+    next.pendingBaselineMaxGaMemoryRows = current.maxGaMemoryRows;
+    next.pendingBaselineMaxTeamExperienceRows = current.maxTeamExperienceRows;
+    next.pendingBaselineMinTeamExperienceScore = current.minTeamExperienceScore;
+    next.pendingBaselineQualityLowRateEma = current.qualityLowRateEma;
+    next.pendingBaselineQualityPressureEma = current.qualityPressureEma;
+    next.pendingBaselineAverageUtilizationRatioEma = current.averageUtilizationRatioEma;
+    next.pendingBaselineAutoLimitTriggeredRateEma = current.autoLimitTriggeredRateEma;
+    next.pendingBaselineSnapshotSemanticCompressRateEma = current.snapshotSemanticCompressRateEma;
+    next.pendingBaselineHardBudgetFollowupDeltaEma = current.hardBudgetFollowupDeltaEma;
+    next.pendingBaselineQualityFirstFollowupDeltaEma = current.qualityFirstFollowupDeltaEma;
+    next.pendingBaselineQualityFirstImprovedRateEma = current.qualityFirstImprovedRateEma;
+    reasons.push(
+      severeRelax ? "quality_signal_relax_severe" : "quality_signal_relax",
+      "outcome_watch_started",
+    );
   } else {
-    next.cooldownTurnsRemaining = Math.max(0, current.cooldownTurnsRemaining - 1);
+    next.cooldownTurnsRemaining = rollbackApplied
+      ? Math.max(next.cooldownTurnsRemaining, 2)
+      : Math.max(0, current.cooldownTurnsRemaining - 1);
     const returnRatio = clampRatio(
       Number(stepToward(next.injectBudgetRatio, input.basePolicy.injectBudgetRatio, 0.005).toFixed(4)),
       input.basePolicy.injectBudgetRatio,

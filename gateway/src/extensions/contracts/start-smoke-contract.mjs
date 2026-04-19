@@ -3198,6 +3198,17 @@ function runStartContextMemoryDecayAutotuneQualityFlow(repoRoot) {
       && typeof statusStrategyAutotune?.quality_first_improved_rate_ema === "number"
       && typeof statusStrategyAutotune?.hard_budget_followup_delta_ema === "number"
       && typeof statusStrategyAutotune?.quality_first_followup_delta_ema === "number",
+    status_memory_strategy_autotune_profile_fields_present:
+      typeof statusStrategyAutotune?.schema_version === "number"
+      && typeof statusStrategyAutotune?.profile === "string",
+    status_memory_strategy_autotune_pending_fields_present:
+      typeof statusStrategyAutotune?.pending_evaluation_direction === "string"
+      && typeof statusStrategyAutotune?.pending_evaluation_warmup_turns === "number",
+    status_memory_strategy_autotune_outcome_fields_present:
+      typeof statusStrategyAutotune?.outcome_confidence_ema === "number"
+      && typeof statusStrategyAutotune?.last_outcome_gain === "number"
+      && typeof statusStrategyAutotune?.outcome_rollback_count === "number"
+      && typeof statusStrategyAutotune?.outcome_negative_streak === "number",
     status_memory_autotune_last_reason:
       typeof statusAutotune?.last_reason === "string" ? statusAutotune.last_reason : "",
     status_memory_autotune_reason_has_quality_tighten:
@@ -3272,6 +3283,15 @@ function runStartContextMemoryDecayAutotuneQualityFlow(repoRoot) {
       && typeof persistedStrategyAutotune?.qualityPressureEma === "number"
       && typeof persistedStrategyAutotune?.hardBudgetRateEma === "number"
       && typeof persistedStrategyAutotune?.qualityFirstImprovedRateEma === "number",
+    strategy_state_profile_fields_present:
+      typeof persistedStrategyAutotune?.schemaVersion === "number"
+      && typeof persistedStrategyAutotune?.profile === "string",
+    strategy_state_pending_outcome_fields_present:
+      typeof persistedStrategyAutotune?.pendingEvaluationDirection === "string"
+      && typeof persistedStrategyAutotune?.pendingEvaluationWarmupTurns === "number"
+      && typeof persistedStrategyAutotune?.outcomeConfidenceEma === "number"
+      && typeof persistedStrategyAutotune?.lastOutcomeGain === "number"
+      && typeof persistedStrategyAutotune?.outcomeRollbackCount === "number",
     strategy_state_last_reason:
       typeof persistedStrategyAutotune?.lastReason === "string"
         ? persistedStrategyAutotune.lastReason
@@ -3467,6 +3487,17 @@ function runStartContextMemoryDecayAutotuneQualityRelaxFlow(repoRoot) {
       && typeof statusStrategyAutotune?.quality_first_improved_rate_ema === "number"
       && typeof statusStrategyAutotune?.hard_budget_followup_delta_ema === "number"
       && typeof statusStrategyAutotune?.quality_first_followup_delta_ema === "number",
+    status_memory_strategy_autotune_profile_fields_present:
+      typeof statusStrategyAutotune?.schema_version === "number"
+      && typeof statusStrategyAutotune?.profile === "string",
+    status_memory_strategy_autotune_pending_fields_present:
+      typeof statusStrategyAutotune?.pending_evaluation_direction === "string"
+      && typeof statusStrategyAutotune?.pending_evaluation_warmup_turns === "number",
+    status_memory_strategy_autotune_outcome_fields_present:
+      typeof statusStrategyAutotune?.outcome_confidence_ema === "number"
+      && typeof statusStrategyAutotune?.last_outcome_gain === "number"
+      && typeof statusStrategyAutotune?.outcome_rollback_count === "number"
+      && typeof statusStrategyAutotune?.outcome_negative_streak === "number",
     status_memory_autotune_last_reason: statusReason,
     status_memory_autotune_reason_has_quality_relax:
       statusReason.includes("quality_signal_relax"),
@@ -3535,6 +3566,15 @@ function runStartContextMemoryDecayAutotuneQualityRelaxFlow(repoRoot) {
       && typeof persistedStrategyAutotune?.qualityPressureEma === "number"
       && typeof persistedStrategyAutotune?.hardBudgetRateEma === "number"
       && typeof persistedStrategyAutotune?.qualityFirstImprovedRateEma === "number",
+    strategy_state_profile_fields_present:
+      typeof persistedStrategyAutotune?.schemaVersion === "number"
+      && typeof persistedStrategyAutotune?.profile === "string",
+    strategy_state_pending_outcome_fields_present:
+      typeof persistedStrategyAutotune?.pendingEvaluationDirection === "string"
+      && typeof persistedStrategyAutotune?.pendingEvaluationWarmupTurns === "number"
+      && typeof persistedStrategyAutotune?.outcomeConfidenceEma === "number"
+      && typeof persistedStrategyAutotune?.lastOutcomeGain === "number"
+      && typeof persistedStrategyAutotune?.outcomeRollbackCount === "number",
     strategy_state_last_reason:
       typeof persistedStrategyAutotune?.lastReason === "string"
         ? persistedStrategyAutotune.lastReason

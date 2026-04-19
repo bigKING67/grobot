@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolveBaseSha } from "./skill-router-baseline-report";
+import { buildContextMemoryBaselineReport } from "./context-memory-baseline-report";
 
 type JsonObject = Record<string, unknown>;
 type MetricName = "success_rate" | "first_pass_rate" | "token_cost" | "rollback_rate";
@@ -77,6 +78,8 @@ interface TrendCompareResult {
   deltas: Record<MetricName, number>;
 }
 
+type BaselineAvailabilityMode = "force_on" | "force_off" | "auto";
+
 const METRIC_NAMES: MetricName[] = [
   "success_rate",
   "first_pass_rate",
@@ -135,6 +138,37 @@ function normalizeBool(value: unknown): boolean {
     return false;
   }
   return value.trim().toLowerCase() === "true";
+}
+
+function parseBaselineAvailabilityMode(value: unknown): BaselineAvailabilityMode {
+  if (typeof value !== "string") {
+    return "auto";
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
+    return "force_on";
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
+    return "force_off";
+  }
+  return "auto";
+}
+
+function resolveBaselineAvailability(input: {
+  mode: BaselineAvailabilityMode;
+  baseSha: string | undefined;
+  contextMemoryBaseReportPath: string;
+}): boolean {
+  if (input.mode === "force_on") {
+    return true;
+  }
+  if (input.mode === "force_off") {
+    return false;
+  }
+  if (existsSync(input.contextMemoryBaseReportPath)) {
+    return true;
+  }
+  return typeof input.baseSha === "string";
 }
 
 function normalizeOptionalText(value: unknown): string | undefined {
@@ -226,7 +260,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   let eventName = "";
   let prBaseSha = "";
   let beforeSha = "";
-  let baselineAvailable = "false";
+  let baselineAvailable = "auto";
   let repoRoot = ".";
   let outputPath = "gateway/evals/data/weekly_regression_ci_report.json";
   let contextMemoryReportPath = "gateway/evals/data/context_memory_ci_report.json";
@@ -256,7 +290,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (token === "--baseline-available") {
-      baselineAvailable = argv[index + 1] ?? "false";
+      baselineAvailable = argv[index + 1] ?? "auto";
       index += 1;
       continue;
     }
@@ -629,7 +663,7 @@ function buildTrendMeta(input: {
   mode: string;
   reason: string;
   required: boolean;
-  baselineAvailable: unknown;
+  baselineAvailable: boolean;
   baseSha: string | undefined;
   currentPolicyBlob: string | undefined;
   basePolicyBlob: string | undefined;
@@ -641,7 +675,7 @@ function buildTrendMeta(input: {
     reason: input.reason,
     required: input.required,
     executed: input.mode === "gate_and_trend",
-    baseline_available: normalizeBool(input.baselineAvailable),
+    baseline_available: input.baselineAvailable,
     base_sha: input.baseSha ?? null,
     policy_blob_current: input.currentPolicyBlob ?? null,
     policy_blob_base: input.basePolicyBlob ?? null,
@@ -721,12 +755,33 @@ export function runWeeklyRegressionCiGate(input: WeeklyRegressionCiGateInput): W
     };
   }
 
-  const baselineAvailableFlag = normalizeBool(input.baselineAvailable);
   const baseSha = resolveBaseSha({
     eventName: input.eventName,
     prBaseSha: input.prBaseSha,
     beforeSha: input.beforeSha,
+    repoRoot,
   });
+  const baselineMode = parseBaselineAvailabilityMode(input.baselineAvailable);
+  let baselineAvailableFlag = resolveBaselineAvailability({
+    mode: baselineMode,
+    baseSha,
+    contextMemoryBaseReportPath,
+  });
+
+  let baselineBuildAttempted = false;
+  let baselineBuildSucceeded = false;
+  if (baselineAvailableFlag && !existsSync(contextMemoryBaseReportPath) && typeof baseSha === "string") {
+    baselineBuildAttempted = true;
+    const baselineBuild = buildContextMemoryBaselineReport({
+      eventName: input.eventName,
+      prBaseSha: input.prBaseSha,
+      beforeSha: input.beforeSha,
+      repoRoot,
+      outputPath: input.contextMemoryBaseReportPath,
+    });
+    baselineBuildSucceeded = baselineBuild.available === true && existsSync(contextMemoryBaseReportPath);
+    baselineAvailableFlag = baselineBuildSucceeded;
+  }
 
   const currentPolicyBlob = runCapture(["git", "-C", repoRoot, "rev-parse", `HEAD:${input.policyBlobPath}`]);
   let basePolicyBlob: string | undefined;
@@ -793,13 +848,17 @@ export function runWeeklyRegressionCiGate(input: WeeklyRegressionCiGateInput): W
         }
       }
     }
+  } else if (baselineBuildAttempted && !baselineBuildSucceeded) {
+    trendReason = "baseline_build_failed";
+  } else if (baselineMode !== "force_off" && typeof baseSha !== "string") {
+    trendReason = "baseline_no_base_sha";
   }
 
   const trendMeta = buildTrendMeta({
     mode: trendMode,
     reason: trendReason,
     required: trendRequired,
-    baselineAvailable: input.baselineAvailable,
+    baselineAvailable: baselineAvailableFlag,
     baseSha,
     currentPolicyBlob,
     basePolicyBlob,

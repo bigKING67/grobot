@@ -155,6 +155,7 @@ export function buildContextMemoryBaselineReport(input: BuildBaselineInput): Jso
     eventName: input.eventName,
     prBaseSha: input.prBaseSha,
     beforeSha: input.beforeSha,
+    repoRoot: input.repoRoot,
   });
   if (!baseSha) {
     return {

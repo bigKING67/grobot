@@ -1133,6 +1133,8 @@ async function runGatewayContractSmoke() {
   assert.equal(memoryStrategyAutotuneContractPayload.cooldown_release_ratio_increases, true);
   assert.equal(memoryStrategyAutotuneContractPayload.cooldown_release_direction_relax, true);
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_budget_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_schema_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_profile_defaulted, true);
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_section_clamped, true);
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_rows_clamped, true);
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_score_clamped, true);
@@ -1140,9 +1142,29 @@ async function runGatewayContractSmoke() {
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_followup_clamped, true);
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_cooldown_clamped, true);
   assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_action_scale_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_pending_defaults, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_outcome_defaults, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.delivery_profile_switched, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.delivery_profile_triggers_tighten, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.docs_profile_switched, true);
+  assert.equal(
+    memoryStrategyAutotuneContractPayload.docs_profile_more_conservative_than_delivery,
+    true,
+  );
+  assert.equal(memoryStrategyAutotuneContractPayload.pending_warmup_reason_present, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.pending_warmup_turn_decremented, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_has_reason, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_cooldown_applied, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_pending_cleared, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_restores_budget_range, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_counter_incremented, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_outcome_negative, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.rollback_update_direction_neutral, true);
   assert.equal(memoryStrategyAutotuneContractPayload.policy_applied_matches_state, true);
   assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_updates_kept, true);
   assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_reason_kept, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_profile_kept, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_schema_kept, true);
   logStep("memory-strategy-autotune-contract");
 
   const interactiveBindingsResult = runCommand("npx", [
@@ -5627,6 +5649,18 @@ async function runTsRustExecutionSmoke() {
     true,
   );
   assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_autotune_profile_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_autotune_pending_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_autotune_outcome_fields_present,
+    true,
+  );
+  assert.equal(
     memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_reason_has_quality_tighten,
     true,
   );
@@ -5660,6 +5694,11 @@ async function runTsRustExecutionSmoke() {
     true,
   );
   assert.equal(memoryDecayAutotuneQualityFlowPayload.strategy_state_quality_ema_present, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.strategy_state_profile_fields_present, true);
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.strategy_state_pending_outcome_fields_present,
+    true,
+  );
   assert.equal(
     memoryDecayAutotuneQualityFlowPayload.strategy_state_last_reason_has_quality_tighten,
     true,
@@ -5707,6 +5746,18 @@ async function runTsRustExecutionSmoke() {
     true,
   );
   assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_autotune_profile_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_autotune_pending_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_autotune_outcome_fields_present,
+    true,
+  );
+  assert.equal(
     memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_reason_has_quality_relax,
     true,
   );
@@ -5741,6 +5792,14 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(
     memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_quality_ema_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_profile_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_pending_outcome_fields_present,
     true,
   );
   assert.equal(

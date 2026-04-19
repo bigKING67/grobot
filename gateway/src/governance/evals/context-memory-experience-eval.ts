@@ -24,8 +24,10 @@ interface ParsedCliArgs {
 }
 
 interface DimensionThreshold {
+  minCaseCount: number;
   minAverageScore: number;
   minPassRate: number;
+  minPassRateLowerBound: number;
   minMetricAverages: Partial<Record<MetricName, number>>;
 }
 
@@ -34,6 +36,7 @@ interface DimensionSummary {
   case_count: number;
   pass_count: number;
   pass_rate: number;
+  pass_rate_lower_bound: number;
   average_score: number;
   metric_averages: Record<MetricName, number>;
   failed_case_ids: string[];
@@ -50,6 +53,7 @@ interface VariantDimensionReport {
     failures: string[];
   };
   summary: HarnessVariantReport["summary"];
+  splits: HarnessVariantReport["splits"];
   reward_v1: HarnessVariantReport["reward_v1"];
   dimensions: Record<DimensionName, DimensionSummary>;
 }
@@ -82,9 +86,16 @@ interface ContextMemoryEvalReport {
     runs: string;
     gate_policy: string | null;
   };
+  coverage_policy: {
+    min_variant_case_count: number;
+    min_holdout_case_count: number;
+    min_optimization_case_count: number;
+  };
   dimension_policy: Record<DimensionName, {
+    min_case_count: number;
     min_average_score: number;
     min_pass_rate: number;
+    min_pass_rate_lower_bound: number;
     min_metric_averages: Partial<Record<MetricName, number>>;
   }>;
   variants: Record<string, VariantDimensionReport>;
@@ -112,29 +123,41 @@ const DIMENSION_TAG_ALIASES: Record<DimensionName, string[]> = {
 
 const DIMENSION_THRESHOLDS: Record<DimensionName, DimensionThreshold> = {
   context_compression: {
+    minCaseCount: 10,
     minAverageScore: 0.82,
     minPassRate: 0.8,
+    minPassRateLowerBound: 0.72,
     minMetricAverages: {
       context_retention: 0.86,
       task_success: 0.74,
     },
   },
   memory_lineage: {
+    minCaseCount: 10,
     minAverageScore: 0.8,
     minPassRate: 0.75,
+    minPassRateLowerBound: 0.68,
     minMetricAverages: {
       context_retention: 0.74,
       task_success: 0.78,
     },
   },
   experience_learning: {
+    minCaseCount: 10,
     minAverageScore: 0.78,
     minPassRate: 0.75,
+    minPassRateLowerBound: 0.68,
     minMetricAverages: {
       tool_use_quality: 0.82,
       task_success: 0.75,
     },
   },
+};
+
+const COVERAGE_POLICY = {
+  minVariantCaseCount: 36,
+  minHoldoutCaseCount: 16,
+  minOptimizationCaseCount: 12,
 };
 
 const DIMENSION_REGRESSION_GUARD = {
@@ -228,6 +251,18 @@ function metricAverage(rows: HarnessCaseRow[], metric: MetricName): number {
   return clampScore(total / rows.length);
 }
 
+function wilsonLowerBound(passCount: number, total: number, z = 1.96): number {
+  if (total <= 0) {
+    return 0;
+  }
+  const p = passCount / total;
+  const z2 = z * z;
+  const denominator = 1 + (z2 / total);
+  const center = p + (z2 / (2 * total));
+  const margin = z * Math.sqrt(((p * (1 - p)) + (z2 / (4 * total))) / total);
+  return clampScore((center - margin) / denominator);
+}
+
 function toMetricAverageRecord(rows: HarnessCaseRow[]): Record<MetricName, number> {
   return {
     task_success: metricAverage(rows, "task_success"),
@@ -242,6 +277,7 @@ function summarizeDimension(dimension: DimensionName, rows: HarnessCaseRow[]): D
   const caseCount = rows.length;
   const passCount = rows.filter((row) => row.passed === true).length;
   const passRate = caseCount > 0 ? clampScore(passCount / caseCount) : 0;
+  const passRateLowerBound = wilsonLowerBound(passCount, caseCount);
   const averageScore =
     caseCount > 0
       ? clampScore(rows.reduce((sum, row) => sum + asNumber(row.overall_score), 0) / caseCount)
@@ -256,6 +292,7 @@ function summarizeDimension(dimension: DimensionName, rows: HarnessCaseRow[]): D
     case_count: caseCount,
     pass_count: passCount,
     pass_rate: passRate,
+    pass_rate_lower_bound: passRateLowerBound,
     average_score: averageScore,
     metric_averages: toMetricAverageRecord(rows),
     failed_case_ids: failedCaseIds,
@@ -281,6 +318,11 @@ function evaluateDimensionThreshold(
     failures.push(`dimension=${summary.dimension} has no coverage cases`);
     return { passed: false, failures };
   }
+  if (summary.case_count < threshold.minCaseCount) {
+    failures.push(
+      `dimension=${summary.dimension} case_count ${summary.case_count} < ${threshold.minCaseCount}`
+    );
+  }
 
   if (summary.average_score < threshold.minAverageScore) {
     failures.push(
@@ -290,6 +332,11 @@ function evaluateDimensionThreshold(
   if (summary.pass_rate < threshold.minPassRate) {
     failures.push(
       `dimension=${summary.dimension} pass_rate ${summary.pass_rate.toFixed(4)} < ${threshold.minPassRate.toFixed(4)}`
+    );
+  }
+  if (summary.pass_rate_lower_bound < threshold.minPassRateLowerBound) {
+    failures.push(
+      `dimension=${summary.dimension} pass_rate_lower_bound ${summary.pass_rate_lower_bound.toFixed(4)} < ${threshold.minPassRateLowerBound.toFixed(4)}`
     );
   }
 
@@ -340,6 +387,7 @@ function evaluateVariant(variantName: string, variant: HarnessVariantReport): Va
       failures: dimensionFailures,
     },
     summary: variant.summary,
+    splits: variant.splits,
     reward_v1: variant.reward_v1,
     dimensions: dimensionReports,
   };
@@ -432,18 +480,24 @@ function compareDimensionRegression(
 function toDimensionPolicyPayload(): ContextMemoryEvalReport["dimension_policy"] {
   return {
     context_compression: {
+      min_case_count: DIMENSION_THRESHOLDS.context_compression.minCaseCount,
       min_average_score: DIMENSION_THRESHOLDS.context_compression.minAverageScore,
       min_pass_rate: DIMENSION_THRESHOLDS.context_compression.minPassRate,
+      min_pass_rate_lower_bound: DIMENSION_THRESHOLDS.context_compression.minPassRateLowerBound,
       min_metric_averages: DIMENSION_THRESHOLDS.context_compression.minMetricAverages,
     },
     memory_lineage: {
+      min_case_count: DIMENSION_THRESHOLDS.memory_lineage.minCaseCount,
       min_average_score: DIMENSION_THRESHOLDS.memory_lineage.minAverageScore,
       min_pass_rate: DIMENSION_THRESHOLDS.memory_lineage.minPassRate,
+      min_pass_rate_lower_bound: DIMENSION_THRESHOLDS.memory_lineage.minPassRateLowerBound,
       min_metric_averages: DIMENSION_THRESHOLDS.memory_lineage.minMetricAverages,
     },
     experience_learning: {
+      min_case_count: DIMENSION_THRESHOLDS.experience_learning.minCaseCount,
       min_average_score: DIMENSION_THRESHOLDS.experience_learning.minAverageScore,
       min_pass_rate: DIMENSION_THRESHOLDS.experience_learning.minPassRate,
+      min_pass_rate_lower_bound: DIMENSION_THRESHOLDS.experience_learning.minPassRateLowerBound,
       min_metric_averages: DIMENSION_THRESHOLDS.experience_learning.minMetricAverages,
     },
   };
@@ -462,6 +516,23 @@ function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
 
   const failures: string[] = [];
   Object.entries(variantReports).forEach(([variantName, variant]) => {
+    if (variant.summary.case_count < COVERAGE_POLICY.minVariantCaseCount) {
+      failures.push(
+        `variant=${variantName} coverage: case_count ${variant.summary.case_count} < ${COVERAGE_POLICY.minVariantCaseCount}`
+      );
+    }
+    const holdoutCount = variant.splits.holdout?.case_count ?? 0;
+    if (holdoutCount < COVERAGE_POLICY.minHoldoutCaseCount) {
+      failures.push(
+        `variant=${variantName} coverage: holdout case_count ${holdoutCount} < ${COVERAGE_POLICY.minHoldoutCaseCount}`
+      );
+    }
+    const optimizationCount = variant.splits.optimization?.case_count ?? 0;
+    if (optimizationCount < COVERAGE_POLICY.minOptimizationCaseCount) {
+      failures.push(
+        `variant=${variantName} coverage: optimization case_count ${optimizationCount} < ${COVERAGE_POLICY.minOptimizationCaseCount}`
+      );
+    }
     if (!variant.harness_gate.passed) {
       failures.push(
         ...variant.harness_gate.failures.map((item) => `variant=${variantName} harness_gate: ${item}`)
@@ -495,6 +566,11 @@ function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
       runs: args.runs,
       gate_policy: args.gatePolicy,
     },
+    coverage_policy: {
+      min_variant_case_count: COVERAGE_POLICY.minVariantCaseCount,
+      min_holdout_case_count: COVERAGE_POLICY.minHoldoutCaseCount,
+      min_optimization_case_count: COVERAGE_POLICY.minOptimizationCaseCount,
+    },
     dimension_policy: toDimensionPolicyPayload(),
     variants: variantReports,
     harness_regression_guard: harnessReport.regression_guard ?? null,
@@ -518,7 +594,7 @@ function printSummary(report: ContextMemoryEvalReport): void {
       (Object.keys(variant.dimensions) as DimensionName[]).forEach((dimension) => {
         const data = variant.dimensions[dimension];
         process.stdout.write(
-          `  - dimension=${dimension} cases=${data.case_count} avg=${data.average_score.toFixed(4)} pass_rate=${data.pass_rate.toFixed(4)} context=${data.metric_averages.context_retention.toFixed(4)}\n`
+          `  - dimension=${dimension} cases=${data.case_count} avg=${data.average_score.toFixed(4)} pass_rate=${data.pass_rate.toFixed(4)} pass_lb=${data.pass_rate_lower_bound.toFixed(4)} context=${data.metric_averages.context_retention.toFixed(4)}\n`
         );
       });
       variant.dimension_gate.failures.forEach((failure) => {

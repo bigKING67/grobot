@@ -151,8 +151,162 @@ const cooldownReleaseUpdate = deriveMemoryStrategyAutotuneState({
   nowIso: "2026-04-19T11:08:00.000Z",
 });
 
+const profileSensitivityCurrentState = {
+  ...baseState,
+  profile: "general" as const,
+  injectBudgetRatio: 0.22,
+  maxSectionTokens: 1_080,
+  maxGaMemoryRows: 4,
+  maxTeamExperienceRows: 3,
+  minTeamExperienceScore: 38,
+  qualityLowRateEma: 0.32,
+  qualityPressureEma: 0.57,
+  averageUtilizationRatioEma: 0.86,
+  autoLimitTriggeredRateEma: 0.4,
+  snapshotSemanticCompressRateEma: 0.2,
+  hardBudgetRateEma: 0.44,
+  qualityFirstImprovedRateEma: 0.5,
+  hardBudgetFollowupDeltaEma: -0.02,
+  qualityFirstFollowupDeltaEma: 0.01,
+};
+
+const profileSensitivityQuality = {
+  lowQualityRate: 0.34,
+  averagePreSendPressureScore: 0.59,
+  averageUtilizationRatio: 0.87,
+  autoLimitTriggeredRate: 0.42,
+  snapshotSemanticCompressRate: 0.23,
+  hardBudgetRate: 0.46,
+  qualityFirstImprovedRate: 0.48,
+  hardBudgetFollowupOverallDelta: -0.02,
+  qualityFirstFollowupOverallDelta: 0.01,
+  shortAverageUtilizationRatio: 0.88,
+  mediumAverageUtilizationRatio: 0.82,
+  deltaAverageUtilizationRatio: 0.06,
+  shortAutoLimitTriggeredRate: 0.44,
+  mediumAutoLimitTriggeredRate: 0.35,
+  deltaAutoLimitTriggeredRate: 0.09,
+  shortSnapshotSemanticCompressRate: 0.24,
+  mediumSnapshotSemanticCompressRate: 0.18,
+  deltaSnapshotSemanticCompressRate: 0.06,
+};
+
+const deliveryProfileUpdate = deriveMemoryStrategyAutotuneState({
+  basePolicy,
+  currentState: profileSensitivityCurrentState,
+  profile: "delivery",
+  quality: profileSensitivityQuality,
+  nowIso: "2026-04-19T11:09:00.000Z",
+});
+
+const docsProfileUpdate = deriveMemoryStrategyAutotuneState({
+  basePolicy,
+  currentState: profileSensitivityCurrentState,
+  profile: "docs",
+  quality: profileSensitivityQuality,
+  nowIso: "2026-04-19T11:10:00.000Z",
+});
+
+const pendingWarmupCurrentState = {
+  ...baseState,
+  injectBudgetRatio: 0.21,
+  maxSectionTokens: 1_040,
+  maxGaMemoryRows: 4,
+  maxTeamExperienceRows: 3,
+  minTeamExperienceScore: 37,
+  qualityLowRateEma: 0.21,
+  qualityPressureEma: 0.3,
+  averageUtilizationRatioEma: 0.67,
+  autoLimitTriggeredRateEma: 0.15,
+  snapshotSemanticCompressRateEma: 0.12,
+  hardBudgetRateEma: 0.18,
+  qualityFirstImprovedRateEma: 0.62,
+  hardBudgetFollowupDeltaEma: -0.01,
+  qualityFirstFollowupDeltaEma: 0.03,
+  pendingEvaluationDirection: "tighten" as const,
+  pendingEvaluationWarmupTurns: 2,
+  outcomeNegativeStreak: 1,
+};
+
+const pendingWarmupUpdate = deriveMemoryStrategyAutotuneState({
+  basePolicy,
+  currentState: pendingWarmupCurrentState,
+  quality: {
+    lowQualityRate: 0.2,
+    averagePreSendPressureScore: 0.31,
+    hardBudgetRate: 0.18,
+    qualityFirstImprovedRate: 0.63,
+    hardBudgetFollowupOverallDelta: -0.01,
+    qualityFirstFollowupOverallDelta: 0.04,
+  },
+  nowIso: "2026-04-19T11:11:00.000Z",
+});
+
+const rollbackCurrentState = {
+  ...baseState,
+  injectBudgetRatio: 0.17,
+  maxSectionTokens: 900,
+  maxGaMemoryRows: 3,
+  maxTeamExperienceRows: 2,
+  minTeamExperienceScore: 46,
+  qualityLowRateEma: 0.26,
+  qualityPressureEma: 0.42,
+  averageUtilizationRatioEma: 0.78,
+  autoLimitTriggeredRateEma: 0.25,
+  snapshotSemanticCompressRateEma: 0.22,
+  hardBudgetRateEma: 0.3,
+  qualityFirstImprovedRateEma: 0.6,
+  hardBudgetFollowupDeltaEma: -0.04,
+  qualityFirstFollowupDeltaEma: -0.02,
+  pendingEvaluationDirection: "tighten" as const,
+  pendingEvaluationWarmupTurns: 0,
+  pendingBaselineInjectBudgetRatio: 0.23,
+  pendingBaselineMaxSectionTokens: 1_200,
+  pendingBaselineMaxGaMemoryRows: 5,
+  pendingBaselineMaxTeamExperienceRows: 4,
+  pendingBaselineMinTeamExperienceScore: 36,
+  pendingBaselineQualityLowRateEma: 0.18,
+  pendingBaselineQualityPressureEma: 0.3,
+  pendingBaselineAverageUtilizationRatioEma: 0.7,
+  pendingBaselineAutoLimitTriggeredRateEma: 0.16,
+  pendingBaselineSnapshotSemanticCompressRateEma: 0.14,
+  pendingBaselineHardBudgetFollowupDeltaEma: -0.01,
+  pendingBaselineQualityFirstFollowupDeltaEma: 0.03,
+  pendingBaselineQualityFirstImprovedRateEma: 0.72,
+  outcomeConfidenceEma: 0.25,
+  outcomeRollbackCount: 1,
+};
+
+const rollbackUpdate = deriveMemoryStrategyAutotuneState({
+  basePolicy,
+  currentState: rollbackCurrentState,
+  quality: {
+    lowQualityRate: 0.74,
+    averagePreSendPressureScore: 0.82,
+    averageUtilizationRatio: 0.95,
+    autoLimitTriggeredRate: 0.61,
+    snapshotSemanticCompressRate: 0.56,
+    shortAverageUtilizationRatio: 0.98,
+    mediumAverageUtilizationRatio: 0.84,
+    deltaAverageUtilizationRatio: 0.14,
+    shortAutoLimitTriggeredRate: 0.63,
+    mediumAutoLimitTriggeredRate: 0.36,
+    deltaAutoLimitTriggeredRate: 0.27,
+    shortSnapshotSemanticCompressRate: 0.58,
+    mediumSnapshotSemanticCompressRate: 0.31,
+    deltaSnapshotSemanticCompressRate: 0.27,
+    hardBudgetRate: 0.68,
+    qualityFirstImprovedRate: 0.12,
+    hardBudgetFollowupOverallDelta: -0.42,
+    qualityFirstFollowupOverallDelta: -0.31,
+  },
+  nowIso: "2026-04-19T11:12:00.000Z",
+});
+
 const normalizedInvalid = normalizeMemoryStrategyAutotuneState(
   {
+    schemaVersion: 99,
+    profile: "invalid_profile",
     injectBudgetRatio: 99,
     maxSectionTokens: -10,
     maxGaMemoryRows: -20,
@@ -164,6 +318,19 @@ const normalizedInvalid = normalizeMemoryStrategyAutotuneState(
     hardBudgetFollowupDeltaEma: 9,
     cooldownTurnsRemaining: -2,
     adaptiveActionScale: 9,
+    pendingEvaluationDirection: "invalid",
+    pendingEvaluationWarmupTurns: 99,
+    pendingBaselineInjectBudgetRatio: 999,
+    pendingBaselineMaxSectionTokens: -999,
+    pendingBaselineMaxGaMemoryRows: -99,
+    pendingBaselineMaxTeamExperienceRows: -99,
+    pendingBaselineMinTeamExperienceScore: -99,
+    pendingBaselineHardBudgetFollowupDeltaEma: 8,
+    pendingBaselineQualityFirstFollowupDeltaEma: 8,
+    outcomeConfidenceEma: -8,
+    lastOutcomeGain: -8,
+    outcomeRollbackCount: -1,
+    outcomeNegativeStreak: 999,
   },
   basePolicy,
 );
@@ -231,6 +398,9 @@ const payload = {
     cooldownReleaseUpdate.state.lastActionDirection === "relax",
   normalized_invalid_budget_clamped:
     normalizedInvalid.injectBudgetRatio <= 0.55 && normalizedInvalid.injectBudgetRatio >= 0.08,
+  normalized_invalid_schema_clamped:
+    normalizedInvalid.schemaVersion >= 1 && normalizedInvalid.schemaVersion <= 2,
+  normalized_invalid_profile_defaulted: normalizedInvalid.profile === "general",
   normalized_invalid_section_clamped: normalizedInvalid.maxSectionTokens >= 320,
   normalized_invalid_rows_clamped:
     normalizedInvalid.maxGaMemoryRows >= 1 && normalizedInvalid.maxTeamExperienceRows >= 1,
@@ -242,6 +412,50 @@ const payload = {
   normalized_invalid_cooldown_clamped: normalizedInvalid.cooldownTurnsRemaining === 0,
   normalized_invalid_action_scale_clamped:
     normalizedInvalid.adaptiveActionScale <= 2.5 && normalizedInvalid.adaptiveActionScale >= 0.5,
+  normalized_invalid_pending_defaults:
+    normalizedInvalid.pendingEvaluationDirection === "neutral"
+    && normalizedInvalid.pendingEvaluationWarmupTurns <= 8
+    && normalizedInvalid.pendingBaselineInjectBudgetRatio >= 0.08
+    && normalizedInvalid.pendingBaselineHardBudgetFollowupDeltaEma >= -1
+    && normalizedInvalid.pendingBaselineHardBudgetFollowupDeltaEma <= 1,
+  normalized_invalid_outcome_defaults:
+    normalizedInvalid.outcomeConfidenceEma >= 0
+    && normalizedInvalid.lastOutcomeGain >= -1
+    && normalizedInvalid.outcomeRollbackCount >= 0
+    && normalizedInvalid.outcomeNegativeStreak <= 32,
+  delivery_profile_switched:
+    deliveryProfileUpdate.state.profile === "delivery"
+    && deliveryProfileUpdate.reason.includes("profile_switched_delivery"),
+  delivery_profile_triggers_tighten:
+    deliveryProfileUpdate.state.lastActionDirection === "tighten"
+    && deliveryProfileUpdate.reason.includes("quality_pressure_tighten"),
+  docs_profile_switched:
+    docsProfileUpdate.state.profile === "docs"
+    && docsProfileUpdate.reason.includes("profile_switched_docs"),
+  docs_profile_more_conservative_than_delivery:
+    docsProfileUpdate.state.lastActionDirection !== "tighten",
+  pending_warmup_reason_present:
+    pendingWarmupUpdate.reason.includes("outcome_warmup"),
+  pending_warmup_turn_decremented:
+    pendingWarmupUpdate.state.pendingEvaluationDirection === "tighten"
+    && pendingWarmupUpdate.state.pendingEvaluationWarmupTurns
+      === pendingWarmupCurrentState.pendingEvaluationWarmupTurns - 1,
+  rollback_update_has_reason:
+    rollbackUpdate.reason.includes("outcome_rollback_tighten"),
+  rollback_update_cooldown_applied: rollbackUpdate.state.cooldownTurnsRemaining >= 2,
+  rollback_update_pending_cleared:
+    rollbackUpdate.state.pendingEvaluationDirection === "neutral"
+    && rollbackUpdate.state.pendingEvaluationWarmupTurns === 0,
+  rollback_update_restores_budget_range:
+    rollbackUpdate.state.injectBudgetRatio > rollbackCurrentState.injectBudgetRatio
+    && rollbackUpdate.state.maxSectionTokens > rollbackCurrentState.maxSectionTokens,
+  rollback_update_counter_incremented:
+    rollbackUpdate.state.outcomeRollbackCount === rollbackCurrentState.outcomeRollbackCount + 1,
+  rollback_update_outcome_negative:
+    rollbackUpdate.state.lastOutcomeGain < 0
+    && rollbackUpdate.state.outcomeNegativeStreak === rollbackCurrentState.outcomeNegativeStreak + 1,
+  rollback_update_direction_neutral:
+    rollbackUpdate.state.lastActionDirection === "neutral",
   policy_applied_matches_state:
     policyAfterAutotune.injectBudgetRatio === qualityPressureUpdate.state.injectBudgetRatio
     && policyAfterAutotune.maxSectionTokens === qualityPressureUpdate.state.maxSectionTokens
@@ -250,6 +464,8 @@ const payload = {
     && policyAfterAutotune.minTeamExperienceScore === qualityPressureUpdate.state.minTeamExperienceScore,
   state_roundtrip_updates_kept: reloaded.adaptiveUpdates === qualityPressureUpdate.state.adaptiveUpdates,
   state_roundtrip_reason_kept: reloaded.lastReason === qualityPressureUpdate.state.lastReason,
+  state_roundtrip_profile_kept: reloaded.profile === qualityPressureUpdate.state.profile,
+  state_roundtrip_schema_kept: reloaded.schemaVersion === qualityPressureUpdate.state.schemaVersion,
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);
