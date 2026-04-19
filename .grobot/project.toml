@@ -111,7 +111,7 @@ kimi = "mcp_first_fallback_builtin" # mcp_first_fallback_builtin | builtin_only 
 [statusline]
 enabled = true
 layout_mode = "adaptive" # adaptive | full | compact
-theme = "plain" # plain | nerd_font
+theme = "ccline" # plain | nerd_font | ccline
 separator = " · "
 segment_order = ["model", "project", "context", "tokens", "session"]
 warning_threshold_percent = 80

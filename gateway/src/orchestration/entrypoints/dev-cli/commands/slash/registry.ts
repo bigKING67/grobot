@@ -95,7 +95,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   }
   if (head === "theme") {
     if (!tail) {
-      return { kind: "invalid", reason: "usage: /status theme <plain|nerd>" };
+      return { kind: "invalid", reason: "usage: /status theme <plain|nerd|ccline>" };
     }
     return { kind: "theme", theme: tail };
   }
@@ -124,7 +124,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   return {
     kind: "invalid",
     reason:
-      "usage: /status | /status current | /status layout <adaptive|full|compact> | /status theme <plain|nerd> | /status segment <model|project|context|tokens|session> <on|off>",
+      "usage: /status | /status current | /status layout <adaptive|full|compact> | /status theme <plain|nerd|ccline> | /status segment <model|project|context|tokens|session> <on|off>",
   };
 }
 
@@ -243,7 +243,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     helpLines: [
       "  /status              Show current status line config snapshot",
       "  /status layout <m>   Set status line layout mode (adaptive|full|compact)",
-      "  /status theme <t>    Set status line theme (plain|nerd)",
+      "  /status theme <t>    Set status line theme (plain|nerd|ccline)",
       "  /status segment ...  Toggle segment on/off",
     ],
   },
@@ -383,7 +383,7 @@ const COMMAND_HINT_TOKENS: readonly string[] = [
   "/model use <id>",
   "/status",
   "/status layout <adaptive|full|compact>",
-  "/status theme <plain|nerd>",
+  "/status theme <plain|nerd|ccline>",
   "/status segment <id> <on|off>",
   "/plan <goal>",
   "/plan status",

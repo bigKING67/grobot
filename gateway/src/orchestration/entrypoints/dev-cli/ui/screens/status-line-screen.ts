@@ -17,9 +17,16 @@ const ELLIPSIS = "...";
 const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
 const COMBINING_MARK_PATTERN = /\p{Mark}/u;
 const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+const ANSI_RESET = "\u001B[0m";
+const ANSI_DIM = "\u001B[90m";
+const ANSI_CCLINE_MODEL = "\u001B[96m";
+const ANSI_CCLINE_PROJECT = "\u001B[92m";
+const ANSI_CCLINE_CONTEXT = "\u001B[95m";
+const ANSI_CCLINE_TOKENS = "\u001B[93m";
+const ANSI_CCLINE_SESSION = "\u001B[94m";
 
 export type StatusLineLayoutMode = "adaptive" | "full" | "compact";
-export type StatusLineTheme = "plain" | "nerd_font";
+export type StatusLineTheme = "plain" | "nerd_font" | "ccline";
 export type StatusLineSegmentId =
   | "model"
   | "project"
@@ -250,7 +257,16 @@ function normalizeLayoutMode(value: string | undefined): StatusLineLayoutMode {
 
 function normalizeTheme(value: string | undefined): StatusLineTheme {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "plain" || normalized === "nerd_font" || normalized === "nerd-font") {
+  if (
+    normalized === "plain"
+    || normalized === "nerd_font"
+    || normalized === "nerd-font"
+    || normalized === "ccline"
+    || normalized === "cometix"
+  ) {
+    if (normalized === "ccline" || normalized === "cometix") {
+      return "ccline";
+    }
     return normalized === "nerd-font" ? "nerd_font" : normalized;
   }
   return DEFAULT_STATUS_LINE_CONFIG.theme;
@@ -552,10 +568,41 @@ function resolveStatusSegmentLabel(
     tokens: "󰌪",
     session: "󱂬",
   };
+  const cclineLabels: Record<StatusLineSegmentId, string> = {
+    model: "🤖",
+    project: "📁",
+    context: "⚡️",
+    tokens: "📊",
+    session: "⏱️",
+  };
+  if (input.theme === "ccline") {
+    return cclineLabels[input.segmentId];
+  }
   if (input.theme === "nerd_font") {
     return input.compact ? nerdCompact[input.segmentId] : nerdFull[input.segmentId];
   }
   return input.compact ? plainCompact[input.segmentId] : plainFull[input.segmentId];
+}
+
+function applyStatusSegmentThemeColor(
+  theme: StatusLineTheme,
+  segmentId: StatusLineSegmentId,
+  value: string,
+): string {
+  if (theme !== "ccline") {
+    return value;
+  }
+  const color =
+    segmentId === "model"
+      ? ANSI_CCLINE_MODEL
+      : segmentId === "project"
+        ? ANSI_CCLINE_PROJECT
+        : segmentId === "context"
+          ? ANSI_CCLINE_CONTEXT
+          : segmentId === "tokens"
+            ? ANSI_CCLINE_TOKENS
+            : ANSI_CCLINE_SESSION;
+  return `${color}${value}${ANSI_RESET}`;
 }
 
 function buildStatusSegments(input: {
@@ -596,10 +643,14 @@ function buildStatusSegments(input: {
       compact: input.template.compactLabels,
       theme: input.config.theme,
     });
-    if (label.length === 0) {
-      return valueMap[segmentId];
-    }
-    return `${label} ${valueMap[segmentId]}`;
+    const rendered = label.length === 0
+      ? valueMap[segmentId]
+      : `${label} ${valueMap[segmentId]}`;
+    return applyStatusSegmentThemeColor(
+      input.config.theme,
+      segmentId,
+      rendered,
+    );
   });
   return {
     segments,
@@ -618,8 +669,11 @@ function renderTemplateStatusLine(input: {
     config: input.config,
     template,
   });
+  const separator = input.config.theme === "ccline"
+    ? `${ANSI_DIM}${input.config.separator}${ANSI_RESET}`
+    : input.config.separator;
   return {
-    line: segments.segments.join(input.config.separator),
+    line: segments.segments.join(separator),
     sessionShortId: segments.sessionShortId,
   };
 }

@@ -111,6 +111,9 @@ function resolveStatusTheme(input: string): StatusLineTheme | undefined {
   if (normalized === "plain") {
     return "plain";
   }
+  if (normalized === "ccline" || normalized === "cometix") {
+    return "ccline";
+  }
   if (normalized === "nerd" || normalized === "nerd_font" || normalized === "nerd-font") {
     return "nerd_font";
   }
@@ -270,7 +273,7 @@ export function createRunStartInteractiveModeInput(
       const theme = resolveStatusTheme(rawTheme);
       if (!theme) {
         input.output.writeStdout(
-          "invalid status theme; usage: /status theme <plain|nerd>\n\n",
+          "invalid status theme; usage: /status theme <plain|nerd|ccline>\n\n",
         );
         return;
       }
