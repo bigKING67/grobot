@@ -131,14 +131,6 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
     }
   }
 
-  const compactHint = viewModel.commandHint.trim();
-  if (compactHint.length > 0) {
-    if (lines.length > 0) {
-      lines.push(createTextLine(""));
-    }
-    lines.push(createTextLine(compactHint, "info"));
-  }
-
   if (lines.length === 0) {
     lines.push(createTextLine("Welcome to Grobot."));
   }
@@ -378,5 +370,10 @@ export function renderStartScreen(
     lines.push(`${theme.color("brand", "│")} ${line} ${theme.color("brand", "│")}`);
   }
   lines.push(theme.color("brand", borders.bottomBorder));
+  const compactHint = viewModel.commandHint.trim();
+  if (compactHint.length > 0) {
+    lines.push("");
+    lines.push(theme.color("info", compactHint));
+  }
   return `${lines.join("\n")}\n`;
 }

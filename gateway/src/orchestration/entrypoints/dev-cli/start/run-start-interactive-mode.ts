@@ -132,6 +132,7 @@ export interface RunStartInteractiveModeInput {
   handoffPath: string;
   restoredTurns: number;
   restoreSource: "store" | "empty";
+  contextWindowTokens?: number;
   buildHelpText(): string;
   showHealthStatus(): void;
   showModelCurrent(): Promise<void>;
@@ -200,7 +201,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     providerName: startupModelSnapshot.providerName,
     modelName: startupModelSnapshot.model,
     sessionTopic: startupSessionTopic,
-    contextWindowTargetTokens: startupPromptBudget.targetTokenLimit,
+    contextWindowTokens:
+      typeof input.contextWindowTokens === "number"
+      && Number.isFinite(input.contextWindowTokens)
+      && input.contextWindowTokens > 0
+        ? input.contextWindowTokens
+        : startupPromptBudget.targetTokenLimit,
     recentSessions: startupRecentSessions,
   });
 
@@ -312,6 +318,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       contextWindowUsageRatio: budgetSnapshot.contextWindowUsageRatio,
       estimatedTokens: budgetSnapshot.estimatedTokens,
       targetTokenLimit: budgetSnapshot.targetTokenLimit,
+      contextWindowTokens: input.contextWindowTokens,
       sessionId: input.getActiveSessionId(),
       sessionTopic: input.getActiveSessionTopic(),
       terminalColumns: resolveTerminalColumns(),

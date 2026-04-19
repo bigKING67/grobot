@@ -35,6 +35,7 @@ interface CreateRunStartInteractiveModeInput {
   handoffAutoOnExit: boolean;
   handoffRecentTurns: number;
   handoffPath: string;
+  contextWindowTokens?: number;
   buildHelpText(): string;
   statusLineConfig?: StatusLineConfigInput;
   runtimeProviderChain: ReadonlyArray<RuntimeProviderCandidate>;
@@ -200,6 +201,7 @@ export function createRunStartInteractiveModeInput(
     handoffAutoOnExit: input.handoffAutoOnExit,
     handoffRecentTurns: input.handoffRecentTurns,
     handoffPath: input.handoffPath,
+    contextWindowTokens: input.contextWindowTokens,
     restoredTurns: input.runtimeState.getRestoredTurns(),
     restoreSource: input.runtimeState.getRestoreSource(),
     buildHelpText: input.buildHelpText,

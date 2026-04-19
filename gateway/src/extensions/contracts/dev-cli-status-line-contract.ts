@@ -88,8 +88,8 @@ const widePromptLine = wideLines[2] ?? "";
 const payload = {
   wide_has_model: wideStatusLine.includes("kimi/kimi-k2-2026-04"),
   wide_has_project: wideStatusLine.includes("grobot"),
-  wide_has_ctx_percent: wideStatusLine.includes("ctx 64%"),
-  wide_has_token_counter: wideStatusLine.includes("tok 3.2k/5.1k"),
+  wide_has_ctx_percent: wideStatusLine.includes("Context 37% left"),
+  wide_has_token_counter: wideStatusLine.includes("5K window"),
   wide_has_short_session_id: wideStatusLine.includes(sessionShortId),
   wide_has_no_s_colon_prefix: wideStatusLine.includes(`s:${sessionShortId}`) === false,
   wide_has_session_topic: wideStatusLine.includes("login regression follow-up"),
@@ -105,8 +105,8 @@ const payload = {
   warning_line_contains_critical: warningLine.includes("critical"),
   warning_status_line_unchanged: warningStatusLine.includes("context 94%") === false,
   tokens_segment_toggle_effective:
-    segmentToggleStatusLine.includes("tok 3.2k/5.1k") === false
-    && segmentToggleStatusLine.includes("t 3.2k/5.1k") === false,
+    segmentToggleStatusLine.includes("5K window") === false
+    && segmentToggleStatusLine.includes("5k window") === false,
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

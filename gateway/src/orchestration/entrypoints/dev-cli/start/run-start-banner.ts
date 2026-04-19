@@ -28,7 +28,7 @@ interface RunStartBannerInput {
   providerName: string;
   modelName: string;
   sessionTopic?: string;
-  contextWindowTargetTokens?: number;
+  contextWindowTokens?: number;
   recentSessions?: ReadonlyArray<StartBannerRecentSession>;
 }
 
@@ -123,6 +123,44 @@ function compactFeedText(value: string, maxLength: number): string {
   return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
+function resolveModelDisplayName(modelName: string): string {
+  const normalized = modelName.trim();
+  const lower = normalized.toLowerCase();
+  if (lower.includes("kimi-k2.5") || lower.includes("kimi 2.5") || lower.includes("k2.5")) {
+    return "Kimi 2.5";
+  }
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  return "Model";
+}
+
+function inferApiContextWindowTokens(input: {
+  modelName: string;
+  fallback?: number;
+}): number | undefined {
+  const lower = input.modelName.trim().toLowerCase();
+  if (lower.includes("kimi-k2.5") || lower.includes("kimi 2.5") || lower.includes("k2.5")) {
+    return 262_144;
+  }
+  if (
+    typeof input.fallback === "number"
+    && Number.isFinite(input.fallback)
+    && input.fallback > 0
+  ) {
+    return Math.floor(input.fallback);
+  }
+  return undefined;
+}
+
+function formatContextWindowLabel(tokens: number | undefined): string | undefined {
+  if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) {
+    return undefined;
+  }
+  const inK = Math.max(1, Math.round(tokens / 1024));
+  return `${String(inK)}K context`;
+}
+
 function resolveRecentActivityLines(
   sessions: ReadonlyArray<StartBannerRecentSession> | undefined,
 ): string[] {
@@ -131,30 +169,38 @@ function resolveRecentActivityLines(
   }
   const lines: string[] = [];
   for (const session of sessions) {
-    const title = compactFeedText(session.title, 48);
-    const summary = compactFeedText(session.summary, 48);
+    const title = compactFeedText(session.title, 44);
+    const summary = compactFeedText(session.summary, 52);
     const label = title.length > 0
       ? title
       : summary.length > 0
         ? summary
-        : compactFeedText(session.id, 48);
+        : compactFeedText(session.id, 44);
     if (!label) {
       continue;
     }
     const timestamp = formatRelativeTimeAgo(session.updatedAt);
     lines.push(timestamp ? `${timestamp}  ${label}` : label);
+    if (summary.length > 0 && summary !== label) {
+      lines.push(`    ${summary}`);
+    }
   }
   return lines;
 }
 
 export function printRunStartBanner(input: RunStartBannerInput): void {
-  const contextWindowLabel = typeof input.contextWindowTargetTokens === "number"
-    && Number.isFinite(input.contextWindowTargetTokens)
-    ? `${String(Math.round(input.contextWindowTargetTokens / 1_000))}k ctx budget`
-    : undefined;
-  const runtimeLine = [
-    `${input.providerName}/${input.modelName}`,
+  const contextWindowLabel = formatContextWindowLabel(
+    inferApiContextWindowTokens({
+      modelName: input.modelName,
+      fallback: input.contextWindowTokens,
+    }),
+  );
+  const runtimeHeadline = [
+    resolveModelDisplayName(input.modelName),
     contextWindowLabel,
+  ].filter((segment) => typeof segment === "string" && segment.trim().length > 0).join(" · ");
+  const runtimeDetail = [
+    `${input.providerName}/${input.modelName}`,
     "API Usage",
   ].filter((segment) => typeof segment === "string" && segment.trim().length > 0).join(" · ");
   const sessionLine = `session ${compactSessionId(input.activeSessionId)} (${compactSessionTopic(input.sessionTopic)})`;
@@ -176,7 +222,8 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
       iconLines: STARTUP_ICON_LINES,
       infoLines: [
         `Grobot CLI ${resolveCliVersionLabel()}`,
-        runtimeLine,
+        runtimeHeadline,
+        runtimeDetail,
         input.projectRoot,
         sessionLine,
       ],

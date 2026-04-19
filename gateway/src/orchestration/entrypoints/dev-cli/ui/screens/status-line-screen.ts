@@ -11,6 +11,7 @@ export interface StatusLinePromptInput {
   model: string;
   projectFolder: string;
   contextWindowUsageRatio?: number;
+  contextWindowTokens?: number;
   estimatedTokens?: number;
   targetTokenLimit?: number;
   sessionId: string;
@@ -311,23 +312,78 @@ function truncateText(value: string, maxWidth: number): string {
   return truncateDisplayWidth(normalized, maxWidth);
 }
 
-function formatTokenCount(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+function formatWindowTokenCount(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return "n/a";
   }
-  const normalized = Math.round(value);
-  if (normalized >= 1000) {
-    return `${(normalized / 1000).toFixed(1)}k`;
+  const normalized = Math.max(1, Math.floor(value));
+  if (normalized >= 1024) {
+    return `${String(Math.round(normalized / 1024))}K`;
   }
   return String(normalized);
 }
 
-function formatContextUsage(value: number | undefined): string {
-  const ratio = clampRatio(value);
-  if (typeof ratio !== "number") {
-    return "n/a";
+function resolveContextLeftPercent(input: {
+  contextWindowUsageRatio?: number;
+  contextWindowTokens?: number;
+  estimatedTokens?: number;
+  targetTokenLimit?: number;
+}): number | undefined {
+  const preferredWindow = typeof input.contextWindowTokens === "number"
+    && Number.isFinite(input.contextWindowTokens)
+    && input.contextWindowTokens > 0
+    ? input.contextWindowTokens
+    : typeof input.targetTokenLimit === "number"
+      && Number.isFinite(input.targetTokenLimit)
+      && input.targetTokenLimit > 0
+      ? input.targetTokenLimit
+      : undefined;
+  let ratio: number | undefined;
+  if (
+    typeof input.estimatedTokens === "number"
+    && Number.isFinite(input.estimatedTokens)
+    && input.estimatedTokens >= 0
+    && typeof preferredWindow === "number"
+    && preferredWindow > 0
+  ) {
+    ratio = input.estimatedTokens / preferredWindow;
+  } else {
+    ratio = clampRatio(input.contextWindowUsageRatio);
   }
-  return `${Math.round(ratio * 100)}%`;
+  if (typeof ratio !== "number") {
+    return undefined;
+  }
+  const boundedRatio = Math.max(0, Math.min(1, ratio));
+  return Math.round((1 - boundedRatio) * 100);
+}
+
+function formatContextLeft(input: {
+  contextWindowUsageRatio?: number;
+  contextWindowTokens?: number;
+  estimatedTokens?: number;
+  targetTokenLimit?: number;
+}): string {
+  const leftPercent = resolveContextLeftPercent(input);
+  if (typeof leftPercent !== "number") {
+    return "n/a left";
+  }
+  return `${String(leftPercent)}% left`;
+}
+
+function formatWindowUsage(input: {
+  compact: boolean;
+  contextWindowTokens?: number;
+  targetTokenLimit?: number;
+}): string {
+  const windowTokens = typeof input.contextWindowTokens === "number"
+    && Number.isFinite(input.contextWindowTokens)
+    && input.contextWindowTokens > 0
+    ? input.contextWindowTokens
+    : input.targetTokenLimit;
+  const windowLabel = formatWindowTokenCount(windowTokens);
+  return input.compact
+    ? `${windowLabel} win`
+    : `${windowLabel} window`;
 }
 
 function formatSessionShortId(sessionId: string): string {
@@ -411,15 +467,15 @@ function resolveStatusSegmentLabel(
   const plainFull: Record<StatusLineSegmentId, string> = {
     model: "",
     project: "",
-    context: "ctx",
-    tokens: "tok",
+    context: "Context",
+    tokens: "",
     session: "",
   };
   const plainCompact: Record<StatusLineSegmentId, string> = {
     model: "",
     project: "",
     context: "ctx",
-    tokens: "tok",
+    tokens: "",
     session: "",
   };
   const nerdFull: Record<StatusLineSegmentId, string> = {
@@ -494,9 +550,17 @@ function buildStatusSegments(input: {
   const valueMap: Record<StatusLineSegmentId, string> = {
     model: truncateText(input.prompt.model, modelWidth) || "<unset>",
     project: truncateText(input.prompt.projectFolder, projectWidth) || "<none>",
-    context: formatContextUsage(input.prompt.contextWindowUsageRatio),
-    tokens:
-      `${formatTokenCount(input.prompt.estimatedTokens)}/${formatTokenCount(input.prompt.targetTokenLimit)}`,
+    context: formatContextLeft({
+      contextWindowUsageRatio: input.prompt.contextWindowUsageRatio,
+      contextWindowTokens: input.prompt.contextWindowTokens,
+      estimatedTokens: input.prompt.estimatedTokens,
+      targetTokenLimit: input.prompt.targetTokenLimit,
+    }),
+    tokens: formatWindowUsage({
+      compact: input.template.compactLabels,
+      contextWindowTokens: input.prompt.contextWindowTokens,
+      targetTokenLimit: input.prompt.targetTokenLimit,
+    }),
     session: sessionText,
   };
   const orderedEnabledSegments = input.config.segmentOrder
