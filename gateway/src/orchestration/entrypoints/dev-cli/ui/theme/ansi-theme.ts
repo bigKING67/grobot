@@ -1,10 +1,11 @@
 import { type CliRenderMode } from "../kernel/render-mode";
 
-export type CliThemeToken = "accent" | "muted" | "info" | "title";
+export type CliThemeToken = "accent" | "brand" | "muted" | "info" | "title";
 
 const ANSI_RESET = "\x1b[0m";
 const ANSI_BOLD = "\x1b[1m";
 const ANSI_ACCENT = "\x1b[92m";
+const ANSI_BRAND = "\x1b[38;5;208m";
 const ANSI_INFO = "\x1b[96m";
 const ANSI_MUTED = "\x1b[90m";
 
@@ -31,6 +32,9 @@ const ansiTheme: CliTheme = {
   color: (token, value) => {
     if (token === "accent") {
       return wrap(ANSI_ACCENT, value);
+    }
+    if (token === "brand") {
+      return wrap(ANSI_BRAND, value);
     }
     if (token === "info") {
       return wrap(ANSI_INFO, value);

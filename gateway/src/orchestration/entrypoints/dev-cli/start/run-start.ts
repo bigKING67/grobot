@@ -18,11 +18,15 @@ import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
   applyMemoryDecayAutotuneToPolicy,
+  applyMemoryStrategyAutotuneToPolicy,
   createMemoryOrchestrator,
   defaultMemoryOrchestratorPolicy,
   deriveMemoryDecayAutotuneState,
+  deriveMemoryStrategyAutotuneState,
   readMemoryDecayAutotuneState,
+  readMemoryStrategyAutotuneState,
   writeMemoryDecayAutotuneState,
+  writeMemoryStrategyAutotuneState,
   type MemoryOrchestratorExperienceAdapter,
   type MemoryOrchestratorGaAdapter,
 } from "../../../../tools/memory";
@@ -166,9 +170,17 @@ export async function runStart(
     workDir,
     basePolicy: baseMemoryPolicy,
   });
-  const initialMemoryPolicy = applyMemoryDecayAutotuneToPolicy({
+  const memoryPolicyAfterDecayAutotune = applyMemoryDecayAutotuneToPolicy({
     basePolicy: baseMemoryPolicy,
     state: memoryDecayAutotuneState,
+  });
+  let memoryStrategyAutotuneState = readMemoryStrategyAutotuneState({
+    workDir,
+    basePolicy: baseMemoryPolicy,
+  });
+  const initialMemoryPolicy = applyMemoryStrategyAutotuneToPolicy({
+    basePolicy: memoryPolicyAfterDecayAutotune,
+    state: memoryStrategyAutotuneState,
   });
   const memoryOrchestrator = createMemoryOrchestrator({
     ga: gaAdapter,
@@ -178,7 +190,7 @@ export async function runStart(
   });
   const memoryPolicy = memoryOrchestrator.policySnapshot();
   writeStartupDiagnostics(
-    `[memory-orchestrator] enabled=${memoryPolicy.enabled ? "on" : "off"} version=${memoryPolicy.version} budget_ratio=${memoryPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryPolicy.injectBudgetMinTokens)} budget_max=${String(memoryPolicy.injectBudgetMaxTokens)} section_max=${String(memoryPolicy.maxSectionTokens)} ga_rows=${String(memoryPolicy.maxGaMemoryRows)} team_rows=${String(memoryPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryPolicy.minTeamExperienceScore)} decay_enabled=${memoryPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryPolicy.decayMaxAgeHoursL1)}/${String(memoryPolicy.decayMaxAgeHoursL2)}/${String(memoryPolicy.decayMaxAgeHoursL3)}/${String(memoryPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryPolicy.decayMinConfidenceUnverified.toFixed(2)} autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} autotune_reason=${memoryDecayAutotuneState.lastReason}\n`,
+    `[memory-orchestrator] enabled=${memoryPolicy.enabled ? "on" : "off"} version=${memoryPolicy.version} budget_ratio=${memoryPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryPolicy.injectBudgetMinTokens)} budget_max=${String(memoryPolicy.injectBudgetMaxTokens)} section_max=${String(memoryPolicy.maxSectionTokens)} ga_rows=${String(memoryPolicy.maxGaMemoryRows)} team_rows=${String(memoryPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryPolicy.minTeamExperienceScore)} decay_enabled=${memoryPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryPolicy.decayMaxAgeHoursL1)}/${String(memoryPolicy.decayMaxAgeHoursL2)}/${String(memoryPolicy.decayMaxAgeHoursL3)}/${String(memoryPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryPolicy.decayMinConfidenceUnverified.toFixed(2)} decay_autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} decay_autotune_reason=${memoryDecayAutotuneState.lastReason} strategy_autotune_updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} strategy_autotune_reason=${memoryStrategyAutotuneState.lastReason} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)}\n`,
   );
 
   const wire = createRunStartWire({
@@ -330,8 +342,34 @@ export async function runStart(
         hardBudgetRate: promptQualityWindowSummary.strategyActivity.hardBudgetRate,
         qualityFirstImprovedRate:
           promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate,
+        averageUtilizationRatio: promptQualityWindowSummary.tokenBudget.averageUtilizationRatio,
+        autoLimitTriggeredRate: promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate,
+        snapshotSemanticCompressRate:
+          promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate,
+        shortAverageUtilizationRatio:
+          promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio,
+        mediumAverageUtilizationRatio:
+          promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio,
+        deltaAverageUtilizationRatio:
+          promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio,
+        shortAutoLimitTriggeredRate:
+          promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate,
+        mediumAutoLimitTriggeredRate:
+          promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate,
+        deltaAutoLimitTriggeredRate:
+          promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate,
+        shortSnapshotSemanticCompressRate:
+          promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate,
+        mediumSnapshotSemanticCompressRate:
+          promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate,
+        deltaSnapshotSemanticCompressRate:
+          promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate,
       };
-      const autotuneResult = deriveMemoryDecayAutotuneState({
+      const formatQualityValue = (value: number | null | undefined): string =>
+        typeof value === "number" && Number.isFinite(value)
+          ? value.toFixed(3)
+          : "<none>";
+      const decayAutotuneResult = deriveMemoryDecayAutotuneState({
         basePolicy: baseMemoryPolicy,
         currentState: memoryDecayAutotuneState,
         stats: {
@@ -345,10 +383,11 @@ export async function runStart(
         },
         quality: qualitySnapshot,
       });
-      let autotuneUpdated = false;
-      if (autotuneResult.changed) {
-        autotuneUpdated = true;
-        memoryDecayAutotuneState = autotuneResult.state;
+      let decayAutotuneUpdated = false;
+      let policyAfterAutotune = memoryOrchestrator.policySnapshot();
+      if (decayAutotuneResult.changed) {
+        decayAutotuneUpdated = true;
+        memoryDecayAutotuneState = decayAutotuneResult.state;
         const tunedPolicyFromState = applyMemoryDecayAutotuneToPolicy({
           basePolicy: baseMemoryPolicy,
           state: memoryDecayAutotuneState,
@@ -364,16 +403,43 @@ export async function runStart(
           basePolicy: baseMemoryPolicy,
           state: memoryDecayAutotuneState,
         });
+        policyAfterAutotune = tunedPolicy;
         writeStartupDiagnostics(
-          `[memory-orchestrator] event=autotune_updated reason=${autotuneResult.reason} updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} decay_max_rows=${String(tunedPolicy.decayMaxRowsPerSession)} decay_unverified_age_hours=${String(tunedPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${tunedPolicy.decayMinConfidenceVerified.toFixed(2)}/${tunedPolicy.decayMinConfidenceUnverified.toFixed(2)}\n`,
+          `[memory-orchestrator] event=decay_autotune_updated reason=${decayAutotuneResult.reason} updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} decay_max_rows=${String(tunedPolicy.decayMaxRowsPerSession)} decay_unverified_age_hours=${String(tunedPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${tunedPolicy.decayMinConfidenceVerified.toFixed(2)}/${tunedPolicy.decayMinConfidenceUnverified.toFixed(2)}\n`,
         );
       }
-      const formatQualityValue = (value: number | null | undefined): string =>
-        typeof value === "number" && Number.isFinite(value)
-          ? value.toFixed(3)
-          : "<none>";
+      const strategyAutotuneResult = deriveMemoryStrategyAutotuneState({
+        basePolicy: baseMemoryPolicy,
+        currentState: memoryStrategyAutotuneState,
+        quality: qualitySnapshot,
+      });
+      let strategyAutotuneUpdated = false;
+      if (strategyAutotuneResult.changed) {
+        strategyAutotuneUpdated = true;
+        memoryStrategyAutotuneState = strategyAutotuneResult.state;
+        const tunedPolicyFromState = applyMemoryStrategyAutotuneToPolicy({
+          basePolicy: policyAfterAutotune,
+          state: memoryStrategyAutotuneState,
+        });
+        const tunedPolicy = memoryOrchestrator.tuneInjectionPolicy({
+          injectBudgetRatio: tunedPolicyFromState.injectBudgetRatio,
+          maxSectionTokens: tunedPolicyFromState.maxSectionTokens,
+          maxGaMemoryRows: tunedPolicyFromState.maxGaMemoryRows,
+          maxTeamExperienceRows: tunedPolicyFromState.maxTeamExperienceRows,
+          minTeamExperienceScore: tunedPolicyFromState.minTeamExperienceScore,
+        });
+        policyAfterAutotune = tunedPolicy;
+        writeMemoryStrategyAutotuneState({
+          workDir,
+          basePolicy: baseMemoryPolicy,
+          state: memoryStrategyAutotuneState,
+        });
+        writeStartupDiagnostics(
+          `[memory-orchestrator] event=strategy_autotune_updated reason=${strategyAutotuneResult.reason} updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} budget_ratio=${tunedPolicy.injectBudgetRatio.toFixed(3)} section_max=${String(tunedPolicy.maxSectionTokens)} ga_rows=${String(tunedPolicy.maxGaMemoryRows)} team_rows=${String(tunedPolicy.maxTeamExperienceRows)} team_score_min=${String(tunedPolicy.minTeamExperienceScore)} pressure_ema=${memoryStrategyAutotuneState.averageUtilizationRatioEma.toFixed(3)}/${memoryStrategyAutotuneState.autoLimitTriggeredRateEma.toFixed(3)}/${memoryStrategyAutotuneState.snapshotSemanticCompressRateEma.toFixed(3)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)}\n`,
+        );
+      }
       writeStartupDiagnostics(
-        `[memory-orchestrator] event=maintenance reason=${reason} sessions_scanned=${String(sessionsScanned)} sessions_updated=${String(sessionsUpdated)} deduplicated_rows=${String(deduplicatedRows)} total_rows=${String(totalRowsBefore)}->${String(totalRowsAfter)} decay_sessions_pruned=${String(decaySessionsPruned)} decay_dropped_rows=${String(decayDroppedRows)} decay_action=${decayAction} decay_reason=${decayReason} quality_low_rate=${formatQualityValue(qualitySnapshot.lowQualityRate)} quality_pressure=${formatQualityValue(qualitySnapshot.averagePreSendPressureScore)} quality_hard_budget_rate=${formatQualityValue(qualitySnapshot.hardBudgetRate)} quality_first_improved_rate=${formatQualityValue(qualitySnapshot.qualityFirstImprovedRate)} quality_followup_delta=${formatQualityValue(qualitySnapshot.hardBudgetFollowupOverallDelta)}/${formatQualityValue(qualitySnapshot.qualityFirstFollowupOverallDelta)} autotune_updated=${autotuneUpdated ? "true" : "false"} autotune_reason=${autotuneResult.reason}\n`,
+        `[memory-orchestrator] event=maintenance reason=${reason} sessions_scanned=${String(sessionsScanned)} sessions_updated=${String(sessionsUpdated)} deduplicated_rows=${String(deduplicatedRows)} total_rows=${String(totalRowsBefore)}->${String(totalRowsAfter)} decay_sessions_pruned=${String(decaySessionsPruned)} decay_dropped_rows=${String(decayDroppedRows)} decay_action=${decayAction} decay_reason=${decayReason} quality_low_rate=${formatQualityValue(qualitySnapshot.lowQualityRate)} quality_pressure=${formatQualityValue(qualitySnapshot.averagePreSendPressureScore)} quality_hard_budget_rate=${formatQualityValue(qualitySnapshot.hardBudgetRate)} quality_first_improved_rate=${formatQualityValue(qualitySnapshot.qualityFirstImprovedRate)} quality_followup_delta=${formatQualityValue(qualitySnapshot.hardBudgetFollowupOverallDelta)}/${formatQualityValue(qualitySnapshot.qualityFirstFollowupOverallDelta)} pressure_utilization=${formatQualityValue(qualitySnapshot.averageUtilizationRatio)} pressure_auto_limit_rate=${formatQualityValue(qualitySnapshot.autoLimitTriggeredRate)} pressure_semantic_rate=${formatQualityValue(qualitySnapshot.snapshotSemanticCompressRate)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)} decay_autotune_updated=${decayAutotuneUpdated ? "true" : "false"} decay_autotune_reason=${decayAutotuneResult.reason} strategy_autotune_updated=${strategyAutotuneUpdated ? "true" : "false"} strategy_autotune_reason=${strategyAutotuneResult.reason} strategy_budget_ratio=${policyAfterAutotune.injectBudgetRatio.toFixed(3)} strategy_section_max=${String(policyAfterAutotune.maxSectionTokens)} strategy_ga_rows=${String(policyAfterAutotune.maxGaMemoryRows)} strategy_team_rows=${String(policyAfterAutotune.maxTeamExperienceRows)} strategy_team_score_min=${String(policyAfterAutotune.minTeamExperienceScore)} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)}\n`,
       );
     } catch (error) {
       output.writeStderr(

@@ -124,6 +124,15 @@ function parseTomlString(raw: string): string | undefined {
   return match[1].trim();
 }
 
+function parseTomlStringRaw(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^"([^"]*)"$/);
+  if (!match || typeof match[1] !== "string") {
+    return undefined;
+  }
+  return match[1];
+}
+
 function parseTomlBoolean(raw: string): boolean | undefined {
   const normalized = raw.trim().toLowerCase();
   if (normalized === "true") {
@@ -228,7 +237,7 @@ function readStatusLineConfigFromProjectToml(
         continue;
       }
       if (key === "separator") {
-        const parsed = parseTomlString(rawValue);
+        const parsed = parseTomlStringRaw(rawValue);
         if (typeof parsed === "string" && parsed.length > 0) {
           statusLineConfig.separator = parsed;
           hasSignal = true;

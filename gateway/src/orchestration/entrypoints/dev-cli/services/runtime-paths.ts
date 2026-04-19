@@ -171,7 +171,7 @@ export function resolveInterruptStorePath(projectStateRoot?: string): string {
   const root = projectStateRoot
     ? removeTrailingSlashes(projectStateRoot)
     : resolveProjectStateRoot(process.cwd());
-  return `${root}/session/interrupts.json`;
+  return `${root}/sessions/interrupts.json`;
 }
 
 export function resolveMemoryStorePath(projectStateRoot?: string): string {

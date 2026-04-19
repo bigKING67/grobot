@@ -201,7 +201,7 @@ async function main(): Promise<void> {
     workDir: "/tmp/work",
     sessionNamespaceKey: "feishu:grobot:dm:interactive-binding-contract",
     sessionStoreRuntime,
-    sessionRegistryFilePathValue: "/tmp/home/session/contract.sessions.json",
+    sessionRegistryFilePathValue: "/tmp/home/sessions/contract.sessions.json",
     handoffAutoOnExit: true,
     handoffRecentTurns: 6,
     handoffPath: "/tmp/work/HANDOFF.md",

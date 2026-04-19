@@ -8,6 +8,7 @@ export type ContextStorageArtifact =
   | "graph_quality_autotune_state"
   | "prompt_quality_guard_state"
   | "memory_decay_autotune_state"
+  | "memory_strategy_autotune_state"
   | "graph_persistent_index"
   | "graph_persistent_index_window"
   | "lineage_diff_cache";
@@ -41,6 +42,11 @@ const CONTEXT_STORAGE_BOUNDARY: Record<ContextStorageArtifact, ContextStorageBou
     domain: "memory",
     primaryRelativePath: ".grobot/memory/context-engine/memory-decay-autotune-state.json",
     legacyReadRelativePaths: [".grobot/context/memory-decay-autotune-state.json"],
+  },
+  memory_strategy_autotune_state: {
+    domain: "memory",
+    primaryRelativePath: ".grobot/memory/context-engine/memory-strategy-autotune-state.json",
+    legacyReadRelativePaths: [".grobot/context/memory-strategy-autotune-state.json"],
   },
   graph_persistent_index: {
     domain: "memory",

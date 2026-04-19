@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN_DIR_DEFAULT="${HOME}/.grobot/bin"
+BIN_DIR_DEFAULT="${HOME}/.local/bin"
 BIN_DIR="${GROBOT_INSTALL_BIN_DIR:-$BIN_DIR_DEFAULT}"
 LINK_PATH=""
 
@@ -10,7 +10,7 @@ usage() {
 Usage: bash scripts/uninstall-local.sh [options]
 
 Options:
-  --bin-dir <dir>    Remove symlink from custom directory (default: ~/.grobot/bin)
+  --bin-dir <dir>    Remove symlink from custom directory (default: ~/.local/bin)
   -h, --help         Show help
 EOF
 }

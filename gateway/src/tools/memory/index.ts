@@ -5,6 +5,7 @@ export {
   type MemoryLevel,
   type MemoryOrchestrator,
   type MemoryOrchestratorDecayInput,
+  type MemoryOrchestratorInjectionPolicyOverride,
   type MemoryOrchestratorDecayPolicyOverride,
   type MemoryOrchestratorDecayResult,
   type MemoryOrchestratorFeedbackInput,
@@ -41,3 +42,15 @@ export {
   type MemoryDecayAutotuneState,
   type MemoryDecayAutotuneUpdateResult,
 } from "./decay-autotune-state";
+
+export {
+  applyMemoryStrategyAutotuneToPolicy,
+  defaultMemoryStrategyAutotuneState,
+  deriveMemoryStrategyAutotuneState,
+  normalizeMemoryStrategyAutotuneState,
+  readMemoryStrategyAutotuneState,
+  writeMemoryStrategyAutotuneState,
+  type MemoryStrategyAutotuneQualitySnapshot,
+  type MemoryStrategyAutotuneState,
+  type MemoryStrategyAutotuneUpdateResult,
+} from "./strategy-autotune-state";

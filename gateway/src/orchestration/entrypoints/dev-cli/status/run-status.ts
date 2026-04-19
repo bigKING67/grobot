@@ -34,8 +34,10 @@ import {
 import { readPersistentGraphIndexStatus } from "../../../../tools/context/graph/persistent-index";
 import {
   applyMemoryDecayAutotuneToPolicy,
+  applyMemoryStrategyAutotuneToPolicy,
   defaultMemoryOrchestratorPolicy,
   readMemoryDecayAutotuneState,
+  readMemoryStrategyAutotuneState,
 } from "../../../../tools/memory";
 import { type RuntimeModelConfig } from "../../../../models/types";
 import {
@@ -685,9 +687,17 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     workDir,
     basePolicy: memoryOrchestratorBasePolicy,
   });
-  const memoryOrchestratorPolicy = applyMemoryDecayAutotuneToPolicy({
+  const memoryPolicyAfterDecayAutotune = applyMemoryDecayAutotuneToPolicy({
     basePolicy: memoryOrchestratorBasePolicy,
     state: memoryDecayAutotuneState,
+  });
+  const memoryStrategyAutotuneState = readMemoryStrategyAutotuneState({
+    workDir,
+    basePolicy: memoryOrchestratorBasePolicy,
+  });
+  const memoryOrchestratorPolicy = applyMemoryStrategyAutotuneToPolicy({
+    basePolicy: memoryPolicyAfterDecayAutotune,
+    state: memoryStrategyAutotuneState,
   });
   const contextGraphCacheStats = readContextGraphCacheStats();
   const symbolQueryGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_query");
@@ -840,6 +850,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   const memoryDecayAutotuneStatePersistenceDomain = resolveContextStorageDomain(
     "memory_decay_autotune_state",
+  );
+  const memoryStrategyAutotuneStatePersistenceDomain = resolveContextStorageDomain(
+    "memory_strategy_autotune_state",
   );
   const persistentGraphIndexPersistenceDomain = resolveContextStorageDomain("graph_persistent_index");
   const persistentGraphIndexWindowPersistenceDomain = resolveContextStorageDomain(
@@ -1380,6 +1393,33 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
             updated_at: memoryDecayAutotuneState.updatedAt,
             persistence_domain: memoryDecayAutotuneStatePersistenceDomain,
           },
+          strategy_autotune: {
+            inject_budget_ratio: memoryStrategyAutotuneState.injectBudgetRatio,
+            max_section_tokens: memoryStrategyAutotuneState.maxSectionTokens,
+            max_ga_memory_rows: memoryStrategyAutotuneState.maxGaMemoryRows,
+            max_team_experience_rows: memoryStrategyAutotuneState.maxTeamExperienceRows,
+            min_team_experience_score: memoryStrategyAutotuneState.minTeamExperienceScore,
+            adaptive_updates: memoryStrategyAutotuneState.adaptiveUpdates,
+            adaptive_learn_alpha: memoryStrategyAutotuneState.adaptiveLearnAlpha,
+            quality_low_rate_ema: memoryStrategyAutotuneState.qualityLowRateEma,
+            quality_pressure_ema: memoryStrategyAutotuneState.qualityPressureEma,
+            average_utilization_ratio_ema: memoryStrategyAutotuneState.averageUtilizationRatioEma,
+            auto_limit_triggered_rate_ema: memoryStrategyAutotuneState.autoLimitTriggeredRateEma,
+            snapshot_semantic_compress_rate_ema:
+              memoryStrategyAutotuneState.snapshotSemanticCompressRateEma,
+            hard_budget_rate_ema: memoryStrategyAutotuneState.hardBudgetRateEma,
+            quality_first_improved_rate_ema: memoryStrategyAutotuneState.qualityFirstImprovedRateEma,
+            hard_budget_followup_delta_ema: memoryStrategyAutotuneState.hardBudgetFollowupDeltaEma,
+            quality_first_followup_delta_ema: memoryStrategyAutotuneState.qualityFirstFollowupDeltaEma,
+            last_action_direction: memoryStrategyAutotuneState.lastActionDirection,
+            cooldown_turns_remaining: memoryStrategyAutotuneState.cooldownTurnsRemaining,
+            tighten_signal_streak: memoryStrategyAutotuneState.tightenSignalStreak,
+            relax_signal_streak: memoryStrategyAutotuneState.relaxSignalStreak,
+            adaptive_action_scale: memoryStrategyAutotuneState.adaptiveActionScale,
+            last_reason: memoryStrategyAutotuneState.lastReason,
+            updated_at: memoryStrategyAutotuneState.updatedAt,
+            persistence_domain: memoryStrategyAutotuneStatePersistenceDomain,
+          },
         },
         graph_quality_signals: {
           cache_window: {
@@ -1734,7 +1774,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} auto_limit=${contextEngineTokenBudget.autoCompactTokenLimit} target=${contextEngineTokenBudget.targetTokenLimit} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,
   );
   process.stdout.write(
-    `memory_orchestrator: enabled=${memoryOrchestratorPolicy.enabled ? "on" : "off"} version=${memoryOrchestratorPolicy.version} budget_ratio=${memoryOrchestratorPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryOrchestratorPolicy.injectBudgetMinTokens)} budget_max=${String(memoryOrchestratorPolicy.injectBudgetMaxTokens)} section_max=${String(memoryOrchestratorPolicy.maxSectionTokens)} ga_rows=${String(memoryOrchestratorPolicy.maxGaMemoryRows)} team_rows=${String(memoryOrchestratorPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryOrchestratorPolicy.minTeamExperienceScore)} decay_enabled=${memoryOrchestratorPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryOrchestratorPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryOrchestratorPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryOrchestratorPolicy.decayMaxAgeHoursL1)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL2)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL3)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryOrchestratorPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryOrchestratorPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryOrchestratorPolicy.decayMinConfidenceUnverified.toFixed(2)} autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} autotune_alpha=${memoryDecayAutotuneState.adaptiveLearnAlpha.toFixed(2)} autotune_ema=${memoryDecayAutotuneState.dropRatioEma.toFixed(3)}/${memoryDecayAutotuneState.capacityTrimRatioEma.toFixed(3)}/${memoryDecayAutotuneState.lowConfidenceRatioEma.toFixed(3)}/${memoryDecayAutotuneState.ageDropRatioEma.toFixed(3)} autotune_quality_ema=${memoryDecayAutotuneState.qualityLowRateEma.toFixed(3)}/${memoryDecayAutotuneState.qualityPressureEma.toFixed(3)}/${memoryDecayAutotuneState.hardBudgetFollowupDeltaEma.toFixed(3)}/${memoryDecayAutotuneState.qualityFirstFollowupDeltaEma.toFixed(3)} autotune_last_reason=${memoryDecayAutotuneState.lastReason} autotune_updated_at=${memoryDecayAutotuneState.updatedAt ?? "<none>"} autotune_persistence_domain=${memoryDecayAutotuneStatePersistenceDomain}\n`,
+    `memory_orchestrator: enabled=${memoryOrchestratorPolicy.enabled ? "on" : "off"} version=${memoryOrchestratorPolicy.version} budget_ratio=${memoryOrchestratorPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryOrchestratorPolicy.injectBudgetMinTokens)} budget_max=${String(memoryOrchestratorPolicy.injectBudgetMaxTokens)} section_max=${String(memoryOrchestratorPolicy.maxSectionTokens)} ga_rows=${String(memoryOrchestratorPolicy.maxGaMemoryRows)} team_rows=${String(memoryOrchestratorPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryOrchestratorPolicy.minTeamExperienceScore)} decay_enabled=${memoryOrchestratorPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryOrchestratorPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryOrchestratorPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryOrchestratorPolicy.decayMaxAgeHoursL1)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL2)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL3)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryOrchestratorPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryOrchestratorPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryOrchestratorPolicy.decayMinConfidenceUnverified.toFixed(2)} autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} autotune_alpha=${memoryDecayAutotuneState.adaptiveLearnAlpha.toFixed(2)} autotune_ema=${memoryDecayAutotuneState.dropRatioEma.toFixed(3)}/${memoryDecayAutotuneState.capacityTrimRatioEma.toFixed(3)}/${memoryDecayAutotuneState.lowConfidenceRatioEma.toFixed(3)}/${memoryDecayAutotuneState.ageDropRatioEma.toFixed(3)} autotune_quality_ema=${memoryDecayAutotuneState.qualityLowRateEma.toFixed(3)}/${memoryDecayAutotuneState.qualityPressureEma.toFixed(3)}/${memoryDecayAutotuneState.hardBudgetFollowupDeltaEma.toFixed(3)}/${memoryDecayAutotuneState.qualityFirstFollowupDeltaEma.toFixed(3)} autotune_last_reason=${memoryDecayAutotuneState.lastReason} autotune_updated_at=${memoryDecayAutotuneState.updatedAt ?? "<none>"} autotune_persistence_domain=${memoryDecayAutotuneStatePersistenceDomain} strategy_updates=${String(memoryStrategyAutotuneState.adaptiveUpdates)} strategy_alpha=${memoryStrategyAutotuneState.adaptiveLearnAlpha.toFixed(2)} strategy_ema=${memoryStrategyAutotuneState.qualityLowRateEma.toFixed(3)}/${memoryStrategyAutotuneState.qualityPressureEma.toFixed(3)}/${memoryStrategyAutotuneState.hardBudgetRateEma.toFixed(3)}/${memoryStrategyAutotuneState.qualityFirstImprovedRateEma.toFixed(3)} strategy_pressure_ema=${memoryStrategyAutotuneState.averageUtilizationRatioEma.toFixed(3)}/${memoryStrategyAutotuneState.autoLimitTriggeredRateEma.toFixed(3)}/${memoryStrategyAutotuneState.snapshotSemanticCompressRateEma.toFixed(3)} strategy_followup_ema=${memoryStrategyAutotuneState.hardBudgetFollowupDeltaEma.toFixed(3)}/${memoryStrategyAutotuneState.qualityFirstFollowupDeltaEma.toFixed(3)} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)} strategy_last_reason=${memoryStrategyAutotuneState.lastReason} strategy_updated_at=${memoryStrategyAutotuneState.updatedAt ?? "<none>"} strategy_persistence_domain=${memoryStrategyAutotuneStatePersistenceDomain}\n`,
   );
   process.stdout.write(
     `context_engine_prompt_quality_config: low_quality_threshold=${(contextEngineConfig.promptQuality?.lowQualityThreshold ?? 0.6).toFixed(3)} degrade_overall=${(contextEngineConfig.promptQuality?.degradeOverallThreshold ?? 0.62).toFixed(3)} degrade_low_quality_rate=${(contextEngineConfig.promptQuality?.degradeLowQualityRateThreshold ?? 0.4).toFixed(3)} degrade_min_entries=${String(contextEngineConfig.promptQuality?.degradeMinEntries ?? 8)} guard_enabled=${contextEngineConfig.promptQuality?.guardEnabled === false ? "false" : "true"} guard_adaptive_enabled=${contextEngineConfig.promptQuality?.guardAdaptiveEnabled === false ? "false" : "true"} guard_adaptive_allowlist=${(contextEngineConfig.promptQuality?.guardAdaptiveModeAllowlist ?? ["harden", "relax"]).join(",")} guard_promote_streak=${String(contextEngineConfig.promptQuality?.guardPromoteStreak ?? 2)} guard_severe_promote_streak=${String(contextEngineConfig.promptQuality?.guardSeverePromoteStreak ?? 2)} guard_release_streak=${String(contextEngineConfig.promptQuality?.guardReleaseStreak ?? 3)} guard_hold_turns=${String(contextEngineConfig.promptQuality?.guardHoldTurns ?? 2)} guard_max_floor=${contextEngineConfig.promptQuality?.guardMaxFloorStage ?? "minimal"} guard_severe_overall=${(contextEngineConfig.promptQuality?.guardSevereOverallThreshold ?? 0.45).toFixed(3)} guard_severe_low_quality_rate=${(contextEngineConfig.promptQuality?.guardSevereLowQualityRateThreshold ?? 0.7).toFixed(3)}\n`,

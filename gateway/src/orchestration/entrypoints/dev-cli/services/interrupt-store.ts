@@ -18,15 +18,33 @@ function nowEpochSec(): number {
   return Math.floor(Date.now() / 1_000);
 }
 
+function resolveLegacyInterruptStorePath(path: string): string | undefined {
+  const separator = path.includes("\\") ? "\\" : "/";
+  const replaced = path.replace(
+    /[\\/]sessions[\\/]interrupts\.json$/,
+    `${separator}session${separator}interrupts.json`,
+  );
+  if (replaced === path) {
+    return undefined;
+  }
+  return replaced;
+}
+
 function loadInterruptStore(path: string): InterruptStorePayload {
-  if (!existsSync(path)) {
-    return {
-      version: 1,
-      entries: {},
-    };
+  let sourcePath = path;
+  if (!existsSync(sourcePath)) {
+    const legacyPath = resolveLegacyInterruptStorePath(path);
+    if (legacyPath && existsSync(legacyPath)) {
+      sourcePath = legacyPath;
+    } else {
+      return {
+        version: 1,
+        entries: {},
+      };
+    }
   }
   try {
-    const raw = readFileSync(path, "utf8");
+    const raw = readFileSync(sourcePath, "utf8");
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed !== "object" || parsed === null) {
       return { version: 1, entries: {} };

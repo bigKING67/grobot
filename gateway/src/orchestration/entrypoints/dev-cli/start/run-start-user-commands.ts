@@ -25,6 +25,8 @@ const RESERVED_SLASH_COMMAND_NAMES = new Set<string>([
   "switch",
   "continue",
   "health",
+  "skills",
+  "mcp",
   "model",
   "status",
   "plan",
@@ -63,6 +65,12 @@ interface CreateRunStartUserCommandsRuntimeInput {
 export interface RunStartUserCommandsRuntime {
   handleManagementCommand(userInput: string): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
+}
+
+export interface RunStartUserCommandSuggestion {
+  command: string;
+  description: string;
+  enabled: boolean;
 }
 
 type NormalizedCommandNameResult =
@@ -250,10 +258,56 @@ function applyCommandPromptTemplate(prompt: string, args: string): string {
   return `${prompt}\n\n${args}`;
 }
 
+function resolveCommandsDir(homeDir: string): string {
+  return `${removeTrailingSlashes(homeDir)}/commands`;
+}
+
+function listUserCommandRecords(commandsDir: string): UserCommandRecord[] {
+  mkdirSync(commandsDir, { recursive: true });
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(commandsDir);
+  } catch {
+    return [];
+  }
+  const records: UserCommandRecord[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) {
+      continue;
+    }
+    const filePath = `${commandsDir}/${entry}`;
+    try {
+      const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+      const normalized = parseUserCommandPayload(filePath, raw);
+      if (normalized) {
+        records.push(normalized);
+      }
+    } catch {
+      // ignore malformed files to keep command runtime resilient
+    }
+  }
+  records.sort((left, right) => left.name.localeCompare(right.name));
+  return records;
+}
+
+export function listRunStartUserCommandSuggestions(homeDir: string): RunStartUserCommandSuggestion[] {
+  const commandsDir = resolveCommandsDir(homeDir);
+  const records = listUserCommandRecords(commandsDir);
+  const suggestions: RunStartUserCommandSuggestion[] = [];
+  for (const record of records) {
+    suggestions.push({
+      command: `/${record.name}`,
+      description: record.description.trim() || "User-defined command",
+      enabled: record.enabled,
+    });
+  }
+  return suggestions;
+}
+
 export function createRunStartUserCommandsRuntime(
   input: CreateRunStartUserCommandsRuntimeInput,
 ): RunStartUserCommandsRuntime {
-  const commandsDir = `${removeTrailingSlashes(input.homeDir)}/commands`;
+  const commandsDir = resolveCommandsDir(input.homeDir);
 
   const ensureCommandsDir = (): void => {
     mkdirSync(commandsDir, { recursive: true });
@@ -285,30 +339,7 @@ export function createRunStartUserCommandsRuntime(
 
   const listCommands = (): UserCommandRecord[] => {
     ensureCommandsDir();
-    let entries: string[] = [];
-    try {
-      entries = readdirSync(commandsDir);
-    } catch {
-      return [];
-    }
-    const records: UserCommandRecord[] = [];
-    for (const entry of entries) {
-      if (!entry.endsWith(".json")) {
-        continue;
-      }
-      const filePath = `${commandsDir}/${entry}`;
-      try {
-        const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-        const normalized = parseUserCommandPayload(filePath, raw);
-        if (normalized) {
-          records.push(normalized);
-        }
-      } catch {
-        // ignore malformed files to keep command runtime resilient
-      }
-    }
-    records.sort((left, right) => left.name.localeCompare(right.name));
-    return records;
+    return listUserCommandRecords(commandsDir);
   };
 
   const writeCommand = (record: UserCommandRecord): void => {

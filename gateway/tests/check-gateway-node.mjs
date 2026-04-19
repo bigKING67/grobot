@@ -689,6 +689,10 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.continue_menu_opened, true);
   assert.equal(sessionInteractiveDispatchPayload.model_reset_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.skills_dispatched_to_stdout, true);
+  assert.equal(sessionInteractiveDispatchPayload.skills_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.mcp_dispatched_to_stdout, true);
+  assert.equal(sessionInteractiveDispatchPayload.mcp_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.user_command_checked, true);
   assert.equal(sessionInteractiveDispatchPayload.user_command_hits_run_turn, false);
   logStep("session-interactive-dispatch-contract");
@@ -720,6 +724,27 @@ async function runGatewayContractSmoke() {
   assert.equal(userCommandsContractPayload.failure_marked, false);
   assert.equal(Number(userCommandsContractPayload.stdout_rows_count) >= 1, true);
   logStep("user-commands-contract");
+
+  const runStartSlashSuggestionsContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-slash-suggestions-contract.ts",
+  ]);
+  assertSuccess("run-start-slash-suggestions-contract", runStartSlashSuggestionsContractResult);
+  const runStartSlashSuggestionsContractPayload = parseJsonOutput(
+    "run-start-slash-suggestions-contract",
+    runStartSlashSuggestionsContractResult.stdout,
+  );
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_model, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_commands, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_user_shipit, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_disabled_marked, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.model_filter_only_model_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_only_shipit, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plain_input_empty, true);
+  logStep("run-start-slash-suggestions-contract");
 
   const bridgeCliContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/bridge-cli-contract.mjs",
@@ -998,6 +1023,7 @@ async function runGatewayContractSmoke() {
   assert.equal(memoryOrchestratorContractPayload.tune_decay_policy_applied_rows, true);
   assert.equal(memoryOrchestratorContractPayload.tune_decay_policy_applied_confidence, true);
   assert.equal(memoryOrchestratorContractPayload.tune_decay_policy_applied_age, true);
+  assert.equal(memoryOrchestratorContractPayload.tune_injection_policy_applied, true);
   assert.equal(memoryOrchestratorContractPayload.inject_includes_ga_or_experience, true);
   assert.equal(memoryOrchestratorContractPayload.inject_filters_self_from_team_memory, true);
   assert.equal(memoryOrchestratorContractPayload.inject_emits_event, true);
@@ -1048,6 +1074,54 @@ async function runGatewayContractSmoke() {
   assert.equal(memoryDecayAutotuneContractPayload.state_roundtrip_updates_kept, true);
   assert.equal(memoryDecayAutotuneContractPayload.state_roundtrip_reason_kept, true);
   logStep("memory-decay-autotune-contract");
+
+  const memoryStrategyAutotuneContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/memory-strategy-autotune-contract.ts",
+  ]);
+  assertSuccess("memory-strategy-autotune-contract", memoryStrategyAutotuneContractResult);
+  const memoryStrategyAutotuneContractPayload = parseJsonOutput(
+    "memory-strategy-autotune-contract",
+    memoryStrategyAutotuneContractResult.stdout,
+  );
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_pressure_update_changed, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_pressure_update_has_reason, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_pressure_budget_tightened, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_pressure_section_tightened, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_pressure_score_tightened, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_pressure_alpha_rebalanced, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_relax_update_changed, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_relax_update_has_reason, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_relax_budget_relaxed, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_relax_section_relaxed, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_relax_score_relaxed, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.quality_relax_alpha_rebalanced, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.pressure_only_update_changed, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.pressure_only_update_has_reason, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.pressure_only_update_budget_tightened, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.pressure_only_update_section_tightened, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.pressure_only_update_quality_still_healthy, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.cooldown_hold_has_reason, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.cooldown_hold_keeps_ratio, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.cooldown_hold_decrements_window, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.cooldown_release_has_relax_reason, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.cooldown_release_ratio_increases, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.cooldown_release_direction_relax, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_budget_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_section_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_rows_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_score_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_alpha_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_followup_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_cooldown_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.normalized_invalid_action_scale_clamped, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.policy_applied_matches_state, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_updates_kept, true);
+  assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_reason_kept, true);
+  logStep("memory-strategy-autotune-contract");
 
   const interactiveBindingsResult = runCommand("npx", [
     "--yes",
@@ -5519,11 +5593,23 @@ async function runTsRustExecutionSmoke() {
   assert.equal(memoryDecayAutotuneQualityFlowPayload.status_memory_orchestrator_present, true);
   assert.equal(memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_present, true);
   assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_autotune_present,
+    true,
+  );
+  assert.equal(
     memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_quality_fields_present,
     true,
   );
   assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_autotune_quality_fields_present,
+    true,
+  );
+  assert.equal(
     memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_reason_has_quality_tighten,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_autotune_reason_has_quality_tighten,
     true,
   );
   assert.equal(
@@ -5534,10 +5620,28 @@ async function runTsRustExecutionSmoke() {
     memoryDecayAutotuneQualityFlowPayload.status_memory_decay_confidence_tightened,
     true,
   );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_budget_ratio_tightened,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_strategy_section_tightened,
+    true,
+  );
   assert.equal(memoryDecayAutotuneQualityFlowPayload.state_exists, true);
   assert.equal(memoryDecayAutotuneQualityFlowPayload.state_adaptive_updates_increased, true);
   assert.equal(memoryDecayAutotuneQualityFlowPayload.state_quality_ema_present, true);
   assert.equal(memoryDecayAutotuneQualityFlowPayload.state_last_reason_has_quality_tighten, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.strategy_state_exists, true);
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.strategy_state_adaptive_updates_increased,
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.strategy_state_quality_ema_present, true);
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.strategy_state_last_reason_has_quality_tighten,
+    true,
+  );
   logStep("start-smoke-contract start-context-memory-decay-autotune-quality-flow");
 
   const memoryDecayAutotuneQualityRelaxFlowResult = runContract(
@@ -5569,11 +5673,23 @@ async function runTsRustExecutionSmoke() {
   assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_orchestrator_present, true);
   assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_present, true);
   assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_autotune_present,
+    true,
+  );
+  assert.equal(
     memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_quality_fields_present,
     true,
   );
   assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_autotune_quality_fields_present,
+    true,
+  );
+  assert.equal(
     memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_reason_has_quality_relax,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_autotune_reason_has_quality_relax,
     true,
   );
   assert.equal(
@@ -5584,10 +5700,31 @@ async function runTsRustExecutionSmoke() {
     memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_decay_confidence_relaxed,
     true,
   );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_budget_ratio_relaxed,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_strategy_section_relaxed,
+    true,
+  );
   assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_exists, true);
   assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_adaptive_updates_increased, true);
   assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_quality_ema_present, true);
   assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_last_reason_has_quality_relax, true);
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_exists, true);
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_adaptive_updates_increased,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_quality_ema_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.strategy_state_last_reason_has_quality_relax,
+    true,
+  );
   logStep("start-smoke-contract start-context-memory-decay-autotune-quality-relax-flow");
 
   const memoryDecayAutotuneHysteresisFlowResult = runContract(
@@ -6160,12 +6297,13 @@ function ensureContractsExist() {
       "history-compaction-contract.mjs",
       "semantic-search-regression-contract.mjs",
       "browser-structured-mcp-contract.mjs",
-      "bridge-cli-contract.mjs",
-      "bridge-error-codes-schema-contract.mjs",
-      "plan-events-policy-guard-contract.mjs",
-      "ask-user-tool-contract.ts",
-      "ga-skill-prompt-contract.ts",
-    ];
+    "bridge-cli-contract.mjs",
+    "bridge-error-codes-schema-contract.mjs",
+    "plan-events-policy-guard-contract.mjs",
+    "run-start-slash-suggestions-contract.ts",
+    "ask-user-tool-contract.ts",
+    "ga-skill-prompt-contract.ts",
+  ];
   for (const contractName of requiredContracts) {
     const path = resolve(contractsRoot, contractName);
     if (!existsSync(path)) {

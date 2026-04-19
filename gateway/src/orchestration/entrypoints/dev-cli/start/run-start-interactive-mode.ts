@@ -5,6 +5,7 @@ import { createRunStartInteractiveHandler } from "./run-start-interactive-handle
 import { runSessionInputLoop } from "./run-start-io";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
+import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
 
@@ -248,8 +249,15 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       config: statusLineConfig,
     });
   };
+  const getSlashSuggestions = (lineInput: string) =>
+    listRunStartSlashSuggestions({
+      homeDir: input.homeDir,
+      userInput: lineInput,
+      maxItems: 8,
+    });
 
   await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
+    getSlashSuggestions,
     onEscapeInterrupt: async () => {
       if (input.isPlanMode()) {
         await input.requestPlanInterrupt("cli_esc");

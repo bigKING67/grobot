@@ -126,6 +126,8 @@ async function main(): Promise<void> {
   const statusSegment = await runDispatchCase("/status segment tokens off");
   const interruptCommand = await runDispatchCase("/interrupt");
   const commandsList = await runDispatchCase("/commands list");
+  const skillsCommand = await runDispatchCase("/skills");
+  const mcpCommand = await runDispatchCase("/mcp");
   const userCommandInvocation = await runDispatchCase("/shipit");
 
   const payload = {
@@ -146,6 +148,10 @@ async function main(): Promise<void> {
     status_segment_dispatched: includesEvent(statusSegment.events, "setStatusSegmentEnabled:tokens:off"),
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
+    skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),
+    skills_hits_run_turn: includesEvent(skillsCommand.events, "runTurn:/skills"),
+    mcp_dispatched_to_stdout: includesEvent(mcpCommand.events, "writeStdout"),
+    mcp_hits_run_turn: includesEvent(mcpCommand.events, "runTurn:/mcp"),
     user_command_checked: includesEvent(userCommandInvocation.events, "tryRunUserCommand:/shipit"),
     user_command_hits_run_turn: includesEvent(userCommandInvocation.events, "runTurn:/shipit"),
   };

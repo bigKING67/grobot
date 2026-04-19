@@ -21,6 +21,11 @@ interface ParsedStatusCommand {
   reason?: string;
 }
 
+export interface SlashCommandSuggestion {
+  command: string;
+  description: string;
+}
+
 function matchesInteractiveCommand(input: string, command: string): boolean {
   return input === command || input.startsWith(`${command} `);
 }
@@ -178,6 +183,44 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     },
     helpLines: [
       "  /health              Show provider failover and circuit status",
+    ],
+  },
+  {
+    id: "skills",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/skills"),
+    execute: async ({ handlers }) => {
+      handlers.writeStdout(
+        [
+          "[skills]",
+          "- project: ./.agents/skills, ./.codex/skills",
+          "- global: ~/.agents/skills, ~/.codex/skills",
+          "- tip: use /commands new <name> <prompt> to create reusable local command templates",
+          "",
+        ].join("\n"),
+      );
+      return "continue";
+    },
+    helpLines: [
+      "  /skills              Show skill directories and quick usage hint",
+    ],
+  },
+  {
+    id: "mcp",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/mcp"),
+    execute: async ({ handlers }) => {
+      handlers.writeStdout(
+        [
+          "[mcp]",
+          "- runtime route is auto-injected by governance policy",
+          "- if you need explicit MCP request, ask with `mcp_call(server=..., tool=...)` in prompt",
+          "- check route status with /health and start diagnostics",
+          "",
+        ].join("\n"),
+      );
+      return "continue";
+    },
+    helpLines: [
+      "  /mcp                 Show MCP usage hints in current CLI session",
     ],
   },
   {
@@ -359,6 +402,8 @@ const HELP_ORDER: readonly string[] = [
   "switch",
   "continue",
   "health",
+  "skills",
+  "mcp",
   "model",
   "status",
   "plan",
@@ -367,32 +412,35 @@ const HELP_ORDER: readonly string[] = [
   "exit",
 ];
 
-const COMMAND_HINT_TOKENS: readonly string[] = [
-  "/sessions",
-  "/commands",
-  "/commands new <name> <prompt>",
-  "/commands list",
-  "/commands delete <name>",
-  "/new",
-  "/switch [id]",
-  "/continue [id]",
-  "/health",
-  "/model",
-  "/model current",
-  "/model list",
-  "/model use <id>",
-  "/status",
-  "/status layout <adaptive|full|compact>",
-  "/status theme <plain|nerd|ccline>",
-  "/status segment <id> <on|off>",
-  "/plan <goal>",
-  "/plan status",
-  "/plan apply",
-  "/plan cancel",
-  "/interrupt",
-  "/handoff",
-  "/help",
-  "/exit",
+const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
+  { command: "/sessions", description: "Open session picker (title + summary)" },
+  { command: "/commands", description: "Manage user-defined slash commands" },
+  { command: "/commands new <name> <prompt>", description: "Create a user command template" },
+  { command: "/commands list", description: "List user-defined slash commands" },
+  { command: "/commands delete <name>", description: "Delete a user command" },
+  { command: "/new", description: "Create and switch to a new session" },
+  { command: "/switch [id]", description: "Switch active session" },
+  { command: "/continue [id]", description: "Inject summary bridge from a session" },
+  { command: "/health", description: "Show provider failover and circuit status" },
+  { command: "/skills", description: "Show skill directories and quick usage hint" },
+  { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
+  { command: "/model", description: "Open interactive model picker" },
+  { command: "/model current", description: "Show current provider/model snapshot" },
+  { command: "/model list", description: "List selectable models from upstream" },
+  { command: "/model use <id>", description: "Switch model for current session" },
+  { command: "/model reset", description: "Reset model override for current session" },
+  { command: "/status", description: "Show current status line config snapshot" },
+  { command: "/status layout <adaptive|full|compact>", description: "Set status line layout mode" },
+  { command: "/status theme <plain|nerd|ccline>", description: "Set status line theme" },
+  { command: "/status segment <id> <on|off>", description: "Toggle status line segment" },
+  { command: "/plan <goal>", description: "Enter plan mode and create plan artifact" },
+  { command: "/plan status", description: "Show active plan status" },
+  { command: "/plan apply [extra]", description: "Review and execute active plan" },
+  { command: "/plan cancel", description: "Cancel plan mode and discard plan" },
+  { command: "/interrupt", description: "Interrupt current running turn (Esc also works)" },
+  { command: "/handoff", description: "Write HANDOFF.md" },
+  { command: "/help", description: "Show interactive help screen" },
+  { command: "/exit", description: "Exit interactive mode" },
 ];
 
 function findSlashCommandById(id: string): SlashCommandSpec | undefined {
@@ -412,8 +460,12 @@ export function listSlashCommandHelpLines(): string[] {
 }
 
 export function buildSlashCommandHint(): string {
-  const wrapped = COMMAND_HINT_TOKENS.map((token) => `\`${token}\``);
+  const wrapped = SLASH_COMMAND_SUGGESTIONS.map((item) => `\`${item.command}\``);
   return `Enter message (${wrapped.join(", ")}; CLI Esc also requests turn interrupt; no id => open picker):`;
+}
+
+export function listSlashCommandSuggestions(): readonly SlashCommandSuggestion[] {
+  return SLASH_COMMAND_SUGGESTIONS;
 }
 
 export async function dispatchSlashCommand(

@@ -34,6 +34,13 @@ const RUNTIME_SPAWN_TIMEOUT_CEILING_MS = 300_000;
 const RUNTIME_SPAWN_TIMEOUT_HEADROOM_MS = 3_000;
 const RUNTIME_INTERRUPT_ERROR_CLASS = "turn_interrupted";
 
+function removeTrailingSlashes(value: string): string {
+  if (/^[\\/]+$/.test(value)) {
+    return value.startsWith("\\") ? "\\" : "/";
+  }
+  return value.replace(/[\\/]+$/, "");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -164,6 +171,10 @@ function resolveRuntimeBinaryPath(): string {
   const envPath = process.env.GROBOT_RUNTIME_BIN;
   if (typeof envPath === "string" && envPath.trim().length > 0) {
     return envPath.trim();
+  }
+  const repoRoot = process.env.GROBOT_TS_DEV_REPO_ROOT;
+  if (typeof repoRoot === "string" && repoRoot.trim().length > 0) {
+    return `${removeTrailingSlashes(repoRoot)}/runtime/target/debug/grobot-runtime`;
   }
   return `${process.cwd()}/runtime/target/debug/grobot-runtime`;
 }

@@ -320,6 +320,16 @@ export interface MemoryOrchestratorDecayPolicyOverride {
   decayMinConfidenceUnverified?: number;
 }
 
+export interface MemoryOrchestratorInjectionPolicyOverride {
+  injectBudgetRatio?: number;
+  injectBudgetMinTokens?: number;
+  injectBudgetMaxTokens?: number;
+  maxSectionTokens?: number;
+  maxGaMemoryRows?: number;
+  maxTeamExperienceRows?: number;
+  minTeamExperienceScore?: number;
+}
+
 export interface MemoryOrchestrator {
   policySnapshot(): MemoryOrchestratorPolicySnapshot;
   ingest(input: MemoryOrchestratorIngestInput): MemoryOrchestratorIngestResult;
@@ -330,6 +340,9 @@ export interface MemoryOrchestrator {
   decay<T extends MemoryOrchestratorGaMemoryRecord>(
     input: MemoryOrchestratorDecayInput<T>,
   ): MemoryOrchestratorDecayResult<T>;
+  tuneInjectionPolicy(
+    input: MemoryOrchestratorInjectionPolicyOverride,
+  ): MemoryOrchestratorPolicySnapshot;
   tuneDecayPolicy(input: MemoryOrchestratorDecayPolicyOverride): MemoryOrchestratorPolicySnapshot;
   feedback(input: MemoryOrchestratorFeedbackInput): MemoryOrchestratorFeedbackResult;
   injectContext(input: MemoryOrchestratorInjectInput): MemoryOrchestratorInjectResult;
@@ -791,6 +804,63 @@ export function createMemoryOrchestrator(input: CreateMemoryOrchestratorInput): 
 
   return {
     policySnapshot: () => ({ ...policy }),
+    tuneInjectionPolicy: (override): MemoryOrchestratorPolicySnapshot => {
+      if (typeof override.injectBudgetRatio === "number") {
+        policy.injectBudgetRatio = clamp(
+          Number(override.injectBudgetRatio.toFixed(4)),
+          0.05,
+          0.55,
+        );
+      }
+      if (typeof override.injectBudgetMinTokens === "number") {
+        policy.injectBudgetMinTokens = clamp(
+          Math.floor(override.injectBudgetMinTokens),
+          64,
+          8_192,
+        );
+      }
+      if (typeof override.injectBudgetMaxTokens === "number") {
+        policy.injectBudgetMaxTokens = clamp(
+          Math.floor(override.injectBudgetMaxTokens),
+          64,
+          16_384,
+        );
+      }
+      if (policy.injectBudgetMaxTokens < policy.injectBudgetMinTokens) {
+        policy.injectBudgetMaxTokens = policy.injectBudgetMinTokens;
+      }
+      if (typeof override.maxSectionTokens === "number") {
+        policy.maxSectionTokens = clamp(
+          Math.floor(override.maxSectionTokens),
+          96,
+          8_192,
+        );
+      }
+      if (typeof override.maxGaMemoryRows === "number") {
+        policy.maxGaMemoryRows = clamp(
+          Math.floor(override.maxGaMemoryRows),
+          1,
+          32,
+        );
+      }
+      if (typeof override.maxTeamExperienceRows === "number") {
+        policy.maxTeamExperienceRows = clamp(
+          Math.floor(override.maxTeamExperienceRows),
+          1,
+          32,
+        );
+      }
+      if (typeof override.minTeamExperienceScore === "number") {
+        policy.minTeamExperienceScore = clamp(
+          Math.floor(override.minTeamExperienceScore),
+          0,
+          160,
+        );
+      }
+      return {
+        ...policy,
+      };
+    },
     tuneDecayPolicy: (override): MemoryOrchestratorPolicySnapshot => {
       const minRowsToKeep = typeof override.decayMinRowsToKeep === "number"
         ? clamp(Math.floor(override.decayMinRowsToKeep), 1, 64)

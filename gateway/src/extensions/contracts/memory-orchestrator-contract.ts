@@ -227,12 +227,20 @@ const decay = orchestrator.decay({
     },
   ],
 });
+const policyBeforeInjectionTune = orchestrator.policySnapshot();
 const tunedPolicy = orchestrator.tuneDecayPolicy({
   decayMaxRowsPerSession: 3,
   decayMinRowsToKeep: 2,
   decayMinConfidenceVerified: 0.31,
   decayMinConfidenceUnverified: 0.52,
   decayUnverifiedMaxAgeHours: 60,
+});
+const tunedInjectionPolicy = orchestrator.tuneInjectionPolicy({
+  injectBudgetRatio: 0.26,
+  maxSectionTokens: 920,
+  maxGaMemoryRows: 3,
+  maxTeamExperienceRows: 4,
+  minTeamExperienceScore: 39,
 });
 
 const turnSuccessFeedback = orchestrator.feedback({
@@ -267,8 +275,8 @@ const turnFailureFeedback = orchestrator.feedback({
 
 const policy = orchestrator.policySnapshot();
 const payload = {
-  policy_has_override_ratio: Number(policy.injectBudgetRatio.toFixed(2)) === 0.3,
-  policy_max_section_tokens: policy.maxSectionTokens,
+  policy_has_override_ratio: Number(policyBeforeInjectionTune.injectBudgetRatio.toFixed(2)) === 0.3,
+  policy_max_section_tokens: policyBeforeInjectionTune.maxSectionTokens,
   policy_default_min_tokens: policy.injectBudgetMinTokens === defaultPolicy.injectBudgetMinTokens,
   inject_has_prompt_parts: inject.promptParts.length > 0,
   inject_budget_positive: inject.budgetTokens > 0,
@@ -293,6 +301,12 @@ const payload = {
     tunedPolicy.decayMinConfidenceVerified === 0.31
     && tunedPolicy.decayMinConfidenceUnverified === 0.52,
   tune_decay_policy_applied_age: tunedPolicy.decayUnverifiedMaxAgeHours === 60,
+  tune_injection_policy_applied:
+    tunedInjectionPolicy.injectBudgetRatio === 0.26
+    && tunedInjectionPolicy.maxSectionTokens === 920
+    && tunedInjectionPolicy.maxGaMemoryRows === 3
+    && tunedInjectionPolicy.maxTeamExperienceRows === 4
+    && tunedInjectionPolicy.minTeamExperienceScore === 39,
   inject_includes_ga_or_experience:
     inject.includedSections.includes("ga_skill_cards")
     || inject.includedSections.includes("personal_experience"),

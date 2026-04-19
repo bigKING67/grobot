@@ -19,7 +19,62 @@ if ! command -v node >/dev/null 2>&1; then
   exit 86
 fi
 
-CACHE_ROOT="${GROBOT_HOME:-${HOME}/.grobot}/cache/ts-dev-cli"
+resolve_default_cache_root() {
+  if [ -n "${GROBOT_TS_DEV_CLI_CACHE_ROOT:-}" ]; then
+    printf '%s' "${GROBOT_TS_DEV_CLI_CACHE_ROOT}"
+    return 0
+  fi
+  if [ -n "${GROBOT_TS_DEV_CACHE_ROOT:-}" ]; then
+    printf '%s/ts-dev-cli' "${GROBOT_TS_DEV_CACHE_ROOT%/}"
+    return 0
+  fi
+
+  local os_name
+  os_name="$(uname -s 2>/dev/null || echo unknown)"
+  case "$os_name" in
+    Darwin)
+      printf '%s/Library/Caches/grobot/ts-dev-cli' "${HOME}"
+      ;;
+    Linux)
+      if [ -n "${XDG_CACHE_HOME:-}" ]; then
+        printf '%s/grobot/ts-dev-cli' "${XDG_CACHE_HOME%/}"
+      else
+        printf '%s/.cache/grobot/ts-dev-cli' "${HOME}"
+      fi
+      ;;
+    *)
+      if [ -n "${XDG_CACHE_HOME:-}" ]; then
+        printf '%s/grobot/ts-dev-cli' "${XDG_CACHE_HOME%/}"
+      else
+        printf '%s/.cache/grobot/ts-dev-cli' "${HOME}"
+      fi
+      ;;
+  esac
+}
+
+migrate_legacy_cache_root() {
+  local target_root="$1"
+  local legacy_root="${GROBOT_HOME:-${HOME}/.grobot}/cache/ts-dev-cli"
+  if [ "$target_root" = "$legacy_root" ]; then
+    return 0
+  fi
+  if [ ! -d "$legacy_root" ]; then
+    return 0
+  fi
+  if [ -d "$target_root" ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$target_root")"
+  if mv "$legacy_root" "$target_root" >/dev/null 2>&1; then
+    return 0
+  fi
+  if cp -R "$legacy_root" "$target_root" >/dev/null 2>&1; then
+    rm -rf "$legacy_root" >/dev/null 2>&1 || true
+  fi
+}
+
+CACHE_ROOT="$(resolve_default_cache_root)"
+migrate_legacy_cache_root "$CACHE_ROOT"
 OUT_DIR="${GROBOT_TS_DEV_CLI_OUT_DIR:-$CACHE_ROOT/dist}"
 ENTRY="$OUT_DIR/orchestration/dev-cli.js"
 mkdir -p "$OUT_DIR"
