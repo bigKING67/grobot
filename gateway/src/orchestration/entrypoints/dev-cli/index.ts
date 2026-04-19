@@ -1,33 +1,9 @@
 import {
-  OptionValue,
   parseArgs,
-  readOptionString,
-  readOptionStringAny,
   usage,
   validateHardCutExecutionOptions,
 } from "./cli-args";
-import { runGc } from "./gc/run-gc";
-import { runInit } from "./init/run-init";
-import { runServe } from "./serve/run-serve";
-import { runStart } from "./start/run-start";
-import { runStatus } from "./status/run-status";
-
-function hasStartImContext(options: Record<string, OptionValue>): boolean {
-  return Boolean(
-    readOptionString(options, "platform")
-      || readOptionString(options, "tenant")
-      || readOptionStringAny(options, ["session-scope", "scope"])
-      || readOptionStringAny(options, ["session-subject", "subject"]),
-  );
-}
-
-function writeStartImOnlyHint(): void {
-  process.stderr.write("error: `grobot start` is IM-only and requires explicit platform/session context.\n");
-  process.stderr.write(
-    "hint: pass one of --platform/--tenant/--session-scope/--session-subject (legacy: --scope/--subject).\n",
-  );
-  process.stderr.write("hint: for local terminal usage, run `grobot` (no subcommand).\n");
-}
+import { dispatchDevCliCommand } from "./commands/cli/registry";
 
 export async function runDevCli(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv);
@@ -47,32 +23,14 @@ export async function runDevCli(argv: string[]): Promise<number> {
     return 2;
   }
 
-  if (!command) {
-    return runStart(parsed.options);
-  }
-
-  if (command === "status") {
-    return runStatus(parsed.options);
-  }
-  if (command === "init") {
-    return runInit(parsed.options);
-  }
-  if (command === "gc") {
-    return runGc(parsed.options);
-  }
-  if (command === "start") {
-    if (!hasStartImContext(parsed.options)) {
-      writeStartImOnlyHint();
-      return 2;
-    }
-    return runStart(parsed.options);
-  }
-  if (command === "serve") {
-    return runServe(parsed.options);
-  }
-
-  process.stderr.write(`error: unsupported command for ts-dev-cli: ${command}\n`);
-  return 3;
+  return dispatchDevCliCommand(parsed, {
+    writeStdout: (message) => {
+      process.stdout.write(message);
+    },
+    writeStderr: (message) => {
+      process.stderr.write(message);
+    },
+  });
 }
 
 export async function runDevCliFromProcess(): Promise<void> {

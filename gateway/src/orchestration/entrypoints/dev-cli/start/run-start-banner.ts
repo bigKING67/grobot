@@ -1,5 +1,6 @@
 import { SessionStoreRuntime } from "../services/session-store";
 import { maskRedisUrl } from "../services/memory-store-config";
+import { buildSlashCommandHint } from "../commands/slash/registry";
 import { createCliUiRenderer } from "../ui/kernel/renderer";
 import { type StartScreenViewModel } from "../ui/screens/startup-screen";
 
@@ -47,8 +48,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
   const viewModel: StartScreenViewModel = {
     title: "Grobot started",
     rows,
-    commandHint:
-      "Enter message (`/sessions`, `/new`, `/switch [id]`, `/continue [id]`, `/health`, `/model`, `/model current`, `/model list`, `/model use <id>`, `/status`, `/status layout <adaptive|full|compact>`, `/status theme <plain|nerd>`, `/status segment <id> <on|off>`, `/plan <goal>`, `/plan status`, `/plan apply`, `/plan cancel`, `/interrupt`, `/handoff`, `/help`, `/exit`; CLI Esc also requests turn interrupt; no id => open picker):",
+    commandHint: buildSlashCommandHint(),
   };
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,
