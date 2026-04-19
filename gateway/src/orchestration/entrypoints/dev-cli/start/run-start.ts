@@ -4,7 +4,7 @@ import { bootstrapRunStartState } from "./run-start-bootstrap";
 import { resolveRunStartContext } from "./run-start-context";
 import { createRunStartInteractiveModeInput } from "./run-start-interactive-bindings";
 import { runStartInteractiveMode } from "./run-start-interactive-mode";
-import { createRunStartModelOps } from "./run-start-model-ops";
+import { createRunStartModelOps, type RunStartModelOps } from "./run-start-model-ops";
 import { createRunStartSessionMenuOps } from "./run-start-session-menu-ops";
 import { runStartMessageMode } from "./run-start-message-mode";
 import { createRunStartOutput } from "./run-start-output";
@@ -83,6 +83,51 @@ function resolveMemoryStrategyProfile(input: {
   return "general";
 }
 
+function normalizePositiveInt(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+function applyContextWindowOverride(input: {
+  config: {
+    contextWindowTokens: number;
+    reservedOutputTokens: number;
+    safetyMarginTokens: number;
+    autoCompactTokenLimit?: number;
+  };
+  nextWindowTokens: number;
+  keepAutoCompactAbsolute: boolean;
+  autoCompactRatio: number;
+}): boolean {
+  const normalizedNextWindow = Math.max(1_024, Math.floor(input.nextWindowTokens));
+  const previousWindow = normalizePositiveInt(input.config.contextWindowTokens) ?? 1_024;
+  const previousAutoCompact = normalizePositiveInt(input.config.autoCompactTokenLimit) ?? 1;
+  if (previousWindow === normalizedNextWindow) {
+    return false;
+  }
+  input.config.contextWindowTokens = normalizedNextWindow;
+  if (!input.keepAutoCompactAbsolute) {
+    const effectiveWindow = Math.max(
+      1_024,
+      normalizedNextWindow
+        - input.config.reservedOutputTokens
+        - input.config.safetyMarginTokens,
+    );
+    const scaledAutoCompact = Math.max(
+      1,
+      Math.floor(normalizedNextWindow * input.autoCompactRatio),
+    );
+    input.config.autoCompactTokenLimit = Math.max(
+      1,
+      Math.min(effectiveWindow, scaledAutoCompact),
+    );
+  }
+  const nextAutoCompact = normalizePositiveInt(input.config.autoCompactTokenLimit) ?? 1;
+  return previousAutoCompact !== nextAutoCompact || previousWindow !== normalizedNextWindow;
+}
+
 export async function runStart(
   options: Record<string, OptionValue>,
 ): Promise<number> {
@@ -142,6 +187,49 @@ export async function runStart(
       return;
     }
     output.writeStderr(message);
+  };
+  const defaultContextWindowTokens = Math.max(
+    1_024,
+    normalizePositiveInt(contextEngineConfig.contextWindowTokens) ?? 1_024,
+  );
+  const defaultAutoCompactLimit = Math.max(
+    1,
+    Math.floor(defaultContextWindowTokens * 0.9),
+  );
+  const configuredAutoCompactLimit = normalizePositiveInt(
+    contextEngineConfig.autoCompactTokenLimit,
+  ) ?? defaultAutoCompactLimit;
+  const keepAutoCompactAbsolute = Math.abs(
+    configuredAutoCompactLimit - defaultAutoCompactLimit,
+  ) > 1;
+  const autoCompactRatio = keepAutoCompactAbsolute
+    ? Math.max(
+      0.1,
+      Math.min(1, configuredAutoCompactLimit / defaultContextWindowTokens),
+    )
+    : 0.9;
+  let modelOpsRef: RunStartModelOps | undefined;
+  const refreshContextWindowFromModelCatalog = (reason: string): void => {
+    const modelOps = modelOpsRef;
+    if (!modelOps) {
+      return;
+    }
+    const snapshot = modelOps.getCurrentModelSnapshot();
+    const catalogWindow = normalizePositiveInt(
+      modelOps.getCachedModelContextWindowTokens(snapshot.model),
+    );
+    const nextWindowTokens = catalogWindow ?? defaultContextWindowTokens;
+    const updated = applyContextWindowOverride({
+      config: contextEngineConfig,
+      nextWindowTokens,
+      keepAutoCompactAbsolute,
+      autoCompactRatio,
+    });
+    if (updated) {
+      writeStartupDiagnostics(
+        `[context-engine] event=context_window_update reason=${reason} model=${snapshot.model} source=${catalogWindow ? "model_catalog" : "provider_default"} window=${String(contextEngineConfig.contextWindowTokens)} auto_limit=${String(contextEngineConfig.autoCompactTokenLimit ?? 0)}\n`,
+      );
+    }
   };
   for (const event of mcpInstructionEvents) {
     writeStartupDiagnostics(`[governance:mcp-instruction] ${event}\n`);
@@ -545,6 +633,7 @@ export async function runStart(
   ): Promise<number> => {
     activeTurnAbortController = controller;
     try {
+      refreshContextWindowFromModelCatalog("pre_turn");
       const code = await wire.executeTurn(userInput, interactiveMode, {
         signal: controller.signal,
         attachments: options?.attachments,
@@ -622,6 +711,7 @@ export async function runStart(
     },
     writeStdout: output.writeStdout,
   });
+  modelOpsRef = modelOps;
 
   const sessionMenuOps = createRunStartSessionMenuOps({
     sessionNamespaceKey,
@@ -636,6 +726,8 @@ export async function runStart(
   });
 
   modelOps.applyModelOverrideForActiveSession();
+  await modelOps.refreshModelCatalogCache();
+  refreshContextWindowFromModelCatalog("startup_model_catalog");
 
   const planMode = createRunStartPlanMode({
     workDir,

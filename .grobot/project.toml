@@ -34,7 +34,6 @@ shadow_mode = false
 [context_engine]
 enabled = true
 profile = "balanced" # balanced | aggressive | conservative
-context_window_tokens = 128000
 reserved_output_tokens = 20000
 safety_margin_tokens = 3000
 proactive_ratio = 0.88

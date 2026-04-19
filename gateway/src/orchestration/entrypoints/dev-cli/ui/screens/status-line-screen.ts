@@ -314,8 +314,8 @@ function formatWindowTokenCount(value: number | undefined): string {
     return "n/a";
   }
   const normalized = Math.max(1, Math.floor(value));
-  if (normalized >= 1024) {
-    return `${String(Math.round(normalized / 1024))}K`;
+  if (normalized >= 1000) {
+    return `${String(Math.round(normalized / 1000))}K`;
   }
   return String(normalized);
 }

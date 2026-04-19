@@ -131,7 +131,7 @@ function formatContextWindowLabel(tokens: number | undefined): string | undefine
   if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) {
     return undefined;
   }
-  const inK = Math.max(1, Math.round(tokens / 1024));
+  const inK = Math.max(1, Math.round(tokens / 1000));
   return `${String(inK)}K context`;
 }
 
