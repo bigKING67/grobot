@@ -6,6 +6,8 @@ type PolicyDriftSeverity = "none" | "low" | "medium" | "high";
 interface ParsedCliArgs {
   traceReportPath: string;
   skillRouterReportPath: string;
+  contextMemoryReportPath: string | undefined;
+  weeklyRegressionReportPath: string | undefined;
   autoLoopReportPath: string | undefined;
   policyDriftReportPath: string | undefined;
   outputPath: string | undefined;
@@ -83,6 +85,38 @@ interface HarnessCiSummary {
     accuracy: number;
     forbidden_violations: number;
     total_cases: number;
+    policy_hash: string | null;
+  };
+  context_memory: {
+    gate_pass: boolean;
+    trend_required: boolean;
+    trend_pass: boolean | null;
+    trend_mode: string | null;
+    trend_reason: string | null;
+    trend_decision_tag: string;
+    trend_decision_severity: string;
+    trend_action_hint: string;
+    trend_owner: string;
+    baseline_available: unknown;
+    policy_blob_match: unknown;
+    policy_hash_current: unknown;
+    policy_hash_base: unknown;
+    policy_hash_match: unknown;
+    pass_rate: number;
+    average_score: number;
+    case_count: number;
+    policy_hash: string | null;
+  };
+  weekly_regression: {
+    gate_pass: boolean;
+    trend_required: boolean;
+    trend_pass: boolean | null;
+    trend_mode: string | null;
+    trend_reason: string | null;
+    success_rate: number;
+    first_pass_rate: number;
+    token_cost: number;
+    rollback_rate: number;
     policy_hash: string | null;
   };
 }
@@ -409,7 +443,7 @@ function computeSuggestedLabels(
   } else {
     labels.push("ci/auto-loop-missing");
   }
-  if (trendDecisionSeverity === "error") {
+  if (!overallPass || trendDecisionSeverity === "error") {
     labels.push("ci/action-required");
   } else if (trendDecisionSeverity === "warn") {
     labels.push("ci/action-review");
@@ -519,9 +553,100 @@ function normalizeAutoLoopReport(autoLoopReport: JsonObject | undefined): Harnes
   };
 }
 
+function normalizeContextMemoryReport(contextMemoryReport: JsonObject | undefined): HarnessCiSummary["context_memory"] {
+  const payload = contextMemoryReport ?? {};
+  const variants = asObject(payload.variants);
+  const candidate = asObject(variants.candidate);
+  const summary = asObject(candidate.summary);
+  const gate = asObject(payload.overall_gate);
+  const trend = asObject(payload.trend);
+  const trendMeta = asObject(payload.trend_meta);
+  const policy = asObject(payload.policy);
+
+  const trendRequired = toBool(trendMeta.required, false);
+  const trendMode = asStringOrNull(trendMeta.mode);
+  const trendReason = asStringOrNull(trendMeta.reason);
+  let trendPass: boolean | null = null;
+  if (Object.keys(trend).length > 0) {
+    trendPass = toBool(trend.passed, false);
+  }
+  if (trendRequired && trendPass === null) {
+    trendPass = false;
+  }
+
+  const trendDecisionTag = computeTrendDecisionTag(trendRequired, trendMode, trendReason, trendPass);
+  const trendDecisionSeverity = computeTrendDecisionSeverity(trendDecisionTag);
+  const trendActionHint = computeTrendActionHint(trendDecisionTag);
+  const trendOwner = computeTrendOwner(trendDecisionTag);
+
+  return {
+    gate_pass: toBool(gate.passed, false),
+    trend_required: trendRequired,
+    trend_pass: trendPass,
+    trend_mode: trendMode,
+    trend_reason: trendReason,
+    trend_decision_tag: trendDecisionTag,
+    trend_decision_severity: trendDecisionSeverity,
+    trend_action_hint: trendActionHint,
+    trend_owner: trendOwner,
+    baseline_available: trendMeta.baseline_available,
+    policy_blob_match: trendMeta.policy_blob_match,
+    policy_hash_current: trendMeta.policy_hash_current,
+    policy_hash_base: trendMeta.policy_hash_base,
+    policy_hash_match: trendMeta.policy_hash_match,
+    pass_rate: toNumber(summary.pass_rate, 0),
+    average_score: toNumber(summary.average_score, 0),
+    case_count: toInt(summary.case_count, 0),
+    policy_hash: asStringOrNull(policy.hash),
+  };
+}
+
+function normalizeWeeklyRegressionReport(
+  weeklyRegressionReport: JsonObject | undefined,
+): HarnessCiSummary["weekly_regression"] {
+  const payload = weeklyRegressionReport ?? {};
+  const gate = asObject(payload.gate);
+  const trend = asObject(payload.trend);
+  const trendMeta = asObject(payload.trend_meta);
+  const policy = asObject(payload.policy);
+  const current = asObject(payload.current);
+  const metrics = asObject(current.metrics);
+
+  const trendRequired = toBool(trendMeta.required, false);
+  const trendMode = asStringOrNull(trendMeta.mode);
+  const trendReason = asStringOrNull(trendMeta.reason);
+  let trendPass: boolean | null = null;
+  if (Object.keys(trend).length > 0) {
+    trendPass = toBool(trend.passed, false);
+  }
+  if (trendRequired && trendPass === null) {
+    trendPass = false;
+  }
+
+  const successRate = toNumber(asObject(metrics.success_rate).value, 0);
+  const firstPassRate = toNumber(asObject(metrics.first_pass_rate).value, 0);
+  const tokenCost = toNumber(asObject(metrics.token_cost).value, 0);
+  const rollbackRate = toNumber(asObject(metrics.rollback_rate).value, 0);
+
+  return {
+    gate_pass: toBool(gate.passed, false),
+    trend_required: trendRequired,
+    trend_pass: trendPass,
+    trend_mode: trendMode,
+    trend_reason: trendReason,
+    success_rate: successRate,
+    first_pass_rate: firstPassRate,
+    token_cost: tokenCost,
+    rollback_rate: rollbackRate,
+    policy_hash: asStringOrNull(policy.hash),
+  };
+}
+
 export function buildHarnessCiSummary(
   traceReport: JsonObject,
   skillRouterReport: JsonObject,
+  contextMemoryReport?: JsonObject,
+  weeklyRegressionReport?: JsonObject,
   autoLoopReport?: JsonObject,
   policyDriftReport?: JsonObject,
 ): HarnessCiSummary {
@@ -560,8 +685,20 @@ export function buildHarnessCiSummary(
   const trendOwner = computeTrendOwner(trendDecisionTag);
   const trendPassForOverall = skillTrendPass === null ? true : skillTrendPass;
   const autoLoopSummary = normalizeAutoLoopReport(autoLoopReport);
+  const contextMemorySummary = normalizeContextMemoryReport(contextMemoryReport);
+  const weeklyRegressionSummary = normalizeWeeklyRegressionReport(weeklyRegressionReport);
+  const contextTrendPassForOverall =
+    contextMemorySummary.trend_pass === null ? true : contextMemorySummary.trend_pass;
+  const weeklyTrendPassForOverall =
+    weeklyRegressionSummary.trend_pass === null ? true : weeklyRegressionSummary.trend_pass;
 
-  const overallPass = tracePass && skillGatePass && trendPassForOverall;
+  const overallPass = tracePass
+    && skillGatePass
+    && trendPassForOverall
+    && contextMemorySummary.gate_pass
+    && contextTrendPassForOverall
+    && weeklyRegressionSummary.gate_pass
+    && weeklyTrendPassForOverall;
   const suggestedLabels = computeSuggestedLabels(
     overallPass,
     trendDecisionTag,
@@ -615,6 +752,8 @@ export function buildHarnessCiSummary(
       total_cases: toInt(skillSummary.total_cases, 0),
       policy_hash: skillPolicyHash,
     },
+    context_memory: contextMemorySummary,
+    weekly_regression: weeklyRegressionSummary,
   };
 }
 
@@ -671,6 +810,8 @@ function normalizePolicyDriftFieldsForMarkdown(policyDrift: JsonObject): {
 export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): string {
   const trace = asObject(summary.trace as unknown);
   const skill = asObject(summary.skill_router as unknown);
+  const contextMemory = asObject(summary.context_memory as unknown);
+  const weeklyRegression = asObject(summary.weekly_regression as unknown);
   const policyDrift = asObject(summary.policy_drift as unknown);
   const autoLoop = asObject(summary.auto_loop as unknown);
   const splitCounts = asObject(trace.split_counts);
@@ -694,6 +835,43 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
     typeof skill.policy_hash_match === "boolean" ? (skill.policy_hash_match ? "yes" : "no") : "n/a";
   const policyHashCurrent = normalizeOptionalText(skill.policy_hash_current) ?? "n/a";
   const policyHashBase = normalizeOptionalText(skill.policy_hash_base) ?? "n/a";
+
+  const contextTrendRequired = toBool(contextMemory.trend_required, false);
+  const contextTrendPassValue = contextMemory.trend_pass;
+  let contextTrendPassText = "n/a";
+  if (typeof contextTrendPassValue === "boolean") {
+    contextTrendPassText = contextTrendPassValue ? "pass" : "fail";
+  }
+  const contextTrendMode = normalizeOptionalText(contextMemory.trend_mode) ?? "n/a";
+  const contextTrendReason = normalizeOptionalText(contextMemory.trend_reason) ?? "n/a";
+  const contextTrendTag = normalizeOptionalText(contextMemory.trend_decision_tag) ?? "n/a";
+  const contextTrendSeverity = normalizeOptionalText(contextMemory.trend_decision_severity) ?? "n/a";
+  const contextTrendOwner = normalizeOptionalText(contextMemory.trend_owner) ?? "n/a";
+  const contextTrendAction = normalizeOptionalText(contextMemory.trend_action_hint) ?? "n/a";
+  const contextBaselineAvailableText =
+    typeof contextMemory.baseline_available === "boolean" ? (contextMemory.baseline_available ? "yes" : "no") : "n/a";
+  const contextPolicyBlobMatchText =
+    typeof contextMemory.policy_blob_match === "boolean" ? (contextMemory.policy_blob_match ? "yes" : "no") : "n/a";
+  const contextPolicyHashMatchText =
+    typeof contextMemory.policy_hash_match === "boolean" ? (contextMemory.policy_hash_match ? "yes" : "no") : "n/a";
+  const contextPolicyHashCurrent = normalizeOptionalText(contextMemory.policy_hash_current) ?? "n/a";
+  const contextPolicyHashBase = normalizeOptionalText(contextMemory.policy_hash_base) ?? "n/a";
+  const contextPassRate = toNumber(contextMemory.pass_rate, 0).toFixed(4);
+  const contextAverageScore = toNumber(contextMemory.average_score, 0).toFixed(4);
+  const contextCaseCount = toInt(contextMemory.case_count, 0);
+
+  const weeklyTrendRequired = toBool(weeklyRegression.trend_required, false);
+  const weeklyTrendPassValue = weeklyRegression.trend_pass;
+  let weeklyTrendPassText = "n/a";
+  if (typeof weeklyTrendPassValue === "boolean") {
+    weeklyTrendPassText = weeklyTrendPassValue ? "pass" : "fail";
+  }
+  const weeklyTrendMode = normalizeOptionalText(weeklyRegression.trend_mode) ?? "n/a";
+  const weeklyTrendReason = normalizeOptionalText(weeklyRegression.trend_reason) ?? "n/a";
+  const weeklySuccessRate = toNumber(weeklyRegression.success_rate, 0).toFixed(4);
+  const weeklyFirstPassRate = toNumber(weeklyRegression.first_pass_rate, 0).toFixed(4);
+  const weeklyTokenCost = toNumber(weeklyRegression.token_cost, 0).toFixed(6);
+  const weeklyRollbackRate = toNumber(weeklyRegression.rollback_rate, 0).toFixed(4);
 
   const labels = Array.isArray(summary.suggested_labels)
     ? summary.suggested_labels.filter((item) => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
@@ -738,6 +916,13 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
     `- skill-router-trend-owner: ${trendOwner}`,
     `- skill-router-trend: mode=${trendMode}; required=${trendRequired ? "yes" : "no"}; pass=${trendPassText}; reason=${trendReason}`,
     `- skill-router-trend-action: ${trendActionHint}`,
+    `- context-memory-trend-tag: ${contextTrendTag}`,
+    `- context-memory-trend-severity: ${contextTrendSeverity}`,
+    `- context-memory-trend-owner: ${contextTrendOwner}`,
+    `- context-memory-trend: mode=${contextTrendMode}; required=${contextTrendRequired ? "yes" : "no"}; pass=${contextTrendPassText}; reason=${contextTrendReason}`,
+    `- context-memory-trend-action: ${contextTrendAction}`,
+    `- weekly-regression: gate=${toBool(weeklyRegression.gate_pass, false) ? "pass" : "fail"}; trend_mode=${weeklyTrendMode}; trend_required=${weeklyTrendRequired ? "yes" : "no"}; trend_pass=${weeklyTrendPassText}; trend_reason=${weeklyTrendReason}`,
+    `- weekly-regression-metrics: success_rate=${weeklySuccessRate}; first_pass_rate=${weeklyFirstPassRate}; token_cost=${weeklyTokenCost}; rollback_rate=${weeklyRollbackRate}`,
     "",
     "| Domain | Key | Value |",
     "| --- | --- | --- |",
@@ -786,6 +971,32 @@ export function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): strin
     `| skill_router | accuracy | ${toNumber(skill.accuracy, 0).toFixed(4)} |`,
     `| skill_router | forbidden_violations | ${toInt(skill.forbidden_violations, 0)} |`,
     `| skill_router | total_cases | ${toInt(skill.total_cases, 0)} |`,
+    `| context_memory | gate_pass | ${toBool(contextMemory.gate_pass, false) ? "pass" : "fail"} |`,
+    `| context_memory | trend_decision_tag | ${contextTrendTag} |`,
+    `| context_memory | trend_decision_severity | ${contextTrendSeverity} |`,
+    `| context_memory | trend_owner | ${contextTrendOwner} |`,
+    `| context_memory | trend_action_hint | ${contextTrendAction} |`,
+    `| context_memory | trend_required | ${contextTrendRequired ? "yes" : "no"} |`,
+    `| context_memory | trend_pass | ${contextTrendPassText} |`,
+    `| context_memory | trend_mode | ${contextTrendMode} |`,
+    `| context_memory | trend_reason | ${contextTrendReason} |`,
+    `| context_memory | baseline_available | ${contextBaselineAvailableText} |`,
+    `| context_memory | policy_blob_match | ${contextPolicyBlobMatchText} |`,
+    `| context_memory | policy_hash_match | ${contextPolicyHashMatchText} |`,
+    `| context_memory | policy_hash_current | ${contextPolicyHashCurrent} |`,
+    `| context_memory | policy_hash_base | ${contextPolicyHashBase} |`,
+    `| context_memory | pass_rate | ${contextPassRate} |`,
+    `| context_memory | average_score | ${contextAverageScore} |`,
+    `| context_memory | case_count | ${contextCaseCount} |`,
+    `| weekly_regression | gate_pass | ${toBool(weeklyRegression.gate_pass, false) ? "pass" : "fail"} |`,
+    `| weekly_regression | trend_required | ${weeklyTrendRequired ? "yes" : "no"} |`,
+    `| weekly_regression | trend_pass | ${weeklyTrendPassText} |`,
+    `| weekly_regression | trend_mode | ${weeklyTrendMode} |`,
+    `| weekly_regression | trend_reason | ${weeklyTrendReason} |`,
+    `| weekly_regression | success_rate | ${weeklySuccessRate} |`,
+    `| weekly_regression | first_pass_rate | ${weeklyFirstPassRate} |`,
+    `| weekly_regression | token_cost | ${weeklyTokenCost} |`,
+    `| weekly_regression | rollback_rate | ${weeklyRollbackRate} |`,
   );
   return `${lines.join("\n")}\n`;
 }
@@ -803,6 +1014,8 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   const args: ParsedCliArgs = {
     traceReportPath: "",
     skillRouterReportPath: "",
+    contextMemoryReportPath: undefined,
+    weeklyRegressionReportPath: undefined,
     autoLoopReportPath: undefined,
     policyDriftReportPath: undefined,
     outputPath: undefined,
@@ -824,6 +1037,16 @@ function parseArgs(argv: string[]): ParsedCliArgs {
     }
     if (token === "--skill-router-report") {
       args.skillRouterReportPath = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+    if (token === "--context-memory-report") {
+      args.contextMemoryReportPath = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+    if (token === "--weekly-regression-report") {
+      args.weeklyRegressionReportPath = argv[index + 1] ?? "";
       index += 1;
       continue;
     }
@@ -897,6 +1120,8 @@ function writeTextFile(path: string, payload: string): void {
 
 function printGithubAnnotation(summary: HarnessCiSummary): void {
   const skill = asObject(summary.skill_router as unknown);
+  const contextMemory = asObject(summary.context_memory as unknown);
+  const weeklyRegression = asObject(summary.weekly_regression as unknown);
   const autoLoop = asObject(summary.auto_loop as unknown);
   const trendTag = normalizeOptionalText(skill.trend_decision_tag) ?? "TREND_NOT_REQUESTED";
   const trendSeverity = normalizeOptionalText(skill.trend_decision_severity) ?? "info";
@@ -908,6 +1133,16 @@ function printGithubAnnotation(summary: HarnessCiSummary): void {
   const autoLoopPromotionState = normalizeOptionalText(autoLoop.promotion_state) ?? "n/a";
   const autoLoopCircuit = toBool(autoLoop.circuit_breaker_triggered, false);
   const autoLoopCircuitReason = normalizeOptionalText(autoLoop.circuit_breaker_reason) ?? "n/a";
+  const contextGatePass = toBool(contextMemory.gate_pass, false);
+  const contextTrendTag = normalizeOptionalText(contextMemory.trend_decision_tag) ?? "TREND_NOT_REQUESTED";
+  const contextTrendSeverity = normalizeOptionalText(contextMemory.trend_decision_severity) ?? "info";
+  const weeklyGatePass = toBool(weeklyRegression.gate_pass, false);
+  const weeklyTrendMode = normalizeOptionalText(weeklyRegression.trend_mode) ?? "n/a";
+  const weeklyTrendReason = normalizeOptionalText(weeklyRegression.trend_reason) ?? "n/a";
+  const weeklySuccessRate = toNumber(weeklyRegression.success_rate, 0).toFixed(4);
+  const weeklyFirstPassRate = toNumber(weeklyRegression.first_pass_rate, 0).toFixed(4);
+  const weeklyTokenCost = toNumber(weeklyRegression.token_cost, 0).toFixed(6);
+  const weeklyRollbackRate = toNumber(weeklyRegression.rollback_rate, 0).toFixed(4);
   const labels = extractSuggestedLabels(summary);
   const labelsText = labels.length > 0 ? labels.join(",") : "n/a";
 
@@ -928,6 +1163,16 @@ function printGithubAnnotation(summary: HarnessCiSummary): void {
     `auto_loop_promotion_state=${autoLoopPromotionState}; ` +
     `auto_loop_circuit_breaker=${autoLoopCircuit ? "yes" : "no"}; ` +
     `auto_loop_circuit_reason=${autoLoopCircuitReason}; ` +
+    `context_memory_gate=${contextGatePass ? "pass" : "fail"}; ` +
+    `context_memory_trend_tag=${contextTrendTag}; ` +
+    `context_memory_trend_severity=${contextTrendSeverity}; ` +
+    `weekly_regression_gate=${weeklyGatePass ? "pass" : "fail"}; ` +
+    `weekly_regression_trend_mode=${weeklyTrendMode}; ` +
+    `weekly_regression_trend_reason=${weeklyTrendReason}; ` +
+    `weekly_success_rate=${weeklySuccessRate}; ` +
+    `weekly_first_pass_rate=${weeklyFirstPassRate}; ` +
+    `weekly_token_cost=${weeklyTokenCost}; ` +
+    `weekly_rollback_rate=${weeklyRollbackRate}; ` +
     `labels=${labelsText}`;
 
   if (!summary.overall_pass) {
@@ -957,6 +1202,14 @@ function main(): number {
   const args = parseArgs(process.argv.slice(2));
   const traceReport = parseJsonObject(args.traceReportPath);
   const skillRouterReport = parseJsonObject(args.skillRouterReportPath);
+  const contextMemoryReport =
+    args.contextMemoryReportPath && existsSync(args.contextMemoryReportPath)
+      ? parseJsonObject(args.contextMemoryReportPath)
+      : undefined;
+  const weeklyRegressionReport =
+    args.weeklyRegressionReportPath && existsSync(args.weeklyRegressionReportPath)
+      ? parseJsonObject(args.weeklyRegressionReportPath)
+      : undefined;
   const autoLoopReport =
     args.autoLoopReportPath && existsSync(args.autoLoopReportPath)
       ? parseJsonObject(args.autoLoopReportPath)
@@ -965,7 +1218,14 @@ function main(): number {
     args.policyDriftReportPath && existsSync(args.policyDriftReportPath)
       ? parseJsonObject(args.policyDriftReportPath)
       : undefined;
-  const summary = buildHarnessCiSummary(traceReport, skillRouterReport, autoLoopReport, policyDriftReport);
+  const summary = buildHarnessCiSummary(
+    traceReport,
+    skillRouterReport,
+    contextMemoryReport,
+    weeklyRegressionReport,
+    autoLoopReport,
+    policyDriftReport,
+  );
   const markdown = renderHarnessCiSummaryMarkdown(summary);
   const suggestedLabels = extractSuggestedLabels(summary);
   const suggestedLabelsCsv = suggestedLabels.join(",");

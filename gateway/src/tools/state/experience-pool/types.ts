@@ -31,12 +31,15 @@ export interface ExperienceRecord {
   confidence: number;
   successCount: number;
   failureCount: number;
+  conflictCount: number;
   verificationPassCount: number;
   lastOutcome: "success" | "failure";
   state: ExperienceRecordState;
   createdAt: string;
   updatedAt: string;
   lastUsedAt: string;
+  lastConflictAt?: string;
+  conflictSignals: string[];
   evidence: ExperienceEvidence[];
 }
 
@@ -92,4 +95,5 @@ export interface ExperienceFailureResult {
   matchedRecord?: ExperienceRecord;
   score?: number;
   quarantined: boolean;
+  conflictIsolated?: boolean;
 }

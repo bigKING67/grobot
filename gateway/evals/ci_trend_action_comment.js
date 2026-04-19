@@ -67,6 +67,17 @@ const upsertHarnessGateActionComment = async ({
   const autoLoopSelectedProposal = _normalizeText(env.AUTO_LOOP_SELECTED_PROPOSAL, "n/a");
   const autoLoopCircuitBreaker = _parseBool(env.AUTO_LOOP_CIRCUIT_BREAKER || "");
   const autoLoopCircuitReason = _normalizeText(env.AUTO_LOOP_CIRCUIT_REASON, "n/a");
+  const contextMemoryState = _normalizeText(env.CONTEXT_MEMORY_STATE || "", "unknown");
+  const contextMemoryTrendTag = _normalizeText(env.CONTEXT_MEMORY_TREND_TAG || "", "TREND_UNKNOWN_MODE");
+  const contextMemoryTrendSeverity = _normalizeText(env.CONTEXT_MEMORY_TREND_SEVERITY || "", "warn");
+  const contextMemoryTrendOwner = _normalizeText(env.CONTEXT_MEMORY_TREND_OWNER || "", "unknown-owner");
+  const weeklyRegressionState = _normalizeText(env.WEEKLY_REGRESSION_STATE || "", "unknown");
+  const weeklyRegressionTrendMode = _normalizeText(env.WEEKLY_REGRESSION_TREND_MODE || "", "n/a");
+  const weeklyRegressionTrendReason = _normalizeText(env.WEEKLY_REGRESSION_TREND_REASON || "", "n/a");
+  const weeklySuccessRate = _normalizeText(env.WEEKLY_SUCCESS_RATE || "", "0.0000");
+  const weeklyFirstPassRate = _normalizeText(env.WEEKLY_FIRST_PASS_RATE || "", "0.0000");
+  const weeklyTokenCost = _normalizeText(env.WEEKLY_TOKEN_COST || "", "0.000000");
+  const weeklyRollbackRate = _normalizeText(env.WEEKLY_ROLLBACK_RATE || "", "0.0000");
   const labelsCsv = _normalizeText(env.SUGGESTED_LABELS_CSV || "", "");
   const labelsText = labelsCsv.length > 0 ? labelsCsv : "n/a";
 
@@ -162,6 +173,12 @@ const upsertHarnessGateActionComment = async ({
   } else {
     hintParts.push(`auto-loop no candidate selected; state=${autoLoopState}`);
   }
+  hintParts.push(
+    `context-memory=${contextMemoryState}; trend_tag=${contextMemoryTrendTag}; trend_severity=${contextMemoryTrendSeverity}; trend_owner=${contextMemoryTrendOwner}`
+  );
+  hintParts.push(
+    `weekly-regression=${weeklyRegressionState}; trend_mode=${weeklyRegressionTrendMode}; trend_reason=${weeklyRegressionTrendReason}; metrics=success:${weeklySuccessRate}/first_pass:${weeklyFirstPassRate}/token_cost:${weeklyTokenCost}/rollback:${weeklyRollbackRate}`
+  );
   const mergedActionHint = hintParts.length > 0 ? hintParts.join("; ") : "n/a";
   const finalActionHint =
     policyDriftWorseningAlert && policyDriftWorseningStreak > 0
@@ -188,6 +205,17 @@ const upsertHarnessGateActionComment = async ({
     auto_loop_selected_variant: autoLoopSelectedVariant,
     auto_loop_selected_proposal: autoLoopSelectedProposal,
     auto_loop_circuit_breaker: autoLoopCircuitBreaker ? "true" : "false",
+    context_memory_state: contextMemoryState,
+    context_memory_trend_tag: contextMemoryTrendTag,
+    context_memory_trend_severity: contextMemoryTrendSeverity,
+    context_memory_trend_owner: contextMemoryTrendOwner,
+    weekly_regression_state: weeklyRegressionState,
+    weekly_regression_trend_mode: weeklyRegressionTrendMode,
+    weekly_regression_trend_reason: weeklyRegressionTrendReason,
+    weekly_success_rate: weeklySuccessRate,
+    weekly_first_pass_rate: weeklyFirstPassRate,
+    weekly_token_cost: weeklyTokenCost,
+    weekly_rollback_rate: weeklyRollbackRate,
     owner: finalOwner,
     action: finalActionHint,
     suggested_labels: labelsText,

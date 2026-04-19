@@ -63,6 +63,7 @@ export interface ExperienceFailureFeedbackResult {
   score?: number;
   confidence?: number;
   quarantined?: boolean;
+  conflictIsolated?: boolean;
 }
 
 export interface ExperiencePoolRuntime {
@@ -334,6 +335,7 @@ export function createExperiencePoolRuntime(
         score: result.score,
         confidence: result.matchedRecord.confidence,
         quarantined: result.quarantined,
+        conflictIsolated: result.conflictIsolated,
       };
     },
     searchRecords: ({ tenant, query, limit, includeStates }): ExperienceSearchMatch[] =>

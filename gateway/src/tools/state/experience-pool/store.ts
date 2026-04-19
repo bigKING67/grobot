@@ -105,6 +105,35 @@ function extractFailureSignals(assistantText: string): string[] {
   return Array.from(new Set(candidates)).slice(0, 6);
 }
 
+function deriveConflictSignal(errorClass: string, errorMessage: string): string | undefined {
+  const normalizedClass = compactWhitespace(errorClass).toLowerCase();
+  const normalizedMessage = compactWhitespace(errorMessage).toLowerCase();
+  const merged = `${normalizedClass} ${normalizedMessage}`.trim();
+  if (!merged) {
+    return undefined;
+  }
+  const patterns = [
+    /conflict/,
+    /contradict/,
+    /mismatch/,
+    /incompatible/,
+    /regression/,
+    /冲突/,
+    /不一致/,
+    /矛盾/,
+    /回归/,
+  ];
+  const matched = patterns.some((pattern) => pattern.test(merged));
+  if (!matched) {
+    return undefined;
+  }
+  const raw = compactWhitespace(`${errorClass}: ${errorMessage}`);
+  if (!raw) {
+    return "conflict_signal";
+  }
+  return raw.slice(0, 180);
+}
+
 function signatureHash(tenant: string, team: string, user: string, signature: string): string {
   return createHash("sha1")
     .update(`${tenant}::${team}::${user}::${signature}`)
@@ -211,27 +240,27 @@ function parseRecord(raw: unknown): ExperienceRecord | undefined {
     if (typeof item !== "object" || item === null) {
       continue;
     }
-      const row = item as Record<string, unknown>;
-      const sourceRaw = row.source;
-      const source =
-        sourceRaw === "turn_success" || sourceRaw === "turn_failure" || sourceRaw === "manual"
-          ? sourceRaw
-          : "manual";
-      evidence.push({
-        source,
-        traceId: typeof row.traceId === "string" ? row.traceId : undefined,
-        providerName: typeof row.providerName === "string" ? row.providerName : undefined,
-        errorClass: typeof row.errorClass === "string" ? row.errorClass : undefined,
-        capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : nowIso(),
-        evidenceRef:
-          parseEvidenceRef(row.evidenceRef) ??
-          deriveLegacyEvidenceRef({
-            traceId: typeof row.traceId === "string" ? row.traceId : undefined,
-            sourceType: source,
-            capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : nowIso(),
-          }),
-      });
-    }
+    const row = item as Record<string, unknown>;
+    const sourceRaw = row.source;
+    const source =
+      sourceRaw === "turn_success" || sourceRaw === "turn_failure" || sourceRaw === "manual"
+        ? sourceRaw
+        : "manual";
+    evidence.push({
+      source,
+      traceId: typeof row.traceId === "string" ? row.traceId : undefined,
+      providerName: typeof row.providerName === "string" ? row.providerName : undefined,
+      errorClass: typeof row.errorClass === "string" ? row.errorClass : undefined,
+      capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : nowIso(),
+      evidenceRef:
+        parseEvidenceRef(row.evidenceRef) ??
+        deriveLegacyEvidenceRef({
+          traceId: typeof row.traceId === "string" ? row.traceId : undefined,
+          sourceType: source,
+          capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : nowIso(),
+        }),
+    });
+  }
   const summaryRaw = typeof record.summary === "string" ? compactWhitespace(record.summary) : "";
   return {
     id,
@@ -255,6 +284,10 @@ function parseRecord(raw: unknown): ExperienceRecord | undefined {
       typeof record.failureCount === "number" && Number.isFinite(record.failureCount)
         ? Math.max(0, Math.floor(record.failureCount))
         : 0,
+    conflictCount:
+      typeof record.conflictCount === "number" && Number.isFinite(record.conflictCount)
+        ? Math.max(0, Math.floor(record.conflictCount))
+        : 0,
     verificationPassCount:
       typeof record.verificationPassCount === "number" && Number.isFinite(record.verificationPassCount)
         ? Math.max(0, Math.floor(record.verificationPassCount))
@@ -264,6 +297,8 @@ function parseRecord(raw: unknown): ExperienceRecord | undefined {
     createdAt,
     updatedAt,
     lastUsedAt,
+    lastConflictAt: typeof record.lastConflictAt === "string" ? record.lastConflictAt : undefined,
+    conflictSignals: parseStringArray(record.conflictSignals).slice(0, 6),
     evidence: evidence.slice(0, 24),
   };
 }
@@ -449,8 +484,12 @@ export class FileBackedExperiencePoolStore {
       const passDelta = input.verificationPass ? 0.08 : 0.03;
       const failurePenalty = Math.min(0.35, found.failureCount * 0.05);
       found.confidence = clamp(found.confidence + passDelta - failurePenalty, 0.05, 0.99);
-      if (found.state === "quarantined" && input.verificationPass && found.confidence >= 0.55) {
+      if (input.verificationPass && found.conflictCount > 0) {
+        found.conflictCount = Math.max(0, found.conflictCount - 1);
+      }
+      if (found.conflictCount === 0 && found.state === "quarantined" && input.verificationPass && found.confidence >= 0.55) {
         found.state = "active";
+        found.lastConflictAt = undefined;
       }
       found.evidence = [evidence, ...found.evidence].slice(0, 24);
       this.touchSnapshot();
@@ -475,12 +514,14 @@ export class FileBackedExperiencePoolStore {
       confidence: input.verificationPass ? 0.62 : 0.5,
       successCount: 1,
       failureCount: 0,
+      conflictCount: 0,
       verificationPassCount: input.verificationPass ? 1 : 0,
       lastOutcome: "success",
       state: "active",
       createdAt: now,
       updatedAt: now,
       lastUsedAt: now,
+      conflictSignals: [],
       evidence: [evidence],
     };
     this.snapshot.records.push(next);
@@ -537,9 +578,23 @@ export class FileBackedExperiencePoolStore {
       },
       ...found.evidence,
     ].slice(0, 24);
+    let conflictIsolated = false;
+    const conflictSignal = deriveConflictSignal(input.errorClass, input.errorMessage);
+    if (conflictSignal) {
+      found.conflictCount += 1;
+      found.lastConflictAt = now;
+      found.conflictSignals = Array.from(new Set([conflictSignal, ...found.conflictSignals])).slice(0, 6);
+      if (found.state === "active") {
+        found.state = "quarantined";
+        conflictIsolated = true;
+      }
+    }
     let quarantined = false;
     if (found.failureCount >= 3 && found.confidence <= 0.34 && found.state === "active") {
       found.state = "quarantined";
+      quarantined = true;
+    }
+    if (conflictIsolated) {
       quarantined = true;
     }
     this.touchSnapshot();
@@ -549,6 +604,7 @@ export class FileBackedExperiencePoolStore {
       matchedRecord: { ...found, evidence: [...found.evidence] },
       score: best.score,
       quarantined,
+      conflictIsolated,
     };
   }
 

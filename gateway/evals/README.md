@@ -34,6 +34,8 @@
 
 - `gateway/src/governance/evals/runner.ts`: case/run/gate policy schema 解析、五维评分器（task/tool/context/safety/latency_cost）、harness 执行与报告输出（CLI 真源）。
 - `gateway/src/governance/evals/context-memory-experience-eval.ts`: 面向“上下文压缩 + 记忆协同 + 经验复用”的专项评测入口（CLI 真源，附维度门禁与维度回归保护）。
+- `gateway/src/governance/evals/context-memory-baseline-report.ts`: 从 base commit 生成 context-memory baseline 报告（CLI 真源）。
+- `gateway/src/governance/evals/context-memory-ci-gate.ts`: context-memory CI gate 统一入口（CLI 真源，封装 gate/trend 与 `trend_meta` 回填）。
 - `gateway/src/governance/evals/trace-mining.ts`: 从 `.grobot/sessions` 自动抽样构建初版 eval case/run 数据（CLI 真源）。
 - `gateway/src/governance/evals/trace-clean.ts`: 对抽样数据执行去重、脱敏、审核报告输出（CLI 真源）。
 - `gateway/src/governance/evals/trace-pipeline.ts`: mining + cleaning 一体化 pipeline（CLI 真源）。
@@ -55,11 +57,13 @@
 - `ci_policy_drift_report.js`: `gate-summary` 中 policy drift 报告构建运行时（读取 PR 历史 comment marker、统一计算 drift transition/streak）。
 - `ci_apply_labels.js`: `apply-suggested-labels` 的自动打标运行时（读取 gate-summary outputs + policy，统一处理安全过滤、缺失标签补建与 stale 标签清理）。
 - `ci_trend_action_comment.js`: `notify-trend-action` 的评论 upsert 运行时（读取 gate-summary outputs + policy，统一处理触发、owner/action 合并、状态 marker 与 stale comment 清理）。
-- `gateway/src/governance/evals/ci-summary.ts`: 汇总 trace/skill-router/policy-drift 报告并生成 CI summary（CLI 真源）。
+- `gateway/src/governance/evals/ci-summary.ts`: 汇总 trace/skill-router/context-memory/weekly-regression/policy-drift 报告并生成 CI summary（CLI 真源）。
 - `gateway/src/governance/evals/ci-summary-export.ts`: 从 `harness_ci_summary.json` 生成 `gate-summary` outputs（含 `policy_drift` 扩展字段）并写入 `GITHUB_OUTPUT`（CLI 真源）。
+- `gateway/src/governance/evals/weekly-regression-ci-gate.ts`: 周级回归门禁入口（成功率/一次通过率/token 成本/回滚率 + trend meta，CLI 真源）。
 - `gate_policy.default.json`: 默认门禁策略模板。
 - `gate_policy.ci.json`: CI 专用 gate 策略。
 - `context_memory_policy.sample.json` / `context_memory_policy.ci.json`: context-memory-experience 专项策略模板。
+- `weekly_regression_policy.ci.json`: 周级回归四指标门禁策略（CI profile）。
 - `skill_router_policy.dev.json` / `skill_router_policy.ci.json` / `skill_router_policy.prod.json`: skill-router policy 模板。
 - `fixtures/*.jsonl`: 示例数据。
 
@@ -149,10 +153,18 @@ npm run harness:context-memory:gate:sample
 npm run harness:context-memory:gate:ci
 ```
 
+执行示例（baseline + ci trend gate）：
+
+```bash
+npm run harness:context-memory:baseline -- --event-name pull_request --pr-base-sha <base_sha> --repo-root "$PWD" --print-json
+npm run harness:context-memory:ci-gate -- --event-name pull_request --pr-base-sha <base_sha> --baseline-available true --repo-root "$PWD" --print-json
+```
+
 说明：
 1. 该入口输出 `overall_gate`、`dimension_gate` 和 `dimension_regression_guard`，可直接用于 CI 阻断或趋势看板。
 2. 默认维度回归保护为 `baseline -> candidate` 且不允许任一维度 `average_score/pass_rate` 下降。
 3. fixtures 位于 `gateway/evals/fixtures/context_memory_*`，可逐步扩展为真实任务集。
+4. CI 主链路会在 policy blob 一致时启用 trend 对比；若 policy 已变化会自动降级 gate-only 并在 `trend_meta` 记录原因。
 
 ## 从真实会话生成初版数据
 
@@ -288,6 +300,9 @@ npm run harness:skill-router:sample
 25. `gate-summary` 额外导出 `policy_drift_transition`、`policy_drift_transition_state`、`policy_drift_severity_delta`、`policy_drift_owner`、`policy_drift_action_hint`；`notify-trend-action` 优先消费这些结构化字段生成评论（owner/action），仅在缺失时回退 policy 默认值，减少同一语义在不同 job 的二次推导漂移。
 26. `Build skill-router baseline report (base commit)` 会调用 `gateway/src/governance/evals/skill-router-baseline-report.ts` 统一处理 base SHA 解析、worktree 拉取、baseline 可用性判定与 `GITHUB_OUTPUT` 回填，避免 workflow 里重复维护临时目录与清理细节。
 27. `Run skill-router CI gate (with trend check)` 会调用 `gateway/src/governance/evals/skill-router-ci-gate.ts` 统一处理 `gateway/src/governance/evals/skill-router-eval.ts` 的 gate/trend 执行、policy blob 匹配判断与 `trend_meta` 写回，避免 workflow 中维护大段条件分支脚本。
+28. `Build context-memory baseline report (base commit)` 与 `Run context-memory CI gate (with trend check)` 会分别调用 `context-memory-baseline-report.ts` / `context-memory-ci-gate.ts`，统一处理 base SHA、policy blob 匹配与 trend meta 回填。
+29. `Run weekly regression CI gate` 会调用 `weekly-regression-ci-gate.ts`，对四指标（`success_rate/first_pass_rate/token_cost/rollback_rate`）执行 gate，并在 baseline + policy blob 匹配时执行 trend 对比。
+30. `harness:ci-summary` 已纳入 `context_memory` 与 `weekly_regression` 两个子报告；`overall_pass` 会同时受 trace、skill-router、context-memory 与 weekly 四条门禁影响。
 
 ## CI Gate（可直接在 GitHub Actions 阻断）
 
@@ -376,6 +391,8 @@ npm run harness:gate:ci
 npm run harness:context-memory:sample
 npm run harness:context-memory:gate:sample
 npm run harness:context-memory:gate:ci
+npm run harness:context-memory:baseline
+npm run harness:context-memory:ci-gate
 npm run harness:trace-mine
 npm run harness:trace-clean
 npm run harness:trace-pipeline
@@ -401,6 +418,7 @@ npm run harness:skill-router:policy:validate
 npm run harness:ci-label-policy:check
 npm run harness:ci-label-policy:fingerprint
 npm run harness:ci-summary
+npm run harness:weekly-regression:ci-gate
 ```
 
 `harness:trace-pipeline` 支持参数透传，例如：

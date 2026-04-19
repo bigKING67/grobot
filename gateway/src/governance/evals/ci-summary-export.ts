@@ -12,6 +12,17 @@ interface HarnessGateOutputs {
   trend_decision_tag: string;
   trend_decision_severity: string;
   trend_action_hint: string;
+  context_memory_state: string;
+  context_memory_trend_tag: string;
+  context_memory_trend_severity: string;
+  context_memory_trend_owner: string;
+  weekly_regression_state: string;
+  weekly_regression_trend_mode: string;
+  weekly_regression_trend_reason: string;
+  weekly_success_rate: string;
+  weekly_first_pass_rate: string;
+  weekly_token_cost: string;
+  weekly_rollback_rate: string;
   auto_loop_state: string;
   auto_loop_selected_variant: string;
   auto_loop_selected_proposal: string;
@@ -146,6 +157,33 @@ export function buildHarnessGateOutputs(payload: Record<string, unknown>): Harne
   const trendDecisionTag = normalizeOptionalText(skillRouter.trend_decision_tag) ?? "TREND_UNKNOWN_MODE";
   const trendDecisionSeverity = normalizeOptionalText(skillRouter.trend_decision_severity) ?? "warn";
   const trendActionHint = normalizeOptionalText(skillRouter.trend_action_hint) ?? "n/a";
+  const contextMemoryRaw = payload.context_memory;
+  const contextMemory =
+    typeof contextMemoryRaw === "object" && contextMemoryRaw !== null && !Array.isArray(contextMemoryRaw)
+      ? (contextMemoryRaw as Record<string, unknown>)
+      : {};
+  const contextMemoryState = contextMemory.gate_pass === true ? "pass" : "fail";
+  const contextMemoryTrendTag = normalizeOptionalText(contextMemory.trend_decision_tag) ?? "TREND_UNKNOWN_MODE";
+  const contextMemoryTrendSeverity = normalizeOptionalText(contextMemory.trend_decision_severity) ?? "warn";
+  const contextMemoryTrendOwner = normalizeOptionalText(contextMemory.trend_owner) ?? "unknown-owner";
+  const weeklyRegressionRaw = payload.weekly_regression;
+  const weeklyRegression =
+    typeof weeklyRegressionRaw === "object" && weeklyRegressionRaw !== null && !Array.isArray(weeklyRegressionRaw)
+      ? (weeklyRegressionRaw as Record<string, unknown>)
+      : {};
+  const weeklyRegressionState = weeklyRegression.gate_pass === true ? "pass" : "fail";
+  const weeklyRegressionTrendMode = normalizeOptionalText(weeklyRegression.trend_mode) ?? "n/a";
+  const weeklyRegressionTrendReason = normalizeOptionalText(weeklyRegression.trend_reason) ?? "n/a";
+  const weeklySuccessRate =
+    typeof weeklyRegression.success_rate === "number" ? Number(weeklyRegression.success_rate).toFixed(4) : "0.0000";
+  const weeklyFirstPassRate =
+    typeof weeklyRegression.first_pass_rate === "number"
+      ? Number(weeklyRegression.first_pass_rate).toFixed(4)
+      : "0.0000";
+  const weeklyTokenCost =
+    typeof weeklyRegression.token_cost === "number" ? Number(weeklyRegression.token_cost).toFixed(6) : "0.000000";
+  const weeklyRollbackRate =
+    typeof weeklyRegression.rollback_rate === "number" ? Number(weeklyRegression.rollback_rate).toFixed(4) : "0.0000";
   const autoLoopRaw = payload.auto_loop;
   const autoLoop =
     typeof autoLoopRaw === "object" && autoLoopRaw !== null && !Array.isArray(autoLoopRaw)
@@ -175,6 +213,17 @@ export function buildHarnessGateOutputs(payload: Record<string, unknown>): Harne
     trend_decision_tag: trendDecisionTag,
     trend_decision_severity: trendDecisionSeverity,
     trend_action_hint: trendActionHint,
+    context_memory_state: contextMemoryState,
+    context_memory_trend_tag: contextMemoryTrendTag,
+    context_memory_trend_severity: contextMemoryTrendSeverity,
+    context_memory_trend_owner: contextMemoryTrendOwner,
+    weekly_regression_state: weeklyRegressionState,
+    weekly_regression_trend_mode: weeklyRegressionTrendMode,
+    weekly_regression_trend_reason: weeklyRegressionTrendReason,
+    weekly_success_rate: weeklySuccessRate,
+    weekly_first_pass_rate: weeklyFirstPassRate,
+    weekly_token_cost: weeklyTokenCost,
+    weekly_rollback_rate: weeklyRollbackRate,
     auto_loop_state: autoLoopState,
     auto_loop_selected_variant: autoLoopSelectedVariant,
     auto_loop_selected_proposal: autoLoopSelectedProposal,
@@ -203,6 +252,17 @@ function writeGithubOutputs(path: string, outputs: HarnessGateOutputs): void {
     `trend_decision_tag=${outputs.trend_decision_tag}`,
     `trend_decision_severity=${outputs.trend_decision_severity}`,
     `trend_action_hint=${outputs.trend_action_hint}`,
+    `context_memory_state=${outputs.context_memory_state}`,
+    `context_memory_trend_tag=${outputs.context_memory_trend_tag}`,
+    `context_memory_trend_severity=${outputs.context_memory_trend_severity}`,
+    `context_memory_trend_owner=${outputs.context_memory_trend_owner}`,
+    `weekly_regression_state=${outputs.weekly_regression_state}`,
+    `weekly_regression_trend_mode=${outputs.weekly_regression_trend_mode}`,
+    `weekly_regression_trend_reason=${outputs.weekly_regression_trend_reason}`,
+    `weekly_success_rate=${outputs.weekly_success_rate}`,
+    `weekly_first_pass_rate=${outputs.weekly_first_pass_rate}`,
+    `weekly_token_cost=${outputs.weekly_token_cost}`,
+    `weekly_rollback_rate=${outputs.weekly_rollback_rate}`,
     `auto_loop_state=${outputs.auto_loop_state}`,
     `auto_loop_selected_variant=${outputs.auto_loop_selected_variant}`,
     `auto_loop_selected_proposal=${outputs.auto_loop_selected_proposal}`,

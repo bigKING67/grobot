@@ -1,0 +1,25 @@
+{
+  "schema": "weekly_regression_policy@v1",
+  "metrics": {
+    "success_rate": {
+      "direction": "higher_better",
+      "min": 1.0,
+      "max_drop": 0.0
+    },
+    "first_pass_rate": {
+      "direction": "higher_better",
+      "min": 1.0,
+      "max_drop": 0.0
+    },
+    "token_cost": {
+      "direction": "lower_better",
+      "max": 0.011,
+      "max_increase": 0.0
+    },
+    "rollback_rate": {
+      "direction": "lower_better",
+      "max": 0.0,
+      "max_increase": 0.0
+    }
+  }
+}
