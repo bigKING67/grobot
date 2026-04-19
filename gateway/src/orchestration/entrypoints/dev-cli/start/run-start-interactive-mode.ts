@@ -254,17 +254,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   }
   const startupModelSnapshot = input.getModelSnapshot();
   const startupSessionTopic = input.getActiveSessionTopic();
-  const startupPromptBudget = resolvePromptBudgetSnapshot(input.workDir);
-  const startupContextWindowTokens = resolveModelContextWindowTokens({
-    modelName: startupModelSnapshot.model,
-    getCachedModelContextWindowTokens: input.getCachedModelContextWindowTokens,
-    fallback:
-      typeof input.contextWindowTokens === "number"
-      && Number.isFinite(input.contextWindowTokens)
-      && input.contextWindowTokens > 0
-        ? input.contextWindowTokens
-        : startupPromptBudget.targetTokenLimit,
-  });
+  const startupCatalogContextWindowTokens =
+    input.getCachedModelContextWindowTokens(startupModelSnapshot.model);
   const startupRecentSessions = input.listSessionSummaries()
     .filter((session) => !session.active && session.id !== input.getActiveSessionId())
     .slice(0, 3)
@@ -292,7 +283,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     providerName: startupModelSnapshot.providerName,
     modelName: startupModelSnapshot.model,
     sessionTopic: startupSessionTopic,
-    contextWindowTokens: startupContextWindowTokens,
+    contextWindowTokens: startupCatalogContextWindowTokens,
     recentSessions: startupRecentSessions,
   });
 
