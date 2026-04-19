@@ -160,6 +160,9 @@ export interface RunStartInteractiveModeInput {
 }
 
 export async function runStartInteractiveMode(input: RunStartInteractiveModeInput): Promise<void> {
+  const startupModelSnapshot = input.getModelSnapshot();
+  const startupSessionTopic = input.getActiveSessionTopic();
+  const startupPromptBudget = resolvePromptBudgetSnapshot(input.workDir);
   printRunStartBanner({
     homeDir: input.homeDir,
     projectRoot: input.projectRoot,
@@ -175,6 +178,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     handoffPath: input.handoffPath,
     restoredTurns: input.restoredTurns,
     restoreSource: input.restoreSource,
+    providerName: startupModelSnapshot.providerName,
+    modelName: startupModelSnapshot.model,
+    sessionTopic: startupSessionTopic,
+    contextWindowTargetTokens: startupPromptBudget.targetTokenLimit,
   });
 
   const handleInteractiveInput = createRunStartInteractiveHandler({
@@ -237,7 +244,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       sessionId: input.getActiveSessionId(),
       sessionTopic: input.getActiveSessionTopic(),
       terminalColumns: resolveTerminalColumns(),
-      promptLabel: "grobot> ",
+      promptLabel: "› ",
       config: statusLineConfig,
     });
   };

@@ -15,7 +15,7 @@ const wide = renderStatusLinePrompt({
   sessionId,
   sessionTopic: "login regression follow-up",
   terminalColumns: 160,
-  promptLabel: "grobot> ",
+  promptLabel: "› ",
 });
 
 const narrow = renderStatusLinePrompt({
@@ -27,7 +27,7 @@ const narrow = renderStatusLinePrompt({
   sessionId,
   sessionTopic: "login regression follow-up",
   terminalColumns: 64,
-  promptLabel: "grobot> ",
+  promptLabel: "› ",
 });
 
 const cjkNarrow = renderStatusLinePrompt({
@@ -39,7 +39,7 @@ const cjkNarrow = renderStatusLinePrompt({
   sessionId,
   sessionTopic: "状态栏宽度与上下文策略联合回归",
   terminalColumns: 48,
-  promptLabel: "grobot> ",
+  promptLabel: "› ",
 });
 
 const warningPrompt = renderStatusLinePrompt({
@@ -51,7 +51,7 @@ const warningPrompt = renderStatusLinePrompt({
   sessionId,
   sessionTopic: "high pressure",
   terminalColumns: 120,
-  promptLabel: "grobot> ",
+  promptLabel: "› ",
 });
 
 const segmentTogglePrompt = renderStatusLinePrompt({
@@ -63,7 +63,7 @@ const segmentTogglePrompt = renderStatusLinePrompt({
   sessionId,
   sessionTopic: "login regression follow-up",
   terminalColumns: 120,
-  promptLabel: "grobot> ",
+  promptLabel: "› ",
   config: {
     segments: {
       tokens: false,
@@ -84,8 +84,8 @@ const warningLine = warningLines[1] ?? "";
 const segmentToggleStatusLine = segmentToggleLines[0] ?? "";
 
 const payload = {
-  wide_has_model: wideStatusLine.includes("model kimi/kimi-k2-2026-04"),
-  wide_has_project: wideStatusLine.includes("project grobot"),
+  wide_has_model: wideStatusLine.includes("kimi/kimi-k2-2026-04"),
+  wide_has_project: wideStatusLine.includes("grobot"),
   wide_has_ctx_percent: wideStatusLine.includes("ctx 64%"),
   wide_has_token_counter: wideStatusLine.includes("tok 3.2k/5.1k"),
   wide_has_short_session_id: wideStatusLine.includes(sessionShortId),
@@ -93,7 +93,7 @@ const payload = {
   wide_has_session_topic: wideStatusLine.includes("login regression follow-up"),
   wide_has_session_topic_parenthesized:
     wideStatusLine.includes(`(${String("login regression follow-up")})`),
-  prompt_line_matches: wideLines[1] === "grobot> ",
+  prompt_line_matches: wideLines[1] === "› ",
   narrow_line_within_width: measureDisplayWidth(narrowStatusLine) <= 64,
   narrow_has_short_session_id: narrowStatusLine.includes(sessionShortId),
   cjk_line_within_width: measureDisplayWidth(cjkStatusLine) <= 48,

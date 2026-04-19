@@ -31,6 +31,35 @@ gateway_impl = "ts"
 runtime_impl = "rust"
 shadow_mode = false
 
+[context_engine]
+enabled = true
+profile = "balanced" # balanced | aggressive | conservative
+context_window_tokens = 128000
+reserved_output_tokens = 20000
+safety_margin_tokens = 3000
+proactive_ratio = 0.88
+forced_ratio = 0.93
+hard_ratio = 0.97
+reactive_max_retries = 1
+ptl_max_retries = 3
+circuit_breaker_failures = 3
+reactive_on_prompt_too_long = true
+lineage_enabled = true
+lineage_max_rows = 3
+lineage_max_commits = 120
+lineage_cache_ttl_ms = 30000
+workspace_signals_enabled = true
+workspace_signals_max_rows = 4
+workspace_signals_include_untracked = true
+workspace_signals_cache_ttl_ms = 2000
+dependency_graph_enabled = true
+dependency_graph_max_rows = 4
+symbol_graph_enabled = true
+symbol_graph_max_rows = 4
+semantic_prefetch_enabled = false
+semantic_prefetch_timeout_ms = 2500
+semantic_prefetch_max_evidence = 6
+
 [cc_connect]
 config_file = ".grobot/config.toml"
 config_template = ".grobot/config.toml.example"
@@ -78,6 +107,25 @@ strict = false
 
 [search.routing]
 kimi = "mcp_first_fallback_builtin" # mcp_first_fallback_builtin | builtin_only | mcp_only
+
+[statusline]
+enabled = true
+layout_mode = "adaptive" # adaptive | full | compact
+theme = "plain" # plain | nerd_font
+separator = " · "
+segment_order = ["model", "project", "context", "tokens", "session"]
+warning_threshold_percent = 80
+critical_threshold_percent = 90
+budget_snapshot_cache_ttl_ms = 2500
+session_topic_cache_ttl_ms = 1500
+session_topic_max_width = 42
+
+[statusline.segments]
+model = true
+project = true
+context = true
+tokens = true
+session = true
 
 [experience.scheduler]
 enabled = false

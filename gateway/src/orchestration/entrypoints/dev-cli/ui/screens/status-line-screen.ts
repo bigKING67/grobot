@@ -11,7 +11,7 @@ export interface StatusLinePromptInput {
   config?: StatusLineConfigInput;
 }
 
-const DEFAULT_PROMPT_LABEL = "grobot> ";
+const DEFAULT_PROMPT_LABEL = "› ";
 const SESSION_SHORT_ID_LEN = 8;
 const ELLIPSIS = "...";
 const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
@@ -83,7 +83,7 @@ export const DEFAULT_STATUS_LINE_CONFIG: StatusLineConfig = {
   enabled: true,
   layoutMode: "adaptive",
   theme: "plain",
-  separator: " | ",
+  separator: " · ",
   segmentOrder: [...DEFAULT_STATUS_LINE_SEGMENT_ORDER],
   segments: { ...DEFAULT_STATUS_LINE_SEGMENTS },
   warningThresholdRatio: 0.8,
@@ -525,18 +525,18 @@ function resolveStatusSegmentLabel(
   },
 ): string {
   const plainFull: Record<StatusLineSegmentId, string> = {
-    model: "model",
-    project: "project",
+    model: "",
+    project: "",
     context: "ctx",
     tokens: "tok",
-    session: "session",
+    session: "",
   };
   const plainCompact: Record<StatusLineSegmentId, string> = {
-    model: "m",
-    project: "p",
-    context: "c",
-    tokens: "t",
-    session: "s",
+    model: "",
+    project: "",
+    context: "ctx",
+    tokens: "tok",
+    session: "",
   };
   const nerdFull: Record<StatusLineSegmentId, string> = {
     model: "󰭻",
@@ -596,11 +596,8 @@ function buildStatusSegments(input: {
       compact: input.template.compactLabels,
       theme: input.config.theme,
     });
-    if (input.config.theme === "nerd_font") {
-      if (segmentId === "session") {
-        return `${label} ${valueMap[segmentId]}`;
-      }
-      return `${label} ${valueMap[segmentId]}`;
+    if (label.length === 0) {
+      return valueMap[segmentId];
     }
     return `${label} ${valueMap[segmentId]}`;
   });

@@ -7,7 +7,22 @@ export interface RunStartOutput {
   writeStoreWarnings(warnings: readonly string[]): void;
 }
 
-export function createRunStartOutput(): RunStartOutput {
+export interface CreateRunStartOutputOptions {
+  suppressWarningPatterns?: ReadonlyArray<RegExp>;
+}
+
+export function createRunStartOutput(options: CreateRunStartOutputOptions = {}): RunStartOutput {
+  const suppressionRules = Array.isArray(options.suppressWarningPatterns)
+    ? [...options.suppressWarningPatterns]
+    : [];
+  const filterWarnings = (warnings: readonly string[]): string[] => {
+    if (suppressionRules.length === 0) {
+      return [...warnings];
+    }
+    return warnings.filter((warning) =>
+      suppressionRules.every((pattern) => !pattern.test(warning))
+    );
+  };
   return {
     writeStdout: (message): void => {
       process.stdout.write(message);
@@ -16,10 +31,12 @@ export function createRunStartOutput(): RunStartOutput {
       process.stderr.write(message);
     },
     writeSessionWarnings: (warnings): void => {
-      writePrefixedWarnings("session", warnings);
+      const filteredWarnings = filterWarnings(warnings);
+      writePrefixedWarnings("session", filteredWarnings);
     },
     writeStoreWarnings: (warnings): void => {
-      writePrefixedWarnings("store", warnings);
+      const filteredWarnings = filterWarnings(warnings);
+      writePrefixedWarnings("store", filteredWarnings);
     },
   };
 }

@@ -5,7 +5,7 @@ import { createCliUiRenderer } from "../ui/kernel/renderer";
 import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../ui/screens/select-menu-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
-const DEFAULT_SESSION_PROMPT = "grobot> ";
+const DEFAULT_SESSION_PROMPT = "› ";
 
 export type {
   TerminalSelectMenuInput,
