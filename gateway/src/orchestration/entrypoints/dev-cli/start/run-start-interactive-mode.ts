@@ -8,6 +8,7 @@ import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
 import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
+import { inferModelApiContextWindowTokens } from "./run-start-model-context";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import { createInteractiveActivityTracker } from "../ui/interactive/activity-state";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
@@ -174,6 +175,15 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const startupModelSnapshot = input.getModelSnapshot();
   const startupSessionTopic = input.getActiveSessionTopic();
   const startupPromptBudget = resolvePromptBudgetSnapshot(input.workDir);
+  const startupContextWindowTokens = inferModelApiContextWindowTokens({
+    modelName: startupModelSnapshot.model,
+    fallback:
+      typeof input.contextWindowTokens === "number"
+      && Number.isFinite(input.contextWindowTokens)
+      && input.contextWindowTokens > 0
+        ? input.contextWindowTokens
+        : startupPromptBudget.targetTokenLimit,
+  });
   const startupRecentSessions = input.listSessionSummaries()
     .filter((session) => !session.active && session.id !== input.getActiveSessionId())
     .slice(0, 3)
@@ -201,12 +211,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     providerName: startupModelSnapshot.providerName,
     modelName: startupModelSnapshot.model,
     sessionTopic: startupSessionTopic,
-    contextWindowTokens:
-      typeof input.contextWindowTokens === "number"
-      && Number.isFinite(input.contextWindowTokens)
-      && input.contextWindowTokens > 0
-        ? input.contextWindowTokens
-        : startupPromptBudget.targetTokenLimit,
+    contextWindowTokens: startupContextWindowTokens,
     recentSessions: startupRecentSessions,
   });
 
@@ -312,13 +317,17 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     const modelSnapshot = input.getModelSnapshot();
     const statusLineConfig = input.getStatusLineConfig();
     const budgetSnapshot = readPromptBudgetSnapshot(statusLineConfig);
+    const statusContextWindowTokens = inferModelApiContextWindowTokens({
+      modelName: modelSnapshot.model,
+      fallback: input.contextWindowTokens,
+    });
     return renderStatusLinePrompt({
       model: `${modelSnapshot.providerName}/${modelSnapshot.model}`,
       projectFolder,
       contextWindowUsageRatio: budgetSnapshot.contextWindowUsageRatio,
       estimatedTokens: budgetSnapshot.estimatedTokens,
       targetTokenLimit: budgetSnapshot.targetTokenLimit,
-      contextWindowTokens: input.contextWindowTokens,
+      contextWindowTokens: statusContextWindowTokens,
       sessionId: input.getActiveSessionId(),
       sessionTopic: input.getActiveSessionTopic(),
       terminalColumns: resolveTerminalColumns(),

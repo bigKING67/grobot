@@ -534,7 +534,10 @@ function buildStatusSegments(input: {
   config: StatusLineConfig;
   template: StatusLineTemplateConfig;
 }): {
-  segments: string[];
+  segments: Array<{
+    id: StatusLineSegmentId;
+    value: string;
+  }>;
   sessionShortId: string;
 } {
   const modelWidth = input.template.compactLabels ? 14 : 28;
@@ -578,11 +581,14 @@ function buildStatusSegments(input: {
     const rendered = label.length === 0
       ? valueMap[segmentId]
       : `${label} ${valueMap[segmentId]}`;
-    return applyStatusSegmentThemeColor(
-      input.config.theme,
-      segmentId,
-      rendered,
-    );
+    return {
+      id: segmentId,
+      value: applyStatusSegmentThemeColor(
+        input.config.theme,
+        segmentId,
+        rendered,
+      ),
+    };
   });
   return {
     segments,
@@ -601,11 +607,24 @@ function renderTemplateStatusLine(input: {
     config: input.config,
     template,
   });
-  const separator = input.config.theme === "ccline"
+  const defaultSeparator = input.config.theme === "ccline"
     ? `${ANSI_DIM}${input.config.separator}${ANSI_RESET}`
     : input.config.separator;
+  const contextWindowSeparator = input.config.theme === "ccline"
+    ? `${ANSI_DIM} + ${ANSI_RESET}`
+    : " + ";
+  const line = segments.segments.reduce((acc, segment, index, allSegments) => {
+    if (index === 0) {
+      return segment.value;
+    }
+    const previous = allSegments[index - 1];
+    const separator = previous?.id === "context" && segment.id === "tokens"
+      ? contextWindowSeparator
+      : defaultSeparator;
+    return `${acc}${separator}${segment.value}`;
+  }, "");
   return {
-    line: segments.segments.join(separator),
+    line,
     sessionShortId: segments.sessionShortId,
   };
 }
