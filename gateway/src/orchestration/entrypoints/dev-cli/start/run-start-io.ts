@@ -3,6 +3,15 @@ import { createInterface, Interface } from "node:readline";
 import * as readlineModule from "node:readline";
 import { removeTrailingSlashes } from "../services/runtime-paths";
 import { createCliUiRenderer } from "../ui/kernel/renderer";
+import {
+  resolveInteractivePromptLayout,
+  type SessionPromptLayout,
+} from "../ui/interactive/interactive-frame";
+import {
+  formatSlashSuggestionPanel,
+  normalizeSuggestionIndex,
+  resolveSlashOverlayColumns,
+} from "../ui/interactive/slash-overlay";
 import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../ui/screens/select-menu-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
@@ -23,7 +32,9 @@ export interface SessionInputLoopOptions {
   getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
 }
 
-export type SessionInputPrompt = string | (() => string);
+type SessionInputPromptValue = string | SessionPromptLayout;
+
+export type SessionInputPrompt = SessionInputPromptValue | (() => SessionInputPromptValue);
 
 export interface SessionSlashSuggestion {
   command: string;
@@ -79,79 +90,6 @@ function questionAsync(rl: Interface, prompt: string): Promise<string> {
   });
 }
 
-function splitPromptForReadline(promptText: string): {
-  prefix: string;
-  inlinePrompt: string;
-} {
-  if (!promptText.includes("\n")) {
-    return {
-      prefix: "",
-      inlinePrompt: promptText.length > 0 ? promptText : DEFAULT_SESSION_PROMPT,
-    };
-  }
-  const lines = promptText.split("\n");
-  while (lines.length > 0 && lines[lines.length - 1] === "") {
-    lines.pop();
-  }
-  if (lines.length === 0) {
-    return {
-      prefix: "",
-      inlinePrompt: DEFAULT_SESSION_PROMPT,
-    };
-  }
-  const inlinePrompt = lines.pop() ?? DEFAULT_SESSION_PROMPT;
-  return {
-    prefix: lines.join("\n"),
-    inlinePrompt: inlinePrompt.length > 0 ? inlinePrompt : DEFAULT_SESSION_PROMPT,
-  };
-}
-
-function truncateInlineText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-  if (maxLength <= 1) {
-    return value.slice(0, Math.max(0, maxLength));
-  }
-  return `${value.slice(0, maxLength - 1)}…`;
-}
-
-function resolveSlashOverlayColumns(): number {
-  const stdoutState = process.stdout as unknown as {
-    isTTY?: boolean;
-    columns?: number;
-  };
-  if (
-    stdoutState.isTTY
-    && typeof stdoutState.columns === "number"
-    && Number.isFinite(stdoutState.columns)
-    && stdoutState.columns > 0
-  ) {
-    return Math.floor(stdoutState.columns);
-  }
-  return 96;
-}
-
-function commandHasArgumentPlaceholder(command: string): boolean {
-  return /<[^>]+>|\[[^\]]+\]/.test(command);
-}
-
-function toOverlayBoxLine(content: string, innerWidth: number): string {
-  const normalized = truncateInlineText(content, innerWidth);
-  return `| ${normalized.padEnd(innerWidth, " ")} |`;
-}
-
-function normalizeSuggestionIndex(itemsLength: number, index: number): number {
-  if (itemsLength <= 0) {
-    return 0;
-  }
-  const normalized = index % itemsLength;
-  if (normalized < 0) {
-    return normalized + itemsLength;
-  }
-  return normalized;
-}
-
 function replaceReadlineInputLine(rl: Interface, value: string): void {
   const writer = rl as unknown as {
     write(data: string | null, key?: { ctrl?: boolean; name?: string }): void;
@@ -163,58 +101,6 @@ function replaceReadlineInputLine(rl: Interface, value: string): void {
   if (value.length > 0) {
     writer.write(value);
   }
-}
-
-function formatSlashSuggestionPanel(
-  suggestions: readonly SessionSlashSuggestion[],
-  lineInput: string,
-  selectedIndex: number,
-  terminalColumns: number,
-): string {
-  const trimmed = lineInput.trimStart();
-  if (!trimmed.startsWith("/")) {
-    return "";
-  }
-  if (suggestions.length === 0) {
-    return "";
-  }
-  const limited = suggestions.slice(0, 8);
-  const normalizedSelectedIndex = normalizeSuggestionIndex(limited.length, selectedIndex);
-  const selected = limited[normalizedSelectedIndex];
-  const rows = limited.map((item, index) => {
-    const isSelected = index === normalizedSelectedIndex;
-    const source = item.source ? ` (${item.source})` : "";
-    const detail = item.description?.trim().length ? ` - ${item.description.trim()}` : "";
-    const pointer = isSelected ? ">" : " ";
-    return `${pointer} ${item.command}${source}${detail}`;
-  });
-  const selectedHint = selected
-    ? commandHasArgumentPlaceholder(selected.command)
-      ? `hint: fill args for ${selected.command}`
-      : `hint: ready to run ${selected.command}`
-    : "hint: select a command";
-  const keyHint = "keys: Up/Down select | Tab complete | Enter run selected";
-  const title = `commands ${suggestions.length > limited.length
-    ? `(${String(limited.length)}/${String(suggestions.length)})`
-    : `(${String(limited.length)})`}`;
-
-  const allLines = [title, ...rows, selectedHint, keyHint];
-  const desiredInnerWidth = allLines.reduce((max, line) => Math.max(max, line.length), 0);
-  const maxInnerWidth = Math.max(16, terminalColumns - 4);
-  const innerWidth = Math.min(Math.max(16, desiredInnerWidth), maxInnerWidth);
-  const divider = `+${"-".repeat(innerWidth + 2)}+`;
-  const lines: string[] = [];
-  lines.push(divider);
-  lines.push(toOverlayBoxLine(title, innerWidth));
-  lines.push(divider);
-  for (const row of rows) {
-    lines.push(toOverlayBoxLine(row, innerWidth));
-  }
-  lines.push(divider);
-  lines.push(toOverlayBoxLine(selectedHint, innerWidth));
-  lines.push(toOverlayBoxLine(keyHint, innerWidth));
-  lines.push(divider);
-  return `${lines.join("\n")}\n`;
 }
 
 function buildSlashSuggestionCompleter(
@@ -502,12 +388,20 @@ export async function runSessionInputLoop(
 
   while (true) {
     let rawInput = "";
+    let resolvedPrompt: SessionPromptLayout = {
+      prefix: "",
+      inlinePrompt: DEFAULT_SESSION_PROMPT,
+      suffix: "",
+    };
     try {
-      const promptText = typeof prompt === "function"
+      const promptValue: SessionInputPromptValue = typeof prompt === "function"
         ? (() => {
           try {
             const dynamicPrompt = prompt();
-            if (typeof dynamicPrompt === "string" && dynamicPrompt.length > 0) {
+            if (
+              (typeof dynamicPrompt === "string" && dynamicPrompt.length > 0)
+              || typeof dynamicPrompt === "object"
+            ) {
               return dynamicPrompt;
             }
           } catch {
@@ -516,7 +410,10 @@ export async function runSessionInputLoop(
           return DEFAULT_SESSION_PROMPT;
         })()
         : prompt;
-      const resolvedPrompt = splitPromptForReadline(promptText);
+      resolvedPrompt = resolveInteractivePromptLayout({
+        promptText: promptValue,
+        fallbackPrompt: DEFAULT_SESSION_PROMPT,
+      });
       clearSlashSuggestionOverlay();
       if (resolvedPrompt.prefix.length > 0) {
         process.stdout.write(`${resolvedPrompt.prefix}\n`);
@@ -526,6 +423,9 @@ export async function runSessionInputLoop(
       break;
     }
     clearSlashSuggestionOverlay();
+    if (!sawSigint && resolvedPrompt.suffix && resolvedPrompt.suffix.length > 0) {
+      process.stdout.write(`${resolvedPrompt.suffix}\n`);
+    }
     if (sawSigint) {
       process.stdout.write("Interrupted\n");
       break;

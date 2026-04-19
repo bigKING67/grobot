@@ -943,6 +943,25 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliStatusLineStabilityPayload.performance_within_soft_budget, true);
   logStep("dev-cli-status-line-stability-contract");
 
+  const devCliInteractiveFrameContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-interactive-frame-contract.ts",
+  ]);
+  assertSuccess("dev-cli-interactive-frame-contract", devCliInteractiveFrameContractResult);
+  const devCliInteractiveFramePayload = parseJsonOutput(
+    "dev-cli-interactive-frame-contract",
+    devCliInteractiveFrameContractResult.stdout,
+  );
+  assert.equal(devCliInteractiveFramePayload.prefix_has_status_line, true);
+  assert.equal(devCliInteractiveFramePayload.prefix_has_activity_line, true);
+  assert.equal(devCliInteractiveFramePayload.inline_prompt_has_left_border, true);
+  assert.equal(devCliInteractiveFramePayload.suffix_has_bottom_border, true);
+  assert.equal(devCliInteractiveFramePayload.suffix_width_matches_top, true);
+  logStep("dev-cli-interactive-frame-contract");
+
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -6303,6 +6322,7 @@ function ensureContractsExist() {
     "run-start-slash-suggestions-contract.ts",
     "ask-user-tool-contract.ts",
     "ga-skill-prompt-contract.ts",
+    "dev-cli-interactive-frame-contract.ts",
   ];
   for (const contractName of requiredContracts) {
     const path = resolve(contractsRoot, contractName);

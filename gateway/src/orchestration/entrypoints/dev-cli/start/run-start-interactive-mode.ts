@@ -6,7 +6,9 @@ import { runSessionInputLoop } from "./run-start-io";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
+import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
+import { createInteractiveActivityTracker } from "../ui/interactive/activity-state";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
 
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
@@ -32,6 +34,11 @@ function resolveTerminalColumns(): number | undefined {
     return stdout.columns;
   }
   return undefined;
+}
+
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 function resolvePromptBudgetSnapshot(workDir: string): {
@@ -185,12 +192,29 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     contextWindowTargetTokens: startupPromptBudget.targetTokenLimit,
   });
 
+  const interactiveDiagnosticsEnabled = isTruthyEnvFlag(
+    process.env.GROBOT_INTERACTIVE_DIAGNOSTICS,
+  );
+  const activityTracker = createInteractiveActivityTracker({
+    writeProgressLine: (line) => {
+      process.stdout.write(line);
+    },
+  });
+
   const handleInteractiveInput = createRunStartInteractiveHandler({
     writeStdout: (message) => {
       process.stdout.write(message);
     },
     writeStderr: (message) => {
-      process.stderr.write(message);
+      if (interactiveDiagnosticsEnabled) {
+        activityTracker.observeStderrChunk(message);
+        process.stderr.write(message);
+        return;
+      }
+      const forwarded = activityTracker.consumeStderrChunk(message);
+      if (forwarded.length > 0) {
+        process.stderr.write(forwarded);
+      }
     },
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
@@ -224,7 +248,41 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     runPlanTurn: input.runPlanTurn,
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     tryRunUserCommand: input.tryRunUserCommand,
-    executeTurn: input.executeTurn,
+    executeTurn: async (userInput, interactiveMode) => {
+      if (interactiveMode) {
+        activityTracker.markTurnStart();
+      }
+      try {
+        const code = await input.executeTurn(userInput, interactiveMode);
+        if (!interactiveDiagnosticsEnabled) {
+          const buffered = activityTracker.flushBufferedStderr();
+          if (buffered.length > 0) {
+            process.stderr.write(buffered);
+          }
+        }
+        if (interactiveMode) {
+          activityTracker.markTurnFinished(
+            code === TURN_INTERRUPTED_EXIT_CODE
+              ? "interrupted"
+              : code === 0
+                ? "ok"
+                : "error",
+          );
+        }
+        return code;
+      } catch (error) {
+        if (!interactiveDiagnosticsEnabled) {
+          const buffered = activityTracker.flushBufferedStderr();
+          if (buffered.length > 0) {
+            process.stderr.write(buffered);
+          }
+        }
+        if (interactiveMode) {
+          activityTracker.markTurnFinished("error");
+        }
+        throw error;
+      }
+    },
     markFailureObserved: input.markFailureObserved,
   });
 
@@ -245,6 +303,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       sessionId: input.getActiveSessionId(),
       sessionTopic: input.getActiveSessionTopic(),
       terminalColumns: resolveTerminalColumns(),
+      activityText: activityTracker.readPromptActivity(),
       promptLabel: "› ",
       config: statusLineConfig,
     });
