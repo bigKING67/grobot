@@ -435,6 +435,10 @@ function extractPolicyHash(report: JsonObject): string | null {
   return policyHash ?? null;
 }
 
+function extractReportSchema(report: JsonObject): string | null {
+  return normalizeOptionalText(report.schema) ?? null;
+}
+
 function buildTrendMeta(input: {
   currentReport: JsonObject;
   baseReport: JsonObject;
@@ -536,6 +540,8 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
 
   const currentReport = loadReport(outputPath);
   const baseReport = loadReport(baseReportPath);
+  const currentReportSchema = extractReportSchema(currentReport);
+  const baseReportSchema = extractReportSchema(baseReport);
 
   let trend: TrendCompareResult | null = null;
 
@@ -545,11 +551,15 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
       trendReason = "policy_blob_unavailable";
       if (typeof currentPolicyBlob === "string" && typeof basePolicyBlob === "string") {
         if (currentPolicyBlob === basePolicyBlob) {
-          trendRequired = true;
           policyBlobMatch = true;
-          trendMode = "gate_and_trend";
-          trendReason = "policy_blob_match";
-          trend = buildTrendComparison(currentReport, baseReport);
+          if (currentReportSchema === baseReportSchema) {
+            trendRequired = true;
+            trendMode = "gate_and_trend";
+            trendReason = "policy_blob_match";
+            trend = buildTrendComparison(currentReport, baseReport);
+          } else {
+            trendReason = "report_schema_mismatch";
+          }
         } else {
           policyBlobMatch = false;
           trendReason = "policy_blob_mismatch";

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolveBaseSha } from "./skill-router-baseline-report";
+import { buildSkillRouterBaselineReport, resolveBaseSha } from "./skill-router-baseline-report";
 import { buildSkillRouterTrendMeta, loadReport, saveReport } from "./skill-router-trend-meta";
 
 type JsonObject = Record<string, unknown>;
@@ -40,14 +40,37 @@ interface SkillRouterCiGateResult {
   trend_reason?: string;
 }
 
-function normalizeBool(value: unknown): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
+type BaselineAvailabilityMode = "force_on" | "force_off" | "auto";
+
+function parseBaselineAvailabilityMode(value: unknown): BaselineAvailabilityMode {
   if (typeof value !== "string") {
+    return "auto";
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
+    return "force_on";
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
+    return "force_off";
+  }
+  return "auto";
+}
+
+function resolveBaselineAvailability(input: {
+  mode: BaselineAvailabilityMode;
+  baseSha: string | undefined;
+  baseReportPath: string;
+}): boolean {
+  if (input.mode === "force_on") {
+    return true;
+  }
+  if (input.mode === "force_off") {
     return false;
   }
-  return value.trim().toLowerCase() === "true";
+  if (existsSync(input.baseReportPath)) {
+    return true;
+  }
+  return typeof input.baseSha === "string";
 }
 
 function dirname(path: string): string {
@@ -142,7 +165,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   let eventName = "";
   let prBaseSha = "";
   let beforeSha = "";
-  let baselineAvailable = "false";
+  let baselineAvailable = "auto";
   let repoRoot = ".";
   let outputPath = "gateway/evals/data/skill_router_ci_report.json";
   let baseReportPath = "gateway/evals/data/skill_router_ci_report.base.json";
@@ -169,7 +192,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (token === "--baseline-available") {
-      baselineAvailable = argv[index + 1] ?? "false";
+      baselineAvailable = argv[index + 1] ?? "auto";
       index += 1;
       continue;
     }
@@ -251,7 +274,27 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
     beforeSha: input.beforeSha,
     repoRoot,
   });
-  const baselineAvailableFlag = normalizeBool(input.baselineAvailable);
+  const baselineMode = parseBaselineAvailabilityMode(input.baselineAvailable);
+  let baselineAvailableFlag = resolveBaselineAvailability({
+    mode: baselineMode,
+    baseSha,
+    baseReportPath,
+  });
+
+  let baselineBuildAttempted = false;
+  let baselineBuildSucceeded = false;
+  if (baselineAvailableFlag && !existsSync(baseReportPath) && typeof baseSha === "string") {
+    baselineBuildAttempted = true;
+    const baselineBuild = buildSkillRouterBaselineReport({
+      eventName: input.eventName,
+      prBaseSha: input.prBaseSha,
+      beforeSha: input.beforeSha,
+      repoRoot,
+      outputPath: input.baseReportPath,
+    });
+    baselineBuildSucceeded = baselineBuild.available === true && existsSync(baseReportPath);
+    baselineAvailableFlag = baselineBuildSucceeded;
+  }
 
   const currentPolicyBlob = runCapture(["git", "-C", repoRoot, "rev-parse", `HEAD:${input.policyBlobPath}`]);
   let basePolicyBlob: string | undefined;
@@ -261,8 +304,8 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
 
   let trendMode = "gate_only";
   let trendReason = "baseline_unavailable";
-  let trendRequired: unknown = "false";
-  let policyBlobMatch: unknown = "unknown";
+  let trendRequired = false;
+  let policyBlobMatch: boolean | null = null;
 
   if (baselineAvailableFlag) {
     trendReason = "baseline_report_missing";
@@ -270,8 +313,8 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
       trendReason = "policy_blob_unavailable";
       if (typeof currentPolicyBlob === "string" && typeof basePolicyBlob === "string") {
         if (currentPolicyBlob === basePolicyBlob) {
-          trendRequired = "true";
-          policyBlobMatch = "true";
+          trendRequired = true;
+          policyBlobMatch = true;
           const trendExitCode = runEval({
             evalScriptPath,
             policyPath,
@@ -289,11 +332,15 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
           trendMode = "gate_and_trend";
           trendReason = "policy_blob_match";
         } else {
-          policyBlobMatch = "false";
+          policyBlobMatch = false;
           trendReason = "policy_blob_mismatch";
         }
       }
     }
+  } else if (baselineBuildAttempted && !baselineBuildSucceeded) {
+    trendReason = "baseline_build_failed";
+  } else if (baselineMode !== "force_off" && typeof baseSha !== "string") {
+    trendReason = "baseline_no_base_sha";
   }
 
   const currentReport = loadReport(outputPath);
@@ -304,7 +351,7 @@ export function runSkillRouterCiGate(input: SkillRouterCiGateInput): SkillRouter
     trendMode,
     trendReason,
     trendRequired,
-    baselineAvailable: input.baselineAvailable,
+    baselineAvailable: baselineAvailableFlag,
     baseSha,
     currentPolicyBlob,
     basePolicyBlob,

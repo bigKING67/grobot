@@ -12,6 +12,7 @@ type MetricName =
   | "safety_compliance"
   | "latency_cost";
 
+type SaturationMetricName = "task_success" | "tool_use_quality" | "context_retention";
 type DimensionName = "context_compression" | "memory_lineage" | "experience_learning";
 
 interface ParsedCliArgs {
@@ -78,8 +79,30 @@ interface DimensionRegressionGuardReport {
   failures: string[];
 }
 
+interface SaturationPolicyPayload {
+  max_perfect_case_rate: number;
+  min_metric_variance: number;
+  monitored_metrics: SaturationMetricName[];
+}
+
+interface SaturationMetricSnapshot {
+  mean: number;
+  variance: number;
+}
+
+interface VariantSaturationGuardReport {
+  variant: string;
+  case_count: number;
+  perfect_case_count: number;
+  perfect_case_rate: number;
+  max_metric_variance: number;
+  monitored_metrics: Record<SaturationMetricName, SaturationMetricSnapshot>;
+  triggered: boolean;
+  reasons: string[];
+}
+
 interface ContextMemoryEvalReport {
-  schema: "context_memory_experience_eval@v1";
+  schema: "context_memory_experience_eval@v2";
   generated_at: string;
   inputs: {
     cases: string;
@@ -98,7 +121,9 @@ interface ContextMemoryEvalReport {
     min_pass_rate_lower_bound: number;
     min_metric_averages: Partial<Record<MetricName, number>>;
   }>;
+  saturation_policy: SaturationPolicyPayload;
   variants: Record<string, VariantDimensionReport>;
+  saturation_guard: Record<string, VariantSaturationGuardReport>;
   harness_regression_guard: HarnessReport["regression_guard"] | null;
   dimension_regression_guard: DimensionRegressionGuardReport;
   overall_gate: {
@@ -166,6 +191,12 @@ const DIMENSION_REGRESSION_GUARD = {
   dimensions: ["context_compression", "memory_lineage", "experience_learning"] as DimensionName[],
   maxScoreDrop: 0,
   maxPassRateDrop: 0,
+};
+
+const SATURATION_POLICY = {
+  maxPerfectCaseRate: 0.95,
+  minMetricVariance: 1e-4,
+  monitoredMetrics: ["task_success", "tool_use_quality", "context_retention"] as SaturationMetricName[],
 };
 
 function clampScore(value: number): number {
@@ -270,6 +301,72 @@ function toMetricAverageRecord(rows: HarnessCaseRow[]): Record<MetricName, numbe
     context_retention: metricAverage(rows, "context_retention"),
     safety_compliance: metricAverage(rows, "safety_compliance"),
     latency_cost: metricAverage(rows, "latency_cost"),
+  };
+}
+
+function variance(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const squareDiff = values.reduce((sum, value) => {
+    const delta = value - mean;
+    return sum + delta * delta;
+  }, 0);
+  return squareDiff / values.length;
+}
+
+function buildVariantSaturationGuard(
+  variantName: string,
+  caseRows: HarnessCaseRow[]
+): VariantSaturationGuardReport {
+  const epsilon = 1e-9;
+  const caseCount = caseRows.length;
+  const perfectCaseCount = caseRows.filter((row) => asNumber(row.overall_score) >= 1 - epsilon).length;
+  const perfectCaseRate = caseCount > 0 ? perfectCaseCount / caseCount : 0;
+
+  const monitoredMetrics = SATURATION_POLICY.monitoredMetrics.reduce(
+    (accumulator, metric) => {
+      const metricValues = caseRows.map((row) => {
+        const payload = row.metrics as Record<string, unknown>;
+        return clampScore(asNumber(payload[metric]));
+      });
+      const mean = metricValues.length > 0 ? metricValues.reduce((sum, value) => sum + value, 0) / metricValues.length : 0;
+      accumulator[metric] = {
+        mean: clampScore(mean),
+        variance: variance(metricValues),
+      };
+      return accumulator;
+    },
+    {} as Record<SaturationMetricName, SaturationMetricSnapshot>
+  );
+
+  const maxMetricVariance = SATURATION_POLICY.monitoredMetrics.reduce((currentMax, metric) => {
+    const metricVariance = monitoredMetrics[metric]?.variance ?? 0;
+    return Math.max(currentMax, metricVariance);
+  }, 0);
+
+  const saturationTriggered =
+    caseCount > 0 &&
+    perfectCaseRate > SATURATION_POLICY.maxPerfectCaseRate &&
+    maxMetricVariance < SATURATION_POLICY.minMetricVariance;
+
+  const reasons: string[] = [];
+  if (saturationTriggered) {
+    reasons.push(
+      `perfect_case_rate ${perfectCaseRate.toFixed(4)} > ${SATURATION_POLICY.maxPerfectCaseRate.toFixed(4)} and max_metric_variance ${maxMetricVariance.toExponential(3)} < ${SATURATION_POLICY.minMetricVariance.toExponential(3)}`
+    );
+  }
+
+  return {
+    variant: variantName,
+    case_count: caseCount,
+    perfect_case_count: perfectCaseCount,
+    perfect_case_rate: perfectCaseRate,
+    max_metric_variance: maxMetricVariance,
+    monitored_metrics: monitoredMetrics,
+    triggered: saturationTriggered,
+    reasons,
   };
 }
 
@@ -505,11 +602,19 @@ function toDimensionPolicyPayload(): ContextMemoryEvalReport["dimension_policy"]
 
 function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
   const harnessReport = runHarness(args.cases, args.runs, args.gatePolicy);
+  const sortedVariantEntries = Object.entries(harnessReport.variants).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
 
   const variantReports = Object.fromEntries(
-    Object.entries(harnessReport.variants)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([variantName, variant]) => [variantName, evaluateVariant(variantName, variant)])
+    sortedVariantEntries.map(([variantName, variant]) => [variantName, evaluateVariant(variantName, variant)])
+  );
+
+  const saturationGuard = Object.fromEntries(
+    sortedVariantEntries.map(([variantName, variant]) => [
+      variantName,
+      buildVariantSaturationGuard(variantName, variant.cases),
+    ])
   );
 
   const dimensionRegression = compareDimensionRegression(variantReports);
@@ -543,6 +648,12 @@ function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
         ...variant.dimension_gate.failures.map((item) => `variant=${variantName} dimension_gate: ${item}`)
       );
     }
+    const saturation = saturationGuard[variantName];
+    if (saturation?.triggered) {
+      failures.push(
+        ...saturation.reasons.map((item) => `variant=${variantName} saturation_guard: ${item}`)
+      );
+    }
   });
 
   if (harnessReport.regression_guard != null && harnessReport.regression_guard.passed !== true) {
@@ -559,7 +670,7 @@ function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
   }
 
   return {
-    schema: "context_memory_experience_eval@v1",
+    schema: "context_memory_experience_eval@v2",
     generated_at: new Date().toISOString(),
     inputs: {
       cases: args.cases,
@@ -572,7 +683,13 @@ function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
       min_optimization_case_count: COVERAGE_POLICY.minOptimizationCaseCount,
     },
     dimension_policy: toDimensionPolicyPayload(),
+    saturation_policy: {
+      max_perfect_case_rate: SATURATION_POLICY.maxPerfectCaseRate,
+      min_metric_variance: SATURATION_POLICY.minMetricVariance,
+      monitored_metrics: [...SATURATION_POLICY.monitoredMetrics],
+    },
     variants: variantReports,
+    saturation_guard: saturationGuard,
     harness_regression_guard: harnessReport.regression_guard ?? null,
     dimension_regression_guard: dimensionRegression,
     overall_gate: {
@@ -588,9 +705,16 @@ function printSummary(report: ContextMemoryEvalReport): void {
     .forEach(([variantName, variant]) => {
       const harnessStatus = variant.harness_gate.passed ? "PASS" : "FAIL";
       const dimensionStatus = variant.dimension_gate.passed ? "PASS" : "FAIL";
+      const saturation = report.saturation_guard[variantName];
+      const saturationStatus = saturation?.triggered ? "FAIL" : "PASS";
       process.stdout.write(
         `[variant=${variantName}] harness_gate=${harnessStatus} dimension_gate=${dimensionStatus} avg=${variant.summary.average_score.toFixed(4)} pass_rate=${variant.summary.pass_rate.toFixed(4)} reward=${variant.reward_v1.composite_score.toFixed(4)}\n`
       );
+      if (saturation != null) {
+        process.stdout.write(
+          `  - saturation_guard=${saturationStatus} perfect_rate=${saturation.perfect_case_rate.toFixed(4)} max_metric_variance=${saturation.max_metric_variance.toExponential(3)}\n`
+        );
+      }
       (Object.keys(variant.dimensions) as DimensionName[]).forEach((dimension) => {
         const data = variant.dimensions[dimension];
         process.stdout.write(
@@ -602,6 +726,9 @@ function printSummary(report: ContextMemoryEvalReport): void {
       });
       variant.harness_gate.failures.forEach((failure) => {
         process.stdout.write(`    harness_failure: ${failure}\n`);
+      });
+      saturation?.reasons.forEach((failure) => {
+        process.stdout.write(`    saturation_failure: ${failure}\n`);
       });
     });
 
