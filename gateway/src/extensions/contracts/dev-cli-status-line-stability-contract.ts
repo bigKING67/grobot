@@ -84,7 +84,7 @@ function main(): void {
     && line96.includes("null") === false;
 
   const warningLines = warningBaseline.split("\n");
-  const warningHasSeparateLine = warningLines.length >= 3;
+  const warningHasSeparateLine = warningLines.length >= 2;
 
   const payload = {
     deterministic_stable: deterministicStable,

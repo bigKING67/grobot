@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createInterface, Interface } from "node:readline";
 import * as readlineModule from "node:readline";
 import { type RuntimeAttachment } from "../../../../models/types";
 import { removeTrailingSlashes } from "../services/runtime-paths";
@@ -14,6 +13,12 @@ import {
   normalizeSuggestionIndex,
   resolveSlashOverlayColumns,
 } from "../ui/interactive/slash-overlay";
+import {
+  getGraphemeDisplayWidth,
+  measureDisplayWidth,
+  padToDisplayWidth,
+  splitGraphemes,
+} from "../ui/interactive/display-width";
 import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../ui/screens/select-menu-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
@@ -22,6 +27,8 @@ const INLINE_IMAGE_PARSE_PATTERN = /\[Image #(\d+)\]/g;
 const INLINE_IMAGE_RENDER_PATTERN = /\[Image #\d+\]/g;
 const INLINE_IMAGE_REGISTRY_LIMIT = 512;
 const ANSI_RESET = "\u001B[0m";
+const ANSI_DIM = "\u001B[90m";
+const ANSI_INVERSE = "\u001B[7m";
 const ANSI_INLINE_IMAGE_TOKEN_PLAIN = "\u001B[96m";
 const ANSI_INLINE_IMAGE_TOKEN_NERD = "\u001B[94m";
 const ANSI_INLINE_IMAGE_TOKEN_CCLINE = "\u001B[1m\u001B[96m";
@@ -59,11 +66,6 @@ export interface SessionSlashSuggestion {
   source?: string;
 }
 
-interface PauseableInput {
-  pause?: () => void;
-  resume?: () => void;
-}
-
 interface MenuInputStream {
   isTTY?: boolean;
   setRawMode?: (enabled: boolean) => void;
@@ -71,12 +73,6 @@ interface MenuInputStream {
   off?: (event: "data", listener: (chunk: string) => void) => void;
   resume?: () => void;
   setEncoding?: (encoding: string) => void;
-}
-
-interface ReadlineState extends Interface {
-  line: string;
-  cursor?: number;
-  _writeToOutput?: (value: string) => void;
 }
 
 interface KeypressPayload {
@@ -237,20 +233,6 @@ function resolveInlineImageTokenColor(theme: "plain" | "nerd_font" | "ccline" | 
   return ANSI_INLINE_IMAGE_TOKEN_PLAIN;
 }
 
-function highlightInlineImageToken(
-  value: string,
-  theme: "plain" | "nerd_font" | "ccline" | undefined,
-): string {
-  if (!value || !value.includes("[Image #")) {
-    return value;
-  }
-  const tokenColor = resolveInlineImageTokenColor(theme);
-  return value.replace(
-    INLINE_IMAGE_RENDER_PATTERN,
-    (placeholder) => `${tokenColor}${placeholder}${ANSI_RESET}`,
-  );
-}
-
 function stripBracketedPasteMarkers(value: string): string {
   if (!value || !value.includes("\u001B[")) {
     return value;
@@ -271,51 +253,12 @@ function dirname(path: string): string {
   return normalized.slice(0, slash);
 }
 
-function questionAsync(rl: Interface, prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(prompt, (value) => {
-      resolve(value);
-    });
-  });
-}
-
-function replaceReadlineInputLine(rl: Interface, value: string): void {
-  const writer = rl as unknown as {
-    write(data: string | null, key?: { ctrl?: boolean; name?: string }): void;
-  };
-  writer.write(null, {
-    ctrl: true,
-    name: "u",
-  });
-  if (value.length > 0) {
-    writer.write(value);
-  }
-}
-
-function buildSlashSuggestionCompleter(
-  getSlashSuggestions: (input: string) => readonly SessionSlashSuggestion[],
-): (line: string) => [string[], string] {
-  return (line: string): [string[], string] => {
-    const leadingSpaces = line.length - line.trimStart().length;
-    const candidate = line.slice(leadingSpaces);
-    if (!candidate.startsWith("/")) {
-      return [[], candidate];
-    }
-    const suggestions = getSlashSuggestions(candidate);
-    if (suggestions.length === 0) {
-      return [[], candidate];
-    }
-    const completions = suggestions.map((item) => `${item.command} `);
-    return [completions, candidate];
-  };
-}
-
-function emitKeypressEventsCompat(input: unknown, rl: Interface): void {
+function emitKeypressEventsCompat(input: unknown): void {
   const maybeEmit = (readlineModule as unknown as {
-    emitKeypressEvents?: (stream: unknown, iface?: Interface) => void;
+    emitKeypressEvents?: (stream: unknown) => void;
   }).emitKeypressEvents;
   if (typeof maybeEmit === "function") {
-    maybeEmit(input, rl);
+    maybeEmit(input);
   }
 }
 
@@ -356,135 +299,85 @@ export async function runSessionInputLoop(
     }
     return;
   }
-
-  const completer = typeof options.getSlashSuggestions === "function"
-    ? buildSlashSuggestionCompleter(options.getSlashSuggestions)
-    : undefined;
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    completer,
-  } as unknown as {
-    input: unknown;
-    output?: unknown;
-  });
-  const readlineState = rl as ReadlineState;
-  const originalWriteToOutput = typeof readlineState._writeToOutput === "function"
-    ? readlineState._writeToOutput
-    : undefined;
-  if (originalWriteToOutput) {
-    readlineState._writeToOutput = (value: string): void => {
-      const highlightTheme = options.getInlineImageHighlightTheme?.();
-      originalWriteToOutput.call(
-        readlineState,
-        highlightInlineImageToken(value, highlightTheme),
-      );
-    };
+  interface InputLineDescriptor {
+    start: number;
+    end: number;
+    text: string;
+    textWidth: number;
+    codeStart: number;
+    codeEnd: number;
   }
-  let sawSigint = false;
-  rl.on("SIGINT", () => {
-    sawSigint = true;
-    rl.close();
-  });
-  const pauseableInput = process.stdin as unknown as PauseableInput;
+
+  interface InputRenderSnapshot {
+    renderedLines: string[];
+    cursorRenderLineIndex: number;
+    cursorColumn: number;
+    descriptors: InputLineDescriptor[];
+    activeLineIndex: number;
+    activeLineInput: string;
+    activeSlashSuggestions: readonly SessionSlashSuggestion[];
+  }
+
   const menuInput = process.stdin as unknown as MenuInputStream;
   const keypressInput = process.stdin as unknown as KeypressInputStream;
+  const canUseRawMode = Boolean(
+    typeof menuInput.setRawMode === "function"
+    && typeof menuInput.on === "function"
+    && typeof menuInput.off === "function"
+    && typeof keypressInput.on === "function"
+    && typeof keypressInput.off === "function",
+  );
+  if (!canUseRawMode) {
+    // Fallback for unusual TTY implementations.
+    let stdinContent = "";
+    process.stdin.setEncoding("utf8");
+    for await (const chunk of process.stdin) {
+      stdinContent += String(chunk);
+    }
+    const lines = stdinContent.split(/\r?\n/);
+    for (const line of lines) {
+      const action = await handler(line, nonTtyControls);
+      if (action === "break") {
+        break;
+      }
+    }
+    return;
+  }
+
+  menuInput.setEncoding?.("utf8");
+  emitKeypressEventsCompat(process.stdin);
+  let rawModeEnabled = false;
+  let pauseDepth = 0;
+  let escArmedAt = 0;
+  let handlerRunning = false;
+
+  const setRawMode = (enabled: boolean): void => {
+    if (rawModeEnabled === enabled) {
+      return;
+    }
+    try {
+      menuInput.setRawMode?.(enabled);
+      rawModeEnabled = enabled;
+    } catch {
+      // ignore raw-mode transition failures
+    }
+  };
+
   const controls: SessionInputLoopControls = {
     withInputPaused: async <T>(operation: () => Promise<T>): Promise<T> => {
-      pauseableInput.pause?.();
+      pauseDepth += 1;
+      if (pauseDepth === 1) {
+        setRawMode(false);
+      }
       try {
         return await operation();
       } finally {
-        pauseableInput.resume?.();
+        pauseDepth = Math.max(0, pauseDepth - 1);
+        if (pauseDepth === 0) {
+          setRawMode(true);
+        }
       }
     },
-  };
-
-  let handlerRunning = false;
-  let escListenerAttached = false;
-  let escArmedAt = 0;
-  let liveFooterEnabled = false;
-  let liveFooterContent = "";
-  let activeSlashSuggestions: readonly SessionSlashSuggestion[] = [];
-  let activeSlashSuggestionIndex = 0;
-  let lastSlashLineInput = "";
-  let slashOverlayPanel = "";
-  let lowerDecorationSignature = "<empty>";
-  let bracketedPasteBuffer = "";
-  const escInputSupported = Boolean(
-    options.onEscapeInterrupt
-    && typeof menuInput.setRawMode === "function"
-    && typeof menuInput.on === "function"
-    && typeof menuInput.off === "function",
-  );
-
-  const renderLowerDecoration = (content: string): void => {
-    const nextSignature = content.length > 0 ? content : "<empty>";
-    if (nextSignature === lowerDecorationSignature) {
-      return;
-    }
-    process.stdout.write("\x1b[s");
-    process.stdout.write("\x1b[E");
-    process.stdout.write("\x1b[J");
-    if (content.length > 0) {
-      process.stdout.write(content);
-    }
-    process.stdout.write("\x1b[u");
-    lowerDecorationSignature = nextSignature;
-  };
-
-  const refreshLowerDecoration = (): void => {
-    if (handlerRunning) {
-      renderLowerDecoration("");
-      return;
-    }
-    if (slashOverlayPanel.length > 0) {
-      renderLowerDecoration(slashOverlayPanel);
-      return;
-    }
-    if (liveFooterEnabled && liveFooterContent.length > 0) {
-      renderLowerDecoration(`${liveFooterContent}\n`);
-      return;
-    }
-    renderLowerDecoration("");
-  };
-
-  const clearSlashSuggestionOverlay = (): void => {
-    slashOverlayPanel = "";
-    activeSlashSuggestions = [];
-    activeSlashSuggestionIndex = 0;
-    lastSlashLineInput = "";
-    refreshLowerDecoration();
-  };
-
-  const refreshSlashSuggestionOverlay = (): void => {
-    if (handlerRunning || typeof options.getSlashSuggestions !== "function") {
-      clearSlashSuggestionOverlay();
-      return;
-    }
-    const lineInput = readlineState.line ?? "";
-    if (lineInput !== lastSlashLineInput) {
-      activeSlashSuggestionIndex = 0;
-      lastSlashLineInput = lineInput;
-    }
-    const suggestions = options.getSlashSuggestions(lineInput);
-    activeSlashSuggestions = suggestions;
-    if (activeSlashSuggestions.length === 0) {
-      activeSlashSuggestionIndex = 0;
-    } else {
-      activeSlashSuggestionIndex = normalizeSuggestionIndex(
-        activeSlashSuggestions.length,
-        activeSlashSuggestionIndex,
-      );
-    }
-    const panel = formatSlashSuggestionPanel(
-      activeSlashSuggestions,
-      lineInput,
-      activeSlashSuggestionIndex,
-      resolveSlashOverlayColumns(),
-    );
-    slashOverlayPanel = panel;
-    refreshLowerDecoration();
   };
 
   const triggerEscInterrupt = (): void => {
@@ -497,11 +390,11 @@ export async function runSessionInputLoop(
     }
   };
 
-  const onEscData = (chunk: string): void => {
-    if (!handlerRunning) {
+  const onEscDataWhileHandler = (chunk: string): void => {
+    if (!handlerRunning || pauseDepth > 0) {
       return;
     }
-    const raw = String(chunk);
+    const raw = String(chunk ?? "");
     if (raw !== "\u001b") {
       return;
     }
@@ -514,289 +407,752 @@ export async function runSessionInputLoop(
     triggerEscInterrupt();
   };
 
-  const setEscListener = (enabled: boolean): void => {
-    if (!escInputSupported) {
-      return;
-    }
-    if (enabled) {
-      if (escListenerAttached) {
-        return;
-      }
-      menuInput.setEncoding?.("utf8");
-      menuInput.on?.("data", onEscData);
-      try {
-        menuInput.setRawMode?.(true);
-      } catch {
-        menuInput.off?.("data", onEscData);
-        return;
-      }
-      escListenerAttached = true;
-      menuInput.resume?.();
-      return;
-    }
-    if (!escListenerAttached) {
-      return;
-    }
-    menuInput.off?.("data", onEscData);
-    try {
-      menuInput.setRawMode?.(false);
-    } catch {
-      // ignore raw mode restore errors
-    }
-    escListenerAttached = false;
-  };
-
-  const tryPasteInlineClipboardImage = (): boolean => {
-    const attachment = saveClipboardImageToTempFile();
-    if (!attachment) {
-      return false;
-    }
-    const placeholder = registerInlineImageAttachment(attachment);
-    const lineBefore = readlineState.line ?? "";
-    const cursorBefore = typeof readlineState.cursor === "number"
-      ? Math.max(0, Math.min(readlineState.cursor, lineBefore.length))
-      : lineBefore.length;
-    const nextLine = `${lineBefore.slice(0, cursorBefore)}${placeholder}${lineBefore.slice(cursorBefore)}`;
-    replaceReadlineInputLine(rl, nextLine);
-    const trailingChars = lineBefore.length - cursorBefore;
-    if (trailingChars > 0) {
-      process.stdout.write(`\x1b[${String(trailingChars)}D`);
-    }
-    return true;
-  };
-
-  const stripBracketedPasteMarkersFromInputLine = (): boolean => {
-    const lineBefore = readlineState.line ?? "";
-    const lineAfter = stripBracketedPasteMarkers(lineBefore);
-    if (lineAfter === lineBefore) {
-      return false;
-    }
-    replaceReadlineInputLine(rl, lineAfter);
-    return true;
-  };
-
-  const handleBracketedPastePayload = (payload: string): void => {
-    queueMicrotask(() => {
-      if (handlerRunning) {
-        return;
-      }
-      const stripped = stripBracketedPasteMarkersFromInputLine();
-      if (payload.trim().length > 0) {
-        if (stripped) {
-          refreshSlashSuggestionOverlay();
-        }
-        return;
-      }
-      const pasted = tryPasteInlineClipboardImage();
-      if (pasted || stripped) {
-        refreshSlashSuggestionOverlay();
-      }
-    });
-  };
-
-  const onInputData = (chunk: string): void => {
-    if (handlerRunning) {
-      return;
-    }
-    const raw = String(chunk ?? "");
-    if (raw.length === 0) {
-      return;
-    }
-    if (!raw.includes(BRACKETED_PASTE_START) && !raw.includes(BRACKETED_PASTE_END) && bracketedPasteBuffer.length === 0) {
-      return;
-    }
-    bracketedPasteBuffer = `${bracketedPasteBuffer}${raw}`;
-    if (bracketedPasteBuffer.length > BRACKETED_PASTE_BUFFER_LIMIT) {
-      bracketedPasteBuffer = bracketedPasteBuffer.slice(-BRACKETED_PASTE_BUFFER_LIMIT);
-    }
-    let matched = false;
-    let lastConsumedIndex = 0;
-    BRACKETED_PASTE_BLOCK_PATTERN.lastIndex = 0;
-    for (const match of bracketedPasteBuffer.matchAll(BRACKETED_PASTE_BLOCK_PATTERN)) {
-      const payload = match[1] ?? "";
-      matched = true;
-      lastConsumedIndex = (match.index ?? 0) + match[0].length;
-      handleBracketedPastePayload(payload);
-    }
-    if (matched) {
-      bracketedPasteBuffer = bracketedPasteBuffer.slice(lastConsumedIndex);
-      return;
-    }
-    const startIndex = bracketedPasteBuffer.lastIndexOf(BRACKETED_PASTE_START);
-    if (startIndex >= 0) {
-      bracketedPasteBuffer = bracketedPasteBuffer.slice(startIndex);
-      return;
-    }
-    const tailLength = Math.max(BRACKETED_PASTE_START.length - 1, BRACKETED_PASTE_END.length - 1);
-    if (bracketedPasteBuffer.length > tailLength) {
-      bracketedPasteBuffer = bracketedPasteBuffer.slice(-tailLength);
-    }
-  };
-
-  const onKeypress = (_chunk: string, key: KeypressPayload): void => {
-    if (handlerRunning) {
-      return;
-    }
-    const imagePasteTriggered =
-      (key.ctrl && key.name === "v")
-      || (key.meta && key.name === "v")
-      || (key.shift && key.name === "insert")
-      || key.sequence === "\u0016";
-    if (imagePasteTriggered) {
-      const pasted = tryPasteInlineClipboardImage();
-      if (pasted) {
-        queueMicrotask(() => {
-          if (handlerRunning) {
-            return;
+  const resolvePromptLayoutValue = (): SessionPromptLayout => {
+    const promptValue: SessionInputPromptValue = typeof prompt === "function"
+      ? (() => {
+        try {
+          const dynamicPrompt = prompt();
+          if (
+            (typeof dynamicPrompt === "string" && dynamicPrompt.length > 0)
+            || typeof dynamicPrompt === "object"
+          ) {
+            return dynamicPrompt;
           }
-          refreshSlashSuggestionOverlay();
-        });
-      }
-      return;
-    }
-    const lineBefore = readlineState.line ?? "";
-    const slashSuggestionsEnabled = typeof options.getSlashSuggestions === "function";
-    const hasActiveSlashSuggestions = lineBefore.trimStart().startsWith("/")
-      && activeSlashSuggestions.length > 0
-      && slashSuggestionsEnabled;
-    if (hasActiveSlashSuggestions && key.name === "up") {
-      activeSlashSuggestionIndex = normalizeSuggestionIndex(
-        activeSlashSuggestions.length,
-        activeSlashSuggestionIndex - 1,
-      );
-      queueMicrotask(() => {
-        if ((readlineState.line ?? "") !== lineBefore) {
-          replaceReadlineInputLine(rl, lineBefore);
+        } catch {
+          // fallback to default prompt
         }
-        refreshSlashSuggestionOverlay();
-      });
-      return;
-    }
-    if (hasActiveSlashSuggestions && key.name === "down") {
-      activeSlashSuggestionIndex = normalizeSuggestionIndex(
-        activeSlashSuggestions.length,
-        activeSlashSuggestionIndex + 1,
-      );
-      queueMicrotask(() => {
-        if ((readlineState.line ?? "") !== lineBefore) {
-          replaceReadlineInputLine(rl, lineBefore);
-        }
-        refreshSlashSuggestionOverlay();
-      });
-      return;
-    }
-    if (hasActiveSlashSuggestions && key.name === "return") {
-      const selected = activeSlashSuggestions[activeSlashSuggestionIndex];
-      if (selected?.command) {
-        replaceReadlineInputLine(rl, selected.command);
-        activeSlashSuggestionIndex = 0;
-      }
-      return;
-    }
-    if (key.ctrl && key.name === "c") {
-      return;
-    }
-    queueMicrotask(() => {
-      if (handlerRunning) {
-        return;
-      }
-      refreshSlashSuggestionOverlay();
+        return DEFAULT_SESSION_PROMPT;
+      })()
+      : prompt;
+    return resolveInteractivePromptLayout({
+      promptText: promptValue,
+      fallbackPrompt: DEFAULT_SESSION_PROMPT,
     });
   };
 
-  emitKeypressEventsCompat(process.stdin, rl);
-  menuInput.setEncoding?.("utf8");
-  menuInput.on?.("data", onInputData);
-  keypressInput.on?.("keypress", onKeypress);
-
-  while (true) {
-    let rawInput = "";
-    let resolvedPrompt: SessionPromptLayout = {
-      prefix: "",
-      inlinePrompt: DEFAULT_SESSION_PROMPT,
-      suffix: "",
+  const resolveTerminalColumns = (): number => {
+    const stdout = process.stdout as unknown as {
+      isTTY?: boolean;
+      columns?: number;
     };
-    let liveFooterMode = false;
-    try {
-      const promptValue: SessionInputPromptValue = typeof prompt === "function"
-        ? (() => {
-          try {
-            const dynamicPrompt = prompt();
-            if (
-              (typeof dynamicPrompt === "string" && dynamicPrompt.length > 0)
-              || typeof dynamicPrompt === "object"
-            ) {
-              return dynamicPrompt;
-            }
-          } catch {
-            // fallback to default prompt
-          }
-          return DEFAULT_SESSION_PROMPT;
-        })()
-        : prompt;
-      resolvedPrompt = resolveInteractivePromptLayout({
-        promptText: promptValue,
-        fallbackPrompt: DEFAULT_SESSION_PROMPT,
-      });
-      clearSlashSuggestionOverlay();
-      liveFooterMode = Boolean(
-        resolvedPrompt.renderSuffixWhileTyping
-        && typeof resolvedPrompt.suffix === "string"
-        && resolvedPrompt.suffix.length > 0,
-      );
-      liveFooterEnabled = liveFooterMode;
-      liveFooterContent = liveFooterMode ? (resolvedPrompt.suffix ?? "") : "";
-      if (resolvedPrompt.prefix.length > 0) {
-        process.stdout.write(`${resolvedPrompt.prefix}\n`);
+    if (
+      stdout.isTTY
+      && typeof stdout.columns === "number"
+      && Number.isFinite(stdout.columns)
+      && stdout.columns > 0
+    ) {
+      return Math.floor(stdout.columns);
+    }
+    return 96;
+  };
+
+  const buildCodeOffsets = (graphemes: readonly string[]): number[] => {
+    const offsets: number[] = [0];
+    let total = 0;
+    for (const grapheme of graphemes) {
+      total += grapheme.length;
+      offsets.push(total);
+    }
+    return offsets;
+  };
+
+  const codeOffsetFromGraphemeIndex = (
+    graphemes: readonly string[],
+    index: number,
+  ): number => {
+    const normalized = Math.max(0, Math.min(index, graphemes.length));
+    let total = 0;
+    for (let i = 0; i < normalized; i += 1) {
+      total += graphemes[i]?.length ?? 0;
+    }
+    return total;
+  };
+
+  const graphemeIndexFromCodeOffset = (
+    graphemes: readonly string[],
+    codeOffset: number,
+  ): number => {
+    const target = Math.max(0, codeOffset);
+    let total = 0;
+    for (let index = 0; index < graphemes.length; index += 1) {
+      const next = total + (graphemes[index]?.length ?? 0);
+      if (next > target) {
+        return index;
       }
-      const promptPromise = questionAsync(rl, resolvedPrompt.inlinePrompt);
-      if (liveFooterMode) {
-        queueMicrotask(() => {
-          if (handlerRunning) {
+      total = next;
+    }
+    return graphemes.length;
+  };
+
+  const renderInlineImageTokens = (input: {
+    text: string;
+    theme: "plain" | "nerd_font" | "ccline" | undefined;
+    selectedStartOffset?: number;
+  }): string => {
+    if (!input.text || !input.text.includes("[Image #")) {
+      return input.text;
+    }
+    const tokenColor = resolveInlineImageTokenColor(input.theme);
+    const chunks: string[] = [];
+    let cursor = 0;
+    for (const match of input.text.matchAll(INLINE_IMAGE_RENDER_PATTERN)) {
+      const start = match.index ?? 0;
+      const token = match[0] ?? "";
+      if (start > cursor) {
+        chunks.push(input.text.slice(cursor, start));
+      }
+      if (
+        typeof input.selectedStartOffset === "number"
+        && start === input.selectedStartOffset
+      ) {
+        chunks.push(`${ANSI_INVERSE}${tokenColor}${token}${ANSI_RESET}`);
+      } else {
+        chunks.push(`${tokenColor}${token}${ANSI_RESET}`);
+      }
+      cursor = start + token.length;
+    }
+    if (cursor < input.text.length) {
+      chunks.push(input.text.slice(cursor));
+    }
+    return chunks.join("");
+  };
+
+  const readSingleTurnInput = async (
+    resolvedPrompt: SessionPromptLayout,
+  ): Promise<{ kind: "submit"; value: string } | { kind: "sigint" }> => {
+    if (resolvedPrompt.prefix.length > 0) {
+      process.stdout.write(`${resolvedPrompt.prefix}\n`);
+    }
+
+    const promptLabel = resolvedPrompt.inlinePrompt.length > 0
+      ? resolvedPrompt.inlinePrompt
+      : DEFAULT_SESSION_PROMPT;
+    const promptLabelWidth = Math.max(1, measureDisplayWidth(promptLabel));
+    const continuationPrefix = " ".repeat(promptLabelWidth);
+    const footerLines = (resolvedPrompt.suffix ?? "")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .filter((line) => line.length > 0);
+    const getTheme = (): "plain" | "nerd_font" | "ccline" | undefined =>
+      options.getInlineImageHighlightTheme?.();
+
+    let graphemes: string[] = [];
+    let cursor = 0;
+    let lastRenderedLineCount = 0;
+    let lastCursorRenderLineIndex = 0;
+    let bracketedPasteBuffer = "";
+    let activeSlashSuggestionIndex = 0;
+    let lastSlashLineInput = "";
+    let latestSnapshot: InputRenderSnapshot | undefined;
+    let closed = false;
+
+    const moveCursorToOutputLine = (): void => {
+      const snapshot = latestSnapshot;
+      if (!snapshot) {
+        process.stdout.write("\n");
+        return;
+      }
+      process.stdout.write("\r");
+      const linesDown = Math.max(
+        0,
+        snapshot.renderedLines.length - 1 - snapshot.cursorRenderLineIndex,
+      );
+      if (linesDown > 0) {
+        process.stdout.write(`\x1b[${String(linesDown)}B`);
+      }
+      process.stdout.write("\n");
+    };
+
+    const clampCursor = (): void => {
+      cursor = Math.max(0, Math.min(cursor, graphemes.length));
+    };
+
+    const insertTextAtCursor = (value: string): void => {
+      if (!value) {
+        return;
+      }
+      const parsed = splitGraphemes(value);
+      if (parsed.length === 0) {
+        return;
+      }
+      graphemes.splice(cursor, 0, ...parsed);
+      cursor += parsed.length;
+    };
+
+    const tryPasteInlineClipboardImage = (): boolean => {
+      const attachment = saveClipboardImageToTempFile();
+      if (!attachment) {
+        return false;
+      }
+      const placeholder = registerInlineImageAttachment(attachment);
+      insertTextAtCursor(placeholder);
+      return true;
+    };
+
+    const removeSelectedInlineImageToken = (): boolean => {
+      const value = graphemes.join("");
+      const cursorCodeOffset = codeOffsetFromGraphemeIndex(graphemes, cursor);
+      for (const match of value.matchAll(INLINE_IMAGE_RENDER_PATTERN)) {
+        const start = match.index ?? -1;
+        const token = match[0] ?? "";
+        if (start < 0 || start !== cursorCodeOffset || token.length === 0) {
+          continue;
+        }
+        const startIndex = graphemeIndexFromCodeOffset(graphemes, start);
+        const endIndex = graphemeIndexFromCodeOffset(graphemes, start + token.length);
+        graphemes.splice(startIndex, Math.max(0, endIndex - startIndex));
+        cursor = startIndex;
+        return true;
+      }
+      return false;
+    };
+
+    const stripBracketedMarkersFromBuffer = (): boolean => {
+      const before = graphemes.join("");
+      if (!before.includes(BRACKETED_PASTE_START) && !before.includes(BRACKETED_PASTE_END)) {
+        return false;
+      }
+      const cursorCodeOffset = codeOffsetFromGraphemeIndex(graphemes, cursor);
+      const beforeCursor = before.slice(0, cursorCodeOffset);
+      const cleanedBeforeCursor = stripBracketedPasteMarkers(beforeCursor);
+      const cleaned = stripBracketedPasteMarkers(before);
+      if (cleaned === before) {
+        return false;
+      }
+      graphemes = splitGraphemes(cleaned);
+      cursor = graphemeIndexFromCodeOffset(
+        graphemes,
+        cleanedBeforeCursor.length,
+      );
+      clampCursor();
+      return true;
+    };
+
+    const resolveDescriptors = (input: {
+      valueGraphemes: readonly string[];
+      wrapWidth: number;
+    }): InputLineDescriptor[] => {
+      const descriptors: InputLineDescriptor[] = [];
+      const value = input.valueGraphemes.join("");
+      const codeOffsets = buildCodeOffsets(input.valueGraphemes);
+      const pushDescriptor = (start: number, end: number): void => {
+        const normalizedStart = Math.max(0, Math.min(start, input.valueGraphemes.length));
+        const normalizedEnd = Math.max(normalizedStart, Math.min(end, input.valueGraphemes.length));
+        const codeStart = codeOffsets[normalizedStart] ?? 0;
+        const codeEnd = codeOffsets[normalizedEnd] ?? codeStart;
+        const text = value.slice(codeStart, codeEnd);
+        descriptors.push({
+          start: normalizedStart,
+          end: normalizedEnd,
+          text,
+          textWidth: measureDisplayWidth(text),
+          codeStart,
+          codeEnd,
+        });
+      };
+
+      let lineStart = 0;
+      let lineWidth = 0;
+      for (let index = 0; index < input.valueGraphemes.length; index += 1) {
+        const grapheme = input.valueGraphemes[index] ?? "";
+        if (grapheme === "\n") {
+          pushDescriptor(lineStart, index);
+          lineStart = index + 1;
+          lineWidth = 0;
+          continue;
+        }
+        const graphemeWidth = Math.max(1, getGraphemeDisplayWidth(grapheme));
+        if (lineWidth > 0 && lineWidth + graphemeWidth > input.wrapWidth) {
+          pushDescriptor(lineStart, index);
+          lineStart = index;
+          lineWidth = 0;
+        }
+        lineWidth += graphemeWidth;
+      }
+      pushDescriptor(lineStart, input.valueGraphemes.length);
+      if (descriptors.length === 0) {
+        pushDescriptor(0, 0);
+      }
+      return descriptors;
+    };
+
+    const resolveCursorLineIndex = (
+      descriptors: readonly InputLineDescriptor[],
+    ): number => {
+      if (descriptors.length === 0) {
+        return 0;
+      }
+      for (let index = 0; index < descriptors.length; index += 1) {
+        const descriptor = descriptors[index];
+        if (cursor >= descriptor.start && cursor <= descriptor.end) {
+          return index;
+        }
+      }
+      return descriptors.length - 1;
+    };
+
+    const resolveCursorColumn = (
+      descriptor: InputLineDescriptor,
+    ): number => {
+      const value = graphemes.join("");
+      const codeOffsets = buildCodeOffsets(graphemes);
+      const currentCodeOffset = codeOffsets[cursor] ?? codeOffsets[codeOffsets.length - 1] ?? 0;
+      const before = value.slice(descriptor.codeStart, currentCodeOffset);
+      return 2 + promptLabelWidth + measureDisplayWidth(before);
+    };
+
+    const resolveSlashSuggestions = (
+      activeLineInput: string,
+    ): {
+      suggestions: readonly SessionSlashSuggestion[];
+      panelLines: string[];
+    } => {
+      if (typeof options.getSlashSuggestions !== "function") {
+        return {
+          suggestions: [],
+          panelLines: [],
+        };
+      }
+      if (!activeLineInput.trimStart().startsWith("/")) {
+        activeSlashSuggestionIndex = 0;
+        lastSlashLineInput = "";
+        return {
+          suggestions: [],
+          panelLines: [],
+        };
+      }
+      if (activeLineInput !== lastSlashLineInput) {
+        activeSlashSuggestionIndex = 0;
+        lastSlashLineInput = activeLineInput;
+      }
+      const suggestions = options.getSlashSuggestions(activeLineInput);
+      if (suggestions.length === 0) {
+        activeSlashSuggestionIndex = 0;
+        return {
+          suggestions,
+          panelLines: [],
+        };
+      }
+      activeSlashSuggestionIndex = normalizeSuggestionIndex(
+        suggestions.length,
+        activeSlashSuggestionIndex,
+      );
+      const panel = formatSlashSuggestionPanel(
+        suggestions,
+        activeLineInput,
+        activeSlashSuggestionIndex,
+        resolveSlashOverlayColumns(),
+      );
+      return {
+        suggestions,
+        panelLines: panel
+          .split("\n")
+          .map((line) => line.trimEnd())
+          .filter((line) => line.length > 0),
+      };
+    };
+
+    const buildRenderSnapshot = (): InputRenderSnapshot => {
+      clampCursor();
+      const terminalColumns = Math.max(32, resolveTerminalColumns());
+      const maxContentWidth = Math.max(promptLabelWidth + 8, terminalColumns - 4);
+      const wrapWidth = Math.max(1, maxContentWidth - promptLabelWidth);
+      const descriptors = resolveDescriptors({
+        valueGraphemes: graphemes,
+        wrapWidth,
+      });
+      const activeLineIndex = resolveCursorLineIndex(descriptors);
+      const activeDescriptor = descriptors[activeLineIndex] ?? descriptors[0]!;
+      const activeLineInput = activeDescriptor?.text ?? "";
+      const selectedTokenCodeOffset = (() => {
+        const value = graphemes.join("");
+        const cursorCodeOffset = codeOffsetFromGraphemeIndex(graphemes, cursor);
+        for (const match of value.matchAll(INLINE_IMAGE_RENDER_PATTERN)) {
+          const start = match.index ?? -1;
+          if (start === cursorCodeOffset) {
+            return start;
+          }
+        }
+        return undefined;
+      })();
+
+      const topBorder = `${ANSI_DIM}╭${"─".repeat(maxContentWidth + 2)}╮${ANSI_RESET}`;
+      const bottomBorder = `${ANSI_DIM}╰${"─".repeat(maxContentWidth + 2)}╯${ANSI_RESET}`;
+      const bodyLines: string[] = descriptors.map((descriptor, index) => {
+        const prefix = index === 0 ? promptLabel : continuationPrefix;
+        const selectedOffsetInLine =
+          typeof selectedTokenCodeOffset === "number"
+          && selectedTokenCodeOffset >= descriptor.codeStart
+          && selectedTokenCodeOffset < descriptor.codeEnd
+            ? selectedTokenCodeOffset - descriptor.codeStart
+            : undefined;
+        const renderedText = renderInlineImageTokens({
+          text: descriptor.text,
+          theme: getTheme(),
+          selectedStartOffset: selectedOffsetInLine,
+        });
+        const content = padToDisplayWidth(`${prefix}${renderedText}`, maxContentWidth);
+        return `${ANSI_DIM}│${ANSI_RESET} ${content} ${ANSI_DIM}│${ANSI_RESET}`;
+      });
+      const slash = resolveSlashSuggestions(activeLineInput);
+      const renderedLines = [
+        topBorder,
+        ...bodyLines,
+        bottomBorder,
+        ...slash.panelLines,
+        ...footerLines,
+      ];
+      const cursorRenderLineIndex = 1 + activeLineIndex;
+      const cursorColumn = resolveCursorColumn(activeDescriptor);
+      return {
+        renderedLines,
+        cursorRenderLineIndex,
+        cursorColumn,
+        descriptors,
+        activeLineIndex,
+        activeLineInput,
+        activeSlashSuggestions: slash.suggestions,
+      };
+    };
+
+    const render = (): void => {
+      const snapshot = buildRenderSnapshot();
+      if (lastRenderedLineCount > 0) {
+        process.stdout.write("\r");
+        if (lastCursorRenderLineIndex > 0) {
+          process.stdout.write(`\x1b[${String(lastCursorRenderLineIndex)}A`);
+        }
+      }
+      process.stdout.write("\x1b[J");
+      process.stdout.write(snapshot.renderedLines.join("\n"));
+      process.stdout.write("\r");
+      const linesUp = Math.max(
+        0,
+        snapshot.renderedLines.length - 1 - snapshot.cursorRenderLineIndex,
+      );
+      if (linesUp > 0) {
+        process.stdout.write(`\x1b[${String(linesUp)}A`);
+      }
+      if (snapshot.cursorColumn > 0) {
+        process.stdout.write(`\x1b[${String(snapshot.cursorColumn)}C`);
+      }
+      lastRenderedLineCount = snapshot.renderedLines.length;
+      lastCursorRenderLineIndex = snapshot.cursorRenderLineIndex;
+      latestSnapshot = snapshot;
+    };
+
+    const replaceActiveLineWithCommand = (command: string): void => {
+      if (!latestSnapshot) {
+        return;
+      }
+      const descriptor =
+        latestSnapshot.descriptors[latestSnapshot.activeLineIndex]
+        ?? latestSnapshot.descriptors[0];
+      if (!descriptor) {
+        return;
+      }
+      const leadingSpaces = latestSnapshot.activeLineInput.match(/^\s*/)?.[0] ?? "";
+      const replacement = splitGraphemes(`${leadingSpaces}${command}`);
+      graphemes.splice(
+        descriptor.start,
+        Math.max(0, descriptor.end - descriptor.start),
+        ...replacement,
+      );
+      cursor = descriptor.start + replacement.length;
+      activeSlashSuggestionIndex = 0;
+    };
+
+    const moveCursorVertical = (direction: -1 | 1): void => {
+      if (!latestSnapshot) {
+        return;
+      }
+      const descriptor =
+        latestSnapshot.descriptors[latestSnapshot.activeLineIndex]
+        ?? latestSnapshot.descriptors[0];
+      if (!descriptor) {
+        return;
+      }
+      const column = Math.max(0, cursor - descriptor.start);
+      if (direction < 0) {
+        if (descriptor.start <= 0) {
+          return;
+        }
+        const prevBreak = descriptor.start - 1;
+        let prevStart = 0;
+        for (let index = prevBreak - 1; index >= 0; index -= 1) {
+          if (graphemes[index] === "\n") {
+            prevStart = index + 1;
+            break;
+          }
+        }
+        const prevLength = Math.max(0, prevBreak - prevStart);
+        cursor = prevStart + Math.min(column, prevLength);
+        return;
+      }
+      if (descriptor.end >= graphemes.length || graphemes[descriptor.end] !== "\n") {
+        return;
+      }
+      const nextStart = descriptor.end + 1;
+      let nextEnd = graphemes.length;
+      for (let index = nextStart; index < graphemes.length; index += 1) {
+        if (graphemes[index] === "\n") {
+          nextEnd = index;
+          break;
+        }
+      }
+      const nextLength = Math.max(0, nextEnd - nextStart);
+      cursor = nextStart + Math.min(column, nextLength);
+    };
+
+    const handleBracketedPastePayload = (payload: string): void => {
+      queueMicrotask(() => {
+        if (closed) {
+          return;
+        }
+        const stripped = stripBracketedMarkersFromBuffer();
+        if (payload.trim().length > 0) {
+          if (stripped) {
+            render();
+          }
+          return;
+        }
+        const pasted = tryPasteInlineClipboardImage();
+        if (pasted || stripped) {
+          render();
+        }
+      });
+    };
+
+    return await new Promise<{ kind: "submit"; value: string } | { kind: "sigint" }>((resolve) => {
+      const finish = (result: { kind: "submit"; value: string } | { kind: "sigint" }): void => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        keypressInput.off?.("keypress", onKeypress);
+        menuInput.off?.("data", onData);
+        moveCursorToOutputLine();
+        resolve(result);
+      };
+
+      const onData = (chunk: string): void => {
+        if (closed) {
+          return;
+        }
+        const raw = String(chunk ?? "");
+        if (
+          raw.length === 0
+          || (
+            !raw.includes(BRACKETED_PASTE_START)
+            && !raw.includes(BRACKETED_PASTE_END)
+            && bracketedPasteBuffer.length === 0
+          )
+        ) {
+          return;
+        }
+        bracketedPasteBuffer = `${bracketedPasteBuffer}${raw}`;
+        if (bracketedPasteBuffer.length > BRACKETED_PASTE_BUFFER_LIMIT) {
+          bracketedPasteBuffer = bracketedPasteBuffer.slice(-BRACKETED_PASTE_BUFFER_LIMIT);
+        }
+        let matched = false;
+        let lastConsumedIndex = 0;
+        BRACKETED_PASTE_BLOCK_PATTERN.lastIndex = 0;
+        for (const match of bracketedPasteBuffer.matchAll(BRACKETED_PASTE_BLOCK_PATTERN)) {
+          const payload = match[1] ?? "";
+          matched = true;
+          lastConsumedIndex = (match.index ?? 0) + match[0].length;
+          handleBracketedPastePayload(payload);
+        }
+        if (matched) {
+          bracketedPasteBuffer = bracketedPasteBuffer.slice(lastConsumedIndex);
+          return;
+        }
+        const startIndex = bracketedPasteBuffer.lastIndexOf(BRACKETED_PASTE_START);
+        if (startIndex >= 0) {
+          bracketedPasteBuffer = bracketedPasteBuffer.slice(startIndex);
+          return;
+        }
+        const tailLength = Math.max(
+          BRACKETED_PASTE_START.length - 1,
+          BRACKETED_PASTE_END.length - 1,
+        );
+        if (bracketedPasteBuffer.length > tailLength) {
+          bracketedPasteBuffer = bracketedPasteBuffer.slice(-tailLength);
+        }
+      };
+
+      const onKeypress = (chunk: string, key: KeypressPayload): void => {
+        if (closed) {
+          return;
+        }
+        if (pauseDepth > 0) {
+          return;
+        }
+
+        const imagePasteTriggered =
+          (key.ctrl && key.name === "v")
+          || (key.meta && key.name === "v")
+          || (key.shift && key.name === "insert")
+          || key.sequence === "\u0016";
+        if (imagePasteTriggered) {
+          if (tryPasteInlineClipboardImage()) {
+            render();
+          }
+          return;
+        }
+
+        const activeSuggestions = latestSnapshot?.activeSlashSuggestions ?? [];
+        const hasActiveSlashSuggestions =
+          latestSnapshot?.activeLineInput.trimStart().startsWith("/")
+          && activeSuggestions.length > 0;
+
+        if (key.ctrl && key.name === "c") {
+          finish({ kind: "sigint" });
+          return;
+        }
+        if (key.name === "left") {
+          cursor -= 1;
+          clampCursor();
+          render();
+          return;
+        }
+        if (key.name === "right") {
+          cursor += 1;
+          clampCursor();
+          render();
+          return;
+        }
+        if (key.name === "home") {
+          const descriptor = latestSnapshot?.descriptors[latestSnapshot.activeLineIndex ?? 0];
+          if (descriptor) {
+            cursor = descriptor.start;
+            render();
+          }
+          return;
+        }
+        if (key.name === "end") {
+          const descriptor = latestSnapshot?.descriptors[latestSnapshot.activeLineIndex ?? 0];
+          if (descriptor) {
+            cursor = descriptor.end;
+            render();
+          }
+          return;
+        }
+        if (key.name === "up") {
+          if (hasActiveSlashSuggestions) {
+            activeSlashSuggestionIndex = normalizeSuggestionIndex(
+              activeSuggestions.length,
+              activeSlashSuggestionIndex - 1,
+            );
+            render();
             return;
           }
-          refreshSlashSuggestionOverlay();
-        });
-      }
-      rawInput = await promptPromise;
-    } catch {
-      liveFooterEnabled = false;
-      liveFooterContent = "";
-      clearSlashSuggestionOverlay();
-      break;
-    }
-    liveFooterEnabled = false;
-    liveFooterContent = "";
-    clearSlashSuggestionOverlay();
-    if (!sawSigint && !liveFooterMode && resolvedPrompt.suffix && resolvedPrompt.suffix.length > 0) {
-      process.stdout.write(`${resolvedPrompt.suffix}\n`);
-    }
-    if (sawSigint) {
-      process.stdout.write("Interrupted\n");
-      break;
-    }
-    handlerRunning = true;
-    setEscListener(true);
-    let action: "continue" | "break";
-    try {
-      action = await handler(rawInput, controls);
-    } finally {
-      setEscListener(false);
-      handlerRunning = false;
-    }
-    if (action === "break") {
-      break;
-    }
-  }
+          moveCursorVertical(-1);
+          render();
+          return;
+        }
+        if (key.name === "down") {
+          if (hasActiveSlashSuggestions) {
+            activeSlashSuggestionIndex = normalizeSuggestionIndex(
+              activeSuggestions.length,
+              activeSlashSuggestionIndex + 1,
+            );
+            render();
+            return;
+          }
+          moveCursorVertical(1);
+          render();
+          return;
+        }
+        if (key.name === "backspace") {
+          if (!removeSelectedInlineImageToken() && cursor > 0) {
+            graphemes.splice(cursor - 1, 1);
+            cursor -= 1;
+          }
+          render();
+          return;
+        }
+        if (key.name === "delete") {
+          if (!removeSelectedInlineImageToken() && cursor < graphemes.length) {
+            graphemes.splice(cursor, 1);
+          }
+          render();
+          return;
+        }
+        if (key.name === "return") {
+          if (hasActiveSlashSuggestions) {
+            const selected = activeSuggestions[activeSlashSuggestionIndex];
+            if (selected?.command) {
+              replaceActiveLineWithCommand(selected.command);
+              render();
+            }
+            return;
+          }
+          if (key.shift || key.meta) {
+            insertTextAtCursor("\n");
+            render();
+            return;
+          }
+          finish({
+            kind: "submit",
+            value: graphemes.join(""),
+          });
+          return;
+        }
+        if (key.name === "tab") {
+          return;
+        }
+        if (key.name === "escape") {
+          return;
+        }
 
-  clearSlashSuggestionOverlay();
-  keypressInput.off?.("keypress", onKeypress);
-  menuInput.off?.("data", onInputData);
-  setEscListener(false);
-  if (originalWriteToOutput) {
-    readlineState._writeToOutput = originalWriteToOutput;
+        const rawInput = String(chunk ?? "");
+        if (!rawInput || key.ctrl || key.meta) {
+          return;
+        }
+        const normalized = stripBracketedPasteMarkers(rawInput)
+          .replace(/\r/g, "\n");
+        if (!normalized) {
+          return;
+        }
+        insertTextAtCursor(normalized);
+        render();
+      };
+
+      keypressInput.on?.("keypress", onKeypress);
+      menuInput.on?.("data", onData);
+      render();
+    });
+  };
+
+  try {
+    setRawMode(true);
+    menuInput.resume?.();
+    while (true) {
+      const resolvedPrompt = resolvePromptLayoutValue();
+      const inputResult = await readSingleTurnInput(resolvedPrompt);
+      if (inputResult.kind === "sigint") {
+        process.stdout.write("Interrupted\n");
+        break;
+      }
+      handlerRunning = true;
+      menuInput.on?.("data", onEscDataWhileHandler);
+      let action: "continue" | "break";
+      try {
+        setRawMode(true);
+        action = await handler(inputResult.value, controls);
+      } finally {
+        menuInput.off?.("data", onEscDataWhileHandler);
+        handlerRunning = false;
+      }
+      if (action === "break") {
+        break;
+      }
+    }
+  } finally {
+    menuInput.off?.("data", onEscDataWhileHandler);
+    setRawMode(false);
   }
-  rl.close();
 }
 
 function normalizeMenuIndex(itemsLength: number, initialIndex: number | undefined): number {

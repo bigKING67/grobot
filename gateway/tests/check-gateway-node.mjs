@@ -919,7 +919,6 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliStatusLineContractPayload.wide_has_short_session_id, true);
   assert.equal(devCliStatusLineContractPayload.wide_has_no_s_colon_prefix, true);
   assert.equal(devCliStatusLineContractPayload.wide_has_session_topic, true);
-  assert.equal(devCliStatusLineContractPayload.prompt_line_matches, true);
   assert.equal(devCliStatusLineContractPayload.narrow_line_within_width, true);
   assert.equal(devCliStatusLineContractPayload.narrow_has_short_session_id, true);
   logStep("dev-cli-status-line-contract");
@@ -958,11 +957,11 @@ async function runGatewayContractSmoke() {
     "dev-cli-interactive-frame-contract",
     devCliInteractiveFrameContractResult.stdout,
   );
-  assert.equal(devCliInteractiveFramePayload.prefix_has_status_line, true);
-  assert.equal(devCliInteractiveFramePayload.prefix_has_activity_line, true);
-  assert.equal(devCliInteractiveFramePayload.inline_prompt_has_left_border, true);
-  assert.equal(devCliInteractiveFramePayload.suffix_has_bottom_border, true);
-  assert.equal(devCliInteractiveFramePayload.suffix_width_matches_top, true);
+  assert.equal(devCliInteractiveFramePayload.prefix_empty, true);
+  assert.equal(devCliInteractiveFramePayload.inline_prompt_matches, true);
+  assert.equal(devCliInteractiveFramePayload.suffix_has_status_line, true);
+  assert.equal(devCliInteractiveFramePayload.suffix_has_activity_line, true);
+  assert.equal(devCliInteractiveFramePayload.suffix_has_no_prompt_frame, true);
   logStep("dev-cli-interactive-frame-contract");
 
   const askUserToolContractResult = runCommand("npx", [

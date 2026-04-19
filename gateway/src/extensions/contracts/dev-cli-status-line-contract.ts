@@ -82,8 +82,6 @@ const cjkStatusLine = cjkLines[0] ?? "";
 const warningStatusLine = warningLines[0] ?? "";
 const warningLine = warningLines[1] ?? "";
 const segmentToggleStatusLine = segmentToggleLines[0] ?? "";
-const widePromptFrameTop = wideLines[1] ?? "";
-const widePromptLine = wideLines[2] ?? "";
 
 const payload = {
   wide_has_model: wideStatusLine.includes("kimi/kimi-k2-2026-04"),
@@ -95,16 +93,10 @@ const payload = {
   wide_has_session_topic: wideStatusLine.includes("login regression follow-up"),
   wide_has_session_topic_parenthesized:
     wideStatusLine.includes(`(${String("login regression follow-up")})`),
-  prompt_frame_top_present: widePromptFrameTop.includes("╭"),
-  prompt_frame_left_border_present: widePromptLine.startsWith("\u001B[90m│\u001B[0m "),
-  prompt_line_matches:
-    widePromptLine.includes("› ")
-    && widePromptLine.includes("\u001B[90m│\u001B[0m")
-    && /\u001B\[[0-9]+D$/.test(widePromptLine) === false,
   narrow_line_within_width: measureDisplayWidth(narrowStatusLine) <= 64,
   narrow_has_short_session_id: narrowStatusLine.includes(sessionShortId),
   cjk_line_within_width: measureDisplayWidth(cjkStatusLine) <= 48,
-  warning_has_separate_line: warningLines.length >= 4,
+  warning_has_separate_line: warningLines.length >= 2,
   warning_line_contains_critical: warningLine.includes("critical"),
   warning_status_line_unchanged: warningStatusLine.includes("context 94%") === false,
   tokens_segment_toggle_effective:

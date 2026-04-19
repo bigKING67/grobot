@@ -22,7 +22,6 @@ export interface StatusLinePromptInput {
   config?: StatusLineConfigInput;
 }
 
-const DEFAULT_PROMPT_LABEL = "› ";
 const SESSION_SHORT_ID_LEN = 8;
 const ANSI_RESET = "\u001B[0m";
 const ANSI_DIM = "\u001B[90m";
@@ -31,8 +30,6 @@ const ANSI_CCLINE_PROJECT = "\u001B[92m";
 const ANSI_CCLINE_CONTEXT = "\u001B[95m";
 const ANSI_CCLINE_TOKENS = "\u001B[93m";
 const ANSI_CCLINE_SESSION = "\u001B[94m";
-const PROMPT_BLOCK_MIN_INNER_WIDTH = 32;
-
 export type StatusLineLayoutMode = "adaptive" | "full" | "compact";
 export type StatusLineTheme = "plain" | "nerd_font" | "ccline";
 export type StatusLineSegmentId =
@@ -686,37 +683,10 @@ function buildActivityLine(
   return `${icon} ${activityText}`;
 }
 
-function buildPromptBlock(input: {
-  statusLine: string;
-  promptLabel: string;
-  terminalColumns?: number;
-}): {
-  topBorder: string;
-  promptLine: string;
-} {
-  const terminalColumns =
-    typeof input.terminalColumns === "number"
-    && Number.isFinite(input.terminalColumns)
-      ? Math.floor(input.terminalColumns)
-      : 0;
-  const statusWidth = measureDisplayWidth(input.statusLine);
-  const promptWidth = Math.max(2, measureDisplayWidth(input.promptLabel) + 2);
-  let innerWidth = Math.max(PROMPT_BLOCK_MIN_INNER_WIDTH, statusWidth, promptWidth);
-  if (terminalColumns > 0) {
-    innerWidth = Math.min(innerWidth, Math.max(8, terminalColumns - 2));
-  }
-  return {
-    topBorder: `${ANSI_DIM}╭${"─".repeat(innerWidth)}╮${ANSI_RESET}`,
-    // Keep the prompt line open-ended so long inputs can wrap naturally.
-    promptLine: `${ANSI_DIM}│${ANSI_RESET} ${input.promptLabel}`,
-  };
-}
-
 export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
-  const promptLabel = input.promptLabel ?? DEFAULT_PROMPT_LABEL;
   const config = normalizeStatusLineConfig(input.config);
   if (!config.enabled) {
-    return promptLabel;
+    return "";
   }
   const statusLine = fitStatusLine({
     prompt: input,
@@ -744,11 +714,6 @@ export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
       ? truncateDisplayWidth(activityLine, terminalColumns)
       : activityLine
     : undefined;
-  const promptBlock = buildPromptBlock({
-    statusLine,
-    promptLabel,
-    terminalColumns: input.terminalColumns,
-  });
   const lines: string[] = [statusLine];
   if (warningToRender) {
     lines.push(warningToRender);
@@ -756,6 +721,5 @@ export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
   if (activityToRender) {
     lines.push(activityToRender);
   }
-  lines.push(promptBlock.topBorder, promptBlock.promptLine);
   return lines.join("\n");
 }

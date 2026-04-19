@@ -5,12 +5,6 @@ import {
   renderStatusLinePrompt,
 } from "../../orchestration/entrypoints/dev-cli/ui/screens/status-line-screen";
 
-const ANSI_PATTERN = /\u001B\[[0-9;]*m/g;
-
-function stripAnsi(value: string): string {
-  return value.replace(ANSI_PATTERN, "");
-}
-
 const renderedPrompt = renderStatusLinePrompt({
   model: "kimi/kimi-k2-2026-04",
   projectFolder: "grobot",
@@ -25,21 +19,25 @@ const renderedPrompt = renderStatusLinePrompt({
 });
 
 const layout = resolveInteractivePromptLayout({
-  promptText: renderedPrompt,
+  promptText: {
+    prefix: "",
+    inlinePrompt: "› ",
+    suffix: renderedPrompt,
+    renderSuffixWhileTyping: true,
+  },
   fallbackPrompt: "› ",
 });
-
-const prefixLines = layout.prefix.split("\n");
-const topBorder = prefixLines[prefixLines.length - 1] ?? "";
-const topBorderPlain = stripAnsi(topBorder);
-const suffixPlain = stripAnsi(layout.suffix ?? "");
+const suffix = layout.suffix ?? "";
 
 const payload = {
-  prefix_has_status_line: layout.prefix.includes("kimi/kimi-k2-2026-04"),
-  prefix_has_activity_line: layout.prefix.includes("正在整理上下文窗口"),
-  inline_prompt_has_left_border: layout.inlinePrompt.startsWith("\u001B[90m│\u001B[0m "),
-  suffix_has_bottom_border: suffixPlain.startsWith("╰") && suffixPlain.endsWith("╯"),
-  suffix_width_matches_top: suffixPlain.length === topBorderPlain.length,
+  prefix_empty: layout.prefix.length === 0,
+  inline_prompt_matches: layout.inlinePrompt === "› ",
+  suffix_has_status_line: suffix.includes("kimi/kimi-k2-2026-04"),
+  suffix_has_activity_line: suffix.includes("正在整理上下文窗口"),
+  suffix_has_no_prompt_frame:
+    suffix.includes("╭") === false
+    && suffix.includes("╰") === false
+    && suffix.includes("│") === false,
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

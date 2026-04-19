@@ -45,49 +45,20 @@ function isTruthyEnvFlag(value: string | undefined): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
-const ANSI_PATTERN = /\u001B\[[0-9;?]*[A-Za-z]/g;
-
-function stripAnsi(value: string): string {
-  return value.replace(ANSI_PATTERN, "");
-}
-
 function buildInteractivePromptLayout(input: {
   renderedPrompt: string;
-  terminalColumns?: number;
   promptLabel: string;
 }): SessionPromptLayout {
-  const lines = input.renderedPrompt.split("\n").filter((line) => line.length > 0);
-  const promptBlockStartIndex = lines.findIndex(
-    (line) => line.includes("╭") && line.includes("╮"),
-  );
-  const statusLines = promptBlockStartIndex > 0
-    ? lines.slice(0, promptBlockStartIndex)
-    : lines.slice(0, 1);
-  const promptTopBorder = promptBlockStartIndex >= 0
-    ? lines[promptBlockStartIndex] ?? ""
-    : "";
-  const dividerWidth = (() => {
-    const firstStatusLine = statusLines[0] ?? "";
-    if (
-      typeof input.terminalColumns === "number"
-      && Number.isFinite(input.terminalColumns)
-      && input.terminalColumns > 8
-    ) {
-      return Math.max(16, Math.floor(input.terminalColumns) - 4);
-    }
-    return Math.max(48, stripAnsi(firstStatusLine).length + 6);
-  })();
-  const divider = `\u001B[90m${"─".repeat(dividerWidth)}\u001B[0m`;
-  const prefixLines = [
-    divider,
-    ...statusLines,
-    promptTopBorder,
-  ].filter((line) => line.length > 0);
+  const suffix = input.renderedPrompt
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+    .join("\n");
   return {
-    prefix: prefixLines.join("\n"),
+    prefix: "",
     inlinePrompt: input.promptLabel,
-    suffix: "",
-    renderSuffixWhileTyping: false,
+    suffix,
+    renderSuffixWhileTyping: true,
   };
 }
 
@@ -418,7 +389,6 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     });
     return buildInteractivePromptLayout({
       renderedPrompt,
-      terminalColumns,
       promptLabel: "› ",
     });
   };
