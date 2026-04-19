@@ -18,8 +18,11 @@ import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../
 
 const HANDOFF_FILENAME = "HANDOFF.md";
 const DEFAULT_SESSION_PROMPT = "› ";
-const INLINE_IMAGE_PLACEHOLDER_PATTERN = /\[Image #(\d+)\]/g;
+const INLINE_IMAGE_PARSE_PATTERN = /\[Image #(\d+)\]/g;
+const INLINE_IMAGE_RENDER_PATTERN = /\[Image #\d+\]/g;
 const INLINE_IMAGE_REGISTRY_LIMIT = 512;
+const ANSI_RESET = "\u001B[0m";
+const ANSI_INLINE_IMAGE_TOKEN = "\u001B[96m";
 
 const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
 let nextInlineImageId = 1;
@@ -66,6 +69,7 @@ interface MenuInputStream {
 interface ReadlineState extends Interface {
   line: string;
   cursor?: number;
+  _writeToOutput?: (value: string) => void;
 }
 
 interface KeypressPayload {
@@ -189,7 +193,7 @@ function saveClipboardImageToTempFile(): RuntimeAttachment | undefined {
 export function resolveInlineAttachmentsFromInput(
   userInput: string,
 ): InlineAttachmentResolution {
-  const matches = [...userInput.matchAll(INLINE_IMAGE_PLACEHOLDER_PATTERN)];
+  const matches = [...userInput.matchAll(INLINE_IMAGE_PARSE_PATTERN)];
   if (matches.length === 0) {
     return {
       userInput,
@@ -214,6 +218,16 @@ export function resolveInlineAttachmentsFromInput(
     userInput,
     attachments,
   };
+}
+
+function highlightInlineImageToken(value: string): string {
+  if (!value || !value.includes("[Image #")) {
+    return value;
+  }
+  return value.replace(
+    INLINE_IMAGE_RENDER_PATTERN,
+    (placeholder) => `${ANSI_INLINE_IMAGE_TOKEN}${placeholder}${ANSI_RESET}`,
+  );
 }
 
 function dirname(path: string): string {
@@ -323,6 +337,14 @@ export async function runSessionInputLoop(
     output?: unknown;
   });
   const readlineState = rl as ReadlineState;
+  const originalWriteToOutput = typeof readlineState._writeToOutput === "function"
+    ? readlineState._writeToOutput
+    : undefined;
+  if (originalWriteToOutput) {
+    readlineState._writeToOutput = (value: string): void => {
+      originalWriteToOutput.call(readlineState, highlightInlineImageToken(value));
+    };
+  }
   let sawSigint = false;
   rl.on("SIGINT", () => {
     sawSigint = true;
@@ -663,6 +685,9 @@ export async function runSessionInputLoop(
   clearSlashSuggestionOverlay();
   keypressInput.off?.("keypress", onKeypress);
   setEscListener(false);
+  if (originalWriteToOutput) {
+    readlineState._writeToOutput = originalWriteToOutput;
+  }
   rl.close();
 }
 
