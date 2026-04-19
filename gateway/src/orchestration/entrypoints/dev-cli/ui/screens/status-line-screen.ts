@@ -610,18 +610,11 @@ function renderTemplateStatusLine(input: {
   const defaultSeparator = input.config.theme === "ccline"
     ? `${ANSI_DIM}${input.config.separator}${ANSI_RESET}`
     : input.config.separator;
-  const contextWindowSeparator = input.config.theme === "ccline"
-    ? `${ANSI_DIM} + ${ANSI_RESET}`
-    : " + ";
-  const line = segments.segments.reduce((acc, segment, index, allSegments) => {
+  const line = segments.segments.reduce((acc, segment, index) => {
     if (index === 0) {
       return segment.value;
     }
-    const previous = allSegments[index - 1];
-    const separator = previous?.id === "context" && segment.id === "tokens"
-      ? contextWindowSeparator
-      : defaultSeparator;
-    return `${acc}${separator}${segment.value}`;
+    return `${acc}${defaultSeparator}${segment.value}`;
   }, "");
   return {
     line,
@@ -712,9 +705,15 @@ function buildPromptBlock(input: {
   if (terminalColumns > 0) {
     innerWidth = Math.min(innerWidth, Math.max(8, terminalColumns - 2));
   }
+  const promptLabelWidth = measureDisplayWidth(input.promptLabel);
+  const trailingPaddingWidth = Math.max(0, innerWidth - 1 - promptLabelWidth);
+  const trailingPadding = " ".repeat(trailingPaddingWidth);
+  const cursorBack = trailingPaddingWidth + 1;
   return {
     topBorder: `${ANSI_DIM}╭${"─".repeat(innerWidth)}╮${ANSI_RESET}`,
-    promptLine: `${ANSI_DIM}│${ANSI_RESET} ${input.promptLabel}`,
+    promptLine:
+      `${ANSI_DIM}│${ANSI_RESET} ${input.promptLabel}${trailingPadding}`
+      + `${ANSI_DIM}│${ANSI_RESET}\u001B[${String(cursorBack)}D`,
   };
 }
 

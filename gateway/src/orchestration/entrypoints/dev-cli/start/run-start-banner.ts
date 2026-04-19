@@ -162,6 +162,27 @@ function resolveRecentActivityLines(
   return lines;
 }
 
+function resolveDisplayProjectPath(input: {
+  homeDir: string;
+  projectRoot: string;
+}): string {
+  const homeDir = input.homeDir.trim().replace(/[\\/]+$/, "");
+  const projectRoot = input.projectRoot.trim();
+  if (!projectRoot) {
+    return "~";
+  }
+  if (!homeDir) {
+    return projectRoot;
+  }
+  if (projectRoot === homeDir) {
+    return "~";
+  }
+  if (projectRoot.startsWith(`${homeDir}/`)) {
+    return `~${projectRoot.slice(homeDir.length)}`;
+  }
+  return projectRoot;
+}
+
 export function printRunStartBanner(input: RunStartBannerInput): void {
   const contextWindowLabel = formatContextWindowLabel(
     inferModelApiContextWindowTokens({
@@ -177,8 +198,12 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     `${input.providerName}/${input.modelName}`,
     "API Usage",
   ].filter((segment) => typeof segment === "string" && segment.trim().length > 0).join(" · ");
+  const displayProjectPath = resolveDisplayProjectPath({
+    homeDir: input.homeDir,
+    projectRoot: input.projectRoot,
+  });
   const sessionLine = `session ${compactSessionId(input.activeSessionId)} (${compactSessionTopic(input.sessionTopic)})`;
-  const rows: string[] = [];
+  const rows: string[] = [displayProjectPath];
   const fallbackSummary = summarizeStoreFallback(input.sessionStoreRuntime.fallbackReason);
   if (fallbackSummary) {
     rows.push(`storage: ${fallbackSummary}`);
@@ -198,7 +223,6 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
         `Grobot CLI ${resolveCliVersionLabel()}`,
         runtimeHeadline,
         runtimeDetail,
-        input.projectRoot,
         sessionLine,
       ],
     },
