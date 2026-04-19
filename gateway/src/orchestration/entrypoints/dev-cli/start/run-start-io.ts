@@ -22,7 +22,9 @@ const INLINE_IMAGE_PARSE_PATTERN = /\[Image #(\d+)\]/g;
 const INLINE_IMAGE_RENDER_PATTERN = /\[Image #\d+\]/g;
 const INLINE_IMAGE_REGISTRY_LIMIT = 512;
 const ANSI_RESET = "\u001B[0m";
-const ANSI_INLINE_IMAGE_TOKEN = "\u001B[96m";
+const ANSI_INLINE_IMAGE_TOKEN_PLAIN = "\u001B[96m";
+const ANSI_INLINE_IMAGE_TOKEN_NERD = "\u001B[94m";
+const ANSI_INLINE_IMAGE_TOKEN_CCLINE = "\u001B[1m\u001B[96m";
 
 const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
 let nextInlineImageId = 1;
@@ -40,6 +42,7 @@ export interface SessionInputLoopControls {
 export interface SessionInputLoopOptions {
   onEscapeInterrupt?: () => void | Promise<void>;
   getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
+  getInlineImageHighlightTheme?: () => "plain" | "nerd_font" | "ccline" | undefined;
 }
 
 type SessionInputPromptValue = string | SessionPromptLayout;
@@ -220,13 +223,27 @@ export function resolveInlineAttachmentsFromInput(
   };
 }
 
-function highlightInlineImageToken(value: string): string {
+function resolveInlineImageTokenColor(theme: "plain" | "nerd_font" | "ccline" | undefined): string {
+  if (theme === "ccline") {
+    return ANSI_INLINE_IMAGE_TOKEN_CCLINE;
+  }
+  if (theme === "nerd_font") {
+    return ANSI_INLINE_IMAGE_TOKEN_NERD;
+  }
+  return ANSI_INLINE_IMAGE_TOKEN_PLAIN;
+}
+
+function highlightInlineImageToken(
+  value: string,
+  theme: "plain" | "nerd_font" | "ccline" | undefined,
+): string {
   if (!value || !value.includes("[Image #")) {
     return value;
   }
+  const tokenColor = resolveInlineImageTokenColor(theme);
   return value.replace(
     INLINE_IMAGE_RENDER_PATTERN,
-    (placeholder) => `${ANSI_INLINE_IMAGE_TOKEN}${placeholder}${ANSI_RESET}`,
+    (placeholder) => `${tokenColor}${placeholder}${ANSI_RESET}`,
   );
 }
 
@@ -342,7 +359,11 @@ export async function runSessionInputLoop(
     : undefined;
   if (originalWriteToOutput) {
     readlineState._writeToOutput = (value: string): void => {
-      originalWriteToOutput.call(readlineState, highlightInlineImageToken(value));
+      const highlightTheme = options.getInlineImageHighlightTheme?.();
+      originalWriteToOutput.call(
+        readlineState,
+        highlightInlineImageToken(value, highlightTheme),
+      );
     };
   }
   let sawSigint = false;

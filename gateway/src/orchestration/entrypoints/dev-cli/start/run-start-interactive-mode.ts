@@ -404,6 +404,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
 
   await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
     getSlashSuggestions,
+    getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
     onEscapeInterrupt: async () => {
       if (input.isPlanMode()) {
         await input.requestPlanInterrupt("cli_esc");
