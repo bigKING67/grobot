@@ -24,6 +24,23 @@ const startupViewModel: StartScreenViewModel = {
       "session abc123 (demo)",
     ],
   },
+  feeds: [
+    {
+      title: "Tips for getting started",
+      lines: [
+        "Run /init to create a CLAUDE.md file with instructions",
+      ],
+      footer: "Use /help to list all commands",
+    },
+    {
+      title: "Recent activity",
+      lines: [
+        "2h ago  Session planning update",
+      ],
+      emptyMessage: "No recent activity",
+      footer: "/sessions for more",
+    },
+  ],
   rows: [
     "  home:      /tmp/home",
     "  root:      /tmp/project",
@@ -90,6 +107,11 @@ const payload = {
   startup_has_logo_runtime_line: startupInteractive.includes("alpha/model · 200k ctx budget · API Usage"),
   startup_has_session_line: startupInteractive.includes("session_id:session-main"),
   startup_has_command_hint: startupInteractive.includes("Enter message"),
+  startup_has_tips_title: startupInteractive.includes("Tips for getting started"),
+  startup_has_recent_activity_title: startupInteractive.includes("Recent activity"),
+  startup_has_recent_activity_empty_or_items:
+    startupInteractive.includes("No recent activity")
+    || startupInteractive.includes("2h ago  Session planning update"),
   menu_interactive_has_ansi: hasAnsi(menuInteractive),
   menu_plain_has_ansi: hasAnsi(menuPlain),
   menu_non_tty_has_ansi: hasAnsi(menuNonTty),

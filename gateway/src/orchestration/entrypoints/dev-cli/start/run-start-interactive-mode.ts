@@ -5,6 +5,7 @@ import { createRunStartInteractiveHandler } from "./run-start-interactive-handle
 import { runSessionInputLoop } from "./run-start-io";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
+import { type RunStartSessionSummary } from "./run-start-session-ops";
 import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
@@ -165,12 +166,22 @@ export interface RunStartInteractiveModeInput {
   getActiveSessionTopic(): string | undefined;
   getModelSnapshot(): RunStartModelSnapshot;
   getStatusLineConfig(): StatusLineConfig;
+  listSessionSummaries(): RunStartSessionSummary[];
 }
 
 export async function runStartInteractiveMode(input: RunStartInteractiveModeInput): Promise<void> {
   const startupModelSnapshot = input.getModelSnapshot();
   const startupSessionTopic = input.getActiveSessionTopic();
   const startupPromptBudget = resolvePromptBudgetSnapshot(input.workDir);
+  const startupRecentSessions = input.listSessionSummaries()
+    .filter((session) => !session.active && session.id !== input.getActiveSessionId())
+    .slice(0, 3)
+    .map((session) => ({
+      id: session.id,
+      title: session.title,
+      summary: session.summary,
+      updatedAt: session.updatedAt,
+    }));
   printRunStartBanner({
     homeDir: input.homeDir,
     projectRoot: input.projectRoot,
@@ -190,6 +201,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     modelName: startupModelSnapshot.model,
     sessionTopic: startupSessionTopic,
     contextWindowTargetTokens: startupPromptBudget.targetTokenLimit,
+    recentSessions: startupRecentSessions,
   });
 
   const interactiveDiagnosticsEnabled = isTruthyEnvFlag(

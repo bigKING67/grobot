@@ -266,6 +266,7 @@ export function createRunStartInteractiveModeInput(
     getActiveSessionTopic,
     getModelSnapshot,
     getStatusLineConfig,
+    listSessionSummaries: input.wire.sessionOps.listSessions,
     showStatusCurrent: () => {
       input.output.writeStdout(formatStatusLineCurrentSnapshot(getStatusLineConfig()));
     },

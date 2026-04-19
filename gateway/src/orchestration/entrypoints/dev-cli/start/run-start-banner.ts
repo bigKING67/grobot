@@ -3,6 +3,13 @@ import { maskRedisUrl } from "../services/memory-store-config";
 import { createCliUiRenderer } from "../ui/kernel/renderer";
 import { type StartScreenViewModel } from "../ui/screens/startup-screen";
 
+interface StartBannerRecentSession {
+  id: string;
+  title: string;
+  summary: string;
+  updatedAt: string;
+}
+
 interface RunStartBannerInput {
   homeDir: string;
   projectRoot: string;
@@ -22,6 +29,7 @@ interface RunStartBannerInput {
   modelName: string;
   sessionTopic?: string;
   contextWindowTargetTokens?: number;
+  recentSessions?: ReadonlyArray<StartBannerRecentSession>;
 }
 
 const STARTUP_ICON_LINES = [
@@ -83,6 +91,62 @@ function summarizeStoreFallback(reason: string | undefined): string | undefined 
   return `${normalized.slice(0, 96)}...`;
 }
 
+function formatRelativeTimeAgo(value: string): string | undefined {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  const deltaMs = Math.max(0, Date.now() - parsed);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  if (deltaMs < minuteMs) {
+    return "just now";
+  }
+  if (deltaMs < hourMs) {
+    return `${String(Math.floor(deltaMs / minuteMs))}m ago`;
+  }
+  if (deltaMs < dayMs) {
+    return `${String(Math.floor(deltaMs / hourMs))}h ago`;
+  }
+  return `${String(Math.floor(deltaMs / dayMs))}d ago`;
+}
+
+function compactFeedText(value: string, maxLength: number): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function resolveRecentActivityLines(
+  sessions: ReadonlyArray<StartBannerRecentSession> | undefined,
+): string[] {
+  if (!sessions || sessions.length === 0) {
+    return [];
+  }
+  const lines: string[] = [];
+  for (const session of sessions) {
+    const title = compactFeedText(session.title, 48);
+    const summary = compactFeedText(session.summary, 48);
+    const label = title.length > 0
+      ? title
+      : summary.length > 0
+        ? summary
+        : compactFeedText(session.id, 48);
+    if (!label) {
+      continue;
+    }
+    const timestamp = formatRelativeTimeAgo(session.updatedAt);
+    lines.push(timestamp ? `${timestamp}  ${label}` : label);
+  }
+  return lines;
+}
+
 export function printRunStartBanner(input: RunStartBannerInput): void {
   const contextWindowLabel = typeof input.contextWindowTargetTokens === "number"
     && Number.isFinite(input.contextWindowTargetTokens)
@@ -104,6 +168,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
   if (input.restoredTurns > 0) {
     rows.push(`restored: ${String(input.restoredTurns)} turns (${input.restoreSource})`);
   }
+  const recentActivityLines = resolveRecentActivityLines(input.recentSessions);
   const viewModel: StartScreenViewModel = {
     title: "Grobot started",
     hero: {
@@ -116,6 +181,21 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
         sessionLine,
       ],
     },
+    feeds: [
+      {
+        title: "Tips for getting started",
+        lines: [
+          "Run /init to create a CLAUDE.md file with instructions",
+        ],
+        footer: "Use /help to list all commands",
+      },
+      {
+        title: "Recent activity",
+        lines: recentActivityLines,
+        emptyMessage: "No recent activity",
+        footer: "/sessions for more",
+      },
+    ],
     rows,
     commandHint: "Enter message (`/help`, `/sessions`, `/model`, `/status`, `/exit`):",
   };

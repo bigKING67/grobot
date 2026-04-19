@@ -869,6 +869,9 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.startup_has_logo_runtime_line, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_session_line, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_command_hint, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_tips_title, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_recent_activity_title, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_recent_activity_empty_or_items, true);
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_ansi, true);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_ansi, false);
   assert.equal(devCliUiRendererContractPayload.menu_non_tty_has_ansi, false);
