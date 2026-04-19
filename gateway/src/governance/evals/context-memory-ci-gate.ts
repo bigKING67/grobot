@@ -151,6 +151,14 @@ function resolvePathFromRepoRoot(repoRoot: string, path: string): string {
   return pathJoin(repoRoot, path);
 }
 
+function toAbsolutePath(path: string): string {
+  if (isAbsolutePath(path)) {
+    return path;
+  }
+  const cwd = process.cwd().replace(/[\\]+/g, "/");
+  return pathJoin(cwd, path);
+}
+
 function runPassthrough(command: string[]): number {
   if (command.length === 0) {
     return 1;
@@ -435,10 +443,6 @@ function extractPolicyHash(report: JsonObject): string | null {
   return policyHash ?? null;
 }
 
-function extractReportSchema(report: JsonObject): string | null {
-  return normalizeOptionalText(report.schema) ?? null;
-}
-
 function buildTrendMeta(input: {
   currentReport: JsonObject;
   baseReport: JsonObject;
@@ -514,14 +518,25 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
 
   let baselineBuildAttempted = false;
   let baselineBuildSucceeded = false;
-  if (baselineAvailableFlag && !existsSync(baseReportPath) && typeof baseSha === "string") {
+  const shouldAutoRebuildBaseline =
+    baselineAvailableFlag &&
+    baselineMode === "auto" &&
+    typeof baseSha === "string";
+  const shouldBuildMissingBaseline =
+    baselineAvailableFlag &&
+    !existsSync(baseReportPath) &&
+    typeof baseSha === "string";
+  if (shouldAutoRebuildBaseline || shouldBuildMissingBaseline) {
     baselineBuildAttempted = true;
     const baselineBuild = buildContextMemoryBaselineReport({
       eventName: input.eventName,
       prBaseSha: input.prBaseSha,
       beforeSha: input.beforeSha,
       repoRoot,
-      outputPath: input.baseReportPath,
+      outputPath: baseReportPath,
+      policyRelPath: toAbsolutePath(policyPath),
+      casesRelPath: toAbsolutePath(casesPath),
+      runsRelPath: toAbsolutePath(runsPath),
     });
     baselineBuildSucceeded = baselineBuild.available === true && existsSync(baseReportPath);
     baselineAvailableFlag = baselineBuildSucceeded;
@@ -540,8 +555,6 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
 
   const currentReport = loadReport(outputPath);
   const baseReport = loadReport(baseReportPath);
-  const currentReportSchema = extractReportSchema(currentReport);
-  const baseReportSchema = extractReportSchema(baseReport);
 
   let trend: TrendCompareResult | null = null;
 
@@ -552,14 +565,10 @@ export function runContextMemoryCiGate(input: ContextMemoryCiGateInput): Context
       if (typeof currentPolicyBlob === "string" && typeof basePolicyBlob === "string") {
         if (currentPolicyBlob === basePolicyBlob) {
           policyBlobMatch = true;
-          if (currentReportSchema === baseReportSchema) {
-            trendRequired = true;
-            trendMode = "gate_and_trend";
-            trendReason = "policy_blob_match";
-            trend = buildTrendComparison(currentReport, baseReport);
-          } else {
-            trendReason = "report_schema_mismatch";
-          }
+          trendRequired = true;
+          trendMode = "gate_and_trend";
+          trendReason = "policy_blob_match";
+          trend = buildTrendComparison(currentReport, baseReport);
         } else {
           policyBlobMatch = false;
           trendReason = "policy_blob_mismatch";

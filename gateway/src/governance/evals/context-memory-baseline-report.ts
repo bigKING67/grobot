@@ -58,6 +58,13 @@ function resolvePathFromRepoRoot(repoRoot: string, path: string): string {
   return pathJoin(repoRoot, path);
 }
 
+function resolvePathFromWorktree(worktreeRoot: string, path: string): string {
+  if (isAbsolutePath(path)) {
+    return path;
+  }
+  return pathJoin(worktreeRoot, path);
+}
+
 function runCapture(command: string[]): {
   exitCode: number;
   stdout: string;
@@ -167,10 +174,10 @@ export function buildContextMemoryBaselineReport(input: BuildBaselineInput): Jso
 
   const repoRoot = removeTrailingSlashes(input.repoRoot);
   const outputPath = resolvePathFromRepoRoot(repoRoot, input.outputPath);
-  const evalScriptRelPath = input.evalScriptRelPath ?? "gateway/src/governance/evals/context-memory-experience-eval.ts";
-  const policyRelPath = input.policyRelPath ?? "gateway/evals/context_memory_policy.ci.json";
-  const casesRelPath = input.casesRelPath ?? "gateway/evals/fixtures/context_memory_cases.ci.jsonl";
-  const runsRelPath = input.runsRelPath ?? "gateway/evals/fixtures/context_memory_runs.ci.jsonl";
+  const evalScriptPath = input.evalScriptRelPath ?? "gateway/src/governance/evals/context-memory-experience-eval.ts";
+  const policyPath = input.policyRelPath ?? "gateway/evals/context_memory_policy.ci.json";
+  const casesPath = input.casesRelPath ?? "gateway/evals/fixtures/context_memory_cases.ci.jsonl";
+  const runsPath = input.runsRelPath ?? "gateway/evals/fixtures/context_memory_runs.ci.jsonl";
   const worktreeDir = `/tmp/grobot-context-memory-base-${randomSuffix()}`;
 
   const addResult = runCapture(["git", "-C", repoRoot, "worktree", "add", "--detach", worktreeDir, baseSha]);
@@ -184,12 +191,12 @@ export function buildContextMemoryBaselineReport(input: BuildBaselineInput): Jso
   }
 
   try {
-    const evalPath = pathJoin(worktreeDir, evalScriptRelPath);
-    const policyPath = pathJoin(worktreeDir, policyRelPath);
-    const casesPath = pathJoin(worktreeDir, casesRelPath);
-    const runsPath = pathJoin(worktreeDir, runsRelPath);
+    const evalPath = resolvePathFromWorktree(worktreeDir, evalScriptPath);
+    const resolvedPolicyPath = resolvePathFromWorktree(worktreeDir, policyPath);
+    const resolvedCasesPath = resolvePathFromWorktree(worktreeDir, casesPath);
+    const resolvedRunsPath = resolvePathFromWorktree(worktreeDir, runsPath);
 
-    if (!existsSync(evalPath) || !existsSync(policyPath) || !existsSync(casesPath) || !existsSync(runsPath)) {
+    if (!existsSync(evalPath) || !existsSync(resolvedPolicyPath) || !existsSync(resolvedCasesPath) || !existsSync(resolvedRunsPath)) {
       return {
         available: false,
         reason: "required_files_missing",
@@ -215,11 +222,11 @@ export function buildContextMemoryBaselineReport(input: BuildBaselineInput): Jso
 
     evalCommand.push(
       "--cases",
-      casesPath,
+      resolvedCasesPath,
       "--runs",
-      runsPath,
+      resolvedRunsPath,
       "--gate-policy",
-      policyPath,
+      resolvedPolicyPath,
       "--print-json",
       "--output",
       outputPath,

@@ -81,12 +81,15 @@ interface DimensionRegressionGuardReport {
 
 interface SaturationPolicyPayload {
   max_perfect_case_rate: number;
+  max_metric_perfect_rate: number;
+  metric_perfect_score_floor: number;
   min_metric_variance: number;
   monitored_metrics: SaturationMetricName[];
 }
 
 interface SaturationMetricSnapshot {
   mean: number;
+  perfect_rate: number;
   variance: number;
 }
 
@@ -96,6 +99,7 @@ interface VariantSaturationGuardReport {
   perfect_case_count: number;
   perfect_case_rate: number;
   max_metric_variance: number;
+  triggered_metrics: SaturationMetricName[];
   monitored_metrics: Record<SaturationMetricName, SaturationMetricSnapshot>;
   triggered: boolean;
   reasons: string[];
@@ -195,6 +199,8 @@ const DIMENSION_REGRESSION_GUARD = {
 
 const SATURATION_POLICY = {
   maxPerfectCaseRate: 0.95,
+  maxMetricPerfectRate: 0.98,
+  metricPerfectScoreFloor: 0.999,
   minMetricVariance: 1e-4,
   monitoredMetrics: ["task_success", "tool_use_quality", "context_retention"] as SaturationMetricName[],
 };
@@ -331,9 +337,15 @@ function buildVariantSaturationGuard(
         const payload = row.metrics as Record<string, unknown>;
         return clampScore(asNumber(payload[metric]));
       });
-      const mean = metricValues.length > 0 ? metricValues.reduce((sum, value) => sum + value, 0) / metricValues.length : 0;
+      const mean = metricValues.length > 0
+        ? metricValues.reduce((sum, value) => sum + value, 0) / metricValues.length
+        : 0;
+      const perfectRate = metricValues.length > 0
+        ? metricValues.filter((value) => value >= SATURATION_POLICY.metricPerfectScoreFloor).length / metricValues.length
+        : 0;
       accumulator[metric] = {
         mean: clampScore(mean),
+        perfect_rate: clampScore(perfectRate),
         variance: variance(metricValues),
       };
       return accumulator;
@@ -346,17 +358,36 @@ function buildVariantSaturationGuard(
     return Math.max(currentMax, metricVariance);
   }, 0);
 
-  const saturationTriggered =
+  const caseLevelSaturationTriggered =
     caseCount > 0 &&
     perfectCaseRate > SATURATION_POLICY.maxPerfectCaseRate &&
     maxMetricVariance < SATURATION_POLICY.minMetricVariance;
 
+  const metricLevelTriggered = SATURATION_POLICY.monitoredMetrics.filter((metric) => {
+    const metricSnapshot = monitoredMetrics[metric];
+    if (metricSnapshot == null) {
+      return false;
+    }
+    return (
+      metricSnapshot.perfect_rate > SATURATION_POLICY.maxMetricPerfectRate &&
+      metricSnapshot.variance < SATURATION_POLICY.minMetricVariance
+    );
+  });
+
+  const saturationTriggered = caseLevelSaturationTriggered || metricLevelTriggered.length > 0;
+
   const reasons: string[] = [];
-  if (saturationTriggered) {
+  if (caseLevelSaturationTriggered) {
     reasons.push(
       `perfect_case_rate ${perfectCaseRate.toFixed(4)} > ${SATURATION_POLICY.maxPerfectCaseRate.toFixed(4)} and max_metric_variance ${maxMetricVariance.toExponential(3)} < ${SATURATION_POLICY.minMetricVariance.toExponential(3)}`
     );
   }
+  metricLevelTriggered.forEach((metric) => {
+    const metricSnapshot = monitoredMetrics[metric];
+    reasons.push(
+      `metric=${metric} perfect_rate ${metricSnapshot.perfect_rate.toFixed(4)} > ${SATURATION_POLICY.maxMetricPerfectRate.toFixed(4)} and variance ${metricSnapshot.variance.toExponential(3)} < ${SATURATION_POLICY.minMetricVariance.toExponential(3)}`
+    );
+  });
 
   return {
     variant: variantName,
@@ -364,6 +395,7 @@ function buildVariantSaturationGuard(
     perfect_case_count: perfectCaseCount,
     perfect_case_rate: perfectCaseRate,
     max_metric_variance: maxMetricVariance,
+    triggered_metrics: [...metricLevelTriggered],
     monitored_metrics: monitoredMetrics,
     triggered: saturationTriggered,
     reasons,
@@ -685,6 +717,8 @@ function buildReport(args: ParsedCliArgs): ContextMemoryEvalReport {
     dimension_policy: toDimensionPolicyPayload(),
     saturation_policy: {
       max_perfect_case_rate: SATURATION_POLICY.maxPerfectCaseRate,
+      max_metric_perfect_rate: SATURATION_POLICY.maxMetricPerfectRate,
+      metric_perfect_score_floor: SATURATION_POLICY.metricPerfectScoreFloor,
       min_metric_variance: SATURATION_POLICY.minMetricVariance,
       monitored_metrics: [...SATURATION_POLICY.monitoredMetrics],
     },
