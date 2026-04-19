@@ -28,6 +28,11 @@ import { type RuntimeModelConfig } from "../../models/types";
 import { retrieveDependencyGraphHints } from "../../tools/context/graph/dependency-hints";
 import { retrieveSymbolGraphHints } from "../../tools/context/graph/symbol-hints";
 import {
+  queryPersistentDependencyHints,
+  queryPersistentSymbolHints,
+  readPersistentGraphIndexStatus,
+} from "../../tools/context/graph/persistent-index";
+import {
   readContextGraphCacheStats,
   resetContextGraphCacheStats,
   type ContextGraphCacheStats,
@@ -118,6 +123,37 @@ function readRuntimeModelConfig(raw: unknown): RuntimeModelConfig | undefined {
   }
   if (typeof raw.timeoutMs === "number" && Number.isFinite(raw.timeoutMs)) {
     output.timeoutMs = raw.timeoutMs;
+  }
+  return output;
+}
+
+function readOptionalStringArray(
+  payload: Record<string, unknown>,
+  key: string,
+  maxItems: number,
+): string[] {
+  const raw = payload[key];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const normalized = item.trim();
+    if (!normalized) {
+      continue;
+    }
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(normalized);
+    if (output.length >= maxItems) {
+      break;
+    }
   }
   return output;
 }
@@ -524,6 +560,102 @@ function runGraphCacheHotLoop(payload: Record<string, unknown>): Record<string, 
       dependency_rows: lastDependencyRows,
     },
     turns,
+  };
+}
+
+function runGraphPersistentIndex(payload: Record<string, unknown>): Record<string, unknown> {
+  const query = typeof payload.query === "string" ? payload.query.trim() : "";
+  if (!query) {
+    throw new Error("payload.query must be non-empty");
+  }
+  const workDir = typeof payload.work_dir === "string" ? payload.work_dir.trim() : "";
+  if (!workDir) {
+    throw new Error("payload.work_dir must be non-empty");
+  }
+  const maxRows = typeof payload.max_rows === "number" && Number.isFinite(payload.max_rows)
+    ? Math.max(1, Math.min(20, Math.floor(payload.max_rows)))
+    : 4;
+  const windowSize = typeof payload.window_size === "number" && Number.isFinite(payload.window_size)
+    ? Math.max(1, Math.min(200, Math.floor(payload.window_size)))
+    : 20;
+  const extraWorkDirs = readOptionalStringArray(payload, "extra_work_dirs", 6)
+    .filter((extraWorkDir) => extraWorkDir !== workDir);
+  const firstDependencyRows = queryPersistentDependencyHints(query, {
+    workDir,
+    maxRows,
+    forceRefresh: true,
+  });
+  const firstStatus = readPersistentGraphIndexStatus({
+    workDir,
+    windowSize,
+  });
+  const firstSymbolRows = queryPersistentSymbolHints(query, {
+    workDir,
+    maxRows,
+  });
+  const secondDependencyRows = queryPersistentDependencyHints(query, {
+    workDir,
+    maxRows,
+  });
+  const secondSymbolRows = queryPersistentSymbolHints(query, {
+    workDir,
+    maxRows,
+  });
+  const secondStatus = readPersistentGraphIndexStatus({
+    workDir,
+    windowSize,
+  });
+  const extraRoots = extraWorkDirs.map((extraWorkDir) => {
+    const dependencyRows = queryPersistentDependencyHints(query, {
+      workDir: extraWorkDir,
+      maxRows,
+      forceRefresh: true,
+    });
+    const symbolRows = queryPersistentSymbolHints(query, {
+      workDir: extraWorkDir,
+      maxRows,
+    });
+    const status = readPersistentGraphIndexStatus({
+      workDir: extraWorkDir,
+      windowSize,
+    });
+    return {
+      work_dir: extraWorkDir,
+      dependency_rows: dependencyRows,
+      symbol_rows: symbolRows,
+      quality: {
+        dependency: summarizeDependencyRows(dependencyRows),
+        symbol: summarizeSymbolRows(symbolRows),
+      },
+      status,
+    };
+  });
+  return {
+    cache_reuse_observed:
+      JSON.stringify(firstDependencyRows) === JSON.stringify(secondDependencyRows)
+      && JSON.stringify(firstSymbolRows) === JSON.stringify(secondSymbolRows),
+    cross_repo_observed: extraRoots.some(
+      (root) => root.dependency_rows.length > 0 || root.symbol_rows.length > 0,
+    ),
+    extra_roots: extraRoots,
+    first_pass: {
+      dependency_rows: firstDependencyRows,
+      symbol_rows: firstSymbolRows,
+      quality: {
+        dependency: summarizeDependencyRows(firstDependencyRows),
+        symbol: summarizeSymbolRows(firstSymbolRows),
+      },
+      status: firstStatus,
+    },
+    second_pass: {
+      dependency_rows: secondDependencyRows,
+      symbol_rows: secondSymbolRows,
+      quality: {
+        dependency: summarizeDependencyRows(secondDependencyRows),
+        symbol: summarizeSymbolRows(secondSymbolRows),
+      },
+      status: secondStatus,
+    },
   };
 }
 
@@ -1682,6 +1814,10 @@ function runCli(argv: string[]): number {
     }
     case "graph-cache-hot-loop": {
       process.stdout.write(`${JSON.stringify(runGraphCacheHotLoop(payload))}\n`);
+      return 0;
+    }
+    case "graph-persistent-index": {
+      process.stdout.write(`${JSON.stringify(runGraphPersistentIndex(payload))}\n`);
       return 0;
     }
     case "downshift-guard": {

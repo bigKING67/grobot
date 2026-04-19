@@ -409,7 +409,7 @@ function runStartInteractiveSessionFlow(repoRoot) {
     ["/sessions", "/new", "/sessions", "TODO: interactive ts start", "/exit", ""].join("\n"),
   );
   const namespaceKey = "feishu:grobot:dm:smoke-user";
-  const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPath = `${workDir}/.grobot/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
   const registryPayload = readJsonFileSafe(registryPath);
   const handoffPath = `${workDir}/HANDOFF.md`;
   const handoffContent = readTextFileSafe(handoffPath);
@@ -429,7 +429,7 @@ function runStartInteractiveSessionFlow(repoRoot) {
       break;
     }
   }
-  const activeHistoryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(activeSessionKey)}.history.json`;
+  const activeHistoryPath = `${workDir}/.grobot/sessions/${sanitizeSessionKey(activeSessionKey)}.history.json`;
   const activeHistoryPayload = readJsonFileSafe(activeHistoryPath);
   return {
     ...commandResult,
@@ -482,7 +482,7 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
     has_start_banner: outputText.includes("Grobot started"),
     has_status_snapshot: outputText.includes("[status]"),
     has_command_hint: outputText.includes("Enter message ("),
-    has_prompt_prefix: outputText.includes("grobot> "),
+    has_prompt_prefix: outputText.includes("› "),
     has_no_unsupported_command_error: outputText.includes("unsupported command for ts-dev-cli") === false,
   };
 }
@@ -563,7 +563,7 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
     ].join("\n"),
   );
   const namespaceKey = `feishu:grobot:dm:${subject}`;
-  const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPath = `${workDir}/.grobot/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
   const registryPayload = readJsonFileSafe(registryPath);
   const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
   const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
@@ -726,7 +726,7 @@ function runStartPlanModeFlow(repoRoot) {
       ].join("\n"),
   );
   const namespaceKey = "feishu:grobot:dm:plan-smoke-user";
-  const registryPath = `${workDir}/.grobot/session/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  const registryPath = `${workDir}/.grobot/sessions/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
   const registryPayload = readJsonFileSafe(registryPath);
   const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
   const activeSessionId = registryPayload && typeof registryPayload.active_id === "string" ? registryPayload.active_id : "";
@@ -989,6 +989,9 @@ function runStartMcpInstructionEventsFlow(repoRoot) {
   const projectResult = runCommand(
     repoRoot,
     [...baseArgs, "--message", "mcp instruction pack project source smoke"],
+    {
+      GROBOT_STARTUP_DIAGNOSTICS: "1",
+    },
   );
 
   writeRulePack(projectRulePath, "\n");
@@ -996,6 +999,9 @@ function runStartMcpInstructionEventsFlow(repoRoot) {
   const fallbackResult = runCommand(
     repoRoot,
     [...baseArgs, "--message", "mcp instruction pack fallback source smoke"],
+    {
+      GROBOT_STARTUP_DIAGNOSTICS: "1",
+    },
   );
 
   writeRulePack(projectRulePath, "\n");
@@ -1003,6 +1009,9 @@ function runStartMcpInstructionEventsFlow(repoRoot) {
   const missingResult = runCommand(
     repoRoot,
     [...baseArgs, "--message", "mcp instruction pack missing smoke"],
+    {
+      GROBOT_STARTUP_DIAGNOSTICS: "1",
+    },
   );
 
   return {
@@ -1130,7 +1139,7 @@ function runStartSessionStoreRedisFallback(repoRoot) {
   const homeDir = createTempDir("grobot-start-home");
   const config = writeConfig(buildSmokeConfig(workDir));
   const sessionKey = "feishu:grobot:dm:redis-fallback-user";
-  const historyPath = `${workDir}/.grobot/session/${sanitizeSessionKey(sessionKey)}.history.json`;
+  const historyPath = `${workDir}/.grobot/sessions/${sanitizeSessionKey(sessionKey)}.history.json`;
   const result = runCommand(repoRoot, [
     "./grobot",
     "start",
@@ -1637,6 +1646,12 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof contextGraphCacheWindow?.configured_size === "number"
         ? contextGraphCacheWindow.configured_size
         : null,
+    status_context_graph_cache_window_persistence_domain_type:
+      typeof contextGraphCacheWindow?.persistence_domain,
+    status_context_graph_cache_window_persistence_domain_value:
+      typeof contextGraphCacheWindow?.persistence_domain === "string"
+        ? contextGraphCacheWindow.persistence_domain
+        : null,
     status_context_graph_cache_window_entries_type: typeof contextGraphCacheWindow?.entries,
     status_context_graph_cache_window_from_ts_type: contextGraphCacheWindow?.from_ts === null
       ? "null"
@@ -1704,6 +1719,12 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_context_persistent_graph_index_enabled_type: typeof contextPersistentGraphIndex?.enabled,
     status_context_persistent_graph_index_root_path_type: typeof contextPersistentGraphIndex?.root_path,
     status_context_persistent_graph_index_index_path_type: typeof contextPersistentGraphIndex?.index_path,
+    status_context_persistent_graph_index_persistence_domain_type:
+      typeof contextPersistentGraphIndex?.persistence_domain,
+    status_context_persistent_graph_index_persistence_domain_value:
+      typeof contextPersistentGraphIndex?.persistence_domain === "string"
+        ? contextPersistentGraphIndex.persistence_domain
+        : null,
     status_context_persistent_graph_index_updated_at_type:
       contextPersistentGraphIndex?.updated_at === null
         ? "null"
@@ -1728,6 +1749,12 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_context_persistent_graph_index_window_configured_size_value:
       typeof contextPersistentGraphIndexWindow?.configured_size === "number"
         ? contextPersistentGraphIndexWindow.configured_size
+        : null,
+    status_context_persistent_graph_index_window_persistence_domain_type:
+      typeof contextPersistentGraphIndexWindow?.persistence_domain,
+    status_context_persistent_graph_index_window_persistence_domain_value:
+      typeof contextPersistentGraphIndexWindow?.persistence_domain === "string"
+        ? contextPersistentGraphIndexWindow.persistence_domain
         : null,
     status_context_persistent_graph_index_window_entries_type:
       typeof contextPersistentGraphIndexWindow?.entries,
@@ -2132,6 +2159,12 @@ function runStatusTsRust(repoRoot, windowSize) {
         ? "null"
         : typeof contextEnginePromptQualityGuardAdaptivePolicyWindow?.quality_first_transition_count,
     status_context_engine_lineage_enabled_type: typeof contextEngineLineage?.enabled,
+    status_context_engine_lineage_persistence_domain_type:
+      typeof contextEngineLineage?.persistence_domain,
+    status_context_engine_lineage_persistence_domain_value:
+      typeof contextEngineLineage?.persistence_domain === "string"
+        ? contextEngineLineage.persistence_domain
+        : null,
     status_context_engine_workspace_signals_enabled_type: typeof contextEngineWorkspaceSignals?.enabled,
     status_context_engine_has_prompt_quality_window: Boolean(promptQualityWindow),
     status_context_engine_has_graph_quality_signals: Boolean(contextEngineGraphQualitySignals),
@@ -2148,6 +2181,12 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_context_engine_prompt_quality_window_path_type: typeof promptQualityWindow?.path,
     status_context_engine_prompt_quality_window_configured_size_type: typeof promptQualityWindow?.configured_size,
     status_context_engine_prompt_quality_window_entries_type: typeof promptQualityWindow?.entries,
+    status_context_engine_prompt_quality_window_persistence_domain_type:
+      typeof promptQualityWindow?.persistence_domain,
+    status_context_engine_prompt_quality_window_persistence_domain_value:
+      typeof promptQualityWindow?.persistence_domain === "string"
+        ? promptQualityWindow.persistence_domain
+        : null,
     status_context_engine_prompt_quality_window_from_ts_type: promptQualityWindow?.from_ts === null
       ? "null"
       : typeof promptQualityWindow?.from_ts,
@@ -2984,6 +3023,643 @@ function runStartContextGraphQualityAutotuneAdaptiveSequenceFlow(repoRoot) {
   };
 }
 
+function runStartContextMemoryDecayAutotuneQualityFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-memory-decay-autotune-quality-work");
+  writeExecutionProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  const memoryContextEngineDir = `${workDir}/.grobot/memory/context-engine`;
+  mkdirSync(contextDir, { recursive: true });
+  mkdirSync(memoryContextEngineDir, { recursive: true });
+  const promptSeedPath = `${contextDir}/prompt-quality-window.jsonl`;
+  const statePath = `${memoryContextEngineDir}/memory-decay-autotune-state.json`;
+  const seedNowMs = Date.now();
+  const promptRows = [0, 1, 2].map((index) => ({
+    ts: new Date(seedNowMs - (3 - index) * 1_000).toISOString(),
+    sessionKey: "seed:memory-decay-quality-autotune",
+    stage: "minimal",
+    selectionReason: "seed",
+    estimatedTokens: 8200 + (index * 200),
+    targetTokenLimit: 5000,
+    scores: {
+      coverage: 0.38,
+      recency: 0.33,
+      size: 0.29,
+      overall: 0.46 - (index * 0.04),
+    },
+    signals: {
+      recentRows: 2,
+      snapshotSections: 3,
+      recentTrimRows: 1,
+      snapshotTrimSections: 2,
+      snapshotSemanticCompressSections: 3,
+      headTrimRetries: 1,
+      autoLimitTriggered: true,
+      downshiftGuardTriggered: true,
+      preSendStrategy: "hard_budget",
+      preSendOverflowRatio: 0.52 + (index * 0.03),
+      preSendPressureScore: 0.84 + (index * 0.02),
+    },
+  }));
+  writeFileSync(
+    promptSeedPath,
+    `${promptRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  const seededState = {
+    maxRowsPerSession: 240,
+    minConfidenceVerified: 0.20,
+    minConfidenceUnverified: 0.45,
+    unverifiedMaxAgeHours: 72,
+    adaptiveLearnAlpha: 0.2,
+    adaptiveUpdates: 4,
+    dropRatioEma: 0.01,
+    capacityTrimRatioEma: 0.02,
+    lowConfidenceRatioEma: 0.03,
+    ageDropRatioEma: 0.04,
+    qualityLowRateEma: 0.72,
+    qualityPressureEma: 0.74,
+    hardBudgetFollowupDeltaEma: -0.12,
+    qualityFirstFollowupDeltaEma: -0.02,
+    lastReason: "seed_quality_pressure",
+    updatedAt: "2026-04-19T10:00:00.000Z",
+  };
+  writeFileSync(statePath, `${JSON.stringify(seededState, null, 2)}\n`, "utf8");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const startResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "memory-decay-quality-autotune-user",
+    "--history-turns",
+    "8",
+    "--message",
+    "memory decay autotune should tighten by prompt quality pressure",
+  ], {
+    GROBOT_STARTUP_DIAGNOSTICS: "1",
+  });
+  const maintenanceEvent = startResult.stderr.match(
+    /event=maintenance[^\n]*quality_low_rate=([0-9.<>-]+)[^\n]*quality_pressure=([0-9.<>-]+)[^\n]*autotune_reason=([a-z_,]+)/,
+  );
+  const statusResult = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--json",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ]);
+  const parsedStatus = parseJsonObjectSafe(statusResult.stdout);
+  const memoryOrchestrator = isObject(parsedStatus?.context_engine?.memory_orchestrator)
+    ? parsedStatus.context_engine.memory_orchestrator
+    : null;
+  const statusAutotune = isObject(memoryOrchestrator?.autotune)
+    ? memoryOrchestrator.autotune
+    : null;
+  const persistedState = readJsonFileSafe(statePath);
+  const persistedAutotune = isObject(persistedState) ? persistedState : null;
+  const decayMaxRowsAfter = typeof memoryOrchestrator?.decay_max_rows_per_session === "number"
+    ? memoryOrchestrator.decay_max_rows_per_session
+    : null;
+  const decayMinConfidenceVerifiedAfter =
+    typeof memoryOrchestrator?.decay_min_confidence_verified === "number"
+      ? memoryOrchestrator.decay_min_confidence_verified
+      : null;
+  const decayMinConfidenceUnverifiedAfter =
+    typeof memoryOrchestrator?.decay_min_confidence_unverified === "number"
+      ? memoryOrchestrator.decay_min_confidence_unverified
+      : null;
+  return {
+    start_exit_code: startResult.exit_code,
+    status_exit_code: statusResult.exit_code,
+    maintenance_quality_signal_logged: Boolean(maintenanceEvent),
+    maintenance_quality_low_rate: maintenanceEvent?.[1] ?? "",
+    maintenance_quality_pressure: maintenanceEvent?.[2] ?? "",
+    maintenance_autotune_reason: maintenanceEvent?.[3] ?? "",
+    maintenance_autotune_quality_reason_seen:
+      typeof maintenanceEvent?.[3] === "string"
+      && maintenanceEvent[3].includes("quality_pressure_tighten"),
+    status_json_parse_ok: Boolean(parsedStatus),
+    status_memory_orchestrator_present: Boolean(memoryOrchestrator),
+    status_memory_autotune_present: Boolean(statusAutotune),
+    status_memory_autotune_quality_fields_present:
+      typeof statusAutotune?.quality_low_rate_ema === "number"
+      && typeof statusAutotune?.quality_pressure_ema === "number"
+      && typeof statusAutotune?.hard_budget_followup_delta_ema === "number"
+      && typeof statusAutotune?.quality_first_followup_delta_ema === "number",
+    status_memory_autotune_last_reason:
+      typeof statusAutotune?.last_reason === "string" ? statusAutotune.last_reason : "",
+    status_memory_autotune_reason_has_quality_tighten:
+      typeof statusAutotune?.last_reason === "string"
+      && statusAutotune.last_reason.includes("quality_pressure_tighten"),
+    status_memory_decay_max_rows_before: seededState.maxRowsPerSession,
+    status_memory_decay_max_rows_after: decayMaxRowsAfter,
+    status_memory_decay_max_rows_tightened:
+      typeof decayMaxRowsAfter === "number" && decayMaxRowsAfter < seededState.maxRowsPerSession,
+    status_memory_decay_verified_conf_before: seededState.minConfidenceVerified,
+    status_memory_decay_verified_conf_after: decayMinConfidenceVerifiedAfter,
+    status_memory_decay_unverified_conf_before: seededState.minConfidenceUnverified,
+    status_memory_decay_unverified_conf_after: decayMinConfidenceUnverifiedAfter,
+    status_memory_decay_confidence_tightened:
+      typeof decayMinConfidenceVerifiedAfter === "number"
+      && typeof decayMinConfidenceUnverifiedAfter === "number"
+      && decayMinConfidenceVerifiedAfter > seededState.minConfidenceVerified
+      && decayMinConfidenceUnverifiedAfter > seededState.minConfidenceUnverified,
+    state_exists: Boolean(persistedAutotune),
+    state_adaptive_updates_before: seededState.adaptiveUpdates,
+    state_adaptive_updates_after:
+      typeof persistedAutotune?.adaptiveUpdates === "number"
+        ? persistedAutotune.adaptiveUpdates
+        : null,
+    state_adaptive_updates_increased:
+      typeof persistedAutotune?.adaptiveUpdates === "number"
+      && persistedAutotune.adaptiveUpdates > seededState.adaptiveUpdates,
+    state_quality_ema_present:
+      typeof persistedAutotune?.qualityLowRateEma === "number"
+      && typeof persistedAutotune?.qualityPressureEma === "number"
+      && typeof persistedAutotune?.hardBudgetFollowupDeltaEma === "number"
+      && typeof persistedAutotune?.qualityFirstFollowupDeltaEma === "number",
+    state_last_reason:
+      typeof persistedAutotune?.lastReason === "string" ? persistedAutotune.lastReason : "",
+    state_last_reason_has_quality_tighten:
+      typeof persistedAutotune?.lastReason === "string"
+      && persistedAutotune.lastReason.includes("quality_pressure_tighten"),
+    state_path: statePath,
+    prompt_seed_path: promptSeedPath,
+  };
+}
+
+function runStartContextMemoryDecayAutotuneQualityRelaxFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-memory-decay-autotune-quality-relax-work");
+  writeExecutionProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  const memoryContextEngineDir = `${workDir}/.grobot/memory/context-engine`;
+  mkdirSync(contextDir, { recursive: true });
+  mkdirSync(memoryContextEngineDir, { recursive: true });
+  const promptSeedPath = `${contextDir}/prompt-quality-window.jsonl`;
+  const statePath = `${memoryContextEngineDir}/memory-decay-autotune-state.json`;
+  const seedNowMs = Date.now();
+  const promptRows = [0, 1, 2].map((index) => ({
+    ts: new Date(seedNowMs - (3 - index) * 1_000).toISOString(),
+    sessionKey: "seed:memory-decay-quality-autotune-relax",
+    stage: "normal",
+    selectionReason: "seed",
+    estimatedTokens: 4200 + (index * 80),
+    targetTokenLimit: 5000,
+    scores: {
+      coverage: 0.74,
+      recency: 0.72,
+      size: 0.76,
+      overall: 0.72 + (index * 0.06),
+    },
+    signals: {
+      recentRows: 2,
+      snapshotSections: 3,
+      recentTrimRows: 0,
+      snapshotTrimSections: 0,
+      snapshotSemanticCompressSections: 0,
+      headTrimRetries: 0,
+      autoLimitTriggered: false,
+      downshiftGuardTriggered: false,
+      preSendStrategy: "quality_first",
+      preSendOverflowRatio: 0.05 + (index * 0.01),
+      preSendPressureScore: 0.18 + (index * 0.02),
+    },
+  }));
+  writeFileSync(
+    promptSeedPath,
+    `${promptRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  const seededState = {
+    maxRowsPerSession: 220,
+    minConfidenceVerified: 0.28,
+    minConfidenceUnverified: 0.58,
+    unverifiedMaxAgeHours: 72,
+    adaptiveLearnAlpha: 0.2,
+    adaptiveUpdates: 5,
+    dropRatioEma: 0.01,
+    capacityTrimRatioEma: 0.01,
+    lowConfidenceRatioEma: 0.02,
+    ageDropRatioEma: 0.03,
+    qualityLowRateEma: 0.12,
+    qualityPressureEma: 0.18,
+    hardBudgetFollowupDeltaEma: 0.00,
+    qualityFirstFollowupDeltaEma: 0.03,
+    lastReason: "seed_quality_relax",
+    updatedAt: "2026-04-19T10:30:00.000Z",
+  };
+  writeFileSync(statePath, `${JSON.stringify(seededState, null, 2)}\n`, "utf8");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const startResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "memory-decay-quality-autotune-relax-user",
+    "--history-turns",
+    "8",
+    "--message",
+    "memory decay autotune should relax by prompt quality signal",
+  ]);
+  const maintenanceEvent = startResult.stderr.match(
+    /event=maintenance[^\n]*quality_low_rate=([0-9.<>-]+)[^\n]*quality_pressure=([0-9.<>-]+)[^\n]*autotune_reason=([a-z_,]+)/,
+  );
+  const statusResult = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--json",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ]);
+  const parsedStatus = parseJsonObjectSafe(statusResult.stdout);
+  const memoryOrchestrator = isObject(parsedStatus?.context_engine?.memory_orchestrator)
+    ? parsedStatus.context_engine.memory_orchestrator
+    : null;
+  const statusAutotune = isObject(memoryOrchestrator?.autotune)
+    ? memoryOrchestrator.autotune
+    : null;
+  const statusReason = typeof statusAutotune?.last_reason === "string"
+    ? statusAutotune.last_reason
+    : "";
+  const persistedState = readJsonFileSafe(statePath);
+  const persistedAutotune = isObject(persistedState) ? persistedState : null;
+  const decayMaxRowsAfter = typeof memoryOrchestrator?.decay_max_rows_per_session === "number"
+    ? memoryOrchestrator.decay_max_rows_per_session
+    : null;
+  const decayMinConfidenceVerifiedAfter =
+    typeof memoryOrchestrator?.decay_min_confidence_verified === "number"
+      ? memoryOrchestrator.decay_min_confidence_verified
+      : null;
+  const decayMinConfidenceUnverifiedAfter =
+    typeof memoryOrchestrator?.decay_min_confidence_unverified === "number"
+      ? memoryOrchestrator.decay_min_confidence_unverified
+      : null;
+  return {
+    start_exit_code: startResult.exit_code,
+    status_exit_code: statusResult.exit_code,
+    maintenance_quality_signal_logged:
+      Boolean(maintenanceEvent) || statusReason.includes("quality_signal_relax"),
+    maintenance_quality_low_rate: maintenanceEvent?.[1] ?? "",
+    maintenance_quality_pressure: maintenanceEvent?.[2] ?? "",
+    maintenance_autotune_reason: maintenanceEvent?.[3] ?? "",
+    maintenance_autotune_quality_reason_seen:
+      (
+        typeof maintenanceEvent?.[3] === "string"
+        && maintenanceEvent[3].includes("quality_signal_relax")
+      ) || statusReason.includes("quality_signal_relax"),
+    status_json_parse_ok: Boolean(parsedStatus),
+    status_memory_orchestrator_present: Boolean(memoryOrchestrator),
+    status_memory_autotune_present: Boolean(statusAutotune),
+    status_memory_autotune_quality_fields_present:
+      typeof statusAutotune?.quality_low_rate_ema === "number"
+      && typeof statusAutotune?.quality_pressure_ema === "number"
+      && typeof statusAutotune?.hard_budget_followup_delta_ema === "number"
+      && typeof statusAutotune?.quality_first_followup_delta_ema === "number",
+    status_memory_autotune_last_reason: statusReason,
+    status_memory_autotune_reason_has_quality_relax:
+      statusReason.includes("quality_signal_relax"),
+    status_memory_decay_max_rows_before: seededState.maxRowsPerSession,
+    status_memory_decay_max_rows_after: decayMaxRowsAfter,
+    status_memory_decay_max_rows_relaxed:
+      typeof decayMaxRowsAfter === "number" && decayMaxRowsAfter > seededState.maxRowsPerSession,
+    status_memory_decay_verified_conf_before: seededState.minConfidenceVerified,
+    status_memory_decay_verified_conf_after: decayMinConfidenceVerifiedAfter,
+    status_memory_decay_unverified_conf_before: seededState.minConfidenceUnverified,
+    status_memory_decay_unverified_conf_after: decayMinConfidenceUnverifiedAfter,
+    status_memory_decay_confidence_relaxed:
+      typeof decayMinConfidenceVerifiedAfter === "number"
+      && typeof decayMinConfidenceUnverifiedAfter === "number"
+      && decayMinConfidenceVerifiedAfter < seededState.minConfidenceVerified
+      && decayMinConfidenceUnverifiedAfter < seededState.minConfidenceUnverified,
+    state_exists: Boolean(persistedAutotune),
+    state_adaptive_updates_before: seededState.adaptiveUpdates,
+    state_adaptive_updates_after:
+      typeof persistedAutotune?.adaptiveUpdates === "number"
+        ? persistedAutotune.adaptiveUpdates
+        : null,
+    state_adaptive_updates_increased:
+      typeof persistedAutotune?.adaptiveUpdates === "number"
+      && persistedAutotune.adaptiveUpdates > seededState.adaptiveUpdates,
+    state_quality_ema_present:
+      typeof persistedAutotune?.qualityLowRateEma === "number"
+      && typeof persistedAutotune?.qualityPressureEma === "number"
+      && typeof persistedAutotune?.hardBudgetFollowupDeltaEma === "number"
+      && typeof persistedAutotune?.qualityFirstFollowupDeltaEma === "number",
+    state_last_reason:
+      typeof persistedAutotune?.lastReason === "string" ? persistedAutotune.lastReason : "",
+    state_last_reason_has_quality_relax:
+      typeof persistedAutotune?.lastReason === "string"
+      && persistedAutotune.lastReason.includes("quality_signal_relax"),
+    state_path: statePath,
+    prompt_seed_path: promptSeedPath,
+  };
+}
+
+function runStartContextMemoryDecayAutotuneHysteresisFlow(repoRoot) {
+  const workDir = createTempDir("grobot-start-memory-decay-autotune-hysteresis-work");
+  writeExecutionProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  const memoryContextEngineDir = `${workDir}/.grobot/memory/context-engine`;
+  mkdirSync(contextDir, { recursive: true });
+  mkdirSync(memoryContextEngineDir, { recursive: true });
+  const promptSeedPath = `${contextDir}/prompt-quality-window.jsonl`;
+  const statePath = `${memoryContextEngineDir}/memory-decay-autotune-state.json`;
+  const seededState = {
+    maxRowsPerSession: 240,
+    minConfidenceVerified: 0.20,
+    minConfidenceUnverified: 0.45,
+    unverifiedMaxAgeHours: 72,
+    adaptiveLearnAlpha: 0.2,
+    adaptiveUpdates: 5,
+    dropRatioEma: 0.01,
+    capacityTrimRatioEma: 0.01,
+    lowConfidenceRatioEma: 0.02,
+    ageDropRatioEma: 0.03,
+    qualityLowRateEma: 0.72,
+    qualityPressureEma: 0.74,
+    hardBudgetFollowupDeltaEma: -0.12,
+    qualityFirstFollowupDeltaEma: -0.02,
+    lastReason: "seed_hysteresis",
+    updatedAt: "2026-04-19T11:00:00.000Z",
+  };
+  writeFileSync(statePath, `${JSON.stringify(seededState, null, 2)}\n`, "utf8");
+  const config = writeConfig(buildSmokeConfig(workDir));
+
+  const buildPromptRows = (profile) => {
+    const seedNowMs = Date.now();
+    if (profile === "pressure") {
+      return [0, 1, 2].map((index) => ({
+        ts: new Date(seedNowMs - (3 - index) * 1_000).toISOString(),
+        sessionKey: "seed:memory-decay-hysteresis-pressure",
+        stage: "minimal",
+        selectionReason: "seed",
+        estimatedTokens: 8200 + (index * 120),
+        targetTokenLimit: 5000,
+        scores: {
+          coverage: 0.38,
+          recency: 0.33,
+          size: 0.29,
+          overall: 0.46 - (index * 0.04),
+        },
+        signals: {
+          recentRows: 2,
+          snapshotSections: 3,
+          recentTrimRows: 1,
+          snapshotTrimSections: 2,
+          snapshotSemanticCompressSections: 3,
+          headTrimRetries: 1,
+          autoLimitTriggered: true,
+          downshiftGuardTriggered: true,
+          preSendStrategy: "hard_budget",
+          preSendOverflowRatio: 0.52 + (index * 0.03),
+          preSendPressureScore: 0.84 + (index * 0.02),
+        },
+      }));
+    }
+    return [0, 1, 2, 3].map((index) => ({
+      ts: new Date(seedNowMs - (4 - index) * 1_000).toISOString(),
+      sessionKey: "seed:memory-decay-hysteresis-relax",
+      stage: "normal",
+      selectionReason: "seed",
+      estimatedTokens: 4200 + (index * 80),
+      targetTokenLimit: 5000,
+      scores: {
+        coverage: 0.74,
+        recency: 0.72,
+        size: 0.76,
+        overall: 0.72 + (index * 0.06),
+      },
+      signals: {
+        recentRows: 2,
+        snapshotSections: 3,
+        recentTrimRows: 0,
+        snapshotTrimSections: 0,
+        snapshotSemanticCompressSections: 0,
+        headTrimRetries: 0,
+        autoLimitTriggered: false,
+        downshiftGuardTriggered: false,
+        preSendStrategy: "quality_first",
+        preSendOverflowRatio: 0.05 + (index * 0.01),
+        preSendPressureScore: 0.18 + (index * 0.02),
+      },
+    }));
+  };
+
+  const runRound = (label, profile, message) => {
+    const rows = buildPromptRows(profile);
+    writeFileSync(promptSeedPath, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
+    const startResult = runCommand(repoRoot, [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--work-dir",
+      workDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      `memory-decay-hysteresis-${label}`,
+      "--history-turns",
+      "8",
+      "--message",
+      message,
+    ]);
+    const statusResult = runCommand(repoRoot, [
+      "./grobot",
+      "status",
+      "--json",
+      "--project",
+      "grobot",
+      "--work-dir",
+      workDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+    ]);
+    const parsedStatus = parseJsonObjectSafe(statusResult.stdout);
+    const memoryOrchestrator = isObject(parsedStatus?.context_engine?.memory_orchestrator)
+      ? parsedStatus.context_engine.memory_orchestrator
+      : null;
+    const statusAutotune = isObject(memoryOrchestrator?.autotune)
+      ? memoryOrchestrator.autotune
+      : null;
+    const persisted = readJsonFileSafe(statePath);
+    const persistedAutotune = isObject(persisted) ? persisted : null;
+    const reason = typeof statusAutotune?.last_reason === "string" ? statusAutotune.last_reason : "";
+    return {
+      label,
+      profile,
+      start_exit_code: startResult.exit_code,
+      status_exit_code: statusResult.exit_code,
+      reason,
+      has_tighten: reason.includes("quality_pressure_tighten"),
+      has_relax: reason.includes("quality_signal_relax"),
+      decay_max_rows:
+        typeof memoryOrchestrator?.decay_max_rows_per_session === "number"
+          ? memoryOrchestrator.decay_max_rows_per_session
+          : null,
+      decay_min_conf_verified:
+        typeof memoryOrchestrator?.decay_min_confidence_verified === "number"
+          ? memoryOrchestrator.decay_min_confidence_verified
+          : null,
+      decay_min_conf_unverified:
+        typeof memoryOrchestrator?.decay_min_confidence_unverified === "number"
+          ? memoryOrchestrator.decay_min_confidence_unverified
+          : null,
+      adaptive_updates:
+        typeof persistedAutotune?.adaptiveUpdates === "number"
+          ? persistedAutotune.adaptiveUpdates
+          : null,
+      quality_low_ema:
+        typeof persistedAutotune?.qualityLowRateEma === "number"
+          ? persistedAutotune.qualityLowRateEma
+          : null,
+      quality_pressure_ema:
+        typeof persistedAutotune?.qualityPressureEma === "number"
+          ? persistedAutotune.qualityPressureEma
+          : null,
+    };
+  };
+
+  const firstRound = runRound(
+    "pressure-1",
+    "pressure",
+    "memory decay hysteresis pass 1 should tighten under pressure",
+  );
+
+  const lowRounds = [];
+  let relaxRoundIndex = null;
+  for (let index = 1; index <= 10; index += 1) {
+    const lowRound = runRound(
+      `relax-${String(index)}`,
+      "relax",
+      `memory decay hysteresis relax pass ${String(index)}`,
+    );
+    lowRounds.push(lowRound);
+    if (lowRound.has_relax) {
+      relaxRoundIndex = index;
+      break;
+    }
+  }
+
+  const roundsBeforeRelax = relaxRoundIndex == null
+    ? lowRounds
+    : lowRounds.slice(0, Math.max(0, relaxRoundIndex - 1));
+  const noEarlyRelax = roundsBeforeRelax.every((round) => !round.has_relax);
+  const relaxRound = relaxRoundIndex == null ? null : lowRounds[relaxRoundIndex - 1] ?? null;
+  const relaxPrevRound = relaxRoundIndex == null
+    ? null
+    : (relaxRoundIndex > 1 ? lowRounds[relaxRoundIndex - 2] ?? null : firstRound);
+  const relaxRowsExpanded = Boolean(
+    relaxRound
+    && relaxPrevRound
+    && typeof relaxRound.decay_max_rows === "number"
+    && typeof relaxPrevRound.decay_max_rows === "number"
+    && relaxRound.decay_max_rows > relaxPrevRound.decay_max_rows,
+  );
+  const relaxConfidenceRelaxed = Boolean(
+    relaxRound
+    && relaxPrevRound
+    && typeof relaxRound.decay_min_conf_verified === "number"
+    && typeof relaxRound.decay_min_conf_unverified === "number"
+    && typeof relaxPrevRound.decay_min_conf_verified === "number"
+    && typeof relaxPrevRound.decay_min_conf_unverified === "number"
+    && relaxRound.decay_min_conf_verified < relaxPrevRound.decay_min_conf_verified
+    && relaxRound.decay_min_conf_unverified < relaxPrevRound.decay_min_conf_unverified,
+  );
+  const allRounds = [firstRound, ...lowRounds];
+  let updatesMonotonic = true;
+  for (let index = 1; index < allRounds.length; index += 1) {
+    const prev = allRounds[index - 1];
+    const next = allRounds[index];
+    if (
+      !prev
+      || !next
+      || typeof prev.adaptive_updates !== "number"
+      || typeof next.adaptive_updates !== "number"
+      || next.adaptive_updates < prev.adaptive_updates
+    ) {
+      updatesMonotonic = false;
+      break;
+    }
+  }
+  const finalLowRound = lowRounds.length > 0 ? lowRounds[lowRounds.length - 1] ?? null : null;
+  const finalQualityLowEma =
+    finalLowRound && typeof finalLowRound.quality_low_ema === "number"
+      ? finalLowRound.quality_low_ema
+      : null;
+  const finalQualityPressureEma =
+    finalLowRound && typeof finalLowRound.quality_pressure_ema === "number"
+      ? finalLowRound.quality_pressure_ema
+      : null;
+  const finalQualityRelaxWindowReached = Boolean(
+    typeof finalQualityLowEma === "number"
+    && typeof finalQualityPressureEma === "number"
+    && finalQualityLowEma <= 0.2
+    && finalQualityPressureEma <= 0.38,
+  );
+
+  return {
+    first_round_start_exit_code: firstRound.start_exit_code,
+    first_round_status_exit_code: firstRound.status_exit_code,
+    first_round_reason: firstRound.reason,
+    first_round_has_quality_tighten: firstRound.has_tighten,
+    low_rounds_executed: lowRounds.length,
+    relax_seen: relaxRoundIndex != null,
+    relax_round_index: relaxRoundIndex,
+    no_early_relax: noEarlyRelax,
+    relax_rows_expanded: relaxRowsExpanded,
+    relax_confidence_relaxed: relaxConfidenceRelaxed,
+    updates_monotonic: updatesMonotonic,
+    final_quality_low_ema: finalQualityLowEma,
+    final_quality_pressure_ema: finalQualityPressureEma,
+    final_quality_relax_window_reached: finalQualityRelaxWindowReached,
+    state_path: statePath,
+    prompt_seed_path: promptSeedPath,
+  };
+}
+
 function runStatusTsRustDeprecatedFlag(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
@@ -2998,6 +3674,91 @@ function runStatusTsRustDeprecatedFlag(repoRoot) {
     "rust",
     "--ts-dev-cli",
   ]);
+}
+
+function runStatusTsRustMemoryLegacyFallback(repoRoot) {
+  const workDir = createTempDir("grobot-status-memory-legacy-fallback-work");
+  writeExecutionProjectToml(workDir);
+  const contextDir = `${workDir}/.grobot/context`;
+  mkdirSync(contextDir, { recursive: true });
+  const graphLegacyStatePath = `${contextDir}/graph-quality-autotune-state.json`;
+  const promptGuardLegacyStatePath = `${contextDir}/prompt-quality-guard-state.json`;
+  const graphLegacyState = {
+    lastDirection: "downshift",
+    holdTurnsRemaining: 7,
+    downshiftWarmupStreak: 3,
+    lastReason: "legacy_graph_state_seed",
+    updatedAt: "2026-01-15T12:34:56.000Z",
+    cacheDegradeQueryHitRateThreshold: 0.27,
+    persistentDegradeParsedPerScannedMax: 0.31,
+    persistentDegradeReusedPerScannedMin: 0.62,
+    persistentDegradeRemovedPerScannedMax: 0.19,
+    adaptiveLearnAlpha: 0.24,
+    adaptiveUpdates: 9,
+    adaptiveSource: "legacy_seed",
+    adaptiveActionScale: 1.12,
+    adaptiveActionUpdates: 5,
+    adaptiveActionSource: "legacy_seed",
+  };
+  const promptGuardLegacyState = {
+    floorStage: "forced",
+    degradedStreak: 11,
+    severeStreak: 2,
+    healthyStreak: 0,
+    holdTurnsRemaining: 4,
+    lastReason: "legacy_prompt_guard_seed",
+    updatedAt: "2026-01-16T08:09:10.000Z",
+    pressureUtilizationThreshold: 0.91,
+    pressureSemanticRateThreshold: 0.26,
+    pressureAutoLimitRateThreshold: 0.34,
+    pressureJointRateThreshold: 0.22,
+    pressureTrendUtilizationDelta: 0.03,
+    pressureTrendSemanticDelta: 0.02,
+    pressureTrendAutoLimitDelta: 0.01,
+    pressureTrendMomentum: 0.8,
+    outcomeRequiredTransitions: 4,
+    outcomeCombinedEvidenceScore: 0.55,
+    outcomeHighEvidenceTurns: 6,
+    outcomeHighEvidenceHardenTurns: 3,
+    outcomeDriftRecentAutoActionLevels: ["none", "medium"],
+  };
+  writeFileSync(graphLegacyStatePath, `${JSON.stringify(graphLegacyState, null, 2)}\n`, "utf8");
+  writeFileSync(
+    promptGuardLegacyStatePath,
+    `${JSON.stringify(promptGuardLegacyState, null, 2)}\n`,
+    "utf8",
+  );
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--json",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ]);
+  const parsedStatus = parseJsonObjectSafe(result.stdout);
+  const graphAutotuneState = isObject(parsedStatus?.context_graph_cache_stats?.autotune_state)
+    ? parsedStatus.context_graph_cache_stats.autotune_state
+    : null;
+  const promptGuardState = isObject(parsedStatus?.context_engine?.prompt_quality_guard_state)
+    ? parsedStatus.context_engine.prompt_quality_guard_state
+    : null;
+  return {
+    ...result,
+    status_json_parse_ok: Boolean(parsedStatus),
+    graph_autotune_last_reason: graphAutotuneState?.last_reason ?? null,
+    graph_autotune_hold_turns_remaining: graphAutotuneState?.hold_turns_remaining ?? null,
+    graph_autotune_persistence_domain: graphAutotuneState?.persistence_domain ?? null,
+    prompt_guard_floor_stage: promptGuardState?.floor_stage ?? null,
+    prompt_guard_degraded_streak: promptGuardState?.degraded_streak ?? null,
+    prompt_guard_last_reason: promptGuardState?.last_reason ?? null,
+    prompt_guard_persistence_domain: promptGuardState?.persistence_domain ?? null,
+    graph_legacy_state_path: graphLegacyStatePath,
+    prompt_guard_legacy_state_path: promptGuardLegacyStatePath,
+  };
 }
 
 function runStatusRejectLegacyFlag(repoRoot) {
@@ -3105,8 +3866,20 @@ function runCli(argv) {
     case "start-context-graph-quality-autotune-adaptive-sequence-flow":
       payload = runStartContextGraphQualityAutotuneAdaptiveSequenceFlow(repoRoot);
       break;
+    case "start-context-memory-decay-autotune-quality-flow":
+      payload = runStartContextMemoryDecayAutotuneQualityFlow(repoRoot);
+      break;
+    case "start-context-memory-decay-autotune-quality-relax-flow":
+      payload = runStartContextMemoryDecayAutotuneQualityRelaxFlow(repoRoot);
+      break;
+    case "start-context-memory-decay-autotune-hysteresis-flow":
+      payload = runStartContextMemoryDecayAutotuneHysteresisFlow(repoRoot);
+      break;
     case "status-ts-rust-deprecated-flag":
       payload = runStatusTsRustDeprecatedFlag(repoRoot);
+      break;
+    case "status-ts-rust-memory-legacy-fallback":
+      payload = runStatusTsRustMemoryLegacyFallback(repoRoot);
       break;
     case "status-reject-legacy-flag":
       payload = runStatusRejectLegacyFlag(repoRoot);

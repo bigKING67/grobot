@@ -8,7 +8,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { resolveContextStoragePath } from "../storage-boundary";
 import { type PromptCompactionStage } from "../types";
 
 export type PromptPreSendStrategy = "quality_first" | "hard_budget";
@@ -153,7 +153,6 @@ export interface PromptQualityWindowDegradation {
   observedLowQualityRate: number | null;
 }
 
-const QUALITY_WINDOW_RELATIVE_PATH = ".grobot/context/prompt-quality-window.jsonl";
 const MAX_PERSISTED_ENTRIES = 512;
 const TRIM_TRIGGER_BYTES = 1_000_000;
 const TRIM_LOCK_SUFFIX = ".trim.lock";
@@ -328,7 +327,7 @@ function normalizeWindowSize(raw: number | undefined, fallback: number): number 
 }
 
 function resolveWindowPath(workDir: string): string {
-  return resolve(workDir, QUALITY_WINDOW_RELATIVE_PATH);
+  return resolveContextStoragePath(workDir, "prompt_quality_window");
 }
 
 function resolveParentDir(filePath: string): string {

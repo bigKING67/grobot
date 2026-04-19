@@ -13,16 +13,36 @@ import { createRunStartRuntimeState } from "./run-start-runtime-state";
 import { createRunStartWire } from "./run-start-wire";
 import { createRunStartPlanMode } from "./run-start-plan-mode";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
+import { setSessionGaState } from "./session-registry";
 import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
+import {
+  applyMemoryDecayAutotuneToPolicy,
+  createMemoryOrchestrator,
+  defaultMemoryOrchestratorPolicy,
+  deriveMemoryDecayAutotuneState,
+  readMemoryDecayAutotuneState,
+  writeMemoryDecayAutotuneState,
+  type MemoryOrchestratorExperienceAdapter,
+  type MemoryOrchestratorGaAdapter,
+} from "../../../../tools/memory";
+import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import {
   createExperienceSchedulerRuntime,
   resolveExperienceSchedulerConfig,
 } from "../services/experience-scheduler";
 
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
 export async function runStart(
   options: Record<string, OptionValue>,
 ): Promise<number> {
+  const MEMORY_MAINTENANCE_DEFAULT_INTERVAL_MS = 5 * 60 * 1_000;
+  const MEMORY_MAINTENANCE_MIN_INTERVAL_MS = 15_000;
+  const PROMPT_QUALITY_WINDOW_DEFAULT_SIZE = 20;
   const TURN_INTERRUPT_OK_CODE = "TURN_INTERRUPT_OK";
   const TURN_INTERRUPT_NOT_RUNNING_CODE = "TURN_INTERRUPT_NOT_RUNNING";
   const isTurnInterruptedCode = (code: number): boolean => code === TURN_INTERRUPTED_EXIT_CODE;
@@ -61,9 +81,24 @@ export async function runStart(
     sessionRegistryFilePathValue,
     sessionStore,
   } = context;
-  const output = createRunStartOutput();
+  const startupDiagnosticsEnabled = isTruthyEnvFlag(
+    process.env.GROBOT_STARTUP_DIAGNOSTICS,
+  );
+  const output = createRunStartOutput({
+    suppressWarningPatterns: startupDiagnosticsEnabled
+      ? []
+      : [
+        /^session store fallback to file:/i,
+      ],
+  });
+  const writeStartupDiagnostics = (message: string): void => {
+    if (!startupDiagnosticsEnabled) {
+      return;
+    }
+    output.writeStderr(message);
+  };
   for (const event of mcpInstructionEvents) {
-    output.writeStderr(`[governance:mcp-instruction] ${event}\n`);
+    writeStartupDiagnostics(`[governance:mcp-instruction] ${event}\n`);
   }
   if (mcpInstructionStrictFailure) {
     output.writeStderr(
@@ -78,7 +113,7 @@ export async function runStart(
     recallLimit: experienceRecallLimit,
     teamDefault: experienceTeam,
   });
-  output.writeStderr(
+  writeStartupDiagnostics(
     `[experience-pool] mode=${experiencePoolRuntime.getPublishMode()} recall_limit=${String(experiencePoolRuntime.getRecallLimit())} records=${String(experiencePoolRuntime.getRecordCount())} path=${experiencePoolRuntime.getPath()}\n`,
   );
 
@@ -95,9 +130,56 @@ export async function runStart(
     runtimeState,
     writeSessionWarnings: output.writeSessionWarnings,
     writeStoreWarnings: output.writeStoreWarnings,
-    });
-    const gaMechanismRuntime = createGaMechanismRuntime();
-    gaMechanismRuntime.hydrateSession(runtimeState.getSessionKey(), runtimeState.getGaState());
+  });
+  const gaMechanismRuntime = createGaMechanismRuntime();
+  gaMechanismRuntime.hydrateSession(
+    runtimeState.getSessionKey(),
+    runtimeState.getGaState(),
+  );
+  const gaAdapter: MemoryOrchestratorGaAdapter = {
+    listMemory: (sessionKey) => gaMechanismRuntime.listMemory(sessionKey),
+    listSkillCards: (sessionKey) => gaMechanismRuntime.listSkillCards(sessionKey),
+    registerTurnSuccess: (memoryInput) =>
+      gaMechanismRuntime.registerTurnSuccess(memoryInput),
+    registerTurnFailure: (memoryInput) =>
+      gaMechanismRuntime.registerTurnFailure(memoryInput),
+    writeMemory: (memoryInput) => gaMechanismRuntime.writeMemory(memoryInput),
+  };
+  const experienceAdapter: MemoryOrchestratorExperienceAdapter = {
+    getTeamDefault: () => experiencePoolRuntime.getTeamDefault(),
+    buildRecallPrompt: (memoryInput) =>
+      experiencePoolRuntime.buildRecallPrompt(memoryInput),
+    searchRecords: (memoryInput) =>
+      experiencePoolRuntime.searchRecords({
+        ...memoryInput,
+        includeStates: memoryInput.includeStates
+          ? [...memoryInput.includeStates]
+          : undefined,
+      }),
+    registerTurnSuccess: (memoryInput) =>
+      experiencePoolRuntime.registerTurnSuccess(memoryInput),
+    registerTurnFailure: (memoryInput) =>
+      experiencePoolRuntime.registerTurnFailure(memoryInput),
+  };
+  const baseMemoryPolicy = defaultMemoryOrchestratorPolicy();
+  let memoryDecayAutotuneState = readMemoryDecayAutotuneState({
+    workDir,
+    basePolicy: baseMemoryPolicy,
+  });
+  const initialMemoryPolicy = applyMemoryDecayAutotuneToPolicy({
+    basePolicy: baseMemoryPolicy,
+    state: memoryDecayAutotuneState,
+  });
+  const memoryOrchestrator = createMemoryOrchestrator({
+    ga: gaAdapter,
+    experience: experienceAdapter,
+    workDir,
+    policy: initialMemoryPolicy,
+  });
+  const memoryPolicy = memoryOrchestrator.policySnapshot();
+  writeStartupDiagnostics(
+    `[memory-orchestrator] enabled=${memoryPolicy.enabled ? "on" : "off"} version=${memoryPolicy.version} budget_ratio=${memoryPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryPolicy.injectBudgetMinTokens)} budget_max=${String(memoryPolicy.injectBudgetMaxTokens)} section_max=${String(memoryPolicy.maxSectionTokens)} ga_rows=${String(memoryPolicy.maxGaMemoryRows)} team_rows=${String(memoryPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryPolicy.minTeamExperienceScore)} decay_enabled=${memoryPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryPolicy.decayMaxAgeHoursL1)}/${String(memoryPolicy.decayMaxAgeHoursL2)}/${String(memoryPolicy.decayMaxAgeHoursL3)}/${String(memoryPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryPolicy.decayMinConfidenceUnverified.toFixed(2)} autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} autotune_reason=${memoryDecayAutotuneState.lastReason}\n`,
+  );
 
   const wire = createRunStartWire({
     sessionNamespaceKey,
@@ -120,6 +202,7 @@ export async function runStart(
     kimiSearchRoutingPolicy,
     mcpInstructionPromptPrefix,
     mcpInstructionServerNames,
+    memoryOrchestrator,
     experiencePoolRuntime,
     runtimeState,
     persistence,
@@ -128,12 +211,181 @@ export async function runStart(
     writeStderr: output.writeStderr,
   });
   const { handoff, sessionOps } = wire;
-  output.writeStderr(
+  writeStartupDiagnostics(
     `[context-engine] enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures} lineage=${contextEngineConfig.lineage.enabled ? "on" : "off"}:${String(contextEngineConfig.lineage.maxRows)}/${String(contextEngineConfig.lineage.maxCommits)} workspace=${contextEngineConfig.workspaceSignals.enabled ? "on" : "off"}:${String(contextEngineConfig.workspaceSignals.maxRows)}/${contextEngineConfig.workspaceSignals.includeUntracked ? "u1" : "u0"} dependency_graph=${contextEngineConfig.dependencyGraph.enabled ? "on" : "off"}:${String(contextEngineConfig.dependencyGraph.maxRows)} symbol_graph=${contextEngineConfig.symbolGraph.enabled ? "on" : "off"}:${String(contextEngineConfig.symbolGraph.maxRows)} semantic_prefetch=${contextEngineConfig.semanticPrefetch.enabled ? "on" : "off"}:${String(contextEngineConfig.semanticPrefetch.maxEvidence)}/${String(contextEngineConfig.semanticPrefetch.timeoutMs)}\n`,
   );
   let turnQueue: Promise<unknown> = Promise.resolve();
   let activeTurnAbortController: AbortController | undefined;
   let pendingRuntimeInterruptSource: "command" | "cli_esc" | undefined;
+  const memoryMaintenanceEnabled = !["0", "false", "off", "no"].includes(
+    (process.env.GROBOT_MEMORY_MAINTENANCE_ENABLED ?? "1").trim().toLowerCase(),
+  );
+  const parsedMemoryInterval = Number.parseInt(
+    process.env.GROBOT_MEMORY_MAINTENANCE_INTERVAL_MS ?? "",
+    10,
+  );
+  const memoryMaintenanceIntervalMs =
+    Number.isFinite(parsedMemoryInterval) && parsedMemoryInterval > 0
+      ? Math.max(MEMORY_MAINTENANCE_MIN_INTERVAL_MS, parsedMemoryInterval)
+      : MEMORY_MAINTENANCE_DEFAULT_INTERVAL_MS;
+  const parsedPromptQualityWindowSize = Number.parseInt(
+    process.env.GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE ?? "",
+    10,
+  );
+  const promptQualityWindowSize =
+    Number.isFinite(parsedPromptQualityWindowSize) && parsedPromptQualityWindowSize > 0
+      ? Math.floor(parsedPromptQualityWindowSize)
+      : PROMPT_QUALITY_WINDOW_DEFAULT_SIZE;
+  let memoryMaintenanceRunning = false;
+  const runMemoryMaintenance = async (reason: "bootstrap" | "post_turn" | "timer"): Promise<void> => {
+    if (memoryMaintenanceRunning) {
+      return;
+    }
+    if (
+      reason === "timer"
+      && activeTurnAbortController
+      && !activeTurnAbortController.signal.aborted
+    ) {
+      writeStartupDiagnostics("[memory-orchestrator] event=maintenance_skipped reason=active_turn\n");
+      return;
+    }
+    memoryMaintenanceRunning = true;
+    try {
+      const sessionRegistry = runtimeState.getSessionRegistry();
+      const activeSessionId = runtimeState.getActiveSessionId();
+      const activeSessionKey = runtimeState.getSessionKey();
+      const maintenanceNowMs = Date.now();
+      let sessionsScanned = 0;
+      let sessionsUpdated = 0;
+      let deduplicatedRows = 0;
+      let decaySessionsPruned = 0;
+      let decayDroppedRows = 0;
+      let decayDroppedByAge = 0;
+      let decayDroppedByConfidence = 0;
+      let decayDroppedByCapacity = 0;
+      let totalRowsBefore = 0;
+      let totalRowsAfter = 0;
+      for (const record of sessionRegistry.sessions) {
+        if (!record.ga_state || !Array.isArray(record.ga_state.memory) || record.ga_state.memory.length === 0) {
+          continue;
+        }
+        sessionsScanned += 1;
+        totalRowsBefore += record.ga_state.memory.length;
+        const reconcileResult = memoryOrchestrator.reconcile({
+          rows: record.ga_state.memory,
+        });
+        const decayResult = memoryOrchestrator.decay({
+          rows: reconcileResult.rows,
+          nowMs: maintenanceNowMs,
+        });
+        totalRowsAfter += decayResult.rows.length;
+        if (reconcileResult.deduplicated > 0) {
+          deduplicatedRows += reconcileResult.deduplicated;
+        }
+        if (decayResult.dropped > 0) {
+          decaySessionsPruned += 1;
+          decayDroppedRows += decayResult.dropped;
+          decayDroppedByAge += decayResult.droppedByReason.ageExceeded;
+          decayDroppedByConfidence += decayResult.droppedByReason.lowConfidence;
+          decayDroppedByCapacity += decayResult.droppedByReason.capacityTrim;
+        }
+        if (reconcileResult.deduplicated <= 0 && decayResult.dropped <= 0) {
+          continue;
+        }
+        sessionsUpdated += 1;
+        const nextGaState = {
+          ...record.ga_state,
+          memory: [...decayResult.rows],
+        };
+        record.ga_state = nextGaState;
+        if (record.id === activeSessionId || record.session_key === activeSessionKey) {
+          runtimeState.setGaState(nextGaState);
+          gaMechanismRuntime.hydrateSession(activeSessionKey, nextGaState);
+        }
+      }
+      if (sessionsUpdated > 0) {
+        setSessionGaState(
+          sessionRegistry,
+          activeSessionId,
+          runtimeState.getGaState(),
+        );
+        await persistence.persistSessionRegistryState();
+      }
+      const decayAction = decayDroppedRows > 0 ? "pruned" : "noop";
+      const decayReason = decayDroppedRows > 0
+        ? `age_exceeded:${String(decayDroppedByAge)},low_confidence:${String(decayDroppedByConfidence)},capacity_trim:${String(decayDroppedByCapacity)}`
+        : "within_policy";
+      const promptQualityWindowSummary = readPromptQualityWindowSummary({
+        workDir,
+        size: promptQualityWindowSize,
+        lowQualityThreshold: contextEngineConfig.promptQuality?.lowQualityThreshold,
+      });
+      const qualitySnapshot = {
+        lowQualityRate: promptQualityWindowSummary.lowQualityRate,
+        averagePreSendPressureScore: promptQualityWindowSummary.signalAverages?.preSendPressureScore ?? null,
+        hardBudgetFollowupOverallDelta:
+          promptQualityWindowSummary.strategyOutcomes.hardBudgetFollowupOverallDelta,
+        qualityFirstFollowupOverallDelta:
+          promptQualityWindowSummary.strategyOutcomes.qualityFirstFollowupOverallDelta,
+        hardBudgetRate: promptQualityWindowSummary.strategyActivity.hardBudgetRate,
+        qualityFirstImprovedRate:
+          promptQualityWindowSummary.strategyOutcomes.qualityFirstImprovedRate,
+      };
+      const autotuneResult = deriveMemoryDecayAutotuneState({
+        basePolicy: baseMemoryPolicy,
+        currentState: memoryDecayAutotuneState,
+        stats: {
+          sessionsScanned,
+          totalRowsBefore,
+          totalRowsAfter,
+          droppedRows: decayDroppedRows,
+          droppedByAge: decayDroppedByAge,
+          droppedByConfidence: decayDroppedByConfidence,
+          droppedByCapacity: decayDroppedByCapacity,
+        },
+        quality: qualitySnapshot,
+      });
+      let autotuneUpdated = false;
+      if (autotuneResult.changed) {
+        autotuneUpdated = true;
+        memoryDecayAutotuneState = autotuneResult.state;
+        const tunedPolicyFromState = applyMemoryDecayAutotuneToPolicy({
+          basePolicy: baseMemoryPolicy,
+          state: memoryDecayAutotuneState,
+        });
+        const tunedPolicy = memoryOrchestrator.tuneDecayPolicy({
+          decayMaxRowsPerSession: tunedPolicyFromState.decayMaxRowsPerSession,
+          decayMinConfidenceVerified: tunedPolicyFromState.decayMinConfidenceVerified,
+          decayMinConfidenceUnverified: tunedPolicyFromState.decayMinConfidenceUnverified,
+          decayUnverifiedMaxAgeHours: tunedPolicyFromState.decayUnverifiedMaxAgeHours,
+        });
+        writeMemoryDecayAutotuneState({
+          workDir,
+          basePolicy: baseMemoryPolicy,
+          state: memoryDecayAutotuneState,
+        });
+        writeStartupDiagnostics(
+          `[memory-orchestrator] event=autotune_updated reason=${autotuneResult.reason} updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} decay_max_rows=${String(tunedPolicy.decayMaxRowsPerSession)} decay_unverified_age_hours=${String(tunedPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${tunedPolicy.decayMinConfidenceVerified.toFixed(2)}/${tunedPolicy.decayMinConfidenceUnverified.toFixed(2)}\n`,
+        );
+      }
+      const formatQualityValue = (value: number | null | undefined): string =>
+        typeof value === "number" && Number.isFinite(value)
+          ? value.toFixed(3)
+          : "<none>";
+      writeStartupDiagnostics(
+        `[memory-orchestrator] event=maintenance reason=${reason} sessions_scanned=${String(sessionsScanned)} sessions_updated=${String(sessionsUpdated)} deduplicated_rows=${String(deduplicatedRows)} total_rows=${String(totalRowsBefore)}->${String(totalRowsAfter)} decay_sessions_pruned=${String(decaySessionsPruned)} decay_dropped_rows=${String(decayDroppedRows)} decay_action=${decayAction} decay_reason=${decayReason} quality_low_rate=${formatQualityValue(qualitySnapshot.lowQualityRate)} quality_pressure=${formatQualityValue(qualitySnapshot.averagePreSendPressureScore)} quality_hard_budget_rate=${formatQualityValue(qualitySnapshot.hardBudgetRate)} quality_first_improved_rate=${formatQualityValue(qualitySnapshot.qualityFirstImprovedRate)} quality_followup_delta=${formatQualityValue(qualitySnapshot.hardBudgetFollowupOverallDelta)}/${formatQualityValue(qualitySnapshot.qualityFirstFollowupOverallDelta)} autotune_updated=${autotuneUpdated ? "true" : "false"} autotune_reason=${autotuneResult.reason}\n`,
+      );
+    } catch (error) {
+      output.writeStderr(
+        `[memory-orchestrator] event=maintenance_failed reason=${reason} detail=${String(error)}\n`,
+      );
+    } finally {
+      memoryMaintenanceRunning = false;
+    }
+  };
+  writeStartupDiagnostics(
+    `[memory-orchestrator] maintenance_enabled=${memoryMaintenanceEnabled ? "on" : "off"} interval_ms=${String(memoryMaintenanceIntervalMs)}\n`,
+  );
   const requestRuntimeInterrupt = (
     source: "command" | "cli_esc",
   ): {
@@ -191,6 +443,7 @@ export async function runStart(
         );
         pendingRuntimeInterruptSource = undefined;
       }
+      await runMemoryMaintenance("post_turn");
       return code;
     } finally {
       if (activeTurnAbortController === controller) {
@@ -218,7 +471,7 @@ export async function runStart(
     }),
   );
   const schedulerConfig = schedulerRuntime.getConfig();
-  output.writeStderr(
+  writeStartupDiagnostics(
     `[experience-scheduler] enabled=${schedulerConfig.enabled ? "on" : "off"} interval_ms=${String(schedulerConfig.intervalMs)} tasks_dir=${schedulerConfig.tasksDir} done_dir=${schedulerConfig.doneDir} log_path=${schedulerConfig.logPath}\n`,
   );
 
@@ -268,6 +521,8 @@ export async function runStart(
     writeStderr: output.writeStderr,
   });
 
+  await runMemoryMaintenance("bootstrap");
+
   const message = readOptionString(options, "message");
   if (message) {
       const planHandled = await planMode.handleMessageInput(message);
@@ -292,6 +547,7 @@ export async function runStart(
   }
 
   let schedulerTimer: ReturnType<typeof setInterval> | undefined;
+  let memoryMaintenanceTimer: ReturnType<typeof setInterval> | undefined;
   let schedulerTickRunning = false;
   const runSchedulerTick = async (): Promise<void> => {
     if (!schedulerConfig.enabled || schedulerTickRunning) {
@@ -305,12 +561,12 @@ export async function runStart(
       }
       for (const trigger of tickResult.triggered) {
         if (runtimeState.getPlanMode() === "plan_only") {
-          output.writeStderr(
+          writeStartupDiagnostics(
             `[experience-scheduler] event=task_skipped reason=plan_mode task=${trigger.taskId}\n`,
           );
           continue;
         }
-        output.writeStderr(
+        writeStartupDiagnostics(
           `[experience-scheduler] event=task_triggered task=${trigger.taskId} report_path=${trigger.reportPath}\n`,
         );
         try {
@@ -323,7 +579,7 @@ export async function runStart(
           if (code !== 0) {
             runtimeState.markFailureObserved();
           }
-          output.writeStderr(
+          writeStartupDiagnostics(
             `[experience-scheduler] event=task_finished task=${trigger.taskId} status=${code === 0 ? "success" : "failed"} exit_code=${String(code)}\n`,
           );
         } catch (error) {
@@ -346,6 +602,11 @@ export async function runStart(
     schedulerTimer = setInterval(() => {
       void runSchedulerTick();
     }, schedulerConfig.intervalMs);
+  }
+  if (memoryMaintenanceEnabled) {
+    memoryMaintenanceTimer = setInterval(() => {
+      void runMemoryMaintenance("timer");
+    }, memoryMaintenanceIntervalMs);
   }
   try {
     await runStartInteractiveMode(
@@ -377,6 +638,9 @@ export async function runStart(
   } finally {
     if (schedulerTimer) {
       clearInterval(schedulerTimer);
+    }
+    if (memoryMaintenanceTimer) {
+      clearInterval(memoryMaintenanceTimer);
     }
   }
   return 0;

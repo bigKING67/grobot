@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-const GRAPH_QUALITY_AUTOTUNE_STATE_RELATIVE_PATH = ".grobot/context/graph-quality-autotune-state.json";
+import {
+  resolveContextStoragePath,
+  resolveContextStorageReadPaths,
+} from "../storage-boundary";
 
 export type GraphQualityAutotuneDirection = "none" | "upshift" | "downshift" | "mixed";
 
@@ -11,6 +12,16 @@ export interface GraphQualityAutotuneState {
   downshiftWarmupStreak: number;
   lastReason: string;
   updatedAt: string | null;
+  cacheDegradeQueryHitRateThreshold: number;
+  persistentDegradeParsedPerScannedMax: number;
+  persistentDegradeReusedPerScannedMin: number;
+  persistentDegradeRemovedPerScannedMax: number;
+  adaptiveLearnAlpha: number;
+  adaptiveUpdates: number;
+  adaptiveSource: string;
+  adaptiveActionScale: number;
+  adaptiveActionUpdates: number;
+  adaptiveActionSource: string;
 }
 
 function clampNonNegativeInt(value: unknown, fallback = 0): number {
@@ -27,6 +38,19 @@ function normalizeDirection(raw: unknown): GraphQualityAutotuneDirection {
   return "none";
 }
 
+function clampRatio(value: unknown, fallback: number, min = 0, max = 1): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
 function resolveParentDir(filePath: string): string {
   const normalized = filePath.replace(/\\/g, "/");
   const slashIndex = normalized.lastIndexOf("/");
@@ -37,7 +61,19 @@ function resolveParentDir(filePath: string): string {
 }
 
 function resolveStatePath(workDir: string): string {
-  return resolve(workDir, GRAPH_QUALITY_AUTOTUNE_STATE_RELATIVE_PATH);
+  return resolveContextStoragePath(workDir, "graph_quality_autotune_state");
+}
+
+function readStateFromPath(path: string): GraphQualityAutotuneState | null {
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    return normalizeGraphQualityAutotuneState(raw);
+  } catch {
+    return null;
+  }
 }
 
 export function defaultGraphQualityAutotuneState(): GraphQualityAutotuneState {
@@ -47,6 +83,16 @@ export function defaultGraphQualityAutotuneState(): GraphQualityAutotuneState {
     downshiftWarmupStreak: 0,
     lastReason: "",
     updatedAt: null,
+    cacheDegradeQueryHitRateThreshold: 0.3,
+    persistentDegradeParsedPerScannedMax: 0.35,
+    persistentDegradeReusedPerScannedMin: 0.55,
+    persistentDegradeRemovedPerScannedMax: 0.2,
+    adaptiveLearnAlpha: 0.18,
+    adaptiveUpdates: 0,
+    adaptiveSource: "bootstrap",
+    adaptiveActionScale: 1.0,
+    adaptiveActionUpdates: 0,
+    adaptiveActionSource: "bootstrap",
   };
 }
 
@@ -63,6 +109,41 @@ export function normalizeGraphQualityAutotuneState(raw: unknown): GraphQualityAu
     updatedAt: typeof row.updatedAt === "string" && row.updatedAt.trim().length > 0
       ? row.updatedAt
       : null,
+    cacheDegradeQueryHitRateThreshold: clampRatio(
+      row.cacheDegradeQueryHitRateThreshold,
+      0.3,
+      0.08,
+      0.8,
+    ),
+    persistentDegradeParsedPerScannedMax: clampRatio(
+      row.persistentDegradeParsedPerScannedMax,
+      0.35,
+      0.1,
+      0.9,
+    ),
+    persistentDegradeReusedPerScannedMin: clampRatio(
+      row.persistentDegradeReusedPerScannedMin,
+      0.55,
+      0.05,
+      0.95,
+    ),
+    persistentDegradeRemovedPerScannedMax: clampRatio(
+      row.persistentDegradeRemovedPerScannedMax,
+      0.2,
+      0.01,
+      0.6,
+    ),
+    adaptiveLearnAlpha: clampRatio(row.adaptiveLearnAlpha, 0.18, 0.05, 0.5),
+    adaptiveUpdates: clampNonNegativeInt(row.adaptiveUpdates),
+    adaptiveSource: typeof row.adaptiveSource === "string" && row.adaptiveSource.trim().length > 0
+      ? row.adaptiveSource.trim()
+      : "bootstrap",
+    adaptiveActionScale: clampRatio(row.adaptiveActionScale, 1.0, 0.5, 2.5),
+    adaptiveActionUpdates: clampNonNegativeInt(row.adaptiveActionUpdates),
+    adaptiveActionSource:
+      typeof row.adaptiveActionSource === "string" && row.adaptiveActionSource.trim().length > 0
+        ? row.adaptiveActionSource.trim()
+        : "bootstrap",
   };
 }
 
@@ -72,16 +153,14 @@ export function readGraphQualityAutotuneState(input: {
   if (!input.workDir || input.workDir.trim().length === 0) {
     return defaultGraphQualityAutotuneState();
   }
-  const path = resolveStatePath(input.workDir);
-  if (!existsSync(path)) {
-    return defaultGraphQualityAutotuneState();
+  const readPaths = resolveContextStorageReadPaths(input.workDir, "graph_quality_autotune_state");
+  for (const path of readPaths) {
+    const state = readStateFromPath(path);
+    if (state) {
+      return state;
+    }
   }
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf8"));
-    return normalizeGraphQualityAutotuneState(raw);
-  } catch {
-    return defaultGraphQualityAutotuneState();
-  }
+  return defaultGraphQualityAutotuneState();
 }
 
 export function writeGraphQualityAutotuneState(input: {
@@ -100,4 +179,3 @@ export function writeGraphQualityAutotuneState(input: {
     // best-effort persistence; skip hard failure to avoid turn interruption
   }
 }
-

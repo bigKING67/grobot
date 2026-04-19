@@ -16,6 +16,9 @@ import {
 import { maskSecret } from "../services/redaction";
 import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
 import {
+  assessGraphCacheWindowDegradation,
+  assessPersistentGraphWindowDegradation,
+  deriveGraphQualitySignals,
   derivePromptQualityGuardAdaptivePolicy,
   assessPromptQualityGuardRuntime,
   assessPromptQualityWindowDegradation,
@@ -25,8 +28,15 @@ import {
   readPromptQualityGuardState,
   readPromptQualityWindowSummary,
   resolveContextEngineConfig,
+  resolveContextStorageDomain,
   resolvePromptTargetTokenLimit,
 } from "../../../../tools/context";
+import { readPersistentGraphIndexStatus } from "../../../../tools/context/graph/persistent-index";
+import {
+  applyMemoryDecayAutotuneToPolicy,
+  defaultMemoryOrchestratorPolicy,
+  readMemoryDecayAutotuneState,
+} from "../../../../tools/memory";
 import { type RuntimeModelConfig } from "../../../../models/types";
 import {
   basenameFromPath,
@@ -40,7 +50,7 @@ import {
 import {
   findSessionRecord,
   normalizeSessionRegistryPayload,
-  sessionRegistryFilePath,
+  resolveSessionRegistryReadPath,
   type SessionProviderRuntimeState,
 } from "../start/session-registry";
 import {
@@ -181,63 +191,6 @@ function readGraphCacheCounter(
   };
 }
 
-interface GraphCacheWindowDegradation {
-  degraded: boolean;
-  reason: string;
-  thresholdQueryHitRate: number;
-  minEntries: number;
-  observedEntries: number;
-  observedQueryHitRate: number | null;
-  observedQueryHit: number;
-  observedQueryMiss: number;
-}
-
-function assessGraphCacheWindowDegradation(input: {
-  summary: ReturnType<typeof readGraphCacheWindowSummary>;
-  thresholdQueryHitRate: number;
-  minEntries: number;
-}): GraphCacheWindowDegradation {
-  const observedEntries = input.summary.entries;
-  const observedQueryHitRate = input.summary.queryHitRate;
-  const observedQueryHit = input.summary.queryTotals.hit;
-  const observedQueryMiss = input.summary.queryTotals.miss;
-  if (observedEntries < input.minEntries) {
-    return {
-      degraded: false,
-      reason: "insufficient_entries",
-      thresholdQueryHitRate: input.thresholdQueryHitRate,
-      minEntries: input.minEntries,
-      observedEntries,
-      observedQueryHitRate,
-      observedQueryHit,
-      observedQueryMiss,
-    };
-  }
-  if (typeof observedQueryHitRate !== "number") {
-    return {
-      degraded: false,
-      reason: "no_query_traffic",
-      thresholdQueryHitRate: input.thresholdQueryHitRate,
-      minEntries: input.minEntries,
-      observedEntries,
-      observedQueryHitRate,
-      observedQueryHit,
-      observedQueryMiss,
-    };
-  }
-  const degraded = observedQueryHitRate < input.thresholdQueryHitRate;
-  return {
-    degraded,
-    reason: degraded ? "query_hit_rate_below_threshold" : "ok",
-    thresholdQueryHitRate: input.thresholdQueryHitRate,
-    minEntries: input.minEntries,
-    observedEntries,
-    observedQueryHitRate,
-    observedQueryHit,
-    observedQueryMiss,
-  };
-}
-
 function resolveContextEngineRuntimeModelConfig(input: {
   providerSnapshot?: {
     provider?: {
@@ -298,7 +251,8 @@ function readRouteObservedRuntimeSummary(input: {
   sessionNamespaceKey: string;
   orderedProviders: string[];
 }): RouteObservedRuntimeSummary {
-  const registryPath = sessionRegistryFilePath(input.projectStateRoot, input.sessionNamespaceKey);
+  const readPath = resolveSessionRegistryReadPath(input.projectStateRoot, input.sessionNamespaceKey);
+  const registryPath = readPath.path;
   let rawRegistry: unknown;
   try {
     rawRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as unknown;
@@ -642,6 +596,31 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_DEGRADE_MIN_ENTRIES,
     8,
   );
+  const contextPersistentGraphDegradeParsedPerScannedMax = parseRequiredRatio(
+    readOptionString(options, "context-persistent-graph-degrade-parsed-rate")
+      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_PARSED_RATE,
+    0.35,
+  );
+  const contextPersistentGraphDegradeReusedPerScannedMin = parseRequiredRatio(
+    readOptionString(options, "context-persistent-graph-degrade-reused-rate")
+      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_REUSED_RATE,
+    0.55,
+  );
+  const contextPersistentGraphDegradeRemovedPerScannedMax = parseRequiredRatio(
+    readOptionString(options, "context-persistent-graph-degrade-removed-rate")
+      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_REMOVED_RATE,
+    0.2,
+  );
+  const contextPersistentGraphDegradeMinEntries = parseRequiredPositiveInt(
+    readOptionString(options, "context-persistent-graph-degrade-min-entries")
+      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_ENTRIES,
+    8,
+  );
+  const contextPersistentGraphDegradeMinScannedFiles = parseRequiredPositiveInt(
+    readOptionString(options, "context-persistent-graph-degrade-min-scanned-files")
+      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_SCANNED_FILES,
+    40,
+  );
   const sessionPreview = buildSessionKey({
     platform: parsePlatform(resolveSessionPlatformOption(options)),
     tenant: readOptionString(options, "tenant") ?? projectName,
@@ -701,6 +680,15 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   });
   const contextEngineTokenBudget = resolvePromptTargetTokenLimit(contextEngineConfig);
   const contextEngineEffectiveWindowTokens = contextEngineTokenBudget.effectiveWindowTokens;
+  const memoryOrchestratorBasePolicy = defaultMemoryOrchestratorPolicy();
+  const memoryDecayAutotuneState = readMemoryDecayAutotuneState({
+    workDir,
+    basePolicy: memoryOrchestratorBasePolicy,
+  });
+  const memoryOrchestratorPolicy = applyMemoryDecayAutotuneToPolicy({
+    basePolicy: memoryOrchestratorBasePolicy,
+    state: memoryDecayAutotuneState,
+  });
   const contextGraphCacheStats = readContextGraphCacheStats();
   const symbolQueryGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_query");
   const symbolDeclarationGraphCacheStats = readGraphCacheCounter(contextGraphCacheStats, "symbol_declaration");
@@ -717,6 +705,22 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   });
   const graphQualityAutotuneState = readGraphQualityAutotuneState({
     workDir,
+  });
+  const persistentGraphIndexStatus = readPersistentGraphIndexStatus({
+    workDir,
+    windowSize: contextGraphCacheWindowSize,
+  });
+  const persistentGraphWindowDegradation = assessPersistentGraphWindowDegradation({
+    status: persistentGraphIndexStatus,
+    thresholdParsedPerScannedMax: contextPersistentGraphDegradeParsedPerScannedMax,
+    thresholdReusedPerScannedMin: contextPersistentGraphDegradeReusedPerScannedMin,
+    thresholdRemovedPerScannedMax: contextPersistentGraphDegradeRemovedPerScannedMax,
+    minEntries: contextPersistentGraphDegradeMinEntries,
+    minScannedFiles: contextPersistentGraphDegradeMinScannedFiles,
+  });
+  const graphQualitySignals = deriveGraphQualitySignals({
+    cacheWindow: contextGraphCacheWindowDegradation,
+    persistentWindow: persistentGraphWindowDegradation,
   });
   const promptQualityWindowSummary = readPromptQualityWindowSummary({
     workDir,
@@ -826,6 +830,22 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         promptQualityWindowSummary.strategyOutcomes.qualityFirstTransitions,
     },
   });
+  const graphCacheWindowPersistenceDomain = resolveContextStorageDomain("graph_cache_window");
+  const promptQualityWindowPersistenceDomain = resolveContextStorageDomain("prompt_quality_window");
+  const graphAutotuneStatePersistenceDomain = resolveContextStorageDomain(
+    "graph_quality_autotune_state",
+  );
+  const promptQualityGuardStatePersistenceDomain = resolveContextStorageDomain(
+    "prompt_quality_guard_state",
+  );
+  const memoryDecayAutotuneStatePersistenceDomain = resolveContextStorageDomain(
+    "memory_decay_autotune_state",
+  );
+  const persistentGraphIndexPersistenceDomain = resolveContextStorageDomain("graph_persistent_index");
+  const persistentGraphIndexWindowPersistenceDomain = resolveContextStorageDomain(
+    "graph_persistent_index_window",
+  );
+  const lineageDiffCachePersistenceDomain = resolveContextStorageDomain("lineage_diff_cache");
 
   let probeResult:
     | {
@@ -960,6 +980,21 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           downshift_warmup_streak: graphQualityAutotuneState.downshiftWarmupStreak,
           last_reason: graphQualityAutotuneState.lastReason || null,
           updated_at: graphQualityAutotuneState.updatedAt,
+          adaptive_cache_query_hit_rate_threshold:
+            graphQualityAutotuneState.cacheDegradeQueryHitRateThreshold,
+          adaptive_persistent_parsed_per_scanned_max:
+            graphQualityAutotuneState.persistentDegradeParsedPerScannedMax,
+          adaptive_persistent_reused_per_scanned_min:
+            graphQualityAutotuneState.persistentDegradeReusedPerScannedMin,
+          adaptive_persistent_removed_per_scanned_max:
+            graphQualityAutotuneState.persistentDegradeRemovedPerScannedMax,
+          adaptive_learn_alpha: graphQualityAutotuneState.adaptiveLearnAlpha,
+          adaptive_updates: graphQualityAutotuneState.adaptiveUpdates,
+          adaptive_source: graphQualityAutotuneState.adaptiveSource,
+          adaptive_action_scale: graphQualityAutotuneState.adaptiveActionScale,
+          adaptive_action_updates: graphQualityAutotuneState.adaptiveActionUpdates,
+          adaptive_action_source: graphQualityAutotuneState.adaptiveActionSource,
+          persistence_domain: graphAutotuneStatePersistenceDomain,
         },
         window: {
           path: contextGraphCacheWindowSummary.path,
@@ -967,6 +1002,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           entries: contextGraphCacheWindowSummary.entries,
           from_ts: contextGraphCacheWindowSummary.fromTs,
           to_ts: contextGraphCacheWindowSummary.toTs,
+          persistence_domain: graphCacheWindowPersistenceDomain,
           delta_totals: {
             symbol_query: contextGraphCacheWindowSummary.deltaTotals.symbolQuery,
             symbol_declaration: contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration,
@@ -1006,6 +1042,36 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
             observed_query_hit: contextGraphCacheWindowDegradation.observedQueryHit,
             observed_query_miss: contextGraphCacheWindowDegradation.observedQueryMiss,
           },
+        },
+      },
+      context_persistent_graph_index: {
+        ...persistentGraphIndexStatus,
+        persistence_domain: persistentGraphIndexPersistenceDomain,
+        window: persistentGraphIndexStatus.window == null
+          ? undefined
+          : {
+            ...persistentGraphIndexStatus.window,
+            persistence_domain: persistentGraphIndexWindowPersistenceDomain,
+          },
+        degradation: {
+          degraded: persistentGraphWindowDegradation.degraded,
+          reason: persistentGraphWindowDegradation.reason,
+          threshold_parsed_per_scanned_max:
+            persistentGraphWindowDegradation.thresholdParsedPerScannedMax,
+          threshold_reused_per_scanned_min:
+            persistentGraphWindowDegradation.thresholdReusedPerScannedMin,
+          threshold_removed_per_scanned_max:
+            persistentGraphWindowDegradation.thresholdRemovedPerScannedMax,
+          min_entries: persistentGraphWindowDegradation.minEntries,
+          min_scanned_files: persistentGraphWindowDegradation.minScannedFiles,
+          observed_entries: persistentGraphWindowDegradation.observedEntries,
+          observed_scanned_files: persistentGraphWindowDegradation.observedScannedFiles,
+          observed_parsed_per_scanned:
+            persistentGraphWindowDegradation.observedParsedPerScanned,
+          observed_reused_per_scanned:
+            persistentGraphWindowDegradation.observedReusedPerScanned,
+          observed_removed_per_scanned:
+            persistentGraphWindowDegradation.observedRemovedPerScanned,
         },
       },
       context_engine: {
@@ -1067,6 +1133,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
             promptQualityGuardState.outcomeHighEvidenceHardenTurns,
           outcome_drift_recent_auto_action_levels:
             promptQualityGuardState.outcomeDriftRecentAutoActionLevels,
+          persistence_domain: promptQualityGuardStatePersistenceDomain,
         },
         prompt_quality_guard_runtime_assessment: {
           enabled: promptQualityGuardRuntimeAssessment.enabled,
@@ -1269,17 +1336,91 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           circuit_breaker_failures: contextEngineConfig.recovery.circuitBreakerFailures,
           reactive_on_prompt_too_long: contextEngineConfig.reactiveOnPromptTooLong,
         },
-        lineage: contextEngineConfig.lineage,
+        lineage: {
+          ...contextEngineConfig.lineage,
+          persistence_domain: lineageDiffCachePersistenceDomain,
+        },
         workspace_signals: contextEngineConfig.workspaceSignals,
         dependency_graph: contextEngineConfig.dependencyGraph,
         symbol_graph: contextEngineConfig.symbolGraph,
         semantic_prefetch: contextEngineConfig.semanticPrefetch,
+        memory_orchestrator: {
+          enabled: memoryOrchestratorPolicy.enabled,
+          version: memoryOrchestratorPolicy.version,
+          inject_budget_ratio: memoryOrchestratorPolicy.injectBudgetRatio,
+          inject_budget_min_tokens: memoryOrchestratorPolicy.injectBudgetMinTokens,
+          inject_budget_max_tokens: memoryOrchestratorPolicy.injectBudgetMaxTokens,
+          max_section_tokens: memoryOrchestratorPolicy.maxSectionTokens,
+          max_ga_memory_rows: memoryOrchestratorPolicy.maxGaMemoryRows,
+          max_team_experience_rows: memoryOrchestratorPolicy.maxTeamExperienceRows,
+          min_team_experience_score: memoryOrchestratorPolicy.minTeamExperienceScore,
+          decay_enabled: memoryOrchestratorPolicy.decayEnabled,
+          decay_max_rows_per_session: memoryOrchestratorPolicy.decayMaxRowsPerSession,
+          decay_min_rows_to_keep: memoryOrchestratorPolicy.decayMinRowsToKeep,
+          decay_max_age_hours_l1: memoryOrchestratorPolicy.decayMaxAgeHoursL1,
+          decay_max_age_hours_l2: memoryOrchestratorPolicy.decayMaxAgeHoursL2,
+          decay_max_age_hours_l3: memoryOrchestratorPolicy.decayMaxAgeHoursL3,
+          decay_max_age_hours_l4: memoryOrchestratorPolicy.decayMaxAgeHoursL4,
+          decay_unverified_max_age_hours: memoryOrchestratorPolicy.decayUnverifiedMaxAgeHours,
+          decay_min_confidence_verified: memoryOrchestratorPolicy.decayMinConfidenceVerified,
+          decay_min_confidence_unverified: memoryOrchestratorPolicy.decayMinConfidenceUnverified,
+          autotune: {
+            adaptive_updates: memoryDecayAutotuneState.adaptiveUpdates,
+            adaptive_learn_alpha: memoryDecayAutotuneState.adaptiveLearnAlpha,
+            drop_ratio_ema: memoryDecayAutotuneState.dropRatioEma,
+            capacity_trim_ratio_ema: memoryDecayAutotuneState.capacityTrimRatioEma,
+            low_confidence_ratio_ema: memoryDecayAutotuneState.lowConfidenceRatioEma,
+            age_drop_ratio_ema: memoryDecayAutotuneState.ageDropRatioEma,
+            quality_low_rate_ema: memoryDecayAutotuneState.qualityLowRateEma,
+            quality_pressure_ema: memoryDecayAutotuneState.qualityPressureEma,
+            hard_budget_followup_delta_ema: memoryDecayAutotuneState.hardBudgetFollowupDeltaEma,
+            quality_first_followup_delta_ema:
+              memoryDecayAutotuneState.qualityFirstFollowupDeltaEma,
+            last_reason: memoryDecayAutotuneState.lastReason,
+            updated_at: memoryDecayAutotuneState.updatedAt,
+            persistence_domain: memoryDecayAutotuneStatePersistenceDomain,
+          },
+        },
+        graph_quality_signals: {
+          cache_window: {
+            degraded: contextGraphCacheWindowDegradation.degraded,
+            reason: contextGraphCacheWindowDegradation.reason,
+            observed_query_hit_rate: contextGraphCacheWindowDegradation.observedQueryHitRate,
+            threshold_query_hit_rate: contextGraphCacheWindowDegradation.thresholdQueryHitRate,
+            observed_entries: contextGraphCacheWindowDegradation.observedEntries,
+            min_entries: contextGraphCacheWindowDegradation.minEntries,
+          },
+          persistent_window: {
+            degraded: persistentGraphWindowDegradation.degraded,
+            reason: persistentGraphWindowDegradation.reason,
+            observed_parsed_per_scanned: persistentGraphWindowDegradation.observedParsedPerScanned,
+            observed_reused_per_scanned: persistentGraphWindowDegradation.observedReusedPerScanned,
+            observed_removed_per_scanned: persistentGraphWindowDegradation.observedRemovedPerScanned,
+            threshold_parsed_per_scanned_max:
+              persistentGraphWindowDegradation.thresholdParsedPerScannedMax,
+            threshold_reused_per_scanned_min:
+              persistentGraphWindowDegradation.thresholdReusedPerScannedMin,
+            threshold_removed_per_scanned_max:
+              persistentGraphWindowDegradation.thresholdRemovedPerScannedMax,
+            observed_entries: persistentGraphWindowDegradation.observedEntries,
+            min_entries: persistentGraphWindowDegradation.minEntries,
+            observed_scanned_files: persistentGraphWindowDegradation.observedScannedFiles,
+            min_scanned_files: persistentGraphWindowDegradation.minScannedFiles,
+          },
+          combined: {
+            state: graphQualitySignals.state,
+            reason: graphQualitySignals.reason,
+            degraded_sources: graphQualitySignals.degradedSources,
+            recommended_action: graphQualitySignals.recommendedAction,
+          },
+        },
         prompt_quality_window: {
           path: promptQualityWindowSummary.path,
           configured_size: promptQualityWindowSummary.configuredSize,
           entries: promptQualityWindowSummary.entries,
           from_ts: promptQualityWindowSummary.fromTs,
           to_ts: promptQualityWindowSummary.toTs,
+          persistence_domain: promptQualityWindowPersistenceDomain,
           average_scores: promptQualityWindowSummary.averageScores == null
             ? null
             : {
@@ -1563,10 +1704,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `context_graph_cache_stats: symbol_query=${symbolQueryGraphCacheStats.hit}/${symbolQueryGraphCacheStats.miss}/${symbolQueryGraphCacheStats.write}/${symbolQueryGraphCacheStats.evict} symbol_declaration=${symbolDeclarationGraphCacheStats.hit}/${symbolDeclarationGraphCacheStats.miss}/${symbolDeclarationGraphCacheStats.write}/${symbolDeclarationGraphCacheStats.evict} dependency_query=${dependencyQueryGraphCacheStats.hit}/${dependencyQueryGraphCacheStats.miss}/${dependencyQueryGraphCacheStats.write}/${dependencyQueryGraphCacheStats.evict} dependency_import=${dependencyImportGraphCacheStats.hit}/${dependencyImportGraphCacheStats.miss}/${dependencyImportGraphCacheStats.write}/${dependencyImportGraphCacheStats.evict}\n`,
   );
   process.stdout.write(
-    `context_graph_cache_autotune_state: direction=${graphQualityAutotuneState.lastDirection} hold_turns_remaining=${String(graphQualityAutotuneState.holdTurnsRemaining)} downshift_warmup_streak=${String(graphQualityAutotuneState.downshiftWarmupStreak)} last_reason=${graphQualityAutotuneState.lastReason || "<none>"} updated_at=${graphQualityAutotuneState.updatedAt ?? "<none>"}\n`,
+    `context_graph_cache_autotune_state: direction=${graphQualityAutotuneState.lastDirection} hold_turns_remaining=${String(graphQualityAutotuneState.holdTurnsRemaining)} downshift_warmup_streak=${String(graphQualityAutotuneState.downshiftWarmupStreak)} last_reason=${graphQualityAutotuneState.lastReason || "<none>"} updated_at=${graphQualityAutotuneState.updatedAt ?? "<none>"} adaptive_thresholds=${graphQualityAutotuneState.cacheDegradeQueryHitRateThreshold.toFixed(3)}/${graphQualityAutotuneState.persistentDegradeParsedPerScannedMax.toFixed(3)}/${graphQualityAutotuneState.persistentDegradeReusedPerScannedMin.toFixed(3)}/${graphQualityAutotuneState.persistentDegradeRemovedPerScannedMax.toFixed(3)} adaptive_alpha=${graphQualityAutotuneState.adaptiveLearnAlpha.toFixed(3)} adaptive_updates=${String(graphQualityAutotuneState.adaptiveUpdates)} adaptive_source=${graphQualityAutotuneState.adaptiveSource || "<none>"} adaptive_action_scale=${graphQualityAutotuneState.adaptiveActionScale.toFixed(3)} adaptive_action_updates=${String(graphQualityAutotuneState.adaptiveActionUpdates)} adaptive_action_source=${graphQualityAutotuneState.adaptiveActionSource || "<none>"} persistence_domain=${graphAutotuneStatePersistenceDomain}\n`,
   );
   process.stdout.write(
-    `context_graph_cache_window: size=${contextGraphCacheWindowSummary.configuredSize} entries=${contextGraphCacheWindowSummary.entries} range=${contextGraphCacheWindowSummary.fromTs ?? "<none>"}..${contextGraphCacheWindowSummary.toTs ?? "<none>"} delta_symbol_query=${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.evict} delta_symbol_declaration=${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.evict} delta_dependency_query=${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.evict} delta_dependency_import=${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.evict} query_hit_rate=${typeof contextGraphCacheWindowSummary.queryHitRate === "number" ? contextGraphCacheWindowSummary.queryHitRate.toFixed(3) : "<none>"} overall_hit_rate=${typeof contextGraphCacheWindowSummary.overallHitRate === "number" ? contextGraphCacheWindowSummary.overallHitRate.toFixed(3) : "<none>"}\n`,
+    `context_graph_cache_window: size=${contextGraphCacheWindowSummary.configuredSize} entries=${contextGraphCacheWindowSummary.entries} range=${contextGraphCacheWindowSummary.fromTs ?? "<none>"}..${contextGraphCacheWindowSummary.toTs ?? "<none>"} delta_symbol_query=${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolQuery.evict} delta_symbol_declaration=${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.hit}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.miss}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.write}/${contextGraphCacheWindowSummary.deltaTotals.symbolDeclaration.evict} delta_dependency_query=${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyQuery.evict} delta_dependency_import=${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.hit}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.miss}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.write}/${contextGraphCacheWindowSummary.deltaTotals.dependencyImport.evict} query_hit_rate=${typeof contextGraphCacheWindowSummary.queryHitRate === "number" ? contextGraphCacheWindowSummary.queryHitRate.toFixed(3) : "<none>"} overall_hit_rate=${typeof contextGraphCacheWindowSummary.overallHitRate === "number" ? contextGraphCacheWindowSummary.overallHitRate.toFixed(3) : "<none>"} persistence_domain=${graphCacheWindowPersistenceDomain}\n`,
   );
   process.stdout.write(
     `context_graph_cache_window_quality: entries_with_quality=${String(contextGraphCacheWindowSummary.quality.entriesWithQuality)} dependency_avg_rows=${typeof contextGraphCacheWindowSummary.quality.dependency.avgRows === "number" ? contextGraphCacheWindowSummary.quality.dependency.avgRows.toFixed(3) : "<none>"} dependency_avg_multi_hop_rows=${typeof contextGraphCacheWindowSummary.quality.dependency.avgMultiHopRows === "number" ? contextGraphCacheWindowSummary.quality.dependency.avgMultiHopRows.toFixed(3) : "<none>"} dependency_avg_max_chain_depth=${typeof contextGraphCacheWindowSummary.quality.dependency.avgMaxChainDepth === "number" ? contextGraphCacheWindowSummary.quality.dependency.avgMaxChainDepth.toFixed(3) : "<none>"} dependency_multi_hop_rate=${typeof contextGraphCacheWindowSummary.quality.dependency.multiHopRate === "number" ? contextGraphCacheWindowSummary.quality.dependency.multiHopRate.toFixed(3) : "<none>"} dependency_depth_4_plus_rate=${typeof contextGraphCacheWindowSummary.quality.dependency.depth4PlusRate === "number" ? contextGraphCacheWindowSummary.quality.dependency.depth4PlusRate.toFixed(3) : "<none>"} symbol_avg_rows=${typeof contextGraphCacheWindowSummary.quality.symbol.avgRows === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgRows.toFixed(3) : "<none>"} symbol_bridge_coverage_rate=${typeof contextGraphCacheWindowSummary.quality.symbol.bridgeCoverageRate === "number" ? contextGraphCacheWindowSummary.quality.symbol.bridgeCoverageRate.toFixed(3) : "<none>"} symbol_breadth_coverage_rate=${typeof contextGraphCacheWindowSummary.quality.symbol.breadthCoverageRate === "number" ? contextGraphCacheWindowSummary.quality.symbol.breadthCoverageRate.toFixed(3) : "<none>"} symbol_avg_bridge=${typeof contextGraphCacheWindowSummary.quality.symbol.avgBridge === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgBridge.toFixed(3) : "<none>"} symbol_avg_breadth=${typeof contextGraphCacheWindowSummary.quality.symbol.avgBreadth === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgBreadth.toFixed(3) : "<none>"} symbol_avg_refs=${typeof contextGraphCacheWindowSummary.quality.symbol.avgRefs === "number" ? contextGraphCacheWindowSummary.quality.symbol.avgRefs.toFixed(3) : "<none>"} symbol_max_refs=${typeof contextGraphCacheWindowSummary.quality.symbol.maxRefs === "number" ? contextGraphCacheWindowSummary.quality.symbol.maxRefs.toFixed(3) : "<none>"}\n`,
@@ -1574,14 +1715,32 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   process.stdout.write(
     `context_graph_cache_window_guard: degraded=${contextGraphCacheWindowDegradation.degraded ? "yes" : "no"} reason=${contextGraphCacheWindowDegradation.reason} threshold_query_hit_rate=${contextGraphCacheWindowDegradation.thresholdQueryHitRate.toFixed(3)} min_entries=${contextGraphCacheWindowDegradation.minEntries} observed_entries=${contextGraphCacheWindowDegradation.observedEntries} observed_query_hit_rate=${typeof contextGraphCacheWindowDegradation.observedQueryHitRate === "number" ? contextGraphCacheWindowDegradation.observedQueryHitRate.toFixed(3) : "<none>"}\n`,
   );
+  if (persistentGraphIndexStatus.enabled) {
+    const refresh = persistentGraphIndexStatus.last_refresh;
+    const window = persistentGraphIndexStatus.window;
+    process.stdout.write(
+      `context_persistent_graph_index: files=${String(persistentGraphIndexStatus.file_count ?? 0)} symbols=${String(persistentGraphIndexStatus.symbol_count ?? 0)} edges=${String(persistentGraphIndexStatus.edge_count ?? 0)} updated_at=${persistentGraphIndexStatus.updated_at ?? "<none>"} refresh=${refresh?.mode ?? "<none>"}/${String(refresh?.parsed_files ?? 0)}/${String(refresh?.reused_files ?? 0)}/${String(refresh?.removed_files ?? 0)} window_entries=${String(window?.entries ?? 0)} window_parsed_rate=${typeof window?.rates?.parsed_per_scanned === "number" ? window.rates.parsed_per_scanned.toFixed(3) : "<none>"} persistence_domain=${persistentGraphIndexPersistenceDomain} window_persistence_domain=${persistentGraphIndexWindowPersistenceDomain}\n`,
+    );
+    process.stdout.write(
+      `context_persistent_graph_index_guard: degraded=${persistentGraphWindowDegradation.degraded ? "yes" : "no"} reason=${persistentGraphWindowDegradation.reason} threshold_parsed_max=${persistentGraphWindowDegradation.thresholdParsedPerScannedMax.toFixed(3)} threshold_reused_min=${persistentGraphWindowDegradation.thresholdReusedPerScannedMin.toFixed(3)} threshold_removed_max=${persistentGraphWindowDegradation.thresholdRemovedPerScannedMax.toFixed(3)} min_entries=${persistentGraphWindowDegradation.minEntries} min_scanned_files=${persistentGraphWindowDegradation.minScannedFiles} observed_entries=${persistentGraphWindowDegradation.observedEntries} observed_scanned_files=${persistentGraphWindowDegradation.observedScannedFiles} observed_parsed_rate=${typeof persistentGraphWindowDegradation.observedParsedPerScanned === "number" ? persistentGraphWindowDegradation.observedParsedPerScanned.toFixed(3) : "<none>"} observed_reused_rate=${typeof persistentGraphWindowDegradation.observedReusedPerScanned === "number" ? persistentGraphWindowDegradation.observedReusedPerScanned.toFixed(3) : "<none>"} observed_removed_rate=${typeof persistentGraphWindowDegradation.observedRemovedPerScanned === "number" ? persistentGraphWindowDegradation.observedRemovedPerScanned.toFixed(3) : "<none>"}\n`,
+    );
+  } else {
+    process.stdout.write("context_persistent_graph_index: disabled\n");
+  }
+  process.stdout.write(
+    `context_engine_graph_quality_signals: state=${graphQualitySignals.state} reason=${graphQualitySignals.reason} degraded_sources=${graphQualitySignals.degradedSources.length > 0 ? graphQualitySignals.degradedSources.join(",") : "<none>"} action=${graphQualitySignals.recommendedAction}\n`,
+  );
   process.stdout.write(
     `context_engine: enabled=${contextEngineConfig.enabled ? "on" : "off"} profile=${contextEngineConfig.profile} window=${contextEngineConfig.contextWindowTokens} reserve=${contextEngineConfig.reservedOutputTokens} safety=${contextEngineConfig.safetyMarginTokens} auto_limit=${contextEngineTokenBudget.autoCompactTokenLimit} target=${contextEngineTokenBudget.targetTokenLimit} effective=${contextEngineEffectiveWindowTokens} thresholds=${contextEngineConfig.thresholds.proactiveRatio.toFixed(2)}/${contextEngineConfig.thresholds.forcedRatio.toFixed(2)}/${contextEngineConfig.thresholds.hardRatio.toFixed(2)} recovery=${contextEngineConfig.recovery.reactiveMaxRetries}/${contextEngineConfig.recovery.ptlMaxRetries}/${contextEngineConfig.recovery.circuitBreakerFailures}\n`,
+  );
+  process.stdout.write(
+    `memory_orchestrator: enabled=${memoryOrchestratorPolicy.enabled ? "on" : "off"} version=${memoryOrchestratorPolicy.version} budget_ratio=${memoryOrchestratorPolicy.injectBudgetRatio.toFixed(2)} budget_min=${String(memoryOrchestratorPolicy.injectBudgetMinTokens)} budget_max=${String(memoryOrchestratorPolicy.injectBudgetMaxTokens)} section_max=${String(memoryOrchestratorPolicy.maxSectionTokens)} ga_rows=${String(memoryOrchestratorPolicy.maxGaMemoryRows)} team_rows=${String(memoryOrchestratorPolicy.maxTeamExperienceRows)} team_score_min=${String(memoryOrchestratorPolicy.minTeamExperienceScore)} decay_enabled=${memoryOrchestratorPolicy.decayEnabled ? "on" : "off"} decay_max_rows=${String(memoryOrchestratorPolicy.decayMaxRowsPerSession)} decay_min_keep=${String(memoryOrchestratorPolicy.decayMinRowsToKeep)} decay_age_hours=${String(memoryOrchestratorPolicy.decayMaxAgeHoursL1)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL2)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL3)}/${String(memoryOrchestratorPolicy.decayMaxAgeHoursL4)} decay_unverified_age_hours=${String(memoryOrchestratorPolicy.decayUnverifiedMaxAgeHours)} decay_confidence=${memoryOrchestratorPolicy.decayMinConfidenceVerified.toFixed(2)}/${memoryOrchestratorPolicy.decayMinConfidenceUnverified.toFixed(2)} autotune_updates=${String(memoryDecayAutotuneState.adaptiveUpdates)} autotune_alpha=${memoryDecayAutotuneState.adaptiveLearnAlpha.toFixed(2)} autotune_ema=${memoryDecayAutotuneState.dropRatioEma.toFixed(3)}/${memoryDecayAutotuneState.capacityTrimRatioEma.toFixed(3)}/${memoryDecayAutotuneState.lowConfidenceRatioEma.toFixed(3)}/${memoryDecayAutotuneState.ageDropRatioEma.toFixed(3)} autotune_quality_ema=${memoryDecayAutotuneState.qualityLowRateEma.toFixed(3)}/${memoryDecayAutotuneState.qualityPressureEma.toFixed(3)}/${memoryDecayAutotuneState.hardBudgetFollowupDeltaEma.toFixed(3)}/${memoryDecayAutotuneState.qualityFirstFollowupDeltaEma.toFixed(3)} autotune_last_reason=${memoryDecayAutotuneState.lastReason} autotune_updated_at=${memoryDecayAutotuneState.updatedAt ?? "<none>"} autotune_persistence_domain=${memoryDecayAutotuneStatePersistenceDomain}\n`,
   );
   process.stdout.write(
     `context_engine_prompt_quality_config: low_quality_threshold=${(contextEngineConfig.promptQuality?.lowQualityThreshold ?? 0.6).toFixed(3)} degrade_overall=${(contextEngineConfig.promptQuality?.degradeOverallThreshold ?? 0.62).toFixed(3)} degrade_low_quality_rate=${(contextEngineConfig.promptQuality?.degradeLowQualityRateThreshold ?? 0.4).toFixed(3)} degrade_min_entries=${String(contextEngineConfig.promptQuality?.degradeMinEntries ?? 8)} guard_enabled=${contextEngineConfig.promptQuality?.guardEnabled === false ? "false" : "true"} guard_adaptive_enabled=${contextEngineConfig.promptQuality?.guardAdaptiveEnabled === false ? "false" : "true"} guard_adaptive_allowlist=${(contextEngineConfig.promptQuality?.guardAdaptiveModeAllowlist ?? ["harden", "relax"]).join(",")} guard_promote_streak=${String(contextEngineConfig.promptQuality?.guardPromoteStreak ?? 2)} guard_severe_promote_streak=${String(contextEngineConfig.promptQuality?.guardSeverePromoteStreak ?? 2)} guard_release_streak=${String(contextEngineConfig.promptQuality?.guardReleaseStreak ?? 3)} guard_hold_turns=${String(contextEngineConfig.promptQuality?.guardHoldTurns ?? 2)} guard_max_floor=${contextEngineConfig.promptQuality?.guardMaxFloorStage ?? "minimal"} guard_severe_overall=${(contextEngineConfig.promptQuality?.guardSevereOverallThreshold ?? 0.45).toFixed(3)} guard_severe_low_quality_rate=${(contextEngineConfig.promptQuality?.guardSevereLowQualityRateThreshold ?? 0.7).toFixed(3)}\n`,
   );
   process.stdout.write(
-    `context_engine_prompt_quality_guard_state: floor=${promptQualityGuardState.floorStage} degraded_streak=${String(promptQualityGuardState.degradedStreak)} severe_streak=${String(promptQualityGuardState.severeStreak)} healthy_streak=${String(promptQualityGuardState.healthyStreak)} hold_turns_remaining=${String(promptQualityGuardState.holdTurnsRemaining)} pressure_thresholds=${promptQualityGuardState.pressureUtilizationThreshold.toFixed(3)}/${promptQualityGuardState.pressureSemanticRateThreshold.toFixed(3)}/${promptQualityGuardState.pressureAutoLimitRateThreshold.toFixed(3)}/${promptQualityGuardState.pressureJointRateThreshold.toFixed(3)} pressure_trend_state=${promptQualityGuardState.pressureTrendMomentum.toFixed(3)}/${promptQualityGuardState.pressureTrendUtilizationDelta.toFixed(3)}/${promptQualityGuardState.pressureTrendSemanticDelta.toFixed(3)}/${promptQualityGuardState.pressureTrendAutoLimitDelta.toFixed(3)} outcome_state=${String(promptQualityGuardState.outcomeRequiredTransitions)}/${promptQualityGuardState.outcomeCombinedEvidenceScore.toFixed(3)}/${String(promptQualityGuardState.outcomeHighEvidenceTurns)}/${String(promptQualityGuardState.outcomeHighEvidenceHardenTurns)}/${String(promptQualityGuardState.outcomeDriftRecentAutoActionLevels.length)}/${promptQualityGuardState.outcomeDriftRecentAutoActionLevels[promptQualityGuardState.outcomeDriftRecentAutoActionLevels.length - 1] ?? "none"} last_reason=${promptQualityGuardState.lastReason || "<none>"} updated_at=${promptQualityGuardState.updatedAt ?? "<none>"}\n`,
+    `context_engine_prompt_quality_guard_state: floor=${promptQualityGuardState.floorStage} degraded_streak=${String(promptQualityGuardState.degradedStreak)} severe_streak=${String(promptQualityGuardState.severeStreak)} healthy_streak=${String(promptQualityGuardState.healthyStreak)} hold_turns_remaining=${String(promptQualityGuardState.holdTurnsRemaining)} pressure_thresholds=${promptQualityGuardState.pressureUtilizationThreshold.toFixed(3)}/${promptQualityGuardState.pressureSemanticRateThreshold.toFixed(3)}/${promptQualityGuardState.pressureAutoLimitRateThreshold.toFixed(3)}/${promptQualityGuardState.pressureJointRateThreshold.toFixed(3)} pressure_trend_state=${promptQualityGuardState.pressureTrendMomentum.toFixed(3)}/${promptQualityGuardState.pressureTrendUtilizationDelta.toFixed(3)}/${promptQualityGuardState.pressureTrendSemanticDelta.toFixed(3)}/${promptQualityGuardState.pressureTrendAutoLimitDelta.toFixed(3)} outcome_state=${String(promptQualityGuardState.outcomeRequiredTransitions)}/${promptQualityGuardState.outcomeCombinedEvidenceScore.toFixed(3)}/${String(promptQualityGuardState.outcomeHighEvidenceTurns)}/${String(promptQualityGuardState.outcomeHighEvidenceHardenTurns)}/${String(promptQualityGuardState.outcomeDriftRecentAutoActionLevels.length)}/${promptQualityGuardState.outcomeDriftRecentAutoActionLevels[promptQualityGuardState.outcomeDriftRecentAutoActionLevels.length - 1] ?? "none"} last_reason=${promptQualityGuardState.lastReason || "<none>"} updated_at=${promptQualityGuardState.updatedAt ?? "<none>"} persistence_domain=${promptQualityGuardStatePersistenceDomain}\n`,
   );
   process.stdout.write(
     `context_engine_prompt_quality_guard_runtime: phase=${promptQualityGuardRuntimeAssessment.phase} transition=${promptQualityGuardRuntimeAssessment.transition} degraded=${promptQualityGuardRuntimeAssessment.degraded ? "true" : "false"} severe=${promptQualityGuardRuntimeAssessment.severe ? "true" : "false"} reason=${promptQualityGuardRuntimeAssessment.reason} triggered=${promptQualityGuardRuntimeAssessment.triggered ? "true" : "false"} floor=${promptQualityGuardRuntimeAssessment.floorStage} proposed_floor=${promptQualityGuardRuntimeAssessment.proposedFloorStage} promote_remaining=${String(promptQualityGuardRuntimeAssessment.promoteRemaining)} severe_promote_remaining=${String(promptQualityGuardRuntimeAssessment.severePromoteRemaining)} release_remaining=${String(promptQualityGuardRuntimeAssessment.releaseRemaining)} hold_turns_remaining=${String(promptQualityGuardRuntimeAssessment.holdTurnsRemaining)} observed_overall=${typeof promptQualityGuardRuntimeAssessment.observedOverall === "number" ? promptQualityGuardRuntimeAssessment.observedOverall.toFixed(3) : "<none>"} observed_low_quality_rate=${typeof promptQualityGuardRuntimeAssessment.observedLowQualityRate === "number" ? promptQualityGuardRuntimeAssessment.observedLowQualityRate.toFixed(3) : "<none>"}\n`,
@@ -1590,7 +1749,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `context_engine_prompt_quality_guard_adaptive: mode=${promptQualityGuardAdaptivePolicy.mode} reason=${promptQualityGuardAdaptivePolicy.reason} allowlist=${promptQualityGuardAdaptivePolicy.allowlist.join(",")} mode_blocked=${promptQualityGuardAdaptivePolicy.modeBlocked ? "true" : "false"} blocked_mode=${promptQualityGuardAdaptivePolicy.blockedMode ?? "<none>"} base_promote=${String(promptQualityGuardAdaptivePolicy.basePolicy.promoteStreak)} base_release=${String(promptQualityGuardAdaptivePolicy.basePolicy.releaseStreak)} effective_promote=${String(promptQualityGuardAdaptivePolicy.effectivePolicy.promoteStreak)} effective_release=${String(promptQualityGuardAdaptivePolicy.effectivePolicy.releaseStreak)} effective_hold=${String(promptQualityGuardAdaptivePolicy.effectivePolicy.holdTurns)} delta=${String(promptQualityGuardAdaptivePolicy.adjustment.promoteStreakDelta)}/${String(promptQualityGuardAdaptivePolicy.adjustment.releaseStreakDelta)}/${String(promptQualityGuardAdaptivePolicy.adjustment.holdTurnsDelta)} pressure_policy=${promptQualityGuardAdaptivePolicy.pressurePolicy.source}/${promptQualityGuardAdaptivePolicy.pressurePolicy.updated ? "updated" : "stable"}/${promptQualityGuardAdaptivePolicy.pressurePolicy.learnAlpha.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.utilizationThreshold.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.semanticRateThreshold.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.autoLimitRateThreshold.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.jointRateThreshold.toFixed(3)} trend=${promptQualityGuardAdaptivePolicy.pressurePolicy.trendMomentum.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.trendUtilizationDelta.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.trendSemanticDelta.toFixed(3)}/${promptQualityGuardAdaptivePolicy.pressurePolicy.trendAutoLimitDelta.toFixed(3)} flip_suppressed=${promptQualityGuardAdaptivePolicy.pressurePolicy.trendFlipSuppressed ? "true" : "false"} outcome_reliability=${String(promptQualityGuardAdaptivePolicy.outcomeReliability.requiredTransitions)}->${String(promptQualityGuardAdaptivePolicy.outcomeReliability.nextRequiredTransitions)}/${String(promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetTransitions)}/${String(promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstTransitions)}/${promptQualityGuardAdaptivePolicy.outcomeReliability.combinedEvidenceScore.toFixed(3)} hard_budget_reliable=${promptQualityGuardAdaptivePolicy.outcomeReliability.hardBudgetReliable ? "true" : "false"} quality_first_reliable=${promptQualityGuardAdaptivePolicy.outcomeReliability.qualityFirstReliable ? "true" : "false"} drift_guard=${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceTurns)}/${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenTurns)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenRate.toFixed(3)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.highEvidenceHardenBias ? "bias" : "ok"}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.autoActionLevel}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.recommendation}/${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.entries)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.latest}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.dominant}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.alertLevel}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.activeRate.toFixed(3)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.mediumOrHardRate.toFixed(3)}/${promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.hardRate.toFixed(3)}/${String(promptQualityGuardAdaptivePolicy.outcomeDriftGuard.windowSummary.transitionCount)} semantic_rate=${typeof promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate.toFixed(3) : "<none>"} auto_limit_rate=${typeof promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate.toFixed(3) : "<none>"} hard_budget_rate=${typeof promptQualityWindowSummary.strategyActivity.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyActivity.hardBudgetRate.toFixed(3) : "<none>"} quality_first_rate=${typeof promptQualityWindowSummary.strategyActivity.qualityFirstRate === "number" ? promptQualityWindowSummary.strategyActivity.qualityFirstRate.toFixed(3) : "<none>"} avg_pre_send_overflow=${typeof promptQualityWindowSummary.signalAverages?.preSendOverflowRatio === "number" ? promptQualityWindowSummary.signalAverages.preSendOverflowRatio.toFixed(3) : "<none>"} avg_pre_send_pressure=${typeof promptQualityWindowSummary.signalAverages?.preSendPressureScore === "number" ? promptQualityWindowSummary.signalAverages.preSendPressureScore.toFixed(3) : "<none>"} avg_utilization=${typeof promptQualityWindowSummary.tokenBudget.averageUtilizationRatio === "number" ? promptQualityWindowSummary.tokenBudget.averageUtilizationRatio.toFixed(3) : "<none>"}\n`,
   );
   process.stdout.write(
-    `context_engine_prompt_quality_window: size=${promptQualityWindowSummary.configuredSize} entries=${promptQualityWindowSummary.entries} range=${promptQualityWindowSummary.fromTs ?? "<none>"}..${promptQualityWindowSummary.toTs ?? "<none>"} avg_overall=${typeof promptQualityWindowSummary.averageScores?.overall === "number" ? promptQualityWindowSummary.averageScores.overall.toFixed(3) : "<none>"} latest_overall=${typeof promptQualityWindowSummary.latestScores?.overall === "number" ? promptQualityWindowSummary.latestScores.overall.toFixed(3) : "<none>"} low_quality_rate=${typeof promptQualityWindowSummary.lowQualityRate === "number" ? promptQualityWindowSummary.lowQualityRate.toFixed(3) : "<none>"} degraded=${promptQualityWindowDegradation.degraded ? "yes" : "no"} reason=${promptQualityWindowDegradation.reason}\n`,
+    `context_engine_prompt_quality_window: size=${promptQualityWindowSummary.configuredSize} entries=${promptQualityWindowSummary.entries} range=${promptQualityWindowSummary.fromTs ?? "<none>"}..${promptQualityWindowSummary.toTs ?? "<none>"} avg_overall=${typeof promptQualityWindowSummary.averageScores?.overall === "number" ? promptQualityWindowSummary.averageScores.overall.toFixed(3) : "<none>"} latest_overall=${typeof promptQualityWindowSummary.latestScores?.overall === "number" ? promptQualityWindowSummary.latestScores.overall.toFixed(3) : "<none>"} low_quality_rate=${typeof promptQualityWindowSummary.lowQualityRate === "number" ? promptQualityWindowSummary.lowQualityRate.toFixed(3) : "<none>"} degraded=${promptQualityWindowDegradation.degraded ? "yes" : "no"} reason=${promptQualityWindowDegradation.reason} persistence_domain=${promptQualityWindowPersistenceDomain}\n`,
   );
   process.stdout.write(
     `context_engine_prompt_quality_window_signals: avg_recent_rows=${typeof promptQualityWindowSummary.signalAverages?.recentRows === "number" ? promptQualityWindowSummary.signalAverages.recentRows.toFixed(3) : "<none>"} avg_snapshot_sections=${typeof promptQualityWindowSummary.signalAverages?.snapshotSections === "number" ? promptQualityWindowSummary.signalAverages.snapshotSections.toFixed(3) : "<none>"} avg_recent_trim_rows=${typeof promptQualityWindowSummary.signalAverages?.recentTrimRows === "number" ? promptQualityWindowSummary.signalAverages.recentTrimRows.toFixed(3) : "<none>"} avg_snapshot_trim_sections=${typeof promptQualityWindowSummary.signalAverages?.snapshotTrimSections === "number" ? promptQualityWindowSummary.signalAverages.snapshotTrimSections.toFixed(3) : "<none>"} avg_snapshot_semantic_compress_sections=${typeof promptQualityWindowSummary.signalAverages?.snapshotSemanticCompressSections === "number" ? promptQualityWindowSummary.signalAverages.snapshotSemanticCompressSections.toFixed(3) : "<none>"} avg_head_trim_retries=${typeof promptQualityWindowSummary.signalAverages?.headTrimRetries === "number" ? promptQualityWindowSummary.signalAverages.headTrimRetries.toFixed(3) : "<none>"} avg_pre_send_overflow=${typeof promptQualityWindowSummary.signalAverages?.preSendOverflowRatio === "number" ? promptQualityWindowSummary.signalAverages.preSendOverflowRatio.toFixed(3) : "<none>"} avg_pre_send_pressure=${typeof promptQualityWindowSummary.signalAverages?.preSendPressureScore === "number" ? promptQualityWindowSummary.signalAverages.preSendPressureScore.toFixed(3) : "<none>"} semantic_rate=${typeof promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate.toFixed(3) : "<none>"} auto_limit_rate=${typeof promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate.toFixed(3) : "<none>"} hard_budget_rate=${typeof promptQualityWindowSummary.strategyActivity.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyActivity.hardBudgetRate.toFixed(3) : "<none>"} quality_first_rate=${typeof promptQualityWindowSummary.strategyActivity.qualityFirstRate === "number" ? promptQualityWindowSummary.strategyActivity.qualityFirstRate.toFixed(3) : "<none>"} avg_utilization=${typeof promptQualityWindowSummary.tokenBudget.averageUtilizationRatio === "number" ? promptQualityWindowSummary.tokenBudget.averageUtilizationRatio.toFixed(3) : "<none>"} trend_short=${typeof promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.short.averageUtilizationRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.short.snapshotSemanticCompressRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.short.autoLimitTriggeredRate.toFixed(3) : "<none>"} trend_medium=${typeof promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.medium.averageUtilizationRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.medium.snapshotSemanticCompressRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.medium.autoLimitTriggeredRate.toFixed(3) : "<none>"} trend_delta=${typeof promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate.toFixed(3) : "<none>"} strategy_trend_short=${typeof promptQualityWindowSummary.strategyTrends.short.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.short.hardBudgetRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.short.averageOverflowRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.short.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.short.averagePressureScore.toFixed(3) : "<none>"} strategy_trend_medium=${typeof promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.medium.hardBudgetRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.medium.averageOverflowRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.medium.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.medium.averagePressureScore.toFixed(3) : "<none>"} strategy_trend_delta=${typeof promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio.toFixed(3) : "<none>"}/${typeof promptQualityWindowSummary.strategyTrends.delta.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.delta.averagePressureScore.toFixed(3) : "<none>"}\n`,

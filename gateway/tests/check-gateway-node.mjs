@@ -839,6 +839,9 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.plain_mode, "plain_tty");
   assert.equal(devCliUiRendererContractPayload.non_tty_mode, "non_tty");
   assert.equal(devCliUiRendererContractPayload.startup_has_title, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_brand_label, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_logo_headline, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_logo_runtime_line, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_session_line, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_command_hint, true);
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_ansi, true);
@@ -1027,6 +1030,16 @@ async function runGatewayContractSmoke() {
   assert.equal(memoryDecayAutotuneContractPayload.confidence_update_tightens_verified, true);
   assert.equal(memoryDecayAutotuneContractPayload.confidence_update_tightens_unverified, true);
   assert.equal(memoryDecayAutotuneContractPayload.confidence_update_has_reason, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_pressure_update_changed, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_pressure_update_has_reason, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_pressure_update_shrinks_rows, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_pressure_update_tightens_verified, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_pressure_update_tightens_unverified, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_signal_update_changed, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_signal_update_has_reason, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_signal_update_expands_rows, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_signal_update_relaxes_verified, true);
+  assert.equal(memoryDecayAutotuneContractPayload.quality_signal_update_relaxes_unverified, true);
   assert.equal(memoryDecayAutotuneContractPayload.normalized_invalid_rows_floor, true);
   assert.equal(memoryDecayAutotuneContractPayload.normalized_invalid_verified_confidence_clamped, true);
   assert.equal(memoryDecayAutotuneContractPayload.normalized_invalid_unverified_confidence_clamped, true);
@@ -5476,6 +5489,149 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(String(qualityGuardFlowPayload.prompt_prepared_quality_guard), "true");
   logStep("start-smoke-contract start-context-quality-guard-flow");
+
+  const memoryDecayAutotuneQualityFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-context-memory-decay-autotune-quality-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const memoryDecayAutotuneQualityFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-memory-decay-autotune-quality-flow",
+    memoryDecayAutotuneQualityFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(memoryDecayAutotuneQualityFlowPayload.start_exit_code)),
+    true,
+  );
+  assert.equal(
+    [0, 1].includes(Number(memoryDecayAutotuneQualityFlowPayload.status_exit_code)),
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.maintenance_quality_signal_logged, true);
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.maintenance_autotune_quality_reason_seen,
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.status_json_parse_ok, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.status_memory_orchestrator_present, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_present, true);
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_quality_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_autotune_reason_has_quality_tighten,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_decay_max_rows_tightened,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityFlowPayload.status_memory_decay_confidence_tightened,
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.state_exists, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.state_adaptive_updates_increased, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.state_quality_ema_present, true);
+  assert.equal(memoryDecayAutotuneQualityFlowPayload.state_last_reason_has_quality_tighten, true);
+  logStep("start-smoke-contract start-context-memory-decay-autotune-quality-flow");
+
+  const memoryDecayAutotuneQualityRelaxFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-context-memory-decay-autotune-quality-relax-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const memoryDecayAutotuneQualityRelaxFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-memory-decay-autotune-quality-relax-flow",
+    memoryDecayAutotuneQualityRelaxFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(memoryDecayAutotuneQualityRelaxFlowPayload.start_exit_code)),
+    true,
+  );
+  assert.equal(
+    [0, 1].includes(Number(memoryDecayAutotuneQualityRelaxFlowPayload.status_exit_code)),
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.maintenance_quality_signal_logged, true);
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.maintenance_autotune_quality_reason_seen,
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.status_json_parse_ok, true);
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_orchestrator_present, true);
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_present, true);
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_quality_fields_present,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_autotune_reason_has_quality_relax,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_decay_max_rows_relaxed,
+    true,
+  );
+  assert.equal(
+    memoryDecayAutotuneQualityRelaxFlowPayload.status_memory_decay_confidence_relaxed,
+    true,
+  );
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_exists, true);
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_adaptive_updates_increased, true);
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_quality_ema_present, true);
+  assert.equal(memoryDecayAutotuneQualityRelaxFlowPayload.state_last_reason_has_quality_relax, true);
+  logStep("start-smoke-contract start-context-memory-decay-autotune-quality-relax-flow");
+
+  const memoryDecayAutotuneHysteresisFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-context-memory-decay-autotune-hysteresis-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const memoryDecayAutotuneHysteresisFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-context-memory-decay-autotune-hysteresis-flow",
+    memoryDecayAutotuneHysteresisFlowResult.stdout,
+  );
+  assert.equal(
+    [0, 1].includes(Number(memoryDecayAutotuneHysteresisFlowPayload.first_round_start_exit_code)),
+    true,
+  );
+  assert.equal(
+    [0, 1].includes(Number(memoryDecayAutotuneHysteresisFlowPayload.first_round_status_exit_code)),
+    true,
+  );
+  assert.equal(memoryDecayAutotuneHysteresisFlowPayload.first_round_has_quality_tighten, true);
+  assert.equal(
+    Number(memoryDecayAutotuneHysteresisFlowPayload.low_rounds_executed) >= 1,
+    true,
+  );
+  assert.equal(memoryDecayAutotuneHysteresisFlowPayload.no_early_relax, true);
+  assert.equal(memoryDecayAutotuneHysteresisFlowPayload.updates_monotonic, true);
+  const hysteresisRelaxSeen = Boolean(memoryDecayAutotuneHysteresisFlowPayload.relax_seen);
+  if (hysteresisRelaxSeen) {
+    assert.equal(
+      Number(memoryDecayAutotuneHysteresisFlowPayload.relax_round_index) >= 2,
+      true,
+    );
+    assert.equal(memoryDecayAutotuneHysteresisFlowPayload.relax_rows_expanded, true);
+    assert.equal(memoryDecayAutotuneHysteresisFlowPayload.relax_confidence_relaxed, true);
+  } else {
+    assert.equal(
+      memoryDecayAutotuneHysteresisFlowPayload.final_quality_relax_window_reached,
+      true,
+    );
+  }
+  logStep("start-smoke-contract start-context-memory-decay-autotune-hysteresis-flow");
 
   const graphAutotuneFlowResult = runContract(
     "start-smoke-contract.mjs",

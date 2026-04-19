@@ -8,7 +8,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { resolveContextStoragePath } from "../storage-boundary";
 
 export interface GraphCacheBucketCounter {
   hit: number;
@@ -91,7 +91,6 @@ export interface GraphCacheWindowSummary {
   quality: GraphCacheWindowQualitySummary;
 }
 
-const GRAPH_CACHE_WINDOW_RELATIVE_PATH = ".grobot/context/graph-cache-window.jsonl";
 const MAX_PERSISTED_ENTRIES = 512;
 const TRIM_TRIGGER_BYTES = 1_000_000;
 const TRIM_LOCK_SUFFIX = ".trim.lock";
@@ -268,7 +267,7 @@ function normalizeWindowSize(raw: number | undefined, fallback: number): number 
 }
 
 function resolveWindowPath(workDir: string): string {
-  return resolve(workDir, GRAPH_CACHE_WINDOW_RELATIVE_PATH);
+  return resolveContextStoragePath(workDir, "graph_cache_window");
 }
 
 function resolveParentDir(filePath: string): string {

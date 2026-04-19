@@ -1,6 +1,7 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { type ContextEngineConfig } from "../../../../tools/context";
+import { type MemoryOrchestrator } from "../../../../tools/memory";
 import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import { type SessionStoreController } from "../services/session-store";
@@ -45,6 +46,7 @@ interface CreateRunStartWireInput {
   kimiSearchRoutingPolicy: KimiSearchRoutingPolicy;
   mcpInstructionPromptPrefix?: string;
   mcpInstructionServerNames: string[];
+  memoryOrchestrator: MemoryOrchestrator;
   experiencePoolRuntime: ExperiencePoolRuntime;
   runtimeState: RunStartRuntimeState;
   persistence: RunStartPersistence;
@@ -116,6 +118,7 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
       kimiSearchRoutingPolicy: input.kimiSearchRoutingPolicy,
       mcpInstructionPromptPrefix: input.mcpInstructionPromptPrefix,
       mcpInstructionServerNames: input.mcpInstructionServerNames,
+      memoryOrchestrator: input.memoryOrchestrator,
       experiencePoolRuntime: input.experiencePoolRuntime,
     getSessionKey: input.runtimeState.getSessionKey,
     getHistoryMessages: input.runtimeState.getHistoryMessages,

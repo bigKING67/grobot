@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  resolveContextStoragePath,
+  resolveContextStorageReadPaths,
+} from "../storage-boundary";
 import { type PromptCompactionStage } from "../types";
 
-const QUALITY_GUARD_STATE_RELATIVE_PATH = ".grobot/context/prompt-quality-guard-state.json";
 const DEFAULT_PRESSURE_UTILIZATION_THRESHOLD = 0.86;
 const DEFAULT_PRESSURE_SEMANTIC_RATE_THRESHOLD = 0.25;
 const DEFAULT_PRESSURE_AUTO_LIMIT_RATE_THRESHOLD = 0.30;
@@ -107,7 +109,7 @@ function resolveParentDir(filePath: string): string {
 }
 
 function resolveStatePath(workDir: string): string {
-  return resolve(workDir, QUALITY_GUARD_STATE_RELATIVE_PATH);
+  return resolveContextStoragePath(workDir, "prompt_quality_guard_state");
 }
 
 export interface PromptQualityGuardPolicy {
@@ -1832,16 +1834,19 @@ export function normalizePromptQualityGuardState(raw: unknown): PromptQualityGua
 export function readPromptQualityGuardState(input: {
   workDir: string;
 }): PromptQualityGuardState {
-  const path = resolveStatePath(input.workDir);
-  if (!existsSync(path)) {
-    return defaultPromptQualityGuardState();
+  const pathCandidates = resolveContextStorageReadPaths(input.workDir, "prompt_quality_guard_state");
+  for (const path of pathCandidates) {
+    if (!existsSync(path)) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+      return normalizePromptQualityGuardState(parsed);
+    } catch {
+      // try next candidate
+    }
   }
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    return normalizePromptQualityGuardState(parsed);
-  } catch {
-    return defaultPromptQualityGuardState();
-  }
+  return defaultPromptQualityGuardState();
 }
 
 export function writePromptQualityGuardState(input: {

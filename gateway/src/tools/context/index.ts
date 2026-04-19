@@ -1,4 +1,13 @@
 export { resolveContextEngineConfig } from "./policy/context-engine-config";
+export {
+  resolveContextStorageBoundary,
+  resolveContextStorageDomain,
+  resolveContextStoragePath,
+  resolveContextStorageReadPaths,
+  type ContextStorageArtifact,
+  type ContextStorageDomain,
+  type ResolvedContextStorageBoundary,
+} from "./storage-boundary";
 export { buildContextLines, prepareTurnPrompt } from "./engine";
 export { buildSemanticPrefetchBlock } from "./enrich/semantic-prefetch";
 export {
@@ -11,6 +20,14 @@ export {
   summarizeGraphHintQuality,
   summarizeGraphHintQualityFromPrompt,
 } from "./graph/cache-window";
+export {
+  assessGraphCacheWindowDegradation,
+  assessPersistentGraphWindowDegradation,
+  deriveGraphQualitySignals,
+  type GraphCacheWindowDegradation,
+  type PersistentGraphWindowDegradation,
+  type GraphQualitySignalsSummary,
+} from "./graph/quality-signals";
 export {
   defaultGraphQualityAutotuneState,
   normalizeGraphQualityAutotuneState,

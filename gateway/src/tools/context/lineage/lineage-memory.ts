@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  resolveContextStoragePath,
+  resolveContextStorageReadPaths,
+} from "../storage-boundary";
 
 export interface LineageSummaryRow {
   commitId: string;
@@ -76,7 +80,6 @@ const MAX_CROSS_REPO_ROOTS = 5;
 const MAX_DIFF_TOKEN_COUNT = 220;
 const MAX_DIFF_FILE_HINTS = 80;
 const MAX_PERSISTED_DIFF_ENTRIES = 3_500;
-const LINEAGE_DIFF_CACHE_RELATIVE_PATH = ".grobot/context/lineage-diff-cache.json";
 const LOG_MARKER = "__GROBOT_COMMIT__";
 const LOG_FIELD_SEPARATOR = "\u001f";
 const lineageCache = new Map<string, LineageCacheEntry>();
@@ -265,7 +268,11 @@ function resolveExtraLineageRepoRoots(workDir: string, primaryRoot: string): str
 }
 
 function resolveLineageDiffCachePath(rootPath: string): string {
-  return resolve(rootPath, LINEAGE_DIFF_CACHE_RELATIVE_PATH);
+  return resolveContextStoragePath(rootPath, "lineage_diff_cache");
+}
+
+function resolveLineageDiffCacheReadPaths(rootPath: string): string[] {
+  return resolveContextStorageReadPaths(rootPath, "lineage_diff_cache");
 }
 
 function loadPersistedLineageDiffCache(rootPath: string): Map<string, PersistedLineageDiffSemantic> {
@@ -273,8 +280,9 @@ function loadPersistedLineageDiffCache(rootPath: string): Map<string, PersistedL
   if (existing) {
     return existing;
   }
-  const path = resolveLineageDiffCachePath(rootPath);
-  if (!existsSync(path)) {
+  const pathCandidates = resolveLineageDiffCacheReadPaths(rootPath);
+  const path = pathCandidates.find((candidate) => existsSync(candidate));
+  if (!path) {
     const empty = new Map<string, PersistedLineageDiffSemantic>();
     lineageDiffCacheByRoot.set(rootPath, empty);
     return empty;

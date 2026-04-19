@@ -75,6 +75,11 @@ export interface LoadedSessionRegistry {
   warnings: string[];
 }
 
+export interface ResolvedSessionStoreReadPath {
+  path: string;
+  warnings: string[];
+}
+
 function parseOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -406,11 +411,34 @@ export function normalizeSessionRegistryPayload(raw: unknown, namespaceKey: stri
 }
 
 function sessionRegistryRoot(homeDir: string): string {
-  return `${removeTrailingSlashes(homeDir)}/session`;
+  return `${removeTrailingSlashes(homeDir)}/sessions`;
 }
 
-function legacySessionRegistryRoot(homeDir: string): string {
-  return `${removeTrailingSlashes(homeDir)}/runtime/sessions`;
+function legacySessionRegistryRoots(homeDir: string): string[] {
+  const normalizedHome = removeTrailingSlashes(homeDir);
+  return [
+    `${normalizedHome}/session`,
+    `${normalizedHome}/runtime/sessions`,
+  ];
+}
+
+function resolveLegacyReadablePath(
+  canonicalPath: string,
+  legacyPaths: string[],
+  warnPrefix: string,
+  warnings: string[],
+): string {
+  if (fileReadable(canonicalPath)) {
+    return canonicalPath;
+  }
+  for (const legacyPath of legacyPaths) {
+    if (!fileReadable(legacyPath)) {
+      continue;
+    }
+    warnings.push(`${warnPrefix} migrated from legacy path (${legacyPath})`);
+    return legacyPath;
+  }
+  return canonicalPath;
 }
 
 export function sessionRegistryFilePath(homeDir: string, namespaceKey: string): string {
@@ -418,9 +446,9 @@ export function sessionRegistryFilePath(homeDir: string, namespaceKey: string): 
   return `${root}/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
 }
 
-function legacySessionRegistryFilePath(homeDir: string, namespaceKey: string): string {
-  const root = legacySessionRegistryRoot(homeDir);
-  return `${root}/${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+function legacySessionRegistryFilePaths(homeDir: string, namespaceKey: string): string[] {
+  const fileName = `${sanitizeSessionKey(namespaceKey)}.sessions.json`;
+  return legacySessionRegistryRoots(homeDir).map((root) => `${root}/${fileName}`);
 }
 
 export function historyStoreFilePath(homeDir: string, sessionKey: string): string {
@@ -428,23 +456,45 @@ export function historyStoreFilePath(homeDir: string, sessionKey: string): strin
   return `${root}/${sanitizeSessionKey(sessionKey)}.history.json`;
 }
 
-function legacyHistoryStoreFilePath(homeDir: string, sessionKey: string): string {
-  const root = legacySessionRegistryRoot(homeDir);
-  return `${root}/${sanitizeSessionKey(sessionKey)}.history.json`;
+function legacyHistoryStoreFilePaths(homeDir: string, sessionKey: string): string[] {
+  const fileName = `${sanitizeSessionKey(sessionKey)}.history.json`;
+  return legacySessionRegistryRoots(homeDir).map((root) => `${root}/${fileName}`);
+}
+
+export function resolveSessionRegistryReadPath(
+  homeDir: string,
+  namespaceKey: string,
+): ResolvedSessionStoreReadPath {
+  const path = sessionRegistryFilePath(homeDir, namespaceKey);
+  const legacyPaths = legacySessionRegistryFilePaths(homeDir, namespaceKey);
+  const warnings: string[] = [];
+  const sourcePath = resolveLegacyReadablePath(path, legacyPaths, "session registry", warnings);
+  return {
+    path: sourcePath,
+    warnings,
+  };
+}
+
+function resolveHistoryStoreReadPath(
+  homeDir: string,
+  sessionKey: string,
+): ResolvedSessionStoreReadPath {
+  const path = historyStoreFilePath(homeDir, sessionKey);
+  const legacyPaths = legacyHistoryStoreFilePaths(homeDir, sessionKey);
+  const warnings: string[] = [];
+  const sourcePath = resolveLegacyReadablePath(path, legacyPaths, "history", warnings);
+  return {
+    path: sourcePath,
+    warnings,
+  };
 }
 
 export function loadSessionRegistry(homeDir: string, namespaceKey: string): LoadedSessionRegistry {
   const path = sessionRegistryFilePath(homeDir, namespaceKey);
-  const legacyPath = legacySessionRegistryFilePath(homeDir, namespaceKey);
-  const warnings: string[] = [];
+  const resolved = resolveSessionRegistryReadPath(homeDir, namespaceKey);
+  const warnings: string[] = [...resolved.warnings];
   let raw: unknown = {};
-  let sourcePath = path;
-  if (fileReadable(path)) {
-    sourcePath = path;
-  } else if (fileReadable(legacyPath)) {
-    sourcePath = legacyPath;
-    warnings.push(`session registry migrated from legacy path (${legacyPath})`);
-  }
+  const sourcePath = resolved.path;
   if (fileReadable(sourcePath)) {
     try {
       raw = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;
@@ -569,19 +619,15 @@ export function loadHistoryMessages(
   source: "store" | "empty";
   warnings: string[];
 } {
-  const path = historyStoreFilePath(homeDir, sessionKey);
-  const legacyPath = legacyHistoryStoreFilePath(homeDir, sessionKey);
-  const sourcePath = fileReadable(path) ? path : legacyPath;
-  const warnings: string[] = [];
+  const resolved = resolveHistoryStoreReadPath(homeDir, sessionKey);
+  const warnings: string[] = [...resolved.warnings];
+  const sourcePath = resolved.path;
   if (!fileReadable(sourcePath)) {
     return {
       messages: [],
       source: "empty",
       warnings,
     };
-  }
-  if (sourcePath === legacyPath) {
-    warnings.push(`history migrated from legacy path (${legacyPath})`);
   }
   try {
     const raw = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;

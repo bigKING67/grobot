@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { type ContextHistoryMessage } from "../types";
 import { retrieveDependencyGraphHints } from "../graph/dependency-hints";
 import { retrieveSymbolGraphHints } from "../graph/symbol-hints";
+import { queryPersistentDependencyHints, queryPersistentSymbolHints } from "../graph/persistent-index";
 import { type ChangedCodeSnapshot } from "../graph/changed-code-snapshot";
 import { retrieveLineageSummaries } from "../lineage/lineage-memory";
 import { retrieveWorkspaceSignals } from "../live/workspace-signals";
@@ -641,18 +642,29 @@ export function buildCompactSnapshot(
     );
   }
   if (structuralHintsEnabled && options?.dependencyGraphEnabled) {
-    dependencyRows = retrieveDependencyGraphHints(userText, {
+    const primaryMaxRows = Math.max(2, Math.min(options.dependencyGraphMaxRows ?? 4, 12));
+    const persistentPrimaryRows = queryPersistentDependencyHints(userText, {
       workDir: options.workDir,
-      maxRows: options.dependencyGraphMaxRows,
+      maxRows: primaryMaxRows,
+    });
+    const changedPrimaryRows = retrieveDependencyGraphHints(userText, {
+      workDir: options.workDir,
+      maxRows: primaryMaxRows,
       changedCodeSnapshot: options.changedCodeSnapshot,
     });
+    dependencyRows = [...persistentPrimaryRows, ...changedPrimaryRows];
     const extraRoots = resolveGraphExtraRepoRoots(options.workDir);
     const extraMaxRows = Math.max(2, Math.min(options.dependencyGraphMaxRows ?? 4, 8));
     for (const root of extraRoots) {
-      const rows = retrieveDependencyGraphHints(userText, {
+      const persistentRows = queryPersistentDependencyHints(userText, {
         workDir: root,
         maxRows: extraMaxRows,
       });
+      const changedRows = retrieveDependencyGraphHints(userText, {
+        workDir: root,
+        maxRows: extraMaxRows,
+      });
+      const rows = dedupeGraphRows([...persistentRows, ...changedRows], 24);
       if (rows.length === 0) {
         continue;
       }
@@ -662,18 +674,29 @@ export function buildCompactSnapshot(
     dependencyRows = dedupeGraphRows(dependencyRows, 48);
   }
   if (structuralHintsEnabled && options?.symbolGraphEnabled) {
-    symbolRows = retrieveSymbolGraphHints(userText, {
+    const primaryMaxRows = Math.max(2, Math.min(options.symbolGraphMaxRows ?? 4, 12));
+    const persistentPrimaryRows = queryPersistentSymbolHints(userText, {
       workDir: options.workDir,
-      maxRows: options.symbolGraphMaxRows,
+      maxRows: primaryMaxRows,
+    });
+    const changedPrimaryRows = retrieveSymbolGraphHints(userText, {
+      workDir: options.workDir,
+      maxRows: primaryMaxRows,
       changedCodeSnapshot: options.changedCodeSnapshot,
     });
+    symbolRows = [...persistentPrimaryRows, ...changedPrimaryRows];
     const extraRoots = resolveGraphExtraRepoRoots(options.workDir);
     const extraMaxRows = Math.max(2, Math.min(options.symbolGraphMaxRows ?? 4, 8));
     for (const root of extraRoots) {
-      const rows = retrieveSymbolGraphHints(userText, {
+      const persistentRows = queryPersistentSymbolHints(userText, {
         workDir: root,
         maxRows: extraMaxRows,
       });
+      const changedRows = retrieveSymbolGraphHints(userText, {
+        workDir: root,
+        maxRows: extraMaxRows,
+      });
+      const rows = dedupeGraphRows([...persistentRows, ...changedRows], 24);
       if (rows.length === 0) {
         continue;
       }

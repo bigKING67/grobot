@@ -21,7 +21,7 @@ import {
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
-import { applyLearnedPromptContext } from "../../../../tools/ga-skill";
+import { type MemoryOrchestrator } from "../../../../tools/memory";
 import {
   compressPromptSnapshotSectionsSemanticallyForBudget,
   applyPromptQualityGuardFloor,
@@ -33,10 +33,13 @@ import {
   computePromptQualitySample,
   computeUtilization,
   derivePromptPreSendCompressionPlan,
+  deriveGraphQualitySignals,
   derivePromptQualityGuardAdaptivePolicy,
   evaluatePromptQualityGuard,
   estimateTokensFromText,
   escalatePromptVariant,
+  assessGraphCacheWindowDegradation,
+  assessPersistentGraphWindowDegradation,
   readGraphQualityAutotuneState,
   prepareTurnPrompt,
   readContextGraphCacheStats,
@@ -51,10 +54,14 @@ import {
   writeGraphQualityAutotuneState,
   writePromptQualityGuardState,
   type ContextEngineConfig,
+  type GraphCacheWindowDegradation,
+  type GraphQualitySignalsSummary,
   type GraphQualityAutotuneState,
+  type PersistentGraphWindowDegradation,
   type PromptCompactionStage,
   type PromptVariant,
 } from "../../../../tools/context";
+import { readPersistentGraphIndexStatus } from "../../../../tools/context/graph/persistent-index";
 
 export interface RuntimeProviderCandidate {
   name: string;
@@ -115,6 +122,7 @@ interface CreateRunStartTurnRunnerInput {
   kimiSearchRoutingPolicy: KimiSearchRoutingPolicy;
   mcpInstructionPromptPrefix?: string;
   mcpInstructionServerNames: string[];
+  memoryOrchestrator: MemoryOrchestrator;
   experiencePoolRuntime: ExperiencePoolRuntime;
   getSessionKey(): string;
   getHistoryMessages(): ChatHistoryMessage[];
@@ -158,6 +166,12 @@ const PROVIDER_UPSTREAM_429_RETRY_LIMIT = 1;
 const GRAPH_AUTOTUNE_MAX_ROWS = 20;
 const GRAPH_AUTOTUNE_FLIP_HOLD_TURNS = 2;
 const GRAPH_AUTOTUNE_DOWNSHIFT_WARMUP_TURNS = 2;
+const GRAPH_AUTOTUNE_DEFAULT_CACHE_DEGRADE_QUERY_HIT_RATE = 0.3;
+const GRAPH_AUTOTUNE_DEFAULT_PERSISTENT_DEGRADE_PARSED_PER_SCANNED_MAX = 0.35;
+const GRAPH_AUTOTUNE_DEFAULT_PERSISTENT_DEGRADE_REUSED_PER_SCANNED_MIN = 0.55;
+const GRAPH_AUTOTUNE_DEFAULT_PERSISTENT_DEGRADE_REMOVED_PER_SCANNED_MAX = 0.2;
+const GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE = 1.0;
+const GRAPH_AUTOTUNE_PERSISTENT_MIN_SCANNED_FILES = 40;
 
 interface GraphQualityAutotuneDecision {
   adjustedConfig: ContextEngineConfig;
@@ -171,6 +185,8 @@ interface GraphQualityAutotuneDecision {
   symbolRowsTo: number;
   evidenceEntries: number;
   evidenceQualityEntries: number;
+  evidencePersistentEntries: number;
+  graphQualitySignals: GraphQualitySignalsSummary;
   stateBefore: GraphQualityAutotuneState;
   stateAfter: GraphQualityAutotuneState;
   metrics: {
@@ -181,6 +197,26 @@ interface GraphQualityAutotuneDecision {
     pressureUtilization: number | null;
     pressureAutoLimitRate: number | null;
     pressureSemanticRate: number | null;
+    graphCacheDegraded: boolean;
+    graphCacheReason: string;
+    graphCacheQueryHitRate: number | null;
+    persistentDegraded: boolean;
+    persistentReason: string;
+    persistentParsedPerScanned: number | null;
+    persistentReusedPerScanned: number | null;
+    persistentRemovedPerScanned: number | null;
+    adaptiveCacheThreshold: number;
+    adaptiveParsedMaxThreshold: number;
+    adaptiveReusedMinThreshold: number;
+    adaptiveRemovedMaxThreshold: number;
+    adaptiveAlpha: number;
+    adaptiveSource: string;
+    adaptiveUpdated: boolean;
+    adaptiveUpdates: number;
+    adaptiveActionScale: number;
+    adaptiveActionSource: string;
+    adaptiveActionUpdated: boolean;
+    adaptiveActionUpdates: number;
   };
 }
 
@@ -272,6 +308,408 @@ function clampGraphRows(value: number): number {
   return Math.max(1, Math.min(GRAPH_AUTOTUNE_MAX_ROWS, Math.floor(value)));
 }
 
+function clampRatio(value: number, min: number, max: number, fallback = min): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
+function clampNumber(value: number, min: number, max: number, fallback = min): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
+function resolveAdaptiveLearnAlpha(args: {
+  evidenceEntries: number;
+  persistentEntries: number;
+  pressureUtilization: number | null;
+  previousAlpha: number;
+}): number {
+  const evidenceScore = clampRatio((args.evidenceEntries + args.persistentEntries) / 48, 0, 1);
+  const pressurePenalty = typeof args.pressureUtilization === "number"
+    ? clampRatio((args.pressureUtilization - 0.72) / 0.3, 0, 1)
+    : 0;
+  const targetAlpha = 0.12 + evidenceScore * 0.2 - pressurePenalty * 0.07;
+  const blended = args.previousAlpha * 0.55 + targetAlpha * 0.45;
+  return clampRatio(blended, 0.06, 0.32);
+}
+
+function blendThreshold(previous: number, observed: number, alpha: number): number {
+  return previous * (1 - alpha) + observed * alpha;
+}
+
+interface GraphAdaptiveThresholdProfile {
+  cacheQueryHitRateThreshold: number;
+  persistentParsedPerScannedMaxThreshold: number;
+  persistentReusedPerScannedMinThreshold: number;
+  persistentRemovedPerScannedMaxThreshold: number;
+  learnAlpha: number;
+  updated: boolean;
+  source: string;
+  updates: number;
+}
+
+interface GraphAdaptiveActionProfile {
+  scale: number;
+  source: string;
+  updated: boolean;
+  updates: number;
+}
+
+function deriveAdaptiveGraphThresholdProfile(input: {
+  state: GraphQualityAutotuneState;
+  graphWindowSummary: ReturnType<typeof readGraphCacheWindowSummary>;
+  persistentStatus: ReturnType<typeof readPersistentGraphIndexStatus>;
+  persistentSignalsActive: boolean;
+  minEvidenceEntries: number;
+  pressureUtilization: number | null;
+}): GraphAdaptiveThresholdProfile {
+  const previousCacheThreshold = clampRatio(
+    input.state.cacheDegradeQueryHitRateThreshold,
+    0.08,
+    0.8,
+    GRAPH_AUTOTUNE_DEFAULT_CACHE_DEGRADE_QUERY_HIT_RATE,
+  );
+  const previousParsedMax = clampRatio(
+    input.state.persistentDegradeParsedPerScannedMax,
+    0.1,
+    0.9,
+    GRAPH_AUTOTUNE_DEFAULT_PERSISTENT_DEGRADE_PARSED_PER_SCANNED_MAX,
+  );
+  const previousReusedMin = clampRatio(
+    input.state.persistentDegradeReusedPerScannedMin,
+    0.05,
+    0.95,
+    GRAPH_AUTOTUNE_DEFAULT_PERSISTENT_DEGRADE_REUSED_PER_SCANNED_MIN,
+  );
+  const previousRemovedMax = clampRatio(
+    input.state.persistentDegradeRemovedPerScannedMax,
+    0.01,
+    0.6,
+    GRAPH_AUTOTUNE_DEFAULT_PERSISTENT_DEGRADE_REMOVED_PER_SCANNED_MAX,
+  );
+  const previousAlpha = clampRatio(input.state.adaptiveLearnAlpha, 0.06, 0.32);
+  const persistentWindow = input.persistentStatus.window;
+  const persistentEntries = persistentWindow?.entries ?? 0;
+  const learnAlpha = resolveAdaptiveLearnAlpha({
+    evidenceEntries: input.graphWindowSummary.entries,
+    persistentEntries,
+    pressureUtilization: input.pressureUtilization,
+    previousAlpha,
+  });
+  let cacheThreshold = previousCacheThreshold;
+  let parsedMaxThreshold = previousParsedMax;
+  let reusedMinThreshold = previousReusedMin;
+  let removedMaxThreshold = previousRemovedMax;
+  let updated = false;
+
+  const observedCacheHitRate = input.graphWindowSummary.queryHitRate;
+  if (
+    typeof observedCacheHitRate === "number"
+    && input.graphWindowSummary.entries >= input.minEvidenceEntries
+  ) {
+    const observedTarget = clampRatio(observedCacheHitRate - 0.06, 0.08, 0.8);
+    cacheThreshold = clampRatio(
+      blendThreshold(previousCacheThreshold, observedTarget, learnAlpha),
+      0.08,
+      0.8,
+    );
+    updated = true;
+  }
+
+  const observedParsedRate = persistentWindow?.rates?.parsed_per_scanned;
+  const observedReusedRate = persistentWindow?.rates?.reused_per_scanned;
+  const observedRemovedRate = persistentWindow?.rates?.removed_per_scanned;
+  const hasPersistentEvidence =
+    input.persistentSignalsActive
+    && persistentEntries >= input.minEvidenceEntries
+    && (persistentWindow?.totals?.scanned_files ?? 0) >= GRAPH_AUTOTUNE_PERSISTENT_MIN_SCANNED_FILES;
+  if (
+    hasPersistentEvidence
+    && typeof observedParsedRate === "number"
+    && typeof observedReusedRate === "number"
+    && typeof observedRemovedRate === "number"
+  ) {
+    const parsedTarget = clampRatio(observedParsedRate + 0.05, 0.1, 0.9);
+    const reusedTarget = clampRatio(observedReusedRate - 0.08, 0.05, 0.95);
+    const removedTarget = clampRatio(observedRemovedRate + 0.04, 0.01, 0.6);
+    parsedMaxThreshold = clampRatio(
+      blendThreshold(previousParsedMax, parsedTarget, learnAlpha),
+      0.1,
+      0.9,
+    );
+    reusedMinThreshold = clampRatio(
+      blendThreshold(previousReusedMin, reusedTarget, learnAlpha),
+      0.05,
+      0.95,
+    );
+    removedMaxThreshold = clampRatio(
+      blendThreshold(previousRemovedMax, removedTarget, learnAlpha),
+      0.01,
+      0.6,
+    );
+    updated = true;
+  }
+
+  const updates = updated ? input.state.adaptiveUpdates + 1 : input.state.adaptiveUpdates;
+  return {
+    cacheQueryHitRateThreshold: cacheThreshold,
+    persistentParsedPerScannedMaxThreshold: parsedMaxThreshold,
+    persistentReusedPerScannedMinThreshold: reusedMinThreshold,
+    persistentRemovedPerScannedMaxThreshold: removedMaxThreshold,
+    learnAlpha,
+    updated,
+    source: updated ? "adaptive_ewma" : "state_reuse",
+    updates,
+  };
+}
+
+function normalizeOptionalRatio(value: number | null | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return clampRatio(value, 0, 1, fallback);
+}
+
+function normalizeOptionalCenteredRatio(
+  value: number | null | undefined,
+  center: number,
+  halfSpan: number,
+  fallback: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || halfSpan <= 0) {
+    return fallback;
+  }
+  const min = center - halfSpan;
+  const max = center + halfSpan;
+  return clampRatio((value - min) / (max - min), 0, 1, fallback);
+}
+
+function scaleGraphDelta(delta: number, scale: number): number {
+  if (!Number.isFinite(delta) || delta === 0) {
+    return 0;
+  }
+  const normalizedScale = clampRatio(scale, 0.5, 2.5, GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE);
+  const sign = delta > 0 ? 1 : -1;
+  const baseMagnitude = Math.abs(delta);
+  const scaledRaw = baseMagnitude * normalizedScale;
+  let scaledMagnitude = Math.round(scaledRaw);
+  if (baseMagnitude === 1 && normalizedScale < 0.78) {
+    scaledMagnitude = 0;
+  }
+  scaledMagnitude = Math.max(0, Math.min(3, scaledMagnitude));
+  return sign * scaledMagnitude;
+}
+
+function deriveAdaptiveGraphActionProfile(input: {
+  state: GraphQualityAutotuneState;
+  graphWindowSummary: ReturnType<typeof readGraphCacheWindowSummary>;
+  graphWindowDegradation: GraphCacheWindowDegradation;
+  persistentWindowDegradation: PersistentGraphWindowDegradation;
+  graphQualitySignals: GraphQualitySignalsSummary;
+  promptQualityWindowSummary: ReturnType<typeof readPromptQualityWindowSummary>;
+  minEvidenceEntries: number;
+}): GraphAdaptiveActionProfile {
+  const previousScale = clampRatio(
+    input.state.adaptiveActionScale,
+    0.5,
+    2.5,
+    GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE,
+  );
+  const evidenceEntries = input.graphWindowSummary.entries;
+  const evidenceQualityEntries = input.graphWindowSummary.quality.entriesWithQuality;
+  if (evidenceEntries < input.minEvidenceEntries || evidenceQualityEntries < input.minEvidenceEntries) {
+    return {
+      scale: previousScale,
+      source: "state_reuse",
+      updated: false,
+      updates: input.state.adaptiveActionUpdates,
+    };
+  }
+
+  const dependencyDepth = input.graphWindowSummary.quality.dependency.avgMaxChainDepth;
+  const dependencyMultiHop = input.graphWindowSummary.quality.dependency.multiHopRate;
+  const symbolBridge = input.graphWindowSummary.quality.symbol.bridgeCoverageRate;
+  const symbolBreadth = input.graphWindowSummary.quality.symbol.breadthCoverageRate;
+  const pressureUtilization = input.promptQualityWindowSummary.tokenBudget.averageUtilizationRatio;
+  const pressureAutoLimitRate = input.promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate;
+  const pressureSemanticRate =
+    input.promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate;
+  const preSendOverflowRatio = input.promptQualityWindowSummary.signalAverages?.preSendOverflowRatio ?? null;
+  const strategyOutcomes = input.promptQualityWindowSummary.strategyOutcomes;
+  const hardBudgetRecoveryRate = strategyOutcomes.hardBudgetRecoveryRate;
+  const qualityFirstImprovedRate = strategyOutcomes.qualityFirstImprovedRate;
+  const hardBudgetFollowupDelta = strategyOutcomes.hardBudgetFollowupOverallDelta;
+  const qualityFirstFollowupDelta = strategyOutcomes.qualityFirstFollowupOverallDelta;
+  const strategyTransitionCount =
+    (strategyOutcomes.hardBudgetTransitions ?? 0) + (strategyOutcomes.qualityFirstTransitions ?? 0);
+
+  const dependencyScore = clampRatio(
+    normalizeOptionalRatio(
+      typeof dependencyDepth === "number"
+        ? dependencyDepth / 4
+        : null,
+      0.5,
+    ) * 0.45
+    + normalizeOptionalRatio(dependencyMultiHop, 0.5) * 0.55,
+    0,
+    1,
+    0.5,
+  );
+  const symbolScore = clampRatio(
+    normalizeOptionalRatio(symbolBridge, 0.5) * 0.5
+    + normalizeOptionalRatio(symbolBreadth, 0.5) * 0.5,
+    0,
+    1,
+    0.5,
+  );
+  const qualityScore = clampRatio(dependencyScore * 0.55 + symbolScore * 0.45, 0, 1, 0.5);
+
+  const utilizationPressure = normalizeOptionalRatio(
+    typeof pressureUtilization === "number"
+      ? (pressureUtilization - 0.62) / 0.34
+      : null,
+    0.5,
+  );
+  const pressureScore = clampRatio(
+    utilizationPressure * 0.55
+    + normalizeOptionalRatio(pressureAutoLimitRate, 0.35) * 0.25
+    + normalizeOptionalRatio(pressureSemanticRate, 0.3) * 0.15
+    + normalizeOptionalRatio(preSendOverflowRatio, 0.3) * 0.05,
+    0,
+    1,
+    0.5,
+  );
+  const rewardBaseScore = clampRatio(
+    normalizeOptionalRatio(input.promptQualityWindowSummary.averageScores?.overall ?? null, 0.5) * 0.4
+    + (1 - normalizeOptionalRatio(input.promptQualityWindowSummary.lowQualityRate, 0.5)) * 0.24
+    + normalizeOptionalRatio(hardBudgetRecoveryRate, 0.5) * 0.18
+    + normalizeOptionalRatio(qualityFirstImprovedRate, 0.5) * 0.18,
+    0,
+    1,
+    0.5,
+  );
+  const rewardTrendScore = clampRatio(
+    normalizeOptionalCenteredRatio(hardBudgetFollowupDelta, 0, 0.2, 0.5) * 0.5
+    + normalizeOptionalCenteredRatio(qualityFirstFollowupDelta, 0, 0.2, 0.5) * 0.5,
+    0,
+    1,
+    0.5,
+  );
+  const rewardScore = clampRatio(rewardBaseScore * 0.72 + rewardTrendScore * 0.28, 0, 1, 0.5);
+  const rewardReliability = clampRatio(0.25 + (strategyTransitionCount / 12) * 0.75, 0.25, 1, 0.25);
+
+  let targetScale = GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE;
+  if (input.graphQualitySignals.state === "degraded") {
+    targetScale += 0.28;
+  } else if (input.graphQualitySignals.state === "watch") {
+    targetScale += 0.12;
+  }
+  if (input.graphWindowDegradation.degraded) {
+    targetScale += 0.16;
+  }
+  if (input.persistentWindowDegradation.degraded) {
+    targetScale -= 0.22;
+  }
+  if (qualityScore <= 0.42 && pressureScore <= 0.72) {
+    targetScale += 0.12;
+  }
+  if (qualityScore >= 0.78 && pressureScore <= 0.55) {
+    targetScale -= 0.08;
+  }
+  if (pressureScore >= 0.78) {
+    targetScale -= (pressureScore - 0.78) * 0.9;
+  }
+  if (rewardReliability >= 0.45) {
+    if (rewardScore <= 0.42) {
+      targetScale += (0.42 - rewardScore) * 0.35;
+    } else if (rewardScore >= 0.72) {
+      targetScale -= (rewardScore - 0.72) * 0.28;
+    }
+  }
+  if (rewardReliability >= 0.55) {
+    if (rewardTrendScore <= 0.38) {
+      targetScale += 0.08;
+    } else if (rewardTrendScore >= 0.66 && pressureScore >= 0.7) {
+      targetScale -= 0.06;
+    }
+  }
+  targetScale = clampRatio(targetScale, 0.5, 2.5, GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE);
+
+  const evidenceScore = clampRatio(
+    (evidenceEntries + evidenceQualityEntries) / Math.max(24, input.minEvidenceEntries * 6),
+    0,
+    1,
+  );
+  const divergence = clampRatio(Math.abs(targetScale - previousScale), 0, 1.5) / 1.5;
+  const learnAlpha = clampRatio(
+    0.09 + evidenceScore * 0.17 + divergence * 0.11 - pressureScore * 0.07 + rewardReliability * 0.05,
+    0.06,
+    0.3,
+    0.14,
+  );
+  const rawNextScale = clampRatio(
+    blendThreshold(previousScale, targetScale, learnAlpha),
+    0.5,
+    2.5,
+    GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE,
+  );
+  const maxDelta = clampNumber(
+    0.09 + evidenceScore * 0.14 + rewardReliability * 0.07 - pressureScore * 0.05,
+    0.08,
+    0.28,
+    0.14,
+  );
+  const boundedDelta = clampNumber(rawNextScale - previousScale, -maxDelta, maxDelta, 0);
+  const nextScale = clampRatio(
+    previousScale + boundedDelta,
+    0.5,
+    2.5,
+    GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE,
+  );
+  const updated = Math.abs(nextScale - previousScale) >= 0.01;
+  const boundedByGuard = Math.abs(rawNextScale - nextScale) >= 0.01;
+  return {
+    scale: nextScale,
+    source: updated
+      ? (boundedByGuard ? "adaptive_action_ewma_guarded" : "adaptive_action_ewma")
+      : "state_reuse",
+    updated,
+    updates: updated ? input.state.adaptiveActionUpdates + 1 : input.state.adaptiveActionUpdates,
+  };
+}
+
+function normalizePathForPrefix(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function isWorkDirWithinRepoRoot(workDir: string, rootPath?: string): boolean {
+  if (!rootPath || rootPath.trim().length === 0) {
+    return false;
+  }
+  const normalizedRoot = normalizePathForPrefix(rootPath.trim());
+  const normalizedWorkDir = normalizePathForPrefix(workDir.trim());
+  if (!normalizedRoot || !normalizedWorkDir) {
+    return false;
+  }
+  return normalizedWorkDir === normalizedRoot || normalizedWorkDir.startsWith(`${normalizedRoot}/`);
+}
+
 function formatOptionalMetric(value: number | null): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return "<none>";
@@ -283,6 +721,12 @@ function resolveGraphQualityAutotuneDecision(input: {
   baseConfig: ContextEngineConfig;
   allowProactiveCompaction: boolean;
   graphWindowSummary: ReturnType<typeof readGraphCacheWindowSummary>;
+  graphWindowDegradation: GraphCacheWindowDegradation;
+  persistentWindowDegradation: PersistentGraphWindowDegradation;
+  graphQualitySignals: GraphQualitySignalsSummary;
+  persistentSignalsActive: boolean;
+  adaptiveThresholds: GraphAdaptiveThresholdProfile;
+  adaptiveAction: GraphAdaptiveActionProfile;
   promptQualityWindowSummary: ReturnType<typeof readPromptQualityWindowSummary>;
   state: GraphQualityAutotuneState;
 }): GraphQualityAutotuneDecision {
@@ -314,6 +758,8 @@ function resolveGraphQualityAutotuneDecision(input: {
     symbolRowsTo: symbolRowsFrom,
     evidenceEntries: input.graphWindowSummary.entries,
     evidenceQualityEntries: input.graphWindowSummary.quality.entriesWithQuality,
+    evidencePersistentEntries: input.persistentWindowDegradation.observedEntries,
+    graphQualitySignals: input.graphQualitySignals,
     stateBefore,
     stateAfter,
     metrics: {
@@ -324,6 +770,26 @@ function resolveGraphQualityAutotuneDecision(input: {
       pressureUtilization,
       pressureAutoLimitRate,
       pressureSemanticRate,
+      graphCacheDegraded: input.graphWindowDegradation.degraded,
+      graphCacheReason: input.graphWindowDegradation.reason,
+      graphCacheQueryHitRate: input.graphWindowDegradation.observedQueryHitRate,
+      persistentDegraded: input.persistentWindowDegradation.degraded,
+      persistentReason: input.persistentWindowDegradation.reason,
+      persistentParsedPerScanned: input.persistentWindowDegradation.observedParsedPerScanned,
+      persistentReusedPerScanned: input.persistentWindowDegradation.observedReusedPerScanned,
+      persistentRemovedPerScanned: input.persistentWindowDegradation.observedRemovedPerScanned,
+      adaptiveCacheThreshold: input.adaptiveThresholds.cacheQueryHitRateThreshold,
+      adaptiveParsedMaxThreshold: input.adaptiveThresholds.persistentParsedPerScannedMaxThreshold,
+      adaptiveReusedMinThreshold: input.adaptiveThresholds.persistentReusedPerScannedMinThreshold,
+      adaptiveRemovedMaxThreshold: input.adaptiveThresholds.persistentRemovedPerScannedMaxThreshold,
+      adaptiveAlpha: input.adaptiveThresholds.learnAlpha,
+      adaptiveSource: input.adaptiveThresholds.source,
+      adaptiveUpdated: input.adaptiveThresholds.updated,
+      adaptiveUpdates: input.adaptiveThresholds.updates,
+      adaptiveActionScale: input.adaptiveAction.scale,
+      adaptiveActionSource: input.adaptiveAction.source,
+      adaptiveActionUpdated: input.adaptiveAction.updated,
+      adaptiveActionUpdates: input.adaptiveAction.updates,
     },
   };
 
@@ -352,9 +818,17 @@ function resolveGraphQualityAutotuneDecision(input: {
     2,
     Math.min(64, input.baseConfig.promptQuality?.degradeMinEntries ?? 8),
   );
+  const hasGraphEvidence =
+    input.graphWindowSummary.entries >= minEvidenceEntries
+    && input.graphWindowSummary.quality.entriesWithQuality >= minEvidenceEntries;
+  const hasPersistentEvidence =
+    input.persistentSignalsActive
+    && input.persistentWindowDegradation.observedEntries >= minEvidenceEntries
+    && input.persistentWindowDegradation.observedScannedFiles
+      >= input.persistentWindowDegradation.minScannedFiles;
   if (
-    input.graphWindowSummary.entries < minEvidenceEntries
-    || input.graphWindowSummary.quality.entriesWithQuality < minEvidenceEntries
+    !hasGraphEvidence
+    && !hasPersistentEvidence
   ) {
     return applyStateNoAction("insufficient_evidence");
   }
@@ -416,6 +890,61 @@ function resolveGraphQualityAutotuneDecision(input: {
     dependencyDelta = Math.min(dependencyDelta, 1);
     symbolDelta = Math.min(symbolDelta, 1);
   }
+  if (input.persistentSignalsActive) {
+    if (input.persistentWindowDegradation.degraded) {
+      reasonParts.push("persistent_churn");
+      dependencyDelta = Math.min(dependencyDelta, 0);
+      symbolDelta = Math.min(symbolDelta, 0);
+      const parsedRate = input.persistentWindowDegradation.observedParsedPerScanned;
+      const reusedRate = input.persistentWindowDegradation.observedReusedPerScanned;
+      const removedRate = input.persistentWindowDegradation.observedRemovedPerScanned;
+      const severePersistent =
+        (typeof parsedRate === "number" && parsedRate >= 0.6)
+        || (typeof reusedRate === "number" && reusedRate <= 0.4)
+        || (typeof removedRate === "number" && removedRate >= 0.3);
+      if (severePersistent) {
+        dependencyDelta -= 1;
+        symbolDelta -= 1;
+      }
+    } else {
+      const lowPressure =
+        (typeof pressureUtilization !== "number" || pressureUtilization <= 0.75)
+        && (typeof pressureAutoLimitRate !== "number" || pressureAutoLimitRate <= 0.2)
+        && (typeof pressureSemanticRate !== "number" || pressureSemanticRate <= 0.3);
+      const persistentStrong =
+        typeof input.persistentWindowDegradation.observedReusedPerScanned === "number"
+        && input.persistentWindowDegradation.observedReusedPerScanned >= 0.75
+        && typeof input.persistentWindowDegradation.observedParsedPerScanned === "number"
+        && input.persistentWindowDegradation.observedParsedPerScanned <= 0.25
+        && typeof input.persistentWindowDegradation.observedRemovedPerScanned === "number"
+        && input.persistentWindowDegradation.observedRemovedPerScanned <= 0.08;
+      if (lowPressure && persistentStrong && strongDependency && strongSymbol) {
+        reasonParts.push("stable_quality_compact");
+        dependencyDelta -= 1;
+        symbolDelta -= 1;
+      }
+    }
+  }
+  if (input.graphQualitySignals.state === "degraded") {
+    reasonParts.push("graph_signals_degraded");
+    dependencyDelta = Math.min(dependencyDelta, 0) - (input.baseConfig.dependencyGraph.enabled ? 1 : 0);
+    symbolDelta = Math.min(symbolDelta, 0) - (input.baseConfig.symbolGraph.enabled ? 1 : 0);
+  } else if (input.graphQualitySignals.state === "watch") {
+    reasonParts.push("graph_signals_watch");
+    dependencyDelta = Math.min(dependencyDelta, 1);
+    symbolDelta = Math.min(symbolDelta, 1);
+  }
+
+  if (Math.abs(input.adaptiveAction.scale - GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE) >= 0.08) {
+    reasonParts.push(
+      input.adaptiveAction.scale > GRAPH_AUTOTUNE_DEFAULT_ACTION_SCALE
+        ? "adaptive_action_expand"
+        : "adaptive_action_compact",
+    );
+  }
+
+  dependencyDelta = scaleGraphDelta(dependencyDelta, input.adaptiveAction.scale);
+  symbolDelta = scaleGraphDelta(symbolDelta, input.adaptiveAction.scale);
 
   const dependencyRowsTo = input.baseConfig.dependencyGraph.enabled
     ? clampGraphRows(dependencyRowsFrom + dependencyDelta)
@@ -928,15 +1457,6 @@ function shouldRetryWithKimiBuiltinFallback(input: {
   return true;
 }
 
-function extractFirstUrl(raw: string): string | undefined {
-  const match = raw.match(/https?:\/\/[^\s)]+/i);
-  if (!match || typeof match[0] !== "string") {
-    return undefined;
-  }
-  const normalized = match[0].trim();
-  return normalized.length > 0 ? normalized : undefined;
-}
-
 function sleepAsync(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (!Number.isFinite(delayMs) || delayMs <= 0) {
     return Promise.resolve();
@@ -1156,6 +1676,16 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
       const sessionKey = input.getSessionKey();
       input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
+      const parsedSession = parseSessionKeyPartsLoose(sessionKey);
+      if (!parsedSession) {
+        const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+        input.setGaState(gaState);
+        input.updateActiveSessionGaState(gaState);
+        await input.persistSessionRegistryState();
+        input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
+        return 1;
+      }
+      const [sessionPlatformRaw, sessionTenant, sessionScopeRaw, sessionSubject] = parsedSession;
       if (consumeInterruptFlag(input.interruptStorePath, sessionKey)) {
         input.writeStdout(renderManagementInterruptNotice(interactiveMode));
         return 0;
@@ -1191,23 +1721,90 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         workDir: input.workDir,
         size: graphAutotuneWindowSize,
       });
+      const persistentGraphStatus = readPersistentGraphIndexStatus({
+        workDir: input.workDir,
+        windowSize: graphAutotuneWindowSize,
+      });
+      const persistentSignalsActive = isWorkDirWithinRepoRoot(
+        input.workDir,
+        typeof persistentGraphStatus.root_path === "string"
+          ? persistentGraphStatus.root_path
+          : undefined,
+      );
+      const minGraphEvidenceEntries = Math.max(2, promptQualityConfig?.degradeMinEntries ?? 8);
       const graphAutotuneState = readGraphQualityAutotuneState({
         workDir: input.workDir,
+      });
+      const adaptiveThresholds = deriveAdaptiveGraphThresholdProfile({
+        state: graphAutotuneState,
+        graphWindowSummary,
+        persistentStatus: persistentSignalsActive ? persistentGraphStatus : { enabled: false },
+        persistentSignalsActive,
+        minEvidenceEntries: minGraphEvidenceEntries,
+        pressureUtilization: promptQualityWindowSummary.tokenBudget.averageUtilizationRatio,
+      });
+      const graphWindowDegradation = assessGraphCacheWindowDegradation({
+        summary: graphWindowSummary,
+        thresholdQueryHitRate: adaptiveThresholds.cacheQueryHitRateThreshold,
+        minEntries: minGraphEvidenceEntries,
+      });
+      const persistentWindowDegradation = assessPersistentGraphWindowDegradation({
+        status: persistentSignalsActive ? persistentGraphStatus : { enabled: false },
+        thresholdParsedPerScannedMax: adaptiveThresholds.persistentParsedPerScannedMaxThreshold,
+        thresholdReusedPerScannedMin: adaptiveThresholds.persistentReusedPerScannedMinThreshold,
+        thresholdRemovedPerScannedMax: adaptiveThresholds.persistentRemovedPerScannedMaxThreshold,
+        minEntries: minGraphEvidenceEntries,
+        minScannedFiles: GRAPH_AUTOTUNE_PERSISTENT_MIN_SCANNED_FILES,
+      });
+      const graphQualitySignals = deriveGraphQualitySignals({
+        cacheWindow: graphWindowDegradation,
+        persistentWindow: persistentWindowDegradation,
+      });
+      const adaptiveAction = deriveAdaptiveGraphActionProfile({
+        state: graphAutotuneState,
+        graphWindowSummary,
+        graphWindowDegradation,
+        persistentWindowDegradation,
+        graphQualitySignals,
+        promptQualityWindowSummary,
+        minEvidenceEntries: minGraphEvidenceEntries,
       });
       const graphAutotuneDecision = resolveGraphQualityAutotuneDecision({
         baseConfig: input.contextEngineConfig,
         allowProactiveCompaction,
         graphWindowSummary,
+        graphWindowDegradation,
+        persistentWindowDegradation,
+        graphQualitySignals,
+        persistentSignalsActive,
+        adaptiveThresholds,
+        adaptiveAction,
         promptQualityWindowSummary,
         state: graphAutotuneState,
       });
+      const graphAutotuneStatePersisted: GraphQualityAutotuneState = {
+        ...graphAutotuneDecision.stateAfter,
+        cacheDegradeQueryHitRateThreshold: adaptiveThresholds.cacheQueryHitRateThreshold,
+        persistentDegradeParsedPerScannedMax:
+          adaptiveThresholds.persistentParsedPerScannedMaxThreshold,
+        persistentDegradeReusedPerScannedMin:
+          adaptiveThresholds.persistentReusedPerScannedMinThreshold,
+        persistentDegradeRemovedPerScannedMax:
+          adaptiveThresholds.persistentRemovedPerScannedMaxThreshold,
+        adaptiveLearnAlpha: adaptiveThresholds.learnAlpha,
+        adaptiveUpdates: adaptiveThresholds.updates,
+        adaptiveSource: adaptiveThresholds.source,
+        adaptiveActionScale: adaptiveAction.scale,
+        adaptiveActionUpdates: adaptiveAction.updates,
+        adaptiveActionSource: adaptiveAction.source,
+      };
       writeGraphQualityAutotuneState({
         workDir: input.workDir,
-        state: graphAutotuneDecision.stateAfter,
+        state: graphAutotuneStatePersisted,
       });
       if (graphAutotuneDecision.changed || graphAutotuneDecision.suppressedBy !== "none") {
         input.writeStderr(
-          `[context-engine] event=graph_quality_autotune action=${graphAutotuneDecision.action} reason=${graphAutotuneDecision.reason} suppressed=${graphAutotuneDecision.suppressedBy} dep_rows=${String(graphAutotuneDecision.dependencyRowsFrom)}->${String(graphAutotuneDecision.dependencyRowsTo)} symbol_rows=${String(graphAutotuneDecision.symbolRowsFrom)}->${String(graphAutotuneDecision.symbolRowsTo)} entries=${String(graphAutotuneDecision.evidenceEntries)} quality_entries=${String(graphAutotuneDecision.evidenceQualityEntries)} hold=${String(graphAutotuneDecision.stateBefore.holdTurnsRemaining)}->${String(graphAutotuneDecision.stateAfter.holdTurnsRemaining)} direction=${graphAutotuneDecision.stateBefore.lastDirection}->${graphAutotuneDecision.stateAfter.lastDirection} downshift_warmup=${String(graphAutotuneDecision.stateBefore.downshiftWarmupStreak)}->${String(graphAutotuneDecision.stateAfter.downshiftWarmupStreak)} dep_depth=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyDepth)} dep_multi_hop=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyMultiHopRate)} symbol_bridge=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBridgeCoverageRate)} symbol_breadth=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBreadthCoverageRate)} pressure_utilization=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureUtilization)} pressure_auto_limit=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureAutoLimitRate)} pressure_semantic=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureSemanticRate)}\n`,
+          `[context-engine] event=graph_quality_autotune action=${graphAutotuneDecision.action} reason=${graphAutotuneDecision.reason} suppressed=${graphAutotuneDecision.suppressedBy} dep_rows=${String(graphAutotuneDecision.dependencyRowsFrom)}->${String(graphAutotuneDecision.dependencyRowsTo)} symbol_rows=${String(graphAutotuneDecision.symbolRowsFrom)}->${String(graphAutotuneDecision.symbolRowsTo)} entries=${String(graphAutotuneDecision.evidenceEntries)} quality_entries=${String(graphAutotuneDecision.evidenceQualityEntries)} persistent_entries=${String(graphAutotuneDecision.evidencePersistentEntries)} hold=${String(graphAutotuneDecision.stateBefore.holdTurnsRemaining)}->${String(graphAutotuneDecision.stateAfter.holdTurnsRemaining)} direction=${graphAutotuneDecision.stateBefore.lastDirection}->${graphAutotuneDecision.stateAfter.lastDirection} downshift_warmup=${String(graphAutotuneDecision.stateBefore.downshiftWarmupStreak)}->${String(graphAutotuneDecision.stateAfter.downshiftWarmupStreak)} dep_depth=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyDepth)} dep_multi_hop=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyMultiHopRate)} symbol_bridge=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBridgeCoverageRate)} symbol_breadth=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBreadthCoverageRate)} pressure_utilization=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureUtilization)} pressure_auto_limit=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureAutoLimitRate)} pressure_semantic=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureSemanticRate)} cache_guard=${graphAutotuneDecision.metrics.graphCacheDegraded ? "degraded" : "ok"}:${graphAutotuneDecision.metrics.graphCacheReason} cache_query_hit_rate=${formatOptionalMetric(graphAutotuneDecision.metrics.graphCacheQueryHitRate)} persistent_guard=${graphAutotuneDecision.metrics.persistentDegraded ? "degraded" : "ok"}:${graphAutotuneDecision.metrics.persistentReason} persistent_rates=${formatOptionalMetric(graphAutotuneDecision.metrics.persistentParsedPerScanned)}/${formatOptionalMetric(graphAutotuneDecision.metrics.persistentReusedPerScanned)}/${formatOptionalMetric(graphAutotuneDecision.metrics.persistentRemovedPerScanned)} graph_signal_state=${graphAutotuneDecision.graphQualitySignals.state} graph_signal_reason=${graphAutotuneDecision.graphQualitySignals.reason} adaptive_threshold_source=${graphAutotuneDecision.metrics.adaptiveSource} adaptive_updated=${graphAutotuneDecision.metrics.adaptiveUpdated ? "true" : "false"} adaptive_alpha=${graphAutotuneDecision.metrics.adaptiveAlpha.toFixed(3)} adaptive_updates=${String(graphAutotuneDecision.metrics.adaptiveUpdates)} adaptive_thresholds=${graphAutotuneDecision.metrics.adaptiveCacheThreshold.toFixed(3)}/${graphAutotuneDecision.metrics.adaptiveParsedMaxThreshold.toFixed(3)}/${graphAutotuneDecision.metrics.adaptiveReusedMinThreshold.toFixed(3)}/${graphAutotuneDecision.metrics.adaptiveRemovedMaxThreshold.toFixed(3)} adaptive_action_source=${graphAutotuneDecision.metrics.adaptiveActionSource} adaptive_action_updated=${graphAutotuneDecision.metrics.adaptiveActionUpdated ? "true" : "false"} adaptive_action_scale=${graphAutotuneDecision.metrics.adaptiveActionScale.toFixed(3)} adaptive_action_updates=${String(graphAutotuneDecision.metrics.adaptiveActionUpdates)}\n`,
         );
       }
       const graphCacheStatsBefore = readContextGraphCacheStats();
@@ -1412,11 +2009,41 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       });
       if (askUserTurnContext.resolvedEvent.length > 0) {
         input.writeStderr(askUserTurnContext.resolvedEvent);
+        if (askUserTurnContext.resolvedAsk) {
+          const resolvedAsk = askUserTurnContext.resolvedAsk;
+          const ingestResult = input.memoryOrchestrator.ingest({
+            eventType: "ask_user_resolved",
+            sessionKey,
+            text:
+              `[ask-user-resolved] question=${resolvedAsk.envelope.question} answer=${resolvedAsk.answer} blocking_node=${resolvedAsk.envelope.blockingNodeId}`,
+            executionVerified: true,
+            evidenceRef: {
+              source: `ask_user:${resolvedAsk.envelope.questionId}`,
+            },
+            tags: ["ask_user", "clarification"],
+            confidence: 0.82,
+          });
+          for (const event of ingestResult.stderrEvents) {
+            input.writeStderr(event);
+          }
+        }
       }
-    const experienceRecall = input.experiencePoolRuntime.buildRecallPrompt({
-      sessionKey,
-      userText,
-    });
+      const memoryInject = input.memoryOrchestrator.injectContext({
+        sessionKey,
+        userText,
+        targetTokenLimit,
+        tenant: sessionTenant,
+        user: sessionSubject,
+        includeLineage: input.contextEngineConfig.lineage.enabled,
+        lineageMaxRows: input.contextEngineConfig.lineage.maxRows,
+        lineageMaxCommits: input.contextEngineConfig.lineage.maxCommits,
+        lineageCacheTtlMs: input.contextEngineConfig.lineage.cacheTtlMs,
+        workDir: input.workDir,
+      });
+      for (const event of memoryInject.stderrEvents) {
+        input.writeStderr(event);
+      }
+      const promptParts = [...askUserTurnContext.promptParts, ...memoryInject.promptParts];
     const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
     const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
     const providerKind = resolvePrimaryProviderKind(input);
@@ -1432,16 +2059,6 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         userText,
         mcpServerNames: input.mcpInstructionServerNames,
       });
-      const promptContext = applyLearnedPromptContext({
-        promptParts: askUserTurnContext.promptParts,
-        userText,
-        gaSkillCards: input.gaMechanismRuntime.listSkillCards(sessionKey),
-        experienceRecall,
-      });
-      for (const event of promptContext.stderrEvents) {
-        input.writeStderr(event);
-      }
-      const promptParts = promptContext.promptParts;
     const askUserClarificationHint = input.gaMechanismRuntime.buildAskUserClarificationHint(sessionKey, userText);
     if (askUserClarificationHint.length > 0) {
       promptParts.push(askUserClarificationHint);
@@ -1772,16 +2389,6 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         );
       }
     }
-      const parsedSession = parseSessionKeyPartsLoose(sessionKey);
-      if (!parsedSession) {
-        const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
-        input.setGaState(gaState);
-        input.updateActiveSessionGaState(gaState);
-        await input.persistSessionRegistryState();
-        input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
-        return 1;
-      }
-
     const providers = input.runtimeProviderChain.length > 0
       ? input.runtimeProviderChain
       : [{
@@ -1858,10 +2465,10 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
                     report = await runGatewayTurn(
                       turnPrompt,
                     {
-                      platform: parsePlatform(parsedSession[0]),
-                      tenant: parsedSession[1],
-                    scope: parseScope(parsedSession[2]),
-                    subject: parsedSession[3],
+                      platform: parsePlatform(sessionPlatformRaw),
+                      tenant: sessionTenant,
+                    scope: parseScope(sessionScopeRaw),
+                    subject: sessionSubject,
                   },
                   {
                     actorId: process.env.USER ?? input.subject,
@@ -2014,38 +2621,18 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
           );
           input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");
         } else {
-          input.gaMechanismRuntime.registerTurnSuccess({
+          const feedback = input.memoryOrchestrator.feedback({
+            type: "turn_success",
             sessionKey,
             userText,
             assistantText: report.assistantMessage,
             traceId: report.traceId,
+            requestId: report.requestId,
             providerName: provider.name,
             verificationPass: report.verification.pass,
           });
-          const experienceEvidenceRef = {
-            traceId: report.traceId,
-            runId: report.requestId,
-            url: extractFirstUrl(userText),
-            sourceType: "turn_success",
-            capturedAt: nowIso(),
-          };
-          const experiencePublish = input.experiencePoolRuntime.registerTurnSuccess({
-            sessionKey,
-            userText,
-            assistantText: report.assistantMessage,
-            traceId: report.traceId,
-            providerName: provider.name,
-            verificationPass: report.verification.pass,
-            evidenceRef: experienceEvidenceRef,
-          });
-          if (experiencePublish.skipped) {
-            input.writeStderr(
-              `[experience] event=publish_skipped reason=${experiencePublish.reason ?? "unknown"} gate_verification=${experiencePublish.verificationPassed ? "pass" : "fail"} gate_evidence_ref=${experiencePublish.evidenceRefPassed ? "pass" : "fail"} gate_redaction=${experiencePublish.redactionPassed ? "pass" : "fail"}\n`,
-            );
-          } else {
-            input.writeStderr(
-              `[experience] event=published id=${experiencePublish.recordId ?? "<unknown>"} created=${experiencePublish.created ? "true" : "false"} confidence=${typeof experiencePublish.confidence === "number" ? experiencePublish.confidence.toFixed(2) : "n/a"} gate_verification=${experiencePublish.verificationPassed ? "pass" : "fail"} gate_evidence_ref=${experiencePublish.evidenceRefPassed ? "pass" : "fail"} gate_redaction=${experiencePublish.redactionPassed ? "pass" : "fail"}\n`,
-            );
+          for (const event of feedback.stderrEvents) {
+            input.writeStderr(event);
           }
         }
           await recordTurn(userText, assistantTextForHistory, stickyProvider, providerStates);
@@ -2067,17 +2654,15 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
         );
           if (!report.verification.pass) {
             input.onVerificationFailure();
-            const experienceFeedback = input.experiencePoolRuntime.registerTurnFailure({
+            const feedback = input.memoryOrchestrator.feedback({
+              type: "verification_failure",
               sessionKey,
               userText,
               providerName: provider.name,
-              errorClass: "verification_failed",
               errorMessage: "turn verification failed",
             });
-            if (experienceFeedback.matched) {
-              input.writeStderr(
-                `[experience] event=failure_feedback id=${experienceFeedback.recordId ?? "<unknown>"} score=${typeof experienceFeedback.score === "number" ? experienceFeedback.score.toFixed(2) : "n/a"} confidence=${typeof experienceFeedback.confidence === "number" ? experienceFeedback.confidence.toFixed(2) : "n/a"} quarantined=${experienceFeedback.quarantined ? "true" : "false"}\n`,
-              );
+            for (const event of feedback.stderrEvents) {
+              input.writeStderr(event);
             }
           }
           const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
@@ -2106,28 +2691,21 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
               }
               return TURN_INTERRUPTED_EXIT_CODE;
             }
-            failures.push({
-              providerName: provider.name,
-              errorClass,
-            errorMessage: compactMessage,
-          });
-          input.gaMechanismRuntime.registerTurnFailure({
-            sessionKey,
+          failures.push({
             providerName: provider.name,
             errorClass,
             errorMessage: compactMessage,
           });
-          const experienceFeedback = input.experiencePoolRuntime.registerTurnFailure({
+          const feedback = input.memoryOrchestrator.feedback({
+            type: "turn_failure",
             sessionKey,
             userText,
             providerName: provider.name,
             errorClass,
             errorMessage: compactMessage,
           });
-          if (experienceFeedback.matched) {
-            input.writeStderr(
-              `[experience] event=failure_feedback id=${experienceFeedback.recordId ?? "<unknown>"} score=${typeof experienceFeedback.score === "number" ? experienceFeedback.score.toFixed(2) : "n/a"} confidence=${typeof experienceFeedback.confidence === "number" ? experienceFeedback.confidence.toFixed(2) : "n/a"} quarantined=${experienceFeedback.quarantined ? "true" : "false"}\n`,
-            );
+          for (const event of feedback.stderrEvents) {
+            input.writeStderr(event);
           }
           const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);
           updateProviderEwmaState({
