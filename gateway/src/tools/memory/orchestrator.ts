@@ -35,11 +35,19 @@ export interface MemoryOrchestratorGaSkillCard {
 export interface MemoryOrchestratorExperienceRecord {
   id: string;
   user: string;
+  taskSignature?: string;
+  taskType?: string;
+  scenarioTags?: readonly string[];
   summary: string;
   sop: readonly string[];
+  reuseGuardrails?: readonly string[];
   confidence: number;
   successCount: number;
   failureCount: number;
+  recoverySuccessCount?: number;
+  consecutiveFailureCount?: number;
+  lastFailureClass?: string;
+  lastSuccessStrategy?: string;
   state: "active" | "quarantined" | "disabled";
 }
 
@@ -71,6 +79,7 @@ export interface MemoryOrchestratorExperienceFailureResult {
   score?: number;
   confidence?: number;
   quarantined?: boolean;
+  conflictIsolated?: boolean;
 }
 
 export interface MemoryOrchestratorGaAdapter {
@@ -154,6 +163,8 @@ export interface MemoryOrchestratorExperienceAdapter {
     providerName: string;
     errorClass: string;
     errorMessage: string;
+    failureStage?: "planning" | "implementation" | "verification" | "runtime" | "unknown";
+    toolContext?: string;
   }): MemoryOrchestratorExperienceFailureResult;
 }
 
@@ -222,6 +233,8 @@ export type MemoryOrchestratorFeedbackInput =
     errorClass: string;
     errorMessage: string;
     traceId?: string;
+    failureStage?: "planning" | "implementation" | "verification" | "runtime" | "unknown";
+    toolContext?: string;
   }
   | {
     type: "verification_failure";
@@ -539,18 +552,45 @@ function scoreTeamExperienceRelevance(input: {
 }): number {
   const userTokens = tokenize(input.userText);
   const summary = input.row.record.summary.toLowerCase();
+  const taskSignature = (input.row.record.taskSignature ?? "").toLowerCase();
+  const taskType = (input.row.record.taskType ?? "").toLowerCase();
+  const scenarioTags = (input.row.record.scenarioTags ?? []).map((item) => item.toLowerCase());
   let overlap = 0;
+  let taskOverlap = 0;
+  let scenarioOverlap = 0;
   for (const token of userTokens) {
     if (summary.includes(token)) {
       overlap += 1;
     }
+    if (taskSignature.includes(token)) {
+      taskOverlap += 1;
+    }
+    if (scenarioTags.some((tag) => tag.includes(token) || token.includes(tag))) {
+      scenarioOverlap += 1;
+    }
   }
   const overlapScore = overlap * 10;
+  const taskScore = taskOverlap * 12;
+  const scenarioScore = scenarioOverlap * 8;
+  const taskTypeScore = taskType && input.userText.toLowerCase().includes(taskType) ? 8 : 0;
   const baseScore = input.row.score;
   const confidenceScore = clamp(input.row.record.confidence, 0, 1) * 25;
   const successBoost = Math.min(20, input.row.record.successCount * 2.5);
   const failurePenalty = Math.min(18, input.row.record.failureCount * 3);
-  return Number((baseScore + overlapScore + confidenceScore + successBoost - failurePenalty).toFixed(4));
+  const recoveryBoost = Math.min(12, (input.row.record.recoverySuccessCount ?? 0) * 2.5);
+  const instabilityPenalty = Math.min(14, (input.row.record.consecutiveFailureCount ?? 0) * 4);
+  return Number((
+    baseScore
+    + overlapScore
+    + taskScore
+    + scenarioScore
+    + taskTypeScore
+    + confidenceScore
+    + successBoost
+    + recoveryBoost
+    - failurePenalty
+    - instabilityPenalty
+  ).toFixed(4));
 }
 
 function fitBlockToTokens(rawBlock: string, maxTokens: number): {
@@ -699,7 +739,14 @@ export function createMemoryOrchestrator(input: CreateMemoryOrchestratorInput): 
         const sopPreview = row.record.sop.length > 0
           ? ` sop=${row.record.sop.slice(0, 3).join(" -> ")}`
           : "";
-        return `- team_exp#${String(index + 1)} user=${row.record.user} score=${row.weightedScore.toFixed(2)} confidence=${row.record.confidence.toFixed(2)} summary=${compactLine(row.record.summary, 140)}${sopPreview}`;
+        const taskPreview = row.record.taskType ? ` task=${row.record.taskType}` : "";
+        const scenarioPreview = row.record.scenarioTags && row.record.scenarioTags.length > 0
+          ? ` scenario=${row.record.scenarioTags.slice(0, 2).join(",")}`
+          : "";
+        const recoveryPreview = typeof row.record.recoverySuccessCount === "number"
+          ? ` recovery=${String(row.record.recoverySuccessCount)}`
+          : "";
+        return `- team_exp#${String(index + 1)} user=${row.record.user} score=${row.weightedScore.toFixed(2)} confidence=${row.record.confidence.toFixed(2)} summary=${compactLine(row.record.summary, 140)}${taskPreview}${scenarioPreview}${recoveryPreview}${sopPreview}`;
       });
 
     return {
@@ -1130,10 +1177,11 @@ export function createMemoryOrchestrator(input: CreateMemoryOrchestratorInput): 
           providerName: request.providerName,
           errorClass: "verification_failed",
           errorMessage: request.errorMessage,
+          failureStage: "verification",
         });
         if (failure.matched) {
           stderrEvents.push(
-            `[experience] event=failure_feedback id=${failure.recordId ?? "<unknown>"} score=${typeof failure.score === "number" ? failure.score.toFixed(2) : "n/a"} confidence=${typeof failure.confidence === "number" ? failure.confidence.toFixed(2) : "n/a"} quarantined=${failure.quarantined ? "true" : "false"}\n`,
+            `[experience] event=failure_feedback id=${failure.recordId ?? "<unknown>"} score=${typeof failure.score === "number" ? failure.score.toFixed(2) : "n/a"} confidence=${typeof failure.confidence === "number" ? failure.confidence.toFixed(2) : "n/a"} quarantined=${failure.quarantined ? "true" : "false"} conflict_isolated=${failure.conflictIsolated ? "true" : "false"}\n`,
           );
         }
         return {
@@ -1153,10 +1201,12 @@ export function createMemoryOrchestrator(input: CreateMemoryOrchestratorInput): 
         providerName: request.providerName,
         errorClass: request.errorClass,
         errorMessage: request.errorMessage,
+        failureStage: request.failureStage,
+        toolContext: request.toolContext,
       });
       if (failure.matched) {
         stderrEvents.push(
-          `[experience] event=failure_feedback id=${failure.recordId ?? "<unknown>"} score=${typeof failure.score === "number" ? failure.score.toFixed(2) : "n/a"} confidence=${typeof failure.confidence === "number" ? failure.confidence.toFixed(2) : "n/a"} quarantined=${failure.quarantined ? "true" : "false"}\n`,
+          `[experience] event=failure_feedback id=${failure.recordId ?? "<unknown>"} score=${typeof failure.score === "number" ? failure.score.toFixed(2) : "n/a"} confidence=${typeof failure.confidence === "number" ? failure.confidence.toFixed(2) : "n/a"} quarantined=${failure.quarantined ? "true" : "false"} conflict_isolated=${failure.conflictIsolated ? "true" : "false"}\n`,
         );
       }
       return {

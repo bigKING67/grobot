@@ -1059,6 +1059,32 @@ async function runGatewayContractSmoke() {
   assert.equal(memoryOrchestratorContractPayload.feedback_turn_failure_event, true);
   logStep("memory-orchestrator-contract");
 
+  const experiencePoolTaskContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/experience-pool-task-contract.ts",
+  ]);
+  assertSuccess("experience-pool-task-contract", experiencePoolTaskContractResult);
+  const experiencePoolTaskContractPayload = parseJsonOutput(
+    "experience-pool-task-contract",
+    experiencePoolTaskContractResult.stdout,
+  );
+  assert.equal(experiencePoolTaskContractPayload.created_record, true);
+  assert.equal(experiencePoolTaskContractPayload.failure_matched, true);
+  assert.equal(experiencePoolTaskContractPayload.failure_stage_classified_runtime, true);
+  assert.equal(experiencePoolTaskContractPayload.guardrails_generated_after_failure, true);
+  assert.equal(experiencePoolTaskContractPayload.recovery_success_incremented, true);
+  assert.equal(experiencePoolTaskContractPayload.consecutive_failure_reset_after_recovery, true);
+  assert.equal(experiencePoolTaskContractPayload.attempt_history_has_both_outcomes, true);
+  assert.equal(experiencePoolTaskContractPayload.search_prefers_task_overlap, true);
+  assert.equal(experiencePoolTaskContractPayload.search_emits_task_or_scenario_signals, true);
+  assert.equal(experiencePoolTaskContractPayload.roundtrip_task_signature_persisted, true);
+  assert.equal(experiencePoolTaskContractPayload.roundtrip_attempt_history_persisted, true);
+  assert.equal(experiencePoolTaskContractPayload.roundtrip_task_metadata_persisted, true);
+  logStep("experience-pool-task-contract");
+
   const memoryDecayAutotuneContractResult = runCommand("npx", [
     "--yes",
     "--package",

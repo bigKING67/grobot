@@ -1,6 +1,6 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { runGatewayTurn } from "../../../main";
-import { type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
+import { type RuntimeAttachment, type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
 import { consumeInterruptFlag } from "../services/interrupt-store";
 import {
   compactSingleLine,
@@ -91,6 +91,7 @@ export const TURN_INTERRUPTED_EXIT_CODE = 130;
 
 export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
+  attachments?: RuntimeAttachment[];
 }
 
 export interface RunStartTurnPromptBudgetSnapshot {
@@ -233,6 +234,26 @@ function resolveErrorClass(message: string): string {
     return "upstream_timeout";
   }
   return "runtime_error";
+}
+
+function deriveFailureStageFromError(
+  errorClass: string,
+  message: string,
+): "planning" | "implementation" | "verification" | "runtime" | "unknown" {
+  const merged = `${errorClass} ${message}`.toLowerCase();
+  if (/(verify|verification|assert|contract|schema|lint|typecheck|测试|验证|验收)/.test(merged)) {
+    return "verification";
+  }
+  if (/(timeout|429|503|upstream|provider|network|socket|连接|超时|限流)/.test(merged)) {
+    return "runtime";
+  }
+  if (/(parse|invalid|argument|option|input|prompt|intent|参数|解析|输入)/.test(merged)) {
+    return "planning";
+  }
+  if (/(tool|shell|write|read|path|permission|command|fs|文件|目录|权限)/.test(merged)) {
+    return "implementation";
+  }
+  return "unknown";
 }
 
 function createDefaultProviderState(providerName: string): SessionProviderRuntimeState {
@@ -1673,6 +1694,7 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
       options?: RunStartTurnExecuteOptions,
     ): Promise<number> => {
       const turnSignal = options?.signal;
+      const runtimeAttachments = options?.attachments;
       throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
       const sessionKey = input.getSessionKey();
       input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
@@ -2482,6 +2504,7 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
                     {
                       modelConfig: turnModelConfig.modelConfig,
                       toolContext: input.runtimeToolContext,
+                      attachments: runtimeAttachments,
                       abortSignal: turnSignal,
                     },
                   );
@@ -2703,6 +2726,8 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
             providerName: provider.name,
             errorClass,
             errorMessage: compactMessage,
+            failureStage: deriveFailureStageFromError(errorClass, compactMessage),
+            toolContext: `provider=${provider.name}`,
           });
           for (const event of feedback.stderrEvents) {
             input.writeStderr(event);

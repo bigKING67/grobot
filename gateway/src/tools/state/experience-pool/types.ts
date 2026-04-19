@@ -1,4 +1,11 @@
 export type ExperienceRecordState = "active" | "quarantined" | "disabled";
+export type ExperienceAttemptOutcome = "success" | "failure";
+export type ExperienceAttemptStage =
+  | "planning"
+  | "implementation"
+  | "verification"
+  | "runtime"
+  | "unknown";
 
 export interface ExperienceEvidenceRef {
   traceId?: string;
@@ -18,22 +25,45 @@ export interface ExperienceEvidence {
   evidenceRef?: ExperienceEvidenceRef;
 }
 
+export interface ExperienceAttemptRecord {
+  capturedAt: string;
+  outcome: ExperienceAttemptOutcome;
+  stage: ExperienceAttemptStage;
+  providerName?: string;
+  verificationPass?: boolean;
+  traceId?: string;
+  strategy?: string;
+  errorClass?: string;
+  errorMessage?: string;
+  toolContext?: string;
+}
+
 export interface ExperienceRecord {
   id: string;
   tenant: string;
   team: string;
   user: string;
   signature: string;
+  taskSignature: string;
+  taskType: string;
+  scenarioTags: string[];
   summary: string;
   keywords: string[];
   sop: string[];
   failureSignals: string[];
+  reuseGuardrails: string[];
+  attemptHistory: ExperienceAttemptRecord[];
   confidence: number;
   successCount: number;
   failureCount: number;
+  recoverySuccessCount: number;
+  consecutiveFailureCount: number;
   conflictCount: number;
   verificationPassCount: number;
   lastOutcome: "success" | "failure";
+  lastFailureClass?: string;
+  lastFailureStage?: ExperienceAttemptStage;
+  lastSuccessStrategy?: string;
   state: ExperienceRecordState;
   createdAt: string;
   updatedAt: string;
@@ -53,6 +83,8 @@ export interface ExperienceSearchMatch {
   record: ExperienceRecord;
   score: number;
   matchedTokens: string[];
+  matchedTaskSignals?: string[];
+  matchedScenarioTags?: string[];
 }
 
 export interface ExperienceSearchInput {
@@ -84,6 +116,8 @@ export interface ExperienceFeedbackFailureInput {
   providerName?: string;
   errorClass: string;
   errorMessage: string;
+  failureStage?: ExperienceAttemptStage;
+  toolContext?: string;
 }
 
 export interface ExperienceUpsertResult {

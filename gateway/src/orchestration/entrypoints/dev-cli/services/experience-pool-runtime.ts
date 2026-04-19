@@ -1,5 +1,6 @@
 import { FileBackedExperiencePoolStore } from "../../../../tools/state/experience-pool/store";
 import {
+  type ExperienceAttemptStage,
   type ExperienceEvidenceRef,
   type ExperienceRecord,
   type ExperienceRecordState,
@@ -38,6 +39,8 @@ interface RegisterTurnFailureInput {
   providerName?: string;
   errorClass: string;
   errorMessage: string;
+  failureStage?: ExperienceAttemptStage;
+  toolContext?: string;
 }
 
 export interface ExperienceRecallResult {
@@ -195,12 +198,29 @@ function buildRecallPromptFromMatches(matches: readonly ExperienceSearchMatch[])
     lines.push(
       `- exp#${String(index + 1)} id=${record.id} confidence=${record.confidence.toFixed(2)} score=${match.score.toFixed(2)} success=${String(record.successCount)} failure=${String(record.failureCount)}`,
     );
+    lines.push(
+      `  task: ${record.taskType} | ${record.taskSignature}`,
+    );
+    if (record.scenarioTags.length > 0) {
+      lines.push(`  scenario: ${record.scenarioTags.slice(0, 4).join(", ")}`);
+    }
     lines.push(`  summary: ${record.summary}`);
     if (record.sop.length > 0) {
       lines.push(`  sop: ${record.sop.slice(0, 5).join(" -> ")}`);
     }
+    if (record.lastSuccessStrategy) {
+      lines.push(`  strategy: ${record.lastSuccessStrategy}`);
+    }
+    if (record.recoverySuccessCount > 0 || record.consecutiveFailureCount > 0) {
+      lines.push(
+        `  resilience: recovery=${String(record.recoverySuccessCount)} consecutive_failure=${String(record.consecutiveFailureCount)}`,
+      );
+    }
     if (record.failureSignals.length > 0) {
       lines.push(`  avoid: ${record.failureSignals.slice(0, 3).join(" ; ")}`);
+    }
+    if (record.reuseGuardrails.length > 0) {
+      lines.push(`  guardrails: ${record.reuseGuardrails.slice(0, 2).join(" ; ")}`);
     }
   }
   return lines.join("\n");
@@ -313,6 +333,8 @@ export function createExperiencePoolRuntime(
       providerName,
       errorClass,
       errorMessage,
+      failureStage,
+      toolContext,
     }): ExperienceFailureFeedbackResult => {
       const scope = parseSessionScope(sessionKey, teamDefault);
       const result = store.registerFailure({
@@ -323,6 +345,8 @@ export function createExperiencePoolRuntime(
         providerName,
         errorClass,
         errorMessage: redactSensitiveText(errorMessage),
+        failureStage,
+        toolContext: toolContext ? redactSensitiveText(toolContext) : undefined,
       });
       if (!result.matchedRecord) {
         return {
@@ -338,9 +362,11 @@ export function createExperiencePoolRuntime(
         conflictIsolated: result.conflictIsolated,
       };
     },
-    searchRecords: ({ tenant, query, limit, includeStates }): ExperienceSearchMatch[] =>
+    searchRecords: ({ tenant, team, user, query, limit, includeStates }): ExperienceSearchMatch[] =>
       store.search({
         tenant,
+        team,
+        user,
         query,
         limit,
         includeStates,
