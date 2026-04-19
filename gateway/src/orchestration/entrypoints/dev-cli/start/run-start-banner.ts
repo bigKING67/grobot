@@ -86,7 +86,7 @@ function summarizeStoreFallback(reason: string | undefined): string | undefined 
 export function printRunStartBanner(input: RunStartBannerInput): void {
   const contextWindowLabel = typeof input.contextWindowTargetTokens === "number"
     && Number.isFinite(input.contextWindowTargetTokens)
-    ? `${String(Math.round(input.contextWindowTargetTokens / 1_000))}k tok window`
+    ? `${String(Math.round(input.contextWindowTargetTokens / 1_000))}k ctx budget`
     : undefined;
   const runtimeLine = [
     `${input.providerName}/${input.modelName}`,
