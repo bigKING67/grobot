@@ -7,6 +7,7 @@ import {
   resolveInteractivePromptLayout,
   type SessionPromptLayout,
 } from "../ui/interactive/interactive-frame";
+import { measureDisplayWidth } from "../ui/interactive/display-width";
 import {
   formatSlashSuggestionPanel,
   normalizeSuggestionIndex,
@@ -88,6 +89,19 @@ function questionAsync(rl: Interface, prompt: string): Promise<string> {
       resolve(value);
     });
   });
+}
+
+const ANSI_PATTERN = /\u001B\[[0-9;?]*[A-Za-z]/g;
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_PATTERN, "");
+}
+
+function countTextLines(value: string): number {
+  if (!value) {
+    return 0;
+  }
+  return value.split("\n").length;
 }
 
 function replaceReadlineInputLine(rl: Interface, value: string): void {
@@ -393,6 +407,7 @@ export async function runSessionInputLoop(
       inlinePrompt: DEFAULT_SESSION_PROMPT,
       suffix: "",
     };
+    let liveFooterMode = false;
     try {
       const promptValue: SessionInputPromptValue = typeof prompt === "function"
         ? (() => {
@@ -415,15 +430,46 @@ export async function runSessionInputLoop(
         fallbackPrompt: DEFAULT_SESSION_PROMPT,
       });
       clearSlashSuggestionOverlay();
+      liveFooterMode = Boolean(
+        resolvedPrompt.renderSuffixWhileTyping
+        && typeof resolvedPrompt.suffix === "string"
+        && resolvedPrompt.suffix.length > 0,
+      );
       if (resolvedPrompt.prefix.length > 0) {
         process.stdout.write(`${resolvedPrompt.prefix}\n`);
       }
-      rawInput = await questionAsync(rl, resolvedPrompt.inlinePrompt);
+      if (liveFooterMode) {
+        const reservedInputRows = Math.max(
+          0,
+          Math.floor(resolvedPrompt.reservedInputRows ?? 1),
+        );
+        const suffix = resolvedPrompt.suffix ?? "";
+        const suffixLineCount = countTextLines(suffix);
+        process.stdout.write(`${resolvedPrompt.inlinePrompt}\n`);
+        if (reservedInputRows > 0) {
+          process.stdout.write("\n".repeat(reservedInputRows));
+        }
+        process.stdout.write(`${suffix}\n`);
+        const linesToMoveUp = suffixLineCount + reservedInputRows + 1;
+        if (linesToMoveUp > 0) {
+          process.stdout.write(`\x1b[${String(linesToMoveUp)}A`);
+        }
+        process.stdout.write("\r");
+        const promptWidth = measureDisplayWidth(stripAnsi(resolvedPrompt.inlinePrompt));
+        if (promptWidth > 0) {
+          process.stdout.write(`\x1b[${String(promptWidth)}C`);
+        }
+        rawInput = await questionAsync(rl, "");
+      } else {
+        rawInput = await questionAsync(rl, resolvedPrompt.inlinePrompt);
+      }
     } catch {
       break;
     }
     clearSlashSuggestionOverlay();
-    if (!sawSigint && resolvedPrompt.suffix && resolvedPrompt.suffix.length > 0) {
+    if (!sawSigint && liveFooterMode) {
+      process.stdout.write("\x1b[J");
+    } else if (!sawSigint && resolvedPrompt.suffix && resolvedPrompt.suffix.length > 0) {
       process.stdout.write(`${resolvedPrompt.suffix}\n`);
     }
     if (sawSigint) {

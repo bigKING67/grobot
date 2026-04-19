@@ -2,6 +2,8 @@ export interface SessionPromptLayout {
   prefix: string;
   inlinePrompt: string;
   suffix?: string;
+  renderSuffixWhileTyping?: boolean;
+  reservedInputRows?: number;
 }
 
 function deriveBottomBorder(topBorder: string): string | undefined {
@@ -25,6 +27,8 @@ export function resolveInteractivePromptLayout(input: {
       prefix: input.promptText.prefix,
       inlinePrompt,
       suffix: input.promptText.suffix,
+      renderSuffixWhileTyping: input.promptText.renderSuffixWhileTyping,
+      reservedInputRows: input.promptText.reservedInputRows,
     };
   }
   const promptText = input.promptText;

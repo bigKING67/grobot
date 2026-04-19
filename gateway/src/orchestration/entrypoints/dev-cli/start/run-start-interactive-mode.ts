@@ -11,6 +11,7 @@ import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { inferModelApiContextWindowTokens } from "./run-start-model-context";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import { createInteractiveActivityTracker } from "../ui/interactive/activity-state";
+import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
 
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
@@ -41,6 +42,45 @@ function resolveTerminalColumns(): number | undefined {
 function isTruthyEnvFlag(value: string | undefined): boolean {
   const normalized = (value ?? "").trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+const ANSI_PATTERN = /\u001B\[[0-9;?]*[A-Za-z]/g;
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_PATTERN, "");
+}
+
+function buildInteractivePromptLayout(input: {
+  renderedPrompt: string;
+  terminalColumns?: number;
+  promptLabel: string;
+}): SessionPromptLayout {
+  const lines = input.renderedPrompt.split("\n").filter((line) => line.length > 0);
+  const promptBlockStartIndex = lines.findIndex(
+    (line) => line.includes("╭") && line.includes("╮"),
+  );
+  const statusLine = lines[0] ?? "";
+  const infoLines = promptBlockStartIndex > 1
+    ? lines.slice(1, promptBlockStartIndex)
+    : [];
+  const dividerWidth = (() => {
+    if (
+      typeof input.terminalColumns === "number"
+      && Number.isFinite(input.terminalColumns)
+      && input.terminalColumns > 8
+    ) {
+      return Math.max(16, Math.floor(input.terminalColumns) - 4);
+    }
+    return Math.max(48, stripAnsi(statusLine).length + 6);
+  })();
+  const divider = `\u001B[90m${"─".repeat(dividerWidth)}\u001B[0m`;
+  return {
+    prefix: divider,
+    inlinePrompt: input.promptLabel,
+    suffix: [divider, statusLine, ...infoLines].filter((line) => line.length > 0).join("\n"),
+    renderSuffixWhileTyping: true,
+    reservedInputRows: 2,
+  };
 }
 
 function resolvePromptBudgetSnapshot(workDir: string): {
@@ -313,15 +353,16 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const readPromptBudgetSnapshot = createPromptBudgetSnapshotReader({
     workDir: input.workDir,
   });
-  const dynamicPrompt = (): string => {
+  const dynamicPrompt = (): SessionPromptLayout => {
     const modelSnapshot = input.getModelSnapshot();
     const statusLineConfig = input.getStatusLineConfig();
     const budgetSnapshot = readPromptBudgetSnapshot(statusLineConfig);
+    const terminalColumns = resolveTerminalColumns();
     const statusContextWindowTokens = inferModelApiContextWindowTokens({
       modelName: modelSnapshot.model,
       fallback: input.contextWindowTokens,
     });
-    return renderStatusLinePrompt({
+    const renderedPrompt = renderStatusLinePrompt({
       model: `${modelSnapshot.providerName}/${modelSnapshot.model}`,
       projectFolder,
       contextWindowUsageRatio: budgetSnapshot.contextWindowUsageRatio,
@@ -330,10 +371,15 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       contextWindowTokens: statusContextWindowTokens,
       sessionId: input.getActiveSessionId(),
       sessionTopic: input.getActiveSessionTopic(),
-      terminalColumns: resolveTerminalColumns(),
+      terminalColumns,
       activityText: activityTracker.readPromptActivity(),
       promptLabel: "› ",
       config: statusLineConfig,
+    });
+    return buildInteractivePromptLayout({
+      renderedPrompt,
+      terminalColumns,
+      promptLabel: "› ",
     });
   };
   const getSlashSuggestions = (lineInput: string) =>
