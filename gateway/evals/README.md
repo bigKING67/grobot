@@ -33,6 +33,7 @@
 ## 目录
 
 - `gateway/src/governance/evals/runner.ts`: case/run/gate policy schema 解析、五维评分器（task/tool/context/safety/latency_cost）、harness 执行与报告输出（CLI 真源）。
+- `gateway/src/governance/evals/context-memory-experience-eval.ts`: 面向“上下文压缩 + 记忆协同 + 经验复用”的专项评测入口（CLI 真源，附维度门禁与维度回归保护）。
 - `gateway/src/governance/evals/trace-mining.ts`: 从 `.grobot/sessions` 自动抽样构建初版 eval case/run 数据（CLI 真源）。
 - `gateway/src/governance/evals/trace-clean.ts`: 对抽样数据执行去重、脱敏、审核报告输出（CLI 真源）。
 - `gateway/src/governance/evals/trace-pipeline.ts`: mining + cleaning 一体化 pipeline（CLI 真源）。
@@ -58,6 +59,7 @@
 - `gateway/src/governance/evals/ci-summary-export.ts`: 从 `harness_ci_summary.json` 生成 `gate-summary` outputs（含 `policy_drift` 扩展字段）并写入 `GITHUB_OUTPUT`（CLI 真源）。
 - `gate_policy.default.json`: 默认门禁策略模板。
 - `gate_policy.ci.json`: CI 专用 gate 策略。
+- `context_memory_policy.sample.json` / `context_memory_policy.ci.json`: context-memory-experience 专项策略模板。
 - `skill_router_policy.dev.json` / `skill_router_policy.ci.json` / `skill_router_policy.prod.json`: skill-router policy 模板。
 - `fixtures/*.jsonl`: 示例数据。
 
@@ -121,6 +123,36 @@ npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts \
 
 - `variants[*].sentinel`: `must_pass` case 的通过统计与失败 id。
 - `variants[*].reward_v1`: 多目标得分（`quality/safety/tool_correctness/latency_cost/stability/composite_score`）。
+
+## Context-Memory-Experience 专项评测
+
+默认目标：持续回归验证三条主线是否退化
+1. `context_compression`（结构优先压缩 + token budget 控制）
+2. `memory_lineage`（lineage 回顾 + 衰减/reconcile 路径）
+3. `experience_learning`（经验池策略迁移 + 自纠偏）
+
+执行示例（sample）：
+
+```bash
+npm run harness:context-memory:sample
+```
+
+执行示例（sample gate）：
+
+```bash
+npm run harness:context-memory:gate:sample
+```
+
+执行示例（ci gate）：
+
+```bash
+npm run harness:context-memory:gate:ci
+```
+
+说明：
+1. 该入口输出 `overall_gate`、`dimension_gate` 和 `dimension_regression_guard`，可直接用于 CI 阻断或趋势看板。
+2. 默认维度回归保护为 `baseline -> candidate` 且不允许任一维度 `average_score/pass_rate` 下降。
+3. fixtures 位于 `gateway/evals/fixtures/context_memory_*`，可逐步扩展为真实任务集。
 
 ## 从真实会话生成初版数据
 
@@ -341,6 +373,9 @@ npm run harness:eval:retire-saturated:sample
 npm run harness:sample
 npm run harness:gate:sample
 npm run harness:gate:ci
+npm run harness:context-memory:sample
+npm run harness:context-memory:gate:sample
+npm run harness:context-memory:gate:ci
 npm run harness:trace-mine
 npm run harness:trace-clean
 npm run harness:trace-pipeline

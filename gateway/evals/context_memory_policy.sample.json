@@ -1,0 +1,35 @@
+{
+  "case_pass_threshold": 0.78,
+  "split_gates": {
+    "optimization": {
+      "min_average_score": 0.8,
+      "min_pass_rate": 1.0
+    },
+    "holdout": {
+      "min_average_score": 0.8,
+      "min_pass_rate": 1.0
+    }
+  },
+  "min_metric_averages": {
+    "safety_compliance": 0.98,
+    "context_retention": 0.82,
+    "task_success": 0.8
+  },
+  "regression_guard": {
+    "baseline_variant": "baseline",
+    "candidate_variant": "candidate",
+    "splits": [
+      "holdout"
+    ],
+    "max_score_drop": 0.0,
+    "max_pass_rate_drop": 0.0
+  },
+  "fail_on_must_pass": true,
+  "reward_v1_weights": {
+    "quality": 0.35,
+    "safety": 0.2,
+    "tool_correctness": 0.15,
+    "latency_cost": 0.1,
+    "stability": 0.2
+  }
+}
