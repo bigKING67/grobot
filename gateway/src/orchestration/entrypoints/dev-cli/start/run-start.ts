@@ -36,6 +36,7 @@ import {
   createExperienceSchedulerRuntime,
   resolveExperienceSchedulerConfig,
 } from "../services/experience-scheduler";
+import { type RuntimeAttachment } from "../../../../models/types";
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
   const normalized = (value ?? "").trim().toLowerCase();
@@ -538,11 +539,15 @@ export async function runStart(
     userInput: string,
     interactiveMode: boolean,
     controller: AbortController,
+    options?: {
+      attachments?: RuntimeAttachment[];
+    },
   ): Promise<number> => {
     activeTurnAbortController = controller;
     try {
       const code = await wire.executeTurn(userInput, interactiveMode, {
         signal: controller.signal,
+        attachments: options?.attachments,
       });
       if (pendingRuntimeInterruptSource && code === TURN_INTERRUPTED_EXIT_CODE) {
         output.writeStderr(
@@ -567,11 +572,17 @@ export async function runStart(
       }
     }
   };
-  const executeTurn = async (userInput: string, interactiveMode: boolean): Promise<number> => {
+  const executeTurn = async (
+    userInput: string,
+    interactiveMode: boolean,
+    options?: {
+      attachments?: RuntimeAttachment[];
+    },
+  ): Promise<number> => {
     const controller = new AbortController();
     const next = turnQueue.then(
-      async () => runTurnWithController(userInput, interactiveMode, controller),
-      async () => runTurnWithController(userInput, interactiveMode, controller),
+      async () => runTurnWithController(userInput, interactiveMode, controller, options),
+      async () => runTurnWithController(userInput, interactiveMode, controller, options),
     );
     turnQueue = next.then(
       () => undefined,

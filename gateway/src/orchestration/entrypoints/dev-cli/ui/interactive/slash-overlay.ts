@@ -4,6 +4,12 @@ import {
   truncateDisplayWidth,
 } from "./display-width";
 
+const ANSI_RESET = "\u001B[0m";
+const ANSI_SELECTED_BG = "\u001B[46m";
+const ANSI_SELECTED_FG = "\u001B[30m";
+const ANSI_BOLD = "\u001B[1m";
+const ANSI_DIM = "\u001B[90m";
+
 export interface SlashOverlaySuggestion {
   command: string;
   description?: string;
@@ -41,11 +47,22 @@ function commandHasArgumentPlaceholder(command: string): boolean {
   return /<[^>]+>|\[[^\]]+\]/.test(command);
 }
 
-function toOverlayBoxLine(content: string, innerWidth: number): string {
+function toOverlayBoxLine(
+  content: string,
+  innerWidth: number,
+  tone: "normal" | "selected" | "muted" = "normal",
+): string {
   const normalized = truncateDisplayWidth(content, innerWidth, {
     compact: false,
   });
-  return `│ ${padToDisplayWidth(normalized, innerWidth)} │`;
+  const padded = padToDisplayWidth(normalized, innerWidth);
+  if (tone === "selected") {
+    return `│ ${ANSI_BOLD}${ANSI_SELECTED_BG}${ANSI_SELECTED_FG}${padded}${ANSI_RESET} │`;
+  }
+  if (tone === "muted") {
+    return `│ ${ANSI_DIM}${padded}${ANSI_RESET} │`;
+  }
+  return `│ ${padded} │`;
 }
 
 export function formatSlashSuggestionPanel(
@@ -68,8 +85,11 @@ export function formatSlashSuggestionPanel(
     const isSelected = index === normalizedSelectedIndex;
     const source = item.source ? ` (${item.source})` : "";
     const detail = item.description?.trim().length ? ` - ${item.description.trim()}` : "";
-    const pointer = isSelected ? ">" : " ";
-    return `${pointer} ${item.command}${source}${detail}`;
+    const pointer = isSelected ? "›" : " ";
+    return {
+      text: `${pointer} ${item.command}${source}${detail}`,
+      isSelected,
+    };
   });
   const selectedHint = selected
     ? commandHasArgumentPlaceholder(selected.command)
@@ -81,7 +101,7 @@ export function formatSlashSuggestionPanel(
     ? `(${String(limited.length)}/${String(suggestions.length)})`
     : `(${String(limited.length)})`}`;
 
-  const allLines = [title, ...rows, selectedHint, keyHint];
+  const allLines = [title, ...rows.map((row) => row.text), selectedHint, keyHint];
   const desiredInnerWidth = allLines.reduce((max, line) => Math.max(max, measureDisplayWidth(line)), 0);
   const maxInnerWidth = Math.max(16, terminalColumns - 4);
   const innerWidth = Math.min(Math.max(16, desiredInnerWidth), maxInnerWidth);
@@ -94,11 +114,15 @@ export function formatSlashSuggestionPanel(
   lines.push(toOverlayBoxLine(title, innerWidth));
   lines.push(middle);
   for (const row of rows) {
-    lines.push(toOverlayBoxLine(row, innerWidth));
+    lines.push(toOverlayBoxLine(
+      row.text,
+      innerWidth,
+      row.isSelected ? "selected" : "normal",
+    ));
   }
   lines.push(middle);
-  lines.push(toOverlayBoxLine(selectedHint, innerWidth));
-  lines.push(toOverlayBoxLine(keyHint, innerWidth));
+  lines.push(toOverlayBoxLine(selectedHint, innerWidth, "muted"));
+  lines.push(toOverlayBoxLine(keyHint, innerWidth, "muted"));
   lines.push(bottom);
   return `${lines.join("\n")}\n`;
 }

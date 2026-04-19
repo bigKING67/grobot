@@ -2,7 +2,7 @@ import { SessionStoreRuntime } from "../services/session-store";
 import { SessionInteractiveControls, type SessionMenuMode } from "./session-interactive";
 import { printRunStartBanner } from "./run-start-banner";
 import { createRunStartInteractiveHandler } from "./run-start-interactive-handler";
-import { runSessionInputLoop } from "./run-start-io";
+import { resolveInlineAttachmentsFromInput, runSessionInputLoop } from "./run-start-io";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
@@ -13,6 +13,7 @@ import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import { createInteractiveActivityTracker } from "../ui/interactive/activity-state";
 import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
+import { type RuntimeAttachment } from "../../../../models/types";
 
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
@@ -79,7 +80,6 @@ function buildInteractivePromptLayout(input: {
     inlinePrompt: input.promptLabel,
     suffix: [divider, statusLine, ...infoLines].filter((line) => line.length > 0).join("\n"),
     renderSuffixWhileTyping: true,
-    reservedInputRows: 2,
   };
 }
 
@@ -200,7 +200,13 @@ export interface RunStartInteractiveModeInput {
   runPlanTurn(userInput: string): Promise<number>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
-  executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
+  executeTurn(
+    userInput: string,
+    interactiveMode: boolean,
+    options?: {
+      attachments?: RuntimeAttachment[];
+    },
+  ): Promise<number>;
   markFailureObserved(): void;
   getHistoryMessagesCount(): number;
   writeAutoExitHandoffIfNeeded(): void;
@@ -312,11 +318,18 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     tryRunUserCommand: input.tryRunUserCommand,
     executeTurn: async (userInput, interactiveMode) => {
+      const inlineAttachmentResolution = resolveInlineAttachmentsFromInput(userInput);
       if (interactiveMode) {
         activityTracker.markTurnStart();
       }
       try {
-        const code = await input.executeTurn(userInput, interactiveMode);
+        const code = await input.executeTurn(
+          inlineAttachmentResolution.userInput,
+          interactiveMode,
+          {
+            attachments: inlineAttachmentResolution.attachments,
+          },
+        );
         if (!interactiveDiagnosticsEnabled) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {

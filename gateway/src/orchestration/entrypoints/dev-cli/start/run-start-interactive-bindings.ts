@@ -1,5 +1,6 @@
 import { type SessionStoreRuntime } from "../services/session-store";
 import { type RunStartInteractiveModeInput } from "./run-start-interactive-mode";
+import { type RuntimeAttachment } from "../../../../models/types";
 import {
   type RunStartModelOps,
   type RunStartModelSnapshot,
@@ -52,7 +53,13 @@ interface CreateRunStartInteractiveModeInput {
     code: "TURN_INTERRUPT_OK" | "TURN_INTERRUPT_NOT_RUNNING";
     interrupted: boolean;
   };
-  executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
+  executeTurn(
+    userInput: string,
+    interactiveMode: boolean,
+    options?: {
+      attachments?: RuntimeAttachment[];
+    },
+  ): Promise<number>;
 }
 
 function resolveSessionTopicBySessionId(input: {

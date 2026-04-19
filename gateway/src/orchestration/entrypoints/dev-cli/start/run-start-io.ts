@@ -1,13 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createInterface, Interface } from "node:readline";
 import * as readlineModule from "node:readline";
+import { type RuntimeAttachment } from "../../../../models/types";
 import { removeTrailingSlashes } from "../services/runtime-paths";
 import { createCliUiRenderer } from "../ui/kernel/renderer";
 import {
   resolveInteractivePromptLayout,
   type SessionPromptLayout,
 } from "../ui/interactive/interactive-frame";
-import { measureDisplayWidth } from "../ui/interactive/display-width";
 import {
   formatSlashSuggestionPanel,
   normalizeSuggestionIndex,
@@ -17,6 +18,11 @@ import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../
 
 const HANDOFF_FILENAME = "HANDOFF.md";
 const DEFAULT_SESSION_PROMPT = "› ";
+const INLINE_IMAGE_PLACEHOLDER_PATTERN = /\[Image #(\d+)\]/g;
+const INLINE_IMAGE_REGISTRY_LIMIT = 512;
+
+const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
+let nextInlineImageId = 1;
 
 export type {
   TerminalSelectMenuInput,
@@ -59,6 +65,7 @@ interface MenuInputStream {
 
 interface ReadlineState extends Interface {
   line: string;
+  cursor?: number;
 }
 
 interface KeypressPayload {
@@ -72,6 +79,141 @@ interface KeypressPayload {
 interface KeypressInputStream {
   on?: (event: "keypress", listener: (chunk: string, key: KeypressPayload) => void) => void;
   off?: (event: "keypress", listener: (chunk: string, key: KeypressPayload) => void) => void;
+}
+
+export interface InlineAttachmentResolution {
+  userInput: string;
+  attachments: RuntimeAttachment[];
+}
+
+function buildInlineImagePlaceholder(id: number): string {
+  return `[Image #${String(id)}]`;
+}
+
+function registerInlineImageAttachment(attachment: RuntimeAttachment): string {
+  const id = nextInlineImageId;
+  nextInlineImageId += 1;
+  INLINE_IMAGE_REGISTRY.set(id, attachment);
+  if (INLINE_IMAGE_REGISTRY.size > INLINE_IMAGE_REGISTRY_LIMIT) {
+    const oldest = INLINE_IMAGE_REGISTRY.keys().next();
+    if (!oldest.done) {
+      INLINE_IMAGE_REGISTRY.delete(oldest.value);
+    }
+  }
+  return buildInlineImagePlaceholder(id);
+}
+
+function resolveProcessPlatform(): string {
+  const runtimeProcess = process as unknown as { platform?: string };
+  return (runtimeProcess.platform ?? "").toLowerCase();
+}
+
+function trimTrailingSlashes(path: string): string {
+  if (/^[\\/]+$/.test(path)) {
+    return path.startsWith("\\") ? "\\" : "/";
+  }
+  return path.replace(/[\\/]+$/, "");
+}
+
+function concatPath(basePath: string, segment: string): string {
+  const normalizedBase = trimTrailingSlashes(basePath);
+  if (normalizedBase === "/" || normalizedBase === "\\") {
+    return `${normalizedBase}${segment}`;
+  }
+  return `${normalizedBase}/${segment}`;
+}
+
+function resolveTempBaseDir(): string {
+  const candidates = [
+    process.env.CLAUDE_CODE_TMPDIR,
+    process.env.TMPDIR,
+    process.env.TEMP,
+    process.env.TMP,
+  ];
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed && trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return "/tmp";
+}
+
+function resolveClipboardImageTempDir(): string {
+  const customDir = process.env.GROBOT_CLIPBOARD_IMAGE_DIR?.trim();
+  if (customDir && customDir.length > 0) {
+    return customDir;
+  }
+  return concatPath(resolveTempBaseDir(), "grobot-inline-images");
+}
+
+function saveClipboardImageToTempFile(): RuntimeAttachment | undefined {
+  if (resolveProcessPlatform() !== "darwin") {
+    return undefined;
+  }
+  const tempDir = resolveClipboardImageTempDir();
+  mkdirSync(tempDir, { recursive: true });
+  const filePath = concatPath(
+    tempDir,
+    `clipboard-${String(Date.now())}-${Math.random().toString(16).slice(2, 8)}.png`,
+  );
+  const escapedPath = filePath.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  const result = spawnSync(
+    "osascript",
+    [
+      "-e",
+      "set png_data to (the clipboard as «class PNGf»)",
+      "-e",
+      `set fp to open for access POSIX file "${escapedPath}" with write permission`,
+      "-e",
+      "write png_data to fp",
+      "-e",
+      "close access fp",
+    ],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (result.status !== 0) {
+    return undefined;
+  }
+  return {
+    type: "image",
+    sourceType: "path",
+    source: filePath,
+    mimeType: "image/png",
+    filename: filePath.slice(filePath.lastIndexOf("/") + 1),
+  };
+}
+
+export function resolveInlineAttachmentsFromInput(
+  userInput: string,
+): InlineAttachmentResolution {
+  const matches = [...userInput.matchAll(INLINE_IMAGE_PLACEHOLDER_PATTERN)];
+  if (matches.length === 0) {
+    return {
+      userInput,
+      attachments: [],
+    };
+  }
+  const attachments: RuntimeAttachment[] = [];
+  const seen = new Set<number>();
+  for (const match of matches) {
+    const id = Number.parseInt(match[1] ?? "", 10);
+    if (!Number.isFinite(id) || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const attachment = INLINE_IMAGE_REGISTRY.get(id);
+    if (!attachment) {
+      continue;
+    }
+    attachments.push(attachment);
+  }
+  return {
+    userInput,
+    attachments,
+  };
 }
 
 function dirname(path: string): string {
@@ -89,19 +231,6 @@ function questionAsync(rl: Interface, prompt: string): Promise<string> {
       resolve(value);
     });
   });
-}
-
-const ANSI_PATTERN = /\u001B\[[0-9;?]*[A-Za-z]/g;
-
-function stripAnsi(value: string): string {
-  return value.replace(ANSI_PATTERN, "");
-}
-
-function countTextLines(value: string): number {
-  if (!value) {
-    return 0;
-  }
-  return value.split("\n").length;
 }
 
 function replaceReadlineInputLine(rl: Interface, value: string): void {
@@ -216,11 +345,13 @@ export async function runSessionInputLoop(
   let handlerRunning = false;
   let escListenerAttached = false;
   let escArmedAt = 0;
-  let slashOverlayVisible = false;
+  let liveFooterEnabled = false;
+  let liveFooterContent = "";
   let activeSlashSuggestions: readonly SessionSlashSuggestion[] = [];
   let activeSlashSuggestionIndex = 0;
   let lastSlashLineInput = "";
-  let lastSlashOverlaySignature = "";
+  let slashOverlayPanel = "";
+  let lowerDecorationSignature = "<empty>";
   const escInputSupported = Boolean(
     options.onEscapeInterrupt
     && typeof menuInput.setRawMode === "function"
@@ -228,19 +359,43 @@ export async function runSessionInputLoop(
     && typeof menuInput.off === "function",
   );
 
-  const clearSlashSuggestionOverlay = (): void => {
-    if (!slashOverlayVisible) {
+  const renderLowerDecoration = (content: string): void => {
+    const nextSignature = content.length > 0 ? content : "<empty>";
+    if (nextSignature === lowerDecorationSignature) {
       return;
     }
     process.stdout.write("\x1b[s");
     process.stdout.write("\x1b[E");
     process.stdout.write("\x1b[J");
+    if (content.length > 0) {
+      process.stdout.write(content);
+    }
     process.stdout.write("\x1b[u");
-    slashOverlayVisible = false;
+    lowerDecorationSignature = nextSignature;
+  };
+
+  const refreshLowerDecoration = (): void => {
+    if (handlerRunning) {
+      renderLowerDecoration("");
+      return;
+    }
+    if (slashOverlayPanel.length > 0) {
+      renderLowerDecoration(slashOverlayPanel);
+      return;
+    }
+    if (liveFooterEnabled && liveFooterContent.length > 0) {
+      renderLowerDecoration(`${liveFooterContent}\n`);
+      return;
+    }
+    renderLowerDecoration("");
+  };
+
+  const clearSlashSuggestionOverlay = (): void => {
+    slashOverlayPanel = "";
     activeSlashSuggestions = [];
     activeSlashSuggestionIndex = 0;
     lastSlashLineInput = "";
-    lastSlashOverlaySignature = "";
+    refreshLowerDecoration();
   };
 
   const refreshSlashSuggestionOverlay = (): void => {
@@ -269,21 +424,8 @@ export async function runSessionInputLoop(
       activeSlashSuggestionIndex,
       resolveSlashOverlayColumns(),
     );
-    const signature = panel.length > 0 ? panel : "<empty>";
-    if (signature === lastSlashOverlaySignature) {
-      return;
-    }
-    process.stdout.write("\x1b[s");
-    process.stdout.write("\x1b[E");
-    process.stdout.write("\x1b[J");
-    if (panel.length > 0) {
-      process.stdout.write(panel);
-      slashOverlayVisible = true;
-    } else {
-      slashOverlayVisible = false;
-    }
-    process.stdout.write("\x1b[u");
-    lastSlashOverlaySignature = signature;
+    slashOverlayPanel = panel;
+    refreshLowerDecoration();
   };
 
   const triggerEscInterrupt = (): void => {
@@ -345,13 +487,51 @@ export async function runSessionInputLoop(
     escListenerAttached = false;
   };
 
+  const tryPasteInlineClipboardImage = (): boolean => {
+    const attachment = saveClipboardImageToTempFile();
+    if (!attachment) {
+      return false;
+    }
+    const placeholder = registerInlineImageAttachment(attachment);
+    const lineBefore = readlineState.line ?? "";
+    const cursorBefore = typeof readlineState.cursor === "number"
+      ? Math.max(0, Math.min(readlineState.cursor, lineBefore.length))
+      : lineBefore.length;
+    const nextLine = `${lineBefore.slice(0, cursorBefore)}${placeholder}${lineBefore.slice(cursorBefore)}`;
+    replaceReadlineInputLine(rl, nextLine);
+    const trailingChars = lineBefore.length - cursorBefore;
+    if (trailingChars > 0) {
+      process.stdout.write(`\x1b[${String(trailingChars)}D`);
+    }
+    return true;
+  };
+
   const onKeypress = (_chunk: string, key: KeypressPayload): void => {
-    if (handlerRunning || typeof options.getSlashSuggestions !== "function") {
+    if (handlerRunning) {
+      return;
+    }
+    const imagePasteTriggered =
+      (key.ctrl && key.name === "v")
+      || (key.meta && key.name === "v")
+      || (key.shift && key.name === "insert")
+      || key.sequence === "\u0016";
+    if (imagePasteTriggered) {
+      const pasted = tryPasteInlineClipboardImage();
+      if (pasted) {
+        queueMicrotask(() => {
+          if (handlerRunning) {
+            return;
+          }
+          refreshSlashSuggestionOverlay();
+        });
+      }
       return;
     }
     const lineBefore = readlineState.line ?? "";
+    const slashSuggestionsEnabled = typeof options.getSlashSuggestions === "function";
     const hasActiveSlashSuggestions = lineBefore.trimStart().startsWith("/")
-      && activeSlashSuggestions.length > 0;
+      && activeSlashSuggestions.length > 0
+      && slashSuggestionsEnabled;
     if (hasActiveSlashSuggestions && key.name === "up") {
       activeSlashSuggestionIndex = normalizeSuggestionIndex(
         activeSlashSuggestions.length,
@@ -435,41 +615,31 @@ export async function runSessionInputLoop(
         && typeof resolvedPrompt.suffix === "string"
         && resolvedPrompt.suffix.length > 0,
       );
+      liveFooterEnabled = liveFooterMode;
+      liveFooterContent = liveFooterMode ? (resolvedPrompt.suffix ?? "") : "";
       if (resolvedPrompt.prefix.length > 0) {
         process.stdout.write(`${resolvedPrompt.prefix}\n`);
       }
+      const promptPromise = questionAsync(rl, resolvedPrompt.inlinePrompt);
       if (liveFooterMode) {
-        const reservedInputRows = Math.max(
-          0,
-          Math.floor(resolvedPrompt.reservedInputRows ?? 1),
-        );
-        const suffix = resolvedPrompt.suffix ?? "";
-        const suffixLineCount = countTextLines(suffix);
-        process.stdout.write(`${resolvedPrompt.inlinePrompt}\n`);
-        if (reservedInputRows > 0) {
-          process.stdout.write("\n".repeat(reservedInputRows));
-        }
-        process.stdout.write(`${suffix}\n`);
-        const linesToMoveUp = suffixLineCount + reservedInputRows + 1;
-        if (linesToMoveUp > 0) {
-          process.stdout.write(`\x1b[${String(linesToMoveUp)}A`);
-        }
-        process.stdout.write("\r");
-        const promptWidth = measureDisplayWidth(stripAnsi(resolvedPrompt.inlinePrompt));
-        if (promptWidth > 0) {
-          process.stdout.write(`\x1b[${String(promptWidth)}C`);
-        }
-        rawInput = await questionAsync(rl, "");
-      } else {
-        rawInput = await questionAsync(rl, resolvedPrompt.inlinePrompt);
+        queueMicrotask(() => {
+          if (handlerRunning) {
+            return;
+          }
+          refreshSlashSuggestionOverlay();
+        });
       }
+      rawInput = await promptPromise;
     } catch {
+      liveFooterEnabled = false;
+      liveFooterContent = "";
+      clearSlashSuggestionOverlay();
       break;
     }
+    liveFooterEnabled = false;
+    liveFooterContent = "";
     clearSlashSuggestionOverlay();
-    if (!sawSigint && liveFooterMode) {
-      process.stdout.write("\x1b[J");
-    } else if (!sawSigint && resolvedPrompt.suffix && resolvedPrompt.suffix.length > 0) {
+    if (!sawSigint && !liveFooterMode && resolvedPrompt.suffix && resolvedPrompt.suffix.length > 0) {
       process.stdout.write(`${resolvedPrompt.suffix}\n`);
     }
     if (sawSigint) {
