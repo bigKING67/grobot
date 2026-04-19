@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "session_key": "feishu:grobot:dm:gaoqian",
+  "updated_at": "2026-04-17T14:09:04.176Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "请只回复：KIMI_REAL_TEST_OK"
+    },
+    {
+      "role": "assistant",
+      "content": "KIMI_REAL_TEST_OK"
+    },
+    {
+      "role": "user",
+      "content": "请只回复：KIMI_REAL_TEST_OK"
+    },
+    {
+      "role": "assistant",
+      "content": "KIMI_REAL_TEST_OK"
+    },
+    {
+      "role": "user",
+      "content": "请只回复：KIMI_REAL_TEST_OK_POLISH"
+    },
+    {
+      "role": "assistant",
+      "content": "KIMI_REAL_TEST_OK_POLISH"
+    }
+  ]
+}

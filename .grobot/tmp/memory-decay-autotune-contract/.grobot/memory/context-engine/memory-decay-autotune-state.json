@@ -1,0 +1,18 @@
+{
+  "maxRowsPerSession": 264,
+  "minConfidenceVerified": 0.22,
+  "minConfidenceUnverified": 0.48,
+  "unverifiedMaxAgeHours": 72,
+  "adaptiveLearnAlpha": 0.2,
+  "adaptiveUpdates": 2,
+  "dropRatioEma": 0.103333,
+  "capacityTrimRatioEma": 0.7287,
+  "lowConfidenceRatioEma": 0.87,
+  "ageDropRatioEma": 0.0381,
+  "qualityLowRateEma": 0,
+  "qualityPressureEma": 0,
+  "hardBudgetFollowupDeltaEma": 0,
+  "qualityFirstFollowupDeltaEma": 0,
+  "lastReason": "capacity_pressure_expand,confidence_gate_tighten",
+  "updatedAt": "2026-04-19T09:05:00.000Z"
+}

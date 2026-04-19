@@ -1,10 +1,10 @@
 # HANDOFF
 
-- generated_at: 2026-04-16T07:56:45.908Z
+- generated_at: 2026-04-19T15:24:10.861Z
 - reason: auto-exit
 - project: grobot
-- work_dir: /tmp/grobot-start-work-mo16rccg-bicf
-- session_key: feishu:grobot:dm:gaoqian
+- work_dir: /tmp/grobot-start-graph-autotune-adaptive-seq-work-mo5x29iu-i3ts
+- session_key: feishu:grobot:dm:graph-autotune-adaptive-seq-user
 
 ## Compact Instructions
 When compressing, preserve in priority order:
