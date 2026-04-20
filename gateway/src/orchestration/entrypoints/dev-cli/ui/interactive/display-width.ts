@@ -22,6 +22,12 @@ const CJK_WIDTH_RANGES: Array<[number, number]> = [
   [0x20000, 0x3fffd],
 ];
 
+// Some terminals treat U+00AE (®) as double-width under CJK profiles.
+// We force it to width=2 to avoid frame-wrap glitches in startup screen rendering.
+const FORCED_DOUBLE_WIDTH_CODE_POINTS = new Set<number>([
+  0x00ae, // ®
+]);
+
 const GRAPHEME_SEGMENTER = (
   Intl as unknown as {
     Segmenter?: new (
@@ -90,6 +96,10 @@ export function getGraphemeDisplayWidth(grapheme: string): number {
       continue;
     }
     if (COMBINING_MARK_PATTERN.test(char) || codePoint === 0x200d || codePoint === 0xfe0f) {
+      continue;
+    }
+    if (FORCED_DOUBLE_WIDTH_CODE_POINTS.has(codePoint)) {
+      width += 2;
       continue;
     }
     width += isWideCodePoint(codePoint) ? 2 : 1;

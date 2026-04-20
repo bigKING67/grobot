@@ -7,6 +7,10 @@ import {
   runTerminalSelectMenu,
   type TerminalSelectMenuItem,
 } from "./run-start-io";
+import {
+  persistRunStartModelToConfig,
+  type PersistRunStartModelToConfigResult,
+} from "./run-start-model-config-sync";
 
 interface RuntimeProviderEntry {
   name: string;
@@ -23,10 +27,32 @@ interface ActiveSessionMetadata {
   summary?: string;
 }
 
+interface PersistModelToConfigInput {
+  providerName: string;
+  modelId: string;
+}
+
+type PersistModelToConfigResult =
+  | {
+    ok: true;
+    source: string;
+    path?: string;
+    providerName?: string;
+    previousModel?: string;
+  }
+  | {
+    ok: false;
+    message: string;
+  };
+
 interface CreateRunStartModelOpsInput {
   runtimeProviderChain: ReadonlyArray<RuntimeProviderEntry>;
   runtimeModelConfig?: RuntimeModelConfig;
   runtimeModelConfigSource: { model: string };
+  configTomlPath?: string;
+  homeDir: string;
+  workDir: string;
+  projectName: string;
   getActiveSessionId(): string;
   getActiveSessionMetadata?(): ActiveSessionMetadata | undefined;
   writeStdout(message: string): void;
@@ -34,6 +60,9 @@ interface CreateRunStartModelOpsInput {
     baseUrl: string,
     apiKey: string,
   ): Promise<ProviderModelListResult>;
+  persistModelToConfig?(
+    input: PersistModelToConfigInput,
+  ): Promise<PersistModelToConfigResult>;
 }
 
 interface FetchAvailableModelsOk {
@@ -81,6 +110,8 @@ export interface RunStartModelOps {
   applyModelOverrideForActiveSession(): void;
 }
 
+const MODEL_MENU_RESET_ID = "__reset_startup_model__";
+
 function normalizeModelIds(raw: readonly string[]): string[] {
   const deduped = new Set<string>();
   for (const model of raw) {
@@ -101,28 +132,30 @@ function normalizeSessionMetadataValue(
   return normalized.length > 0 ? normalized : fallback;
 }
 
-function resolveModelSourceLabel(input: {
-  sessionId: string;
-  sessionModelOverrides: ReadonlyMap<string, string>;
-  defaultModelSource: string;
-}): string {
-  if (input.sessionModelOverrides.has(input.sessionId)) {
-    return "session:/model";
-  }
-  return input.defaultModelSource;
-}
-
 function buildModelMenuItems(input: {
   modelIds: ReadonlyArray<string>;
   currentModel?: string;
+  startupModel?: string;
 }): TerminalSelectMenuItem[] {
-  return input.modelIds.map((modelId) => ({
-    id: modelId,
-    label: modelId,
-    description:
-      modelId === input.currentModel ? "Current active model" : undefined,
-    current: modelId === input.currentModel,
-  }));
+  const items: TerminalSelectMenuItem[] = [];
+  if (input.startupModel && input.startupModel.length > 0) {
+    items.push({
+      id: MODEL_MENU_RESET_ID,
+      label: `Reset to startup model (${input.startupModel})`,
+      description: "Apply startup model and sync provider.model to config_toml.",
+      current: input.currentModel === input.startupModel,
+    });
+  }
+  for (const modelId of input.modelIds) {
+    items.push({
+      id: modelId,
+      label: modelId,
+      description:
+        modelId === input.currentModel ? "Current active model" : undefined,
+      current: modelId === input.currentModel,
+    });
+  }
+  return items;
 }
 
 function resolveModelMenuInitialIndex(input: {
@@ -137,12 +170,29 @@ function resolveModelMenuInitialIndex(input: {
   );
 }
 
+function toPersistModelResult(
+  input: PersistRunStartModelToConfigResult,
+): PersistModelToConfigResult {
+  if (!input.ok) {
+    return {
+      ok: false,
+      message: input.message,
+    };
+  }
+  return {
+    ok: true,
+    source: input.source,
+    path: input.path,
+    previousModel: input.previousModel,
+    providerName: input.providerName,
+  };
+}
+
 export function createRunStartModelOps(
   input: CreateRunStartModelOpsInput,
 ): RunStartModelOps {
   const listProviderModelsByConnection =
     input.listProviderModelsByConnection ?? listProviderModels;
-  const sessionModelOverrides = new Map<string, string>();
   const modelContextWindowTokensCache = new Map<string, number>();
   const resolvePrimaryModelTarget = (): PrimaryModelTarget => {
     if (input.runtimeProviderChain.length > 0) {
@@ -158,47 +208,17 @@ export function createRunStartModelOps(
     };
   };
 
-  const initialPrimaryTarget = resolvePrimaryModelTarget();
-  const defaultPrimaryModel = initialPrimaryTarget.modelConfig?.model?.trim();
-  const defaultModelSource = input.runtimeModelConfigSource.model;
-
-  const applyModelOverrideForSession = (sessionId: string): void => {
-    const target = resolvePrimaryModelTarget();
-    if (!target.modelConfig) {
-      return;
-    }
-    const overrideModel = sessionModelOverrides.get(sessionId);
-    const effectiveModel = overrideModel ?? defaultPrimaryModel;
-    if (effectiveModel && effectiveModel.trim().length > 0) {
-      target.modelConfig.model = effectiveModel.trim();
-    } else {
-      delete target.modelConfig.model;
-    }
-    input.runtimeModelConfigSource.model = resolveModelSourceLabel({
-      sessionId,
-      sessionModelOverrides,
-      defaultModelSource,
-    });
-  };
-
-  const applyModelOverrideForActiveSession = (): void => {
-    applyModelOverrideForSession(input.getActiveSessionId());
-  };
-
-  const getCurrentModelSnapshot = (): RunStartModelSnapshot => {
-    const connection = resolveModelConnection();
-    const activeSessionId = input.getActiveSessionId();
-    const source = resolveModelSourceLabel({
-      sessionId: activeSessionId,
-      sessionModelOverrides,
-      defaultModelSource,
-    });
-    return {
-      providerName: connection.providerName,
-      model: connection.currentModel ?? "<unset>",
-      source,
-    };
-  };
+  const startupPrimaryModel = resolvePrimaryModelTarget().modelConfig?.model?.trim();
+  const persistModelToConfig = input.persistModelToConfig
+    ?? (async (params: PersistModelToConfigInput): Promise<PersistModelToConfigResult> =>
+      toPersistModelResult(await persistRunStartModelToConfig({
+        configTomlPath: input.configTomlPath,
+        projectName: input.projectName,
+        workDir: input.workDir,
+        homeDir: input.homeDir,
+        providerName: params.providerName,
+        modelId: params.modelId,
+      })));
 
   const resolveModelConnection = (): ModelConnection => {
     const target = resolvePrimaryModelTarget();
@@ -219,16 +239,16 @@ export function createRunStartModelOps(
           message: "missing base_url/api_key for current provider",
         };
       }
-        const listed = await listProviderModelsByConnection(
-          connection.baseUrl,
-          connection.apiKey,
-        );
-        if (listed.state !== "ok") {
-          return {
-            ok: false,
-            message: listed.detail,
-          };
-        }
+      const listed = await listProviderModelsByConnection(
+        connection.baseUrl,
+        connection.apiKey,
+      );
+      if (listed.state !== "ok") {
+        return {
+          ok: false,
+          message: listed.detail,
+        };
+      }
       return {
         ok: true,
         providerName: connection.providerName,
@@ -270,28 +290,92 @@ export function createRunStartModelOps(
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
   };
 
-  const applyModelToActiveSession = (modelId: string): void => {
-    const activeSessionId = input.getActiveSessionId();
-    sessionModelOverrides.set(activeSessionId, modelId);
-    applyModelOverrideForSession(activeSessionId);
+  const applyModelSelection = async (modelId: string): Promise<PersistModelToConfigResult> => {
+    const requestedModel = modelId.trim();
+    if (!requestedModel) {
+      return {
+        ok: false,
+        message: "model switch failed: target model is empty",
+      };
+    }
+    const target = resolvePrimaryModelTarget();
+    if (!target.modelConfig) {
+      return {
+        ok: false,
+        message: "model switch failed: runtime provider model config is unavailable",
+      };
+    }
+    const persisted = await persistModelToConfig({
+      providerName: target.providerName,
+      modelId: requestedModel,
+    });
+    if (!persisted.ok) {
+      return persisted;
+    }
+    target.modelConfig.model = requestedModel;
+    input.runtimeModelConfigSource.model = persisted.source;
+    return persisted;
+  };
+
+  const switchModel = async (
+    requestedModelId: string,
+    availableInput?: FetchAvailableModelsOk,
+  ): Promise<void> => {
+    const modelId = requestedModelId.trim();
+    if (!modelId) {
+      input.writeStdout("[model] switch failed: target model is empty.\n\n");
+      return;
+    }
+    const available = availableInput ?? await fetchAvailableModels();
+    if (!available.ok) {
+      input.writeStdout(`[model] switch failed: ${available.message}\n\n`);
+      return;
+    }
+    updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
+    if (!available.modelIds.includes(modelId)) {
+      input.writeStdout(
+        `[model] switch failed: "${modelId}" not found for provider=${available.providerName}\n`,
+      );
+      input.writeStdout(
+        `[model] available: ${available.modelIds.join(", ")}\n\n`,
+      );
+      return;
+    }
+    const persisted = await applyModelSelection(modelId);
+    if (!persisted.ok) {
+      input.writeStdout(`[model] switch failed: ${persisted.message}\n\n`);
+      return;
+    }
+    input.writeStdout(
+      `[model] switched provider=${available.providerName} model=${modelId} source=${persisted.source}${persisted.path ? ` path=${persisted.path}` : ""}\n\n`,
+    );
+  };
+
+  const getCurrentModelSnapshot = (): RunStartModelSnapshot => {
+    const connection = resolveModelConnection();
+    return {
+      providerName: connection.providerName,
+      model: connection.currentModel ?? "<unset>",
+      source: input.runtimeModelConfigSource.model,
+    };
   };
 
   const showModelCurrent = async (): Promise<void> => {
     const snapshot = getCurrentModelSnapshot();
     const activeSessionId = input.getActiveSessionId();
-      const activeSessionMetadata = input.getActiveSessionMetadata?.();
-      const sessionTitle = normalizeSessionMetadataValue(
-        activeSessionMetadata?.title,
-        "<untitled>",
-      );
-      const sessionSummary = normalizeSessionMetadataValue(
-        activeSessionMetadata?.summary,
-        "<none>",
-      );
-      input.writeStdout(
-        `[model]\nprovider: ${snapshot.providerName}\nmodel: ${snapshot.model}\nsource: ${snapshot.source}\nsession_id: ${activeSessionId}\nsession_title: ${sessionTitle}\nsession_summary: ${sessionSummary}\n\n`,
-      );
-    };
+    const activeSessionMetadata = input.getActiveSessionMetadata?.();
+    const sessionTitle = normalizeSessionMetadataValue(
+      activeSessionMetadata?.title,
+      "<untitled>",
+    );
+    const sessionSummary = normalizeSessionMetadataValue(
+      activeSessionMetadata?.summary,
+      "<none>",
+    );
+    input.writeStdout(
+      `[model]\nprovider: ${snapshot.providerName}\nmodel: ${snapshot.model}\nsource: ${snapshot.source}\nsession_id: ${activeSessionId}\nsession_title: ${sessionTitle}\nsession_summary: ${sessionSummary}\n\n`,
+    );
+  };
 
   const listModels = async (): Promise<void> => {
     const available = await fetchAvailableModels();
@@ -316,49 +400,51 @@ export function createRunStartModelOps(
     input.writeStdout("\n");
   };
 
-    const useModel = async (modelIdRaw: string): Promise<void> => {
-      const requestedModelId = modelIdRaw.trim();
-      if (!requestedModelId) {
-        input.writeStdout("Usage: /model use <model_id>\n\n");
-        return;
-      }
+  const useModel = async (modelIdRaw: string): Promise<void> => {
+    const requestedModelId = modelIdRaw.trim();
+    if (!requestedModelId) {
+      input.writeStdout("[model] switch failed: target model is empty.\n\n");
+      return;
+    }
+    await switchModel(requestedModelId);
+  };
+
+  const resetModel = async (): Promise<void> => {
+    if (!startupPrimaryModel || startupPrimaryModel.length === 0) {
+      input.writeStdout("[model] reset failed: startup model is unavailable.\n\n");
+      return;
+    }
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] switch failed: ${available.message}\n\n`);
+      input.writeStdout(`[model] reset failed: ${available.message}\n\n`);
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
-    if (!available.modelIds.includes(requestedModelId)) {
+    if (!available.modelIds.includes(startupPrimaryModel)) {
       input.writeStdout(
-        `[model] switch failed: "${requestedModelId}" not found for provider=${available.providerName}\n`,
+        `[model] reset failed: startup model "${startupPrimaryModel}" is not available for provider=${available.providerName}\n`,
       );
       input.writeStdout(
         `[model] available: ${available.modelIds.join(", ")}\n\n`,
       );
       return;
-      }
-      applyModelToActiveSession(requestedModelId);
-      input.writeStdout(
-        `[model] switched session=${input.getActiveSessionId()} provider=${available.providerName} model=${requestedModelId}\n\n`,
-      );
-    };
+    }
+    const persisted = await applyModelSelection(startupPrimaryModel);
+    if (!persisted.ok) {
+      input.writeStdout(`[model] reset failed: ${persisted.message}\n\n`);
+      return;
+    }
+    input.writeStdout(
+      `[model] reset provider=${available.providerName} model=${startupPrimaryModel} source=${persisted.source}${persisted.path ? ` path=${persisted.path}` : ""}\n\n`,
+    );
+  };
 
-    const resetModel = async (): Promise<void> => {
-      const activeSessionId = input.getActiveSessionId();
-      sessionModelOverrides.delete(activeSessionId);
-      applyModelOverrideForSession(activeSessionId);
-      const connection = resolveModelConnection();
-      input.writeStdout(
-        `[model] reset session=${activeSessionId} provider=${connection.providerName} model=${connection.currentModel ?? "<unset>"}\n\n`,
-      );
-    };
-
-    const openModelMenu = async (
-      withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
-    ): Promise<void> => {
-      const available = await fetchAvailableModels();
-      if (!available.ok) {
-        input.writeStdout(`[model] picker unavailable: ${available.message}\n\n`);
+  const openModelMenu = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<void> => {
+    const available = await fetchAvailableModels();
+    if (!available.ok) {
+      input.writeStdout(`[model] picker unavailable: ${available.message}\n\n`);
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
@@ -371,6 +457,7 @@ export function createRunStartModelOps(
     const items = buildModelMenuItems({
       modelIds: available.modelIds,
       currentModel: available.currentModel,
+      startupModel: startupPrimaryModel,
     });
     const initialIndex = resolveModelMenuInitialIndex({
       items,
@@ -380,7 +467,7 @@ export function createRunStartModelOps(
       runTerminalSelectMenu({
         title: "Select Model",
         subtitle: `Provider: ${available.providerName}`,
-        hint: "Use ↑/↓ (or j/k), Enter to confirm, Esc to cancel.",
+        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm highlight, Esc to cancel.",
         items,
         initialIndex,
       }),
@@ -389,22 +476,31 @@ export function createRunStartModelOps(
       input.writeStdout("[model] picker cancelled.\n\n");
       return;
     }
-    applyModelToActiveSession(picked.item.id);
-    input.writeStdout(
-      `[model] switched session=${input.getActiveSessionId()} provider=${available.providerName} model=${picked.item.id}\n\n`,
-    );
+    if (picked.item.id === MODEL_MENU_RESET_ID) {
+      await resetModel();
+      return;
+    }
+    await switchModel(picked.item.id, available);
   };
 
-    return {
-      getCurrentModelSnapshot,
-      getCachedModelContextWindowTokens,
-      refreshModelCatalogCache,
-      showModelCurrent,
-      listModels,
-      useModel,
-      resetModel,
-      openModelMenu,
-      applyModelOverrideForSession,
-      applyModelOverrideForActiveSession,
-    };
-  }
+  const applyModelOverrideForSession = (_sessionId: string): void => {
+    // /model now uses config_toml as single source of truth.
+  };
+
+  const applyModelOverrideForActiveSession = (): void => {
+    // /model now uses config_toml as single source of truth.
+  };
+
+  return {
+    getCurrentModelSnapshot,
+    getCachedModelContextWindowTokens,
+    refreshModelCatalogCache,
+    showModelCurrent,
+    listModels,
+    useModel,
+    resetModel,
+    openModelMenu,
+    applyModelOverrideForSession,
+    applyModelOverrideForActiveSession,
+  };
+}

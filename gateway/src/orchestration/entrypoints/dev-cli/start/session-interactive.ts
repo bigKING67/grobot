@@ -12,10 +12,6 @@ export interface SessionInteractiveHandlers {
   writeStdout(message: string): void;
   showHelp(): void;
   showHealthStatus(): void;
-  showModelCurrent(): Promise<void>;
-  listModels(): Promise<void>;
-  useModel(modelId: string): Promise<void>;
-  resetModel(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showStatusCurrent(): void;
   setStatusTheme(theme: string): void;

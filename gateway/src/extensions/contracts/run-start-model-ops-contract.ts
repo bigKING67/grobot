@@ -26,6 +26,7 @@ function parseModelField(
 async function main(): Promise<void> {
   let activeSessionId = "session-main";
   let listCalls = 0;
+  const persistCalls: string[] = [];
   const stdoutChunks: string[] = [];
   const primaryModelConfig = {
     baseUrl: "https://model-provider.example.com/v1",
@@ -58,10 +59,22 @@ async function main(): Promise<void> {
     ],
     runtimeModelConfig: undefined,
     runtimeModelConfigSource,
+    homeDir: "/tmp",
+    workDir: "/tmp/grobot-contract-workdir",
+    projectName: "grobot-contract-project",
     getActiveSessionId: () => activeSessionId,
     getActiveSessionMetadata: () => sessionMetadata.get(activeSessionId),
     writeStdout: (message) => {
       stdoutChunks.push(message);
+    },
+    persistModelToConfig: async ({ providerName, modelId }) => {
+      persistCalls.push(`${providerName}:${modelId}`);
+      return {
+        ok: true,
+        source: "config_toml:provider.model",
+        path: "/tmp/grobot-contract.config.toml",
+        providerName,
+      };
     },
     listProviderModelsByConnection: async (
       baseUrl: string,
@@ -129,31 +142,34 @@ async function main(): Promise<void> {
     initial_source: parseModelField(initialSnapshot, "source"),
     initial_session_title: parseModelField(initialSnapshot, "session_title"),
     initial_session_summary: parseModelField(initialSnapshot, "session_summary"),
-        main_model_after_use: parseModelField(mainSessionSnapshot, "model"),
-        main_source_after_use: parseModelField(mainSessionSnapshot, "source"),
-        main_session_id_after_use: parseModelField(mainSessionSnapshot, "session_id"),
-        main_session_title_after_use: parseModelField(
-          mainSessionSnapshot,
-          "session_title",
-        ),
-        main_session_summary_after_use: parseModelField(
-          mainSessionSnapshot,
-          "session_summary",
-        ),
-        main_model_after_reset: parseModelField(mainSessionAfterResetSnapshot, "model"),
-        main_source_after_reset: parseModelField(mainSessionAfterResetSnapshot, "source"),
-        branch_model_after_switch: parseModelField(branchSessionSnapshot, "model"),
-      branch_source_after_switch: parseModelField(branchSessionSnapshot, "source"),
-      branch_session_id_after_switch: parseModelField(branchSessionSnapshot, "session_id"),
-      branch_session_title_after_switch: parseModelField(
-        branchSessionSnapshot,
-        "session_title",
-      ),
-      branch_session_summary_after_switch: parseModelField(
-        branchSessionSnapshot,
-        "session_summary",
-      ),
+    main_model_after_use: parseModelField(mainSessionSnapshot, "model"),
+    main_source_after_use: parseModelField(mainSessionSnapshot, "source"),
+    main_session_id_after_use: parseModelField(mainSessionSnapshot, "session_id"),
+    main_session_title_after_use: parseModelField(
+      mainSessionSnapshot,
+      "session_title",
+    ),
+    main_session_summary_after_use: parseModelField(
+      mainSessionSnapshot,
+      "session_summary",
+    ),
+    main_model_after_reset: parseModelField(mainSessionAfterResetSnapshot, "model"),
+    main_source_after_reset: parseModelField(mainSessionAfterResetSnapshot, "source"),
+    branch_model_after_switch: parseModelField(branchSessionSnapshot, "model"),
+    branch_source_after_switch: parseModelField(branchSessionSnapshot, "source"),
+    branch_session_id_after_switch: parseModelField(branchSessionSnapshot, "session_id"),
+    branch_session_title_after_switch: parseModelField(
+      branchSessionSnapshot,
+      "session_title",
+    ),
+    branch_session_summary_after_switch: parseModelField(
+      branchSessionSnapshot,
+      "session_summary",
+    ),
     list_calls: listCalls,
+    persist_call_count: persistCalls.length,
+    persist_first_call: persistCalls[0] ?? "",
+    persist_second_call: persistCalls[1] ?? "",
     list_output_has_current_marker: listedSnapshot.includes("* model-default"),
     list_output_has_variant: listedSnapshot.includes(" model-variant"),
     runtime_source_after_switch: runtimeModelConfigSource.model,

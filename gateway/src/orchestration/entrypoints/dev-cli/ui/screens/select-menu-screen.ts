@@ -59,6 +59,9 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
     }
   }
   lines.push("");
-  lines.push(input.menu.hint ?? "Use ↑/↓ (or j/k), Enter to confirm, Esc to cancel.");
+  lines.push(
+    input.menu.hint
+    ?? "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm highlight, Esc to cancel.",
+  );
   return lines.join("\n");
 }

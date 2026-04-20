@@ -12,10 +12,6 @@ interface CreateRunStartInteractiveHandlerInput {
   writeStderr(message: string): void;
   showHelp(): void;
   showHealthStatus(): void;
-  showModelCurrent(): Promise<void>;
-  listModels(): Promise<void>;
-  useModel(modelId: string): Promise<void>;
-  resetModel(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showStatusCurrent(): void;
   setStatusTheme(theme: string): void;
@@ -57,18 +53,6 @@ export function createRunStartInteractiveHandler(
       writeStdout: input.writeStdout,
       showHelp: input.showHelp,
       showHealthStatus: input.showHealthStatus,
-      showModelCurrent: async () => {
-        await input.showModelCurrent();
-      },
-      listModels: async () => {
-        await input.listModels();
-      },
-      useModel: async (modelId) => {
-        await input.useModel(modelId);
-      },
-      resetModel: async () => {
-        await input.resetModel();
-      },
       openModelMenu: async (withInputPaused) => {
         await input.openModelMenu(withInputPaused);
       },

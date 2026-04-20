@@ -143,6 +143,7 @@ export async function runStart(
     projectRoot,
     workDir,
     projectTomlPath,
+    configTomlPath,
     projectName,
     historyTurns,
     handoffRecentTurns,
@@ -703,6 +704,10 @@ export async function runStart(
     runtimeProviderChain,
     runtimeModelConfig,
     runtimeModelConfigSource,
+    configTomlPath,
+    homeDir,
+    workDir,
+    projectName,
     getActiveSessionId: runtimeState.getActiveSessionId,
     getActiveSessionMetadata: () => {
       const activeSessionId = runtimeState.getActiveSessionId();

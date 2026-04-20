@@ -36,11 +36,7 @@ interface RunStartBannerInput {
 }
 
 const STARTUP_ICON_LINES = [
-  " __  ||  __ ",
-  "/  \\ || /  \\",
-  "\\   \\||/   /",
-  " \\___||___/ ",
-  "    _||_    ",
+  "  G R O L A N D®  ",
 ];
 
 function resolveCliVersionLabel(): string {
@@ -178,7 +174,6 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
         lines: [
           "Run /init to create a CLAUDE.md file with instructions",
         ],
-        footer: "Use /help to list all commands",
       },
       {
         title: "Recent activity",

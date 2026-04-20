@@ -72,6 +72,7 @@ interface MenuInputStream {
   on?: (event: "data", listener: (chunk: string) => void) => void;
   off?: (event: "data", listener: (chunk: string) => void) => void;
   resume?: () => void;
+  pause?: () => void;
   setEncoding?: (encoding: string) => void;
 }
 
@@ -246,18 +247,24 @@ export function resolveCoalescedSubmitChunk(
   chunkRaw: string,
 ): CoalescedSubmitChunkResolution {
   const chunk = String(chunkRaw ?? "");
-  const hasTrailingReturn =
-    chunk.length > 1
-    && chunk.endsWith("\r")
-    && !chunk.slice(0, -1).includes("\r");
-  if (!hasTrailingReturn) {
+  const trailingLength = chunk.endsWith("\r\n")
+    ? 2
+    : chunk.endsWith("\r") || chunk.endsWith("\n")
+      ? 1
+      : 0;
+  if (trailingLength === 0) {
     return {
       normalizedChunk: chunk,
       shouldSubmit: false,
     };
   }
-  const payload = chunk.slice(0, -1);
-  if (payload.endsWith("\\") || payload.includes("\u001b")) {
+  const payload = chunk.slice(0, chunk.length - trailingLength);
+  if (
+    payload.includes("\r")
+    || payload.includes("\n")
+    || payload.endsWith("\\")
+    || payload.includes("\u001b")
+  ) {
     return {
       normalizedChunk: chunk,
       shouldSubmit: false,
@@ -1174,49 +1181,129 @@ export async function runSessionInputLoop(
         resolve(result);
       };
 
+      const resolveSlashState = (): {
+        activeSuggestions: readonly SessionSlashSuggestion[];
+        hasActiveSlashSuggestions: boolean;
+      } => {
+        const activeSuggestions = latestSnapshot?.activeSlashSuggestions ?? [];
+        const hasActiveSlashSuggestions = Boolean(
+          latestSnapshot?.activeLineInput.trimStart().startsWith("/")
+          && activeSuggestions.length > 0,
+        );
+        return {
+          activeSuggestions,
+          hasActiveSlashSuggestions,
+        };
+      };
+
+      const handleEnterLikeAction = (action: SubmitKeyAction): void => {
+        const slashState = resolveSlashState();
+        const slashAction = resolveSlashSuggestionKeyAction({
+          key: "enter",
+          hasActiveSuggestions: slashState.hasActiveSlashSuggestions,
+          selectedCommand: slashState.activeSuggestions[activeSlashSuggestionIndex]?.command,
+          activeLineInput: latestSnapshot?.activeLineInput,
+        });
+        if (slashAction.kind === "apply") {
+          const replacedLine = replaceActiveLineWithCommand(slashAction.appliedCommand);
+          if (typeof replacedLine === "string") {
+            slashSuggestionsHiddenForLine = replacedLine;
+          }
+          if (slashAction.submitImmediately) {
+            finish({
+              kind: "submit",
+              value: graphemes.join(""),
+            });
+          } else {
+            render();
+          }
+          return;
+        }
+        if (slashAction.kind === "hide_panel") {
+          slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
+          activeSlashSuggestionIndex = 0;
+          render();
+          return;
+        }
+        if (action === "newline") {
+          insertTextAtCursor("\n");
+          render();
+          return;
+        }
+        finish({
+          kind: "submit",
+          value: graphemes.join(""),
+        });
+      };
+
       const onData = (chunk: string): void => {
         if (closed) {
           return;
         }
         const raw = String(chunk ?? "");
-        if (
-          raw.length === 0
-          || (
-            !raw.includes(BRACKETED_PASTE_START)
-            && !raw.includes(BRACKETED_PASTE_END)
-            && bracketedPasteBuffer.length === 0
-          )
-        ) {
+        if (raw.length === 0) {
           return;
         }
-        bracketedPasteBuffer = `${bracketedPasteBuffer}${raw}`;
-        if (bracketedPasteBuffer.length > BRACKETED_PASTE_BUFFER_LIMIT) {
-          bracketedPasteBuffer = bracketedPasteBuffer.slice(-BRACKETED_PASTE_BUFFER_LIMIT);
-        }
-        let matched = false;
-        let lastConsumedIndex = 0;
-        BRACKETED_PASTE_BLOCK_PATTERN.lastIndex = 0;
-        for (const match of bracketedPasteBuffer.matchAll(BRACKETED_PASTE_BLOCK_PATTERN)) {
-          const payload = match[1] ?? "";
-          matched = true;
-          lastConsumedIndex = (match.index ?? 0) + match[0].length;
-          handleBracketedPastePayload(payload);
-        }
-        if (matched) {
-          bracketedPasteBuffer = bracketedPasteBuffer.slice(lastConsumedIndex);
+        const hasBracketedChunk =
+          raw.includes(BRACKETED_PASTE_START)
+          || raw.includes(BRACKETED_PASTE_END)
+          || bracketedPasteBuffer.length > 0;
+        if (hasBracketedChunk) {
+          bracketedPasteBuffer = `${bracketedPasteBuffer}${raw}`;
+          if (bracketedPasteBuffer.length > BRACKETED_PASTE_BUFFER_LIMIT) {
+            bracketedPasteBuffer = bracketedPasteBuffer.slice(-BRACKETED_PASTE_BUFFER_LIMIT);
+          }
+          let matched = false;
+          let lastConsumedIndex = 0;
+          BRACKETED_PASTE_BLOCK_PATTERN.lastIndex = 0;
+          for (const match of bracketedPasteBuffer.matchAll(BRACKETED_PASTE_BLOCK_PATTERN)) {
+            const payload = match[1] ?? "";
+            matched = true;
+            lastConsumedIndex = (match.index ?? 0) + match[0].length;
+            handleBracketedPastePayload(payload);
+          }
+          if (matched) {
+            bracketedPasteBuffer = bracketedPasteBuffer.slice(lastConsumedIndex);
+            return;
+          }
+          const startIndex = bracketedPasteBuffer.lastIndexOf(BRACKETED_PASTE_START);
+          if (startIndex >= 0) {
+            bracketedPasteBuffer = bracketedPasteBuffer.slice(startIndex);
+            return;
+          }
+          const tailLength = Math.max(
+            BRACKETED_PASTE_START.length - 1,
+            BRACKETED_PASTE_END.length - 1,
+          );
+          if (bracketedPasteBuffer.length > tailLength) {
+            bracketedPasteBuffer = bracketedPasteBuffer.slice(-tailLength);
+          }
           return;
         }
-        const startIndex = bracketedPasteBuffer.lastIndexOf(BRACKETED_PASTE_START);
-        if (startIndex >= 0) {
-          bracketedPasteBuffer = bracketedPasteBuffer.slice(startIndex);
+
+        if (pauseDepth > 0) {
           return;
         }
-        const tailLength = Math.max(
-          BRACKETED_PASTE_START.length - 1,
-          BRACKETED_PASTE_END.length - 1,
-        );
-        if (bracketedPasteBuffer.length > tailLength) {
-          bracketedPasteBuffer = bracketedPasteBuffer.slice(-tailLength);
+        if (raw === "\u0003") {
+          finish({ kind: "sigint" });
+          return;
+        }
+        const coalescedSubmit = resolveCoalescedSubmitChunk(raw);
+        if (coalescedSubmit.shouldSubmit) {
+          const normalized = stripBracketedPasteMarkers(coalescedSubmit.normalizedChunk)
+            .replace(/\r/g, "\n");
+          if (normalized.length > 0) {
+            insertTextAtCursor(normalized);
+          }
+          handleEnterLikeAction("submit");
+          return;
+        }
+        const submitKeyAction = resolveSubmitKeyAction({
+          chunk: raw,
+          key: {},
+        });
+        if (submitKeyAction !== "none") {
+          handleEnterLikeAction(submitKeyAction);
         }
       };
 
@@ -1241,11 +1328,9 @@ export async function runSessionInputLoop(
           return;
         }
 
-        const activeSuggestions = latestSnapshot?.activeSlashSuggestions ?? [];
-        const hasActiveSlashSuggestions = Boolean(
-          latestSnapshot?.activeLineInput.trimStart().startsWith("/")
-          && activeSuggestions.length > 0,
-        );
+        const slashState = resolveSlashState();
+        const activeSuggestions = slashState.activeSuggestions;
+        const hasActiveSlashSuggestions = slashState.hasActiveSlashSuggestions;
         const moveSuggestionUp = key.name === "up" || (key.ctrl && key.name === "p");
         const moveSuggestionDown = key.name === "down" || (key.ctrl && key.name === "n");
 
@@ -1322,45 +1407,6 @@ export async function runSessionInputLoop(
           render();
           return;
         }
-        const handleEnterLikeAction = (action: SubmitKeyAction): void => {
-          const slashAction = resolveSlashSuggestionKeyAction({
-            key: "enter",
-            hasActiveSuggestions: hasActiveSlashSuggestions,
-            selectedCommand: activeSuggestions[activeSlashSuggestionIndex]?.command,
-            activeLineInput: latestSnapshot?.activeLineInput,
-          });
-          if (slashAction.kind === "apply") {
-            const replacedLine = replaceActiveLineWithCommand(slashAction.appliedCommand);
-            if (typeof replacedLine === "string") {
-              slashSuggestionsHiddenForLine = replacedLine;
-            }
-            if (slashAction.submitImmediately) {
-              finish({
-                kind: "submit",
-                value: graphemes.join(""),
-              });
-            } else {
-              render();
-            }
-            return;
-          }
-          if (slashAction.kind === "hide_panel") {
-            slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
-            activeSlashSuggestionIndex = 0;
-            render();
-            return;
-          }
-          if (action === "newline") {
-            insertTextAtCursor("\n");
-            render();
-            return;
-          }
-          finish({
-            kind: "submit",
-            value: graphemes.join(""),
-          });
-        };
-
         const submitKeyAction = resolveSubmitKeyAction({
           chunk: rawInput,
           key,
@@ -1459,6 +1505,7 @@ export async function runSessionInputLoop(
   } finally {
     menuInput.off?.("data", onEscDataWhileHandler);
     setRawMode(false);
+    menuInput.pause?.();
   }
 }
 
@@ -1496,6 +1543,14 @@ export function decodeMenuInput(rawInput: string, itemsLength: number): MenuInpu
       index: parsedIndex,
     };
   };
+  const coalescedSubmit = resolveCoalescedSubmitChunk(rawInput);
+  if (coalescedSubmit.shouldSubmit) {
+    const normalizedPayload = coalescedSubmit.normalizedChunk.trim();
+    if (normalizedPayload.length === 0) {
+      return { kind: "enter" };
+    }
+    return parseNumericSelection(normalizedPayload);
+  }
   if (rawInput.length === 1) {
     const firstChar = rawInput[0];
     if (firstChar === "\u0003" || firstChar === "\u001b") {

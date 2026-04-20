@@ -5,7 +5,7 @@ export type CliThemeToken = "accent" | "brand" | "muted" | "info" | "title";
 const ANSI_RESET = "\x1b[0m";
 const ANSI_BOLD = "\x1b[1m";
 const ANSI_ACCENT = "\x1b[92m";
-const ANSI_BRAND = "\x1b[38;5;208m";
+const ANSI_BRAND = "\x1b[38;2;202;124;94m";
 const ANSI_INFO = "\x1b[96m";
 const ANSI_MUTED = "\x1b[90m";
 

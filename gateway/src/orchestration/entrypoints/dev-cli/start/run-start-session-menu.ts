@@ -57,12 +57,12 @@ function resolveSessionMenuTitle(mode: SessionMenuMode): string {
 
 function resolveSessionMenuHint(mode: SessionMenuMode): string {
   if (mode === "continue") {
-    return "Use ↑/↓ (or j/k), Enter to inject summary bridge, Esc to cancel.";
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to inject summary bridge, Esc to cancel.";
   }
   if (mode === "sessions") {
-    return "Use ↑/↓ (or j/k), Enter to switch/create, Esc to cancel.";
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch/create, Esc to cancel.";
   }
-  return "Use ↑/↓ (or j/k), Enter to switch session, Esc to cancel.";
+  return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch session, Esc to cancel.";
 }
 
 function buildSessionMenuItems(input: {

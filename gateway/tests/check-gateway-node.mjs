@@ -687,7 +687,14 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.plan_prefix_miss_entered_plan, false);
   assert.equal(sessionInteractiveDispatchPayload.switch_menu_opened, true);
   assert.equal(sessionInteractiveDispatchPayload.continue_menu_opened, true);
-  assert.equal(sessionInteractiveDispatchPayload.model_reset_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.model_menu_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.exit_command_breaks_loop, true);
+  assert.equal(sessionInteractiveDispatchPayload.exit_command_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.exit_alias_slash_quit_breaks_loop, true);
+  assert.equal(sessionInteractiveDispatchPayload.exit_alias_slash_quit_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.exit_alias_quit_breaks_loop, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.skills_dispatched_to_stdout, true);
   assert.equal(sessionInteractiveDispatchPayload.skills_hits_run_turn, false);
@@ -696,6 +703,57 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.user_command_checked, true);
   assert.equal(sessionInteractiveDispatchPayload.user_command_hits_run_turn, false);
   logStep("session-interactive-dispatch-contract");
+
+  const runStartInputKeybindingContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-input-keybinding-contract.ts",
+  ]);
+  assertSuccess("run-start-input-keybinding-contract", runStartInputKeybindingContractResult);
+  const runStartInputKeybindingContractPayload = parseJsonOutput(
+    "run-start-input-keybinding-contract",
+    runStartInputKeybindingContractResult.stdout,
+  );
+  assert.equal(runStartInputKeybindingContractPayload.menu_enter_is_confirm, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_lf_is_confirm, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_crlf_is_confirm, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_space_is_confirm, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_ctrl_p_is_up, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_ctrl_n_is_down, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_escape_is_cancel, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_arrow_up_is_up, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_arrow_down_is_down, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_multi_digits_direct_index, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_digit_coalesced_crlf_direct_index, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_digit_prefix_has_continuation, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_digit_suffix_no_continuation, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_digit_prefix_first_match_index, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_digits_to_index_10, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_digits_reject_leading_zero, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_apply_menu_command, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_apply_commands_new_requires_fill, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_apply_plan_optional_submit, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_key_enter_applies_and_submits, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_key_tab_applies_without_submit, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_key_escape_hides_panel, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_key_no_suggestions_noop, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_return_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_enter_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_legacy_sequence_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_csiu_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_shift_newline, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_meta_newline, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_csiu_shift_newline, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_non_enter_ignored, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_crlf_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_lf_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_backslash_ignored, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_escape_ignored, true);
+  assert.equal(runStartInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
+  logStep("run-start-input-keybinding-contract");
 
   const userCommandsContractResult = runCommand("npx", [
     "--yes",
@@ -877,6 +935,9 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.menu_non_tty_has_ansi, false);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_pointer, true);
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_current_tag, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_ctrl_np, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_number_direct, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_enter_space, true);
   logStep("dev-cli-ui-renderer-contract");
 
   const devCliTurnScreenContractResult = runCommand("npx", [
@@ -1250,7 +1311,7 @@ async function runGatewayContractSmoke() {
     "Trace model override and reset contract",
   );
   assert.equal(modelOpsContractPayload.main_model_after_use, "model-variant");
-  assert.equal(modelOpsContractPayload.main_source_after_use, "session:/model");
+  assert.equal(modelOpsContractPayload.main_source_after_use, "config_toml:provider.model");
   assert.equal(modelOpsContractPayload.main_session_id_after_use, "session-main");
   assert.equal(modelOpsContractPayload.main_session_title_after_use, "Main Session");
   assert.equal(
@@ -1260,12 +1321,12 @@ async function runGatewayContractSmoke() {
   assert.equal(modelOpsContractPayload.main_model_after_reset, "model-default");
   assert.equal(
     modelOpsContractPayload.main_source_after_reset,
-    "config:provider:model",
+    "config_toml:provider.model",
   );
   assert.equal(modelOpsContractPayload.branch_model_after_switch, "model-default");
   assert.equal(
     modelOpsContractPayload.branch_source_after_switch,
-    "config:provider:model",
+    "config_toml:provider.model",
   );
   assert.equal(
     modelOpsContractPayload.branch_session_id_after_switch,
@@ -1279,14 +1340,44 @@ async function runGatewayContractSmoke() {
     modelOpsContractPayload.branch_session_summary_after_switch,
     "Follow-up fallback regression",
   );
-  assert.equal(Number(modelOpsContractPayload.list_calls), 2);
+  assert.equal(Number(modelOpsContractPayload.list_calls), 3);
+  assert.equal(Number(modelOpsContractPayload.persist_call_count), 2);
+  assert.equal(modelOpsContractPayload.persist_first_call, "provider-main:model-variant");
+  assert.equal(modelOpsContractPayload.persist_second_call, "provider-main:model-default");
   assert.equal(modelOpsContractPayload.list_output_has_current_marker, true);
   assert.equal(modelOpsContractPayload.list_output_has_variant, true);
   assert.equal(
     modelOpsContractPayload.runtime_source_after_switch,
-    "config:provider:model",
+    "config_toml:provider.model",
   );
   logStep("run-start-model-ops-contract");
+
+  const modelConfigSyncContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-model-config-sync-contract.ts",
+  ]);
+  assertSuccess("run-start-model-config-sync-contract", modelConfigSyncContractResult);
+  const modelConfigSyncContractPayload = parseJsonOutput(
+    "run-start-model-config-sync-contract",
+    modelConfigSyncContractResult.stdout,
+  );
+  assert.equal(modelConfigSyncContractPayload.update_existing_ok, true);
+  assert.equal(modelConfigSyncContractPayload.update_existing_previous_model, true);
+  assert.equal(modelConfigSyncContractPayload.update_existing_comment_preserved, true);
+  assert.equal(modelConfigSyncContractPayload.update_existing_secondary_untouched, true);
+  assert.equal(modelConfigSyncContractPayload.insert_missing_ok, true);
+  assert.equal(modelConfigSyncContractPayload.insert_missing_previous_model_empty, true);
+  assert.equal(modelConfigSyncContractPayload.insert_missing_added_model, true);
+  assert.equal(modelConfigSyncContractPayload.fallback_by_workdir_ok, true);
+  assert.equal(modelConfigSyncContractPayload.fallback_selected_provider_updated, true);
+  assert.equal(modelConfigSyncContractPayload.fallback_non_selected_provider_untouched, true);
+  assert.equal(modelConfigSyncContractPayload.missing_config_path_failed, true);
+  assert.equal(modelConfigSyncContractPayload.empty_model_failed, true);
+  assert.equal(modelConfigSyncContractPayload.missing_file_failed, true);
+  logStep("run-start-model-config-sync-contract");
 
   const historyCompactionResult = runContract("history-compaction-contract.mjs", "trim", [
     "--payload",
@@ -5304,6 +5395,11 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionMenuViewModelPayload.switch_includes_session_key, true);
   assert.equal(sessionMenuViewModelPayload.sessions_omits_session_key, true);
   assert.equal(sessionMenuViewModelPayload.continue_current_skip_hint, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_ctrl_np, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_number_direct, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_enter_space, true);
+  assert.equal(sessionMenuViewModelPayload.switch_hint_has_ctrl_np, true);
+  assert.equal(sessionMenuViewModelPayload.continue_hint_has_ctrl_np, true);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
   assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_item_count), 3);

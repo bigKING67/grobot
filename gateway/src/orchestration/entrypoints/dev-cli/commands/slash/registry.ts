@@ -7,8 +7,7 @@ import {
 import { type SlashCommandExecutionInput, type SlashCommandSpec } from "./types";
 
 interface ParsedModelCommand {
-  kind: "menu" | "current" | "list" | "use" | "reset" | "invalid";
-  modelId?: string;
+  kind: "menu" | "legacy_subcommand" | "invalid";
   reason?: string;
 }
 
@@ -50,27 +49,16 @@ function parseModelCommand(inputRaw: string): ParsedModelCommand {
   if (!rest) {
     return { kind: "menu" };
   }
-  const firstSpace = rest.indexOf(" ");
-  const head = (firstSpace >= 0 ? rest.slice(0, firstSpace) : rest).trim().toLowerCase();
-  const tail = (firstSpace >= 0 ? rest.slice(firstSpace + 1) : "").trim();
-  if (head === "current") {
-    return { kind: "current" };
-  }
-  if (head === "list") {
-    return { kind: "list" };
-  }
-  if (head === "use") {
-    if (!tail) {
-      return { kind: "invalid", reason: "usage: /model use <model_id>" };
-    }
-    return { kind: "use", modelId: tail };
-  }
-  if (head === "reset") {
-    return { kind: "reset" };
+  const legacyMatch = rest.match(/^(current|list|use|reset)(?:\s|$)/i);
+  if (legacyMatch) {
+    return {
+      kind: "legacy_subcommand",
+      reason: "[model] legacy subcommands removed. Use /model to open picker (Enter/Space to apply).",
+    };
   }
   return {
     kind: "invalid",
-    reason: "usage: /model | /model current | /model list | /model use <model_id> | /model reset",
+    reason: "usage: /model",
   };
 }
 
@@ -136,10 +124,14 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
 const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "exit",
-    matches: (userInput) => userInput === "/exit" || userInput === "exit" || userInput === "quit",
+    matches: (userInput) =>
+      userInput === "/exit"
+      || userInput === "/quit"
+      || userInput === "exit"
+      || userInput === "quit",
     execute: async () => "break",
     helpLines: [
-      "  /exit                Exit interactive mode",
+      "  /exit | /quit        Exit interactive mode",
     ],
   },
   {
@@ -228,35 +220,18 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/model"),
     execute: async ({ userInput, controls, handlers }) => {
       const parsed = parseModelCommand(userInput);
-      if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid model command"}\n\n`);
-        return "continue";
-      }
       if (parsed.kind === "menu") {
         await handlers.openModelMenu(controls.withInputPaused);
         return "continue";
       }
-      if (parsed.kind === "current") {
-        await handlers.showModelCurrent();
+      if (parsed.kind === "legacy_subcommand" || parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid model command"}\n\n`);
         return "continue";
       }
-      if (parsed.kind === "list") {
-        await handlers.listModels();
-        return "continue";
-      }
-      if (parsed.kind === "reset") {
-        await handlers.resetModel();
-        return "continue";
-      }
-      await handlers.useModel(parsed.modelId ?? "");
       return "continue";
     },
     helpLines: [
-      "  /model               Open interactive model picker (session-scoped)",
-      "  /model current       Show current provider/model",
-      "  /model list          List selectable models from upstream",
-      "  /model use <id>      Switch model for current session",
-      "  /model reset         Reset model override for current session",
+      "  /model               Open interactive model picker (syncs config provider.model)",
     ],
   },
   {
@@ -425,10 +400,6 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
   { command: "/model", description: "Open interactive model picker" },
-  { command: "/model current", description: "Show current provider/model snapshot" },
-  { command: "/model list", description: "List selectable models from upstream" },
-  { command: "/model use <id>", description: "Switch model for current session" },
-  { command: "/model reset", description: "Reset model override for current session" },
   { command: "/status", description: "Show current status line config snapshot" },
   { command: "/status layout <adaptive|full|compact>", description: "Set status line layout mode" },
   { command: "/status theme <plain|nerd|ccline>", description: "Set status line theme" },
@@ -441,6 +412,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
   { command: "/exit", description: "Exit interactive mode" },
+  { command: "/quit", description: "Alias of /exit" },
 ];
 
 function findSlashCommandById(id: string): SlashCommandSpec | undefined {

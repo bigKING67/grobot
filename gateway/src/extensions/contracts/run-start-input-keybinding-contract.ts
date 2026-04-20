@@ -1,0 +1,168 @@
+import {
+  decodeMenuInput,
+  hasMenuDigitsContinuation,
+  resolveCoalescedSubmitChunk,
+  resolveFirstMenuPrefixMatchIndex,
+  resolveMenuIndexFromDigits,
+  resolveSlashSuggestionApplyResult,
+  resolveSlashSuggestionKeyAction,
+  resolveSubmitKeyAction,
+} from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
+
+async function main(): Promise<void> {
+  const menuItemsLength = 12;
+  const enterAction = decodeMenuInput("\r", menuItemsLength);
+  const lfEnterAction = decodeMenuInput("\n", menuItemsLength);
+  const crlfEnterAction = decodeMenuInput("\r\n", menuItemsLength);
+  const spaceAction = decodeMenuInput(" ", menuItemsLength);
+  const ctrlPAction = decodeMenuInput("\u0010", menuItemsLength);
+  const ctrlNAction = decodeMenuInput("\u000e", menuItemsLength);
+  const escapeAction = decodeMenuInput("\u001b", menuItemsLength);
+  const arrowUpAction = decodeMenuInput("\u001b[A", menuItemsLength);
+  const arrowDownAction = decodeMenuInput("\u001b[B", menuItemsLength);
+  const directIndexAction = decodeMenuInput("12", menuItemsLength);
+  const directIndexCrlfAction = decodeMenuInput("2\r\n", menuItemsLength);
+
+  const slashMenu = resolveSlashSuggestionApplyResult("/model");
+  const slashCommandsNew = resolveSlashSuggestionApplyResult("/commands new <name> <prompt>");
+  const slashPlanApply = resolveSlashSuggestionApplyResult("/plan apply [extra]");
+
+  const enterMenuAction = resolveSlashSuggestionKeyAction({
+    key: "enter",
+    hasActiveSuggestions: true,
+    selectedCommand: "/model",
+    activeLineInput: "/mo",
+  });
+  const tabCommandsNewAction = resolveSlashSuggestionKeyAction({
+    key: "tab",
+    hasActiveSuggestions: true,
+    selectedCommand: "/commands new <name> <prompt>",
+    activeLineInput: "/co",
+  });
+  const escapeActionForSlash = resolveSlashSuggestionKeyAction({
+    key: "escape",
+    hasActiveSuggestions: true,
+    selectedCommand: "/model",
+    activeLineInput: "/model",
+  });
+  const noopAction = resolveSlashSuggestionKeyAction({
+    key: "enter",
+    hasActiveSuggestions: false,
+    selectedCommand: "/model",
+  });
+
+  const submitReturn = resolveSubmitKeyAction({
+    chunk: "\r",
+    key: { name: "return", sequence: "\r" },
+  });
+  const submitEnter = resolveSubmitKeyAction({
+    chunk: "\n",
+    key: { name: "enter", sequence: "\n" },
+  });
+  const submitLegacySequence = resolveSubmitKeyAction({
+    chunk: "\u001bOM",
+    key: { sequence: "\u001bOM" },
+  });
+  const submitCsiU = resolveSubmitKeyAction({
+    chunk: "\u001b[13u",
+    key: { sequence: "\u001b[13u" },
+  });
+  const newlineShift = resolveSubmitKeyAction({
+    chunk: "\r",
+    key: { name: "return", sequence: "\r", shift: true },
+  });
+  const newlineMeta = resolveSubmitKeyAction({
+    chunk: "\r",
+    key: { name: "return", sequence: "\r", meta: true },
+  });
+  const newlineCsiUShift = resolveSubmitKeyAction({
+    chunk: "\u001b[13;2u",
+    key: { sequence: "\u001b[13;2u" },
+  });
+  const submitNone = resolveSubmitKeyAction({
+    chunk: "a",
+    key: { name: "a", sequence: "a" },
+  });
+  const coalescedSubmit = resolveCoalescedSubmitChunk("hello\r");
+  const coalescedSubmitCrLf = resolveCoalescedSubmitChunk("hello\r\n");
+  const coalescedSubmitLf = resolveCoalescedSubmitChunk("hello\n");
+  const coalescedWithBackslash = resolveCoalescedSubmitChunk("\\\r");
+  const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
+  const submitChunkOnlyLf = resolveSubmitKeyAction({
+    chunk: "\n",
+    key: {},
+  });
+
+  const payload = {
+    menu_enter_is_confirm: enterAction.kind === "enter",
+    menu_lf_is_confirm: lfEnterAction.kind === "enter",
+    menu_crlf_is_confirm: crlfEnterAction.kind === "enter",
+    menu_space_is_confirm: spaceAction.kind === "enter",
+    menu_ctrl_p_is_up: ctrlPAction.kind === "up",
+    menu_ctrl_n_is_down: ctrlNAction.kind === "down",
+    menu_escape_is_cancel: escapeAction.kind === "cancel",
+    menu_arrow_up_is_up: arrowUpAction.kind === "up",
+    menu_arrow_down_is_down: arrowDownAction.kind === "down",
+    menu_multi_digits_direct_index:
+      directIndexAction.kind === "select_index" && directIndexAction.index === 11,
+    menu_digit_coalesced_crlf_direct_index:
+      directIndexCrlfAction.kind === "select_index" && directIndexCrlfAction.index === 1,
+    menu_digit_prefix_has_continuation:
+      hasMenuDigitsContinuation("1", menuItemsLength),
+    menu_digit_suffix_no_continuation:
+      !hasMenuDigitsContinuation("12", menuItemsLength),
+    menu_digit_prefix_first_match_index:
+      resolveFirstMenuPrefixMatchIndex("1", menuItemsLength) === 0,
+    menu_digits_to_index_10:
+      resolveMenuIndexFromDigits("10", menuItemsLength) === 9,
+    menu_digits_reject_leading_zero:
+      typeof resolveMenuIndexFromDigits("01", menuItemsLength) === "undefined",
+    slash_apply_menu_command:
+      slashMenu.command === "/model" && slashMenu.submitImmediately,
+    slash_apply_commands_new_requires_fill:
+      slashCommandsNew.command === "/commands new " && !slashCommandsNew.submitImmediately,
+    slash_apply_plan_optional_submit:
+      slashPlanApply.command === "/plan apply " && slashPlanApply.submitImmediately,
+    slash_key_enter_applies_and_submits:
+      enterMenuAction.kind === "apply"
+      && enterMenuAction.appliedCommand === "/model"
+      && enterMenuAction.submitImmediately,
+    slash_key_tab_applies_without_submit:
+      tabCommandsNewAction.kind === "apply"
+      && tabCommandsNewAction.appliedCommand === "/commands new "
+      && !tabCommandsNewAction.submitImmediately,
+    slash_key_escape_hides_panel:
+      escapeActionForSlash.kind === "hide_panel"
+      && escapeActionForSlash.hiddenLineInput === "/model",
+    slash_key_no_suggestions_noop:
+      noopAction.kind === "noop",
+    submit_return_detected: submitReturn === "submit",
+    submit_enter_detected: submitEnter === "submit",
+    submit_legacy_sequence_detected: submitLegacySequence === "submit",
+    submit_csiu_detected: submitCsiU === "submit",
+    submit_shift_newline: newlineShift === "newline",
+    submit_meta_newline: newlineMeta === "newline",
+    submit_csiu_shift_newline: newlineCsiUShift === "newline",
+    submit_non_enter_ignored: submitNone === "none",
+    submit_coalesced_detected:
+      coalescedSubmit.shouldSubmit
+      && coalescedSubmit.normalizedChunk === "hello",
+    submit_coalesced_crlf_detected:
+      coalescedSubmitCrLf.shouldSubmit
+      && coalescedSubmitCrLf.normalizedChunk === "hello",
+    submit_coalesced_lf_detected:
+      coalescedSubmitLf.shouldSubmit
+      && coalescedSubmitLf.normalizedChunk === "hello",
+    submit_coalesced_backslash_ignored:
+      !coalescedWithBackslash.shouldSubmit
+      && coalescedWithBackslash.normalizedChunk === "\\\r",
+    submit_coalesced_escape_ignored:
+      !coalescedEscapeSequence.shouldSubmit
+      && coalescedEscapeSequence.normalizedChunk === "\u001b\r",
+    submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",
+  };
+
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
+void main();

@@ -55,6 +55,32 @@ function parseArgs(argv) {
   return { command, options };
 }
 
+const ANSI_ESCAPE_PATTERN = /\u001b(?:\[[0-9;?]*[ -/]*[@-~]|[@-Z\\-_])/g;
+const OSC_ESCAPE_PATTERN = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
+const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000b-\u001a\u001c-\u001f\u007f]/g;
+
+function normalizeTerminalTextForMatch(value) {
+  const raw = String(value ?? "");
+  return raw
+    .replace(OSC_ESCAPE_PATTERN, "")
+    .replace(ANSI_ESCAPE_PATTERN, "")
+    .replace(CONTROL_CHAR_PATTERN, "");
+}
+
+function hasStartBannerMarker(outputText) {
+  const normalized = normalizeTerminalTextForMatch(outputText);
+  if (/G\s*R\s*O\s*L\s*A\s*N\s*D(?:\s*®)?/i.test(normalized)) {
+    return true;
+  }
+  if (/Grobot\s+v\d/i.test(normalized)) {
+    return true;
+  }
+  if (/Grobot\s+dev\b/i.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
 function requireOption(options, key) {
   const value = options.get(key);
   if (!value) {
@@ -479,7 +505,7 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
   const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
   return {
     ...commandResult,
-    has_start_banner: outputText.includes("Grobot v"),
+    has_start_banner: hasStartBannerMarker(outputText),
     has_status_snapshot: outputText.includes("[status]"),
     has_command_hint: outputText.includes("Enter message ("),
     has_prompt_prefix: outputText.includes("› "),
@@ -563,7 +589,7 @@ function runStartImOnlyRejectFlow(repoRoot) {
       "pass one of --platform/--tenant/--session-scope/--session-subject",
     ),
     has_im_only_hint_bare: outputText.includes("run `grobot` (no subcommand)"),
-    has_start_banner: outputText.includes("Grobot v"),
+    has_start_banner: hasStartBannerMarker(outputText),
   };
 }
 

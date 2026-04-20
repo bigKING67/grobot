@@ -993,6 +993,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     projectRoot,
     workDir,
     projectTomlPath,
+    configTomlPath,
     projectName,
     historyTurns,
     handoffRecentTurns,

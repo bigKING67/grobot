@@ -37,6 +37,7 @@ interface StartScreenLine {
   kind: "text" | "separator";
   text?: string;
   token?: CliThemeToken;
+  align?: "left" | "center";
 }
 
 interface StartScreenCardLayout {
@@ -54,11 +55,16 @@ function clamp(value: number, min: number, max: number): number {
   return value;
 }
 
-function createTextLine(text: string, token?: CliThemeToken): StartScreenLine {
+function createTextLine(
+  text: string,
+  token?: CliThemeToken,
+  align: "left" | "center" = "left",
+): StartScreenLine {
   return {
     kind: "text",
     text,
     token,
+    align,
   };
 }
 
@@ -107,17 +113,33 @@ function padLine(value: string, width: number): string {
   return padToDisplayWidth(truncateLine(value, width), width);
 }
 
+function centerLine(value: string, width: number): string {
+  const truncated = truncateLine(value, width);
+  const displayWidth = measureDisplayWidth(truncated);
+  if (displayWidth >= width) {
+    return truncated;
+  }
+  const leftPad = Math.floor((width - displayWidth) / 2);
+  const rightPad = Math.max(0, width - displayWidth - leftPad);
+  return `${" ".repeat(leftPad)}${truncated}${" ".repeat(rightPad)}`;
+}
+
 function compactLineRows(rows: string[]): string[] {
   return rows.map((line) => line.trim()).filter((line) => line.length > 0);
 }
 
 function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[] {
   const lines: StartScreenLine[] = [];
+  const centerHeroLayout = (viewModel.hero?.infoLines.length ?? -1) === 0;
   if (viewModel.hero) {
-    lines.push(createTextLine("Welcome back!", "title"));
+    lines.push(createTextLine("Welcome back!", "title", "center"));
     lines.push(createTextLine(""));
-    for (const line of renderHeroBlock(viewModel.hero)) {
-      lines.push(createTextLine(line));
+    const heroLines = renderHeroBlock(viewModel.hero).map((line) =>
+      centerHeroLayout ? line.trim() : line.trimEnd()
+    );
+    const heroAlign = centerHeroLayout ? "center" : "left";
+    for (const line of heroLines) {
+      lines.push(createTextLine(line, centerHeroLayout ? "brand" : undefined, heroAlign));
     }
   }
 
@@ -127,7 +149,7 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
       lines.push(createTextLine(""));
     }
     for (const row of compactRows) {
-      lines.push(createTextLine(row, "muted"));
+      lines.push(createTextLine(row, "muted", centerHeroLayout ? "center" : "left"));
     }
   }
 
@@ -188,7 +210,9 @@ function renderLineWithStyle(
     const token = line.token ?? "brand";
     return theme.color(token, "─".repeat(width));
   }
-  const content = padLine(line.text ?? "", width);
+  const content = line.align === "center"
+    ? centerLine(line.text ?? "", width)
+    : padLine(line.text ?? "", width);
   if (line.token) {
     return theme.color(line.token, content);
   }
@@ -278,8 +302,16 @@ function renderTwoColumnCard(
     const leftLine = leftLines[index] ?? createTextLine("");
     const rightLine = rightLines[index] ?? createTextLine("");
     const leftText = renderLineWithStyle(leftLine, leftWidth, theme);
-    const rightText = renderLineWithStyle(rightLine, rightWidth, theme);
-    bodyLines.push(`${leftText}${theme.color("brand", "│")}${rightText}`);
+    if (rightLine.kind === "separator") {
+      // Match tools/all Divider behavior: keep separator inset so it never touches vertical strokes.
+      const separatorCoreWidth = Math.max(1, rightWidth - 2);
+      const separator = theme.color("brand", ` ${"─".repeat(separatorCoreWidth)} `);
+      bodyLines.push(`${leftText}${theme.color("brand", "│")}${separator}`);
+      continue;
+    }
+    const rightContentWidth = Math.max(1, rightWidth - 1);
+    const rightContent = renderLineWithStyle(rightLine, rightContentWidth, theme);
+    bodyLines.push(`${leftText}${theme.color("brand", "│")} ${rightContent}`);
   }
 
   return {

@@ -26,18 +26,6 @@ async function runDispatchCase(input: string): Promise<DispatchCaseResult> {
     showHealthStatus: () => {
       events.push("showHealthStatus");
     },
-    showModelCurrent: async () => {
-      events.push("showModelCurrent");
-    },
-    listModels: async () => {
-      events.push("listModels");
-    },
-      useModel: async () => {
-        events.push("useModel");
-      },
-      resetModel: async () => {
-        events.push("resetModel");
-      },
     openModelMenu: async () => {
       events.push("openModelMenu");
     },
@@ -119,11 +107,15 @@ async function main(): Promise<void> {
   const planPrefixMiss = await runDispatchCase("/planner");
   const switchMenu = await runDispatchCase("/switch");
   const continueMenu = await runDispatchCase("/continue");
-  const modelReset = await runDispatchCase("/model reset");
+  const modelMenu = await runDispatchCase("/model");
+  const modelLegacyReset = await runDispatchCase("/model reset");
   const statusCurrent = await runDispatchCase("/status");
   const statusTheme = await runDispatchCase("/status theme nerd");
   const statusLayoutAlias = await runDispatchCase("/status compact");
   const statusSegment = await runDispatchCase("/status segment tokens off");
+  const exitCommand = await runDispatchCase("/exit");
+  const exitSlashAliasCommand = await runDispatchCase("/quit");
+  const exitAliasCommand = await runDispatchCase("quit");
   const interruptCommand = await runDispatchCase("/interrupt");
   const commandsList = await runDispatchCase("/commands list");
   const skillsCommand = await runDispatchCase("/skills");
@@ -141,11 +133,19 @@ async function main(): Promise<void> {
     plan_prefix_miss_entered_plan: includesEvent(planPrefixMiss.events, "enterPlan"),
     switch_menu_opened: includesEvent(switchMenu.events, "openSessionMenu:switch"),
     continue_menu_opened: includesEvent(continueMenu.events, "openSessionMenu:continue"),
-    model_reset_dispatched: includesEvent(modelReset.events, "resetModel"),
+    model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
+    model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
+    model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
     status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
     status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
     status_segment_dispatched: includesEvent(statusSegment.events, "setStatusSegmentEnabled:tokens:off"),
+    exit_command_breaks_loop: exitCommand.action === "break",
+    exit_command_hits_run_turn: includesEvent(exitCommand.events, "runTurn:/exit"),
+    exit_alias_slash_quit_breaks_loop: exitSlashAliasCommand.action === "break",
+    exit_alias_slash_quit_hits_run_turn:
+      includesEvent(exitSlashAliasCommand.events, "runTurn:/quit"),
+    exit_alias_quit_breaks_loop: exitAliasCommand.action === "break",
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),

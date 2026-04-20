@@ -453,11 +453,10 @@ grobot start \
       - `/switch [id]`：传入 id 时直接切换；不传 id 时打开会话选择器。
       - `/continue [id]`：传入 id 时注入 summary bridge；不传 id 时打开会话选择器。
       - 非 TTY 下，`/switch` 与 `/continue`（不带 id）会回退为输出会话概览与用法提示。
-    - 交互命令新增 `/model`，可在当前 `start` 会话内以终端菜单方式切换模型（默认仅会话级生效，不写回 config）。
-      - `/model`：打开模型选择菜单（↑/↓, Enter, Esc）。
-      - `/model current`：查看当前 provider/model/source。
-      - `/model list`：拉取并打印上游 `/models` 可选模型列表。
-      - `/model use <id>`：校验后切换到指定模型。
+    - 交互命令新增 `/model`，用于在当前 `start` 会话内打开模型菜单并切换模型；切换结果会同步写回 `config.toml` 的 `[[projects.agent.providers]] model`（配置为真相源）。
+      - `/model`：打开模型选择菜单（↑/↓ 或 j/k 或 Ctrl+n/p，数字直选，Enter/Space 确认，Esc 取消）。
+      - 菜单包含 `Reset to startup model (...)` 快捷项，可回到启动模型并同步写回配置。
+      - 旧子命令（如 `/model current`、`/model list`、`/model use`、`/model reset`）已废弃，统一改为 `/model` 菜单操作。
     - 交互命令新增 `/plan ...`，可进入 Plan Mode 并把计划工件落盘到 `.grobot/plans/<session_id>/`。
       - `/plan <goal>`：进入 PLAN_ONLY 并创建结构化计划文件。
       - `/plan status`：查看当前计划状态和文件路径。

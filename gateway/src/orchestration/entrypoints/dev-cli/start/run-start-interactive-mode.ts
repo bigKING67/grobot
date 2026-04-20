@@ -153,10 +153,6 @@ export interface RunStartInteractiveModeInput {
   showHealthStatus(): void;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
   refreshModelCatalogCache(): Promise<void>;
-  showModelCurrent(): Promise<void>;
-  listModels(): Promise<void>;
-  useModel(modelId: string): Promise<void>;
-  resetModel(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showStatusCurrent(): void;
   setStatusTheme(theme: string): void;
@@ -284,10 +280,6 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showHealthStatus: () => {
       input.showHealthStatus();
     },
-    showModelCurrent: input.showModelCurrent,
-    listModels: input.listModels,
-    useModel: input.useModel,
-    resetModel: input.resetModel,
     openModelMenu: input.openModelMenu,
     showStatusCurrent: input.showStatusCurrent,
     setStatusTheme: input.setStatusTheme,
