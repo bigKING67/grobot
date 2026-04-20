@@ -42,14 +42,7 @@ export function normalizeSuggestionIndex(itemsLength: number, index: number): nu
 }
 
 function normalizeDescription(input: SlashOverlaySuggestion): string {
-  const detail = (input.description ?? "").trim().replace(/\s+/g, " ");
-  if (detail.length === 0) {
-    return "";
-  }
-  if (input.source && input.source.trim().length > 0) {
-    return `${detail} (${input.source.trim()})`;
-  }
-  return detail;
+  return (input.description ?? "").trim().replace(/\s+/g, " ");
 }
 
 function formatSuggestionRow(input: {

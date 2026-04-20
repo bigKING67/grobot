@@ -479,7 +479,7 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
   const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
   return {
     ...commandResult,
-    has_start_banner: outputText.includes("Grobot started"),
+    has_start_banner: outputText.includes("Grobot v"),
     has_status_snapshot: outputText.includes("[status]"),
     has_command_hint: outputText.includes("Enter message ("),
     has_prompt_prefix: outputText.includes("› "),
@@ -563,7 +563,7 @@ function runStartImOnlyRejectFlow(repoRoot) {
       "pass one of --platform/--tenant/--session-scope/--session-subject",
     ),
     has_im_only_hint_bare: outputText.includes("run `grobot` (no subcommand)"),
-    has_start_banner: outputText.includes("Grobot started"),
+    has_start_banner: outputText.includes("Grobot v"),
   };
 }
 

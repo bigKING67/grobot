@@ -88,9 +88,235 @@ interface KeypressInputStream {
   off?: (event: "keypress", listener: (chunk: string, key: KeypressPayload) => void) => void;
 }
 
+export interface SlashSuggestionApplyResult {
+  command: string;
+  submitImmediately: boolean;
+}
+
+export type SlashSuggestionKey = "enter" | "tab" | "escape";
+
+export type SlashSuggestionKeyAction =
+  | { kind: "noop" }
+  | { kind: "hide_panel"; hiddenLineInput: string }
+  | { kind: "apply"; appliedCommand: string; submitImmediately: boolean };
+
+export type SubmitKeyAction = "submit" | "newline" | "none";
+
+export interface CoalescedSubmitChunkResolution {
+  normalizedChunk: string;
+  shouldSubmit: boolean;
+}
+
+export type MenuInputAction =
+  | { kind: "up" }
+  | { kind: "down" }
+  | { kind: "enter" }
+  | { kind: "cancel" }
+  | { kind: "ignore" }
+  | { kind: "select_index"; index: number };
+
+const MENU_DIGIT_SELECTION_COMMIT_DELAY_MS = 250;
+
 export interface InlineAttachmentResolution {
   userInput: string;
   attachments: RuntimeAttachment[];
+}
+
+export function resolveSlashSuggestionApplyResult(
+  commandRaw: string,
+): SlashSuggestionApplyResult {
+  const trimmed = commandRaw.trim();
+  if (!trimmed) {
+    return {
+      command: commandRaw,
+      submitImmediately: false,
+    };
+  }
+  const tokens = trimmed.split(/\s+/).filter((token) => token.length > 0);
+  if (tokens.length === 0) {
+    return {
+      command: trimmed,
+      submitImmediately: false,
+    };
+  }
+  const firstRequiredIndex = tokens.findIndex((token) => /^<[^>]+>$/.test(token));
+  const firstOptionalIndex = tokens.findIndex((token) => /^\[[^\]]+\]$/.test(token));
+  const firstPlaceholderIndex = [firstRequiredIndex, firstOptionalIndex]
+    .filter((index) => index >= 0)
+    .reduce((current, index) => Math.min(current, index), tokens.length);
+  const baseTokens = firstPlaceholderIndex > 0
+    ? tokens.slice(0, firstPlaceholderIndex)
+    : [tokens[0]];
+  const hasRequiredPlaceholder = firstRequiredIndex >= 0;
+  const hasPlaceholder = firstPlaceholderIndex < tokens.length;
+  const baseCommand = baseTokens.join(" ");
+  return {
+    command: hasPlaceholder ? `${baseCommand} ` : baseCommand,
+    submitImmediately: !hasRequiredPlaceholder,
+  };
+}
+
+export function resolveSlashSuggestionKeyAction(input: {
+  key: SlashSuggestionKey;
+  hasActiveSuggestions: boolean;
+  selectedCommand?: string;
+  activeLineInput?: string;
+}): SlashSuggestionKeyAction {
+  if (!input.hasActiveSuggestions) {
+    return { kind: "noop" };
+  }
+  if (input.key === "escape") {
+    return {
+      kind: "hide_panel",
+      hiddenLineInput: input.activeLineInput ?? "",
+    };
+  }
+  const selectedCommand = input.selectedCommand?.trim();
+  if (!selectedCommand) {
+    return { kind: "noop" };
+  }
+  const applied = resolveSlashSuggestionApplyResult(selectedCommand);
+  return {
+    kind: "apply",
+    appliedCommand: applied.command,
+    submitImmediately: input.key === "enter" ? applied.submitImmediately : false,
+  };
+}
+
+function parseCsiUKeypressSequence(
+  sequenceRaw: string,
+): { codepoint: number; shift: boolean; meta: boolean; ctrl: boolean } | undefined {
+  const sequence = sequenceRaw.trim();
+  const match = sequence.match(/^\u001b\[(\d+)(?:;(\d+))?u$/);
+  if (!match) {
+    return undefined;
+  }
+  const codepoint = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(codepoint) || codepoint <= 0) {
+    return undefined;
+  }
+  const encodedModifiers = Number.parseInt(match[2] ?? "1", 10);
+  const modifierMask = Number.isFinite(encodedModifiers) && encodedModifiers > 0
+    ? Math.max(0, encodedModifiers - 1)
+    : 0;
+  return {
+    codepoint,
+    shift: (modifierMask & 0b0001) !== 0,
+    meta: (modifierMask & 0b0010) !== 0 || (modifierMask & 0b1000) !== 0,
+    ctrl: (modifierMask & 0b0100) !== 0,
+  };
+}
+
+function isLegacyEnterSequence(sequence: string): boolean {
+  return sequence === "\u001bOM" || sequence === "\u001b[13~";
+}
+
+export function resolveSubmitKeyAction(input: {
+  chunk: string;
+  key: KeypressPayload;
+}): SubmitKeyAction {
+  const rawChunk = String(input.chunk ?? "");
+  const sequence = String(input.key.sequence ?? rawChunk);
+  const normalizedName = (input.key.name ?? "").trim().toLowerCase();
+  const csiInfo = parseCsiUKeypressSequence(sequence)
+    ?? parseCsiUKeypressSequence(rawChunk);
+  const keyIndicatesEnter =
+    normalizedName === "return"
+    || normalizedName === "enter";
+  const rawIndicatesEnter =
+    sequence === "\r"
+    || sequence === "\n"
+    || rawChunk === "\r"
+    || rawChunk === "\n"
+    || isLegacyEnterSequence(sequence)
+    || isLegacyEnterSequence(rawChunk);
+  const csiIndicatesEnter = csiInfo?.codepoint === 13 || csiInfo?.codepoint === 10;
+  if (!keyIndicatesEnter && !rawIndicatesEnter && !csiIndicatesEnter) {
+    return "none";
+  }
+  const shift = Boolean(input.key.shift || csiInfo?.shift);
+  const meta = Boolean(input.key.meta || csiInfo?.meta);
+  if (shift || meta) {
+    return "newline";
+  }
+  return "submit";
+}
+
+export function resolveCoalescedSubmitChunk(
+  chunkRaw: string,
+): CoalescedSubmitChunkResolution {
+  const chunk = String(chunkRaw ?? "");
+  const hasTrailingReturn =
+    chunk.length > 1
+    && chunk.endsWith("\r")
+    && !chunk.slice(0, -1).includes("\r");
+  if (!hasTrailingReturn) {
+    return {
+      normalizedChunk: chunk,
+      shouldSubmit: false,
+    };
+  }
+  const payload = chunk.slice(0, -1);
+  if (payload.endsWith("\\") || payload.includes("\u001b")) {
+    return {
+      normalizedChunk: chunk,
+      shouldSubmit: false,
+    };
+  }
+  return {
+    normalizedChunk: payload,
+    shouldSubmit: true,
+  };
+}
+
+export function resolveMenuIndexFromDigits(
+  digitsRaw: string,
+  itemsLength: number,
+): number | undefined {
+  if (!/^[0-9]+$/.test(digitsRaw)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(digitsRaw, 10);
+  if (
+    !Number.isFinite(parsed)
+    || parsed <= 0
+    || parsed > itemsLength
+    || String(parsed) !== digitsRaw
+  ) {
+    return undefined;
+  }
+  return parsed - 1;
+}
+
+export function resolveFirstMenuPrefixMatchIndex(
+  digitsPrefixRaw: string,
+  itemsLength: number,
+): number | undefined {
+  if (!/^[0-9]+$/.test(digitsPrefixRaw)) {
+    return undefined;
+  }
+  for (let index = 1; index <= itemsLength; index += 1) {
+    if (String(index).startsWith(digitsPrefixRaw)) {
+      return index - 1;
+    }
+  }
+  return undefined;
+}
+
+export function hasMenuDigitsContinuation(
+  digitsPrefixRaw: string,
+  itemsLength: number,
+): boolean {
+  if (!/^[0-9]+$/.test(digitsPrefixRaw)) {
+    return false;
+  }
+  for (let index = 1; index <= itemsLength; index += 1) {
+    const candidate = String(index);
+    if (candidate.startsWith(digitsPrefixRaw) && candidate.length > digitsPrefixRaw.length) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function buildInlineImagePlaceholder(id: number): string {
@@ -543,6 +769,7 @@ export async function runSessionInputLoop(
     let bracketedPasteBuffer = "";
     let activeSlashSuggestionIndex = 0;
     let lastSlashLineInput = "";
+    let slashSuggestionsHiddenForLine = "";
     let latestSnapshot: InputRenderSnapshot | undefined;
     let closed = false;
 
@@ -698,7 +925,7 @@ export async function runSessionInputLoop(
       const codeOffsets = buildCodeOffsets(graphemes);
       const currentCodeOffset = codeOffsets[cursor] ?? codeOffsets[codeOffsets.length - 1] ?? 0;
       const before = value.slice(descriptor.codeStart, currentCodeOffset);
-      return 2 + promptLabelWidth + measureDisplayWidth(before);
+      return promptLabelWidth + measureDisplayWidth(before);
     };
 
     const resolveSlashSuggestions = (
@@ -716,6 +943,7 @@ export async function runSessionInputLoop(
       if (!activeLineInput.trimStart().startsWith("/")) {
         activeSlashSuggestionIndex = 0;
         lastSlashLineInput = "";
+        slashSuggestionsHiddenForLine = "";
         return {
           suggestions: [],
           panelLines: [],
@@ -724,6 +952,15 @@ export async function runSessionInputLoop(
       if (activeLineInput !== lastSlashLineInput) {
         activeSlashSuggestionIndex = 0;
         lastSlashLineInput = activeLineInput;
+        if (slashSuggestionsHiddenForLine === activeLineInput) {
+          slashSuggestionsHiddenForLine = "";
+        }
+      }
+      if (slashSuggestionsHiddenForLine === activeLineInput) {
+        return {
+          suggestions: [],
+          panelLines: [],
+        };
       }
       const suggestions = options.getSlashSuggestions(activeLineInput);
       if (suggestions.length === 0) {
@@ -755,8 +992,8 @@ export async function runSessionInputLoop(
     const buildRenderSnapshot = (): InputRenderSnapshot => {
       clampCursor();
       const terminalColumns = Math.max(32, resolveTerminalColumns());
-      const maxContentWidth = Math.max(promptLabelWidth + 8, terminalColumns - 4);
-      const wrapWidth = Math.max(1, maxContentWidth - promptLabelWidth);
+      const inputLineWidth = Math.max(promptLabelWidth + 8, terminalColumns - 1);
+      const wrapWidth = Math.max(1, inputLineWidth - promptLabelWidth);
       const descriptors = resolveDescriptors({
         valueGraphemes: graphemes,
         wrapWidth,
@@ -776,8 +1013,8 @@ export async function runSessionInputLoop(
         return undefined;
       })();
 
-      const topBorder = `${ANSI_DIM}╭${"─".repeat(maxContentWidth + 2)}╮${ANSI_RESET}`;
-      const bottomBorder = `${ANSI_DIM}╰${"─".repeat(maxContentWidth + 2)}╯${ANSI_RESET}`;
+      const topBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
+      const bottomBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
       const bodyLines: string[] = descriptors.map((descriptor, index) => {
         const prefix = index === 0 ? promptLabel : continuationPrefix;
         const selectedOffsetInLine =
@@ -791,16 +1028,16 @@ export async function runSessionInputLoop(
           theme: getTheme(),
           selectedStartOffset: selectedOffsetInLine,
         });
-        const content = padToDisplayWidth(`${prefix}${renderedText}`, maxContentWidth);
-        return `${ANSI_DIM}│${ANSI_RESET} ${content} ${ANSI_DIM}│${ANSI_RESET}`;
+        return padToDisplayWidth(`${prefix}${renderedText}`, inputLineWidth);
       });
       const slash = resolveSlashSuggestions(activeLineInput);
+      const shouldRenderFooter = slash.panelLines.length === 0;
       const renderedLines = [
         topBorder,
         ...bodyLines,
         bottomBorder,
         ...slash.panelLines,
-        ...footerLines,
+        ...(shouldRenderFooter ? footerLines : []),
       ];
       const cursorRenderLineIndex = 1 + activeLineIndex;
       const cursorColumn = resolveCursorColumn(activeDescriptor);
@@ -841,18 +1078,19 @@ export async function runSessionInputLoop(
       latestSnapshot = snapshot;
     };
 
-    const replaceActiveLineWithCommand = (command: string): void => {
+    const replaceActiveLineWithCommand = (command: string): string | undefined => {
       if (!latestSnapshot) {
-        return;
+        return undefined;
       }
       const descriptor =
         latestSnapshot.descriptors[latestSnapshot.activeLineIndex]
         ?? latestSnapshot.descriptors[0];
       if (!descriptor) {
-        return;
+        return undefined;
       }
       const leadingSpaces = latestSnapshot.activeLineInput.match(/^\s*/)?.[0] ?? "";
-      const replacement = splitGraphemes(`${leadingSpaces}${command}`);
+      const nextLine = `${leadingSpaces}${command}`;
+      const replacement = splitGraphemes(nextLine);
       graphemes.splice(
         descriptor.start,
         Math.max(0, descriptor.end - descriptor.start),
@@ -860,6 +1098,7 @@ export async function runSessionInputLoop(
       );
       cursor = descriptor.start + replacement.length;
       activeSlashSuggestionIndex = 0;
+      return nextLine;
     };
 
     const moveCursorVertical = (direction: -1 | 1): void => {
@@ -982,6 +1221,7 @@ export async function runSessionInputLoop(
       };
 
       const onKeypress = (chunk: string, key: KeypressPayload): void => {
+        const rawInput = String(chunk ?? "");
         if (closed) {
           return;
         }
@@ -1002,9 +1242,12 @@ export async function runSessionInputLoop(
         }
 
         const activeSuggestions = latestSnapshot?.activeSlashSuggestions ?? [];
-        const hasActiveSlashSuggestions =
+        const hasActiveSlashSuggestions = Boolean(
           latestSnapshot?.activeLineInput.trimStart().startsWith("/")
-          && activeSuggestions.length > 0;
+          && activeSuggestions.length > 0,
+        );
+        const moveSuggestionUp = key.name === "up" || (key.ctrl && key.name === "p");
+        const moveSuggestionDown = key.name === "down" || (key.ctrl && key.name === "n");
 
         if (key.ctrl && key.name === "c") {
           finish({ kind: "sigint" });
@@ -1038,7 +1281,7 @@ export async function runSessionInputLoop(
           }
           return;
         }
-        if (key.name === "up") {
+        if (moveSuggestionUp) {
           if (hasActiveSlashSuggestions) {
             activeSlashSuggestionIndex = normalizeSuggestionIndex(
               activeSuggestions.length,
@@ -1051,7 +1294,7 @@ export async function runSessionInputLoop(
           render();
           return;
         }
-        if (key.name === "down") {
+        if (moveSuggestionDown) {
           if (hasActiveSlashSuggestions) {
             activeSlashSuggestionIndex = normalizeSuggestionIndex(
               activeSuggestions.length,
@@ -1079,16 +1322,35 @@ export async function runSessionInputLoop(
           render();
           return;
         }
-        if (key.name === "return") {
-          if (hasActiveSlashSuggestions) {
-            const selected = activeSuggestions[activeSlashSuggestionIndex];
-            if (selected?.command) {
-              replaceActiveLineWithCommand(selected.command);
+        const handleEnterLikeAction = (action: SubmitKeyAction): void => {
+          const slashAction = resolveSlashSuggestionKeyAction({
+            key: "enter",
+            hasActiveSuggestions: hasActiveSlashSuggestions,
+            selectedCommand: activeSuggestions[activeSlashSuggestionIndex]?.command,
+            activeLineInput: latestSnapshot?.activeLineInput,
+          });
+          if (slashAction.kind === "apply") {
+            const replacedLine = replaceActiveLineWithCommand(slashAction.appliedCommand);
+            if (typeof replacedLine === "string") {
+              slashSuggestionsHiddenForLine = replacedLine;
+            }
+            if (slashAction.submitImmediately) {
+              finish({
+                kind: "submit",
+                value: graphemes.join(""),
+              });
+            } else {
               render();
             }
             return;
           }
-          if (key.shift || key.meta) {
+          if (slashAction.kind === "hide_panel") {
+            slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
+            activeSlashSuggestionIndex = 0;
+            render();
+            return;
+          }
+          if (action === "newline") {
             insertTextAtCursor("\n");
             render();
             return;
@@ -1097,21 +1359,66 @@ export async function runSessionInputLoop(
             kind: "submit",
             value: graphemes.join(""),
           });
+        };
+
+        const submitKeyAction = resolveSubmitKeyAction({
+          chunk: rawInput,
+          key,
+        });
+        if (submitKeyAction !== "none") {
+          handleEnterLikeAction(submitKeyAction);
           return;
         }
         if (key.name === "tab") {
+          const slashAction = resolveSlashSuggestionKeyAction({
+            key: "tab",
+            hasActiveSuggestions: hasActiveSlashSuggestions,
+            selectedCommand: activeSuggestions[activeSlashSuggestionIndex]?.command,
+            activeLineInput: latestSnapshot?.activeLineInput,
+          });
+          if (slashAction.kind === "apply") {
+            const replacedLine = replaceActiveLineWithCommand(slashAction.appliedCommand);
+            if (typeof replacedLine === "string") {
+              slashSuggestionsHiddenForLine = replacedLine;
+            }
+            render();
+            return;
+          }
+          if (slashAction.kind === "hide_panel") {
+            slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
+            activeSlashSuggestionIndex = 0;
+            render();
+          }
           return;
         }
         if (key.name === "escape") {
+          const slashAction = resolveSlashSuggestionKeyAction({
+            key: "escape",
+            hasActiveSuggestions: hasActiveSlashSuggestions,
+            selectedCommand: activeSuggestions[activeSlashSuggestionIndex]?.command,
+            activeLineInput: latestSnapshot?.activeLineInput,
+          });
+          if (slashAction.kind === "hide_panel") {
+            slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
+            activeSlashSuggestionIndex = 0;
+            render();
+          }
           return;
         }
 
-        const rawInput = String(chunk ?? "");
         if (!rawInput || key.ctrl || key.meta) {
           return;
         }
-        const normalized = stripBracketedPasteMarkers(rawInput)
+        const coalescedSubmit = resolveCoalescedSubmitChunk(rawInput);
+        const normalized = stripBracketedPasteMarkers(coalescedSubmit.normalizedChunk)
           .replace(/\r/g, "\n");
+        if (coalescedSubmit.shouldSubmit) {
+          if (normalized.length > 0) {
+            insertTextAtCursor(normalized);
+          }
+          handleEnterLikeAction("submit");
+          return;
+        }
         if (!normalized) {
           return;
         }
@@ -1172,33 +1479,49 @@ function normalizeMenuIndex(itemsLength: number, initialIndex: number | undefine
   return rounded;
 }
 
-function decodeMenuInput(rawInput: string): "up" | "down" | "enter" | "cancel" | "ignore" {
+export function decodeMenuInput(rawInput: string, itemsLength: number): MenuInputAction {
   if (rawInput.length === 0) {
-    return "ignore";
+    return { kind: "ignore" };
   }
+  const parseNumericSelection = (input: string): MenuInputAction => {
+    if (!/^\d+$/.test(input)) {
+      return { kind: "ignore" };
+    }
+    const parsedIndex = Number.parseInt(input, 10) - 1;
+    if (!Number.isFinite(parsedIndex) || parsedIndex < 0 || parsedIndex >= itemsLength) {
+      return { kind: "ignore" };
+    }
+    return {
+      kind: "select_index",
+      index: parsedIndex,
+    };
+  };
   if (rawInput.length === 1) {
     const firstChar = rawInput[0];
     if (firstChar === "\u0003" || firstChar === "\u001b") {
-      return "cancel";
+      return { kind: "cancel" };
     }
-    if (firstChar === "\r" || firstChar === "\n") {
-      return "enter";
+    if (firstChar === "\r" || firstChar === "\n" || firstChar === " ") {
+      return { kind: "enter" };
     }
-    if (firstChar === "k") {
-      return "up";
+    if (firstChar === "k" || firstChar === "\u0010") {
+      return { kind: "up" };
     }
-    if (firstChar === "j") {
-      return "down";
+    if (firstChar === "j" || firstChar === "\u000e") {
+      return { kind: "down" };
     }
-    return "ignore";
+    return parseNumericSelection(firstChar);
+  }
+  if (/^\d+$/.test(rawInput.trim())) {
+    return parseNumericSelection(rawInput.trim());
   }
   if (rawInput.startsWith("\u001b[A") || rawInput.startsWith("\u001bOA")) {
-    return "up";
+    return { kind: "up" };
   }
   if (rawInput.startsWith("\u001b[B") || rawInput.startsWith("\u001bOB")) {
-    return "down";
+    return { kind: "down" };
   }
-  return "ignore";
+  return { kind: "ignore" };
 }
 
 
@@ -1226,10 +1549,20 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   });
   let activeIndex = normalizeMenuIndex(input.items.length, input.initialIndex);
   let resolved = false;
+  let numericSelectionBuffer = "";
+  let numericSelectionTimer: ReturnType<typeof setTimeout> | undefined;
 
   const render = (): void => {
     stdout.write("\x1b[2J\x1b[H");
     stdout.write(`${uiRenderer.renderSelectMenu(input, activeIndex)}\n`);
+  };
+
+  const clearNumericSelectionBuffer = (): void => {
+    numericSelectionBuffer = "";
+    if (numericSelectionTimer) {
+      clearTimeout(numericSelectionTimer);
+      numericSelectionTimer = undefined;
+    }
   };
 
   return await new Promise<TerminalSelectMenuResult>((resolve) => {
@@ -1237,6 +1570,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       if (!resolved) {
         return;
       }
+      clearNumericSelectionBuffer();
       offInput.call(stdin, "data", onData);
       try {
         setRawMode.call(stdin, false);
@@ -1256,27 +1590,101 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       resolve(result);
     };
 
+    const selectAndFinish = (nextIndex: number): void => {
+      activeIndex = nextIndex;
+      finish({
+        kind: "selected",
+        item: input.items[activeIndex],
+        index: activeIndex,
+      });
+    };
+
+    const scheduleNumericSelectionCommit = (): void => {
+      if (numericSelectionTimer) {
+        clearTimeout(numericSelectionTimer);
+      }
+      numericSelectionTimer = setTimeout(() => {
+        numericSelectionTimer = undefined;
+        const index = resolveMenuIndexFromDigits(
+          numericSelectionBuffer,
+          input.items.length,
+        );
+        if (typeof index === "number") {
+          selectAndFinish(index);
+          return;
+        }
+        clearNumericSelectionBuffer();
+      }, MENU_DIGIT_SELECTION_COMMIT_DELAY_MS);
+    };
+
+    const handleSingleDigitSelection = (digit: string): boolean => {
+      const nextDigits = `${numericSelectionBuffer}${digit}`;
+      const firstMatchIndex = resolveFirstMenuPrefixMatchIndex(
+        nextDigits,
+        input.items.length,
+      );
+      if (typeof firstMatchIndex !== "number") {
+        clearNumericSelectionBuffer();
+        return false;
+      }
+      numericSelectionBuffer = nextDigits;
+      activeIndex = firstMatchIndex;
+      const exactIndex = resolveMenuIndexFromDigits(
+        numericSelectionBuffer,
+        input.items.length,
+      );
+      const canContinue = hasMenuDigitsContinuation(
+        numericSelectionBuffer,
+        input.items.length,
+      );
+      if (typeof exactIndex === "number" && !canContinue) {
+        selectAndFinish(exactIndex);
+        return true;
+      }
+      scheduleNumericSelectionCommit();
+      render();
+      return true;
+    };
+
     const onData = (chunk: string): void => {
-      const action = decodeMenuInput(chunk);
-      if (action === "up") {
+      const rawInput = String(chunk ?? "");
+      if (/^[0-9]$/.test(rawInput)) {
+        if (handleSingleDigitSelection(rawInput)) {
+          return;
+        }
+      } else {
+        clearNumericSelectionBuffer();
+      }
+      if (/^[0-9]{2,}$/.test(rawInput.trim())) {
+        const bufferedIndex = resolveMenuIndexFromDigits(
+          rawInput.trim(),
+          input.items.length,
+        );
+        if (typeof bufferedIndex === "number") {
+          selectAndFinish(bufferedIndex);
+        }
+        return;
+      }
+      const action = decodeMenuInput(chunk, input.items.length);
+      if (action.kind === "up") {
         activeIndex = (activeIndex - 1 + input.items.length) % input.items.length;
         render();
         return;
       }
-      if (action === "down") {
+      if (action.kind === "down") {
         activeIndex = (activeIndex + 1) % input.items.length;
         render();
         return;
       }
-      if (action === "enter") {
-        finish({
-          kind: "selected",
-          item: input.items[activeIndex],
-          index: activeIndex,
-        });
+      if (action.kind === "select_index") {
+        selectAndFinish(action.index);
         return;
       }
-      if (action === "cancel") {
+      if (action.kind === "enter") {
+        selectAndFinish(activeIndex);
+        return;
+      }
+      if (action.kind === "cancel") {
         finish({ kind: "cancelled" });
       }
     };

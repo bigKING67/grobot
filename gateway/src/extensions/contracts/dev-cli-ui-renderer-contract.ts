@@ -7,15 +7,15 @@ function hasAnsi(text: string): boolean {
 }
 
 const startupViewModel: StartScreenViewModel = {
-  title: "Grobot started",
+  title: "Grobot v0.1.0",
   hero: {
     brandLabel: "Grobot",
     iconLines: [
-      "   .----.   ",
-      "  / .--. \\  ",
-      " | | () | | ",
-      " |  '--'  | ",
-      "  \\_====_/  ",
+      " __  ||  __ ",
+      "/  \\ || /  \\",
+      "\\   \\||/   /",
+      " \\___||___/ ",
+      "    _||_    ",
     ],
     infoLines: [
       "Grobot CLI v0.1.0",
@@ -101,7 +101,7 @@ const payload = {
   interactive_mode: interactiveRenderer.mode,
   plain_mode: plainRenderer.mode,
   non_tty_mode: nonTtyRenderer.mode,
-  startup_has_title: startupInteractive.includes("Grobot started"),
+  startup_has_title: startupInteractive.includes("Grobot v0.1.0"),
   startup_has_brand_label: startupInteractive.includes("Grobot"),
   startup_has_logo_headline: startupInteractive.includes("Grobot CLI v0.1.0"),
   startup_has_logo_runtime_line: startupInteractive.includes("alpha/model · 200k ctx budget · API Usage"),
@@ -117,6 +117,9 @@ const payload = {
   menu_non_tty_has_ansi: hasAnsi(menuNonTty),
   menu_plain_has_pointer: menuPlain.includes("›"),
   menu_interactive_has_current_tag: menuInteractive.includes("(current)"),
+  menu_hint_has_ctrl_np: menuPlain.includes("Ctrl+n/p"),
+  menu_hint_has_number_direct: menuPlain.includes("number to select directly"),
+  menu_hint_has_enter_space: menuPlain.includes("Enter/Space"),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

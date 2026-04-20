@@ -1,5 +1,4 @@
 import { SessionStoreRuntime } from "../services/session-store";
-import { maskRedisUrl } from "../services/memory-store-config";
 import { createCliUiRenderer } from "../ui/kernel/renderer";
 import { type StartScreenViewModel } from "../ui/screens/startup-screen";
 import {
@@ -37,11 +36,11 @@ interface RunStartBannerInput {
 }
 
 const STARTUP_ICON_LINES = [
-  "   .----.   ",
-  "  / .--. \\  ",
-  " | | () | | ",
-  " |  '--'  | ",
-  "  \\_====_/  ",
+  " __  ||  __ ",
+  "/  \\ || /  \\",
+  "\\   \\||/   /",
+  " \\___||___/ ",
+  "    _||_    ",
 ];
 
 function resolveCliVersionLabel(): string {
@@ -57,42 +56,6 @@ function resolveCliVersionLabel(): string {
     return normalized.startsWith("v") ? normalized : `v${normalized}`;
   }
   return "dev";
-}
-
-function compactSessionId(sessionId: string): string {
-  const normalized = sessionId.trim();
-  if (!normalized) {
-    return "<none>";
-  }
-  if (normalized.length <= 8) {
-    return normalized;
-  }
-  return normalized.slice(0, 8);
-}
-
-function compactSessionTopic(topic: string | undefined): string {
-  const normalized = (topic ?? "").trim();
-  if (!normalized) {
-    return "无主题";
-  }
-  if (normalized.length <= 24) {
-    return normalized;
-  }
-  return `${normalized.slice(0, 24)}...`;
-}
-
-function summarizeStoreFallback(reason: string | undefined): string | undefined {
-  const normalized = (reason ?? "").trim();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized.includes("ECONNREFUSED")) {
-    return "redis unavailable; fallback to file";
-  }
-  if (normalized.length <= 96) {
-    return normalized;
-  }
-  return `${normalized.slice(0, 96)}...`;
 }
 
 function formatRelativeTimeAgo(value: string): string | undefined {
@@ -166,57 +129,48 @@ function resolveDisplayProjectPath(input: {
   homeDir: string;
   projectRoot: string;
 }): string {
+  const homeDir = input.homeDir.trim().replace(/[\\/]+$/, "");
   const projectRoot = input.projectRoot.trim();
-  if (!projectRoot) {
-    const homeDir = input.homeDir.trim().replace(/[\\/]+$/, "");
-    return homeDir.length > 0 ? homeDir : "~";
+  const basePath = projectRoot.length > 0 ? projectRoot : homeDir;
+  if (!basePath) {
+    return "~";
   }
-  // Keep absolute path visible like Claude/Codex startup screen.
-  return projectRoot;
+  if (!homeDir) {
+    return basePath;
+  }
+  if (basePath === homeDir) {
+    return "~";
+  }
+  if (basePath.startsWith(`${homeDir}/`)) {
+    return `~/${basePath.slice(homeDir.length + 1)}`;
+  }
+  return basePath;
 }
 
 export function printRunStartBanner(input: RunStartBannerInput): void {
+  const versionLabel = resolveCliVersionLabel();
   const contextWindowLabel = formatContextWindowLabel(
     inferModelApiContextWindowTokens({
       modelName: input.modelName,
       fallback: input.contextWindowTokens,
     }),
   );
-  const runtimeHeadline = [
-    resolveModelDisplayName(input.modelName),
-    contextWindowLabel,
-  ].filter((segment) => typeof segment === "string" && segment.trim().length > 0).join(" · ");
-  const runtimeDetail = [
-    `${input.providerName}/${input.modelName}`,
-    "API Usage",
-  ].filter((segment) => typeof segment === "string" && segment.trim().length > 0).join(" · ");
+  const modelLabel = resolveModelDisplayName(input.modelName);
+  const runtimeLine = contextWindowLabel
+    ? `${modelLabel} (${contextWindowLabel}) · API Usage Billing`
+    : `${modelLabel} · API Usage Billing`;
   const displayProjectPath = resolveDisplayProjectPath({
     homeDir: input.homeDir,
     projectRoot: input.projectRoot,
   });
-  const sessionLine = `session ${compactSessionId(input.activeSessionId)} (${compactSessionTopic(input.sessionTopic)})`;
-  const rows: string[] = [displayProjectPath];
-  const fallbackSummary = summarizeStoreFallback(input.sessionStoreRuntime.fallbackReason);
-  if (fallbackSummary) {
-    rows.push(`storage: ${fallbackSummary}`);
-  } else if (input.sessionStoreRuntime.redisUrl) {
-    rows.push(`storage: ${input.sessionStoreRuntime.backend} (${maskRedisUrl(input.sessionStoreRuntime.redisUrl)})`);
-  }
-  if (input.restoredTurns > 0) {
-    rows.push(`restored: ${String(input.restoredTurns)} turns (${input.restoreSource})`);
-  }
+  const rows: string[] = [runtimeLine, displayProjectPath];
   const recentActivityLines = resolveRecentActivityLines(input.recentSessions);
   const viewModel: StartScreenViewModel = {
-    title: "Grobot started",
+    title: `Grobot ${versionLabel}`,
     hero: {
-      brandLabel: "Grobot",
+      brandLabel: "",
       iconLines: STARTUP_ICON_LINES,
-      infoLines: [
-        `Grobot CLI ${resolveCliVersionLabel()}`,
-        runtimeHeadline,
-        runtimeDetail,
-        sessionLine,
-      ],
+      infoLines: [],
     },
     feeds: [
       {
