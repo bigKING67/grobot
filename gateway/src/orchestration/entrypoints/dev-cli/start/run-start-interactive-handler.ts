@@ -34,6 +34,8 @@ interface CreateRunStartInteractiveHandlerInput {
   requestRuntimeInterrupt(source: PlanInterruptSource): Promise<void>;
   runPlanTurn(userInput: string): Promise<number>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
+  openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
   executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
   markFailureObserved(): void;
@@ -115,6 +117,12 @@ export function createRunStartInteractiveHandler(
       },
       handleUserCommandsCommand: async (userInput) => {
         await input.handleUserCommandsCommand(userInput);
+      },
+      openCommandsMenu: async (withInputPaused) => {
+        await input.openCommandsMenu(withInputPaused);
+      },
+      openPlanMenu: async (withInputPaused) => {
+        await input.openPlanMenu(withInputPaused);
       },
       tryRunUserCommand: async (userInput) => input.tryRunUserCommand(userInput),
       runTurn: async (userInput) => {

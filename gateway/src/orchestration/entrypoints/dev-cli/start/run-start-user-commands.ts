@@ -7,6 +7,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { removeTrailingSlashes } from "../services/runtime-paths";
+import {
+  runTerminalLinePrompt,
+  runTerminalSelectMenu,
+} from "./run-start-io";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 
 const USER_COMMAND_SCHEMA_VERSION = 1;
@@ -64,6 +68,9 @@ interface CreateRunStartUserCommandsRuntimeInput {
 
 export interface RunStartUserCommandsRuntime {
   handleManagementCommand(userInput: string): Promise<void>;
+  openManagementMenu(
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
 }
 
@@ -479,6 +486,168 @@ export function createRunStartUserCommandsRuntime(
     input.writeStdout(`[commands] 已删除 \`/${name}\`。\n\n`);
   };
 
+  const readMenuTextInput = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+    prompt: string,
+    options?: { optional?: boolean },
+  ): Promise<string | undefined> => {
+    const result = await withInputPaused(() =>
+      runTerminalLinePrompt({ prompt }),
+    );
+    if (result.kind === "cancelled") {
+      input.writeStdout("[commands] input cancelled.\n\n");
+      return undefined;
+    }
+    const value = result.value.trim();
+    if (!options?.optional && value.length === 0) {
+      input.writeStdout("[commands] input is empty, operation cancelled.\n\n");
+      return undefined;
+    }
+    return value;
+  };
+
+  const openManagementMenu = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<void> => {
+    if (!process.stdin.isTTY) {
+      printUsage();
+      return;
+    }
+    const menu = await withInputPaused(() =>
+      runTerminalSelectMenu({
+        title: "Commands Manager",
+        subtitle: "Manage ~/.grobot/commands",
+        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
+        items: [
+          {
+            id: "list",
+            label: "List commands",
+            description: "Show all user-defined commands and usage.",
+          },
+          {
+            id: "new",
+            label: "Create command",
+            description: "Create /<name> with optional prompt template.",
+          },
+          {
+            id: "set",
+            label: "Update prompt",
+            description: "Update an existing command prompt.",
+          },
+          {
+            id: "show",
+            label: "Show details",
+            description: "Print command metadata and prompt content.",
+          },
+          {
+            id: "enable",
+            label: "Enable command",
+            description: "Allow command invocation in slash input.",
+          },
+          {
+            id: "disable",
+            label: "Disable command",
+            description: "Keep command file but block invocation.",
+          },
+          {
+            id: "delete",
+            label: "Delete command",
+            description: "Remove command json file.",
+          },
+        ],
+      }),
+    );
+    if (menu.kind === "cancelled") {
+      input.writeStdout("[commands] menu cancelled.\n\n");
+      return;
+    }
+    if (menu.item.id === "list") {
+      printUsage();
+      return;
+    }
+    if (menu.item.id === "new") {
+      const name = await readMenuTextInput(
+        withInputPaused,
+        "[commands] name> ",
+      );
+      if (!name) {
+        return;
+      }
+      const prompt = await readMenuTextInput(
+        withInputPaused,
+        "[commands] prompt (optional)> ",
+        { optional: true },
+      );
+      if (typeof prompt === "undefined") {
+        return;
+      }
+      createCommand(name, prompt);
+      return;
+    }
+    if (menu.item.id === "set") {
+      const name = await readMenuTextInput(
+        withInputPaused,
+        "[commands] target name> ",
+      );
+      if (!name) {
+        return;
+      }
+      const prompt = await readMenuTextInput(
+        withInputPaused,
+        "[commands] new prompt> ",
+      );
+      if (!prompt) {
+        return;
+      }
+      setCommandPrompt(name, prompt);
+      return;
+    }
+    if (menu.item.id === "show") {
+      const name = await readMenuTextInput(
+        withInputPaused,
+        "[commands] target name> ",
+      );
+      if (!name) {
+        return;
+      }
+      showCommand(name);
+      return;
+    }
+    if (menu.item.id === "enable") {
+      const name = await readMenuTextInput(
+        withInputPaused,
+        "[commands] target name> ",
+      );
+      if (!name) {
+        return;
+      }
+      toggleCommandEnabled(name, true);
+      return;
+    }
+    if (menu.item.id === "disable") {
+      const name = await readMenuTextInput(
+        withInputPaused,
+        "[commands] target name> ",
+      );
+      if (!name) {
+        return;
+      }
+      toggleCommandEnabled(name, false);
+      return;
+    }
+    if (menu.item.id === "delete") {
+      const name = await readMenuTextInput(
+        withInputPaused,
+        "[commands] target name> ",
+      );
+      if (!name) {
+        return;
+      }
+      deleteCommand(name);
+      return;
+    }
+  };
+
   return {
     handleManagementCommand: async (userInput: string): Promise<void> => {
       const normalizedInput = normalizeCommandsAliasInput(userInput);
@@ -549,6 +718,7 @@ export function createRunStartUserCommandsRuntime(
       }
       input.writeStdout(`[commands] unsupported action: ${action}\n\n`);
     },
+    openManagementMenu,
     tryRunUserCommand: async (userInput: string): Promise<boolean> => {
       const invocation = parseSlashInvocation(userInput);
       if (!invocation) {

@@ -457,8 +457,10 @@ grobot start \
       - `/model`：打开模型选择菜单（↑/↓ 或 j/k 或 Ctrl+n/p，数字直选，Enter/Space 确认，Esc 取消）。
       - 菜单包含 `Reset to startup model (...)` 快捷项，可回到启动模型并同步写回配置。
       - 旧子命令（如 `/model current`、`/model list`、`/model use`、`/model reset`）已废弃，统一改为 `/model` 菜单操作。
-    - 交互命令新增 `/plan` 主入口；回车后会显示 Plan action menu（创建目标、查看状态、执行、取消）。
+    - 交互命令新增 `/plan` 主入口；回车后会打开 Plan action menu（创建目标、查看状态、执行、取消）。
       - 兼容命令仍可用：`/plan <goal>`、`/plan status`、`/plan apply [extra]`、`/plan cancel`。
+    - 交互命令 `/commands` 已菜单化；回车后进入命令管理菜单（list/new/set/show/enable/disable/delete）。
+      - 兼容命令仍可用：`/commands list|new|set|show|enable|disable|delete ...`。
     - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
     - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
   - 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。

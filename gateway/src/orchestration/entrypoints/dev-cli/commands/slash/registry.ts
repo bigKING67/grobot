@@ -173,10 +173,12 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "commands",
     matches: (userInput) => matchesUserCommandsManagementCommand(userInput),
-    execute: async ({ userInput, handlers }) => {
-      if (userInput.trim() !== "/commands") {
-        handlers.writeStdout("[commands] 已收敛为主入口：/commands（当前写法仍兼容）。\n\n");
+    execute: async ({ userInput, controls, handlers }) => {
+      if (userInput.trim() === "/commands") {
+        await handlers.openCommandsMenu(controls.withInputPaused);
+        return "continue";
       }
+      handlers.writeStdout("[commands] 已收敛为主入口：/commands（当前子命令写法仍兼容）。\n\n");
       await handlers.handleUserCommandsCommand(userInput);
       return "continue";
     },
@@ -286,18 +288,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "plan",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
-    execute: async ({ userInput, handlers }) => {
+    execute: async ({ userInput, controls, handlers }) => {
       if (userInput.trim() === "/plan") {
-        handlers.writeStdout(
-          [
-            "[plan] action menu",
-            "- /plan <goal>        Create or replace active plan goal",
-            "- /plan status        Show active plan status",
-            "- /plan apply [extra] Review, approve, then execute active plan",
-            "- /plan cancel        Cancel plan mode and discard active plan",
-            "",
-          ].join("\n"),
-        );
+        await handlers.openPlanMenu(controls.withInputPaused);
         return "continue";
       }
       const parsed = parsePlanCommand(userInput);
@@ -306,7 +299,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind !== "enter") {
-        handlers.writeStdout("[plan] 已收敛为主入口：/plan（当前子命令写法仍兼容）。\n\n");
+        handlers.writeStdout("[plan] 已收敛为主入口：/plan（当前子命令写法仍兼容）。\n");
       }
       if (parsed.kind === "status") {
         await handlers.showPlanStatus();

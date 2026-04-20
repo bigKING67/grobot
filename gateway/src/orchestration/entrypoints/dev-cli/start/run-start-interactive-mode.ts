@@ -172,6 +172,12 @@ export interface RunStartInteractiveModeInput {
   requestRuntimeInterrupt(source: PlanInterruptSource): Promise<void>;
   runPlanTurn(userInput: string): Promise<number>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
+  openCommandsMenu(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
+  openPlanMenu(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
   executeTurn(
     userInput: string,
@@ -301,6 +307,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     requestRuntimeInterrupt: input.requestRuntimeInterrupt,
     runPlanTurn: input.runPlanTurn,
     handleUserCommandsCommand: input.handleUserCommandsCommand,
+    openCommandsMenu: input.openCommandsMenu,
+    openPlanMenu: input.openPlanMenu,
     tryRunUserCommand: input.tryRunUserCommand,
     executeTurn: async (userInput, interactiveMode) => {
       const inlineAttachmentResolution = resolveInlineAttachmentsFromInput(userInput);

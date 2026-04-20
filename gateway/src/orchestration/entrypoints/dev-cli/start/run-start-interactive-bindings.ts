@@ -14,6 +14,7 @@ import {
   type RuntimeFailoverConfig,
   type RuntimeProviderCandidate,
 } from "./run-start-turn";
+import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { type RunStartWire } from "./run-start-wire";
 import {
   normalizeStatusLineConfig,
@@ -24,6 +25,10 @@ import {
   type StatusLineTheme,
 } from "../ui/screens/status-line-screen";
 import { createRunStartUserCommandsRuntime } from "./run-start-user-commands";
+import {
+  runTerminalLinePrompt,
+  runTerminalSelectMenu,
+} from "./run-start-io";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -162,6 +167,107 @@ export function createRunStartInteractiveModeInput(
     });
   };
   const getStatusLineConfig = (): StatusLineConfig => statusLineConfigState;
+  const shouldMarkFailure = (code: number): boolean =>
+    code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE;
+
+  const openPlanMenu = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<void> => {
+    if (!process.stdin.isTTY) {
+      input.output.writeStdout(
+        [
+          "[plan] action menu",
+          "- /plan <goal>        Create or replace active plan goal",
+          "- /plan status        Show active plan status",
+          "- /plan apply [extra] Review, approve, then execute active plan",
+          "- /plan cancel        Cancel plan mode and discard active plan",
+          "",
+        ].join("\n"),
+      );
+      return;
+    }
+    const picked = await withInputPaused(() =>
+      runTerminalSelectMenu({
+        title: "Plan Actions",
+        subtitle: `Session: ${input.runtimeState.getSessionKey()}`,
+        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
+        items: [
+          {
+            id: "enter",
+            label: "Create/replace plan goal",
+            description: "Input a new goal and enter PLAN_ONLY.",
+          },
+          {
+            id: "status",
+            label: "Show active plan status",
+            description: "Display mode, active plan id, status and path.",
+          },
+          {
+            id: "apply",
+            label: "Review and apply active plan",
+            description: "Run plan apply pipeline with optional extra note.",
+          },
+          {
+            id: "cancel",
+            label: "Cancel active plan",
+            description: "Discard plan mode and return to normal mode.",
+          },
+        ],
+      }),
+    );
+    if (picked.kind === "cancelled") {
+      input.output.writeStdout("[plan] menu cancelled.\n\n");
+      return;
+    }
+    if (picked.item.id === "status") {
+      const code = await input.planMode.showPlanStatus();
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+      return;
+    }
+    if (picked.item.id === "cancel") {
+      const code = await input.planMode.cancelPlan();
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+      return;
+    }
+    if (picked.item.id === "apply") {
+      const applyExtra = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: "[plan] apply extra (optional)> ",
+        }),
+      );
+      if (applyExtra.kind === "cancelled") {
+        input.output.writeStdout("[plan] apply cancelled.\n\n");
+        return;
+      }
+      const code = await input.planMode.applyPlan(applyExtra.value.trim());
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+      return;
+    }
+    const goalInput = await withInputPaused(() =>
+      runTerminalLinePrompt({
+        prompt: "[plan] goal> ",
+      }),
+    );
+    if (goalInput.kind === "cancelled") {
+      input.output.writeStdout("[plan] create cancelled.\n\n");
+      return;
+    }
+    const goal = goalInput.value.trim();
+    if (goal.length === 0) {
+      input.output.writeStdout("[plan] goal is empty, cancelled.\n\n");
+      return;
+    }
+    const code = await input.planMode.enterPlan(goal);
+    if (shouldMarkFailure(code)) {
+      input.runtimeState.markFailureObserved();
+    }
+  };
 
   const sessionTopicCache: {
     sessionId: string;
@@ -265,6 +371,8 @@ export function createRunStartInteractiveModeInput(
     },
     runPlanTurn: input.planMode.runPlanTurn,
     handleUserCommandsCommand: userCommandsRuntime.handleManagementCommand,
+    openCommandsMenu: userCommandsRuntime.openManagementMenu,
+    openPlanMenu,
     tryRunUserCommand: userCommandsRuntime.tryRunUserCommand,
     executeTurn: input.executeTurn,
     markFailureObserved: input.runtimeState.markFailureObserved,

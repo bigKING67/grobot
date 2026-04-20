@@ -81,6 +81,12 @@ async function runDispatchCase(input: string): Promise<DispatchCaseResult> {
     handleUserCommandsCommand: async () => {
       events.push("handleUserCommandsCommand");
     },
+    openCommandsMenu: async () => {
+      events.push("openCommandsMenu");
+    },
+    openPlanMenu: async () => {
+      events.push("openPlanMenu");
+    },
     tryRunUserCommand: async (userInput) => {
       events.push(`tryRunUserCommand:${userInput}`);
       return userInput === "/shipit";
@@ -147,7 +153,7 @@ async function main(): Promise<void> {
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
-    plan_menu_dispatched: includesEvent(planMenu.events, "writeStdout"),
+    plan_menu_dispatched: includesEvent(planMenu.events, "openPlanMenu"),
     plan_menu_enters_plan_directly: includesEvent(planMenu.events, "enterPlan"),
     plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
     plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
@@ -162,7 +168,7 @@ async function main(): Promise<void> {
       includesEvent(exitSlashAliasCommand.events, "runTurn:/quit"),
     exit_alias_quit_breaks_loop: exitAliasCommand.action === "break",
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
-    commands_menu_dispatched: includesEvent(commandsMenu.events, "handleUserCommandsCommand"),
+    commands_menu_dispatched: includesEvent(commandsMenu.events, "openCommandsMenu"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),
     skills_hits_run_turn: includesEvent(skillsCommand.events, "runTurn:/skills"),

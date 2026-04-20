@@ -34,6 +34,8 @@ export interface SessionInteractiveHandlers {
   requestRuntimeInterrupt(source: "command"): Promise<void>;
   runPlanTurn(userInput: string): Promise<void>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
+  openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
   runTurn(userInput: string): Promise<void>;
   onTurnError(error: unknown): void;
