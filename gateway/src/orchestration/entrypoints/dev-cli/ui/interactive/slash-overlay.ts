@@ -50,7 +50,6 @@ function formatSuggestionRow(input: {
   commandColumnWidth: number;
   descriptionColumnWidth: number;
   selected: boolean;
-  exactMatch: boolean;
 }): string {
   const commandText = truncateDisplayWidth(input.item.command.trim(), input.commandColumnWidth, {
     compact: false,
@@ -65,11 +64,8 @@ function formatSuggestionRow(input: {
   const line = descriptionColumn.length > 0
     ? `${commandColumn}  ${descriptionColumn}`
     : commandColumn;
-  if (input.selected && input.exactMatch) {
-    return `${ANSI_BOLD}${ANSI_SUGGESTION}${line}${ANSI_RESET}`;
-  }
   if (input.selected) {
-    return `${ANSI_BOLD}${line}${ANSI_RESET}`;
+    return `${ANSI_BOLD}${ANSI_SUGGESTION}${line}${ANSI_RESET}`;
   }
   return `${ANSI_DIM}${line}${ANSI_RESET}`;
 }
@@ -89,7 +85,6 @@ export function formatSlashSuggestionPanel(
   }
   const limited = suggestions.slice(0, 8);
   const normalizedSelectedIndex = normalizeSuggestionIndex(limited.length, selectedIndex);
-  const normalizedLineInput = lineInput.trim();
   const commandColumnWidth = Math.min(
     36,
     Math.max(
@@ -106,7 +101,6 @@ export function formatSlashSuggestionPanel(
       commandColumnWidth,
       descriptionColumnWidth,
       selected: index === normalizedSelectedIndex,
-      exactMatch: normalizedLineInput === item.command.trim(),
     }));
   }
   const hiddenCount = suggestions.length - limited.length;

@@ -486,7 +486,7 @@ function renderSlashCommandTokenHighlight(text: string): string {
   return `${leading}${ANSI_BOLD}${ANSI_SUGGESTION}${commandToken}${ANSI_RESET}${tail}`;
 }
 
-function hasExactSlashSuggestionMatch(input: {
+export function shouldHighlightSlashInputToken(input: {
   activeLineInput: string;
   suggestions: readonly SessionSlashSuggestion[];
 }): boolean {
@@ -1056,7 +1056,7 @@ export async function runSessionInputLoop(
       const topBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
       const bottomBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
       const slash = resolveSlashSuggestions(activeLineInput);
-      const exactSlashMatch = hasExactSlashSuggestionMatch({
+      const exactSlashMatch = shouldHighlightSlashInputToken({
         activeLineInput,
         suggestions: slash.suggestions,
       });

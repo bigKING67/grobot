@@ -6,6 +6,7 @@ import {
   resolveMenuIndexFromDigits,
   resolveSlashSuggestionApplyResult,
   resolveSlashSuggestionKeyAction,
+  shouldHighlightSlashInputToken,
   resolveSubmitKeyAction,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
 import { formatSlashSuggestionPanel } from "../../orchestration/entrypoints/dev-cli/ui/interactive/slash-overlay";
@@ -39,6 +40,14 @@ async function main(): Promise<void> {
     0,
     96,
   );
+  const slashInputPartialHighlight = shouldHighlightSlashInputToken({
+    activeLineInput: "/e",
+    suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
+  });
+  const slashInputExactHighlight = shouldHighlightSlashInputToken({
+    activeLineInput: "/exit",
+    suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
+  });
 
   const enterMenuAction = resolveSlashSuggestionKeyAction({
     key: "enter",
@@ -149,10 +158,14 @@ async function main(): Promise<void> {
       && escapeActionForSlash.hiddenLineInput === "/model",
     slash_key_no_suggestions_noop:
       noopAction.kind === "noop",
-    slash_overlay_partial_not_highlighted:
-      !slashOverlayPartial.includes("\u001B[96m"),
-    slash_overlay_exact_highlighted:
+    slash_overlay_partial_selected_highlighted:
+      slashOverlayPartial.includes("\u001B[96m"),
+    slash_overlay_exact_selected_highlighted:
       slashOverlayExact.includes("\u001B[96m"),
+    slash_input_partial_not_highlighted:
+      !slashInputPartialHighlight,
+    slash_input_exact_highlighted:
+      slashInputExactHighlight,
     submit_return_detected: submitReturn === "submit",
     submit_enter_detected: submitEnter === "submit",
     submit_legacy_sequence_detected: submitLegacySequence === "submit",
