@@ -486,6 +486,19 @@ function renderSlashCommandTokenHighlight(text: string): string {
   return `${leading}${ANSI_BOLD}${ANSI_SUGGESTION}${commandToken}${ANSI_RESET}${tail}`;
 }
 
+function hasExactSlashSuggestionMatch(input: {
+  activeLineInput: string;
+  suggestions: readonly SessionSlashSuggestion[];
+}): boolean {
+  const normalizedInput = input.activeLineInput.trim();
+  if (!normalizedInput.startsWith("/")) {
+    return false;
+  }
+  return input.suggestions.some(
+    (suggestion) => suggestion.command.trim() === normalizedInput,
+  );
+}
+
 function stripBracketedPasteMarkers(value: string): string {
   if (!value || !value.includes("\u001B[")) {
     return value;
@@ -1018,8 +1031,6 @@ export async function runSessionInputLoop(
 
     const buildRenderSnapshot = (): InputRenderSnapshot => {
       clampCursor();
-      const fullInput = graphemes.join("");
-      const isSlashInput = fullInput.trimStart().startsWith("/");
       const terminalColumns = Math.max(32, resolveTerminalColumns());
       const inputLineWidth = Math.max(promptLabelWidth + 8, terminalColumns - 1);
       const wrapWidth = Math.max(1, inputLineWidth - promptLabelWidth);
@@ -1044,6 +1055,11 @@ export async function runSessionInputLoop(
 
       const topBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
       const bottomBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
+      const slash = resolveSlashSuggestions(activeLineInput);
+      const exactSlashMatch = hasExactSlashSuggestionMatch({
+        activeLineInput,
+        suggestions: slash.suggestions,
+      });
       const bodyLines: string[] = descriptors.map((descriptor, index) => {
         const prefix = index === 0 ? promptLabel : continuationPrefix;
         const selectedOffsetInLine =
@@ -1057,12 +1073,11 @@ export async function runSessionInputLoop(
           theme: getTheme(),
           selectedStartOffset: selectedOffsetInLine,
         });
-        const highlightedText = isSlashInput
+        const highlightedText = exactSlashMatch && index === activeLineIndex
           ? renderSlashCommandTokenHighlight(renderedText)
           : renderedText;
         return padToDisplayWidth(`${prefix}${highlightedText}`, inputLineWidth);
       });
-      const slash = resolveSlashSuggestions(activeLineInput);
       const shouldRenderFooter = slash.panelLines.length === 0;
       const renderedLines = [
         topBorder,

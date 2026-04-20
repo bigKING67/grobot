@@ -8,6 +8,7 @@ import {
   resolveSlashSuggestionKeyAction,
   resolveSubmitKeyAction,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
+import { formatSlashSuggestionPanel } from "../../orchestration/entrypoints/dev-cli/ui/interactive/slash-overlay";
 
 async function main(): Promise<void> {
   const menuItemsLength = 12;
@@ -26,6 +27,18 @@ async function main(): Promise<void> {
   const slashMenu = resolveSlashSuggestionApplyResult("/model");
   const slashCommandsMenu = resolveSlashSuggestionApplyResult("/commands");
   const slashPlanMenu = resolveSlashSuggestionApplyResult("/plan");
+  const slashOverlayPartial = formatSlashSuggestionPanel(
+    [{ command: "/exit", description: "Exit interactive mode" }],
+    "/e",
+    0,
+    96,
+  );
+  const slashOverlayExact = formatSlashSuggestionPanel(
+    [{ command: "/exit", description: "Exit interactive mode" }],
+    "/exit",
+    0,
+    96,
+  );
 
   const enterMenuAction = resolveSlashSuggestionKeyAction({
     key: "enter",
@@ -136,6 +149,10 @@ async function main(): Promise<void> {
       && escapeActionForSlash.hiddenLineInput === "/model",
     slash_key_no_suggestions_noop:
       noopAction.kind === "noop",
+    slash_overlay_partial_not_highlighted:
+      !slashOverlayPartial.includes("\u001B[96m"),
+    slash_overlay_exact_highlighted:
+      slashOverlayExact.includes("\u001B[96m"),
     submit_return_detected: submitReturn === "submit",
     submit_enter_detected: submitEnter === "submit",
     submit_legacy_sequence_detected: submitLegacySequence === "submit",

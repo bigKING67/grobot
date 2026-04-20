@@ -258,11 +258,17 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   });
 
   const interactiveDiagnosticsEnabled = input.interactiveDiagnosticsEnabled ?? false;
-  const activityTracker = createInteractiveActivityTracker({
-    writeProgressLine: (line) => {
-      process.stdout.write(line);
-    },
-  });
+  const stdoutState = process.stdout as unknown as { isTTY?: boolean };
+  const shouldEmitProgressLine = !Boolean(stdoutState.isTTY);
+  const activityTracker = createInteractiveActivityTracker(
+    shouldEmitProgressLine
+      ? {
+        writeProgressLine: (line) => {
+          process.stdout.write(line);
+        },
+      }
+      : {},
+  );
   const writeInteractiveStderr = (message: string): void => {
     if (interactiveDiagnosticsEnabled) {
       activityTracker.observeStderrChunk(message);
