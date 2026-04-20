@@ -168,6 +168,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       handlers.showHelp();
       return "continue";
     },
+    helpLines: [
+      "  /help                Show interactive help",
+    ],
   },
   {
     id: "sessions",
@@ -295,10 +298,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /status              Show current status line config snapshot",
-      "  /status layout <m>   Set status line layout mode (adaptive|full|compact)",
-      "  /status theme <t>    Set status line theme (plain|nerd|ccline)",
-      "  /status segment ...  Toggle segment on/off",
+      "  /status              Show and tune status line (theme/layout/segment)",
     ],
   },
   {
@@ -438,15 +438,34 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 const HELP_ORDER: readonly string[] = [
   "sessions",
   "commands",
+  "model",
+  "plan",
+  "status",
+  "help",
+  "exit",
   "health",
   "skills",
   "mcp",
-  "model",
-  "status",
-  "plan",
   "interrupt",
   "handoff",
+];
+
+const PRIMARY_HELP_ORDER: readonly string[] = [
+  "sessions",
+  "commands",
+  "model",
+  "plan",
+  "status",
+  "help",
   "exit",
+];
+
+const UTILITY_HELP_ORDER: readonly string[] = [
+  "health",
+  "skills",
+  "mcp",
+  "interrupt",
+  "handoff",
 ];
 
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
@@ -477,9 +496,9 @@ function findSlashCommandById(id: string): SlashCommandSpec | undefined {
   return SLASH_COMMANDS.find((item) => item.id === id);
 }
 
-export function listSlashCommandHelpLines(): string[] {
+function resolveHelpLinesByOrder(order: readonly string[]): string[] {
   const rows: string[] = [];
-  for (const id of HELP_ORDER) {
+  for (const id of order) {
     const command = findSlashCommandById(id);
     if (!command?.helpLines) {
       continue;
@@ -487,6 +506,26 @@ export function listSlashCommandHelpLines(): string[] {
     rows.push(...command.helpLines);
   }
   return rows;
+}
+
+export function listSlashCommandHelpLines(): string[] {
+  return resolveHelpLinesByOrder(HELP_ORDER);
+}
+
+export function listPrimarySlashCommandHelpLines(): string[] {
+  return resolveHelpLinesByOrder(PRIMARY_HELP_ORDER);
+}
+
+export function listUtilitySlashCommandHelpLines(): string[] {
+  return resolveHelpLinesByOrder(UTILITY_HELP_ORDER);
+}
+
+export function listSlashCommandCompatibilityNotes(): string[] {
+  return [
+    "  - /new /switch /continue are legacy session shortcuts.",
+    "  - In interactive mode they redirect to /sessions.",
+    "  - In non-interactive scripts they remain compatible.",
+  ];
 }
 
 export function buildSlashCommandHint(): string {
