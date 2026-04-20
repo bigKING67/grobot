@@ -65,6 +65,9 @@ async function main(): Promise<void> {
   const payload = {
     root_has_builtin_model: topLevel.some((item) => item.command === "/model" && item.source === "builtin"),
     root_has_builtin_commands: topLevel.some((item) => item.command === "/commands" && item.source === "builtin"),
+    root_hides_status_subcommands: !topLevel.some((item) => item.command.startsWith("/status ")),
+    root_hides_switch_continue_shortcuts: !topLevel.some((item) =>
+      item.command === "/switch" || item.command === "/continue"),
     root_has_user_shipit: topLevel.some((item) => item.command === "/shipit" && item.source === "user"),
     root_disabled_marked: topLevel.some(
       (item) => item.command === "/pause_release" && item.description.includes("disabled"),

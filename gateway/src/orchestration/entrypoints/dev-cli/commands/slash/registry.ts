@@ -39,6 +39,10 @@ function matchesUserCommandsManagementCommand(inputRaw: string): boolean {
   return /^\/commands(?:\s|$)/i.test(input);
 }
 
+function isInteractiveTerminal(): boolean {
+  return Boolean(process.stdin.isTTY);
+}
+
 function parseModelCommand(inputRaw: string): ParsedModelCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/model")) {
@@ -132,9 +136,15 @@ function parseSessionMenuCommand(
   if (!rest) {
     return { kind: "menu" };
   }
+  if (isInteractiveTerminal()) {
+    return {
+      kind: "invalid",
+      reason: `[session] ${command} <id> 已移除，请仅使用 ${command} 打开菜单后再选择目标会话。`,
+    };
+  }
   return {
     kind: "legacy_with_id",
-    reason: `[session] ${command} <id> 已废弃，已自动改为 ${command} 会话选择器。`,
+    reason: `[session] ${command} <id> 已废弃；非交互场景保留兼容，建议改用 ${command} 菜单。`,
   };
 }
 
@@ -167,18 +177,24 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /sessions            Open session picker (title + summary)",
+      "  /sessions            Open session menu (create/switch/continue)",
     ],
   },
   {
     id: "commands",
     matches: (userInput) => matchesUserCommandsManagementCommand(userInput),
     execute: async ({ userInput, controls, handlers }) => {
-      if (userInput.trim() === "/commands") {
+      const normalizedInput = userInput.trim();
+      if (normalizedInput === "/commands") {
         await handlers.openCommandsMenu(controls.withInputPaused);
         return "continue";
       }
-      handlers.writeStdout("[commands] 已收敛为主入口：/commands（当前子命令写法仍兼容）。\n\n");
+      if (isInteractiveTerminal()) {
+        handlers.writeStdout("[commands] 交互模式仅保留主入口 /commands；已为你打开菜单。\n\n");
+        await handlers.openCommandsMenu(controls.withInputPaused);
+        return "continue";
+      }
+      handlers.writeStdout("[commands] 非交互模式沿用兼容子命令；建议迁移到 /commands 菜单。\n\n");
       await handlers.handleUserCommandsCommand(userInput);
       return "continue";
     },
@@ -289,7 +305,13 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "plan",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
     execute: async ({ userInput, controls, handlers }) => {
-      if (userInput.trim() === "/plan") {
+      const normalizedInput = userInput.trim();
+      if (normalizedInput === "/plan") {
+        await handlers.openPlanMenu(controls.withInputPaused);
+        return "continue";
+      }
+      if (isInteractiveTerminal()) {
+        handlers.writeStdout("[plan] 交互模式仅保留主入口 /plan；已为你打开菜单。\n\n");
         await handlers.openPlanMenu(controls.withInputPaused);
         return "continue";
       }
@@ -401,9 +423,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 const HELP_ORDER: readonly string[] = [
   "sessions",
   "commands",
-  "new",
-  "switch",
-  "continue",
   "health",
   "skills",
   "mcp",
@@ -416,25 +435,18 @@ const HELP_ORDER: readonly string[] = [
 ];
 
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
-  { command: "/sessions", description: "Open session picker (title + summary)" },
+  { command: "/sessions", description: "Open session menu (create/switch/continue)" },
   { command: "/commands", description: "Manage user-defined slash commands" },
-  { command: "/new", description: "Create and switch to a new session" },
-  { command: "/switch", description: "Switch active session via picker" },
-  { command: "/continue", description: "Inject summary bridge via picker" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
   { command: "/model", description: "Open interactive model picker" },
   { command: "/status", description: "Show current status line config snapshot" },
-  { command: "/status layout <adaptive|full|compact>", description: "Set status line layout mode" },
-  { command: "/status theme <plain|nerd|ccline>", description: "Set status line theme" },
-  { command: "/status segment <id> <on|off>", description: "Toggle status line segment" },
   { command: "/plan", description: "Open plan action menu" },
   { command: "/interrupt", description: "Interrupt current running turn (Esc also works)" },
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
   { command: "/exit", description: "Exit interactive mode" },
-  { command: "/quit", description: "Alias of /exit" },
 ];
 
 function findSlashCommandById(id: string): SlashCommandSpec | undefined {

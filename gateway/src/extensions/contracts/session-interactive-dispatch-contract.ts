@@ -14,7 +14,25 @@ const controls: SessionInteractiveControls = {
   withInputPaused: async <T>(operation: () => Promise<T>): Promise<T> => operation(),
 };
 
-async function runDispatchCase(input: string): Promise<DispatchCaseResult> {
+async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>): Promise<T> {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  try {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: stdinIsTty,
+      configurable: true,
+    });
+    return await operation();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process.stdin, "isTTY", descriptor);
+    }
+  }
+}
+
+async function runDispatchCase(
+  input: string,
+  options?: { stdinIsTty?: boolean },
+): Promise<DispatchCaseResult> {
   const events: string[] = [];
   const handlers: SessionInteractiveHandlers = {
     writeStdout: () => {
@@ -98,7 +116,10 @@ async function runDispatchCase(input: string): Promise<DispatchCaseResult> {
       events.push("onTurnError");
     },
   };
-  const action = await dispatchSessionInteractiveInput(input, controls, handlers);
+  const action = typeof options?.stdinIsTty === "boolean"
+    ? await withStdinTty(options.stdinIsTty, async () =>
+      dispatchSessionInteractiveInput(input, controls, handlers))
+    : await dispatchSessionInteractiveInput(input, controls, handlers);
   return { action, events };
 }
 
@@ -113,12 +134,15 @@ async function main(): Promise<void> {
   const planPrefixMiss = await runDispatchCase("/planner");
   const switchMenu = await runDispatchCase("/switch");
   const continueMenu = await runDispatchCase("/continue");
-  const switchLegacyWithId = await runDispatchCase("/switch session-legacy");
-  const continueLegacyWithId = await runDispatchCase("/continue session-legacy");
+  const switchLegacyWithId = await runDispatchCase("/switch session-legacy", { stdinIsTty: false });
+  const switchLegacyWithIdTty = await runDispatchCase("/switch session-legacy", { stdinIsTty: true });
+  const continueLegacyWithId = await runDispatchCase("/continue session-legacy", { stdinIsTty: false });
+  const continueLegacyWithIdTty = await runDispatchCase("/continue session-legacy", { stdinIsTty: true });
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
   const planMenu = await runDispatchCase("/plan");
-  const planLegacyStatus = await runDispatchCase("/plan status");
+  const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
+  const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
   const statusCurrent = await runDispatchCase("/status");
   const statusTheme = await runDispatchCase("/status theme nerd");
   const statusLayoutAlias = await runDispatchCase("/status compact");
@@ -128,7 +152,8 @@ async function main(): Promise<void> {
   const exitAliasCommand = await runDispatchCase("quit");
   const interruptCommand = await runDispatchCase("/interrupt");
   const commandsMenu = await runDispatchCase("/commands");
-  const commandsList = await runDispatchCase("/commands list");
+  const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
+  const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillsCommand = await runDispatchCase("/skills");
   const mcpCommand = await runDispatchCase("/mcp");
   const userCommandInvocation = await runDispatchCase("/shipit");
@@ -147,9 +172,13 @@ async function main(): Promise<void> {
     switch_legacy_with_id_warned: includesEvent(switchLegacyWithId.events, "writeStdout"),
     switch_legacy_with_id_opened_menu: includesEvent(switchLegacyWithId.events, "openSessionMenu:switch"),
     switch_legacy_with_id_skips_direct_switch: !includesEvent(switchLegacyWithId.events, "switchSession"),
+    switch_legacy_with_id_tty_warned: includesEvent(switchLegacyWithIdTty.events, "writeStdout"),
+    switch_legacy_with_id_tty_opened_menu: includesEvent(switchLegacyWithIdTty.events, "openSessionMenu:switch"),
     continue_legacy_with_id_warned: includesEvent(continueLegacyWithId.events, "writeStdout"),
     continue_legacy_with_id_opened_menu: includesEvent(continueLegacyWithId.events, "openSessionMenu:continue"),
     continue_legacy_with_id_skips_direct_continue: !includesEvent(continueLegacyWithId.events, "continueFromSession"),
+    continue_legacy_with_id_tty_warned: includesEvent(continueLegacyWithIdTty.events, "writeStdout"),
+    continue_legacy_with_id_tty_opened_menu: includesEvent(continueLegacyWithIdTty.events, "openSessionMenu:continue"),
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
@@ -157,6 +186,9 @@ async function main(): Promise<void> {
     plan_menu_enters_plan_directly: includesEvent(planMenu.events, "enterPlan"),
     plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
     plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
+    plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
+    plan_legacy_status_tty_dispatched: includesEvent(planLegacyStatusTty.events, "showPlanStatus"),
+    plan_legacy_status_tty_opened_menu: includesEvent(planLegacyStatusTty.events, "openPlanMenu"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
     status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
     status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
@@ -170,6 +202,9 @@ async function main(): Promise<void> {
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
     commands_menu_dispatched: includesEvent(commandsMenu.events, "openCommandsMenu"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
+    commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
+    commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),
+    commands_list_tty_opened_menu: includesEvent(commandsListTty.events, "openCommandsMenu"),
     skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),
     skills_hits_run_turn: includesEvent(skillsCommand.events, "runTurn:/skills"),
     mcp_dispatched_to_stdout: includesEvent(mcpCommand.events, "writeStdout"),
