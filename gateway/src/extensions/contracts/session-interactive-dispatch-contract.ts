@@ -107,8 +107,12 @@ async function main(): Promise<void> {
   const planPrefixMiss = await runDispatchCase("/planner");
   const switchMenu = await runDispatchCase("/switch");
   const continueMenu = await runDispatchCase("/continue");
+  const switchLegacyWithId = await runDispatchCase("/switch session-legacy");
+  const continueLegacyWithId = await runDispatchCase("/continue session-legacy");
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
+  const planMenu = await runDispatchCase("/plan");
+  const planLegacyStatus = await runDispatchCase("/plan status");
   const statusCurrent = await runDispatchCase("/status");
   const statusTheme = await runDispatchCase("/status theme nerd");
   const statusLayoutAlias = await runDispatchCase("/status compact");
@@ -117,6 +121,7 @@ async function main(): Promise<void> {
   const exitSlashAliasCommand = await runDispatchCase("/quit");
   const exitAliasCommand = await runDispatchCase("quit");
   const interruptCommand = await runDispatchCase("/interrupt");
+  const commandsMenu = await runDispatchCase("/commands");
   const commandsList = await runDispatchCase("/commands list");
   const skillsCommand = await runDispatchCase("/skills");
   const mcpCommand = await runDispatchCase("/mcp");
@@ -133,9 +138,19 @@ async function main(): Promise<void> {
     plan_prefix_miss_entered_plan: includesEvent(planPrefixMiss.events, "enterPlan"),
     switch_menu_opened: includesEvent(switchMenu.events, "openSessionMenu:switch"),
     continue_menu_opened: includesEvent(continueMenu.events, "openSessionMenu:continue"),
+    switch_legacy_with_id_warned: includesEvent(switchLegacyWithId.events, "writeStdout"),
+    switch_legacy_with_id_opened_menu: includesEvent(switchLegacyWithId.events, "openSessionMenu:switch"),
+    switch_legacy_with_id_skips_direct_switch: !includesEvent(switchLegacyWithId.events, "switchSession"),
+    continue_legacy_with_id_warned: includesEvent(continueLegacyWithId.events, "writeStdout"),
+    continue_legacy_with_id_opened_menu: includesEvent(continueLegacyWithId.events, "openSessionMenu:continue"),
+    continue_legacy_with_id_skips_direct_continue: !includesEvent(continueLegacyWithId.events, "continueFromSession"),
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
+    plan_menu_dispatched: includesEvent(planMenu.events, "writeStdout"),
+    plan_menu_enters_plan_directly: includesEvent(planMenu.events, "enterPlan"),
+    plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
+    plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
     status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
     status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
@@ -147,6 +162,7 @@ async function main(): Promise<void> {
       includesEvent(exitSlashAliasCommand.events, "runTurn:/quit"),
     exit_alias_quit_breaks_loop: exitAliasCommand.action === "break",
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
+    commands_menu_dispatched: includesEvent(commandsMenu.events, "handleUserCommandsCommand"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),
     skills_hits_run_turn: includesEvent(skillsCommand.events, "runTurn:/skills"),

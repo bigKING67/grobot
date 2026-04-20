@@ -20,6 +20,11 @@ interface ParsedStatusCommand {
   reason?: string;
 }
 
+interface ParsedSessionMenuCommand {
+  kind: "menu" | "legacy_with_id" | "invalid";
+  reason?: string;
+}
+
 export interface SlashCommandSuggestion {
   command: string;
   description: string;
@@ -31,13 +36,7 @@ function matchesInteractiveCommand(input: string, command: string): boolean {
 
 function matchesUserCommandsManagementCommand(inputRaw: string): boolean {
   const input = inputRaw.trim();
-  if (/^\/commands(?:\s|$)/i.test(input)) {
-    return true;
-  }
-  if (/^\/(?:create|new)\s+commands(?:\s|$)/i.test(input)) {
-    return true;
-  }
-  return /^\/(?:create|new)\s+command(?:\s|$)/i.test(input);
+  return /^\/commands(?:\s|$)/i.test(input);
 }
 
 function parseModelCommand(inputRaw: string): ParsedModelCommand {
@@ -121,6 +120,24 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   };
 }
 
+function parseSessionMenuCommand(
+  inputRaw: string,
+  command: "/switch" | "/continue",
+): ParsedSessionMenuCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith(command)) {
+    return { kind: "invalid", reason: `command must start with ${command}` };
+  }
+  const rest = input.slice(command.length).trim();
+  if (!rest) {
+    return { kind: "menu" };
+  }
+  return {
+    kind: "legacy_with_id",
+    reason: `[session] ${command} <id> 已废弃，已自动改为 ${command} 会话选择器。`,
+  };
+}
+
 const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "exit",
@@ -157,13 +174,14 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "commands",
     matches: (userInput) => matchesUserCommandsManagementCommand(userInput),
     execute: async ({ userInput, handlers }) => {
+      if (userInput.trim() !== "/commands") {
+        handlers.writeStdout("[commands] 已收敛为主入口：/commands（当前写法仍兼容）。\n\n");
+      }
       await handlers.handleUserCommandsCommand(userInput);
       return "continue";
     },
     helpLines: [
-      "  /commands            Manage user-defined slash commands (only ~/.grobot/commands)",
-      "  /commands new ...    Create a user command",
-      "  /commands delete ... Delete a user command",
+      "  /commands            Open user-command manager (only ~/.grobot/commands)",
     ],
   },
   {
@@ -186,7 +204,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           "[skills]",
           "- project: ./.agents/skills, ./.codex/skills",
           "- global: ~/.agents/skills, ~/.codex/skills",
-          "- tip: use /commands new <name> <prompt> to create reusable local command templates",
+          "- tip: use /commands to manage reusable local command templates",
           "",
         ].join("\n"),
       );
@@ -269,10 +287,26 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "plan",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
     execute: async ({ userInput, handlers }) => {
+      if (userInput.trim() === "/plan") {
+        handlers.writeStdout(
+          [
+            "[plan] action menu",
+            "- /plan <goal>        Create or replace active plan goal",
+            "- /plan status        Show active plan status",
+            "- /plan apply [extra] Review, approve, then execute active plan",
+            "- /plan cancel        Cancel plan mode and discard active plan",
+            "",
+          ].join("\n"),
+        );
+        return "continue";
+      }
       const parsed = parsePlanCommand(userInput);
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason}\n\n`);
         return "continue";
+      }
+      if (parsed.kind !== "enter") {
+        handlers.writeStdout("[plan] 已收敛为主入口：/plan（当前子命令写法仍兼容）。\n\n");
       }
       if (parsed.kind === "status") {
         await handlers.showPlanStatus();
@@ -290,10 +324,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /plan <goal>         Enter plan mode and create plan artifact",
-      "  /plan status         Show active plan status",
-      "  /plan apply [extra]  Review, approve, then execute active plan",
-      "  /plan cancel         Cancel plan mode and discard active plan",
+      "  /plan                Open plan action menu",
     ],
   },
   {
@@ -326,34 +357,38 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "switch",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/switch"),
     execute: async ({ userInput, controls, handlers }) => {
-      const tokens = userInput.split(/\s+/, 2);
-      const target = tokens[1]?.trim() ?? "";
-      if (!target) {
-        await handlers.openSessionMenu("switch", controls.withInputPaused);
+      const parsed = parseSessionMenuCommand(userInput, "/switch");
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid switch command"}\n\n`);
         return "continue";
       }
-      await handlers.switchSession(target);
+      if (parsed.kind === "legacy_with_id") {
+        handlers.writeStdout(`${parsed.reason}\n\n`);
+      }
+      await handlers.openSessionMenu("switch", controls.withInputPaused);
       return "continue";
     },
     helpLines: [
-      "  /switch [id]         Switch active session (no id => open picker)",
+      "  /switch              Open switch-session picker",
     ],
   },
   {
     id: "continue",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/continue"),
     execute: async ({ userInput, controls, handlers }) => {
-      const tokens = userInput.split(/\s+/, 2);
-      const sourceId = tokens[1]?.trim() ?? "";
-      if (!sourceId) {
-        await handlers.openSessionMenu("continue", controls.withInputPaused);
+      const parsed = parseSessionMenuCommand(userInput, "/continue");
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid continue command"}\n\n`);
         return "continue";
       }
-      await handlers.continueFromSession(sourceId);
+      if (parsed.kind === "legacy_with_id") {
+        handlers.writeStdout(`${parsed.reason}\n\n`);
+      }
+      await handlers.openSessionMenu("continue", controls.withInputPaused);
       return "continue";
     },
     helpLines: [
-      "  /continue [id]       Inject summary bridge (no id => open picker)",
+      "  /continue            Open summary-bridge picker",
     ],
   },
   {
@@ -390,12 +425,9 @@ const HELP_ORDER: readonly string[] = [
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/sessions", description: "Open session picker (title + summary)" },
   { command: "/commands", description: "Manage user-defined slash commands" },
-  { command: "/commands new <name> <prompt>", description: "Create a user command template" },
-  { command: "/commands list", description: "List user-defined slash commands" },
-  { command: "/commands delete <name>", description: "Delete a user command" },
   { command: "/new", description: "Create and switch to a new session" },
-  { command: "/switch [id]", description: "Switch active session" },
-  { command: "/continue [id]", description: "Inject summary bridge from a session" },
+  { command: "/switch", description: "Switch active session via picker" },
+  { command: "/continue", description: "Inject summary bridge via picker" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
@@ -404,10 +436,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/status layout <adaptive|full|compact>", description: "Set status line layout mode" },
   { command: "/status theme <plain|nerd|ccline>", description: "Set status line theme" },
   { command: "/status segment <id> <on|off>", description: "Toggle status line segment" },
-  { command: "/plan <goal>", description: "Enter plan mode and create plan artifact" },
-  { command: "/plan status", description: "Show active plan status" },
-  { command: "/plan apply [extra]", description: "Review and execute active plan" },
-  { command: "/plan cancel", description: "Cancel plan mode and discard plan" },
+  { command: "/plan", description: "Open plan action menu" },
   { command: "/interrupt", description: "Interrupt current running turn (Esc also works)" },
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
@@ -433,7 +462,7 @@ export function listSlashCommandHelpLines(): string[] {
 
 export function buildSlashCommandHint(): string {
   const wrapped = SLASH_COMMAND_SUGGESTIONS.map((item) => `\`${item.command}\``);
-  return `Enter message (${wrapped.join(", ")}; CLI Esc also requests turn interrupt; no id => open picker):`;
+  return `Enter message (${wrapped.join(", ")}; CLI Esc also requests turn interrupt):`;
 }
 
 export function listSlashCommandSuggestions(): readonly SlashCommandSuggestion[] {

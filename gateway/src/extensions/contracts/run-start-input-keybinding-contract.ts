@@ -24,8 +24,8 @@ async function main(): Promise<void> {
   const directIndexCrlfAction = decodeMenuInput("2\r\n", menuItemsLength);
 
   const slashMenu = resolveSlashSuggestionApplyResult("/model");
-  const slashCommandsNew = resolveSlashSuggestionApplyResult("/commands new <name> <prompt>");
-  const slashPlanApply = resolveSlashSuggestionApplyResult("/plan apply [extra]");
+  const slashCommandsMenu = resolveSlashSuggestionApplyResult("/commands");
+  const slashPlanMenu = resolveSlashSuggestionApplyResult("/plan");
 
   const enterMenuAction = resolveSlashSuggestionKeyAction({
     key: "enter",
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   const tabCommandsNewAction = resolveSlashSuggestionKeyAction({
     key: "tab",
     hasActiveSuggestions: true,
-    selectedCommand: "/commands new <name> <prompt>",
+    selectedCommand: "/commands",
     activeLineInput: "/co",
   });
   const escapeActionForSlash = resolveSlashSuggestionKeyAction({
@@ -119,17 +119,17 @@ async function main(): Promise<void> {
       typeof resolveMenuIndexFromDigits("01", menuItemsLength) === "undefined",
     slash_apply_menu_command:
       slashMenu.command === "/model" && slashMenu.submitImmediately,
-    slash_apply_commands_new_requires_fill:
-      slashCommandsNew.command === "/commands new " && !slashCommandsNew.submitImmediately,
-    slash_apply_plan_optional_submit:
-      slashPlanApply.command === "/plan apply " && slashPlanApply.submitImmediately,
+    slash_apply_commands_menu_submit:
+      slashCommandsMenu.command === "/commands" && slashCommandsMenu.submitImmediately,
+    slash_apply_plan_menu_submit:
+      slashPlanMenu.command === "/plan" && slashPlanMenu.submitImmediately,
     slash_key_enter_applies_and_submits:
       enterMenuAction.kind === "apply"
       && enterMenuAction.appliedCommand === "/model"
       && enterMenuAction.submitImmediately,
     slash_key_tab_applies_without_submit:
       tabCommandsNewAction.kind === "apply"
-      && tabCommandsNewAction.appliedCommand === "/commands new "
+      && tabCommandsNewAction.appliedCommand === "/commands"
       && !tabCommandsNewAction.submitImmediately,
     slash_key_escape_hides_panel:
       escapeActionForSlash.kind === "hide_panel"

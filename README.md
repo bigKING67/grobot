@@ -448,21 +448,17 @@ grobot start \
     - 交互命令新增 `/hooks`，可查看当前会话的 hook policy 与生效脚本列表。
     - 交互命令新增 `/health`，用于查看 provider 粘性与熔断状态（CLOSED/OPEN/HALF_OPEN）。
       - `/health` 同时展示 `ewma_latency_ms` 与 `ewma_error_rate`，可用于判断实时路由倾斜是否符合预期。
-    - 交互命令新增 `/sessions`、`/switch [id]`、`/continue [id]`，支持在终端内通过 session picker 交互切换。
+    - 交互命令新增 `/sessions`、`/switch`、`/continue`，支持在终端内通过 session picker 交互切换。
       - `/sessions`：打开会话选择器（展示 `title + summary`），可直接切换或创建新会话。
-      - `/switch [id]`：传入 id 时直接切换；不传 id 时打开会话选择器。
-      - `/continue [id]`：传入 id 时注入 summary bridge；不传 id 时打开会话选择器。
-      - 非 TTY 下，`/switch` 与 `/continue`（不带 id）会回退为输出会话概览与用法提示。
+      - `/switch`：打开会话选择器切换 active session。
+      - `/continue`：打开会话选择器并注入 summary bridge。
+      - 非 TTY 下，`/switch` 与 `/continue` 会回退为输出会话概览与用法提示。
     - 交互命令新增 `/model`，用于在当前 `start` 会话内打开模型菜单并切换模型；切换结果会同步写回 `config.toml` 的 `[[projects.agent.providers]] model`（配置为真相源）。
       - `/model`：打开模型选择菜单（↑/↓ 或 j/k 或 Ctrl+n/p，数字直选，Enter/Space 确认，Esc 取消）。
       - 菜单包含 `Reset to startup model (...)` 快捷项，可回到启动模型并同步写回配置。
       - 旧子命令（如 `/model current`、`/model list`、`/model use`、`/model reset`）已废弃，统一改为 `/model` 菜单操作。
-    - 交互命令新增 `/plan ...`，可进入 Plan Mode 并把计划工件落盘到 `.grobot/plans/<session_id>/`。
-      - `/plan <goal>`：进入 PLAN_ONLY 并创建结构化计划文件。
-      - `/plan status`：查看当前计划状态和文件路径。
-      - `/plan show`：打印当前计划 Markdown。
-      - `/plan apply [extra]`：审批并执行计划，执行后退出 PLAN_ONLY。
-      - `/plan discard`：废弃当前计划并退出 PLAN_ONLY。
+    - 交互命令新增 `/plan` 主入口；回车后会显示 Plan action menu（创建目标、查看状态、执行、取消）。
+      - 兼容命令仍可用：`/plan <goal>`、`/plan status`、`/plan apply [extra]`、`/plan cancel`。
     - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。
     - 交互命令支持 `/mcp reset <server|all>`，用于关闭对应 MCP 会话并清空 gate/metrics 状态。
   - 交互命令新增 `/memory ...`：Memory v1 的写入提案、审核应用与检索。

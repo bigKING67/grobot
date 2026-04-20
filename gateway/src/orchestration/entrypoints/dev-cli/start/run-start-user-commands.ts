@@ -157,7 +157,7 @@ function parseUserCommandPayload(
 
 function formatCommandList(records: readonly UserCommandRecord[], commandsDir: string): string {
   const rows: string[] = [];
-  rows.push("[commands] 用户自定义命令");
+  rows.push("[commands] 用户自定义命令（主入口）");
   rows.push(`- directory: ${commandsDir}`);
   rows.push(`- total: ${String(records.length)}`);
   if (records.length === 0) {
@@ -169,7 +169,10 @@ function formatCommandList(records: readonly UserCommandRecord[], commandsDir: s
     }
   }
   rows.push("");
-  rows.push("用法：");
+  rows.push("入口：");
+  rows.push("- /commands");
+  rows.push("");
+  rows.push("二级动作（兼容命令）：");
   rows.push("- /commands list");
   rows.push("- /commands new <name> [prompt]");
   rows.push("- /commands set <name> <prompt>");
@@ -177,8 +180,6 @@ function formatCommandList(records: readonly UserCommandRecord[], commandsDir: s
   rows.push("- /commands delete <name>");
   rows.push("- /commands enable <name>");
   rows.push("- /commands disable <name>");
-  rows.push("- /create command <name> [prompt] (alias)");
-  rows.push("- /new command <name> [prompt] (alias)");
   rows.push("");
   return `${rows.join("\n")}\n`;
 }

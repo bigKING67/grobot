@@ -27,7 +27,9 @@ const INLINE_IMAGE_PARSE_PATTERN = /\[Image #(\d+)\]/g;
 const INLINE_IMAGE_RENDER_PATTERN = /\[Image #\d+\]/g;
 const INLINE_IMAGE_REGISTRY_LIMIT = 512;
 const ANSI_RESET = "\u001B[0m";
+const ANSI_BOLD = "\u001B[1m";
 const ANSI_DIM = "\u001B[90m";
+const ANSI_SUGGESTION = "\u001B[96m";
 const ANSI_INVERSE = "\u001B[7m";
 const ANSI_INLINE_IMAGE_TOKEN_PLAIN = "\u001B[96m";
 const ANSI_INLINE_IMAGE_TOKEN_NERD = "\u001B[94m";
@@ -464,6 +466,20 @@ function resolveInlineImageTokenColor(theme: "plain" | "nerd_font" | "ccline" | 
     return ANSI_INLINE_IMAGE_TOKEN_NERD;
   }
   return ANSI_INLINE_IMAGE_TOKEN_PLAIN;
+}
+
+function renderSlashCommandTokenHighlight(text: string): string {
+  if (!text) {
+    return text;
+  }
+  const match = text.match(/^(\s*)(\/\S+)([\s\S]*)$/);
+  if (!match) {
+    return text;
+  }
+  const leading = match[1] ?? "";
+  const commandToken = match[2] ?? "";
+  const tail = match[3] ?? "";
+  return `${leading}${ANSI_BOLD}${ANSI_SUGGESTION}${commandToken}${ANSI_RESET}${tail}`;
 }
 
 function stripBracketedPasteMarkers(value: string): string {
@@ -998,6 +1014,8 @@ export async function runSessionInputLoop(
 
     const buildRenderSnapshot = (): InputRenderSnapshot => {
       clampCursor();
+      const fullInput = graphemes.join("");
+      const isSlashInput = fullInput.trimStart().startsWith("/");
       const terminalColumns = Math.max(32, resolveTerminalColumns());
       const inputLineWidth = Math.max(promptLabelWidth + 8, terminalColumns - 1);
       const wrapWidth = Math.max(1, inputLineWidth - promptLabelWidth);
@@ -1035,7 +1053,10 @@ export async function runSessionInputLoop(
           theme: getTheme(),
           selectedStartOffset: selectedOffsetInLine,
         });
-        return padToDisplayWidth(`${prefix}${renderedText}`, inputLineWidth);
+        const highlightedText = isSlashInput
+          ? renderSlashCommandTokenHighlight(renderedText)
+          : renderedText;
+        return padToDisplayWidth(`${prefix}${highlightedText}`, inputLineWidth);
       });
       const slash = resolveSlashSuggestions(activeLineInput);
       const shouldRenderFooter = slash.panelLines.length === 0;

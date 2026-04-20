@@ -38,9 +38,9 @@ export function createRunStartSessionMenuOps(
     if (!process.stdin.isTTY) {
       input.printSessionOverview();
       if (mode === "switch") {
-        input.writeStdout("Usage: /switch <session_id>\n\n");
+        input.writeStdout("Usage: /switch\n\n");
       } else if (mode === "continue") {
-        input.writeStdout("Usage: /continue <session_id>\n\n");
+        input.writeStdout("Usage: /continue\n\n");
       }
       return;
     }

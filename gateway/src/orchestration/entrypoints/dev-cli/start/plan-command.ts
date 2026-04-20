@@ -14,7 +14,7 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   if (!rest) {
     return {
       kind: "invalid",
-      reason: "usage: /plan <goal> | /plan status | /plan apply [extra] | /plan cancel",
+      reason: "usage: /plan | /plan <goal> | /plan status | /plan apply [extra] | /plan cancel",
     };
   }
 
@@ -35,7 +35,7 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   if (head === "show" || head === "options" || head === "discard") {
     return {
       kind: "invalid",
-      reason: `unsupported plan command: ${head}. supported: /plan <goal> | /plan status | /plan apply [extra] | /plan cancel`,
+      reason: `unsupported plan command: ${head}. supported: /plan | /plan <goal> | /plan status | /plan apply [extra] | /plan cancel`,
     };
   }
 

@@ -270,6 +270,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     input.writeStdout(
       [
         "[plan] commands:",
+        "  /plan",
+        "  (open plan action menu)",
         "  /plan status",
         "  /plan apply [extra]",
         "  /plan cancel",
