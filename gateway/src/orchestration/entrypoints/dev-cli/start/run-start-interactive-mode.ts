@@ -158,6 +158,7 @@ export interface RunStartInteractiveModeInput {
   setStatusTheme(theme: string): void;
   setStatusLayoutMode(layoutMode: string): void;
   setStatusSegmentEnabled(segmentId: string, enabled: boolean): void;
+  openStatusMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openSessionMenu(mode: SessionMenuMode, withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
@@ -297,6 +298,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     setStatusTheme: input.setStatusTheme,
     setStatusLayoutMode: input.setStatusLayoutMode,
     setStatusSegmentEnabled: input.setStatusSegmentEnabled,
+    openStatusMenu: input.openStatusMenu,
     openSessionMenu: async (mode, withInputPaused) => {
       await input.openSessionMenu(mode, withInputPaused);
     },

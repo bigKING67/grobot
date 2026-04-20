@@ -276,7 +276,14 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "status",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/status"),
-    execute: async ({ userInput, handlers }) => {
+    execute: async ({ userInput, controls, handlers }) => {
+      if (isInteractiveTerminal()) {
+        if (userInput.trim() !== "/status") {
+          handlers.writeStdout("[status] 交互模式已收敛为主入口 /status；已为你打开状态栏菜单。\n\n");
+        }
+        await handlers.openStatusMenu(controls.withInputPaused);
+        return "continue";
+      }
       const parsed = parseStatusCommand(userInput);
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason ?? "invalid status command"}\n\n`);
@@ -524,6 +531,8 @@ export function listSlashCommandCompatibilityNotes(): string[] {
   return [
     "  - /new /switch /continue are legacy session shortcuts.",
     "  - In interactive mode they redirect to /sessions.",
+    "  - /status subcommands are legacy shortcuts in interactive mode.",
+    "  - In interactive mode they redirect to /status menu.",
     "  - In non-interactive scripts they remain compatible.",
   ];
 }

@@ -59,6 +59,9 @@ async function runDispatchCase(
     setStatusSegmentEnabled: (segmentId, enabled) => {
       events.push(`setStatusSegmentEnabled:${segmentId}:${enabled ? "on" : "off"}`);
     },
+    openStatusMenu: async () => {
+      events.push("openStatusMenu");
+    },
     openSessionMenu: async (mode) => {
       events.push(`openSessionMenu:${mode}`);
     },
@@ -144,7 +147,9 @@ async function main(): Promise<void> {
   const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
   const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
   const statusCurrent = await runDispatchCase("/status");
+  const statusCurrentTty = await runDispatchCase("/status", { stdinIsTty: true });
   const statusTheme = await runDispatchCase("/status theme nerd");
+  const statusThemeTty = await runDispatchCase("/status theme nerd", { stdinIsTty: true });
   const statusLayoutAlias = await runDispatchCase("/status compact");
   const statusSegment = await runDispatchCase("/status segment tokens off");
   const exitCommand = await runDispatchCase("/exit");
@@ -198,7 +203,12 @@ async function main(): Promise<void> {
     plan_legacy_status_tty_dispatched: includesEvent(planLegacyStatusTty.events, "showPlanStatus"),
     plan_legacy_status_tty_opened_menu: includesEvent(planLegacyStatusTty.events, "openPlanMenu"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
+    status_current_tty_opened_menu: includesEvent(statusCurrentTty.events, "openStatusMenu"),
+    status_current_tty_dispatched_directly: includesEvent(statusCurrentTty.events, "showStatusCurrent"),
     status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
+    status_theme_tty_warned: includesEvent(statusThemeTty.events, "writeStdout"),
+    status_theme_tty_opened_menu: includesEvent(statusThemeTty.events, "openStatusMenu"),
+    status_theme_tty_dispatched_directly: includesEvent(statusThemeTty.events, "setStatusTheme:nerd"),
     status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
     status_segment_dispatched: includesEvent(statusSegment.events, "setStatusSegmentEnabled:tokens:off"),
     exit_command_breaks_loop: exitCommand.action === "break",

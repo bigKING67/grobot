@@ -269,6 +269,207 @@ export function createRunStartInteractiveModeInput(
     }
   };
 
+  const openStatusMenu = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<void> => {
+    const showCurrent = (): void => {
+      input.output.writeStdout(formatStatusLineCurrentSnapshot(getStatusLineConfig()));
+    };
+    if (!process.stdin.isTTY) {
+      input.output.writeStdout(
+        [
+          "[status] action menu",
+          "- /status current                       Show current status line config",
+          "- /status theme <plain|nerd|ccline>     Set status line theme",
+          "- /status layout <adaptive|full|compact> Set status line layout mode",
+          "- /status segment <id> <on|off>         Toggle segment (model/project/context/tokens/session)",
+          "",
+        ].join("\n"),
+      );
+      return;
+    }
+    const actionMenu = await withInputPaused(() =>
+      runTerminalSelectMenu({
+        title: "Status Line",
+        subtitle: `Session: ${input.runtimeState.getSessionKey()}`,
+        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
+        items: [
+          {
+            id: "current",
+            label: "Show current status snapshot",
+            description: "Print current status line configuration.",
+          },
+          {
+            id: "theme",
+            label: "Set status theme",
+            description: "Choose theme: plain / ccline / nerd_font.",
+          },
+          {
+            id: "layout",
+            label: "Set status layout",
+            description: "Choose layout mode: adaptive / full / compact.",
+          },
+          {
+            id: "segment",
+            label: "Toggle status segment",
+            description: "Enable or disable segment: model/project/context/tokens/session.",
+          },
+        ],
+      }),
+    );
+    if (actionMenu.kind === "cancelled") {
+      input.output.writeStdout("[status] menu cancelled.\n\n");
+      return;
+    }
+    if (actionMenu.item.id === "current") {
+      showCurrent();
+      return;
+    }
+    if (actionMenu.item.id === "theme") {
+      const current = getStatusLineConfig().theme;
+      const pickedTheme = await withInputPaused(() =>
+        runTerminalSelectMenu({
+          title: "Status Theme",
+          subtitle: `Current: ${current}`,
+          hint: "Select theme, Enter/Space to apply, Esc to cancel.",
+          items: [
+            {
+              id: "plain",
+              label: "plain",
+              description: "Minimal ANSI style.",
+              current: current === "plain",
+            },
+            {
+              id: "ccline",
+              label: "ccline",
+              description: "Cometix-style status line theme.",
+              current: current === "ccline",
+            },
+            {
+              id: "nerd_font",
+              label: "nerd_font",
+              description: "Nerd-font glyph enhanced theme.",
+              current: current === "nerd_font",
+            },
+          ],
+        }),
+      );
+      if (pickedTheme.kind === "cancelled") {
+        input.output.writeStdout("[status] theme change cancelled.\n\n");
+        return;
+      }
+      const theme = resolveStatusTheme(pickedTheme.item.id);
+      if (!theme) {
+        input.output.writeStdout("invalid status theme; usage: /status theme <plain|nerd|ccline>\n\n");
+        return;
+      }
+      updateStatusLineConfig({ theme });
+      input.output.writeStdout(`[status] theme set to ${theme}\n\n`);
+      return;
+    }
+    if (actionMenu.item.id === "layout") {
+      const current = getStatusLineConfig().layoutMode;
+      const pickedLayout = await withInputPaused(() =>
+        runTerminalSelectMenu({
+          title: "Status Layout",
+          subtitle: `Current: ${current}`,
+          hint: "Select layout, Enter/Space to apply, Esc to cancel.",
+          items: [
+            {
+              id: "adaptive",
+              label: "adaptive",
+              description: "Auto-choose based on terminal width.",
+              current: current === "adaptive",
+            },
+            {
+              id: "full",
+              label: "full",
+              description: "Always render full status detail.",
+              current: current === "full",
+            },
+            {
+              id: "compact",
+              label: "compact",
+              description: "Use compact status line layout.",
+              current: current === "compact",
+            },
+          ],
+        }),
+      );
+      if (pickedLayout.kind === "cancelled") {
+        input.output.writeStdout("[status] layout change cancelled.\n\n");
+        return;
+      }
+      const layoutMode = resolveStatusLayoutMode(pickedLayout.item.id);
+      if (!layoutMode) {
+        input.output.writeStdout("invalid status layout; usage: /status layout <adaptive|full|compact>\n\n");
+        return;
+      }
+      updateStatusLineConfig({ layoutMode });
+      input.output.writeStdout(`[status] layout_mode set to ${layoutMode}\n\n`);
+      return;
+    }
+    const config = getStatusLineConfig();
+    const pickedSegment = await withInputPaused(() =>
+      runTerminalSelectMenu({
+        title: "Status Segment",
+        subtitle: "Select segment to change",
+        hint: "Select segment, Enter/Space to continue, Esc to cancel.",
+        items: config.segmentOrder.map((segmentId) => ({
+          id: segmentId,
+          label: segmentId,
+          description: `Current: ${config.segments[segmentId] ? "on" : "off"}`,
+        })),
+      }),
+    );
+    if (pickedSegment.kind === "cancelled") {
+      input.output.writeStdout("[status] segment selection cancelled.\n\n");
+      return;
+    }
+    const segmentId = normalizeStatusSegmentId(pickedSegment.item.id);
+    if (!segmentId) {
+      input.output.writeStdout(
+        "invalid status segment; usage: /status segment <model|project|context|tokens|session> <on|off>\n\n",
+      );
+      return;
+    }
+    const currentEnabled = getStatusLineConfig().segments[segmentId];
+    const pickedState = await withInputPaused(() =>
+      runTerminalSelectMenu({
+        title: `Status Segment: ${segmentId}`,
+        subtitle: `Current: ${currentEnabled ? "on" : "off"}`,
+        hint: "Select state, Enter/Space to apply, Esc to cancel.",
+        items: [
+          {
+            id: "on",
+            label: "on",
+            description: "Enable segment in status line.",
+            current: currentEnabled,
+          },
+          {
+            id: "off",
+            label: "off",
+            description: "Disable segment in status line.",
+            current: !currentEnabled,
+          },
+        ],
+      }),
+    );
+    if (pickedState.kind === "cancelled") {
+      input.output.writeStdout("[status] segment update cancelled.\n\n");
+      return;
+    }
+    const enabled = pickedState.item.id === "on";
+    updateStatusLineConfig({
+      segments: {
+        [segmentId]: enabled,
+      },
+    });
+    input.output.writeStdout(
+      `[status] segment ${segmentId} ${enabled ? "on" : "off"}\n\n`,
+    );
+  };
+
   const sessionTopicCache: {
     sessionId: string;
     topic: string | undefined;
@@ -427,5 +628,6 @@ export function createRunStartInteractiveModeInput(
         `[status] segment ${segmentId} ${enabled ? "on" : "off"}\n\n`,
       );
     },
+    openStatusMenu,
   };
 }

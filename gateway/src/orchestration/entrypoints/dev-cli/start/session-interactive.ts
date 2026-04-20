@@ -17,6 +17,7 @@ export interface SessionInteractiveHandlers {
   setStatusTheme(theme: string): void;
   setStatusLayoutMode(layoutMode: string): void;
   setStatusSegmentEnabled(segmentId: string, enabled: boolean): void;
+  openStatusMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openSessionMenu(
     mode: SessionMenuMode,
     withInputPaused: SessionInteractiveControls["withInputPaused"],
