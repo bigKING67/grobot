@@ -151,6 +151,8 @@ async function main(): Promise<void> {
   const exitSlashAliasCommand = await runDispatchCase("/quit");
   const exitAliasCommand = await runDispatchCase("quit");
   const interruptCommand = await runDispatchCase("/interrupt");
+  const newCommand = await runDispatchCase("/new");
+  const newCommandTty = await runDispatchCase("/new", { stdinIsTty: true });
   const commandsMenu = await runDispatchCase("/commands");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
@@ -173,12 +175,18 @@ async function main(): Promise<void> {
     switch_legacy_with_id_opened_menu: includesEvent(switchLegacyWithId.events, "openSessionMenu:switch"),
     switch_legacy_with_id_skips_direct_switch: !includesEvent(switchLegacyWithId.events, "switchSession"),
     switch_legacy_with_id_tty_warned: includesEvent(switchLegacyWithIdTty.events, "writeStdout"),
-    switch_legacy_with_id_tty_opened_menu: includesEvent(switchLegacyWithIdTty.events, "openSessionMenu:switch"),
+    switch_legacy_with_id_tty_opened_sessions_menu: includesEvent(
+      switchLegacyWithIdTty.events,
+      "openSessionMenu:sessions",
+    ),
     continue_legacy_with_id_warned: includesEvent(continueLegacyWithId.events, "writeStdout"),
     continue_legacy_with_id_opened_menu: includesEvent(continueLegacyWithId.events, "openSessionMenu:continue"),
     continue_legacy_with_id_skips_direct_continue: !includesEvent(continueLegacyWithId.events, "continueFromSession"),
     continue_legacy_with_id_tty_warned: includesEvent(continueLegacyWithIdTty.events, "writeStdout"),
-    continue_legacy_with_id_tty_opened_menu: includesEvent(continueLegacyWithIdTty.events, "openSessionMenu:continue"),
+    continue_legacy_with_id_tty_opened_sessions_menu: includesEvent(
+      continueLegacyWithIdTty.events,
+      "openSessionMenu:sessions",
+    ),
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
@@ -200,6 +208,10 @@ async function main(): Promise<void> {
       includesEvent(exitSlashAliasCommand.events, "runTurn:/quit"),
     exit_alias_quit_breaks_loop: exitAliasCommand.action === "break",
     interrupt_dispatched: includesEvent(interruptCommand.events, "requestRuntimeInterrupt"),
+    new_dispatched_direct_create: includesEvent(newCommand.events, "createAndSwitchSession"),
+    new_tty_redirect_warned: includesEvent(newCommandTty.events, "writeStdout"),
+    new_tty_redirect_opened_sessions_menu: includesEvent(newCommandTty.events, "openSessionMenu:sessions"),
+    new_tty_still_direct_create: includesEvent(newCommandTty.events, "createAndSwitchSession"),
     commands_menu_dispatched: includesEvent(commandsMenu.events, "openCommandsMenu"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),

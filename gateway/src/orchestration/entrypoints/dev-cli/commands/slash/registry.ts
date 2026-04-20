@@ -177,7 +177,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /sessions            Open session menu (create/switch/continue)",
+      "  /sessions            Open session actions menu (create/switch/continue)",
     ],
   },
   {
@@ -360,7 +360,12 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "new",
     matches: (userInput) => userInput === "/new",
-    execute: async ({ handlers }) => {
+    execute: async ({ controls, handlers }) => {
+      if (isInteractiveTerminal()) {
+        handlers.writeStdout("[session] 交互模式已收敛为主入口 /sessions；已为你打开会话菜单。\n\n");
+        await handlers.openSessionMenu("sessions", controls.withInputPaused);
+        return "continue";
+      }
       await handlers.createAndSwitchSession();
       return "continue";
     },
@@ -372,6 +377,11 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "switch",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/switch"),
     execute: async ({ userInput, controls, handlers }) => {
+      if (isInteractiveTerminal()) {
+        handlers.writeStdout("[session] 交互模式已收敛为主入口 /sessions；已为你打开会话菜单。\n\n");
+        await handlers.openSessionMenu("sessions", controls.withInputPaused);
+        return "continue";
+      }
       const parsed = parseSessionMenuCommand(userInput, "/switch");
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason ?? "invalid switch command"}\n\n`);
@@ -391,6 +401,11 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "continue",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/continue"),
     execute: async ({ userInput, controls, handlers }) => {
+      if (isInteractiveTerminal()) {
+        handlers.writeStdout("[session] 交互模式已收敛为主入口 /sessions；已为你打开会话菜单。\n\n");
+        await handlers.openSessionMenu("sessions", controls.withInputPaused);
+        return "continue";
+      }
       const parsed = parseSessionMenuCommand(userInput, "/continue");
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason ?? "invalid continue command"}\n\n`);
