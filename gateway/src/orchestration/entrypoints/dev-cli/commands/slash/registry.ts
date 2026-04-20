@@ -464,6 +464,15 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/exit", description: "Exit interactive mode" },
 ];
 
+const PRIMARY_HINT_COMMANDS: readonly string[] = [
+  "/help",
+  "/sessions",
+  "/commands",
+  "/model",
+  "/plan",
+  "/exit",
+];
+
 function findSlashCommandById(id: string): SlashCommandSpec | undefined {
   return SLASH_COMMANDS.find((item) => item.id === id);
 }
@@ -481,8 +490,8 @@ export function listSlashCommandHelpLines(): string[] {
 }
 
 export function buildSlashCommandHint(): string {
-  const wrapped = SLASH_COMMAND_SUGGESTIONS.map((item) => `\`${item.command}\``);
-  return `Enter message (${wrapped.join(", ")}; CLI Esc also requests turn interrupt):`;
+  const wrapped = PRIMARY_HINT_COMMANDS.map((command) => `\`${command}\``);
+  return `Enter message (${wrapped.join(", ")}; Esc interrupts running turn):`;
 }
 
 export function listSlashCommandSuggestions(): readonly SlashCommandSuggestion[] {

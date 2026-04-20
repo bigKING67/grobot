@@ -183,7 +183,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
       },
     ],
     rows,
-    commandHint: "Enter message (`/help`, `/sessions`, `/model`, `/status`, `/exit`):",
+    commandHint: "Enter message (`/help`, `/sessions`, `/commands`, `/model`, `/plan`, `/exit`):",
   };
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,
