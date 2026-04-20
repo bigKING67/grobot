@@ -1,9 +1,47 @@
 import { createCliUiRenderer } from "../../orchestration/entrypoints/dev-cli/ui/kernel/renderer";
+import { measureDisplayWidth } from "../../orchestration/entrypoints/dev-cli/ui/interactive/display-width";
 import { type StartScreenViewModel } from "../../orchestration/entrypoints/dev-cli/ui/screens/startup-screen";
 import { type TerminalSelectMenuInput } from "../../orchestration/entrypoints/dev-cli/ui/screens/select-menu-screen";
 
 function hasAnsi(text: string): boolean {
   return /\x1b\[[0-9;?]+[A-Za-z]/.test(text);
+}
+
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;?]+[A-Za-z]/g, "");
+}
+
+function renderStartupAtColumns(
+  renderer: ReturnType<typeof createCliUiRenderer>,
+  viewModel: StartScreenViewModel,
+  columns: number,
+): string {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+  try {
+    Object.defineProperty(process.stdout, "columns", {
+      value: columns,
+      configurable: true,
+    });
+    return renderer.renderStartupScreen(viewModel);
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process.stdout, "columns", descriptor);
+    }
+  }
+}
+
+function extractStartupBodyLines(rendered: string): string[] {
+  return stripAnsi(rendered)
+    .split("\n")
+    .filter((line) => line.startsWith("│ "));
+}
+
+function extractRightPanelSegment(line: string): string | undefined {
+  const parts = line.split("│");
+  if (parts.length < 4) {
+    return undefined;
+  }
+  return parts[2]?.trim();
 }
 
 const startupViewModel: StartScreenViewModel = {
@@ -53,6 +91,38 @@ const startupViewModel: StartScreenViewModel = {
   commandHint: "Enter message (`/help`, `/exit`):",
 };
 
+const startupBrandSymbolViewModel: StartScreenViewModel = {
+  title: "Grobot v0.1.0",
+  hero: {
+    brandLabel: "",
+    iconLines: [
+      "  G R O L A N D®  ",
+    ],
+    infoLines: [],
+  },
+  feeds: [
+    {
+      title: "Tips for getting started",
+      lines: [
+        "Run /init to create a CLAUDE.md file with instructions",
+      ],
+    },
+    {
+      title: "Recent activity",
+      lines: [
+        "[store] history migrated from legacy path (/tmp/demo.history.json)",
+      ],
+      emptyMessage: "No recent activity",
+      footer: "/sessions for more",
+    },
+  ],
+  rows: [
+    "claude-sonnet-4-5 (200K context) · API Usage Billing",
+    "~/tmp/project",
+  ],
+  commandHint: "Enter message (`/help`, `/exit`):",
+};
+
 const menuInput: TerminalSelectMenuInput = {
   title: "Select Model",
   subtitle: "Provider: alpha",
@@ -93,6 +163,45 @@ const nonTtyRenderer = createCliUiRenderer({
 });
 
 const startupInteractive = interactiveRenderer.renderStartupScreen(startupViewModel);
+const startupVariants = [96, 110, 120].map((columns) =>
+  renderStartupAtColumns(interactiveRenderer, startupViewModel, columns)
+);
+const startupVariantBodies = startupVariants.map((rendered) => extractStartupBodyLines(rendered));
+const startupNoJoinArtifact = startupVariants.every((rendered) => {
+  const plain = stripAnsi(rendered);
+  return plain.includes("┤ │") === false;
+});
+const startupNoTeeGlyph = startupVariantBodies.every((lines) =>
+  lines.every((line) => line.includes("├") === false && line.includes("┤") === false)
+);
+const startupBodyWidthConsistent = startupVariantBodies.every((lines) => {
+  if (lines.length === 0) {
+    return false;
+  }
+  const widths = lines.map((line) => measureDisplayWidth(line));
+  return new Set(widths).size === 1;
+});
+const startupDividerCountExpected = startupVariantBodies.every((lines) => {
+  const dividerCount = lines.filter((line) => {
+    const rightPanelSegment = extractRightPanelSegment(line);
+    return typeof rightPanelSegment === "string" && /^─+$/.test(rightPanelSegment);
+  }).length;
+  return dividerCount === 1;
+});
+const startupBrandSymbolVariants = [96, 110, 120].map((columns) =>
+  renderStartupAtColumns(interactiveRenderer, startupBrandSymbolViewModel, columns)
+);
+const startupBrandSymbolBodies = startupBrandSymbolVariants.map((rendered) =>
+  extractStartupBodyLines(rendered)
+);
+const startupBrandSymbolBodyLengthConsistent = startupBrandSymbolBodies.every((lines) => {
+  if (lines.length === 0) {
+    return false;
+  }
+  const lengths = lines.map((line) => line.length);
+  return new Set(lengths).size === 1;
+});
+const startupRegisteredSymbolSingleWidth = measureDisplayWidth("®") === 1;
 const menuInteractive = interactiveRenderer.renderSelectMenu(menuInput, 0);
 const menuPlain = plainRenderer.renderSelectMenu(menuInput, 0);
 const menuNonTty = nonTtyRenderer.renderSelectMenu(menuInput, 0);
@@ -112,6 +221,12 @@ const payload = {
   startup_has_recent_activity_empty_or_items:
     startupInteractive.includes("No recent activity")
     || startupInteractive.includes("2h ago  Session planning update"),
+  startup_has_no_join_artifact: startupNoJoinArtifact,
+  startup_has_no_tee_glyph: startupNoTeeGlyph,
+  startup_body_width_consistent: startupBodyWidthConsistent,
+  startup_feed_divider_count_expected: startupDividerCountExpected,
+  startup_brand_symbol_body_length_consistent: startupBrandSymbolBodyLengthConsistent,
+  startup_registered_symbol_single_width: startupRegisteredSymbolSingleWidth,
   menu_interactive_has_ansi: hasAnsi(menuInteractive),
   menu_plain_has_ansi: hasAnsi(menuPlain),
   menu_non_tty_has_ansi: hasAnsi(menuNonTty),

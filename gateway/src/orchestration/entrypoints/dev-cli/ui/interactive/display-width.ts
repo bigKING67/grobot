@@ -1,6 +1,6 @@
 const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
 const COMBINING_MARK_PATTERN = /\p{Mark}/u;
-const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+const EMOJI_PRESENTATION_PATTERN = /\p{Emoji_Presentation}/u;
 const DEFAULT_ELLIPSIS = "...";
 
 const CJK_WIDTH_RANGES: Array<[number, number]> = [
@@ -21,12 +21,6 @@ const CJK_WIDTH_RANGES: Array<[number, number]> = [
   [0x1f900, 0x1f9ff],
   [0x20000, 0x3fffd],
 ];
-
-// Some terminals treat U+00AE (®) as double-width under CJK profiles.
-// We force it to width=2 to avoid frame-wrap glitches in startup screen rendering.
-const FORCED_DOUBLE_WIDTH_CODE_POINTS = new Set<number>([
-  0x00ae, // ®
-]);
 
 const GRAPHEME_SEGMENTER = (
   Intl as unknown as {
@@ -83,7 +77,9 @@ export function getGraphemeDisplayWidth(grapheme: string): number {
   if (!grapheme) {
     return 0;
   }
-  if (EMOJI_PATTERN.test(grapheme)) {
+  // Use Unicode emoji presentation instead of Extended_Pictographic.
+  // Symbols like ®/™ are pictographic but default to text width in terminals.
+  if (EMOJI_PRESENTATION_PATTERN.test(grapheme) || grapheme.includes("\uFE0F")) {
     return 2;
   }
   let width = 0;
@@ -96,10 +92,6 @@ export function getGraphemeDisplayWidth(grapheme: string): number {
       continue;
     }
     if (COMBINING_MARK_PATTERN.test(char) || codePoint === 0x200d || codePoint === 0xfe0f) {
-      continue;
-    }
-    if (FORCED_DOUBLE_WIDTH_CODE_POINTS.has(codePoint)) {
-      width += 2;
       continue;
     }
     width += isWideCodePoint(codePoint) ? 2 : 1;

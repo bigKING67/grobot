@@ -34,10 +34,20 @@ export interface RenderStartScreenOptions {
 }
 
 interface StartScreenLine {
-  kind: "text" | "separator";
-  text?: string;
+  text: string;
   token?: CliThemeToken;
   align?: "left" | "center";
+}
+
+interface StartScreenFeedSection {
+  title: string;
+  lines: string[];
+  footer?: string;
+}
+
+interface StartScreenFeedColumnLine {
+  kind: "content" | "divider";
+  text: string;
 }
 
 interface StartScreenCardLayout {
@@ -61,7 +71,6 @@ function createTextLine(
   align: "left" | "center" = "left",
 ): StartScreenLine {
   return {
-    kind: "text",
     text,
     token,
     align,
@@ -159,46 +168,100 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
   return lines;
 }
 
-function buildRightPanelLines(viewModel: StartScreenViewModel): StartScreenLine[] {
-  const feeds = (viewModel.feeds ?? []).filter((feed) => feed.title.trim().length > 0);
-  if (feeds.length === 0) {
-    return [];
-  }
-  const lines: StartScreenLine[] = [];
-  for (let index = 0; index < feeds.length; index += 1) {
-    const feed = feeds[index];
-    if (index > 0) {
-      lines.push({
-        kind: "separator",
-        token: "brand",
-      });
+function buildFeedSections(viewModel: StartScreenViewModel): StartScreenFeedSection[] {
+  const sections: StartScreenFeedSection[] = [];
+  for (const feed of viewModel.feeds ?? []) {
+    const title = feed.title.trim();
+    if (title.length === 0) {
+      continue;
     }
-    lines.push(createTextLine(feed.title.trim(), "accent"));
-
-    const compactFeedLines = feed.lines
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    if (compactFeedLines.length > 0) {
-      for (const line of compactFeedLines) {
-        lines.push(createTextLine(line, "muted"));
-      }
-    } else if ((feed.emptyMessage ?? "").trim().length > 0) {
-      lines.push(createTextLine(feed.emptyMessage!.trim(), "muted"));
-    }
-
+    const contentLines = compactLineRows(feed.lines);
+    const emptyMessage = (feed.emptyMessage ?? "").trim();
     const footer = (feed.footer ?? "").trim();
-    if (footer.length > 0) {
-      lines.push(createTextLine(footer, "info"));
-    }
+    sections.push({
+      title,
+      lines: contentLines.length > 0
+        ? contentLines
+        : emptyMessage.length > 0
+          ? [emptyMessage]
+          : [],
+      footer: footer.length > 0 ? footer : undefined,
+    });
+  }
+  return sections;
+}
+
+function measureTextLine(line: StartScreenLine): number {
+  return measureDisplayWidth(line.text);
+}
+
+function measureFeedSectionWidth(section: StartScreenFeedSection): number {
+  let width = measureDisplayWidth(section.title);
+  for (const line of section.lines) {
+    width = Math.max(width, measureDisplayWidth(line));
+  }
+  if (section.footer) {
+    width = Math.max(width, measureDisplayWidth(section.footer));
+  }
+  return width;
+}
+
+function measureFeedColumnWidth(sections: StartScreenFeedSection[]): number {
+  return sections.reduce(
+    (width, section) => Math.max(width, measureFeedSectionWidth(section)),
+    0,
+  );
+}
+
+function renderFeedDividerLine(
+  width: number,
+  theme: ReturnType<typeof createCliTheme>,
+): StartScreenFeedColumnLine {
+  return {
+    kind: "divider",
+    text: theme.color("brand", "─".repeat(Math.max(1, width))),
+  };
+}
+
+function renderFeedSectionLines(
+  section: StartScreenFeedSection,
+  width: number,
+  theme: ReturnType<typeof createCliTheme>,
+): StartScreenFeedColumnLine[] {
+  const lines: StartScreenFeedColumnLine[] = [];
+  lines.push({
+    kind: "content",
+    text: theme.color("accent", padLine(section.title, width)),
+  });
+  for (const line of section.lines) {
+    lines.push({
+      kind: "content",
+      text: theme.color("muted", padLine(line, width)),
+    });
+  }
+  if (section.footer) {
+    lines.push({
+      kind: "content",
+      text: theme.color("info", padLine(section.footer, width)),
+    });
   }
   return lines;
 }
 
-function measureTextLine(line: StartScreenLine): number {
-  if (line.kind === "separator") {
-    return 0;
+function renderFeedColumnLines(
+  sections: StartScreenFeedSection[],
+  width: number,
+  theme: ReturnType<typeof createCliTheme>,
+): StartScreenFeedColumnLine[] {
+  const sectionWidth = Math.max(1, width);
+  const lines: StartScreenFeedColumnLine[] = [];
+  for (let index = 0; index < sections.length; index += 1) {
+    if (index > 0) {
+      lines.push(renderFeedDividerLine(sectionWidth, theme));
+    }
+    lines.push(...renderFeedSectionLines(sections[index]!, sectionWidth, theme));
   }
-  return measureDisplayWidth(line.text ?? "");
+  return lines;
 }
 
 function renderLineWithStyle(
@@ -206,13 +269,9 @@ function renderLineWithStyle(
   width: number,
   theme: ReturnType<typeof createCliTheme>,
 ): string {
-  if (line.kind === "separator") {
-    const token = line.token ?? "brand";
-    return theme.color(token, "─".repeat(width));
-  }
   const content = line.align === "center"
-    ? centerLine(line.text ?? "", width)
-    : padLine(line.text ?? "", width);
+    ? centerLine(line.text, width)
+    : padLine(line.text, width);
   if (line.token) {
     return theme.color(line.token, content);
   }
@@ -240,23 +299,26 @@ function renderSingleColumnCard(
   maxContentWidth: number,
   theme: ReturnType<typeof createCliTheme>,
 ): StartScreenCardLayout {
-  const bodyLines = buildLeftPanelLines(viewModel);
-  const rightLines = buildRightPanelLines(viewModel);
-  if (rightLines.length > 0) {
-    bodyLines.push({
-      kind: "separator",
-      token: "brand",
-    });
-    bodyLines.push(...rightLines);
-  }
-  const computedWidth = bodyLines.reduce(
-    (width, line) => Math.max(width, measureTextLine(line)),
-    0,
+  const leftLines = buildLeftPanelLines(viewModel);
+  const feedSections = buildFeedSections(viewModel);
+  const computedWidth = Math.max(
+    leftLines.reduce(
+      (width, line) => Math.max(width, measureTextLine(line)),
+      0,
+    ),
+    measureFeedColumnWidth(feedSections),
   );
   const contentWidth = clamp(computedWidth, 56, maxContentWidth);
+  const bodyLines: string[] = leftLines.map((line) => renderLineWithStyle(line, contentWidth, theme));
+  if (feedSections.length > 0) {
+    bodyLines.push(renderFeedDividerLine(contentWidth, theme).text);
+    for (const line of renderFeedColumnLines(feedSections, contentWidth, theme)) {
+      bodyLines.push(line.text);
+    }
+  }
   return {
     contentWidth,
-    bodyLines: bodyLines.map((line) => renderLineWithStyle(line, contentWidth, theme)),
+    bodyLines,
   };
 }
 
@@ -266,8 +328,8 @@ function renderTwoColumnCard(
   theme: ReturnType<typeof createCliTheme>,
 ): StartScreenCardLayout | undefined {
   const leftLines = buildLeftPanelLines(viewModel);
-  const rightLines = buildRightPanelLines(viewModel);
-  if (rightLines.length === 0) {
+  const feedSections = buildFeedSections(viewModel);
+  if (feedSections.length === 0) {
     return undefined;
   }
 
@@ -283,10 +345,7 @@ function renderTwoColumnCard(
     (width, line) => Math.max(width, measureTextLine(line)),
     0,
   );
-  const rightNatural = rightLines.reduce(
-    (width, line) => Math.max(width, measureTextLine(line)),
-    0,
-  );
+  const rightNatural = measureFeedColumnWidth(feedSections);
   const leftDesired = clamp(leftNatural + 2, leftMin, leftMax);
   const rightDesired = Math.max(rightMin, rightNatural + 2);
 
@@ -296,21 +355,14 @@ function renderTwoColumnCard(
     return undefined;
   }
 
+  const rightContentWidth = Math.max(1, rightWidth - 1);
+  const rightLines = renderFeedColumnLines(feedSections, rightContentWidth, theme);
   const lineCount = Math.max(leftLines.length, rightLines.length);
   const bodyLines: string[] = [];
   for (let index = 0; index < lineCount; index += 1) {
     const leftLine = leftLines[index] ?? createTextLine("");
-    const rightLine = rightLines[index] ?? createTextLine("");
     const leftText = renderLineWithStyle(leftLine, leftWidth, theme);
-    if (rightLine.kind === "separator") {
-      // Match tools/all Divider behavior: keep separator inset so it never touches vertical strokes.
-      const separatorCoreWidth = Math.max(1, rightWidth - 2);
-      const separator = theme.color("brand", ` ${"─".repeat(separatorCoreWidth)} `);
-      bodyLines.push(`${leftText}${theme.color("brand", "│")}${separator}`);
-      continue;
-    }
-    const rightContentWidth = Math.max(1, rightWidth - 1);
-    const rightContent = renderLineWithStyle(rightLine, rightContentWidth, theme);
+    const rightContent = rightLines[index]?.text ?? padLine("", rightContentWidth);
     bodyLines.push(`${leftText}${theme.color("brand", "│")} ${rightContent}`);
   }
 
