@@ -68,6 +68,12 @@ async function main(): Promise<void> {
     root_hides_status_subcommands: !topLevel.some((item) => item.command.startsWith("/status ")),
     root_hides_switch_continue_shortcuts: !topLevel.some((item) =>
       item.command === "/switch" || item.command === "/continue"),
+    root_hides_utility_commands: !topLevel.some((item) =>
+      item.command === "/health"
+      || item.command === "/skills"
+      || item.command === "/mcp"
+      || item.command === "/handoff"
+      || item.command === "/interrupt"),
     root_has_user_shipit: topLevel.some((item) => item.command === "/shipit" && item.source === "user"),
     root_disabled_marked: topLevel.some(
       (item) => item.command === "/pause_release" && item.description.includes("disabled"),

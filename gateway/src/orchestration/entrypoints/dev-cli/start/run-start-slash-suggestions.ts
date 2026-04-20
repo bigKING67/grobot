@@ -19,12 +19,26 @@ interface ListRunStartSlashSuggestionsInput {
   maxItems?: number;
 }
 
+const ROOT_SLASH_PRIMARY_BUILTIN_COMMANDS = new Set<string>([
+  "/sessions",
+  "/commands",
+  "/model",
+  "/plan",
+  "/status",
+  "/help",
+  "/exit",
+]);
+
 function normalizeForMatch(value: string): string {
   return value.trim().toLowerCase();
 }
 
 function startsWithSlashToken(value: string): boolean {
   return value.trimStart().startsWith("/");
+}
+
+function isRootSlashQuery(value: string): boolean {
+  return value.trim() === "/";
 }
 
 function matchesSuggestionQuery(queryRaw: string, suggestionCommandRaw: string): boolean {
@@ -74,10 +88,18 @@ export function listRunStartSlashSuggestions(
     ? Math.floor(input.maxItems)
     : 8;
   const query = input.userInput.trimStart();
+  const isRootSlash = isRootSlashQuery(query);
   const suggestions: RunStartSlashSuggestion[] = [];
   const seen = new Set<string>();
 
   const appendSuggestion = (item: RunStartSlashSuggestion): void => {
+    if (
+      isRootSlash
+      && item.source === "builtin"
+      && !ROOT_SLASH_PRIMARY_BUILTIN_COMMANDS.has(item.command.trim())
+    ) {
+      return;
+    }
     if (!matchesSuggestionQuery(query, item.command)) {
       return;
     }
