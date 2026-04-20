@@ -1,9 +1,9 @@
 # HANDOFF
 
-- generated_at: 2026-04-19T15:24:10.861Z
+- generated_at: 2026-04-20T02:56:27.963Z
 - reason: auto-exit
 - project: grobot
-- work_dir: /tmp/grobot-start-graph-autotune-adaptive-seq-work-mo5x29iu-i3ts
+- work_dir: /tmp/grobot-start-graph-autotune-adaptive-seq-work-mo6lsjrn-fvoy
 - session_key: feishu:grobot:dm:graph-autotune-adaptive-seq-user
 
 ## Compact Instructions

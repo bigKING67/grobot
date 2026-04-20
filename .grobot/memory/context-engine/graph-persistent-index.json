@@ -1,9 +1,9 @@
 {
   "version": 1,
   "rootPath": "/Users/gaoqian/Documents/sixseven/workman/groland/grobot",
-  "updatedAt": "2026-04-19T15:23:33.536Z",
+  "updatedAt": "2026-04-20T02:55:48.693Z",
   "fileCount": 441,
-  "symbolCount": 4751,
+  "symbolCount": 4753,
   "edgeCount": 1476,
   "files": [
     {
@@ -36250,9 +36250,9 @@
     },
     {
       "path": "gateway/src/extensions/contracts/start-smoke-contract.mjs",
-      "hash": "42f23b2a",
-      "size": 178169,
-      "mtimeMs": 1776581383724,
+      "hash": "f3782402",
+      "size": 179798,
+      "mtimeMs": 1776653187099,
       "imports": [
         "node:child_process",
         "node:fs",
@@ -36380,199 +36380,204 @@
           "line": 447
         },
         {
-          "symbol": "runStartImOnlyRejectFlow",
+          "symbol": "runStartInteractiveDiagnosticsFlow",
           "kind": "fn",
           "line": 488
         },
         {
+          "symbol": "runStartImOnlyRejectFlow",
+          "kind": "fn",
+          "line": 537
+        },
+        {
           "symbol": "runStartInteractiveSessionCommandsFallbackFlow",
           "kind": "fn",
-          "line": 519
+          "line": 568
         },
         {
           "symbol": "runStartInteractiveInterruptFlow",
           "kind": "fn",
-          "line": 587
+          "line": 636
         },
         {
           "symbol": "runStartSessionMenuViewModelContract",
           "kind": "fn",
-          "line": 658
+          "line": 707
         },
         {
           "symbol": "runStartPlanModeFlow",
           "kind": "fn",
-          "line": 686
+          "line": 735
         },
         {
           "symbol": "runStartPlanConcurrencyFlow",
           "kind": "fn",
-          "line": 791
+          "line": 840
         },
         {
           "symbol": "writeMcpInstructionProjectToml",
           "kind": "fn",
-          "line": 913
+          "line": 962
         },
         {
           "symbol": "writeProjectMcpRegistry",
           "kind": "fn",
-          "line": 932
+          "line": 981
         },
         {
           "symbol": "writeRulePack",
           "kind": "fn",
-          "line": 949
+          "line": 998
         },
         {
           "symbol": "runStartMcpInstructionEventsFlow",
           "kind": "fn",
-          "line": 954
+          "line": 1003
         },
         {
           "symbol": "runFailoverRejectsPython",
           "kind": "fn",
-          "line": 1042
+          "line": 1091
         },
         {
           "symbol": "runFailoverTsRust",
           "kind": "fn",
-          "line": 1065
+          "line": 1114
         },
         {
           "symbol": "runProviderPoolMultiTurnTsRust",
           "kind": "fn",
-          "line": 1091
+          "line": 1140
         },
         {
           "symbol": "runStartSessionStoreRedisFallback",
           "kind": "fn",
-          "line": 1135
+          "line": 1184
         },
         {
           "symbol": "writeExecutionProjectToml",
           "kind": "fn",
-          "line": 1175
+          "line": 1224
         },
         {
           "symbol": "writeContextEngineTrimProjectToml",
           "kind": "fn",
-          "line": 1194
+          "line": 1243
         },
         {
           "symbol": "writeContextEngineQualityGuardProjectToml",
           "kind": "fn",
-          "line": 1227
+          "line": 1276
         },
         {
           "symbol": "writeContextEngineGraphAutotuneProjectToml",
           "kind": "fn",
-          "line": 1272
+          "line": 1321
         },
         {
           "symbol": "runStatusTsRust",
           "kind": "fn",
-          "line": 1308
+          "line": 1357
         },
         {
           "symbol": "runStartContextPreSendHeadTrimFlow",
           "kind": "fn",
-          "line": 2382
+          "line": 2431
         },
         {
           "symbol": "runStartContextQualityGuardFlow",
           "kind": "fn",
-          "line": 2458
+          "line": 2507
         },
         {
           "symbol": "extractGraphAutotuneTelemetry",
           "kind": "fn",
-          "line": 2555
+          "line": 2604
         },
         {
           "symbol": "writeGraphAutotuneSeedRows",
           "kind": "fn",
-          "line": 2597
+          "line": 2646
         },
         {
           "symbol": "runStartContextGraphQualityAutotuneFlow",
           "kind": "fn",
-          "line": 2658
+          "line": 2707
         },
         {
           "symbol": "runStartContextGraphQualityAutotuneHysteresisFlow",
           "kind": "fn",
-          "line": 2715
+          "line": 2764
         },
         {
           "symbol": "runStartContextGraphQualityAutotuneAdaptiveSequenceFlow",
           "kind": "fn",
-          "line": 2819
+          "line": 2868
         },
         {
           "symbol": "runStartContextMemoryDecayAutotuneQualityFlow",
           "kind": "fn",
-          "line": 3024
+          "line": 3073
         },
         {
           "symbol": "runStartContextMemoryDecayAutotuneQualityRelaxFlow",
           "kind": "fn",
-          "line": 3306
+          "line": 3355
         },
         {
           "symbol": "runStartContextMemoryDecayAutotuneHysteresisFlow",
           "kind": "fn",
-          "line": 3589
+          "line": 3638
         },
         {
           "symbol": "runStatusTsRustDeprecatedFlag",
           "kind": "fn",
-          "line": 3860
+          "line": 3909
         },
         {
           "symbol": "runStatusTsRustMemoryLegacyFallback",
           "kind": "fn",
-          "line": 3876
+          "line": 3925
         },
         {
           "symbol": "runStatusRejectLegacyFlag",
           "kind": "fn",
-          "line": 3961
+          "line": 4010
         },
         {
           "symbol": "runStatusRejectPythonGateway",
           "kind": "fn",
-          "line": 3965
+          "line": 4014
         },
         {
           "symbol": "runStatusRejectLegacyEnv",
           "kind": "fn",
-          "line": 3969
+          "line": 4018
         },
         {
           "symbol": "runCli",
           "kind": "fn",
-          "line": 3973
+          "line": 4022
         },
         {
           "symbol": "runTurn",
           "kind": "const-fn",
-          "line": 2830
+          "line": 2879
         },
         {
           "symbol": "readAdaptiveSnapshot",
           "kind": "const-fn",
-          "line": 2850
+          "line": 2899
         },
         {
           "symbol": "buildPromptRows",
           "kind": "const-fn",
-          "line": 3619
+          "line": 3668
         },
         {
           "symbol": "runRound",
           "kind": "const-fn",
-          "line": 3679
+          "line": 3728
         }
       ],
       "identifiers": [
@@ -36580,65 +36585,67 @@
         "workdir",
         "config",
         "projects",
-        "outputtext",
-        "includes",
         "lines",
-        "start",
+        "commandresult",
+        "includes",
         "reporoot",
         "push",
+        "start",
+        "outputtext",
         "sessions",
         "value",
         "impl",
-        "commandresult",
-        "provider",
-        "status",
         "work",
         "agent",
         "createtempdir",
-        "name",
         "options",
+        "provider",
         "key",
-        "model",
+        "name",
         "session",
         "length",
+        "model",
         "project",
         "registrypayload",
         "configpath",
         "dir",
         "index",
+        "join",
+        "status",
+        "stderr",
         "subject",
         "ts",
-        "join",
+        "runcommand",
+        "runtime",
         "completed",
         "gateway",
         "home",
         "homedir",
         "platforms",
-        "runcommand",
-        "runtime",
         "rust",
+        "stdout",
         "text",
+        "user",
         "writeconfig",
         "argv",
+        "buildsmokeconfig",
         "command",
         "line",
         "path",
-        "stderr",
-        "stdout",
-        "buildsmokeconfig",
+        "smoke",
         "feishu",
         "item",
         "json",
         "mode",
         "parsed",
-        "providerbaseurl",
         "registrypath",
-        "smoke",
         "typeof",
-        "user",
         "api_key",
         "base_url",
+        "diagnostics",
         "envprefix",
+        "exit",
+        "history",
         "message",
         "namespacekey",
         "providers",
@@ -36653,14 +36660,11 @@
         "app_secret",
         "array",
         "claudecode",
-        "compact",
         "cursor",
         "entries",
         "error",
-        "exit",
         "failing",
         "handoffcontent",
-        "history",
         "isarray",
         "language",
         "map",
@@ -36669,57 +36673,56 @@
         "no",
         "pattern",
         "pool",
-        "providerapikey",
-        "providermodel",
+        "providerbaseurl",
         "readjsonfilesafe",
         "root",
         "sanitizesessionkey",
         "shellscript",
         "throw",
+        "turns",
+        "verbosemode",
         "work_dir",
         "zh",
         "activehistorypath",
         "activesessionid",
         "activesessionkey",
-        "apikey",
+        "args",
         "bare",
-        "baseurl",
-        "buildsingleproviderconfig",
+        "compact",
         "count",
         "existssync",
         "handoffpath",
         "http",
         "im",
-        "interrupt",
+        "interactive",
         "isobject",
         "missing",
         "nextindex",
         "node",
         "normalized",
         "of",
-        "off",
         "only",
         "parse",
         "providercount",
         "random",
         "readfilesync",
-        "set",
         "spawnsync",
         "stdintext",
         "success",
         "suffix",
-        "theme",
-        "tokens",
-        "turns",
         "v1",
         "active_id",
+        "apikey",
+        "baseurl",
         "bash",
         "buildenvprefix",
+        "buildsingleproviderconfig",
         "cd",
         "cli",
         "commandline",
         "configdir",
         "content",
+        "context",
         "dm",
         "encoding",
         "exit_code",
@@ -36728,19 +36731,18 @@
         "floor",
         "has_start_banner",
         "has_status_snapshot",
-        "layout_mode",
         "lc",
         "main",
         "messages",
         "mkdirsync",
-        "nerd_font",
         "normalizedcount",
         "prefix",
+        "providerapikey",
+        "providermodel",
         "readtextfilesafe",
         "registry_path",
         "resolve",
         "resolved",
-        "segment",
         "session_count",
         "session_id",
         "session_key",
@@ -36750,9 +36752,9 @@
         "slice",
         "started",
         "startswith",
-        "to",
         "tostring",
         "usage",
+        "verbose",
         "writefilesync",
         "z0",
         "active_session_id",
@@ -36760,22 +36762,26 @@
         "argument",
         "auto",
         "based",
+        "bevent",
         "bin",
         "buildfailoverconfig",
         "buildproviderpoolconfig",
         "burst",
         "child_process",
-        "commandargs",
-        "context",
         "countoccurrences",
         "current",
         "date",
         "dev",
+        "engine",
         "enter",
+        "event",
         "execution",
+        "failed",
         "filter",
         "fs",
         "get",
+        "grobot_interactive_diagnostics",
+        "grobot_startup_diagnostics",
         "guard",
         "handoff",
         "handoff_exists",
@@ -36788,16 +36794,11 @@
         "has_im_only_hint_bare",
         "has_im_only_hint_context",
         "has_no_unsupported_command_error",
+        "has_process_lines",
         "has_prompt_prefix",
         "has_session_title_main",
         "has_session_title_untitled",
         "has_sessions_overview",
-        "has_status_layout_current",
-        "has_status_layout_set",
-        "has_status_theme_current",
-        "has_status_theme_set",
-        "has_status_tokens_current_off",
-        "has_status_tokens_off",
         "has_switch_usage",
         "history_message_count",
         "history_path",
@@ -36806,7 +36807,6 @@
         "indexof",
         "input",
         "instructions",
-        "interactive",
         "invocation",
         "is",
         "isfinite",
@@ -36818,6 +36818,7 @@
         "namespace",
         "nerd",
         "now",
+        "off",
         "one",
         "packages",
         "padstart",
@@ -36828,6 +36829,8 @@
         "platform",
         "priority",
         "probing",
+        "process",
+        "prompt_prepared",
         "python",
         "reason",
         "recursive",
@@ -36839,25 +36842,35 @@
         "runshellscript",
         "runstartbareinteractivesessionflow",
         "runstartimonlyrejectflow",
-        "runstartinteractiveinterruptflow",
+        "runstartinteractivediagnosticsflow",
         "runstartinteractivesessioncommandsfallbackflow",
         "runstartinteractivesessionflow",
         "runstartmessageproviderconfigtsrust",
         "runstartmessagesmoke",
         "sanitizeplansessionsegment",
         "scope",
+        "segment",
+        "set",
         "should",
         "split",
+        "stderr_has_event_lines",
+        "stderr_has_prompt_prepared",
+        "stderr_has_runtime_error",
         "subcommand",
         "tenant",
+        "test",
+        "theme",
         "tmp",
         "todo",
+        "tokens",
         "tolowercase",
         "toml",
         "undefined",
         "unknown",
         "unsupported",
         "untitled",
+        "verbose_mode",
+        "visibility",
         "weight",
         "za"
       ]
@@ -46606,9 +46619,9 @@
     },
     {
       "path": "gateway/src/orchestration/entrypoints/dev-cli/cli-args.ts",
-      "hash": "eb169d90",
-      "size": 7569,
-      "mtimeMs": 1776525941628,
+      "hash": "815fb5d6",
+      "size": 7702,
+      "mtimeMs": 1776652269016,
       "imports": [],
       "symbols": [
         {
@@ -46619,32 +46632,32 @@
         {
           "symbol": "parseArgs",
           "kind": "fn",
-          "line": 40
+          "line": 41
         },
         {
           "symbol": "readOptionString",
           "kind": "fn",
-          "line": 80
+          "line": 81
         },
         {
           "symbol": "readOptionStringAny",
           "kind": "fn",
-          "line": 89
+          "line": 90
         },
         {
           "symbol": "hasFlag",
           "kind": "fn",
-          "line": 99
+          "line": 100
         },
         {
           "symbol": "isTruthyString",
           "kind": "fn",
-          "line": 114
+          "line": 115
         },
         {
           "symbol": "validateHardCutExecutionOptions",
           "kind": "fn",
-          "line": 127
+          "line": 128
         },
         {
           "symbol": "ParsedArgs",
@@ -46705,6 +46718,7 @@
         "gatewayraw",
         "home",
         "id",
+        "mode",
         "next",
         "readoptionstring",
         "recent",
@@ -46714,6 +46728,7 @@
         "runtimeraw",
         "scope",
         "slice",
+        "start",
         "threshold",
         "tolowercase",
         "typeof",
@@ -46725,13 +46740,13 @@
         "grobot",
         "handoff",
         "in",
+        "interactive",
         "json",
         "legacy",
         "length",
         "longer",
         "max",
         "minimum",
-        "mode",
         "on",
         "parsed",
         "path",
@@ -46739,7 +46754,6 @@
         "reused",
         "runtimevalue",
         "size",
-        "start",
         "subject",
         "supported",
         "trimmed",
@@ -46754,12 +46768,12 @@
         "dry",
         "exit",
         "file",
+        "full",
         "global",
         "grobot_legacy_python",
         "group",
         "hasflag",
         "hit",
-        "interactive",
         "invalid",
         "istruthystring",
         "keep",
@@ -46769,6 +46783,7 @@
         "per",
         "platform",
         "policy",
+        "process",
         "run",
         "shadow",
         "source",
@@ -46776,6 +46791,8 @@
         "status",
         "to",
         "turns",
+        "uses",
+        "verbose",
         "actually",
         "aged",
         "aliases",
@@ -46797,15 +46814,18 @@
         "cleanup",
         "code",
         "commands",
+        "compact",
         "controls",
         "cooldown",
         "cut",
         "days",
         "delete",
         "dev",
+        "diagnostic",
         "disabled",
         "emits",
         "enter",
+        "event",
         "exits",
         "explicit",
         "failures",
@@ -46813,7 +46833,6 @@
         "feishu",
         "first",
         "flags",
-        "full",
         "grobot_api_key",
         "grobot_base_url",
         "grobot_context_graph_cache_degrade_hit_rate",
@@ -46833,6 +46852,8 @@
         "init",
         "it",
         "join",
+        "keeps",
+        "logs",
         "machine",
         "management",
         "message",
@@ -46847,7 +46868,7 @@
         "pass",
         "plans",
         "prefer",
-        "process",
+        "progress",
         "read",
         "readable",
         "readonly",
@@ -46872,7 +46893,6 @@
         "tty",
         "turn",
         "usage",
-        "uses",
         "ux",
         "validatehardcutexecutionoptions",
         "with",
@@ -55440,9 +55460,9 @@
     },
     {
       "path": "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings.ts",
-      "hash": "b334b510",
-      "size": 11632,
-      "mtimeMs": 1776605911242,
+      "hash": "0e5ecec6",
+      "size": 11794,
+      "mtimeMs": 1776652088529,
       "imports": [
         "../services/session-store",
         "run-start-interactive-mode",
@@ -55462,32 +55482,32 @@
         {
           "symbol": "resolveSessionTopicBySessionId",
           "kind": "fn",
-          "line": 63
+          "line": 65
         },
         {
           "symbol": "normalizeStatusSegmentId",
           "kind": "fn",
-          "line": 81
+          "line": 83
         },
         {
           "symbol": "formatStatusLineCurrentSnapshot",
           "kind": "fn",
-          "line": 95
+          "line": 97
         },
         {
           "symbol": "resolveStatusTheme",
           "kind": "fn",
-          "line": 115
+          "line": 117
         },
         {
           "symbol": "resolveStatusLayoutMode",
           "kind": "fn",
-          "line": 129
+          "line": 131
         },
         {
           "symbol": "createRunStartInteractiveModeInput",
           "kind": "fn",
-          "line": 137
+          "line": 139
         },
         {
           "symbol": "CreateRunStartInteractiveModeInput",
@@ -55593,6 +55613,7 @@
         "handoffautoonexit",
         "handoffpath",
         "handoffrecentturns",
+        "interactivediagnosticsenabled",
         "invalid",
         "length",
         "model",
@@ -55729,6 +55750,7 @@
         "listsessionsummaries",
         "manual",
         "menu",
+        "message",
         "models",
         "options",
         "pick",
@@ -55765,7 +55787,8 @@
         "warning_threshold",
         "warningthresholdratio",
         "writehandoff",
-        "writemanualhandoff"
+        "writemanualhandoff",
+        "writestderr"
       ]
     },
     {
@@ -55883,9 +55906,9 @@
     },
     {
       "path": "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-interactive-mode.ts",
-      "hash": "201e2894",
-      "size": 14698,
-      "mtimeMs": 1776609322677,
+      "hash": "bcb494b3",
+      "size": 14640,
+      "mtimeMs": 1776652115557,
       "imports": [
         "../services/session-store",
         "session-interactive",
@@ -55916,77 +55939,72 @@
           "line": 25
         },
         {
-          "symbol": "isTruthyEnvFlag",
+          "symbol": "buildInteractivePromptLayout",
           "kind": "fn",
           "line": 41
         },
         {
-          "symbol": "buildInteractivePromptLayout",
-          "kind": "fn",
-          "line": 46
-        },
-        {
           "symbol": "resolvePromptBudgetSnapshot",
           "kind": "fn",
-          "line": 63
+          "line": 58
         },
         {
           "symbol": "hasBudgetSnapshotValue",
           "kind": "fn",
-          "line": 79
+          "line": 74
         },
         {
           "symbol": "createPromptBudgetSnapshotReader",
           "kind": "fn",
-          "line": 91
+          "line": 86
         },
         {
           "symbol": "resolveModelContextWindowTokens",
           "kind": "fn",
-          "line": 199
+          "line": 196
         },
         {
           "symbol": "runStartInteractiveMode",
           "kind": "fn",
-          "line": 218
+          "line": 215
         },
         {
           "symbol": "RunStartInteractiveModeInput",
           "kind": "interface",
-          "line": 138
+          "line": 133
         },
         {
           "symbol": "getSlashSuggestions",
           "kind": "const-fn",
-          "line": 394
+          "line": 391
         }
       ],
       "identifiers": [
         "input",
         "promise",
         "session",
-        "undefined",
         "contextwindowusageratio",
         "estimatedtokens",
         "stdout",
         "targettokenlimit",
+        "undefined",
         "activitytracker",
-        "normalized",
-        "process",
         "run",
         "start",
         "workdir",
         "model",
+        "process",
         "userinput",
         "line",
+        "message",
         "statuslineconfig",
         "write",
         "buffered",
         "cachedsnapshot",
         "getcachedmodelcontextwindowtokens",
         "interactive",
+        "interactivediagnosticsenabled",
         "interactivemode",
-        "message",
         "modelname",
         "projectroot",
         "summary",
@@ -56007,9 +56025,9 @@
         "error",
         "fallback",
         "handoffautoonexit",
-        "interactivediagnosticsenabled",
         "isplanmode",
         "modelsnapshot",
+        "normalized",
         "now",
         "projectname",
         "promptlabel",
@@ -56066,6 +56084,8 @@
         "tryrunusercommand",
         "ui",
         "usemodel",
+        "writeinteractivestderr",
+        "writestderr",
         "as",
         "buildhelptext",
         "buildinteractivepromptlayout",
@@ -56084,7 +56104,6 @@
         "hasbudgetsnapshotvalue",
         "infermodelapicontextwindowtokens",
         "isfinite",
-        "istruthyenvflag",
         "istty",
         "lineinput",
         "listrunstartslashsuggestions",
@@ -56123,7 +56142,6 @@
         "title",
         "turn_interrupted_exit_code",
         "updatedat",
-        "value",
         "writeautoexithandoffifneeded",
         "writemanualhandoff",
         "active",
@@ -56140,7 +56158,6 @@
         "date",
         "empty",
         "enabled",
-        "env",
         "even",
         "extra",
         "fails",
@@ -56148,7 +56165,6 @@
         "frame",
         "getinlineimagehighlighttheme",
         "goal",
-        "grobot_interactive_diagnostics",
         "handler",
         "inlineprompt",
         "interrupted",
@@ -56163,7 +56179,6 @@
         "models",
         "observestderrchunk",
         "ok",
-        "on",
         "onescapeinterrupt",
         "options",
         "plan",
@@ -56190,18 +56205,14 @@
         "suggestions",
         "targetsessionid",
         "throw",
-        "tolowercase",
         "tools",
-        "trim",
         "trimend",
         "turn",
         "types",
         "unknown",
         "writehandoff",
         "writeprogressline",
-        "writestderr",
-        "writestdout",
-        "yes"
+        "writestdout"
       ]
     },
     {
@@ -58405,17 +58416,17 @@
     },
     {
       "path": "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-turn.ts",
-      "hash": "eeb9b115",
-      "size": 125051,
-      "mtimeMs": 1776585861260,
+      "hash": "3fb709e3",
+      "size": 125269,
+      "mtimeMs": 1776653588231,
       "imports": [
         "../../../execution-plane",
         "../../../main",
         "../../../../models/types",
         "../services/interrupt-store",
-        "session-history",
-        "session-registry",
-        "session-options",
+        "./session-history",
+        "./session-registry",
+        "./session-options",
         "../services/ga-mechanism-runtime",
         "../services/experience-pool-runtime",
         "../ui/screens/turn-screen",
@@ -58428,237 +58439,237 @@
         {
           "symbol": "nowIso",
           "kind": "fn",
-          "line": 222
+          "line": 223
         },
         {
           "symbol": "resolveErrorClass",
           "kind": "fn",
-          "line": 226
+          "line": 227
         },
         {
           "symbol": "deriveFailureStageFromError",
           "kind": "fn",
-          "line": 237
+          "line": 238
         },
         {
           "symbol": "createDefaultProviderState",
           "kind": "fn",
-          "line": 257
+          "line": 258
         },
         {
           "symbol": "normalizeErrorRate",
           "kind": "fn",
-          "line": 265
+          "line": 266
         },
         {
           "symbol": "readGraphCacheCounter",
           "kind": "fn",
-          "line": 278
+          "line": 279
         },
         {
           "symbol": "diffGraphCacheCounter",
           "kind": "fn",
-          "line": 296
+          "line": 297
         },
         {
           "symbol": "clampGraphRows",
           "kind": "fn",
-          "line": 323
+          "line": 324
         },
         {
           "symbol": "clampRatio",
           "kind": "fn",
-          "line": 330
+          "line": 331
         },
         {
           "symbol": "clampNumber",
           "kind": "fn",
-          "line": 343
+          "line": 344
         },
         {
           "symbol": "resolveAdaptiveLearnAlpha",
           "kind": "fn",
-          "line": 356
+          "line": 357
         },
         {
           "symbol": "blendThreshold",
           "kind": "fn",
-          "line": 371
+          "line": 372
         },
         {
           "symbol": "deriveAdaptiveGraphThresholdProfile",
           "kind": "fn",
-          "line": 393
+          "line": 394
         },
         {
           "symbol": "normalizeOptionalRatio",
           "kind": "fn",
-          "line": 501
+          "line": 502
         },
         {
           "symbol": "normalizeOptionalCenteredRatio",
           "kind": "fn",
-          "line": 508
+          "line": 509
         },
         {
           "symbol": "scaleGraphDelta",
           "kind": "fn",
-          "line": 522
+          "line": 523
         },
         {
           "symbol": "deriveAdaptiveGraphActionProfile",
           "kind": "fn",
-          "line": 538
+          "line": 539
         },
         {
           "symbol": "normalizePathForPrefix",
           "kind": "fn",
-          "line": 716
+          "line": 717
         },
         {
           "symbol": "isWorkDirWithinRepoRoot",
           "kind": "fn",
-          "line": 720
+          "line": 721
         },
         {
           "symbol": "formatOptionalMetric",
           "kind": "fn",
-          "line": 732
+          "line": 733
         },
         {
           "symbol": "resolveGraphQualityAutotuneDecision",
           "kind": "fn",
-          "line": 739
+          "line": 740
         },
         {
           "symbol": "updateProviderEwmaState",
           "kind": "fn",
-          "line": 1057
+          "line": 1058
         },
         {
           "symbol": "normalizeProviderStateMap",
           "kind": "fn",
-          "line": 1072
+          "line": 1073
         },
         {
           "symbol": "hashText",
           "kind": "fn",
-          "line": 1091
+          "line": 1092
         },
         {
           "symbol": "resolveCandidateScore",
           "kind": "fn",
-          "line": 1100
+          "line": 1101
         },
         {
           "symbol": "normalizePositiveInt",
           "kind": "fn",
-          "line": 1124
+          "line": 1125
         },
         {
           "symbol": "resolveProviderBurst",
           "kind": "fn",
-          "line": 1135
+          "line": 1136
         },
         {
           "symbol": "getOrCreateProviderFlowState",
           "kind": "fn",
-          "line": 1143
+          "line": 1144
         },
         {
           "symbol": "refillTokenBucket",
           "kind": "fn",
-          "line": 1158
+          "line": 1159
         },
         {
           "symbol": "tryAcquireProviderCapacity",
           "kind": "fn",
-          "line": 1182
+          "line": 1183
         },
         {
           "symbol": "releaseProviderCapacity",
           "kind": "fn",
-          "line": 1223
+          "line": 1224
         },
         {
           "symbol": "resolvePrimaryProviderKind",
           "kind": "fn",
-          "line": 1234
+          "line": 1235
         },
         {
           "symbol": "hasExplicitMcpIntent",
           "kind": "fn",
-          "line": 1248
+          "line": 1249
         },
         {
           "symbol": "hasSearchIntent",
           "kind": "fn",
-          "line": 1265
+          "line": 1266
         },
         {
           "symbol": "hasGrokSearchServer",
           "kind": "fn",
-          "line": 1304
+          "line": 1305
         },
         {
           "symbol": "shouldUseKimiMcpFirstRoute",
           "kind": "fn",
-          "line": 1308
+          "line": 1309
         },
         {
           "symbol": "buildKimiSearchRoutingPrefix",
           "kind": "fn",
-          "line": 1326
+          "line": 1327
         },
         {
           "symbol": "buildKimiBuiltinFallbackPrompt",
           "kind": "fn",
-          "line": 1371
+          "line": 1372
         },
         {
           "symbol": "isKimiModelConfig",
           "kind": "fn",
-          "line": 1381
+          "line": 1382
         },
         {
           "symbol": "resolveTurnModelConfig",
           "kind": "fn",
-          "line": 1394
+          "line": 1395
         },
         {
           "symbol": "shouldInjectMcpInstructionPrefix",
           "kind": "fn",
-          "line": 1424
+          "line": 1425
         },
         {
           "symbol": "shouldRetryProviderRequest",
           "kind": "fn",
-          "line": 1444
+          "line": 1445
         },
         {
           "symbol": "shouldRetryWithKimiBuiltinFallback",
           "kind": "fn",
-          "line": 1458
+          "line": 1459
         },
         {
           "symbol": "sleepAsync",
           "kind": "fn",
-          "line": 1479
+          "line": 1480
         },
         {
           "symbol": "throwIfTurnInterrupted",
           "kind": "fn",
-          "line": 1508
+          "line": 1509
         },
         {
           "symbol": "resolveProviderOrder",
           "kind": "fn",
-          "line": 1529
+          "line": 1530
         },
         {
           "symbol": "createRunStartTurnRunner",
           "kind": "fn",
-          "line": 1658
+          "line": 1659
         },
         {
           "symbol": "RuntimeProviderCandidate",
@@ -58678,42 +58689,42 @@
         {
           "symbol": "RunStartTurnPromptBudgetSnapshot",
           "kind": "interface",
-          "line": 95
+          "line": 96
         },
         {
           "symbol": "CreateRunStartTurnRunnerInput",
           "kind": "interface",
-          "line": 101
+          "line": 102
         },
         {
           "symbol": "ProviderAttemptFailure",
           "kind": "interface",
-          "line": 150
+          "line": 151
         },
         {
           "symbol": "ProviderFlowState",
           "kind": "interface",
-          "line": 156
+          "line": 157
         },
         {
           "symbol": "GraphQualityAutotuneDecision",
           "kind": "interface",
-          "line": 175
+          "line": 176
         },
         {
           "symbol": "GraphAdaptiveThresholdProfile",
           "kind": "interface",
-          "line": 375
+          "line": 376
         },
         {
           "symbol": "GraphAdaptiveActionProfile",
           "kind": "interface",
-          "line": 386
+          "line": 387
         },
         {
           "symbol": "RouteDecisionTrace",
           "kind": "interface",
-          "line": 1514
+          "line": 1515
         },
         {
           "symbol": "ChatHistoryMessage",
@@ -58792,11 +58803,11 @@
         "row",
         "undefined",
         "graphqualityautotunestate",
+        "message",
         "pressurescore",
         "strategyoutcomes",
         "evidenceentries",
         "graph_autotune_default_action_scale",
-        "message",
         "minevidenceentries",
         "previousscale",
         "args",
@@ -58831,7 +58842,6 @@
         "nextscale",
         "normalizedroot",
         "normalizedworkdir",
-        "pressureautolimitrate",
         "previousalpha",
         "readgraphcachewindowsummary",
         "rewardtrendscore",
@@ -58876,6 +58886,7 @@
         "persistentsignalsactive",
         "persistentwindowdegradation",
         "presendoverflowratio",
+        "pressureautolimitrate",
         "pressuresemanticrate",
         "previouscachethreshold",
         "previousparsedmax",
@@ -58898,7 +58909,6 @@
         "verification",
         "workdir",
         "adaptiveactionscale",
-        "averageutilizationratio",
         "avgmaxchaindepth",
         "blended",
         "boundedbyguard",
@@ -58966,6 +58976,7 @@
         "tokenbudget",
         "unknown",
         "utilizationpressure",
+        "writestderr",
         "abortsignal",
         "action",
         "adaptive_action_ewma",
@@ -58999,6 +59010,7 @@
         "attachments",
         "autolimittriggeredrate",
         "averagescores",
+        "averageutilizationratio",
         "baseurl",
         "bclass",
         "buildsemanticprefetchblock",
@@ -59221,7 +59233,6 @@
         "window",
         "writegraphqualityautotunestate",
         "writepromptqualityguardstate",
-        "writestderr",
         "writestdout",
         "z0",
         "za"
@@ -59744,26 +59755,26 @@
     },
     {
       "path": "gateway/src/orchestration/entrypoints/dev-cli/start/run-start.ts",
-      "hash": "9052477a",
-      "size": 39705,
-      "mtimeMs": 1776611980966,
+      "hash": "882e5af5",
+      "size": 40118,
+      "mtimeMs": 1776652252503,
       "imports": [
         "../cli-args",
-        "./session-interactive",
-        "./run-start-bootstrap",
-        "./run-start-context",
-        "./run-start-interactive-bindings",
-        "./run-start-interactive-mode",
-        "./run-start-model-ops",
-        "./run-start-session-menu-ops",
-        "./run-start-message-mode",
-        "./run-start-output",
-        "./run-start-persistence",
-        "./run-start-runtime-state",
-        "./run-start-wire",
-        "./run-start-plan-mode",
-        "./run-start-turn",
-        "./session-registry",
+        "session-interactive",
+        "run-start-bootstrap",
+        "run-start-context",
+        "run-start-interactive-bindings",
+        "run-start-interactive-mode",
+        "run-start-model-ops",
+        "run-start-session-menu-ops",
+        "run-start-message-mode",
+        "run-start-output",
+        "run-start-persistence",
+        "run-start-runtime-state",
+        "run-start-wire",
+        "run-start-plan-mode",
+        "run-start-turn",
+        "session-registry",
         "../services/ga-mechanism-runtime",
         "../services/experience-pool-runtime",
         "../../../../tools/memory",
@@ -59816,6 +59827,16 @@
           "symbol": "MemoryStrategyAutotuneProfile",
           "kind": "type",
           "line": 31
+        },
+        {
+          "symbol": "runTurnWithController",
+          "kind": "const-fn",
+          "line": 629
+        },
+        {
+          "symbol": "executeTurn",
+          "kind": "const-fn",
+          "line": 670
         }
       ],
       "identifiers": [
@@ -59840,40 +59861,39 @@
         "decayresult",
         "enabled",
         "gamechanismruntime",
-        "memory",
         "off",
         "on",
         "pressuretrends",
         "max",
-        "memorydecayautotunestate",
-        "writestartupdiagnostics",
+        "memory",
         "activesessionkey",
-        "basememorypolicy",
-        "basepolicy",
         "ga_state",
+        "memorydecayautotunestate",
         "memoryorchestrator",
         "normalizepositiveint",
         "reason",
-        "workdir",
+        "writestartupdiagnostics",
         "autocompacttokenlimit",
+        "basememorypolicy",
+        "basepolicy",
         "context",
+        "env",
         "envprofile",
         "normalizednextwindow",
-        "state",
+        "process",
+        "workdir",
         "writestorewarnings",
         "autolimittriggeredrate",
         "averageutilizationratio",
         "contextwindowtokens",
         "decaydroppedrows",
-        "env",
         "event",
         "floor",
         "keepautocompactabsolute",
-        "process",
         "reconcileresult",
         "rows",
         "snapshotsemanticcompressrate",
-        "tunedpolicyfromstate",
+        "state",
         "activesessionid",
         "autocompactratio",
         "decaydroppedbyage",
@@ -59903,6 +59923,7 @@
         "text",
         "thresholds",
         "tolowercase",
+        "tunedpolicyfromstate",
         "writesessionwarnings",
         "writestderr",
         "activesessionpreview",
@@ -59914,7 +59935,6 @@
         "decaymaxrowspersession",
         "decayminconfidenceunverified",
         "decayminconfidenceverified",
-        "decayunverifiedmaxagehours",
         "deduplicated",
         "defaultautocompactlimit",
         "delta",
@@ -59922,6 +59942,7 @@
         "droppedbyreason",
         "includestates",
         "interactive",
+        "istruthyenvflag",
         "item",
         "length",
         "mcpinstructionstrictfailure",
@@ -59929,6 +59950,7 @@
         "memorymaintenancerunning",
         "memorystrategyautotuneprofile",
         "message",
+        "options",
         "previouswindow",
         "profile",
         "runtime",
@@ -59945,6 +59967,7 @@
         "totalrowsafter",
         "totalrowsbefore",
         "trim",
+        "verbosemodeenabled",
         "wire",
         "workspacesignals",
         "activesessionrecord",
@@ -59967,6 +59990,7 @@
         "debug_heavy",
         "decayautotuneupdated",
         "decaysessionspruned",
+        "decayunverifiedmaxagehours",
         "deduplicatedrows",
         "defaultmemoryorchestratorpolicy",
         "delivery",
@@ -59993,13 +60017,13 @@
         "handoffrecentturns",
         "hardbudgetfollowupoveralldelta",
         "hardbudgetrate",
+        "hasflag",
         "historyturns",
         "hydratesession",
         "id",
         "initialmemorypolicy",
         "instruction",
         "interruptstorepath",
-        "istruthyenvflag",
         "kimisearchroutingpolicy",
         "lastreason",
         "listmemory",
@@ -60022,11 +60046,9 @@
         "normalizememorystrategyprofile",
         "of",
         "ops",
-        "options",
         "optionvalue",
         "orchestrator",
         "parseint",
-        "policyafterautotune",
         "policysnapshot",
         "pool",
         "previousautocompact",
@@ -60059,13 +60081,11 @@
         "symbolgraph",
         "timer",
         "tools",
-        "tunedpolicy",
         "turn_interrupted_exit_code",
         "typeof",
         "updated",
         "version",
         "writememory",
-        "writememorydecayautotunestate",
         "writestdout",
         "abortcontroller",
         "aborted",
@@ -60147,6 +60167,7 @@
         "getrecordcount",
         "getsessionregistry",
         "grobot_context_graph_cache_window_size",
+        "grobot_interactive_diagnostics",
         "grobot_memory_maintenance_enabled",
         "grobot_memory_maintenance_interval_ms",
         "grobot_memory_strategy_profile",
@@ -60160,6 +60181,7 @@
         "injectbudgetmaxtokens",
         "injectbudgetmintokens",
         "injectbudgetratio",
+        "interactivediagnosticsenabled",
         "isarray",
         "isturninterruptedcode",
         "lastactiondirection",
@@ -60195,6 +60217,7 @@
         "persistsessionregistrystate",
         "plan",
         "policy",
+        "policyafterautotune",
         "poolpath",
         "post_turn",
         "presendpressurescore",
@@ -60264,6 +60287,7 @@
         "to",
         "tokenbudget",
         "tunedecaypolicy",
+        "tunedpolicy",
         "turn",
         "turn_interrupt_not_running",
         "turn_interrupt_not_running_code",
@@ -60274,9 +60298,11 @@
         "u0",
         "u1",
         "unknown",
+        "verbose",
         "window",
         "within_policy",
         "workspace",
+        "writememorydecayautotunestate",
         "writememorystrategyautotunestate",
         "yes"
       ]
@@ -74330,9 +74356,9 @@
     },
     {
       "path": "gateway/tests/check-gateway-node.mjs",
-      "hash": "d4eff95f",
-      "size": 261081,
-      "mtimeMs": 1776609459942,
+      "hash": "affa4dbd",
+      "size": 262692,
+      "mtimeMs": 1776653206205,
       "imports": [
         "node:assert/strict",
         "node:child_process",
@@ -74504,22 +74530,22 @@
         {
           "symbol": "runGovernanceEvalSmoke",
           "kind": "fn",
-          "line": 6326
+          "line": 6362
         },
         {
           "symbol": "runWorkflowGuard",
           "kind": "fn",
-          "line": 6372
+          "line": 6408
         },
         {
           "symbol": "ensureContractsExist",
           "kind": "fn",
-          "line": 6390
+          "line": 6426
         },
         {
           "symbol": "main",
           "kind": "fn",
-          "line": 6420
+          "line": 6456
         },
         {
           "symbol": "finish",
