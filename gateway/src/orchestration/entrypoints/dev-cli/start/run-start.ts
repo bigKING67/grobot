@@ -1,4 +1,4 @@
-import { OptionValue, readOptionString } from "../cli-args";
+import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { buildInteractiveHelpText } from "./session-interactive";
 import { bootstrapRunStartState } from "./run-start-bootstrap";
 import { resolveRunStartContext } from "./run-start-context";
@@ -172,9 +172,13 @@ export async function runStart(
     sessionRegistryFilePathValue,
     sessionStore,
   } = context;
+  const verboseModeEnabled = hasFlag(options, "verbose");
   const startupDiagnosticsEnabled = isTruthyEnvFlag(
     process.env.GROBOT_STARTUP_DIAGNOSTICS,
-  );
+  ) || verboseModeEnabled;
+  const interactiveDiagnosticsEnabled = isTruthyEnvFlag(
+    process.env.GROBOT_INTERACTIVE_DIAGNOSTICS,
+  ) || verboseModeEnabled;
   const output = createRunStartOutput({
     suppressWarningPatterns: startupDiagnosticsEnabled
       ? []
@@ -629,17 +633,20 @@ export async function runStart(
     controller: AbortController,
     options?: {
       attachments?: RuntimeAttachment[];
+      writeStderr?: (message: string) => void;
     },
   ): Promise<number> => {
+    const writeStderr = options?.writeStderr ?? output.writeStderr;
     activeTurnAbortController = controller;
     try {
       refreshContextWindowFromModelCatalog("pre_turn");
       const code = await wire.executeTurn(userInput, interactiveMode, {
         signal: controller.signal,
         attachments: options?.attachments,
+        writeStderr,
       });
       if (pendingRuntimeInterruptSource && code === TURN_INTERRUPTED_EXIT_CODE) {
-        output.writeStderr(
+        writeStderr(
           `[interrupt] event=applied source=${pendingRuntimeInterruptSource} interactive=${interactiveMode ? "true" : "false"}\n`,
         );
         pendingRuntimeInterruptSource = undefined;
@@ -648,7 +655,7 @@ export async function runStart(
         controller.signal.aborted &&
         code !== TURN_INTERRUPTED_EXIT_CODE
       ) {
-        output.writeStderr(
+        writeStderr(
           `[interrupt] event=ignored source=${pendingRuntimeInterruptSource} reason=turn_completed_before_abort interactive=${interactiveMode ? "true" : "false"}\n`,
         );
         pendingRuntimeInterruptSource = undefined;
@@ -666,6 +673,7 @@ export async function runStart(
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      writeStderr?: (message: string) => void;
     },
   ): Promise<number> => {
     const controller = new AbortController();
@@ -839,9 +847,10 @@ export async function runStart(
         sessionRegistryFilePathValue,
         handoffAutoOnExit,
         handoffRecentTurns,
-          handoffPath,
+        handoffPath,
         contextWindowTokens: contextEngineConfig.contextWindowTokens,
-          buildHelpText: buildInteractiveHelpText,
+        buildHelpText: buildInteractiveHelpText,
+        interactiveDiagnosticsEnabled,
         statusLineConfig,
         runtimeProviderChain,
         runtimeFailoverConfig,
@@ -849,12 +858,12 @@ export async function runStart(
         output,
         modelOps,
         sessionMenuOps,
-          wire,
-          planMode,
-          requestRuntimeInterrupt,
-          executeTurn,
-        }),
-      );
+        wire,
+        planMode,
+        requestRuntimeInterrupt,
+        executeTurn,
+      }),
+    );
   } finally {
     if (schedulerTimer) {
       clearInterval(schedulerTimer);

@@ -5199,6 +5199,42 @@ async function runTsRustExecutionSmoke() {
   assert.equal(bareInteractiveFlowPayload.has_no_unsupported_command_error, true);
   logStep("start-smoke-contract start-bare-interactive-session-flow");
 
+  const interactiveDiagnosticsCompactFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-interactive-diagnostics-compact-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const interactiveDiagnosticsCompactFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-interactive-diagnostics-compact-flow",
+    interactiveDiagnosticsCompactFlowResult.stdout,
+  );
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.exit_code, 0);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_lines, true);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.stderr_has_event_lines, false);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.stderr_has_runtime_error, true);
+  logStep("start-smoke-contract start-interactive-diagnostics-compact-flow");
+
+  const interactiveDiagnosticsVerboseFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-interactive-diagnostics-verbose-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const interactiveDiagnosticsVerboseFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-interactive-diagnostics-verbose-flow",
+    interactiveDiagnosticsVerboseFlowResult.stdout,
+  );
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.exit_code, 0);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_prompt_prepared, true);
+  logStep("start-smoke-contract start-interactive-diagnostics-verbose-flow");
+
   const startImOnlyRejectFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-im-only-reject-flow",

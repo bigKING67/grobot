@@ -37,6 +37,7 @@ interface CreateRunStartInteractiveModeInput {
   handoffRecentTurns: number;
   handoffPath: string;
   contextWindowTokens?: number;
+  interactiveDiagnosticsEnabled?: boolean;
   buildHelpText(): string;
   statusLineConfig?: StatusLineConfigInput;
   runtimeProviderChain: ReadonlyArray<RuntimeProviderCandidate>;
@@ -58,6 +59,7 @@ interface CreateRunStartInteractiveModeInput {
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
 }
@@ -209,6 +211,7 @@ export function createRunStartInteractiveModeInput(
     handoffRecentTurns: input.handoffRecentTurns,
     handoffPath: input.handoffPath,
     contextWindowTokens: input.contextWindowTokens,
+    interactiveDiagnosticsEnabled: input.interactiveDiagnosticsEnabled,
     restoredTurns: input.runtimeState.getRestoredTurns(),
     restoreSource: input.runtimeState.getRestoreSource(),
     buildHelpText: input.buildHelpText,

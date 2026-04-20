@@ -40,11 +40,6 @@ function resolveTerminalColumns(): number | undefined {
   return undefined;
 }
 
-function isTruthyEnvFlag(value: string | undefined): boolean {
-  const normalized = (value ?? "").trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
-}
-
 function buildInteractivePromptLayout(input: {
   renderedPrompt: string;
   promptLabel: string;
@@ -153,6 +148,7 @@ export interface RunStartInteractiveModeInput {
   restoredTurns: number;
   restoreSource: "store" | "empty";
   contextWindowTokens?: number;
+  interactiveDiagnosticsEnabled?: boolean;
   buildHelpText(): string;
   showHealthStatus(): void;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
@@ -186,6 +182,7 @@ export interface RunStartInteractiveModeInput {
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
   markFailureObserved(): void;
@@ -258,30 +255,29 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     recentSessions: startupRecentSessions,
   });
 
-  const interactiveDiagnosticsEnabled = isTruthyEnvFlag(
-    process.env.GROBOT_INTERACTIVE_DIAGNOSTICS,
-  );
+  const interactiveDiagnosticsEnabled = input.interactiveDiagnosticsEnabled ?? false;
   const activityTracker = createInteractiveActivityTracker({
     writeProgressLine: (line) => {
       process.stdout.write(line);
     },
   });
+  const writeInteractiveStderr = (message: string): void => {
+    if (interactiveDiagnosticsEnabled) {
+      activityTracker.observeStderrChunk(message);
+      process.stderr.write(message);
+      return;
+    }
+    const forwarded = activityTracker.consumeStderrChunk(message);
+    if (forwarded.length > 0) {
+      process.stderr.write(forwarded);
+    }
+  };
 
   const handleInteractiveInput = createRunStartInteractiveHandler({
     writeStdout: (message) => {
       process.stdout.write(message);
     },
-    writeStderr: (message) => {
-      if (interactiveDiagnosticsEnabled) {
-        activityTracker.observeStderrChunk(message);
-        process.stderr.write(message);
-        return;
-      }
-      const forwarded = activityTracker.consumeStderrChunk(message);
-      if (forwarded.length > 0) {
-        process.stderr.write(forwarded);
-      }
-    },
+    writeStderr: writeInteractiveStderr,
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },
@@ -325,6 +321,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           interactiveMode,
           {
             attachments: inlineAttachmentResolution.attachments,
+            writeStderr: writeInteractiveStderr,
           },
         );
         if (!interactiveDiagnosticsEnabled) {

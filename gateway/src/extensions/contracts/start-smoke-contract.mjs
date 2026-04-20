@@ -487,6 +487,55 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
   };
 }
 
+function runStartInteractiveDiagnosticsFlow(repoRoot, verboseMode) {
+  const workDir = createTempDir("grobot-interactive-diagnostics-work");
+  const homeDir = createTempDir("grobot-interactive-diagnostics-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const args = [
+    "./grobot",
+    "--project",
+    "grobot",
+    "--project-root",
+    workDir,
+    "--work-dir",
+    workDir,
+    "--home",
+    homeDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    verboseMode ? "diagnostics-verbose-user" : "diagnostics-compact-user",
+    "--history-turns",
+    "8",
+  ];
+  if (verboseMode) {
+    args.push("--verbose");
+  }
+  const commandResult = runCommand(
+    repoRoot,
+    args,
+    {
+      GROBOT_STARTUP_DIAGNOSTICS: "0",
+      GROBOT_INTERACTIVE_DIAGNOSTICS: "0",
+    },
+    ["/new", "diagnostics visibility smoke", "/exit", ""].join("\n"),
+  );
+  return {
+    ...commandResult,
+    verbose_mode: verboseMode,
+    has_process_lines: commandResult.stdout.includes("[process]"),
+    stderr_has_event_lines: /\bevent=/.test(commandResult.stderr),
+    stderr_has_runtime_error: commandResult.stderr.includes("runtime failed:"),
+    stderr_has_prompt_prepared: commandResult.stderr.includes(
+      "[context-engine] event=prompt_prepared",
+    ),
+  };
+}
+
 function runStartImOnlyRejectFlow(repoRoot) {
   const workDir = createTempDir("grobot-start-im-only-work");
   const config = writeConfig(buildSmokeConfig(workDir));
@@ -3996,6 +4045,12 @@ function runCli(argv) {
       break;
     case "start-bare-interactive-session-flow":
       payload = runStartBareInteractiveSessionFlow(repoRoot);
+      break;
+    case "start-interactive-diagnostics-compact-flow":
+      payload = runStartInteractiveDiagnosticsFlow(repoRoot, false);
+      break;
+    case "start-interactive-diagnostics-verbose-flow":
+      payload = runStartInteractiveDiagnosticsFlow(repoRoot, true);
       break;
     case "start-im-only-reject-flow":
       payload = runStartImOnlyRejectFlow(repoRoot);

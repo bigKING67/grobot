@@ -92,6 +92,7 @@ export const TURN_INTERRUPTED_EXIT_CODE = 130;
 export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
   attachments?: RuntimeAttachment[];
+  writeStderr?: (message: string) => void;
 }
 
 export interface RunStartTurnPromptBudgetSnapshot {
@@ -1657,7 +1658,7 @@ function resolveProviderOrder(input: {
   };
 }
 
-export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
+export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInput) {
   const providerFlowStateMap = new Map<string, ProviderFlowState>();
   let consecutiveCompactionFailures = 0;
   let previousTargetTokenLimit: number | undefined;
@@ -1668,31 +1669,34 @@ export function createRunStartTurnRunner(input: CreateRunStartTurnRunnerInput) {
     stickyProvider: string | undefined,
     providerRuntimeStates: readonly SessionProviderRuntimeState[],
   ): Promise<void> => {
-    const historyMessages = input.getHistoryMessages();
+    const historyMessages = baseInput.getHistoryMessages();
     const nextHistory = [
       ...historyMessages,
       { role: "user", content: userText } as ChatHistoryMessage,
       { role: "assistant", content: assistantText } as ChatHistoryMessage,
     ];
-    const trimmed = trimHistoryMessages(nextHistory, input.historyTurns);
+    const trimmed = trimHistoryMessages(nextHistory, baseInput.historyTurns);
     if (trimmed.length < nextHistory.length) {
-      input.onHistoryCompacted();
+      baseInput.onHistoryCompacted();
     }
-      input.setHistoryMessages(trimmed);
-      await input.persistHistoryState();
-      const gaState = input.gaMechanismRuntime.snapshotSession(input.getSessionKey());
-      input.setGaState(gaState);
-      input.updateActiveSessionProviderRuntime(stickyProvider, providerRuntimeStates);
-      input.updateActiveSessionGaState(gaState);
-      input.touchActiveSession(userText);
-      await input.persistSessionRegistryState();
-    };
+    baseInput.setHistoryMessages(trimmed);
+    await baseInput.persistHistoryState();
+    const gaState = baseInput.gaMechanismRuntime.snapshotSession(baseInput.getSessionKey());
+    baseInput.setGaState(gaState);
+    baseInput.updateActiveSessionProviderRuntime(stickyProvider, providerRuntimeStates);
+    baseInput.updateActiveSessionGaState(gaState);
+    baseInput.touchActiveSession(userText);
+    await baseInput.persistSessionRegistryState();
+  };
 
-    return async (
+  return async (
       userText: string,
       interactiveMode: boolean,
       options?: RunStartTurnExecuteOptions,
-    ): Promise<number> => {
+  ): Promise<number> => {
+      const input = typeof options?.writeStderr === "function"
+        ? { ...baseInput, writeStderr: options.writeStderr }
+        : baseInput;
       const turnSignal = options?.signal;
       const runtimeAttachments = options?.attachments;
       throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
