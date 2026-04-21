@@ -11,6 +11,10 @@ import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { inferModelApiContextWindowTokens } from "./run-start-model-context";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
 import { createInteractiveActivityTracker } from "../ui/interactive/activity-state";
+import {
+  clearTerminalWindowTitle,
+  setTerminalWindowTitle,
+} from "../ui/interactive/terminal-text-sanitizer";
 import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
 import { type RuntimeAttachment } from "../../../../models/types";
@@ -168,6 +172,21 @@ function resolveInteractiveDiagnosticsMode(input: {
   return input.interactiveDiagnosticsEnabled ? "verbose" : "compact";
 }
 
+function buildInteractiveWindowTitle(input: {
+  projectFolder: string;
+  providerName: string;
+  modelName: string;
+  sessionId: string;
+  sessionTopic?: string;
+  planMode: boolean;
+}): string {
+  const sessionLabel = input.sessionTopic?.trim().length
+    ? input.sessionTopic.trim()
+    : input.sessionId;
+  const planLabel = input.planMode ? " · PLAN" : "";
+  return `Grobot · ${input.projectFolder} · ${sessionLabel} · ${input.providerName}/${input.modelName}${planLabel}`;
+}
+
 export interface RunStartInteractiveModeInput {
   homeDir: string;
   projectRoot: string;
@@ -188,6 +207,10 @@ export interface RunStartInteractiveModeInput {
   interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
   buildHelpText(): string;
   showHealthStatus(): void;
+  hasPendingAsk(): boolean;
+  getPendingAskQueueSize(): number;
+  showPendingAskQueue(): void;
+  cancelPendingAsk(): void;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
   refreshModelCatalogCache(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -344,6 +367,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       process.stdout.write(message);
     },
     writeStderr: writeInteractiveStderr,
+    hasPendingAsk: input.hasPendingAsk,
+    getPendingAskQueueSize: input.getPendingAskQueueSize,
+    showPendingAskQueue: input.showPendingAskQueue,
+    cancelPendingAsk: input.cancelPendingAsk,
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },
@@ -466,6 +493,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const readPromptBudgetSnapshot = createPromptBudgetSnapshotReader({
     workDir: input.workDir,
   });
+  let terminalTitleSnapshot = "";
   const dynamicPrompt = (): SessionPromptLayout => {
     const modelSnapshot = input.getModelSnapshot();
     const statusLineConfig = input.getStatusLineConfig();
@@ -476,9 +504,13 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       getCachedModelContextWindowTokens: input.getCachedModelContextWindowTokens,
       fallback: input.contextWindowTokens,
     });
+    const pendingAskCount = input.getPendingAskQueueSize();
     const runningActivityText = (() => {
       const activityText = activityTracker.readPromptActivity();
       if (typeof activeTurnStartedAtMs !== "number") {
+        if (pendingAskCount > 0) {
+          return `待确认 ${String(pendingAskCount)} 项（/ask）`;
+        }
         return activityText;
       }
       const elapsed = formatTurnElapsedCompact(Date.now() - activeTurnStartedAtMs);
@@ -500,6 +532,18 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       promptLabel: "› ",
       config: statusLineConfig,
     });
+    const nextTitle = buildInteractiveWindowTitle({
+      projectFolder,
+      providerName: modelSnapshot.providerName,
+      modelName: modelSnapshot.model,
+      sessionId: input.getActiveSessionId(),
+      sessionTopic: input.getActiveSessionTopic(),
+      planMode: input.isPlanMode(),
+    });
+    if (nextTitle !== terminalTitleSnapshot) {
+      setTerminalWindowTitle(nextTitle);
+      terminalTitleSnapshot = nextTitle;
+    }
     return buildInteractivePromptLayout({
       renderedPrompt,
       promptLabel: "› ",
@@ -512,27 +556,31 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       maxItems: 8,
     });
 
-  await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
-    getSlashSuggestions,
-    getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
-    openHistorySearch: (historyInput) =>
-      input.openHistorySearch({
-        currentInput: historyInput.currentInput,
-      }),
-    onEscapeInterrupt: async (phase) => {
-      if (input.isPlanMode()) {
-        if (phase === "idle") {
-          await input.cancelPlan();
+  try {
+    await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
+      getSlashSuggestions,
+      getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
+      openHistorySearch: (historyInput) =>
+        input.openHistorySearch({
+          currentInput: historyInput.currentInput,
+        }),
+      onEscapeInterrupt: async (phase) => {
+        if (input.isPlanMode()) {
+          if (phase === "idle") {
+            await input.cancelPlan();
+            return;
+          }
+          await input.requestPlanInterrupt("cli_esc");
           return;
         }
-        await input.requestPlanInterrupt("cli_esc");
-        return;
-      }
-      if (phase === "running") {
-        await input.requestRuntimeInterrupt("cli_esc");
-      }
-    },
-  });
+        if (phase === "running") {
+          await input.requestRuntimeInterrupt("cli_esc");
+        }
+      },
+    });
+  } finally {
+    clearTerminalWindowTitle();
+  }
 
   if (input.handoffAutoOnExit && input.getHistoryMessagesCount() > 0) {
     input.writeAutoExitHandoffIfNeeded();

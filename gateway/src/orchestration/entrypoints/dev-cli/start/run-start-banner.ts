@@ -1,6 +1,7 @@
 import { SessionStoreRuntime } from "../services/session-store";
 import { createCliUiRenderer } from "../ui/kernel/renderer";
 import { type StartScreenViewModel } from "../ui/screens/startup-screen";
+import { sanitizeTerminalDisplayText } from "../ui/interactive/terminal-text-sanitizer";
 import {
   inferModelApiContextWindowTokens,
   resolveModelDisplayName,
@@ -76,7 +77,7 @@ function formatRelativeTimeAgo(value: string): string | undefined {
 }
 
 function compactFeedText(value: string, maxLength: number): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
+  const normalized = sanitizeTerminalDisplayText(value).trim().replace(/\s+/g, " ");
   if (!normalized) {
     return "";
   }
@@ -159,10 +160,13 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     homeDir: input.homeDir,
     projectRoot: input.projectRoot,
   });
-  const rows: string[] = [runtimeLine, displayProjectPath];
+  const rows: string[] = [
+    compactFeedText(runtimeLine, 180),
+    compactFeedText(displayProjectPath, 180),
+  ];
   const recentActivityLines = resolveRecentActivityLines(input.recentSessions);
   const viewModel: StartScreenViewModel = {
-    title: `Grobot ${versionLabel}`,
+    title: compactFeedText(`Grobot ${versionLabel}`, 64),
     hero: {
       brandLabel: "",
       iconLines: STARTUP_ICON_LINES,

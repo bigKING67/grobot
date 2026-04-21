@@ -868,11 +868,24 @@ export async function runStart(
         runtimeProviderChain,
         runtimeFailoverConfig,
         runtimeState,
+        gaMechanismRuntime,
         output,
         modelOps,
         sessionMenuOps,
         wire,
         planMode,
+        persistGaStateSnapshot: async () => {
+          const nextGaState = gaMechanismRuntime.snapshotSession(
+            runtimeState.getSessionKey(),
+          );
+          runtimeState.setGaState(nextGaState);
+          setSessionGaState(
+            runtimeState.getSessionRegistry(),
+            runtimeState.getActiveSessionId(),
+            nextGaState,
+          );
+          await persistence.persistSessionRegistryState();
+        },
         requestRuntimeInterrupt,
         executeTurn,
       }),

@@ -19,6 +19,7 @@ import {
 } from "./run-start-turn";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { type RunStartWire } from "./run-start-wire";
+import { setSessionGaState } from "./session-registry";
 import {
   normalizeStatusLineConfig,
   type StatusLineConfig,
@@ -33,6 +34,7 @@ import {
   runTerminalSelectMenu,
 } from "./run-start-io";
 import { compactSingleLine, type ChatHistoryMessage } from "./session-history";
+import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -53,11 +55,13 @@ interface CreateRunStartInteractiveModeInput {
   runtimeProviderChain: ReadonlyArray<RuntimeProviderCandidate>;
   runtimeFailoverConfig: RuntimeFailoverConfig;
   runtimeState: RunStartRuntimeState;
+  gaMechanismRuntime: GaMechanismRuntime;
   output: Pick<RunStartOutput, "writeStdout">;
   modelOps: RunStartModelOps;
   sessionMenuOps: RunStartSessionMenuOps;
   wire: RunStartWire;
   planMode: RunStartPlanMode;
+  persistGaStateSnapshot?(): Promise<void>;
   requestRuntimeInterrupt(
     source: "command" | "cli_esc",
   ): {
@@ -634,6 +638,67 @@ export function createRunStartInteractiveModeInput(
     return selected.content;
   };
 
+  const syncGaSnapshotToRuntimeState = (): void => {
+    const sessionKey = input.runtimeState.getSessionKey();
+    const nextSnapshot = input.gaMechanismRuntime.snapshotSession(sessionKey);
+    input.runtimeState.setGaState(nextSnapshot);
+    setSessionGaState(
+      input.runtimeState.getSessionRegistry(),
+      input.runtimeState.getActiveSessionId(),
+      nextSnapshot,
+    );
+  };
+
+  const showPendingAskQueue = (): void => {
+    const sessionKey = input.runtimeState.getSessionKey();
+    const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
+    if (queue.length === 0) {
+      input.output.writeStdout("[ask-user] no pending question.\n\n");
+      return;
+    }
+    const lines: string[] = [
+      "[ask-user] pending queue",
+      `total: ${String(queue.length)}`,
+    ];
+    const maxRows = 5;
+    for (let index = 0; index < queue.length && index < maxRows; index += 1) {
+      const row = queue[index];
+      const optionsLabel = row.options.length > 0
+        ? row.options.join(" / ")
+        : "<free-text>";
+      lines.push(`${String(index + 1)}. [${row.questionId}] ${compactSingleLine(row.question, 180)}`);
+      lines.push(
+        `   node=${row.blockingNodeId} options=${compactSingleLine(optionsLabel, 180)}`,
+      );
+    }
+    if (queue.length > maxRows) {
+      lines.push(`... +${String(queue.length - maxRows)} more`);
+    }
+    lines.push("");
+    input.output.writeStdout(`${lines.join("\n")}\n`);
+  };
+
+  const cancelPendingAsk = (): void => {
+    const sessionKey = input.runtimeState.getSessionKey();
+    const dismissed = input.gaMechanismRuntime.dismissPendingAsk(sessionKey);
+    if (!dismissed) {
+      input.output.writeStdout("[ask-user] no pending question to cancel.\n\n");
+      return;
+    }
+    syncGaSnapshotToRuntimeState();
+    const remaining = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
+    input.output.writeStdout(
+      `[ask-user] cancelled question_id=${dismissed.questionId} remaining=${String(remaining)}\n\n`,
+    );
+    if (input.persistGaStateSnapshot) {
+      void input.persistGaStateSnapshot().catch(() => {
+        input.output.writeStdout(
+          "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
+        );
+      });
+    }
+  };
+
   const sessionTopicCache: {
     sessionId: string;
     topic: string | undefined;
@@ -687,6 +752,16 @@ export function createRunStartInteractiveModeInput(
     restoredTurns: input.runtimeState.getRestoredTurns(),
     restoreSource: input.runtimeState.getRestoreSource(),
     buildHelpText: input.buildHelpText,
+    hasPendingAsk: () =>
+      input.gaMechanismRuntime.getPendingAskQueueSize(
+        input.runtimeState.getSessionKey(),
+      ) > 0,
+    getPendingAskQueueSize: () =>
+      input.gaMechanismRuntime.getPendingAskQueueSize(
+        input.runtimeState.getSessionKey(),
+      ),
+    showPendingAskQueue,
+    cancelPendingAsk,
     showHealthStatus: () => {
       input.output.writeStdout(
         formatProviderHealthSnapshot({

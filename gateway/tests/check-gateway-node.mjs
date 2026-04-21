@@ -707,6 +707,10 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.exit_alias_quit_breaks_loop, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_queue_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_prompted, true);
@@ -720,6 +724,15 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.mcp_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.user_command_checked, true);
   assert.equal(sessionInteractiveDispatchPayload.user_command_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_blocked_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_blocked_warned, false);
   logStep("session-interactive-dispatch-contract");
 
   const runStartInputKeybindingContractResult = runCommand("npx", [
@@ -1015,6 +1028,26 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliStatusLineContractPayload.narrow_has_short_session_id, true);
   logStep("dev-cli-status-line-contract");
 
+  const terminalTextSanitizerContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/terminal-text-sanitizer-contract.ts",
+  ]);
+  assertSuccess("terminal-text-sanitizer-contract", terminalTextSanitizerContractResult);
+  const terminalTextSanitizerContractPayload = parseJsonOutput(
+    "terminal-text-sanitizer-contract",
+    terminalTextSanitizerContractResult.stdout,
+  );
+  assert.equal(terminalTextSanitizerContractPayload.ansi_sequences_removed, true);
+  assert.equal(terminalTextSanitizerContractPayload.bidi_controls_removed, true);
+  assert.equal(terminalTextSanitizerContractPayload.control_chars_removed, true);
+  assert.equal(terminalTextSanitizerContractPayload.title_compacted_and_sanitized, true);
+  assert.equal(terminalTextSanitizerContractPayload.title_truncation_uses_ellipsis, true);
+  assert.equal(terminalTextSanitizerContractPayload.title_zero_budget_empty, true);
+  logStep("terminal-text-sanitizer-contract");
+
   const devCliStatusLineStabilityContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -1074,6 +1107,10 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.resolved_answer, "fast");
   assert.equal(askUserToolContractPayload.resolved_event_has_question_id, true);
   assert.equal(askUserToolContractPayload.issued_registered, true);
+  assert.equal(Number(askUserToolContractPayload.queue_size_after_enqueue), 2);
+  assert.equal(askUserToolContractPayload.queue_dismiss_first_matches_q2, true);
+  assert.equal(askUserToolContractPayload.queue_next_after_dismiss_is_q3, true);
+  assert.equal(Number(askUserToolContractPayload.queue_list_size_after_dismiss), 1);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
   assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
   logStep("ask-user-tool-contract");
@@ -6650,6 +6687,7 @@ function ensureContractsExist() {
     "ask-user-tool-contract.ts",
     "ga-skill-prompt-contract.ts",
     "dev-cli-interactive-frame-contract.ts",
+    "terminal-text-sanitizer-contract.ts",
   ];
   for (const contractName of requiredContracts) {
     const path = resolve(contractsRoot, contractName);

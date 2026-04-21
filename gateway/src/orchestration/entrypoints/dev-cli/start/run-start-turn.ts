@@ -165,6 +165,7 @@ interface ProviderFlowState {
 const EWMA_ALPHA = 0.25;
 const KIMI_SEARCH_TURN_TIMEOUT_MS = 120_000;
 const PROVIDER_UPSTREAM_429_RETRY_LIMIT = 1;
+const PROVIDER_UPSTREAM_READ_RETRY_LIMIT = 1;
 const GRAPH_AUTOTUNE_MAX_ROWS = 20;
 const GRAPH_AUTOTUNE_FLIP_HOLD_TURNS = 2;
 const GRAPH_AUTOTUNE_DOWNSHIFT_WARMUP_TURNS = 2;
@@ -1449,13 +1450,16 @@ function shouldRetryProviderRequest(
   errorMessage: string,
   retryCount: number,
 ): boolean {
-  if (retryCount >= PROVIDER_UPSTREAM_429_RETRY_LIMIT) {
-    return false;
+  if (errorClass === "upstream_http_error") {
+    if (retryCount >= PROVIDER_UPSTREAM_429_RETRY_LIMIT) {
+      return false;
+    }
+    return errorMessage.includes("status=429");
   }
-  if (errorClass !== "upstream_http_error") {
-    return false;
+  if (errorClass === "upstream_response_read_failed") {
+    return retryCount < PROVIDER_UPSTREAM_READ_RETRY_LIMIT;
   }
-  return errorMessage.includes("status=429");
+  return false;
 }
 
 function shouldRetryWithKimiBuiltinFallback(input: {
@@ -2590,9 +2594,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                     throw error;
                   }
                   providerRetryCount += 1;
-                  const backoffMs = providerRetryCount * 1_500;
+                  const retryReason = retryErrorClass === "upstream_http_error"
+                    ? "upstream_429"
+                    : retryErrorClass;
+                  const backoffBaseMs = retryErrorClass === "upstream_response_read_failed"
+                    ? 600
+                    : 1_500;
+                  const backoffMs = providerRetryCount * backoffBaseMs;
                   input.writeStderr(
-                    `[runtime-route] provider_retry provider=${provider.name} reason=upstream_429 retry=${String(providerRetryCount)} backoff_ms=${String(backoffMs)}\n`,
+                    `[runtime-route] provider_retry provider=${provider.name} reason=${retryReason} retry=${String(providerRetryCount)} backoff_ms=${String(backoffMs)}\n`,
                   );
                   await sleepAsync(backoffMs, turnSignal);
                 }
@@ -2639,13 +2649,28 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             createdAt: runtimeAskUser.createdAt || nowIso(),
           };
           input.gaMechanismRuntime.registerPendingAsk(sessionKey, askUserEnvelope);
-          assistantTextForHistory = `[ask-user] ${askUserEnvelope.question}`;
-          const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(askUserEnvelope);
-          turnStdout = interactiveMode ? `${askUserDisplay}\n` : askUserDisplay;
+          const queueDepth = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
+          const activeAskEnvelope = input.gaMechanismRuntime.getPendingAsk(sessionKey) ?? askUserEnvelope;
+          assistantTextForHistory = `[ask-user] ${activeAskEnvelope.question}`;
+          const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
+          if (interactiveMode) {
+            const queuedExtra = Math.max(0, queueDepth - 1);
+            const queueHint = queuedExtra > 0
+              ? `[ask-user] queue has ${String(queuedExtra)} additional pending question(s). Use /ask to inspect.\n`
+              : "";
+            turnStdout = `${askUserDisplay}\n${queueHint}`;
+          } else {
+            turnStdout = askUserDisplay;
+          }
           askUserEvent = formatAskUserIssuedEvent(askUserEnvelope);
           input.writeStderr(
             `[ask-user] event=interrupt_received question_id=${askUserEnvelope.questionId} blocking_node_id=${askUserEnvelope.blockingNodeId}\n`,
           );
+          if (queueDepth > 1) {
+            input.writeStderr(
+              `[ask-user] event=queued depth=${String(queueDepth)} active_question_id=${activeAskEnvelope.questionId} latest_question_id=${askUserEnvelope.questionId}\n`,
+            );
+          }
           input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");
         } else {
           const feedback = input.memoryOrchestrator.feedback({

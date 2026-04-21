@@ -4,6 +4,7 @@ import {
   splitGraphemes,
   truncateDisplayWidth,
 } from "../interactive/display-width";
+import { sanitizeTerminalDisplayText } from "../interactive/terminal-text-sanitizer";
 
 export const measureDisplayWidth = measureDisplayWidthInternal;
 
@@ -312,36 +313,8 @@ function truncateText(value: string, maxWidth: number): string {
   return truncateDisplayWidth(normalized, maxWidth);
 }
 
-function isDisallowedStatusChar(charCode: number): boolean {
-  return (
-    charCode <= 0x1f
-    || charCode === 0x7f
-    || charCode === 0x00ad
-    || charCode === 0x034f
-    || charCode === 0x061c
-    || charCode === 0x180e
-    || (charCode >= 0x200b && charCode <= 0x200f)
-    || (charCode >= 0x202a && charCode <= 0x202e)
-    || (charCode >= 0x2060 && charCode <= 0x206f)
-    || (charCode >= 0xfe00 && charCode <= 0xfe0f)
-    || charCode === 0xfeff
-    || (charCode >= 0xfff9 && charCode <= 0xfffb)
-  );
-}
-
 function sanitizeDisplayLabel(value: string): string {
-  if (!value) {
-    return "";
-  }
-  let result = "";
-  for (const char of value) {
-    const codePoint = char.codePointAt(0);
-    if (typeof codePoint === "number" && isDisallowedStatusChar(codePoint)) {
-      continue;
-    }
-    result += char;
-  }
-  return result;
+  return sanitizeTerminalDisplayText(value);
 }
 
 function formatWindowTokenCount(value: number | undefined): string {

@@ -37,6 +37,11 @@ interface ParsedHistoryCommand {
   reason?: string;
 }
 
+interface ParsedAskCommand {
+  kind: "show_queue" | "cancel_current" | "invalid";
+  reason?: string;
+}
+
 export interface SlashCommandSuggestion {
   command: string;
   description: string;
@@ -187,6 +192,24 @@ function parseHistoryCommand(inputRaw: string): ParsedHistoryCommand {
   return {
     kind: "show",
     query: rest,
+  };
+}
+
+function parseAskCommand(inputRaw: string): ParsedAskCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith("/ask")) {
+    return { kind: "invalid", reason: "command must start with /ask" };
+  }
+  const rest = input.slice("/ask".length).trim().toLowerCase();
+  if (!rest || rest === "queue") {
+    return { kind: "show_queue" };
+  }
+  if (rest === "cancel") {
+    return { kind: "cancel_current" };
+  }
+  return {
+    kind: "invalid",
+    reason: "usage: /ask | /ask queue | /ask cancel",
   };
 }
 
@@ -398,6 +421,26 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     ],
   },
   {
+    id: "ask",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/ask"),
+    execute: async ({ userInput, handlers }) => {
+      const parsed = parseAskCommand(userInput);
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid ask command"}\n\n`);
+        return "continue";
+      }
+      if (parsed.kind === "cancel_current") {
+        handlers.cancelPendingAsk();
+        return "continue";
+      }
+      handlers.showPendingAskQueue();
+      return "continue";
+    },
+    helpLines: [
+      "  /ask [queue|cancel]  Show pending ask-user questions or cancel current one",
+    ],
+  },
+  {
     id: "plan",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
     execute: async ({ userInput, handlers }) => {
@@ -537,6 +580,7 @@ const HELP_ORDER: readonly string[] = [
   "commands",
   "skill-creator",
   "history",
+  "ask",
   "model",
   "plan",
   "status",
@@ -554,6 +598,7 @@ const PRIMARY_HELP_ORDER: readonly string[] = [
   "commands",
   "skill-creator",
   "history",
+  "ask",
   "model",
   "plan",
   "status",
@@ -574,6 +619,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator <需求>", description: "Create a skill directly from requirement" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
+  { command: "/ask [queue|cancel]", description: "Show pending ask-user queue or cancel current question" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
@@ -592,6 +638,7 @@ const PRIMARY_HINT_COMMANDS: readonly string[] = [
   "/commands",
   "/skill-creator",
   "/history",
+  "/ask",
   "/model",
   "/plan",
   "/exit",

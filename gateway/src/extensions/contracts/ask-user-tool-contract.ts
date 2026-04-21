@@ -55,11 +55,26 @@ if (!nextEnvelope) {
   throw new Error("failed to normalize next ask_user payload");
 }
 runtime.registerPendingAsk(sessionKey, nextEnvelope);
+const thirdEnvelope = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_003",
+  blocking_node_id: "node.confirm.risk",
+  question: "Need risk review?",
+  options: ["yes", "no"],
+  default_on_timeout: "no",
+  resume_token: "resume_003",
+});
+if (!thirdEnvelope) {
+  throw new Error("failed to normalize third ask_user payload");
+}
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
 const display = runtime.buildAskUserDisplay(nextEnvelope);
 const resolutionPrompt = buildAskUserResolutionPrompt({
   envelope: pendingEnvelope,
   answer: "fast",
 });
+const issuedRegistered = sessionStore.get(sessionKey)?.questionId === "ask_q_002";
+const queueSizeAfterEnqueue = sessionStore.size(sessionKey);
+const dismissed = sessionStore.dismissCurrent(sessionKey);
 
 const payload = {
   protocol_prefix_removed: promptContext.promptParts.every((part) => part.includes("[AskUser Resolution]")),
@@ -67,7 +82,11 @@ const payload = {
   resolution_prompt_builder_works: resolutionPrompt.includes("question_id=ask_q_001"),
   resolved_answer: promptContext.resolvedAsk.answer,
   resolved_event_has_question_id: formatAskUserResolvedEvent(promptContext.resolvedAsk).includes("question_id=ask_q_001"),
-  issued_registered: sessionStore.get(sessionKey)?.questionId === "ask_q_002",
+  issued_registered: issuedRegistered,
+  queue_size_after_enqueue: queueSizeAfterEnqueue,
+  queue_dismiss_first_matches_q2: dismissed?.questionId === "ask_q_002",
+  queue_next_after_dismiss_is_q3: sessionStore.get(sessionKey)?.questionId === "ask_q_003",
+  queue_list_size_after_dismiss: sessionStore.list(sessionKey).length,
   issued_display_has_reply_hint: display.includes("reply with your choice"),
   issued_event_has_question_id: formatAskUserIssuedEvent(nextEnvelope).includes("question_id=ask_q_002"),
 };

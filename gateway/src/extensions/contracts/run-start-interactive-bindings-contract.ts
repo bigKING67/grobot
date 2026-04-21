@@ -1,6 +1,9 @@
 import { createRunStartInteractiveModeInput } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
 import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
-import { type GaSessionStateSnapshot } from "../../orchestration/entrypoints/dev-cli/services/ga-mechanism-runtime";
+import {
+  createGaMechanismRuntime,
+  type GaSessionStateSnapshot,
+} from "../../orchestration/entrypoints/dev-cli/services/ga-mechanism-runtime";
 import {
   type SessionPlanMeta,
   type SessionPlanMode,
@@ -170,6 +173,7 @@ async function main(): Promise<void> {
 
   let switchResult = true;
   const switchEvents: string[] = [];
+  const gaMechanismRuntime = createGaMechanismRuntime();
   let handoffReason = "";
   let handoffToStderr = true;
   let autoExitToStderr = true;
@@ -211,6 +215,7 @@ async function main(): Promise<void> {
     runtimeProviderChain,
     runtimeFailoverConfig,
     runtimeState,
+    gaMechanismRuntime,
     output: {
       writeStdout: (message) => {
         stdoutChunks.push(message);

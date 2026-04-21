@@ -134,6 +134,7 @@ export interface GaSessionStateSnapshot {
   memory: GaMemoryRecord[];
   skillCards: SkillCard[];
   reflectionQueue: ReflectionTask[];
+  pendingAskQueue?: AskUserEnvelope[];
   pendingAsk?: AskUserEnvelope;
   failureState?: SessionFailureState;
 }
@@ -141,6 +142,9 @@ export interface GaSessionStateSnapshot {
 export interface GaMechanismRuntime {
   buildAskUserDisplay(envelope: AskUserEnvelope): string;
   getPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
+  listPendingAsk(sessionKey: string): AskUserEnvelope[];
+  getPendingAskQueueSize(sessionKey: string): number;
+  dismissPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
   registerPendingAsk(sessionKey: string, envelope: AskUserEnvelope): void;
   resolvePendingAsk(sessionKey: string, answer: string): ResolvedAskUser | undefined;
   hydrateSession(sessionKey: string, state: GaSessionStateSnapshot | undefined): void;
@@ -388,15 +392,37 @@ export function normalizeGaSessionStateSnapshot(
       }
     }
   }
-  const pendingAsk = normalizeAskUserEnvelope(record.pendingAsk);
+  const pendingAskQueue: AskUserEnvelope[] = [];
+  if (Array.isArray(record.pendingAskQueue)) {
+    for (const item of record.pendingAskQueue) {
+      const normalized = normalizeAskUserEnvelope(item);
+      if (normalized) {
+        pendingAskQueue.push(normalized);
+      }
+    }
+  }
+  if (pendingAskQueue.length === 0) {
+    const pendingAskLegacy = normalizeAskUserEnvelope(record.pendingAsk);
+    if (pendingAskLegacy) {
+      pendingAskQueue.push(pendingAskLegacy);
+    }
+  }
+  const pendingAsk = pendingAskQueue[0];
   const failureState = normalizeFailureState(record.failureState);
-  if (memory.length === 0 && skillCards.length === 0 && reflectionQueue.length === 0 && !pendingAsk && !failureState) {
+  if (
+    memory.length === 0
+    && skillCards.length === 0
+    && reflectionQueue.length === 0
+    && !pendingAsk
+    && !failureState
+  ) {
     return undefined;
   }
   return {
     memory,
     skillCards,
     reflectionQueue,
+    pendingAskQueue: pendingAskQueue.length > 0 ? pendingAskQueue : undefined,
     pendingAsk,
     failureState,
   };
@@ -818,12 +844,19 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
     buildAskUserDisplay: (envelope): string => buildAskUserDisplay(envelope),
     getPendingAsk: (sessionKey): AskUserEnvelope | undefined =>
       pendingAskBySession.get(sessionKey),
+    listPendingAsk: (sessionKey): AskUserEnvelope[] =>
+      pendingAskBySession.list(sessionKey),
+    getPendingAskQueueSize: (sessionKey): number =>
+      pendingAskBySession.size(sessionKey),
+    dismissPendingAsk: (sessionKey): AskUserEnvelope | undefined =>
+      pendingAskBySession.dismissCurrent(sessionKey),
     registerPendingAsk: (sessionKey, envelope): void => {
       pendingAskBySession.set(sessionKey, envelope);
+      const queueDepth = pendingAskBySession.size(sessionKey);
       writeMemory({
         sessionKey,
         memoryLevel: "L1",
-        text: `ask_user issued question_id=${envelope.questionId} node=${envelope.blockingNodeId}`,
+        text: `ask_user issued question_id=${envelope.questionId} node=${envelope.blockingNodeId} queue_depth=${String(queueDepth)}`,
         sourceEventType: "checkpoint_updated",
         executionVerified: false,
         tags: ["ask-user", "pending"],
@@ -864,10 +897,13 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       memoryBySession.set(sessionKey, [...normalized.memory]);
       skillCardsBySession.set(sessionKey, [...normalized.skillCards]);
       reflectionBySession.set(sessionKey, [...normalized.reflectionQueue]);
-      if (normalized.pendingAsk) {
+      pendingAskBySession.delete(sessionKey);
+      if (Array.isArray(normalized.pendingAskQueue) && normalized.pendingAskQueue.length > 0) {
+        for (const ask of normalized.pendingAskQueue) {
+          pendingAskBySession.set(sessionKey, ask);
+        }
+      } else if (normalized.pendingAsk) {
         pendingAskBySession.set(sessionKey, normalized.pendingAsk);
-      } else {
-        pendingAskBySession.delete(sessionKey);
       }
       if (normalized.failureState) {
         failureStateBySession.set(sessionKey, normalized.failureState);
@@ -879,7 +915,8 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       const memory = [...(memoryBySession.get(sessionKey) ?? [])];
       const skillCards = [...(skillCardsBySession.get(sessionKey) ?? [])];
       const reflectionQueue = [...(reflectionBySession.get(sessionKey) ?? [])];
-      const pendingAsk = pendingAskBySession.get(sessionKey);
+      const pendingAskQueue = pendingAskBySession.list(sessionKey);
+      const pendingAsk = pendingAskQueue[0];
       const failureState = failureStateBySession.get(sessionKey);
       if (memory.length === 0 && skillCards.length === 0 && reflectionQueue.length === 0 && !pendingAsk && !failureState) {
         return undefined;
@@ -888,6 +925,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
         memory,
         skillCards,
         reflectionQueue,
+        pendingAskQueue: pendingAskQueue.length > 0 ? pendingAskQueue : undefined,
         pendingAsk,
         failureState,
       };
@@ -898,7 +936,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
     registerTurnSuccess,
     registerTurnFailure,
     buildAskUserClarificationHint: (sessionKey, userText): string => {
-      if (pendingAskBySession.get(sessionKey)) {
+      if (pendingAskBySession.size(sessionKey) > 0) {
         return "";
       }
       const nowMs = Date.now();

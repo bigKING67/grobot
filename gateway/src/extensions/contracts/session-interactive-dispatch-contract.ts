@@ -31,12 +31,21 @@ async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>)
 
 async function runDispatchCase(
   input: string,
-  options?: { stdinIsTty?: boolean },
+  options?: { stdinIsTty?: boolean; pendingAskCount?: number },
 ): Promise<DispatchCaseResult> {
   const events: string[] = [];
+  const pendingAskCount = Math.max(0, options?.pendingAskCount ?? 0);
   const handlers: SessionInteractiveHandlers = {
     writeStdout: () => {
       events.push("writeStdout");
+    },
+    hasPendingAsk: () => pendingAskCount > 0,
+    getPendingAskQueueSize: () => pendingAskCount,
+    showPendingAskQueue: () => {
+      events.push("showPendingAskQueue");
+    },
+    cancelPendingAsk: () => {
+      events.push("cancelPendingAsk");
     },
     showHelp: () => {
       events.push("showHelp");
@@ -173,6 +182,8 @@ async function main(): Promise<void> {
   const commandsMenu = await runDispatchCase("/commands");
   const historyCommand = await runDispatchCase("/history");
   const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
+  const askQueueCommand = await runDispatchCase("/ask");
+  const askCancelCommand = await runDispatchCase("/ask cancel");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
@@ -181,6 +192,12 @@ async function main(): Promise<void> {
   const skillsCommand = await runDispatchCase("/skills");
   const mcpCommand = await runDispatchCase("/mcp");
   const userCommandInvocation = await runDispatchCase("/shipit");
+  const pendingAskBlockedStatus = await runDispatchCase("/status", { pendingAskCount: 2 });
+  const pendingAskAllowHelp = await runDispatchCase("/help", { pendingAskCount: 2 });
+  const pendingAskAllowInterrupt = await runDispatchCase("/interrupt", { pendingAskCount: 2 });
+  const pendingAskAllowAskQueue = await runDispatchCase("/ask", { pendingAskCount: 2 });
+  const pendingAskAllowAskCancel = await runDispatchCase("/ask cancel", { pendingAskCount: 2 });
+  const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
 
   const payload = {
     switch_prefix_miss_hits_run_turn: includesEvent(switchPrefixMiss.events, "runTurn:/switcher"),
@@ -252,6 +269,10 @@ async function main(): Promise<void> {
     history_dispatched: includesEvent(historyCommand.events, "showHistory:"),
     history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
+    ask_queue_dispatched: includesEvent(askQueueCommand.events, "showPendingAskQueue"),
+    ask_queue_hits_run_turn: includesEvent(askQueueCommand.events, "runTurn:/ask"),
+    ask_cancel_dispatched: includesEvent(askCancelCommand.events, "cancelPendingAsk"),
+    ask_cancel_hits_run_turn: includesEvent(askCancelCommand.events, "runTurn:/ask cancel"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
     commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),
@@ -290,6 +311,33 @@ async function main(): Promise<void> {
     mcp_hits_run_turn: includesEvent(mcpCommand.events, "runTurn:/mcp"),
     user_command_checked: includesEvent(userCommandInvocation.events, "tryRunUserCommand:/shipit"),
     user_command_hits_run_turn: includesEvent(userCommandInvocation.events, "runTurn:/shipit"),
+    pending_ask_blocked_status_warned: includesEvent(pendingAskBlockedStatus.events, "writeStdout"),
+    pending_ask_blocked_status_opened_menu: includesEvent(
+      pendingAskBlockedStatus.events,
+      "openStatusMenu",
+    ),
+    pending_ask_help_allowed: includesEvent(pendingAskAllowHelp.events, "showHelp"),
+    pending_ask_help_blocked_warned: includesEvent(pendingAskAllowHelp.events, "writeStdout"),
+    pending_ask_interrupt_allowed: includesEvent(
+      pendingAskAllowInterrupt.events,
+      "requestRuntimeInterrupt",
+    ),
+    pending_ask_queue_allowed: includesEvent(
+      pendingAskAllowAskQueue.events,
+      "showPendingAskQueue",
+    ),
+    pending_ask_cancel_allowed: includesEvent(
+      pendingAskAllowAskCancel.events,
+      "cancelPendingAsk",
+    ),
+    pending_ask_plain_text_runs_turn: includesEvent(
+      pendingAskPlainAnswer.events,
+      "runTurn:继续执行快速方案",
+    ),
+    pending_ask_plain_text_blocked_warned: includesEvent(
+      pendingAskPlainAnswer.events,
+      "writeStdout",
+    ),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

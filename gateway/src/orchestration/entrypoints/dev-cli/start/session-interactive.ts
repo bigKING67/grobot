@@ -10,6 +10,10 @@ export interface SessionInteractiveControls {
 
 export interface SessionInteractiveHandlers {
   writeStdout(message: string): void;
+  hasPendingAsk(): boolean;
+  getPendingAskQueueSize(): number;
+  showPendingAskQueue(): void;
+  cancelPendingAsk(): void;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -51,6 +55,35 @@ export function buildInteractiveHelpText(): string {
   return buildInteractiveHelpScreen();
 }
 
+const PENDING_ASK_ALLOWED_SLASH_COMMANDS = new Set([
+  "ask",
+  "help",
+  "exit",
+  "quit",
+  "interrupt",
+]);
+
+function parseSlashCommandName(userInput: string): string | undefined {
+  if (!userInput.startsWith("/")) {
+    return undefined;
+  }
+  const token = userInput.slice(1).trim().split(/\s+/)[0] ?? "";
+  const normalized = token.toLowerCase();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function isPendingAskAllowedInput(userInput: string): boolean {
+  const normalized = userInput.trim().toLowerCase();
+  if (normalized === "exit" || normalized === "quit") {
+    return true;
+  }
+  const slashCommand = parseSlashCommandName(normalized);
+  if (!slashCommand) {
+    return true;
+  }
+  return PENDING_ASK_ALLOWED_SLASH_COMMANDS.has(slashCommand);
+}
+
 export async function dispatchSessionInteractiveInput(
   userInputRaw: string,
   controls: SessionInteractiveControls,
@@ -58,6 +91,13 @@ export async function dispatchSessionInteractiveInput(
 ): Promise<SessionInteractiveAction> {
   const userInput = userInputRaw.trim();
   if (!userInput) {
+    return "continue";
+  }
+  if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
+    const queueSize = handlers.getPendingAskQueueSize();
+    handlers.writeStdout(
+      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题。\n\n`,
+    );
     return "continue";
   }
 

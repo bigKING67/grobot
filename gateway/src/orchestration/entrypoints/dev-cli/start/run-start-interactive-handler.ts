@@ -10,6 +10,10 @@ import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 interface CreateRunStartInteractiveHandlerInput {
   writeStdout(message: string): void;
   writeStderr(message: string): void;
+  hasPendingAsk(): boolean;
+  getPendingAskQueueSize(): number;
+  showPendingAskQueue(): void;
+  cancelPendingAsk(): void;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -59,6 +63,10 @@ export function createRunStartInteractiveHandler(
   ): Promise<SessionInteractiveAction> =>
     dispatchSessionInteractiveInput(userInputRaw, controls, {
       writeStdout: input.writeStdout,
+      hasPendingAsk: input.hasPendingAsk,
+      getPendingAskQueueSize: input.getPendingAskQueueSize,
+      showPendingAskQueue: input.showPendingAskQueue,
+      cancelPendingAsk: input.cancelPendingAsk,
       showHelp: input.showHelp,
       showHealthStatus: input.showHealthStatus,
       openModelMenu: async (withInputPaused) => {
