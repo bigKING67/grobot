@@ -26,7 +26,13 @@ interface CreateRunStartPlanModeInput {
   workDir: string;
   runtimeState: RunStartRuntimeState;
   persistence: RunStartPersistence;
-  executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
+  executeTurn(
+    userInput: string,
+    interactiveMode: boolean,
+    options?: {
+      writeStderr?: (message: string) => void;
+    },
+  ): Promise<number>;
   requestRuntimeInterrupt(
     source: PlanInterruptSource,
   ): {
@@ -51,6 +57,10 @@ const PLAN_INTERRUPT_NOT_PLAN_MODE_CODE = "PLAN_INTERRUPT_NOT_PLAN_MODE";
 
 export type PlanInterruptSource = "command" | "cli_esc";
 
+export interface RunStartPlanTurnOptions {
+  writeStderr?: (message: string) => void;
+}
+
 export interface PlanInterruptResult {
   code:
     | typeof PLAN_INTERRUPT_OK_CODE
@@ -67,10 +77,10 @@ interface PlanStablePoint {
 
 export interface RunStartPlanMode {
   isPlanMode(): boolean;
-  enterPlan(goal: string): Promise<number>;
+  enterPlan(goal: string, options?: RunStartPlanTurnOptions): Promise<number>;
   showPlanStatus(): Promise<number>;
-  runPlanTurn(note: string): Promise<number>;
-  applyPlan(extra: string): Promise<number>;
+  runPlanTurn(note: string, options?: RunStartPlanTurnOptions): Promise<number>;
+  applyPlan(extra: string, options?: RunStartPlanTurnOptions): Promise<number>;
   cancelPlan(): Promise<number>;
   requestPlanInterrupt(source: PlanInterruptSource): Promise<PlanInterruptResult>;
   handleMessageInput(message: string): Promise<PlanMessageHandleResult>;
@@ -247,10 +257,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         detail: `source=${source} phase=${activeTurnPhase}`,
       });
     }
-    if (activeTurnPhase === "applying") {
+    if (activeTurnPhase === "planning" || activeTurnPhase === "applying") {
       const runtimeInterrupt = input.requestRuntimeInterrupt(source);
       input.writeStdout(
-        `[plan-interrupt] code=${PLAN_INTERRUPT_OK_CODE} detail=requested phase=applying runtime_interrupt=${runtimeInterrupt.interrupted ? "sent" : "not_running"}\n\n`,
+        `[plan-interrupt] code=${PLAN_INTERRUPT_OK_CODE} detail=requested phase=${activeTurnPhase} runtime_interrupt=${runtimeInterrupt.interrupted ? "sent" : "not_running"}\n\n`,
       );
     } else {
       input.writeStdout(
@@ -271,7 +281,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       [
         "[plan] commands:",
         "  /plan",
-        "  (open plan action menu)",
+        "  (enter plan mode only)",
+        "  /plan <goal>",
+        "  (enter plan mode and execute first requirement)",
         "  /plan status",
         "  /plan apply [extra]",
         "  /plan cancel",
@@ -281,13 +293,16 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     );
   };
 
-  const enterPlan = async (goalRaw: string): Promise<number> => {
-    const goal = goalRaw.trim();
-    if (!goal) {
-      input.writeStdout("Usage: /plan <goal>\n\n");
-      return 0;
-    }
-    const created = createPlanArtifact(input.workDir, planSessionKey(), goal);
+  const createPlanModeDraft = async (
+    goalForTitleRaw: string,
+    options?: {
+      printHint?: boolean;
+      printModeReadyOnly?: boolean;
+    },
+  ): Promise<number> => {
+    const compactGoal = goalForTitleRaw.trim();
+    const draftTitle = compactGoal.length > 0 ? compactGoal : "plan session";
+    const created = createPlanArtifact(input.workDir, planSessionKey(), draftTitle);
     await persistPlanState(
       "plan_only",
       buildPlanMeta(created.entry, created.planPath),
@@ -301,8 +316,38 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     input.writeStdout(
       `[plan] entered PLAN_ONLY session_key=${planSessionKey()} plan_id=${created.entry.plan_id} file=${created.planPath}\n\n`,
     );
-    printPlanModeHint();
+    if (options?.printModeReadyOnly) {
+      input.writeStdout("[plan] mode ready. send requirement directly.\n\n");
+    } else {
+      input.writeStdout(
+        "[plan] mode ready. first requirement will be executed immediately.\n\n",
+      );
+    }
+    if (options?.printHint !== false) {
+      printPlanModeHint();
+    }
     return 0;
+  };
+
+  const enterPlan = async (
+    goalRaw: string,
+    options?: RunStartPlanTurnOptions,
+  ): Promise<number> => {
+    const goal = goalRaw.trim();
+    if (!goal) {
+      return createPlanModeDraft("", {
+        printHint: true,
+        printModeReadyOnly: true,
+      });
+    }
+    const entered = await createPlanModeDraft(goal, {
+      printHint: false,
+      printModeReadyOnly: false,
+    });
+    if (entered !== 0) {
+      return entered;
+    }
+    return runPlanTurn(goal, options);
   };
 
   const showPlanStatus = async (): Promise<number> => {
@@ -355,7 +400,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     return 0;
   };
 
-  const runPlanTurn = async (noteRaw: string): Promise<number> => {
+  const runPlanTurn = async (
+    noteRaw: string,
+    options?: RunStartPlanTurnOptions,
+  ): Promise<number> => {
     const note = noteRaw.trim();
     if (!note) {
       return 0;
@@ -366,12 +414,23 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (await consumePendingInterrupt(stablePoint, "before_plan_turn")) {
         return 0;
       }
-      const meta = input.runtimeState.getPlanMeta();
+      let meta = input.runtimeState.getPlanMeta();
       if (!meta?.active_plan_id) {
         if (await consumePendingInterrupt(stablePoint, "before_plan_create")) {
           return 0;
         }
-        return enterPlan(note);
+        const entered = await createPlanModeDraft(note, {
+          printHint: false,
+          printModeReadyOnly: false,
+        });
+        if (entered !== 0) {
+          return entered;
+        }
+        meta = input.runtimeState.getPlanMeta();
+        if (!meta?.active_plan_id) {
+          input.writeStderr("[plan] failed to resolve active plan after entering plan mode.\n");
+          return 1;
+        }
       }
       if (await consumePendingInterrupt(stablePoint, "before_plan_progress_append")) {
         return 0;
@@ -399,8 +458,33 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (await consumePendingInterrupt(stablePoint, "after_plan_state_persist")) {
         return 0;
       }
+      const code = await input.executeTurn(note, true, {
+        writeStderr: options?.writeStderr,
+      });
+      if (code === TURN_INTERRUPTED_EXIT_CODE) {
+        appendPlanEvent(input.workDir, planSessionKey(), {
+          event: "plan_turn_interrupted",
+          plan_id: meta.active_plan_id,
+          source: "cli",
+          detail: `exit_code=${String(code)}`,
+        });
+        return code;
+      }
+      if (code !== 0) {
+        appendPlanEvent(input.workDir, planSessionKey(), {
+          event: "plan_turn_failed",
+          plan_id: meta.active_plan_id,
+          source: "cli",
+          detail: `exit_code=${String(code)}`,
+        });
+        input.markFailureObserved();
+        input.writeStderr(
+          `[plan] turn failed plan_id=${meta.active_plan_id} exit_code=${String(code)}\n`,
+        );
+        return code;
+      }
       input.writeStdout(`[plan] updated file=${appended.planPath ?? "<unknown>"}\n\n`);
-      return 0;
+      return code;
     } finally {
       if (pendingInterruptSource) {
         clearPendingInterruptAsIgnored(
@@ -442,7 +526,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     return 0;
   };
 
-  const applyPlan = async (extraRaw: string): Promise<number> => {
+  const applyPlan = async (
+    extraRaw: string,
+    options?: RunStartPlanTurnOptions,
+  ): Promise<number> => {
     const previousPhase = activeTurnPhase;
     activeTurnPhase = "applying";
     const stablePoint = capturePlanStablePoint();
@@ -552,7 +639,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         ticketId: approval.ticketId,
         extra: extraRaw.trim(),
       });
-      const code = await input.executeTurn(prompt, true);
+      const code = await input.executeTurn(prompt, true, {
+        writeStderr: options?.writeStderr,
+      });
       if (code === TURN_INTERRUPTED_EXIT_CODE) {
         const approvedAgain = updatePlanArtifactStatus(
           input.workDir,
@@ -640,6 +729,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       }
       if (parsed.kind === "enter") {
         return { handled: true, code: await enterPlan(parsed.goal) };
+      }
+      if (parsed.kind === "enter_mode") {
+        return { handled: true, code: await enterPlan("") };
       }
       if (parsed.kind === "status") {
         return { handled: true, code: await showPlanStatus() };

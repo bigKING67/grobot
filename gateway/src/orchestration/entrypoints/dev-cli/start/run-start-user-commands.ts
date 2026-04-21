@@ -63,8 +63,18 @@ interface UserCommandFilePayload {
 interface CreateRunStartUserCommandsRuntimeInput {
   homeDir: string;
   writeStdout(message: string): void;
-  executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
+  executeTurn(
+    userInput: string,
+    interactiveMode: boolean,
+    options?: {
+      writeStderr?: (message: string) => void;
+    },
+  ): Promise<number>;
   markFailureObserved(): void;
+}
+
+export interface RunStartUserCommandTurnOptions {
+  writeStderr?: (message: string) => void;
 }
 
 export interface RunStartUserCommandsRuntime {
@@ -72,7 +82,10 @@ export interface RunStartUserCommandsRuntime {
   openManagementMenu(
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<void>;
-  tryRunUserCommand(userInput: string): Promise<boolean>;
+  tryRunUserCommand(
+    userInput: string,
+    options?: RunStartUserCommandTurnOptions,
+  ): Promise<boolean>;
 }
 
 export interface RunStartUserCommandSuggestion {
@@ -720,7 +733,10 @@ export function createRunStartUserCommandsRuntime(
       input.writeStdout(`[commands] unsupported action: ${action}\n\n`);
     },
     openManagementMenu,
-    tryRunUserCommand: async (userInput: string): Promise<boolean> => {
+    tryRunUserCommand: async (
+      userInput: string,
+      options?: RunStartUserCommandTurnOptions,
+    ): Promise<boolean> => {
       const invocation = parseSlashInvocation(userInput);
       if (!invocation) {
         return false;
@@ -738,7 +754,9 @@ export function createRunStartUserCommandsRuntime(
         return true;
       }
       const prompt = applyCommandPromptTemplate(record.prompt, invocation.args);
-      const code = await input.executeTurn(prompt, true);
+      const code = await input.executeTurn(prompt, true, {
+        writeStderr: options?.writeStderr,
+      });
       if (code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE) {
         input.markFailureObserved();
       }

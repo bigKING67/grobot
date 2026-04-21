@@ -206,7 +206,8 @@ export function createRunStartInteractiveModeInput(
       input.output.writeStdout(
         [
           "[plan] action menu",
-          "- /plan <goal>        Create or replace active plan goal",
+          "- /plan               Enter plan mode only",
+          "- /plan <goal>        Enter plan mode and execute first requirement",
           "- /plan status        Show active plan status",
           "- /plan apply [extra] Review, approve, then execute active plan",
           "- /plan cancel        Cancel plan mode and discard active plan",
@@ -223,8 +224,8 @@ export function createRunStartInteractiveModeInput(
         items: [
           {
             id: "enter",
-            label: "Create/replace plan goal",
-            description: "Input a new goal and enter PLAN_ONLY.",
+            label: "Enter and execute requirement",
+            description: "Input a goal, enter plan mode, and execute it immediately.",
           },
           {
             id: "status",
@@ -620,7 +621,10 @@ export function createRunStartInteractiveModeInput(
       }
       return requirement;
     },
-    runSkillCreator: async (requirement) => {
+    runSkillCreator: async (
+      requirement,
+      options,
+    ) => {
       const normalizedRequirement = requirement.trim();
       if (!normalizedRequirement) {
         input.output.writeStdout("usage: /skill-creator <需求>\n\n");
@@ -631,7 +635,9 @@ export function createRunStartInteractiveModeInput(
         projectRoot: input.projectRoot,
         homeDir: input.homeDir,
       });
-      const code = await input.executeTurn(prompt, true);
+      const code = await input.executeTurn(prompt, true, {
+        writeStderr: options?.writeStderr,
+      });
       if (shouldMarkFailure(code)) {
         input.runtimeState.markFailureObserved();
       }

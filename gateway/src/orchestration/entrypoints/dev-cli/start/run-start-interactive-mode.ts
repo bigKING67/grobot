@@ -15,6 +15,10 @@ import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
 import { type RuntimeAttachment } from "../../../../models/types";
 
+export interface RunStartInteractiveTurnOptions {
+  writeStderr?: (message: string) => void;
+}
+
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
   const slashIndex = normalized.lastIndexOf("/");
@@ -166,12 +170,15 @@ export interface RunStartInteractiveModeInput {
   writeManualHandoff(): void;
   isPlanMode(): boolean;
   showPlanStatus(): Promise<number>;
-  enterPlan(goal: string): Promise<number>;
-  applyPlan(extra: string): Promise<number>;
+  enterPlan(goal: string, options?: RunStartInteractiveTurnOptions): Promise<number>;
+  applyPlan(extra: string, options?: RunStartInteractiveTurnOptions): Promise<number>;
   cancelPlan(): Promise<number>;
   requestPlanInterrupt(source: PlanInterruptSource): Promise<void>;
   requestRuntimeInterrupt(source: PlanInterruptSource): Promise<void>;
-  runPlanTurn(userInput: string): Promise<number>;
+  runPlanTurn(
+    userInput: string,
+    options?: RunStartInteractiveTurnOptions,
+  ): Promise<number>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
@@ -182,8 +189,14 @@ export interface RunStartInteractiveModeInput {
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<string | undefined>;
-  runSkillCreator(requirement: string): Promise<void>;
-  tryRunUserCommand(userInput: string): Promise<boolean>;
+  runSkillCreator(
+    requirement: string,
+    options?: RunStartInteractiveTurnOptions,
+  ): Promise<void>;
+  tryRunUserCommand(
+    userInput: string,
+    options?: RunStartInteractiveTurnOptions,
+  ): Promise<boolean>;
   executeTurn(
     userInput: string,
     interactiveMode: boolean,
@@ -263,17 +276,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   });
 
   const interactiveDiagnosticsEnabled = input.interactiveDiagnosticsEnabled ?? false;
-  const stdoutState = process.stdout as unknown as { isTTY?: boolean };
-  const shouldEmitProgressLine = !Boolean(stdoutState.isTTY);
-  const activityTracker = createInteractiveActivityTracker(
-    shouldEmitProgressLine
-      ? {
-        writeProgressLine: (line) => {
-          process.stdout.write(line);
-        },
-      }
-      : {},
-  );
+  const activityTracker = createInteractiveActivityTracker();
   const writeInteractiveStderr = (message: string): void => {
     if (interactiveDiagnosticsEnabled) {
       activityTracker.observeStderrChunk(message);
@@ -312,18 +315,33 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     writeHandoff: input.writeManualHandoff,
     isPlanMode: input.isPlanMode,
     showPlanStatus: input.showPlanStatus,
-    enterPlan: input.enterPlan,
-    applyPlan: input.applyPlan,
+    enterPlan: (goal) =>
+      input.enterPlan(goal, {
+        writeStderr: writeInteractiveStderr,
+      }),
+    applyPlan: (extra) =>
+      input.applyPlan(extra, {
+        writeStderr: writeInteractiveStderr,
+      }),
     cancelPlan: input.cancelPlan,
     requestPlanInterrupt: input.requestPlanInterrupt,
     requestRuntimeInterrupt: input.requestRuntimeInterrupt,
-    runPlanTurn: input.runPlanTurn,
+    runPlanTurn: (userInput) =>
+      input.runPlanTurn(userInput, {
+        writeStderr: writeInteractiveStderr,
+      }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
     openPlanMenu: input.openPlanMenu,
     promptSkillCreatorRequirement: input.promptSkillCreatorRequirement,
-    runSkillCreator: input.runSkillCreator,
-    tryRunUserCommand: input.tryRunUserCommand,
+    runSkillCreator: (requirement) =>
+      input.runSkillCreator(requirement, {
+        writeStderr: writeInteractiveStderr,
+      }),
+    tryRunUserCommand: (userInput) =>
+      input.tryRunUserCommand(userInput, {
+        writeStderr: writeInteractiveStderr,
+      }),
     executeTurn: async (userInput, interactiveMode) => {
       const inlineAttachmentResolution = resolveInlineAttachmentsFromInput(userInput);
       if (interactiveMode) {
@@ -393,6 +411,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       contextWindowTokens: statusContextWindowTokens,
       sessionId: input.getActiveSessionId(),
       sessionTopic: input.getActiveSessionTopic(),
+      planMode: input.isPlanMode(),
       terminalColumns,
       activityText: activityTracker.readPromptActivity(),
       promptLabel: "› ",
@@ -413,12 +432,18 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
     getSlashSuggestions,
     getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
-    onEscapeInterrupt: async () => {
+    onEscapeInterrupt: async (phase) => {
       if (input.isPlanMode()) {
+        if (phase === "idle") {
+          await input.cancelPlan();
+          return;
+        }
         await input.requestPlanInterrupt("cli_esc");
         return;
       }
-      await input.requestRuntimeInterrupt("cli_esc");
+      if (phase === "running") {
+        await input.requestRuntimeInterrupt("cli_esc");
+      }
     },
   });
 
