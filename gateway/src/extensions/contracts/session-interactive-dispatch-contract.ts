@@ -50,6 +50,9 @@ async function runDispatchCase(
     clearPendingAsk: () => {
       events.push("clearPendingAsk");
     },
+    answerPendingAsk: async (answer) => {
+      events.push(`answerPendingAsk:${answer}`);
+    },
     showHelp: () => {
       events.push("showHelp");
     },
@@ -188,6 +191,8 @@ async function main(): Promise<void> {
   const askQueueCommand = await runDispatchCase("/ask");
   const askCancelCommand = await runDispatchCase("/ask cancel");
   const askClearCommand = await runDispatchCase("/ask clear");
+  const askAnswerCommand = await runDispatchCase("/ask answer fast");
+  const askAnswerKeepCaseCommand = await runDispatchCase("/ask answer KeepCase Value");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
@@ -199,9 +204,11 @@ async function main(): Promise<void> {
   const pendingAskBlockedStatus = await runDispatchCase("/status", { pendingAskCount: 2 });
   const pendingAskAllowHelp = await runDispatchCase("/help", { pendingAskCount: 2 });
   const pendingAskAllowInterrupt = await runDispatchCase("/interrupt", { pendingAskCount: 2 });
+  const pendingAskAllowSessions = await runDispatchCase("/sessions", { pendingAskCount: 2 });
   const pendingAskAllowAskQueue = await runDispatchCase("/ask", { pendingAskCount: 2 });
   const pendingAskAllowAskCancel = await runDispatchCase("/ask cancel", { pendingAskCount: 2 });
   const pendingAskAllowAskClear = await runDispatchCase("/ask clear", { pendingAskCount: 2 });
+  const pendingAskAllowAskAnswer = await runDispatchCase("/ask answer 2", { pendingAskCount: 2 });
   const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
 
   const payload = {
@@ -280,6 +287,12 @@ async function main(): Promise<void> {
     ask_cancel_hits_run_turn: includesEvent(askCancelCommand.events, "runTurn:/ask cancel"),
     ask_clear_dispatched: includesEvent(askClearCommand.events, "clearPendingAsk"),
     ask_clear_hits_run_turn: includesEvent(askClearCommand.events, "runTurn:/ask clear"),
+    ask_answer_dispatched: includesEvent(askAnswerCommand.events, "answerPendingAsk:fast"),
+    ask_answer_hits_run_turn: includesEvent(askAnswerCommand.events, "runTurn:/ask answer fast"),
+    ask_answer_preserves_case: includesEvent(
+      askAnswerKeepCaseCommand.events,
+      "answerPendingAsk:KeepCase Value",
+    ),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
     commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),
@@ -329,6 +342,10 @@ async function main(): Promise<void> {
       pendingAskAllowInterrupt.events,
       "requestRuntimeInterrupt",
     ),
+    pending_ask_sessions_allowed: includesEvent(
+      pendingAskAllowSessions.events,
+      "openSessionMenu:sessions",
+    ),
     pending_ask_queue_allowed: includesEvent(
       pendingAskAllowAskQueue.events,
       "showPendingAskQueue",
@@ -340,6 +357,10 @@ async function main(): Promise<void> {
     pending_ask_clear_allowed: includesEvent(
       pendingAskAllowAskClear.events,
       "clearPendingAsk",
+    ),
+    pending_ask_answer_allowed: includesEvent(
+      pendingAskAllowAskAnswer.events,
+      "answerPendingAsk:2",
     ),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,

@@ -713,6 +713,9 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_clear_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_clear_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.ask_answer_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_answer_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.ask_answer_preserves_case, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_prompted, true);
@@ -731,9 +734,11 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_blocked_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_sessions_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_answer_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_blocked_warned, false);
   logStep("session-interactive-dispatch-contract");
@@ -792,6 +797,30 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_escape_ignored, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
   logStep("run-start-input-keybinding-contract");
+
+  const runStartPlanModeContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-plan-mode-contract.ts",
+  ]);
+  assertSuccess("run-start-plan-mode-contract", runStartPlanModeContractResult);
+  const runStartPlanModeContractPayload = parseJsonOutput(
+    "run-start-plan-mode-contract",
+    runStartPlanModeContractResult.stdout,
+  );
+  assert.equal(runStartPlanModeContractPayload.semantic_turn_returns_success, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_failure_not_marked, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_stdout_has_degrade_hint, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_events_has_degraded, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_events_no_turn_failed, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_plan_mode_still_plan_only, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_active_plan_kept, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_turn_returns_failure, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_failure_marked, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_turn_failed, true);
+  logStep("run-start-plan-mode-contract");
 
   const userCommandsContractResult = runCommand("npx", [
     "--yes",
@@ -1118,6 +1147,12 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(askUserToolContractPayload.queue_list_size_after_dismiss), 1);
   assert.equal(Number(askUserToolContractPayload.queue_clear_removed_count), 1);
   assert.equal(askUserToolContractPayload.queue_empty_after_clear, true);
+  assert.equal(askUserToolContractPayload.answer_numeric_index_maps_option, true);
+  assert.equal(askUserToolContractPayload.answer_full_width_index_maps_option, true);
+  assert.equal(askUserToolContractPayload.answer_case_insensitive_option_maps_canonical, true);
+  assert.equal(askUserToolContractPayload.answer_blank_falls_back_default, true);
+  assert.equal(askUserToolContractPayload.queue_ttl_prune_removed_expired, true);
+  assert.equal(askUserToolContractPayload.queue_ttl_prune_keeps_fresh, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
   assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
   logStep("ask-user-tool-contract");
@@ -1361,6 +1396,10 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_ctx_ratio), 0.42);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_estimated_tokens), 512);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
+  assert.equal(interactiveBindingsPayload.ask_answer_without_pending_skips_execute, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_without_pending_warned, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_with_pending_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_with_pending_input, "fast");
   logStep("run-start-interactive-bindings-contract");
 
   const modelOpsContractResult = runCommand("npx", [

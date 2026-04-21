@@ -82,6 +82,54 @@ const dismissed = sessionStore.dismissCurrent(sessionKey);
 const queueNextAfterDismissIsQ3 = sessionStore.get(sessionKey)?.questionId === "ask_q_003";
 const queueListSizeAfterDismiss = sessionStore.list(sessionKey).length;
 const removedByClear = sessionStore.clear(sessionKey);
+const optionEnvelope = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_004",
+  blocking_node_id: "node.answer.by_index",
+  question: "Select execution profile",
+  options: ["safe", "fast"],
+  default_on_timeout: "safe",
+  resume_token: "resume_004",
+});
+if (!optionEnvelope) {
+  throw new Error("failed to normalize option ask_user payload");
+}
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByIndex = sessionStore.resolve(sessionKey, "2");
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByFullWidthIndex = sessionStore.resolve(sessionKey, "２");
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByOptionText = sessionStore.resolve(sessionKey, "FAST");
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByBlank = sessionStore.resolve(sessionKey, "   ");
+const expiredEnvelope = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_005",
+  blocking_node_id: "node.expired",
+  question: "Expired question",
+  options: ["yes", "no"],
+  default_on_timeout: "no",
+  resume_token: "resume_005",
+  createdAt: "2026-01-01T00:00:00.000Z",
+});
+const freshEnvelope = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_006",
+  blocking_node_id: "node.fresh",
+  question: "Fresh question",
+  options: ["yes", "no"],
+  default_on_timeout: "yes",
+  resume_token: "resume_006",
+  createdAt: "2026-01-01T00:00:12.000Z",
+});
+if (!expiredEnvelope || !freshEnvelope) {
+  throw new Error("failed to normalize ttl ask_user payload");
+}
+sessionStore.set(sessionKey, expiredEnvelope);
+sessionStore.set(sessionKey, freshEnvelope);
+const expiredByTtl = sessionStore.pruneExpired(sessionKey, {
+  maxAgeMs: 10_000,
+  nowMs: Date.parse("2026-01-01T00:00:20.000Z"),
+});
+const remainingAfterTtlPrune = sessionStore.list(sessionKey);
+sessionStore.clear(sessionKey);
 
 const payload = {
   protocol_prefix_removed: promptContext.promptParts.every((part) => part.includes("[AskUser Resolution]")),
@@ -97,6 +145,12 @@ const payload = {
   queue_list_size_after_dismiss: queueListSizeAfterDismiss,
   queue_clear_removed_count: removedByClear,
   queue_empty_after_clear: sessionStore.size(sessionKey) === 0,
+  answer_numeric_index_maps_option: resolvedByIndex?.answer === "fast",
+  answer_full_width_index_maps_option: resolvedByFullWidthIndex?.answer === "fast",
+  answer_case_insensitive_option_maps_canonical: resolvedByOptionText?.answer === "fast",
+  answer_blank_falls_back_default: resolvedByBlank?.answer === "safe",
+  queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.questionId === "ask_q_005",
+  queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.questionId === "ask_q_006",
   issued_display_has_reply_hint: display.includes("reply with your choice"),
   issued_event_has_question_id: formatAskUserIssuedEvent(nextEnvelope).includes("question_id=ask_q_002"),
 };

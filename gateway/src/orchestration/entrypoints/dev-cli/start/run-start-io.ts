@@ -655,12 +655,17 @@ export function shouldHighlightSlashInputToken(input: {
   suggestions: readonly SessionSlashSuggestion[];
 }): boolean {
   const normalizedInput = input.activeLineInput.trim();
-  if (!normalizedInput.startsWith("/")) {
+  const inputToken = normalizedInput.split(/\s+/, 1)[0] ?? "";
+  if (!inputToken.startsWith("/")) {
     return false;
   }
-  return input.suggestions.some(
-    (suggestion) => suggestion.command.trim() === normalizedInput,
-  );
+  return input.suggestions.some((suggestion) => {
+    const suggestionToken = suggestion.command.trim().split(/\s+/, 1)[0] ?? "";
+    if (!suggestionToken) {
+      return false;
+    }
+    return suggestionToken === inputToken;
+  });
 }
 
 function stripBracketedPasteMarkers(value: string): string {

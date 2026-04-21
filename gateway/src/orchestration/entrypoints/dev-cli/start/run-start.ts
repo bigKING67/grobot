@@ -801,6 +801,15 @@ export async function runStart(
         output.writeStderr(`[experience-scheduler] event=tick_error detail=${error}\n`);
       }
       for (const trigger of tickResult.triggered) {
+        const pendingAskDepth = gaMechanismRuntime.getPendingAskQueueSize(
+          runtimeState.getSessionKey(),
+        );
+        if (pendingAskDepth > 0) {
+          writeStartupDiagnostics(
+            `[experience-scheduler] event=task_skipped reason=pending_ask task=${trigger.taskId} queue_depth=${String(pendingAskDepth)}\n`,
+          );
+          continue;
+        }
         if (runtimeState.getPlanMode() === "plan_only") {
           writeStartupDiagnostics(
             `[experience-scheduler] event=task_skipped reason=plan_mode task=${trigger.taskId}\n`,

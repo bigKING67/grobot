@@ -15,6 +15,7 @@ export interface SessionInteractiveHandlers {
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
   clearPendingAsk(): void;
+  answerPendingAsk(answer: string): Promise<void>;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -59,6 +60,7 @@ export function buildInteractiveHelpText(): string {
 const PENDING_ASK_ALLOWED_SLASH_COMMANDS = new Set([
   "ask",
   "help",
+  "sessions",
   "exit",
   "quit",
   "interrupt",
@@ -97,7 +99,7 @@ export async function dispatchSessionInteractiveInput(
   if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
     const queueSize = handlers.getPendingAskQueueSize();
     handlers.writeStdout(
-      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题、/ask clear 清空队列。\n\n`,
+      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题、/ask clear 清空队列（如需切会话可用 /sessions）。\n\n`,
     );
     return "continue";
   }

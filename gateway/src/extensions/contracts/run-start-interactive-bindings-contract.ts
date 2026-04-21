@@ -4,6 +4,7 @@ import {
   createGaMechanismRuntime,
   type GaSessionStateSnapshot,
 } from "../../orchestration/entrypoints/dev-cli/services/ga-mechanism-runtime";
+import { normalizeAskUserEnvelopeFromPayload } from "../../tools/ask-user";
 import {
   type SessionPlanMeta,
   type SessionPlanMode,
@@ -174,6 +175,8 @@ async function main(): Promise<void> {
   let switchResult = true;
   const switchEvents: string[] = [];
   const gaMechanismRuntime = createGaMechanismRuntime();
+  let executeTurnCount = 0;
+  let lastExecuteTurnInput = "";
   let handoffReason = "";
   let handoffToStderr = true;
   let autoExitToStderr = true;
@@ -197,7 +200,11 @@ async function main(): Promise<void> {
       },
       continueFromSession: async () => undefined,
     },
-    executeTurn: async () => 0,
+    executeTurn: async (userInput) => {
+      executeTurnCount += 1;
+      lastExecuteTurnInput = userInput;
+      return 0;
+    },
   };
 
   const interactiveModeInput = createRunStartInteractiveModeInput({
@@ -242,6 +249,21 @@ async function main(): Promise<void> {
   interactiveModeInput.setStatusSegmentEnabled("tokens", false);
   interactiveModeInput.writeManualHandoff();
   interactiveModeInput.writeAutoExitHandoffIfNeeded();
+  await interactiveModeInput.answerPendingAsk("fast");
+  const executeCountAfterNoPendingAnswer = executeTurnCount;
+  const pendingAsk = normalizeAskUserEnvelopeFromPayload({
+    question_id: "ask_q_contract_001",
+    blocking_node_id: "node.contract.ask",
+    question: "Choose profile",
+    options: ["safe", "fast"],
+    default_on_timeout: "safe",
+    resume_token: "resume_contract_001",
+  });
+  if (!pendingAsk) {
+    throw new Error("failed to build contract ask-user envelope");
+  }
+  gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAsk);
+  await interactiveModeInput.answerPendingAsk("fast");
   const statusConfigAfter = interactiveModeInput.getStatusLineConfig();
 
   const outputText = stdoutChunks.join("");
@@ -272,6 +294,10 @@ async function main(): Promise<void> {
     status_theme_after_update: statusConfigAfter.theme,
     status_layout_after_update: statusConfigAfter.layoutMode,
     status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
+    ask_answer_without_pending_skips_execute: executeCountAfterNoPendingAnswer === 0,
+    ask_answer_without_pending_warned: outputText.includes("[ask-user] no pending question to answer."),
+    ask_answer_with_pending_executes_turn: executeTurnCount === executeCountAfterNoPendingAnswer + 1,
+    ask_answer_with_pending_input: lastExecuteTurnInput,
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

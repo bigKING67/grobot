@@ -10,6 +10,7 @@ const REFLECTION_COOLDOWN_MS = 5 * 60 * 1000;
 const REFLECTION_MIN_FAILURES = 2;
 const ASK_USER_HINT_COOLDOWN_MS = 2 * 60 * 1000;
 const ASK_USER_HINT_FAILURE_THRESHOLD = 2;
+const ASK_USER_PENDING_MAX_AGE_MS_DEFAULT = 6 * 60 * 60 * 1000;
 const SIGNATURE_STOPWORDS = new Set([
   "please",
   "using",
@@ -141,6 +142,7 @@ export interface GaSessionStateSnapshot {
 
 export interface GaMechanismRuntime {
   buildAskUserDisplay(envelope: AskUserEnvelope): string;
+  purgeExpiredPendingAsk(sessionKey: string): AskUserEnvelope[];
   getPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
   listPendingAsk(sessionKey: string): AskUserEnvelope[];
   getPendingAskQueueSize(sessionKey: string): number;
@@ -193,6 +195,26 @@ function parseOptionalFiniteNumber(value: unknown): number | undefined {
     return undefined;
   }
   return value;
+}
+
+function parseTimestampMs(value: string): number | undefined {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function resolveAskUserPendingMaxAgeMs(): number {
+  const rawMinutes = process.env.GROBOT_ASK_USER_PENDING_TTL_MINUTES;
+  if (typeof rawMinutes !== "string") {
+    return ASK_USER_PENDING_MAX_AGE_MS_DEFAULT;
+  }
+  const parsedMinutes = Number.parseInt(rawMinutes, 10);
+  if (!Number.isFinite(parsedMinutes) || parsedMinutes <= 0) {
+    return ASK_USER_PENDING_MAX_AGE_MS_DEFAULT;
+  }
+  return parsedMinutes * 60 * 1000;
 }
 
 function parseMemoryLevel(value: unknown): GaMemoryLevel | undefined {
@@ -651,6 +673,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
   const pendingAskBySession = new AskUserSessionStore();
   const failureStateBySession = new Map<string, SessionFailureState>();
   const askUserHintAtBySession = new Map<string, number>();
+  const pendingAskMaxAgeMs = resolveAskUserPendingMaxAgeMs();
 
   const writeMemory = (request: GaMemoryWriteRequest): GaMemoryWriteResult => {
     const text = cleanText(request.text);
@@ -841,19 +864,64 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
     reflectionBySession.set(input.sessionKey, queue);
   };
 
+  const purgeExpiredPendingAsk = (
+    sessionKey: string,
+    reason: "read" | "write" | "resolve" | "snapshot" = "read",
+  ): AskUserEnvelope[] => {
+    const expired = pendingAskBySession.pruneExpired(sessionKey, {
+      maxAgeMs: pendingAskMaxAgeMs,
+    });
+    if (expired.length <= 0) {
+      return [];
+    }
+    let oldestAgeSeconds = 0;
+    const nowMs = Date.now();
+    for (const ask of expired) {
+      const createdAtMs = parseTimestampMs(ask.createdAt);
+      if (typeof createdAtMs !== "number") {
+        continue;
+      }
+      const ageSeconds = Math.max(0, Math.floor((nowMs - createdAtMs) / 1000));
+      if (ageSeconds > oldestAgeSeconds) {
+        oldestAgeSeconds = ageSeconds;
+      }
+    }
+    writeMemory({
+      sessionKey,
+      memoryLevel: "L1",
+      text: `ask_user expired removed=${String(expired.length)} reason=${reason} ttl_seconds=${String(Math.floor(pendingAskMaxAgeMs / 1000))} oldest_age_seconds=${String(oldestAgeSeconds)}`,
+      sourceEventType: "checkpoint_updated",
+      executionVerified: false,
+      tags: ["ask-user", "expired"],
+      confidence: 0.8,
+    });
+    return expired;
+  };
+
   return {
     buildAskUserDisplay: (envelope): string => buildAskUserDisplay(envelope),
-    getPendingAsk: (sessionKey): AskUserEnvelope | undefined =>
-      pendingAskBySession.get(sessionKey),
-    listPendingAsk: (sessionKey): AskUserEnvelope[] =>
-      pendingAskBySession.list(sessionKey),
-    getPendingAskQueueSize: (sessionKey): number =>
-      pendingAskBySession.size(sessionKey),
-    dismissPendingAsk: (sessionKey): AskUserEnvelope | undefined =>
-      pendingAskBySession.dismissCurrent(sessionKey),
+    purgeExpiredPendingAsk: (sessionKey): AskUserEnvelope[] =>
+      purgeExpiredPendingAsk(sessionKey, "read"),
+    getPendingAsk: (sessionKey): AskUserEnvelope | undefined => {
+      purgeExpiredPendingAsk(sessionKey, "read");
+      return pendingAskBySession.get(sessionKey);
+    },
+    listPendingAsk: (sessionKey): AskUserEnvelope[] => {
+      purgeExpiredPendingAsk(sessionKey, "read");
+      return pendingAskBySession.list(sessionKey);
+    },
+    getPendingAskQueueSize: (sessionKey): number => {
+      purgeExpiredPendingAsk(sessionKey, "read");
+      return pendingAskBySession.size(sessionKey);
+    },
+    dismissPendingAsk: (sessionKey): AskUserEnvelope | undefined => {
+      purgeExpiredPendingAsk(sessionKey, "read");
+      return pendingAskBySession.dismissCurrent(sessionKey);
+    },
     clearPendingAsk: (sessionKey): number =>
       pendingAskBySession.clear(sessionKey),
     registerPendingAsk: (sessionKey, envelope): void => {
+      purgeExpiredPendingAsk(sessionKey, "write");
       const queueDepthBefore = pendingAskBySession.size(sessionKey);
       pendingAskBySession.set(sessionKey, envelope);
       const queueDepth = pendingAskBySession.size(sessionKey);
@@ -870,6 +938,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       });
     },
     resolvePendingAsk: (sessionKey, answer): ResolvedAskUser | undefined => {
+      purgeExpiredPendingAsk(sessionKey, "resolve");
       const resolved = pendingAskBySession.resolve(sessionKey, answer, {
         cleanText,
       });
@@ -918,6 +987,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       }
     },
     snapshotSession: (sessionKey): GaSessionStateSnapshot | undefined => {
+      purgeExpiredPendingAsk(sessionKey, "snapshot");
       const memory = [...(memoryBySession.get(sessionKey) ?? [])];
       const skillCards = [...(skillCardsBySession.get(sessionKey) ?? [])];
       const reflectionQueue = [...(reflectionBySession.get(sessionKey) ?? [])];
@@ -942,6 +1012,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
     registerTurnSuccess,
     registerTurnFailure,
     buildAskUserClarificationHint: (sessionKey, userText): string => {
+      purgeExpiredPendingAsk(sessionKey, "read");
       if (pendingAskBySession.size(sessionKey) > 0) {
         return "";
       }

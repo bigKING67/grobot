@@ -671,7 +671,19 @@ export function createRunStartInteractiveModeInput(
     );
   };
 
+  const purgeExpiredPendingAsk = (notify: boolean): number => {
+    const sessionKey = input.runtimeState.getSessionKey();
+    const expired = input.gaMechanismRuntime.purgeExpiredPendingAsk(sessionKey);
+    if (notify && expired.length > 0) {
+      input.output.writeStdout(
+        `[ask-user] removed ${String(expired.length)} expired pending question(s).\n\n`,
+      );
+    }
+    return expired.length;
+  };
+
   const showPendingAskQueue = (): void => {
+    purgeExpiredPendingAsk(true);
     const sessionKey = input.runtimeState.getSessionKey();
     const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
     if (queue.length === 0) {
@@ -706,6 +718,7 @@ export function createRunStartInteractiveModeInput(
   };
 
   const cancelPendingAsk = (): void => {
+    purgeExpiredPendingAsk(true);
     const sessionKey = input.runtimeState.getSessionKey();
     const dismissed = input.gaMechanismRuntime.dismissPendingAsk(sessionKey);
     if (!dismissed) {
@@ -727,6 +740,7 @@ export function createRunStartInteractiveModeInput(
   };
 
   const clearPendingAsk = (): void => {
+    purgeExpiredPendingAsk(true);
     const sessionKey = input.runtimeState.getSessionKey();
     const removed = input.gaMechanismRuntime.clearPendingAsk(sessionKey);
     if (removed <= 0) {
@@ -743,6 +757,26 @@ export function createRunStartInteractiveModeInput(
           "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
         );
       });
+    }
+  };
+
+  const answerPendingAsk = async (answer: string): Promise<void> => {
+    const normalized = compactSingleLine(answer, 400).trim();
+    if (!normalized) {
+      input.output.writeStdout("[ask-user] usage: /ask answer <text>\n\n");
+      return;
+    }
+    purgeExpiredPendingAsk(true);
+    const queueDepth = input.gaMechanismRuntime.getPendingAskQueueSize(
+      input.runtimeState.getSessionKey(),
+    );
+    if (queueDepth <= 0) {
+      input.output.writeStdout("[ask-user] no pending question to answer.\n\n");
+      return;
+    }
+    const code = await input.executeTurn(normalized, true);
+    if (code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE) {
+      input.runtimeState.markFailureObserved();
     }
   };
 
@@ -810,6 +844,7 @@ export function createRunStartInteractiveModeInput(
     showPendingAskQueue,
     cancelPendingAsk,
     clearPendingAsk,
+    answerPendingAsk,
     showHealthStatus: () => {
       input.output.writeStdout(
         formatProviderHealthSnapshot({

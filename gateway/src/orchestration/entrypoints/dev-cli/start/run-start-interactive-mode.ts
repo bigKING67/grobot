@@ -26,6 +26,7 @@ export interface RunStartInteractiveTurnOptions {
 export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
 
 const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
+  "/sessions",
   "/ask",
   "/help",
   "/interrupt",
@@ -220,6 +221,7 @@ export interface RunStartInteractiveModeInput {
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
   clearPendingAsk(): void;
+  answerPendingAsk(answer: string): Promise<void>;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
   refreshModelCatalogCache(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -381,6 +383,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showPendingAskQueue: input.showPendingAskQueue,
     cancelPendingAsk: input.cancelPendingAsk,
     clearPendingAsk: input.clearPendingAsk,
+    answerPendingAsk: input.answerPendingAsk,
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },

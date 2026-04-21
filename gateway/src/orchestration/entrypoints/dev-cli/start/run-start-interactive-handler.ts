@@ -15,6 +15,7 @@ interface CreateRunStartInteractiveHandlerInput {
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
   clearPendingAsk(): void;
+  answerPendingAsk(answer: string): Promise<void>;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -69,6 +70,9 @@ export function createRunStartInteractiveHandler(
       showPendingAskQueue: input.showPendingAskQueue,
       cancelPendingAsk: input.cancelPendingAsk,
       clearPendingAsk: input.clearPendingAsk,
+      answerPendingAsk: async (answer) => {
+        await input.answerPendingAsk(answer);
+      },
       showHelp: input.showHelp,
       showHealthStatus: input.showHealthStatus,
       openModelMenu: async (withInputPaused) => {

@@ -38,7 +38,8 @@ interface ParsedHistoryCommand {
 }
 
 interface ParsedAskCommand {
-  kind: "show_queue" | "cancel_current" | "clear_all" | "invalid";
+  kind: "show_queue" | "cancel_current" | "clear_all" | "answer_current" | "invalid";
+  answer?: string;
   reason?: string;
 }
 
@@ -200,19 +201,27 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   if (!input.startsWith("/ask")) {
     return { kind: "invalid", reason: "command must start with /ask" };
   }
-  const rest = input.slice("/ask".length).trim().toLowerCase();
-  if (!rest || rest === "queue") {
+  const restRaw = input.slice("/ask".length).trim();
+  if (!restRaw || /^queue$/i.test(restRaw)) {
     return { kind: "show_queue" };
   }
-  if (rest === "cancel") {
+  if (/^cancel$/i.test(restRaw)) {
     return { kind: "cancel_current" };
   }
-  if (rest === "clear") {
+  if (/^clear$/i.test(restRaw)) {
     return { kind: "clear_all" };
+  }
+  const answerMatch = restRaw.match(/^answer(?:\s+([\s\S]+))?$/i);
+  if (answerMatch) {
+    const answer = (answerMatch[1] ?? "").trim();
+    if (!answer) {
+      return { kind: "invalid", reason: "usage: /ask answer <text>" };
+    }
+    return { kind: "answer_current", answer };
   }
   return {
     kind: "invalid",
-    reason: "usage: /ask | /ask queue | /ask cancel | /ask clear",
+    reason: "usage: /ask | /ask queue | /ask cancel | /ask clear | /ask answer <text>",
   };
 }
 
@@ -440,11 +449,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         handlers.clearPendingAsk();
         return "continue";
       }
+      if (parsed.kind === "answer_current") {
+        await handlers.answerPendingAsk(parsed.answer ?? "");
+        return "continue";
+      }
       handlers.showPendingAskQueue();
       return "continue";
     },
     helpLines: [
-      "  /ask [queue|cancel|clear]  Show pending ask-user queue, cancel current one, or clear all",
+      "  /ask [queue|cancel|clear|answer <text>]  Show queue, cancel current, clear all, or answer current question",
     ],
   },
   {
@@ -626,7 +639,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask [queue|cancel|clear]", description: "Show ask-user queue, cancel current question, or clear all" },
+  { command: "/ask [queue|cancel|clear|answer <text>]", description: "Show queue, cancel current question, clear all, or answer current" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },

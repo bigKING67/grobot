@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   const slashMenu = resolveSlashSuggestionApplyResult("/model");
   const slashCommandsMenu = resolveSlashSuggestionApplyResult("/commands");
   const slashPlanMenu = resolveSlashSuggestionApplyResult("/plan");
-  const slashSkillCreatorMenu = resolveSlashSuggestionApplyResult("/skill-creator <需求>");
+  const slashSkillCreatorMenu = resolveSlashSuggestionApplyResult("/skill-creator");
   const slashOverlayPartial = formatSlashSuggestionPanel(
     [{ command: "/exit", description: "Exit interactive mode" }],
     "/e",
@@ -56,6 +56,10 @@ async function main(): Promise<void> {
   const slashInputExactHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/exit",
     suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
+  });
+  const slashInputWithArgsHighlight = shouldHighlightSlashInputToken({
+    activeLineInput: "/plan 帮我写一份抖音直播规划",
+    suggestions: [{ command: "/plan", description: "Enter plan mode" }],
   });
 
   const enterMenuAction = resolveSlashSuggestionKeyAction({
@@ -187,7 +191,7 @@ async function main(): Promise<void> {
     slash_apply_plan_menu_submit:
       slashPlanMenu.command === "/plan" && slashPlanMenu.submitImmediately,
     slash_apply_skill_creator_requires_input:
-      slashSkillCreatorMenu.command === "/skill-creator " && !slashSkillCreatorMenu.submitImmediately,
+      slashSkillCreatorMenu.command === "/skill-creator" && slashSkillCreatorMenu.submitImmediately,
     slash_key_enter_applies_and_submits:
       enterMenuAction.kind === "apply"
       && enterMenuAction.appliedCommand === "/model"
@@ -215,6 +219,8 @@ async function main(): Promise<void> {
       !slashInputPartialHighlight,
     slash_input_exact_highlighted:
       slashInputExactHighlight,
+    slash_input_with_args_highlighted:
+      slashInputWithArgsHighlight,
     submit_return_detected: submitReturn === "submit",
     submit_enter_detected: submitEnter === "submit",
     submit_legacy_sequence_detected: submitLegacySequence === "submit",
