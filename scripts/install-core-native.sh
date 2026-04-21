@@ -34,6 +34,31 @@ detect_platform_key() {
   esac
 }
 
+resolve_github_token() {
+  if [ -n "${GROBOT_GITHUB_TOKEN:-}" ]; then
+    printf '%s' "${GROBOT_GITHUB_TOKEN}"
+    return 0
+  fi
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf '%s' "${GITHUB_TOKEN}"
+    return 0
+  fi
+  if [ -n "${GH_TOKEN:-}" ]; then
+    printf '%s' "${GH_TOKEN}"
+    return 0
+  fi
+}
+
+curl_with_optional_auth() {
+  local url="$1"
+  local github_token="$2"
+  if [ -n "$github_token" ] && [[ "$url" == *"github.com"* ]]; then
+    curl -fsSL -H "Authorization: Bearer ${github_token}" "$url"
+    return 0
+  fi
+  curl -fsSL "$url"
+}
+
 asset_file_for_platform() {
   local platform="$1"
   case "$platform" in
@@ -45,9 +70,15 @@ asset_file_for_platform() {
 
 resolve_latest_tag() {
   local repo="$1"
+  local github_token="$2"
   local api_url="https://api.github.com/repos/${repo}/releases/latest"
   local release_json
-  release_json="$(curl -fsSL "$api_url")"
+  if ! release_json="$(curl_with_optional_auth "$api_url" "$github_token")"; then
+    echo "failed to query latest release for repo: ${repo}" >&2
+    echo "url: ${api_url}" >&2
+    echo "hint: pass --repo <owner/name> or set GROBOT_CORE_RELEASE_REPO; private repo requires GROBOT_GITHUB_TOKEN/GITHUB_TOKEN." >&2
+    return 2
+  fi
   node -e '
     try {
       const data = JSON.parse(process.argv[1] || "{}");
@@ -95,6 +126,7 @@ PLATFORM_KEY="$(detect_platform_key)"
 CORE_DIR=""
 NO_CURRENT=0
 ALLOW_STUB=0
+GITHUB_TOKEN_VALUE="$(resolve_github_token)"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -221,7 +253,7 @@ if [ -z "$DOWNLOAD_URL" ]; then
   fi
   RELEASE_TAG="$VERSION_TAG"
   if [ "$RELEASE_TAG" = "latest" ]; then
-    RELEASE_TAG="$(resolve_latest_tag "$RELEASE_REPO")"
+    RELEASE_TAG="$(resolve_latest_tag "$RELEASE_REPO" "$GITHUB_TOKEN_VALUE")"
   fi
   ASSET_FILE="$(asset_file_for_platform "$PLATFORM_KEY")"
   if [ -z "$ASSET_FILE" ]; then
@@ -231,7 +263,12 @@ if [ -z "$DOWNLOAD_URL" ]; then
   DOWNLOAD_URL="https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/${ASSET_FILE}"
   if [ -z "$EXPECTED_SHA256" ]; then
     MANIFEST_URL="https://github.com/${RELEASE_REPO}/releases/download/${RELEASE_TAG}/core-artifacts.manifest.json"
-    MANIFEST_JSON="$(curl -fsSL "$MANIFEST_URL")"
+    if ! MANIFEST_JSON="$(curl_with_optional_auth "$MANIFEST_URL" "$GITHUB_TOKEN_VALUE")"; then
+      echo "failed to fetch manifest for release: ${RELEASE_REPO}@${RELEASE_TAG}" >&2
+      echo "url: ${MANIFEST_URL}" >&2
+      echo "hint: ensure release assets are published, or pass --url + --sha256 directly." >&2
+      exit 1
+    fi
     EXPECTED_SHA256="$(resolve_manifest_sha256 "$MANIFEST_JSON" "$PLATFORM_KEY")"
   fi
 fi

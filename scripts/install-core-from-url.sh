@@ -23,6 +23,21 @@ CORE_DIR=""
 NO_CURRENT=0
 ALLOW_STUB=0
 
+resolve_github_token() {
+  if [ -n "${GROBOT_GITHUB_TOKEN:-}" ]; then
+    printf '%s' "${GROBOT_GITHUB_TOKEN}"
+    return 0
+  fi
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf '%s' "${GITHUB_TOKEN}"
+    return 0
+  fi
+  if [ -n "${GH_TOKEN:-}" ]; then
+    printf '%s' "${GH_TOKEN}"
+    return 0
+  fi
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --url)
@@ -109,7 +124,20 @@ trap cleanup EXIT
 
 echo "downloading core binary..."
 echo "  url: $DOWNLOAD_URL"
-curl -fsSL "$DOWNLOAD_URL" -o "$TMP_BIN"
+GITHUB_TOKEN_VALUE="$(resolve_github_token)"
+if [ -n "$GITHUB_TOKEN_VALUE" ] && [[ "$DOWNLOAD_URL" == *"github.com"* ]]; then
+  if ! curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN_VALUE}" "$DOWNLOAD_URL" -o "$TMP_BIN"; then
+    echo "download failed for url: $DOWNLOAD_URL" >&2
+    echo "hint: verify release asset path and token permission for private repo." >&2
+    exit 1
+  fi
+else
+  if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_BIN"; then
+    echo "download failed for url: $DOWNLOAD_URL" >&2
+    echo "hint: verify URL/release exists, or pass --url and --sha256 explicitly." >&2
+    exit 1
+  fi
+fi
 chmod +x "$TMP_BIN"
 
 ACTUAL_SHA256=""
