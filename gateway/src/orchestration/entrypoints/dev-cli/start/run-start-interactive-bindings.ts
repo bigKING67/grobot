@@ -32,7 +32,7 @@ import {
   runTerminalLinePrompt,
   runTerminalSelectMenu,
 } from "./run-start-io";
-import { compactSingleLine } from "./session-history";
+import { compactSingleLine, type ChatHistoryMessage } from "./session-history";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -72,6 +72,12 @@ interface CreateRunStartInteractiveModeInput {
       writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
+}
+
+interface HistorySearchCandidate {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
 }
 
 function resolveSessionTopicBySessionId(input: {
@@ -175,6 +181,47 @@ function buildSkillCreatorPrompt(input: {
     "用户需求：",
     requirement,
   ].join("\n");
+}
+
+function buildHistorySearchCandidates(rows: readonly ChatHistoryMessage[]): HistorySearchCandidate[] {
+  if (rows.length === 0) {
+    return [];
+  }
+  const recent = [...rows].reverse();
+  const prioritized = [
+    ...recent.filter((row) => row.role === "user"),
+    ...recent.filter((row) => row.role === "assistant"),
+  ];
+  const dedup = new Set<string>();
+  const candidates: HistorySearchCandidate[] = [];
+  for (let index = 0; index < prioritized.length; index += 1) {
+    const row = prioritized[index];
+    const content = row.content.trim();
+    if (!content || dedup.has(content)) {
+      continue;
+    }
+    dedup.add(content);
+    candidates.push({
+      id: `${row.role}-${String(index + 1)}`,
+      role: row.role,
+      content,
+    });
+    if (candidates.length >= 120) {
+      break;
+    }
+  }
+  return candidates;
+}
+
+function filterHistorySearchCandidates(
+  candidates: readonly HistorySearchCandidate[],
+  queryRaw: string,
+): HistorySearchCandidate[] {
+  const query = queryRaw.trim().toLowerCase();
+  if (query.length < 2) {
+    return [...candidates];
+  }
+  return candidates.filter((candidate) => candidate.content.toLowerCase().includes(query));
 }
 
 export function createRunStartInteractiveModeInput(
@@ -545,6 +592,48 @@ export function createRunStartInteractiveModeInput(
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };
 
+  const openHistorySearch = async (historyInput: {
+    currentInput: string;
+  }): Promise<string | undefined> => {
+    if (!process.stdin.isTTY) {
+      return undefined;
+    }
+    const rows = input.runtimeState.getHistoryMessages();
+    const candidates = buildHistorySearchCandidates(rows);
+    if (candidates.length === 0) {
+      input.output.writeStdout("[history] no conversation history yet.\n\n");
+      return undefined;
+    }
+    const query = compactSingleLine(historyInput.currentInput, 120).trim();
+    const filtered = filterHistorySearchCandidates(candidates, query);
+    const effectiveCandidates = filtered.length > 0 ? filtered : candidates;
+    const picked = await runTerminalSelectMenu({
+      title: "History Search (Ctrl+R)",
+      subtitle: query.length >= 2
+        ? filtered.length > 0
+          ? `query: ${compactSingleLine(query, 60)} · matched: ${String(filtered.length)}`
+          : `query: ${compactSingleLine(query, 60)} · no exact match, showing recent history`
+        : "Recent prompts and replies",
+      hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to fill input, Esc to cancel.",
+      items: effectiveCandidates
+        .slice(0, 30)
+        .map((candidate) => ({
+          id: candidate.id,
+          label: compactSingleLine(candidate.content, 120),
+          description: `${candidate.role === "user" ? "user" : "assistant"} · ${compactSingleLine(candidate.content, 240)}`,
+        })),
+      initialIndex: 0,
+    });
+    if (picked.kind === "cancelled") {
+      return undefined;
+    }
+    const selected = effectiveCandidates[picked.index];
+    if (!selected) {
+      return undefined;
+    }
+    return selected.content;
+  };
+
   const sessionTopicCache: {
     sessionId: string;
     topic: string | undefined;
@@ -651,6 +740,7 @@ export function createRunStartInteractiveModeInput(
     openCommandsMenu: userCommandsRuntime.openManagementMenu,
     openPlanMenu,
     showHistory,
+    openHistorySearch,
     promptSkillCreatorRequirement: async (withInputPaused) => {
       const requirementInput = await withInputPaused(() =>
         runTerminalLinePrompt({

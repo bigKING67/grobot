@@ -58,6 +58,9 @@ export interface SessionInputLoopOptions {
   onEscapeInterrupt?: (phase: SessionEscapeInterruptPhase) => void | Promise<void>;
   getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
   getInlineImageHighlightTheme?: () => "plain" | "nerd_font" | "ccline" | undefined;
+  openHistorySearch?: (input: {
+    currentInput: string;
+  }) => Promise<string | undefined>;
 }
 
 type SessionInputPromptValue = string | SessionPromptLayout;
@@ -373,6 +376,41 @@ export function resolveSubmitKeyAction(input: {
     return "newline";
   }
   return "submit";
+}
+
+export function isHistorySearchShortcut(input: {
+  chunk: string;
+  key: KeypressPayload;
+}): boolean {
+  const chunk = String(input.chunk ?? "");
+  const sequence = String(input.key.sequence ?? chunk);
+  const name = (input.key.name ?? "").trim().toLowerCase();
+  if (input.key.ctrl && name === "r") {
+    return true;
+  }
+  return sequence === "\u0012" || chunk === "\u0012";
+}
+
+export type InputShortcutAction = "none" | "sigint" | "history_search";
+
+export function resolveInputShortcutAction(input: {
+  chunk: string;
+  key: KeypressPayload;
+}): InputShortcutAction {
+  const chunk = String(input.chunk ?? "");
+  const sequence = String(input.key.sequence ?? chunk);
+  const name = (input.key.name ?? "").trim().toLowerCase();
+  if (
+    (input.key.ctrl && name === "c")
+    || sequence === "\u0003"
+    || chunk === "\u0003"
+  ) {
+    return "sigint";
+  }
+  if (isHistorySearchShortcut(input)) {
+    return "history_search";
+  }
+  return "none";
 }
 
 export function resolveCoalescedSubmitChunk(
@@ -933,6 +971,7 @@ export async function runSessionInputLoop(
     let lastRenderedLineCount = 0;
     let lastCursorRenderLineIndex = 0;
     let bracketedPasteBuffer = "";
+    let historySearchInFlight = false;
     let activeSlashSuggestionIndex = 0;
     let lastSlashLineInput = "";
     let slashSuggestionsHiddenForLine = "";
@@ -1335,6 +1374,36 @@ export async function runSessionInputLoop(
       });
     };
 
+    const runHistorySearchShortcut = async (): Promise<void> => {
+      if (historySearchInFlight || typeof options.openHistorySearch !== "function") {
+        return;
+      }
+      historySearchInFlight = true;
+      try {
+        const selected = await controls.withInputPaused(() =>
+          options.openHistorySearch?.({
+            currentInput: graphemes.join(""),
+          }) ?? Promise.resolve(undefined));
+        if (closed) {
+          return;
+        }
+        if (typeof selected === "string") {
+          graphemes = splitGraphemes(selected);
+          cursor = graphemes.length;
+          activeSlashSuggestionIndex = 0;
+          lastSlashLineInput = "";
+          slashSuggestionsHiddenForLine = "";
+        }
+        render();
+      } catch {
+        if (!closed) {
+          render();
+        }
+      } finally {
+        historySearchInFlight = false;
+      }
+    };
+
     return await new Promise<{ kind: "submit"; value: string } | { kind: "sigint" }>((resolve) => {
       const finish = (result: { kind: "submit"; value: string } | { kind: "sigint" }): void => {
         if (closed) {
@@ -1530,8 +1599,16 @@ export async function runSessionInputLoop(
         const moveSuggestionUp = key.name === "up" || (key.ctrl && key.name === "p");
         const moveSuggestionDown = key.name === "down" || (key.ctrl && key.name === "n");
 
-        if (key.ctrl && key.name === "c") {
+        const shortcutAction = resolveInputShortcutAction({
+          chunk: rawInput,
+          key,
+        });
+        if (shortcutAction === "sigint") {
           finish({ kind: "sigint" });
+          return;
+        }
+        if (shortcutAction === "history_search") {
+          void runHistorySearchShortcut();
           return;
         }
         if (key.name === "left") {

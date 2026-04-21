@@ -648,7 +648,7 @@ export function listSlashCommandCompatibilityNotes(): string[] {
 
 export function buildSlashCommandHint(): string {
   const wrapped = PRIMARY_HINT_COMMANDS.map((command) => `\`${command}\``);
-  return `Enter message (${wrapped.join(", ")}; Esc: running interrupt, plan idle exits mode):`;
+  return `Enter message (${wrapped.join(", ")}; Ctrl+r: history search, Esc: running interrupt, plan idle exits mode):`;
 }
 
 export function listSlashCommandSuggestions(): readonly SlashCommandSuggestion[] {

@@ -1,8 +1,10 @@
 import {
   decodeMenuInput,
   hasMenuDigitsContinuation,
+  isHistorySearchShortcut,
   resolveCoalescedSubmitChunk,
   resolveFirstMenuPrefixMatchIndex,
+  resolveInputShortcutAction,
   resolveMenuIndexFromDigits,
   resolveSlashSuggestionApplyResult,
   resolveSlashSuggestionKeyAction,
@@ -133,6 +135,26 @@ async function main(): Promise<void> {
     chunk: "\n",
     key: {},
   });
+  const historyShortcutCtrlR = isHistorySearchShortcut({
+    chunk: "\u0012",
+    key: { ctrl: true, name: "r", sequence: "\u0012" },
+  });
+  const historyShortcutRawCtrlR = isHistorySearchShortcut({
+    chunk: "\u0012",
+    key: {},
+  });
+  const shortcutCtrlC = resolveInputShortcutAction({
+    chunk: "\u0003",
+    key: { ctrl: true, name: "c", sequence: "\u0003" },
+  });
+  const shortcutCtrlR = resolveInputShortcutAction({
+    chunk: "\u0012",
+    key: { ctrl: true, name: "r", sequence: "\u0012" },
+  });
+  const shortcutOther = resolveInputShortcutAction({
+    chunk: "a",
+    key: { name: "a", sequence: "a" },
+  });
 
   const payload = {
     menu_enter_is_confirm: enterAction.kind === "enter",
@@ -217,6 +239,11 @@ async function main(): Promise<void> {
       !coalescedEscapeSequence.shouldSubmit
       && coalescedEscapeSequence.normalizedChunk === "\u001b\r",
     submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",
+    shortcut_history_ctrl_r_detected: historyShortcutCtrlR,
+    shortcut_history_raw_ctrl_r_detected: historyShortcutRawCtrlR,
+    shortcut_ctrl_c_sigint: shortcutCtrlC === "sigint",
+    shortcut_ctrl_r_history_search: shortcutCtrlR === "history_search",
+    shortcut_non_matching_none: shortcutOther === "none",
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

@@ -221,6 +221,9 @@ export interface RunStartInteractiveModeInput {
     options?: RunStartInteractiveTurnOptions,
   ): Promise<void>;
   showHistory(query?: string): Promise<void>;
+  openHistorySearch(input: {
+    currentInput: string;
+  }): Promise<string | undefined>;
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<string | undefined>;
@@ -512,6 +515,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
     getSlashSuggestions,
     getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
+    openHistorySearch: (historyInput) =>
+      input.openHistorySearch({
+        currentInput: historyInput.currentInput,
+      }),
     onEscapeInterrupt: async (phase) => {
       if (input.isPlanMode()) {
         if (phase === "idle") {
