@@ -12,7 +12,6 @@ export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
     }
   }
   lines.push(`default_on_timeout: ${envelope.defaultOnTimeout}`);
-  lines.push(`resume_token: ${envelope.resumeToken}`);
-  lines.push("reply with your choice or direct answer to continue.");
+  lines.push("reply directly or use /ask answer <n|text> to continue.");
   return `${lines.join("\n")}\n`;
 }

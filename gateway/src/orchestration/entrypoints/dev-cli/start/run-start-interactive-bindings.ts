@@ -708,11 +708,19 @@ export function createRunStartInteractiveModeInput(
       lines.push(
         `   options=${compactSingleLine(optionsLabel, 180)}`,
       );
+      if (index === 0 && row.options.length > 0) {
+        const quickAnswers = row.options
+          .map((option, optionIndex) => `${String(optionIndex + 1)}:${option}`)
+          .join(" | ");
+        lines.push(`   quick_answer=${compactSingleLine(quickAnswers, 180)}`);
+      }
     }
     if (queue.length > maxRows) {
       lines.push(`... +${String(queue.length - maxRows)} more`);
     }
     lines.push("* active question");
+    lines.push("hint: reply directly or use /ask answer <n|text>");
+    lines.push("hint: /ask cancel skips current, /ask clear removes all");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };

@@ -29,10 +29,14 @@ const DIAGNOSTIC_TAGS = new Set<string>([
   "ask-user",
   "context-engine",
   "execution",
+  "experience-pool",
+  "experience-scheduler",
   "experience",
   "governance",
   "governance:mcp-instruction",
   "governance:search-route",
+  "interrupt",
+  "memory-orchestrator",
   "reflection",
   "runtime-model",
   "runtime-route",
@@ -158,6 +162,24 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     return {
       stageId: "experience_skip",
       text: "当前轮触发人工确认，跳过经验沉淀",
+    };
+  }
+  if (tag === "experience-pool" || tag === "experience-scheduler") {
+    return {
+      stageId: "experience_maintenance",
+      text: "正在维护经验池与调度任务",
+    };
+  }
+  if (tag === "memory-orchestrator") {
+    return {
+      stageId: "memory_maintenance",
+      text: "正在维护记忆策略与质量窗口",
+    };
+  }
+  if (tag === "interrupt") {
+    return {
+      stageId: "interrupt",
+      text: "正在处理中断请求",
     };
   }
   if (tag === "reflection") {

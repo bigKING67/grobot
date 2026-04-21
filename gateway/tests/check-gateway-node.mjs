@@ -817,9 +817,20 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.semantic_events_no_turn_failed, true);
   assert.equal(runStartPlanModeContractPayload.semantic_plan_mode_still_plan_only, true);
   assert.equal(runStartPlanModeContractPayload.semantic_active_plan_kept, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_phase_kept_drafting, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_turn_returns_failure, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_failure_marked, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_turn_failed, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_turn_returns_success, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_plan_mode_kept, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_plan_ingested, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_plan_strips_tags, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_plan_status_is_draft, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_plan_phase_is_drafting, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_events_has_content_replaced, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_events_has_ingested_marker, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_review_passes, true);
+  assert.equal(runStartPlanModeContractPayload.proposed_review_missing_assumptions_detected, true);
   logStep("run-start-plan-mode-contract");
 
   const userCommandsContractResult = runCommand("npx", [
@@ -1154,6 +1165,7 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.queue_ttl_prune_removed_expired, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_keeps_fresh, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
+  assert.equal(askUserToolContractPayload.issued_display_hides_resume_token, true);
   assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
   logStep("ask-user-tool-contract");
 
@@ -5437,8 +5449,8 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.exit_code, 0);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.diagnostic_mode, "verbose");
-  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, false);
-  assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_trace_lines, false);
   logStep("start-smoke-contract start-interactive-diagnostics-verbose-flow");
 
@@ -5507,12 +5519,15 @@ async function runTsRustExecutionSmoke() {
       diagnosticsFlowResult.stdout,
     );
     assert.equal(diagnosticsFlowPayload.exit_code, 0);
-    assert.equal(diagnosticsFlowPayload.has_process_lines, false);
+    assert.equal(
+      diagnosticsFlowPayload.has_process_lines,
+      flow.mode === "verbose",
+    );
     assert.equal(Boolean(diagnosticsFlowPayload[flow.markerKey]), true);
     if (flow.mode === "compact") {
       assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, false);
     } else {
-      assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, true);
+      assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, false);
     }
     logStep(`start-smoke-contract ${flow.contract}`);
   }

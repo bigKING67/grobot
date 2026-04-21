@@ -185,7 +185,7 @@ export async function runStart(
       : "compact";
   const startupDiagnosticsEnabled = isTruthyEnvFlag(
     process.env.GROBOT_STARTUP_DIAGNOSTICS,
-  ) || verboseModeEnabled;
+  ) || traceModeEnabled;
   const interactiveDiagnosticsEnabled = interactiveDiagnosticsMode !== "compact";
   const output = createRunStartOutput({
     suppressWarningPatterns: startupDiagnosticsEnabled

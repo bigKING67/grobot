@@ -151,7 +151,8 @@ const payload = {
   answer_blank_falls_back_default: resolvedByBlank?.answer === "safe",
   queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.questionId === "ask_q_005",
   queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.questionId === "ask_q_006",
-  issued_display_has_reply_hint: display.includes("reply with your choice"),
+  issued_display_has_reply_hint: display.includes("reply directly or use /ask answer"),
+  issued_display_hides_resume_token: !display.includes("resume_token"),
   issued_event_has_question_id: formatAskUserIssuedEvent(nextEnvelope).includes("question_id=ask_q_002"),
 };
 

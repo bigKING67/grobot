@@ -100,6 +100,8 @@ const PLAN_EVENTS_DEFAULT_MAX_BYTES = 1_048_576;
 const PLAN_EVENTS_DEFAULT_ROTATE_KEEP = 5;
 const PLAN_APPLY_STALE_DEFAULT_MS = 10 * 60 * 1000;
 const SLEEP_SIGNAL = new Int32Array(new SharedArrayBuffer(4));
+const PROPOSED_PLAN_OPEN_TAG = "<proposed_plan>";
+const PROPOSED_PLAN_CLOSE_TAG = "</proposed_plan>";
 const REQUIRED_PLAN_SECTIONS = [
   "Goal",
   "Scope In",
@@ -617,7 +619,140 @@ function hasUnresolvedQuestion(text: string): boolean {
   );
 }
 
+export function extractLatestProposedPlanBlock(markdown: string): string | undefined {
+  const lines = markdown.split(/\r?\n/);
+  const blocks: string[] = [];
+  let activeBlockLines: string[] | undefined;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === PROPOSED_PLAN_OPEN_TAG) {
+      activeBlockLines = [];
+      continue;
+    }
+    if (trimmed === PROPOSED_PLAN_CLOSE_TAG) {
+      const candidate = activeBlockLines?.join("\n").trim();
+      if (candidate) {
+        blocks.push(candidate);
+      }
+      activeBlockLines = undefined;
+      continue;
+    }
+    if (activeBlockLines) {
+      activeBlockLines.push(line);
+    }
+  }
+  const unterminatedCandidate = activeBlockLines?.join("\n").trim();
+  if (unterminatedCandidate) {
+    blocks.push(unterminatedCandidate);
+  }
+  if (blocks.length === 0) {
+    return undefined;
+  }
+  return blocks[blocks.length - 1];
+}
+
+function hasSectionHeading(markdown: string, matcher: RegExp): boolean {
+  const lines = markdown.split(/\r?\n/);
+  for (const line of lines) {
+    if (!line.trimStart().startsWith("##")) {
+      continue;
+    }
+    if (matcher.test(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResult {
+  const findings: PlanReviewFinding[] = [];
+  const checkedAt = nowIsoUtc();
+  const normalized = proposedPlanContent.trim();
+  if (!normalized) {
+    findings.push({
+      code: "proposed_plan_empty",
+      section: "proposed_plan",
+      message: "提取到的 <proposed_plan> 为空。",
+    });
+  }
+  const placeholder = findPlaceholder(normalized);
+  if (placeholder) {
+    findings.push({
+      code: "placeholder_detected",
+      section: "proposed_plan",
+      message: `计划仍含占位词(${placeholder})。`,
+    });
+  }
+  if (hasUnresolvedQuestion(normalized)) {
+    findings.push({
+      code: "unresolved_question",
+      section: "proposed_plan",
+      message: "计划存在未决问题，需先澄清。",
+    });
+  }
+  if (normalized.length > 0 && normalized.length < 120) {
+    findings.push({
+      code: "proposed_plan_too_short",
+      section: "proposed_plan",
+      message: "计划内容过短，无法支撑可执行实现。",
+    });
+  }
+  const hasSummary = hasSectionHeading(normalized, /^##\s*(summary|概要|概述|摘要)\b/i);
+  const hasKeyChanges = hasSectionHeading(
+    normalized,
+    /^##\s*(key changes?|implementation changes?|重要变更|实现变更)\b/i,
+  );
+  const hasTestPlan = hasSectionHeading(
+    normalized,
+    /^##\s*(test plan|tests?|test cases?|验证计划|测试计划|测试用例)\b/i,
+  );
+  const hasAssumptions = hasSectionHeading(
+    normalized,
+    /^##\s*(assumptions?|默认假设|假设)\b/i,
+  );
+  if (!hasSummary) {
+    findings.push({
+      code: "proposed_plan_missing_section",
+      section: "Summary",
+      message: "缺少 Summary 章节。",
+    });
+  }
+  if (!hasKeyChanges) {
+    findings.push({
+      code: "proposed_plan_missing_section",
+      section: "Key Changes",
+      message: "缺少 Key Changes/Implementation Changes 章节。",
+    });
+  }
+  if (!hasTestPlan) {
+    findings.push({
+      code: "proposed_plan_missing_section",
+      section: "Test Plan",
+      message: "缺少 Test Plan/Tests 章节。",
+    });
+  }
+  if (!hasAssumptions) {
+    findings.push({
+      code: "proposed_plan_missing_section",
+      section: "Assumptions",
+      message: "缺少 Assumptions 章节。",
+    });
+  }
+  const blocked = findings.some((item) => item.code === "unresolved_question");
+  const ok = findings.length === 0;
+  return {
+    ok,
+    blocked,
+    findings,
+    checked_at: checkedAt,
+  };
+}
+
 export function reviewPlanContent(planContent: string): PlanReviewResult {
+  const proposedPlan = extractLatestProposedPlanBlock(planContent);
+  if (proposedPlan) {
+    return reviewProposedPlanContent(proposedPlan);
+  }
   const findings: PlanReviewFinding[] = [];
   const checkedAt = nowIsoUtc();
   const sectionMap = new Map<string, string>();
@@ -868,6 +1003,86 @@ export function appendPlanProgressNote(workDir: string, sessionId: string, planI
       });
     }
     return { updated: true, planPath };
+  });
+}
+
+export function replacePlanArtifactContent(
+  workDir: string,
+  sessionId: string,
+  planId: string,
+  nextContentRaw: string,
+  options?: {
+    source?: "cli" | "bridge" | "system";
+    detail?: string;
+  },
+): {
+  updated: boolean;
+  replaced: boolean;
+  planPath?: string;
+} {
+  return withSessionPlanLock(workDir, sessionId, () => {
+    const index = loadPlanArtifactIndex(workDir, sessionId);
+    const entryIndex = index.entries.findIndex((item) => item.plan_id === planId);
+    if (entryIndex < 0) {
+      return { updated: false, replaced: false };
+    }
+    const entry = index.entries[entryIndex];
+    const planPath = planPathFromEntry(workDir, sessionId, entry);
+    const nextContent = nextContentRaw.trim();
+    if (!nextContent) {
+      return { updated: false, replaced: false, planPath };
+    }
+    const currentContent = readText(planPath);
+    if (typeof currentContent !== "string") {
+      return { updated: false, replaced: false, planPath };
+    }
+    if (currentContent.trim() === nextContent) {
+      syncActiveFile(workDir, sessionId, currentContent);
+      return { updated: true, replaced: false, planPath };
+    }
+
+    const timestamp = nowIsoUtc();
+    const persistedContent = `${nextContent}\n`;
+    writeFileAtomic(planPath, persistedContent);
+    syncActiveFile(workDir, sessionId, persistedContent);
+
+    const invalidatedApproval = Boolean(
+      entry.approved_hash || entry.approval_ticket_id || entry.approved_snapshot_path,
+    );
+    const nextStatus: PlanArtifactStatus =
+      entry.status === "applied" || entry.status === "discarded"
+        ? entry.status
+        : "draft";
+    const updatedEntry: PlanArtifactEntry = clearApprovalFields({
+      ...entry,
+      status: nextStatus,
+      updated_at: timestamp,
+    });
+    const nextEntries = [...index.entries];
+    nextEntries[entryIndex] = updatedEntry;
+    writeIndex(workDir, sessionId, {
+      ...index,
+      entries: nextEntries,
+      active_plan_id: planId,
+      updated_at: timestamp,
+    });
+    appendPlanEventUnlocked(workDir, sessionId, {
+      event: "plan_content_replaced",
+      plan_id: planId,
+      source: options?.source ?? "system",
+      detail:
+        options?.detail ??
+        `replaced plan content chars=${String(nextContent.length)}`,
+    });
+    if (invalidatedApproval) {
+      appendPlanEventUnlocked(workDir, sessionId, {
+        event: "plan_approval_invalidated",
+        plan_id: planId,
+        source: options?.source ?? "system",
+        detail: "plan content replaced after approval metadata existed",
+      });
+    }
+    return { updated: true, replaced: true, planPath };
   });
 }
 

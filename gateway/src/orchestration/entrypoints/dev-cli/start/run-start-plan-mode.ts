@@ -6,18 +6,22 @@ import {
   approvePlanArtifact,
   buildPlanApplyPrompt,
   createPlanArtifact,
+  extractLatestProposedPlanBlock,
   loadActivePlanArtifact,
   recoverStaleApprovedPlan,
   recordPlanReviewResult,
+  replacePlanArtifactContent,
   reviewPlanContent,
   type PlanArtifactEntry,
   updatePlanArtifactStatus,
 } from "./plan-artifact";
 import { type RunStartPersistence } from "./run-start-persistence";
 import { type RunStartRuntimeState } from "./run-start-runtime-state";
+import { type ChatHistoryMessage } from "./session-history";
 import {
   setSessionPlanState,
   type SessionProviderRuntimeState,
+  type SessionPlanPhase,
   type SessionPlanMeta,
   type SessionPlanMode,
 } from "./session-registry";
@@ -101,6 +105,7 @@ export interface RunStartPlanMode {
 }
 
 function buildPlanMeta(entry: PlanArtifactEntry, planPath: string): SessionPlanMeta {
+  const activePlanPhase = derivePlanPhaseFromStatus(entry.status);
   return {
     active_plan_id: entry.plan_id,
     active_plan_status: entry.status,
@@ -118,6 +123,7 @@ function buildPlanMeta(entry: PlanArtifactEntry, planPath: string): SessionPlanM
     approved_hash: entry.approved_hash,
     approval_ticket_id: entry.approval_ticket_id,
     approved_snapshot_path: entry.approved_snapshot_path,
+    active_plan_phase: activePlanPhase,
     updated_at: entry.updated_at,
   };
 }
@@ -144,6 +150,21 @@ function formatReviewFindings(findings: readonly { code: string; section?: strin
   return findings
     .map((item) => `${item.code}:${item.section ?? "global"}:${item.message}`)
     .join(" | ");
+}
+
+function derivePlanPhaseFromStatus(
+  status: SessionPlanMeta["active_plan_status"],
+): SessionPlanPhase | undefined {
+  if (status === "draft" || status === "blocked" || status === "review_failed") {
+    return "drafting";
+  }
+  if (status === "ready" || status === "approved" || status === "apply_failed") {
+    return "reviewing";
+  }
+  if (status === "applying") {
+    return "applying";
+  }
+  return undefined;
 }
 
 interface RecentProviderFailure {
@@ -202,6 +223,34 @@ function formatSemanticDegradeHint(errorClass: string): string {
     default:
       return "check semantic index and retrieval configuration.";
   }
+}
+
+interface AssistantProposedPlanCandidate {
+  content: string;
+  historyIndex: number;
+}
+
+function extractLatestAssistantProposedPlan(
+  historyMessages: readonly ChatHistoryMessage[],
+  startIndex: number,
+): AssistantProposedPlanCandidate | undefined {
+  const safeStartIndex = Math.max(0, Math.floor(startIndex));
+  let latest: AssistantProposedPlanCandidate | undefined;
+  for (let index = safeStartIndex; index < historyMessages.length; index += 1) {
+    const row = historyMessages[index];
+    if (!row || row.role !== "assistant") {
+      continue;
+    }
+    const extracted = extractLatestProposedPlanBlock(row.content);
+    if (!extracted) {
+      continue;
+    }
+    latest = {
+      content: extracted,
+      historyIndex: index,
+    };
+  }
+  return latest;
 }
 
 export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunStartPlanMode {
@@ -432,12 +481,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const activeMeta = buildPlanMeta(active.entry, active.planPath);
       input.writeStdout(`active_plan_id: ${activeMeta.active_plan_id ?? "<none>"}\n`);
       input.writeStdout(`active_plan_status: ${activeMeta.active_plan_status ?? "draft"}\n`);
+      if (activeMeta.active_plan_phase) {
+        input.writeStdout(`active_plan_phase: ${activeMeta.active_plan_phase}\n`);
+      }
       input.writeStdout(`active_plan_path: ${activeMeta.active_plan_path ?? "<none>"}\n`);
       input.writeStdout(`active_plan_seq: ${String(activeMeta.active_plan_seq ?? 0)}\n`);
       input.writeStdout(`active_plan_title: ${activeMeta.active_plan_title ?? "<none>"}\n`);
     } else if (mode === "plan_only" && meta?.active_plan_id) {
       input.writeStdout(`active_plan_id: ${meta.active_plan_id}\n`);
       input.writeStdout(`active_plan_status: ${meta.active_plan_status ?? "draft"}\n`);
+      if (meta.active_plan_phase) {
+        input.writeStdout(`active_plan_phase: ${meta.active_plan_phase}\n`);
+      }
       if (meta.active_plan_path) {
         input.writeStdout(`active_plan_path: ${meta.active_plan_path}\n`);
       }
@@ -542,6 +597,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return 0;
       }
+      const historyLengthBeforeExecution = input.runtimeState.getHistoryMessages().length;
       const code = await input.executeTurn(note, true, {
         writeStderr: options?.writeStderr,
       });
@@ -587,7 +643,47 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return code;
       }
-      input.writeStdout(`[plan] updated file=${appended.planPath ?? "<unknown>"}\n\n`);
+      let finalPlanPath = appended.planPath;
+      const assistantProposedPlan = extractLatestAssistantProposedPlan(
+        input.runtimeState.getHistoryMessages(),
+        historyLengthBeforeExecution,
+      );
+      if (assistantProposedPlan && meta.active_plan_id) {
+        const replaced = replacePlanArtifactContent(
+          input.workDir,
+          planSessionKey(),
+          meta.active_plan_id,
+          assistantProposedPlan.content,
+          {
+            source: "system",
+            detail:
+              `ingested <proposed_plan> from assistant history_index=${String(assistantProposedPlan.historyIndex)}`,
+          },
+        );
+        if (replaced.updated && replaced.planPath) {
+          finalPlanPath = replaced.planPath;
+          if (replaced.replaced) {
+            const refreshedActive = resolveActivePlan();
+            if (refreshedActive) {
+              await persistPlanState(
+                "plan_only",
+                buildPlanMeta(refreshedActive.entry, refreshedActive.planPath),
+              );
+            }
+            appendPlanEvent(input.workDir, planSessionKey(), {
+              event: "plan_proposed_plan_ingested",
+              plan_id: meta.active_plan_id,
+              source: "system",
+              detail:
+                `history_index=${String(assistantProposedPlan.historyIndex)} chars=${String(assistantProposedPlan.content.length)}`,
+            });
+            input.writeStdout(
+              `[plan] imported <proposed_plan> into active plan file=${replaced.planPath}\n`,
+            );
+          }
+        }
+      }
+      input.writeStdout(`[plan] updated file=${finalPlanPath ?? "<unknown>"}\n\n`);
       return code;
     } finally {
       if (pendingInterruptSource) {

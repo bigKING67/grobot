@@ -1,8 +1,10 @@
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
+import { reviewPlanContent } from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
 import { createRunStartPlanMode } from "../../orchestration/entrypoints/dev-cli/start/run-start-plan-mode";
 import { type RunStartPersistence } from "../../orchestration/entrypoints/dev-cli/start/run-start-persistence";
 import { type RunStartRuntimeState } from "../../orchestration/entrypoints/dev-cli/start/run-start-runtime-state";
+import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
 import {
   type SessionPlanMeta,
   type SessionProviderRuntimeState,
@@ -17,6 +19,17 @@ interface ScenarioResult {
   eventsText: string;
   planMode: string;
   hasActivePlan: boolean;
+  planMeta: SessionPlanMeta | undefined;
+  activePlanPath: string;
+}
+
+interface ProposedPlanScenarioResult {
+  code: number;
+  planMode: string;
+  activePlanStatus: string;
+  activePlanPhase: string;
+  activePlanContent: string;
+  eventsText: string;
 }
 
 function sanitizePlanSessionSegment(raw: string): string {
@@ -61,14 +74,17 @@ function createRuntimeState(sessionKey: string): RunStartRuntimeState {
   let planMode: "normal" | "plan_only" = "normal";
   let planMeta: SessionPlanMeta | undefined;
   let providerStates: SessionProviderRuntimeState[] = [];
+  let historyMessages: ChatHistoryMessage[] = [];
   return {
     getSessionRegistry: () => sessionRegistry,
     getActiveSessionId: () => "main",
     setActiveSessionId: () => undefined,
     getSessionKey: () => sessionKey,
     setSessionKey: () => undefined,
-    getHistoryMessages: () => [],
-    setHistoryMessages: () => undefined,
+    getHistoryMessages: () => historyMessages,
+    setHistoryMessages: (rows: ChatHistoryMessage[]) => {
+      historyMessages = rows;
+    },
     getRestoreSource: () => "empty",
     markHistoryCompacted: () => undefined,
     hasHistoryCompacted: () => false,
@@ -156,6 +172,83 @@ async function runScenario(errorClass: string): Promise<ScenarioResult> {
       eventsText,
       planMode: runtimeState.getPlanMode(),
       hasActivePlan: Boolean(meta?.active_plan_id),
+      planMeta: meta,
+      activePlanPath: typeof meta?.active_plan_path === "string" ? meta.active_plan_path : "",
+    };
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+async function runProposedPlanIngestScenario(): Promise<ProposedPlanScenarioResult> {
+  const workDir = resolve(
+    process.cwd(),
+    ".grobot-contract-temp",
+    `plan-mode-proposed-${Date.now().toString(36)}-${Math.floor(Math.random() * 65_536).toString(16)}`,
+  );
+  mkdirSync(workDir, { recursive: true });
+  const sessionKey = "feishu:grobot:dm:plan-mode-proposed-contract";
+  const runtimeState = createRuntimeState(sessionKey);
+  const persistence: RunStartPersistence = {
+    persistHistoryState: async () => undefined,
+    persistSessionRegistryState: async () => undefined,
+  };
+  const proposedPlanBlock = [
+    "<proposed_plan>",
+    "# Runtime Plan Contract",
+    "## Summary",
+    "- Keep plan mode resilient when semantic index is unavailable.",
+    "## Key Changes",
+    "- Add policy-driven downgrade for planning phase semantic failures.",
+    "- Keep apply phase fail-fast to avoid silent divergence.",
+    "## Test Plan",
+    "- node gateway/tests/check-gateway-node.mjs",
+    "## Assumptions",
+    "- semantic fallback only applies during planning turns.",
+    "</proposed_plan>",
+  ].join("\n");
+  try {
+    const planMode = createRunStartPlanMode({
+      workDir,
+      runtimeState,
+      persistence,
+      executeTurn: async () => {
+        const current = runtimeState.getHistoryMessages();
+        runtimeState.setHistoryMessages([
+          ...current,
+          {
+            role: "assistant",
+            content: [
+              "I prepared a complete plan.",
+              proposedPlanBlock,
+            ].join("\n\n"),
+          },
+        ]);
+        return 0;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => undefined,
+      writeStdout: () => undefined,
+      writeStderr: () => undefined,
+    });
+
+    const code = await planMode.enterPlan("structured plan ingest contract smoke");
+    const meta = runtimeState.getPlanMeta();
+    const activePlanPath = typeof meta?.active_plan_path === "string" ? meta.active_plan_path : "";
+    const activePlanContent = activePlanPath ? readTextSafe(activePlanPath) : "";
+    const planDir = `${workDir}/.grobot/plans/${sanitizePlanSessionSegment(sessionKey)}`;
+    const eventsPath = `${planDir}/events.jsonl`;
+    const eventsText = readTextSafe(eventsPath);
+    return {
+      code,
+      planMode: runtimeState.getPlanMode(),
+      activePlanStatus: String(meta?.active_plan_status ?? ""),
+      activePlanPhase: String(meta?.active_plan_phase ?? ""),
+      activePlanContent,
+      eventsText,
     };
   } finally {
     rmSync(workDir, { recursive: true, force: true });
@@ -165,6 +258,31 @@ async function runScenario(errorClass: string): Promise<ScenarioResult> {
 async function main(): Promise<void> {
   const semantic = await runScenario("semantic_index_config_invalid");
   const nonSemantic = await runScenario("upstream_http_error");
+  const proposed = await runProposedPlanIngestScenario();
+  const proposedReview = reviewPlanContent([
+    "<proposed_plan>",
+    "# Contract Review",
+    "## Summary",
+    "- Summary for plan review contract.",
+    "## Key Changes",
+    "- Add structured plan checks.",
+    "## Test Plan",
+    "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-plan-mode-contract.ts",
+    "## Assumptions",
+    "- Reviewer accepts markdown sections as canonical.",
+    "</proposed_plan>",
+  ].join("\n"));
+  const proposedMissingAssumptions = reviewPlanContent([
+    "<proposed_plan>",
+    "# Contract Review Missing Assumptions",
+    "## Summary",
+    "- Summary for plan review contract.",
+    "## Key Changes",
+    "- Add structured plan checks.",
+    "## Test Plan",
+    "- node gateway/tests/check-gateway-node.mjs",
+    "</proposed_plan>",
+  ].join("\n"));
 
   const payload = {
     semantic_turn_returns_success: semantic.code === 0,
@@ -174,9 +292,23 @@ async function main(): Promise<void> {
     semantic_events_no_turn_failed: !semantic.eventsText.includes("\"event\":\"plan_turn_failed\""),
     semantic_plan_mode_still_plan_only: semantic.planMode === "plan_only",
     semantic_active_plan_kept: semantic.hasActivePlan,
+    semantic_phase_kept_drafting: semantic.planMeta?.active_plan_phase === "drafting",
     non_semantic_turn_returns_failure: nonSemantic.code !== 0,
     non_semantic_failure_marked: nonSemantic.failureObserved === true,
     non_semantic_events_has_turn_failed: nonSemantic.eventsText.includes("\"event\":\"plan_turn_failed\""),
+    proposed_turn_returns_success: proposed.code === 0,
+    proposed_plan_mode_kept: proposed.planMode === "plan_only",
+    proposed_plan_ingested: proposed.activePlanContent.includes("## Key Changes"),
+    proposed_plan_strips_tags: !proposed.activePlanContent.includes("<proposed_plan>"),
+    proposed_plan_status_is_draft: proposed.activePlanStatus === "draft",
+    proposed_plan_phase_is_drafting: proposed.activePlanPhase === "drafting",
+    proposed_events_has_content_replaced: proposed.eventsText.includes("\"event\":\"plan_content_replaced\""),
+    proposed_events_has_ingested_marker: proposed.eventsText.includes("\"event\":\"plan_proposed_plan_ingested\""),
+    proposed_review_passes: proposedReview.ok && proposedReview.blocked === false,
+    proposed_review_missing_assumptions_detected:
+      proposedMissingAssumptions.findings.some(
+        (item) => item.code === "proposed_plan_missing_section" && item.section === "Assumptions",
+      ),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

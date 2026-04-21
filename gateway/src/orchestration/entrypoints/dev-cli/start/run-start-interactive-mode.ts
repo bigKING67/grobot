@@ -351,9 +351,18 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     interactiveDiagnosticsEnabled: input.interactiveDiagnosticsEnabled,
     interactiveDiagnosticsMode: input.interactiveDiagnosticsMode,
   });
-  const interactiveDiagnosticsEnabled = interactiveDiagnosticsMode !== "compact";
   const traceDiagnosticsEnabled = interactiveDiagnosticsMode === "trace";
-  const activityTracker = createInteractiveActivityTracker();
+  const progressDiagnosticsEnabled = interactiveDiagnosticsMode === "verbose";
+  const suppressDiagnosticStderr = !traceDiagnosticsEnabled;
+  const activityTracker = createInteractiveActivityTracker(
+    progressDiagnosticsEnabled
+      ? {
+        writeProgressLine: (line) => {
+          process.stdout.write(line);
+        },
+      }
+      : {},
+  );
   const writeInteractiveTrace = (message: string): void => {
     if (!traceDiagnosticsEnabled) {
       return;
@@ -362,7 +371,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   };
   let activeTurnStartedAtMs: number | undefined;
   const writeInteractiveStderr = (message: string): void => {
-    if (interactiveDiagnosticsEnabled) {
+    if (!suppressDiagnosticStderr) {
       activityTracker.observeStderrChunk(message);
       process.stderr.write(message);
       return;
@@ -452,7 +461,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
             writeStderr: writeInteractiveStderr,
           },
         );
-        if (!interactiveDiagnosticsEnabled) {
+        if (suppressDiagnosticStderr) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
             process.stderr.write(buffered);
@@ -481,7 +490,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         }
         return code;
       } catch (error) {
-        if (!interactiveDiagnosticsEnabled) {
+        if (suppressDiagnosticStderr) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
             process.stderr.write(buffered);
