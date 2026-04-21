@@ -29,6 +29,32 @@ grobot --version
 - 内部版本目录：`~/.local/share/grobot/versions/*`。
 - 默认保留最近 3 个版本，安装时自动清理旧版本。
 
+## 未发布 release 时的本地原生启动（过渡）
+
+```bash
+cd /Users/gaoqian/Documents/sixseven/workman/groland/grobot
+
+# 1) 构建本地 native launcher
+bash scripts/build-local-native-core.sh
+
+# 2) 安装为原生入口
+./grobot install local-dev \
+  --binary ./dist/native/grobot-core-darwin-arm64 \
+  --platform darwin-arm64
+
+# 3) 验证
+grobot --version
+grobot --help
+grobot
+```
+
+说明：
+
+- 该二进制是“原生外壳 + ts-dev-cli 委托”。
+- `install`/`--version` 会转发到仓库 CLI 包装器；其余命令继续走 `ts-dev-cli`。
+- 适用于 release 资产尚未就绪时，先获得完整 CLI 命令面。
+- 若源码仓库路径改变，请重新构建并重装一次。
+
 ## 源码开发安装（仅开发者）
 
 ```bash

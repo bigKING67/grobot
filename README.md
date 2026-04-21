@@ -236,6 +236,28 @@ grobot --version
 bash scripts/core-status.sh
 ```
 
+本地尚未发布 release 时（先拿到完整 CLI 体验）：
+
+```bash
+# 1) 构建本地 native launcher
+bash scripts/build-local-native-core.sh
+
+# 2) 安装为原生入口（会写 ~/.local/bin/grobot）
+./grobot install local-dev \
+  --binary ./dist/native/grobot-core-darwin-arm64 \
+  --platform darwin-arm64
+
+# 3) 验证
+# 版本与安装入口
+grobot --version
+# 命令面
+grobot --help
+# 交互启动（输入后回车）
+grobot
+```
+
+说明：这是“本地原生启动”过渡方案；`install`/`--version` 由 launcher 转发到仓库 CLI 包装器，其余命令委托源码仓库下的 `scripts/run-ts-dev-cli.sh`。
+
 手动下载包后安装（离线/内网）：
 
 ```bash
