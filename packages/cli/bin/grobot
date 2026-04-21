@@ -41,6 +41,33 @@ detect_core_package() {
   esac
 }
 
+resolve_final_path() {
+  local raw="$1"
+  if [ -z "$raw" ]; then
+    echo ""
+    return 0
+  fi
+  if [ ! -e "$raw" ]; then
+    echo ""
+    return 0
+  fi
+  local target="$raw"
+  while [ -h "$target" ]; do
+    local parent
+    parent="$(cd -P "$(dirname "$target")" && pwd)"
+    local linked
+    linked="$(readlink "$target")"
+    if [[ "$linked" == /* ]]; then
+      target="$linked"
+    else
+      target="${parent}/${linked}"
+    fi
+  done
+  local final_parent
+  final_parent="$(cd -P "$(dirname "$target")" && pwd)"
+  printf '%s/%s' "$final_parent" "$(basename "$target")"
+}
+
 is_truthy() {
   local value
   value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
@@ -73,6 +100,9 @@ print_version() {
   local cli_version="dev"
   local active_source="unknown"
   local active_real="false"
+  local active_path=""
+  local local_bin_path=""
+  local active_version=""
 
   if command -v node >/dev/null 2>&1; then
     cli_version="$(
@@ -93,10 +123,39 @@ print_version() {
         node -e 'try { const d = JSON.parse(process.argv[1]); process.stdout.write(d.active_is_real_core ? "true" : "false"); } catch { process.stdout.write("false"); }' \
           "$status_json" 2>/dev/null
       )"
+      active_path="$(
+        node -e 'try { const d = JSON.parse(process.argv[1]); process.stdout.write(String(d.active_path || "")); } catch { process.stdout.write(""); }' \
+          "$status_json" 2>/dev/null
+      )"
+      local_bin_path="$(
+        node -e 'try { const d = JSON.parse(process.argv[1]); process.stdout.write(String(d.local_bin_path || "")); } catch { process.stdout.write(""); }' \
+          "$status_json" 2>/dev/null
+      )"
+      active_version="$(
+        node -e 'try { const d = JSON.parse(process.argv[1]); process.stdout.write(String(d.active_version || "")); } catch { process.stdout.write(""); }' \
+          "$status_json" 2>/dev/null
+      )"
     fi
   fi
 
-  printf 'grobot %s (core_source=%s, real_core=%s)\n' "$cli_version" "$active_source" "$active_real"
+  echo "grobot ${cli_version}"
+  if [ -n "$active_version" ]; then
+    echo "Version: ${active_version}"
+  fi
+  if [ "$active_source" = "local:bin" ] && [ -n "$local_bin_path" ]; then
+    if [[ "$local_bin_path" == "${HOME}/"* ]]; then
+      echo "Location: ~/${local_bin_path#${HOME}/}"
+    else
+      echo "Location: ${local_bin_path}"
+    fi
+  elif [ -n "$active_path" ]; then
+    if [[ "$active_path" == "${HOME}/"* ]]; then
+      echo "Location: ~/${active_path#${HOME}/}"
+    else
+      echo "Location: ${active_path}"
+    fi
+  fi
+  echo "Source: ${active_source} (real_core=${active_real})"
 }
 
 FIRST_ARG="${1:-}"
@@ -160,8 +219,13 @@ if is_truthy "${GROBOT_LEGACY_PYTHON:-}"; then
 fi
 
 GROBOT_HOME_DIR="${GROBOT_HOME:-${HOME}/.grobot}"
+LOCAL_BIN_PATH="${GROBOT_BIN_PATH:-${HOME}/.local/bin/grobot}"
+LOCAL_INSTALL_ROOT="${GROBOT_INSTALL_ROOT:-${HOME}/.local/share/grobot}"
 PLATFORM_KEY="$(detect_platform_key)"
 CORE_PACKAGE="$(detect_core_package "$PLATFORM_KEY")"
+SOURCE_REAL_PATH="$(resolve_final_path "$SOURCE")"
+REPO_WRAPPER_PATH="$(resolve_final_path "${PACKAGE_ROOT}/grobot")"
+CLI_WRAPPER_PATH="$(resolve_final_path "${PACKAGE_ROOT}/packages/cli/bin/grobot")"
 
 ACTIVE_SOURCE=""
 ACTIVE_PATH=""
@@ -170,6 +234,13 @@ maybe_use_candidate() {
   local path="$2"
   if [ ! -x "$path" ]; then
     return 1
+  fi
+  local resolved_path=""
+  resolved_path="$(resolve_final_path "$path")"
+  if [ -n "$resolved_path" ]; then
+    if [ "$resolved_path" = "$SOURCE_REAL_PATH" ] || [ "$resolved_path" = "$REPO_WRAPPER_PATH" ] || [ "$resolved_path" = "$CLI_WRAPPER_PATH" ]; then
+      return 1
+    fi
   fi
   if is_stub_binary "$path"; then
     return 1
@@ -180,6 +251,10 @@ maybe_use_candidate() {
 }
 
 if [ -n "${GROBOT_CORE_BIN:-}" ] && maybe_use_candidate "env:GROBOT_CORE_BIN" "${GROBOT_CORE_BIN}"; then
+  exec "${ACTIVE_PATH}" "$@"
+fi
+
+if maybe_use_candidate "local:bin" "${LOCAL_BIN_PATH}"; then
   exec "${ACTIVE_PATH}" "$@"
 fi
 
@@ -238,6 +313,8 @@ echo "error: real grobot-core binary is required; ts-dev-cli fallback is disable
 echo "platform key: ${PLATFORM_KEY:-unsupported}" >&2
 echo "searched:" >&2
 echo "  - GROBOT_CORE_BIN=${GROBOT_CORE_BIN:-<unset>}" >&2
+echo "  - ${LOCAL_BIN_PATH}" >&2
+echo "  - ${LOCAL_INSTALL_ROOT}/versions/<version>" >&2
 echo "  - ${GROBOT_HOME_DIR}/core/current/grobot-core" >&2
 echo "  - ${GROBOT_HOME_DIR}/core/${PLATFORM_KEY:-<platform>}/grobot-core" >&2
 echo "  - ${PACKAGE_ROOT}/node_modules/${CORE_PACKAGE:-@grobot/core-<platform>}/bin/grobot-core" >&2
