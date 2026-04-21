@@ -25,6 +25,14 @@ export interface RunStartInteractiveTurnOptions {
 
 export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
 
+const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
+  "/ask",
+  "/help",
+  "/interrupt",
+  "/exit",
+  "/quit",
+]);
+
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
   const slashIndex = normalized.lastIndexOf("/");
@@ -551,12 +559,20 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       promptLabel: "› ",
     });
   };
-  const getSlashSuggestions = (lineInput: string) =>
-    listRunStartSlashSuggestions({
+  const getSlashSuggestions = (lineInput: string) => {
+    const suggestions = listRunStartSlashSuggestions({
       homeDir: input.homeDir,
       userInput: lineInput,
       maxItems: 8,
     });
+    if (!input.hasPendingAsk()) {
+      return suggestions;
+    }
+    return suggestions.filter((item) => {
+      const commandHead = (item.command.trim().split(/\s+/, 1)[0] ?? "").toLowerCase();
+      return PENDING_ASK_ALLOWED_SUGGESTION_HEADS.has(commandHead);
+    });
+  };
 
   try {
     await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
