@@ -11,6 +11,12 @@ function defaultCleanText(value: string): string {
 export class AskUserSessionStore {
   private readonly pendingBySession = new Map<string, AskUserEnvelope[]>();
 
+  private findDuplicateIndex(queue: AskUserEnvelope[], envelope: AskUserEnvelope): number {
+    return queue.findIndex((item) =>
+      item.questionId === envelope.questionId
+      || item.resumeToken === envelope.resumeToken);
+  }
+
   get(sessionKey: string): AskUserEnvelope | undefined {
     const queue = this.pendingBySession.get(sessionKey);
     if (!queue || queue.length === 0) {
@@ -30,12 +36,27 @@ export class AskUserSessionStore {
 
   set(sessionKey: string, envelope: AskUserEnvelope): void {
     const queue = this.pendingBySession.get(sessionKey) ?? [];
-    queue.push(envelope);
+    const duplicateIndex = this.findDuplicateIndex(queue, envelope);
+    if (duplicateIndex >= 0) {
+      queue[duplicateIndex] = envelope;
+    } else {
+      queue.push(envelope);
+    }
     this.pendingBySession.set(sessionKey, queue);
   }
 
   delete(sessionKey: string): void {
     this.pendingBySession.delete(sessionKey);
+  }
+
+  clear(sessionKey: string): number {
+    const queue = this.pendingBySession.get(sessionKey);
+    if (!queue || queue.length === 0) {
+      return 0;
+    }
+    const removed = queue.length;
+    this.pendingBySession.delete(sessionKey);
+    return removed;
   }
 
   dismissCurrent(sessionKey: string): AskUserEnvelope | undefined {

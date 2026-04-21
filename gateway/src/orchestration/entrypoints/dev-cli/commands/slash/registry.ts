@@ -38,7 +38,7 @@ interface ParsedHistoryCommand {
 }
 
 interface ParsedAskCommand {
-  kind: "show_queue" | "cancel_current" | "invalid";
+  kind: "show_queue" | "cancel_current" | "clear_all" | "invalid";
   reason?: string;
 }
 
@@ -207,9 +207,12 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   if (rest === "cancel") {
     return { kind: "cancel_current" };
   }
+  if (rest === "clear") {
+    return { kind: "clear_all" };
+  }
   return {
     kind: "invalid",
-    reason: "usage: /ask | /ask queue | /ask cancel",
+    reason: "usage: /ask | /ask queue | /ask cancel | /ask clear",
   };
 }
 
@@ -284,7 +287,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (!isInteractiveTerminal()) {
-        handlers.writeStdout("usage: /skill-creator <需求>\n\n");
+        handlers.writeStdout("usage: /skill-creator [需求]\n\n");
         return "continue";
       }
       const requirement = await handlers.promptSkillCreatorRequirement(
@@ -320,7 +323,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           "[skills]",
           "- project: ./.grobot/skills",
           "- global: ~/.grobot/skills",
-          "- tip: run /skill-creator <需求> to create new skills",
+          "- tip: run /skill-creator your-requirement to create new skills",
           "- tip: use /commands to manage reusable local command templates",
           "",
         ].join("\n"),
@@ -433,11 +436,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         handlers.cancelPendingAsk();
         return "continue";
       }
+      if (parsed.kind === "clear_all") {
+        handlers.clearPendingAsk();
+        return "continue";
+      }
       handlers.showPendingAskQueue();
       return "continue";
     },
     helpLines: [
-      "  /ask [queue|cancel]  Show pending ask-user questions or cancel current one",
+      "  /ask [queue|cancel|clear]  Show pending ask-user queue, cancel current one, or clear all",
     ],
   },
   {
@@ -617,9 +624,9 @@ const UTILITY_HELP_ORDER: readonly string[] = [
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/sessions", description: "Open session menu (create/switch/continue)" },
   { command: "/commands", description: "Manage user-defined slash commands" },
-  { command: "/skill-creator <需求>", description: "Create a skill directly from requirement" },
+  { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask [queue|cancel]", description: "Show pending ask-user queue or cancel current question" },
+  { command: "/ask [queue|cancel|clear]", description: "Show ask-user queue, cancel current question, or clear all" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },

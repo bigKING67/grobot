@@ -711,6 +711,8 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.ask_clear_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_clear_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_prompted, true);
@@ -731,6 +733,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_blocked_warned, false);
   logStep("session-interactive-dispatch-contract");
@@ -773,6 +776,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.slash_key_no_suggestions_noop, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_partial_selected_highlighted, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_exact_selected_highlighted, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_input_with_args_highlighted, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_return_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_enter_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_legacy_sequence_detected, true);
@@ -1108,9 +1112,12 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.resolved_event_has_question_id, true);
   assert.equal(askUserToolContractPayload.issued_registered, true);
   assert.equal(Number(askUserToolContractPayload.queue_size_after_enqueue), 2);
+  assert.equal(askUserToolContractPayload.queue_dedupe_keeps_size, true);
   assert.equal(askUserToolContractPayload.queue_dismiss_first_matches_q2, true);
   assert.equal(askUserToolContractPayload.queue_next_after_dismiss_is_q3, true);
   assert.equal(Number(askUserToolContractPayload.queue_list_size_after_dismiss), 1);
+  assert.equal(Number(askUserToolContractPayload.queue_clear_removed_count), 1);
+  assert.equal(askUserToolContractPayload.queue_empty_after_clear, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
   assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
   logStep("ask-user-tool-contract");

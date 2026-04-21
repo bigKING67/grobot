@@ -145,6 +145,7 @@ export interface GaMechanismRuntime {
   listPendingAsk(sessionKey: string): AskUserEnvelope[];
   getPendingAskQueueSize(sessionKey: string): number;
   dismissPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
+  clearPendingAsk(sessionKey: string): number;
   registerPendingAsk(sessionKey: string, envelope: AskUserEnvelope): void;
   resolvePendingAsk(sessionKey: string, answer: string): ResolvedAskUser | undefined;
   hydrateSession(sessionKey: string, state: GaSessionStateSnapshot | undefined): void;
@@ -850,13 +851,18 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       pendingAskBySession.size(sessionKey),
     dismissPendingAsk: (sessionKey): AskUserEnvelope | undefined =>
       pendingAskBySession.dismissCurrent(sessionKey),
+    clearPendingAsk: (sessionKey): number =>
+      pendingAskBySession.clear(sessionKey),
     registerPendingAsk: (sessionKey, envelope): void => {
+      const queueDepthBefore = pendingAskBySession.size(sessionKey);
       pendingAskBySession.set(sessionKey, envelope);
       const queueDepth = pendingAskBySession.size(sessionKey);
+      const queueAction = queueDepth > queueDepthBefore ? "enqueued" : "updated";
+      const activeQuestionId = pendingAskBySession.get(sessionKey)?.questionId ?? envelope.questionId;
       writeMemory({
         sessionKey,
         memoryLevel: "L1",
-        text: `ask_user issued question_id=${envelope.questionId} node=${envelope.blockingNodeId} queue_depth=${String(queueDepth)}`,
+        text: `ask_user issued question_id=${envelope.questionId} node=${envelope.blockingNodeId} queue_depth=${String(queueDepth)} queue_action=${queueAction} active_question_id=${activeQuestionId}`,
         sourceEventType: "checkpoint_updated",
         executionVerified: false,
         tags: ["ask-user", "pending"],

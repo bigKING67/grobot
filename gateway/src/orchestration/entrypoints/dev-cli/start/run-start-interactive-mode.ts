@@ -211,6 +211,7 @@ export interface RunStartInteractiveModeInput {
   getPendingAskQueueSize(): number;
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
+  clearPendingAsk(): void;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
   refreshModelCatalogCache(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -371,6 +372,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     getPendingAskQueueSize: input.getPendingAskQueueSize,
     showPendingAskQueue: input.showPendingAskQueue,
     cancelPendingAsk: input.cancelPendingAsk,
+    clearPendingAsk: input.clearPendingAsk,
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },

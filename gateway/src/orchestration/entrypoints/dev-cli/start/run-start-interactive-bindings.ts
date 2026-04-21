@@ -78,6 +78,28 @@ interface CreateRunStartInteractiveModeInput {
   ): Promise<number>;
 }
 
+function formatAskAge(createdAt: string): string {
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) {
+    return "<unknown>";
+  }
+  const elapsedMs = Math.max(0, Date.now() - createdMs);
+  const seconds = Math.floor(elapsedMs / 1_000);
+  if (seconds < 60) {
+    return `${String(seconds)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${String(minutes)}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${String(hours)}h`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${String(days)}d`;
+}
+
 interface HistorySearchCandidate {
   id: string;
   role: "user" | "assistant";
@@ -666,14 +688,19 @@ export function createRunStartInteractiveModeInput(
       const optionsLabel = row.options.length > 0
         ? row.options.join(" / ")
         : "<free-text>";
-      lines.push(`${String(index + 1)}. [${row.questionId}] ${compactSingleLine(row.question, 180)}`);
+      const activeMarker = index === 0 ? "*" : " ";
+      lines.push(`${activeMarker}${String(index + 1)}. [${row.questionId}] ${compactSingleLine(row.question, 180)}`);
       lines.push(
-        `   node=${row.blockingNodeId} options=${compactSingleLine(optionsLabel, 180)}`,
+        `   node=${row.blockingNodeId} age=${formatAskAge(row.createdAt)} default=${row.defaultOnTimeout}`,
+      );
+      lines.push(
+        `   options=${compactSingleLine(optionsLabel, 180)}`,
       );
     }
     if (queue.length > maxRows) {
       lines.push(`... +${String(queue.length - maxRows)} more`);
     }
+    lines.push("* active question");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };
@@ -689,6 +716,26 @@ export function createRunStartInteractiveModeInput(
     const remaining = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
     input.output.writeStdout(
       `[ask-user] cancelled question_id=${dismissed.questionId} remaining=${String(remaining)}\n\n`,
+    );
+    if (input.persistGaStateSnapshot) {
+      void input.persistGaStateSnapshot().catch(() => {
+        input.output.writeStdout(
+          "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
+        );
+      });
+    }
+  };
+
+  const clearPendingAsk = (): void => {
+    const sessionKey = input.runtimeState.getSessionKey();
+    const removed = input.gaMechanismRuntime.clearPendingAsk(sessionKey);
+    if (removed <= 0) {
+      input.output.writeStdout("[ask-user] no pending question to clear.\n\n");
+      return;
+    }
+    syncGaSnapshotToRuntimeState();
+    input.output.writeStdout(
+      `[ask-user] cleared pending queue removed=${String(removed)}\n\n`,
     );
     if (input.persistGaStateSnapshot) {
       void input.persistGaStateSnapshot().catch(() => {
@@ -762,6 +809,7 @@ export function createRunStartInteractiveModeInput(
       ),
     showPendingAskQueue,
     cancelPendingAsk,
+    clearPendingAsk,
     showHealthStatus: () => {
       input.output.writeStdout(
         formatProviderHealthSnapshot({
@@ -839,7 +887,7 @@ export function createRunStartInteractiveModeInput(
     ) => {
       const normalizedRequirement = requirement.trim();
       if (!normalizedRequirement) {
-        input.output.writeStdout("usage: /skill-creator <需求>\n\n");
+        input.output.writeStdout("usage: /skill-creator [需求]\n\n");
         return;
       }
       input.output.writeStdout(

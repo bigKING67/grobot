@@ -14,6 +14,7 @@ export interface SessionInteractiveHandlers {
   getPendingAskQueueSize(): number;
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
+  clearPendingAsk(): void;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -96,7 +97,7 @@ export async function dispatchSessionInteractiveInput(
   if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
     const queueSize = handlers.getPendingAskQueueSize();
     handlers.writeStdout(
-      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题。\n\n`,
+      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题、/ask clear 清空队列。\n\n`,
     );
     return "continue";
   }
