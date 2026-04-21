@@ -31,6 +31,12 @@ interface ParsedSkillCreatorCommand {
   reason?: string;
 }
 
+interface ParsedHistoryCommand {
+  kind: "show" | "invalid";
+  query?: string;
+  reason?: string;
+}
+
 export interface SlashCommandSuggestion {
   command: string;
   description: string;
@@ -166,6 +172,21 @@ function parseSkillCreatorCommand(inputRaw: string): ParsedSkillCreatorCommand {
   return {
     kind: "run",
     requirement: rest,
+  };
+}
+
+function parseHistoryCommand(inputRaw: string): ParsedHistoryCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith("/history")) {
+    return { kind: "invalid", reason: "command must start with /history" };
+  }
+  const rest = input.slice("/history".length).trim();
+  if (!rest) {
+    return { kind: "show" };
+  }
+  return {
+    kind: "show",
+    query: rest,
   };
 }
 
@@ -361,26 +382,44 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     ],
   },
   {
-    id: "plan",
-    matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
-    execute: async ({ userInput, controls, handlers }) => {
-      const normalizedInput = userInput.trim();
-      if (normalizedInput === "/plan") {
-        await handlers.openPlanMenu(controls.withInputPaused);
+    id: "history",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/history"),
+    execute: async ({ userInput, handlers }) => {
+      const parsed = parseHistoryCommand(userInput);
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid history command"}\n\n`);
         return "continue";
       }
-      if (isInteractiveTerminal()) {
-        handlers.writeStdout("[plan] 交互模式仅保留主入口 /plan；已为你打开菜单。\n\n");
-        await handlers.openPlanMenu(controls.withInputPaused);
+      await handlers.showHistory(parsed.query);
+      return "continue";
+    },
+    helpLines: [
+      "  /history [keyword]   Show recent conversation history (optional keyword filter)",
+    ],
+  },
+  {
+    id: "plan",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
+    execute: async ({ userInput, handlers }) => {
+      const normalizedInput = userInput.trim();
+      if (normalizedInput === "/plan") {
+        await handlers.enterPlan("");
         return "continue";
       }
       const parsed = parsePlanCommand(userInput);
+      // Keep direct-goal path ergonomic: `/plan <goal>` should not force users
+      // to re-enter the same goal in the menu prompt.
+      if (parsed.kind === "enter") {
+        await handlers.enterPlan(parsed.goal);
+        return "continue";
+      }
+      if (parsed.kind === "enter_mode") {
+        await handlers.enterPlan("");
+        return "continue";
+      }
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason}\n\n`);
         return "continue";
-      }
-      if (parsed.kind !== "enter") {
-        handlers.writeStdout("[plan] 已收敛为主入口：/plan（当前子命令写法仍兼容）。\n");
       }
       if (parsed.kind === "status") {
         await handlers.showPlanStatus();
@@ -394,11 +433,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         await handlers.cancelPlan();
         return "continue";
       }
-      await handlers.enterPlan(parsed.goal);
       return "continue";
     },
     helpLines: [
-      "  /plan                Open plan action menu",
+      "  /plan                Enter plan mode",
     ],
   },
   {
@@ -413,7 +451,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /interrupt           Interrupt current running turn (CLI also supports Esc)",
+      "  /interrupt           Interrupt current running turn (Esc: running=interrupt, plan idle=exit plan mode)",
     ],
   },
   {
@@ -498,6 +536,7 @@ const HELP_ORDER: readonly string[] = [
   "sessions",
   "commands",
   "skill-creator",
+  "history",
   "model",
   "plan",
   "status",
@@ -514,6 +553,7 @@ const PRIMARY_HELP_ORDER: readonly string[] = [
   "sessions",
   "commands",
   "skill-creator",
+  "history",
   "model",
   "plan",
   "status",
@@ -533,13 +573,14 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/sessions", description: "Open session menu (create/switch/continue)" },
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator <需求>", description: "Create a skill directly from requirement" },
+  { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
   { command: "/model", description: "Open interactive model picker" },
   { command: "/status", description: "Show current status line config snapshot" },
-  { command: "/plan", description: "Open plan action menu" },
-  { command: "/interrupt", description: "Interrupt current running turn (Esc also works)" },
+  { command: "/plan", description: "Enter plan mode" },
+  { command: "/interrupt", description: "Interrupt running turn (Esc: running interrupt, plan idle exits mode)" },
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
   { command: "/exit", description: "Exit interactive mode" },
@@ -550,10 +591,22 @@ const PRIMARY_HINT_COMMANDS: readonly string[] = [
   "/sessions",
   "/commands",
   "/skill-creator",
+  "/history",
   "/model",
   "/plan",
   "/exit",
 ];
+
+const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {
+  sessions: "/sessions",
+  commands: "/commands",
+  "skill-creator": "/skill-creator",
+  model: "/model",
+  history: "/history",
+  new: "/new",
+  switch: "/switch",
+  continue: "/continue",
+};
 
 function findSlashCommandById(id: string): SlashCommandSpec | undefined {
   return SLASH_COMMANDS.find((item) => item.id === id);
@@ -595,7 +648,7 @@ export function listSlashCommandCompatibilityNotes(): string[] {
 
 export function buildSlashCommandHint(): string {
   const wrapped = PRIMARY_HINT_COMMANDS.map((command) => `\`${command}\``);
-  return `Enter message (${wrapped.join(", ")}; Esc interrupts running turn):`;
+  return `Enter message (${wrapped.join(", ")}; Esc: running interrupt, plan idle exits mode):`;
 }
 
 export function listSlashCommandSuggestions(): readonly SlashCommandSuggestion[] {
@@ -615,6 +668,13 @@ export async function dispatchSlashCommand(
   for (const command of SLASH_COMMANDS) {
     if (!command.matches(userInput)) {
       continue;
+    }
+    if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
+      const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
+      handlers.writeStdout(
+        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan status, /plan apply, /plan cancel, /interrupt, or /exit.\n\n`,
+      );
+      return "continue";
     }
     return command.execute(payload);
   }

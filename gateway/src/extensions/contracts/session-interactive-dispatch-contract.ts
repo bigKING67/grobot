@@ -81,8 +81,8 @@ async function runDispatchCase(
     showPlanStatus: async () => {
       events.push("showPlanStatus");
     },
-    enterPlan: async () => {
-      events.push("enterPlan");
+    enterPlan: async (goal) => {
+      events.push(`enterPlan:${goal}`);
     },
     applyPlan: async () => {
       events.push("applyPlan");
@@ -107,6 +107,9 @@ async function runDispatchCase(
     },
     openPlanMenu: async () => {
       events.push("openPlanMenu");
+    },
+    showHistory: async (query) => {
+      events.push(`showHistory:${query ?? ""}`);
     },
     promptSkillCreatorRequirement: async () => {
       events.push("promptSkillCreatorRequirement");
@@ -150,7 +153,9 @@ async function main(): Promise<void> {
   const continueLegacyWithIdTty = await runDispatchCase("/continue session-legacy", { stdinIsTty: true });
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
-  const planMenu = await runDispatchCase("/plan");
+  const planMenu = await runDispatchCase("/plan", { stdinIsTty: true });
+  const planEnterOnly = await runDispatchCase("/plan enter", { stdinIsTty: true });
+  const planGoal = await runDispatchCase("/plan 我要一份抖音直播间规划", { stdinIsTty: true });
   const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
   const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
   const statusCurrent = await runDispatchCase("/status");
@@ -166,6 +171,8 @@ async function main(): Promise<void> {
   const newCommand = await runDispatchCase("/new");
   const newCommandTty = await runDispatchCase("/new", { stdinIsTty: true });
   const commandsMenu = await runDispatchCase("/commands");
+  const historyCommand = await runDispatchCase("/history");
+  const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
@@ -183,7 +190,8 @@ async function main(): Promise<void> {
     model_prefix_miss_hits_run_turn: includesEvent(modelPrefixMiss.events, "runTurn:/models"),
     model_prefix_miss_opened_menu: includesEvent(modelPrefixMiss.events, "openModelMenu"),
     plan_prefix_miss_hits_run_turn: includesEvent(planPrefixMiss.events, "runTurn:/planner"),
-    plan_prefix_miss_entered_plan: includesEvent(planPrefixMiss.events, "enterPlan"),
+    plan_prefix_miss_entered_plan:
+      planPrefixMiss.events.some((event) => event.startsWith("enterPlan:")),
     switch_menu_opened: includesEvent(switchMenu.events, "openSessionMenu:switch"),
     continue_menu_opened: includesEvent(continueMenu.events, "openSessionMenu:continue"),
     switch_legacy_with_id_warned: includesEvent(switchLegacyWithId.events, "writeStdout"),
@@ -206,7 +214,15 @@ async function main(): Promise<void> {
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
     plan_menu_dispatched: includesEvent(planMenu.events, "openPlanMenu"),
-    plan_menu_enters_plan_directly: includesEvent(planMenu.events, "enterPlan"),
+    plan_menu_enters_plan_directly:
+      planMenu.events.some((event) => event.startsWith("enterPlan:")),
+    plan_enter_only_tty_enters_mode_directly:
+      includesEvent(planEnterOnly.events, "enterPlan:enter"),
+    plan_enter_only_tty_opened_menu:
+      includesEvent(planEnterOnly.events, "openPlanMenu"),
+    plan_goal_tty_enters_plan_directly:
+      includesEvent(planGoal.events, "enterPlan:我要一份抖音直播间规划"),
+    plan_goal_tty_opened_menu: includesEvent(planGoal.events, "openPlanMenu"),
     plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
     plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
     plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
@@ -233,6 +249,9 @@ async function main(): Promise<void> {
     new_tty_redirect_opened_sessions_menu: includesEvent(newCommandTty.events, "openSessionMenu:sessions"),
     new_tty_still_direct_create: includesEvent(newCommandTty.events, "createAndSwitchSession"),
     commands_menu_dispatched: includesEvent(commandsMenu.events, "openCommandsMenu"),
+    history_dispatched: includesEvent(historyCommand.events, "showHistory:"),
+    history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
+    history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
     commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),

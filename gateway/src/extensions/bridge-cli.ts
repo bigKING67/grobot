@@ -159,6 +159,8 @@ function currentPlanView(workDir: string, sessionId: string): {
 function planModeHintMessage(): string {
   return [
     "[plan] commands:",
+    "  /plan",
+    "  /plan <goal>",
     "  /plan status",
     "  /plan apply [extra]",
     "  /plan cancel",
@@ -379,6 +381,24 @@ async function main(): Promise<number> {
       }
       if (parsed.kind === "enter") {
         const created = createPlanArtifact(workDir, sessionId, parsed.goal);
+        appendPlanEvent(workDir, sessionId, {
+          event: "plan_mode_entered",
+          plan_id: created.entry.plan_id,
+          source: "bridge",
+          detail: "entered plan_only mode",
+        });
+        process.stdout.write(
+          `${JSON.stringify({
+            status: "ok",
+            assistant_message: `[plan] entered PLAN_ONLY plan_id=${created.entry.plan_id} file=${created.planPath}\n${planModeHintMessage()}`,
+            report: null,
+            plan: currentPlanView(workDir, sessionId),
+          })}\n`,
+        );
+        return 0;
+      }
+      if (parsed.kind === "enter_mode") {
+        const created = createPlanArtifact(workDir, sessionId, "plan session");
         appendPlanEvent(workDir, sessionId, {
           event: "plan_mode_entered",
           plan_id: created.entry.plan_id,

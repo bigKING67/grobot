@@ -37,6 +37,7 @@ interface CreateRunStartInteractiveHandlerInput {
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  showHistory(query?: string): Promise<void>;
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<string | undefined>;
@@ -97,7 +98,10 @@ export function createRunStartInteractiveHandler(
         await input.showPlanStatus();
       },
       enterPlan: async (goal) => {
-        await input.enterPlan(goal);
+        const code = await input.enterPlan(goal);
+        if (shouldMarkFailure(code)) {
+          input.markFailureObserved();
+        }
       },
       applyPlan: async (extra) => {
         const code = await input.applyPlan(extra);
@@ -131,6 +135,9 @@ export function createRunStartInteractiveHandler(
       },
       openPlanMenu: async (withInputPaused) => {
         await input.openPlanMenu(withInputPaused);
+      },
+      showHistory: async (query) => {
+        await input.showHistory(query);
       },
       promptSkillCreatorRequirement: async (withInputPaused) =>
         input.promptSkillCreatorRequirement(withInputPaused),

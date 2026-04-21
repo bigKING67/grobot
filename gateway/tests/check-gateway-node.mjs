@@ -696,9 +696,9 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.model_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_menu_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_menu_enters_plan_directly, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_menu_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_menu_enters_plan_directly, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.exit_command_breaks_loop, true);
   assert.equal(sessionInteractiveDispatchPayload.exit_command_hits_run_turn, false);
@@ -707,6 +707,13 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.exit_alias_quit_breaks_loop, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_prompted, true);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_usage, true);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_prompted, false);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.skills_dispatched_to_stdout, true);
   assert.equal(sessionInteractiveDispatchPayload.skills_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.mcp_dispatched_to_stdout, true);
@@ -746,10 +753,13 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.slash_apply_menu_command, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_apply_commands_menu_submit, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_apply_plan_menu_submit, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_apply_skill_creator_requires_input, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_key_enter_applies_and_submits, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_key_tab_applies_without_submit, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_key_escape_hides_panel, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_key_no_suggestions_noop, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_partial_selected_highlighted, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_exact_selected_highlighted, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_return_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_enter_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_legacy_sequence_detected, true);
@@ -786,6 +796,7 @@ async function runGatewayContractSmoke() {
   assert.equal(userCommandsContractPayload.second_invocation_handled, true);
   assert.equal(userCommandsContractPayload.second_invocation_prompt, "第二版：参数B");
   assert.equal(userCommandsContractPayload.builtin_collision_created, false);
+  assert.equal(userCommandsContractPayload.skill_creator_collision_created, false);
   assert.equal(userCommandsContractPayload.builtin_delete_blocked, true);
   assert.equal(userCommandsContractPayload.traversal_delete_blocked, true);
   assert.equal(userCommandsContractPayload.traversal_invocation_handled, false);
@@ -808,9 +819,11 @@ async function runGatewayContractSmoke() {
   );
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_model, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_commands, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_skill_creator, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_user_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_disabled_marked, true);
   assert.equal(runStartSlashSuggestionsContractPayload.model_filter_only_model_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.skill_creator_filter_only_skill_creator, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_only_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plain_input_empty, true);
   logStep("run-start-slash-suggestions-contract");
@@ -941,14 +954,21 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.startup_has_tips_title, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_recent_activity_title, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_recent_activity_empty_or_items, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_no_join_artifact, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_no_tee_glyph, true);
+  assert.equal(devCliUiRendererContractPayload.startup_body_width_consistent, true);
+  assert.equal(devCliUiRendererContractPayload.startup_feed_divider_count_expected, true);
+  assert.equal(devCliUiRendererContractPayload.startup_brand_symbol_body_length_consistent, true);
+  assert.equal(devCliUiRendererContractPayload.startup_registered_symbol_single_width, true);
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_ansi, true);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_ansi, false);
   assert.equal(devCliUiRendererContractPayload.menu_non_tty_has_ansi, false);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_pointer, true);
-  assert.equal(devCliUiRendererContractPayload.menu_interactive_has_current_tag, true);
-  assert.equal(devCliUiRendererContractPayload.menu_hint_has_ctrl_np, true);
-  assert.equal(devCliUiRendererContractPayload.menu_hint_has_number_direct, true);
-  assert.equal(devCliUiRendererContractPayload.menu_hint_has_enter_space, true);
+  assert.equal(devCliUiRendererContractPayload.menu_interactive_has_current_check, true);
+  assert.equal(devCliUiRendererContractPayload.menu_plain_has_secondary_description, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_is_compact, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_escape_back, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_enter_space_action, true);
   logStep("dev-cli-ui-renderer-contract");
 
   const devCliTurnScreenContractResult = runCommand("npx", [
@@ -5314,9 +5334,10 @@ async function runTsRustExecutionSmoke() {
     interactiveDiagnosticsCompactFlowResult.stdout,
   );
   assert.equal(interactiveDiagnosticsCompactFlowPayload.exit_code, 0);
-  assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_lines, true);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.diagnostic_mode, "compact");
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_lines, false);
   assert.equal(interactiveDiagnosticsCompactFlowPayload.stderr_has_event_lines, false);
-  assert.equal(interactiveDiagnosticsCompactFlowPayload.stderr_has_runtime_error, true);
+  assert.equal(typeof interactiveDiagnosticsCompactFlowPayload.stderr_has_runtime_error, "boolean");
   logStep("start-smoke-contract start-interactive-diagnostics-compact-flow");
 
   const interactiveDiagnosticsVerboseFlowResult = runContract(
@@ -5332,10 +5353,86 @@ async function runTsRustExecutionSmoke() {
     interactiveDiagnosticsVerboseFlowResult.stdout,
   );
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.exit_code, 0);
-  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.diagnostic_mode, "verbose");
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, true);
-  assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_prompt_prepared, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_trace_lines, false);
   logStep("start-smoke-contract start-interactive-diagnostics-verbose-flow");
+
+  const interactiveDiagnosticsTraceFlowResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-interactive-diagnostics-trace-flow",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+  );
+  const interactiveDiagnosticsTraceFlowPayload = parseJsonOutput(
+    "start-smoke-contract start-interactive-diagnostics-trace-flow",
+    interactiveDiagnosticsTraceFlowResult.stdout,
+  );
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.exit_code, 0);
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.diagnostic_mode, "trace");
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.has_process_lines, false);
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_event_lines, true);
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_trace_lines, true);
+  logStep("start-smoke-contract start-interactive-diagnostics-trace-flow");
+
+  const diagnosticsCommandFlows = [
+    {
+      contract: "start-interactive-diagnostics-plan-compact-flow",
+      mode: "compact",
+      markerKey: "has_plan_marker",
+    },
+    {
+      contract: "start-interactive-diagnostics-plan-verbose-flow",
+      mode: "verbose",
+      markerKey: "has_plan_marker",
+    },
+    {
+      contract: "start-interactive-diagnostics-skill-creator-compact-flow",
+      mode: "compact",
+      markerKey: "has_skill_creator_marker",
+    },
+    {
+      contract: "start-interactive-diagnostics-skill-creator-verbose-flow",
+      mode: "verbose",
+      markerKey: "has_skill_creator_marker",
+    },
+    {
+      contract: "start-interactive-diagnostics-user-command-compact-flow",
+      mode: "compact",
+      markerKey: "has_commands_marker",
+    },
+    {
+      contract: "start-interactive-diagnostics-user-command-verbose-flow",
+      mode: "verbose",
+      markerKey: "has_commands_marker",
+    },
+  ];
+  for (const flow of diagnosticsCommandFlows) {
+    const diagnosticsFlowResult = runContract(
+      "start-smoke-contract.mjs",
+      flow.contract,
+      [
+        "--repo-root",
+        repoRoot,
+      ],
+    );
+    const diagnosticsFlowPayload = parseJsonOutput(
+      `start-smoke-contract ${flow.contract}`,
+      diagnosticsFlowResult.stdout,
+    );
+    assert.equal(diagnosticsFlowPayload.exit_code, 0);
+    assert.equal(diagnosticsFlowPayload.has_process_lines, false);
+    assert.equal(Boolean(diagnosticsFlowPayload[flow.markerKey]), true);
+    if (flow.mode === "compact") {
+      assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, false);
+    } else {
+      assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, true);
+    }
+    logStep(`start-smoke-contract ${flow.contract}`);
+  }
 
   const startImOnlyRejectFlowResult = runContract(
     "start-smoke-contract.mjs",

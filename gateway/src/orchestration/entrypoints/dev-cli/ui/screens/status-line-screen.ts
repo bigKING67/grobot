@@ -16,6 +16,8 @@ export interface StatusLinePromptInput {
   targetTokenLimit?: number;
   sessionId: string;
   sessionTopic?: string;
+  planMode?: boolean;
+  planModeLabel?: string;
   terminalColumns?: number;
   activityText?: string;
   promptLabel?: string;
@@ -30,6 +32,7 @@ const ANSI_CCLINE_PROJECT = "\u001B[92m";
 const ANSI_CCLINE_CONTEXT = "\u001B[95m";
 const ANSI_CCLINE_TOKENS = "\u001B[93m";
 const ANSI_CCLINE_SESSION = "\u001B[94m";
+const ANSI_PLAN_MODE = "\u001B[95m";
 export type StatusLineLayoutMode = "adaptive" | "full" | "compact";
 export type StatusLineTheme = "plain" | "nerd_font" | "ccline";
 export type StatusLineSegmentId =
@@ -302,11 +305,43 @@ function clampRatio(value: number | undefined): number | undefined {
 }
 
 function truncateText(value: string, maxWidth: number): string {
-  const normalized = compactSpaces(value);
+  const normalized = compactSpaces(sanitizeDisplayLabel(value));
   if (maxWidth <= 0) {
     return "";
   }
   return truncateDisplayWidth(normalized, maxWidth);
+}
+
+function isDisallowedStatusChar(charCode: number): boolean {
+  return (
+    charCode <= 0x1f
+    || charCode === 0x7f
+    || charCode === 0x00ad
+    || charCode === 0x034f
+    || charCode === 0x061c
+    || charCode === 0x180e
+    || (charCode >= 0x200b && charCode <= 0x200f)
+    || (charCode >= 0x202a && charCode <= 0x202e)
+    || (charCode >= 0x2060 && charCode <= 0x206f)
+    || (charCode >= 0xfe00 && charCode <= 0xfe0f)
+    || charCode === 0xfeff
+    || (charCode >= 0xfff9 && charCode <= 0xfffb)
+  );
+}
+
+function sanitizeDisplayLabel(value: string): string {
+  if (!value) {
+    return "";
+  }
+  let result = "";
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (typeof codePoint === "number" && isDisallowedStatusChar(codePoint)) {
+      continue;
+    }
+    result += char;
+  }
+  return result;
 }
 
 function formatWindowTokenCount(value: number | undefined): string {
@@ -384,7 +419,7 @@ function formatWindowUsage(input: {
 }
 
 function formatSessionShortId(sessionId: string): string {
-  const normalized = compactSpaces(sessionId);
+  const normalized = compactSpaces(sanitizeDisplayLabel(sessionId));
   if (normalized.length === 0) {
     return "<none>";
   }
@@ -683,12 +718,55 @@ function buildActivityLine(
   return `${icon} ${activityText}`;
 }
 
+function resolvePlanModeBadge(input: {
+  prompt: StatusLinePromptInput;
+}): string | undefined {
+  if (!input.prompt.planMode) {
+    return undefined;
+  }
+  const label = compactSpaces(input.prompt.planModeLabel ?? "Plan mode");
+  if (!label) {
+    return undefined;
+  }
+  return `${ANSI_PLAN_MODE}${label}${ANSI_RESET}`;
+}
+
+function appendPlanModeBadge(input: {
+  statusLine: string;
+  prompt: StatusLinePromptInput;
+  config: StatusLineConfig;
+}): string {
+  const badge = resolvePlanModeBadge({
+    prompt: input.prompt,
+  });
+  if (!badge) {
+    return input.statusLine;
+  }
+  const separator = input.config.theme === "ccline"
+    ? `${ANSI_DIM}${input.config.separator}${ANSI_RESET}`
+    : input.config.separator;
+  const withBadge = `${input.statusLine}${separator}${badge}`;
+  const terminalColumns =
+    typeof input.prompt.terminalColumns === "number" && Number.isFinite(input.prompt.terminalColumns)
+      ? Math.floor(input.prompt.terminalColumns)
+      : 0;
+  if (terminalColumns > 0 && measureDisplayWidth(withBadge) > terminalColumns) {
+    return input.statusLine;
+  }
+  return withBadge;
+}
+
 export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
   const config = normalizeStatusLineConfig(input.config);
   if (!config.enabled) {
     return "";
   }
   const statusLine = fitStatusLine({
+    prompt: input,
+    config,
+  });
+  const statusLineWithPlanMode = appendPlanModeBadge({
+    statusLine,
     prompt: input,
     config,
   });
@@ -714,7 +792,7 @@ export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
       ? truncateDisplayWidth(activityLine, terminalColumns)
       : activityLine
     : undefined;
-  const lines: string[] = [statusLine];
+  const lines: string[] = [statusLineWithPlanMode];
   if (warningToRender) {
     lines.push(warningToRender);
   }

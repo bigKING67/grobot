@@ -1,4 +1,5 @@
 export type ParsedPlanCommand =
+  | { kind: "enter_mode" }
   | { kind: "enter"; goal: string }
   | { kind: "status" }
   | { kind: "apply"; extra: string }
@@ -12,10 +13,7 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   }
   const rest = input.slice("/plan".length).trim();
   if (!rest) {
-    return {
-      kind: "invalid",
-      reason: "usage: /plan | /plan <goal> | /plan status | /plan apply [extra] | /plan cancel",
-    };
+    return { kind: "enter_mode" };
   }
 
   const firstSpace = rest.indexOf(" ");
@@ -35,7 +33,8 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   if (head === "show" || head === "options" || head === "discard") {
     return {
       kind: "invalid",
-      reason: `unsupported plan command: ${head}. supported: /plan | /plan <goal> | /plan status | /plan apply [extra] | /plan cancel`,
+      reason:
+        `unsupported plan command: ${head}. supported: /plan | /plan <goal> | /plan status | /plan apply [extra] | /plan cancel`,
     };
   }
 

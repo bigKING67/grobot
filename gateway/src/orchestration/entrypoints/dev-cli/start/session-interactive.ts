@@ -37,6 +37,7 @@ export interface SessionInteractiveHandlers {
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  showHistory(query?: string): Promise<void>;
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<string | undefined>;

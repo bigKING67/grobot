@@ -3,7 +3,10 @@ import { buildInteractiveHelpText } from "./session-interactive";
 import { bootstrapRunStartState } from "./run-start-bootstrap";
 import { resolveRunStartContext } from "./run-start-context";
 import { createRunStartInteractiveModeInput } from "./run-start-interactive-bindings";
-import { runStartInteractiveMode } from "./run-start-interactive-mode";
+import {
+  runStartInteractiveMode,
+  type InteractiveDiagnosticsMode,
+} from "./run-start-interactive-mode";
 import { createRunStartModelOps, type RunStartModelOps } from "./run-start-model-ops";
 import { createRunStartSessionMenuOps } from "./run-start-session-menu-ops";
 import { runStartMessageMode } from "./run-start-message-mode";
@@ -173,13 +176,17 @@ export async function runStart(
     sessionRegistryFilePathValue,
     sessionStore,
   } = context;
-  const verboseModeEnabled = hasFlag(options, "verbose");
+  const traceModeEnabled = hasFlag(options, "trace");
+  const verboseModeEnabled = hasFlag(options, "verbose") || traceModeEnabled;
+  const interactiveDiagnosticsMode: InteractiveDiagnosticsMode = traceModeEnabled
+    ? "trace"
+    : verboseModeEnabled
+      ? "verbose"
+      : "compact";
   const startupDiagnosticsEnabled = isTruthyEnvFlag(
     process.env.GROBOT_STARTUP_DIAGNOSTICS,
   ) || verboseModeEnabled;
-  const interactiveDiagnosticsEnabled = isTruthyEnvFlag(
-    process.env.GROBOT_INTERACTIVE_DIAGNOSTICS,
-  ) || verboseModeEnabled;
+  const interactiveDiagnosticsEnabled = interactiveDiagnosticsMode !== "compact";
   const output = createRunStartOutput({
     suppressWarningPatterns: startupDiagnosticsEnabled
       ? []
@@ -856,6 +863,7 @@ export async function runStart(
         contextWindowTokens: contextEngineConfig.contextWindowTokens,
         buildHelpText: buildInteractiveHelpText,
         interactiveDiagnosticsEnabled,
+        interactiveDiagnosticsMode,
         statusLineConfig,
         runtimeProviderChain,
         runtimeFailoverConfig,

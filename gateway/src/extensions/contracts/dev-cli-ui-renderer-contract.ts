@@ -230,11 +230,12 @@ const payload = {
   menu_interactive_has_ansi: hasAnsi(menuInteractive),
   menu_plain_has_ansi: hasAnsi(menuPlain),
   menu_non_tty_has_ansi: hasAnsi(menuNonTty),
-  menu_plain_has_pointer: menuPlain.includes("›"),
-  menu_interactive_has_current_tag: menuInteractive.includes("(current)"),
-  menu_hint_has_ctrl_np: menuPlain.includes("Ctrl+n/p"),
-  menu_hint_has_number_direct: menuPlain.includes("number to select directly"),
-  menu_hint_has_enter_space: menuPlain.includes("Enter/Space"),
+  menu_plain_has_pointer: menuPlain.includes("❯"),
+  menu_interactive_has_current_check: menuInteractive.includes("✓"),
+  menu_plain_has_secondary_description: menuPlain.includes("\n  Current active model"),
+  menu_hint_is_compact: menuPlain.includes("·"),
+  menu_hint_has_escape_back: menuPlain.includes("Esc back"),
+  menu_hint_has_enter_space_action: menuPlain.includes("Enter/Space select"),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

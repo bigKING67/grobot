@@ -41,6 +41,12 @@ async function main(): Promise<void> {
     0,
     96,
   );
+  const slashOverlayWithArgs = formatSlashSuggestionPanel(
+    [{ command: "/plan", description: "Enter plan mode" }],
+    "/plan 帮我写一份抖音直播规划",
+    0,
+    96,
+  );
   const slashInputPartialHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/e",
     suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
@@ -56,11 +62,23 @@ async function main(): Promise<void> {
     selectedCommand: "/model",
     activeLineInput: "/mo",
   });
+  const enterPlanGoalAction = resolveSlashSuggestionKeyAction({
+    key: "enter",
+    hasActiveSuggestions: true,
+    selectedCommand: "/plan",
+    activeLineInput: "/plan 我要一份抖音直播间规划",
+  });
   const tabCommandsNewAction = resolveSlashSuggestionKeyAction({
     key: "tab",
     hasActiveSuggestions: true,
     selectedCommand: "/commands",
     activeLineInput: "/co",
+  });
+  const tabPlanGoalAction = resolveSlashSuggestionKeyAction({
+    key: "tab",
+    hasActiveSuggestions: true,
+    selectedCommand: "/plan",
+    activeLineInput: "/plan 我要一份抖音直播间规划",
   });
   const escapeActionForSlash = resolveSlashSuggestionKeyAction({
     key: "escape",
@@ -156,6 +174,10 @@ async function main(): Promise<void> {
       tabCommandsNewAction.kind === "apply"
       && tabCommandsNewAction.appliedCommand === "/commands"
       && !tabCommandsNewAction.submitImmediately,
+    slash_key_enter_with_args_keeps_user_input:
+      enterPlanGoalAction.kind === "noop",
+    slash_key_tab_with_args_keeps_user_input:
+      tabPlanGoalAction.kind === "noop",
     slash_key_escape_hides_panel:
       escapeActionForSlash.kind === "hide_panel"
       && escapeActionForSlash.hiddenLineInput === "/model",
@@ -165,6 +187,8 @@ async function main(): Promise<void> {
       slashOverlayPartial.includes("\u001B[96m"),
     slash_overlay_exact_selected_highlighted:
       slashOverlayExact.includes("\u001B[96m"),
+    slash_overlay_hidden_when_has_args:
+      slashOverlayWithArgs.length === 0,
     slash_input_partial_not_highlighted:
       !slashInputPartialHighlight,
     slash_input_exact_highlighted:

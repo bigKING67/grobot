@@ -513,7 +513,12 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
   };
 }
 
-function runStartInteractiveDiagnosticsFlow(repoRoot, verboseMode) {
+function runStartInteractiveDiagnosticsFlow(repoRoot, mode, scriptedInput) {
+  const normalizedMode = mode === "trace"
+    ? "trace"
+    : mode === "verbose"
+      ? "verbose"
+      : "compact";
   const workDir = createTempDir("grobot-interactive-diagnostics-work");
   const homeDir = createTempDir("grobot-interactive-diagnostics-home");
   const config = writeConfig(buildSmokeConfig(workDir));
@@ -534,12 +539,19 @@ function runStartInteractiveDiagnosticsFlow(repoRoot, verboseMode) {
     "--runtime-impl",
     "rust",
     "--session-subject",
-    verboseMode ? "diagnostics-verbose-user" : "diagnostics-compact-user",
+    normalizedMode === "compact"
+      ? "diagnostics-compact-user"
+      : normalizedMode === "trace"
+        ? "diagnostics-trace-user"
+        : "diagnostics-verbose-user",
     "--history-turns",
     "8",
   ];
-  if (verboseMode) {
+  if (normalizedMode !== "compact") {
     args.push("--verbose");
+  }
+  if (normalizedMode === "trace") {
+    args.push("--trace");
   }
   const commandResult = runCommand(
     repoRoot,
@@ -547,18 +559,66 @@ function runStartInteractiveDiagnosticsFlow(repoRoot, verboseMode) {
     {
       GROBOT_STARTUP_DIAGNOSTICS: "0",
       GROBOT_INTERACTIVE_DIAGNOSTICS: "0",
+      GROBOT_ALLOW_TS_DEV_CLI: "1",
+      GROBOT_ALLOW_REDIS_FALLBACK: "1",
     },
-    ["/new", "diagnostics visibility smoke", "/exit", ""].join("\n"),
+    scriptedInput ?? ["/new", "diagnostics visibility smoke", "/exit", ""].join("\n"),
   );
   return {
     ...commandResult,
-    verbose_mode: verboseMode,
+    diagnostic_mode: normalizedMode,
+    verbose_mode: normalizedMode !== "compact",
     has_process_lines: commandResult.stdout.includes("[process]"),
     stderr_has_event_lines: /\bevent=/.test(commandResult.stderr),
+    stderr_has_trace_lines: commandResult.stderr.includes("[trace]"),
     stderr_has_runtime_error: commandResult.stderr.includes("runtime failed:"),
     stderr_has_prompt_prepared: commandResult.stderr.includes(
       "[context-engine] event=prompt_prepared",
     ),
+  };
+}
+
+function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
+  const payload = runStartInteractiveDiagnosticsFlow(
+    repoRoot,
+    mode,
+    ["/plan diagnostics integration flow", "/plan apply", "/plan cancel", "/exit", ""].join("\n"),
+  );
+  return {
+    ...payload,
+    command_flow: "plan",
+    has_plan_marker: payload.stdout.includes("[plan]"),
+  };
+}
+
+function runStartInteractiveDiagnosticsSkillCreatorFlow(repoRoot, mode) {
+  const payload = runStartInteractiveDiagnosticsFlow(
+    repoRoot,
+    mode,
+    ["/skill-creator create a demo skill for diagnostics contracts", "/exit", ""].join("\n"),
+  );
+  return {
+    ...payload,
+    command_flow: "skill_creator",
+    has_skill_creator_marker: payload.stdout.includes("[skill-creator]"),
+  };
+}
+
+function runStartInteractiveDiagnosticsUserCommandFlow(repoRoot, mode) {
+  const payload = runStartInteractiveDiagnosticsFlow(
+    repoRoot,
+    mode,
+    [
+      "/commands new ping You are /ping. reply with pong.",
+      "/ping diagnostics",
+      "/exit",
+      "",
+    ].join("\n"),
+  );
+  return {
+    ...payload,
+    command_flow: "user_command",
+    has_commands_marker: payload.stdout.includes("[commands]"),
   };
 }
 
@@ -4073,10 +4133,31 @@ function runCli(argv) {
       payload = runStartBareInteractiveSessionFlow(repoRoot);
       break;
     case "start-interactive-diagnostics-compact-flow":
-      payload = runStartInteractiveDiagnosticsFlow(repoRoot, false);
+      payload = runStartInteractiveDiagnosticsFlow(repoRoot, "compact");
       break;
     case "start-interactive-diagnostics-verbose-flow":
-      payload = runStartInteractiveDiagnosticsFlow(repoRoot, true);
+      payload = runStartInteractiveDiagnosticsFlow(repoRoot, "verbose");
+      break;
+    case "start-interactive-diagnostics-trace-flow":
+      payload = runStartInteractiveDiagnosticsFlow(repoRoot, "trace");
+      break;
+    case "start-interactive-diagnostics-plan-compact-flow":
+      payload = runStartInteractiveDiagnosticsPlanFlow(repoRoot, "compact");
+      break;
+    case "start-interactive-diagnostics-plan-verbose-flow":
+      payload = runStartInteractiveDiagnosticsPlanFlow(repoRoot, "verbose");
+      break;
+    case "start-interactive-diagnostics-skill-creator-compact-flow":
+      payload = runStartInteractiveDiagnosticsSkillCreatorFlow(repoRoot, "compact");
+      break;
+    case "start-interactive-diagnostics-skill-creator-verbose-flow":
+      payload = runStartInteractiveDiagnosticsSkillCreatorFlow(repoRoot, "verbose");
+      break;
+    case "start-interactive-diagnostics-user-command-compact-flow":
+      payload = runStartInteractiveDiagnosticsUserCommandFlow(repoRoot, "compact");
+      break;
+    case "start-interactive-diagnostics-user-command-verbose-flow":
+      payload = runStartInteractiveDiagnosticsUserCommandFlow(repoRoot, "verbose");
       break;
     case "start-im-only-reject-flow":
       payload = runStartImOnlyRejectFlow(repoRoot);

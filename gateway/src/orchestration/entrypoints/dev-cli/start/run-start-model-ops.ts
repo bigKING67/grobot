@@ -143,15 +143,14 @@ function buildModelMenuItems(input: {
       id: MODEL_MENU_RESET_ID,
       label: `Reset to startup model (${input.startupModel})`,
       description: "Apply startup model and sync provider.model to config_toml.",
-      current: input.currentModel === input.startupModel,
+      current: false,
     });
   }
   for (const modelId of input.modelIds) {
     items.push({
       id: modelId,
       label: modelId,
-      description:
-        modelId === input.currentModel ? "Current active model" : undefined,
+      description: undefined,
       current: modelId === input.currentModel,
     });
   }
@@ -465,9 +464,9 @@ export function createRunStartModelOps(
     });
     const picked = await withInputPaused(() =>
       runTerminalSelectMenu({
-        title: "Select Model",
-        subtitle: `Provider: ${available.providerName}`,
-        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm highlight, Esc to cancel.",
+        title: "Select model",
+        subtitle: undefined,
+        hint: "Enter to confirm · Esc to exit",
         items,
         initialIndex,
       }),

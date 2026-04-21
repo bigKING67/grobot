@@ -45,6 +45,18 @@ function normalizeDescription(input: SlashOverlaySuggestion): string {
   return (input.description ?? "").trim().replace(/\s+/g, " ");
 }
 
+function hasSlashCommandArguments(lineInputRaw: string): boolean {
+  const lineInput = lineInputRaw.trim();
+  if (!lineInput.startsWith("/")) {
+    return false;
+  }
+  const firstSpace = lineInput.indexOf(" ");
+  if (firstSpace < 0) {
+    return false;
+  }
+  return lineInput.slice(firstSpace + 1).trim().length > 0;
+}
+
 function formatSuggestionRow(input: {
   item: SlashOverlaySuggestion;
   commandColumnWidth: number;
@@ -78,6 +90,9 @@ export function formatSlashSuggestionPanel(
 ): string {
   const trimmed = lineInput.trimStart();
   if (!trimmed.startsWith("/")) {
+    return "";
+  }
+  if (hasSlashCommandArguments(trimmed)) {
     return "";
   }
   if (suggestions.length === 0) {

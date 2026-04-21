@@ -19,6 +19,8 @@ export interface RunStartInteractiveTurnOptions {
   writeStderr?: (message: string) => void;
 }
 
+export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
+
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
   const slashIndex = normalized.lastIndexOf("/");
@@ -136,6 +138,36 @@ function createPromptBudgetSnapshotReader(input: {
   };
 }
 
+function formatTurnElapsedCompact(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours)}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+  }
+  if (minutes > 0) {
+    return `${String(minutes)}m ${String(seconds).padStart(2, "0")}s`;
+  }
+  return `${String(seconds)}s`;
+}
+
+function resolveInteractiveDiagnosticsMode(input: {
+  interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
+  interactiveDiagnosticsEnabled?: boolean;
+}): InteractiveDiagnosticsMode {
+  if (input.interactiveDiagnosticsMode === "trace") {
+    return "trace";
+  }
+  if (input.interactiveDiagnosticsMode === "verbose") {
+    return "verbose";
+  }
+  if (input.interactiveDiagnosticsMode === "compact") {
+    return "compact";
+  }
+  return input.interactiveDiagnosticsEnabled ? "verbose" : "compact";
+}
+
 export interface RunStartInteractiveModeInput {
   homeDir: string;
   projectRoot: string;
@@ -153,6 +185,7 @@ export interface RunStartInteractiveModeInput {
   restoreSource: "store" | "empty";
   contextWindowTokens?: number;
   interactiveDiagnosticsEnabled?: boolean;
+  interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
   buildHelpText(): string;
   showHealthStatus(): void;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
@@ -185,7 +218,9 @@ export interface RunStartInteractiveModeInput {
   ): Promise<void>;
   openPlanMenu(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
+    options?: RunStartInteractiveTurnOptions,
   ): Promise<void>;
+  showHistory(query?: string): Promise<void>;
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<string | undefined>;
@@ -275,8 +310,20 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     recentSessions: startupRecentSessions,
   });
 
-  const interactiveDiagnosticsEnabled = input.interactiveDiagnosticsEnabled ?? false;
+  const interactiveDiagnosticsMode = resolveInteractiveDiagnosticsMode({
+    interactiveDiagnosticsEnabled: input.interactiveDiagnosticsEnabled,
+    interactiveDiagnosticsMode: input.interactiveDiagnosticsMode,
+  });
+  const interactiveDiagnosticsEnabled = interactiveDiagnosticsMode !== "compact";
+  const traceDiagnosticsEnabled = interactiveDiagnosticsMode === "trace";
   const activityTracker = createInteractiveActivityTracker();
+  const writeInteractiveTrace = (message: string): void => {
+    if (!traceDiagnosticsEnabled) {
+      return;
+    }
+    process.stderr.write(`[trace] ${message}\n`);
+  };
+  let activeTurnStartedAtMs: number | undefined;
   const writeInteractiveStderr = (message: string): void => {
     if (interactiveDiagnosticsEnabled) {
       activityTracker.observeStderrChunk(message);
@@ -332,7 +379,11 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
-    openPlanMenu: input.openPlanMenu,
+    openPlanMenu: (withInputPaused) =>
+      input.openPlanMenu(withInputPaused, {
+        writeStderr: writeInteractiveStderr,
+      }),
+    showHistory: (query) => input.showHistory(query),
     promptSkillCreatorRequirement: input.promptSkillCreatorRequirement,
     runSkillCreator: (requirement) =>
       input.runSkillCreator(requirement, {
@@ -345,7 +396,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     executeTurn: async (userInput, interactiveMode) => {
       const inlineAttachmentResolution = resolveInlineAttachmentsFromInput(userInput);
       if (interactiveMode) {
+        activeTurnStartedAtMs = Date.now();
         activityTracker.markTurnStart();
+        writeInteractiveTrace(`event=turn_start mode=${interactiveDiagnosticsMode}`);
       }
       try {
         const code = await input.executeTurn(
@@ -370,6 +423,18 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
                 ? "ok"
                 : "error",
           );
+          writeInteractiveTrace(
+            `event=turn_finish mode=${interactiveDiagnosticsMode} result=${
+              code === TURN_INTERRUPTED_EXIT_CODE
+                ? "interrupted"
+                : code === 0
+                  ? "ok"
+                  : "error"
+            } exit_code=${String(code)} duration_ms=${String(
+              Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now())),
+            )}`,
+          );
+          activeTurnStartedAtMs = undefined;
         }
         return code;
       } catch (error) {
@@ -381,6 +446,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         }
         if (interactiveMode) {
           activityTracker.markTurnFinished("error");
+          writeInteractiveTrace(
+            `event=turn_finish mode=${interactiveDiagnosticsMode} result=error exit_code=<exception> duration_ms=${String(
+              Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now())),
+            )}`,
+          );
+          activeTurnStartedAtMs = undefined;
         }
         throw error;
       }
@@ -402,6 +473,15 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       getCachedModelContextWindowTokens: input.getCachedModelContextWindowTokens,
       fallback: input.contextWindowTokens,
     });
+    const runningActivityText = (() => {
+      const activityText = activityTracker.readPromptActivity();
+      if (typeof activeTurnStartedAtMs !== "number") {
+        return activityText;
+      }
+      const elapsed = formatTurnElapsedCompact(Date.now() - activeTurnStartedAtMs);
+      const base = activityText ?? "执行中";
+      return `${base} (${elapsed} · Esc中断)`;
+    })();
     const renderedPrompt = renderStatusLinePrompt({
       model: `${modelSnapshot.providerName}/${modelSnapshot.model}`,
       projectFolder,
@@ -413,7 +493,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       sessionTopic: input.getActiveSessionTopic(),
       planMode: input.isPlanMode(),
       terminalColumns,
-      activityText: activityTracker.readPromptActivity(),
+      activityText: runningActivityText,
       promptLabel: "› ",
       config: statusLineConfig,
     });

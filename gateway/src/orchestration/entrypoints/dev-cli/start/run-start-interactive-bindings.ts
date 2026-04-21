@@ -1,5 +1,8 @@
 import { type SessionStoreRuntime } from "../services/session-store";
-import { type RunStartInteractiveModeInput } from "./run-start-interactive-mode";
+import {
+  type InteractiveDiagnosticsMode,
+  type RunStartInteractiveModeInput,
+} from "./run-start-interactive-mode";
 import { type RuntimeAttachment } from "../../../../models/types";
 import {
   type RunStartModelOps,
@@ -29,6 +32,7 @@ import {
   runTerminalLinePrompt,
   runTerminalSelectMenu,
 } from "./run-start-io";
+import { compactSingleLine } from "./session-history";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -43,6 +47,7 @@ interface CreateRunStartInteractiveModeInput {
   handoffPath: string;
   contextWindowTokens?: number;
   interactiveDiagnosticsEnabled?: boolean;
+  interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
   buildHelpText(): string;
   statusLineConfig?: StatusLineConfigInput;
   runtimeProviderChain: ReadonlyArray<RuntimeProviderCandidate>;
@@ -201,6 +206,9 @@ export function createRunStartInteractiveModeInput(
 
   const openPlanMenu = async (
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+    options?: {
+      writeStderr?: (message: string) => void;
+    },
   ): Promise<void> => {
     if (!process.stdin.isTTY) {
       input.output.writeStdout(
@@ -273,7 +281,9 @@ export function createRunStartInteractiveModeInput(
         input.output.writeStdout("[plan] apply cancelled.\n\n");
         return;
       }
-      const code = await input.planMode.applyPlan(applyExtra.value.trim());
+      const code = await input.planMode.applyPlan(applyExtra.value.trim(), {
+        writeStderr: options?.writeStderr,
+      });
       if (shouldMarkFailure(code)) {
         input.runtimeState.markFailureObserved();
       }
@@ -293,7 +303,9 @@ export function createRunStartInteractiveModeInput(
       input.output.writeStdout("[plan] goal is empty, cancelled.\n\n");
       return;
     }
-    const code = await input.planMode.enterPlan(goal);
+    const code = await input.planMode.enterPlan(goal, {
+      writeStderr: options?.writeStderr,
+    });
     if (shouldMarkFailure(code)) {
       input.runtimeState.markFailureObserved();
     }
@@ -500,6 +512,39 @@ export function createRunStartInteractiveModeInput(
     );
   };
 
+  const showHistory = async (queryRaw?: string): Promise<void> => {
+    const query = (queryRaw ?? "").trim().toLowerCase();
+    const allRows = input.runtimeState.getHistoryMessages();
+    if (allRows.length === 0) {
+      input.output.writeStdout("[history] no conversation history yet.\n\n");
+      return;
+    }
+    const filteredRows = query.length > 0
+      ? allRows.filter((row) => row.content.toLowerCase().includes(query))
+      : allRows;
+    const windowSize = 20;
+    const renderRows = filteredRows.slice(-windowSize);
+    const lines: string[] = [
+      "[history]",
+      `total: ${String(allRows.length)}`,
+      `matched: ${String(filteredRows.length)}`,
+      `query: ${query.length > 0 ? query : "<none>"}`,
+      `showing_last: ${String(renderRows.length)}`,
+    ];
+    if (renderRows.length === 0) {
+      lines.push("- no matched rows");
+      lines.push("");
+      input.output.writeStdout(`${lines.join("\n")}\n`);
+      return;
+    }
+    for (const row of renderRows) {
+      const role = row.role === "assistant" ? "assistant" : "user";
+      lines.push(`- ${role}: ${compactSingleLine(row.content, 220)}`);
+    }
+    lines.push("");
+    input.output.writeStdout(`${lines.join("\n")}\n`);
+  };
+
   const sessionTopicCache: {
     sessionId: string;
     topic: string | undefined;
@@ -549,6 +594,7 @@ export function createRunStartInteractiveModeInput(
     handoffPath: input.handoffPath,
     contextWindowTokens: input.contextWindowTokens,
     interactiveDiagnosticsEnabled: input.interactiveDiagnosticsEnabled,
+    interactiveDiagnosticsMode: input.interactiveDiagnosticsMode,
     restoredTurns: input.runtimeState.getRestoredTurns(),
     restoreSource: input.runtimeState.getRestoreSource(),
     buildHelpText: input.buildHelpText,
@@ -604,6 +650,7 @@ export function createRunStartInteractiveModeInput(
     handleUserCommandsCommand: userCommandsRuntime.handleManagementCommand,
     openCommandsMenu: userCommandsRuntime.openManagementMenu,
     openPlanMenu,
+    showHistory,
     promptSkillCreatorRequirement: async (withInputPaused) => {
       const requirementInput = await withInputPaused(() =>
         runTerminalLinePrompt({
@@ -630,6 +677,9 @@ export function createRunStartInteractiveModeInput(
         input.output.writeStdout("usage: /skill-creator <需求>\n\n");
         return;
       }
+      input.output.writeStdout(
+        `[skill-creator] 正在根据需求生成技能：${compactSingleLine(normalizedRequirement, 120)}\n\n`,
+      );
       const prompt = buildSkillCreatorPrompt({
         requirement: normalizedRequirement,
         projectRoot: input.projectRoot,

@@ -52,8 +52,10 @@ export interface SessionInputLoopControls {
   withInputPaused<T>(operation: () => Promise<T>): Promise<T>;
 }
 
+export type SessionEscapeInterruptPhase = "idle" | "running";
+
 export interface SessionInputLoopOptions {
-  onEscapeInterrupt?: () => void | Promise<void>;
+  onEscapeInterrupt?: (phase: SessionEscapeInterruptPhase) => void | Promise<void>;
   getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
   getInlineImageHighlightTheme?: () => "plain" | "nerd_font" | "ccline" | undefined;
 }
@@ -123,6 +125,113 @@ export type TerminalLinePromptResult =
   | { kind: "cancelled" };
 
 const MENU_DIGIT_SELECTION_COMMIT_DELAY_MS = 250;
+const MENU_TRANSITION_DELAY_LIMIT_MS = 160;
+const MENU_OPEN_FRAME_DELAY_DEFAULTS: readonly [number, number] = [18, 34];
+const MENU_CLOSE_FRAME_DELAY_DEFAULTS: readonly [number, number] = [14, 28];
+const ANSI_SEQUENCE_PATTERN = /\x1b\[[0-9;?]+[A-Za-z]/g;
+
+type MenuTransitionDelays = readonly [number, number];
+type MenuTransitionPresetName = "fast" | "medium" | "slow";
+type MenuTransitionFrameKind =
+  | "open_initial"
+  | "open_mid"
+  | "close_initial"
+  | "close_mid";
+
+const MENU_TRANSITION_PRESETS: Readonly<
+  Record<MenuTransitionPresetName, { open: MenuTransitionDelays; close: MenuTransitionDelays }>
+> = {
+  fast: {
+    open: [12, 22],
+    close: [10, 20],
+  },
+  medium: {
+    open: MENU_OPEN_FRAME_DELAY_DEFAULTS,
+    close: MENU_CLOSE_FRAME_DELAY_DEFAULTS,
+  },
+  slow: {
+    open: [24, 44],
+    close: [18, 34],
+  },
+};
+
+function stripMenuTransitionAnsi(valueRaw: string): string {
+  return valueRaw.replace(ANSI_SEQUENCE_PATTERN, "");
+}
+
+function resolveMenuTransitionPreset(valueRaw: string | undefined): {
+  open: MenuTransitionDelays;
+  close: MenuTransitionDelays;
+} {
+  const value = (valueRaw ?? "").trim().toLowerCase();
+  if (value === "fast") {
+    return MENU_TRANSITION_PRESETS.fast;
+  }
+  if (value === "slow") {
+    return MENU_TRANSITION_PRESETS.slow;
+  }
+  return MENU_TRANSITION_PRESETS.medium;
+}
+
+function resolveMenuTransitionDelays(
+  valueRaw: string | undefined,
+  fallback: MenuTransitionDelays,
+): [number, number] {
+  const value = (valueRaw ?? "").trim();
+  if (value.length === 0) {
+    return [fallback[0], fallback[1]];
+  }
+  const segments = value.split(/[,\s]+/).map((segment) => segment.trim()).filter((segment) =>
+    segment.length > 0
+  );
+  if (segments.length < 2) {
+    return [fallback[0], fallback[1]];
+  }
+  const first = Number.parseInt(segments[0] ?? "", 10);
+  const second = Number.parseInt(segments[1] ?? "", 10);
+  if (!Number.isFinite(first) || !Number.isFinite(second) || first < 0 || second < 0) {
+    return [fallback[0], fallback[1]];
+  }
+  return [
+    Math.min(MENU_TRANSITION_DELAY_LIMIT_MS, Math.floor(first)),
+    Math.min(MENU_TRANSITION_DELAY_LIMIT_MS, Math.floor(second)),
+  ];
+}
+
+function buildMenuTransitionFrame(
+  menuLines: readonly string[],
+  kind: MenuTransitionFrameKind,
+): string[] {
+  return menuLines.map((line, index) => {
+    const plain = stripMenuTransitionAnsi(line);
+    if (plain.trim().length === 0) {
+      return "";
+    }
+    const isSecondaryLine = plain.startsWith("  ");
+    if (kind === "open_initial") {
+      if (index <= 1) {
+        return plain;
+      }
+      if (isSecondaryLine) {
+        return "";
+      }
+      return `${ANSI_DIM}${plain}${ANSI_RESET}`;
+    }
+    if (kind === "open_mid") {
+      if (index <= 1) {
+        return plain;
+      }
+      return `${ANSI_DIM}${plain}${ANSI_RESET}`;
+    }
+    if (kind === "close_initial") {
+      return `${ANSI_DIM}${plain}${ANSI_RESET}`;
+    }
+    if (isSecondaryLine) {
+      return "";
+    }
+    return `${ANSI_DIM}${plain}${ANSI_RESET}`;
+  });
+}
 
 export interface InlineAttachmentResolution {
   userInput: string;
@@ -163,6 +272,18 @@ export function resolveSlashSuggestionApplyResult(
   };
 }
 
+function hasSlashCommandArguments(activeLineInputRaw: string | undefined): boolean {
+  const activeLineInput = (activeLineInputRaw ?? "").trim();
+  if (!activeLineInput.startsWith("/")) {
+    return false;
+  }
+  const firstSpace = activeLineInput.indexOf(" ");
+  if (firstSpace < 0) {
+    return false;
+  }
+  return activeLineInput.slice(firstSpace + 1).trim().length > 0;
+}
+
 export function resolveSlashSuggestionKeyAction(input: {
   key: SlashSuggestionKey;
   hasActiveSuggestions: boolean;
@@ -177,6 +298,11 @@ export function resolveSlashSuggestionKeyAction(input: {
       kind: "hide_panel",
       hiddenLineInput: input.activeLineInput ?? "",
     };
+  }
+  if (hasSlashCommandArguments(input.activeLineInput)) {
+    // Keep explicit user arguments intact (for example `/plan <goal>`), instead
+    // of replacing the whole line with the selected slash command.
+    return { kind: "noop" };
   }
   const selectedCommand = input.selectedCommand?.trim();
   if (!selectedCommand) {
@@ -646,11 +772,11 @@ export async function runSessionInputLoop(
     },
   };
 
-  const triggerEscInterrupt = (): void => {
+  const triggerEscInterrupt = (phase: SessionEscapeInterruptPhase): void => {
     if (typeof options.onEscapeInterrupt !== "function") {
       return;
     }
-    const maybePromise = options.onEscapeInterrupt();
+    const maybePromise = options.onEscapeInterrupt(phase);
     if (typeof (maybePromise as Promise<void> | undefined)?.then === "function") {
       void maybePromise;
     }
@@ -670,7 +796,7 @@ export async function runSessionInputLoop(
     }
     escArmedAt = now;
     process.stdout.write("\n");
-    triggerEscInterrupt();
+    triggerEscInterrupt("running");
   };
 
   const resolvePromptLayoutValue = (): SessionPromptLayout => {
@@ -1276,6 +1402,23 @@ export async function runSessionInputLoop(
         });
       };
 
+      const handleEscapeLikeAction = (): boolean => {
+        const slashState = resolveSlashState();
+        const slashAction = resolveSlashSuggestionKeyAction({
+          key: "escape",
+          hasActiveSuggestions: slashState.hasActiveSlashSuggestions,
+          selectedCommand: slashState.activeSuggestions[activeSlashSuggestionIndex]?.command,
+          activeLineInput: latestSnapshot?.activeLineInput,
+        });
+        if (slashAction.kind !== "hide_panel") {
+          return false;
+        }
+        slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
+        activeSlashSuggestionIndex = 0;
+        render();
+        return true;
+      };
+
       const onData = (chunk: string): void => {
         if (closed) {
           return;
@@ -1326,6 +1469,19 @@ export async function runSessionInputLoop(
         }
         if (raw === "\u0003") {
           finish({ kind: "sigint" });
+          return;
+        }
+        if (raw === "\u001b") {
+          if (handleEscapeLikeAction()) {
+            return;
+          }
+          const now = Date.now();
+          if (now - escArmedAt < 150) {
+            return;
+          }
+          escArmedAt = now;
+          process.stdout.write("\n");
+          triggerEscInterrupt("idle");
           return;
         }
         const coalescedSubmit = resolveCoalescedSubmitChunk(raw);
@@ -1478,17 +1634,16 @@ export async function runSessionInputLoop(
           return;
         }
         if (key.name === "escape") {
-          const slashAction = resolveSlashSuggestionKeyAction({
-            key: "escape",
-            hasActiveSuggestions: hasActiveSlashSuggestions,
-            selectedCommand: activeSuggestions[activeSlashSuggestionIndex]?.command,
-            activeLineInput: latestSnapshot?.activeLineInput,
-          });
-          if (slashAction.kind === "hide_panel") {
-            slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
-            activeSlashSuggestionIndex = 0;
-            render();
+          if (handleEscapeLikeAction()) {
+            return;
           }
+          const now = Date.now();
+          if (now - escArmedAt < 150) {
+            return;
+          }
+          escArmedAt = now;
+          process.stdout.write("\n");
+          triggerEscInterrupt("idle");
           return;
         }
 
@@ -1678,14 +1833,80 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,
   });
+  const menuTransitionPreset = resolveMenuTransitionPreset(
+    process.env.GROBOT_MENU_TIMING_PRESET,
+  );
+  const openFrameDelays = resolveMenuTransitionDelays(
+    process.env.GROBOT_MENU_OPEN_TIMING_MS,
+    menuTransitionPreset.open,
+  );
+  const closeFrameDelays = resolveMenuTransitionDelays(
+    process.env.GROBOT_MENU_CLOSE_TIMING_MS,
+    menuTransitionPreset.close,
+  );
+  const supportsMenuTransitions = uiRenderer.mode === "interactive_tty";
   let activeIndex = normalizeMenuIndex(input.items.length, input.initialIndex);
   let resolved = false;
+  let openTransitionStageOneTimer: ReturnType<typeof setTimeout> | undefined;
+  let openTransitionStageTwoTimer: ReturnType<typeof setTimeout> | undefined;
+  let closeTransitionStageOneTimer: ReturnType<typeof setTimeout> | undefined;
+  let closeTransitionStageTwoTimer: ReturnType<typeof setTimeout> | undefined;
+  let hasRenderedOpenPreview = false;
+  let lastRenderedMenuLines: string[] = [];
+  let lastRenderedFrameLineCount = 0;
   let numericSelectionBuffer = "";
   let numericSelectionTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const writeInlineMenuLines = (menuLines: readonly string[]): void => {
+    const frameLines = [...menuLines];
+    if (lastRenderedFrameLineCount > 0) {
+      stdout.write("\r");
+      stdout.write(`\x1b[${String(lastRenderedFrameLineCount)}A`);
+    }
+    stdout.write("\x1b[J");
+    stdout.write(frameLines.join("\n"));
+    stdout.write("\n");
+    lastRenderedFrameLineCount = frameLines.length;
+  };
+
+  const clearOpenTransitionTimers = (): void => {
+    if (openTransitionStageOneTimer) {
+      clearTimeout(openTransitionStageOneTimer);
+      openTransitionStageOneTimer = undefined;
+    }
+    if (openTransitionStageTwoTimer) {
+      clearTimeout(openTransitionStageTwoTimer);
+      openTransitionStageTwoTimer = undefined;
+    }
+  };
+
   const render = (): void => {
-    stdout.write("\x1b[2J\x1b[H");
-    stdout.write(`${uiRenderer.renderSelectMenu(input, activeIndex)}\n`);
+    const menuLines = uiRenderer.renderSelectMenu(input, activeIndex).split("\n");
+    lastRenderedMenuLines = menuLines;
+    if (supportsMenuTransitions && !hasRenderedOpenPreview) {
+      hasRenderedOpenPreview = true;
+      const initialFrame = buildMenuTransitionFrame(menuLines, "open_initial");
+      const middleFrame = buildMenuTransitionFrame(menuLines, "open_mid");
+      writeInlineMenuLines(initialFrame);
+      clearOpenTransitionTimers();
+      openTransitionStageOneTimer = setTimeout(() => {
+        openTransitionStageOneTimer = undefined;
+        if (resolved) {
+          return;
+        }
+        writeInlineMenuLines(middleFrame);
+        openTransitionStageTwoTimer = setTimeout(() => {
+          openTransitionStageTwoTimer = undefined;
+          if (resolved) {
+            return;
+          }
+          writeInlineMenuLines(menuLines);
+        }, openFrameDelays[1]);
+      }, openFrameDelays[0]);
+      return;
+    }
+    clearOpenTransitionTimers();
+    writeInlineMenuLines(menuLines);
   };
 
   const clearNumericSelectionBuffer = (): void => {
@@ -1697,19 +1918,61 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   };
 
   return await new Promise<TerminalSelectMenuResult>((resolve) => {
-    const cleanup = (): void => {
-      if (!resolved) {
+    const clearCloseTransitionTimers = (): void => {
+      if (closeTransitionStageOneTimer) {
+        clearTimeout(closeTransitionStageOneTimer);
+        closeTransitionStageOneTimer = undefined;
+      }
+      if (closeTransitionStageTwoTimer) {
+        clearTimeout(closeTransitionStageTwoTimer);
+        closeTransitionStageTwoTimer = undefined;
+      }
+    };
+
+    const finalizeTeardown = (result: TerminalSelectMenuResult): void => {
+      clearCloseTransitionTimers();
+      if (lastRenderedFrameLineCount > 0) {
+        stdout.write("\r");
+        stdout.write(`\x1b[${String(lastRenderedFrameLineCount)}A`);
+        stdout.write("\x1b[J");
+        lastRenderedFrameLineCount = 0;
+      }
+      stdout.write("\x1b[?25h");
+      resolve(result);
+    };
+
+    const runCloseTransition = (result: TerminalSelectMenuResult): void => {
+      if (
+        !supportsMenuTransitions
+        || lastRenderedFrameLineCount <= 0
+        || lastRenderedMenuLines.length === 0
+      ) {
+        finalizeTeardown(result);
         return;
       }
+      const initialFrame = buildMenuTransitionFrame(lastRenderedMenuLines, "close_initial");
+      const middleFrame = buildMenuTransitionFrame(lastRenderedMenuLines, "close_mid");
+      writeInlineMenuLines(initialFrame);
+      clearCloseTransitionTimers();
+      closeTransitionStageOneTimer = setTimeout(() => {
+        closeTransitionStageOneTimer = undefined;
+        writeInlineMenuLines(middleFrame);
+        closeTransitionStageTwoTimer = setTimeout(() => {
+          closeTransitionStageTwoTimer = undefined;
+          finalizeTeardown(result);
+        }, closeFrameDelays[1]);
+      }, closeFrameDelays[0]);
+    };
+
+    const teardownInput = (): void => {
       clearNumericSelectionBuffer();
+      clearOpenTransitionTimers();
       offInput.call(stdin, "data", onData);
       try {
         setRawMode.call(stdin, false);
       } catch {
         // ignore raw mode teardown errors
       }
-      stdout.write("\x1b[?25h");
-      stdout.write("\x1b[?1049l");
     };
 
     const finish = (result: TerminalSelectMenuResult): void => {
@@ -1717,8 +1980,8 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return;
       }
       resolved = true;
-      cleanup();
-      resolve(result);
+      teardownInput();
+      runCloseTransition(result);
     };
 
     const selectAndFinish = (nextIndex: number): void => {
@@ -1820,7 +2083,6 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       }
     };
 
-    stdout.write("\x1b[?1049h");
     stdout.write("\x1b[?25l");
     stdin.setEncoding?.("utf8");
     onInput.call(stdin, "data", onData);

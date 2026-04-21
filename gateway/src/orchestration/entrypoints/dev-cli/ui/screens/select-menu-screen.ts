@@ -28,6 +28,36 @@ interface RenderTerminalSelectMenuInput {
   env?: CliEnv;
 }
 
+function resolveMenuPrimaryAction(hintRaw: string): "select" | "apply" | "continue" {
+  const hint = hintRaw.toLowerCase();
+  if (hint.includes("apply")) {
+    return "apply";
+  }
+  if (hint.includes("continue")) {
+    return "continue";
+  }
+  return "select";
+}
+
+function buildCompactMenuHint(hintRaw?: string): string {
+  const fallback = "↑/↓ or j/k · Enter/Space select · Esc back";
+  if (!hintRaw || hintRaw.trim().length === 0) {
+    return fallback;
+  }
+  const lower = hintRaw.toLowerCase();
+  const action = resolveMenuPrimaryAction(hintRaw);
+  const segments: string[] = [
+    "↑/↓ or j/k",
+    ...(lower.includes("ctrl+n/p") ? ["Ctrl+n/p"] : []),
+    ...(lower.includes("number to select directly") || lower.includes("number")
+      ? ["1-9 jump"]
+      : []),
+    `Enter/Space ${action}`,
+    "Esc back",
+  ];
+  return Array.from(new Set(segments)).join(" · ");
+}
+
 export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): string {
   const mode = resolveCliRenderMode({
     stdinIsTTY: input.stdinIsTTY,
@@ -38,30 +68,27 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
   const lines: string[] = [];
   lines.push(theme.bold(input.menu.title));
   if (input.menu.subtitle && input.menu.subtitle.trim().length > 0) {
-    lines.push(input.menu.subtitle.trim());
+    lines.push(theme.color("muted", input.menu.subtitle.trim()));
   }
   lines.push("");
   for (let index = 0; index < input.menu.items.length; index += 1) {
     const item = input.menu.items[index];
     const isActive = index === input.activeIndex;
-    const pointer = isActive ? theme.pointer("›") : " ";
-    const number = `${String(index + 1)}.`;
+    const pointer = isActive ? theme.pointer("❯") : " ";
+    const number = isActive
+      ? theme.color("accent", `${String(index + 1)}.`)
+      : theme.color("muted", `${String(index + 1)}.`);
     const label = isActive ? theme.color("accent", item.label) : item.label;
-    const currentTag = item.current ? ` ${theme.currentTag("(current)")}` : "";
+    const currentTag = item.current ? ` ${theme.currentTag("✓")}` : "";
     const description = item.description && item.description.trim().length > 0
       ? item.description.trim()
       : "";
-    const firstLine = `${pointer} ${number.padEnd(3)} ${label}${currentTag}`;
+    lines.push(`${pointer} ${number} ${label}${currentTag}`);
     if (description.length > 0) {
-      lines.push(`${firstLine}  ${description}`);
-    } else {
-      lines.push(firstLine);
+      lines.push(`  ${theme.color("muted", description)}`);
     }
   }
   lines.push("");
-  lines.push(
-    input.menu.hint
-    ?? "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm highlight, Esc to cancel.",
-  );
+  lines.push(theme.color("muted", `  ${buildCompactMenuHint(input.menu.hint)}`));
   return lines.join("\n");
 }
