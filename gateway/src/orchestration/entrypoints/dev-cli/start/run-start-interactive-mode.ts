@@ -179,6 +179,10 @@ export interface RunStartInteractiveModeInput {
   openPlanMenu(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<void>;
+  promptSkillCreatorRequirement(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<string | undefined>;
+  runSkillCreator(requirement: string): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
   executeTurn(
     userInput: string,
@@ -317,6 +321,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
     openPlanMenu: input.openPlanMenu,
+    promptSkillCreatorRequirement: input.promptSkillCreatorRequirement,
+    runSkillCreator: input.runSkillCreator,
     tryRunUserCommand: input.tryRunUserCommand,
     executeTurn: async (userInput, interactiveMode) => {
       const inlineAttachmentResolution = resolveInlineAttachmentsFromInput(userInput);

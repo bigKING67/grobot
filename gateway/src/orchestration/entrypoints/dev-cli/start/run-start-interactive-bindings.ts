@@ -143,6 +143,35 @@ function resolveStatusLayoutMode(input: string): StatusLineLayoutMode | undefine
   return undefined;
 }
 
+function trimTrailingSlashes(path: string): string {
+  if (/^[\\/]+$/.test(path)) {
+    return path.startsWith("\\") ? "\\" : "/";
+  }
+  return path.replace(/[\\/]+$/, "");
+}
+
+function buildSkillCreatorPrompt(input: {
+  requirement: string;
+  projectRoot: string;
+  homeDir: string;
+}): string {
+  const requirement = input.requirement.trim();
+  const projectSkillsDir = `${trimTrailingSlashes(input.projectRoot)}/.grobot/skills`;
+  const globalSkillsDir = `${trimTrailingSlashes(input.homeDir)}/skills`;
+  return [
+    "你现在需要作为内置 `skill-creator` 执行技能创建任务。",
+    "请按以下约束执行：",
+    "- 优先创建或更新项目技能目录：`./.grobot/skills`。",
+    `- 绝对路径参考：${projectSkillsDir}`,
+    `- 全局内置技能目录：${globalSkillsDir}/skill-creator`,
+    "- 若需求不完整，请先补齐最少必要澄清，再继续产出可执行技能。",
+    "- 产出目标是可以直接落地使用的 skill 文件结构与内容。",
+    "",
+    "用户需求：",
+    requirement,
+  ].join("\n");
+}
+
 export function createRunStartInteractiveModeInput(
   input: CreateRunStartInteractiveModeInput,
 ): RunStartInteractiveModeInput {
@@ -574,6 +603,39 @@ export function createRunStartInteractiveModeInput(
     handleUserCommandsCommand: userCommandsRuntime.handleManagementCommand,
     openCommandsMenu: userCommandsRuntime.openManagementMenu,
     openPlanMenu,
+    promptSkillCreatorRequirement: async (withInputPaused) => {
+      const requirementInput = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: "[skill-creator] 请输入需求> ",
+        }),
+      );
+      if (requirementInput.kind === "cancelled") {
+        input.output.writeStdout("[skill-creator] 已取消。\n\n");
+        return undefined;
+      }
+      const requirement = requirementInput.value.trim();
+      if (!requirement) {
+        input.output.writeStdout("[skill-creator] 需求为空，已取消。\n\n");
+        return undefined;
+      }
+      return requirement;
+    },
+    runSkillCreator: async (requirement) => {
+      const normalizedRequirement = requirement.trim();
+      if (!normalizedRequirement) {
+        input.output.writeStdout("usage: /skill-creator <需求>\n\n");
+        return;
+      }
+      const prompt = buildSkillCreatorPrompt({
+        requirement: normalizedRequirement,
+        projectRoot: input.projectRoot,
+        homeDir: input.homeDir,
+      });
+      const code = await input.executeTurn(prompt, true);
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+    },
     tryRunUserCommand: userCommandsRuntime.tryRunUserCommand,
     executeTurn: input.executeTurn,
     markFailureObserved: input.runtimeState.markFailureObserved,

@@ -28,6 +28,7 @@ async function main(): Promise<void> {
   const slashMenu = resolveSlashSuggestionApplyResult("/model");
   const slashCommandsMenu = resolveSlashSuggestionApplyResult("/commands");
   const slashPlanMenu = resolveSlashSuggestionApplyResult("/plan");
+  const slashSkillCreatorMenu = resolveSlashSuggestionApplyResult("/skill-creator <需求>");
   const slashOverlayPartial = formatSlashSuggestionPanel(
     [{ command: "/exit", description: "Exit interactive mode" }],
     "/e",
@@ -145,6 +146,8 @@ async function main(): Promise<void> {
       slashCommandsMenu.command === "/commands" && slashCommandsMenu.submitImmediately,
     slash_apply_plan_menu_submit:
       slashPlanMenu.command === "/plan" && slashPlanMenu.submitImmediately,
+    slash_apply_skill_creator_requires_input:
+      slashSkillCreatorMenu.command === "/skill-creator " && !slashSkillCreatorMenu.submitImmediately,
     slash_key_enter_applies_and_submits:
       enterMenuAction.kind === "apply"
       && enterMenuAction.appliedCommand === "/model"

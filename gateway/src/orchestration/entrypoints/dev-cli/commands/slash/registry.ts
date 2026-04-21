@@ -25,6 +25,12 @@ interface ParsedSessionMenuCommand {
   reason?: string;
 }
 
+interface ParsedSkillCreatorCommand {
+  kind: "run" | "prompt" | "invalid";
+  requirement?: string;
+  reason?: string;
+}
+
 export interface SlashCommandSuggestion {
   command: string;
   description: string;
@@ -148,6 +154,21 @@ function parseSessionMenuCommand(
   };
 }
 
+function parseSkillCreatorCommand(inputRaw: string): ParsedSkillCreatorCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith("/skill-creator")) {
+    return { kind: "invalid", reason: "command must start with /skill-creator" };
+  }
+  const rest = input.slice("/skill-creator".length).trim();
+  if (!rest) {
+    return { kind: "prompt" };
+  }
+  return {
+    kind: "run",
+    requirement: rest,
+  };
+}
+
 const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "exit",
@@ -206,6 +227,36 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     ],
   },
   {
+    id: "skill-creator",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/skill-creator"),
+    execute: async ({ userInput, controls, handlers }) => {
+      const parsed = parseSkillCreatorCommand(userInput);
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid skill-creator command"}\n\n`);
+        return "continue";
+      }
+      if (parsed.kind === "run") {
+        await handlers.runSkillCreator(parsed.requirement ?? "");
+        return "continue";
+      }
+      if (!isInteractiveTerminal()) {
+        handlers.writeStdout("usage: /skill-creator <需求>\n\n");
+        return "continue";
+      }
+      const requirement = await handlers.promptSkillCreatorRequirement(
+        controls.withInputPaused,
+      );
+      if (!requirement) {
+        return "continue";
+      }
+      await handlers.runSkillCreator(requirement);
+      return "continue";
+    },
+    helpLines: [
+      "  /skill-creator       Create a skill from requirement (no-menu: ask in TTY when empty)",
+    ],
+  },
+  {
     id: "health",
     matches: (userInput) => userInput === "/health",
     execute: async ({ handlers }) => {
@@ -223,8 +274,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       handlers.writeStdout(
         [
           "[skills]",
-          "- project: ./.agents/skills, ./.codex/skills",
-          "- global: ~/.agents/skills, ~/.codex/skills",
+          "- project: ./.grobot/skills",
+          "- global: ~/.grobot/skills",
+          "- tip: run /skill-creator <需求> to create new skills",
           "- tip: use /commands to manage reusable local command templates",
           "",
         ].join("\n"),
@@ -445,6 +497,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 const HELP_ORDER: readonly string[] = [
   "sessions",
   "commands",
+  "skill-creator",
   "model",
   "plan",
   "status",
@@ -460,6 +513,7 @@ const HELP_ORDER: readonly string[] = [
 const PRIMARY_HELP_ORDER: readonly string[] = [
   "sessions",
   "commands",
+  "skill-creator",
   "model",
   "plan",
   "status",
@@ -478,6 +532,7 @@ const UTILITY_HELP_ORDER: readonly string[] = [
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/sessions", description: "Open session menu (create/switch/continue)" },
   { command: "/commands", description: "Manage user-defined slash commands" },
+  { command: "/skill-creator <需求>", description: "Create a skill directly from requirement" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
@@ -494,6 +549,7 @@ const PRIMARY_HINT_COMMANDS: readonly string[] = [
   "/help",
   "/sessions",
   "/commands",
+  "/skill-creator",
   "/model",
   "/plan",
   "/exit",

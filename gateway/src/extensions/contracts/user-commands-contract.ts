@@ -41,6 +41,8 @@ async function main(): Promise<void> {
 
   await runtime.handleManagementCommand("/commands new model 不应创建");
   const builtinCollisionCreated = existsSync(`${homeDir}/commands/model.json`);
+  await runtime.handleManagementCommand("/commands new skill-creator 不应创建");
+  const skillCreatorCollisionCreated = existsSync(`${homeDir}/commands/skill-creator.json`);
 
   const builtinLegacyPath = `${homeDir}/commands/model.json`;
   writeFileSync(
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
     second_invocation_handled: secondInvocationHandled,
     second_invocation_prompt: secondInvocationPrompt,
     builtin_collision_created: builtinCollisionCreated,
+    skill_creator_collision_created: skillCreatorCollisionCreated,
     builtin_delete_blocked: builtinDeleteBlocked,
     traversal_delete_blocked: traversalDeleteBlocked,
     traversal_invocation_handled: traversalInvocationHandled,

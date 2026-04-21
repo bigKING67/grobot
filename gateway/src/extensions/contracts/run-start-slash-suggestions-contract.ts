@@ -51,6 +51,11 @@ async function main(): Promise<void> {
     userInput: "/model ",
     maxItems: 80,
   });
+  const skillCreatorOnly = listRunStartSlashSuggestions({
+    homeDir,
+    userInput: "/skill-creator ",
+    maxItems: 80,
+  });
   const shipOnly = listRunStartSlashSuggestions({
     homeDir,
     userInput: "/ship",
@@ -65,6 +70,9 @@ async function main(): Promise<void> {
   const payload = {
     root_has_builtin_model: topLevel.some((item) => item.command === "/model" && item.source === "builtin"),
     root_has_builtin_commands: topLevel.some((item) => item.command === "/commands" && item.source === "builtin"),
+    root_has_builtin_skill_creator: topLevel.some(
+      (item) => item.command === "/skill-creator <需求>" && item.source === "builtin",
+    ),
     root_hides_status_subcommands: !topLevel.some((item) => item.command.startsWith("/status ")),
     root_hides_switch_continue_shortcuts: !topLevel.some((item) =>
       item.command === "/switch" || item.command === "/continue"),
@@ -79,6 +87,8 @@ async function main(): Promise<void> {
       (item) => item.command === "/pause_release" && item.description.includes("disabled"),
     ),
     model_filter_only_model_related: modelOnly.every((item) => item.command.startsWith("/model")),
+    skill_creator_filter_only_skill_creator: skillCreatorOnly.every((item) =>
+      item.command.startsWith("/skill-creator")),
     ship_filter_only_shipit: shipOnly.length === 1 && shipOnly[0]?.command === "/shipit",
     plain_input_empty: plainInput.length === 0,
   };

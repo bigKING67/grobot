@@ -22,6 +22,7 @@ interface ListRunStartSlashSuggestionsInput {
 const ROOT_SLASH_PRIMARY_BUILTIN_COMMANDS = new Set<string>([
   "/sessions",
   "/commands",
+  "/skill-creator <需求>",
   "/model",
   "/plan",
   "/status",

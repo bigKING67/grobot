@@ -9,6 +9,7 @@
     "grobot",
     "packages/cli/bin/grobot",
     "packages/templates/config.toml.example",
+    "packages/templates/skills",
     "adapters/contextweaver/bridge/cli.mjs",
     "adapters/contextweaver/vendor/contextweaver/dist",
     "adapters/contextweaver/vendor/contextweaver/skills",

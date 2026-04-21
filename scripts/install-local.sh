@@ -156,6 +156,21 @@ copy_file_if_missing() {
   return 0
 }
 
+copy_dir_if_missing() {
+  local source_dir="$1"
+  local target_dir="$2"
+  if [ -e "$target_dir" ]; then
+    return 0
+  fi
+  if [ ! -d "$source_dir" ]; then
+    return 1
+  fi
+  mkdir -p "$(dirname "$target_dir")"
+  cp -R "$source_dir" "$target_dir"
+  BOOTSTRAP_CREATED_DIRS+=("$target_dir")
+  return 0
+}
+
 write_text_file_if_missing() {
   local target_file="$1"
   if [ -e "$target_file" ]; then
@@ -325,9 +340,11 @@ bootstrap_global_home() {
   local normalized_home
   normalized_home="$GROBOT_HOME_DIR"
   local config_template_source="$REPO_ROOT/packages/templates/config.toml.example"
+  local builtin_skill_creator_source="$REPO_ROOT/packages/templates/skills/skill-creator"
   local config_example_path="$normalized_home/config.toml.example"
   local config_path="$normalized_home/config.toml"
   local mcp_servers_path="$normalized_home/mcp/servers.toml"
+  local builtin_skill_creator_target="$normalized_home/skills/skill-creator"
   local required_dirs=(
     "$normalized_home"
     "$normalized_home/hooks"
@@ -397,6 +414,23 @@ EOF
 
 Put reusable local skill files in this directory.
 EOF
+
+  if ! copy_dir_if_missing "$builtin_skill_creator_source" "$builtin_skill_creator_target"; then
+    if [ ! -f "$builtin_skill_creator_target/SKILL.md" ]; then
+      mkdir -p "$builtin_skill_creator_target"
+      BOOTSTRAP_CREATED_DIRS+=("$builtin_skill_creator_target")
+      write_text_file_if_missing "$builtin_skill_creator_target/SKILL.md" <<'EOF'
+---
+name: skill-creator
+description: Create and improve skills from user requirements.
+---
+
+# Skill Creator
+
+Use this built-in skill to create new skills under `.grobot/skills`.
+EOF
+    fi
+  fi
 
   write_text_file_if_missing "$normalized_home/commands/README.md" <<'EOF'
 # Commands

@@ -20,6 +20,7 @@ const USER_COMMAND_DEFAULT_PROMPT =
 
 const RESERVED_SLASH_COMMAND_NAMES = new Set<string>([
   "commands",
+  "skill-creator",
   "create",
   "new",
   "help",

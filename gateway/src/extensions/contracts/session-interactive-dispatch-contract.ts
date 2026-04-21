@@ -108,6 +108,13 @@ async function runDispatchCase(
     openPlanMenu: async () => {
       events.push("openPlanMenu");
     },
+    promptSkillCreatorRequirement: async () => {
+      events.push("promptSkillCreatorRequirement");
+      return "补齐技能需求";
+    },
+    runSkillCreator: async (requirement) => {
+      events.push(`runSkillCreator:${requirement}`);
+    },
     tryRunUserCommand: async (userInput) => {
       events.push(`tryRunUserCommand:${userInput}`);
       return userInput === "/shipit";
@@ -161,6 +168,9 @@ async function main(): Promise<void> {
   const commandsMenu = await runDispatchCase("/commands");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
+  const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
+  const skillCreatorNoDemandTty = await runDispatchCase("/skill-creator", { stdinIsTty: true });
+  const skillCreatorNoDemandNonTty = await runDispatchCase("/skill-creator", { stdinIsTty: false });
   const skillsCommand = await runDispatchCase("/skills");
   const mcpCommand = await runDispatchCase("/mcp");
   const userCommandInvocation = await runDispatchCase("/shipit");
@@ -227,6 +237,34 @@ async function main(): Promise<void> {
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
     commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),
     commands_list_tty_opened_menu: includesEvent(commandsListTty.events, "openCommandsMenu"),
+    skill_creator_with_demand_dispatched: includesEvent(
+      skillCreatorWithDemand.events,
+      "runSkillCreator:帮我写一个数据分析的skill",
+    ),
+    skill_creator_with_demand_hits_run_turn: includesEvent(
+      skillCreatorWithDemand.events,
+      "runTurn:/skill-creator 帮我写一个数据分析的skill",
+    ),
+    skill_creator_empty_tty_prompted: includesEvent(
+      skillCreatorNoDemandTty.events,
+      "promptSkillCreatorRequirement",
+    ),
+    skill_creator_empty_tty_dispatched: includesEvent(
+      skillCreatorNoDemandTty.events,
+      "runSkillCreator:补齐技能需求",
+    ),
+    skill_creator_empty_non_tty_usage: includesEvent(
+      skillCreatorNoDemandNonTty.events,
+      "writeStdout",
+    ),
+    skill_creator_empty_non_tty_prompted: includesEvent(
+      skillCreatorNoDemandNonTty.events,
+      "promptSkillCreatorRequirement",
+    ),
+    skill_creator_empty_non_tty_dispatched: includesEvent(
+      skillCreatorNoDemandNonTty.events,
+      "runSkillCreator:补齐技能需求",
+    ),
     skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),
     skills_hits_run_turn: includesEvent(skillsCommand.events, "runTurn:/skills"),
     mcp_dispatched_to_stdout: includesEvent(mcpCommand.events, "writeStdout"),
