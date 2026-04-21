@@ -105,25 +105,23 @@ grobot init --project --project-root /path/to/your/repo
 grobot init --project --hooks-samples
 ```
 
-### npm 安装分发（给别人用）
+### 原生安装分发（给别人用）
 
 ```bash
-# 全局安装（发布到 npm 后）
-npm install -g grobot
+# 推荐：从 release 安装原生二进制（Claude 风格）
+grobot install stable --repo <owner/name>
 
-# 首次初始化（生成 ~/.grobot）
-grobot init --global
-
-# 在业务仓库内初始化项目配置（生成 <repo>/.grobot）
-cd /path/to/business-repo
-grobot init --project
+# 验证
+grobot --version
+which grobot
 ```
 
 说明：
-- 全局安装后，用户日常只需要关注 `~/.grobot` 与业务仓库里的 `.grobot`。
+- 对外入口固定为 `~/.local/bin/grobot`；内部版本目录是 `~/.local/share/grobot/versions/`。
+- 默认自动保留最近 3 个版本（旧版本会在安装时清理）。
+- 安装成功后，用户日常只需要关注 `~/.grobot` 与业务仓库里的 `.grobot`。
 - `adapters/`、`gateway/`、`runtime/`、`shared/` 属于实现源码，不需要用户在业务目录里维护。
 - CLI 入口已切到 `packages/cli/bin/grobot`，发布时优先加载平台核心包；源码 checkout 下默认走 TS dev CLI。legacy Python CLI 兼容链路已移除（`--legacy-python-cli` 与 `GROBOT_LEGACY_PYTHON` 均会直接报错）。
-- npm 发布包已通过 `files` 白名单控制，只包含 CLI 运行所需最小文件集合。
 - `grobot init --global` 会自动创建 `~/.grobot/mcp/servers.toml`（全局 MCP 注册表）。
 - `grobot init --project` 会自动创建 `<repo>/.grobot/mcp.toml`（项目级 MCP 覆盖）。
 - `grobot init` 会同时创建 hooks 目录：`hooks/user-prompt-submit/`、`hooks/before-tool-use/`、`hooks/after-tool-use/`（全局和项目层都会有）。
@@ -212,21 +210,24 @@ keep_recent_plans_per_session = 12
 
 ### 核心分发（原生二进制安装）
 
-- 目标发布形态：`grobot` 主包（CLI 壳） + 平台核心包（`@grobot/core-*`）。
+- 对齐 Claude Code 的安装结构：
+  - 命令入口：`~/.local/bin/grobot`
+  - 版本目录：`~/.local/share/grobot/versions/<version>`
+  - 默认保留最近 3 个版本（自动清理旧版本）
 - CLI 启动顺序：
   1. 若设置 `GROBOT_CORE_BIN`，优先使用该二进制；
-  2. 否则查找 `~/.grobot/core/current/grobot-core`；
-  3. 再查找 `~/.grobot/core/<platform>/grobot-core`；
-  4. 再按当前 `OS/ARCH` 在 `node_modules/@grobot/core-*/bin/grobot-core` 查找；
-  5. 若在源码仓库运行，默认 **禁止** 回退 `ts-dev-cli`（可用 `GROBOT_ALLOW_TS_DEV_CLI=1` 临时放开）；
-  6. legacy Python fallback 已移除（`--legacy-python-cli` / `GROBOT_LEGACY_PYTHON` 会返回错误并终止）。
+  2. 再查找 `~/.local/bin/grobot`（若指向真实二进制则直接使用）；
+  3. 再查找 `~/.grobot/core/current/grobot-core`；
+  4. 再查找 `~/.grobot/core/<platform>/grobot-core`；
+  5. 再按当前 `OS/ARCH` 在 `node_modules/@grobot/core-*/bin/grobot-core` 查找；
+  6. 默认 **禁止** 回退 `ts-dev-cli`（可用 `GROBOT_ALLOW_TS_DEV_CLI=1` 临时放开）。
 - `packages/core-*` 当前提供的是占位 stub，发布流水线需替换为真实编译产物。
 
 ### 自动迁移安装（推荐）
 
 ```bash
-# 1) 自动迁移到原生二进制 core（默认拉取 GitHub Releases 最新版本）
-grobot install
+# 1) 自动安装/迁移到原生二进制（默认 latest）
+grobot install --repo <owner/name>
 
 # 2) 验证是否命中 real core
 grobot --version
@@ -239,10 +240,19 @@ bash scripts/core-status.sh
 
 ```bash
 # macOS/Linux
-grobot install --binary /path/to/grobot-core --platform linux-x64
+grobot install --binary /path/to/grobot-core --platform darwin-arm64
 
 # Windows
 grobot install --binary C:\path\grobot-core-windows-x64.exe --platform windows-x64
+```
+
+显式从 GitHub Release 安装：
+
+```bash
+# stable/latest/指定 tag 都支持
+grobot install stable --repo <owner/name>
+grobot install latest --repo <owner/name>
+grobot install v0.1.0 --repo <owner/name>
 ```
 
 状态/发布检查：

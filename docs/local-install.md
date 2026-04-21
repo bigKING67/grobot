@@ -1,13 +1,35 @@
-# Grobot 本机安装（与 claude/codex 风格一致）
+# Grobot 本机安装（与 Claude Code 风格一致）
 
 ## 目标
 
 - 数据目录固定在 `~/.grobot`（配置与持久状态）。
 - 可执行命令 `grobot` 放到 PATH 里的 bin 目录（推荐 `~/.local/bin`）。
-- 使用体验与 `claude` / `codex` 一致：进入任意项目目录后直接输入 `grobot`。
+- 版本目录固定在 `~/.local/share/grobot/versions/<version>`。
+- 使用体验与 `claude` 一致：进入任意项目目录后直接输入 `grobot`。
 - 安装脚本自动补齐全局骨架（幂等，不覆盖已有配置）。
 
-## 首次安装（推荐）
+## 生产安装（推荐）
+
+```bash
+# 从 release 安装（stable/latest/指定版本均可）
+grobot install stable --repo <owner/name>
+# 或
+grobot install latest --repo <owner/name>
+# 或
+grobot install v0.1.0 --repo <owner/name>
+
+# 验证
+which grobot
+grobot --version
+```
+
+说明：
+
+- 命令入口：`~/.local/bin/grobot`。
+- 内部版本目录：`~/.local/share/grobot/versions/*`。
+- 默认保留最近 3 个版本，安装时自动清理旧版本。
+
+## 源码开发安装（仅开发者）
 
 ```bash
 cd /Users/gaoqian/Documents/sixseven/workman/groland/grobot
@@ -16,13 +38,13 @@ bash scripts/install-local.sh --bin-dir "$HOME/.local/bin" --no-profile
 # 当前 shell 立即生效
 export PATH="$HOME/.local/bin:$PATH"
 
-# 验证
 which grobot
 grobot --help
 ```
 
 说明：
 
+- `install-local.sh` 是开发便利脚本，会把 `grobot` 软链到当前源码仓库。
 - `--no-profile` 不会改你的 `~/.zshrc` / `~/.bashrc`，适合你自己管理 PATH。
 - 如果你希望安装脚本自动写 profile，可以去掉 `--no-profile`。
 - 安装时会自动补齐 `~/.grobot`（或 `GROBOT_HOME` / `--home`）：
@@ -78,12 +100,16 @@ grobot gc --apply
 ## 更新
 
 ```bash
-cd /Users/gaoqian/Documents/sixseven/workman/groland/grobot
-git pull
-bash scripts/install-local.sh --bin-dir "$HOME/.local/bin" --no-profile
+# 生产安装更新
+grobot install latest --repo <owner/name>
+
+# 源码开发更新
+# cd /Users/gaoqian/Documents/sixseven/workman/groland/grobot
+# git pull
+# bash scripts/install-local.sh --bin-dir "$HOME/.local/bin" --no-profile
 ```
 
-说明：`install-local.sh` 会覆盖软链接到当前仓库路径；仓库目录变化后建议重跑一次安装命令。
+说明：源码模式下，`install-local.sh` 会覆盖软链接到当前仓库路径；仓库目录变化后建议重跑一次安装命令。
 
 ## 卸载
 
