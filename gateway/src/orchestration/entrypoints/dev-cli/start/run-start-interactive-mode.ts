@@ -220,6 +220,7 @@ export interface RunStartInteractiveModeInput {
   getPendingAskQueueSize(): number;
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
+  parkPendingAsk(): void;
   clearPendingAsk(): void;
   answerPendingAsk(answer: string): Promise<void>;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
@@ -354,12 +355,39 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const traceDiagnosticsEnabled = interactiveDiagnosticsMode === "trace";
   const progressDiagnosticsEnabled = interactiveDiagnosticsMode === "verbose";
   const suppressDiagnosticStderr = !traceDiagnosticsEnabled;
+  const inlineProgressSupported = Boolean((process.stdout as { isTTY?: boolean }).isTTY)
+    && progressDiagnosticsEnabled
+    && !traceDiagnosticsEnabled;
+  let inlineProgressActive = false;
+  let inlineProgressText = "";
+  const clearInlineProgress = (insertNewline: boolean): void => {
+    if (!inlineProgressSupported || !inlineProgressActive) {
+      return;
+    }
+    process.stdout.write("\r\x1b[2K");
+    if (insertNewline) {
+      process.stdout.write("\n");
+    }
+    inlineProgressActive = false;
+    inlineProgressText = "";
+  };
+  const writeProgressLine = (line: string): void => {
+    if (!inlineProgressSupported) {
+      process.stdout.write(line);
+      return;
+    }
+    const rendered = line.replace(/\r?\n$/, "");
+    if (!rendered || rendered === inlineProgressText) {
+      return;
+    }
+    process.stdout.write(`\r\x1b[2K${rendered}`);
+    inlineProgressActive = true;
+    inlineProgressText = rendered;
+  };
   const activityTracker = createInteractiveActivityTracker(
     progressDiagnosticsEnabled
       ? {
-        writeProgressLine: (line) => {
-          process.stdout.write(line);
-        },
+        writeProgressLine,
       }
       : {},
   );
@@ -373,17 +401,20 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const writeInteractiveStderr = (message: string): void => {
     if (!suppressDiagnosticStderr) {
       activityTracker.observeStderrChunk(message);
+      clearInlineProgress(true);
       process.stderr.write(message);
       return;
     }
     const forwarded = activityTracker.consumeStderrChunk(message);
     if (forwarded.length > 0) {
+      clearInlineProgress(true);
       process.stderr.write(forwarded);
     }
   };
 
   const handleInteractiveInput = createRunStartInteractiveHandler({
     writeStdout: (message) => {
+      clearInlineProgress(false);
       process.stdout.write(message);
     },
     writeStderr: writeInteractiveStderr,
@@ -391,6 +422,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     getPendingAskQueueSize: input.getPendingAskQueueSize,
     showPendingAskQueue: input.showPendingAskQueue,
     cancelPendingAsk: input.cancelPendingAsk,
+    parkPendingAsk: input.parkPendingAsk,
     clearPendingAsk: input.clearPendingAsk,
     answerPendingAsk: input.answerPendingAsk,
     showHelp: () => {
@@ -464,6 +496,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         if (suppressDiagnosticStderr) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
+            clearInlineProgress(true);
             process.stderr.write(buffered);
           }
         }
@@ -493,6 +526,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         if (suppressDiagnosticStderr) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
+            clearInlineProgress(true);
             process.stderr.write(buffered);
           }
         }
@@ -609,6 +643,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       },
     });
   } finally {
+    clearInlineProgress(false);
     clearTerminalWindowTitle();
   }
 

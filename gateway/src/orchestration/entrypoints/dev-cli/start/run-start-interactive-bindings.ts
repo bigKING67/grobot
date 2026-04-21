@@ -720,7 +720,7 @@ export function createRunStartInteractiveModeInput(
     }
     lines.push("* active question");
     lines.push("hint: reply directly or use /ask answer <n|text>");
-    lines.push("hint: /ask cancel skips current, /ask clear removes all");
+    lines.push("hint: /ask cancel skips current, /ask park rotates queue, /ask clear removes all");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };
@@ -737,6 +737,36 @@ export function createRunStartInteractiveModeInput(
     const remaining = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
     input.output.writeStdout(
       `[ask-user] cancelled question_id=${dismissed.questionId} remaining=${String(remaining)}\n\n`,
+    );
+    if (input.persistGaStateSnapshot) {
+      void input.persistGaStateSnapshot().catch(() => {
+        input.output.writeStdout(
+          "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
+        );
+      });
+    }
+  };
+
+  const parkPendingAsk = (): void => {
+    purgeExpiredPendingAsk(true);
+    const sessionKey = input.runtimeState.getSessionKey();
+    const parked = input.gaMechanismRuntime.parkPendingAsk(sessionKey);
+    if (!parked) {
+      const queueDepth = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
+      if (queueDepth <= 0) {
+        input.output.writeStdout("[ask-user] no pending question to park.\n\n");
+      } else {
+        input.output.writeStdout(
+          "[ask-user] queue has only one pending question; nothing to park.\n\n",
+        );
+      }
+      return;
+    }
+    syncGaSnapshotToRuntimeState();
+    const active = input.gaMechanismRuntime.getPendingAsk(sessionKey);
+    const remaining = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
+    input.output.writeStdout(
+      `[ask-user] parked question_id=${parked.questionId} active=${active?.questionId ?? "<none>"} queue_depth=${String(remaining)}\n\n`,
     );
     if (input.persistGaStateSnapshot) {
       void input.persistGaStateSnapshot().catch(() => {
@@ -851,6 +881,7 @@ export function createRunStartInteractiveModeInput(
       ),
     showPendingAskQueue,
     cancelPendingAsk,
+    parkPendingAsk,
     clearPendingAsk,
     answerPendingAsk,
     showHealthStatus: () => {

@@ -711,6 +711,8 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.ask_park_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_park_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_clear_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_clear_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_answer_dispatched, true);
@@ -737,6 +739,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_sessions_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_park_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_answer_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
@@ -798,6 +801,33 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
   logStep("run-start-input-keybinding-contract");
 
+  const runStartPlanFailurePolicyContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-plan-failure-policy-contract.ts",
+  ]);
+  assertSuccess("run-start-plan-failure-policy-contract", runStartPlanFailurePolicyContractResult);
+  const runStartPlanFailurePolicyContractPayload = parseJsonOutput(
+    "run-start-plan-failure-policy-contract",
+    runStartPlanFailurePolicyContractResult.stdout,
+  );
+  assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_degrades, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_reason_matches, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_has_hint, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_stale_fails, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.applying_semantic_still_fails, true);
+  assert.equal(
+    runStartPlanFailurePolicyContractPayload.planning_provider_failure_reason_matches,
+    true,
+  );
+  assert.equal(
+    runStartPlanFailurePolicyContractPayload.planning_provider_failure_keeps_error_class,
+    true,
+  );
+  logStep("run-start-plan-failure-policy-contract");
+
   const runStartPlanModeContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -814,6 +844,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.semantic_failure_not_marked, true);
   assert.equal(runStartPlanModeContractPayload.semantic_stdout_has_degrade_hint, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_degraded, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_degrade, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_reason, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_no_turn_failed, true);
   assert.equal(runStartPlanModeContractPayload.semantic_plan_mode_still_plan_only, true);
   assert.equal(runStartPlanModeContractPayload.semantic_active_plan_kept, true);
@@ -821,6 +853,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.non_semantic_turn_returns_failure, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_failure_marked, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_turn_failed, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_policy_fail, true);
   assert.equal(runStartPlanModeContractPayload.proposed_turn_returns_success, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_mode_kept, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_ingested, true);
@@ -1162,6 +1195,9 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.answer_full_width_index_maps_option, true);
   assert.equal(askUserToolContractPayload.answer_case_insensitive_option_maps_canonical, true);
   assert.equal(askUserToolContractPayload.answer_blank_falls_back_default, true);
+  assert.equal(askUserToolContractPayload.queue_park_rotates_active, true);
+  assert.equal(askUserToolContractPayload.queue_park_next_is_second, true);
+  assert.equal(askUserToolContractPayload.queue_park_tail_is_first, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_removed_expired, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_keeps_fresh, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
@@ -6744,6 +6780,7 @@ function ensureContractsExist() {
     "bridge-cli-contract.mjs",
     "bridge-error-codes-schema-contract.mjs",
     "plan-events-policy-guard-contract.mjs",
+    "run-start-plan-failure-policy-contract.ts",
     "run-start-slash-suggestions-contract.ts",
     "ask-user-tool-contract.ts",
     "ga-skill-prompt-contract.ts",

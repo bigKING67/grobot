@@ -47,6 +47,9 @@ async function runDispatchCase(
     cancelPendingAsk: () => {
       events.push("cancelPendingAsk");
     },
+    parkPendingAsk: () => {
+      events.push("parkPendingAsk");
+    },
     clearPendingAsk: () => {
       events.push("clearPendingAsk");
     },
@@ -190,6 +193,7 @@ async function main(): Promise<void> {
   const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
   const askQueueCommand = await runDispatchCase("/ask");
   const askCancelCommand = await runDispatchCase("/ask cancel");
+  const askParkCommand = await runDispatchCase("/ask park");
   const askClearCommand = await runDispatchCase("/ask clear");
   const askAnswerCommand = await runDispatchCase("/ask answer fast");
   const askAnswerKeepCaseCommand = await runDispatchCase("/ask answer KeepCase Value");
@@ -207,6 +211,7 @@ async function main(): Promise<void> {
   const pendingAskAllowSessions = await runDispatchCase("/sessions", { pendingAskCount: 2 });
   const pendingAskAllowAskQueue = await runDispatchCase("/ask", { pendingAskCount: 2 });
   const pendingAskAllowAskCancel = await runDispatchCase("/ask cancel", { pendingAskCount: 2 });
+  const pendingAskAllowAskPark = await runDispatchCase("/ask park", { pendingAskCount: 2 });
   const pendingAskAllowAskClear = await runDispatchCase("/ask clear", { pendingAskCount: 2 });
   const pendingAskAllowAskAnswer = await runDispatchCase("/ask answer 2", { pendingAskCount: 2 });
   const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
@@ -285,6 +290,8 @@ async function main(): Promise<void> {
     ask_queue_hits_run_turn: includesEvent(askQueueCommand.events, "runTurn:/ask"),
     ask_cancel_dispatched: includesEvent(askCancelCommand.events, "cancelPendingAsk"),
     ask_cancel_hits_run_turn: includesEvent(askCancelCommand.events, "runTurn:/ask cancel"),
+    ask_park_dispatched: includesEvent(askParkCommand.events, "parkPendingAsk"),
+    ask_park_hits_run_turn: includesEvent(askParkCommand.events, "runTurn:/ask park"),
     ask_clear_dispatched: includesEvent(askClearCommand.events, "clearPendingAsk"),
     ask_clear_hits_run_turn: includesEvent(askClearCommand.events, "runTurn:/ask clear"),
     ask_answer_dispatched: includesEvent(askAnswerCommand.events, "answerPendingAsk:fast"),
@@ -353,6 +360,10 @@ async function main(): Promise<void> {
     pending_ask_cancel_allowed: includesEvent(
       pendingAskAllowAskCancel.events,
       "cancelPendingAsk",
+    ),
+    pending_ask_park_allowed: includesEvent(
+      pendingAskAllowAskPark.events,
+      "parkPendingAsk",
     ),
     pending_ask_clear_allowed: includesEvent(
       pendingAskAllowAskClear.events,

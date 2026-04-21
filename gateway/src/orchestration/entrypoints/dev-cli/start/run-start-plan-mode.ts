@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolvePlanFailureDecision } from "./plan-failure-policy";
 import { parsePlanCommand } from "./plan-command";
 import {
   appendPlanEvent,
@@ -20,7 +21,6 @@ import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type ChatHistoryMessage } from "./session-history";
 import {
   setSessionPlanState,
-  type SessionProviderRuntimeState,
   type SessionPlanPhase,
   type SessionPlanMeta,
   type SessionPlanMode,
@@ -59,13 +59,6 @@ const PLAN_REVIEW_BLOCKED_CODE = "PLAN_REVIEW_BLOCKED";
 const PLAN_INTERRUPT_OK_CODE = "PLAN_INTERRUPT_OK";
 const PLAN_INTERRUPT_NOT_RUNNING_CODE = "PLAN_INTERRUPT_NOT_RUNNING";
 const PLAN_INTERRUPT_NOT_PLAN_MODE_CODE = "PLAN_INTERRUPT_NOT_PLAN_MODE";
-const PLAN_TURN_SEMANTIC_DEGRADE_CLASSES = new Set([
-  "semantic_index_config_invalid",
-  "semantic_index_confirmation_required",
-  "semantic_index_required",
-  "semantic_config_missing",
-]);
-const PLAN_TURN_FAILURE_STATE_STALENESS_MS = 2 * 60 * 1_000;
 
 export type PlanInterruptSource = "command" | "cli_esc";
 
@@ -165,64 +158,6 @@ function derivePlanPhaseFromStatus(
     return "applying";
   }
   return undefined;
-}
-
-interface RecentProviderFailure {
-  providerName: string;
-  errorClass: string;
-  failedAtMs: number;
-}
-
-function toIsoTimestampMs(raw: string | undefined): number | undefined {
-  if (!raw) {
-    return undefined;
-  }
-  const parsed = Date.parse(raw);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function resolveRecentProviderFailure(
-  providerStates: readonly SessionProviderRuntimeState[],
-  minFailedAtMs: number,
-): RecentProviderFailure | undefined {
-  let latest: RecentProviderFailure | undefined;
-  for (const state of providerStates) {
-    const errorClass = state.last_error_class?.trim();
-    const failedAtIso = state.last_failed_at?.trim();
-    if (!errorClass || !failedAtIso) {
-      continue;
-    }
-    const failedAtMs = toIsoTimestampMs(failedAtIso);
-    if (typeof failedAtMs !== "number" || failedAtMs < minFailedAtMs) {
-      continue;
-    }
-    if (!latest || failedAtMs > latest.failedAtMs) {
-      latest = {
-        providerName: state.provider_name,
-        errorClass,
-        failedAtMs,
-      };
-    }
-  }
-  return latest;
-}
-
-function formatSemanticDegradeHint(errorClass: string): string {
-  switch (errorClass) {
-    case "semantic_index_config_invalid":
-      return "fix cwconfig.json includePatterns, then rerun `cw index <repo-path>`.";
-    case "semantic_index_confirmation_required":
-      return "run `cw index <repo-path>` and complete the confirmation flow.";
-    case "semantic_index_required":
-      return "initialize semantic index with `cw index <repo-path>` first.";
-    case "semantic_config_missing":
-      return "check retrieval api_key/base_url settings and network reachability.";
-    default:
-      return "check semantic index and retrieval configuration.";
-  }
 }
 
 interface AssistantProposedPlanCandidate {
@@ -611,35 +546,55 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return code;
       }
       if (code !== 0) {
-        const latestProviderFailure = resolveRecentProviderFailure(
-          input.runtimeState.getProviderRuntimeStates(),
-          Date.now() - PLAN_TURN_FAILURE_STATE_STALENESS_MS,
-        );
-        if (
-          latestProviderFailure
-          && PLAN_TURN_SEMANTIC_DEGRADE_CLASSES.has(latestProviderFailure.errorClass)
-        ) {
-          const hint = formatSemanticDegradeHint(latestProviderFailure.errorClass);
+        const failureDecision = resolvePlanFailureDecision({
+          phase: "planning",
+          exitCode: code,
+          providerStates: input.runtimeState.getProviderRuntimeStates(),
+        });
+        if (failureDecision.action === "degrade") {
+          const detailParts = [
+            `exit_code=${String(code)}`,
+            "policy_action=degrade",
+            `policy_reason=${failureDecision.reason}`,
+          ];
+          if (failureDecision.providerName) {
+            detailParts.push(`provider=${failureDecision.providerName}`);
+          }
+          if (failureDecision.errorClass) {
+            detailParts.push(`class=${failureDecision.errorClass}`);
+          }
           appendPlanEvent(input.workDir, planSessionKey(), {
             event: "plan_turn_degraded",
             plan_id: meta.active_plan_id,
             source: "cli",
-            detail: `exit_code=${String(code)} provider=${latestProviderFailure.providerName} class=${latestProviderFailure.errorClass} degraded=true`,
+            detail: `${detailParts.join(" ")} degraded=true`,
           });
+          const hint = failureDecision.hint ?? "check semantic index and retrieval configuration.";
           input.writeStdout(
-            `[plan] semantic context degraded provider=${latestProviderFailure.providerName} class=${latestProviderFailure.errorClass}; plan draft was kept. ${hint}\n\n`,
+            `[plan] semantic context degraded provider=${failureDecision.providerName ?? "unknown"} class=${failureDecision.errorClass ?? "unknown"}; plan draft was kept. ${hint}\n\n`,
           );
           return 0;
+        }
+        const detailParts = [
+          `exit_code=${String(code)}`,
+          "policy_action=fail",
+          `policy_reason=${failureDecision.reason}`,
+        ];
+        if (failureDecision.providerName) {
+          detailParts.push(`provider=${failureDecision.providerName}`);
+        }
+        if (failureDecision.errorClass) {
+          detailParts.push(`class=${failureDecision.errorClass}`);
         }
         appendPlanEvent(input.workDir, planSessionKey(), {
           event: "plan_turn_failed",
           plan_id: meta.active_plan_id,
           source: "cli",
-          detail: `exit_code=${String(code)}`,
+          detail: detailParts.join(" "),
         });
         input.markFailureObserved();
         input.writeStderr(
-          `[plan] turn failed plan_id=${meta.active_plan_id} exit_code=${String(code)}\n`,
+          `[plan] turn failed plan_id=${meta.active_plan_id} exit_code=${String(code)} policy_reason=${failureDecision.reason}${failureDecision.errorClass ? ` error_class=${failureDecision.errorClass}` : ""}\n`,
         );
         return code;
       }
@@ -862,6 +817,11 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return code;
       }
       if (code !== 0) {
+        const failureDecision = resolvePlanFailureDecision({
+          phase: "applying",
+          exitCode: code,
+          providerStates: input.runtimeState.getProviderRuntimeStates(),
+        });
         const applyFailed = updatePlanArtifactStatus(
           input.workDir,
           planSessionKey(),
@@ -876,11 +836,19 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           event: "plan_apply_failed",
           plan_id: active.entry.plan_id,
           source: "cli",
-          detail: `exit_code=${String(code)}`,
+          detail: [
+            `exit_code=${String(code)}`,
+            "policy_action=fail",
+            `policy_reason=${failureDecision.reason}`,
+            failureDecision.providerName ? `provider=${failureDecision.providerName}` : "",
+            failureDecision.errorClass ? `class=${failureDecision.errorClass}` : "",
+          ]
+            .filter((item) => item.length > 0)
+            .join(" "),
         });
         input.markFailureObserved();
         input.writeStderr(
-          `[plan] apply failed plan_id=${active.entry.plan_id} exit_code=${String(code)}\n`,
+          `[plan] apply failed plan_id=${active.entry.plan_id} exit_code=${String(code)} policy_reason=${failureDecision.reason}${failureDecision.errorClass ? ` error_class=${failureDecision.errorClass}` : ""}\n`,
         );
         return code;
       }

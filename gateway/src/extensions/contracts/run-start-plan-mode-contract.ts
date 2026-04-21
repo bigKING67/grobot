@@ -289,6 +289,10 @@ async function main(): Promise<void> {
     semantic_failure_not_marked: semantic.failureObserved === false,
     semantic_stdout_has_degrade_hint: semantic.stdout.includes("[plan] semantic context degraded"),
     semantic_events_has_degraded: semantic.eventsText.includes("\"event\":\"plan_turn_degraded\""),
+    semantic_events_has_policy_degrade: semantic.eventsText.includes("policy_action=degrade"),
+    semantic_events_has_policy_reason: semantic.eventsText.includes(
+      "policy_reason=planning_semantic_context_unavailable",
+    ),
     semantic_events_no_turn_failed: !semantic.eventsText.includes("\"event\":\"plan_turn_failed\""),
     semantic_plan_mode_still_plan_only: semantic.planMode === "plan_only",
     semantic_active_plan_kept: semantic.hasActivePlan,
@@ -296,6 +300,7 @@ async function main(): Promise<void> {
     non_semantic_turn_returns_failure: nonSemantic.code !== 0,
     non_semantic_failure_marked: nonSemantic.failureObserved === true,
     non_semantic_events_has_turn_failed: nonSemantic.eventsText.includes("\"event\":\"plan_turn_failed\""),
+    non_semantic_events_has_policy_fail: nonSemantic.eventsText.includes("policy_action=fail"),
     proposed_turn_returns_success: proposed.code === 0,
     proposed_plan_mode_kept: proposed.planMode === "plan_only",
     proposed_plan_ingested: proposed.activePlanContent.includes("## Key Changes"),

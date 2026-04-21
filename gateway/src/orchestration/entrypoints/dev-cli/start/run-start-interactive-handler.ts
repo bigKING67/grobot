@@ -14,6 +14,7 @@ interface CreateRunStartInteractiveHandlerInput {
   getPendingAskQueueSize(): number;
   showPendingAskQueue(): void;
   cancelPendingAsk(): void;
+  parkPendingAsk(): void;
   clearPendingAsk(): void;
   answerPendingAsk(answer: string): Promise<void>;
   showHelp(): void;
@@ -69,6 +70,7 @@ export function createRunStartInteractiveHandler(
       getPendingAskQueueSize: input.getPendingAskQueueSize,
       showPendingAskQueue: input.showPendingAskQueue,
       cancelPendingAsk: input.cancelPendingAsk,
+      parkPendingAsk: input.parkPendingAsk,
       clearPendingAsk: input.clearPendingAsk,
       answerPendingAsk: async (answer) => {
         await input.answerPendingAsk(answer);

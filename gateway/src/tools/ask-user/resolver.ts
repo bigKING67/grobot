@@ -158,6 +158,20 @@ export class AskUserSessionStore {
     return dismissed;
   }
 
+  parkCurrent(sessionKey: string): AskUserEnvelope | undefined {
+    const queue = this.pendingBySession.get(sessionKey);
+    if (!queue || queue.length <= 1) {
+      return undefined;
+    }
+    const parked = queue.shift();
+    if (!parked) {
+      return undefined;
+    }
+    queue.push(parked);
+    this.pendingBySession.set(sessionKey, queue);
+    return parked;
+  }
+
   resolve(
     sessionKey: string,
     answer: string,

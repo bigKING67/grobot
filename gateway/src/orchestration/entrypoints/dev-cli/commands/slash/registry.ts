@@ -38,7 +38,7 @@ interface ParsedHistoryCommand {
 }
 
 interface ParsedAskCommand {
-  kind: "show_queue" | "cancel_current" | "clear_all" | "answer_current" | "invalid";
+  kind: "show_queue" | "cancel_current" | "park_current" | "clear_all" | "answer_current" | "invalid";
   answer?: string;
   reason?: string;
 }
@@ -208,6 +208,9 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   if (/^cancel$/i.test(restRaw)) {
     return { kind: "cancel_current" };
   }
+  if (/^park$/i.test(restRaw)) {
+    return { kind: "park_current" };
+  }
   if (/^clear$/i.test(restRaw)) {
     return { kind: "clear_all" };
   }
@@ -221,7 +224,7 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   }
   return {
     kind: "invalid",
-    reason: "usage: /ask | /ask queue | /ask cancel | /ask clear | /ask answer <text>",
+    reason: "usage: /ask | /ask queue | /ask cancel | /ask park | /ask clear | /ask answer <text>",
   };
 }
 
@@ -445,6 +448,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         handlers.cancelPendingAsk();
         return "continue";
       }
+      if (parsed.kind === "park_current") {
+        handlers.parkPendingAsk();
+        return "continue";
+      }
       if (parsed.kind === "clear_all") {
         handlers.clearPendingAsk();
         return "continue";
@@ -457,7 +464,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /ask [queue|cancel|clear|answer <text>]  Show queue, cancel current, clear all, or answer current question",
+      "  /ask [queue|cancel|park|clear|answer <text>]  Show queue, cancel/park current, clear all, or answer current question",
     ],
   },
   {
@@ -639,7 +646,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask [queue|cancel|clear|answer <text>]", description: "Show queue, cancel current question, clear all, or answer current" },
+  { command: "/ask [queue|cancel|park|clear|answer <text>]", description: "Show queue, cancel/park current question, clear all, or answer current" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },

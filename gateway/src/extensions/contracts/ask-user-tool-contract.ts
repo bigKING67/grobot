@@ -101,6 +101,30 @@ runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByOptionText = sessionStore.resolve(sessionKey, "FAST");
 runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByBlank = sessionStore.resolve(sessionKey, "   ");
+const parkEnvelopeFirst = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_007",
+  blocking_node_id: "node.park.first",
+  question: "First park question",
+  options: ["yes", "no"],
+  default_on_timeout: "no",
+  resume_token: "resume_007",
+});
+const parkEnvelopeSecond = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_008",
+  blocking_node_id: "node.park.second",
+  question: "Second park question",
+  options: ["yes", "no"],
+  default_on_timeout: "yes",
+  resume_token: "resume_008",
+});
+if (!parkEnvelopeFirst || !parkEnvelopeSecond) {
+  throw new Error("failed to normalize park ask_user payload");
+}
+sessionStore.set(sessionKey, parkEnvelopeFirst);
+sessionStore.set(sessionKey, parkEnvelopeSecond);
+const parkedCurrent = sessionStore.parkCurrent(sessionKey);
+const queueAfterPark = sessionStore.list(sessionKey);
+sessionStore.clear(sessionKey);
 const expiredEnvelope = normalizeAskUserEnvelopeFromPayload({
   question_id: "ask_q_005",
   blocking_node_id: "node.expired",
@@ -149,6 +173,9 @@ const payload = {
   answer_full_width_index_maps_option: resolvedByFullWidthIndex?.answer === "fast",
   answer_case_insensitive_option_maps_canonical: resolvedByOptionText?.answer === "fast",
   answer_blank_falls_back_default: resolvedByBlank?.answer === "safe",
+  queue_park_rotates_active: parkedCurrent?.questionId === "ask_q_007",
+  queue_park_next_is_second: queueAfterPark[0]?.questionId === "ask_q_008",
+  queue_park_tail_is_first: queueAfterPark[1]?.questionId === "ask_q_007",
   queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.questionId === "ask_q_005",
   queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.questionId === "ask_q_006",
   issued_display_has_reply_hint: display.includes("reply directly or use /ask answer"),
