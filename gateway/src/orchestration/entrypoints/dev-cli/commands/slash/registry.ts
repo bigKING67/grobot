@@ -40,6 +40,7 @@ interface ParsedHistoryCommand {
 interface ParsedAskCommand {
   kind: "show_queue" | "cancel_current" | "park_current" | "clear_all" | "answer_current" | "invalid";
   answer?: string;
+  queueLimit?: number;
   reason?: string;
 }
 
@@ -202,13 +203,33 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
     return { kind: "invalid", reason: "command must start with /ask" };
   }
   const restRaw = input.slice("/ask".length).trim();
-  if (!restRaw || /^queue$/i.test(restRaw)) {
+  if (!restRaw) {
     return { kind: "show_queue" };
+  }
+  const queueMatch = restRaw.match(/^queue(?:\s+(.+))?$/i);
+  if (queueMatch) {
+    const tail = (queueMatch[1] ?? "").trim();
+    if (!tail) {
+      return { kind: "show_queue" };
+    }
+    if (/^all$/i.test(tail)) {
+      return { kind: "show_queue", queueLimit: -1 };
+    }
+    if (/^\d+$/.test(tail)) {
+      const parsed = Number.parseInt(tail, 10);
+      if (parsed > 0) {
+        return { kind: "show_queue", queueLimit: parsed };
+      }
+    }
+    return { kind: "invalid", reason: "usage: /ask [queue [all|<n>] | cancel | park | next | clear | answer <text>]" };
+  }
+  if (/^all$/i.test(restRaw)) {
+    return { kind: "show_queue", queueLimit: -1 };
   }
   if (/^cancel$/i.test(restRaw)) {
     return { kind: "cancel_current" };
   }
-  if (/^park$/i.test(restRaw)) {
+  if (/^(park|next)$/i.test(restRaw)) {
     return { kind: "park_current" };
   }
   if (/^clear$/i.test(restRaw)) {
@@ -224,7 +245,7 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   }
   return {
     kind: "invalid",
-    reason: "usage: /ask | /ask queue | /ask cancel | /ask park | /ask clear | /ask answer <text>",
+    reason: "usage: /ask [queue [all|<n>] | cancel | park | next | clear | answer <text>]",
   };
 }
 
@@ -460,11 +481,11 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         await handlers.answerPendingAsk(parsed.answer ?? "");
         return "continue";
       }
-      handlers.showPendingAskQueue();
+      handlers.showPendingAskQueue(parsed.queueLimit);
       return "continue";
     },
     helpLines: [
-      "  /ask [queue|cancel|park|clear|answer <text>]  Show queue, cancel/park current, clear all, or answer current question",
+      "  /ask [queue [all|<n>]|cancel|park|next|clear|answer <text>]  Show queue (default top5), cancel/park current, clear all, or answer current question",
     ],
   },
   {
@@ -646,7 +667,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask [queue|cancel|park|clear|answer <text>]", description: "Show queue, cancel/park current question, clear all, or answer current" },
+  { command: "/ask [queue [all|<n>]|cancel|park|next|clear|answer <text>]", description: "Show queue (top5/all/n), cancel/park current, clear all, or answer current" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },

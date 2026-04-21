@@ -708,11 +708,15 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.commands_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_queue_all_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_queue_top3_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_park_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_park_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.ask_next_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_next_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_clear_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_clear_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_answer_dispatched, true);
@@ -738,6 +742,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_sessions_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_all_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_park_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, true);

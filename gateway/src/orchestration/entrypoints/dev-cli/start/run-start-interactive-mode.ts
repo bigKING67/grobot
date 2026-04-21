@@ -218,7 +218,7 @@ export interface RunStartInteractiveModeInput {
   showHealthStatus(): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
-  showPendingAskQueue(): void;
+  showPendingAskQueue(limit?: number): void;
   cancelPendingAsk(): void;
   parkPendingAsk(): void;
   clearPendingAsk(): void;
@@ -420,7 +420,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     writeStderr: writeInteractiveStderr,
     hasPendingAsk: input.hasPendingAsk,
     getPendingAskQueueSize: input.getPendingAskQueueSize,
-    showPendingAskQueue: input.showPendingAskQueue,
+    showPendingAskQueue: (limit) => {
+      input.showPendingAskQueue(limit);
+    },
     cancelPendingAsk: input.cancelPendingAsk,
     parkPendingAsk: input.parkPendingAsk,
     clearPendingAsk: input.clearPendingAsk,

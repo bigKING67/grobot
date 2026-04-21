@@ -682,7 +682,7 @@ export function createRunStartInteractiveModeInput(
     return expired.length;
   };
 
-  const showPendingAskQueue = (): void => {
+  const showPendingAskQueue = (limit?: number): void => {
     purgeExpiredPendingAsk(true);
     const sessionKey = input.runtimeState.getSessionKey();
     const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
@@ -690,11 +690,20 @@ export function createRunStartInteractiveModeInput(
       input.output.writeStdout("[ask-user] no pending question.\n\n");
       return;
     }
+    const normalizedLimit = typeof limit === "number" && Number.isFinite(limit)
+      ? Math.floor(limit)
+      : undefined;
+    const showAll = normalizedLimit === -1;
+    const maxRows = showAll
+      ? queue.length
+      : normalizedLimit && normalizedLimit > 0
+        ? Math.min(50, normalizedLimit)
+        : 5;
     const lines: string[] = [
       "[ask-user] pending queue",
       `total: ${String(queue.length)}`,
+      `showing: ${String(Math.min(queue.length, maxRows))}${showAll ? " (all)" : ""}`,
     ];
-    const maxRows = 5;
     for (let index = 0; index < queue.length && index < maxRows; index += 1) {
       const row = queue[index];
       const optionsLabel = row.options.length > 0
@@ -717,10 +726,11 @@ export function createRunStartInteractiveModeInput(
     }
     if (queue.length > maxRows) {
       lines.push(`... +${String(queue.length - maxRows)} more`);
+      lines.push("hint: run /ask queue all to view full queue");
     }
     lines.push("* active question");
     lines.push("hint: reply directly or use /ask answer <n|text>");
-    lines.push("hint: /ask cancel skips current, /ask park rotates queue, /ask clear removes all");
+    lines.push("hint: /ask cancel skips current, /ask park(/ask next) rotates queue, /ask clear removes all");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };

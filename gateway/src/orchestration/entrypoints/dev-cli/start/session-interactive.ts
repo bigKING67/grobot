@@ -12,7 +12,7 @@ export interface SessionInteractiveHandlers {
   writeStdout(message: string): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
-  showPendingAskQueue(): void;
+  showPendingAskQueue(limit?: number): void;
   cancelPendingAsk(): void;
   parkPendingAsk(): void;
   clearPendingAsk(): void;
@@ -100,7 +100,7 @@ export async function dispatchSessionInteractiveInput(
   if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
     const queueSize = handlers.getPendingAskQueueSize();
     handlers.writeStdout(
-      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题、/ask park 暂缓当前问题、/ask clear 清空队列（如需切会话可用 /sessions）。\n\n`,
+      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题、/ask park(/ask next) 暂缓当前问题、/ask clear 清空队列（如需切会话可用 /sessions）。\n\n`,
     );
     return "continue";
   }

@@ -12,7 +12,7 @@ interface CreateRunStartInteractiveHandlerInput {
   writeStderr(message: string): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
-  showPendingAskQueue(): void;
+  showPendingAskQueue(limit?: number): void;
   cancelPendingAsk(): void;
   parkPendingAsk(): void;
   clearPendingAsk(): void;
@@ -68,7 +68,9 @@ export function createRunStartInteractiveHandler(
       writeStdout: input.writeStdout,
       hasPendingAsk: input.hasPendingAsk,
       getPendingAskQueueSize: input.getPendingAskQueueSize,
-      showPendingAskQueue: input.showPendingAskQueue,
+      showPendingAskQueue: (limit) => {
+        input.showPendingAskQueue(limit);
+      },
       cancelPendingAsk: input.cancelPendingAsk,
       parkPendingAsk: input.parkPendingAsk,
       clearPendingAsk: input.clearPendingAsk,

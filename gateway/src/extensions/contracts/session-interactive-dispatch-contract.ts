@@ -41,8 +41,8 @@ async function runDispatchCase(
     },
     hasPendingAsk: () => pendingAskCount > 0,
     getPendingAskQueueSize: () => pendingAskCount,
-    showPendingAskQueue: () => {
-      events.push("showPendingAskQueue");
+    showPendingAskQueue: (limit) => {
+      events.push(`showPendingAskQueue:${typeof limit === "number" ? String(limit) : "default"}`);
     },
     cancelPendingAsk: () => {
       events.push("cancelPendingAsk");
@@ -192,8 +192,11 @@ async function main(): Promise<void> {
   const historyCommand = await runDispatchCase("/history");
   const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
   const askQueueCommand = await runDispatchCase("/ask");
+  const askQueueAllCommand = await runDispatchCase("/ask queue all");
+  const askQueueTop3Command = await runDispatchCase("/ask queue 3");
   const askCancelCommand = await runDispatchCase("/ask cancel");
   const askParkCommand = await runDispatchCase("/ask park");
+  const askNextCommand = await runDispatchCase("/ask next");
   const askClearCommand = await runDispatchCase("/ask clear");
   const askAnswerCommand = await runDispatchCase("/ask answer fast");
   const askAnswerKeepCaseCommand = await runDispatchCase("/ask answer KeepCase Value");
@@ -210,6 +213,7 @@ async function main(): Promise<void> {
   const pendingAskAllowInterrupt = await runDispatchCase("/interrupt", { pendingAskCount: 2 });
   const pendingAskAllowSessions = await runDispatchCase("/sessions", { pendingAskCount: 2 });
   const pendingAskAllowAskQueue = await runDispatchCase("/ask", { pendingAskCount: 2 });
+  const pendingAskAllowAskQueueAll = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
   const pendingAskAllowAskCancel = await runDispatchCase("/ask cancel", { pendingAskCount: 2 });
   const pendingAskAllowAskPark = await runDispatchCase("/ask park", { pendingAskCount: 2 });
   const pendingAskAllowAskClear = await runDispatchCase("/ask clear", { pendingAskCount: 2 });
@@ -286,12 +290,16 @@ async function main(): Promise<void> {
     history_dispatched: includesEvent(historyCommand.events, "showHistory:"),
     history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
-    ask_queue_dispatched: includesEvent(askQueueCommand.events, "showPendingAskQueue"),
+    ask_queue_dispatched: includesEvent(askQueueCommand.events, "showPendingAskQueue:default"),
+    ask_queue_all_dispatched: includesEvent(askQueueAllCommand.events, "showPendingAskQueue:-1"),
+    ask_queue_top3_dispatched: includesEvent(askQueueTop3Command.events, "showPendingAskQueue:3"),
     ask_queue_hits_run_turn: includesEvent(askQueueCommand.events, "runTurn:/ask"),
     ask_cancel_dispatched: includesEvent(askCancelCommand.events, "cancelPendingAsk"),
     ask_cancel_hits_run_turn: includesEvent(askCancelCommand.events, "runTurn:/ask cancel"),
     ask_park_dispatched: includesEvent(askParkCommand.events, "parkPendingAsk"),
     ask_park_hits_run_turn: includesEvent(askParkCommand.events, "runTurn:/ask park"),
+    ask_next_dispatched: includesEvent(askNextCommand.events, "parkPendingAsk"),
+    ask_next_hits_run_turn: includesEvent(askNextCommand.events, "runTurn:/ask next"),
     ask_clear_dispatched: includesEvent(askClearCommand.events, "clearPendingAsk"),
     ask_clear_hits_run_turn: includesEvent(askClearCommand.events, "runTurn:/ask clear"),
     ask_answer_dispatched: includesEvent(askAnswerCommand.events, "answerPendingAsk:fast"),
@@ -355,7 +363,11 @@ async function main(): Promise<void> {
     ),
     pending_ask_queue_allowed: includesEvent(
       pendingAskAllowAskQueue.events,
-      "showPendingAskQueue",
+      "showPendingAskQueue:default",
+    ),
+    pending_ask_queue_all_allowed: includesEvent(
+      pendingAskAllowAskQueueAll.events,
+      "showPendingAskQueue:-1",
     ),
     pending_ask_cancel_allowed: includesEvent(
       pendingAskAllowAskCancel.events,
