@@ -59,6 +59,7 @@ export type PlanInterruptSource = "command" | "cli_esc";
 
 export interface RunStartPlanTurnOptions {
   writeStderr?: (message: string) => void;
+  skipExecution?: boolean;
 }
 
 export interface PlanInterruptResult {
@@ -83,7 +84,12 @@ export interface RunStartPlanMode {
   applyPlan(extra: string, options?: RunStartPlanTurnOptions): Promise<number>;
   cancelPlan(): Promise<number>;
   requestPlanInterrupt(source: PlanInterruptSource): Promise<PlanInterruptResult>;
-  handleMessageInput(message: string): Promise<PlanMessageHandleResult>;
+  handleMessageInput(
+    message: string,
+    options?: {
+      messageMode?: boolean;
+    },
+  ): Promise<PlanMessageHandleResult>;
 }
 
 function buildPlanMeta(entry: PlanArtifactEntry, planPath: string): SessionPlanMeta {
@@ -458,6 +464,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (await consumePendingInterrupt(stablePoint, "after_plan_state_persist")) {
         return 0;
       }
+      if (options?.skipExecution) {
+        appendPlanEvent(input.workDir, planSessionKey(), {
+          event: "plan_turn_skipped",
+          plan_id: meta.active_plan_id,
+          source: "cli",
+          detail: "message_mode_execution_skipped",
+        });
+        input.writeStdout(
+          `[plan] updated file=${appended.planPath ?? "<unknown>"} (execution skipped)\n\n`,
+        );
+        return 0;
+      }
       const code = await input.executeTurn(note, true, {
         writeStderr: options?.writeStderr,
       });
@@ -712,6 +730,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
 
   const handleMessageInput = async (
     messageRaw: string,
+    options?: {
+      messageMode?: boolean;
+    },
   ): Promise<PlanMessageHandleResult> => {
     const message = messageRaw.trim();
     if (!message) {
@@ -728,9 +749,27 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return { handled: true, code: 0 };
       }
       if (parsed.kind === "enter") {
+        if (options?.messageMode) {
+          return {
+            handled: true,
+            code: await createPlanModeDraft(parsed.goal, {
+              printHint: false,
+              printModeReadyOnly: true,
+            }),
+          };
+        }
         return { handled: true, code: await enterPlan(parsed.goal) };
       }
       if (parsed.kind === "enter_mode") {
+        if (options?.messageMode) {
+          return {
+            handled: true,
+            code: await createPlanModeDraft("", {
+              printHint: false,
+              printModeReadyOnly: true,
+            }),
+          };
+        }
         return { handled: true, code: await enterPlan("") };
       }
       if (parsed.kind === "status") {
@@ -742,7 +781,12 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       return { handled: true, code: await cancelPlan() };
     }
     if (input.runtimeState.getPlanMode() === "plan_only") {
-      return { handled: true, code: await runPlanTurn(message) };
+      return {
+        handled: true,
+        code: await runPlanTurn(message, {
+          skipExecution: options?.messageMode,
+        }),
+      };
     }
     return { handled: false, code: 0 };
   };

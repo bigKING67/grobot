@@ -764,7 +764,9 @@ export async function runStart(
 
   const message = readOptionString(options, "message");
   if (message) {
-      const planHandled = await planMode.handleMessageInput(message);
+      const planHandled = await planMode.handleMessageInput(message, {
+        messageMode: true,
+      });
       if (planHandled.handled) {
         if (planHandled.code !== 0 && !isTurnInterruptedCode(planHandled.code)) {
           runtimeState.markFailureObserved();
