@@ -8,7 +8,7 @@ Usage: grobot install [options]
 Options:
   --binary <path>       Install from a local core binary file
   --version <tag>       Release tag (default: latest)
-  --repo <owner/name>   GitHub release repo (default: infer from git remote.origin.url)
+  --repo <owner/name>   GitHub release repo (default: grolandai/grobot-core)
   --url <https-url>     Direct download URL for core binary
   --sha256 <hex>        Expected SHA256 (required with --url)
   --platform <name>     Target platform key
@@ -32,31 +32,6 @@ detect_platform_key() {
     MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64) echo "windows-x64" ;;
     *) echo "" ;;
   esac
-}
-
-resolve_default_release_repo() {
-  if [ -n "${GROBOT_CORE_RELEASE_REPO:-}" ]; then
-    printf '%s' "${GROBOT_CORE_RELEASE_REPO}"
-    return 0
-  fi
-
-  if ! command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-  local origin_url
-  origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
-  if [ -z "$origin_url" ]; then
-    return 0
-  fi
-  node -e '
-    const raw = String(process.argv[1] || "").trim();
-    let value = "";
-    const match = raw.match(/github\.com[:/]+([^/]+\/[^/]+?)(?:\.git)?$/i);
-    if (match && match[1]) {
-      value = match[1];
-    }
-    process.stdout.write(value);
-  ' "$origin_url"
 }
 
 asset_file_for_platform() {
@@ -113,7 +88,7 @@ fi
 
 CORE_BINARY_PATH=""
 VERSION_TAG="latest"
-RELEASE_REPO="$(resolve_default_release_repo)"
+RELEASE_REPO="${GROBOT_CORE_RELEASE_REPO:-grolandai/grobot-core}"
 DIRECT_URL=""
 EXPECTED_SHA256=""
 PLATFORM_KEY="$(detect_platform_key)"
@@ -241,7 +216,7 @@ fi
 DOWNLOAD_URL="$DIRECT_URL"
 if [ -z "$DOWNLOAD_URL" ]; then
   if [ -z "$RELEASE_REPO" ]; then
-    echo "unable to infer release repo; pass --repo <owner/name> or set GROBOT_CORE_RELEASE_REPO" >&2
+    echo "--repo is required when GROBOT_CORE_RELEASE_REPO is empty" >&2
     exit 1
   fi
   RELEASE_TAG="$VERSION_TAG"
