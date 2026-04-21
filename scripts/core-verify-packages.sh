@@ -45,6 +45,7 @@ PACKAGES=(
   "core-darwin-x64"
   "core-linux-x64"
   "core-linux-arm64"
+  "core-windows-x64"
 )
 
 STUB_MARKER="is not bundled in source checkout"

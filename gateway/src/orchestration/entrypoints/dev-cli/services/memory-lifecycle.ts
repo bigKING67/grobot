@@ -33,6 +33,7 @@ export interface MemoryStoreRuntime {
   source: string;
   redisUrl?: string;
   fallbackReason?: string;
+  strictRedis?: boolean;
 }
 
 export type MemoryScope =

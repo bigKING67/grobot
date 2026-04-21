@@ -24,6 +24,7 @@ detect_platform_key() {
     Darwin:x86_64) echo "darwin-x64" ;;
     Linux:x86_64) echo "linux-x64" ;;
     Linux:aarch64|Linux:arm64) echo "linux-arm64" ;;
+    MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64) echo "windows-x64" ;;
     *) echo "" ;;
   esac
 }
@@ -35,50 +36,10 @@ detect_core_package() {
     darwin-x64) echo "@grobot/core-darwin-x64" ;;
     linux-x64) echo "@grobot/core-linux-x64" ;;
     linux-arm64) echo "@grobot/core-linux-arm64" ;;
+    windows-x64) echo "@grobot/core-windows-x64" ;;
     *) echo "" ;;
   esac
 }
-
-GROBOT_HOME_DIR="${GROBOT_HOME:-${HOME}/.grobot}"
-PLATFORM_KEY="$(detect_platform_key)"
-CORE_PACKAGE="$(detect_core_package "$PLATFORM_KEY")"
-
-# 1) Explicit binary override.
-if [ -n "${GROBOT_CORE_BIN:-}" ]; then
-  if [ -x "${GROBOT_CORE_BIN}" ]; then
-    exec "${GROBOT_CORE_BIN}" "$@"
-  fi
-  echo "warning: GROBOT_CORE_BIN is set but not executable: ${GROBOT_CORE_BIN}" >&2
-fi
-
-# 2) User-level installed core via ~/.grobot/core/current/grobot-core.
-CANDIDATE="${GROBOT_HOME_DIR}/core/current/grobot-core"
-if [ -x "$CANDIDATE" ]; then
-  exec "$CANDIDATE" "$@"
-fi
-
-# 3) User-level platform slot: ~/.grobot/core/<platform>/grobot-core.
-if [ -n "$PLATFORM_KEY" ]; then
-  CANDIDATE="${GROBOT_HOME_DIR}/core/${PLATFORM_KEY}/grobot-core"
-  if [ -x "$CANDIDATE" ]; then
-    exec "$CANDIDATE" "$@"
-  fi
-fi
-
-# 4) Node-installed platform package.
-if [ -n "$CORE_PACKAGE" ]; then
-  CANDIDATE="${PACKAGE_ROOT}/node_modules/${CORE_PACKAGE}/bin/grobot-core"
-  if [ -x "$CANDIDATE" ]; then
-    exec "$CANDIDATE" "$@"
-  fi
-fi
-
-# 5) Source checkout fallback.
-#    Hard-cut mode: TS dev CLI only, no legacy Python fallback.
-DEV_TS_CLI_RUNNER="${PACKAGE_ROOT}/scripts/run-ts-dev-cli.sh"
-FORWARD_ARGS=()
-TS_DEV_FLAG_SEEN=0
-PREV_ARG=""
 
 is_truthy() {
   local value
@@ -97,6 +58,66 @@ fail_legacy_python() {
   return 2
 }
 
+is_stub_binary() {
+  local path="$1"
+  if [ ! -x "$path" ]; then
+    return 1
+  fi
+  if LC_ALL=C grep -a -F "is not bundled in source checkout" "$path" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+print_version() {
+  local cli_version="dev"
+  local active_source="unknown"
+  local active_real="false"
+
+  if command -v node >/dev/null 2>&1; then
+    cli_version="$(
+      node -e 'try { const p = require(process.argv[1]); process.stdout.write(String(p.version || "dev")); } catch { process.stdout.write("dev"); }' \
+        "$PACKAGE_ROOT/package.json" 2>/dev/null
+    )"
+  fi
+
+  if [ -x "$PACKAGE_ROOT/scripts/core-status.sh" ] && command -v node >/dev/null 2>&1; then
+    local status_json
+    status_json="$("$PACKAGE_ROOT/scripts/core-status.sh" --json 2>/dev/null || true)"
+    if [ -n "$status_json" ]; then
+      active_source="$(
+        node -e 'try { const d = JSON.parse(process.argv[1]); process.stdout.write(String(d.active_source || "unknown")); } catch { process.stdout.write("unknown"); }' \
+          "$status_json" 2>/dev/null
+      )"
+      active_real="$(
+        node -e 'try { const d = JSON.parse(process.argv[1]); process.stdout.write(d.active_is_real_core ? "true" : "false"); } catch { process.stdout.write("false"); }' \
+          "$status_json" 2>/dev/null
+      )"
+    fi
+  fi
+
+  printf 'grobot %s (core_source=%s, real_core=%s)\n' "$cli_version" "$active_source" "$active_real"
+}
+
+FIRST_ARG="${1:-}"
+if [ "$FIRST_ARG" = "install" ]; then
+  INSTALL_SCRIPT="$PACKAGE_ROOT/scripts/install-core-native.sh"
+  if [ ! -x "$INSTALL_SCRIPT" ]; then
+    echo "error: missing installer script: $INSTALL_SCRIPT" >&2
+    exit 1
+  fi
+  shift
+  exec "$INSTALL_SCRIPT" "$@"
+fi
+
+if [ "$FIRST_ARG" = "--version" ] || [ "$FIRST_ARG" = "-V" ] || [ "$FIRST_ARG" = "version" ]; then
+  print_version
+  exit 0
+fi
+
+FORWARD_ARGS=()
+TS_DEV_FLAG_SEEN=0
+PREV_ARG=""
 for ARG in "$@"; do
   if [ -n "$PREV_ARG" ]; then
     if [ "$PREV_ARG" = "--gateway-impl" ] || [ "$PREV_ARG" = "--runtime-impl" ]; then
@@ -138,46 +159,90 @@ if is_truthy "${GROBOT_LEGACY_PYTHON:-}"; then
   exit 2
 fi
 
-if [ "$TS_DEV_FLAG_SEEN" -eq 1 ]; then
-  echo "warning: --ts-dev-cli is deprecated and can be removed." >&2
+GROBOT_HOME_DIR="${GROBOT_HOME:-${HOME}/.grobot}"
+PLATFORM_KEY="$(detect_platform_key)"
+CORE_PACKAGE="$(detect_core_package "$PLATFORM_KEY")"
+
+ACTIVE_SOURCE=""
+ACTIVE_PATH=""
+maybe_use_candidate() {
+  local source="$1"
+  local path="$2"
+  if [ ! -x "$path" ]; then
+    return 1
+  fi
+  if is_stub_binary "$path"; then
+    return 1
+  fi
+  ACTIVE_SOURCE="$source"
+  ACTIVE_PATH="$path"
+  return 0
+}
+
+if [ -n "${GROBOT_CORE_BIN:-}" ] && maybe_use_candidate "env:GROBOT_CORE_BIN" "${GROBOT_CORE_BIN}"; then
+  exec "${ACTIVE_PATH}" "$@"
 fi
 
-TS_DEV_CLI_EXIT_CODE=86
-TS_DEV_CLI_AVAILABLE=0
-if [ -x "$DEV_TS_CLI_RUNNER" ]; then
-  TS_DEV_CLI_AVAILABLE=1
-  set +e
-  if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
-    "$DEV_TS_CLI_RUNNER" "${FORWARD_ARGS[@]}"
-  else
-    "$DEV_TS_CLI_RUNNER"
+if maybe_use_candidate "home:current" "${GROBOT_HOME_DIR}/core/current/grobot-core"; then
+  exec "${ACTIVE_PATH}" "$@"
+fi
+
+if [ -n "$PLATFORM_KEY" ] && maybe_use_candidate "home:platform" "${GROBOT_HOME_DIR}/core/${PLATFORM_KEY}/grobot-core"; then
+  exec "${ACTIVE_PATH}" "$@"
+fi
+
+if [ -n "$CORE_PACKAGE" ] && maybe_use_candidate "node_modules" "${PACKAGE_ROOT}/node_modules/${CORE_PACKAGE}/bin/grobot-core"; then
+  exec "${ACTIVE_PATH}" "$@"
+fi
+
+ALLOW_TS_DEV_FALLBACK=0
+if is_truthy "${GROBOT_ALLOW_TS_DEV_CLI:-}"; then
+  ALLOW_TS_DEV_FALLBACK=1
+fi
+if [ "$TS_DEV_FLAG_SEEN" -eq 1 ]; then
+  ALLOW_TS_DEV_FALLBACK=1
+  echo "warning: --ts-dev-cli is deprecated and should only be used for emergency fallback." >&2
+fi
+
+if [ "$ALLOW_TS_DEV_FALLBACK" -eq 1 ]; then
+  DEV_TS_CLI_RUNNER="${PACKAGE_ROOT}/scripts/run-ts-dev-cli.sh"
+  TS_DEV_CLI_EXIT_CODE=86
+  TS_DEV_CLI_AVAILABLE=0
+  if [ -x "$DEV_TS_CLI_RUNNER" ]; then
+    TS_DEV_CLI_AVAILABLE=1
+    set +e
+    if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
+      "$DEV_TS_CLI_RUNNER" "${FORWARD_ARGS[@]}"
+    else
+      "$DEV_TS_CLI_RUNNER"
+    fi
+    TS_DEV_CLI_EXIT_CODE=$?
+    set -e
+    if [ "$TS_DEV_CLI_EXIT_CODE" -eq 0 ]; then
+      exit 0
+    fi
+    if [ "$TS_DEV_CLI_EXIT_CODE" -ne 2 ] && [ "$TS_DEV_CLI_EXIT_CODE" -ne 3 ] && [ "$TS_DEV_CLI_EXIT_CODE" -ne 86 ]; then
+      exit "$TS_DEV_CLI_EXIT_CODE"
+    fi
   fi
-  TS_DEV_CLI_EXIT_CODE=$?
-  set -e
-  if [ "$TS_DEV_CLI_EXIT_CODE" -eq 0 ]; then
-    exit 0
-  fi
-  if [ "$TS_DEV_CLI_EXIT_CODE" -ne 2 ] && [ "$TS_DEV_CLI_EXIT_CODE" -ne 3 ] && [ "$TS_DEV_CLI_EXIT_CODE" -ne 86 ]; then
+
+  if [ "$TS_DEV_CLI_AVAILABLE" -eq 1 ]; then
+    if [ "$TS_DEV_CLI_EXIT_CODE" -eq 2 ] || [ "$TS_DEV_CLI_EXIT_CODE" -eq 3 ]; then
+      echo "error: command is not available in ts-dev-cli." >&2
+    fi
     exit "$TS_DEV_CLI_EXIT_CODE"
   fi
 fi
 
-if [ "$TS_DEV_CLI_AVAILABLE" -eq 1 ]; then
-  if [ "$TS_DEV_CLI_EXIT_CODE" -eq 86 ]; then
-    echo "error: ts-dev-cli is unavailable in this source checkout." >&2
-  elif [ "$TS_DEV_CLI_EXIT_CODE" -eq 2 ] || [ "$TS_DEV_CLI_EXIT_CODE" -eq 3 ]; then
-    echo "error: command is not available in ts-dev-cli." >&2
-  fi
-  exit "$TS_DEV_CLI_EXIT_CODE"
-fi
-
-echo "grobot core not found for this platform." >&2
+echo "error: real grobot-core binary is required; ts-dev-cli fallback is disabled by default." >&2
 echo "platform key: ${PLATFORM_KEY:-unsupported}" >&2
-echo "platform package: ${CORE_PACKAGE:-unsupported}" >&2
 echo "searched:" >&2
 echo "  - GROBOT_CORE_BIN=${GROBOT_CORE_BIN:-<unset>}" >&2
 echo "  - ${GROBOT_HOME_DIR}/core/current/grobot-core" >&2
 echo "  - ${GROBOT_HOME_DIR}/core/${PLATFORM_KEY:-<platform>}/grobot-core" >&2
 echo "  - ${PACKAGE_ROOT}/node_modules/${CORE_PACKAGE:-@grobot/core-<platform>}/bin/grobot-core" >&2
-echo "hint: install core to ~/.grobot/core/current or set GROBOT_CORE_BIN." >&2
-exit 1
+echo "next steps:" >&2
+echo "  - run: grobot install" >&2
+echo "  - verify: grobot --version" >&2
+echo "  - emergency fallback only: GROBOT_ALLOW_TS_DEV_CLI=1 grobot <command>" >&2
+exit 88

@@ -97,7 +97,16 @@ PLATFORMS=(
   "darwin-x64|core-darwin-x64"
   "linux-x64|core-linux-x64"
   "linux-arm64|core-linux-arm64"
+  "windows-x64|core-windows-x64"
 )
+
+asset_file_for_platform() {
+  local platform="$1"
+  case "$platform" in
+    windows-x64) echo "grobot-core-windows-x64.exe" ;;
+    *) echo "grobot-core-$platform" ;;
+  esac
+}
 
 load_manifest_expected_sha() {
   local manifest="$1"
@@ -141,7 +150,8 @@ fi
 for pair in "${PLATFORMS[@]}"; do
   platform="${pair%%|*}"
   package_name="${pair##*|}"
-  artifact_path="$ARTIFACTS_DIR/grobot-core-$platform"
+  artifact_file="$(asset_file_for_platform "$platform")"
+  artifact_path="$ARTIFACTS_DIR/$artifact_file"
   target_path="$REPO_ROOT/packages/$package_name/bin/grobot-core"
 
   if [ ! -f "$artifact_path" ]; then

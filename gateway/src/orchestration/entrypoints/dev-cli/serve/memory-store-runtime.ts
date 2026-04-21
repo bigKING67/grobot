@@ -8,6 +8,7 @@ export interface MemoryStoreRuntime {
   source: string;
   redisUrl?: string;
   fallbackReason?: string;
+  strictRedis?: boolean;
 }
 
 interface MemoryStorePayload {
@@ -150,6 +151,9 @@ export async function loadMemoryStoreRuntimeState(args: {
         store: payload ? decodeMemoryStorePayload(payload) : new Map<string, Record<string, unknown>[]>(),
       };
     } catch (error) {
+      if (runtimeInput.strictRedis) {
+        throw new Error(`redis bootstrap failed in strict mode: ${String(error)}`);
+      }
       return {
         runtime: {
           ...runtimeInput,

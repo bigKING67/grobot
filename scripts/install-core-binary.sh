@@ -10,6 +10,7 @@ detect_platform_key() {
     Darwin:x86_64) echo "darwin-x64" ;;
     Linux:x86_64) echo "linux-x64" ;;
     Linux:aarch64|Linux:arm64) echo "linux-arm64" ;;
+    MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64) echo "windows-x64" ;;
     *) echo "" ;;
   esac
 }
@@ -21,7 +22,7 @@ Usage: bash scripts/install-core-binary.sh --binary <path> [options]
 Options:
   --binary <path>       Path to grobot-core binary to install (required)
   --platform <name>     Target platform key (default: auto-detect)
-                        Supported: darwin-arm64, darwin-x64, linux-x64, linux-arm64
+                        Supported: darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64
   --core-dir <dir>      Core install root (default: ~/.grobot/core)
   --no-current          Do not update ~/.grobot/core/current symlink
   --allow-stub          Allow installing placeholder stub binaries
@@ -94,7 +95,7 @@ if [ -z "$PLATFORM_KEY" ]; then
 fi
 
 case "$PLATFORM_KEY" in
-  darwin-arm64|darwin-x64|linux-x64|linux-arm64) ;;
+  darwin-arm64|darwin-x64|linux-x64|linux-arm64|windows-x64) ;;
   *)
     echo "unsupported --platform value: $PLATFORM_KEY" >&2
     exit 1

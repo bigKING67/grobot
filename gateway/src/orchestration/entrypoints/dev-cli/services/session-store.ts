@@ -6,6 +6,7 @@ export interface SessionStoreRuntime {
   source: string;
   redisUrl?: string;
   fallbackReason?: string;
+  strictRedis?: boolean;
 }
 
 export interface LoadedSessionRegistryState<TSessionRegistryPayload> {
@@ -52,6 +53,9 @@ export function createSessionStoreController<TSessionRegistryPayload, THistoryMe
   const fallbackToFile = (reason: string): string[] => {
     if (runtime.backend === "file") {
       return [];
+    }
+    if (runtime.strictRedis) {
+      throw new Error(`redis required in strict mode: ${reason}`);
     }
     runtime = {
       ...runtime,

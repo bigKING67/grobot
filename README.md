@@ -210,7 +210,7 @@ keep_recent_sessions = 40
 keep_recent_plans_per_session = 12
 ```
 
-### 核心分发（闭源发布预备）
+### 核心分发（原生二进制安装）
 
 - 目标发布形态：`grobot` 主包（CLI 壳） + 平台核心包（`@grobot/core-*`）。
 - CLI 启动顺序：
@@ -218,51 +218,31 @@ keep_recent_plans_per_session = 12
   2. 否则查找 `~/.grobot/core/current/grobot-core`；
   3. 再查找 `~/.grobot/core/<platform>/grobot-core`；
   4. 再按当前 `OS/ARCH` 在 `node_modules/@grobot/core-*/bin/grobot-core` 查找；
-  5. 若在源码仓库运行，默认走 `scripts/run-ts-dev-cli.sh`（会按需编译并运行 TS dev CLI）；
+  5. 若在源码仓库运行，默认 **禁止** 回退 `ts-dev-cli`（可用 `GROBOT_ALLOW_TS_DEV_CLI=1` 临时放开）；
   6. legacy Python fallback 已移除（`--legacy-python-cli` / `GROBOT_LEGACY_PYTHON` 会返回错误并终止）。
 - `packages/core-*` 当前提供的是占位 stub，发布流水线需替换为真实编译产物。
 
-### 本地注入/升级闭源 core（不重新发 npm）
+### 自动迁移安装（推荐）
 
 ```bash
-# 1) 把外部构建好的 grobot-core 注入到 ~/.grobot/core/<platform>/grobot-core
-#    并自动更新 ~/.grobot/core/current -> ~/.grobot/core/<platform>
-npm run core:install:binary -- --binary /path/to/grobot-core
+# 1) 自动迁移到原生二进制 core（默认拉取 GitHub Releases 最新版本）
+grobot install
 
-# 2) 查看当前会命中的 core 来源（与 launcher 顺序一致）
-npm run core:status
+# 2) 验证是否命中 real core
+grobot --version
 
-# 3) 验证启动是否已命中新 core
-grobot --help
+# 3) 可选：查看完整命中顺序（与 launcher 一致）
+bash scripts/core-status.sh
 ```
 
-可选参数：
+手动下载包后安装（离线/内网）：
 
 ```bash
-# 指定平台槽位（跨平台打包时有用）
-npm run core:install:binary -- \
-  --binary /path/to/grobot-core \
-  --platform linux-x64
+# macOS/Linux
+grobot install --binary /path/to/grobot-core --platform linux-x64
 
-# 安装但不更新 current 软链
-npm run core:install:binary -- \
-  --binary /path/to/grobot-core \
-  --no-current
-
-# 允许安装 stub（二进制占位文件，仅用于本地联调 launcher）
-npm run core:install:binary -- \
-  --binary /path/to/grobot-core \
-  --allow-stub
-
-# 自定义 core 目录
-npm run core:install:binary -- \
-  --binary /path/to/grobot-core \
-  --core-dir /opt/grobot/core
-
-# 通过下载链接安装（强制校验 SHA256）
-npm run core:install:url -- \
-  --url "https://download.example.com/grobot-core-darwin-arm64" \
-  --sha256 "<sha256-hex>"
+# Windows
+grobot install --binary C:\path\grobot-core-windows-x64.exe --platform windows-x64
 ```
 
 状态/发布检查：
@@ -295,6 +275,7 @@ npm run core:gate:release -- --allow-stub
 #   grobot-core-darwin-x64
 #   grobot-core-linux-x64
 #   grobot-core-linux-arm64
+#   grobot-core-windows-x64.exe
 
 # 1) 生成 manifest（默认会拒绝 stub）
 npm run core:manifest:generate -- \

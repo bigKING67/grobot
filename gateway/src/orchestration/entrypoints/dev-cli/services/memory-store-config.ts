@@ -51,9 +51,26 @@ function parseTomlString(value: string): string | undefined {
   return trimmed;
 }
 
-function parseRuntimeHotCacheFromToml(rawToml: string): MemoryStoreBackend | undefined {
+function parseTomlBoolean(value: string): boolean | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+  return undefined;
+}
+
+interface RuntimeStorageTomlSettings {
+  hotCache?: MemoryStoreBackend;
+  requireRedis?: boolean;
+}
+
+function parseRuntimeStorageFromToml(rawToml: string): RuntimeStorageTomlSettings {
   const lines = rawToml.split(/\r?\n/);
   let inRuntimeStorageSection = false;
+  const settings: RuntimeStorageTomlSettings = {};
   for (const rawLine of lines) {
     const line = stripInlineComment(rawLine).trim();
     if (!line) {
@@ -71,34 +88,54 @@ function parseRuntimeHotCacheFromToml(rawToml: string): MemoryStoreBackend | und
     if (!kvMatch) {
       continue;
     }
-    if (kvMatch[1] !== "hot_cache") {
+    if (kvMatch[1] === "hot_cache") {
+      const parsed = parseTomlString(kvMatch[2]);
+      if (!parsed) {
+        continue;
+      }
+      const normalized = parsed.trim().toLowerCase();
+      if (normalized === "redis") {
+        settings.hotCache = "redis";
+        continue;
+      }
+      if (normalized === "file") {
+        settings.hotCache = "file";
+      }
       continue;
     }
-    const parsed = parseTomlString(kvMatch[2]);
-    if (!parsed) {
-      return undefined;
+    if (kvMatch[1] === "require_redis") {
+      const parsed = parseTomlBoolean(kvMatch[2]);
+      if (typeof parsed === "boolean") {
+        settings.requireRedis = parsed;
+      }
     }
-    const normalized = parsed.trim().toLowerCase();
-    if (normalized === "redis") {
-      return "redis";
-    }
-    if (normalized === "file") {
-      return "file";
-    }
+  }
+  return settings;
+}
+
+function normalizeBooleanOption(raw: string | undefined): boolean | undefined {
+  if (!raw) {
     return undefined;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
+    return false;
   }
   return undefined;
 }
 
-function readRuntimeHotCacheFromProjectToml(projectTomlPath?: string): MemoryStoreBackend | undefined {
+function readRuntimeStorageFromProjectToml(projectTomlPath?: string): RuntimeStorageTomlSettings {
   if (!projectTomlPath || !fileReadable(projectTomlPath)) {
-    return undefined;
+    return {};
   }
   try {
     const raw = readFileSync(projectTomlPath, "utf8");
-    return parseRuntimeHotCacheFromToml(raw);
+    return parseRuntimeStorageFromToml(raw);
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -113,14 +150,53 @@ function normalizeMemoryStoreBackend(raw: string | undefined): MemoryStoreBacken
   return undefined;
 }
 
+function resolveStrictRedisMode(
+  options: Record<string, OptionValue>,
+  projectSettings: RuntimeStorageTomlSettings,
+): boolean {
+  const allowFallbackFromCli = normalizeBooleanOption(
+    readOptionStringAny(options, ["allow-redis-fallback"]),
+  );
+  if (allowFallbackFromCli === true) {
+    return false;
+  }
+
+  const requireRedisFromCli = normalizeBooleanOption(
+    readOptionStringAny(options, ["require-redis"]),
+  );
+  if (typeof requireRedisFromCli === "boolean") {
+    return requireRedisFromCli;
+  }
+
+  const allowFallbackFromEnv = normalizeBooleanOption(process.env.GROBOT_ALLOW_REDIS_FALLBACK);
+  if (allowFallbackFromEnv === true) {
+    return false;
+  }
+
+  const requireRedisFromEnv = normalizeBooleanOption(process.env.GROBOT_REQUIRE_REDIS);
+  if (typeof requireRedisFromEnv === "boolean") {
+    return requireRedisFromEnv;
+  }
+
+  if (typeof projectSettings.requireRedis === "boolean") {
+    return projectSettings.requireRedis;
+  }
+
+  return true;
+}
+
 export function resolveMemoryStoreRuntime(
   options: Record<string, OptionValue>,
   projectTomlPath: string | undefined,
 ): MemoryStoreRuntime {
+  const projectRuntimeStorage = readRuntimeStorageFromProjectToml(projectTomlPath);
   const fromCli = normalizeMemoryStoreBackend(
     readOptionStringAny(options, ["memory-store-backend", "session-store", "session-backend"]),
   );
   if (fromCli && fromCli !== "auto") {
+    const strictRedis = fromCli === "redis"
+      ? resolveStrictRedisMode(options, projectRuntimeStorage)
+      : false;
     return {
       backend: fromCli,
       requestedBackend: fromCli,
@@ -130,26 +206,35 @@ export function resolveMemoryStoreRuntime(
           process.env.GROBOT_REDIS_URL ??
           MEMORY_STORE_DEFAULT_REDIS_URL)
         : undefined,
+      strictRedis,
     };
   }
 
   const fromEnv = normalizeMemoryStoreBackend(process.env.GROBOT_SESSION_STORE);
   if (fromEnv && fromEnv !== "auto") {
+    const strictRedis = fromEnv === "redis"
+      ? resolveStrictRedisMode(options, projectRuntimeStorage)
+      : false;
     return {
       backend: fromEnv,
       requestedBackend: fromEnv,
       source: "env:GROBOT_SESSION_STORE",
       redisUrl: fromEnv === "redis" ? (process.env.GROBOT_REDIS_URL ?? MEMORY_STORE_DEFAULT_REDIS_URL) : undefined,
+      strictRedis,
     };
   }
 
-  const fromProject = readRuntimeHotCacheFromProjectToml(projectTomlPath);
+  const fromProject = projectRuntimeStorage.hotCache;
   if (fromProject) {
+    const strictRedis = fromProject === "redis"
+      ? resolveStrictRedisMode(options, projectRuntimeStorage)
+      : false;
     return {
       backend: fromProject,
       requestedBackend: fromProject,
       source: `project_toml:${projectTomlPath ?? ""}`,
       redisUrl: fromProject === "redis" ? (process.env.GROBOT_REDIS_URL ?? MEMORY_STORE_DEFAULT_REDIS_URL) : undefined,
+      strictRedis,
     };
   }
 
@@ -157,6 +242,7 @@ export function resolveMemoryStoreRuntime(
     backend: "file",
     requestedBackend: "file",
     source: "default:file",
+    strictRedis: false,
   };
 }
 

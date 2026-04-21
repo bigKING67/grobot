@@ -83,13 +83,23 @@ PLATFORMS=(
   "darwin-x64"
   "linux-x64"
   "linux-arm64"
+  "windows-x64"
 )
+
+asset_file_for_platform() {
+  local platform="$1"
+  case "$platform" in
+    windows-x64) echo "grobot-core-windows-x64.exe" ;;
+    *) echo "grobot-core-$platform" ;;
+  esac
+}
 
 declare -a PY_ARGS
 PY_ARGS=()
 
 for platform in "${PLATFORMS[@]}"; do
-  artifact_path="$ARTIFACTS_DIR/grobot-core-$platform"
+  artifact_file="$(asset_file_for_platform "$platform")"
+  artifact_path="$ARTIFACTS_DIR/$artifact_file"
   if [ ! -f "$artifact_path" ]; then
     echo "missing artifact: $artifact_path" >&2
     exit 1
