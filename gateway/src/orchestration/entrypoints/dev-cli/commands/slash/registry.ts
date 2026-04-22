@@ -234,6 +234,10 @@ function normalizeResumeQueryText(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizeResumeDigitsOnly(value: string): string {
+  return value.replace(/\D+/g, "");
+}
+
 function sortResumeQueryMatches(
   matches: SessionInteractiveSessionSummary[],
 ): SessionInteractiveSessionSummary[] {
@@ -258,6 +262,7 @@ function resolveResumeQueryMatches(
   if (!query) {
     return [];
   }
+  const queryDigits = normalizeResumeDigitsOnly(query);
   const byId = sessions.filter((session: SessionInteractiveSessionSummary) =>
     normalizeResumeQueryText(session.id) === query);
   if (byId.length > 0) {
@@ -272,6 +277,11 @@ function resolveResumeQueryMatches(
     normalizeResumeQueryText(session.summary) === query);
   if (byExactSummary.length > 0) {
     return sortResumeQueryMatches(byExactSummary);
+  }
+  const byExactUpdatedAt = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.updatedAt) === query);
+  if (byExactUpdatedAt.length > 0) {
+    return sortResumeQueryMatches(byExactUpdatedAt);
   }
   const byIdPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
     normalizeResumeQueryText(session.id).startsWith(query));
@@ -288,11 +298,29 @@ function resolveResumeQueryMatches(
   if (bySummaryPrefix.length > 0) {
     return sortResumeQueryMatches(bySummaryPrefix);
   }
+  const byUpdatedAtPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.updatedAt).startsWith(query));
+  if (byUpdatedAtPrefix.length > 0) {
+    return sortResumeQueryMatches(byUpdatedAtPrefix);
+  }
+  if (queryDigits.length > 0) {
+    const byUpdatedAtDigitsPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
+      normalizeResumeDigitsOnly(session.updatedAt).startsWith(queryDigits));
+    if (byUpdatedAtDigitsPrefix.length > 0) {
+      return sortResumeQueryMatches(byUpdatedAtDigitsPrefix);
+    }
+  }
   const containsMatches = sessions.filter((session: SessionInteractiveSessionSummary) => {
     const id = normalizeResumeQueryText(session.id);
     const title = normalizeResumeQueryText(session.title);
     const summary = normalizeResumeQueryText(session.summary);
-    return id.includes(query) || title.includes(query) || summary.includes(query);
+    const updatedAt = normalizeResumeQueryText(session.updatedAt);
+    const updatedAtDigits = normalizeResumeDigitsOnly(session.updatedAt);
+    return id.includes(query)
+      || title.includes(query)
+      || summary.includes(query)
+      || updatedAt.includes(query)
+      || (queryDigits.length > 0 && updatedAtDigits.includes(queryDigits));
   });
   return sortResumeQueryMatches(containsMatches);
 }

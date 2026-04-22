@@ -275,6 +275,10 @@ async function main(): Promise<void> {
   const resumeFindPrefixTty = await runDispatchCase("/resume session-lega", { stdinIsTty: true });
   const resumeFindKeywordTty = await runDispatchCase("/resume find legacy", { stdinIsTty: true });
   const resumeSearchKeywordTty = await runDispatchCase("/resume search old", { stdinIsTty: true });
+  const resumeFindUpdatedAtTty = await runDispatchCase("/resume find 2026-04-19", { stdinIsTty: true });
+  const resumeSearchUpdatedAtDigitsTty = await runDispatchCase("/resume search 20260418", {
+    stdinIsTty: true,
+  });
   const resumeFindMissingTty = await runDispatchCase("/resume find missing", { stdinIsTty: true });
   const resumeFindMultipleTty = await runDispatchCase("/resume session", { stdinIsTty: true });
   const resumeFindEmptyTty = await runDispatchCase("/resume find", { stdinIsTty: true });
@@ -430,6 +434,14 @@ async function main(): Promise<void> {
     ),
     resume_search_keyword_tty_direct_switch: includesEvent(
       resumeSearchKeywordTty.events,
+      "switchSession:session-archive",
+    ),
+    resume_find_updated_at_tty_direct_switch: includesEvent(
+      resumeFindUpdatedAtTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_updated_at_digits_tty_direct_switch: includesEvent(
+      resumeSearchUpdatedAtDigitsTty.events,
       "switchSession:session-archive",
     ),
     resume_find_missing_tty_warned: includesEvent(resumeFindMissingTty.events, "writeStdout"),

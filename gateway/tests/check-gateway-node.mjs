@@ -709,6 +709,8 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.resume_find_prefix_tty_direct_switch, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_keyword_tty_direct_switch, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_search_keyword_tty_direct_switch, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_find_updated_at_tty_direct_switch, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_search_updated_at_digits_tty_direct_switch, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_missing_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_missing_tty_direct_switch, false);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_warned, true);
@@ -1038,6 +1040,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.standard_plan_review_passes_multiline_milestones, true);
   assert.equal(Number(runStartPlanModeContractPayload.standard_plan_review_findings_count), 0);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_enter_succeeds, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_approve_guard_blocked, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_approve_guard_has_code, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_code_matches, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_mode_kept, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_has_diagnostics_line, true);
@@ -1185,6 +1189,12 @@ async function runGatewayContractSmoke() {
     true,
   );
   assert.equal(
+    bridgeCliContractPayload.review_status_plan_quality_guard_mode === "off"
+      || bridgeCliContractPayload.review_status_plan_quality_guard_mode === "warn"
+      || bridgeCliContractPayload.review_status_plan_quality_guard_mode === "strict",
+    true,
+  );
+  assert.equal(
     bridgeCliContractPayload.review_status_plan_quality_guard_level === "healthy"
       || bridgeCliContractPayload.review_status_plan_quality_guard_level === "watch"
       || bridgeCliContractPayload.review_status_plan_quality_guard_level === "critical",
@@ -1193,6 +1203,11 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(bridgeCliContractPayload.review_status_plan_quality_regression_streak) >= 0, true);
   assert.equal(typeof bridgeCliContractPayload.review_status_plan_quality_guard_reason, "string");
   assert.equal(String(bridgeCliContractPayload.review_status_plan_quality_guard_reason).length > 0, true);
+  assert.equal(bridgeCliContractPayload.approve_blocked_by_quality_guard_error_code, "PLAN_QUALITY_GUARD_BLOCKED");
+  assert.equal(
+    String(bridgeCliContractPayload.approve_blocked_by_quality_guard_detail ?? "").includes("quality guard"),
+    true,
+  );
   if (bridgeCliContractPayload.review_status_plan_quality_trend === "none") {
     assert.equal(bridgeCliContractPayload.review_status_plan_quality_previous_plan_id, null);
     assert.equal(bridgeCliContractPayload.review_status_plan_quality_previous_score, null);
