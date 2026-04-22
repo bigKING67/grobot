@@ -305,6 +305,10 @@ function normalizeDigitsOnly(value: string): string {
   return value.replace(/\D+/g, "");
 }
 
+function normalizeCompactText(value: string): string {
+  return normalizeRewindQueryText(value).replace(/\s+/g, "");
+}
+
 function sortRewindQueryMatches(
   matches: SessionInteractiveRewindCheckpointSummary[],
 ): SessionInteractiveRewindCheckpointSummary[] {
@@ -331,6 +335,7 @@ function resolveRewindQueryMatches(
   if (!query) {
     return [];
   }
+  const compactQuery = normalizeCompactText(query);
   const byExactCheckpointId = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
     normalizeRewindQueryText(checkpoint.checkpointId) === query);
   if (byExactCheckpointId.length > 0) {
@@ -379,15 +384,35 @@ function resolveRewindQueryMatches(
   if (byAssistantTextPrefix.length > 0) {
     return sortRewindQueryMatches(byAssistantTextPrefix);
   }
+  if (compactQuery !== query) {
+    const byUserTextCompactPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+      normalizeCompactText(checkpoint.userText).startsWith(compactQuery));
+    if (byUserTextCompactPrefix.length > 0) {
+      return sortRewindQueryMatches(byUserTextCompactPrefix);
+    }
+    const byAssistantTextCompactPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+      normalizeCompactText(checkpoint.assistantText).startsWith(compactQuery));
+    if (byAssistantTextCompactPrefix.length > 0) {
+      return sortRewindQueryMatches(byAssistantTextCompactPrefix);
+    }
+  }
   const containsMatches = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) => {
     const checkpointId = normalizeRewindQueryText(checkpoint.checkpointId);
     const createdAt = normalizeRewindQueryText(checkpoint.createdAt);
     const userText = normalizeRewindQueryText(checkpoint.userText);
     const assistantText = normalizeRewindQueryText(checkpoint.assistantText);
+    const checkpointIdCompact = normalizeCompactText(checkpoint.checkpointId);
+    const createdAtCompact = normalizeCompactText(checkpoint.createdAt);
+    const userTextCompact = normalizeCompactText(checkpoint.userText);
+    const assistantTextCompact = normalizeCompactText(checkpoint.assistantText);
     return checkpointId.includes(query)
       || createdAt.includes(query)
       || userText.includes(query)
-      || assistantText.includes(query);
+      || assistantText.includes(query)
+      || checkpointIdCompact.includes(compactQuery)
+      || createdAtCompact.includes(compactQuery)
+      || userTextCompact.includes(compactQuery)
+      || assistantTextCompact.includes(compactQuery);
   });
   return sortRewindQueryMatches(containsMatches);
 }

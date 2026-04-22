@@ -727,6 +727,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_query_mode_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_user_text_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_assistant_text_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_user_text_compact_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_created_at_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_created_at_digits_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_warned, true);
@@ -771,6 +772,9 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_status_with_tail_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_status_with_tail_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_status_with_tail_tty_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.exit_command_breaks_loop, true);
   assert.equal(sessionInteractiveDispatchPayload.exit_command_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.exit_alias_slash_quit_breaks_loop, true);

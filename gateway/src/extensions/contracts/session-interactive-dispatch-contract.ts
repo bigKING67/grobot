@@ -284,6 +284,9 @@ async function main(): Promise<void> {
   const rewindFindQueryModeTty = await runDispatchCase("/rewind find latest both", { stdinIsTty: true });
   const rewindSearchUserTextTty = await runDispatchCase("/rewind search alpha conversation", { stdinIsTty: true });
   const rewindSearchAssistantTextTty = await runDispatchCase("/rewind search beta code", { stdinIsTty: true });
+  const rewindSearchUserTextCompactTty = await runDispatchCase("/rewind search legacycheckpointalpha", {
+    stdinIsTty: true,
+  });
   const rewindSearchCreatedAtTty = await runDispatchCase("/rewind search 2026-04-20", { stdinIsTty: true });
   const rewindSearchCreatedAtDigitsTty = await runDispatchCase("/rewind search 20260420", { stdinIsTty: true });
   const rewindFindModeKeywordQueryTty = await runDispatchCase("/rewind find code", { stdinIsTty: true });
@@ -314,6 +317,7 @@ async function main(): Promise<void> {
   const planVerifyCn = await runDispatchCase("/plan 验证 通过 结果稳定", { stdinIsTty: true });
   const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
   const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
+  const planStatusWithTailTty = await runDispatchCase("/plan status extra", { stdinIsTty: true });
   const statusCurrent = await runDispatchCase("/status");
   const statusCurrentTty = await runDispatchCase("/status", { stdinIsTty: true });
   const statusTheme = await runDispatchCase("/status theme nerd");
@@ -468,6 +472,10 @@ async function main(): Promise<void> {
       rewindSearchAssistantTextTty.events,
       "rewindSession:main:legacy-b:code:slash:rewind:query",
     ),
+    rewind_search_user_text_compact_tty_dispatched: includesEvent(
+      rewindSearchUserTextCompactTty.events,
+      "rewindSession:main:legacy-a:both:slash:rewind:query",
+    ),
     rewind_search_created_at_tty_dispatched: includesEvent(
       rewindSearchCreatedAtTty.events,
       "rewindSession:main:latest:both:slash:rewind:query",
@@ -560,6 +568,9 @@ async function main(): Promise<void> {
     plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
     plan_legacy_status_tty_dispatched: includesEvent(planLegacyStatusTty.events, "showPlanStatus"),
     plan_legacy_status_tty_opened_menu: includesEvent(planLegacyStatusTty.events, "openPlanMenu"),
+    plan_status_with_tail_tty_warned: includesEvent(planStatusWithTailTty.events, "writeStdout"),
+    plan_status_with_tail_tty_dispatched: includesEvent(planStatusWithTailTty.events, "showPlanStatus"),
+    plan_status_with_tail_tty_opened_menu: includesEvent(planStatusWithTailTty.events, "openPlanMenu"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
     status_current_tty_opened_menu: includesEvent(statusCurrentTty.events, "openStatusMenu"),
     status_current_tty_dispatched_directly: includesEvent(statusCurrentTty.events, "showStatusCurrent"),
