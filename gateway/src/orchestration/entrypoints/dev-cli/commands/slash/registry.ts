@@ -413,6 +413,7 @@ function parseRewindCommand(
     };
   }
   const queryMatch = rest.match(/^(?:find|search)\s*([\s\S]*)$/i);
+  const hasExplicitQueryPrefix = Boolean(queryMatch);
   const querySource = queryMatch ? (queryMatch[1] ?? "").trim() : rest;
   if (!querySource) {
     return {
@@ -431,7 +432,10 @@ function parseRewindCommand(
     }
   } else {
     const onlyToken = (queryTokens[0] ?? "").toLowerCase();
-    if (onlyToken === "both" || onlyToken === "conversation" || onlyToken === "code") {
+    if (
+      !hasExplicitQueryPrefix
+      && (onlyToken === "both" || onlyToken === "conversation" || onlyToken === "code")
+    ) {
       return {
         kind: "invalid",
         reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
@@ -810,6 +814,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         await handlers.enterPlan(parsed.goal);
         return "continue";
       }
+      if (parsed.kind === "menu") {
+        if (isInteractiveTerminal()) {
+          await handlers.openPlanMenu(controls.withInputPaused);
+          return "continue";
+        }
+        handlers.writeStdout("[plan] /plan menu is interactive-only; showing current status in script mode.\n\n");
+        await handlers.showPlanStatus();
+        return "continue";
+      }
       if (parsed.kind === "enter_mode") {
         if (isInteractiveTerminal()) {
           await handlers.openPlanMenu(controls.withInputPaused);
@@ -854,7 +867,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /plan                Open plan actions menu (interactive)",
+      "  /plan | /plan open   Open plan actions menu (interactive)",
       "  /plan <goal>         Enter plan mode and execute first requirement",
       "  /plan status|approve|reject|apply|verify|cancel (legacy script shortcuts)",
     ],

@@ -726,6 +726,9 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_user_text_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_assistant_text_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_created_at_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_no_match_message, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_summarize_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_code_mode_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.checkpoint_query_tty_dispatched, true);
@@ -978,6 +981,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_grade, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_findings_count, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_recommendation, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_trend, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_recommended_next_action, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_degraded, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_degrade, true);
@@ -997,6 +1001,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_score, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_grade, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_recommendation, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_trend, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_recommended_next_action, true);
   assert.equal(runStartPlanModeContractPayload.proposed_turn_returns_success, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_mode_kept, true);
@@ -1020,6 +1025,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_score, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_grade, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_recommendation, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_trend, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_rewrite_hints, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_recommended_next_action, true);
   assert.equal(runStartPlanModeContractPayload.apply_review_failure_events_has_review_failed, true);
@@ -1147,6 +1153,22 @@ async function runGatewayContractSmoke() {
     true,
   );
   assert.equal(Number(bridgeCliContractPayload.review_status_plan_quality_rewrite_hints_count) >= 0, true);
+  assert.equal(
+    bridgeCliContractPayload.review_status_plan_quality_trend === "up"
+      || bridgeCliContractPayload.review_status_plan_quality_trend === "down"
+      || bridgeCliContractPayload.review_status_plan_quality_trend === "flat"
+      || bridgeCliContractPayload.review_status_plan_quality_trend === "none",
+    true,
+  );
+  if (bridgeCliContractPayload.review_status_plan_quality_trend === "none") {
+    assert.equal(bridgeCliContractPayload.review_status_plan_quality_previous_plan_id, null);
+    assert.equal(bridgeCliContractPayload.review_status_plan_quality_previous_score, null);
+    assert.equal(bridgeCliContractPayload.review_status_plan_quality_delta_from_previous, null);
+  } else {
+    assert.equal(typeof bridgeCliContractPayload.review_status_plan_quality_previous_plan_id, "string");
+    assert.equal(Number.isFinite(Number(bridgeCliContractPayload.review_status_plan_quality_previous_score)), true);
+    assert.equal(Number.isFinite(Number(bridgeCliContractPayload.review_status_plan_quality_delta_from_previous)), true);
+  }
   assert.equal(bridgeCliContractPayload.review_status_recommended_next_action, "/plan <note>");
   assert.equal(bridgeCliContractPayload.manual_approve_status, "approved");
   assert.equal(bridgeCliContractPayload.reject_status, "ok");

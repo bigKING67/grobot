@@ -285,6 +285,7 @@ async function main(): Promise<void> {
   const rewindSearchUserTextTty = await runDispatchCase("/rewind search alpha conversation", { stdinIsTty: true });
   const rewindSearchAssistantTextTty = await runDispatchCase("/rewind search beta code", { stdinIsTty: true });
   const rewindSearchCreatedAtTty = await runDispatchCase("/rewind search 2026-04-20", { stdinIsTty: true });
+  const rewindFindModeKeywordQueryTty = await runDispatchCase("/rewind find code", { stdinIsTty: true });
   const rewindSummarizeTty = await runDispatchCase("/rewind summarize", { stdinIsTty: true });
   const rewindCodeModeTty = await runDispatchCase("/rewind latest code", { stdinIsTty: true });
   const checkpointQueryTty = await runDispatchCase("/checkpoint latest conversation", {
@@ -461,6 +462,17 @@ async function main(): Promise<void> {
     rewind_search_created_at_tty_dispatched: includesEvent(
       rewindSearchCreatedAtTty.events,
       "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_find_mode_keyword_query_warned: includesEvent(
+      rewindFindModeKeywordQueryTty.events,
+      "writeStdout",
+    ),
+    rewind_find_mode_keyword_query_dispatched: includesEvent(
+      rewindFindModeKeywordQueryTty.events,
+      "rewindSession",
+    ),
+    rewind_find_mode_keyword_query_no_match_message: rewindFindModeKeywordQueryTty.stdout.includes(
+      'No checkpoints matching "code"',
     ),
     rewind_summarize_tty_dispatched: includesEvent(
       rewindSummarizeTty.events,
