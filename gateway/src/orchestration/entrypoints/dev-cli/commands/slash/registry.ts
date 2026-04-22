@@ -193,7 +193,10 @@ function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
     return { kind: "menu" };
   }
   if (isInteractiveTerminal()) {
-    const queryMatch = rest.match(/^(?:find|search)\s+([\s\S]+)$/i);
+    if (/^menu$/i.test(rest)) {
+      return { kind: "menu" };
+    }
+    const queryMatch = rest.match(/^(?:find|search)\s*([\s\S]*)$/i);
     if (queryMatch) {
       const query = (queryMatch[1] ?? "").trim();
       if (!query) {
@@ -208,8 +211,8 @@ function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
       };
     }
     return {
-      kind: "invalid",
-      reason: "[session] /resume <id> 已移除，请仅使用 /resume 打开菜单；快速检索请用 /resume find <id|title|summary>。",
+      kind: "query",
+      query: rest,
     };
   }
   const sessionId = rest.split(/\s+/, 1)[0] ?? "";
@@ -227,6 +230,22 @@ function parseUpdatedAtMs(value: string): number {
 
 function normalizeResumeQueryText(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function sortResumeQueryMatches(
+  matches: SessionInteractiveSessionSummary[],
+): SessionInteractiveSessionSummary[] {
+  matches.sort((left: SessionInteractiveSessionSummary, right: SessionInteractiveSessionSummary) => {
+    if (left.active !== right.active) {
+      return left.active ? 1 : -1;
+    }
+    const updatedDiff = parseUpdatedAtMs(right.updatedAt) - parseUpdatedAtMs(left.updatedAt);
+    if (updatedDiff !== 0) {
+      return updatedDiff;
+    }
+    return left.id.localeCompare(right.id);
+  });
+  return matches;
 }
 
 function resolveResumeQueryMatches(
@@ -252,23 +271,28 @@ function resolveResumeQueryMatches(
   if (byExactSummary.length > 0) {
     return byExactSummary;
   }
-  const rows = sessions.filter((session: SessionInteractiveSessionSummary) => {
+  const byIdPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.id).startsWith(query));
+  if (byIdPrefix.length > 0) {
+    return sortResumeQueryMatches(byIdPrefix);
+  }
+  const byTitlePrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.title).startsWith(query));
+  if (byTitlePrefix.length > 0) {
+    return sortResumeQueryMatches(byTitlePrefix);
+  }
+  const bySummaryPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.summary).startsWith(query));
+  if (bySummaryPrefix.length > 0) {
+    return sortResumeQueryMatches(bySummaryPrefix);
+  }
+  const containsMatches = sessions.filter((session: SessionInteractiveSessionSummary) => {
     const id = normalizeResumeQueryText(session.id);
     const title = normalizeResumeQueryText(session.title);
     const summary = normalizeResumeQueryText(session.summary);
     return id.includes(query) || title.includes(query) || summary.includes(query);
   });
-  rows.sort((left: SessionInteractiveSessionSummary, right: SessionInteractiveSessionSummary) => {
-    if (left.active !== right.active) {
-      return left.active ? 1 : -1;
-    }
-    const updatedDiff = parseUpdatedAtMs(right.updatedAt) - parseUpdatedAtMs(left.updatedAt);
-    if (updatedDiff !== 0) {
-      return updatedDiff;
-    }
-    return left.id.localeCompare(right.id);
-  });
-  return rows;
+  return sortResumeQueryMatches(containsMatches);
 }
 
 function parseRewindCommand(
@@ -772,7 +796,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /resume              Open full-restore picker (use /resume find <id|title|summary> for quick query)",
+      "  /resume [query]      Open full-restore picker (quick query: /resume <query> or /resume find <id|title|summary>)",
     ],
   },
   {

@@ -86,11 +86,35 @@ async function runDispatchCase(
     openSessionMenu: async (mode) => {
       events.push(`openSessionMenu:${mode}`);
     },
+    listSessionSummaries: () => [
+      {
+        id: "main",
+        title: "Main Session",
+        summary: "active",
+        updatedAt: "2026-04-20T00:00:00.000Z",
+        active: true,
+      },
+      {
+        id: "session-legacy",
+        title: "Legacy Session",
+        summary: "historical",
+        updatedAt: "2026-04-19T23:59:00.000Z",
+        active: false,
+      },
+      {
+        id: "session-archive",
+        title: "Archive Session",
+        summary: "old",
+        updatedAt: "2026-04-18T23:59:00.000Z",
+        active: false,
+      },
+    ],
     createAndSwitchSession: async () => {
       events.push("createAndSwitchSession");
     },
-    switchSession: async () => {
+    switchSession: async (targetSessionId) => {
       events.push("switchSession");
+      events.push(`switchSession:${targetSessionId}`);
     },
     continueFromSession: async () => {
       events.push("continueFromSession");
@@ -179,6 +203,13 @@ async function main(): Promise<void> {
   const continueLegacyWithIdTty = await runDispatchCase("/continue session-legacy", { stdinIsTty: true });
   const resumeLegacyWithId = await runDispatchCase("/resume session-legacy", { stdinIsTty: false });
   const resumeLegacyWithIdTty = await runDispatchCase("/resume session-legacy", { stdinIsTty: true });
+  const resumeMenuAliasTty = await runDispatchCase("/resume menu", { stdinIsTty: true });
+  const resumeFindPrefixTty = await runDispatchCase("/resume session-lega", { stdinIsTty: true });
+  const resumeFindKeywordTty = await runDispatchCase("/resume find legacy", { stdinIsTty: true });
+  const resumeSearchKeywordTty = await runDispatchCase("/resume search old", { stdinIsTty: true });
+  const resumeFindMissingTty = await runDispatchCase("/resume find missing", { stdinIsTty: true });
+  const resumeFindMultipleTty = await runDispatchCase("/resume session", { stdinIsTty: true });
+  const resumeFindEmptyTty = await runDispatchCase("/resume find", { stdinIsTty: true });
   const rewindWithArgs = await runDispatchCase("/rewind latest");
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
@@ -274,8 +305,34 @@ async function main(): Promise<void> {
     resume_legacy_with_id_direct_switch: includesEvent(resumeLegacyWithId.events, "switchSession"),
     resume_legacy_with_id_opened_menu: includesEvent(resumeLegacyWithId.events, "openSessionMenu:resume"),
     resume_legacy_with_id_tty_warned: includesEvent(resumeLegacyWithIdTty.events, "writeStdout"),
+    resume_legacy_with_id_tty_direct_switch: includesEvent(resumeLegacyWithIdTty.events, "switchSession"),
     resume_legacy_with_id_tty_opened_resume_menu: includesEvent(
       resumeLegacyWithIdTty.events,
+      "openSessionMenu:resume",
+    ),
+    resume_menu_alias_tty_opened_menu: includesEvent(
+      resumeMenuAliasTty.events,
+      "openSessionMenu:resume",
+    ),
+    resume_find_prefix_tty_direct_switch: includesEvent(
+      resumeFindPrefixTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_find_keyword_tty_direct_switch: includesEvent(
+      resumeFindKeywordTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_keyword_tty_direct_switch: includesEvent(
+      resumeSearchKeywordTty.events,
+      "switchSession:session-archive",
+    ),
+    resume_find_missing_tty_warned: includesEvent(resumeFindMissingTty.events, "writeStdout"),
+    resume_find_missing_tty_direct_switch: includesEvent(resumeFindMissingTty.events, "switchSession"),
+    resume_find_multiple_tty_warned: includesEvent(resumeFindMultipleTty.events, "writeStdout"),
+    resume_find_multiple_tty_direct_switch: includesEvent(resumeFindMultipleTty.events, "switchSession"),
+    resume_find_empty_tty_warned: includesEvent(resumeFindEmptyTty.events, "writeStdout"),
+    resume_find_empty_tty_opened_menu: includesEvent(
+      resumeFindEmptyTty.events,
       "openSessionMenu:resume",
     ),
     rewind_with_args_warned: includesEvent(rewindWithArgs.events, "writeStdout"),
