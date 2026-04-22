@@ -301,6 +301,10 @@ function normalizeRewindQueryText(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizeDigitsOnly(value: string): string {
+  return value.replace(/\D+/g, "");
+}
+
 function sortRewindQueryMatches(
   matches: SessionInteractiveRewindCheckpointSummary[],
 ): SessionInteractiveRewindCheckpointSummary[] {
@@ -356,6 +360,14 @@ function resolveRewindQueryMatches(
     normalizeRewindQueryText(checkpoint.createdAt).startsWith(query));
   if (byCreatedAtPrefix.length > 0) {
     return sortRewindQueryMatches(byCreatedAtPrefix);
+  }
+  const queryDigits = normalizeDigitsOnly(query);
+  if (queryDigits.length > 0) {
+    const byCreatedAtDigitsPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+      normalizeDigitsOnly(checkpoint.createdAt).startsWith(queryDigits));
+    if (byCreatedAtDigitsPrefix.length > 0) {
+      return sortRewindQueryMatches(byCreatedAtDigitsPrefix);
+    }
   }
   const byUserTextPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
     normalizeRewindQueryText(checkpoint.userText).startsWith(query));

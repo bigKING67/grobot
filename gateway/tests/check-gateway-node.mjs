@@ -726,6 +726,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_user_text_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_assistant_text_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_created_at_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_created_at_digits_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_mode_keyword_query_no_match_message, true);

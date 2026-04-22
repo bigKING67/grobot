@@ -285,6 +285,7 @@ async function main(): Promise<void> {
   const rewindSearchUserTextTty = await runDispatchCase("/rewind search alpha conversation", { stdinIsTty: true });
   const rewindSearchAssistantTextTty = await runDispatchCase("/rewind search beta code", { stdinIsTty: true });
   const rewindSearchCreatedAtTty = await runDispatchCase("/rewind search 2026-04-20", { stdinIsTty: true });
+  const rewindSearchCreatedAtDigitsTty = await runDispatchCase("/rewind search 20260420", { stdinIsTty: true });
   const rewindFindModeKeywordQueryTty = await runDispatchCase("/rewind find code", { stdinIsTty: true });
   const rewindSummarizeTty = await runDispatchCase("/rewind summarize", { stdinIsTty: true });
   const rewindCodeModeTty = await runDispatchCase("/rewind latest code", { stdinIsTty: true });
@@ -461,6 +462,10 @@ async function main(): Promise<void> {
     ),
     rewind_search_created_at_tty_dispatched: includesEvent(
       rewindSearchCreatedAtTty.events,
+      "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_search_created_at_digits_tty_dispatched: includesEvent(
+      rewindSearchCreatedAtDigitsTty.events,
       "rewindSession:main:latest:both:slash:rewind:query",
     ),
     rewind_find_mode_keyword_query_warned: includesEvent(
