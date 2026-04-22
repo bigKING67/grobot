@@ -715,14 +715,44 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_direct_switch, false);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_empty_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_empty_tty_opened_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_tty_exact_checkpoint, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_missing_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_missing_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_find_query_mode_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_user_text_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_assistant_text_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_search_created_at_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_summarize_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_code_mode_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.checkpoint_query_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.checkpoint_search_created_at_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.checkpoint_find_empty_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.checkpoint_find_empty_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_find_empty_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_find_empty_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_mode_only_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_mode_only_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.rewind_with_args_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_with_args_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.rewind_with_args_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.model_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_menu_dispatched, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_menu_enters_plan_directly, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_menu_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_menu_enters_plan_directly, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_opened_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_opened_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_opened_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.exit_command_breaks_loop, true);
@@ -732,22 +762,39 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.exit_alias_quit_breaks_loop, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_queue_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_queue_all_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_queue_top3_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_menu_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.ask_park_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_park_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.ask_next_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_next_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.ask_clear_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_clear_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.ask_answer_dispatched, true);
-  assert.equal(sessionInteractiveDispatchPayload.ask_answer_hits_run_turn, false);
-  assert.equal(sessionInteractiveDispatchPayload.ask_answer_preserves_case, true);
+  if ("ask_dispatched" in sessionInteractiveDispatchPayload) {
+    assert.equal(sessionInteractiveDispatchPayload.ask_dispatched, true);
+    assert.equal(sessionInteractiveDispatchPayload.ask_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_subcommand_queue_warned, true);
+    assert.equal(sessionInteractiveDispatchPayload.ask_subcommand_queue_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_subcommand_menu_warned, true);
+    assert.equal(sessionInteractiveDispatchPayload.ask_subcommand_menu_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_subcommand_answer_warned, true);
+    assert.equal(sessionInteractiveDispatchPayload.ask_subcommand_answer_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_alias_cn_warned, true);
+    assert.equal(sessionInteractiveDispatchPayload.ask_shortcut_number_warned, true);
+  } else {
+    assert.equal(sessionInteractiveDispatchPayload.ask_queue_dispatched, true);
+    assert.equal(sessionInteractiveDispatchPayload.ask_queue_all_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_queue_top3_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_menu_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_park_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_park_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_next_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_next_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_clear_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_clear_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_answer_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_answer_hits_run_turn, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_answer_preserves_case, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_queue_alias_cn_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_menu_alias_cn_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_answer_alias_cn_dispatched, false);
+    assert.equal(sessionInteractiveDispatchPayload.ask_answer_shortcut_number_dispatched, false);
+  }
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_with_demand_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_prompted, true);
@@ -763,21 +810,35 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.user_command_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_opened_menu, false);
+  if ("pending_ask_blocked_status_hint_has_reply_guidance" in sessionInteractiveDispatchPayload) {
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_hint_has_reply_guidance, true);
+  } else {
+    assert.equal(typeof sessionInteractiveDispatchPayload.pending_ask_blocked_status_hint_has_answer_command, "boolean");
+  }
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_blocked_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_sessions_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_resume_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_rewind_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_all_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_menu_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_park_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_answer_allowed, true);
+  if ("pending_ask_ask_allowed" in sessionInteractiveDispatchPayload) {
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_allowed, true);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_subcommand_warned, true);
+  } else {
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_all_allowed, false);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_menu_allowed, false);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, false);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_park_allowed, false);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, false);
+    assert.equal(sessionInteractiveDispatchPayload.pending_ask_answer_allowed, false);
+  }
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_blocked_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_first_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_second_suppressed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_third_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_third_mentions_suppressed_count, true);
   logStep("session-interactive-dispatch-contract");
 
   const runStartInputKeybindingContractResult = runCommand("npx", [
@@ -849,15 +910,22 @@ async function runGatewayContractSmoke() {
   );
   assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_degrades, true);
   assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_reason_matches, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_diagnostic_matches, true);
   assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_has_hint, true);
   assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_stale_fails, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.planning_semantic_stale_diagnostic_matches, true);
   assert.equal(runStartPlanFailurePolicyContractPayload.applying_semantic_still_fails, true);
+  assert.equal(runStartPlanFailurePolicyContractPayload.applying_semantic_diagnostic_matches, true);
   assert.equal(
     runStartPlanFailurePolicyContractPayload.planning_provider_failure_reason_matches,
     true,
   );
   assert.equal(
     runStartPlanFailurePolicyContractPayload.planning_provider_failure_keeps_error_class,
+    true,
+  );
+  assert.equal(
+    runStartPlanFailurePolicyContractPayload.planning_provider_failure_diagnostic_matches,
     true,
   );
   logStep("run-start-plan-failure-policy-contract");
@@ -878,10 +946,14 @@ async function runGatewayContractSmoke() {
   assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_reason_matches, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_class_kept, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_provider_kept, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_diagnostic_matches, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_camel_case_extracted, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_snake_case_extracted, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.semantic_failure_diagnostic_matches, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.timeout_failure_reason_matches, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.timeout_failure_diagnostic_matches, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.generic_failure_reason_matches, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.generic_failure_diagnostic_matches, true);
   logStep("bridge-plan-failure-policy-contract");
 
   const runStartPlanModeContractResult = runCommand("npx", [
@@ -899,9 +971,18 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.semantic_turn_returns_success, true);
   assert.equal(runStartPlanModeContractPayload.semantic_failure_not_marked, true);
   assert.equal(runStartPlanModeContractPayload.semantic_stdout_has_degrade_hint, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_stdout_has_diagnostic, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_latest_failure_event, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_latest_failure_diagnostic, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_score, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_grade, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_findings_count, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_recommendation, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_recommended_next_action, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_degraded, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_degrade, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_reason, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_events_has_diagnostic, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_no_turn_failed, true);
   assert.equal(runStartPlanModeContractPayload.semantic_plan_mode_still_plan_only, true);
   assert.equal(runStartPlanModeContractPayload.semantic_active_plan_kept, true);
@@ -910,6 +991,13 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.non_semantic_failure_marked, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_turn_failed, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_policy_fail, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_diagnostic, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_latest_failure_event, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_latest_failure_diagnostic, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_score, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_grade, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_recommendation, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_recommended_next_action, true);
   assert.equal(runStartPlanModeContractPayload.proposed_turn_returns_success, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_mode_kept, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_ingested, true);
@@ -920,6 +1008,37 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.proposed_events_has_ingested_marker, true);
   assert.equal(runStartPlanModeContractPayload.proposed_review_passes, true);
   assert.equal(runStartPlanModeContractPayload.proposed_review_missing_assumptions_detected, true);
+  assert.equal(runStartPlanModeContractPayload.standard_plan_review_passes_multiline_milestones, true);
+  assert.equal(Number(runStartPlanModeContractPayload.standard_plan_review_findings_count), 0);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_enter_succeeds, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_code_matches, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_mode_kept, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_has_diagnostics_line, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_has_findings_count, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_latest_event, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_findings_count, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_score, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_grade, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_recommendation, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_plan_quality_rewrite_hints, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_status_has_recommended_next_action, true);
+  assert.equal(runStartPlanModeContractPayload.apply_review_failure_events_has_review_failed, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_enter_succeeds, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_approve_succeeds, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_reject_succeeds, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_without_applied_returns_error, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_apply_blocked_by_policy, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_apply_blocked_hint, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_passed_after_mark_applied, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_events_has_approved, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_events_has_rejected, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_events_has_apply_blocked, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_events_has_verification_failed, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_latest_verification, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_latest_verification_failed, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_plan_quality_na, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_applied_state, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_recommended_next_action, true);
   logStep("run-start-plan-mode-contract");
 
   const userCommandsContractResult = runCommand("npx", [
@@ -971,11 +1090,15 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_ask, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_user_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_disabled_marked, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_menu_first, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_has_ask_answer, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_has_ask_cancel, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_has_ask_park, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_only, true);
   assert.equal(runStartSlashSuggestionsContractPayload.model_filter_only_model_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.ask_filter_only_ask_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.ask_filter_single_command, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_root, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_goal_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_single_or_double_surface, true);
   assert.equal(runStartSlashSuggestionsContractPayload.skill_creator_filter_only_skill_creator, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_only_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plain_input_empty, true);
@@ -993,6 +1116,7 @@ async function runGatewayContractSmoke() {
   );
   assert.equal(bridgeCliContractPayload.ok, true);
   assert.equal(bridgeCliContractPayload.no_active_error_code, "PLAN_NO_ACTIVE");
+  assert.equal(bridgeCliContractPayload.verify_without_applied_error_code, "PLAN_NO_ACTIVE");
   assert.equal(bridgeCliContractPayload.guard_error_code, "PLAN_GUARD_DENIED");
   assert.equal(bridgeCliContractPayload.append_note_error_code, "PLAN_APPEND_NOTE_FAILED");
   assert.equal(
@@ -1000,10 +1124,44 @@ async function runGatewayContractSmoke() {
       bridgeCliContractPayload.review_error_code === "PLAN_REVIEW_BLOCKED",
     true,
   );
+  assert.equal(typeof bridgeCliContractPayload.review_blocked, "boolean");
+  assert.equal(Number(bridgeCliContractPayload.review_findings_count) >= 1, true);
   assert.equal(Number(bridgeCliContractPayload.review_fail_count) >= 1, true);
+  assert.equal(bridgeCliContractPayload.review_status_latest_failure_event, "plan_review_failed");
+  assert.equal(Number(bridgeCliContractPayload.review_status_latest_failure_findings_count) >= 1, true);
+  assert.equal(Number(bridgeCliContractPayload.review_status_plan_quality_score) >= 0, true);
+  assert.equal(Number(bridgeCliContractPayload.review_status_plan_quality_score) <= 100, true);
+  assert.equal(
+    bridgeCliContractPayload.review_status_plan_quality_grade === "A"
+      || bridgeCliContractPayload.review_status_plan_quality_grade === "B"
+      || bridgeCliContractPayload.review_status_plan_quality_grade === "C"
+      || bridgeCliContractPayload.review_status_plan_quality_grade === "D"
+      || bridgeCliContractPayload.review_status_plan_quality_grade === "E",
+    true,
+  );
+  assert.equal(Number(bridgeCliContractPayload.review_status_plan_quality_findings_count) >= 1, true);
+  assert.equal(typeof bridgeCliContractPayload.review_status_plan_quality_blocked, "boolean");
+  assert.equal(typeof bridgeCliContractPayload.review_status_plan_quality_recommendation, "string");
+  assert.equal(
+    String(bridgeCliContractPayload.review_status_plan_quality_recommendation).length > 0,
+    true,
+  );
+  assert.equal(Number(bridgeCliContractPayload.review_status_plan_quality_rewrite_hints_count) >= 0, true);
+  assert.equal(bridgeCliContractPayload.review_status_recommended_next_action, "/plan <note>");
+  assert.equal(bridgeCliContractPayload.manual_approve_status, "approved");
+  assert.equal(bridgeCliContractPayload.reject_status, "ok");
+  assert.equal(bridgeCliContractPayload.apply_blocked_by_approval_gate_error_code, "PLAN_APPLY_STATUS_BLOCKED");
+  assert.equal(
+    String(bridgeCliContractPayload.apply_blocked_by_approval_gate_detail ?? "").includes("explicit approval required"),
+    true,
+  );
+  assert.equal(bridgeCliContractPayload.verify_status_after_applied, "failed");
+  assert.equal(bridgeCliContractPayload.verify_event_after_applied, "plan_verification_failed");
+  assert.equal(bridgeCliContractPayload.verify_recommended_next_action, "/plan <goal>");
   assert.equal(bridgeCliContractPayload.apply_blocked_error_code, "PLAN_APPLY_STATUS_BLOCKED");
   assert.equal(bridgeCliContractPayload.status_after_cancel_mode, "normal");
   assert.equal(bridgeCliContractPayload.status_after_cancel_active_plan_id, null);
+  assert.equal(bridgeCliContractPayload.status_after_cancel_recommended_next_action, "/plan <goal>");
   logStep("bridge-cli-contract");
 
   const bridgePlanApplyFailureContractResult = runCommand("node", [
@@ -1025,11 +1183,27 @@ async function runGatewayContractSmoke() {
       || bridgePlanApplyFailureContractPayload.apply_failure_policy_reason === "bridge_apply_exec_failed",
     true,
   );
+  assert.equal(
+    bridgePlanApplyFailureContractPayload.apply_failure_diagnostic_code === "BRIDGE_SEMANTIC_CONTEXT_UNAVAILABLE"
+      || bridgePlanApplyFailureContractPayload.apply_failure_diagnostic_code === "BRIDGE_PROVIDER_RUNTIME_FAILURE"
+      || bridgePlanApplyFailureContractPayload.apply_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_TIMEOUT"
+      || bridgePlanApplyFailureContractPayload.apply_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_FAILED",
+    true,
+  );
   assert.equal(bridgePlanApplyFailureContractPayload.apply_failure_plan_status, "apply_failed");
   assert.equal(bridgePlanApplyFailureContractPayload.apply_failure_plan_phase, "reviewing");
+  assert.equal(bridgePlanApplyFailureContractPayload.status_latest_failure_event, "plan_apply_failed");
+  assert.equal(
+    bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_SEMANTIC_CONTEXT_UNAVAILABLE"
+      || bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_PROVIDER_RUNTIME_FAILURE"
+      || bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_TIMEOUT"
+      || bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_FAILED",
+    true,
+  );
   assert.equal(bridgePlanApplyFailureContractPayload.events_has_plan_apply_failed, true);
   assert.equal(bridgePlanApplyFailureContractPayload.events_has_policy_action, true);
   assert.equal(bridgePlanApplyFailureContractPayload.events_has_policy_reason, true);
+  assert.equal(bridgePlanApplyFailureContractPayload.events_has_diagnostic_code, true);
   logStep("bridge-plan-apply-failure-contract");
 
   const bridgeErrorCodesSchemaContractResult = runCommand("node", [
@@ -1290,6 +1464,7 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.queue_ttl_prune_removed_expired, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_keeps_fresh, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
+  assert.equal(askUserToolContractPayload.issued_display_has_status_hint, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_resume_token, true);
   assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
   logStep("ask-user-tool-contract");
@@ -1535,10 +1710,27 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
   assert.equal(interactiveBindingsPayload.ask_answer_without_pending_skips_execute, true);
   assert.equal(interactiveBindingsPayload.ask_answer_without_pending_warned, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_index_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_index_resolves_option, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_invalid_index_rejected, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_invalid_index_warned, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_default_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_default_resolves_value, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_chinese_index_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_chinese_index_resolves_option, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_chinese_default_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_chinese_default_resolves_value, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_zero_index_rejected, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_zero_index_warned, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_fullwidth_index_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_fullwidth_index_resolves_option, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_chinese_numeral_index_executes_turn, true);
+  assert.equal(interactiveBindingsPayload.ask_answer_chinese_numeral_index_resolves_option, true);
   assert.equal(interactiveBindingsPayload.ask_answer_with_pending_executes_turn, true);
   assert.equal(interactiveBindingsPayload.ask_answer_with_pending_input, "fast");
-  assert.equal(interactiveBindingsPayload.ask_queue_hint_mentions_menu, true);
-  assert.equal(interactiveBindingsPayload.ask_menu_non_tty_fallback_notice, true);
+  assert.equal(interactiveBindingsPayload.ask_queue_hint_mentions_reply_direct, true);
+  assert.equal(interactiveBindingsPayload.ask_queue_hint_mentions_status_only, true);
+  assert.equal(interactiveBindingsPayload.ask_non_tty_fallback_reply_direct, true);
   logStep("run-start-interactive-bindings-contract");
 
   const modelOpsContractResult = runCommand("npx", [
@@ -5826,6 +6018,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(planEventsReportPayload?.totals?.policy_action_fail_count) >= 0, true);
   assert.equal(Number(planEventsReportPayload?.totals?.policy_action_degrade_count) >= 0, true);
   assert.equal(isRecord(planEventsReportPayload?.totals?.policy_reason_counts), true);
+  assert.equal(isRecord(planEventsReportPayload?.totals?.diagnostic_code_counts), true);
   assert.equal(Number(planEventsReportPayload?.totals?.review_failed_rate ?? 0) >= 0, true);
   logStep("plan-events-report", {
     files: planEventsReportPayload?.totals?.files_count,

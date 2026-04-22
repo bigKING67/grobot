@@ -56,9 +56,7 @@ interface ParsedHistoryCommand {
 }
 
 interface ParsedAskCommand {
-  kind: "show_queue" | "open_menu" | "cancel_current" | "park_current" | "clear_all" | "answer_current" | "invalid";
-  answer?: string;
-  queueLimit?: number;
+  kind: "show" | "invalid";
   reason?: string;
 }
 
@@ -334,10 +332,40 @@ function resolveRewindQueryMatches(
   if (byExactCheckpointId.length > 0) {
     return sortRewindQueryMatches(byExactCheckpointId);
   }
+  const byExactCreatedAt = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.createdAt) === query);
+  if (byExactCreatedAt.length > 0) {
+    return sortRewindQueryMatches(byExactCreatedAt);
+  }
+  const byExactUserText = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.userText) === query);
+  if (byExactUserText.length > 0) {
+    return sortRewindQueryMatches(byExactUserText);
+  }
+  const byExactAssistantText = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.assistantText) === query);
+  if (byExactAssistantText.length > 0) {
+    return sortRewindQueryMatches(byExactAssistantText);
+  }
   const byCheckpointIdPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
     normalizeRewindQueryText(checkpoint.checkpointId).startsWith(query));
   if (byCheckpointIdPrefix.length > 0) {
     return sortRewindQueryMatches(byCheckpointIdPrefix);
+  }
+  const byCreatedAtPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.createdAt).startsWith(query));
+  if (byCreatedAtPrefix.length > 0) {
+    return sortRewindQueryMatches(byCreatedAtPrefix);
+  }
+  const byUserTextPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.userText).startsWith(query));
+  if (byUserTextPrefix.length > 0) {
+    return sortRewindQueryMatches(byUserTextPrefix);
+  }
+  const byAssistantTextPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.assistantText).startsWith(query));
+  if (byAssistantTextPrefix.length > 0) {
+    return sortRewindQueryMatches(byAssistantTextPrefix);
   }
   const containsMatches = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) => {
     const checkpointId = normalizeRewindQueryText(checkpoint.checkpointId);
@@ -459,52 +487,13 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
     return { kind: "invalid", reason: "command must start with /ask" };
   }
   const restRaw = input.slice("/ask".length).trim();
+  const usage = "usage: /ask";
   if (!restRaw) {
-    return { kind: "show_queue" };
-  }
-  const queueMatch = restRaw.match(/^queue(?:\s+(.+))?$/i);
-  if (queueMatch) {
-    const tail = (queueMatch[1] ?? "").trim();
-    if (!tail) {
-      return { kind: "show_queue" };
-    }
-    if (/^all$/i.test(tail)) {
-      return { kind: "show_queue", queueLimit: -1 };
-    }
-    if (/^\d+$/.test(tail)) {
-      const parsed = Number.parseInt(tail, 10);
-      if (parsed > 0) {
-        return { kind: "show_queue", queueLimit: parsed };
-      }
-    }
-    return { kind: "invalid", reason: "usage: /ask [queue [all|<n>] | menu | cancel | park | next | clear | answer <text>]" };
-  }
-  if (/^all$/i.test(restRaw)) {
-    return { kind: "show_queue", queueLimit: -1 };
-  }
-  if (/^menu$/i.test(restRaw)) {
-    return { kind: "open_menu" };
-  }
-  if (/^cancel$/i.test(restRaw)) {
-    return { kind: "cancel_current" };
-  }
-  if (/^(park|next)$/i.test(restRaw)) {
-    return { kind: "park_current" };
-  }
-  if (/^clear$/i.test(restRaw)) {
-    return { kind: "clear_all" };
-  }
-  const answerMatch = restRaw.match(/^answer(?:\s+([\s\S]+))?$/i);
-  if (answerMatch) {
-    const answer = (answerMatch[1] ?? "").trim();
-    if (!answer) {
-      return { kind: "invalid", reason: "usage: /ask answer <text>" };
-    }
-    return { kind: "answer_current", answer };
+    return { kind: "show" };
   }
   return {
     kind: "invalid",
-    reason: "usage: /ask [queue [all|<n>] | menu | cancel | park | next | clear | answer <text>]",
+    reason: usage,
   };
 }
 
@@ -788,45 +777,29 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "ask",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/ask"),
-    execute: async ({ userInput, controls, handlers }) => {
+    execute: async ({ userInput, handlers }) => {
       const parsed = parseAskCommand(userInput);
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason ?? "invalid ask command"}\n\n`);
         return "continue";
       }
-      if (parsed.kind === "cancel_current") {
-        handlers.cancelPendingAsk();
-        return "continue";
-      }
-      if (parsed.kind === "open_menu") {
-        await handlers.openPendingAskMenu(controls.withInputPaused);
-        return "continue";
-      }
-      if (parsed.kind === "park_current") {
-        handlers.parkPendingAsk();
-        return "continue";
-      }
-      if (parsed.kind === "clear_all") {
-        handlers.clearPendingAsk();
-        return "continue";
-      }
-      if (parsed.kind === "answer_current") {
-        await handlers.answerPendingAsk(parsed.answer ?? "");
-        return "continue";
-      }
-      handlers.showPendingAskQueue(parsed.queueLimit);
+      handlers.showPendingAskQueue();
       return "continue";
     },
     helpLines: [
-      "  /ask [queue [all|<n>]|menu|cancel|park|next|clear|answer <text>]  Show queue/menu, cancel/park current, clear all, or answer current question",
+      "  /ask                 Show ask-user status (reply directly to continue)",
     ],
   },
   {
     id: "plan",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
-    execute: async ({ userInput, handlers }) => {
+    execute: async ({ userInput, controls, handlers }) => {
       const normalizedInput = userInput.trim();
       if (normalizedInput === "/plan") {
+        if (isInteractiveTerminal()) {
+          await handlers.openPlanMenu(controls.withInputPaused);
+          return "continue";
+        }
         await handlers.enterPlan("");
         return "continue";
       }
@@ -838,6 +811,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "enter_mode") {
+        if (isInteractiveTerminal()) {
+          await handlers.openPlanMenu(controls.withInputPaused);
+          return "continue";
+        }
         await handlers.enterPlan("");
         return "continue";
       }
@@ -845,12 +822,29 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         handlers.writeStdout(`${parsed.reason}\n\n`);
         return "continue";
       }
+      if (isInteractiveTerminal()) {
+        handlers.writeStdout("[plan] 交互模式已收敛为主入口 /plan；已为你打开 Plan Actions 菜单。\n\n");
+        await handlers.openPlanMenu(controls.withInputPaused);
+        return "continue";
+      }
       if (parsed.kind === "status") {
         await handlers.showPlanStatus();
         return "continue";
       }
+      if (parsed.kind === "approve") {
+        await handlers.approvePlan(parsed.note);
+        return "continue";
+      }
+      if (parsed.kind === "reject") {
+        await handlers.rejectPlan(parsed.reason);
+        return "continue";
+      }
       if (parsed.kind === "apply") {
         await handlers.applyPlan(parsed.extra);
+        return "continue";
+      }
+      if (parsed.kind === "verify") {
+        await handlers.verifyPlan(parsed.result);
         return "continue";
       }
       if (parsed.kind === "cancel") {
@@ -860,7 +854,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /plan                Enter plan mode",
+      "  /plan                Open plan actions menu (interactive)",
+      "  /plan <goal>         Enter plan mode and execute first requirement",
+      "  /plan status|approve|reject|apply|verify|cancel (legacy script shortcuts)",
     ],
   },
   {
@@ -1086,13 +1082,13 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask [queue [all|<n>]|menu|cancel|park|next|clear|answer <text>]", description: "Show queue/menu, cancel/park current, clear all, or answer current" },
+  { command: "/ask", description: "Show ask-user status (reply directly to continue)" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
   { command: "/model", description: "Open interactive model picker" },
   { command: "/status", description: "Show current status line config snapshot" },
-  { command: "/plan", description: "Enter plan mode" },
+  { command: "/plan", description: "Open plan actions menu (use /plan <goal> for direct entry)" },
   { command: "/interrupt", description: "Interrupt running turn (Esc: running interrupt, plan idle exits mode)" },
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
@@ -1164,6 +1160,9 @@ export function listSlashCommandCompatibilityNotes(): string[] {
     "  - /status subcommands are legacy shortcuts in interactive mode.",
     "  - In interactive mode they redirect to /status menu.",
     "  - In non-interactive scripts they remain compatible.",
+    "  - /plan subcommands are legacy shortcuts in interactive mode.",
+    "  - In interactive mode they redirect to /plan menu.",
+    "  - In non-interactive scripts they remain compatible.",
   ];
 }
 
@@ -1193,7 +1192,7 @@ export async function dispatchSlashCommand(
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
       handlers.writeStdout(
-        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan status, /plan apply, /plan cancel, /interrupt, or /exit.\n\n`,
+        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan to open plan actions, /interrupt, or /exit.\n\n`,
       );
       return "continue";
     }

@@ -8,6 +8,7 @@ import {
 interface DispatchCaseResult {
   action: SessionInteractiveAction;
   events: string[];
+  stdout: string;
 }
 
 const controls: SessionInteractiveControls = {
@@ -31,13 +32,27 @@ async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>)
 
 async function runDispatchCase(
   input: string,
-  options?: { stdinIsTty?: boolean; pendingAskCount?: number },
+  options?: { stdinIsTty?: boolean; pendingAskCount?: number; nowMs?: number },
 ): Promise<DispatchCaseResult> {
   const events: string[] = [];
+  const stdoutChunks: string[] = [];
   const pendingAskCount = Math.max(0, options?.pendingAskCount ?? 0);
+  const invokeWithNow = async <T>(operation: () => Promise<T>): Promise<T> => {
+    if (typeof options?.nowMs !== "number") {
+      return operation();
+    }
+    const originalNow = Date.now;
+    Date.now = () => options.nowMs as number;
+    try {
+      return await operation();
+    } finally {
+      Date.now = originalNow;
+    }
+  };
   const handlers: SessionInteractiveHandlers = {
-    writeStdout: () => {
+    writeStdout: (message) => {
       events.push("writeStdout");
+      stdoutChunks.push(message);
     },
     hasPendingAsk: () => pendingAskCount > 0,
     getPendingAskQueueSize: () => pendingAskCount,
@@ -109,6 +124,49 @@ async function runDispatchCase(
         active: false,
       },
     ],
+    getActiveSessionId: () => "main",
+    listRewindCheckpoints: (sessionId) => {
+      events.push(`listRewindCheckpoints:${sessionId}`);
+      if (sessionId !== "main") {
+        return [];
+      }
+      return [
+        {
+          checkpointId: "latest",
+          createdAt: "2026-04-20T08:00:00.000Z",
+          userText: "latest checkpoint",
+          assistantText: "latest assistant",
+          historyBeforeCount: 24,
+          historyAfterCount: 26,
+          changedFilesCount: 2,
+        },
+        {
+          checkpointId: "legacy-a",
+          createdAt: "2026-04-19T08:00:00.000Z",
+          userText: "legacy checkpoint alpha",
+          assistantText: "legacy assistant alpha",
+          historyBeforeCount: 12,
+          historyAfterCount: 14,
+          changedFilesCount: 1,
+        },
+        {
+          checkpointId: "legacy-b",
+          createdAt: "2026-04-18T08:00:00.000Z",
+          userText: "legacy checkpoint beta",
+          assistantText: "legacy assistant beta",
+          historyBeforeCount: 10,
+          historyAfterCount: 11,
+          changedFilesCount: 3,
+        },
+      ];
+    },
+    rewindSession: async (inputValue) => {
+      events.push("rewindSession");
+      events.push(
+        `rewindSession:${inputValue.sessionId}:${inputValue.checkpointId ?? "<latest>"}:${inputValue.mode}:${inputValue.reason ?? ""}`,
+      );
+      return true;
+    },
     createAndSwitchSession: async () => {
       events.push("createAndSwitchSession");
     },
@@ -128,6 +186,15 @@ async function runDispatchCase(
     },
     enterPlan: async (goal) => {
       events.push(`enterPlan:${goal}`);
+    },
+    approvePlan: async (note) => {
+      events.push(`approvePlan:${note}`);
+    },
+    rejectPlan: async (reason) => {
+      events.push(`rejectPlan:${reason}`);
+    },
+    verifyPlan: async (result) => {
+      events.push(`verifyPlan:${result}`);
     },
     applyPlan: async () => {
       events.push("applyPlan");
@@ -174,11 +241,12 @@ async function runDispatchCase(
       events.push("onTurnError");
     },
   };
-  const action = typeof options?.stdinIsTty === "boolean"
-    ? await withStdinTty(options.stdinIsTty, async () =>
-      dispatchSessionInteractiveInput(input, controls, handlers))
-    : await dispatchSessionInteractiveInput(input, controls, handlers);
-  return { action, events };
+  const action = await invokeWithNow(async () =>
+    typeof options?.stdinIsTty === "boolean"
+      ? await withStdinTty(options.stdinIsTty, async () =>
+        dispatchSessionInteractiveInput(input, controls, handlers))
+      : await dispatchSessionInteractiveInput(input, controls, handlers));
+  return { action, events, stdout: stdoutChunks.join("") };
 }
 
 function includesEvent(events: readonly string[], target: string): boolean {
@@ -210,12 +278,36 @@ async function main(): Promise<void> {
   const resumeFindMissingTty = await runDispatchCase("/resume find missing", { stdinIsTty: true });
   const resumeFindMultipleTty = await runDispatchCase("/resume session", { stdinIsTty: true });
   const resumeFindEmptyTty = await runDispatchCase("/resume find", { stdinIsTty: true });
+  const rewindQueryTty = await runDispatchCase("/rewind latest", { stdinIsTty: true });
+  const rewindSearchMissingTty = await runDispatchCase("/rewind search missing", { stdinIsTty: true });
+  const rewindQueryMultipleTty = await runDispatchCase("/rewind legacy", { stdinIsTty: true });
+  const rewindFindQueryModeTty = await runDispatchCase("/rewind find latest both", { stdinIsTty: true });
+  const rewindSearchUserTextTty = await runDispatchCase("/rewind search alpha conversation", { stdinIsTty: true });
+  const rewindSearchAssistantTextTty = await runDispatchCase("/rewind search beta code", { stdinIsTty: true });
+  const rewindSearchCreatedAtTty = await runDispatchCase("/rewind search 2026-04-20", { stdinIsTty: true });
+  const rewindSummarizeTty = await runDispatchCase("/rewind summarize", { stdinIsTty: true });
+  const rewindCodeModeTty = await runDispatchCase("/rewind latest code", { stdinIsTty: true });
+  const checkpointQueryTty = await runDispatchCase("/checkpoint latest conversation", {
+    stdinIsTty: true,
+  });
+  const checkpointSearchCreatedAtTty = await runDispatchCase("/checkpoint search 2026-04-20", {
+    stdinIsTty: true,
+  });
+  const checkpointFindEmptyTty = await runDispatchCase("/checkpoint find", { stdinIsTty: true });
+  const rewindFindEmptyTty = await runDispatchCase("/rewind find", { stdinIsTty: true });
+  const rewindModeOnlyTty = await runDispatchCase("/rewind conversation", { stdinIsTty: true });
   const rewindWithArgs = await runDispatchCase("/rewind latest");
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
   const planMenu = await runDispatchCase("/plan", { stdinIsTty: true });
+  const planMenuAlias = await runDispatchCase("/plan menu", { stdinIsTty: true });
   const planEnterOnly = await runDispatchCase("/plan enter", { stdinIsTty: true });
+  const planEnterWithGoal = await runDispatchCase("/plan enter 我要一份增长执行计划", { stdinIsTty: true });
   const planGoal = await runDispatchCase("/plan 我要一份抖音直播间规划", { stdinIsTty: true });
+  const planApprove = await runDispatchCase("/plan approve final pass", { stdinIsTty: true });
+  const planReject = await runDispatchCase("/plan reject scope is too broad", { stdinIsTty: true });
+  const planVerify = await runDispatchCase("/plan verify fail e2e mismatch", { stdinIsTty: true });
+  const planVerifyCn = await runDispatchCase("/plan 验证 通过 结果稳定", { stdinIsTty: true });
   const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
   const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
   const statusCurrent = await runDispatchCase("/status");
@@ -233,16 +325,12 @@ async function main(): Promise<void> {
   const commandsMenu = await runDispatchCase("/commands");
   const historyCommand = await runDispatchCase("/history");
   const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
-  const askQueueCommand = await runDispatchCase("/ask");
-  const askQueueAllCommand = await runDispatchCase("/ask queue all");
-  const askQueueTop3Command = await runDispatchCase("/ask queue 3");
-  const askMenuCommand = await runDispatchCase("/ask menu");
-  const askCancelCommand = await runDispatchCase("/ask cancel");
-  const askParkCommand = await runDispatchCase("/ask park");
-  const askNextCommand = await runDispatchCase("/ask next");
-  const askClearCommand = await runDispatchCase("/ask clear");
-  const askAnswerCommand = await runDispatchCase("/ask answer fast");
-  const askAnswerKeepCaseCommand = await runDispatchCase("/ask answer KeepCase Value");
+  const askCommand = await runDispatchCase("/ask");
+  const askSubQueueCommand = await runDispatchCase("/ask queue all");
+  const askSubMenuCommand = await runDispatchCase("/ask menu");
+  const askSubAnswerCommand = await runDispatchCase("/ask answer fast");
+  const askAliasCnCommand = await runDispatchCase("/ask 队列");
+  const askShortcutNumberCommand = await runDispatchCase("/ask 2");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
@@ -257,14 +345,21 @@ async function main(): Promise<void> {
   const pendingAskAllowSessions = await runDispatchCase("/sessions", { pendingAskCount: 2 });
   const pendingAskAllowResume = await runDispatchCase("/resume", { pendingAskCount: 2 });
   const pendingAskAllowRewind = await runDispatchCase("/rewind", { pendingAskCount: 2 });
-  const pendingAskAllowAskQueue = await runDispatchCase("/ask", { pendingAskCount: 2 });
-  const pendingAskAllowAskQueueAll = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
-  const pendingAskAllowAskMenu = await runDispatchCase("/ask menu", { pendingAskCount: 2 });
-  const pendingAskAllowAskCancel = await runDispatchCase("/ask cancel", { pendingAskCount: 2 });
-  const pendingAskAllowAskPark = await runDispatchCase("/ask park", { pendingAskCount: 2 });
-  const pendingAskAllowAskClear = await runDispatchCase("/ask clear", { pendingAskCount: 2 });
-  const pendingAskAllowAskAnswer = await runDispatchCase("/ask answer 2", { pendingAskCount: 2 });
+  const pendingAskAllowAsk = await runDispatchCase("/ask", { pendingAskCount: 2 });
+  const pendingAskAllowAskSubcommand = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
   const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
+  const pendingAskBlockedBurstFirst = await runDispatchCase("/model", {
+    pendingAskCount: 3,
+    nowMs: 1_000_000,
+  });
+  const pendingAskBlockedBurstSecond = await runDispatchCase("/status", {
+    pendingAskCount: 3,
+    nowMs: 1_000_500,
+  });
+  const pendingAskBlockedBurstThird = await runDispatchCase("/health", {
+    pendingAskCount: 3,
+    nowMs: 1_003_000,
+  });
 
   const payload = {
     switch_prefix_miss_hits_run_turn: includesEvent(switchPrefixMiss.events, "runTurn:/switcher"),
@@ -335,6 +430,60 @@ async function main(): Promise<void> {
       resumeFindEmptyTty.events,
       "openSessionMenu:resume",
     ),
+    rewind_query_tty_dispatched: includesEvent(rewindQueryTty.events, "rewindSession"),
+    rewind_query_tty_exact_checkpoint: includesEvent(
+      rewindQueryTty.events,
+      "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_query_tty_opened_menu: includesEvent(rewindQueryTty.events, "openSessionMenu:rewind"),
+    rewind_search_missing_tty_warned: includesEvent(rewindSearchMissingTty.events, "writeStdout"),
+    rewind_search_missing_tty_dispatched: includesEvent(
+      rewindSearchMissingTty.events,
+      "rewindSession",
+    ),
+    rewind_query_multiple_tty_warned: includesEvent(rewindQueryMultipleTty.events, "writeStdout"),
+    rewind_query_multiple_tty_dispatched: includesEvent(
+      rewindQueryMultipleTty.events,
+      "rewindSession",
+    ),
+    rewind_find_query_mode_tty_dispatched: includesEvent(
+      rewindFindQueryModeTty.events,
+      "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_search_user_text_tty_dispatched: includesEvent(
+      rewindSearchUserTextTty.events,
+      "rewindSession:main:legacy-a:conversation:slash:rewind:query",
+    ),
+    rewind_search_assistant_text_tty_dispatched: includesEvent(
+      rewindSearchAssistantTextTty.events,
+      "rewindSession:main:legacy-b:code:slash:rewind:query",
+    ),
+    rewind_search_created_at_tty_dispatched: includesEvent(
+      rewindSearchCreatedAtTty.events,
+      "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_summarize_tty_dispatched: includesEvent(
+      rewindSummarizeTty.events,
+      "rewindSession:main:<latest>:summarize:slash:rewind:summarize",
+    ),
+    rewind_code_mode_tty_dispatched: includesEvent(
+      rewindCodeModeTty.events,
+      "rewindSession:main:latest:code:slash:rewind:query",
+    ),
+    checkpoint_query_tty_dispatched: includesEvent(
+      checkpointQueryTty.events,
+      "rewindSession:main:latest:conversation:slash:checkpoint:query",
+    ),
+    checkpoint_search_created_at_tty_dispatched: includesEvent(
+      checkpointSearchCreatedAtTty.events,
+      "rewindSession:main:latest:both:slash:checkpoint:query",
+    ),
+    checkpoint_find_empty_tty_warned: includesEvent(checkpointFindEmptyTty.events, "writeStdout"),
+    checkpoint_find_empty_tty_dispatched: includesEvent(checkpointFindEmptyTty.events, "rewindSession"),
+    rewind_find_empty_tty_warned: includesEvent(rewindFindEmptyTty.events, "writeStdout"),
+    rewind_find_empty_tty_dispatched: includesEvent(rewindFindEmptyTty.events, "rewindSession"),
+    rewind_mode_only_tty_warned: includesEvent(rewindModeOnlyTty.events, "writeStdout"),
+    rewind_mode_only_tty_dispatched: includesEvent(rewindModeOnlyTty.events, "rewindSession"),
     rewind_with_args_warned: includesEvent(rewindWithArgs.events, "writeStdout"),
     rewind_with_args_opened_menu: includesEvent(rewindWithArgs.events, "openSessionMenu:rewind"),
     rewind_with_args_hits_run_turn: includesEvent(rewindWithArgs.events, "runTurn:/rewind latest"),
@@ -344,13 +493,33 @@ async function main(): Promise<void> {
     plan_menu_dispatched: includesEvent(planMenu.events, "openPlanMenu"),
     plan_menu_enters_plan_directly:
       planMenu.events.some((event) => event.startsWith("enterPlan:")),
+    plan_menu_alias_enters_mode_directly:
+      includesEvent(planMenuAlias.events, "enterPlan:"),
+    plan_menu_alias_opened_menu:
+      includesEvent(planMenuAlias.events, "openPlanMenu"),
     plan_enter_only_tty_enters_mode_directly:
+      includesEvent(planEnterOnly.events, "enterPlan:"),
+    plan_enter_only_tty_treated_as_goal:
       includesEvent(planEnterOnly.events, "enterPlan:enter"),
     plan_enter_only_tty_opened_menu:
       includesEvent(planEnterOnly.events, "openPlanMenu"),
+    plan_enter_with_goal_tty_enters_goal:
+      includesEvent(planEnterWithGoal.events, "enterPlan:我要一份增长执行计划"),
     plan_goal_tty_enters_plan_directly:
       includesEvent(planGoal.events, "enterPlan:我要一份抖音直播间规划"),
     plan_goal_tty_opened_menu: includesEvent(planGoal.events, "openPlanMenu"),
+    plan_approve_tty_warned: includesEvent(planApprove.events, "writeStdout"),
+    plan_approve_tty_opened_menu: includesEvent(planApprove.events, "openPlanMenu"),
+    plan_approve_tty_dispatched: includesEvent(planApprove.events, "approvePlan:final pass"),
+    plan_reject_tty_warned: includesEvent(planReject.events, "writeStdout"),
+    plan_reject_tty_opened_menu: includesEvent(planReject.events, "openPlanMenu"),
+    plan_reject_tty_dispatched: includesEvent(planReject.events, "rejectPlan:scope is too broad"),
+    plan_verify_tty_warned: includesEvent(planVerify.events, "writeStdout"),
+    plan_verify_tty_opened_menu: includesEvent(planVerify.events, "openPlanMenu"),
+    plan_verify_tty_dispatched: includesEvent(planVerify.events, "verifyPlan:fail e2e mismatch"),
+    plan_verify_cn_alias_tty_warned: includesEvent(planVerifyCn.events, "writeStdout"),
+    plan_verify_cn_alias_tty_opened_menu: includesEvent(planVerifyCn.events, "openPlanMenu"),
+    plan_verify_cn_alias_tty_dispatched: includesEvent(planVerifyCn.events, "verifyPlan:通过 结果稳定"),
     plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
     plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
     plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
@@ -380,25 +549,16 @@ async function main(): Promise<void> {
     history_dispatched: includesEvent(historyCommand.events, "showHistory:"),
     history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
-    ask_queue_dispatched: includesEvent(askQueueCommand.events, "showPendingAskQueue:default"),
-    ask_queue_all_dispatched: includesEvent(askQueueAllCommand.events, "showPendingAskQueue:-1"),
-    ask_queue_top3_dispatched: includesEvent(askQueueTop3Command.events, "showPendingAskQueue:3"),
-    ask_menu_dispatched: includesEvent(askMenuCommand.events, "openPendingAskMenu"),
-    ask_queue_hits_run_turn: includesEvent(askQueueCommand.events, "runTurn:/ask"),
-    ask_cancel_dispatched: includesEvent(askCancelCommand.events, "cancelPendingAsk"),
-    ask_cancel_hits_run_turn: includesEvent(askCancelCommand.events, "runTurn:/ask cancel"),
-    ask_park_dispatched: includesEvent(askParkCommand.events, "parkPendingAsk"),
-    ask_park_hits_run_turn: includesEvent(askParkCommand.events, "runTurn:/ask park"),
-    ask_next_dispatched: includesEvent(askNextCommand.events, "parkPendingAsk"),
-    ask_next_hits_run_turn: includesEvent(askNextCommand.events, "runTurn:/ask next"),
-    ask_clear_dispatched: includesEvent(askClearCommand.events, "clearPendingAsk"),
-    ask_clear_hits_run_turn: includesEvent(askClearCommand.events, "runTurn:/ask clear"),
-    ask_answer_dispatched: includesEvent(askAnswerCommand.events, "answerPendingAsk:fast"),
-    ask_answer_hits_run_turn: includesEvent(askAnswerCommand.events, "runTurn:/ask answer fast"),
-    ask_answer_preserves_case: includesEvent(
-      askAnswerKeepCaseCommand.events,
-      "answerPendingAsk:KeepCase Value",
-    ),
+    ask_dispatched: includesEvent(askCommand.events, "showPendingAskQueue:default"),
+    ask_hits_run_turn: includesEvent(askCommand.events, "runTurn:/ask"),
+    ask_subcommand_queue_warned: includesEvent(askSubQueueCommand.events, "writeStdout"),
+    ask_subcommand_queue_dispatched: includesEvent(askSubQueueCommand.events, "showPendingAskQueue:default"),
+    ask_subcommand_menu_warned: includesEvent(askSubMenuCommand.events, "writeStdout"),
+    ask_subcommand_menu_dispatched: includesEvent(askSubMenuCommand.events, "openPendingAskMenu"),
+    ask_subcommand_answer_warned: includesEvent(askSubAnswerCommand.events, "writeStdout"),
+    ask_subcommand_answer_dispatched: includesEvent(askSubAnswerCommand.events, "answerPendingAsk:fast"),
+    ask_alias_cn_warned: includesEvent(askAliasCnCommand.events, "writeStdout"),
+    ask_shortcut_number_warned: includesEvent(askShortcutNumberCommand.events, "writeStdout"),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
     commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),
@@ -442,6 +602,8 @@ async function main(): Promise<void> {
       pendingAskBlockedStatus.events,
       "openStatusMenu",
     ),
+    pending_ask_blocked_status_hint_has_reply_guidance:
+      pendingAskBlockedStatus.stdout.includes("请先直接回复"),
     pending_ask_help_allowed: includesEvent(pendingAskAllowHelp.events, "showHelp"),
     pending_ask_help_blocked_warned: includesEvent(pendingAskAllowHelp.events, "writeStdout"),
     pending_ask_interrupt_allowed: includesEvent(
@@ -460,33 +622,13 @@ async function main(): Promise<void> {
       pendingAskAllowRewind.events,
       "openSessionMenu:rewind",
     ),
-    pending_ask_queue_allowed: includesEvent(
-      pendingAskAllowAskQueue.events,
+    pending_ask_ask_allowed: includesEvent(
+      pendingAskAllowAsk.events,
       "showPendingAskQueue:default",
     ),
-    pending_ask_queue_all_allowed: includesEvent(
-      pendingAskAllowAskQueueAll.events,
-      "showPendingAskQueue:-1",
-    ),
-    pending_ask_menu_allowed: includesEvent(
-      pendingAskAllowAskMenu.events,
-      "openPendingAskMenu",
-    ),
-    pending_ask_cancel_allowed: includesEvent(
-      pendingAskAllowAskCancel.events,
-      "cancelPendingAsk",
-    ),
-    pending_ask_park_allowed: includesEvent(
-      pendingAskAllowAskPark.events,
-      "parkPendingAsk",
-    ),
-    pending_ask_clear_allowed: includesEvent(
-      pendingAskAllowAskClear.events,
-      "clearPendingAsk",
-    ),
-    pending_ask_answer_allowed: includesEvent(
-      pendingAskAllowAskAnswer.events,
-      "answerPendingAsk:2",
+    pending_ask_ask_subcommand_warned: includesEvent(
+      pendingAskAllowAskSubcommand.events,
+      "writeStdout",
     ),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,
@@ -496,6 +638,20 @@ async function main(): Promise<void> {
       pendingAskPlainAnswer.events,
       "writeStdout",
     ),
+    pending_ask_burst_first_warned: includesEvent(
+      pendingAskBlockedBurstFirst.events,
+      "writeStdout",
+    ),
+    pending_ask_burst_second_suppressed: !includesEvent(
+      pendingAskBlockedBurstSecond.events,
+      "writeStdout",
+    ),
+    pending_ask_burst_third_warned: includesEvent(
+      pendingAskBlockedBurstThird.events,
+      "writeStdout",
+    ),
+    pending_ask_burst_third_mentions_suppressed_count:
+      pendingAskBlockedBurstThird.stdout.includes("已折叠 1 条重复提示"),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);
