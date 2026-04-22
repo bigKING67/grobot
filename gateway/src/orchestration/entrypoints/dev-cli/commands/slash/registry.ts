@@ -175,18 +175,21 @@ function parseSessionMenuCommand(
   };
 }
 
-function parseRewindCommand(inputRaw: string): ParsedRewindCommand {
+function parseRewindCommand(
+  inputRaw: string,
+  command: "/rewind" | "/checkpoint" = "/rewind",
+): ParsedRewindCommand {
   const input = inputRaw.trim();
-  if (!input.startsWith("/rewind")) {
-    return { kind: "invalid", reason: "command must start with /rewind" };
+  if (!input.startsWith(command)) {
+    return { kind: "invalid", reason: `command must start with ${command}` };
   }
-  const rest = input.slice("/rewind".length).trim();
+  const rest = input.slice(command.length).trim();
   if (!rest) {
     return { kind: "menu" };
   }
   return {
     kind: "invalid",
-    reason: "usage: /rewind",
+    reason: `usage: ${command}`,
   };
 }
 
@@ -647,7 +650,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "rewind",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/rewind"),
     execute: async ({ userInput, controls, handlers }) => {
-      const parsed = parseRewindCommand(userInput);
+      const parsed = parseRewindCommand(userInput, "/rewind");
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason ?? "invalid rewind command"}\n\n`);
         return "continue";
@@ -657,6 +660,22 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     },
     helpLines: [
       "  /rewind              Open checkpoint rewind menu (conversation/code/both)",
+    ],
+  },
+  {
+    id: "checkpoint",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/checkpoint"),
+    execute: async ({ userInput, controls, handlers }) => {
+      const parsed = parseRewindCommand(userInput, "/checkpoint");
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid checkpoint command"}\n\n`);
+        return "continue";
+      }
+      await handlers.openSessionMenu("rewind", controls.withInputPaused);
+      return "continue";
+    },
+    helpLines: [
+      "  /checkpoint          Alias of /rewind (open checkpoint rewind menu)",
     ],
   },
   {
@@ -701,6 +720,7 @@ const HELP_ORDER: readonly string[] = [
   "sessions",
   "resume",
   "rewind",
+  "checkpoint",
   "commands",
   "skill-creator",
   "history",
@@ -721,6 +741,7 @@ const PRIMARY_HELP_ORDER: readonly string[] = [
   "sessions",
   "resume",
   "rewind",
+  "checkpoint",
   "commands",
   "skill-creator",
   "history",
@@ -744,6 +765,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/sessions", description: "Open session menu (create/switch/resume/rewind/continue)" },
   { command: "/resume", description: "Resume and fully restore a previous session" },
   { command: "/rewind", description: "Open checkpoint rewind menu for active or selected session" },
+  { command: "/checkpoint", description: "Alias of /rewind (open checkpoint rewind menu)" },
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
@@ -784,6 +806,7 @@ const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {
   switch: "/switch",
   resume: "/resume",
   rewind: "/rewind",
+  checkpoint: "/checkpoint",
   continue: "/continue",
 };
 
@@ -819,6 +842,7 @@ export function listSlashCommandCompatibilityNotes(): string[] {
   return [
     "  - /switch /continue remain legacy session shortcuts.",
     "  - Prefer /resume for full restore and /rewind for checkpoint rollback.",
+    "  - /checkpoint is an alias of /rewind.",
     "  - In interactive mode /new /switch /continue redirect to /sessions.",
     "  - /status subcommands are legacy shortcuts in interactive mode.",
     "  - In interactive mode they redirect to /status menu.",

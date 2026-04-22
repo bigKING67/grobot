@@ -30,6 +30,7 @@ const RESERVED_SLASH_COMMAND_NAMES = new Set<string>([
   "switch",
   "resume",
   "rewind",
+  "checkpoint",
   "continue",
   "health",
   "skills",

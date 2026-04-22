@@ -81,6 +81,12 @@ export interface RewindRestoreResult {
   skippedFiles: string[];
 }
 
+export interface RewindCloneResult {
+  copiedCheckpoints: number;
+  copiedBackupFiles: number;
+  failedBackupFiles: number;
+}
+
 interface RewindRestoreInput {
   sessionKey: string;
   checkpointId?: string;
@@ -88,6 +94,11 @@ interface RewindRestoreInput {
   fileFilter?: readonly string[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;
   persistHistoryState(): Promise<void>;
+}
+
+interface RewindCloneInput {
+  sourceSessionKey: string;
+  targetSessionKey: string;
 }
 
 interface BeginTurnRewindCaptureInput {
@@ -468,6 +479,7 @@ export interface RunStartRewindStore {
   listCheckpoints(sessionKey: string, limit?: number): RewindCheckpointSummary[];
   formatCheckpointSummary(sessionKey: string, limit?: number): string;
   restoreCheckpoint(input: RewindRestoreInput): Promise<RewindRestoreResult>;
+  cloneSessionCheckpoints(input: RewindCloneInput): RewindCloneResult;
 }
 
 export function createRunStartRewindStore(
@@ -639,11 +651,91 @@ export function createRunStartRewindStore(
     };
   };
 
+  const cloneSessionCheckpoints = (args: RewindCloneInput): RewindCloneResult => {
+    const sourceSessionKey = args.sourceSessionKey.trim();
+    const targetSessionKey = args.targetSessionKey.trim();
+    if (!sourceSessionKey || !targetSessionKey || sourceSessionKey === targetSessionKey) {
+      return {
+        copiedCheckpoints: 0,
+        copiedBackupFiles: 0,
+        failedBackupFiles: 0,
+      };
+    }
+    const sourceRecords = loadCheckpointRecords(baseWorkDir, sourceSessionKey);
+    if (sourceRecords.length === 0) {
+      return {
+        copiedCheckpoints: 0,
+        copiedBackupFiles: 0,
+        failedBackupFiles: 0,
+      };
+    }
+    const targetRecords = loadCheckpointRecords(baseWorkDir, targetSessionKey);
+    const usedCheckpointIds = new Set<string>(
+      targetRecords.map((item) => item.checkpoint_id),
+    );
+    const root = sessionsRoot(baseWorkDir);
+    const targetSessionKeySafe = sanitizeSessionKey(targetSessionKey);
+    let copiedCheckpoints = 0;
+    let copiedBackupFiles = 0;
+    let failedBackupFiles = 0;
+    for (const sourceRecord of sourceRecords) {
+      let targetCheckpointId = sourceRecord.checkpoint_id;
+      while (usedCheckpointIds.has(targetCheckpointId)) {
+        targetCheckpointId = buildCheckpointId();
+      }
+      usedCheckpointIds.add(targetCheckpointId);
+      const nextChangedFiles: RewindFileRecord[] = sourceRecord.changed_files.map((fileRow) => {
+        if (fileRow.before_kind !== "file" || !fileRow.backup_rel_path) {
+          return { ...fileRow };
+        }
+        const sourceBackupPath = resolve(root, fileRow.backup_rel_path);
+        if (!existsSync(sourceBackupPath)) {
+          failedBackupFiles += 1;
+          return {
+            ...fileRow,
+            backup_rel_path: undefined,
+          };
+        }
+        const targetBackupPath = join(
+          root,
+          "rewind-backups",
+          targetSessionKeySafe,
+          targetCheckpointId,
+          ...fileRow.path.split("/"),
+        );
+        mkdirSync(dirname(targetBackupPath), { recursive: true });
+        copyFileSync(sourceBackupPath, targetBackupPath);
+        copiedBackupFiles += 1;
+        return {
+          ...fileRow,
+          backup_rel_path: normalizeRelativePath(relative(root, targetBackupPath)) ?? undefined,
+        };
+      });
+      const clonedRecord: RewindCheckpointRecord = {
+        ...sourceRecord,
+        checkpoint_id: targetCheckpointId,
+        session_key: targetSessionKey,
+        changed_files: nextChangedFiles,
+      };
+      appendJsonLine(
+        rewindLogPath(baseWorkDir, targetSessionKey),
+        clonedRecord as unknown as Record<string, unknown>,
+      );
+      copiedCheckpoints += 1;
+    }
+    return {
+      copiedCheckpoints,
+      copiedBackupFiles,
+      failedBackupFiles,
+    };
+  };
+
   return {
     beginTurnCapture,
     commitTurnCapture,
     listCheckpoints,
     formatCheckpointSummary,
     restoreCheckpoint,
+    cloneSessionCheckpoints,
   };
 }

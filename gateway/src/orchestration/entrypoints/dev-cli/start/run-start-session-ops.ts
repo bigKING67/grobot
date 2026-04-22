@@ -260,12 +260,32 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
         ? [...sourceRecord.provider_runtime_states]
         : [];
     }
+    let rewindCloneSummary = "";
+    if (forkRecord) {
+      try {
+        const rewindClone = input.rewindStore.cloneSessionCheckpoints({
+          sourceSessionKey: sourceRecord.session_key,
+          targetSessionKey: forkRecord.session_key,
+        });
+        if (rewindClone.copiedCheckpoints > 0 || rewindClone.failedBackupFiles > 0) {
+          const failedHint = rewindClone.failedBackupFiles > 0
+            ? `, rewind_backup_failed=${String(rewindClone.failedBackupFiles)}`
+            : "";
+          rewindCloneSummary =
+            ` rewind_checkpoints=${String(rewindClone.copiedCheckpoints)}` +
+            ` rewind_backups=${String(rewindClone.copiedBackupFiles)}` +
+            failedHint;
+        }
+      } catch (error) {
+        input.writeStdout(`[rewind] fork checkpoint clone failed: ${String(error)}\n`);
+      }
+    }
     input.setStickyProvider(sourceRecord.sticky_provider);
     input.setProviderRuntimeStates(Array.isArray(sourceRecord.provider_runtime_states) ? [...sourceRecord.provider_runtime_states] : []);
     touchSessionRecord(sessionRegistry, forkSessionId, `fork from ${sourceId}`);
     await input.persistSessionRegistryState();
     input.writeStdout(
-      `[session] forked "${sourceId}" -> "${forkSessionId}" (restored=${String(nextHistory.length / 2)} turns).\n\n`,
+      `[session] forked "${sourceId}" -> "${forkSessionId}" (restored=${String(nextHistory.length / 2)} turns${rewindCloneSummary}).\n\n`,
     );
     return true;
   };

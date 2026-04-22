@@ -57,6 +57,11 @@ async function main(): Promise<void> {
     userInput: "/model ",
     maxItems: 80,
   });
+  const checkpointOnly = listRunStartSlashSuggestions({
+    homeDir,
+    userInput: "/checkpoint ",
+    maxItems: 80,
+  });
   const skillCreatorOnly = listRunStartSlashSuggestions({
     homeDir,
     userInput: "/skill-creator ",
@@ -100,6 +105,10 @@ async function main(): Promise<void> {
     pending_root_has_ask_cancel: pendingAskTopLevel.some((item) => item.command === "/ask cancel"),
     pending_root_has_ask_park: pendingAskTopLevel.some((item) => item.command === "/ask park"),
     model_filter_only_model_related: modelOnly.every((item) => item.command.startsWith("/model")),
+    checkpoint_filter_hits_checkpoint_alias: checkpointOnly.some((item) =>
+      item.command === "/checkpoint" && item.source === "builtin"),
+    checkpoint_filter_only_checkpoint_related: checkpointOnly.every((item) =>
+      item.command.startsWith("/checkpoint")),
     skill_creator_filter_only_skill_creator: skillCreatorOnly.every((item) =>
       item.command.startsWith("/skill-creator")),
     ship_filter_only_shipit: shipOnly.length === 1 && shipOnly[0]?.command === "/shipit",

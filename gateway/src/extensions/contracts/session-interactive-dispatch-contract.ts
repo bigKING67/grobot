@@ -172,6 +172,7 @@ async function main(): Promise<void> {
   const continueMenu = await runDispatchCase("/continue");
   const resumeMenu = await runDispatchCase("/resume");
   const rewindMenu = await runDispatchCase("/rewind");
+  const checkpointMenu = await runDispatchCase("/checkpoint");
   const switchLegacyWithId = await runDispatchCase("/switch session-legacy", { stdinIsTty: false });
   const switchLegacyWithIdTty = await runDispatchCase("/switch session-legacy", { stdinIsTty: true });
   const continueLegacyWithId = await runDispatchCase("/continue session-legacy", { stdinIsTty: false });
@@ -252,6 +253,7 @@ async function main(): Promise<void> {
     continue_menu_opened: includesEvent(continueMenu.events, "openSessionMenu:continue"),
     resume_menu_opened: includesEvent(resumeMenu.events, "openSessionMenu:resume"),
     rewind_menu_opened: includesEvent(rewindMenu.events, "openSessionMenu:rewind"),
+    checkpoint_menu_opened: includesEvent(checkpointMenu.events, "openSessionMenu:rewind"),
     switch_legacy_with_id_warned: includesEvent(switchLegacyWithId.events, "writeStdout"),
     switch_legacy_with_id_opened_menu: includesEvent(switchLegacyWithId.events, "openSessionMenu:switch"),
     switch_legacy_with_id_skips_direct_switch: !includesEvent(switchLegacyWithId.events, "switchSession"),
