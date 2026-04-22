@@ -533,6 +533,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     openSessionMenu: async (mode, withInputPaused) => {
       await input.openSessionMenu(mode, withInputPaused);
     },
+    listSessionSummaries: input.listSessionSummaries,
     createNewSession: input.createNewSession,
     switchActiveSession: input.switchActiveSession,
     continueFromSession: input.continueFromSession,

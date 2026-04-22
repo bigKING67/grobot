@@ -4,6 +4,14 @@ import { buildInteractiveHelpScreen } from "../ui/screens/help-screen";
 export type SessionInteractiveAction = "continue" | "break";
 export type SessionMenuMode = "sessions" | "switch" | "continue" | "resume" | "rewind";
 
+export interface SessionInteractiveSessionSummary {
+  id: string;
+  title: string;
+  summary: string;
+  updatedAt: string;
+  active: boolean;
+}
+
 export interface SessionInteractiveControls {
   withInputPaused<T>(operation: () => Promise<T>): Promise<T>;
 }
@@ -32,6 +40,7 @@ export interface SessionInteractiveHandlers {
     mode: SessionMenuMode,
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<void>;
+  listSessionSummaries?(): SessionInteractiveSessionSummary[];
   createAndSwitchSession(): Promise<void>;
   switchSession(targetSessionId: string): Promise<void>;
   continueFromSession(sourceSessionId: string): Promise<void>;
@@ -72,6 +81,37 @@ const PENDING_ASK_ALLOWED_SLASH_COMMANDS = new Set([
   "interrupt",
 ]);
 
+const PENDING_ASK_BLOCK_NOTICE_COOLDOWN_MS = 2_200;
+const pendingAskBlockNoticeState: {
+  lastShownAtMs: number;
+  lastQueueSize: number;
+  suppressedCount: number;
+} = {
+  lastShownAtMs: 0,
+  lastQueueSize: 0,
+  suppressedCount: 0,
+};
+
+function consumePendingAskBlockedNotice(queueSize: number): string | undefined {
+  const now = Date.now();
+  const queueChanged = pendingAskBlockNoticeState.lastQueueSize !== queueSize;
+  const shouldThrottle = !queueChanged
+    && pendingAskBlockNoticeState.lastShownAtMs > 0
+    && now - pendingAskBlockNoticeState.lastShownAtMs < PENDING_ASK_BLOCK_NOTICE_COOLDOWN_MS;
+  pendingAskBlockNoticeState.lastQueueSize = queueSize;
+  if (shouldThrottle) {
+    pendingAskBlockNoticeState.suppressedCount += 1;
+    return undefined;
+  }
+  const suppressed = pendingAskBlockNoticeState.suppressedCount;
+  pendingAskBlockNoticeState.lastShownAtMs = now;
+  pendingAskBlockNoticeState.suppressedCount = 0;
+  const compactSuffix = suppressed > 0
+    ? ` 已折叠 ${String(suppressed)} 条重复提示。`
+    : "";
+  return `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复，或使用 /ask menu、/ask answer <n|default|text>。/ask 查看队列，/ask cancel 跳过当前，/ask park(/ask next) 暂缓当前，/ask clear 清空队列。${compactSuffix}\n\n`;
+}
+
 function parseSlashCommandName(userInput: string): string | undefined {
   if (!userInput.startsWith("/")) {
     return undefined;
@@ -104,9 +144,10 @@ export async function dispatchSessionInteractiveInput(
   }
   if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
     const queueSize = handlers.getPendingAskQueueSize();
-    handlers.writeStdout(
-      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask menu 打开操作菜单、/ask 查看队列、/ask cancel 取消当前问题、/ask park(/ask next) 暂缓当前问题、/ask clear 清空队列（如需切会话可用 /sessions）。\n\n`,
-    );
+    const blockedNotice = consumePendingAskBlockedNotice(queueSize);
+    if (blockedNotice) {
+      handlers.writeStdout(blockedNotice);
+    }
     return "continue";
   }
 

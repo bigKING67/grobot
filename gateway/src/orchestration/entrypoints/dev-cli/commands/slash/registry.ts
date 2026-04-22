@@ -3,6 +3,7 @@ import {
   type SessionInteractiveAction,
   type SessionInteractiveControls,
   type SessionInteractiveHandlers,
+  type SessionInteractiveSessionSummary,
 } from "../../start/session-interactive";
 import { type SlashCommandExecutionInput, type SlashCommandSpec } from "./types";
 
@@ -23,6 +24,13 @@ interface ParsedStatusCommand {
 interface ParsedSessionMenuCommand {
   kind: "menu" | "legacy_with_id" | "invalid";
   sessionId?: string;
+  reason?: string;
+}
+
+interface ParsedResumeCommand {
+  kind: "menu" | "query" | "legacy_with_id" | "invalid";
+  sessionId?: string;
+  query?: string;
   reason?: string;
 }
 
@@ -151,7 +159,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
 
 function parseSessionMenuCommand(
   inputRaw: string,
-  command: "/switch" | "/continue" | "/resume",
+  command: "/switch" | "/continue",
 ): ParsedSessionMenuCommand {
   const input = inputRaw.trim();
   if (!input.startsWith(command)) {
@@ -173,6 +181,94 @@ function parseSessionMenuCommand(
     sessionId: sessionId.trim(),
     reason: `[session] ${command} <id> 已废弃；非交互场景保留兼容，建议改用 ${command} 菜单。`,
   };
+}
+
+function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith("/resume")) {
+    return { kind: "invalid", reason: "command must start with /resume" };
+  }
+  const rest = input.slice("/resume".length).trim();
+  if (!rest) {
+    return { kind: "menu" };
+  }
+  if (isInteractiveTerminal()) {
+    const queryMatch = rest.match(/^(?:find|search)\s+([\s\S]+)$/i);
+    if (queryMatch) {
+      const query = (queryMatch[1] ?? "").trim();
+      if (!query) {
+        return {
+          kind: "invalid",
+          reason: "usage: /resume find <id|title|summary>",
+        };
+      }
+      return {
+        kind: "query",
+        query,
+      };
+    }
+    return {
+      kind: "invalid",
+      reason: "[session] /resume <id> 已移除，请仅使用 /resume 打开菜单；快速检索请用 /resume find <id|title|summary>。",
+    };
+  }
+  const sessionId = rest.split(/\s+/, 1)[0] ?? "";
+  return {
+    kind: "legacy_with_id",
+    sessionId: sessionId.trim(),
+    reason: "[session] /resume <id> 已废弃；非交互场景保留兼容，建议改用 /resume 菜单。",
+  };
+}
+
+function parseUpdatedAtMs(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeResumeQueryText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveResumeQueryMatches(
+  queryRaw: string,
+  sessions: readonly SessionInteractiveSessionSummary[],
+): SessionInteractiveSessionSummary[] {
+  const query = normalizeResumeQueryText(queryRaw);
+  if (!query) {
+    return [];
+  }
+  const byId = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.id) === query);
+  if (byId.length > 0) {
+    return byId;
+  }
+  const byExactTitle = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.title) === query);
+  if (byExactTitle.length > 0) {
+    return byExactTitle;
+  }
+  const byExactSummary = sessions.filter((session: SessionInteractiveSessionSummary) =>
+    normalizeResumeQueryText(session.summary) === query);
+  if (byExactSummary.length > 0) {
+    return byExactSummary;
+  }
+  const rows = sessions.filter((session: SessionInteractiveSessionSummary) => {
+    const id = normalizeResumeQueryText(session.id);
+    const title = normalizeResumeQueryText(session.title);
+    const summary = normalizeResumeQueryText(session.summary);
+    return id.includes(query) || title.includes(query) || summary.includes(query);
+  });
+  rows.sort((left: SessionInteractiveSessionSummary, right: SessionInteractiveSessionSummary) => {
+    if (left.active !== right.active) {
+      return left.active ? 1 : -1;
+    }
+    const updatedDiff = parseUpdatedAtMs(right.updatedAt) - parseUpdatedAtMs(left.updatedAt);
+    if (updatedDiff !== 0) {
+      return updatedDiff;
+    }
+    return left.id.localeCompare(right.id);
+  });
+  return rows;
 }
 
 function parseRewindCommand(
@@ -622,7 +718,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     id: "resume",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/resume"),
     execute: async ({ userInput, controls, handlers }) => {
-      const parsed = parseSessionMenuCommand(userInput, "/resume");
+      const parsed = parseResumeCommand(userInput);
       if (parsed.kind === "invalid") {
         if (isInteractiveTerminal()) {
           handlers.writeStdout(`${parsed.reason ?? "invalid resume command"}\n\n`);
@@ -630,6 +726,39 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           return "continue";
         }
         handlers.writeStdout(`${parsed.reason ?? "invalid resume command"}\n\n`);
+        return "continue";
+      }
+      if (parsed.kind === "query") {
+        const query = parsed.query?.trim() ?? "";
+        const matches = resolveResumeQueryMatches(
+          query,
+          handlers.listSessionSummaries?.() ?? [],
+        );
+        if (matches.length <= 0) {
+          handlers.writeStdout(
+            `[session] No sessions matching "${query}". Use /resume to open menu.\n\n`,
+          );
+          return "continue";
+        }
+        if (matches.length > 1) {
+          const rows = matches
+            .slice(0, 5)
+            .map((session) =>
+              `- ${session.id}${session.active ? " (active)" : ""} | ${session.title}`);
+          const overflow = matches.length > 5
+            ? `\n- ... and ${String(matches.length - 5)} more`
+            : "";
+          handlers.writeStdout(
+            `[session] Found ${String(matches.length)} sessions matching "${query}".\n${rows.join("\n")}${overflow}\n[session] Use /resume to pick one explicitly.\n\n`,
+          );
+          return "continue";
+        }
+        const target = matches[0];
+        if (target.active) {
+          handlers.writeStdout(`Session "${target.id}" is already active.\n\n`);
+          return "continue";
+        }
+        await handlers.switchSession(target.id);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -643,7 +772,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /resume              Open full-restore picker for previous sessions",
+      "  /resume              Open full-restore picker (use /resume find <id|title|summary> for quick query)",
     ],
   },
   {

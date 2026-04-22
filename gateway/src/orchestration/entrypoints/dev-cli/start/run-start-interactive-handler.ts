@@ -13,6 +13,9 @@ interface CreateRunStartInteractiveHandlerInput {
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
   showPendingAskQueue(limit?: number): void;
+  openPendingAskMenu(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
   cancelPendingAsk(): void;
   parkPendingAsk(): void;
   clearPendingAsk(): void;
@@ -29,6 +32,13 @@ interface CreateRunStartInteractiveHandlerInput {
     mode: SessionMenuMode,
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<void>;
+  listSessionSummaries?(): Array<{
+    id: string;
+    title: string;
+    summary: string;
+    updatedAt: string;
+    active: boolean;
+  }>;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
   continueFromSession(sourceSessionId: string): Promise<void>;
@@ -71,6 +81,9 @@ export function createRunStartInteractiveHandler(
       showPendingAskQueue: (limit) => {
         input.showPendingAskQueue(limit);
       },
+      openPendingAskMenu: async (withInputPaused) => {
+        await input.openPendingAskMenu(withInputPaused);
+      },
       cancelPendingAsk: input.cancelPendingAsk,
       parkPendingAsk: input.parkPendingAsk,
       clearPendingAsk: input.clearPendingAsk,
@@ -100,6 +113,7 @@ export function createRunStartInteractiveHandler(
       openSessionMenu: async (mode, withInputPaused) => {
         await input.openSessionMenu(mode, withInputPaused);
       },
+      listSessionSummaries: () => input.listSessionSummaries?.() ?? [],
       createAndSwitchSession: async () => {
         const nextId = await input.createNewSession();
         await input.switchActiveSession(nextId, "new");
