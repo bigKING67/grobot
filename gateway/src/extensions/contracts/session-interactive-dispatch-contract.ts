@@ -298,6 +298,9 @@ async function main(): Promise<void> {
   const checkpointSearchCreatedAtTty = await runDispatchCase("/checkpoint search 2026-04-20", {
     stdinIsTty: true,
   });
+  const checkpointSearchCreatedAtDigitsTty = await runDispatchCase("/checkpoint search 20260420", {
+    stdinIsTty: true,
+  });
   const checkpointFindEmptyTty = await runDispatchCase("/checkpoint find", { stdinIsTty: true });
   const rewindFindEmptyTty = await runDispatchCase("/rewind find", { stdinIsTty: true });
   const rewindModeOnlyTty = await runDispatchCase("/rewind conversation", { stdinIsTty: true });
@@ -509,6 +512,10 @@ async function main(): Promise<void> {
     ),
     checkpoint_search_created_at_tty_dispatched: includesEvent(
       checkpointSearchCreatedAtTty.events,
+      "rewindSession:main:latest:both:slash:checkpoint:query",
+    ),
+    checkpoint_search_created_at_digits_tty_dispatched: includesEvent(
+      checkpointSearchCreatedAtDigitsTty.events,
       "rewindSession:main:latest:both:slash:checkpoint:query",
     ),
     checkpoint_find_empty_tty_warned: includesEvent(checkpointFindEmptyTty.events, "writeStdout"),

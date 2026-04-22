@@ -737,6 +737,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.rewind_code_mode_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.checkpoint_query_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.checkpoint_search_created_at_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.checkpoint_search_created_at_digits_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.checkpoint_find_empty_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.checkpoint_find_empty_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_empty_tty_warned, true);
