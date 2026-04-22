@@ -65,6 +65,9 @@ export interface SlashCommandSuggestion {
   description: string;
 }
 
+const MATCH_LIST_LIMIT = 5;
+const QUICK_PICK_HINT_LIMIT = 3;
+
 function matchesInteractiveCommand(input: string, command: string): boolean {
   return input === command || input.startsWith(`${command} `);
 }
@@ -204,7 +207,7 @@ function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
       if (!query) {
         return {
           kind: "invalid",
-          reason: "usage: /resume find <id|title|summary>",
+          reason: "usage: /resume find <id|title|summary|updated-at>",
         };
       }
       return {
@@ -230,12 +233,110 @@ function parseUpdatedAtMs(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeResumeQueryText(value: string): string {
+function normalizeQueryText(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function stripBalancedQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) {
+    return trimmed;
+  }
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  const isQuote = first === "\"" || first === "'" || first === "`";
+  if (!isQuote || first !== last) {
+    return trimmed;
+  }
+  const inner = trimmed.slice(1, -1).trim();
+  return inner.length > 0 ? inner : trimmed;
+}
+
+function normalizeResumeQueryText(value: string): string {
+  return normalizeQueryText(value);
+}
+
 function normalizeResumeDigitsOnly(value: string): string {
-  return value.replace(/\D+/g, "");
+  return normalizeDigitsOnly(value);
+}
+
+function normalizeResumeCompactText(value: string): string {
+  return normalizeCompactText(value);
+}
+
+function formatSingleLinePreview(value: string, maxLength = 56): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "-";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  const head = Math.max(1, maxLength - 1);
+  return `${normalized.slice(0, head).trimEnd()}…`;
+}
+
+function formatMatchOverflow(totalCount: number, listedCount: number): string {
+  if (totalCount <= listedCount) {
+    return "";
+  }
+  return `\n- ... and ${String(totalCount - listedCount)} more`;
+}
+
+function formatQuickPickBlock(
+  tag: "[session]" | "[rewind]",
+  quickPickHints: readonly string[],
+): string {
+  if (quickPickHints.length <= 0) {
+    return "";
+  }
+  return `\n${tag} Quick pick:\n${quickPickHints.join("\n")}`;
+}
+
+function formatDisambiguationBlock(
+  tag: "[session]" | "[rewind]",
+  totalCount: number,
+  listedCount: number,
+  quickPickHints: readonly string[],
+): string {
+  return `${formatMatchOverflow(totalCount, listedCount)}${formatQuickPickBlock(tag, quickPickHints)}`;
+}
+
+async function writeMenuHintAndMaybeOpen(
+  input: SlashCommandExecutionInput,
+  menu: "resume" | "rewind",
+  message: string,
+): Promise<SessionInteractiveAction> {
+  input.handlers.writeStdout(message);
+  if (isInteractiveTerminal()) {
+    await input.handlers.openSessionMenu(menu, input.controls.withInputPaused);
+  }
+  return "continue";
+}
+
+function buildResumeNoMatchMessage(query: string): string {
+  return `[session] No sessions matching "${query}". Use /resume to open menu.\n[session] Tip: match id/title/summary/updated-at; compact query ignores spaces, "_" and "-".\n\n`;
+}
+
+function buildRewindNoMatchMessage(
+  query: string,
+  command: "/rewind" | "/checkpoint",
+  activeSessionId: string,
+): string {
+  return `[rewind] No checkpoints matching "${query}" in session "${activeSessionId}". Use ${command} to open menu.\n[rewind] Tip: match checkpoint-id/created-at/user/assistant; compact query ignores spaces, "_" and "-".\n\n`;
+}
+
+function resolvePrioritizedMatches<T>(
+  resolvers: ReadonlyArray<() => T[]>,
+  sortMatches: (matches: T[]) => T[],
+): T[] {
+  for (const resolve of resolvers) {
+    const matches = resolve();
+    if (matches.length > 0) {
+      return sortMatches(matches);
+    }
+  }
+  return [];
 }
 
 function sortResumeQueryMatches(
@@ -258,75 +359,98 @@ function resolveResumeQueryMatches(
   queryRaw: string,
   sessions: readonly SessionInteractiveSessionSummary[],
 ): SessionInteractiveSessionSummary[] {
-  const query = normalizeResumeQueryText(queryRaw);
+  const query = normalizeResumeQueryText(stripBalancedQuotes(queryRaw));
   if (!query) {
     return [];
   }
+  const compactQuery = normalizeResumeCompactText(query);
+  const hasCompactQuery = compactQuery.length > 0;
   const queryDigits = normalizeResumeDigitsOnly(query);
-  const byId = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.id) === query);
-  if (byId.length > 0) {
-    return sortResumeQueryMatches(byId);
-  }
-  const byExactTitle = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.title) === query);
-  if (byExactTitle.length > 0) {
-    return sortResumeQueryMatches(byExactTitle);
-  }
-  const byExactSummary = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.summary) === query);
-  if (byExactSummary.length > 0) {
-    return sortResumeQueryMatches(byExactSummary);
-  }
-  const byExactUpdatedAt = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.updatedAt) === query);
-  if (byExactUpdatedAt.length > 0) {
-    return sortResumeQueryMatches(byExactUpdatedAt);
-  }
-  const byIdPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.id).startsWith(query));
-  if (byIdPrefix.length > 0) {
-    return sortResumeQueryMatches(byIdPrefix);
-  }
-  const byTitlePrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.title).startsWith(query));
-  if (byTitlePrefix.length > 0) {
-    return sortResumeQueryMatches(byTitlePrefix);
-  }
-  const bySummaryPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.summary).startsWith(query));
-  if (bySummaryPrefix.length > 0) {
-    return sortResumeQueryMatches(bySummaryPrefix);
-  }
-  const byUpdatedAtPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
-    normalizeResumeQueryText(session.updatedAt).startsWith(query));
-  if (byUpdatedAtPrefix.length > 0) {
-    return sortResumeQueryMatches(byUpdatedAtPrefix);
-  }
-  if (queryDigits.length > 0) {
-    const byUpdatedAtDigitsPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
-      normalizeResumeDigitsOnly(session.updatedAt).startsWith(queryDigits));
-    if (byUpdatedAtDigitsPrefix.length > 0) {
-      return sortResumeQueryMatches(byUpdatedAtDigitsPrefix);
-    }
+  const prioritizedMatches = resolvePrioritizedMatches(
+    [
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.id) === query),
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.title) === query),
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.summary) === query),
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.updatedAt) === query),
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.id) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.title) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.summary) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.updatedAt) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.id).startsWith(compactQuery))
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.title).startsWith(compactQuery))
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.summary).startsWith(compactQuery))
+        : [],
+      () => hasCompactQuery
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeCompactText(session.updatedAt).startsWith(compactQuery))
+        : [],
+      () => queryDigits.length > 0
+        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
+          normalizeResumeDigitsOnly(session.updatedAt).startsWith(queryDigits))
+        : [],
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.id).startsWith(query)),
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.title).startsWith(query)),
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.summary).startsWith(query)),
+      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
+        normalizeResumeQueryText(session.updatedAt).startsWith(query)),
+    ],
+    sortResumeQueryMatches,
+  );
+  if (prioritizedMatches.length > 0) {
+    return prioritizedMatches;
   }
   const containsMatches = sessions.filter((session: SessionInteractiveSessionSummary) => {
     const id = normalizeResumeQueryText(session.id);
     const title = normalizeResumeQueryText(session.title);
     const summary = normalizeResumeQueryText(session.summary);
     const updatedAt = normalizeResumeQueryText(session.updatedAt);
+    const idCompact = normalizeResumeCompactText(session.id);
+    const titleCompact = normalizeResumeCompactText(session.title);
+    const summaryCompact = normalizeResumeCompactText(session.summary);
+    const updatedAtCompact = normalizeResumeCompactText(session.updatedAt);
     const updatedAtDigits = normalizeResumeDigitsOnly(session.updatedAt);
     return id.includes(query)
       || title.includes(query)
       || summary.includes(query)
       || updatedAt.includes(query)
+      || (hasCompactQuery && idCompact.includes(compactQuery))
+      || (hasCompactQuery && titleCompact.includes(compactQuery))
+      || (hasCompactQuery && summaryCompact.includes(compactQuery))
+      || (hasCompactQuery && updatedAtCompact.includes(compactQuery))
       || (queryDigits.length > 0 && updatedAtDigits.includes(queryDigits));
   });
   return sortResumeQueryMatches(containsMatches);
 }
 
 function normalizeRewindQueryText(value: string): string {
-  return value.trim().toLowerCase();
+  return normalizeQueryText(value);
 }
 
 function normalizeDigitsOnly(value: string): string {
@@ -334,7 +458,7 @@ function normalizeDigitsOnly(value: string): string {
 }
 
 function normalizeCompactText(value: string): string {
-  return normalizeRewindQueryText(value).replace(/\s+/g, "");
+  return normalizeQueryText(value).replace(/[\s_-]+/g, "");
 }
 
 function sortRewindQueryMatches(
@@ -359,76 +483,79 @@ function resolveRewindQueryMatches(
   queryRaw: string,
   checkpoints: readonly SessionInteractiveRewindCheckpointSummary[],
 ): SessionInteractiveRewindCheckpointSummary[] {
-  const query = normalizeRewindQueryText(queryRaw);
+  const query = normalizeRewindQueryText(stripBalancedQuotes(queryRaw));
   if (!query) {
     return [];
   }
   const compactQuery = normalizeCompactText(query);
-  const byExactCheckpointId = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.checkpointId) === query);
-  if (byExactCheckpointId.length > 0) {
-    return sortRewindQueryMatches(byExactCheckpointId);
-  }
-  const byExactCreatedAt = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.createdAt) === query);
-  if (byExactCreatedAt.length > 0) {
-    return sortRewindQueryMatches(byExactCreatedAt);
-  }
-  const byExactUserText = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.userText) === query);
-  if (byExactUserText.length > 0) {
-    return sortRewindQueryMatches(byExactUserText);
-  }
-  const byExactAssistantText = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.assistantText) === query);
-  if (byExactAssistantText.length > 0) {
-    return sortRewindQueryMatches(byExactAssistantText);
-  }
-  const byCheckpointIdPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.checkpointId).startsWith(query));
-  if (byCheckpointIdPrefix.length > 0) {
-    return sortRewindQueryMatches(byCheckpointIdPrefix);
-  }
-  const byCreatedAtPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.createdAt).startsWith(query));
-  if (byCreatedAtPrefix.length > 0) {
-    return sortRewindQueryMatches(byCreatedAtPrefix);
-  }
+  const hasCompactQuery = compactQuery.length > 0;
   const queryDigits = normalizeDigitsOnly(query);
-  if (queryDigits.length > 0) {
-    const byCreatedAtDigitsPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-      normalizeDigitsOnly(checkpoint.createdAt).startsWith(queryDigits));
-    if (byCreatedAtDigitsPrefix.length > 0) {
-      return sortRewindQueryMatches(byCreatedAtDigitsPrefix);
-    }
-  }
-  const byUserTextPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.userText).startsWith(query));
-  if (byUserTextPrefix.length > 0) {
-    return sortRewindQueryMatches(byUserTextPrefix);
-  }
-  const byAssistantTextPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-    normalizeRewindQueryText(checkpoint.assistantText).startsWith(query));
-  if (byAssistantTextPrefix.length > 0) {
-    return sortRewindQueryMatches(byAssistantTextPrefix);
-  }
-  if (compactQuery !== query) {
-    const byUserTextCompactPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-      normalizeCompactText(checkpoint.userText).startsWith(compactQuery));
-    if (byUserTextCompactPrefix.length > 0) {
-      return sortRewindQueryMatches(byUserTextCompactPrefix);
-    }
-    const byAssistantTextCompactPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-      normalizeCompactText(checkpoint.assistantText).startsWith(compactQuery));
-    if (byAssistantTextCompactPrefix.length > 0) {
-      return sortRewindQueryMatches(byAssistantTextCompactPrefix);
-    }
+  const prioritizedMatches = resolvePrioritizedMatches(
+    [
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.checkpointId) === query),
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.createdAt) === query),
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.userText) === query),
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.assistantText) === query),
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.checkpointId) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.createdAt) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.userText) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.assistantText) === compactQuery)
+        : [],
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.checkpointId).startsWith(compactQuery))
+        : [],
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.createdAt).startsWith(compactQuery))
+        : [],
+      () => queryDigits.length > 0
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeDigitsOnly(checkpoint.createdAt).startsWith(queryDigits))
+        : [],
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.checkpointId).startsWith(query)),
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.createdAt).startsWith(query)),
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.userText).startsWith(query)),
+      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        normalizeRewindQueryText(checkpoint.assistantText).startsWith(query)),
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.userText).startsWith(compactQuery))
+        : [],
+      () => hasCompactQuery
+        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+          normalizeCompactText(checkpoint.assistantText).startsWith(compactQuery))
+        : [],
+    ],
+    sortRewindQueryMatches,
+  );
+  if (prioritizedMatches.length > 0) {
+    return prioritizedMatches;
   }
   const containsMatches = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) => {
     const checkpointId = normalizeRewindQueryText(checkpoint.checkpointId);
     const createdAt = normalizeRewindQueryText(checkpoint.createdAt);
     const userText = normalizeRewindQueryText(checkpoint.userText);
     const assistantText = normalizeRewindQueryText(checkpoint.assistantText);
+    const createdAtDigits = normalizeDigitsOnly(checkpoint.createdAt);
     const checkpointIdCompact = normalizeCompactText(checkpoint.checkpointId);
     const createdAtCompact = normalizeCompactText(checkpoint.createdAt);
     const userTextCompact = normalizeCompactText(checkpoint.userText);
@@ -437,10 +564,11 @@ function resolveRewindQueryMatches(
       || createdAt.includes(query)
       || userText.includes(query)
       || assistantText.includes(query)
-      || checkpointIdCompact.includes(compactQuery)
-      || createdAtCompact.includes(compactQuery)
-      || userTextCompact.includes(compactQuery)
-      || assistantTextCompact.includes(compactQuery);
+      || (hasCompactQuery && checkpointIdCompact.includes(compactQuery))
+      || (hasCompactQuery && createdAtCompact.includes(compactQuery))
+      || (hasCompactQuery && userTextCompact.includes(compactQuery))
+      || (hasCompactQuery && assistantTextCompact.includes(compactQuery))
+      || (queryDigits.length > 0 && createdAtDigits.includes(queryDigits));
   });
   return sortRewindQueryMatches(containsMatches);
 }
@@ -555,14 +683,13 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   if (!input.startsWith("/ask")) {
     return { kind: "invalid", reason: "command must start with /ask" };
   }
-  const restRaw = input.slice("/ask".length).trim();
-  const usage = "usage: /ask";
-  if (!restRaw) {
+  const rest = input.slice("/ask".length).trim();
+  if (!rest) {
     return { kind: "show" };
   }
   return {
     kind: "invalid",
-    reason: usage,
+    reason: "usage: /ask",
   };
 }
 
@@ -572,8 +699,11 @@ async function executeRewindSlashCommand(
 ): Promise<SessionInteractiveAction> {
   const parsed = parseRewindCommand(input.userInput, command);
   if (parsed.kind === "invalid") {
-    input.handlers.writeStdout(`${parsed.reason ?? `invalid ${command} command`}\n\n`);
-    return "continue";
+    return writeMenuHintAndMaybeOpen(
+      input,
+      "rewind",
+      `${parsed.reason ?? `invalid ${command} command`}\n\n`,
+    );
   }
   if (parsed.kind === "menu") {
     await input.handlers.openSessionMenu("rewind", input.controls.withInputPaused);
@@ -581,16 +711,18 @@ async function executeRewindSlashCommand(
   }
   const activeSessionId = input.handlers.getActiveSessionId?.().trim() ?? "";
   if (!activeSessionId) {
-    input.handlers.writeStdout(
+    return writeMenuHintAndMaybeOpen(
+      input,
+      "rewind",
       `[rewind] Active session id is unavailable. Use ${command} to open menu.\n\n`,
     );
-    return "continue";
   }
   if (!input.handlers.rewindSession) {
-    input.handlers.writeStdout(
+    return writeMenuHintAndMaybeOpen(
+      input,
+      "rewind",
       `[rewind] quick command path unavailable. Use ${command} to open menu.\n\n`,
     );
-    return "continue";
   }
   if (parsed.kind === "summarize") {
     await input.handlers.rewindSession({
@@ -604,37 +736,39 @@ async function executeRewindSlashCommand(
   const checkpoints = input.handlers.listRewindCheckpoints?.(activeSessionId, 64) ?? [];
   const matches = resolveRewindQueryMatches(query, checkpoints);
   if (matches.length <= 0) {
-    input.handlers.writeStdout(
-      `[rewind] No checkpoints matching "${query}" in session "${activeSessionId}". Use ${command} to open menu.\n\n`,
+    return writeMenuHintAndMaybeOpen(
+      input,
+      "rewind",
+      buildRewindNoMatchMessage(query, command, activeSessionId),
     );
-    return "continue";
   }
   if (matches.length > 1) {
     const rows = matches
-      .slice(0, 5)
+      .slice(0, MATCH_LIST_LIMIT)
       .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
         `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | files=${String(
           checkpoint.changedFilesCount,
-        )} | user=${checkpoint.userText}`);
+        )} | user=${formatSingleLinePreview(checkpoint.userText, 44)} | assistant=${formatSingleLinePreview(checkpoint.assistantText, 44)}`);
     const quickPickSuffix = parsed.mode && parsed.mode !== "both"
       ? ` ${parsed.mode}`
       : "";
     const quickPickHints = matches
-      .slice(0, 3)
+      .slice(0, QUICK_PICK_HINT_LIMIT)
       .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
         `- ${command} ${checkpoint.checkpointId}${quickPickSuffix}`);
-    const overflow = matches.length > 5
-      ? `\n- ... and ${String(matches.length - 5)} more`
-      : "";
-    const quickPickBlock = quickPickHints.length > 0
-      ? `\n[rewind] Quick pick:\n${quickPickHints.join("\n")}`
-      : "";
-    input.handlers.writeStdout(
+    const disambiguationBlock = formatDisambiguationBlock(
+      "[rewind]",
+      matches.length,
+      rows.length,
+      quickPickHints,
+    );
+    return writeMenuHintAndMaybeOpen(
+      input,
+      "rewind",
       `[rewind] Found ${String(matches.length)} checkpoints matching "${query}" in session "${activeSessionId}".\n${rows.join(
         "\n",
-      )}${overflow}${quickPickBlock}\n[rewind] Use ${command} to pick one explicitly.\n\n`,
+      )}${disambiguationBlock}\n[rewind] Use ${command} to pick one explicitly.\n\n`,
     );
-    return "continue";
   }
   const target = matches[0];
   await input.handlers.rewindSession({
@@ -879,7 +1013,20 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.openPlanMenu(controls.withInputPaused);
           return "continue";
         }
+        if (handlers.isPlanMode()) {
+          await handlers.showPlanStatus();
+          return "continue";
+        }
         await handlers.enterPlan("");
+        return "continue";
+      }
+      if (/^\/plan\s+open$/i.test(normalizedInput)) {
+        if (isInteractiveTerminal()) {
+          await handlers.openPlanInEditor(controls.withInputPaused);
+          return "continue";
+        }
+        handlers.writeStdout("[plan] /plan open is interactive-only; showing current status in script mode.\n\n");
+        await handlers.showPlanStatus();
         return "continue";
       }
       const parsed = parsePlanCommand(userInput);
@@ -903,6 +1050,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.openPlanMenu(controls.withInputPaused);
           return "continue";
         }
+        if (handlers.isPlanMode()) {
+          await handlers.showPlanStatus();
+          return "continue";
+        }
         await handlers.enterPlan("");
         return "continue";
       }
@@ -917,6 +1068,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       if (parsed.kind === "status") {
         await handlers.showPlanStatus();
+        return "continue";
+      }
+      if (parsed.kind === "benchmark") {
+        await handlers.benchmarkPlan(normalizedInput);
         return "continue";
       }
       if (parsed.kind === "approve") {
@@ -942,9 +1097,12 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /plan | /plan open   Open plan actions menu (interactive)",
+      "  /plan                Open plan actions menu (interactive)",
+      "  /plan open           Open active plan file in editor (interactive)",
       "  /plan <goal>         Enter plan mode and execute first requirement",
-      "  /plan status|approve|reject|apply|verify|cancel (legacy script shortcuts)",
+      "  /plan status         Show active plan status (script/non-interactive)",
+      "  /plan benchmark ...  Compare active plan with external candidates",
+      "  /plan benchmark --preset <generic|core> [--assert-best <label>]",
     ],
   },
   {
@@ -1005,16 +1163,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "resume",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/resume"),
-    execute: async ({ userInput, controls, handlers }) => {
+    execute: async (input) => {
+      const { userInput, controls, handlers } = input;
       const parsed = parseResumeCommand(userInput);
       if (parsed.kind === "invalid") {
-        if (isInteractiveTerminal()) {
-          handlers.writeStdout(`${parsed.reason ?? "invalid resume command"}\n\n`);
-          await handlers.openSessionMenu("resume", controls.withInputPaused);
-          return "continue";
-        }
-        handlers.writeStdout(`${parsed.reason ?? "invalid resume command"}\n\n`);
-        return "continue";
+        return writeMenuHintAndMaybeOpen(
+          input,
+          "resume",
+          `${parsed.reason ?? "invalid resume command"}\n\n`,
+        );
       }
       if (parsed.kind === "query") {
         const query = parsed.query?.trim() ?? "";
@@ -1023,34 +1180,39 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           handlers.listSessionSummaries?.() ?? [],
         );
         if (matches.length <= 0) {
-          handlers.writeStdout(
-            `[session] No sessions matching "${query}". Use /resume to open menu.\n\n`,
+          return writeMenuHintAndMaybeOpen(
+            input,
+            "resume",
+            buildResumeNoMatchMessage(query),
           );
-          return "continue";
         }
         if (matches.length > 1) {
           const rows = matches
-            .slice(0, 5)
+            .slice(0, MATCH_LIST_LIMIT)
             .map((session) =>
-              `- ${session.id}${session.active ? " (active)" : ""} | ${session.title}`);
+              `- ${session.id}${session.active ? " (active)" : ""} | ${session.updatedAt} | title=${formatSingleLinePreview(session.title, 40)} | summary=${formatSingleLinePreview(session.summary, 40)}`);
           const quickPickHints = matches
-            .slice(0, 3)
+            .slice(0, QUICK_PICK_HINT_LIMIT)
             .map((session) => `- /resume ${session.id}`);
-          const overflow = matches.length > 5
-            ? `\n- ... and ${String(matches.length - 5)} more`
-            : "";
-          const quickPickBlock = quickPickHints.length > 0
-            ? `\n[session] Quick pick:\n${quickPickHints.join("\n")}`
-            : "";
-          handlers.writeStdout(
-            `[session] Found ${String(matches.length)} sessions matching "${query}".\n${rows.join("\n")}${overflow}${quickPickBlock}\n[session] Use /resume to pick one explicitly.\n\n`,
+          const disambiguationBlock = formatDisambiguationBlock(
+            "[session]",
+            matches.length,
+            rows.length,
+            quickPickHints,
           );
-          return "continue";
+          return writeMenuHintAndMaybeOpen(
+            input,
+            "resume",
+            `[session] Found ${String(matches.length)} sessions matching "${query}".\n${rows.join("\n")}${disambiguationBlock}\n[session] Use /resume to pick one explicitly.\n\n`,
+          );
         }
         const target = matches[0];
         if (target.active) {
-          handlers.writeStdout(`Session "${target.id}" is already active.\n\n`);
-          return "continue";
+          return writeMenuHintAndMaybeOpen(
+            input,
+            "resume",
+            `[session] Session "${target.id}" is already active. Use /resume to open menu.\n\n`,
+          );
         }
         await handlers.switchSession(target.id);
         return "continue";
@@ -1066,7 +1228,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /resume [query]      Open full-restore picker (quick query: /resume <query> or /resume find <id|title|summary>)",
+      "  /resume [query]      Open full-restore picker (quick query: /resume <query> or /resume find <id|title|summary|updated-at>)",
     ],
   },
   {
@@ -1247,16 +1409,10 @@ export function listUtilitySlashCommandHelpLines(): string[] {
 
 export function listSlashCommandCompatibilityNotes(): string[] {
   return [
-    "  - /switch /continue remain legacy session shortcuts.",
-    "  - Prefer /resume for full restore and /rewind for checkpoint rollback.",
+    "  - /switch /continue remain compatibility shortcuts; prefer /sessions + /resume + /rewind.",
     "  - /checkpoint is an alias of /rewind.",
-    "  - In interactive mode /new /switch /continue redirect to /sessions.",
-    "  - /status subcommands are legacy shortcuts in interactive mode.",
-    "  - In interactive mode they redirect to /status menu.",
-    "  - In non-interactive scripts they remain compatible.",
-    "  - /plan subcommands are legacy shortcuts in interactive mode.",
-    "  - In interactive mode they redirect to /plan actions (/plan or /plan open).",
-    "  - In non-interactive scripts they remain compatible.",
+    "  - Interactive mode is menu-first for /sessions, /status, /plan.",
+    "  - Non-interactive scripts keep compatibility shortcuts where applicable.",
   ];
 }
 
@@ -1286,7 +1442,7 @@ export async function dispatchSlashCommand(
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
       handlers.writeStdout(
-        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan to open plan actions, /interrupt, or /exit.\n\n`,
+        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan to open plan actions, /plan open to edit active plan file, /interrupt, or /exit.\n\n`,
       );
       return "continue";
     }

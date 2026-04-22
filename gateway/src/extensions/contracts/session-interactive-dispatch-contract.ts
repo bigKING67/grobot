@@ -3,6 +3,8 @@ import {
   type SessionInteractiveAction,
   type SessionInteractiveControls,
   type SessionInteractiveHandlers,
+  type SessionInteractiveRewindCheckpointSummary,
+  type SessionInteractiveSessionSummary,
 } from "../../orchestration/entrypoints/dev-cli/start/session-interactive";
 
 interface DispatchCaseResult {
@@ -14,6 +16,60 @@ interface DispatchCaseResult {
 const controls: SessionInteractiveControls = {
   withInputPaused: async <T>(operation: () => Promise<T>): Promise<T> => operation(),
 };
+
+const DEFAULT_SESSION_SUMMARIES: readonly SessionInteractiveSessionSummary[] = [
+  {
+    id: "main",
+    title: "Main Session",
+    summary: "active",
+    updatedAt: "2026-04-20T00:00:00.000Z",
+    active: true,
+  },
+  {
+    id: "session-legacy",
+    title: "Legacy Session",
+    summary: "historical",
+    updatedAt: "2026-04-19T23:59:00.000Z",
+    active: false,
+  },
+  {
+    id: "session-archive",
+    title: "Archive Session",
+    summary: "old",
+    updatedAt: "2026-04-18T23:59:00.000Z",
+    active: false,
+  },
+];
+
+const DEFAULT_REWIND_CHECKPOINTS: readonly SessionInteractiveRewindCheckpointSummary[] = [
+  {
+    checkpointId: "latest",
+    createdAt: "2026-04-20T08:00:00.000Z",
+    userText: "latest checkpoint",
+    assistantText: "latest assistant",
+    historyBeforeCount: 24,
+    historyAfterCount: 26,
+    changedFilesCount: 2,
+  },
+  {
+    checkpointId: "legacy-a",
+    createdAt: "2026-04-19T08:00:00.000Z",
+    userText: "legacy checkpoint alpha",
+    assistantText: "legacy assistant alpha",
+    historyBeforeCount: 12,
+    historyAfterCount: 14,
+    changedFilesCount: 1,
+  },
+  {
+    checkpointId: "legacy-b",
+    createdAt: "2026-04-18T08:00:00.000Z",
+    userText: "legacy checkpoint beta",
+    assistantText: "legacy assistant beta",
+    historyBeforeCount: 10,
+    historyAfterCount: 11,
+    changedFilesCount: 3,
+  },
+];
 
 async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>): Promise<T> {
   const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -32,11 +88,23 @@ async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>)
 
 async function runDispatchCase(
   input: string,
-  options?: { stdinIsTty?: boolean; pendingAskCount?: number; nowMs?: number },
+  options?: {
+    stdinIsTty?: boolean;
+    pendingAskCount?: number;
+    nowMs?: number;
+    activeSessionId?: string;
+    disableRewindSession?: boolean;
+    sessionSummaries?: readonly SessionInteractiveSessionSummary[];
+    rewindCheckpoints?: readonly SessionInteractiveRewindCheckpointSummary[];
+  },
 ): Promise<DispatchCaseResult> {
   const events: string[] = [];
   const stdoutChunks: string[] = [];
   const pendingAskCount = Math.max(0, options?.pendingAskCount ?? 0);
+  const activeSessionId = options?.activeSessionId ?? "main";
+  const enableRewindSession = options?.disableRewindSession !== true;
+  const sessionSummaries = options?.sessionSummaries ?? DEFAULT_SESSION_SUMMARIES;
+  const rewindCheckpoints = options?.rewindCheckpoints ?? DEFAULT_REWIND_CHECKPOINTS;
   const invokeWithNow = async <T>(operation: () => Promise<T>): Promise<T> => {
     if (typeof options?.nowMs !== "number") {
       return operation();
@@ -56,23 +124,12 @@ async function runDispatchCase(
     },
     hasPendingAsk: () => pendingAskCount > 0,
     getPendingAskQueueSize: () => pendingAskCount,
+    getPendingAskPromptSummary: () =>
+      pendingAskCount > 0
+        ? "question=Need project scope? | options=1:core | 2:all | default=core"
+        : undefined,
     showPendingAskQueue: (limit) => {
       events.push(`showPendingAskQueue:${typeof limit === "number" ? String(limit) : "default"}`);
-    },
-    openPendingAskMenu: async () => {
-      events.push("openPendingAskMenu");
-    },
-    cancelPendingAsk: () => {
-      events.push("cancelPendingAsk");
-    },
-    parkPendingAsk: () => {
-      events.push("parkPendingAsk");
-    },
-    clearPendingAsk: () => {
-      events.push("clearPendingAsk");
-    },
-    answerPendingAsk: async (answer) => {
-      events.push(`answerPendingAsk:${answer}`);
     },
     showHelp: () => {
       events.push("showHelp");
@@ -101,72 +158,31 @@ async function runDispatchCase(
     openSessionMenu: async (mode) => {
       events.push(`openSessionMenu:${mode}`);
     },
-    listSessionSummaries: () => [
-      {
-        id: "main",
-        title: "Main Session",
-        summary: "active",
-        updatedAt: "2026-04-20T00:00:00.000Z",
-        active: true,
-      },
-      {
-        id: "session-legacy",
-        title: "Legacy Session",
-        summary: "historical",
-        updatedAt: "2026-04-19T23:59:00.000Z",
-        active: false,
-      },
-      {
-        id: "session-archive",
-        title: "Archive Session",
-        summary: "old",
-        updatedAt: "2026-04-18T23:59:00.000Z",
-        active: false,
-      },
-    ],
-    getActiveSessionId: () => "main",
+    listSessionSummaries: () => [...sessionSummaries],
+    getActiveSessionId: () => activeSessionId,
     listRewindCheckpoints: (sessionId) => {
       events.push(`listRewindCheckpoints:${sessionId}`);
-      if (sessionId !== "main") {
+      if (!activeSessionId || sessionId !== activeSessionId) {
         return [];
       }
-      return [
-        {
-          checkpointId: "latest",
-          createdAt: "2026-04-20T08:00:00.000Z",
-          userText: "latest checkpoint",
-          assistantText: "latest assistant",
-          historyBeforeCount: 24,
-          historyAfterCount: 26,
-          changedFilesCount: 2,
-        },
-        {
-          checkpointId: "legacy-a",
-          createdAt: "2026-04-19T08:00:00.000Z",
-          userText: "legacy checkpoint alpha",
-          assistantText: "legacy assistant alpha",
-          historyBeforeCount: 12,
-          historyAfterCount: 14,
-          changedFilesCount: 1,
-        },
-        {
-          checkpointId: "legacy-b",
-          createdAt: "2026-04-18T08:00:00.000Z",
-          userText: "legacy checkpoint beta",
-          assistantText: "legacy assistant beta",
-          historyBeforeCount: 10,
-          historyAfterCount: 11,
-          changedFilesCount: 3,
-        },
-      ];
+      return [...rewindCheckpoints];
     },
-    rewindSession: async (inputValue) => {
-      events.push("rewindSession");
-      events.push(
-        `rewindSession:${inputValue.sessionId}:${inputValue.checkpointId ?? "<latest>"}:${inputValue.mode}:${inputValue.reason ?? ""}`,
-      );
-      return true;
-    },
+    ...(enableRewindSession
+      ? {
+        rewindSession: async (inputValue: {
+          sessionId: string;
+          checkpointId?: string;
+          mode: string;
+          reason?: string;
+        }) => {
+          events.push("rewindSession");
+          events.push(
+            `rewindSession:${inputValue.sessionId}:${inputValue.checkpointId ?? "<latest>"}:${inputValue.mode}:${inputValue.reason ?? ""}`,
+          );
+          return true;
+        },
+      }
+      : {}),
     createAndSwitchSession: async () => {
       events.push("createAndSwitchSession");
     },
@@ -183,6 +199,9 @@ async function runDispatchCase(
     isPlanMode: () => false,
     showPlanStatus: async () => {
       events.push("showPlanStatus");
+    },
+    benchmarkPlan: async (commandRaw) => {
+      events.push(`benchmarkPlan:${commandRaw}`);
     },
     enterPlan: async (goal) => {
       events.push(`enterPlan:${goal}`);
@@ -219,6 +238,9 @@ async function runDispatchCase(
     },
     openPlanMenu: async () => {
       events.push("openPlanMenu");
+    },
+    openPlanInEditor: async () => {
+      events.push("openPlanInEditor");
     },
     showHistory: async (query) => {
       events.push(`showHistory:${query ?? ""}`);
@@ -275,24 +297,190 @@ async function main(): Promise<void> {
   const resumeFindPrefixTty = await runDispatchCase("/resume session-lega", { stdinIsTty: true });
   const resumeFindKeywordTty = await runDispatchCase("/resume find legacy", { stdinIsTty: true });
   const resumeSearchKeywordTty = await runDispatchCase("/resume search old", { stdinIsTty: true });
+  const resumeSearchCompactTitleTty = await runDispatchCase("/resume search legacysession", {
+    stdinIsTty: true,
+  });
+  const resumeSearchCompactIdTty = await runDispatchCase("/resume search sessionlegacy", {
+    stdinIsTty: true,
+  });
+  const resumeSearchCompactIdUnderscoreTty = await runDispatchCase("/resume search session_legacy", {
+    stdinIsTty: true,
+  });
+  const resumeSearchCompactIdSpaceTty = await runDispatchCase("/resume search session legacy", {
+    stdinIsTty: true,
+  });
+  const resumeSearchQuotedTitleTty = await runDispatchCase('/resume search "legacy session"', {
+    stdinIsTty: true,
+  });
   const resumeFindUpdatedAtTty = await runDispatchCase("/resume find 2026-04-19", { stdinIsTty: true });
   const resumeSearchUpdatedAtDigitsTty = await runDispatchCase("/resume search 20260418", {
     stdinIsTty: true,
   });
+  const resumeSearchUpdatedAtDigitsContainsTty = await runDispatchCase("/resume search 0419", {
+    stdinIsTty: true,
+  });
+  const resumeSearchSeparatorOnlyTty = await runDispatchCase("/resume search ---", {
+    stdinIsTty: true,
+  });
+  const resumeFindActiveTty = await runDispatchCase("/resume find main", { stdinIsTty: true });
   const resumeFindMissingTty = await runDispatchCase("/resume find missing", { stdinIsTty: true });
   const resumeFindMultipleTty = await runDispatchCase("/resume session", { stdinIsTty: true });
+  const resumeFindMultipleOverflowTty = await runDispatchCase("/resume session", {
+    stdinIsTty: true,
+    sessionSummaries: [
+      {
+        id: "main",
+        title: "Main Session",
+        summary: "active",
+        updatedAt: "2026-04-20T00:00:00.000Z",
+        active: true,
+      },
+      {
+        id: "session-legacy",
+        title: "Legacy Session",
+        summary: "historical",
+        updatedAt: "2026-04-19T23:59:00.000Z",
+        active: false,
+      },
+      {
+        id: "session-archive",
+        title: "Archive Session",
+        summary: "old",
+        updatedAt: "2026-04-18T23:59:00.000Z",
+        active: false,
+      },
+      {
+        id: "session-ops",
+        title: "Ops Session",
+        summary: "ops queue",
+        updatedAt: "2026-04-18T20:59:00.000Z",
+        active: false,
+      },
+      {
+        id: "session-growth",
+        title: "Growth Session",
+        summary: "growth notes",
+        updatedAt: "2026-04-18T19:59:00.000Z",
+        active: false,
+      },
+      {
+        id: "session-data",
+        title: "Data Session",
+        summary: "data review",
+        updatedAt: "2026-04-18T18:59:00.000Z",
+        active: false,
+      },
+      {
+        id: "session-ux",
+        title: "UX Session",
+        summary: "ux polish",
+        updatedAt: "2026-04-18T17:59:00.000Z",
+        active: false,
+      },
+    ],
+  });
   const resumeFindEmptyTty = await runDispatchCase("/resume find", { stdinIsTty: true });
   const rewindQueryTty = await runDispatchCase("/rewind latest", { stdinIsTty: true });
+  const rewindQueryNoActiveSessionTty = await runDispatchCase("/rewind latest", {
+    stdinIsTty: true,
+    activeSessionId: "",
+  });
+  const rewindQueryNoQuickPathTty = await runDispatchCase("/rewind latest", {
+    stdinIsTty: true,
+    disableRewindSession: true,
+  });
   const rewindSearchMissingTty = await runDispatchCase("/rewind search missing", { stdinIsTty: true });
   const rewindQueryMultipleTty = await runDispatchCase("/rewind legacy", { stdinIsTty: true });
+  const rewindQueryMultipleOverflowTty = await runDispatchCase("/rewind legacy", {
+    stdinIsTty: true,
+    rewindCheckpoints: [
+      {
+        checkpointId: "latest",
+        createdAt: "2026-04-20T08:00:00.000Z",
+        userText: "latest checkpoint",
+        assistantText: "latest assistant",
+        historyBeforeCount: 24,
+        historyAfterCount: 26,
+        changedFilesCount: 2,
+      },
+      {
+        checkpointId: "legacy-a",
+        createdAt: "2026-04-19T08:00:00.000Z",
+        userText: "legacy checkpoint alpha",
+        assistantText: "legacy assistant alpha",
+        historyBeforeCount: 12,
+        historyAfterCount: 14,
+        changedFilesCount: 1,
+      },
+      {
+        checkpointId: "legacy-b",
+        createdAt: "2026-04-18T08:00:00.000Z",
+        userText: "legacy checkpoint beta",
+        assistantText: "legacy assistant beta",
+        historyBeforeCount: 10,
+        historyAfterCount: 11,
+        changedFilesCount: 3,
+      },
+      {
+        checkpointId: "legacy-c",
+        createdAt: "2026-04-17T08:00:00.000Z",
+        userText: "legacy checkpoint gamma",
+        assistantText: "legacy assistant gamma",
+        historyBeforeCount: 8,
+        historyAfterCount: 9,
+        changedFilesCount: 2,
+      },
+      {
+        checkpointId: "legacy-d",
+        createdAt: "2026-04-16T08:00:00.000Z",
+        userText: "legacy checkpoint delta",
+        assistantText: "legacy assistant delta",
+        historyBeforeCount: 7,
+        historyAfterCount: 8,
+        changedFilesCount: 2,
+      },
+      {
+        checkpointId: "legacy-e",
+        createdAt: "2026-04-15T08:00:00.000Z",
+        userText: "legacy checkpoint epsilon",
+        assistantText: "legacy assistant epsilon",
+        historyBeforeCount: 6,
+        historyAfterCount: 7,
+        changedFilesCount: 1,
+      },
+      {
+        checkpointId: "legacy-f",
+        createdAt: "2026-04-14T08:00:00.000Z",
+        userText: "legacy checkpoint zeta",
+        assistantText: "legacy assistant zeta",
+        historyBeforeCount: 5,
+        historyAfterCount: 6,
+        changedFilesCount: 1,
+      },
+    ],
+  });
   const rewindFindQueryModeTty = await runDispatchCase("/rewind find latest both", { stdinIsTty: true });
   const rewindSearchUserTextTty = await runDispatchCase("/rewind search alpha conversation", { stdinIsTty: true });
   const rewindSearchAssistantTextTty = await runDispatchCase("/rewind search beta code", { stdinIsTty: true });
   const rewindSearchUserTextCompactTty = await runDispatchCase("/rewind search legacycheckpointalpha", {
     stdinIsTty: true,
   });
+  const rewindSearchCheckpointIdCompactTty = await runDispatchCase("/rewind search legacya", {
+    stdinIsTty: true,
+  });
+  const rewindSearchCheckpointIdUnderscoreTty = await runDispatchCase("/rewind search legacy_a", {
+    stdinIsTty: true,
+  });
+  const rewindSearchCheckpointIdSpaceTty = await runDispatchCase("/rewind search legacy a", {
+    stdinIsTty: true,
+  });
+  const rewindSearchCheckpointIdQuotedTty = await runDispatchCase('/rewind search "legacy a"', {
+    stdinIsTty: true,
+  });
   const rewindSearchCreatedAtTty = await runDispatchCase("/rewind search 2026-04-20", { stdinIsTty: true });
   const rewindSearchCreatedAtDigitsTty = await runDispatchCase("/rewind search 20260420", { stdinIsTty: true });
+  const rewindSearchCreatedAtDigitsContainsTty = await runDispatchCase("/rewind search 0420", { stdinIsTty: true });
+  const rewindSearchSeparatorOnlyTty = await runDispatchCase("/rewind search ___", { stdinIsTty: true });
   const rewindFindModeKeywordQueryTty = await runDispatchCase("/rewind find code", { stdinIsTty: true });
   const rewindSummarizeTty = await runDispatchCase("/rewind summarize", { stdinIsTty: true });
   const rewindCodeModeTty = await runDispatchCase("/rewind latest code", { stdinIsTty: true });
@@ -302,7 +490,22 @@ async function main(): Promise<void> {
   const checkpointSearchCreatedAtTty = await runDispatchCase("/checkpoint search 2026-04-20", {
     stdinIsTty: true,
   });
+  const checkpointSearchCheckpointIdCompactTty = await runDispatchCase("/checkpoint search legacya", {
+    stdinIsTty: true,
+  });
+  const checkpointSearchCheckpointIdUnderscoreTty = await runDispatchCase("/checkpoint search legacy_a", {
+    stdinIsTty: true,
+  });
+  const checkpointSearchCheckpointIdSpaceTty = await runDispatchCase("/checkpoint search legacy a", {
+    stdinIsTty: true,
+  });
+  const checkpointSearchCheckpointIdQuotedTty = await runDispatchCase('/checkpoint search "legacy a"', {
+    stdinIsTty: true,
+  });
   const checkpointSearchCreatedAtDigitsTty = await runDispatchCase("/checkpoint search 20260420", {
+    stdinIsTty: true,
+  });
+  const checkpointSearchCreatedAtDigitsContainsTty = await runDispatchCase("/checkpoint search 0420", {
     stdinIsTty: true,
   });
   const checkpointFindEmptyTty = await runDispatchCase("/checkpoint find", { stdinIsTty: true });
@@ -323,6 +526,9 @@ async function main(): Promise<void> {
   const planVerify = await runDispatchCase("/plan verify fail e2e mismatch", { stdinIsTty: true });
   const planVerifyCn = await runDispatchCase("/plan 验证 通过 结果稳定", { stdinIsTty: true });
   const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
+  const planLegacyBenchmark = await runDispatchCase("/plan benchmark strong=/tmp/strong-plan.md", {
+    stdinIsTty: false,
+  });
   const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
   const planStatusWithTailTty = await runDispatchCase("/plan status extra", { stdinIsTty: true });
   const statusCurrent = await runDispatchCase("/status");
@@ -341,11 +547,7 @@ async function main(): Promise<void> {
   const historyCommand = await runDispatchCase("/history");
   const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
   const askCommand = await runDispatchCase("/ask");
-  const askSubQueueCommand = await runDispatchCase("/ask queue all");
-  const askSubMenuCommand = await runDispatchCase("/ask menu");
-  const askSubAnswerCommand = await runDispatchCase("/ask answer fast");
-  const askAliasCnCommand = await runDispatchCase("/ask 队列");
-  const askShortcutNumberCommand = await runDispatchCase("/ask 2");
+  const askInvalidArgsCommand = await runDispatchCase("/ask queue all");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
@@ -361,7 +563,7 @@ async function main(): Promise<void> {
   const pendingAskAllowResume = await runDispatchCase("/resume", { pendingAskCount: 2 });
   const pendingAskAllowRewind = await runDispatchCase("/rewind", { pendingAskCount: 2 });
   const pendingAskAllowAsk = await runDispatchCase("/ask", { pendingAskCount: 2 });
-  const pendingAskAllowAskSubcommand = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
+  const pendingAskAllowAskInvalidArgs = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
   const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
   const pendingAskBlockedBurstFirst = await runDispatchCase("/model", {
     pendingAskCount: 3,
@@ -436,6 +638,26 @@ async function main(): Promise<void> {
       resumeSearchKeywordTty.events,
       "switchSession:session-archive",
     ),
+    resume_search_compact_title_tty_direct_switch: includesEvent(
+      resumeSearchCompactTitleTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_compact_id_tty_direct_switch: includesEvent(
+      resumeSearchCompactIdTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_compact_id_underscore_tty_direct_switch: includesEvent(
+      resumeSearchCompactIdUnderscoreTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_compact_id_space_tty_direct_switch: includesEvent(
+      resumeSearchCompactIdSpaceTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_quoted_title_tty_direct_switch: includesEvent(
+      resumeSearchQuotedTitleTty.events,
+      "switchSession:session-legacy",
+    ),
     resume_find_updated_at_tty_direct_switch: includesEvent(
       resumeFindUpdatedAtTty.events,
       "switchSession:session-legacy",
@@ -444,17 +666,77 @@ async function main(): Promise<void> {
       resumeSearchUpdatedAtDigitsTty.events,
       "switchSession:session-archive",
     ),
+    resume_search_updated_at_digits_contains_tty_direct_switch: includesEvent(
+      resumeSearchUpdatedAtDigitsContainsTty.events,
+      "switchSession:session-legacy",
+    ),
+    resume_search_separator_only_tty_warned: includesEvent(
+      resumeSearchSeparatorOnlyTty.events,
+      "writeStdout",
+    ),
+    resume_search_separator_only_tty_direct_switch: includesEvent(
+      resumeSearchSeparatorOnlyTty.events,
+      "switchSession",
+    ),
+    resume_search_separator_only_tty_opened_menu: includesEvent(
+      resumeSearchSeparatorOnlyTty.events,
+      "openSessionMenu:resume",
+    ),
+    resume_search_separator_only_tty_no_match_message: resumeSearchSeparatorOnlyTty.stdout.includes(
+      'No sessions matching "---"',
+    ),
+    resume_search_separator_only_tty_no_match_has_tip: resumeSearchSeparatorOnlyTty.stdout.includes(
+      "compact query ignores spaces, \"_\" and \"-\".",
+    ),
+    resume_find_active_tty_warned: includesEvent(resumeFindActiveTty.events, "writeStdout"),
+    resume_find_active_tty_direct_switch: includesEvent(resumeFindActiveTty.events, "switchSession"),
+    resume_find_active_tty_opened_menu: includesEvent(
+      resumeFindActiveTty.events,
+      "openSessionMenu:resume",
+    ),
+    resume_find_active_tty_message_has_prefix: resumeFindActiveTty.stdout.includes(
+      '[session] Session "main" is already active.',
+    ),
+    resume_find_active_tty_message_has_menu_hint: resumeFindActiveTty.stdout.includes(
+      "Use /resume to open menu.",
+    ),
     resume_find_missing_tty_warned: includesEvent(resumeFindMissingTty.events, "writeStdout"),
     resume_find_missing_tty_direct_switch: includesEvent(resumeFindMissingTty.events, "switchSession"),
+    resume_find_missing_tty_opened_menu: includesEvent(
+      resumeFindMissingTty.events,
+      "openSessionMenu:resume",
+    ),
+    resume_find_missing_tty_no_match_has_tip: resumeFindMissingTty.stdout.includes(
+      "compact query ignores spaces, \"_\" and \"-\".",
+    ),
     resume_find_multiple_tty_warned: includesEvent(resumeFindMultipleTty.events, "writeStdout"),
     resume_find_multiple_tty_direct_switch: includesEvent(resumeFindMultipleTty.events, "switchSession"),
     resume_find_multiple_tty_includes_quick_pick: resumeFindMultipleTty.stdout.includes(
       "/resume session-legacy",
     ),
+    resume_find_multiple_tty_includes_title_preview: resumeFindMultipleTty.stdout.includes(
+      "| title=",
+    ),
+    resume_find_multiple_tty_includes_summary_preview: resumeFindMultipleTty.stdout.includes(
+      "| summary=",
+    ),
+    resume_find_multiple_overflow_tty_includes_overflow_line: resumeFindMultipleOverflowTty.stdout.includes(
+      "... and 1 more",
+    ),
+    resume_find_multiple_overflow_tty_includes_quick_pick_header: resumeFindMultipleOverflowTty.stdout.includes(
+      "[session] Quick pick:",
+    ),
+    resume_find_multiple_tty_opened_menu: includesEvent(
+      resumeFindMultipleTty.events,
+      "openSessionMenu:resume",
+    ),
     resume_find_empty_tty_warned: includesEvent(resumeFindEmptyTty.events, "writeStdout"),
     resume_find_empty_tty_opened_menu: includesEvent(
       resumeFindEmptyTty.events,
       "openSessionMenu:resume",
+    ),
+    resume_find_empty_tty_usage_has_updated_at: resumeFindEmptyTty.stdout.includes(
+      "usage: /resume find <id|title|summary|updated-at>",
     ),
     rewind_query_tty_dispatched: includesEvent(rewindQueryTty.events, "rewindSession"),
     rewind_query_tty_exact_checkpoint: includesEvent(
@@ -462,10 +744,41 @@ async function main(): Promise<void> {
       "rewindSession:main:latest:both:slash:rewind:query",
     ),
     rewind_query_tty_opened_menu: includesEvent(rewindQueryTty.events, "openSessionMenu:rewind"),
+    rewind_query_no_active_session_tty_warned: includesEvent(
+      rewindQueryNoActiveSessionTty.events,
+      "writeStdout",
+    ),
+    rewind_query_no_active_session_tty_dispatched: includesEvent(
+      rewindQueryNoActiveSessionTty.events,
+      "rewindSession",
+    ),
+    rewind_query_no_active_session_tty_opened_menu: includesEvent(
+      rewindQueryNoActiveSessionTty.events,
+      "openSessionMenu:rewind",
+    ),
+    rewind_query_no_quick_path_tty_warned: includesEvent(
+      rewindQueryNoQuickPathTty.events,
+      "writeStdout",
+    ),
+    rewind_query_no_quick_path_tty_dispatched: includesEvent(
+      rewindQueryNoQuickPathTty.events,
+      "rewindSession",
+    ),
+    rewind_query_no_quick_path_tty_opened_menu: includesEvent(
+      rewindQueryNoQuickPathTty.events,
+      "openSessionMenu:rewind",
+    ),
     rewind_search_missing_tty_warned: includesEvent(rewindSearchMissingTty.events, "writeStdout"),
     rewind_search_missing_tty_dispatched: includesEvent(
       rewindSearchMissingTty.events,
       "rewindSession",
+    ),
+    rewind_search_missing_tty_opened_menu: includesEvent(
+      rewindSearchMissingTty.events,
+      "openSessionMenu:rewind",
+    ),
+    rewind_search_missing_tty_no_match_has_tip: rewindSearchMissingTty.stdout.includes(
+      "compact query ignores spaces, \"_\" and \"-\".",
     ),
     rewind_query_multiple_tty_warned: includesEvent(rewindQueryMultipleTty.events, "writeStdout"),
     rewind_query_multiple_tty_dispatched: includesEvent(
@@ -474,6 +787,19 @@ async function main(): Promise<void> {
     ),
     rewind_query_multiple_tty_includes_quick_pick: rewindQueryMultipleTty.stdout.includes(
       `${"/rewind"} legacy-a`,
+    ),
+    rewind_query_multiple_tty_includes_assistant_preview: rewindQueryMultipleTty.stdout.includes(
+      "| assistant=",
+    ),
+    rewind_query_multiple_overflow_tty_includes_overflow_line: rewindQueryMultipleOverflowTty.stdout.includes(
+      "... and 1 more",
+    ),
+    rewind_query_multiple_overflow_tty_includes_quick_pick_header: rewindQueryMultipleOverflowTty.stdout.includes(
+      "[rewind] Quick pick:",
+    ),
+    rewind_query_multiple_tty_opened_menu: includesEvent(
+      rewindQueryMultipleTty.events,
+      "openSessionMenu:rewind",
     ),
     rewind_find_query_mode_tty_dispatched: includesEvent(
       rewindFindQueryModeTty.events,
@@ -491,6 +817,22 @@ async function main(): Promise<void> {
       rewindSearchUserTextCompactTty.events,
       "rewindSession:main:legacy-a:both:slash:rewind:query",
     ),
+    rewind_search_checkpoint_id_compact_tty_dispatched: includesEvent(
+      rewindSearchCheckpointIdCompactTty.events,
+      "rewindSession:main:legacy-a:both:slash:rewind:query",
+    ),
+    rewind_search_checkpoint_id_underscore_tty_dispatched: includesEvent(
+      rewindSearchCheckpointIdUnderscoreTty.events,
+      "rewindSession:main:legacy-a:both:slash:rewind:query",
+    ),
+    rewind_search_checkpoint_id_space_tty_dispatched: includesEvent(
+      rewindSearchCheckpointIdSpaceTty.events,
+      "rewindSession:main:legacy-a:both:slash:rewind:query",
+    ),
+    rewind_search_checkpoint_id_quoted_tty_dispatched: includesEvent(
+      rewindSearchCheckpointIdQuotedTty.events,
+      "rewindSession:main:legacy-a:both:slash:rewind:query",
+    ),
     rewind_search_created_at_tty_dispatched: includesEvent(
       rewindSearchCreatedAtTty.events,
       "rewindSession:main:latest:both:slash:rewind:query",
@@ -498,6 +840,28 @@ async function main(): Promise<void> {
     rewind_search_created_at_digits_tty_dispatched: includesEvent(
       rewindSearchCreatedAtDigitsTty.events,
       "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_search_created_at_digits_contains_tty_dispatched: includesEvent(
+      rewindSearchCreatedAtDigitsContainsTty.events,
+      "rewindSession:main:latest:both:slash:rewind:query",
+    ),
+    rewind_search_separator_only_tty_warned: includesEvent(
+      rewindSearchSeparatorOnlyTty.events,
+      "writeStdout",
+    ),
+    rewind_search_separator_only_tty_dispatched: includesEvent(
+      rewindSearchSeparatorOnlyTty.events,
+      "rewindSession",
+    ),
+    rewind_search_separator_only_tty_opened_menu: includesEvent(
+      rewindSearchSeparatorOnlyTty.events,
+      "openSessionMenu:rewind",
+    ),
+    rewind_search_separator_only_tty_no_match_message: rewindSearchSeparatorOnlyTty.stdout.includes(
+      'No checkpoints matching "___"',
+    ),
+    rewind_search_separator_only_tty_no_match_has_tip: rewindSearchSeparatorOnlyTty.stdout.includes(
+      "compact query ignores spaces, \"_\" and \"-\".",
     ),
     rewind_find_mode_keyword_query_warned: includesEvent(
       rewindFindModeKeywordQueryTty.events,
@@ -509,6 +873,13 @@ async function main(): Promise<void> {
     ),
     rewind_find_mode_keyword_query_no_match_message: rewindFindModeKeywordQueryTty.stdout.includes(
       'No checkpoints matching "code"',
+    ),
+    rewind_find_mode_keyword_query_no_match_has_tip: rewindFindModeKeywordQueryTty.stdout.includes(
+      "compact query ignores spaces, \"_\" and \"-\".",
+    ),
+    rewind_find_mode_keyword_query_opened_menu: includesEvent(
+      rewindFindModeKeywordQueryTty.events,
+      "openSessionMenu:rewind",
     ),
     rewind_summarize_tty_dispatched: includesEvent(
       rewindSummarizeTty.events,
@@ -526,16 +897,48 @@ async function main(): Promise<void> {
       checkpointSearchCreatedAtTty.events,
       "rewindSession:main:latest:both:slash:checkpoint:query",
     ),
+    checkpoint_search_checkpoint_id_compact_tty_dispatched: includesEvent(
+      checkpointSearchCheckpointIdCompactTty.events,
+      "rewindSession:main:legacy-a:both:slash:checkpoint:query",
+    ),
+    checkpoint_search_checkpoint_id_underscore_tty_dispatched: includesEvent(
+      checkpointSearchCheckpointIdUnderscoreTty.events,
+      "rewindSession:main:legacy-a:both:slash:checkpoint:query",
+    ),
+    checkpoint_search_checkpoint_id_space_tty_dispatched: includesEvent(
+      checkpointSearchCheckpointIdSpaceTty.events,
+      "rewindSession:main:legacy-a:both:slash:checkpoint:query",
+    ),
+    checkpoint_search_checkpoint_id_quoted_tty_dispatched: includesEvent(
+      checkpointSearchCheckpointIdQuotedTty.events,
+      "rewindSession:main:legacy-a:both:slash:checkpoint:query",
+    ),
     checkpoint_search_created_at_digits_tty_dispatched: includesEvent(
       checkpointSearchCreatedAtDigitsTty.events,
       "rewindSession:main:latest:both:slash:checkpoint:query",
     ),
+    checkpoint_search_created_at_digits_contains_tty_dispatched: includesEvent(
+      checkpointSearchCreatedAtDigitsContainsTty.events,
+      "rewindSession:main:latest:both:slash:checkpoint:query",
+    ),
     checkpoint_find_empty_tty_warned: includesEvent(checkpointFindEmptyTty.events, "writeStdout"),
     checkpoint_find_empty_tty_dispatched: includesEvent(checkpointFindEmptyTty.events, "rewindSession"),
+    checkpoint_find_empty_tty_opened_menu: includesEvent(
+      checkpointFindEmptyTty.events,
+      "openSessionMenu:rewind",
+    ),
     rewind_find_empty_tty_warned: includesEvent(rewindFindEmptyTty.events, "writeStdout"),
     rewind_find_empty_tty_dispatched: includesEvent(rewindFindEmptyTty.events, "rewindSession"),
+    rewind_find_empty_tty_opened_menu: includesEvent(
+      rewindFindEmptyTty.events,
+      "openSessionMenu:rewind",
+    ),
     rewind_mode_only_tty_warned: includesEvent(rewindModeOnlyTty.events, "writeStdout"),
     rewind_mode_only_tty_dispatched: includesEvent(rewindModeOnlyTty.events, "rewindSession"),
+    rewind_mode_only_tty_opened_menu: includesEvent(
+      rewindModeOnlyTty.events,
+      "openSessionMenu:rewind",
+    ),
     rewind_with_args_warned: includesEvent(rewindWithArgs.events, "writeStdout"),
     rewind_with_args_opened_menu: includesEvent(rewindWithArgs.events, "openSessionMenu:rewind"),
     rewind_with_args_hits_run_turn: includesEvent(rewindWithArgs.events, "runTurn:/rewind latest"),
@@ -551,6 +954,8 @@ async function main(): Promise<void> {
       includesEvent(planMenuAlias.events, "openPlanMenu"),
     plan_open_alias_tty_opened_menu:
       includesEvent(planOpenAliasTty.events, "openPlanMenu"),
+    plan_open_alias_tty_opened_editor:
+      includesEvent(planOpenAliasTty.events, "openPlanInEditor"),
     plan_open_alias_tty_enters_plan_directly:
       planOpenAliasTty.events.some((event) => event.startsWith("enterPlan:")),
     plan_open_alias_non_tty_warned:
@@ -584,6 +989,10 @@ async function main(): Promise<void> {
     plan_verify_cn_alias_tty_dispatched: includesEvent(planVerifyCn.events, "verifyPlan:通过 结果稳定"),
     plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
     plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
+    plan_legacy_benchmark_dispatched: includesEvent(
+      planLegacyBenchmark.events,
+      "benchmarkPlan:/plan benchmark strong=/tmp/strong-plan.md",
+    ),
     plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
     plan_legacy_status_tty_dispatched: includesEvent(planLegacyStatusTty.events, "showPlanStatus"),
     plan_legacy_status_tty_opened_menu: includesEvent(planLegacyStatusTty.events, "openPlanMenu"),
@@ -616,14 +1025,12 @@ async function main(): Promise<void> {
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
     ask_dispatched: includesEvent(askCommand.events, "showPendingAskQueue:default"),
     ask_hits_run_turn: includesEvent(askCommand.events, "runTurn:/ask"),
-    ask_subcommand_queue_warned: includesEvent(askSubQueueCommand.events, "writeStdout"),
-    ask_subcommand_queue_dispatched: includesEvent(askSubQueueCommand.events, "showPendingAskQueue:default"),
-    ask_subcommand_menu_warned: includesEvent(askSubMenuCommand.events, "writeStdout"),
-    ask_subcommand_menu_dispatched: includesEvent(askSubMenuCommand.events, "openPendingAskMenu"),
-    ask_subcommand_answer_warned: includesEvent(askSubAnswerCommand.events, "writeStdout"),
-    ask_subcommand_answer_dispatched: includesEvent(askSubAnswerCommand.events, "answerPendingAsk:fast"),
-    ask_alias_cn_warned: includesEvent(askAliasCnCommand.events, "writeStdout"),
-    ask_shortcut_number_warned: includesEvent(askShortcutNumberCommand.events, "writeStdout"),
+    ask_invalid_args_warned: includesEvent(askInvalidArgsCommand.events, "writeStdout"),
+    ask_invalid_args_usage_hint: askInvalidArgsCommand.stdout.includes("usage: /ask"),
+    ask_invalid_args_dispatched: includesEvent(
+      askInvalidArgsCommand.events,
+      "showPendingAskQueue:default",
+    ),
     commands_list_dispatched: includesEvent(commandsList.events, "handleUserCommandsCommand"),
     commands_list_tty_warned: includesEvent(commandsListTty.events, "writeStdout"),
     commands_list_tty_dispatched: includesEvent(commandsListTty.events, "handleUserCommandsCommand"),
@@ -669,6 +1076,8 @@ async function main(): Promise<void> {
     ),
     pending_ask_blocked_status_hint_has_reply_guidance:
       pendingAskBlockedStatus.stdout.includes("请先直接回复"),
+    pending_ask_blocked_status_hint_has_prompt_summary:
+      pendingAskBlockedStatus.stdout.includes("当前问题：question=Need project scope?"),
     pending_ask_help_allowed: includesEvent(pendingAskAllowHelp.events, "showHelp"),
     pending_ask_help_blocked_warned: includesEvent(pendingAskAllowHelp.events, "writeStdout"),
     pending_ask_interrupt_allowed: includesEvent(
@@ -691,9 +1100,13 @@ async function main(): Promise<void> {
       pendingAskAllowAsk.events,
       "showPendingAskQueue:default",
     ),
-    pending_ask_ask_subcommand_warned: includesEvent(
-      pendingAskAllowAskSubcommand.events,
+    pending_ask_ask_invalid_args_warned: includesEvent(
+      pendingAskAllowAskInvalidArgs.events,
       "writeStdout",
+    ),
+    pending_ask_ask_invalid_args_dispatched: includesEvent(
+      pendingAskAllowAskInvalidArgs.events,
+      "showPendingAskQueue:default",
     ),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,
