@@ -841,7 +841,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.openPlanMenu(controls.withInputPaused);
           return "continue";
         }
-        handlers.writeStdout("[plan] /plan menu is interactive-only; showing current status in script mode.\n\n");
+        handlers.writeStdout("[plan] /plan menu|open is interactive-only; showing current status in script mode.\n\n");
         await handlers.showPlanStatus();
         return "continue";
       }
@@ -980,11 +980,17 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
             .slice(0, 5)
             .map((session) =>
               `- ${session.id}${session.active ? " (active)" : ""} | ${session.title}`);
+          const quickPickHints = matches
+            .slice(0, 3)
+            .map((session) => `- /resume ${session.id}`);
           const overflow = matches.length > 5
             ? `\n- ... and ${String(matches.length - 5)} more`
             : "";
+          const quickPickBlock = quickPickHints.length > 0
+            ? `\n[session] Quick pick:\n${quickPickHints.join("\n")}`
+            : "";
           handlers.writeStdout(
-            `[session] Found ${String(matches.length)} sessions matching "${query}".\n${rows.join("\n")}${overflow}\n[session] Use /resume to pick one explicitly.\n\n`,
+            `[session] Found ${String(matches.length)} sessions matching "${query}".\n${rows.join("\n")}${overflow}${quickPickBlock}\n[session] Use /resume to pick one explicitly.\n\n`,
           );
           return "continue";
         }

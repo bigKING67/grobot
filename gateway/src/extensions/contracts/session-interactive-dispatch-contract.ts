@@ -429,6 +429,9 @@ async function main(): Promise<void> {
     resume_find_missing_tty_direct_switch: includesEvent(resumeFindMissingTty.events, "switchSession"),
     resume_find_multiple_tty_warned: includesEvent(resumeFindMultipleTty.events, "writeStdout"),
     resume_find_multiple_tty_direct_switch: includesEvent(resumeFindMultipleTty.events, "switchSession"),
+    resume_find_multiple_tty_includes_quick_pick: resumeFindMultipleTty.stdout.includes(
+      "/resume session-legacy",
+    ),
     resume_find_empty_tty_warned: includesEvent(resumeFindEmptyTty.events, "writeStdout"),
     resume_find_empty_tty_opened_menu: includesEvent(
       resumeFindEmptyTty.events,
