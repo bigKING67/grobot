@@ -1,5 +1,10 @@
 import { SessionStoreRuntime } from "../services/session-store";
-import { SessionInteractiveControls, type SessionMenuMode } from "./session-interactive";
+import {
+  SessionInteractiveControls,
+  type SessionInteractiveRewindCheckpointSummary,
+  type SessionInteractiveRewindMode,
+  type SessionMenuMode,
+} from "./session-interactive";
 import { printRunStartBanner } from "./run-start-banner";
 import { createRunStartInteractiveHandler } from "./run-start-interactive-handler";
 import { resolveInlineAttachmentsFromInput, runSessionInputLoop } from "./run-start-io";
@@ -337,6 +342,18 @@ export interface RunStartInteractiveModeInput {
   getHistoryMessagesCount(): number;
   writeAutoExitHandoffIfNeeded(): void;
   getActiveSessionId(): string;
+  listRewindCheckpoints(
+    sessionId: string,
+    limit?: number,
+  ): SessionInteractiveRewindCheckpointSummary[];
+  rewindSession(input: {
+    sessionId: string;
+    checkpointId?: string;
+    mode: SessionInteractiveRewindMode;
+    fileFilter?: readonly string[];
+    reason?: string;
+    summaryLimit?: number;
+  }): Promise<boolean>;
   getActiveSessionTopic(): string | undefined;
   getModelSnapshot(): RunStartModelSnapshot;
   getStatusLineConfig(): StatusLineConfig;
@@ -533,6 +550,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     openSessionMenu: async (mode, withInputPaused) => {
       await input.openSessionMenu(mode, withInputPaused);
     },
+    getActiveSessionId: input.getActiveSessionId,
+    listRewindCheckpoints: input.listRewindCheckpoints,
+    rewindSession: input.rewindSession,
     listSessionSummaries: input.listSessionSummaries,
     createNewSession: input.createNewSession,
     switchActiveSession: input.switchActiveSession,

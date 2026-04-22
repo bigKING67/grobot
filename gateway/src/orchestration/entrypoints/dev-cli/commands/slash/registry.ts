@@ -3,6 +3,8 @@ import {
   type SessionInteractiveAction,
   type SessionInteractiveControls,
   type SessionInteractiveHandlers,
+  type SessionInteractiveRewindCheckpointSummary,
+  type SessionInteractiveRewindMode,
   type SessionInteractiveSessionSummary,
 } from "../../start/session-interactive";
 import { type SlashCommandExecutionInput, type SlashCommandSpec } from "./types";
@@ -35,7 +37,9 @@ interface ParsedResumeCommand {
 }
 
 interface ParsedRewindCommand {
-  kind: "menu" | "invalid";
+  kind: "menu" | "query" | "summarize" | "invalid";
+  query?: string;
+  mode?: Exclude<SessionInteractiveRewindMode, "summarize">;
   reason?: string;
 }
 
@@ -295,6 +299,59 @@ function resolveResumeQueryMatches(
   return sortResumeQueryMatches(containsMatches);
 }
 
+function normalizeRewindQueryText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function sortRewindQueryMatches(
+  matches: SessionInteractiveRewindCheckpointSummary[],
+): SessionInteractiveRewindCheckpointSummary[] {
+  matches.sort(
+    (
+      left: SessionInteractiveRewindCheckpointSummary,
+      right: SessionInteractiveRewindCheckpointSummary,
+    ) => {
+      const createdDiff = parseUpdatedAtMs(right.createdAt) - parseUpdatedAtMs(left.createdAt);
+      if (createdDiff !== 0) {
+        return createdDiff;
+      }
+      return right.checkpointId.localeCompare(left.checkpointId);
+    },
+  );
+  return matches;
+}
+
+function resolveRewindQueryMatches(
+  queryRaw: string,
+  checkpoints: readonly SessionInteractiveRewindCheckpointSummary[],
+): SessionInteractiveRewindCheckpointSummary[] {
+  const query = normalizeRewindQueryText(queryRaw);
+  if (!query) {
+    return [];
+  }
+  const byExactCheckpointId = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.checkpointId) === query);
+  if (byExactCheckpointId.length > 0) {
+    return sortRewindQueryMatches(byExactCheckpointId);
+  }
+  const byCheckpointIdPrefix = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+    normalizeRewindQueryText(checkpoint.checkpointId).startsWith(query));
+  if (byCheckpointIdPrefix.length > 0) {
+    return sortRewindQueryMatches(byCheckpointIdPrefix);
+  }
+  const containsMatches = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) => {
+    const checkpointId = normalizeRewindQueryText(checkpoint.checkpointId);
+    const createdAt = normalizeRewindQueryText(checkpoint.createdAt);
+    const userText = normalizeRewindQueryText(checkpoint.userText);
+    const assistantText = normalizeRewindQueryText(checkpoint.assistantText);
+    return checkpointId.includes(query)
+      || createdAt.includes(query)
+      || userText.includes(query)
+      || assistantText.includes(query);
+  });
+  return sortRewindQueryMatches(containsMatches);
+}
+
 function parseRewindCommand(
   inputRaw: string,
   command: "/rewind" | "/checkpoint" = "/rewind",
@@ -307,9 +364,62 @@ function parseRewindCommand(
   if (!rest) {
     return { kind: "menu" };
   }
+  if (/^menu$/i.test(rest)) {
+    return { kind: "menu" };
+  }
+  const summarizeMatch = rest.match(/^(summary|summarize)(?:\s+([\s\S]+))?$/i);
+  if (summarizeMatch) {
+    const trailing = (summarizeMatch[2] ?? "").trim();
+    if (trailing.length > 0) {
+      return {
+        kind: "invalid",
+        reason: `usage: ${command} summarize`,
+      };
+    }
+    return { kind: "summarize" };
+  }
+  if (!isInteractiveTerminal()) {
+    return {
+      kind: "invalid",
+      reason: `usage: ${command} | ${command} summarize`,
+    };
+  }
+  const queryMatch = rest.match(/^(?:find|search)\s*([\s\S]*)$/i);
+  const querySource = queryMatch ? (queryMatch[1] ?? "").trim() : rest;
+  if (!querySource) {
+    return {
+      kind: "invalid",
+      reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
+    };
+  }
+  const queryTokens = querySource.split(/\s+/).filter((token) => token.length > 0);
+  let mode: Exclude<SessionInteractiveRewindMode, "summarize"> = "both";
+  let query = querySource;
+  if (queryTokens.length > 1) {
+    const maybeMode = (queryTokens[queryTokens.length - 1] ?? "").toLowerCase();
+    if (maybeMode === "both" || maybeMode === "conversation" || maybeMode === "code") {
+      mode = maybeMode;
+      query = queryTokens.slice(0, -1).join(" ").trim();
+    }
+  } else {
+    const onlyToken = (queryTokens[0] ?? "").toLowerCase();
+    if (onlyToken === "both" || onlyToken === "conversation" || onlyToken === "code") {
+      return {
+        kind: "invalid",
+        reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
+      };
+    }
+  }
+  if (!query) {
+    return {
+      kind: "invalid",
+      reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
+    };
+  }
   return {
-    kind: "invalid",
-    reason: `usage: ${command}`,
+    kind: "query",
+    query,
+    mode,
   };
 }
 
@@ -396,6 +506,76 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
     kind: "invalid",
     reason: "usage: /ask [queue [all|<n>] | menu | cancel | park | next | clear | answer <text>]",
   };
+}
+
+async function executeRewindSlashCommand(
+  input: SlashCommandExecutionInput,
+  command: "/rewind" | "/checkpoint",
+): Promise<SessionInteractiveAction> {
+  const parsed = parseRewindCommand(input.userInput, command);
+  if (parsed.kind === "invalid") {
+    input.handlers.writeStdout(`${parsed.reason ?? `invalid ${command} command`}\n\n`);
+    return "continue";
+  }
+  if (parsed.kind === "menu") {
+    await input.handlers.openSessionMenu("rewind", input.controls.withInputPaused);
+    return "continue";
+  }
+  const activeSessionId = input.handlers.getActiveSessionId?.().trim() ?? "";
+  if (!activeSessionId) {
+    input.handlers.writeStdout(
+      `[rewind] Active session id is unavailable. Use ${command} to open menu.\n\n`,
+    );
+    return "continue";
+  }
+  if (!input.handlers.rewindSession) {
+    input.handlers.writeStdout(
+      `[rewind] quick command path unavailable. Use ${command} to open menu.\n\n`,
+    );
+    return "continue";
+  }
+  if (parsed.kind === "summarize") {
+    await input.handlers.rewindSession({
+      sessionId: activeSessionId,
+      mode: "summarize",
+      reason: `slash:${command.slice(1)}:summarize`,
+    });
+    return "continue";
+  }
+  const query = parsed.query?.trim() ?? "";
+  const checkpoints = input.handlers.listRewindCheckpoints?.(activeSessionId, 64) ?? [];
+  const matches = resolveRewindQueryMatches(query, checkpoints);
+  if (matches.length <= 0) {
+    input.handlers.writeStdout(
+      `[rewind] No checkpoints matching "${query}" in session "${activeSessionId}". Use ${command} to open menu.\n\n`,
+    );
+    return "continue";
+  }
+  if (matches.length > 1) {
+    const rows = matches
+      .slice(0, 5)
+      .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | files=${String(
+          checkpoint.changedFilesCount,
+        )} | user=${checkpoint.userText}`);
+    const overflow = matches.length > 5
+      ? `\n- ... and ${String(matches.length - 5)} more`
+      : "";
+    input.handlers.writeStdout(
+      `[rewind] Found ${String(matches.length)} checkpoints matching "${query}" in session "${activeSessionId}".\n${rows.join(
+        "\n",
+      )}${overflow}\n[rewind] Use ${command} to pick one explicitly.\n\n`,
+    );
+    return "continue";
+  }
+  const target = matches[0];
+  await input.handlers.rewindSession({
+    sessionId: activeSessionId,
+    checkpointId: target.checkpointId,
+    mode: parsed.mode ?? "both",
+    reason: `slash:${command.slice(1)}:query`,
+  });
+  return "continue";
 }
 
 const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
@@ -802,33 +982,17 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "rewind",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/rewind"),
-    execute: async ({ userInput, controls, handlers }) => {
-      const parsed = parseRewindCommand(userInput, "/rewind");
-      if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid rewind command"}\n\n`);
-        return "continue";
-      }
-      await handlers.openSessionMenu("rewind", controls.withInputPaused);
-      return "continue";
-    },
+    execute: async (input) => executeRewindSlashCommand(input, "/rewind"),
     helpLines: [
-      "  /rewind              Open checkpoint rewind menu (conversation/code/both)",
+      "  /rewind [query]      Rewind active session by checkpoint query, or open menu",
     ],
   },
   {
     id: "checkpoint",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/checkpoint"),
-    execute: async ({ userInput, controls, handlers }) => {
-      const parsed = parseRewindCommand(userInput, "/checkpoint");
-      if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid checkpoint command"}\n\n`);
-        return "continue";
-      }
-      await handlers.openSessionMenu("rewind", controls.withInputPaused);
-      return "continue";
-    },
+    execute: async (input) => executeRewindSlashCommand(input, "/checkpoint"),
     helpLines: [
-      "  /checkpoint          Alias of /rewind (open checkpoint rewind menu)",
+      "  /checkpoint [query]  Alias of /rewind (supports query and menu)",
     ],
   },
   {

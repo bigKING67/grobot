@@ -997,6 +997,8 @@ export function createRunStartInteractiveModeInput(
       input.wire.handoff.writeAutoExitHandoffIfNeeded(false);
     },
     getActiveSessionId: input.runtimeState.getActiveSessionId,
+    listRewindCheckpoints: input.wire.sessionOps.listRewindCheckpoints,
+    rewindSession: input.wire.sessionOps.rewindSession,
     getActiveSessionTopic,
     getModelSnapshot,
     getStatusLineConfig,

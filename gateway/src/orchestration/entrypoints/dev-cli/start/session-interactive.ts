@@ -3,6 +3,7 @@ import { buildInteractiveHelpScreen } from "../ui/screens/help-screen";
 
 export type SessionInteractiveAction = "continue" | "break";
 export type SessionMenuMode = "sessions" | "switch" | "continue" | "resume" | "rewind";
+export type SessionInteractiveRewindMode = "both" | "conversation" | "code" | "summarize";
 
 export interface SessionInteractiveSessionSummary {
   id: string;
@@ -10,6 +11,16 @@ export interface SessionInteractiveSessionSummary {
   summary: string;
   updatedAt: string;
   active: boolean;
+}
+
+export interface SessionInteractiveRewindCheckpointSummary {
+  checkpointId: string;
+  createdAt: string;
+  userText: string;
+  assistantText: string;
+  historyBeforeCount: number;
+  historyAfterCount: number;
+  changedFilesCount: number;
 }
 
 export interface SessionInteractiveControls {
@@ -41,6 +52,19 @@ export interface SessionInteractiveHandlers {
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<void>;
   listSessionSummaries?(): SessionInteractiveSessionSummary[];
+  getActiveSessionId?(): string;
+  listRewindCheckpoints?(
+    sessionId: string,
+    limit?: number,
+  ): SessionInteractiveRewindCheckpointSummary[];
+  rewindSession?(input: {
+    sessionId: string;
+    checkpointId?: string;
+    mode: SessionInteractiveRewindMode;
+    fileFilter?: readonly string[];
+    reason?: string;
+    summaryLimit?: number;
+  }): Promise<boolean>;
   createAndSwitchSession(): Promise<void>;
   switchSession(targetSessionId: string): Promise<void>;
   continueFromSession(sourceSessionId: string): Promise<void>;

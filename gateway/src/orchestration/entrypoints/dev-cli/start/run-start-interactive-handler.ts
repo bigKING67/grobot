@@ -2,6 +2,8 @@ import {
   dispatchSessionInteractiveInput,
   type SessionInteractiveAction,
   type SessionInteractiveControls,
+  type SessionInteractiveRewindCheckpointSummary,
+  type SessionInteractiveRewindMode,
   type SessionMenuMode,
 } from "./session-interactive";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
@@ -39,6 +41,19 @@ interface CreateRunStartInteractiveHandlerInput {
     updatedAt: string;
     active: boolean;
   }>;
+  getActiveSessionId?(): string;
+  listRewindCheckpoints?(
+    sessionId: string,
+    limit?: number,
+  ): SessionInteractiveRewindCheckpointSummary[];
+  rewindSession?(input: {
+    sessionId: string;
+    checkpointId?: string;
+    mode: SessionInteractiveRewindMode;
+    fileFilter?: readonly string[];
+    reason?: string;
+    summaryLimit?: number;
+  }): Promise<boolean>;
   createNewSession(): Promise<string>;
   switchActiveSession(targetSessionId: string, reason: string): Promise<boolean>;
   continueFromSession(sourceSessionId: string): Promise<void>;
@@ -114,6 +129,15 @@ export function createRunStartInteractiveHandler(
         await input.openSessionMenu(mode, withInputPaused);
       },
       listSessionSummaries: () => input.listSessionSummaries?.() ?? [],
+      getActiveSessionId: () => input.getActiveSessionId?.() ?? "",
+      listRewindCheckpoints: (sessionId, limit) =>
+        input.listRewindCheckpoints?.(sessionId, limit) ?? [],
+      rewindSession: async (rewindInput) => {
+        if (!input.rewindSession) {
+          return false;
+        }
+        return input.rewindSession(rewindInput);
+      },
       createAndSwitchSession: async () => {
         const nextId = await input.createNewSession();
         await input.switchActiveSession(nextId, "new");
