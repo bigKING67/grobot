@@ -259,17 +259,17 @@ function resolveResumeQueryMatches(
   const byId = sessions.filter((session: SessionInteractiveSessionSummary) =>
     normalizeResumeQueryText(session.id) === query);
   if (byId.length > 0) {
-    return byId;
+    return sortResumeQueryMatches(byId);
   }
   const byExactTitle = sessions.filter((session: SessionInteractiveSessionSummary) =>
     normalizeResumeQueryText(session.title) === query);
   if (byExactTitle.length > 0) {
-    return byExactTitle;
+    return sortResumeQueryMatches(byExactTitle);
   }
   const byExactSummary = sessions.filter((session: SessionInteractiveSessionSummary) =>
     normalizeResumeQueryText(session.summary) === query);
   if (byExactSummary.length > 0) {
-    return byExactSummary;
+    return sortResumeQueryMatches(byExactSummary);
   }
   const byIdPrefix = sessions.filter((session: SessionInteractiveSessionSummary) =>
     normalizeResumeQueryText(session.id).startsWith(query));
