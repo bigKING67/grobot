@@ -34,6 +34,10 @@ function formatSessionMenuDescription(input: {
   if (input.active) {
     if (input.mode === "continue") {
       parts.push("current session (selecting will skip)");
+    } else if (input.mode === "resume") {
+      parts.push("current session (already resumed)");
+    } else if (input.mode === "rewind") {
+      parts.push("current session");
     } else {
       parts.push("current session");
     }
@@ -49,6 +53,12 @@ function resolveSessionMenuTitle(mode: SessionMenuMode): string {
   if (mode === "continue") {
     return "Continue From Session";
   }
+  if (mode === "resume") {
+    return "Resume Session";
+  }
+  if (mode === "rewind") {
+    return "Rewind Session";
+  }
   if (mode === "sessions") {
     return "Session Manager";
   }
@@ -58,6 +68,12 @@ function resolveSessionMenuTitle(mode: SessionMenuMode): string {
 function resolveSessionMenuHint(mode: SessionMenuMode): string {
   if (mode === "continue") {
     return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to inject summary bridge, Esc to cancel.";
+  }
+  if (mode === "resume") {
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to restore selected session, Esc to cancel.";
+  }
+  if (mode === "rewind") {
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to choose rewind target session, Esc to cancel.";
   }
   if (mode === "sessions") {
     return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch/create, Esc to cancel.";
@@ -70,7 +86,7 @@ function buildSessionMenuItems(input: {
   sessions: ReadonlyArray<RunStartSessionSummary>;
 }): TerminalSelectMenuItem[] {
   const items: TerminalSelectMenuItem[] = [];
-  if (input.mode !== "continue") {
+  if (input.mode === "sessions" || input.mode === "switch") {
     items.push({
       id: SESSION_MENU_NEW_ID,
       label: "+ Create and switch to new session",

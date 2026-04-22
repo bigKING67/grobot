@@ -22,6 +22,12 @@ interface ParsedStatusCommand {
 
 interface ParsedSessionMenuCommand {
   kind: "menu" | "legacy_with_id" | "invalid";
+  sessionId?: string;
+  reason?: string;
+}
+
+interface ParsedRewindCommand {
+  kind: "menu" | "invalid";
   reason?: string;
 }
 
@@ -38,7 +44,7 @@ interface ParsedHistoryCommand {
 }
 
 interface ParsedAskCommand {
-  kind: "show_queue" | "cancel_current" | "park_current" | "clear_all" | "answer_current" | "invalid";
+  kind: "show_queue" | "open_menu" | "cancel_current" | "park_current" | "clear_all" | "answer_current" | "invalid";
   answer?: string;
   queueLimit?: number;
   reason?: string;
@@ -145,7 +151,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
 
 function parseSessionMenuCommand(
   inputRaw: string,
-  command: "/switch" | "/continue",
+  command: "/switch" | "/continue" | "/resume",
 ): ParsedSessionMenuCommand {
   const input = inputRaw.trim();
   if (!input.startsWith(command)) {
@@ -161,9 +167,26 @@ function parseSessionMenuCommand(
       reason: `[session] ${command} <id> 已移除，请仅使用 ${command} 打开菜单后再选择目标会话。`,
     };
   }
+  const sessionId = rest.split(/\s+/, 1)[0] ?? "";
   return {
     kind: "legacy_with_id",
+    sessionId: sessionId.trim(),
     reason: `[session] ${command} <id> 已废弃；非交互场景保留兼容，建议改用 ${command} 菜单。`,
+  };
+}
+
+function parseRewindCommand(inputRaw: string): ParsedRewindCommand {
+  const input = inputRaw.trim();
+  if (!input.startsWith("/rewind")) {
+    return { kind: "invalid", reason: "command must start with /rewind" };
+  }
+  const rest = input.slice("/rewind".length).trim();
+  if (!rest) {
+    return { kind: "menu" };
+  }
+  return {
+    kind: "invalid",
+    reason: "usage: /rewind",
   };
 }
 
@@ -221,10 +244,13 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
         return { kind: "show_queue", queueLimit: parsed };
       }
     }
-    return { kind: "invalid", reason: "usage: /ask [queue [all|<n>] | cancel | park | next | clear | answer <text>]" };
+    return { kind: "invalid", reason: "usage: /ask [queue [all|<n>] | menu | cancel | park | next | clear | answer <text>]" };
   }
   if (/^all$/i.test(restRaw)) {
     return { kind: "show_queue", queueLimit: -1 };
+  }
+  if (/^menu$/i.test(restRaw)) {
+    return { kind: "open_menu" };
   }
   if (/^cancel$/i.test(restRaw)) {
     return { kind: "cancel_current" };
@@ -245,7 +271,7 @@ function parseAskCommand(inputRaw: string): ParsedAskCommand {
   }
   return {
     kind: "invalid",
-    reason: "usage: /ask [queue [all|<n>] | cancel | park | next | clear | answer <text>]",
+    reason: "usage: /ask [queue [all|<n>] | menu | cancel | park | next | clear | answer <text>]",
   };
 }
 
@@ -281,7 +307,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /sessions            Open session actions menu (create/switch/continue)",
+      "  /sessions            Open session actions menu (create/switch/resume/rewind/continue)",
     ],
   },
   {
@@ -459,7 +485,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   {
     id: "ask",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/ask"),
-    execute: async ({ userInput, handlers }) => {
+    execute: async ({ userInput, controls, handlers }) => {
       const parsed = parseAskCommand(userInput);
       if (parsed.kind === "invalid") {
         handlers.writeStdout(`${parsed.reason ?? "invalid ask command"}\n\n`);
@@ -467,6 +493,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       if (parsed.kind === "cancel_current") {
         handlers.cancelPendingAsk();
+        return "continue";
+      }
+      if (parsed.kind === "open_menu") {
+        await handlers.openPendingAskMenu(controls.withInputPaused);
         return "continue";
       }
       if (parsed.kind === "park_current") {
@@ -485,7 +515,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /ask [queue [all|<n>]|cancel|park|next|clear|answer <text>]  Show queue (default top5), cancel/park current, clear all, or answer current question",
+      "  /ask [queue [all|<n>]|menu|cancel|park|next|clear|answer <text>]  Show queue/menu, cancel/park current, clear all, or answer current question",
     ],
   },
   {
@@ -586,6 +616,50 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     ],
   },
   {
+    id: "resume",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/resume"),
+    execute: async ({ userInput, controls, handlers }) => {
+      const parsed = parseSessionMenuCommand(userInput, "/resume");
+      if (parsed.kind === "invalid") {
+        if (isInteractiveTerminal()) {
+          handlers.writeStdout(`${parsed.reason ?? "invalid resume command"}\n\n`);
+          await handlers.openSessionMenu("resume", controls.withInputPaused);
+          return "continue";
+        }
+        handlers.writeStdout(`${parsed.reason ?? "invalid resume command"}\n\n`);
+        return "continue";
+      }
+      if (parsed.kind === "legacy_with_id") {
+        handlers.writeStdout(`${parsed.reason}\n\n`);
+        if (parsed.sessionId && parsed.sessionId.length > 0) {
+          await handlers.switchSession(parsed.sessionId);
+          return "continue";
+        }
+      }
+      await handlers.openSessionMenu("resume", controls.withInputPaused);
+      return "continue";
+    },
+    helpLines: [
+      "  /resume              Open full-restore picker for previous sessions",
+    ],
+  },
+  {
+    id: "rewind",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/rewind"),
+    execute: async ({ userInput, controls, handlers }) => {
+      const parsed = parseRewindCommand(userInput);
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason ?? "invalid rewind command"}\n\n`);
+        return "continue";
+      }
+      await handlers.openSessionMenu("rewind", controls.withInputPaused);
+      return "continue";
+    },
+    helpLines: [
+      "  /rewind              Open checkpoint rewind menu (conversation/code/both)",
+    ],
+  },
+  {
     id: "continue",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/continue"),
     execute: async ({ userInput, controls, handlers }) => {
@@ -625,6 +699,8 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 
 const HELP_ORDER: readonly string[] = [
   "sessions",
+  "resume",
+  "rewind",
   "commands",
   "skill-creator",
   "history",
@@ -643,6 +719,8 @@ const HELP_ORDER: readonly string[] = [
 
 const PRIMARY_HELP_ORDER: readonly string[] = [
   "sessions",
+  "resume",
+  "rewind",
   "commands",
   "skill-creator",
   "history",
@@ -663,11 +741,13 @@ const UTILITY_HELP_ORDER: readonly string[] = [
 ];
 
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
-  { command: "/sessions", description: "Open session menu (create/switch/continue)" },
+  { command: "/sessions", description: "Open session menu (create/switch/resume/rewind/continue)" },
+  { command: "/resume", description: "Resume and fully restore a previous session" },
+  { command: "/rewind", description: "Open checkpoint rewind menu for active or selected session" },
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask [queue [all|<n>]|cancel|park|next|clear|answer <text>]", description: "Show queue (top5/all/n), cancel/park current, clear all, or answer current" },
+  { command: "/ask [queue [all|<n>]|menu|cancel|park|next|clear|answer <text>]", description: "Show queue/menu, cancel/park current, clear all, or answer current" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
@@ -683,6 +763,8 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
 const PRIMARY_HINT_COMMANDS: readonly string[] = [
   "/help",
   "/sessions",
+  "/resume",
+  "/rewind",
   "/commands",
   "/skill-creator",
   "/history",
@@ -700,6 +782,8 @@ const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {
   history: "/history",
   new: "/new",
   switch: "/switch",
+  resume: "/resume",
+  rewind: "/rewind",
   continue: "/continue",
 };
 
@@ -733,8 +817,9 @@ export function listUtilitySlashCommandHelpLines(): string[] {
 
 export function listSlashCommandCompatibilityNotes(): string[] {
   return [
-    "  - /new /switch /continue are legacy session shortcuts.",
-    "  - In interactive mode they redirect to /sessions.",
+    "  - /switch /continue remain legacy session shortcuts.",
+    "  - Prefer /resume for full restore and /rewind for checkpoint rollback.",
+    "  - In interactive mode /new /switch /continue redirect to /sessions.",
     "  - /status subcommands are legacy shortcuts in interactive mode.",
     "  - In interactive mode they redirect to /status menu.",
     "  - In non-interactive scripts they remain compatible.",

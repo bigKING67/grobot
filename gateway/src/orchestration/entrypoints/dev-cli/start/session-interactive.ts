@@ -2,7 +2,7 @@ import { dispatchSlashCommand } from "../commands/slash/registry";
 import { buildInteractiveHelpScreen } from "../ui/screens/help-screen";
 
 export type SessionInteractiveAction = "continue" | "break";
-export type SessionMenuMode = "sessions" | "switch" | "continue";
+export type SessionMenuMode = "sessions" | "switch" | "continue" | "resume" | "rewind";
 
 export interface SessionInteractiveControls {
   withInputPaused<T>(operation: () => Promise<T>): Promise<T>;
@@ -13,6 +13,9 @@ export interface SessionInteractiveHandlers {
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
   showPendingAskQueue(limit?: number): void;
+  openPendingAskMenu(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
   cancelPendingAsk(): void;
   parkPendingAsk(): void;
   clearPendingAsk(): void;
@@ -62,6 +65,8 @@ const PENDING_ASK_ALLOWED_SLASH_COMMANDS = new Set([
   "ask",
   "help",
   "sessions",
+  "resume",
+  "rewind",
   "exit",
   "quit",
   "interrupt",
@@ -100,7 +105,7 @@ export async function dispatchSessionInteractiveInput(
   if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
     const queueSize = handlers.getPendingAskQueueSize();
     handlers.writeStdout(
-      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask 查看队列、/ask cancel 取消当前问题、/ask park(/ask next) 暂缓当前问题、/ask clear 清空队列（如需切会话可用 /sessions）。\n\n`,
+      `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复答案，或使用 /ask menu 打开操作菜单、/ask 查看队列、/ask cancel 取消当前问题、/ask park(/ask next) 暂缓当前问题、/ask clear 清空队列（如需切会话可用 /sessions）。\n\n`,
     );
     return "continue";
   }

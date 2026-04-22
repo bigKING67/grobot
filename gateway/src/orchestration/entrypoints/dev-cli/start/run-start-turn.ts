@@ -93,6 +93,11 @@ export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
   attachments?: RuntimeAttachment[];
   writeStderr?: (message: string) => void;
+  onTurnRecorded?(input: {
+    userText: string;
+    assistantText: string;
+    historyAfter: ChatHistoryMessage[];
+  }): Promise<void> | void;
 }
 
 export interface RunStartTurnPromptBudgetSnapshot {
@@ -1672,6 +1677,11 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
     assistantText: string,
     stickyProvider: string | undefined,
     providerRuntimeStates: readonly SessionProviderRuntimeState[],
+    onTurnRecorded?: (input: {
+      userText: string;
+      assistantText: string;
+      historyAfter: ChatHistoryMessage[];
+    }) => Promise<void> | void,
   ): Promise<void> => {
     const historyMessages = baseInput.getHistoryMessages();
     const nextHistory = [
@@ -1685,6 +1695,13 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
     }
     baseInput.setHistoryMessages(trimmed);
     await baseInput.persistHistoryState();
+    if (onTurnRecorded) {
+      await onTurnRecorded({
+        userText,
+        assistantText,
+        historyAfter: [...trimmed],
+      });
+    }
     const gaState = baseInput.gaMechanismRuntime.snapshotSession(baseInput.getSessionKey());
     baseInput.setGaState(gaState);
     baseInput.updateActiveSessionProviderRuntime(stickyProvider, providerRuntimeStates);
@@ -1694,28 +1711,28 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
   };
 
   return async (
-      userText: string,
-      interactiveMode: boolean,
-      options?: RunStartTurnExecuteOptions,
+    userText: string,
+    interactiveMode: boolean,
+    options?: RunStartTurnExecuteOptions,
   ): Promise<number> => {
-      const input = typeof options?.writeStderr === "function"
-        ? { ...baseInput, writeStderr: options.writeStderr }
-        : baseInput;
-      const turnSignal = options?.signal;
-      const runtimeAttachments = options?.attachments;
-      throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
-      const sessionKey = input.getSessionKey();
-      input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
-      const parsedSession = parseSessionKeyPartsLoose(sessionKey);
-      if (!parsedSession) {
-        const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
-        input.setGaState(gaState);
-        input.updateActiveSessionGaState(gaState);
-        await input.persistSessionRegistryState();
-        input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
-        return 1;
-      }
-      const [sessionPlatformRaw, sessionTenant, sessionScopeRaw, sessionSubject] = parsedSession;
+    const input = typeof options?.writeStderr === "function"
+      ? { ...baseInput, writeStderr: options.writeStderr }
+      : baseInput;
+    const turnSignal = options?.signal;
+    const runtimeAttachments = options?.attachments;
+    throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
+    const sessionKey = input.getSessionKey();
+    input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
+    const parsedSession = parseSessionKeyPartsLoose(sessionKey);
+    if (!parsedSession) {
+      const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+      input.setGaState(gaState);
+      input.updateActiveSessionGaState(gaState);
+      await input.persistSessionRegistryState();
+      input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
+      return 1;
+    }
+    const [sessionPlatformRaw, sessionTenant, sessionScopeRaw, sessionSubject] = parsedSession;
       if (consumeInterruptFlag(input.interruptStorePath, sessionKey)) {
         input.writeStdout(renderManagementInterruptNotice(interactiveMode));
         return 0;
@@ -2687,7 +2704,13 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             input.writeStderr(event);
           }
         }
-          await recordTurn(userText, assistantTextForHistory, stickyProvider, providerStates);
+          await recordTurn(
+            userText,
+            assistantTextForHistory,
+            stickyProvider,
+            providerStates,
+            options?.onTurnRecorded,
+          );
           input.writeStdout(turnStdout);
           if (askUserEvent.length > 0) {
             input.writeStderr(askUserEvent);

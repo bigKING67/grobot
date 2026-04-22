@@ -46,6 +46,12 @@ async function main(): Promise<void> {
     userInput: "/",
     maxItems: 80,
   });
+  const pendingAskTopLevel = listRunStartSlashSuggestions({
+    homeDir,
+    userInput: "/",
+    pendingAskCount: 2,
+    maxItems: 80,
+  });
   const modelOnly = listRunStartSlashSuggestions({
     homeDir,
     userInput: "/model ",
@@ -70,9 +76,12 @@ async function main(): Promise<void> {
   const payload = {
     root_has_builtin_model: topLevel.some((item) => item.command === "/model" && item.source === "builtin"),
     root_has_builtin_commands: topLevel.some((item) => item.command === "/commands" && item.source === "builtin"),
+    root_has_builtin_resume: topLevel.some((item) => item.command === "/resume" && item.source === "builtin"),
+    root_has_builtin_rewind: topLevel.some((item) => item.command === "/rewind" && item.source === "builtin"),
     root_has_builtin_skill_creator: topLevel.some(
       (item) => item.command === "/skill-creator" && item.source === "builtin",
     ),
+    root_has_builtin_ask: topLevel.some((item) => item.command.startsWith("/ask") && item.source === "builtin"),
     root_hides_status_subcommands: !topLevel.some((item) => item.command.startsWith("/status ")),
     root_hides_switch_continue_shortcuts: !topLevel.some((item) =>
       item.command === "/switch" || item.command === "/continue"),
@@ -86,6 +95,10 @@ async function main(): Promise<void> {
     root_disabled_marked: topLevel.some(
       (item) => item.command === "/pause_release" && item.description.includes("disabled"),
     ),
+    pending_root_ask_menu_first: pendingAskTopLevel[0]?.command === "/ask menu",
+    pending_root_has_ask_answer: pendingAskTopLevel.some((item) => item.command === "/ask answer <text>"),
+    pending_root_has_ask_cancel: pendingAskTopLevel.some((item) => item.command === "/ask cancel"),
+    pending_root_has_ask_park: pendingAskTopLevel.some((item) => item.command === "/ask park"),
     model_filter_only_model_related: modelOnly.every((item) => item.command.startsWith("/model")),
     skill_creator_filter_only_skill_creator: skillCreatorOnly.every((item) =>
       item.command.startsWith("/skill-creator")),

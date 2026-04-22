@@ -27,6 +27,8 @@ export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
 
 const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
   "/sessions",
+  "/resume",
+  "/rewind",
   "/ask",
   "/help",
   "/interrupt",
@@ -165,6 +167,56 @@ function formatTurnElapsedCompact(elapsedMs: number): string {
   return `${String(seconds)}s`;
 }
 
+function compactSummaryText(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+type ProcessFailureCategory = "runtime" | "context" | "ask-user" | "interrupt";
+type ProcessSummaryDetail = "compact" | "full";
+
+interface ProcessActivitySnapshot {
+  stageId: string;
+  text: string;
+}
+
+function resolveProcessFailureCategory(input: {
+  result: "ok" | "error" | "interrupted";
+  activitySnapshot?: ProcessActivitySnapshot;
+}): ProcessFailureCategory | undefined {
+  if (input.result === "ok") {
+    return undefined;
+  }
+  const stageId = input.activitySnapshot?.stageId ?? "";
+  if (stageId.startsWith("ask_user")) {
+    return "ask-user";
+  }
+  if (stageId.startsWith("context_")) {
+    return "context";
+  }
+  if (input.result === "interrupted" || stageId === "interrupt") {
+    return "interrupt";
+  }
+  return "runtime";
+}
+
+function resolveProcessResultCode(result: "ok" | "error" | "interrupted"): "ok" | "err" | "int" {
+  if (result === "error") {
+    return "err";
+  }
+  if (result === "interrupted") {
+    return "int";
+  }
+  return "ok";
+}
+
+function resolveProcessSummaryDetail(): ProcessSummaryDetail {
+  const raw = process.env.GROBOT_PROCESS_SUMMARY_DETAIL?.trim().toLowerCase();
+  if (raw === "full") {
+    return "full";
+  }
+  return "compact";
+}
+
 function resolveInteractiveDiagnosticsMode(input: {
   interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
   interactiveDiagnosticsEnabled?: boolean;
@@ -219,6 +271,9 @@ export interface RunStartInteractiveModeInput {
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
   showPendingAskQueue(limit?: number): void;
+  openPendingAskMenu(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
   cancelPendingAsk(): void;
   parkPendingAsk(): void;
   clearPendingAsk(): void;
@@ -354,6 +409,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   });
   const traceDiagnosticsEnabled = interactiveDiagnosticsMode === "trace";
   const progressDiagnosticsEnabled = interactiveDiagnosticsMode === "verbose";
+  const processSummaryDetail = resolveProcessSummaryDetail();
   const suppressDiagnosticStderr = !traceDiagnosticsEnabled;
   const inlineProgressSupported = Boolean((process.stdout as { isTTY?: boolean }).isTTY)
     && progressDiagnosticsEnabled
@@ -383,6 +439,40 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     process.stdout.write(`\r\x1b[2K${rendered}`);
     inlineProgressActive = true;
     inlineProgressText = rendered;
+  };
+  const writeTurnSummaryLine = (inputSummary: {
+    result: "ok" | "error" | "interrupted";
+    elapsedMs: number;
+    exitCode?: number | "<exception>";
+    activitySnapshot?: ProcessActivitySnapshot;
+  }): void => {
+    if (!progressDiagnosticsEnabled || traceDiagnosticsEnabled) {
+      return;
+    }
+    const durationText = formatTurnElapsedCompact(inputSummary.elapsedMs);
+    const failureCategory = resolveProcessFailureCategory({
+      result: inputSummary.result,
+      activitySnapshot: inputSummary.activitySnapshot,
+    });
+    const parts = [
+      "[process-summary]",
+      resolveProcessResultCode(inputSummary.result),
+      durationText,
+    ];
+    if (failureCategory) {
+      parts.push(`t=${failureCategory}`);
+    }
+    if (typeof inputSummary.exitCode === "number" || inputSummary.exitCode === "<exception>") {
+      parts.push(`x=${String(inputSummary.exitCode)}`);
+    }
+    const shouldShowStage = processSummaryDetail === "full"
+      || inputSummary.result !== "ok"
+      || inputSummary.elapsedMs >= 5_000;
+    if (inputSummary.activitySnapshot && shouldShowStage) {
+      parts.push(`s="${compactSummaryText(inputSummary.activitySnapshot.text).replace(/"/g, "'")}"`);
+    }
+    clearInlineProgress(false);
+    process.stdout.write(`${parts.join(" ")}\n`);
   };
   const activityTracker = createInteractiveActivityTracker(
     progressDiagnosticsEnabled
@@ -423,6 +513,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showPendingAskQueue: (limit) => {
       input.showPendingAskQueue(limit);
     },
+    openPendingAskMenu: input.openPendingAskMenu,
     cancelPendingAsk: input.cancelPendingAsk,
     parkPendingAsk: input.parkPendingAsk,
     clearPendingAsk: input.clearPendingAsk,
@@ -503,6 +594,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           }
         }
         if (interactiveMode) {
+          const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
+          const activitySnapshot = activityTracker.readPromptActivitySnapshot();
           activityTracker.markTurnFinished(
             code === TURN_INTERRUPTED_EXIT_CODE
               ? "interrupted"
@@ -510,6 +603,21 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
                 ? "ok"
                 : "error",
           );
+          writeTurnSummaryLine({
+            result: code === TURN_INTERRUPTED_EXIT_CODE
+              ? "interrupted"
+              : code === 0
+                ? "ok"
+                : "error",
+            elapsedMs,
+            exitCode: code === 0 || code === TURN_INTERRUPTED_EXIT_CODE ? undefined : code,
+            activitySnapshot: activitySnapshot
+              ? {
+                stageId: activitySnapshot.stageId,
+                text: activitySnapshot.text,
+              }
+              : undefined,
+          });
           writeInteractiveTrace(
             `event=turn_finish mode=${interactiveDiagnosticsMode} result=${
               code === TURN_INTERRUPTED_EXIT_CODE
@@ -517,9 +625,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
                 : code === 0
                   ? "ok"
                   : "error"
-            } exit_code=${String(code)} duration_ms=${String(
-              Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now())),
-            )}`,
+            } exit_code=${String(code)} duration_ms=${String(elapsedMs)}`,
           );
           activeTurnStartedAtMs = undefined;
         }
@@ -533,10 +639,23 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           }
         }
         if (interactiveMode) {
+          const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
+          const activitySnapshot = activityTracker.readPromptActivitySnapshot();
           activityTracker.markTurnFinished("error");
+          writeTurnSummaryLine({
+            result: "error",
+            elapsedMs,
+            exitCode: "<exception>",
+            activitySnapshot: activitySnapshot
+              ? {
+                stageId: activitySnapshot.stageId,
+                text: activitySnapshot.text,
+              }
+              : undefined,
+          });
           writeInteractiveTrace(
             `event=turn_finish mode=${interactiveDiagnosticsMode} result=error exit_code=<exception> duration_ms=${String(
-              Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now())),
+              elapsedMs,
             )}`,
           );
           activeTurnStartedAtMs = undefined;
@@ -567,7 +686,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       const activityText = activityTracker.readPromptActivity();
       if (typeof activeTurnStartedAtMs !== "number") {
         if (pendingAskCount > 0) {
-          return `待确认 ${String(pendingAskCount)} 项（/ask）`;
+          return `待确认 ${String(pendingAskCount)} 项（/ask menu）`;
         }
         return activityText;
       }
@@ -608,12 +727,14 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     });
   };
   const getSlashSuggestions = (lineInput: string) => {
+    const pendingAskCount = input.getPendingAskQueueSize();
     const suggestions = listRunStartSlashSuggestions({
       homeDir: input.homeDir,
       userInput: lineInput,
+      pendingAskCount,
       maxItems: 8,
     });
-    if (!input.hasPendingAsk()) {
+    if (pendingAskCount <= 0) {
       return suggestions;
     }
     return suggestions.filter((item) => {

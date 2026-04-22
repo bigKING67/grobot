@@ -44,6 +44,9 @@ async function runDispatchCase(
     showPendingAskQueue: (limit) => {
       events.push(`showPendingAskQueue:${typeof limit === "number" ? String(limit) : "default"}`);
     },
+    openPendingAskMenu: async () => {
+      events.push("openPendingAskMenu");
+    },
     cancelPendingAsk: () => {
       events.push("cancelPendingAsk");
     },
@@ -161,14 +164,21 @@ function includesEvent(events: readonly string[], target: string): boolean {
 async function main(): Promise<void> {
   const switchPrefixMiss = await runDispatchCase("/switcher");
   const continuePrefixMiss = await runDispatchCase("/continue-next");
+  const resumePrefixMiss = await runDispatchCase("/resumable");
+  const rewindPrefixMiss = await runDispatchCase("/rewinder");
   const modelPrefixMiss = await runDispatchCase("/models");
   const planPrefixMiss = await runDispatchCase("/planner");
   const switchMenu = await runDispatchCase("/switch");
   const continueMenu = await runDispatchCase("/continue");
+  const resumeMenu = await runDispatchCase("/resume");
+  const rewindMenu = await runDispatchCase("/rewind");
   const switchLegacyWithId = await runDispatchCase("/switch session-legacy", { stdinIsTty: false });
   const switchLegacyWithIdTty = await runDispatchCase("/switch session-legacy", { stdinIsTty: true });
   const continueLegacyWithId = await runDispatchCase("/continue session-legacy", { stdinIsTty: false });
   const continueLegacyWithIdTty = await runDispatchCase("/continue session-legacy", { stdinIsTty: true });
+  const resumeLegacyWithId = await runDispatchCase("/resume session-legacy", { stdinIsTty: false });
+  const resumeLegacyWithIdTty = await runDispatchCase("/resume session-legacy", { stdinIsTty: true });
+  const rewindWithArgs = await runDispatchCase("/rewind latest");
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
   const planMenu = await runDispatchCase("/plan", { stdinIsTty: true });
@@ -194,6 +204,7 @@ async function main(): Promise<void> {
   const askQueueCommand = await runDispatchCase("/ask");
   const askQueueAllCommand = await runDispatchCase("/ask queue all");
   const askQueueTop3Command = await runDispatchCase("/ask queue 3");
+  const askMenuCommand = await runDispatchCase("/ask menu");
   const askCancelCommand = await runDispatchCase("/ask cancel");
   const askParkCommand = await runDispatchCase("/ask park");
   const askNextCommand = await runDispatchCase("/ask next");
@@ -212,8 +223,11 @@ async function main(): Promise<void> {
   const pendingAskAllowHelp = await runDispatchCase("/help", { pendingAskCount: 2 });
   const pendingAskAllowInterrupt = await runDispatchCase("/interrupt", { pendingAskCount: 2 });
   const pendingAskAllowSessions = await runDispatchCase("/sessions", { pendingAskCount: 2 });
+  const pendingAskAllowResume = await runDispatchCase("/resume", { pendingAskCount: 2 });
+  const pendingAskAllowRewind = await runDispatchCase("/rewind", { pendingAskCount: 2 });
   const pendingAskAllowAskQueue = await runDispatchCase("/ask", { pendingAskCount: 2 });
   const pendingAskAllowAskQueueAll = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
+  const pendingAskAllowAskMenu = await runDispatchCase("/ask menu", { pendingAskCount: 2 });
   const pendingAskAllowAskCancel = await runDispatchCase("/ask cancel", { pendingAskCount: 2 });
   const pendingAskAllowAskPark = await runDispatchCase("/ask park", { pendingAskCount: 2 });
   const pendingAskAllowAskClear = await runDispatchCase("/ask clear", { pendingAskCount: 2 });
@@ -225,6 +239,10 @@ async function main(): Promise<void> {
     switch_prefix_miss_opened_menu: includesEvent(switchPrefixMiss.events, "openSessionMenu:switch"),
     continue_prefix_miss_hits_run_turn: includesEvent(continuePrefixMiss.events, "runTurn:/continue-next"),
     continue_prefix_miss_opened_menu: includesEvent(continuePrefixMiss.events, "openSessionMenu:continue"),
+    resume_prefix_miss_hits_run_turn: includesEvent(resumePrefixMiss.events, "runTurn:/resumable"),
+    resume_prefix_miss_opened_menu: includesEvent(resumePrefixMiss.events, "openSessionMenu:resume"),
+    rewind_prefix_miss_hits_run_turn: includesEvent(rewindPrefixMiss.events, "runTurn:/rewinder"),
+    rewind_prefix_miss_opened_menu: includesEvent(rewindPrefixMiss.events, "openSessionMenu:rewind"),
     model_prefix_miss_hits_run_turn: includesEvent(modelPrefixMiss.events, "runTurn:/models"),
     model_prefix_miss_opened_menu: includesEvent(modelPrefixMiss.events, "openModelMenu"),
     plan_prefix_miss_hits_run_turn: includesEvent(planPrefixMiss.events, "runTurn:/planner"),
@@ -232,6 +250,8 @@ async function main(): Promise<void> {
       planPrefixMiss.events.some((event) => event.startsWith("enterPlan:")),
     switch_menu_opened: includesEvent(switchMenu.events, "openSessionMenu:switch"),
     continue_menu_opened: includesEvent(continueMenu.events, "openSessionMenu:continue"),
+    resume_menu_opened: includesEvent(resumeMenu.events, "openSessionMenu:resume"),
+    rewind_menu_opened: includesEvent(rewindMenu.events, "openSessionMenu:rewind"),
     switch_legacy_with_id_warned: includesEvent(switchLegacyWithId.events, "writeStdout"),
     switch_legacy_with_id_opened_menu: includesEvent(switchLegacyWithId.events, "openSessionMenu:switch"),
     switch_legacy_with_id_skips_direct_switch: !includesEvent(switchLegacyWithId.events, "switchSession"),
@@ -248,6 +268,17 @@ async function main(): Promise<void> {
       continueLegacyWithIdTty.events,
       "openSessionMenu:sessions",
     ),
+    resume_legacy_with_id_warned: includesEvent(resumeLegacyWithId.events, "writeStdout"),
+    resume_legacy_with_id_direct_switch: includesEvent(resumeLegacyWithId.events, "switchSession"),
+    resume_legacy_with_id_opened_menu: includesEvent(resumeLegacyWithId.events, "openSessionMenu:resume"),
+    resume_legacy_with_id_tty_warned: includesEvent(resumeLegacyWithIdTty.events, "writeStdout"),
+    resume_legacy_with_id_tty_opened_resume_menu: includesEvent(
+      resumeLegacyWithIdTty.events,
+      "openSessionMenu:resume",
+    ),
+    rewind_with_args_warned: includesEvent(rewindWithArgs.events, "writeStdout"),
+    rewind_with_args_opened_menu: includesEvent(rewindWithArgs.events, "openSessionMenu:rewind"),
+    rewind_with_args_hits_run_turn: includesEvent(rewindWithArgs.events, "runTurn:/rewind latest"),
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
@@ -293,6 +324,7 @@ async function main(): Promise<void> {
     ask_queue_dispatched: includesEvent(askQueueCommand.events, "showPendingAskQueue:default"),
     ask_queue_all_dispatched: includesEvent(askQueueAllCommand.events, "showPendingAskQueue:-1"),
     ask_queue_top3_dispatched: includesEvent(askQueueTop3Command.events, "showPendingAskQueue:3"),
+    ask_menu_dispatched: includesEvent(askMenuCommand.events, "openPendingAskMenu"),
     ask_queue_hits_run_turn: includesEvent(askQueueCommand.events, "runTurn:/ask"),
     ask_cancel_dispatched: includesEvent(askCancelCommand.events, "cancelPendingAsk"),
     ask_cancel_hits_run_turn: includesEvent(askCancelCommand.events, "runTurn:/ask cancel"),
@@ -361,6 +393,14 @@ async function main(): Promise<void> {
       pendingAskAllowSessions.events,
       "openSessionMenu:sessions",
     ),
+    pending_ask_resume_allowed: includesEvent(
+      pendingAskAllowResume.events,
+      "openSessionMenu:resume",
+    ),
+    pending_ask_rewind_allowed: includesEvent(
+      pendingAskAllowRewind.events,
+      "openSessionMenu:rewind",
+    ),
     pending_ask_queue_allowed: includesEvent(
       pendingAskAllowAskQueue.events,
       "showPendingAskQueue:default",
@@ -368,6 +408,10 @@ async function main(): Promise<void> {
     pending_ask_queue_all_allowed: includesEvent(
       pendingAskAllowAskQueueAll.events,
       "showPendingAskQueue:-1",
+    ),
+    pending_ask_menu_allowed: includesEvent(
+      pendingAskAllowAskMenu.events,
+      "openPendingAskMenu",
     ),
     pending_ask_cancel_allowed: includesEvent(
       pendingAskAllowAskCancel.events,

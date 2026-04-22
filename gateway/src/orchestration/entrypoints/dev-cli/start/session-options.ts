@@ -93,3 +93,34 @@ export function resolveHandoffAutoOnExit(options: Record<string, OptionValue>): 
   }
   return true;
 }
+
+export function resolveResumeRequested(options: Record<string, OptionValue>): boolean {
+  return hasFlag(options, "resume");
+}
+
+export function resolveResumeSessionId(options: Record<string, OptionValue>): string | undefined {
+  return readOptionString(options, "resume");
+}
+
+export function resolveForkSession(options: Record<string, OptionValue>): boolean {
+  return hasFlag(options, "fork-session");
+}
+
+export function resolveResumeSessionAt(options: Record<string, OptionValue>): string | undefined {
+  return readOptionString(options, "resume-session-at");
+}
+
+export function resolveRewindFiles(options: Record<string, OptionValue>): string[] | undefined {
+  const raw = readOptionString(options, "rewind-files");
+  if (!raw) {
+    return undefined;
+  }
+  const values = raw
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values;
+}

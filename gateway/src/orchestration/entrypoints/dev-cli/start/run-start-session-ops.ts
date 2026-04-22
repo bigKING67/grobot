@@ -6,6 +6,11 @@ import {
   type ChatHistoryMessage,
 } from "./session-history";
 import {
+  type RewindCheckpointSummary,
+  type RewindRestoreMode,
+  type RunStartRewindStore,
+} from "./run-start-rewind-store";
+import {
   createSessionRecord,
   findSessionRecord,
   SESSION_REGISTRY_MAIN_ID,
@@ -20,6 +25,7 @@ interface CreateRunStartSessionOpsInput {
   sessionNamespaceKey: string;
   historyTurns: number;
   sessionStore: SessionStoreController<SessionRegistryPayload, ChatHistoryMessage>;
+  rewindStore: RunStartRewindStore;
   getSessionRegistry(): SessionRegistryPayload;
   getActiveSessionId(): string;
   setActiveSessionId(value: string): void;
@@ -45,6 +51,15 @@ export interface RunStartSessionSummary {
   sessionKey: string;
   updatedAt: string;
   active: boolean;
+}
+
+export interface RunStartSessionRewindInput {
+  sessionId: string;
+  checkpointId?: string;
+  mode: RewindRestoreMode;
+  fileFilter?: readonly string[];
+  reason?: string;
+  summaryLimit?: number;
 }
 
 function parseUpdatedAtMs(value: string): number {
@@ -140,13 +155,13 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     sessionRegistry.sessions.push(record);
     sessionRegistry.active_id = record.id;
     input.setStickyProvider(undefined);
-      input.setProviderRuntimeStates([]);
-      input.setPlanMode("normal");
-      input.setPlanMeta(undefined);
-      input.setGaState(undefined);
-      await input.persistSessionRegistryState();
-      return record.id;
-    };
+    input.setProviderRuntimeStates([]);
+    input.setPlanMode("normal");
+    input.setPlanMeta(undefined);
+    input.setGaState(undefined);
+    await input.persistSessionRegistryState();
+    return record.id;
+  };
 
   const printSessionOverview = (): void => {
     const sessions = listSessions();
@@ -207,11 +222,134 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     );
   };
 
+  const resumeFromSession = async (sourceId: string, reason = "resume"): Promise<boolean> => {
+    if (sourceId === input.getActiveSessionId()) {
+      input.writeStdout(`Session "${sourceId}" is already active.\n\n`);
+      return true;
+    }
+    return switchActiveSession(sourceId, reason);
+  };
+
+  const forkFromSession = async (
+    sourceId: string,
+    reason = "fork",
+  ): Promise<boolean> => {
+    const sessionRegistry = input.getSessionRegistry();
+    const sourceRecord = findSessionRecord(sessionRegistry, sourceId);
+    if (!sourceRecord) {
+      input.writeStdout(`Session "${sourceId}" not found. Use /sessions to inspect ids.\n\n`);
+      return false;
+    }
+    const sourceHistoryState = await input.sessionStore.loadHistoryMessagesState(sourceRecord.session_key);
+    input.writeStoreWarnings(sourceHistoryState.warnings);
+    const forkSessionId = await createNewSession();
+    const switched = await switchActiveSession(forkSessionId, `${reason}:prepare`);
+    if (!switched) {
+      return false;
+    }
+    const nextHistory = trimHistoryMessages([...sourceHistoryState.messages], input.historyTurns);
+    if (nextHistory.length < sourceHistoryState.messages.length) {
+      input.onHistoryCompacted();
+    }
+    input.setHistoryMessages(nextHistory);
+    await input.persistHistoryState();
+    const forkRecord = findSessionRecord(sessionRegistry, forkSessionId);
+    if (forkRecord) {
+      forkRecord.sticky_provider = sourceRecord.sticky_provider;
+      forkRecord.provider_runtime_states = Array.isArray(sourceRecord.provider_runtime_states)
+        ? [...sourceRecord.provider_runtime_states]
+        : [];
+    }
+    input.setStickyProvider(sourceRecord.sticky_provider);
+    input.setProviderRuntimeStates(Array.isArray(sourceRecord.provider_runtime_states) ? [...sourceRecord.provider_runtime_states] : []);
+    touchSessionRecord(sessionRegistry, forkSessionId, `fork from ${sourceId}`);
+    await input.persistSessionRegistryState();
+    input.writeStdout(
+      `[session] forked "${sourceId}" -> "${forkSessionId}" (restored=${String(nextHistory.length / 2)} turns).\n\n`,
+    );
+    return true;
+  };
+
+  const listRewindCheckpoints = (
+    sessionId: string,
+    limit?: number,
+  ): RewindCheckpointSummary[] => {
+    const sessionRegistry = input.getSessionRegistry();
+    const record = findSessionRecord(sessionRegistry, sessionId);
+    if (!record) {
+      return [];
+    }
+    return input.rewindStore.listCheckpoints(record.session_key, limit);
+  };
+
+  const rewindSession = async (args: RunStartSessionRewindInput): Promise<boolean> => {
+    const sessionRegistry = input.getSessionRegistry();
+    const record = findSessionRecord(sessionRegistry, args.sessionId);
+    if (!record) {
+      input.writeStdout(`Session "${args.sessionId}" not found. Use /sessions to inspect ids.\n\n`);
+      return false;
+    }
+    if (args.mode === "summarize") {
+      input.writeStdout(
+        input.rewindStore.formatCheckpointSummary(
+          record.session_key,
+          args.summaryLimit,
+        ),
+      );
+      return true;
+    }
+    if (args.sessionId !== input.getActiveSessionId()) {
+      const switched = await switchActiveSession(args.sessionId, args.reason ?? "rewind");
+      if (!switched) {
+        return false;
+      }
+    }
+    const activeSessionId = input.getActiveSessionId();
+    const activeRecord = findSessionRecord(sessionRegistry, activeSessionId);
+    if (!activeRecord) {
+      input.writeStdout(`[rewind] active session "${activeSessionId}" not found.\n\n`);
+      return false;
+    }
+    try {
+      const restored = await input.rewindStore.restoreCheckpoint({
+        sessionKey: activeRecord.session_key,
+        checkpointId: args.checkpointId,
+        mode: args.mode,
+        fileFilter: args.fileFilter,
+        setHistoryMessages: input.setHistoryMessages,
+        persistHistoryState: input.persistHistoryState,
+      });
+      touchSessionRecord(
+        sessionRegistry,
+        activeSessionId,
+        `rewind ${restored.checkpointId} ${restored.mode}`,
+      );
+      await input.persistSessionRegistryState();
+      const restoredFilesPreview = restored.restoredFiles.length > 0
+        ? ` files=${String(restored.restoredFiles.length)}`
+        : "";
+      const skippedFilesPreview = restored.skippedFiles.length > 0
+        ? ` skipped=${String(restored.skippedFiles.length)}`
+        : "";
+      input.writeStdout(
+        `[rewind] restored checkpoint=${restored.checkpointId} mode=${restored.mode} conversation=${restored.restoredConversation ? "yes" : "no"} code=${restored.restoredCode ? "yes" : "no"}${restoredFilesPreview}${skippedFilesPreview}\n\n`,
+      );
+      return true;
+    } catch (error) {
+      input.writeStdout(`[rewind] failed: ${String(error)}\n\n`);
+      return false;
+    }
+  };
+
   return {
     listSessions,
     switchActiveSession,
     createNewSession,
     printSessionOverview,
     continueFromSession,
+    resumeFromSession,
+    forkFromSession,
+    listRewindCheckpoints,
+    rewindSession,
   };
 }

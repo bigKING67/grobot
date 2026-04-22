@@ -56,8 +56,9 @@ declare module "node:child_process" {
   }
 
   export interface SpawnSyncOptions {
+    cwd?: string;
     input?: string;
-    encoding?: "utf8";
+    encoding?: "utf8" | null;
     timeout?: number;
     maxBuffer?: number;
   }
@@ -69,6 +70,18 @@ declare module "node:child_process" {
     stderr: TOutput;
     error?: unknown;
   }
+
+  export function spawnSync(
+    command: string,
+    args?: string[],
+    options?: SpawnSyncOptions & { encoding: null },
+  ): SpawnSyncReturns<Buffer>;
+
+  export function spawnSync(
+    command: string,
+    args?: string[],
+    options?: SpawnSyncOptions & { encoding: "utf8" },
+  ): SpawnSyncReturns<string>;
 
   export function spawnSync(
     command: string,
@@ -85,7 +98,7 @@ declare module "node:child_process" {
 
 declare module "node:crypto" {
   export interface Hash {
-    update(data: string): Hash;
+    update(data: string | Buffer): Hash;
     digest(): Buffer;
     digest(encoding: "hex"): string;
   }
@@ -94,6 +107,11 @@ declare module "node:crypto" {
 }
 
 declare module "node:path" {
+  export function dirname(path: string): string;
+  export function isAbsolute(path: string): boolean;
+  export function join(...paths: string[]): string;
+  export function normalize(path: string): string;
+  export function relative(from: string, to: string): string;
   export function resolve(...paths: string[]): string;
 }
 
@@ -107,8 +125,12 @@ declare module "node:fs" {
     W_OK: number;
   };
 
+  export function readFileSync(path: number | string): Buffer;
   export function readFileSync(path: number | string, encoding: "utf8"): string;
+  export function writeFileSync(path: string, data: Buffer): void;
   export function writeFileSync(path: string, data: string, encoding: "utf8"): void;
+  export function appendFileSync(path: string, data: string, encoding: "utf8"): void;
+  export function copyFileSync(src: string, dest: string): void;
   export function openSync(path: string, flags: string): number;
   export function closeSync(fd: number): void;
   export function writeSync(

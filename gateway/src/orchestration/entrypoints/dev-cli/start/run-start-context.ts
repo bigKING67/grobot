@@ -32,11 +32,16 @@ import { resolveContextEngineConfig, type ContextEngineConfig } from "../../../.
 import { createRunStartSessionStore } from "./run-start-session-store";
 import { sessionRegistryFilePath } from "./session-registry";
 import {
+  resolveForkSession,
   parsePlatform,
   parseScope,
   resolveHandoffAutoOnExit,
   resolveHandoffRecentTurns,
   resolveHistoryTurns,
+  resolveResumeRequested,
+  resolveResumeSessionAt,
+  resolveResumeSessionId,
+  resolveRewindFiles,
   resolveSessionPlatformOption,
   resolveSessionScopeOption,
   resolveSessionSubjectOption,
@@ -944,6 +949,11 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const historyTurns = resolveHistoryTurns(options);
   const handoffRecentTurns = resolveHandoffRecentTurns(options);
   const handoffAutoOnExit = resolveHandoffAutoOnExit(options);
+  const resumeRequested = resolveResumeRequested(options);
+  const resumeSessionId = resolveResumeSessionId(options);
+  const forkSession = resolveForkSession(options);
+  const resumeSessionAt = resolveResumeSessionAt(options);
+  const rewindFiles = resolveRewindFiles(options);
   const handoffPath = buildHandoffPath(projectRoot);
   const interruptStorePath = resolveInterruptStorePath(projectStateRoot);
   const experiencePoolPathRaw = process.env.GROBOT_EXPERIENCE_POOL_PATH?.trim();
@@ -998,6 +1008,11 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     historyTurns,
     handoffRecentTurns,
     handoffAutoOnExit,
+    resumeRequested,
+    resumeSessionId,
+    forkSession,
+    resumeSessionAt,
+    rewindFiles,
     handoffPath,
     interruptStorePath,
     experiencePoolPath,

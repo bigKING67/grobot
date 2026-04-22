@@ -188,7 +188,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     ],
     rows,
     commandHint:
-      "Enter message (`/help`, `/sessions`, `/commands`, `/skill-creator`, `/history`, `/model`, `/plan`, `/exit`; Ctrl+r: history search):",
+      "Enter message (`/help`, `/sessions`, `/resume`, `/rewind`, `/commands`, `/skill-creator`, `/history`, `/model`, `/plan`, `/exit`; Ctrl+r: history search):",
   };
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,

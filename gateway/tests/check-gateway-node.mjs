@@ -681,18 +681,32 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.switch_prefix_miss_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.continue_prefix_miss_hits_run_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.continue_prefix_miss_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.resume_prefix_miss_hits_run_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_prefix_miss_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_prefix_miss_hits_run_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_prefix_miss_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.model_prefix_miss_hits_run_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.model_prefix_miss_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_prefix_miss_hits_run_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_prefix_miss_entered_plan, false);
   assert.equal(sessionInteractiveDispatchPayload.switch_menu_opened, true);
   assert.equal(sessionInteractiveDispatchPayload.continue_menu_opened, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_menu_opened, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_menu_opened, true);
   assert.equal(sessionInteractiveDispatchPayload.switch_legacy_with_id_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.switch_legacy_with_id_opened_menu, true);
   assert.equal(sessionInteractiveDispatchPayload.switch_legacy_with_id_skips_direct_switch, true);
   assert.equal(sessionInteractiveDispatchPayload.continue_legacy_with_id_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.continue_legacy_with_id_opened_menu, true);
   assert.equal(sessionInteractiveDispatchPayload.continue_legacy_with_id_skips_direct_continue, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_legacy_with_id_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_legacy_with_id_direct_switch, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_legacy_with_id_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.resume_legacy_with_id_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_legacy_with_id_tty_opened_resume_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_with_args_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_with_args_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_with_args_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.model_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_hits_run_turn, false);
@@ -710,6 +724,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_all_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_top3_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_queue_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_cancel_hits_run_turn, false);
@@ -741,8 +756,11 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_blocked_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_sessions_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_resume_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_rewind_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_queue_all_allowed, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_menu_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_cancel_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_park_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_clear_allowed, true);
@@ -833,6 +851,28 @@ async function runGatewayContractSmoke() {
   );
   logStep("run-start-plan-failure-policy-contract");
 
+  const bridgePlanFailurePolicyContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/bridge-plan-failure-policy-contract.ts",
+  ]);
+  assertSuccess("bridge-plan-failure-policy-contract", bridgePlanFailurePolicyContractResult);
+  const bridgePlanFailurePolicyContractPayload = parseJsonOutput(
+    "bridge-plan-failure-policy-contract",
+    bridgePlanFailurePolicyContractResult.stdout,
+  );
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_is_fail, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_reason_matches, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_class_kept, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_provider_kept, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_camel_case_extracted, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.provider_failure_snake_case_extracted, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.timeout_failure_reason_matches, true);
+  assert.equal(bridgePlanFailurePolicyContractPayload.generic_failure_reason_matches, true);
+  logStep("bridge-plan-failure-policy-contract");
+
   const runStartPlanModeContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -914,9 +954,16 @@ async function runGatewayContractSmoke() {
   );
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_model, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_commands, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_resume, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_rewind, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_skill_creator, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_ask, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_user_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_disabled_marked, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_menu_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_has_ask_answer, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_has_ask_cancel, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_has_ask_park, true);
   assert.equal(runStartSlashSuggestionsContractPayload.model_filter_only_model_related, true);
   assert.equal(runStartSlashSuggestionsContractPayload.skill_creator_filter_only_skill_creator, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_only_shipit, true);
@@ -947,6 +994,32 @@ async function runGatewayContractSmoke() {
   assert.equal(bridgeCliContractPayload.status_after_cancel_mode, "normal");
   assert.equal(bridgeCliContractPayload.status_after_cancel_active_plan_id, null);
   logStep("bridge-cli-contract");
+
+  const bridgePlanApplyFailureContractResult = runCommand("node", [
+    "gateway/src/extensions/contracts/bridge-plan-apply-failure-contract.mjs",
+  ], {
+    timeoutMs: 120_000,
+  });
+  assertSuccess("bridge-plan-apply-failure-contract", bridgePlanApplyFailureContractResult);
+  const bridgePlanApplyFailureContractPayload = parseJsonOutput(
+    "bridge-plan-apply-failure-contract",
+    bridgePlanApplyFailureContractResult.stdout,
+  );
+  assert.equal(bridgePlanApplyFailureContractPayload.ok, true);
+  assert.equal(bridgePlanApplyFailureContractPayload.apply_failure_error_code, "PLAN_APPLY_EXEC_FAILED");
+  assert.equal(bridgePlanApplyFailureContractPayload.apply_failure_policy_action, "fail");
+  assert.equal(
+    bridgePlanApplyFailureContractPayload.apply_failure_policy_reason === "provider_runtime_failure"
+      || bridgePlanApplyFailureContractPayload.apply_failure_policy_reason === "bridge_apply_exec_timeout"
+      || bridgePlanApplyFailureContractPayload.apply_failure_policy_reason === "bridge_apply_exec_failed",
+    true,
+  );
+  assert.equal(bridgePlanApplyFailureContractPayload.apply_failure_plan_status, "apply_failed");
+  assert.equal(bridgePlanApplyFailureContractPayload.apply_failure_plan_phase, "reviewing");
+  assert.equal(bridgePlanApplyFailureContractPayload.events_has_plan_apply_failed, true);
+  assert.equal(bridgePlanApplyFailureContractPayload.events_has_policy_action, true);
+  assert.equal(bridgePlanApplyFailureContractPayload.events_has_policy_reason, true);
+  logStep("bridge-plan-apply-failure-contract");
 
   const bridgeErrorCodesSchemaContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/bridge-error-codes-schema-contract.mjs",
@@ -1453,6 +1526,8 @@ async function runGatewayContractSmoke() {
   assert.equal(interactiveBindingsPayload.ask_answer_without_pending_warned, true);
   assert.equal(interactiveBindingsPayload.ask_answer_with_pending_executes_turn, true);
   assert.equal(interactiveBindingsPayload.ask_answer_with_pending_input, "fast");
+  assert.equal(interactiveBindingsPayload.ask_queue_hint_mentions_menu, true);
+  assert.equal(interactiveBindingsPayload.ask_menu_non_tty_fallback_notice, true);
   logStep("run-start-interactive-bindings-contract");
 
   const modelOpsContractResult = runCommand("npx", [
@@ -5472,6 +5547,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(interactiveDiagnosticsCompactFlowPayload.exit_code, 0);
   assert.equal(interactiveDiagnosticsCompactFlowPayload.diagnostic_mode, "compact");
   assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_lines, false);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_summary_lines, false);
   assert.equal(interactiveDiagnosticsCompactFlowPayload.stderr_has_event_lines, false);
   assert.equal(typeof interactiveDiagnosticsCompactFlowPayload.stderr_has_runtime_error, "boolean");
   logStep("start-smoke-contract start-interactive-diagnostics-compact-flow");
@@ -5491,6 +5567,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.exit_code, 0);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.diagnostic_mode, "verbose");
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_summary_lines, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_short_process_summary_code, true);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_trace_lines, false);
   logStep("start-smoke-contract start-interactive-diagnostics-verbose-flow");
@@ -5510,6 +5588,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(interactiveDiagnosticsTraceFlowPayload.exit_code, 0);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.diagnostic_mode, "trace");
   assert.equal(interactiveDiagnosticsTraceFlowPayload.has_process_lines, false);
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.has_process_summary_lines, false);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_event_lines, true);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_trace_lines, true);
   logStep("start-smoke-contract start-interactive-diagnostics-trace-flow");
@@ -5564,6 +5643,12 @@ async function runTsRustExecutionSmoke() {
       diagnosticsFlowPayload.has_process_lines,
       flow.mode === "verbose",
     );
+    if (flow.mode === "compact") {
+      assert.equal(diagnosticsFlowPayload.has_process_summary_lines, false);
+    }
+    if (diagnosticsFlowPayload.has_process_summary_lines) {
+      assert.equal(diagnosticsFlowPayload.has_short_process_summary_code, true);
+    }
     assert.equal(Boolean(diagnosticsFlowPayload[flow.markerKey]), true);
     if (flow.mode === "compact") {
       assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, false);
@@ -5608,6 +5693,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(sessionCommandFallbackPayload.session_count) >= 2, true);
   assert.equal(sessionCommandFallbackPayload.has_switch_usage, true);
   assert.equal(sessionCommandFallbackPayload.has_continue_usage, true);
+  assert.equal(sessionCommandFallbackPayload.has_resume_usage, true);
+  assert.equal(sessionCommandFallbackPayload.has_rewind_usage, true);
   assert.equal(sessionCommandFallbackPayload.has_sessions_overview, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_main, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_untitled, true);
@@ -5636,21 +5723,34 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionMenuViewModelPayload.sessions_title, "Session Manager");
   assert.equal(sessionMenuViewModelPayload.switch_title, "Switch Session");
   assert.equal(sessionMenuViewModelPayload.continue_title, "Continue From Session");
+  assert.equal(sessionMenuViewModelPayload.resume_title, "Resume Session");
+  assert.equal(sessionMenuViewModelPayload.rewind_title, "Rewind Session");
   assert.equal(sessionMenuViewModelPayload.sessions_has_create_item, true);
   assert.equal(sessionMenuViewModelPayload.continue_has_create_item, false);
+  assert.equal(sessionMenuViewModelPayload.resume_has_create_item, false);
+  assert.equal(sessionMenuViewModelPayload.rewind_has_create_item, false);
   assert.equal(sessionMenuViewModelPayload.sessions_summary_visible, true);
   assert.equal(sessionMenuViewModelPayload.switch_includes_session_key, true);
+  assert.equal(sessionMenuViewModelPayload.resume_includes_session_key, true);
+  assert.equal(sessionMenuViewModelPayload.rewind_includes_session_key, true);
   assert.equal(sessionMenuViewModelPayload.sessions_omits_session_key, true);
   assert.equal(sessionMenuViewModelPayload.continue_current_skip_hint, true);
+  assert.equal(sessionMenuViewModelPayload.resume_current_hint, true);
   assert.equal(sessionMenuViewModelPayload.sessions_hint_has_ctrl_np, true);
   assert.equal(sessionMenuViewModelPayload.sessions_hint_has_number_direct, true);
   assert.equal(sessionMenuViewModelPayload.sessions_hint_has_enter_space, true);
   assert.equal(sessionMenuViewModelPayload.switch_hint_has_ctrl_np, true);
   assert.equal(sessionMenuViewModelPayload.continue_hint_has_ctrl_np, true);
+  assert.equal(sessionMenuViewModelPayload.resume_hint_has_ctrl_np, true);
+  assert.equal(sessionMenuViewModelPayload.rewind_hint_has_ctrl_np, true);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
   assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);
+  assert.equal(Number(sessionMenuViewModelPayload.resume_initial_index), 0);
+  assert.equal(Number(sessionMenuViewModelPayload.rewind_initial_index), 0);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_item_count), 3);
   assert.equal(Number(sessionMenuViewModelPayload.continue_item_count), 2);
+  assert.equal(Number(sessionMenuViewModelPayload.resume_item_count), 2);
+  assert.equal(Number(sessionMenuViewModelPayload.rewind_item_count), 2);
   logStep("start-smoke-contract start-session-menu-view-model-contract");
 
   const planConcurrencyFlowResult = runContract("start-smoke-contract.mjs", "start-plan-concurrency-flow", [
@@ -5705,11 +5805,25 @@ async function runTsRustExecutionSmoke() {
   assert.equal(Number(planEventsReportPayload?.totals?.sessions_count) >= 1, true);
   assert.equal(Number(planEventsReportPayload?.totals?.plan_review_failed_count) >= 1, true);
   assert.equal(Number(planEventsReportPayload?.totals?.plan_review_passed_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_phase_drafting_count) >= 1, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_phase_reviewing_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_phase_applying_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_phase_unknown_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_recovered_stale_apply_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_turn_degraded_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.plan_turn_failed_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.policy_action_fail_count) >= 0, true);
+  assert.equal(Number(planEventsReportPayload?.totals?.policy_action_degrade_count) >= 0, true);
+  assert.equal(isRecord(planEventsReportPayload?.totals?.policy_reason_counts), true);
   assert.equal(Number(planEventsReportPayload?.totals?.review_failed_rate ?? 0) >= 0, true);
   logStep("plan-events-report", {
     files: planEventsReportPayload?.totals?.files_count,
     events: planEventsReportPayload?.totals?.events_count,
     sessions: planEventsReportPayload?.totals?.sessions_count,
+    phase_drafting: planEventsReportPayload?.totals?.plan_phase_drafting_count,
+    phase_reviewing: planEventsReportPayload?.totals?.plan_phase_reviewing_count,
+    policy_fail: planEventsReportPayload?.totals?.policy_action_fail_count,
+    policy_degrade: planEventsReportPayload?.totals?.policy_action_degrade_count,
   });
 
   for (const policyPath of [
@@ -5766,6 +5880,14 @@ async function runTsRustExecutionSmoke() {
     );
     assert.equal(
       planEventsPolicyGuardPayload?.policy_override_scope?.allow_fields?.includes("max_review_failed_rate"),
+      true,
+    );
+    assert.equal(
+      planEventsPolicyGuardPayload?.policy_override_scope?.allow_fields?.includes("max_policy_fail_rate"),
+      true,
+    );
+    assert.equal(
+      planEventsPolicyGuardPayload?.policy_override_scope?.allow_fields?.includes("max_unknown_phase_rate"),
       true,
     );
     assert.equal(
@@ -5872,6 +5994,41 @@ async function runTsRustExecutionSmoke() {
     true,
   );
   logStep("plan-events-policy-guard scoped-env-override");
+
+  const strictPolicyFailGuardResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/governance/evals/plan-events-policy-guard.ts",
+    "--policy",
+    "gateway/evals/plan_events_policy.ci.json",
+    "--report",
+    planEventsReportPath,
+    "--print-json",
+  ], {
+    env: {
+      ...process.env,
+      GROBOT_PLAN_EVENTS_MAX_POLICY_FAIL_RATE: "0.01",
+    },
+  });
+  assert.equal(strictPolicyFailGuardResult.code !== 0, true);
+  const strictPolicyFailGuardPayload = parseJsonOutput(
+    "plan-events-policy-guard strict policy-fail override",
+    strictPolicyFailGuardResult.stdout,
+  );
+  assert.equal(strictPolicyFailGuardPayload?.status, "error");
+  assert.equal(Number(strictPolicyFailGuardPayload?.violations_count) >= 1, true);
+  assert.equal(
+    Array.isArray(strictPolicyFailGuardPayload?.violations)
+      && strictPolicyFailGuardPayload.violations.some((line) => String(line).includes("max_policy_fail_rate 0.01")),
+    true,
+  );
+  assert.equal(
+    Number(strictPolicyFailGuardPayload?.policy_overrides?.max_policy_fail_rate),
+    0.01,
+  );
+  logStep("plan-events-policy-guard strict-policy-fail-override");
 
   const allowBlockedPolicyGuardResult = runCommand("npx", [
     "--yes",
@@ -6779,9 +6936,11 @@ function ensureContractsExist() {
     "serve-smoke-contract.mjs",
     "runtime-smoke-contract.mjs",
     "handoff-contract.mjs",
-      "history-compaction-contract.mjs",
-      "semantic-search-regression-contract.mjs",
-      "browser-structured-mcp-contract.mjs",
+    "history-compaction-contract.mjs",
+    "semantic-search-regression-contract.mjs",
+    "browser-structured-mcp-contract.mjs",
+    "bridge-plan-failure-policy-contract.ts",
+    "bridge-plan-apply-failure-contract.mjs",
     "bridge-cli-contract.mjs",
     "bridge-error-codes-schema-contract.mjs",
     "plan-events-policy-guard-contract.mjs",

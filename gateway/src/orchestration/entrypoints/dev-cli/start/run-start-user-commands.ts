@@ -28,6 +28,8 @@ const RESERVED_SLASH_COMMAND_NAMES = new Set<string>([
   "quit",
   "sessions",
   "switch",
+  "resume",
+  "rewind",
   "continue",
   "health",
   "skills",

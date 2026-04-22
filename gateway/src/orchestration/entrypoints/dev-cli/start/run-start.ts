@@ -15,6 +15,7 @@ import { createRunStartPersistence } from "./run-start-persistence";
 import { createRunStartRuntimeState } from "./run-start-runtime-state";
 import { createRunStartWire } from "./run-start-wire";
 import { createRunStartPlanMode } from "./run-start-plan-mode";
+import { createRunStartRewindStore } from "./run-start-rewind-store";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { setSessionGaState } from "./session-registry";
 import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
@@ -151,6 +152,11 @@ export async function runStart(
     historyTurns,
     handoffRecentTurns,
     handoffAutoOnExit,
+    resumeRequested,
+    resumeSessionId,
+    forkSession,
+    resumeSessionAt,
+    rewindFiles,
     handoffPath,
     interruptStorePath,
     experiencePoolPath,
@@ -277,6 +283,9 @@ export async function runStart(
     writeSessionWarnings: output.writeSessionWarnings,
     writeStoreWarnings: output.writeStoreWarnings,
   });
+  const rewindStore = createRunStartRewindStore({
+    workDir,
+  });
   const gaMechanismRuntime = createGaMechanismRuntime();
   gaMechanismRuntime.hydrateSession(
     runtimeState.getSessionKey(),
@@ -352,6 +361,7 @@ export async function runStart(
     runtimeModelConfigSource,
     contextEngineConfig,
     runtimeToolContext,
+    rewindStore,
     gaMechanismRuntime,
     kimiSearchRoutingPolicy,
     mcpInstructionPromptPrefix,
@@ -646,13 +656,42 @@ export async function runStart(
   ): Promise<number> => {
     const writeStderr = options?.writeStderr ?? output.writeStderr;
     activeTurnAbortController = controller;
+    const turnCapture = rewindStore.beginTurnCapture({
+      sessionKey: runtimeState.getSessionKey(),
+      userText: userInput,
+      historyBefore: runtimeState.getHistoryMessages(),
+    });
+    let recordedAssistantText: string | undefined;
     try {
       refreshContextWindowFromModelCatalog("pre_turn");
       const code = await wire.executeTurn(userInput, interactiveMode, {
         signal: controller.signal,
         attachments: options?.attachments,
         writeStderr,
+        onTurnRecorded: (turnRecord) => {
+          recordedAssistantText = turnRecord.assistantText;
+        },
       });
+      if (code !== TURN_INTERRUPTED_EXIT_CODE) {
+        const historyAfter = runtimeState.getHistoryMessages();
+        const assistantText = recordedAssistantText
+          ?? (() => {
+            const last = historyAfter[historyAfter.length - 1];
+            if (last?.role === "assistant") {
+              return last.content;
+            }
+            return `[turn] exit_code=${String(code)}`;
+          })();
+        try {
+          await rewindStore.commitTurnCapture({
+            capture: turnCapture,
+            assistantText,
+            historyAfter,
+          });
+        } catch (error) {
+          writeStderr(`[rewind] event=capture_failed detail=${String(error)}\n`);
+        }
+      }
       if (pendingRuntimeInterruptSource && code === TURN_INTERRUPTED_EXIT_CODE) {
         writeStderr(
           `[interrupt] event=applied source=${pendingRuntimeInterruptSource} interactive=${interactiveMode ? "true" : "false"}\n`,
@@ -736,10 +775,14 @@ export async function runStart(
   const sessionMenuOps = createRunStartSessionMenuOps({
     sessionNamespaceKey,
     listSessions: sessionOps.listSessions,
+    getActiveSessionId: runtimeState.getActiveSessionId,
     printSessionOverview: sessionOps.printSessionOverview,
     createNewSession: sessionOps.createNewSession,
     switchActiveSession: sessionOps.switchActiveSession,
+    resumeFromSession: sessionOps.resumeFromSession,
     continueFromSession: sessionOps.continueFromSession,
+    listRewindCheckpoints: sessionOps.listRewindCheckpoints,
+    rewindSession: sessionOps.rewindSession,
     applyModelOverrideForActiveSession:
       modelOps.applyModelOverrideForActiveSession,
     writeStdout: output.writeStdout,
@@ -748,6 +791,45 @@ export async function runStart(
   modelOps.applyModelOverrideForActiveSession();
   await modelOps.refreshModelCatalogCache();
   refreshContextWindowFromModelCatalog("startup_model_catalog");
+
+  const resolveDefaultResumeSessionId = (): string | undefined =>
+    sessionOps.listSessions().find((row) => !row.active)?.id;
+
+  const applyStartupSessionActions = async (): Promise<void> => {
+    let resumed = false;
+    const targetResumeSessionId = resumeSessionId
+      ?? (resumeRequested ? resolveDefaultResumeSessionId() : undefined);
+    if (targetResumeSessionId) {
+      resumed = await sessionOps.resumeFromSession(targetResumeSessionId, "cli:resume");
+      if (resumed) {
+        modelOps.applyModelOverrideForActiveSession();
+      }
+    } else if (resumeRequested) {
+      output.writeStdout("[session] --resume requested but no resumable session found.\n\n");
+    }
+    const shouldRunRewind = Boolean(resumeSessionAt)
+      || (Array.isArray(rewindFiles) && rewindFiles.length > 0);
+    if (shouldRunRewind) {
+      await sessionOps.rewindSession({
+        sessionId: runtimeState.getActiveSessionId(),
+        checkpointId: resumeSessionAt,
+        mode: Array.isArray(rewindFiles) && rewindFiles.length > 0 ? "code" : "both",
+        fileFilter: rewindFiles,
+        reason: resumed ? "cli:resume+rewind" : "cli:rewind",
+      });
+    }
+    if (forkSession) {
+      const forked = await sessionOps.forkFromSession(
+        runtimeState.getActiveSessionId(),
+        "cli:fork-session",
+      );
+      if (forked) {
+        modelOps.applyModelOverrideForActiveSession();
+      }
+    }
+  };
+
+  await applyStartupSessionActions();
 
   const planMode = createRunStartPlanMode({
     workDir,
