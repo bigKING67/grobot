@@ -722,6 +722,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_missing_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_includes_quick_pick, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_find_query_mode_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_user_text_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_search_assistant_text_tty_dispatched, true);
@@ -748,6 +749,16 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.model_legacy_reset_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_menu_enters_plan_directly, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_menu_alias_opened_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_menu_alias_enters_mode_directly, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_open_alias_tty_opened_menu, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_open_alias_tty_enters_plan_directly, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_open_alias_non_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_open_alias_non_tty_dispatched_status, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_warned, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_enters_mode_directly, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_treated_as_goal, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_opened_menu, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_dispatched, false);

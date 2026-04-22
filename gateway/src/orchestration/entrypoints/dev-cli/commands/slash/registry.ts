@@ -563,13 +563,23 @@ async function executeRewindSlashCommand(
         `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | files=${String(
           checkpoint.changedFilesCount,
         )} | user=${checkpoint.userText}`);
+    const quickPickSuffix = parsed.mode && parsed.mode !== "both"
+      ? ` ${parsed.mode}`
+      : "";
+    const quickPickHints = matches
+      .slice(0, 3)
+      .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
+        `- ${command} ${checkpoint.checkpointId}${quickPickSuffix}`);
     const overflow = matches.length > 5
       ? `\n- ... and ${String(matches.length - 5)} more`
+      : "";
+    const quickPickBlock = quickPickHints.length > 0
+      ? `\n[rewind] Quick pick:\n${quickPickHints.join("\n")}`
       : "";
     input.handlers.writeStdout(
       `[rewind] Found ${String(matches.length)} checkpoints matching "${query}" in session "${activeSessionId}".\n${rows.join(
         "\n",
-      )}${overflow}\n[rewind] Use ${command} to pick one explicitly.\n\n`,
+      )}${overflow}${quickPickBlock}\n[rewind] Use ${command} to pick one explicitly.\n\n`,
     );
     return "continue";
   }
@@ -1186,7 +1196,7 @@ export function listSlashCommandCompatibilityNotes(): string[] {
     "  - In interactive mode they redirect to /status menu.",
     "  - In non-interactive scripts they remain compatible.",
     "  - /plan subcommands are legacy shortcuts in interactive mode.",
-    "  - In interactive mode they redirect to /plan menu.",
+    "  - In interactive mode they redirect to /plan actions (/plan or /plan open).",
     "  - In non-interactive scripts they remain compatible.",
   ];
 }

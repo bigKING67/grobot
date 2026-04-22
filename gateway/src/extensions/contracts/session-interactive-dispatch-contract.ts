@@ -303,6 +303,8 @@ async function main(): Promise<void> {
   const modelLegacyReset = await runDispatchCase("/model reset");
   const planMenu = await runDispatchCase("/plan", { stdinIsTty: true });
   const planMenuAlias = await runDispatchCase("/plan menu", { stdinIsTty: true });
+  const planOpenAliasTty = await runDispatchCase("/plan open", { stdinIsTty: true });
+  const planOpenAlias = await runDispatchCase("/plan open", { stdinIsTty: false });
   const planEnterOnly = await runDispatchCase("/plan enter", { stdinIsTty: true });
   const planEnterWithGoal = await runDispatchCase("/plan enter 我要一份增长执行计划", { stdinIsTty: true });
   const planGoal = await runDispatchCase("/plan 我要一份抖音直播间规划", { stdinIsTty: true });
@@ -448,6 +450,9 @@ async function main(): Promise<void> {
       rewindQueryMultipleTty.events,
       "rewindSession",
     ),
+    rewind_query_multiple_tty_includes_quick_pick: rewindQueryMultipleTty.stdout.includes(
+      `${"/rewind"} legacy-a`,
+    ),
     rewind_find_query_mode_tty_dispatched: includesEvent(
       rewindFindQueryModeTty.events,
       "rewindSession:main:latest:both:slash:rewind:query",
@@ -514,6 +519,16 @@ async function main(): Promise<void> {
       includesEvent(planMenuAlias.events, "enterPlan:"),
     plan_menu_alias_opened_menu:
       includesEvent(planMenuAlias.events, "openPlanMenu"),
+    plan_open_alias_tty_opened_menu:
+      includesEvent(planOpenAliasTty.events, "openPlanMenu"),
+    plan_open_alias_tty_enters_plan_directly:
+      planOpenAliasTty.events.some((event) => event.startsWith("enterPlan:")),
+    plan_open_alias_non_tty_warned:
+      includesEvent(planOpenAlias.events, "writeStdout"),
+    plan_open_alias_non_tty_dispatched_status:
+      includesEvent(planOpenAlias.events, "showPlanStatus"),
+    plan_enter_only_tty_warned:
+      includesEvent(planEnterOnly.events, "writeStdout"),
     plan_enter_only_tty_enters_mode_directly:
       includesEvent(planEnterOnly.events, "enterPlan:"),
     plan_enter_only_tty_treated_as_goal:
