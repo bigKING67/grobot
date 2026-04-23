@@ -98,10 +98,7 @@ pub struct TurnInterruptAskUserQuestionOutput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TurnInterruptAskUserOutput {
-    pub question_id: String,
     pub blocking_node_id: String,
-    pub question: String,
-    pub options: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub questions: Vec<TurnInterruptAskUserQuestionOutput>,
     pub default_on_timeout: String,

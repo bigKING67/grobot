@@ -59,10 +59,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
             ModelExecutionInterrupt::AskUser(ask_user) => TurnInterruptOutput {
                 kind: "ask_user".to_string(),
                 ask_user: Some(TurnInterruptAskUserOutput {
-                    question_id: ask_user.question_id,
                     blocking_node_id: ask_user.blocking_node_id,
-                    question: ask_user.question,
-                    options: ask_user.options,
                     questions: ask_user
                         .questions
                         .into_iter()
@@ -95,7 +92,6 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                 let ask_user = interrupt.ask_user.as_ref();
                 json!({
                     "kind": interrupt.kind,
-                    "question_id": ask_user.map(|value| value.question_id.clone()).unwrap_or_default(),
                     "blocking_node_id": ask_user.map(|value| value.blocking_node_id.clone()).unwrap_or_default(),
                     "question_total": ask_user.map(|value| value.questions.len()).unwrap_or(0)
                 })

@@ -526,21 +526,44 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
         },
         LocalToolCatalogEntry {
             name: TOOL_ASK_USER_QUESTION,
-            description: "Interrupt current turn and ask user one blocking clarification question",
+            description: "Interrupt current turn and ask user one or more structured clarification questions",
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "question": { "type": "string" },
-                    "options": {
+                    "questions": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": { "type": "string" },
+                                "header": { "type": "string" },
+                                "question": { "type": "string" },
+                                "options": {
+                                    "type": "array",
+                                    "items": {
+                                        "oneOf": [
+                                            { "type": "string" },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "label": { "type": "string" },
+                                                    "description": { "type": "string" },
+                                                    "value": { "type": "string" }
+                                                },
+                                                "required": ["label"]
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            "required": ["id", "header", "question"]
+                        }
                     },
                     "blocking_node_id": { "type": "string" },
                     "default_on_timeout": { "type": "string" },
-                    "question_id": { "type": "string" },
                     "resume_token": { "type": "string" }
                 },
-                "required": ["question"]
+                "required": ["questions"]
             }),
             default_enabled: true,
         },
@@ -1347,6 +1370,110 @@ fn get_string_array_arg_with_char_limit(
     result
 }
 
+fn parse_ask_user_question_options_arg(raw: &Value) -> Vec<Value> {
+    let Some(items) = raw.as_array() else {
+        return Vec::new();
+    };
+    let mut normalized = Vec::new();
+    for item in items {
+        if let Some(text) = item.as_str() {
+            let compact = truncate_output(text.trim().to_string(), 120);
+            if compact.is_empty() {
+                continue;
+            }
+            normalized.push(json!({
+                "label": compact,
+                "value": compact,
+            }));
+        } else if let Some(option_obj) = item.as_object() {
+            let label = option_obj
+                .get("label")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| truncate_output(value.to_string(), 120));
+            let Some(label) = label else {
+                continue;
+            };
+            let description = option_obj
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| truncate_output(value.to_string(), 180));
+            let value = option_obj
+                .get("value")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|raw| !raw.is_empty())
+                .map(|raw| truncate_output(raw.to_string(), 120))
+                .unwrap_or_else(|| label.clone());
+            let mut row = serde_json::Map::new();
+            row.insert("label".to_string(), Value::String(label));
+            if let Some(description) = description {
+                if !description.is_empty() {
+                    row.insert("description".to_string(), Value::String(description));
+                }
+            }
+            row.insert("value".to_string(), Value::String(value));
+            normalized.push(Value::Object(row));
+        }
+        if normalized.len() >= 6 {
+            break;
+        }
+    }
+    normalized
+}
+
+fn parse_ask_user_questions_arg(args: &Map<String, Value>) -> Vec<Value> {
+    let Some(raw_questions) = args.get("questions").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut questions: Vec<Value> = Vec::new();
+    for (index, raw_question) in raw_questions.iter().enumerate() {
+        let Some(question_obj) = raw_question.as_object() else {
+            continue;
+        };
+        let id = question_obj
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_output(value.to_string(), 80))
+            .unwrap_or_else(|| format!("q{}", index + 1));
+        let header = question_obj
+            .get("header")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_output(value.to_string(), 120))
+            .unwrap_or_else(|| format!("Question {}", index + 1));
+        let question = question_obj
+            .get("question")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_output(value.to_string(), 600));
+        let Some(question) = question else {
+            continue;
+        };
+        let options = question_obj
+            .get("options")
+            .map(parse_ask_user_question_options_arg)
+            .unwrap_or_default();
+        questions.push(json!({
+            "id": id,
+            "header": header,
+            "question": question,
+            "options": options,
+        }));
+        if questions.len() >= 3 {
+            break;
+        }
+    }
+    questions
+}
+
 fn build_runtime_generated_id(prefix: &str) -> String {
     let now_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1367,11 +1494,13 @@ fn run_ask_user_question(
     _context: &ToolContextResolved,
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
-    let question = get_string_arg(args, "question")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "ask_user_question.question is required"))?;
-    let options = get_string_array_arg_with_char_limit(args, "options", 6, 120);
-    let question_id =
-        get_string_arg(args, "question_id").unwrap_or_else(|| build_runtime_generated_id("askq"));
+    let questions = parse_ask_user_questions_arg(args);
+    if questions.is_empty() {
+        return Err(ToolExecutionError::new(
+            "invalid_tool_arguments",
+            "ask_user_question.questions must include at least one valid item",
+        ));
+    }
     let blocking_node_id =
         get_string_arg(args, "blocking_node_id").unwrap_or_else(|| "node.unknown".to_string());
     let default_on_timeout = get_string_arg(args, "default_on_timeout")
@@ -1381,10 +1510,8 @@ fn run_ask_user_question(
     let payload = json!({
         "tool": TOOL_ASK_USER_QUESTION,
         "type": "ask_user",
-        "question_id": question_id,
         "blocking_node_id": blocking_node_id,
-        "question": truncate_output(question, 600),
-        "options": options,
+        "questions": questions,
         "default_on_timeout": default_on_timeout,
         "resume_token": resume_token,
         "created_at": now_unix_label(),

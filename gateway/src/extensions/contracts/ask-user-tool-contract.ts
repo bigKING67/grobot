@@ -22,10 +22,13 @@ const runtime: AskUserRuntimeAdapter = {
 
 const sessionKey = "feishu:grobot:dm:ask-user-contract";
 const pendingEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_001",
   blocking_node_id: "node.runtime.route",
-  question: "Choose execution mode",
-  options: ["safe", "fast"],
+  questions: [{
+    id: "ask_q_001",
+    header: "Execution Mode",
+    question: "Choose execution mode",
+    options: ["safe", "fast"],
+  }],
   default_on_timeout: "safe",
   resume_token: "resume_001",
 });
@@ -44,10 +47,13 @@ if (!promptContext.resolvedAsk) {
 }
 
 const nextEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_002",
   blocking_node_id: "node.confirm.scope",
-  question: "Need project scope?",
-  options: ["core", "all"],
+  questions: [{
+    id: "ask_q_002",
+    header: "Scope",
+    question: "Need project scope?",
+    options: ["core", "all"],
+  }],
   default_on_timeout: "core",
   resume_token: "resume_002",
 });
@@ -56,10 +62,13 @@ if (!nextEnvelope) {
 }
 runtime.registerPendingAsk(sessionKey, nextEnvelope);
 const thirdEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_003",
   blocking_node_id: "node.confirm.risk",
-  question: "Need risk review?",
-  options: ["yes", "no"],
+  questions: [{
+    id: "ask_q_003",
+    header: "Risk Review",
+    question: "Need risk review?",
+    options: ["yes", "no"],
+  }],
   default_on_timeout: "no",
   resume_token: "resume_003",
 });
@@ -73,17 +82,20 @@ runtime.registerPendingAsk(sessionKey, {
 });
 const display = runtime.buildAskUserDisplay(nextEnvelope);
 const overflowEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_009",
   blocking_node_id: "node.overflow.options",
-  question: "Pick one from many options",
-  options: [
-    "option-1",
-    "option-2",
-    "option-3",
-    "option-4",
-    "option-5",
-    "option-6",
-  ],
+  questions: [{
+    id: "ask_q_009",
+    header: "Options",
+    question: "Pick one from many options",
+    options: [
+      "option-1",
+      "option-2",
+      "option-3",
+      "option-4",
+      "option-5",
+      "option-6",
+    ],
+  }],
   default_on_timeout: "option-1",
   resume_token: "resume_009",
 });
@@ -111,10 +123,13 @@ const queuedStepTwo = createAskUserTurnPromptContext({
 });
 const queueEmptyAfterBatchResolved = sessionStore.size(sessionKey) === 0;
 const optionEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_004",
   blocking_node_id: "node.answer.by_index",
-  question: "Select execution profile",
-  options: ["safe", "fast"],
+  questions: [{
+    id: "ask_q_004",
+    header: "Execution Profile",
+    question: "Select execution profile",
+    options: ["safe", "fast"],
+  }],
   default_on_timeout: "safe",
   resume_token: "resume_004",
 });
@@ -130,19 +145,25 @@ const resolvedByOptionText = sessionStore.resolve(sessionKey, "FAST");
 runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByBlank = sessionStore.resolve(sessionKey, "   ");
 const expiredEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_005",
   blocking_node_id: "node.expired",
-  question: "Expired question",
-  options: ["yes", "no"],
+  questions: [{
+    id: "ask_q_005",
+    header: "TTL",
+    question: "Expired question",
+    options: ["yes", "no"],
+  }],
   default_on_timeout: "no",
   resume_token: "resume_005",
   createdAt: "2026-01-01T00:00:00.000Z",
 });
 const freshEnvelope = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_006",
   blocking_node_id: "node.fresh",
-  question: "Fresh question",
-  options: ["yes", "no"],
+  questions: [{
+    id: "ask_q_006",
+    header: "TTL",
+    question: "Fresh question",
+    options: ["yes", "no"],
+  }],
   default_on_timeout: "yes",
   resume_token: "resume_006",
   createdAt: "2026-01-01T00:00:12.000Z",

@@ -180,10 +180,7 @@ export interface RuntimeAttachment {
 }
 
 export interface RuntimeAskUserInterrupt {
-  questionId: string;
   blockingNodeId: string;
-  question: string;
-  options: string[];
   questions: RuntimeAskUserQuestion[];
   defaultOnTimeout: string;
   resumeToken: string;

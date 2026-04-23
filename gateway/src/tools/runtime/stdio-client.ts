@@ -189,38 +189,17 @@ function parseAskUserInterrupt(raw: unknown): RuntimeAskUserInterrupt | undefine
   if (!isRecord(raw)) {
     return undefined;
   }
-  const structuredQuestions = parseRuntimeAskUserQuestions(raw.questions);
-  const question = asString(raw.question).trim() || structuredQuestions[0]?.question || "";
-  if (!question) {
+  const questions = parseRuntimeAskUserQuestions(raw.questions);
+  if (questions.length === 0) {
     return undefined;
   }
-  const questionId = asString(raw.question_id).trim() || `askq_${Date.now().toString(36)}`;
   const blockingNodeId = asString(raw.blocking_node_id).trim() || "node.unknown";
-  const parsedOptions = parseRuntimeAskUserOptions(raw.options);
-  const options = parsedOptions.length > 0
-    ? parsedOptions.map((option) => option.label)
-    : (structuredQuestions[0]?.options ?? []).map((option) => option.label);
   const defaultOnTimeout = asString(raw.default_on_timeout, "continue_with_best_effort");
-  const resumeToken = asString(raw.resume_token).trim() || `resume_${questionId}`;
+  const firstQuestionId = questions[0]?.id || `askq_${Date.now().toString(36)}`;
+  const resumeToken = asString(raw.resume_token).trim() || `resume_${firstQuestionId}`;
   const createdAt = asString(raw.created_at, new Date().toISOString());
-  const questions = structuredQuestions.length > 0
-    ? structuredQuestions
-    : [
-      {
-        id: questionId,
-        header: "Clarification",
-        question,
-        options: options.map((label) => ({
-          label,
-          value: label,
-        })),
-      },
-    ];
   return {
-    questionId,
     blockingNodeId,
-    question,
-    options,
     questions,
     defaultOnTimeout,
     resumeToken,

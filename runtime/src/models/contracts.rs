@@ -39,10 +39,7 @@ pub struct ModelAskUserQuestion {
 
 #[derive(Debug, Clone)]
 pub struct ModelAskUserInterrupt {
-    pub question_id: String,
     pub blocking_node_id: String,
-    pub question: String,
-    pub options: Vec<String>,
     pub questions: Vec<ModelAskUserQuestion>,
     pub default_on_timeout: String,
     pub resume_token: String,

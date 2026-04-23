@@ -93,12 +93,9 @@ mod tests {
                 assistant_message: String::new(),
                 telemetry_events: Vec::new(),
                 interrupt: Some(ModelExecutionInterrupt::AskUser(ModelAskUserInterrupt {
-                    question_id: "ask_q_001".to_string(),
                     blocking_node_id: "node.confirm.scope".to_string(),
-                    question: "Need project scope?".to_string(),
-                    options: vec!["core".to_string(), "all".to_string()],
                     questions: vec![ModelAskUserQuestion {
-                        id: "scope".to_string(),
+                        id: "ask_q_001".to_string(),
                         header: "Scope".to_string(),
                         question: "Need project scope?".to_string(),
                         options: vec![
@@ -136,10 +133,9 @@ mod tests {
         let interrupt = output.interrupt.expect("interrupt payload");
         assert_eq!(interrupt.kind, "ask_user");
         let ask_user = interrupt.ask_user.expect("ask_user payload");
-        assert_eq!(ask_user.question_id, "ask_q_001");
         assert_eq!(ask_user.blocking_node_id, "node.confirm.scope");
         assert_eq!(ask_user.questions.len(), 1);
-        assert_eq!(ask_user.questions[0].id, "scope");
+        assert_eq!(ask_user.questions[0].id, "ask_q_001");
     }
 
     #[derive(Debug, Clone, Copy)]

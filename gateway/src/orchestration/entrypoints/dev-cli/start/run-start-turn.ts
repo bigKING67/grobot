@@ -250,14 +250,19 @@ function normalizeRuntimeAskUserQuestionId(input: {
   index: number;
   total: number;
 }): string {
+  const normalizedBaseId = input.questionId.trim() || `askq_${Date.now().toString(36)}`;
+  const normalizedQuestionKey = input.questionKey.trim();
   if (input.total <= 1) {
-    return input.questionId;
+    return normalizedQuestionKey || normalizedBaseId;
   }
-  return `${input.questionId}:${input.questionKey || `q${String(input.index + 1)}`}`;
+  const suffix = normalizedQuestionKey || `q${String(input.index + 1)}`;
+  if (suffix === normalizedBaseId) {
+    return `${normalizedBaseId}:q${String(input.index + 1)}`;
+  }
+  return `${normalizedBaseId}:${suffix}`;
 }
 
 function toAskUserEnvelopes(runtimeAskUser: RuntimeAskUserInterrupt): AskUserEnvelope[] {
-  const baseQuestionId = runtimeAskUser.questionId.trim() || `askq_${Date.now().toString(36)}`;
   type NormalizedAskQuestion = {
     key: string;
     header: string;
@@ -295,26 +300,20 @@ function toAskUserEnvelopes(runtimeAskUser: RuntimeAskUserInterrupt): AskUserEnv
       optionsDetailed,
     });
   }
-  const normalizedQuestions: NormalizedAskQuestion[] = structuredQuestions.length > 0
-    ? structuredQuestions
-    : [
-      {
-        key: baseQuestionId,
-        header: "Clarification",
-        question: runtimeAskUser.question.trim(),
-        optionsDetailed: (runtimeAskUser.options ?? [])
-          .map((option) => option.trim())
-          .filter((option) => option.length > 0)
-          .map((option) => ({
-            label: option,
-            value: option,
-          })),
-      },
-    ];
-  const questionTotal = normalizedQuestions.length;
+  if (structuredQuestions.length === 0) {
+    return [];
+  }
+  const normalizedResumeToken = runtimeAskUser.resumeToken
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const baseQuestionId = normalizedResumeToken
+    ? `askq_${normalizedResumeToken}`
+    : (structuredQuestions[0]?.key || `askq_${Date.now().toString(36)}`);
+  const questionTotal = structuredQuestions.length;
   const envelopes: AskUserEnvelope[] = [];
-  for (let index = 0; index < normalizedQuestions.length; index += 1) {
-    const question = normalizedQuestions[index];
+  for (let index = 0; index < structuredQuestions.length; index += 1) {
+    const question = structuredQuestions[index];
     if (!question) {
       continue;
     }

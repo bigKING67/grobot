@@ -153,6 +153,7 @@ function normalizeEnvelopeRecord(
     header: string;
     questionIndex: string;
     questionTotal: string;
+    requireStructuredQuestions?: boolean;
   },
   options: AskUserNormalizeOptions = {},
 ): AskUserEnvelope | undefined {
@@ -162,16 +163,18 @@ function normalizeEnvelopeRecord(
     ?? ((prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
   const questionRecords = normalizeQuestionRecords(record.questions);
   const firstQuestion = questionRecords[0];
-  const question = parseOptionalString(record.question, cleanText)
-    ?? parseOptionalString(firstQuestion?.question, cleanText);
+  const requireStructuredQuestions = fieldMap.requireStructuredQuestions === true;
+  const question = requireStructuredQuestions
+    ? parseOptionalString(firstQuestion?.question, cleanText)
+    : (parseOptionalString(record.question, cleanText)
+      ?? parseOptionalString(firstQuestion?.question, cleanText));
   if (!question) {
     return undefined;
   }
-  const optionsDetailed = ensureAskUserOptions(
-    record.optionsDetailed ?? record.options ?? firstQuestion?.options,
-    6,
-    cleanText,
-  );
+  const optionsSource = requireStructuredQuestions
+    ? firstQuestion?.options
+    : (record.optionsDetailed ?? record.options ?? firstQuestion?.options);
+  const optionsDetailed = ensureAskUserOptions(optionsSource, 6, cleanText);
   const questionTotal = parseOptionalPositiveInteger(record[fieldMap.questionTotal])
     ?? parseOptionalPositiveInteger(record.questionTotal)
     ?? (questionRecords.length > 0 ? questionRecords.length : undefined);
@@ -179,6 +182,7 @@ function normalizeEnvelopeRecord(
     ?? parseOptionalPositiveInteger(record.questionIndex);
   return {
     questionId: parseOptionalString(record[fieldMap.questionId], cleanText)
+      ?? parseOptionalString(firstQuestion?.id, cleanText)
       ?? randomId("askq"),
     blockingNodeId: parseOptionalString(record[fieldMap.blockingNodeId], cleanText)
       ?? "node.unknown",
@@ -224,6 +228,7 @@ export function normalizeAskUserEnvelope(
       header: "header",
       questionIndex: "questionIndex",
       questionTotal: "questionTotal",
+      requireStructuredQuestions: false,
     },
     options,
   );
@@ -248,6 +253,7 @@ export function normalizeAskUserEnvelopeFromPayload(
       header: "header",
       questionIndex: "question_index",
       questionTotal: "question_total",
+      requireStructuredQuestions: true,
     },
     options,
   );

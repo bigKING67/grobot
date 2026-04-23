@@ -288,10 +288,13 @@ async function main(): Promise<void> {
     suffix: string,
     options: string[] = ["safe", "fast"],
   ) => normalizeAskUserEnvelopeFromPayload({
-    question_id: `ask_q_contract_${suffix}`,
     blocking_node_id: "node.contract.ask",
-    question: "Choose profile",
-    options,
+    questions: [{
+      id: `ask_q_contract_${suffix}`,
+      header: "Profile",
+      question: "Choose profile",
+      options,
+    }],
     default_on_timeout: "safe",
     resume_token: `resume_contract_${suffix}`,
   });

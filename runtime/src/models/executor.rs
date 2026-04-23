@@ -802,27 +802,6 @@ fn parse_non_empty_string_field(
         .map(ToString::to_string)
 }
 
-fn parse_ask_user_options(payload: &serde_json::Map<String, Value>) -> Vec<String> {
-    let Some(raw_options) = payload.get("options").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let mut options = Vec::new();
-    for raw in raw_options {
-        let Some(option) = raw.as_str() else {
-            continue;
-        };
-        let normalized = option.trim();
-        if normalized.is_empty() {
-            continue;
-        }
-        options.push(normalized.to_string());
-        if options.len() >= 6 {
-            break;
-        }
-    }
-    options
-}
-
 fn parse_ask_user_option_objects(value: Option<&Value>) -> Vec<ModelAskUserOption> {
     let Some(raw_options) = value.and_then(Value::as_array) else {
         return Vec::new();
@@ -915,48 +894,15 @@ fn parse_tool_interrupt(
             "ask_user_question output type must be ask_user",
         ));
     }
-    let mut questions = parse_ask_user_questions(payload);
-    let question = parse_non_empty_string_field(payload, "question")
-        .or_else(|| questions.first().map(|row| row.question.clone()))
-        .ok_or_else(|| {
-            ModelExecutionError::new(
-                "invalid_tool_output",
-                "ask_user_question output missing question / questions[]",
-            )
-        })?;
-    let question_id = parse_non_empty_string_field(payload, "question_id")
-        .unwrap_or_else(|| format!("askq_{}", tool_call.id));
+    let questions = parse_ask_user_questions(payload);
+    if questions.is_empty() {
+        return Err(ModelExecutionError::new(
+            "invalid_tool_output",
+            "ask_user_question output missing valid questions[]",
+        ));
+    }
     let blocking_node_id = parse_non_empty_string_field(payload, "blocking_node_id")
         .unwrap_or_else(|| "node.unknown".to_string());
-    let legacy_options = parse_ask_user_options(payload);
-    let options = if !legacy_options.is_empty() {
-        legacy_options
-    } else {
-        questions
-            .first()
-            .map(|row| {
-                row.options
-                    .iter()
-                    .map(|option| option.label.clone())
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or_default()
-    };
-    if questions.is_empty() {
-        questions.push(ModelAskUserQuestion {
-            id: question_id.clone(),
-            header: "Clarification".to_string(),
-            question: question.clone(),
-            options: options
-                .iter()
-                .map(|option| ModelAskUserOption {
-                    label: option.clone(),
-                    description: None,
-                    value: Some(option.clone()),
-                })
-                .collect(),
-        });
-    }
     let default_on_timeout = parse_non_empty_string_field(payload, "default_on_timeout")
         .unwrap_or_else(|| "continue_with_best_effort".to_string());
     let resume_token = parse_non_empty_string_field(payload, "resume_token")
@@ -964,10 +910,7 @@ fn parse_tool_interrupt(
     let created_at = parse_non_empty_string_field(payload, "created_at")
         .unwrap_or_else(|| "unix:0".to_string());
     let interrupt = ModelExecutionInterrupt::AskUser(ModelAskUserInterrupt {
-        question_id,
         blocking_node_id,
-        question,
-        options,
         questions,
         default_on_timeout,
         resume_token,
