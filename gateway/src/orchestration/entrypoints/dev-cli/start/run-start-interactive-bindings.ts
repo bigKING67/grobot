@@ -1,4 +1,6 @@
 import { type SessionStoreRuntime } from "../services/session-store";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   type InteractiveDiagnosticsMode,
   type RunStartInteractiveModeInput,
@@ -9,7 +11,18 @@ import {
   type RunStartModelSnapshot,
 } from "./run-start-model-ops";
 import { type RunStartOutput } from "./run-start-output";
-import { type RunStartPlanMode } from "./run-start-plan-mode";
+import {
+  resolvePlanStatusRecommendationActionId,
+  resolvePlanStatusRecommendation,
+  resolvePlanStatusRecommendationCommand,
+  type RunStartPlanMode,
+} from "./run-start-plan-mode";
+import {
+  loadLatestPlanVerificationDiagnostic,
+  loadPlanArtifactIndex,
+  resolvePlanQualityBenchmarkPreset,
+  type PlanQualityBenchmarkPresetCandidate,
+} from "./plan-artifact";
 import { formatProviderHealthSnapshot } from "./run-start-provider-health";
 import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type RunStartSessionMenuOps } from "./run-start-session-menu-ops";
@@ -19,7 +32,6 @@ import {
 } from "./run-start-turn";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { type RunStartWire } from "./run-start-wire";
-import { setSessionGaState } from "./session-registry";
 import {
   normalizeStatusLineConfig,
   type StatusLineConfig,
@@ -35,6 +47,8 @@ import {
 } from "./run-start-io";
 import { compactSingleLine, type ChatHistoryMessage } from "./session-history";
 import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
+import { buildAskUserOptionsPreview } from "../../../../tools/ask-user";
+import { type RunStartPlanSuggestionState } from "./run-start-slash-suggestions";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -61,7 +75,6 @@ interface CreateRunStartInteractiveModeInput {
   sessionMenuOps: RunStartSessionMenuOps;
   wire: RunStartWire;
   planMode: RunStartPlanMode;
-  persistGaStateSnapshot?(): Promise<void>;
   requestRuntimeInterrupt(
     source: "command" | "cli_esc",
   ): {
@@ -98,6 +111,245 @@ function formatAskAge(createdAt: string): string {
   }
   const days = Math.floor(hours / 24);
   return `${String(days)}d`;
+}
+
+function isEnvTruthy(raw: string | undefined): boolean {
+  if (!raw) {
+    return false;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+    return false;
+  }
+  return true;
+}
+
+const PLAN_SUGGESTION_STATE_CACHE_TTL_MS = 1_200;
+
+function resolveLatestPlanEntryStatus(workDir: string, sessionKey: string): {
+  status?: RunStartPlanSuggestionState["latestPlanStatus"];
+  planId?: string;
+} {
+  const index = loadPlanArtifactIndex(workDir, sessionKey);
+  if (index.entries.length <= 0) {
+    return {};
+  }
+  const sorted = [...index.entries].sort((left, right) => {
+    if (left.seq !== right.seq) {
+      return right.seq - left.seq;
+    }
+    return right.updated_at.localeCompare(left.updated_at);
+  });
+  const latest = sorted[0];
+  if (!latest) {
+    return {};
+  }
+  return {
+    status: latest.status,
+    planId: latest.plan_id,
+  };
+}
+
+const PLAN_MENU_TAIL_DEFAULT_ORDER = [
+  "enter",
+  "approve",
+  "apply",
+  "reject",
+  "verify",
+  "check",
+  "benchmark",
+  "cancel",
+] as const;
+
+interface PlanMenuActionInfo {
+  id: string;
+  label: string;
+  command: string;
+}
+
+const PLAN_MENU_ACTION_INFO_BY_ID: Record<string, PlanMenuActionInfo> = {
+  status: {
+    id: "status",
+    label: "Status summary",
+    command: "/plan status",
+  },
+  open_file: {
+    id: "open_file",
+    label: "Open plan file",
+    command: "/plan open",
+  },
+  enter: {
+    id: "enter",
+    label: "Create / refine plan",
+    command: "/plan <goal>",
+  },
+  approve: {
+    id: "approve",
+    label: "Approve plan",
+    command: "/plan approve [note]",
+  },
+  apply: {
+    id: "apply",
+    label: "Apply plan",
+    command: "/plan apply [extra]",
+  },
+  reject: {
+    id: "reject",
+    label: "Reject plan",
+    command: "/plan reject [reason]",
+  },
+  verify: {
+    id: "verify",
+    label: "Record verification",
+    command: "/plan verify <pass|fail> [note]",
+  },
+  check: {
+    id: "check",
+    label: "Quick check",
+    command: "/plan check",
+  },
+  benchmark: {
+    id: "benchmark",
+    label: "Benchmark plan",
+    command: "/plan benchmark [label=path ...]",
+  },
+  cancel: {
+    id: "cancel",
+    label: "Exit plan mode",
+    command: "/plan cancel",
+  },
+};
+
+function resolvePlanMenuRecommendation(input: {
+  planMode: boolean;
+  state?: RunStartPlanSuggestionState;
+}): {
+  command: string;
+  reason: string;
+} {
+  const recommendation = resolvePlanStatusRecommendation({
+    mode: input.planMode ? "plan_only" : "normal",
+    status: input.state?.activePlanStatus ?? input.state?.latestPlanStatus,
+    latestVerificationStatus: input.state?.latestVerificationStatus,
+    interactiveMenuFirst: true,
+  });
+  return {
+    command: resolvePlanStatusRecommendationCommand(recommendation.action).trim(),
+    reason: recommendation.reason,
+  };
+}
+
+export function resolvePlanMenuTailItemOrder(input: {
+  planMode?: boolean;
+  state?: RunStartPlanSuggestionState;
+}): string[] {
+  const planMode = input.planMode ?? true;
+  const recommendation = resolvePlanMenuRecommendation({
+    planMode,
+    state: input.state,
+  });
+  const recommendationId = resolvePlanStatusRecommendationActionId(recommendation.command);
+  const activeStatus = input.state?.activePlanStatus;
+  const latestStatus = input.state?.latestPlanStatus;
+  const effectiveStatus = activeStatus ?? latestStatus;
+  const verificationPending = input.state?.latestVerificationStatus === undefined
+    || input.state?.latestVerificationStatus === "pending";
+  let preferredOrder: readonly string[] = PLAN_MENU_TAIL_DEFAULT_ORDER;
+  if (!activeStatus && (latestStatus === "applied" || latestStatus === "apply_failed") && verificationPending) {
+    preferredOrder = ["verify", "enter", "check", "benchmark", "approve", "reject", "apply", "cancel"];
+  } else if (
+    effectiveStatus === "draft"
+    || effectiveStatus === "blocked"
+    || effectiveStatus === "review_failed"
+  ) {
+    preferredOrder = ["check", "approve", "reject", "enter", "benchmark", "apply", "verify", "cancel"];
+  } else if (effectiveStatus === "ready") {
+    preferredOrder = ["approve", "check", "reject", "apply", "enter", "benchmark", "verify", "cancel"];
+  } else if (effectiveStatus === "approved") {
+    preferredOrder = ["apply", "approve", "check", "reject", "benchmark", "enter", "verify", "cancel"];
+  } else if (effectiveStatus === "applying") {
+    preferredOrder = ["apply", "check", "benchmark", "enter", "approve", "reject", "verify", "cancel"];
+  } else if (effectiveStatus === "apply_failed") {
+    preferredOrder = verificationPending
+      ? ["verify", "enter", "check", "benchmark", "approve", "reject", "apply", "cancel"]
+      : ["enter", "check", "benchmark", "approve", "reject", "apply", "verify", "cancel"];
+  } else if (effectiveStatus === "applied") {
+    preferredOrder = verificationPending
+      ? ["verify", "enter", "check", "benchmark", "approve", "reject", "apply", "cancel"]
+      : ["enter", "check", "benchmark", "approve", "apply", "reject", "verify", "cancel"];
+  } else if (effectiveStatus === "discarded") {
+    preferredOrder = PLAN_MENU_TAIL_DEFAULT_ORDER;
+  }
+
+  const ordered: string[] = [];
+  const appendUnique = (id: string): void => {
+    if (ordered.includes(id)) {
+      return;
+    }
+    ordered.push(id);
+  };
+  for (const id of preferredOrder) {
+    appendUnique(id);
+  }
+  for (const id of PLAN_MENU_TAIL_DEFAULT_ORDER) {
+    appendUnique(id);
+  }
+  if (
+    recommendationId !== "unknown"
+    && recommendationId !== "status"
+    && recommendationId !== "open_file"
+  ) {
+    const index = ordered.indexOf(recommendationId);
+    if (index > 0) {
+      ordered.splice(index, 1);
+      ordered.unshift(recommendationId);
+    }
+  }
+  return ordered;
+}
+
+export function resolvePlanMenuInitialItemId(input: {
+  planMode: boolean;
+  state?: RunStartPlanSuggestionState;
+}): string {
+  const recommendation = resolvePlanMenuRecommendation({
+    planMode: input.planMode,
+    state: input.state,
+  });
+  const mapped = resolvePlanStatusRecommendationActionId(recommendation.command);
+  if (mapped !== "unknown") {
+    return mapped;
+  }
+  return input.planMode ? "status" : "enter";
+}
+
+export function resolvePlanMenuPrimaryAction(input: {
+  planMode: boolean;
+  state?: RunStartPlanSuggestionState;
+}): PlanMenuActionInfo {
+  const initialId = resolvePlanMenuInitialItemId({
+    planMode: input.planMode,
+    state: input.state,
+  });
+  const mapped = PLAN_MENU_ACTION_INFO_BY_ID[initialId];
+  if (mapped) {
+    return mapped;
+  }
+  return PLAN_MENU_ACTION_INFO_BY_ID.enter;
+}
+
+export function resolvePlanMenuPrimaryReason(input: {
+  planMode: boolean;
+  state?: RunStartPlanSuggestionState;
+}): string {
+  const recommendation = resolvePlanMenuRecommendation({
+    planMode: input.planMode,
+    state: input.state,
+  });
+  return recommendation.reason;
 }
 
 interface HistorySearchCandidate {
@@ -209,6 +461,125 @@ function buildSkillCreatorPrompt(input: {
   ].join("\n");
 }
 
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function formatSpawnError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function detectPlatformFromEnv(): "darwin" | "win32" | "other" {
+  const hints = String(process.env.OSTYPE ?? process.env.OS ?? "").toLowerCase();
+  if (hints.includes("darwin") || hints.includes("mac")) {
+    return "darwin";
+  }
+  if (hints.includes("windows") || hints === "win32") {
+    return "win32";
+  }
+  return "other";
+}
+
+function launchPlanFileInEditor(planPath: string): {
+  ok: boolean;
+  detail: string;
+} {
+  const currentPlatform = detectPlatformFromEnv();
+  const editor = String(process.env.VISUAL ?? process.env.EDITOR ?? "").trim();
+  if (editor.length > 0) {
+    const script = `${editor} ${quoteShellArg(planPath)}`;
+    const result = spawnSync("sh", ["-lc", script]);
+    if (result.error) {
+      return { ok: false, detail: formatSpawnError(result.error) };
+    }
+    if (typeof result.status === "number" && result.status !== 0) {
+      return { ok: false, detail: `editor exited with code ${String(result.status)}` };
+    }
+    return { ok: true, detail: "opened by $VISUAL/$EDITOR" };
+  }
+  if (currentPlatform === "darwin") {
+    const result = spawnSync("open", ["-t", planPath]);
+    if (result.error) {
+      return { ok: false, detail: formatSpawnError(result.error) };
+    }
+    if (typeof result.status === "number" && result.status !== 0) {
+      return { ok: false, detail: `open exited with code ${String(result.status)}` };
+    }
+    return { ok: true, detail: "opened by macOS open -t" };
+  }
+  if (currentPlatform === "win32") {
+    const result = spawnSync("cmd", ["/c", "start", "", planPath]);
+    if (result.error) {
+      return { ok: false, detail: formatSpawnError(result.error) };
+    }
+    return { ok: true, detail: "opened by Windows start" };
+  }
+  const result = spawnSync("xdg-open", [planPath]);
+  if (result.error) {
+    return { ok: false, detail: formatSpawnError(result.error) };
+  }
+  if (typeof result.status === "number" && result.status !== 0) {
+    return { ok: false, detail: `xdg-open exited with code ${String(result.status)}` };
+  }
+  return { ok: true, detail: "opened by xdg-open" };
+}
+
+function formatBenchmarkCandidateToken(input: PlanQualityBenchmarkPresetCandidate): string {
+  const raw = `${input.label}=${input.path}`;
+  if (!/\s/.test(raw)) {
+    return raw;
+  }
+  return `"${raw}"`;
+}
+
+function formatBenchmarkCandidateSpec(
+  candidates: readonly PlanQualityBenchmarkPresetCandidate[],
+): string {
+  if (candidates.length === 0) {
+    return "";
+  }
+  return candidates.map((item) => formatBenchmarkCandidateToken(item)).join(" ");
+}
+
+function resolveBenchmarkPresetSpec(input: {
+  workDir: string;
+  presetRaw: string;
+}): {
+  candidateSpec: string;
+  missingLabels: string[];
+} {
+  const preset = resolvePlanQualityBenchmarkPreset({
+    workDir: input.workDir,
+    presetRaw: input.presetRaw,
+  });
+  if (!preset) {
+    return {
+      candidateSpec: "",
+      missingLabels: [],
+    };
+  }
+  return {
+    candidateSpec: formatBenchmarkCandidateSpec(preset.candidates),
+    missingLabels: preset.missingLabels,
+  };
+}
+
+function resolveManualBenchmarkTemplateSpec(workDir: string): string {
+  const genericPlanPath = "/Users/gaoqian/Documents/sixseven/codeproject/GenericAgent/memory/plan_sop.md";
+  if (!existsSync(genericPlanPath)) {
+    return "";
+  }
+  return formatBenchmarkCandidateSpec([
+    {
+      label: "generic_agent",
+      path: genericPlanPath,
+    },
+  ]);
+}
+
 function buildHistorySearchCandidates(rows: readonly ChatHistoryMessage[]): HistorySearchCandidate[] {
   if (rows.length === 0) {
     return [];
@@ -277,53 +648,167 @@ export function createRunStartInteractiveModeInput(
   const shouldMarkFailure = (code: number): boolean =>
     code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE;
 
+  const openPlanInEditor = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<void> => {
+    const planPath = input.planMode.getActivePlanPath();
+    if (!planPath) {
+      input.output.writeStdout("[plan] no active plan file. use /plan <goal> first.\n\n");
+      return;
+    }
+    const openOperation = async (): Promise<void> => {
+      const launched = launchPlanFileInEditor(planPath);
+      if (!launched.ok) {
+        input.output.writeStdout(
+          `[plan] failed to open active plan file: ${compactSingleLine(launched.detail, 200)}\n\n`,
+        );
+        return;
+      }
+      input.output.writeStdout(`[plan] opened active plan file: ${planPath}\n\n`);
+    };
+    if (!process.stdin.isTTY) {
+      await openOperation();
+      return;
+    }
+    await withInputPaused(openOperation);
+  };
+
   const openPlanMenu = async (
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
     options?: {
       writeStderr?: (message: string) => void;
     },
   ): Promise<void> => {
+    const benchmarkPlan = async (commandRaw: string): Promise<void> => {
+      const result = await input.planMode.handleMessageInput(commandRaw);
+      if (!result.handled) {
+        input.output.writeStdout("[plan] benchmark command was not handled.\n\n");
+        return;
+      }
+      if (shouldMarkFailure(result.code)) {
+        input.runtimeState.markFailureObserved();
+      }
+    };
+    const planModeActive = input.planMode.isPlanMode();
+    const planMenuState = getPlanSuggestionState();
+    const planMenuPrimaryAction = resolvePlanMenuPrimaryAction({
+      planMode: planModeActive,
+      state: planMenuState,
+    });
+    const planMenuPrimaryReason = resolvePlanMenuPrimaryReason({
+      planMode: planModeActive,
+      state: planMenuState,
+    });
     if (!process.stdin.isTTY) {
       input.output.writeStdout(
         [
           "[plan] action menu",
-          "- /plan               Enter plan mode only",
+          `[plan] suggested now: ${planMenuPrimaryAction.command} · ${planMenuPrimaryReason}`,
+          "- /plan               Open plan actions menu (interactive)",
+          "- /plan open          Open active plan file in editor (interactive)",
           "- /plan <goal>        Enter plan mode and execute first requirement",
-          "- /plan status        Show active plan status",
-          "- /plan apply [extra] Review, approve, then execute active plan",
-          "- /plan cancel        Cancel plan mode and discard active plan",
+          "- /plan status        Show active plan status summary",
+          "- /plan approve [note]",
+          "- /plan reject [reason]",
+          "- /plan verify <pass|fail> [note]",
+          "- /plan apply [extra]",
+          "- /plan cancel",
+          "- /plan check [core|generic]  Quick benchmark check-only (default: core)",
+          "- /plan benchmark [label=path ...] [--assert-best <label>] [--check-only]",
+          "- /plan benchmark --preset <generic|core> [--assert-best <label>] [--check-only|--check]",
           "",
         ].join("\n"),
       );
       return;
     }
+    const planMenuTailItems = [
+      {
+        id: "enter",
+        label: "Create / refine plan",
+        description: "Input goal and execute first requirement.",
+      },
+      {
+        id: "approve",
+        label: "Approve plan",
+        description: "Review + approve current plan.",
+      },
+      {
+        id: "apply",
+        label: "Apply plan",
+        description: "Apply approved plan with optional note.",
+      },
+      {
+        id: "reject",
+        label: "Reject plan",
+        description: "Mark current plan rejected and continue refining.",
+      },
+      {
+        id: "verify",
+        label: "Record verification",
+        description: "Record pass/fail for latest applied plan.",
+      },
+      {
+        id: "check",
+        label: "Quick check",
+        description: "Choose core/generic preset and run check-only benchmark.",
+      },
+      {
+        id: "benchmark",
+        label: "Benchmark plan",
+        description: "Compare active plan with external candidates.",
+      },
+      {
+        id: "cancel",
+        label: "Exit plan mode",
+        description: "Return to normal mode.",
+      },
+    ].map((item) => ({
+      ...item,
+      description: item.id === planMenuPrimaryAction.id
+        ? `Recommended now · ${item.description}`
+        : item.description,
+      current: item.id === planMenuPrimaryAction.id,
+    }));
+    const planMenuTailItemsById = new Map(
+      planMenuTailItems.map((item) => [item.id, item] as const),
+    );
+    const planMenuTailOrder = resolvePlanMenuTailItemOrder({
+      planMode: planModeActive,
+      state: planMenuState,
+    });
+    const orderedPlanMenuTailItems = planMenuTailOrder
+      .map((id) => planMenuTailItemsById.get(id))
+      .filter((item): item is (typeof planMenuTailItems)[number] => Boolean(item));
+    const planMenuItems = [
+      {
+        id: "status",
+        label: "Status summary",
+        description: planMenuPrimaryAction.id === "status"
+          ? "Recommended now · Show current mode, quality and next action."
+          : "Show current mode, quality and next action.",
+        current: planMenuPrimaryAction.id === "status",
+      },
+      {
+        id: "open_file",
+        label: "Open plan file",
+        description: planMenuPrimaryAction.id === "open_file"
+          ? "Recommended now · Open active plan markdown in your editor."
+          : "Open active plan markdown in your editor.",
+        current: planMenuPrimaryAction.id === "open_file",
+      },
+      ...orderedPlanMenuTailItems,
+    ];
+    const planMenuInitialIndex = (() => {
+      const index = planMenuItems.findIndex((item) => item.id === planMenuPrimaryAction.id);
+      return index >= 0 ? index : 0;
+    })();
     const picked = await withInputPaused(() =>
       runTerminalSelectMenu({
         title: "Plan Actions",
-        subtitle: `Session: ${input.runtimeState.getSessionKey()}`,
-        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
-        items: [
-          {
-            id: "enter",
-            label: "Enter and execute requirement",
-            description: "Input a goal, enter plan mode, and execute it immediately.",
-          },
-          {
-            id: "status",
-            label: "Show active plan status",
-            description: "Display mode, active plan id, status and path.",
-          },
-          {
-            id: "apply",
-            label: "Review and apply active plan",
-            description: "Run plan apply pipeline with optional extra note.",
-          },
-          {
-            id: "cancel",
-            label: "Cancel active plan",
-            description: "Discard plan mode and return to normal mode.",
-          },
-        ],
+        subtitle: `Session: ${input.runtimeState.getSessionKey()} · Suggested: ${planMenuPrimaryAction.label} · ${planMenuPrimaryReason}`,
+        hint: `Suggested: ${planMenuPrimaryAction.command} · ${planMenuPrimaryReason} Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.`,
+        items: planMenuItems,
+        initialIndex: planMenuInitialIndex,
       }),
     );
     if (picked.kind === "cancelled") {
@@ -337,11 +822,233 @@ export function createRunStartInteractiveModeInput(
       }
       return;
     }
+    if (picked.item.id === "open_file") {
+      await openPlanInEditor(withInputPaused);
+      return;
+    }
     if (picked.item.id === "cancel") {
       const code = await input.planMode.cancelPlan();
       if (shouldMarkFailure(code)) {
         input.runtimeState.markFailureObserved();
       }
+      return;
+    }
+    if (picked.item.id === "approve") {
+      const approveNote = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: "[plan] approve note (optional)> ",
+        }),
+      );
+      if (approveNote.kind === "cancelled") {
+        input.output.writeStdout("[plan] approve cancelled.\n\n");
+        return;
+      }
+      const code = await input.planMode.approvePlan(approveNote.value.trim());
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+      return;
+    }
+    if (picked.item.id === "reject") {
+      const rejectReason = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: "[plan] reject reason (optional)> ",
+        }),
+      );
+      if (rejectReason.kind === "cancelled") {
+        input.output.writeStdout("[plan] reject cancelled.\n\n");
+        return;
+      }
+      const code = await input.planMode.rejectPlan(rejectReason.value.trim());
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+      return;
+    }
+    if (picked.item.id === "verify") {
+      const verifyResult = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: "[plan] verify (pass|fail) [note]> ",
+        }),
+      );
+      if (verifyResult.kind === "cancelled") {
+        input.output.writeStdout("[plan] verify cancelled.\n\n");
+        return;
+      }
+      const code = await input.planMode.verifyPlan(verifyResult.value.trim());
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+      return;
+    }
+    if (picked.item.id === "check") {
+      const presetGeneric = resolveBenchmarkPresetSpec({
+        workDir: input.workDir,
+        presetRaw: "generic",
+      });
+      const presetCore = resolveBenchmarkPresetSpec({
+        workDir: input.workDir,
+        presetRaw: "core",
+      });
+      const quickCheckPreset = await withInputPaused(() =>
+        runTerminalSelectMenu({
+          title: "Plan Quick Check",
+          subtitle: "Choose check-only preset",
+          hint: "Enter/Space confirm · Esc cancel",
+          items: [
+            {
+              id: "core",
+              label: "Preset core",
+              description: presetCore.missingLabels.length > 0
+                ? `active + codex + claude + generic (missing: ${presetCore.missingLabels.join(",")})`
+                : "active + codex + claude + generic",
+              current: true,
+            },
+            {
+              id: "generic",
+              label: "Preset generic",
+              description: presetGeneric.missingLabels.length > 0
+                ? `active + GenericAgent (missing: ${presetGeneric.missingLabels.join(",")})`
+                : "active + GenericAgent baseline",
+            },
+          ],
+        }),
+      );
+      if (quickCheckPreset.kind === "cancelled") {
+        input.output.writeStdout("[plan] quick check cancelled.\n\n");
+        return;
+      }
+      await benchmarkPlan(
+        quickCheckPreset.item.id === "generic"
+          ? "/plan check generic"
+          : "/plan check core",
+      );
+      return;
+    }
+    if (picked.item.id === "benchmark") {
+      const presetGeneric = resolveBenchmarkPresetSpec({
+        workDir: input.workDir,
+        presetRaw: "generic",
+      });
+      const presetCore = resolveBenchmarkPresetSpec({
+        workDir: input.workDir,
+        presetRaw: "core",
+      });
+      const presetChoice = await withInputPaused(() =>
+        runTerminalSelectMenu({
+          title: "Plan Benchmark Preset",
+          subtitle: "Pick a preset or run manual",
+          hint: "Enter confirm · Esc cancel",
+          items: [
+            {
+              id: "manual",
+              label: "Manual candidate list",
+              description: "Use custom label=path candidates.",
+            },
+            {
+              id: "preset_generic",
+              label: "Preset generic",
+              description: presetGeneric.missingLabels.length > 0
+                ? `active + GenericAgent (missing: ${presetGeneric.missingLabels.join(",")})`
+                : "active + GenericAgent baseline",
+            },
+            {
+              id: "preset_core",
+              label: "Preset core",
+              description: presetCore.missingLabels.length > 0
+                ? `active + codex + claude + generic (missing: ${presetCore.missingLabels.join(",")})`
+                : "active + codex + claude + generic",
+            },
+          ],
+        }),
+      );
+      if (presetChoice.kind === "cancelled") {
+        input.output.writeStdout("[plan] benchmark cancelled.\n\n");
+        return;
+      }
+      let presetFlag = "";
+      if (presetChoice.item.id === "preset_generic") {
+        presetFlag = "--preset generic";
+        input.output.writeStdout(
+          presetGeneric.missingLabels.length > 0
+            ? `[plan] benchmark preset: generic (missing: ${presetGeneric.missingLabels.join(",")})\n`
+            : "[plan] benchmark preset: generic\n",
+        );
+      } else if (presetChoice.item.id === "preset_core") {
+        presetFlag = "--preset core";
+        input.output.writeStdout(
+          presetCore.missingLabels.length > 0
+            ? `[plan] benchmark preset: core (missing: ${presetCore.missingLabels.join(",")})\n`
+            : "[plan] benchmark preset: core\n",
+        );
+      }
+      const manualTemplateSpec = presetFlag
+        ? ""
+        : resolveManualBenchmarkTemplateSpec(input.workDir);
+      const benchmarkCandidates = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: presetFlag
+            ? "[plan] benchmark extra label=path ... (optional)> "
+            : manualTemplateSpec.length > 0
+              ? "[plan] benchmark label=path ... (Enter=GenericAgent template)> "
+              : "[plan] benchmark label=path ... (optional)> ",
+        }),
+      );
+      if (benchmarkCandidates.kind === "cancelled") {
+        input.output.writeStdout("[plan] benchmark cancelled.\n\n");
+        return;
+      }
+      const benchmarkMode = await withInputPaused(() =>
+        runTerminalSelectMenu({
+          title: "Plan Benchmark Mode",
+          subtitle: "Choose compare or check-only",
+          hint: "Enter confirm · Esc cancel",
+          items: [
+            {
+              id: "compare",
+              label: "Compare scores",
+              description: "Run full benchmark and output winner/rows.",
+            },
+            {
+              id: "check_only",
+              label: "Check only",
+              description: "Validate benchmark guard without winner rows.",
+            },
+          ],
+        }),
+      );
+      if (benchmarkMode.kind === "cancelled") {
+        input.output.writeStdout("[plan] benchmark cancelled.\n\n");
+        return;
+      }
+      const candidateSpecInput = benchmarkCandidates.value.trim();
+      const candidateSpec = candidateSpecInput.length > 0
+        ? candidateSpecInput
+        : manualTemplateSpec;
+      const checkOnly = benchmarkMode.item.id === "check_only";
+      let assertBest = "";
+      if (!checkOnly) {
+        const benchmarkAssertBest = await withInputPaused(() =>
+          runTerminalLinePrompt({
+            prompt: "[plan] benchmark --assert-best <label> (optional)> ",
+          }),
+        );
+        if (benchmarkAssertBest.kind === "cancelled") {
+          input.output.writeStdout("[plan] benchmark cancelled.\n\n");
+          return;
+        }
+        assertBest = benchmarkAssertBest.value.trim();
+      }
+      const command = [
+        "/plan benchmark",
+        presetFlag,
+        candidateSpec,
+        assertBest.length > 0 ? `--assert-best ${assertBest}` : "",
+        checkOnly ? "--check-only" : "",
+      ]
+        .filter((item) => item.length > 0)
+        .join(" ");
+      await benchmarkPlan(command);
       return;
     }
     if (picked.item.id === "apply") {
@@ -660,17 +1367,6 @@ export function createRunStartInteractiveModeInput(
     return selected.content;
   };
 
-  const syncGaSnapshotToRuntimeState = (): void => {
-    const sessionKey = input.runtimeState.getSessionKey();
-    const nextSnapshot = input.gaMechanismRuntime.snapshotSession(sessionKey);
-    input.runtimeState.setGaState(nextSnapshot);
-    setSessionGaState(
-      input.runtimeState.getSessionRegistry(),
-      input.runtimeState.getActiveSessionId(),
-      nextSnapshot,
-    );
-  };
-
   const purgeExpiredPendingAsk = (notify: boolean): number => {
     const sessionKey = input.runtimeState.getSessionKey();
     const expired = input.gaMechanismRuntime.purgeExpiredPendingAsk(sessionKey);
@@ -682,6 +1378,31 @@ export function createRunStartInteractiveModeInput(
     return expired.length;
   };
 
+  const resolveDefaultAskAnswer = (value: string | undefined): string | undefined => {
+    const raw = String(value ?? "").trim();
+    if (!raw || /^none$/i.test(raw)) {
+      return undefined;
+    }
+    return raw;
+  };
+
+  const getPendingAskPromptSummary = (): string | undefined => {
+    purgeExpiredPendingAsk(false);
+    const sessionKey = input.runtimeState.getSessionKey();
+    const active = input.gaMechanismRuntime.getPendingAsk(sessionKey);
+    if (!active) {
+      return undefined;
+    }
+    const question = compactSingleLine(active.question, 96);
+    const optionsPreview = buildAskUserOptionsPreview(active.options, 3).preview;
+    const defaultAnswer = resolveDefaultAskAnswer(active.defaultOnTimeout);
+    const parts = [`question=${question}`, `options=${optionsPreview}`];
+    if (defaultAnswer) {
+      parts.push(`default=${compactSingleLine(defaultAnswer, 32)}`);
+    }
+    return compactSingleLine(parts.join(" | "), 180);
+  };
+
   const showPendingAskQueue = (limit?: number): void => {
     purgeExpiredPendingAsk(true);
     const sessionKey = input.runtimeState.getSessionKey();
@@ -690,142 +1411,75 @@ export function createRunStartInteractiveModeInput(
       input.output.writeStdout("[ask-user] no pending question.\n\n");
       return;
     }
-    const normalizedLimit = typeof limit === "number" && Number.isFinite(limit)
-      ? Math.floor(limit)
-      : undefined;
-    const showAll = normalizedLimit === -1;
-    const maxRows = showAll
-      ? queue.length
-      : normalizedLimit && normalizedLimit > 0
-        ? Math.min(50, normalizedLimit)
-        : 5;
+    const active = queue[0];
+    if (!active) {
+      input.output.writeStdout("[ask-user] no pending question.\n\n");
+      return;
+    }
+    const total = queue.length;
+    const optionsPreview = buildAskUserOptionsPreview(active.options, 5);
+    const pendingFollowups = queue.slice(1);
+    const queuePreviewLimit = typeof limit === "number"
+      ? (limit < 0 ? pendingFollowups.length : Math.max(0, Math.floor(limit)))
+      : 3;
+    const queuedPreviewRows = queuePreviewLimit > 0
+      ? pendingFollowups.slice(0, queuePreviewLimit)
+      : [];
+    const queuedHiddenCount = Math.max(0, pendingFollowups.length - queuedPreviewRows.length);
+    const defaultAnswer = resolveDefaultAskAnswer(active.defaultOnTimeout);
+    const renderCompactOutput = Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_ASK_STATUS_VERBOSE);
+    if (renderCompactOutput) {
+      const lines: string[] = [
+        "[ask-user] active question",
+        "ask_status_output_mode: compact",
+        `age: ${formatAskAge(active.createdAt)}`,
+        `question: ${compactSingleLine(active.question, 220)}`,
+        `options_preview: ${optionsPreview.preview}`,
+      ];
+      if (defaultAnswer) {
+        lines.push(`default: ${compactSingleLine(defaultAnswer, 120)}`);
+      }
+      if (queue.length > 1) {
+        lines.push(`pending_followups_total: ${String(queue.length - 1)}`);
+      }
+      lines.push("hint: reply directly in chat to answer active question");
+      lines.push(
+        "ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun /ask for full followup details.",
+      );
+      lines.push("");
+      input.output.writeStdout(`${lines.join("\n")}\n`);
+      return;
+    }
     const lines: string[] = [
-      "[ask-user] pending queue",
-      `total: ${String(queue.length)}`,
-      `showing: ${String(Math.min(queue.length, maxRows))}${showAll ? " (all)" : ""}`,
+      "[ask-user] active question status",
+      "ask_status_output_mode: full",
+      `pending_total: ${String(total)}`,
+      `age: ${formatAskAge(active.createdAt)}`,
+      `question: ${compactSingleLine(active.question, 220)}`,
+      `options_preview: ${optionsPreview.preview}`,
     ];
-    for (let index = 0; index < queue.length && index < maxRows; index += 1) {
-      const row = queue[index];
-      const optionsLabel = row.options.length > 0
-        ? row.options.join(" / ")
-        : "<free-text>";
-      const activeMarker = index === 0 ? "*" : " ";
-      lines.push(`${activeMarker}${String(index + 1)}. [${row.questionId}] ${compactSingleLine(row.question, 180)}`);
-      lines.push(
-        `   node=${row.blockingNodeId} age=${formatAskAge(row.createdAt)} default=${row.defaultOnTimeout}`,
-      );
-      lines.push(
-        `   options=${compactSingleLine(optionsLabel, 180)}`,
-      );
-      if (index === 0 && row.options.length > 0) {
-        const quickAnswers = row.options
-          .map((option, optionIndex) => `${String(optionIndex + 1)}:${option}`)
-          .join(" | ");
-        lines.push(`   quick_answer=${compactSingleLine(quickAnswers, 180)}`);
+    if (optionsPreview.hiddenCount > 0) {
+      lines.push(`options_more: +${String(optionsPreview.hiddenCount)}`);
+    }
+    if (defaultAnswer) {
+      lines.push(`default: ${compactSingleLine(defaultAnswer, 120)}`);
+    }
+    if (pendingFollowups.length > 0) {
+      lines.push(`pending_followups_total: ${String(pendingFollowups.length)}`);
+      for (let index = 0; index < queuedPreviewRows.length; index += 1) {
+        const ask = queuedPreviewRows[index];
+        lines.push(
+          `pending_followup_${String(index + 1)}: ${ask.questionId} age=${formatAskAge(ask.createdAt)} question=${compactSingleLine(ask.question, 140)}`,
+        );
+      }
+      if (queuedHiddenCount > 0) {
+        lines.push(`pending_followups_more: +${String(queuedHiddenCount)}`);
       }
     }
-    if (queue.length > maxRows) {
-      lines.push(`... +${String(queue.length - maxRows)} more`);
-      lines.push("hint: run /ask queue all to view full queue");
-    }
-    lines.push("* active question");
-    lines.push("hint: reply directly or use /ask answer <n|text>");
-    lines.push("hint: /ask cancel skips current, /ask park(/ask next) rotates queue, /ask clear removes all");
+    lines.push("hint: reply directly in chat to answer active question");
+    lines.push("hint: /ask only shows status; ask-user actions are handled automatically");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
-  };
-
-  const cancelPendingAsk = (): void => {
-    purgeExpiredPendingAsk(true);
-    const sessionKey = input.runtimeState.getSessionKey();
-    const dismissed = input.gaMechanismRuntime.dismissPendingAsk(sessionKey);
-    if (!dismissed) {
-      input.output.writeStdout("[ask-user] no pending question to cancel.\n\n");
-      return;
-    }
-    syncGaSnapshotToRuntimeState();
-    const remaining = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
-    input.output.writeStdout(
-      `[ask-user] cancelled question_id=${dismissed.questionId} remaining=${String(remaining)}\n\n`,
-    );
-    if (input.persistGaStateSnapshot) {
-      void input.persistGaStateSnapshot().catch(() => {
-        input.output.writeStdout(
-          "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
-        );
-      });
-    }
-  };
-
-  const parkPendingAsk = (): void => {
-    purgeExpiredPendingAsk(true);
-    const sessionKey = input.runtimeState.getSessionKey();
-    const parked = input.gaMechanismRuntime.parkPendingAsk(sessionKey);
-    if (!parked) {
-      const queueDepth = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
-      if (queueDepth <= 0) {
-        input.output.writeStdout("[ask-user] no pending question to park.\n\n");
-      } else {
-        input.output.writeStdout(
-          "[ask-user] queue has only one pending question; nothing to park.\n\n",
-        );
-      }
-      return;
-    }
-    syncGaSnapshotToRuntimeState();
-    const active = input.gaMechanismRuntime.getPendingAsk(sessionKey);
-    const remaining = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
-    input.output.writeStdout(
-      `[ask-user] parked question_id=${parked.questionId} active=${active?.questionId ?? "<none>"} queue_depth=${String(remaining)}\n\n`,
-    );
-    if (input.persistGaStateSnapshot) {
-      void input.persistGaStateSnapshot().catch(() => {
-        input.output.writeStdout(
-          "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
-        );
-      });
-    }
-  };
-
-  const clearPendingAsk = (): void => {
-    purgeExpiredPendingAsk(true);
-    const sessionKey = input.runtimeState.getSessionKey();
-    const removed = input.gaMechanismRuntime.clearPendingAsk(sessionKey);
-    if (removed <= 0) {
-      input.output.writeStdout("[ask-user] no pending question to clear.\n\n");
-      return;
-    }
-    syncGaSnapshotToRuntimeState();
-    input.output.writeStdout(
-      `[ask-user] cleared pending queue removed=${String(removed)}\n\n`,
-    );
-    if (input.persistGaStateSnapshot) {
-      void input.persistGaStateSnapshot().catch(() => {
-        input.output.writeStdout(
-          "[ask-user] warning: failed to persist queue update, current session remains in-memory only.\n\n",
-        );
-      });
-    }
-  };
-
-  const answerPendingAsk = async (answer: string): Promise<void> => {
-    const normalized = compactSingleLine(answer, 400).trim();
-    if (!normalized) {
-      input.output.writeStdout("[ask-user] usage: /ask answer <text>\n\n");
-      return;
-    }
-    purgeExpiredPendingAsk(true);
-    const queueDepth = input.gaMechanismRuntime.getPendingAskQueueSize(
-      input.runtimeState.getSessionKey(),
-    );
-    if (queueDepth <= 0) {
-      input.output.writeStdout("[ask-user] no pending question to answer.\n\n");
-      return;
-    }
-    const code = await input.executeTurn(normalized, true);
-    if (code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE) {
-      input.runtimeState.markFailureObserved();
-    }
   };
 
   const sessionTopicCache: {
@@ -862,6 +1516,52 @@ export function createRunStartInteractiveModeInput(
     return refreshSessionTopic(activeSessionId);
   };
 
+  const planSuggestionStateCache: {
+    sessionKey: string;
+    value: RunStartPlanSuggestionState | undefined;
+    resolvedAtMs: number;
+  } = {
+    sessionKey: "",
+    value: undefined,
+    resolvedAtMs: 0,
+  };
+
+  const getPlanSuggestionState = (): RunStartPlanSuggestionState | undefined => {
+    const sessionKey = input.runtimeState.getSessionKey();
+    const now = Date.now();
+    if (
+      planSuggestionStateCache.sessionKey === sessionKey
+      && now - planSuggestionStateCache.resolvedAtMs <= PLAN_SUGGESTION_STATE_CACHE_TTL_MS
+    ) {
+      return planSuggestionStateCache.value;
+    }
+    const activePlanStatus = input.runtimeState.getPlanMeta()?.active_plan_status;
+    const latestEntry = resolveLatestPlanEntryStatus(input.workDir, sessionKey);
+    const verification = loadLatestPlanVerificationDiagnostic(
+      input.workDir,
+      sessionKey,
+      latestEntry.planId
+        ? {
+          planId: latestEntry.planId,
+        }
+        : undefined,
+    );
+    const value: RunStartPlanSuggestionState = {
+      activePlanStatus,
+      latestPlanStatus: latestEntry.status,
+      latestVerificationStatus: verification?.status,
+    };
+    const hasSignal = Boolean(
+      value.activePlanStatus
+      || value.latestPlanStatus
+      || value.latestVerificationStatus,
+    );
+    planSuggestionStateCache.sessionKey = sessionKey;
+    planSuggestionStateCache.value = hasSignal ? value : undefined;
+    planSuggestionStateCache.resolvedAtMs = now;
+    return planSuggestionStateCache.value;
+  };
+
   return {
     homeDir: input.homeDir,
     projectRoot: input.projectRoot,
@@ -889,11 +1589,8 @@ export function createRunStartInteractiveModeInput(
       input.gaMechanismRuntime.getPendingAskQueueSize(
         input.runtimeState.getSessionKey(),
       ),
+    getPendingAskPromptSummary,
     showPendingAskQueue,
-    cancelPendingAsk,
-    parkPendingAsk,
-    clearPendingAsk,
-    answerPendingAsk,
     showHealthStatus: () => {
       input.output.writeStdout(
         formatProviderHealthSnapshot({
@@ -932,8 +1629,20 @@ export function createRunStartInteractiveModeInput(
       input.wire.handoff.writeHandoff("manual-command", false);
     },
     isPlanMode: input.planMode.isPlanMode,
+    getPlanSuggestionState,
     showPlanStatus: input.planMode.showPlanStatus,
+    benchmarkPlan: async (commandRaw) => {
+      const result = await input.planMode.handleMessageInput(commandRaw);
+      if (!result.handled) {
+        input.output.writeStdout("[plan] benchmark command was not handled.\n\n");
+        return 1;
+      }
+      return result.code;
+    },
     enterPlan: input.planMode.enterPlan,
+    approvePlan: input.planMode.approvePlan,
+    rejectPlan: input.planMode.rejectPlan,
+    verifyPlan: input.planMode.verifyPlan,
     applyPlan: input.planMode.applyPlan,
     cancelPlan: input.planMode.cancelPlan,
     requestPlanInterrupt: async (source) => {
@@ -946,6 +1655,7 @@ export function createRunStartInteractiveModeInput(
     handleUserCommandsCommand: userCommandsRuntime.handleManagementCommand,
     openCommandsMenu: userCommandsRuntime.openManagementMenu,
     openPlanMenu,
+    openPlanInEditor,
     showHistory,
     openHistorySearch,
     promptSkillCreatorRequirement: async (withInputPaused) => {

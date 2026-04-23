@@ -1,4 +1,10 @@
-import { createRunStartInteractiveModeInput } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
+import {
+  createRunStartInteractiveModeInput,
+  resolvePlanMenuInitialItemId,
+  resolvePlanMenuPrimaryAction,
+  resolvePlanMenuPrimaryReason,
+  resolvePlanMenuTailItemOrder,
+} from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
 import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
 import {
   createGaMechanismRuntime,
@@ -21,6 +27,23 @@ import {
   type RuntimeProviderCandidate,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-turn";
 import { type RunStartWire } from "../../orchestration/entrypoints/dev-cli/start/run-start-wire";
+
+async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>): Promise<T> {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  try {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: stdinIsTty,
+      configurable: true,
+    });
+    return await operation();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process.stdin, "isTTY", descriptor);
+    } else {
+      delete (process.stdin as { isTTY?: boolean }).isTTY;
+    }
+  }
+}
 
 function createRuntimeStateMock(input: {
   sessionKey: string;
@@ -159,8 +182,12 @@ async function main(): Promise<void> {
   };
   const planMode: RunStartPlanMode = {
     isPlanMode: () => false,
+    getActivePlanPath: () => undefined,
     enterPlan: async () => 0,
     showPlanStatus: async () => 0,
+    approvePlan: async () => 0,
+    rejectPlan: async () => 0,
+    verifyPlan: async () => 0,
     runPlanTurn: async () => 0,
     applyPlan: async () => 0,
     cancelPlan: async () => 0,
@@ -175,8 +202,6 @@ async function main(): Promise<void> {
   let switchResult = true;
   const switchEvents: string[] = [];
   const gaMechanismRuntime = createGaMechanismRuntime();
-  let executeTurnCount = 0;
-  let lastExecuteTurnInput = "";
   let handoffReason = "";
   let handoffToStderr = true;
   let autoExitToStderr = true;
@@ -199,10 +224,13 @@ async function main(): Promise<void> {
         return switchResult;
       },
       continueFromSession: async () => undefined,
+      resumeFromSession: async () => false,
+      forkFromSession: async () => false,
+      listRewindCheckpoints: () => [],
+      rewindSession: async () => false,
     },
     executeTurn: async (userInput) => {
-      executeTurnCount += 1;
-      lastExecuteTurnInput = userInput;
+      void userInput;
       return 0;
     },
   };
@@ -249,22 +277,115 @@ async function main(): Promise<void> {
   interactiveModeInput.setStatusSegmentEnabled("tokens", false);
   interactiveModeInput.writeManualHandoff();
   interactiveModeInput.writeAutoExitHandoffIfNeeded();
-  await interactiveModeInput.answerPendingAsk("fast");
-  const executeCountAfterNoPendingAnswer = executeTurnCount;
-  const pendingAsk = normalizeAskUserEnvelopeFromPayload({
-    question_id: "ask_q_contract_001",
+  const planMenuNonTtyStart = stdoutChunks.join("").length;
+  await withStdinTty(false, async () => {
+    await interactiveModeInput.openPlanMenu(async (operation) => operation());
+    return undefined;
+  });
+  const planMenuNonTtyText = stdoutChunks.join("").slice(planMenuNonTtyStart);
+  interactiveModeInput.showPendingAskQueue();
+  const buildPendingAsk = (
+    suffix: string,
+    options: string[] = ["safe", "fast"],
+  ) => normalizeAskUserEnvelopeFromPayload({
+    question_id: `ask_q_contract_${suffix}`,
     blocking_node_id: "node.contract.ask",
     question: "Choose profile",
-    options: ["safe", "fast"],
+    options,
     default_on_timeout: "safe",
-    resume_token: "resume_contract_001",
+    resume_token: `resume_contract_${suffix}`,
   });
-  if (!pendingAsk) {
+  const pendingAskPrimary = buildPendingAsk("001", [
+    "safe",
+    "fast",
+    "aggressive",
+    "balanced",
+    "retry",
+    "fallback",
+  ]);
+  const pendingAskSecondary = buildPendingAsk("002", ["yes", "no"]);
+  if (!pendingAskPrimary || !pendingAskSecondary) {
     throw new Error("failed to build contract ask-user envelope");
   }
-  gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAsk);
-  await interactiveModeInput.answerPendingAsk("fast");
+  gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAskPrimary);
+  gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAskSecondary);
+  const askStatusCompactStart = stdoutChunks.join("").length;
+  await withStdinTty(true, async () => {
+    interactiveModeInput.showPendingAskQueue();
+    return undefined;
+  });
+  const askStatusCompactText = stdoutChunks.join("").slice(askStatusCompactStart);
+  interactiveModeInput.showPendingAskQueue();
+  interactiveModeInput.showPendingAskQueue(-1);
   const statusConfigAfter = interactiveModeInput.getStatusLineConfig();
+  const planMenuInitialDraft = resolvePlanMenuInitialItemId({
+    planMode: true,
+    state: {
+      activePlanStatus: "draft",
+      latestPlanStatus: "draft",
+    },
+  });
+  const planMenuInitialApproved = resolvePlanMenuInitialItemId({
+    planMode: true,
+    state: {
+      activePlanStatus: "approved",
+      latestPlanStatus: "approved",
+    },
+  });
+  const planMenuInitialAppliedPending = resolvePlanMenuInitialItemId({
+    planMode: false,
+    state: {
+      latestPlanStatus: "applied",
+      latestVerificationStatus: "pending",
+    },
+  });
+  const planMenuTailDraft = resolvePlanMenuTailItemOrder({
+    state: {
+      activePlanStatus: "draft",
+      latestPlanStatus: "draft",
+    },
+  });
+  const planMenuTailApproved = resolvePlanMenuTailItemOrder({
+    state: {
+      activePlanStatus: "approved",
+      latestPlanStatus: "approved",
+    },
+  });
+  const planMenuTailAppliedPending = resolvePlanMenuTailItemOrder({
+    planMode: false,
+    state: {
+      latestPlanStatus: "applied",
+      latestVerificationStatus: "pending",
+    },
+  });
+  const planMenuPrimaryDraft = resolvePlanMenuPrimaryAction({
+    planMode: true,
+    state: {
+      activePlanStatus: "draft",
+      latestPlanStatus: "draft",
+    },
+  });
+  const planMenuPrimaryApproved = resolvePlanMenuPrimaryAction({
+    planMode: true,
+    state: {
+      activePlanStatus: "approved",
+      latestPlanStatus: "approved",
+    },
+  });
+  const planMenuPrimaryReasonDraft = resolvePlanMenuPrimaryReason({
+    planMode: true,
+    state: {
+      activePlanStatus: "draft",
+      latestPlanStatus: "draft",
+    },
+  });
+  const planMenuPrimaryReasonApproved = resolvePlanMenuPrimaryReason({
+    planMode: true,
+    state: {
+      activePlanStatus: "approved",
+      latestPlanStatus: "approved",
+    },
+  });
 
   const outputText = stdoutChunks.join("");
   const payload = {
@@ -294,10 +415,46 @@ async function main(): Promise<void> {
     status_theme_after_update: statusConfigAfter.theme,
     status_layout_after_update: statusConfigAfter.layoutMode,
     status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
-    ask_answer_without_pending_skips_execute: executeCountAfterNoPendingAnswer === 0,
-    ask_answer_without_pending_warned: outputText.includes("[ask-user] no pending question to answer."),
-    ask_answer_with_pending_executes_turn: executeTurnCount === executeCountAfterNoPendingAnswer + 1,
-    ask_answer_with_pending_input: lastExecuteTurnInput,
+    ask_status_no_pending_warned: outputText.includes("[ask-user] no pending question."),
+    ask_status_has_options_preview: outputText.includes("options_preview: "),
+    ask_status_has_output_mode_full: outputText.includes("ask_status_output_mode: full"),
+    ask_status_has_options_more: outputText.includes("options_more: +1"),
+    ask_status_has_followups_total: outputText.includes("pending_followups_total: 1"),
+    ask_status_has_followup_row: outputText.includes("pending_followup_1: ask_q_contract_002"),
+    ask_status_hint_mentions_reply_direct:
+      outputText.includes("hint: reply directly in chat to answer active question"),
+    ask_status_hint_mentions_status_only:
+      outputText.includes("hint: /ask only shows status; ask-user actions are handled automatically"),
+    ask_status_compact_has_header:
+      askStatusCompactText.includes("[ask-user] active question"),
+    ask_status_compact_has_output_mode:
+      askStatusCompactText.includes("ask_status_output_mode: compact"),
+    ask_status_compact_has_detail_hint:
+      askStatusCompactText.includes("ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1"),
+    ask_status_compact_has_followups_total:
+      askStatusCompactText.includes("pending_followups_total: 1"),
+    ask_status_compact_hides_followup_rows:
+      !askStatusCompactText.includes("pending_followup_1: "),
+    ask_status_compact_hides_status_only_hint:
+      !askStatusCompactText.includes("hint: /ask only shows status; ask-user actions are handled automatically"),
+    plan_menu_initial_draft_is_check: planMenuInitialDraft === "check",
+    plan_menu_initial_approved_is_apply: planMenuInitialApproved === "apply",
+    plan_menu_initial_applied_pending_is_verify: planMenuInitialAppliedPending === "verify",
+    plan_menu_non_tty_has_suggested_line:
+      planMenuNonTtyText.includes("[plan] suggested now: "),
+    plan_menu_non_tty_suggests_goal:
+      planMenuNonTtyText.includes("[plan] suggested now: /plan <goal>"),
+    plan_menu_tail_draft_check_first: planMenuTailDraft[0] === "check",
+    plan_menu_tail_approved_apply_first: planMenuTailApproved[0] === "apply",
+    plan_menu_tail_applied_pending_verify_first: planMenuTailAppliedPending[0] === "verify",
+    plan_menu_primary_draft_command_is_check:
+      planMenuPrimaryDraft.command === "/plan check",
+    plan_menu_primary_approved_command_is_apply:
+      planMenuPrimaryApproved.command === "/plan apply [extra]",
+    plan_menu_primary_reason_draft_mentions_check:
+      planMenuPrimaryReasonDraft.includes("quick check"),
+    plan_menu_primary_reason_approved_mentions_apply:
+      planMenuPrimaryReasonApproved.includes("apply"),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);
