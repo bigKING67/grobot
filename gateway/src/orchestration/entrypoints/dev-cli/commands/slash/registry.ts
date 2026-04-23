@@ -55,11 +55,6 @@ interface ParsedHistoryCommand {
   reason?: string;
 }
 
-interface ParsedAskCommand {
-  kind: "show" | "invalid";
-  reason?: string;
-}
-
 export interface SlashCommandSuggestion {
   command: string;
   description: string;
@@ -678,21 +673,6 @@ function parseHistoryCommand(inputRaw: string): ParsedHistoryCommand {
   };
 }
 
-function parseAskCommand(inputRaw: string): ParsedAskCommand {
-  const input = inputRaw.trim();
-  if (!input.startsWith("/ask")) {
-    return { kind: "invalid", reason: "command must start with /ask" };
-  }
-  const rest = input.slice("/ask".length).trim();
-  if (!rest) {
-    return { kind: "show" };
-  }
-  return {
-    kind: "invalid",
-    reason: "usage: /ask",
-  };
-}
-
 async function executeRewindSlashCommand(
   input: SlashCommandExecutionInput,
   command: "/rewind" | "/checkpoint",
@@ -988,22 +968,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     ],
   },
   {
-    id: "ask",
-    matches: (userInput) => matchesInteractiveCommand(userInput, "/ask"),
-    execute: async ({ userInput, handlers }) => {
-      const parsed = parseAskCommand(userInput);
-      if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid ask command"}\n\n`);
-        return "continue";
-      }
-      handlers.showPendingAskQueue();
-      return "continue";
-    },
-    helpLines: [
-      "  /ask                 Show ask-user status (reply directly to continue)",
-    ],
-  },
-  {
     id: "plan",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/plan"),
     execute: async ({ userInput, controls, handlers }) => {
@@ -1061,11 +1025,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         handlers.writeStdout(`${parsed.reason}\n\n`);
         return "continue";
       }
-      if (isInteractiveTerminal()) {
-        handlers.writeStdout("[plan] 交互模式已收敛为主入口 /plan；已为你打开 Plan Actions 菜单。\n\n");
-        await handlers.openPlanMenu(controls.withInputPaused);
-        return "continue";
-      }
       if (parsed.kind === "status") {
         await handlers.showPlanStatus();
         return "continue";
@@ -1100,9 +1059,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       "  /plan                Open plan actions menu (interactive)",
       "  /plan open           Open active plan file in editor (interactive)",
       "  /plan <goal>         Enter plan mode and execute first requirement",
-      "  /plan status         Show active plan status (script/non-interactive)",
+      "  /plan status         Show active plan status summary",
+      "  /plan approve [note] Approve active plan",
+      "  /plan reject [reason] Reject active plan and continue refining",
+      "  /plan verify <pass|fail> [note] Record verification result for latest applied plan",
+      "  /plan apply [extra]  Apply approved plan and exit plan mode",
+      "  /plan cancel         Exit plan mode",
+      "  /plan check [core|generic]  Quick benchmark check-only (default: core)",
       "  /plan benchmark ...  Compare active plan with external candidates",
-      "  /plan benchmark --preset <generic|core> [--assert-best <label>]",
+      "  /plan benchmark --preset <generic|core> [--assert-best <label>] [--check-only|--check]",
     ],
   },
   {
@@ -1293,7 +1258,6 @@ const HELP_ORDER: readonly string[] = [
   "commands",
   "skill-creator",
   "history",
-  "ask",
   "model",
   "plan",
   "status",
@@ -1314,7 +1278,6 @@ const PRIMARY_HELP_ORDER: readonly string[] = [
   "commands",
   "skill-creator",
   "history",
-  "ask",
   "model",
   "plan",
   "status",
@@ -1338,13 +1301,13 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/ask", description: "Show ask-user status (reply directly to continue)" },
   { command: "/health", description: "Show provider failover and circuit status" },
   { command: "/skills", description: "Show skill directories and quick usage hint" },
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
   { command: "/model", description: "Open interactive model picker" },
   { command: "/status", description: "Show current status line config snapshot" },
   { command: "/plan", description: "Open plan actions menu (use /plan <goal> for direct entry)" },
+  { command: "/plan check", description: "Quick benchmark check-only (default preset: core)" },
   { command: "/interrupt", description: "Interrupt running turn (Esc: running interrupt, plan idle exits mode)" },
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
@@ -1359,7 +1322,6 @@ const PRIMARY_HINT_COMMANDS: readonly string[] = [
   "/commands",
   "/skill-creator",
   "/history",
-  "/ask",
   "/model",
   "/plan",
   "/exit",
@@ -1411,7 +1373,7 @@ export function listSlashCommandCompatibilityNotes(): string[] {
   return [
     "  - /switch /continue remain compatibility shortcuts; prefer /sessions + /resume + /rewind.",
     "  - /checkpoint is an alias of /rewind.",
-    "  - Interactive mode is menu-first for /sessions, /status, /plan.",
+    "  - Interactive mode is menu-first for /sessions and /status; /plan supports direct subcommands.",
     "  - Non-interactive scripts keep compatibility shortcuts where applicable.",
   ];
 }

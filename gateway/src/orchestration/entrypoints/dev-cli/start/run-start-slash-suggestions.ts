@@ -50,29 +50,12 @@ const ROOT_SLASH_PRIMARY_BUILTIN_COMMANDS = new Set<string>([
   "rewind",
   "commands",
   "skill-creator",
-  "ask",
   "model",
   "plan",
   "status",
   "help",
   "exit",
 ]);
-
-const PENDING_ASK_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
-  {
-    command: "/ask",
-    description: "Show ask-user status",
-    source: "builtin",
-  },
-];
-
-const ASK_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
-  {
-    command: "/ask",
-    description: "Show ask-user status",
-    source: "builtin",
-  },
-];
 
 const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
   {
@@ -451,7 +434,6 @@ export function listRunStartSlashSuggestions(
   const normalizedQuery = normalizeForMatch(query);
   const isRootSlash = isRootSlashQuery(query);
   const planMode = input.planMode === true;
-  const hasPendingAsk = typeof input.pendingAskCount === "number" && input.pendingAskCount > 0;
   const suggestions: RunStartSlashSuggestion[] = [];
   const seen = new Set<string>();
 
@@ -486,16 +468,6 @@ export function listRunStartSlashSuggestions(
     suggestions.push(item);
   };
 
-  if (hasPendingAsk) {
-    for (const entry of PENDING_ASK_PRIORITY_SUGGESTIONS) {
-      appendSuggestion(entry);
-    }
-  }
-  if (queryHead === "/ask") {
-    for (const entry of ASK_PRIORITY_SUGGESTIONS) {
-      appendSuggestion(entry);
-    }
-  }
   if (queryHead === "/plan") {
     if (normalizedQuery === "/plan") {
       const stateDriven = resolvePlanRootPrioritySuggestions({

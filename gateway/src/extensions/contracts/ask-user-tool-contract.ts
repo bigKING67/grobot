@@ -72,16 +72,44 @@ runtime.registerPendingAsk(sessionKey, {
   question: "Need risk review now?",
 });
 const display = runtime.buildAskUserDisplay(nextEnvelope);
+const overflowEnvelope = normalizeAskUserEnvelopeFromPayload({
+  question_id: "ask_q_009",
+  blocking_node_id: "node.overflow.options",
+  question: "Pick one from many options",
+  options: [
+    "option-1",
+    "option-2",
+    "option-3",
+    "option-4",
+    "option-5",
+    "option-6",
+  ],
+  default_on_timeout: "option-1",
+  resume_token: "resume_009",
+});
+if (!overflowEnvelope) {
+  throw new Error("failed to normalize overflow ask_user payload");
+}
+const overflowDisplay = runtime.buildAskUserDisplay(overflowEnvelope);
 const resolutionPrompt = buildAskUserResolutionPrompt({
   envelope: pendingEnvelope,
   answer: "fast",
 });
 const issuedRegistered = sessionStore.get(sessionKey)?.questionId === "ask_q_002";
 const queueSizeAfterEnqueue = sessionStore.size(sessionKey);
-const dismissed = sessionStore.dismissCurrent(sessionKey);
-const queueNextAfterDismissIsQ3 = sessionStore.get(sessionKey)?.questionId === "ask_q_003";
-const queueListSizeAfterDismiss = sessionStore.list(sessionKey).length;
-const removedByClear = sessionStore.clear(sessionKey);
+const queuedStepOne = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: "all",
+});
+const queueNextAfterResolveIsQ3 = queuedStepOne.pendingNextAsk?.questionId === "ask_q_003";
+const queueSizeAfterResolve = queuedStepOne.queueSizeAfterResolve;
+const queuedStepTwo = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: "yes",
+});
+const queueEmptyAfterBatchResolved = sessionStore.size(sessionKey) === 0;
 const optionEnvelope = normalizeAskUserEnvelopeFromPayload({
   question_id: "ask_q_004",
   blocking_node_id: "node.answer.by_index",
@@ -101,30 +129,6 @@ runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByOptionText = sessionStore.resolve(sessionKey, "FAST");
 runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByBlank = sessionStore.resolve(sessionKey, "   ");
-const parkEnvelopeFirst = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_007",
-  blocking_node_id: "node.park.first",
-  question: "First park question",
-  options: ["yes", "no"],
-  default_on_timeout: "no",
-  resume_token: "resume_007",
-});
-const parkEnvelopeSecond = normalizeAskUserEnvelopeFromPayload({
-  question_id: "ask_q_008",
-  blocking_node_id: "node.park.second",
-  question: "Second park question",
-  options: ["yes", "no"],
-  default_on_timeout: "yes",
-  resume_token: "resume_008",
-});
-if (!parkEnvelopeFirst || !parkEnvelopeSecond) {
-  throw new Error("failed to normalize park ask_user payload");
-}
-sessionStore.set(sessionKey, parkEnvelopeFirst);
-sessionStore.set(sessionKey, parkEnvelopeSecond);
-const parkedCurrent = sessionStore.parkCurrent(sessionKey);
-const queueAfterPark = sessionStore.list(sessionKey);
-sessionStore.clear(sessionKey);
 const expiredEnvelope = normalizeAskUserEnvelopeFromPayload({
   question_id: "ask_q_005",
   blocking_node_id: "node.expired",
@@ -153,7 +157,7 @@ const expiredByTtl = sessionStore.pruneExpired(sessionKey, {
   nowMs: Date.parse("2026-01-01T00:00:20.000Z"),
 });
 const remainingAfterTtlPrune = sessionStore.list(sessionKey);
-sessionStore.clear(sessionKey);
+sessionStore.delete(sessionKey);
 
 const payload = {
   protocol_prefix_removed: promptContext.promptParts.every((part) => part.includes("[AskUser Resolution]")),
@@ -164,22 +168,27 @@ const payload = {
   issued_registered: issuedRegistered,
   queue_size_after_enqueue: queueSizeAfterEnqueue,
   queue_dedupe_keeps_size: queueSizeAfterEnqueue === 2,
-  queue_dismiss_first_matches_q2: dismissed?.questionId === "ask_q_002",
-  queue_next_after_dismiss_is_q3: queueNextAfterDismissIsQ3,
-  queue_list_size_after_dismiss: queueListSizeAfterDismiss,
-  queue_clear_removed_count: removedByClear,
-  queue_empty_after_clear: sessionStore.size(sessionKey) === 0,
-  answer_numeric_index_maps_option: resolvedByIndex?.answer === "fast",
-  answer_full_width_index_maps_option: resolvedByFullWidthIndex?.answer === "fast",
-  answer_case_insensitive_option_maps_canonical: resolvedByOptionText?.answer === "fast",
-  answer_blank_falls_back_default: resolvedByBlank?.answer === "safe",
-  queue_park_rotates_active: parkedCurrent?.questionId === "ask_q_007",
-  queue_park_next_is_second: queueAfterPark[0]?.questionId === "ask_q_008",
-  queue_park_tail_is_first: queueAfterPark[1]?.questionId === "ask_q_007",
+  queue_resolve_first_matches_q2: queuedStepOne.resolvedAsk?.envelope.questionId === "ask_q_002",
+  queue_next_after_resolve_is_q3: queueNextAfterResolveIsQ3,
+  queue_size_after_resolve: queueSizeAfterResolve,
+  queue_midway_prompt_deferred: queuedStepOne.promptParts.length === 0,
+  queue_final_prompt_released: queuedStepTwo.promptParts.some((part) =>
+    part.includes("question_count=2")
+    && part.includes("question_1_id=ask_q_002")
+    && part.includes("question_2_id=ask_q_003")),
+  queue_empty_after_batch_resolved: queueEmptyAfterBatchResolved,
+  answer_numeric_index_maps_option: resolvedByIndex?.resolvedAsk.answer === "fast",
+  answer_full_width_index_maps_option: resolvedByFullWidthIndex?.resolvedAsk.answer === "fast",
+  answer_case_insensitive_option_maps_canonical: resolvedByOptionText?.resolvedAsk.answer === "fast",
+  answer_blank_falls_back_default: resolvedByBlank?.resolvedAsk.answer === "safe",
   queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.questionId === "ask_q_005",
   queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.questionId === "ask_q_006",
-  issued_display_has_reply_hint: display.includes("reply directly or use /ask answer"),
+  issued_display_has_reply_hint: display.includes("hint: reply directly with number / option label / free text"),
+  issued_display_has_reply_guide: display.includes("hint: reply directly with number / option label / free text"),
   issued_display_hides_resume_token: !display.includes("resume_token"),
+  issued_display_compact_options: !display.includes("\noptions:\n"),
+  issued_display_has_options_preview: display.includes("options_preview: "),
+  issued_display_overflow_mentions_more: overflowDisplay.includes("... +1 more"),
   issued_event_has_question_id: formatAskUserIssuedEvent(nextEnvelope).includes("question_id=ask_q_002"),
 };
 

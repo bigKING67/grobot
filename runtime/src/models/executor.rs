@@ -73,10 +73,14 @@ fn upload_kimi_file_from_path(
             ModelExecutionError::new(class, format!("kimi file upload failed: {error}"))
         })?;
     let status = response.status();
+    let response_headers = summarize_response_headers_for_diagnostics(response.headers());
     let body = response.text().map_err(|error| {
         ModelExecutionError::new(
             "upstream_response_read_failed",
-            format!("failed to read kimi upload response: {error}"),
+            format!(
+                "failed to read kimi upload response: {error}; status={}; headers={response_headers}",
+                status.as_u16()
+            ),
         )
     })?;
     if !status.is_success() {
@@ -127,10 +131,14 @@ fn fetch_kimi_file_content(
             ModelExecutionError::new(class, format!("kimi file content fetch failed: {error}"))
         })?;
     let status = response.status();
+    let response_headers = summarize_response_headers_for_diagnostics(response.headers());
     let body = response.text().map_err(|error| {
         ModelExecutionError::new(
             "upstream_response_read_failed",
-            format!("failed to read kimi file content response: {error}"),
+            format!(
+                "failed to read kimi file content response: {error}; status={}; headers={response_headers}",
+                status.as_u16()
+            ),
         )
     })?;
     if !status.is_success() {
@@ -151,6 +159,46 @@ fn classify_request_error_class(error: &reqwest::Error) -> &'static str {
     } else {
         "upstream_request_failed"
     }
+}
+
+fn truncate_header_value_for_diagnostics(raw: &str, max_chars: usize) -> String {
+    let normalized = raw.trim().replace('\n', " ").replace('\r', " ");
+    if normalized.chars().count() <= max_chars {
+        return normalized;
+    }
+    let truncated: String = normalized.chars().take(max_chars).collect();
+    format!("{truncated}…")
+}
+
+fn summarize_response_headers_for_diagnostics(headers: &reqwest::header::HeaderMap) -> String {
+    const CANDIDATE_KEYS: [&str; 8] = [
+        "content-type",
+        "content-encoding",
+        "transfer-encoding",
+        "content-length",
+        "server",
+        "via",
+        "cf-ray",
+        "x-request-id",
+    ];
+    let mut pairs: Vec<String> = Vec::new();
+    for key in CANDIDATE_KEYS {
+        let Some(raw_value) = headers.get(key) else {
+            continue;
+        };
+        let Ok(value) = raw_value.to_str() else {
+            continue;
+        };
+        let normalized = truncate_header_value_for_diagnostics(value, 96);
+        if normalized.is_empty() {
+            continue;
+        }
+        pairs.push(format!("{key}={normalized}"));
+    }
+    if pairs.is_empty() {
+        return "<none>".to_string();
+    }
+    pairs.join(",")
 }
 
 fn should_retry_kimi_http_error(status: reqwest::StatusCode, body_text: &str) -> bool {
@@ -775,6 +823,72 @@ fn parse_ask_user_options(payload: &serde_json::Map<String, Value>) -> Vec<Strin
     options
 }
 
+fn parse_ask_user_option_objects(value: Option<&Value>) -> Vec<ModelAskUserOption> {
+    let Some(raw_options) = value.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut options = Vec::new();
+    for raw in raw_options {
+        if let Some(option) = raw.as_str() {
+            let normalized = option.trim();
+            if normalized.is_empty() {
+                continue;
+            }
+            options.push(ModelAskUserOption {
+                label: normalized.to_string(),
+                description: None,
+                value: Some(normalized.to_string()),
+            });
+        } else if let Some(option_obj) = raw.as_object() {
+            let label = parse_non_empty_string_field(option_obj, "label")
+                .or_else(|| parse_non_empty_string_field(option_obj, "value"))
+                .or_else(|| parse_non_empty_string_field(option_obj, "id"));
+            let Some(label) = label else {
+                continue;
+            };
+            options.push(ModelAskUserOption {
+                label: label.clone(),
+                description: parse_non_empty_string_field(option_obj, "description"),
+                value: parse_non_empty_string_field(option_obj, "value").or(Some(label)),
+            });
+        }
+        if options.len() >= 6 {
+            break;
+        }
+    }
+    options
+}
+
+fn parse_ask_user_questions(payload: &serde_json::Map<String, Value>) -> Vec<ModelAskUserQuestion> {
+    let Some(raw_questions) = payload.get("questions").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut questions = Vec::new();
+    for (index, raw) in raw_questions.iter().enumerate() {
+        let Some(question_obj) = raw.as_object() else {
+            continue;
+        };
+        let Some(question) = parse_non_empty_string_field(question_obj, "question") else {
+            continue;
+        };
+        let id = parse_non_empty_string_field(question_obj, "id")
+            .unwrap_or_else(|| format!("q{}", index + 1));
+        let header = parse_non_empty_string_field(question_obj, "header")
+            .unwrap_or_else(|| format!("Question {}", index + 1));
+        let options = parse_ask_user_option_objects(question_obj.get("options"));
+        questions.push(ModelAskUserQuestion {
+            id,
+            header,
+            question,
+            options,
+        });
+        if questions.len() >= 3 {
+            break;
+        }
+    }
+    questions
+}
+
 fn parse_tool_interrupt(
     tool_call: &ToolCallInput,
     output: &ToolCallOutput,
@@ -801,17 +915,48 @@ fn parse_tool_interrupt(
             "ask_user_question output type must be ask_user",
         ));
     }
-    let question =
-        parse_non_empty_string_field(payload, "question").ok_or_else(|| {
+    let mut questions = parse_ask_user_questions(payload);
+    let question = parse_non_empty_string_field(payload, "question")
+        .or_else(|| questions.first().map(|row| row.question.clone()))
+        .ok_or_else(|| {
             ModelExecutionError::new(
                 "invalid_tool_output",
-                "ask_user_question output missing question",
+                "ask_user_question output missing question / questions[]",
             )
         })?;
     let question_id = parse_non_empty_string_field(payload, "question_id")
         .unwrap_or_else(|| format!("askq_{}", tool_call.id));
     let blocking_node_id = parse_non_empty_string_field(payload, "blocking_node_id")
         .unwrap_or_else(|| "node.unknown".to_string());
+    let legacy_options = parse_ask_user_options(payload);
+    let options = if !legacy_options.is_empty() {
+        legacy_options
+    } else {
+        questions
+            .first()
+            .map(|row| {
+                row.options
+                    .iter()
+                    .map(|option| option.label.clone())
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default()
+    };
+    if questions.is_empty() {
+        questions.push(ModelAskUserQuestion {
+            id: question_id.clone(),
+            header: "Clarification".to_string(),
+            question: question.clone(),
+            options: options
+                .iter()
+                .map(|option| ModelAskUserOption {
+                    label: option.clone(),
+                    description: None,
+                    value: Some(option.clone()),
+                })
+                .collect(),
+        });
+    }
     let default_on_timeout = parse_non_empty_string_field(payload, "default_on_timeout")
         .unwrap_or_else(|| "continue_with_best_effort".to_string());
     let resume_token = parse_non_empty_string_field(payload, "resume_token")
@@ -822,7 +967,8 @@ fn parse_tool_interrupt(
         question_id,
         blocking_node_id,
         question,
-        options: parse_ask_user_options(payload),
+        options,
+        questions,
         default_on_timeout,
         resume_token,
         created_at,
@@ -943,10 +1089,14 @@ fn send_chat_completion_with_optional_kimi_retry(
         };
 
         let status = response.status();
+        let response_headers = summarize_response_headers_for_diagnostics(response.headers());
         let body_text = response.text().map_err(|error| {
             ModelExecutionError::new(
                 "upstream_response_read_failed",
-                format!("failed to read model response body: {error}"),
+                format!(
+                    "failed to read model response body: {error}; status={}; headers={response_headers}",
+                    status.as_u16()
+                ),
             )
         })?;
         if status.is_success() {

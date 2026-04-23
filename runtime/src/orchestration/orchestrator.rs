@@ -2,7 +2,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::engine::{
     RuntimeEventOutput, TurnExecuteFailure, TurnExecuteInput, TurnExecuteOutput,
-    TurnInterruptAskUserOutput, TurnInterruptOutput,
+    TurnInterruptAskUserOptionOutput, TurnInterruptAskUserOutput,
+    TurnInterruptAskUserQuestionOutput, TurnInterruptOutput,
 };
 use crate::models::model::{
     ModelExecutionInterrupt, ModelExecutor, ModelTelemetryEvent, OpenAiCompatibleModelExecutor,

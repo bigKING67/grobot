@@ -63,6 +63,24 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     blocking_node_id: ask_user.blocking_node_id,
                     question: ask_user.question,
                     options: ask_user.options,
+                    questions: ask_user
+                        .questions
+                        .into_iter()
+                        .map(|question| TurnInterruptAskUserQuestionOutput {
+                            id: question.id,
+                            header: question.header,
+                            question: question.question,
+                            options: question
+                                .options
+                                .into_iter()
+                                .map(|option| TurnInterruptAskUserOptionOutput {
+                                    label: option.label,
+                                    description: option.description,
+                                    value: option.value,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
                     default_on_timeout: ask_user.default_on_timeout,
                     resume_token: ask_user.resume_token,
                     created_at: ask_user.created_at,
@@ -78,7 +96,8 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                 json!({
                     "kind": interrupt.kind,
                     "question_id": ask_user.map(|value| value.question_id.clone()).unwrap_or_default(),
-                    "blocking_node_id": ask_user.map(|value| value.blocking_node_id.clone()).unwrap_or_default()
+                    "blocking_node_id": ask_user.map(|value| value.blocking_node_id.clone()).unwrap_or_default(),
+                    "question_total": ask_user.map(|value| value.questions.len()).unwrap_or(0)
                 })
             }
             _ => json!({

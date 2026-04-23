@@ -82,6 +82,8 @@ async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>)
   } finally {
     if (descriptor) {
       Object.defineProperty(process.stdin, "isTTY", descriptor);
+    } else {
+      delete (process.stdin as { isTTY?: boolean }).isTTY;
     }
   }
 }
@@ -525,9 +527,16 @@ async function main(): Promise<void> {
   const planReject = await runDispatchCase("/plan reject scope is too broad", { stdinIsTty: true });
   const planVerify = await runDispatchCase("/plan verify fail e2e mismatch", { stdinIsTty: true });
   const planVerifyCn = await runDispatchCase("/plan 验证 通过 结果稳定", { stdinIsTty: true });
+  const planCheck = await runDispatchCase("/plan check", { stdinIsTty: true });
+  const planCheckCore = await runDispatchCase("/plan check core", { stdinIsTty: true });
+  const planCheckGeneric = await runDispatchCase("/plan check generic", { stdinIsTty: true });
+  const planCheckCn = await runDispatchCase("/plan 检查", { stdinIsTty: true });
   const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
   const planLegacyBenchmark = await runDispatchCase("/plan benchmark strong=/tmp/strong-plan.md", {
     stdinIsTty: false,
+  });
+  const planLegacyBenchmarkTty = await runDispatchCase("/plan benchmark strong=/tmp/strong-plan.md", {
+    stdinIsTty: true,
   });
   const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
   const planStatusWithTailTty = await runDispatchCase("/plan status extra", { stdinIsTty: true });
@@ -547,7 +556,7 @@ async function main(): Promise<void> {
   const historyCommand = await runDispatchCase("/history");
   const historyFilteredCommand = await runDispatchCase("/history 窗口预算");
   const askCommand = await runDispatchCase("/ask");
-  const askInvalidArgsCommand = await runDispatchCase("/ask queue all");
+  const askInvalidArgsCommand = await runDispatchCase("/ask status");
   const commandsList = await runDispatchCase("/commands list", { stdinIsTty: false });
   const commandsListTty = await runDispatchCase("/commands list", { stdinIsTty: true });
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
@@ -563,7 +572,7 @@ async function main(): Promise<void> {
   const pendingAskAllowResume = await runDispatchCase("/resume", { pendingAskCount: 2 });
   const pendingAskAllowRewind = await runDispatchCase("/rewind", { pendingAskCount: 2 });
   const pendingAskAllowAsk = await runDispatchCase("/ask", { pendingAskCount: 2 });
-  const pendingAskAllowAskInvalidArgs = await runDispatchCase("/ask queue all", { pendingAskCount: 2 });
+  const pendingAskAllowAskInvalidArgs = await runDispatchCase("/ask status", { pendingAskCount: 2 });
   const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
   const pendingAskBlockedBurstFirst = await runDispatchCase("/model", {
     pendingAskCount: 3,
@@ -987,10 +996,29 @@ async function main(): Promise<void> {
     plan_verify_cn_alias_tty_warned: includesEvent(planVerifyCn.events, "writeStdout"),
     plan_verify_cn_alias_tty_opened_menu: includesEvent(planVerifyCn.events, "openPlanMenu"),
     plan_verify_cn_alias_tty_dispatched: includesEvent(planVerifyCn.events, "verifyPlan:通过 结果稳定"),
+    plan_check_tty_warned: includesEvent(planCheck.events, "writeStdout"),
+    plan_check_tty_opened_menu: includesEvent(planCheck.events, "openPlanMenu"),
+    plan_check_tty_dispatched: includesEvent(planCheck.events, "benchmarkPlan:/plan check"),
+    plan_check_core_tty_warned: includesEvent(planCheckCore.events, "writeStdout"),
+    plan_check_core_tty_opened_menu: includesEvent(planCheckCore.events, "openPlanMenu"),
+    plan_check_core_tty_dispatched: includesEvent(planCheckCore.events, "benchmarkPlan:/plan check core"),
+    plan_check_generic_tty_warned: includesEvent(planCheckGeneric.events, "writeStdout"),
+    plan_check_generic_tty_opened_menu: includesEvent(planCheckGeneric.events, "openPlanMenu"),
+    plan_check_generic_tty_dispatched:
+      includesEvent(planCheckGeneric.events, "benchmarkPlan:/plan check generic"),
+    plan_check_cn_alias_tty_warned: includesEvent(planCheckCn.events, "writeStdout"),
+    plan_check_cn_alias_tty_opened_menu: includesEvent(planCheckCn.events, "openPlanMenu"),
+    plan_check_cn_alias_tty_dispatched: includesEvent(planCheckCn.events, "benchmarkPlan:/plan 检查"),
     plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
     plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
     plan_legacy_benchmark_dispatched: includesEvent(
       planLegacyBenchmark.events,
+      "benchmarkPlan:/plan benchmark strong=/tmp/strong-plan.md",
+    ),
+    plan_legacy_benchmark_tty_warned: includesEvent(planLegacyBenchmarkTty.events, "writeStdout"),
+    plan_legacy_benchmark_tty_opened_menu: includesEvent(planLegacyBenchmarkTty.events, "openPlanMenu"),
+    plan_legacy_benchmark_tty_dispatched: includesEvent(
+      planLegacyBenchmarkTty.events,
       "benchmarkPlan:/plan benchmark strong=/tmp/strong-plan.md",
     ),
     plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
@@ -1023,10 +1051,11 @@ async function main(): Promise<void> {
     history_dispatched: includesEvent(historyCommand.events, "showHistory:"),
     history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
-    ask_dispatched: includesEvent(askCommand.events, "showPendingAskQueue:default"),
+    ask_dispatched: includesEvent(askCommand.events, "writeStdout"),
+    ask_unknown_warned: askCommand.stdout.includes("unknown command: /ask"),
     ask_hits_run_turn: includesEvent(askCommand.events, "runTurn:/ask"),
     ask_invalid_args_warned: includesEvent(askInvalidArgsCommand.events, "writeStdout"),
-    ask_invalid_args_usage_hint: askInvalidArgsCommand.stdout.includes("usage: /ask"),
+    ask_invalid_args_usage_hint: askInvalidArgsCommand.stdout.includes("unknown command: /ask"),
     ask_invalid_args_dispatched: includesEvent(
       askInvalidArgsCommand.events,
       "showPendingAskQueue:default",
@@ -1096,18 +1125,13 @@ async function main(): Promise<void> {
       pendingAskAllowRewind.events,
       "openSessionMenu:rewind",
     ),
-    pending_ask_ask_allowed: includesEvent(
-      pendingAskAllowAsk.events,
-      "showPendingAskQueue:default",
-    ),
+    pending_ask_ask_allowed: pendingAskAllowAsk.stdout.includes("unknown command: /ask"),
     pending_ask_ask_invalid_args_warned: includesEvent(
       pendingAskAllowAskInvalidArgs.events,
       "writeStdout",
     ),
-    pending_ask_ask_invalid_args_dispatched: includesEvent(
-      pendingAskAllowAskInvalidArgs.events,
-      "showPendingAskQueue:default",
-    ),
+    pending_ask_ask_invalid_args_dispatched:
+      pendingAskAllowAskInvalidArgs.stdout.includes("unknown command: /ask"),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,
       "runTurn:继续执行快速方案",

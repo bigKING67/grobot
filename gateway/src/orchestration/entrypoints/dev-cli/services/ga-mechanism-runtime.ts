@@ -1,9 +1,9 @@
 import {
   AskUserSessionStore,
   AskUserEnvelope,
+  AskUserResolveResult,
   buildAskUserDisplay,
   normalizeAskUserEnvelope,
-  ResolvedAskUser,
 } from "../../../../tools/ask-user";
 
 const REFLECTION_COOLDOWN_MS = 5 * 60 * 1000;
@@ -146,11 +146,8 @@ export interface GaMechanismRuntime {
   getPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
   listPendingAsk(sessionKey: string): AskUserEnvelope[];
   getPendingAskQueueSize(sessionKey: string): number;
-  parkPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
-  dismissPendingAsk(sessionKey: string): AskUserEnvelope | undefined;
-  clearPendingAsk(sessionKey: string): number;
   registerPendingAsk(sessionKey: string, envelope: AskUserEnvelope): void;
-  resolvePendingAsk(sessionKey: string, answer: string): ResolvedAskUser | undefined;
+  resolvePendingAsk(sessionKey: string, answer: string): AskUserResolveResult | undefined;
   hydrateSession(sessionKey: string, state: GaSessionStateSnapshot | undefined): void;
   snapshotSession(sessionKey: string): GaSessionStateSnapshot | undefined;
   writeMemory(request: GaMemoryWriteRequest): GaMemoryWriteResult;
@@ -915,31 +912,6 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       purgeExpiredPendingAsk(sessionKey, "read");
       return pendingAskBySession.size(sessionKey);
     },
-    parkPendingAsk: (sessionKey): AskUserEnvelope | undefined => {
-      purgeExpiredPendingAsk(sessionKey, "read");
-      const parked = pendingAskBySession.parkCurrent(sessionKey);
-      if (!parked) {
-        return undefined;
-      }
-      const activeQuestionId = pendingAskBySession.get(sessionKey)?.questionId ?? "<none>";
-      const queueDepth = pendingAskBySession.size(sessionKey);
-      writeMemory({
-        sessionKey,
-        memoryLevel: "L1",
-        text: `ask_user parked question_id=${parked.questionId} queue_depth=${String(queueDepth)} active_question_id=${activeQuestionId}`,
-        sourceEventType: "checkpoint_updated",
-        executionVerified: false,
-        tags: ["ask-user", "parked"],
-        confidence: 0.8,
-      });
-      return parked;
-    },
-    dismissPendingAsk: (sessionKey): AskUserEnvelope | undefined => {
-      purgeExpiredPendingAsk(sessionKey, "read");
-      return pendingAskBySession.dismissCurrent(sessionKey);
-    },
-    clearPendingAsk: (sessionKey): number =>
-      pendingAskBySession.clear(sessionKey),
     registerPendingAsk: (sessionKey, envelope): void => {
       purgeExpiredPendingAsk(sessionKey, "write");
       const queueDepthBefore = pendingAskBySession.size(sessionKey);
@@ -957,7 +929,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
         confidence: 0.8,
       });
     },
-    resolvePendingAsk: (sessionKey, answer): ResolvedAskUser | undefined => {
+    resolvePendingAsk: (sessionKey, answer): AskUserResolveResult | undefined => {
       purgeExpiredPendingAsk(sessionKey, "resolve");
       const resolved = pendingAskBySession.resolve(sessionKey, answer, {
         cleanText,
@@ -965,10 +937,11 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       if (!resolved) {
         return undefined;
       }
+      const resolvedAsk = resolved.resolvedAsk;
       writeMemory({
         sessionKey,
         memoryLevel: "L2",
-        text: `ask_user resolved question_id=${resolved.envelope.questionId} answer="${resolved.answer}"`,
+        text: `ask_user resolved question_id=${resolvedAsk.envelope.questionId} answer="${resolvedAsk.answer}" remaining=${String(resolved.queueSizeAfterResolve)}`,
         sourceEventType: "ask_user_resolved",
         executionVerified: true,
         evidenceRef: {

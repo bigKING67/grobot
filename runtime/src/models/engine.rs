@@ -79,11 +79,31 @@ pub struct RuntimeEventOutput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TurnInterruptAskUserOptionOutput {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TurnInterruptAskUserQuestionOutput {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<TurnInterruptAskUserOptionOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TurnInterruptAskUserOutput {
     pub question_id: String,
     pub blocking_node_id: String,
     pub question: String,
     pub options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub questions: Vec<TurnInterruptAskUserQuestionOutput>,
     pub default_on_timeout: String,
     pub resume_token: String,
     pub created_at: String,

@@ -2,8 +2,8 @@
 mod tests {
     use super::{TurnOrchestrator, TurnExecuteInput};
     use crate::models::model::{
-        ModelAskUserInterrupt, ModelExecutionError, ModelExecutionInterrupt, ModelExecutionOutput,
-        ModelExecutor, ModelTelemetryEvent,
+        ModelAskUserInterrupt, ModelAskUserOption, ModelAskUserQuestion, ModelExecutionError,
+        ModelExecutionInterrupt, ModelExecutionOutput, ModelExecutor, ModelTelemetryEvent,
     };
     use crate::tools::tools::{LocalToolExecutor, ToolExecutor};
 
@@ -97,6 +97,23 @@ mod tests {
                     blocking_node_id: "node.confirm.scope".to_string(),
                     question: "Need project scope?".to_string(),
                     options: vec!["core".to_string(), "all".to_string()],
+                    questions: vec![ModelAskUserQuestion {
+                        id: "scope".to_string(),
+                        header: "Scope".to_string(),
+                        question: "Need project scope?".to_string(),
+                        options: vec![
+                            ModelAskUserOption {
+                                label: "core".to_string(),
+                                description: Some("Only core modules".to_string()),
+                                value: Some("core".to_string()),
+                            },
+                            ModelAskUserOption {
+                                label: "all".to_string(),
+                                description: Some("Full repository".to_string()),
+                                value: Some("all".to_string()),
+                            },
+                        ],
+                    }],
                     default_on_timeout: "core".to_string(),
                     resume_token: "resume_001".to_string(),
                     created_at: "unix:1".to_string(),
@@ -121,6 +138,8 @@ mod tests {
         let ask_user = interrupt.ask_user.expect("ask_user payload");
         assert_eq!(ask_user.question_id, "ask_q_001");
         assert_eq!(ask_user.blocking_node_id, "node.confirm.scope");
+        assert_eq!(ask_user.questions.len(), 1);
+        assert_eq!(ask_user.questions[0].id, "scope");
     }
 
     #[derive(Debug, Clone, Copy)]

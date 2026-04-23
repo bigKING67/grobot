@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import {
   RuntimeAskUserInterrupt,
+  RuntimeAskUserQuestion,
+  RuntimeAskUserQuestionOption,
   RuntimeClient,
   RuntimeEvent,
   RuntimeEventType,
@@ -118,31 +120,108 @@ function toEventObjects(
   return events;
 }
 
+function parseRuntimeAskUserOptions(raw: unknown): RuntimeAskUserQuestionOption[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const options: RuntimeAskUserQuestionOption[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      const label = entry.trim();
+      if (!label) {
+        continue;
+      }
+      options.push({
+        label,
+        value: label,
+      });
+    } else if (isRecord(entry)) {
+      const label = asString(entry.label || entry.value || entry.id).trim();
+      if (!label) {
+        continue;
+      }
+      const description = asString(entry.description).trim() || undefined;
+      const value = asString(entry.value).trim() || label;
+      options.push({
+        label,
+        description,
+        value,
+      });
+    }
+    if (options.length >= 6) {
+      break;
+    }
+  }
+  return options;
+}
+
+function parseRuntimeAskUserQuestions(raw: unknown): RuntimeAskUserQuestion[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const rows: RuntimeAskUserQuestion[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const row = raw[index];
+    if (!isRecord(row)) {
+      continue;
+    }
+    const question = asString(row.question).trim();
+    if (!question) {
+      continue;
+    }
+    const id = asString(row.id).trim() || `q${String(index + 1)}`;
+    const header = asString(row.header).trim() || `Question ${String(index + 1)}`;
+    const options = parseRuntimeAskUserOptions(row.options);
+    rows.push({
+      id,
+      header,
+      question,
+      options,
+    });
+    if (rows.length >= 3) {
+      break;
+    }
+  }
+  return rows;
+}
+
 function parseAskUserInterrupt(raw: unknown): RuntimeAskUserInterrupt | undefined {
   if (!isRecord(raw)) {
     return undefined;
   }
-  const questionId = asString(raw.question_id).trim();
-  const blockingNodeId = asString(raw.blocking_node_id).trim();
-  const question = asString(raw.question).trim();
-  if (!questionId || !blockingNodeId || !question) {
+  const structuredQuestions = parseRuntimeAskUserQuestions(raw.questions);
+  const question = asString(raw.question).trim() || structuredQuestions[0]?.question || "";
+  if (!question) {
     return undefined;
   }
-  const options = Array.isArray(raw.options)
-    ? raw.options
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0)
-      .slice(0, 6)
-    : [];
+  const questionId = asString(raw.question_id).trim() || `askq_${Date.now().toString(36)}`;
+  const blockingNodeId = asString(raw.blocking_node_id).trim() || "node.unknown";
+  const parsedOptions = parseRuntimeAskUserOptions(raw.options);
+  const options = parsedOptions.length > 0
+    ? parsedOptions.map((option) => option.label)
+    : (structuredQuestions[0]?.options ?? []).map((option) => option.label);
   const defaultOnTimeout = asString(raw.default_on_timeout, "continue_with_best_effort");
   const resumeToken = asString(raw.resume_token).trim() || `resume_${questionId}`;
   const createdAt = asString(raw.created_at, new Date().toISOString());
+  const questions = structuredQuestions.length > 0
+    ? structuredQuestions
+    : [
+      {
+        id: questionId,
+        header: "Clarification",
+        question,
+        options: options.map((label) => ({
+          label,
+          value: label,
+        })),
+      },
+    ];
   return {
     questionId,
     blockingNodeId,
     question,
     options,
+    questions,
     defaultOnTimeout,
     resumeToken,
     createdAt,

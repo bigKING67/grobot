@@ -11,7 +11,10 @@ import { resolveInlineAttachmentsFromInput, runSessionInputLoop } from "./run-st
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
-import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
+import {
+  listRunStartSlashSuggestions,
+  type RunStartPlanSuggestionState,
+} from "./run-start-slash-suggestions";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { inferModelApiContextWindowTokens } from "./run-start-model-context";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
@@ -34,7 +37,6 @@ const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
   "/sessions",
   "/resume",
   "/rewind",
-  "/ask",
   "/help",
   "/interrupt",
   "/exit",
@@ -177,7 +179,7 @@ function compactSummaryText(value: string): string {
 }
 
 type ProcessFailureCategory = "runtime" | "context" | "ask-user" | "interrupt";
-type ProcessSummaryDetail = "compact" | "full";
+type ProcessSummaryDetail = "none" | "compact" | "full";
 
 interface ProcessActivitySnapshot {
   stageId: string;
@@ -187,6 +189,7 @@ interface ProcessActivitySnapshot {
 function resolveProcessFailureCategory(input: {
   result: "ok" | "error" | "interrupted";
   activitySnapshot?: ProcessActivitySnapshot;
+  pendingAskCount?: number;
 }): ProcessFailureCategory | undefined {
   if (input.result === "ok") {
     return undefined;
@@ -197,6 +200,9 @@ function resolveProcessFailureCategory(input: {
   }
   if (stageId.startsWith("context_")) {
     return "context";
+  }
+  if ((input.pendingAskCount ?? 0) > 0) {
+    return "ask-user";
   }
   if (input.result === "interrupted" || stageId === "interrupt") {
     return "interrupt";
@@ -216,6 +222,9 @@ function resolveProcessResultCode(result: "ok" | "error" | "interrupted"): "ok" 
 
 function resolveProcessSummaryDetail(): ProcessSummaryDetail {
   const raw = process.env.GROBOT_PROCESS_SUMMARY_DETAIL?.trim().toLowerCase();
+  if (raw === "none") {
+    return "none";
+  }
   if (raw === "full") {
     return "full";
   }
@@ -275,14 +284,8 @@ export interface RunStartInteractiveModeInput {
   showHealthStatus(): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
+  getPendingAskPromptSummary?(): string | undefined;
   showPendingAskQueue(limit?: number): void;
-  openPendingAskMenu(
-    withInputPaused: SessionInteractiveControls["withInputPaused"],
-  ): Promise<void>;
-  cancelPendingAsk(): void;
-  parkPendingAsk(): void;
-  clearPendingAsk(): void;
-  answerPendingAsk(answer: string): Promise<void>;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
   refreshModelCatalogCache(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -297,8 +300,13 @@ export interface RunStartInteractiveModeInput {
   continueFromSession(sourceSessionId: string): Promise<void>;
   writeManualHandoff(): void;
   isPlanMode(): boolean;
+  getPlanSuggestionState?(): RunStartPlanSuggestionState | undefined;
   showPlanStatus(): Promise<number>;
+  benchmarkPlan(commandRaw: string): Promise<number>;
   enterPlan(goal: string, options?: RunStartInteractiveTurnOptions): Promise<number>;
+  approvePlan(note: string): Promise<number>;
+  rejectPlan(reason: string): Promise<number>;
+  verifyPlan(result: string): Promise<number>;
   applyPlan(extra: string, options?: RunStartInteractiveTurnOptions): Promise<number>;
   cancelPlan(): Promise<number>;
   requestPlanInterrupt(source: PlanInterruptSource): Promise<void>;
@@ -312,6 +320,10 @@ export interface RunStartInteractiveModeInput {
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<void>;
   openPlanMenu(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+    options?: RunStartInteractiveTurnOptions,
+  ): Promise<void>;
+  openPlanInEditor(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
     options?: RunStartInteractiveTurnOptions,
   ): Promise<void>;
@@ -461,15 +473,17 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     result: "ok" | "error" | "interrupted";
     elapsedMs: number;
     exitCode?: number | "<exception>";
+    pendingAskCount?: number;
     activitySnapshot?: ProcessActivitySnapshot;
   }): void => {
-    if (!progressDiagnosticsEnabled || traceDiagnosticsEnabled) {
+    if (!progressDiagnosticsEnabled || traceDiagnosticsEnabled || processSummaryDetail === "none") {
       return;
     }
     const durationText = formatTurnElapsedCompact(inputSummary.elapsedMs);
     const failureCategory = resolveProcessFailureCategory({
       result: inputSummary.result,
       activitySnapshot: inputSummary.activitySnapshot,
+      pendingAskCount: inputSummary.pendingAskCount,
     });
     const parts = [
       "[process-summary]",
@@ -481,6 +495,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     }
     if (typeof inputSummary.exitCode === "number" || inputSummary.exitCode === "<exception>") {
       parts.push(`x=${String(inputSummary.exitCode)}`);
+    }
+    if ((inputSummary.pendingAskCount ?? 0) > 0) {
+      parts.push(`ask=${String(inputSummary.pendingAskCount)}`);
     }
     const shouldShowStage = processSummaryDetail === "full"
       || inputSummary.result !== "ok"
@@ -527,14 +544,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     writeStderr: writeInteractiveStderr,
     hasPendingAsk: input.hasPendingAsk,
     getPendingAskQueueSize: input.getPendingAskQueueSize,
+    getPendingAskPromptSummary: input.getPendingAskPromptSummary,
     showPendingAskQueue: (limit) => {
       input.showPendingAskQueue(limit);
     },
-    openPendingAskMenu: input.openPendingAskMenu,
-    cancelPendingAsk: input.cancelPendingAsk,
-    parkPendingAsk: input.parkPendingAsk,
-    clearPendingAsk: input.clearPendingAsk,
-    answerPendingAsk: input.answerPendingAsk,
     showHelp: () => {
       process.stdout.write(input.buildHelpText());
     },
@@ -550,20 +563,24 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     openSessionMenu: async (mode, withInputPaused) => {
       await input.openSessionMenu(mode, withInputPaused);
     },
+    listSessionSummaries: input.listSessionSummaries,
     getActiveSessionId: input.getActiveSessionId,
     listRewindCheckpoints: input.listRewindCheckpoints,
     rewindSession: input.rewindSession,
-    listSessionSummaries: input.listSessionSummaries,
     createNewSession: input.createNewSession,
     switchActiveSession: input.switchActiveSession,
     continueFromSession: input.continueFromSession,
     writeHandoff: input.writeManualHandoff,
     isPlanMode: input.isPlanMode,
     showPlanStatus: input.showPlanStatus,
+    benchmarkPlan: input.benchmarkPlan,
     enterPlan: (goal) =>
       input.enterPlan(goal, {
         writeStderr: writeInteractiveStderr,
       }),
+    approvePlan: input.approvePlan,
+    rejectPlan: input.rejectPlan,
+    verifyPlan: input.verifyPlan,
     applyPlan: (extra) =>
       input.applyPlan(extra, {
         writeStderr: writeInteractiveStderr,
@@ -579,6 +596,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     openCommandsMenu: input.openCommandsMenu,
     openPlanMenu: (withInputPaused) =>
       input.openPlanMenu(withInputPaused, {
+        writeStderr: writeInteractiveStderr,
+      }),
+    openPlanInEditor: (withInputPaused) =>
+      input.openPlanInEditor(withInputPaused, {
         writeStderr: writeInteractiveStderr,
       }),
     showHistory: (query) => input.showHistory(query),
@@ -632,6 +653,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
                 : "error",
             elapsedMs,
             exitCode: code === 0 || code === TURN_INTERRUPTED_EXIT_CODE ? undefined : code,
+            pendingAskCount: input.getPendingAskQueueSize(),
             activitySnapshot: activitySnapshot
               ? {
                 stageId: activitySnapshot.stageId,
@@ -667,6 +689,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
             result: "error",
             elapsedMs,
             exitCode: "<exception>",
+            pendingAskCount: input.getPendingAskQueueSize(),
             activitySnapshot: activitySnapshot
               ? {
                 stageId: activitySnapshot.stageId,
@@ -707,7 +730,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       const activityText = activityTracker.readPromptActivity();
       if (typeof activeTurnStartedAtMs !== "number") {
         if (pendingAskCount > 0) {
-          return `待确认 ${String(pendingAskCount)} 项（/ask menu）`;
+          return `待确认 ${String(pendingAskCount)} 项（直接回复继续）`;
         }
         return activityText;
       }
@@ -749,10 +772,16 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   };
   const getSlashSuggestions = (lineInput: string) => {
     const pendingAskCount = input.getPendingAskQueueSize();
+    const normalizedLineInput = lineInput.trimStart().toLowerCase();
+    const planSuggestionState = normalizedLineInput.startsWith("/plan")
+      ? input.getPlanSuggestionState?.()
+      : undefined;
     const suggestions = listRunStartSlashSuggestions({
       homeDir: input.homeDir,
       userInput: lineInput,
       pendingAskCount,
+      planMode: input.isPlanMode(),
+      planSuggestionState,
       maxItems: 8,
     });
     if (pendingAskCount <= 0) {

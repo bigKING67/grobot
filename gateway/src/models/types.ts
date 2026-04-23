@@ -145,6 +145,11 @@ export interface AskUserEnvelope {
   blockingNodeId: string;
   question: string;
   options: string[];
+  optionsDetailed?: RuntimeAskUserQuestionOption[];
+  questionKey?: string;
+  header?: string;
+  questionIndex?: number;
+  questionTotal?: number;
   defaultOnTimeout: string;
   resumeToken: string;
   createdAt: string;
@@ -179,9 +184,23 @@ export interface RuntimeAskUserInterrupt {
   blockingNodeId: string;
   question: string;
   options: string[];
+  questions: RuntimeAskUserQuestion[];
   defaultOnTimeout: string;
   resumeToken: string;
   createdAt: string;
+}
+
+export interface RuntimeAskUserQuestionOption {
+  label: string;
+  description?: string;
+  value?: string;
+}
+
+export interface RuntimeAskUserQuestion {
+  id: string;
+  header: string;
+  question: string;
+  options: RuntimeAskUserQuestionOption[];
 }
 
 export interface RuntimeTurnInterrupt {

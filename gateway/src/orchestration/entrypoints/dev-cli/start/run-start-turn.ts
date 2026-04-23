@@ -1,6 +1,11 @@
 import { type ExecutionPlaneConfig } from "../../../execution-plane";
 import { runGatewayTurn } from "../../../main";
-import { type RuntimeAttachment, type RuntimeModelConfig, type RuntimeToolContext } from "../../../../models/types";
+import {
+  type RuntimeAskUserInterrupt,
+  type RuntimeAttachment,
+  type RuntimeModelConfig,
+  type RuntimeToolContext,
+} from "../../../../models/types";
 import { consumeInterruptFlag } from "../services/interrupt-store";
 import {
   compactSingleLine,
@@ -230,6 +235,110 @@ interface GraphQualityAutotuneDecision {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function buildAskUserQueueContinuationHint(queuedExtra: number): string {
+  if (queuedExtra <= 0) {
+    return "";
+  }
+  return `[ask-user] queue has ${String(queuedExtra)} additional pending question(s). Continue replying directly.\n`;
+}
+
+function normalizeRuntimeAskUserQuestionId(input: {
+  questionId: string;
+  questionKey: string;
+  index: number;
+  total: number;
+}): string {
+  if (input.total <= 1) {
+    return input.questionId;
+  }
+  return `${input.questionId}:${input.questionKey || `q${String(input.index + 1)}`}`;
+}
+
+function toAskUserEnvelopes(runtimeAskUser: RuntimeAskUserInterrupt): AskUserEnvelope[] {
+  const baseQuestionId = runtimeAskUser.questionId.trim() || `askq_${Date.now().toString(36)}`;
+  type NormalizedAskQuestion = {
+    key: string;
+    header: string;
+    question: string;
+    optionsDetailed: Array<{ label: string; description?: string; value: string }>;
+  };
+  const structuredQuestions: NormalizedAskQuestion[] = [];
+  for (let index = 0; index < runtimeAskUser.questions.length; index += 1) {
+    const question = runtimeAskUser.questions[index];
+    if (!question) {
+      continue;
+    }
+    const text = question.question.trim();
+    if (!text) {
+      continue;
+    }
+    const optionsDetailed: NormalizedAskQuestion["optionsDetailed"] = [];
+    for (const option of question.options) {
+      const label = option.label.trim();
+      if (!label) {
+        continue;
+      }
+      const description = option.description?.trim() || undefined;
+      const value = (option.value ?? label).trim() || label;
+      optionsDetailed.push({
+        label,
+        description,
+        value,
+      });
+    }
+    structuredQuestions.push({
+      key: question.id.trim() || `q${String(index + 1)}`,
+      header: question.header.trim() || `Question ${String(index + 1)}`,
+      question: text,
+      optionsDetailed,
+    });
+  }
+  const normalizedQuestions: NormalizedAskQuestion[] = structuredQuestions.length > 0
+    ? structuredQuestions
+    : [
+      {
+        key: baseQuestionId,
+        header: "Clarification",
+        question: runtimeAskUser.question.trim(),
+        optionsDetailed: (runtimeAskUser.options ?? [])
+          .map((option) => option.trim())
+          .filter((option) => option.length > 0)
+          .map((option) => ({
+            label: option,
+            value: option,
+          })),
+      },
+    ];
+  const questionTotal = normalizedQuestions.length;
+  const envelopes: AskUserEnvelope[] = [];
+  for (let index = 0; index < normalizedQuestions.length; index += 1) {
+    const question = normalizedQuestions[index];
+    if (!question) {
+      continue;
+    }
+    envelopes.push({
+      questionId: normalizeRuntimeAskUserQuestionId({
+        questionId: baseQuestionId,
+        questionKey: question.key,
+        index,
+        total: questionTotal,
+      }),
+      blockingNodeId: runtimeAskUser.blockingNodeId || "node.unknown",
+      question: question.question,
+      options: question.optionsDetailed.map((option) => option.label),
+      optionsDetailed: question.optionsDetailed,
+      questionKey: question.key,
+      header: question.header,
+      questionIndex: questionTotal > 1 ? index + 1 : undefined,
+      questionTotal: questionTotal > 1 ? questionTotal : undefined,
+      defaultOnTimeout: runtimeAskUser.defaultOnTimeout || "continue_with_best_effort",
+      resumeToken: runtimeAskUser.resumeToken || `resume_${Date.now().toString(36)}`,
+      createdAt: runtimeAskUser.createdAt || nowIso(),
+    });
+  }
+  return envelopes;
 }
 
 function resolveErrorClass(message: string): string {
@@ -1737,6 +1846,54 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         input.writeStdout(renderManagementInterruptNotice(interactiveMode));
         return 0;
       }
+      const askUserTurnContext = createAskUserTurnPromptContext({
+        runtime: input.gaMechanismRuntime,
+        sessionKey,
+        userText,
+      });
+      if (askUserTurnContext.resolvedEvent.length > 0) {
+        input.writeStderr(askUserTurnContext.resolvedEvent);
+        if (askUserTurnContext.resolvedAsk) {
+          const resolvedAsk = askUserTurnContext.resolvedAsk;
+          const ingestResult = input.memoryOrchestrator.ingest({
+            eventType: "ask_user_resolved",
+            sessionKey,
+            text:
+              `[ask-user-resolved] question=${resolvedAsk.envelope.question} answer=${resolvedAsk.answer} blocking_node=${resolvedAsk.envelope.blockingNodeId}`,
+            executionVerified: true,
+            evidenceRef: {
+              source: `ask_user:${resolvedAsk.envelope.questionId}`,
+            },
+            tags: ["ask_user", "clarification"],
+            confidence: 0.82,
+          });
+          for (const event of ingestResult.stderrEvents) {
+            input.writeStderr(event);
+          }
+        }
+      }
+      if (askUserTurnContext.pendingNextAsk) {
+        const activeAskEnvelope = askUserTurnContext.pendingNextAsk;
+        const queueDepth = askUserTurnContext.queueSizeAfterResolve;
+        const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
+        const queueHint = buildAskUserQueueContinuationHint(Math.max(0, queueDepth - 1));
+        const turnStdout = interactiveMode && queueHint
+          ? `${askUserDisplay}\n${queueHint}`
+          : askUserDisplay;
+        await recordTurn(
+          userText,
+          `[ask-user] ${activeAskEnvelope.question}`,
+          input.getStickyProvider(),
+          input.getProviderRuntimeStates(),
+          options?.onTurnRecorded,
+        );
+        input.writeStdout(turnStdout);
+        input.writeStderr(
+          `[ask-user] event=awaiting_more_answers remaining=${String(queueDepth)} active_question_id=${activeAskEnvelope.questionId}\n`,
+        );
+        input.writeStderr("[experience] event=publish_skipped reason=ask_user_pending_followup\n");
+        return 0;
+      }
 
       const historyMessages = input.getHistoryMessages();
       const allowProactiveCompaction =
@@ -2049,32 +2206,6 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         }
       }
       previousTargetTokenLimit = targetTokenLimit;
-      const askUserTurnContext = createAskUserTurnPromptContext({
-        runtime: input.gaMechanismRuntime,
-        sessionKey,
-        userText,
-      });
-      if (askUserTurnContext.resolvedEvent.length > 0) {
-        input.writeStderr(askUserTurnContext.resolvedEvent);
-        if (askUserTurnContext.resolvedAsk) {
-          const resolvedAsk = askUserTurnContext.resolvedAsk;
-          const ingestResult = input.memoryOrchestrator.ingest({
-            eventType: "ask_user_resolved",
-            sessionKey,
-            text:
-              `[ask-user-resolved] question=${resolvedAsk.envelope.question} answer=${resolvedAsk.answer} blocking_node=${resolvedAsk.envelope.blockingNodeId}`,
-            executionVerified: true,
-            evidenceRef: {
-              source: `ask_user:${resolvedAsk.envelope.questionId}`,
-            },
-            tags: ["ask_user", "clarification"],
-            confidence: 0.82,
-          });
-          for (const event of ingestResult.stderrEvents) {
-            input.writeStderr(event);
-          }
-        }
-      }
       const memoryInject = input.memoryOrchestrator.injectContext({
         sessionKey,
         userText,
@@ -2656,36 +2787,35 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           : `${report.assistantMessage}\n`;
         let askUserEvent = "";
         if (runtimeAskUser) {
-          const askUserEnvelope: AskUserEnvelope = {
-            questionId: runtimeAskUser.questionId || `askq_${Date.now().toString(36)}`,
-            blockingNodeId: runtimeAskUser.blockingNodeId || "node.unknown",
-            question: runtimeAskUser.question,
-            options: runtimeAskUser.options ?? [],
-            defaultOnTimeout: runtimeAskUser.defaultOnTimeout || "continue_with_best_effort",
-            resumeToken: runtimeAskUser.resumeToken || `resume_${Date.now().toString(36)}`,
-            createdAt: runtimeAskUser.createdAt || nowIso(),
-          };
-          input.gaMechanismRuntime.registerPendingAsk(sessionKey, askUserEnvelope);
+          const askUserEnvelopes = toAskUserEnvelopes(runtimeAskUser);
+          for (const askUserEnvelope of askUserEnvelopes) {
+            input.gaMechanismRuntime.registerPendingAsk(sessionKey, askUserEnvelope);
+          }
           const queueDepth = input.gaMechanismRuntime.getPendingAskQueueSize(sessionKey);
-          const activeAskEnvelope = input.gaMechanismRuntime.getPendingAsk(sessionKey) ?? askUserEnvelope;
+          const activeAskEnvelope = input.gaMechanismRuntime.getPendingAsk(sessionKey)
+            ?? askUserEnvelopes[0];
+          if (!activeAskEnvelope) {
+            throw new Error("ask_user interrupt emitted empty question set");
+          }
           assistantTextForHistory = `[ask-user] ${activeAskEnvelope.question}`;
           const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
           if (interactiveMode) {
             const queuedExtra = Math.max(0, queueDepth - 1);
-            const queueHint = queuedExtra > 0
-              ? `[ask-user] queue has ${String(queuedExtra)} additional pending question(s). Use /ask to inspect.\n`
-              : "";
+            const queueHint = buildAskUserQueueContinuationHint(queuedExtra);
             turnStdout = `${askUserDisplay}\n${queueHint}`;
           } else {
             turnStdout = askUserDisplay;
           }
-          askUserEvent = formatAskUserIssuedEvent(askUserEnvelope);
+          askUserEvent = askUserEnvelopes
+            .map((envelope) => formatAskUserIssuedEvent(envelope))
+            .join("");
+          const latestAskEnvelope = askUserEnvelopes[askUserEnvelopes.length - 1] ?? activeAskEnvelope;
           input.writeStderr(
-            `[ask-user] event=interrupt_received question_id=${askUserEnvelope.questionId} blocking_node_id=${askUserEnvelope.blockingNodeId}\n`,
+            `[ask-user] event=interrupt_received question_id=${activeAskEnvelope.questionId} blocking_node_id=${activeAskEnvelope.blockingNodeId} question_total=${String(askUserEnvelopes.length)}\n`,
           );
           if (queueDepth > 1) {
             input.writeStderr(
-              `[ask-user] event=queued depth=${String(queueDepth)} active_question_id=${activeAskEnvelope.questionId} latest_question_id=${askUserEnvelope.questionId}\n`,
+              `[ask-user] event=queued depth=${String(queueDepth)} active_question_id=${activeAskEnvelope.questionId} latest_question_id=${latestAskEnvelope.questionId}\n`,
             );
           }
           input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");

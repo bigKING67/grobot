@@ -1444,7 +1444,7 @@ export function createRunStartInteractiveModeInput(
       }
       lines.push("hint: reply directly in chat to answer active question");
       lines.push(
-        "ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun /ask for full followup details.",
+        "ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun status display for full followup details.",
       );
       lines.push("");
       input.output.writeStdout(`${lines.join("\n")}\n`);
@@ -1477,7 +1477,7 @@ export function createRunStartInteractiveModeInput(
       }
     }
     lines.push("hint: reply directly in chat to answer active question");
-    lines.push("hint: /ask only shows status; ask-user actions are handled automatically");
+    lines.push("hint: ask-user actions are automatic; there is no /ask command");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };

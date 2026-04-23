@@ -31,14 +31,8 @@ export interface SessionInteractiveHandlers {
   writeStdout(message: string): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
+  getPendingAskPromptSummary?(): string | undefined;
   showPendingAskQueue(limit?: number): void;
-  openPendingAskMenu(
-    withInputPaused: SessionInteractiveControls["withInputPaused"],
-  ): Promise<void>;
-  cancelPendingAsk(): void;
-  parkPendingAsk(): void;
-  clearPendingAsk(): void;
-  answerPendingAsk(answer: string): Promise<void>;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -71,7 +65,11 @@ export interface SessionInteractiveHandlers {
   writeHandoff(): void;
   isPlanMode(): boolean;
   showPlanStatus(): Promise<void>;
+  benchmarkPlan(commandRaw: string): Promise<void>;
   enterPlan(goal: string): Promise<void>;
+  approvePlan(note: string): Promise<void>;
+  rejectPlan(reason: string): Promise<void>;
+  verifyPlan(result: string): Promise<void>;
   applyPlan(extra: string): Promise<void>;
   cancelPlan(): Promise<void>;
   requestPlanInterrupt(source: "command"): Promise<void>;
@@ -80,6 +78,7 @@ export interface SessionInteractiveHandlers {
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  openPlanInEditor(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showHistory(query?: string): Promise<void>;
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
@@ -95,7 +94,6 @@ export function buildInteractiveHelpText(): string {
 }
 
 const PENDING_ASK_ALLOWED_SLASH_COMMANDS = new Set([
-  "ask",
   "help",
   "sessions",
   "resume",
@@ -116,13 +114,16 @@ const pendingAskBlockNoticeState: {
   suppressedCount: 0,
 };
 
-function consumePendingAskBlockedNotice(queueSize: number): string | undefined {
+function consumePendingAskBlockedNotice(input: {
+  queueSize: number;
+  promptSummary?: string;
+}): string | undefined {
   const now = Date.now();
-  const queueChanged = pendingAskBlockNoticeState.lastQueueSize !== queueSize;
+  const queueChanged = pendingAskBlockNoticeState.lastQueueSize !== input.queueSize;
   const shouldThrottle = !queueChanged
     && pendingAskBlockNoticeState.lastShownAtMs > 0
     && now - pendingAskBlockNoticeState.lastShownAtMs < PENDING_ASK_BLOCK_NOTICE_COOLDOWN_MS;
-  pendingAskBlockNoticeState.lastQueueSize = queueSize;
+  pendingAskBlockNoticeState.lastQueueSize = input.queueSize;
   if (shouldThrottle) {
     pendingAskBlockNoticeState.suppressedCount += 1;
     return undefined;
@@ -133,7 +134,11 @@ function consumePendingAskBlockedNotice(queueSize: number): string | undefined {
   const compactSuffix = suppressed > 0
     ? ` 已折叠 ${String(suppressed)} 条重复提示。`
     : "";
-  return `[ask-user] 当前有 ${String(queueSize)} 个待确认问题，请先直接回复，或使用 /ask menu、/ask answer <n|default|text>。/ask 查看队列，/ask cancel 跳过当前，/ask park(/ask next) 暂缓当前，/ask clear 清空队列。${compactSuffix}\n\n`;
+  const promptSummary = input.promptSummary?.trim();
+  const summaryLine = promptSummary
+    ? `当前问题：${promptSummary}\n`
+    : "";
+  return `[ask-user] 当前有 ${String(input.queueSize)} 个待确认问题，请先直接回复。${compactSuffix}\n${summaryLine}\n`;
 }
 
 function parseSlashCommandName(userInput: string): string | undefined {
@@ -157,6 +162,10 @@ function isPendingAskAllowedInput(userInput: string): boolean {
   return PENDING_ASK_ALLOWED_SLASH_COMMANDS.has(slashCommand);
 }
 
+function isRemovedAskCommand(userInput: string): boolean {
+  return parseSlashCommandName(userInput) === "ask";
+}
+
 export async function dispatchSessionInteractiveInput(
   userInputRaw: string,
   controls: SessionInteractiveControls,
@@ -166,9 +175,18 @@ export async function dispatchSessionInteractiveInput(
   if (!userInput) {
     return "continue";
   }
+  if (isRemovedAskCommand(userInput)) {
+    handlers.writeStdout(
+      "[slash] unknown command: /ask. ask-user 机制已改为直接回复，不再提供状态命令。\n\n",
+    );
+    return "continue";
+  }
   if (handlers.hasPendingAsk() && !isPendingAskAllowedInput(userInput)) {
     const queueSize = handlers.getPendingAskQueueSize();
-    const blockedNotice = consumePendingAskBlockedNotice(queueSize);
+    const blockedNotice = consumePendingAskBlockedNotice({
+      queueSize,
+      promptSummary: handlers.getPendingAskPromptSummary?.(),
+    });
     if (blockedNotice) {
       handlers.writeStdout(blockedNotice);
     }

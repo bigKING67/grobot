@@ -821,18 +821,39 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_enters_mode_directly, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_treated_as_goal, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_enter_only_tty_opened_menu, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_warned, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_opened_menu, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_dispatched, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_warned, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_opened_menu, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_dispatched, false);
-  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_warned, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_opened_menu, true);
-  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_approve_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_reject_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_cn_alias_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_cn_alias_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_verify_cn_alias_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_core_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_core_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_core_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_generic_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_generic_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_generic_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_cn_alias_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_cn_alias_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_check_cn_alias_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_legacy_benchmark_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_benchmark_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_benchmark_tty_opened_menu, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_benchmark_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_tty_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_tty_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_legacy_status_tty_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_status_with_tail_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_status_with_tail_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.plan_status_with_tail_tty_opened_menu, false);
@@ -844,6 +865,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.commands_menu_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.commands_list_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_unknown_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.ask_invalid_args_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.ask_invalid_args_usage_hint, true);
@@ -873,7 +895,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_rewind_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_invalid_args_warned, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_invalid_args_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_invalid_args_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_blocked_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_first_warned, true);
@@ -1015,6 +1037,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.semantic_stdout_has_diagnostic, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_latest_failure_event, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_latest_failure_diagnostic, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_output_mode_full, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_score, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_grade, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_quality_findings_count, true);
@@ -1028,6 +1051,9 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_current_block, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_plan_open_hint, true);
   assert.equal(runStartPlanModeContractPayload.semantic_status_has_recommended_next_action, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_suggested_action_label, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_suggested_action_command, true);
+  assert.equal(runStartPlanModeContractPayload.semantic_status_has_suggested_action_reason, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_degraded, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_degrade, true);
   assert.equal(runStartPlanModeContractPayload.semantic_events_has_policy_reason, true);
@@ -1043,6 +1069,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.non_semantic_events_has_diagnostic, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_latest_failure_event, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_latest_failure_diagnostic, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_output_mode_full, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_score, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_grade, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_quality_recommendation, true);
@@ -1055,6 +1082,9 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_current_block, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_plan_open_hint, true);
   assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_recommended_next_action, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_suggested_action_label, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_suggested_action_command, true);
+  assert.equal(runStartPlanModeContractPayload.non_semantic_status_has_suggested_action_reason, true);
   assert.equal(runStartPlanModeContractPayload.proposed_turn_returns_success, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_mode_kept, true);
   assert.equal(runStartPlanModeContractPayload.proposed_plan_ingested, true);
@@ -1104,9 +1134,17 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_plan_quality_na, true);
   assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_applied_state, true);
   assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_recommended_next_action, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_suggested_action_label, true);
+  assert.equal(runStartPlanModeContractPayload.approval_verify_status_has_suggested_action_command, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_enter_succeeds, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_command_handled, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_command_code_ok, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_compact_handled, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_compact_code_ok, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_compact_has_output_mode, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_compact_has_rows_count, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_compact_hides_rows_json, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_compact_has_detail_hint, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_stdout_has_guard_mode, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_stdout_has_winner, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_stdout_has_rows, true);
@@ -1119,12 +1157,32 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.benchmark_preset_rows_include_codex, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_preset_stdout_has_preset_line, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_preset_stdout_has_policy_source, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_handled, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_code_ok, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_compact_handled, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_compact_code_ok, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_compact_has_output_mode, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_compact_has_detail_hint, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_compact_hides_semantic_reason, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_compact_hides_health_score, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_stdout_has_check_only_line, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_check_stdout_has_status, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_handled, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_code_ok, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_handled, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_code_ok, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_has_output_mode, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_has_summary_block, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_hides_recent_runs, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_hides_health_components, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_compact_has_detail_hint, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_has_total_runs, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_has_latest_winner, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_has_score_trend, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_has_assert_count, true);
+  assert.equal(typeof runStartPlanModeContractPayload.benchmark_status_has_latest_top_hint, "boolean");
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_has_winner_reason_sequence, true);
+  assert.equal(runStartPlanModeContractPayload.benchmark_status_has_semantic_correlation, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_status_has_recent_runs, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_events_has_benchmark_run, true);
   assert.equal(runStartPlanModeContractPayload.benchmark_events_has_preset_assert, true);
@@ -1176,10 +1234,11 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_resume, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_rewind, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_skill_creator, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_ask, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_ask, false);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_hides_plan_subcommands, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_user_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_disabled_marked, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_first, false);
   assert.equal(runStartSlashSuggestionsContractPayload.pending_root_ask_only, true);
   assert.equal(runStartSlashSuggestionsContractPayload.model_filter_only_model_related, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ask_filter_only_ask_related, true);
@@ -1187,11 +1246,54 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_only_plan_related, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_root, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_goal_hint, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_benchmark_hint, true);
-  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_benchmark_preset_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_check_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_benchmark_hint, false);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_plan_benchmark_preset_hint, false);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_omits_benchmark_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_omits_benchmark_preset_hint, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_surface_size_ok, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_has_status_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_has_check_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_has_approve_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_has_verify_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_has_apply_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_has_cancel_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_omits_plan_root, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_omits_goal_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_draft_prioritizes_check_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_draft_has_approve_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_draft_has_reject_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_approved_prioritizes_apply_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_approved_has_status_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_applied_pending_prioritizes_verify_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_applied_pending_has_status_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_state_no_active_prioritizes_goal_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_benchmark_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_benchmark_filter_has_plan_benchmark_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_benchmark_filter_has_plan_benchmark_preset_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_benchmark_filter_surface_size_ok, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_open_filter_has_plan_open_alias, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_open_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_has_plan_check_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_has_plan_check_core_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_has_plan_check_generic_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_first_is_plan_check, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_core_after_check, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_generic_after_core, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_narrowed_surface, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_check_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_action_filter_has_approve_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_action_filter_has_apply_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_action_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_action_filter_draft_prioritizes_approve_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_action_filter_approved_prioritizes_apply_first, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_cancel_filter_has_cancel_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_cancel_filter_only_cancel_or_plan, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_verify_filter_has_verify_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_verify_filter_only_plan_related, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_status_filter_has_status_hint, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_status_filter_only_plan_related, true);
   assert.equal(runStartSlashSuggestionsContractPayload.skill_creator_filter_only_skill_creator, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_only_shipit, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plain_input_empty, true);
@@ -1291,9 +1393,16 @@ async function runGatewayContractSmoke() {
   assert.equal(bridgeCliContractPayload.benchmark_assert_fail_actual !== "active", true);
   assert.equal(bridgeCliContractPayload.benchmark_preset_winner_label, "codex_baseline");
   assert.equal(bridgeCliContractPayload.benchmark_preset_name, "core");
-  assert.equal(typeof bridgeCliContractPayload.benchmark_preset_policy_source, "string");
-  assert.equal(String(bridgeCliContractPayload.benchmark_preset_policy_source).length > 0, true);
+  assert.equal(
+    bridgeCliContractPayload.benchmark_preset_policy_source === null
+      || typeof bridgeCliContractPayload.benchmark_preset_policy_source === "string",
+    true,
+  );
+  if (typeof bridgeCliContractPayload.benchmark_preset_policy_source === "string") {
+    assert.equal(String(bridgeCliContractPayload.benchmark_preset_policy_source).length > 0, true);
+  }
   assert.equal(Number(bridgeCliContractPayload.benchmark_preset_rows_count) >= 2, true);
+  assert.equal(Number(bridgeCliContractPayload.benchmark_check_candidate_count) >= 1, true);
   assert.equal(Number(bridgeCliContractPayload.benchmark_status_total_runs) >= 2, true);
   assert.equal(
     bridgeCliContractPayload.benchmark_status_latest_winner === "strong"
@@ -1308,6 +1417,13 @@ async function runGatewayContractSmoke() {
     true,
   );
   assert.equal(Number(bridgeCliContractPayload.benchmark_status_assert_count) >= 1, true);
+  assert.equal(typeof bridgeCliContractPayload.benchmark_status_latest_top_hint, "string");
+  assert.equal(
+    bridgeCliContractPayload.benchmark_status_semantic_correlation === "none"
+      || bridgeCliContractPayload.benchmark_status_semantic_correlation === "watch"
+      || bridgeCliContractPayload.benchmark_status_semantic_correlation === "high",
+    true,
+  );
   assert.equal(
     bridgeCliContractPayload.approve_blocked_by_quality_guard_error_code === "PLAN_QUALITY_GUARD_BLOCKED"
       || bridgeCliContractPayload.approve_blocked_by_quality_guard_error_code === "PLAN_REVIEW_FAILED"
@@ -1658,7 +1774,9 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.queue_resolve_first_matches_q2, true);
   assert.equal(askUserToolContractPayload.queue_next_after_resolve_is_q3, true);
   assert.equal(Number(askUserToolContractPayload.queue_size_after_resolve), 1);
-  assert.equal(askUserToolContractPayload.queue_empty_after_delete, true);
+  assert.equal(askUserToolContractPayload.queue_midway_prompt_deferred, true);
+  assert.equal(askUserToolContractPayload.queue_final_prompt_released, true);
+  assert.equal(askUserToolContractPayload.queue_empty_after_batch_resolved, true);
   assert.equal(askUserToolContractPayload.answer_numeric_index_maps_option, true);
   assert.equal(askUserToolContractPayload.answer_full_width_index_maps_option, true);
   assert.equal(askUserToolContractPayload.answer_case_insensitive_option_maps_canonical, true);
@@ -1666,7 +1784,7 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.queue_ttl_prune_removed_expired, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_keeps_fresh, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
-  assert.equal(askUserToolContractPayload.issued_display_has_status_hint, true);
+  assert.equal(askUserToolContractPayload.issued_display_has_reply_guide, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_resume_token, true);
   assert.equal(askUserToolContractPayload.issued_display_compact_options, true);
   assert.equal(askUserToolContractPayload.issued_display_has_options_preview, true);
@@ -1915,11 +2033,27 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
   assert.equal(interactiveBindingsPayload.ask_status_no_pending_warned, true);
   assert.equal(interactiveBindingsPayload.ask_status_has_options_preview, true);
+  assert.equal(interactiveBindingsPayload.ask_status_has_output_mode_full, true);
   assert.equal(interactiveBindingsPayload.ask_status_has_options_more, true);
-  assert.equal(interactiveBindingsPayload.ask_status_has_queued_total, true);
-  assert.equal(interactiveBindingsPayload.ask_status_has_queued_row, true);
+  assert.equal(interactiveBindingsPayload.ask_status_has_followups_total, true);
+  assert.equal(interactiveBindingsPayload.ask_status_has_followup_row, true);
   assert.equal(interactiveBindingsPayload.ask_status_hint_mentions_reply_direct, true);
   assert.equal(interactiveBindingsPayload.ask_status_hint_mentions_status_only, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_has_header, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_has_output_mode, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_has_detail_hint, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_has_followups_total, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_hides_followup_rows, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_hides_status_only_hint, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_initial_draft_is_check, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_initial_approved_is_apply, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_initial_applied_pending_is_verify, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_tail_draft_check_first, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_tail_approved_apply_first, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_primary_draft_command_is_check, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_primary_approved_command_is_apply, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_primary_reason_draft_mentions_check, true);
+  assert.equal(interactiveBindingsPayload.plan_menu_primary_reason_approved_mentions_apply, true);
   logStep("run-start-interactive-bindings-contract");
 
   const modelOpsContractResult = runCommand("npx", [

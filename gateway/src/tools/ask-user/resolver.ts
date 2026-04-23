@@ -1,8 +1,9 @@
 import {
+  AskUserResolveResult,
   AskUserEnvelope,
   ResolvedAskUser,
 } from "./schema";
-import { buildAskUserResolutionPrompt } from "./protocol";
+import { buildAskUserResolutionPromptBatch } from "./protocol";
 
 function defaultCleanText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -20,6 +21,23 @@ function normalizeOptionAnswer(
   const normalized = normalizeFullWidthDigits(answer);
   if (!normalized) {
     return envelope.defaultOnTimeout;
+  }
+  if (envelope.optionsDetailed.length > 0) {
+    if (/^\d+$/.test(normalized)) {
+      const selectedIndex = Number.parseInt(normalized, 10) - 1;
+      if (selectedIndex >= 0 && selectedIndex < envelope.optionsDetailed.length) {
+        const selected = envelope.optionsDetailed[selectedIndex];
+        return selected?.value ?? selected?.label ?? envelope.defaultOnTimeout;
+      }
+    }
+    const lower = normalized.toLowerCase();
+    for (const option of envelope.optionsDetailed) {
+      const label = option.label.toLowerCase();
+      const value = (option.value ?? option.label).toLowerCase();
+      if (label === lower || value === lower) {
+        return option.value ?? option.label;
+      }
+    }
   }
   if (envelope.options.length > 0) {
     if (/^\d+$/.test(normalized)) {
@@ -53,11 +71,25 @@ interface PruneExpiredOptions {
 
 export class AskUserSessionStore {
   private readonly pendingBySession = new Map<string, AskUserEnvelope[]>();
+  private readonly resolvedBySession = new Map<string, ResolvedAskUser[]>();
 
   private findDuplicateIndex(queue: AskUserEnvelope[], envelope: AskUserEnvelope): number {
-    return queue.findIndex((item) =>
-      item.questionId === envelope.questionId
-      || item.resumeToken === envelope.resumeToken);
+    return queue.findIndex((item) => {
+      if (item.questionId === envelope.questionId) {
+        return true;
+      }
+      const itemResumeToken = item.resumeToken.trim();
+      const envelopeResumeToken = envelope.resumeToken.trim();
+      if (!itemResumeToken || !envelopeResumeToken || itemResumeToken !== envelopeResumeToken) {
+        return false;
+      }
+      const itemKey = item.questionKey?.trim() ?? "";
+      const envelopeKey = envelope.questionKey?.trim() ?? "";
+      if (!itemKey && !envelopeKey) {
+        return true;
+      }
+      return itemKey.length > 0 && envelopeKey.length > 0 && itemKey === envelopeKey;
+    });
   }
 
   get(sessionKey: string): AskUserEnvelope | undefined {
@@ -77,6 +109,18 @@ export class AskUserSessionStore {
     return this.pendingBySession.get(sessionKey)?.length ?? 0;
   }
 
+  private appendResolved(sessionKey: string, resolved: ResolvedAskUser): void {
+    const rows = this.resolvedBySession.get(sessionKey) ?? [];
+    rows.push(resolved);
+    this.resolvedBySession.set(sessionKey, rows);
+  }
+
+  private takeResolvedBatch(sessionKey: string): ResolvedAskUser[] {
+    const rows = this.resolvedBySession.get(sessionKey) ?? [];
+    this.resolvedBySession.delete(sessionKey);
+    return rows;
+  }
+
   set(sessionKey: string, envelope: AskUserEnvelope): void {
     const queue = this.pendingBySession.get(sessionKey) ?? [];
     const duplicateIndex = this.findDuplicateIndex(queue, envelope);
@@ -90,16 +134,7 @@ export class AskUserSessionStore {
 
   delete(sessionKey: string): void {
     this.pendingBySession.delete(sessionKey);
-  }
-
-  clear(sessionKey: string): number {
-    const queue = this.pendingBySession.get(sessionKey);
-    if (!queue || queue.length === 0) {
-      return 0;
-    }
-    const removed = queue.length;
-    this.pendingBySession.delete(sessionKey);
-    return removed;
+    this.resolvedBySession.delete(sessionKey);
   }
 
   pruneExpired(
@@ -140,11 +175,12 @@ export class AskUserSessionStore {
       this.pendingBySession.set(sessionKey, keep);
     } else {
       this.pendingBySession.delete(sessionKey);
+      this.resolvedBySession.delete(sessionKey);
     }
     return expired;
   }
 
-  dismissCurrent(sessionKey: string): AskUserEnvelope | undefined {
+  private dequeueCurrent(sessionKey: string): AskUserEnvelope | undefined {
     const queue = this.pendingBySession.get(sessionKey);
     if (!queue || queue.length === 0) {
       return undefined;
@@ -158,38 +194,41 @@ export class AskUserSessionStore {
     return dismissed;
   }
 
-  parkCurrent(sessionKey: string): AskUserEnvelope | undefined {
-    const queue = this.pendingBySession.get(sessionKey);
-    if (!queue || queue.length <= 1) {
-      return undefined;
-    }
-    const parked = queue.shift();
-    if (!parked) {
-      return undefined;
-    }
-    queue.push(parked);
-    this.pendingBySession.set(sessionKey, queue);
-    return parked;
-  }
-
   resolve(
     sessionKey: string,
     answer: string,
     options: { cleanText?: (value: string) => string } = {},
-  ): ResolvedAskUser | undefined {
-    const pending = this.dismissCurrent(sessionKey);
+  ): AskUserResolveResult | undefined {
+    const pending = this.dequeueCurrent(sessionKey);
     if (!pending) {
       return undefined;
     }
     const cleanText = options.cleanText ?? defaultCleanText;
     const cleanedAnswer = normalizeOptionAnswer(pending, cleanText(answer));
-    return {
+    const resolvedAsk: ResolvedAskUser = {
       envelope: pending,
       answer: cleanedAnswer,
-      resumePrompt: buildAskUserResolutionPrompt({
-        envelope: pending,
-        answer: cleanedAnswer,
-      }),
+    };
+    this.appendResolved(sessionKey, resolvedAsk);
+    const queue = this.pendingBySession.get(sessionKey);
+    const queueSizeAfterResolve = queue?.length ?? 0;
+    const pendingNextAsk = queue && queue.length > 0 ? queue[0] : undefined;
+    if (pendingNextAsk) {
+      return {
+        resolvedAsk,
+        pendingNextAsk,
+        queueSizeAfterResolve,
+      };
+    }
+    const resolvedBatch = this.takeResolvedBatch(sessionKey);
+    const resumePrompt = buildAskUserResolutionPromptBatch({
+      resolvedAsks: resolvedBatch,
+    });
+    return {
+      resolvedAsk,
+      queueSizeAfterResolve,
+      resumePrompt: resumePrompt.trim().length > 0 ? resumePrompt : undefined,
+      resolvedBatch,
     };
   }
 }

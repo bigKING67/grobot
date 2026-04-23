@@ -1,13 +1,19 @@
-import { type AskUserEnvelope, type ResolvedAskUser } from "./schema";
+import {
+  type AskUserEnvelope,
+  type AskUserResolveResult,
+  type ResolvedAskUser,
+} from "./schema";
 
 export interface AskUserRuntimeAdapter {
   buildAskUserDisplay(envelope: AskUserEnvelope): string;
   registerPendingAsk(sessionKey: string, envelope: AskUserEnvelope): void;
-  resolvePendingAsk(sessionKey: string, answer: string): ResolvedAskUser | undefined;
+  resolvePendingAsk(sessionKey: string, answer: string): AskUserResolveResult | undefined;
 }
 
 export interface AskUserTurnPromptContext {
   resolvedAsk: ResolvedAskUser | undefined;
+  pendingNextAsk: AskUserEnvelope | undefined;
+  queueSizeAfterResolve: number;
   resolvedEvent: string;
   promptParts: string[];
 }
@@ -18,12 +24,16 @@ export function createAskUserTurnPromptContext(input: {
   userText: string;
 }): AskUserTurnPromptContext {
   const promptParts: string[] = [];
-  const resolvedAsk = input.runtime.resolvePendingAsk(input.sessionKey, input.userText);
-  if (resolvedAsk) {
-    promptParts.push(resolvedAsk.resumePrompt);
+  const resolved = input.runtime.resolvePendingAsk(input.sessionKey, input.userText);
+  const resolvedAsk = resolved?.resolvedAsk;
+  const resumePrompt = resolved?.resumePrompt?.trim();
+  if (resumePrompt) {
+    promptParts.push(resumePrompt);
   }
   return {
     resolvedAsk,
+    pendingNextAsk: resolved?.pendingNextAsk,
+    queueSizeAfterResolve: resolved?.queueSizeAfterResolve ?? 0,
     resolvedEvent: resolvedAsk ? formatAskUserResolvedEvent(resolvedAsk) : "",
     promptParts,
   };

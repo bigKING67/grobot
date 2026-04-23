@@ -424,19 +424,19 @@ async function main(): Promise<void> {
     ask_status_hint_mentions_reply_direct:
       outputText.includes("hint: reply directly in chat to answer active question"),
     ask_status_hint_mentions_status_only:
-      outputText.includes("hint: /ask only shows status; ask-user actions are handled automatically"),
+      outputText.includes("hint: ask-user actions are automatic; there is no /ask command"),
     ask_status_compact_has_header:
       askStatusCompactText.includes("[ask-user] active question"),
     ask_status_compact_has_output_mode:
       askStatusCompactText.includes("ask_status_output_mode: compact"),
     ask_status_compact_has_detail_hint:
-      askStatusCompactText.includes("ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1"),
+      askStatusCompactText.includes("ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun status display"),
     ask_status_compact_has_followups_total:
       askStatusCompactText.includes("pending_followups_total: 1"),
     ask_status_compact_hides_followup_rows:
       !askStatusCompactText.includes("pending_followup_1: "),
     ask_status_compact_hides_status_only_hint:
-      !askStatusCompactText.includes("hint: /ask only shows status; ask-user actions are handled automatically"),
+      !askStatusCompactText.includes("hint: ask-user actions are automatic; there is no /ask command"),
     plan_menu_initial_draft_is_check: planMenuInitialDraft === "check",
     plan_menu_initial_approved_is_apply: planMenuInitialApproved === "apply",
     plan_menu_initial_applied_pending_is_verify: planMenuInitialAppliedPending === "verify",
