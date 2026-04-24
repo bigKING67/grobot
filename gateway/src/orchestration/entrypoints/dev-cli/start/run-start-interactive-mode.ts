@@ -11,10 +11,8 @@ import { resolveInlineAttachmentsFromInput, runSessionInputLoop } from "./run-st
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
-import {
-  listRunStartSlashSuggestions,
-  type RunStartPlanSuggestionState,
-} from "./run-start-slash-suggestions";
+import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
+import { type RunStartPlanSuggestionState } from "./plan-suggestion-state";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { inferModelApiContextWindowTokens } from "./run-start-model-context";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
@@ -302,11 +300,7 @@ export interface RunStartInteractiveModeInput {
   isPlanMode(): boolean;
   getPlanSuggestionState?(): RunStartPlanSuggestionState | undefined;
   showPlanStatus(): Promise<number>;
-  benchmarkPlan(commandRaw: string): Promise<number>;
   enterPlan(goal: string, options?: RunStartInteractiveTurnOptions): Promise<number>;
-  approvePlan(note: string): Promise<number>;
-  rejectPlan(reason: string): Promise<number>;
-  verifyPlan(result: string): Promise<number>;
   applyPlan(extra: string, options?: RunStartInteractiveTurnOptions): Promise<number>;
   cancelPlan(): Promise<number>;
   requestPlanInterrupt(source: PlanInterruptSource): Promise<void>;
@@ -318,10 +312,6 @@ export interface RunStartInteractiveModeInput {
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
-  ): Promise<void>;
-  openPlanMenu(
-    withInputPaused: SessionInteractiveControls["withInputPaused"],
-    options?: RunStartInteractiveTurnOptions,
   ): Promise<void>;
   openPlanInEditor(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
@@ -573,14 +563,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     writeHandoff: input.writeManualHandoff,
     isPlanMode: input.isPlanMode,
     showPlanStatus: input.showPlanStatus,
-    benchmarkPlan: input.benchmarkPlan,
     enterPlan: (goal) =>
       input.enterPlan(goal, {
         writeStderr: writeInteractiveStderr,
       }),
-    approvePlan: input.approvePlan,
-    rejectPlan: input.rejectPlan,
-    verifyPlan: input.verifyPlan,
     applyPlan: (extra) =>
       input.applyPlan(extra, {
         writeStderr: writeInteractiveStderr,
@@ -594,10 +580,6 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
-    openPlanMenu: (withInputPaused) =>
-      input.openPlanMenu(withInputPaused, {
-        writeStderr: writeInteractiveStderr,
-      }),
     openPlanInEditor: (withInputPaused) =>
       input.openPlanInEditor(withInputPaused, {
         writeStderr: writeInteractiveStderr,

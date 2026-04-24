@@ -1,9 +1,6 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import {
   createRunStartInteractiveModeInput,
-  resolvePlanMenuInitialItemId,
-  resolvePlanMenuPrimaryAction,
-  resolvePlanMenuPrimaryReason,
-  resolvePlanMenuTailItemOrder,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
 import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
 import {
@@ -22,6 +19,8 @@ import { type RunStartModelOps } from "../../orchestration/entrypoints/dev-cli/s
 import { type RunStartPlanMode } from "../../orchestration/entrypoints/dev-cli/start/run-start-plan-mode";
 import { type RunStartRuntimeState } from "../../orchestration/entrypoints/dev-cli/start/run-start-runtime-state";
 import { type RunStartSessionMenuOps } from "../../orchestration/entrypoints/dev-cli/start/run-start-session-menu-ops";
+import { createPlanArtifact } from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
+import { listRunStartSlashSuggestions } from "../../orchestration/entrypoints/dev-cli/start/run-start-slash-suggestions";
 import {
   type RuntimeFailoverConfig,
   type RuntimeProviderCandidate,
@@ -116,6 +115,8 @@ function createRuntimeStateMock(input: {
   }
 
 async function main(): Promise<void> {
+  const tempWorkDir = `${process.cwd()}/.tmp-run-start-interactive-bindings-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  mkdirSync(tempWorkDir, { recursive: true });
   const stdoutChunks: string[] = [];
   const historyMessages: ChatHistoryMessage[] = [
     { role: "user", content: "first" },
@@ -180,14 +181,12 @@ async function main(): Promise<void> {
   const sessionMenuOps: RunStartSessionMenuOps = {
     openSessionMenu: async () => undefined,
   };
+  let planModeActive = false;
   const planMode: RunStartPlanMode = {
-    isPlanMode: () => false,
+    isPlanMode: () => planModeActive,
     getActivePlanPath: () => undefined,
     enterPlan: async () => 0,
     showPlanStatus: async () => 0,
-    approvePlan: async () => 0,
-    rejectPlan: async () => 0,
-    verifyPlan: async () => 0,
     runPlanTurn: async () => 0,
     applyPlan: async () => 0,
     cancelPlan: async () => 0,
@@ -239,13 +238,13 @@ async function main(): Promise<void> {
     homeDir: "/tmp/home",
     projectRoot: "/tmp/project",
     projectName: "grobot",
-    workDir: "/tmp/work",
+    workDir: tempWorkDir,
     sessionNamespaceKey: "feishu:grobot:dm:interactive-binding-contract",
     sessionStoreRuntime,
     sessionRegistryFilePathValue: "/tmp/home/sessions/contract.sessions.json",
     handoffAutoOnExit: true,
     handoffRecentTurns: 6,
-    handoffPath: "/tmp/work/HANDOFF.md",
+    handoffPath: `${tempWorkDir}/HANDOFF.md`,
     buildHelpText: () => "contract-help",
     runtimeProviderChain,
     runtimeFailoverConfig,
@@ -267,200 +266,205 @@ async function main(): Promise<void> {
     executeTurn: wire.executeTurn,
   });
 
-  await interactiveModeInput.switchActiveSession("session-a", "switch");
-  switchResult = false;
-  await interactiveModeInput.switchActiveSession("session-b", "switch");
-  interactiveModeInput.showHealthStatus();
-  interactiveModeInput.showStatusCurrent();
-  interactiveModeInput.setStatusTheme("nerd");
-  interactiveModeInput.setStatusLayoutMode("compact");
-  interactiveModeInput.setStatusSegmentEnabled("tokens", false);
-  interactiveModeInput.writeManualHandoff();
-  interactiveModeInput.writeAutoExitHandoffIfNeeded();
-  const planMenuNonTtyStart = stdoutChunks.join("").length;
-  await withStdinTty(false, async () => {
-    await interactiveModeInput.openPlanMenu(async (operation) => operation());
-    return undefined;
+  const validPlan = [
+    "# Contract Live Suggestion Plan",
+    "",
+    "- session_id: feishu:grobot:dm:interactive-binding-contract",
+    "- plan_id: p_contract_live",
+    "- seq: 1",
+    "- status: draft",
+    "",
+    "## Goal",
+    "",
+    "验证 interactive suggestion state 会基于当前 plan 文件内容即时进入待决策态。",
+    "",
+    "## Scope In",
+    "",
+    "- 读取 active plan artifact。",
+    "- 基于 live snapshot 输出 execute recommendation。",
+    "",
+    "## Scope Out",
+    "",
+    "- 不恢复旧 approve/reject 命令面。",
+    "",
+    "## Milestones",
+    "",
+    "1. [ ] 生成 live suggestion state",
+    "   - 完成判据: active status 进入 ready / awaiting_decision。",
+    "   - 验证: slash suggestions 出现 Implement the plan. 提示。",
+    "   - 回退: 恢复 persisted-only suggestion 解析。",
+    "",
+    "## Validation",
+    "",
+    "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-interactive-bindings-contract.ts",
+    "",
+    "## Risk & Rollback",
+    "",
+    "- 风险: interactive/slash recommendation 与 /plan 状态页漂移。",
+    "- 回退: 恢复旧 suggestion resolver 并重新对齐真相源。",
+    "",
+  ].join("\n");
+
+  const createdPlan = createPlanArtifact(tempWorkDir, runtimeState.getSessionKey(), "interactive binding live suggestion");
+  writeFileSync(createdPlan.planPath, `${validPlan}\n`, "utf8");
+  runtimeState.setPlanMeta({
+    active_plan_id: createdPlan.entry.plan_id,
+    active_plan_status: "draft",
+    active_plan_path: createdPlan.planPath,
+    active_plan_seq: createdPlan.entry.seq,
+    active_plan_title: createdPlan.entry.title,
+    active_plan_phase: "drafting",
   });
-  const planMenuNonTtyText = stdoutChunks.join("").slice(planMenuNonTtyStart);
-  interactiveModeInput.showPendingAskQueue();
-  const buildPendingAsk = (
-    suffix: string,
-    options: string[] = ["safe", "fast"],
-  ) => normalizeAskUserEnvelopeFromPayload({
-    blocking_node_id: "node.contract.ask",
-    questions: [{
-      id: `ask_q_contract_${suffix}`,
-      header: "Profile",
-      question: "Choose profile",
-      options,
-    }],
-    default_on_timeout: "safe",
-    resume_token: `resume_contract_${suffix}`,
+  planModeActive = true;
+  const livePlanSuggestionState = interactiveModeInput.getPlanSuggestionState?.();
+  const livePlanSuggestions = listRunStartSlashSuggestions({
+    homeDir: "/tmp/home",
+    userInput: "/plan ",
+    planMode: true,
+    planSuggestionState: livePlanSuggestionState,
+    maxItems: 80,
   });
-  const pendingAskPrimary = buildPendingAsk("001", [
-    "safe",
-    "fast",
-    "aggressive",
-    "balanced",
-    "retry",
-    "fallback",
-  ]);
-  const pendingAskSecondary = buildPendingAsk("002", ["yes", "no"]);
-  if (!pendingAskPrimary || !pendingAskSecondary) {
-    throw new Error("failed to build contract ask-user envelope");
-  }
-  gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAskPrimary);
-  gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAskSecondary);
-  const askStatusCompactStart = stdoutChunks.join("").length;
-  await withStdinTty(true, async () => {
+  writeFileSync(
+    createdPlan.planPath,
+    "# Degraded Plan\n\nTODO: fill sections later.\n",
+    "utf8",
+  );
+  const changedPlanSuggestionState = interactiveModeInput.getPlanSuggestionState?.();
+  const changedPlanSuggestions = listRunStartSlashSuggestions({
+    homeDir: "/tmp/home",
+    userInput: "/plan ",
+    planMode: true,
+    planSuggestionState: changedPlanSuggestionState,
+    maxItems: 80,
+  });
+  planModeActive = false;
+
+  try {
+    await interactiveModeInput.switchActiveSession("session-a", "switch");
+    switchResult = false;
+    await interactiveModeInput.switchActiveSession("session-b", "switch");
+    interactiveModeInput.showHealthStatus();
+    interactiveModeInput.showStatusCurrent();
+    interactiveModeInput.setStatusTheme("nerd");
+    interactiveModeInput.setStatusLayoutMode("compact");
+    interactiveModeInput.setStatusSegmentEnabled("tokens", false);
+    interactiveModeInput.writeManualHandoff();
+    interactiveModeInput.writeAutoExitHandoffIfNeeded();
     interactiveModeInput.showPendingAskQueue();
-    return undefined;
-  });
-  const askStatusCompactText = stdoutChunks.join("").slice(askStatusCompactStart);
-  interactiveModeInput.showPendingAskQueue();
-  interactiveModeInput.showPendingAskQueue(-1);
-  const statusConfigAfter = interactiveModeInput.getStatusLineConfig();
-  const planMenuInitialDraft = resolvePlanMenuInitialItemId({
-    planMode: true,
-    state: {
-      activePlanStatus: "draft",
-      latestPlanStatus: "draft",
-    },
-  });
-  const planMenuInitialApproved = resolvePlanMenuInitialItemId({
-    planMode: true,
-    state: {
-      activePlanStatus: "approved",
-      latestPlanStatus: "approved",
-    },
-  });
-  const planMenuInitialAppliedPending = resolvePlanMenuInitialItemId({
-    planMode: false,
-    state: {
-      latestPlanStatus: "applied",
-      latestVerificationStatus: "pending",
-    },
-  });
-  const planMenuTailDraft = resolvePlanMenuTailItemOrder({
-    state: {
-      activePlanStatus: "draft",
-      latestPlanStatus: "draft",
-    },
-  });
-  const planMenuTailApproved = resolvePlanMenuTailItemOrder({
-    state: {
-      activePlanStatus: "approved",
-      latestPlanStatus: "approved",
-    },
-  });
-  const planMenuTailAppliedPending = resolvePlanMenuTailItemOrder({
-    planMode: false,
-    state: {
-      latestPlanStatus: "applied",
-      latestVerificationStatus: "pending",
-    },
-  });
-  const planMenuPrimaryDraft = resolvePlanMenuPrimaryAction({
-    planMode: true,
-    state: {
-      activePlanStatus: "draft",
-      latestPlanStatus: "draft",
-    },
-  });
-  const planMenuPrimaryApproved = resolvePlanMenuPrimaryAction({
-    planMode: true,
-    state: {
-      activePlanStatus: "approved",
-      latestPlanStatus: "approved",
-    },
-  });
-  const planMenuPrimaryReasonDraft = resolvePlanMenuPrimaryReason({
-    planMode: true,
-    state: {
-      activePlanStatus: "draft",
-      latestPlanStatus: "draft",
-    },
-  });
-  const planMenuPrimaryReasonApproved = resolvePlanMenuPrimaryReason({
-    planMode: true,
-    state: {
-      activePlanStatus: "approved",
-      latestPlanStatus: "approved",
-    },
-  });
+    const buildPendingAsk = (
+      suffix: string,
+      options: string[] = ["safe", "fast"],
+    ) => normalizeAskUserEnvelopeFromPayload({
+      blocking_node_id: "node.contract.ask",
+      questions: [{
+        id: `ask_q_contract_${suffix}`,
+        header: "Profile",
+        question: "Choose profile",
+        options,
+      }],
+      default_on_timeout: "safe",
+      resume_token: `resume_contract_${suffix}`,
+    });
+    const pendingAskPrimary = buildPendingAsk("001", [
+      "safe",
+      "fast",
+      "aggressive",
+      "balanced",
+      "retry",
+      "fallback",
+    ]);
+    const pendingAskSecondary = buildPendingAsk("002", ["yes", "no"]);
+    if (!pendingAskPrimary || !pendingAskSecondary) {
+      throw new Error("failed to build contract ask-user envelope");
+    }
+    gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAskPrimary);
+    gaMechanismRuntime.registerPendingAsk(runtimeState.getSessionKey(), pendingAskSecondary);
+    const askStatusCompactStart = stdoutChunks.join("").length;
+    await withStdinTty(true, async () => {
+      interactiveModeInput.showPendingAskQueue();
+      return undefined;
+    });
+    const askStatusCompactText = stdoutChunks.join("").slice(askStatusCompactStart);
+    interactiveModeInput.showPendingAskQueue();
+    interactiveModeInput.showPendingAskQueue(-1);
+    const statusConfigAfter = interactiveModeInput.getStatusLineConfig();
 
-  const outputText = stdoutChunks.join("");
-  const payload = {
-    pass_through_project_name: interactiveModeInput.projectName === "grobot",
-    pass_through_session_runtime:
-      interactiveModeInput.sessionStoreRuntime.backend === "file",
-    switch_calls: switchEvents.length,
-    switch_first_call: switchEvents[0] ?? "",
-    switch_second_call: switchEvents[1] ?? "",
-    model_override_count: applyModelOverrideCount,
-    health_has_header: outputText.includes("[provider-health]"),
-    health_has_sticky_provider: outputText.includes("sticky_provider: alpha"),
-    health_has_provider_row: outputText.includes("- alpha status=CLOSED"),
-    manual_handoff_reason: handoffReason,
-    manual_handoff_to_stderr: handoffToStderr,
-    auto_exit_to_stderr: autoExitToStderr,
-    history_count: interactiveModeInput.getHistoryMessagesCount(),
-    help_text: interactiveModeInput.buildHelpText(),
-    active_session_id: interactiveModeInput.getActiveSessionId(),
-    active_session_topic: interactiveModeInput.getActiveSessionTopic() ?? "",
-    model_snapshot_model: interactiveModeInput.getModelSnapshot().model,
-    model_snapshot_provider: interactiveModeInput.getModelSnapshot().providerName,
-    prompt_budget_ctx_ratio: 0.42,
-    prompt_budget_estimated_tokens: 512,
-    prompt_budget_target_tokens: 2048,
-    status_snapshot_has_header: outputText.includes("[status]"),
-    status_theme_after_update: statusConfigAfter.theme,
-    status_layout_after_update: statusConfigAfter.layoutMode,
-    status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
-    ask_status_no_pending_warned: outputText.includes("[ask-user] no pending question."),
-    ask_status_has_options_preview: outputText.includes("options_preview: "),
-    ask_status_has_output_mode_full: outputText.includes("ask_status_output_mode: full"),
-    ask_status_has_options_more: outputText.includes("options_more: +1"),
-    ask_status_has_followups_total: outputText.includes("pending_followups_total: 1"),
-    ask_status_has_followup_row: outputText.includes("pending_followup_1: ask_q_contract_002"),
-    ask_status_hint_mentions_reply_direct:
-      outputText.includes("hint: reply directly in chat to answer active question"),
-    ask_status_hint_mentions_status_only:
-      outputText.includes("hint: ask-user actions are automatic; there is no /ask command"),
-    ask_status_compact_has_header:
-      askStatusCompactText.includes("[ask-user] active question"),
-    ask_status_compact_has_output_mode:
-      askStatusCompactText.includes("ask_status_output_mode: compact"),
-    ask_status_compact_has_detail_hint:
-      askStatusCompactText.includes("ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun status display"),
-    ask_status_compact_has_followups_total:
-      askStatusCompactText.includes("pending_followups_total: 1"),
-    ask_status_compact_hides_followup_rows:
-      !askStatusCompactText.includes("pending_followup_1: "),
-    ask_status_compact_hides_status_only_hint:
-      !askStatusCompactText.includes("hint: ask-user actions are automatic; there is no /ask command"),
-    plan_menu_initial_draft_is_check: planMenuInitialDraft === "check",
-    plan_menu_initial_approved_is_apply: planMenuInitialApproved === "apply",
-    plan_menu_initial_applied_pending_is_verify: planMenuInitialAppliedPending === "verify",
-    plan_menu_non_tty_has_suggested_line:
-      planMenuNonTtyText.includes("[plan] suggested now: "),
-    plan_menu_non_tty_suggests_goal:
-      planMenuNonTtyText.includes("[plan] suggested now: /plan <goal>"),
-    plan_menu_tail_draft_check_first: planMenuTailDraft[0] === "check",
-    plan_menu_tail_approved_apply_first: planMenuTailApproved[0] === "apply",
-    plan_menu_tail_applied_pending_verify_first: planMenuTailAppliedPending[0] === "verify",
-    plan_menu_primary_draft_command_is_check:
-      planMenuPrimaryDraft.command === "/plan check",
-    plan_menu_primary_approved_command_is_apply:
-      planMenuPrimaryApproved.command === "/plan apply [extra]",
-    plan_menu_primary_reason_draft_mentions_check:
-      planMenuPrimaryReasonDraft.includes("quick check"),
-    plan_menu_primary_reason_approved_mentions_apply:
-      planMenuPrimaryReasonApproved.includes("apply"),
-  };
+    const outputText = stdoutChunks.join("");
+    const payload = {
+      pass_through_project_name: interactiveModeInput.projectName === "grobot",
+      pass_through_session_runtime:
+        interactiveModeInput.sessionStoreRuntime.backend === "file",
+      switch_calls: switchEvents.length,
+      switch_first_call: switchEvents[0] ?? "",
+      switch_second_call: switchEvents[1] ?? "",
+      model_override_count: applyModelOverrideCount,
+      health_has_header: outputText.includes("[provider-health]"),
+      health_has_sticky_provider: outputText.includes("sticky_provider: alpha"),
+      health_has_provider_row: outputText.includes("- alpha status=CLOSED"),
+      manual_handoff_reason: handoffReason,
+      manual_handoff_to_stderr: handoffToStderr,
+      auto_exit_to_stderr: autoExitToStderr,
+      history_count: interactiveModeInput.getHistoryMessagesCount(),
+      help_text: interactiveModeInput.buildHelpText(),
+      active_session_id: interactiveModeInput.getActiveSessionId(),
+      active_session_topic: interactiveModeInput.getActiveSessionTopic() ?? "",
+      model_snapshot_model: interactiveModeInput.getModelSnapshot().model,
+      model_snapshot_provider: interactiveModeInput.getModelSnapshot().providerName,
+      prompt_budget_ctx_ratio: 0.42,
+      prompt_budget_estimated_tokens: 512,
+      prompt_budget_target_tokens: 2048,
+      status_snapshot_has_header: outputText.includes("[status]"),
+      status_theme_after_update: statusConfigAfter.theme,
+      status_layout_after_update: statusConfigAfter.layoutMode,
+      status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
+      ask_status_no_pending_warned: outputText.includes("[ask-user] no pending question."),
+      ask_status_has_options_preview: outputText.includes("options_preview: "),
+      ask_status_has_output_mode_full: outputText.includes("ask_status_output_mode: full"),
+      ask_status_has_options_more: outputText.includes("options_more: +1"),
+      ask_status_has_followups_total: outputText.includes("pending_followups_total: 1"),
+      ask_status_has_followup_row: outputText.includes("pending_followup_1: ask_q_contract_002"),
+      ask_status_hint_mentions_reply_direct:
+        outputText.includes("hint: reply directly in chat to answer active question"),
+      ask_status_hint_mentions_status_only:
+        outputText.includes("hint: ask-user actions are automatic; there is no /ask command"),
+      ask_status_compact_has_header:
+        askStatusCompactText.includes("[ask-user] active question"),
+      ask_status_compact_has_output_mode:
+        askStatusCompactText.includes("ask_status_output_mode: compact"),
+      ask_status_compact_has_detail_hint:
+        askStatusCompactText.includes("ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun status display"),
+      ask_status_compact_has_followups_total:
+        askStatusCompactText.includes("pending_followups_total: 1"),
+      ask_status_compact_hides_followup_rows:
+        !askStatusCompactText.includes("pending_followup_1: "),
+      ask_status_compact_hides_status_only_hint:
+        !askStatusCompactText.includes("hint: ask-user actions are automatic; there is no /ask command"),
+      plan_suggestion_state_detects_live_status:
+        livePlanSuggestionState?.activePlanStatus === "ready",
+      plan_suggestion_state_detects_live_phase:
+        livePlanSuggestionState?.activePlanPhase === "awaiting_decision",
+      plan_suggestion_state_detects_live_source:
+        livePlanSuggestionState?.activePlanStatusSource === "live_snapshot",
+      plan_suggestion_state_detects_decision_ready:
+        livePlanSuggestionState?.activePlanDecisionReady === true,
+      plan_suggestion_state_recommendation_execute:
+        livePlanSuggestionState?.activePlanRecommendationCommand === "Implement the plan.",
+      plan_suggestion_state_preserves_stored_latest:
+        livePlanSuggestionState?.latestPlanStatus === "draft",
+      plan_slash_suggestions_surface_direct_execute:
+        livePlanSuggestions.some((item) => item.description.includes("Implement the plan.")),
+      plan_suggestion_state_invalidates_cache_on_file_change:
+        changedPlanSuggestionState?.activePlanStatus !== "ready",
+      plan_suggestion_state_after_file_change_uses_live_source:
+        changedPlanSuggestionState?.activePlanStatusSource === "live_snapshot",
+      plan_slash_suggestions_after_file_change_drops_execute_hint:
+        !changedPlanSuggestions.some((item) => item.description.includes("Implement the plan.")),
+    };
 
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  } finally {
+    rmSync(tempWorkDir, { recursive: true, force: true });
+  }
 }
 
 void main();

@@ -1,16 +1,41 @@
 import { readFileSync } from "node:fs";
 import { runGatewayTurn } from "../orchestration/main";
 import { MigrationOptions, SessionKeyParts } from "../models/types";
-import { parsePlanCommand } from "../orchestration/entrypoints/dev-cli/start/plan-command";
+import {
+  isNaturalPlanExecutionIntent,
+  parsePlanCommand,
+} from "../orchestration/entrypoints/dev-cli/start/plan-command";
+import {
+  derivePlanPhaseFromStatus,
+  PLAN_EXECUTION_REPLY,
+  resolvePlanStatusRecommendation,
+  type PlanLifecycleStatus,
+  type SessionPlanPhase,
+} from "../orchestration/entrypoints/dev-cli/start/plan-state";
+import { evaluateLivePlanDecisionSnapshot } from "../orchestration/entrypoints/dev-cli/start/plan-live-status";
+import { resolveBridgeApplyFailurePolicy } from "./bridge-plan-failure-policy";
 import {
   appendPlanEvent,
   appendPlanProgressNote,
   approvePlanArtifact,
+  buildPlanQualityRepairActions,
   buildPlanApplyPrompt,
   createPlanArtifact,
+  evaluatePlanQualityBenchmarkHealth,
+  evaluatePlanQualityBenchmarkSemanticCorrelation,
+  evaluatePlanQualityGuard,
+  evaluatePlanQuality,
+  evaluatePlanQualityTrend,
   loadActivePlanArtifact,
+  loadLatestPlanFailureDiagnostic,
+  loadPlanQualityBenchmarkHistory,
+  loadLatestPlanVerificationDiagnostic,
+  loadPlanArtifactIndex,
+  resolvePlanQualityBenchmarkRecommendation,
   recoverStaleApprovedPlan,
   recordPlanReviewResult,
+  resolvePlanQualityGuardPolicy,
+  resolvePlanQualityGuardMode,
   reviewPlanContent,
   updatePlanArtifactStatus,
 } from "../orchestration/entrypoints/dev-cli/start/plan-artifact";
@@ -22,22 +47,15 @@ const PLAN_ERROR_APPLY_BLOCKED = "PLAN_APPLY_STATUS_BLOCKED";
 const PLAN_ERROR_REVIEW_PLAN_NOT_FOUND = "PLAN_REVIEW_PLAN_NOT_FOUND";
 const PLAN_ERROR_REVIEW_FAILED = "PLAN_REVIEW_FAILED";
 const PLAN_ERROR_REVIEW_BLOCKED = "PLAN_REVIEW_BLOCKED";
+const PLAN_ERROR_QUALITY_GUARD_BLOCKED = "PLAN_QUALITY_GUARD_BLOCKED";
 const PLAN_ERROR_APPROVAL_FAILED = "PLAN_APPROVAL_FAILED";
 const PLAN_ERROR_SET_APPLYING_FAILED = "PLAN_SET_APPLYING_FAILED";
 const PLAN_ERROR_APPLY_EXEC_FAILED = "PLAN_APPLY_EXEC_FAILED";
 const PLAN_ERROR_APPEND_NOTE_FAILED = "PLAN_APPEND_NOTE_FAILED";
 const BRIDGE_FATAL_ERROR = "BRIDGE_FATAL";
 
-type BridgePlanStatus =
-  | "draft"
-  | "blocked"
-  | "review_failed"
-  | "ready"
-  | "approved"
-  | "applying"
-  | "apply_failed"
-  | "applied"
-  | "discarded";
+type BridgePlanStatus = PlanLifecycleStatus;
+type BridgePlanPhase = SessionPlanPhase;
 
 interface BridgeInput {
   userMessage: string;
@@ -122,50 +140,513 @@ function isPlanOnlyStatus(status: BridgePlanStatus): boolean {
   return status !== "applied" && status !== "discarded";
 }
 
+function isPlanSlashCommand(message: string): boolean {
+  return /^\/plan(?:\s|$)/.test(message.trim());
+}
+
+function buildPlanBenchmarkHistoryView(
+  history: ReturnType<typeof loadPlanQualityBenchmarkHistory>,
+): {
+  plan_quality_benchmark_total_runs: number;
+  plan_quality_benchmark_recent_count?: number;
+  plan_quality_benchmark_latest_winner?: string;
+  plan_quality_benchmark_latest_score?: number;
+  plan_quality_benchmark_latest_grade?: "A" | "B" | "C" | "D" | "E";
+  plan_quality_benchmark_latest_top_hint?: string;
+  plan_quality_benchmark_latest_top_repair_action?: string;
+  plan_quality_benchmark_latest_lead_score?: number;
+  plan_quality_benchmark_latest_at?: string;
+  plan_quality_benchmark_score_trend?: "up" | "down" | "flat" | "none";
+  plan_quality_benchmark_score_delta?: number;
+  plan_quality_benchmark_winner_changed?: boolean;
+  plan_quality_benchmark_winner_sequence?: string[];
+  plan_quality_benchmark_winner_reason_sequence?: string[];
+  plan_quality_benchmark_winner_switch_count?: number;
+  plan_quality_benchmark_assert_count?: number;
+  plan_quality_benchmark_assert_pass_count?: number;
+  plan_quality_benchmark_assert_fail_count?: number;
+  plan_quality_benchmark_assert_pass_rate?: number;
+  plan_quality_benchmark_recent_runs?: Array<{
+    at: string;
+    plan_id?: string;
+    compared_count: number;
+    winner_label: string;
+    winner_score: number;
+    winner_grade: "A" | "B" | "C" | "D" | "E";
+    winner_top_hint?: string;
+    winner_top_repair_action?: string;
+    runner_up_label?: string;
+    runner_up_score?: number;
+    winner_lead_score?: number;
+    preset?: string;
+    guard_mode?: "off" | "warn" | "strict";
+    guard_policy_profile?: string;
+    assert_best?: string;
+    assert_passed?: boolean;
+    assert_actual?: string;
+  }>;
+} {
+  if (history.totalRuns <= 0) {
+    return {
+      plan_quality_benchmark_total_runs: 0,
+    };
+  }
+  return {
+    plan_quality_benchmark_total_runs: history.totalRuns,
+    plan_quality_benchmark_recent_count: history.recentRuns.length,
+    plan_quality_benchmark_latest_winner: history.latestWinnerLabel,
+    plan_quality_benchmark_latest_score: history.latestWinnerScore,
+    plan_quality_benchmark_latest_grade: history.latestWinnerGrade,
+    plan_quality_benchmark_latest_top_hint: history.latestWinnerTopHint,
+    plan_quality_benchmark_latest_top_repair_action: history.latestWinnerTopRepairAction,
+    plan_quality_benchmark_latest_lead_score: history.latestWinnerLeadScore,
+    plan_quality_benchmark_latest_at: history.latestRunAt,
+    plan_quality_benchmark_score_trend: history.scoreTrend,
+    plan_quality_benchmark_score_delta: history.deltaFromPrevious,
+    plan_quality_benchmark_winner_changed: history.winnerChangedFromPrevious,
+    plan_quality_benchmark_winner_sequence: history.winnerSequence,
+    plan_quality_benchmark_winner_reason_sequence: history.winnerReasonSequence,
+    plan_quality_benchmark_winner_switch_count: history.winnerSwitchCount,
+    plan_quality_benchmark_assert_count: history.assertCount,
+    plan_quality_benchmark_assert_pass_count: history.assertPassCount,
+    plan_quality_benchmark_assert_fail_count: history.assertFailCount,
+    plan_quality_benchmark_assert_pass_rate: history.assertPassRate,
+    plan_quality_benchmark_recent_runs: history.recentRuns.map((run) => ({
+      at: run.at,
+      plan_id: run.planId,
+      compared_count: run.comparedCount,
+      winner_label: run.winnerLabel,
+      winner_score: run.winnerScore,
+      winner_grade: run.winnerGrade,
+      winner_top_hint: run.winnerTopHint,
+      winner_top_repair_action: run.winnerTopRepairAction,
+      runner_up_label: run.runnerUpLabel,
+      runner_up_score: run.runnerUpScore,
+      winner_lead_score: run.winnerLeadScore,
+      preset: run.preset,
+      guard_mode: run.guardMode,
+      guard_policy_profile: run.guardPolicyProfile,
+      assert_best: run.assertBest,
+      assert_passed: run.assertPassed,
+      assert_actual: run.assertActual,
+    })),
+  };
+}
+
 function currentPlanView(workDir: string, sessionId: string): {
   mode: "normal" | "plan_only";
   active_plan_id?: string;
   active_plan_status?: BridgePlanStatus;
+  active_plan_phase?: BridgePlanPhase;
   active_plan_path?: string;
   active_plan_seq?: number;
   active_plan_title?: string;
+  active_plan_status_source?: "stored" | "live_snapshot";
+  active_plan_stored_status?: BridgePlanStatus;
+  active_plan_stored_phase?: BridgePlanPhase;
+  active_plan_decision_ready?: boolean;
+  active_plan_approval_stale?: boolean;
+  active_plan_recommendation_action?: string;
+  active_plan_recommendation_reason?: string;
   blocked_count?: number;
   review_fail_count?: number;
   approval_ticket_id?: string;
   approved_hash?: string;
   approved_snapshot_path?: string;
+  latest_failure_event?: string;
+  latest_failure_at?: string;
+  latest_failure_exit_code?: number;
+  latest_failure_policy_action?: "fail" | "degrade";
+  latest_failure_policy_reason?: string;
+  latest_failure_diagnostic_code?: string;
+  latest_failure_provider?: string;
+  latest_failure_error_class?: string;
+  latest_failure_review_blocked?: boolean;
+  latest_failure_findings_count?: number;
+  latest_verification_event?: string;
+  latest_verification_status?: "pending" | "passed" | "failed";
+  latest_verification_at?: string;
+  plan_quality_score?: number;
+  plan_quality_grade?: "A" | "B" | "C" | "D" | "E";
+  plan_quality_findings_count?: number;
+  plan_quality_blocked?: boolean;
+  plan_quality_recommendation?: string;
+  plan_quality_rewrite_hints?: string[];
+  plan_quality_repair_actions?: Array<{
+    id: string;
+    priority: "p0" | "p1" | "p2";
+    title: string;
+    command: string;
+    rationale: string;
+  }>;
+  plan_quality_trend?: "up" | "down" | "flat" | "none";
+  plan_quality_previous_plan_id?: string;
+  plan_quality_previous_score?: number;
+  plan_quality_delta_from_previous?: number;
+  plan_quality_guard_mode?: "off" | "warn" | "strict";
+  plan_quality_guard_level?: "healthy" | "watch" | "critical";
+  plan_quality_regression_streak?: number;
+  plan_quality_guard_reason?: string;
+  plan_quality_guard_policy_profile?: string;
+  plan_quality_guard_policy_source?: string;
+  plan_quality_guard_policy_path?: string;
+  plan_quality_guard_policy_warning?: string;
+  plan_quality_benchmark_total_runs?: number;
+  plan_quality_benchmark_recent_count?: number;
+  plan_quality_benchmark_latest_winner?: string;
+  plan_quality_benchmark_latest_score?: number;
+  plan_quality_benchmark_latest_grade?: "A" | "B" | "C" | "D" | "E";
+  plan_quality_benchmark_latest_top_hint?: string;
+  plan_quality_benchmark_latest_top_repair_action?: string;
+  plan_quality_benchmark_latest_lead_score?: number;
+  plan_quality_benchmark_latest_at?: string;
+  plan_quality_benchmark_score_trend?: "up" | "down" | "flat" | "none";
+  plan_quality_benchmark_score_delta?: number;
+  plan_quality_benchmark_winner_changed?: boolean;
+  plan_quality_benchmark_winner_sequence?: string[];
+  plan_quality_benchmark_winner_reason_sequence?: string[];
+  plan_quality_benchmark_winner_switch_count?: number;
+  plan_quality_benchmark_assert_count?: number;
+  plan_quality_benchmark_assert_pass_count?: number;
+  plan_quality_benchmark_assert_fail_count?: number;
+  plan_quality_benchmark_assert_pass_rate?: number;
+  plan_quality_benchmark_semantic_correlation?: "none" | "watch" | "high";
+  plan_quality_benchmark_semantic_reason?: string;
+  plan_quality_benchmark_health_score?: number;
+  plan_quality_benchmark_health_level?: "good" | "watch" | "risk";
+  plan_quality_benchmark_health_reason?: string;
+  plan_quality_benchmark_health_components?: {
+    trend: number;
+    stability: number;
+    assertion: number;
+    semantic: number;
+  };
+  plan_quality_benchmark_recommended_next_action?: string;
+  plan_quality_benchmark_recommendation_reason?: string;
+  plan_quality_benchmark_recent_runs?: Array<{
+    at: string;
+    plan_id?: string;
+    compared_count: number;
+    winner_label: string;
+    winner_score: number;
+    winner_grade: "A" | "B" | "C" | "D" | "E";
+    winner_top_hint?: string;
+    winner_top_repair_action?: string;
+    runner_up_label?: string;
+    runner_up_score?: number;
+    winner_lead_score?: number;
+    preset?: string;
+    guard_mode?: "off" | "warn" | "strict";
+    guard_policy_profile?: string;
+    assert_best?: string;
+    assert_passed?: boolean;
+    assert_actual?: string;
+  }>;
+  latest_plan_id?: string;
+  latest_plan_status?: BridgePlanStatus;
+  latest_plan_phase?: BridgePlanPhase;
 } {
+  const benchmarkHistory = loadPlanQualityBenchmarkHistory(workDir, sessionId, { limit: 3 });
+  const benchmarkHistoryView = buildPlanBenchmarkHistoryView(benchmarkHistory);
   const active = loadActivePlanArtifact(workDir, sessionId);
   if (!active || !isPlanOnlyStatus(active.entry.status)) {
+    const latest = resolveLatestPlanEntry(workDir, sessionId, [
+      "applied",
+      "apply_failed",
+      "discarded",
+    ]);
+    if (!latest) {
+      const benchmarkSemantic = evaluatePlanQualityBenchmarkSemanticCorrelation({
+        history: benchmarkHistory,
+      });
+      const benchmarkHealth = evaluatePlanQualityBenchmarkHealth({
+        history: benchmarkHistory,
+        semanticCorrelation: benchmarkSemantic.level,
+      });
+      const benchmarkRecommendation = resolvePlanQualityBenchmarkRecommendation({
+        history: benchmarkHistory,
+        semanticCorrelation: benchmarkSemantic.level,
+        health: benchmarkHealth,
+      });
+      return {
+        mode: "normal",
+        ...benchmarkHistoryView,
+        plan_quality_benchmark_semantic_correlation: benchmarkSemantic.level,
+        plan_quality_benchmark_semantic_reason: benchmarkSemantic.reason,
+        plan_quality_benchmark_health_score: benchmarkHealth.score,
+        plan_quality_benchmark_health_level: benchmarkHealth.level,
+        plan_quality_benchmark_health_reason: benchmarkHealth.reason,
+        plan_quality_benchmark_health_components: benchmarkHealth.components,
+        plan_quality_benchmark_recommended_next_action: benchmarkRecommendation.action,
+        plan_quality_benchmark_recommendation_reason: benchmarkRecommendation.reason,
+      };
+    }
+    const latestFailure = loadLatestPlanFailureDiagnostic(workDir, sessionId, {
+      planId: latest.plan_id,
+    });
+    const latestVerification = loadLatestPlanVerificationDiagnostic(workDir, sessionId, {
+      planId: latest.plan_id,
+    });
+    const benchmarkSemantic = evaluatePlanQualityBenchmarkSemanticCorrelation({
+      latestFailure,
+      history: benchmarkHistory,
+    });
+    const benchmarkHealth = evaluatePlanQualityBenchmarkHealth({
+      history: benchmarkHistory,
+      semanticCorrelation: benchmarkSemantic.level,
+    });
+    const benchmarkRecommendation = resolvePlanQualityBenchmarkRecommendation({
+      history: benchmarkHistory,
+      semanticCorrelation: benchmarkSemantic.level,
+      health: benchmarkHealth,
+    });
     return {
       mode: "normal",
+      ...benchmarkHistoryView,
+      latest_plan_id: latest.plan_id,
+      latest_plan_status: latest.status,
+      latest_plan_phase: derivePlanPhaseFromStatus(latest.status),
+      latest_failure_event: latestFailure?.event,
+      latest_failure_at: latestFailure?.at,
+      latest_failure_exit_code: latestFailure?.exitCode,
+      latest_failure_policy_action: latestFailure?.policyAction,
+      latest_failure_policy_reason: latestFailure?.policyReason,
+      latest_failure_diagnostic_code: latestFailure?.diagnosticCode,
+      latest_failure_provider: latestFailure?.providerName,
+      latest_failure_error_class: latestFailure?.errorClass,
+      latest_failure_review_blocked: latestFailure?.reviewBlocked,
+      latest_failure_findings_count: latestFailure?.findingsCount,
+      latest_verification_event: latestVerification?.event,
+      latest_verification_status: latestVerification?.status,
+      latest_verification_at: latestVerification?.at,
+      plan_quality_benchmark_semantic_correlation: benchmarkSemantic.level,
+      plan_quality_benchmark_semantic_reason: benchmarkSemantic.reason,
+      plan_quality_benchmark_health_score: benchmarkHealth.score,
+      plan_quality_benchmark_health_level: benchmarkHealth.level,
+      plan_quality_benchmark_health_reason: benchmarkHealth.reason,
+      plan_quality_benchmark_health_components: benchmarkHealth.components,
+      plan_quality_benchmark_recommended_next_action: benchmarkRecommendation.action,
+      plan_quality_benchmark_recommendation_reason: benchmarkRecommendation.reason,
     };
   }
+  const latestFailure = loadLatestPlanFailureDiagnostic(workDir, sessionId, {
+    planId: active.entry.plan_id,
+  });
+  const latestVerification = loadLatestPlanVerificationDiagnostic(workDir, sessionId, {
+    planId: active.entry.plan_id,
+  });
+  const benchmarkSemantic = evaluatePlanQualityBenchmarkSemanticCorrelation({
+    latestFailure,
+    history: benchmarkHistory,
+  });
+  const benchmarkHealth = evaluatePlanQualityBenchmarkHealth({
+    history: benchmarkHistory,
+    semanticCorrelation: benchmarkSemantic.level,
+  });
+  const benchmarkRecommendation = resolvePlanQualityBenchmarkRecommendation({
+    history: benchmarkHistory,
+    semanticCorrelation: benchmarkSemantic.level,
+    health: benchmarkHealth,
+  });
+  const qualityGuardRuntime = resolvePlanQualityGuardPolicy({
+    workDir,
+  });
+  const qualityGuardMode = resolvePlanQualityGuardMode(
+    process.env.GROBOT_PLAN_QUALITY_GUARD_MODE,
+    qualityGuardRuntime.policy.defaults.mode,
+  );
+  const liveSnapshot = evaluateLivePlanDecisionSnapshot({
+    workDir,
+    sessionId,
+    mode: "plan_only",
+    entry: active.entry,
+    planContent: active.content,
+    latestVerificationStatus: latestVerification?.status,
+    guardPolicy: qualityGuardRuntime.policy,
+    guardMode: qualityGuardMode,
+  });
   return {
     mode: "plan_only",
+    ...benchmarkHistoryView,
     active_plan_id: active.entry.plan_id,
-    active_plan_status: active.entry.status,
+    active_plan_status: liveSnapshot.liveStatus,
+    active_plan_phase: liveSnapshot.livePhase,
     active_plan_path: active.planPath,
     active_plan_seq: active.entry.seq,
     active_plan_title: active.entry.title,
+    active_plan_status_source: liveSnapshot.statusSource,
+    active_plan_stored_status: liveSnapshot.storedStatus,
+    active_plan_stored_phase: liveSnapshot.storedPhase,
+    active_plan_decision_ready: liveSnapshot.decisionReady,
+    active_plan_approval_stale: liveSnapshot.approvalStale,
+    active_plan_recommendation_action: liveSnapshot.recommendation.action,
+    active_plan_recommendation_reason: liveSnapshot.recommendation.reason,
     blocked_count: active.entry.blocked_count,
     review_fail_count: active.entry.review_fail_count,
     approval_ticket_id: active.entry.approval_ticket_id,
     approved_hash: active.entry.approved_hash,
     approved_snapshot_path: active.entry.approved_snapshot_path,
+    latest_failure_event: latestFailure?.event,
+    latest_failure_at: latestFailure?.at,
+    latest_failure_exit_code: latestFailure?.exitCode,
+    latest_failure_policy_action: latestFailure?.policyAction,
+    latest_failure_policy_reason: latestFailure?.policyReason,
+    latest_failure_diagnostic_code: latestFailure?.diagnosticCode,
+    latest_failure_provider: latestFailure?.providerName,
+    latest_failure_error_class: latestFailure?.errorClass,
+    latest_failure_review_blocked: latestFailure?.reviewBlocked,
+    latest_failure_findings_count: latestFailure?.findingsCount,
+    latest_verification_event: latestVerification?.event,
+    latest_verification_status: latestVerification?.status,
+    latest_verification_at: latestVerification?.at,
+    plan_quality_score: liveSnapshot.quality.score,
+    plan_quality_grade: liveSnapshot.quality.grade,
+    plan_quality_findings_count: liveSnapshot.quality.findingCount,
+    plan_quality_blocked: liveSnapshot.quality.blocked,
+    plan_quality_recommendation: liveSnapshot.quality.recommendation,
+    plan_quality_rewrite_hints: liveSnapshot.quality.rewriteHints,
+    plan_quality_repair_actions: liveSnapshot.repairActions,
+    plan_quality_trend: liveSnapshot.qualityTrend.trend,
+    plan_quality_previous_plan_id: liveSnapshot.qualityTrend.previousPlanId,
+    plan_quality_previous_score: liveSnapshot.qualityTrend.previousScore,
+    plan_quality_delta_from_previous: liveSnapshot.qualityTrend.deltaFromPrevious,
+    plan_quality_guard_mode: liveSnapshot.qualityGuardMode,
+    plan_quality_guard_level: liveSnapshot.qualityGuard.level,
+    plan_quality_regression_streak: liveSnapshot.qualityGuard.regressionStreak,
+    plan_quality_guard_reason: liveSnapshot.qualityGuard.reason,
+    plan_quality_guard_policy_profile: qualityGuardRuntime.policy.profile,
+    plan_quality_guard_policy_source: qualityGuardRuntime.source,
+    plan_quality_guard_policy_path: qualityGuardRuntime.policyPath,
+    plan_quality_guard_policy_warning: qualityGuardRuntime.warning,
+    plan_quality_benchmark_semantic_correlation: benchmarkSemantic.level,
+    plan_quality_benchmark_semantic_reason: benchmarkSemantic.reason,
+    plan_quality_benchmark_health_score: benchmarkHealth.score,
+    plan_quality_benchmark_health_level: benchmarkHealth.level,
+    plan_quality_benchmark_health_reason: benchmarkHealth.reason,
+    plan_quality_benchmark_health_components: benchmarkHealth.components,
+    plan_quality_benchmark_recommended_next_action: benchmarkRecommendation.action,
+    plan_quality_benchmark_recommendation_reason: benchmarkRecommendation.reason,
   };
+}
+
+function resolvePlanRecommendation(plan: ReturnType<typeof currentPlanView>): {
+  action: string;
+  reason: string;
+} {
+  if (
+    typeof plan.active_plan_recommendation_action === "string"
+    && plan.active_plan_recommendation_action.trim().length > 0
+    && typeof plan.active_plan_recommendation_reason === "string"
+    && plan.active_plan_recommendation_reason.trim().length > 0
+  ) {
+    return {
+      action: plan.active_plan_recommendation_action.trim(),
+      reason: plan.active_plan_recommendation_reason.trim(),
+    };
+  }
+  const firstRepairAction = Array.isArray(plan.plan_quality_repair_actions) && plan.plan_quality_repair_actions.length > 0
+    ? plan.plan_quality_repair_actions[0]
+    : undefined;
+  return resolvePlanStatusRecommendation({
+    mode: plan.mode,
+    status: (plan.active_plan_status ?? plan.latest_plan_status) as PlanLifecycleStatus | undefined,
+    latestVerificationStatus: plan.latest_verification_status,
+    planQualityScore: plan.plan_quality_score,
+    planQualityTopHint: firstRepairAction?.title
+      ?? (Array.isArray(plan.plan_quality_rewrite_hints) ? plan.plan_quality_rewrite_hints[0] : undefined),
+    planQualityGuardLevel: plan.plan_quality_guard_level,
+    planQualityGuardReason: plan.plan_quality_guard_reason,
+    interactiveMenuFirst: false,
+  });
 }
 
 function planModeHintMessage(): string {
   return [
-    "[plan] commands:",
+    "[plan] surface:",
     "  /plan",
     "  /plan <goal>",
-    "  /plan status",
-    "  /plan apply [extra]",
-    "  /plan cancel",
-    "  (send plain text to refine the active plan)",
+    "  /plan open",
+    "  直接输入补充内容，可继续完善当前计划",
+    `  直接回复 ${PLAN_EXECUTION_REPLY}，即可进入执行`,
   ].join("\n");
+}
+
+function buildPlanStatusPayload(workDir: string, sessionId: string): Record<string, unknown> {
+  const plan = currentPlanView(workDir, sessionId);
+  const phase = plan.active_plan_phase ?? plan.latest_plan_phase ?? "<none>";
+  const planPath = plan.active_plan_path ?? "<none>";
+  const nextAction = resolvePlanRecommendation(plan);
+  const qualitySummary = typeof plan.plan_quality_score === "number"
+    ? `${String(plan.plan_quality_score)}/${plan.plan_quality_grade ?? "<none>"}`
+    : "<none>";
+  const qualityTrendSummary = typeof plan.plan_quality_score === "number"
+    ? `${plan.plan_quality_trend ?? "none"}/${typeof plan.plan_quality_delta_from_previous === "number" ? String(plan.plan_quality_delta_from_previous) : "<none>"}`
+    : "<none>";
+  const qualityGuardSummary = typeof plan.plan_quality_score === "number"
+    ? `${plan.plan_quality_guard_level ?? "healthy"}/${plan.plan_quality_regression_streak ?? 0}/${plan.plan_quality_guard_mode ?? "warn"}/${plan.plan_quality_guard_policy_profile ?? "<none>"}`
+    : "<none>";
+  const qualityRepairSummary = Array.isArray(plan.plan_quality_repair_actions) && plan.plan_quality_repair_actions.length > 0
+    ? `${plan.plan_quality_repair_actions[0]?.priority ?? "p2"}:${plan.plan_quality_repair_actions[0]?.title ?? "<none>"}`
+    : "<none>";
+  const latestFailureSummary = plan.latest_failure_event
+    ? `${plan.latest_failure_event}/${plan.latest_failure_policy_reason ?? "<none>"}/${plan.latest_failure_diagnostic_code ?? "<none>"}`
+    : "<none>";
+  const latestVerificationSummary = plan.latest_verification_event
+    ? `${plan.latest_verification_event}/${plan.latest_verification_status ?? "<none>"}`
+    : "<none>";
+  const benchmarkSummary = typeof plan.plan_quality_benchmark_total_runs === "number"
+    && plan.plan_quality_benchmark_total_runs > 0
+    ? `${plan.plan_quality_benchmark_latest_winner ?? "<none>"}/${typeof plan.plan_quality_benchmark_latest_score === "number" ? String(plan.plan_quality_benchmark_latest_score) : "<none>"}/${plan.plan_quality_benchmark_score_trend ?? "none"}/${String(plan.plan_quality_benchmark_total_runs)}/${String(plan.plan_quality_benchmark_winner_switch_count ?? 0)}`
+    : "<none>";
+  const benchmarkHintSummary = typeof plan.plan_quality_benchmark_latest_top_hint === "string"
+    && plan.plan_quality_benchmark_latest_top_hint.trim().length > 0
+    ? plan.plan_quality_benchmark_latest_top_hint.trim().replace(/\s+/g, "_")
+    : "<none>";
+  const benchmarkSequenceSummary = Array.isArray(plan.plan_quality_benchmark_winner_sequence)
+    && plan.plan_quality_benchmark_winner_sequence.length > 0
+    ? plan.plan_quality_benchmark_winner_sequence
+      .map((label) => String(label).trim())
+      .filter((label) => label.length > 0)
+      .join(">")
+    : "<none>";
+  const benchmarkReasonSequenceSummary = Array.isArray(plan.plan_quality_benchmark_winner_reason_sequence)
+    && plan.plan_quality_benchmark_winner_reason_sequence.length > 0
+    ? plan.plan_quality_benchmark_winner_reason_sequence
+      .map((item) => String(item).trim().replace(/\s+/g, "_"))
+      .filter((item) => item.length > 0)
+      .join(">")
+    : "<none>";
+  const benchmarkAssertSummary = typeof plan.plan_quality_benchmark_assert_count === "number"
+    ? `${String(plan.plan_quality_benchmark_assert_fail_count ?? 0)}/${String(plan.plan_quality_benchmark_assert_count)}`
+    : "<none>";
+  const benchmarkSemanticSummary = typeof plan.plan_quality_benchmark_semantic_correlation === "string"
+    ? plan.plan_quality_benchmark_semantic_correlation
+    : "none";
+  const benchmarkSemanticReasonSummary = typeof plan.plan_quality_benchmark_semantic_reason === "string"
+    && plan.plan_quality_benchmark_semantic_reason.trim().length > 0
+    ? plan.plan_quality_benchmark_semantic_reason.trim().replace(/\s+/g, "_")
+    : "<none>";
+  const benchmarkHealthSummary = typeof plan.plan_quality_benchmark_health_score === "number"
+    ? `${String(plan.plan_quality_benchmark_health_score)}/${plan.plan_quality_benchmark_health_level ?? "watch"}`
+    : "<none>";
+  const benchmarkHealthReasonSummary = typeof plan.plan_quality_benchmark_health_reason === "string"
+    && plan.plan_quality_benchmark_health_reason.trim().length > 0
+    ? plan.plan_quality_benchmark_health_reason.trim().replace(/\s+/g, "_")
+    : "<none>";
+  const benchmarkRecommendationSummary =
+    typeof plan.plan_quality_benchmark_recommended_next_action === "string"
+      && plan.plan_quality_benchmark_recommended_next_action.trim().length > 0
+      ? plan.plan_quality_benchmark_recommended_next_action.trim()
+      : "none";
+  return {
+    status: "ok",
+    assistant_message:
+      `[plan-status] mode=${plan.mode} plan_id=${plan.active_plan_id ?? plan.latest_plan_id ?? "<none>"} status=${plan.active_plan_status ?? plan.latest_plan_status ?? "<none>"} phase=${phase} path=${planPath} quality=${qualitySummary} quality_trend=${qualityTrendSummary} quality_guard=${qualityGuardSummary} quality_repair=${qualityRepairSummary} benchmark=${benchmarkSummary} benchmark_hint=${benchmarkHintSummary} benchmark_seq=${benchmarkSequenceSummary} benchmark_reason_seq=${benchmarkReasonSequenceSummary} benchmark_assert=${benchmarkAssertSummary} benchmark_semantic=${benchmarkSemanticSummary} benchmark_semantic_reason=${benchmarkSemanticReasonSummary} benchmark_health=${benchmarkHealthSummary} benchmark_health_reason=${benchmarkHealthReasonSummary} benchmark_advice=${benchmarkRecommendationSummary} latest_failure=${latestFailureSummary} latest_verification=${latestVerificationSummary} next_action=${nextAction.action}`,
+    recommended_next_action: nextAction.action,
+    recommendation_reason: nextAction.reason,
+    report: null,
+    plan,
+  };
 }
 
 function formatReviewFindings(findings: readonly { code: string; section?: string; message: string }[]): string {
@@ -175,6 +656,29 @@ function formatReviewFindings(findings: readonly { code: string; section?: strin
   return findings
     .map((item) => `${item.code}:${item.section ?? "global"}:${item.message}`)
     .join(" | ");
+}
+
+function resolveLatestPlanEntry(
+  workDir: string,
+  sessionId: string,
+  statuses?: readonly BridgePlanStatus[],
+) {
+  const index = loadPlanArtifactIndex(workDir, sessionId);
+  const matcher = Array.isArray(statuses) && statuses.length > 0
+    ? new Set(statuses)
+    : undefined;
+  const sorted = [...index.entries].sort((left, right) => {
+    if (left.seq !== right.seq) {
+      return right.seq - left.seq;
+    }
+    return right.updated_at.localeCompare(left.updated_at);
+  });
+  for (const entry of sorted) {
+    if (!matcher || matcher.has(entry.status)) {
+      return entry;
+    }
+  }
+  return undefined;
 }
 
 function readApprovedPlanContent(snapshotPath: string | undefined, fallback: string): string {
@@ -253,52 +757,114 @@ async function main(): Promise<number> {
           },
         };
       }
-
-      const review = reviewPlanContent(active.content);
-      const reviewedEntry = recordPlanReviewResult(
+      const quality = evaluatePlanQuality(active.content);
+      const qualityTrend = evaluatePlanQualityTrend({
         workDir,
         sessionId,
-        active.entry.plan_id,
-        review,
-        source,
+        currentPlanId: active.entry.plan_id,
+        currentScore: quality.score,
+      });
+      const qualityGuardRuntime = resolvePlanQualityGuardPolicy({
+        workDir,
+      });
+      const qualityGuard = evaluatePlanQualityGuard({
+        workDir,
+        sessionId,
+        currentPlanId: active.entry.plan_id,
+        quality,
+        trend: qualityTrend,
+        policy: qualityGuardRuntime.policy,
+      });
+      const qualityGuardMode = resolvePlanQualityGuardMode(
+        process.env.GROBOT_PLAN_QUALITY_GUARD_MODE,
+        qualityGuardRuntime.policy.defaults.mode,
       );
-      if (!reviewedEntry) {
-        return {
-          code: 1,
-          payload: {
-            status: "error",
-            error_code: PLAN_ERROR_REVIEW_PLAN_NOT_FOUND,
-            detail: `review failed, plan not found: ${active.entry.plan_id}`,
-            plan: currentPlanView(workDir, sessionId),
-          },
-        };
-      }
-      if (!review.ok) {
+      if (qualityGuardMode === "strict" && qualityGuard.level === "critical") {
+        appendPlanEvent(workDir, sessionId, {
+          event: "plan_apply_blocked",
+          plan_id: active.entry.plan_id,
+          source,
+          detail: [
+            "reason=quality_guard_critical",
+            `guard_mode=${qualityGuardMode}`,
+            `guard_profile=${qualityGuardRuntime.policy.profile}`,
+            `guard_source=${qualityGuardRuntime.source}`,
+            `guard_level=${qualityGuard.level}`,
+            `guard_reason=${qualityGuard.reason.replace(/\s+/g, "_")}`,
+          ].join(" "),
+        });
         return {
           code: 2,
           payload: {
             status: "error",
-            error_code: review.blocked ? PLAN_ERROR_REVIEW_BLOCKED : PLAN_ERROR_REVIEW_FAILED,
-            detail: `[plan-review] blocked=${review.blocked ? "yes" : "no"} findings=${formatReviewFindings(review.findings)}`,
+            error_code: PLAN_ERROR_QUALITY_GUARD_BLOCKED,
+            detail: `apply blocked by quality guard: mode=${qualityGuardMode} level=${qualityGuard.level} reason=${qualityGuard.reason}`,
             plan: currentPlanView(workDir, sessionId),
           },
         };
       }
+      let approvedHash = active.entry.approved_hash;
+      let approvalTicketId = active.entry.approval_ticket_id;
+      let approvedSnapshotPath = active.entry.approved_snapshot_path;
+      const shouldReviewAndApprove = active.entry.status !== "approved"
+        || !approvedHash
+        || !approvalTicketId;
+      if (shouldReviewAndApprove) {
+        const review = reviewPlanContent(active.content);
+        const reviewedEntry = recordPlanReviewResult(
+          workDir,
+          sessionId,
+          active.entry.plan_id,
+          review,
+          source,
+        );
+        if (!reviewedEntry) {
+          return {
+            code: 1,
+            payload: {
+              status: "error",
+              error_code: PLAN_ERROR_REVIEW_PLAN_NOT_FOUND,
+              detail: `review failed, plan not found: ${active.entry.plan_id}`,
+              plan: currentPlanView(workDir, sessionId),
+            },
+          };
+        }
+        if (!review.ok) {
+          return {
+            code: 2,
+            payload: {
+              status: "error",
+              error_code: review.blocked ? PLAN_ERROR_REVIEW_BLOCKED : PLAN_ERROR_REVIEW_FAILED,
+              detail: `[plan-review] blocked=${review.blocked ? "yes" : "no"} findings=${formatReviewFindings(review.findings)}`,
+              review_blocked: review.blocked,
+              review_findings: review.findings.map((item) => ({
+                code: item.code,
+                section: item.section,
+                message: item.message,
+              })),
+              plan: currentPlanView(workDir, sessionId),
+            },
+          };
+        }
 
-      const approval = approvePlanArtifact(workDir, sessionId, active.entry.plan_id, {
-        approvedBy: source,
-        source,
-      });
-      if (!approval.approved || !approval.entry || !approval.planHash || !approval.ticketId) {
-        return {
-          code: 1,
-          payload: {
-            status: "error",
-            error_code: PLAN_ERROR_APPROVAL_FAILED,
-            detail: `approval failed plan_id=${active.entry.plan_id}`,
-            plan: currentPlanView(workDir, sessionId),
-          },
-        };
+        const approval = approvePlanArtifact(workDir, sessionId, active.entry.plan_id, {
+          approvedBy: source,
+          source,
+        });
+        if (!approval.approved || !approval.entry || !approval.planHash || !approval.ticketId) {
+          return {
+            code: 1,
+            payload: {
+              status: "error",
+              error_code: PLAN_ERROR_APPROVAL_FAILED,
+              detail: `approval failed plan_id=${active.entry.plan_id}`,
+              plan: currentPlanView(workDir, sessionId),
+            },
+          };
+        }
+        approvedHash = approval.planHash;
+        approvalTicketId = approval.ticketId;
+        approvedSnapshotPath = approval.snapshotPath;
       }
 
       const applying = updatePlanArtifactStatus(workDir, sessionId, active.entry.plan_id, "applying");
@@ -315,12 +881,23 @@ async function main(): Promise<number> {
       }
 
       try {
-        const approvedPlanContent = readApprovedPlanContent(approval.snapshotPath, active.content);
+        if (!approvedHash || !approvalTicketId) {
+          return {
+            code: 1,
+            payload: {
+              status: "error",
+              error_code: PLAN_ERROR_APPROVAL_FAILED,
+              detail: `approval metadata missing plan_id=${active.entry.plan_id}`,
+              plan: currentPlanView(workDir, sessionId),
+            },
+          };
+        }
+        const approvedPlanContent = readApprovedPlanContent(approvedSnapshotPath, active.content);
         const report = await runGatewayTurn(
           buildPlanApplyPrompt({
             approvedPlanContent,
-            approvedHash: approval.planHash,
-            ticketId: approval.ticketId,
+            approvedHash,
+            ticketId: approvalTicketId,
             extra,
           }),
           input.session,
@@ -333,6 +910,12 @@ async function main(): Promise<number> {
           plan_id: active.entry.plan_id,
           source,
           detail: "plan applied and exited plan_only",
+        });
+        appendPlanEvent(workDir, sessionId, {
+          event: "plan_verification_pending",
+          plan_id: active.entry.plan_id,
+          source,
+          detail: "verification_status=pending",
         });
         return {
           code: 0,
@@ -348,11 +931,21 @@ async function main(): Promise<number> {
       } catch (error) {
         updatePlanArtifactStatus(workDir, sessionId, active.entry.plan_id, "apply_failed");
         const detail = error instanceof Error ? error.message : String(error);
+        const failurePolicy = resolveBridgeApplyFailurePolicy(detail);
         appendPlanEvent(workDir, sessionId, {
           event: "plan_apply_failed",
           plan_id: active.entry.plan_id,
           source,
-          detail,
+          detail: [
+            detail,
+            `policy_action=${failurePolicy.policyAction}`,
+            `policy_reason=${failurePolicy.policyReason}`,
+            `diagnostic_code=${failurePolicy.diagnosticCode}`,
+            failurePolicy.providerName ? `provider=${failurePolicy.providerName}` : "",
+            failurePolicy.errorClass ? `class=${failurePolicy.errorClass}` : "",
+          ]
+            .filter((item) => item.length > 0)
+            .join(" "),
         });
         return {
           code: 1,
@@ -360,13 +953,18 @@ async function main(): Promise<number> {
             status: "error",
             error_code: PLAN_ERROR_APPLY_EXEC_FAILED,
             detail,
+            policy_action: failurePolicy.policyAction,
+            policy_reason: failurePolicy.policyReason,
+            diagnostic_code: failurePolicy.diagnosticCode,
+            error_class: failurePolicy.errorClass,
+            provider: failurePolicy.providerName,
             plan: currentPlanView(workDir, sessionId),
           },
         };
       }
     };
 
-    if (rawMessage.startsWith("/plan")) {
+    if (isPlanSlashCommand(rawMessage)) {
       const parsed = parsePlanCommand(rawMessage);
       if (parsed.kind === "invalid") {
         process.stdout.write(
@@ -398,6 +996,11 @@ async function main(): Promise<number> {
         return 0;
       }
       if (parsed.kind === "enter_mode") {
+        const active = loadActivePlanArtifact(workDir, sessionId);
+        if (active && isPlanOnlyStatus(active.entry.status)) {
+          process.stdout.write(`${JSON.stringify(buildPlanStatusPayload(workDir, sessionId))}\n`);
+          return 0;
+        }
         const created = createPlanArtifact(workDir, sessionId, "plan session");
         appendPlanEvent(workDir, sessionId, {
           event: "plan_mode_entered",
@@ -415,65 +1018,28 @@ async function main(): Promise<number> {
         );
         return 0;
       }
-      if (parsed.kind === "status") {
-        const plan = currentPlanView(workDir, sessionId);
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "ok",
-            assistant_message: `[plan-status] mode=${plan.mode} plan_id=${plan.active_plan_id ?? "<none>"} status=${plan.active_plan_status ?? "<none>"}`,
-            report: null,
-            plan,
-          })}\n`,
-        );
+      if (parsed.kind === "open") {
+        process.stdout.write(`${JSON.stringify(buildPlanStatusPayload(workDir, sessionId))}\n`);
         return 0;
       }
-      if (parsed.kind === "cancel") {
-        const active = loadActivePlanArtifact(workDir, sessionId);
-        if (active && isPlanOnlyStatus(active.entry.status)) {
-          updatePlanArtifactStatus(workDir, sessionId, active.entry.plan_id, "discarded");
-        }
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "ok",
-            assistant_message: active && isPlanOnlyStatus(active.entry.status)
-              ? `[plan] cancelled plan_id=${active.entry.plan_id}`
-              : "[plan] no active plan to cancel.",
-            report: null,
-            plan: currentPlanView(workDir, sessionId),
-          })}\n`,
-        );
-        return 0;
-      }
-      const active = loadActivePlanArtifact(workDir, sessionId);
-      if (!active) {
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "error",
-            error_code: PLAN_ERROR_NO_ACTIVE,
-            detail: "no active plan to apply",
-            plan: currentPlanView(workDir, sessionId),
-          })}\n`,
-        );
-        return 1;
-      }
-      if (!isPlanOnlyStatus(active.entry.status)) {
-        process.stdout.write(
-          `${JSON.stringify({
-            status: "error",
-            error_code: PLAN_ERROR_APPLY_BLOCKED,
-            detail: `apply blocked by status=${active.entry.status}`,
-            plan: currentPlanView(workDir, sessionId),
-          })}\n`,
-        );
-        return 1;
-      }
-      const applyResult = await applyActivePlan(active, parsed.extra, "bridge");
-      process.stdout.write(`${JSON.stringify(applyResult.payload)}\n`);
-      return applyResult.code;
+      process.stdout.write(
+        `${JSON.stringify({
+          status: "ok",
+          assistant_message: "unsupported /plan subcommand. use /plan, /plan <goal>, or /plan open",
+          report: null,
+          plan: currentPlanView(workDir, sessionId),
+        })}\n`,
+      );
+      return 0;
     }
 
     const activeDraft = loadActivePlanArtifact(workDir, sessionId);
     if (activeDraft && isPlanOnlyStatus(activeDraft.entry.status)) {
+      if (isNaturalPlanExecutionIntent(rawMessage)) {
+        const applyResult = await applyActivePlan(activeDraft, rawMessage, "bridge");
+        process.stdout.write(`${JSON.stringify(applyResult.payload)}\n`);
+        return applyResult.code;
+      }
       let appended: ReturnType<typeof appendPlanProgressNote>;
       try {
         appended = appendPlanProgressNote(

@@ -10,7 +10,8 @@ import {
   resolvePlanStatusRecommendationActionId,
   resolvePlanStatusRecommendation,
   resolvePlanStatusRecommendationCommand,
-} from "./run-start-plan-mode";
+} from "./plan-state";
+import { type RunStartPlanSuggestionState } from "./plan-suggestion-state";
 
 export interface RunStartSlashSuggestion {
   command: string;
@@ -28,12 +29,6 @@ export type RunStartPlanSuggestionStatus =
   | "apply_failed"
   | "applied"
   | "discarded";
-
-export interface RunStartPlanSuggestionState {
-  activePlanStatus?: RunStartPlanSuggestionStatus;
-  latestPlanStatus?: RunStartPlanSuggestionStatus;
-  latestVerificationStatus?: "pending" | "passed" | "failed";
-}
 
 interface ListRunStartSlashSuggestionsInput {
   homeDir: string;
@@ -60,7 +55,7 @@ const ROOT_SLASH_PRIMARY_BUILTIN_COMMANDS = new Set<string>([
 const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
   {
     command: "/plan",
-    description: "Open plan actions",
+    description: "Enter plan mode (or show current plan status when already in plan mode)",
     source: "builtin",
   },
   {
@@ -69,88 +64,11 @@ const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
     source: "builtin",
   },
   {
-    command: "/plan check",
-    description: "Quick benchmark check-only (preset core)",
+    command: "/plan open",
+    description: "Open active plan file in editor",
     source: "builtin",
   },
 ];
-
-const PLAN_BENCHMARK_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
-  {
-    command: "/plan benchmark <label=path>",
-    description: "Benchmark active plan against external candidate(s)",
-    source: "builtin",
-  },
-  {
-    command: "/plan benchmark --preset core",
-    description: "Benchmark active plan with preset codex/claude/generic baselines",
-    source: "builtin",
-  },
-];
-
-const PLAN_CHECK_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
-  {
-    command: "/plan check",
-    description: "Quick benchmark check-only (default: core)",
-    source: "builtin",
-  },
-  {
-    command: "/plan check core",
-    description: "Quick check-only with preset core",
-    source: "builtin",
-  },
-  {
-    command: "/plan check generic",
-    description: "Quick check-only with preset generic",
-    source: "builtin",
-  },
-];
-
-const PLAN_STATUS_PRIORITY_SUGGESTION: RunStartSlashSuggestion = {
-  command: "/plan status",
-  description: "Show active plan status summary",
-  source: "builtin",
-};
-
-const PLAN_APPROVE_PRIORITY_SUGGESTION: RunStartSlashSuggestion = {
-  command: "/plan approve [note]",
-  description: "Approve active plan",
-  source: "builtin",
-};
-
-const PLAN_REJECT_PRIORITY_SUGGESTION: RunStartSlashSuggestion = {
-  command: "/plan reject [reason]",
-  description: "Reject active plan and keep refining",
-  source: "builtin",
-};
-
-const PLAN_VERIFY_PRIORITY_SUGGESTION: RunStartSlashSuggestion = {
-  command: "/plan verify <pass|fail> [note]",
-  description: "Record verification result for latest applied plan",
-  source: "builtin",
-};
-
-const PLAN_APPLY_PRIORITY_SUGGESTION: RunStartSlashSuggestion = {
-  command: "/plan apply [extra]",
-  description: "Apply approved plan and exit plan mode",
-  source: "builtin",
-};
-
-const PLAN_CANCEL_PRIORITY_SUGGESTION: RunStartSlashSuggestion = {
-  command: "/plan cancel",
-  description: "Exit plan mode",
-  source: "builtin",
-};
-
-function pushUniqueSuggestion(
-  rows: RunStartSlashSuggestion[],
-  next: RunStartSlashSuggestion,
-): void {
-  if (rows.some((item) => item.command === next.command)) {
-    return;
-  }
-  rows.push(next);
-}
 
 function resolvePlanEffectiveStatus(state: RunStartPlanSuggestionState | undefined): {
   activeStatus?: RunStartPlanSuggestionStatus;
@@ -168,16 +86,6 @@ function resolvePlanEffectiveStatus(state: RunStartPlanSuggestionState | undefin
     effectiveStatus,
     verificationPending: latestVerificationStatus === undefined || latestVerificationStatus === "pending",
   };
-}
-
-function resolvePlanActionSuggestionsForPrefixA(
-  state: RunStartPlanSuggestionState | undefined,
-): readonly RunStartSlashSuggestion[] {
-  const resolved = resolvePlanEffectiveStatus(state);
-  if (resolved.effectiveStatus === "approved" || resolved.effectiveStatus === "applying") {
-    return [PLAN_APPLY_PRIORITY_SUGGESTION, PLAN_APPROVE_PRIORITY_SUGGESTION];
-  }
-  return [PLAN_APPROVE_PRIORITY_SUGGESTION, PLAN_APPLY_PRIORITY_SUGGESTION];
 }
 
 function resolvePlanSuggestionStateTag(state: RunStartPlanSuggestionState | undefined): string | undefined {
@@ -224,119 +132,35 @@ function matchesPlanRecommendationCommand(input: {
   return false;
 }
 
-function resolvePlanRootPrioritySuggestions(input: {
+function resolvePlanSuggestionRecommendation(input: {
   planMode: boolean;
-  planSuggestionState?: RunStartPlanSuggestionState;
-}): RunStartSlashSuggestion[] {
-  const state = input.planSuggestionState;
-  if (!state) {
-    return [];
-  }
-  const rows: RunStartSlashSuggestion[] = [];
-  const append = (item: RunStartSlashSuggestion): void => {
-    pushUniqueSuggestion(rows, item);
-  };
-  const resolved = resolvePlanEffectiveStatus(state);
-  const activeStatus = resolved.activeStatus;
-  const latestStatus = resolved.latestStatus;
-  const effectiveStatus = resolved.effectiveStatus;
-
-  const appendNoActiveBaseline = (): void => {
-    append(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    if (input.planMode) {
-      append(PLAN_STATUS_PRIORITY_SUGGESTION);
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    } else {
-      append(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[0]);
-    }
-  };
-
-  const verificationPending = resolved.verificationPending;
+  state: RunStartPlanSuggestionState | undefined;
+}): {
+  command: string;
+  reason: string;
+} {
   if (
-    !activeStatus
-    && (latestStatus === "applied" || latestStatus === "apply_failed")
-    && verificationPending
+    typeof input.state?.activePlanRecommendationCommand === "string"
+    && input.state.activePlanRecommendationCommand.trim().length > 0
+    && typeof input.state?.activePlanRecommendationReason === "string"
+    && input.state.activePlanRecommendationReason.trim().length > 0
   ) {
-    append(PLAN_VERIFY_PRIORITY_SUGGESTION);
-    append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    append(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    }
-    return rows;
+    return {
+      command: input.state.activePlanRecommendationCommand.trim(),
+      reason: trimPlanRecommendationReason(input.state.activePlanRecommendationReason),
+    };
   }
-
-  if (effectiveStatus === "draft" || effectiveStatus === "blocked" || effectiveStatus === "review_failed") {
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    append(PLAN_APPROVE_PRIORITY_SUGGESTION);
-    append(PLAN_REJECT_PRIORITY_SUGGESTION);
-    append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    }
-    return rows;
-  }
-  if (effectiveStatus === "ready") {
-    append(PLAN_APPROVE_PRIORITY_SUGGESTION);
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    append(PLAN_REJECT_PRIORITY_SUGGESTION);
-    append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    }
-    return rows;
-  }
-  if (effectiveStatus === "approved") {
-    append(PLAN_APPLY_PRIORITY_SUGGESTION);
-    append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    append(PLAN_APPROVE_PRIORITY_SUGGESTION);
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    }
-    return rows;
-  }
-  if (effectiveStatus === "applying") {
-    append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    append(PLAN_APPLY_PRIORITY_SUGGESTION);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    }
-    return rows;
-  }
-  if (effectiveStatus === "apply_failed") {
-    append(PLAN_VERIFY_PRIORITY_SUGGESTION);
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    append(PLAN_REJECT_PRIORITY_SUGGESTION);
-    append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    } else {
-      append(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
-    }
-    return rows;
-  }
-  if (effectiveStatus === "applied") {
-    if (verificationPending) {
-      append(PLAN_VERIFY_PRIORITY_SUGGESTION);
-      append(PLAN_STATUS_PRIORITY_SUGGESTION);
-    }
-    append(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
-    append(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-    if (input.planMode) {
-      append(PLAN_CANCEL_PRIORITY_SUGGESTION);
-    }
-    return rows;
-  }
-  if (effectiveStatus === "discarded") {
-    appendNoActiveBaseline();
-    return rows;
-  }
-
-  appendNoActiveBaseline();
-  return rows;
+  const recommendation = resolvePlanStatusRecommendation({
+    mode: input.planMode === true ? "plan_only" : "normal",
+    status: input.state?.activePlanStatus ?? input.state?.latestPlanStatus,
+    latestVerificationStatus: input.state?.latestVerificationStatus,
+    planQualityScore: input.state?.activePlanQualityScore,
+    planQualityGuardLevel: input.state?.activePlanQualityGuardLevel,
+  });
+  return {
+    command: resolvePlanStatusRecommendationCommand(recommendation.action),
+    reason: trimPlanRecommendationReason(recommendation.reason),
+  };
 }
 
 function normalizeForMatch(value: string): string {
@@ -470,65 +294,15 @@ export function listRunStartSlashSuggestions(
 
   if (queryHead === "/plan") {
     if (normalizedQuery === "/plan") {
-      const stateDriven = resolvePlanRootPrioritySuggestions({
-        planMode,
-        planSuggestionState: input.planSuggestionState,
-      });
-      if (stateDriven.length > 0) {
-        for (const entry of stateDriven) {
-          appendSuggestion(entry);
-        }
-      } else if (planMode) {
-        appendSuggestion(PLAN_STATUS_PRIORITY_SUGGESTION);
-        appendSuggestion(PLAN_CHECK_PRIORITY_SUGGESTIONS[0]);
-        appendSuggestion(PLAN_APPROVE_PRIORITY_SUGGESTION);
-        appendSuggestion(PLAN_VERIFY_PRIORITY_SUGGESTION);
-        appendSuggestion(PLAN_APPLY_PRIORITY_SUGGESTION);
-        appendSuggestion(PLAN_CANCEL_PRIORITY_SUGGESTION);
-      } else {
-        for (const entry of PLAN_PRIMARY_PRIORITY_SUGGESTIONS) {
-          appendSuggestion(entry);
-        }
+      if (planMode) {
+        appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[0]);
       }
+      appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
+      appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[2]);
     } else {
       for (const entry of PLAN_PRIMARY_PRIORITY_SUGGESTIONS) {
         appendSuggestion(entry);
       }
-    }
-    if (normalizedQuery.startsWith("/plan s")) {
-      appendSuggestion(PLAN_STATUS_PRIORITY_SUGGESTION);
-    }
-    if (normalizedQuery.startsWith("/plan a")) {
-      const actionSuggestions = resolvePlanActionSuggestionsForPrefixA(input.planSuggestionState);
-      for (const entry of actionSuggestions) {
-        appendSuggestion(entry);
-      }
-    }
-    if (normalizedQuery.startsWith("/plan r")) {
-      appendSuggestion(PLAN_REJECT_PRIORITY_SUGGESTION);
-    }
-    if (normalizedQuery.startsWith("/plan v")) {
-      appendSuggestion(PLAN_VERIFY_PRIORITY_SUGGESTION);
-    }
-    if (normalizedQuery.startsWith("/plan b")) {
-      for (const entry of PLAN_BENCHMARK_PRIORITY_SUGGESTIONS) {
-        appendSuggestion(entry);
-      }
-    }
-    if (normalizedQuery.startsWith("/plan c")) {
-      for (const entry of PLAN_CHECK_PRIORITY_SUGGESTIONS) {
-        appendSuggestion(entry);
-      }
-    }
-    if (normalizedQuery.startsWith("/plan o")) {
-      appendSuggestion({
-        command: "/plan open",
-        description: "Open active plan file in editor",
-        source: "builtin",
-      });
-    }
-    if (normalizedQuery.startsWith("/plan ca")) {
-      appendSuggestion(PLAN_CANCEL_PRIORITY_SUGGESTION);
     }
   }
 
@@ -543,23 +317,23 @@ export function listRunStartSlashSuggestions(
   }
 
   const planRecommendation = queryHead === "/plan"
-    ? (() => {
-      const recommendation = resolvePlanStatusRecommendation({
-        mode: input.planMode === true ? "plan_only" : "normal",
-        status: input.planSuggestionState?.activePlanStatus ?? input.planSuggestionState?.latestPlanStatus,
-        latestVerificationStatus: input.planSuggestionState?.latestVerificationStatus,
-      });
-      return {
-        command: resolvePlanStatusRecommendationCommand(recommendation.action),
-        reason: trimPlanRecommendationReason(recommendation.reason),
-      };
-    })()
+    ? resolvePlanSuggestionRecommendation({
+      planMode,
+      state: input.planSuggestionState,
+    })
     : undefined;
   const planStateTag = queryHead === "/plan"
     ? resolvePlanSuggestionStateTag(input.planSuggestionState)
     : undefined;
+  const hasExplicitRecommendationTarget = queryHead === "/plan" && planRecommendation
+    ? suggestions.some((item) =>
+      matchesPlanRecommendationCommand({
+        suggestionCommand: item.command,
+        recommendationCommand: planRecommendation.command,
+      }))
+    : false;
   const renderedSuggestions = queryHead === "/plan"
-    ? suggestions.map((item) => {
+    ? suggestions.map((item, index) => {
       if (!item.command.startsWith("/plan")) {
         return item;
       }
@@ -570,10 +344,13 @@ export function listRunStartSlashSuggestions(
       if (
         planRecommendation
         && planRecommendation.reason.length > 0
-        && matchesPlanRecommendationCommand({
-          suggestionCommand: item.command,
-          recommendationCommand: planRecommendation.command,
-        })
+        && (
+          matchesPlanRecommendationCommand({
+            suggestionCommand: item.command,
+            recommendationCommand: planRecommendation.command,
+          })
+          || (!hasExplicitRecommendationTarget && index === 0)
+        )
       ) {
         suffixParts.push(`Recommended now: ${planRecommendation.reason}`);
       }
