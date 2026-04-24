@@ -244,13 +244,13 @@ function buildAskUserQueueContinuationHint(queuedExtra: number): string {
   return `[ask-user] queue has ${String(queuedExtra)} additional pending question(s). Continue replying directly.\n`;
 }
 
-function normalizeRuntimeAskUserQuestionId(input: {
-  questionId: string;
+function normalizeRuntimeAskUserId(input: {
+  askId: string;
   questionKey: string;
   index: number;
   total: number;
 }): string {
-  const normalizedBaseId = input.questionId.trim() || `askq_${Date.now().toString(36)}`;
+  const normalizedBaseId = input.askId.trim() || `askq_${Date.now().toString(36)}`;
   const normalizedQuestionKey = input.questionKey.trim();
   if (input.total <= 1) {
     return normalizedQuestionKey || normalizedBaseId;
@@ -307,7 +307,7 @@ function toAskUserEnvelopes(runtimeAskUser: RuntimeAskUserInterrupt): AskUserEnv
     .trim()
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  const baseQuestionId = normalizedResumeToken
+  const baseAskId = normalizedResumeToken
     ? `askq_${normalizedResumeToken}`
     : (structuredQuestions[0]?.key || `askq_${Date.now().toString(36)}`);
   const questionTotal = structuredQuestions.length;
@@ -318,8 +318,8 @@ function toAskUserEnvelopes(runtimeAskUser: RuntimeAskUserInterrupt): AskUserEnv
       continue;
     }
     envelopes.push({
-      questionId: normalizeRuntimeAskUserQuestionId({
-        questionId: baseQuestionId,
+      askId: normalizeRuntimeAskUserId({
+        askId: baseAskId,
         questionKey: question.key,
         index,
         total: questionTotal,
@@ -1861,7 +1861,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
               `[ask-user-resolved] question=${resolvedAsk.envelope.question} answer=${resolvedAsk.answer} blocking_node=${resolvedAsk.envelope.blockingNodeId}`,
             executionVerified: true,
             evidenceRef: {
-              source: `ask_user:${resolvedAsk.envelope.questionId}`,
+              source: `ask_user:${resolvedAsk.envelope.askId}`,
             },
             tags: ["ask_user", "clarification"],
             confidence: 0.82,
@@ -1888,7 +1888,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         );
         input.writeStdout(turnStdout);
         input.writeStderr(
-          `[ask-user] event=awaiting_more_answers remaining=${String(queueDepth)} active_question_id=${activeAskEnvelope.questionId}\n`,
+          `[ask-user] event=awaiting_more_answers remaining=${String(queueDepth)} active_ask_id=${activeAskEnvelope.askId}\n`,
         );
         input.writeStderr("[experience] event=publish_skipped reason=ask_user_pending_followup\n");
         return 0;
@@ -2810,11 +2810,11 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             .join("");
           const latestAskEnvelope = askUserEnvelopes[askUserEnvelopes.length - 1] ?? activeAskEnvelope;
           input.writeStderr(
-            `[ask-user] event=interrupt_received question_id=${activeAskEnvelope.questionId} blocking_node_id=${activeAskEnvelope.blockingNodeId} question_total=${String(askUserEnvelopes.length)}\n`,
+            `[ask-user] event=interrupt_received ask_id=${activeAskEnvelope.askId} blocking_node_id=${activeAskEnvelope.blockingNodeId} ask_total=${String(askUserEnvelopes.length)}\n`,
           );
           if (queueDepth > 1) {
             input.writeStderr(
-              `[ask-user] event=queued depth=${String(queueDepth)} active_question_id=${activeAskEnvelope.questionId} latest_question_id=${latestAskEnvelope.questionId}\n`,
+              `[ask-user] event=queued depth=${String(queueDepth)} active_ask_id=${activeAskEnvelope.askId} latest_ask_id=${latestAskEnvelope.askId}\n`,
             );
           }
           input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");

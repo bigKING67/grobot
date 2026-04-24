@@ -1469,7 +1469,7 @@ export function createRunStartInteractiveModeInput(
       for (let index = 0; index < queuedPreviewRows.length; index += 1) {
         const ask = queuedPreviewRows[index];
         lines.push(
-          `pending_followup_${String(index + 1)}: ${ask.questionId} age=${formatAskAge(ask.createdAt)} question=${compactSingleLine(ask.question, 140)}`,
+          `pending_followup_${String(index + 1)}: ${ask.askId} age=${formatAskAge(ask.createdAt)} question=${compactSingleLine(ask.question, 140)}`,
         );
       }
       if (queuedHiddenCount > 0) {

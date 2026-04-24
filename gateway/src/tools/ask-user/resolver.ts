@@ -75,7 +75,7 @@ export class AskUserSessionStore {
 
   private findDuplicateIndex(queue: AskUserEnvelope[], envelope: AskUserEnvelope): number {
     return queue.findIndex((item) => {
-      if (item.questionId === envelope.questionId) {
+      if (item.askId === envelope.askId) {
         return true;
       }
       const itemResumeToken = item.resumeToken.trim();

@@ -1767,7 +1767,7 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.resolution_prompt_injected, true);
   assert.equal(askUserToolContractPayload.resolution_prompt_builder_works, true);
   assert.equal(askUserToolContractPayload.resolved_answer, "fast");
-  assert.equal(askUserToolContractPayload.resolved_event_has_question_id, true);
+  assert.equal(askUserToolContractPayload.resolved_event_has_ask_id, true);
   assert.equal(askUserToolContractPayload.issued_registered, true);
   assert.equal(Number(askUserToolContractPayload.queue_size_after_enqueue), 2);
   assert.equal(askUserToolContractPayload.queue_dedupe_keeps_size, true);
@@ -1789,7 +1789,7 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.issued_display_compact_options, true);
   assert.equal(askUserToolContractPayload.issued_display_has_options_preview, true);
   assert.equal(askUserToolContractPayload.issued_display_overflow_mentions_more, true);
-  assert.equal(askUserToolContractPayload.issued_event_has_question_id, true);
+  assert.equal(askUserToolContractPayload.issued_event_has_ask_id, true);
   logStep("ask-user-tool-contract");
 
   const gaSkillPromptContractResult = runCommand("npx", [

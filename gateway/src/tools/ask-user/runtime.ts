@@ -40,9 +40,9 @@ export function createAskUserTurnPromptContext(input: {
 }
 
 export function formatAskUserResolvedEvent(resolvedAsk: ResolvedAskUser): string {
-  return `[ask-user] event=resolved question_id=${resolvedAsk.envelope.questionId} blocking_node_id=${resolvedAsk.envelope.blockingNodeId}\n`;
+  return `[ask-user] event=resolved ask_id=${resolvedAsk.envelope.askId} blocking_node_id=${resolvedAsk.envelope.blockingNodeId}\n`;
 }
 
 export function formatAskUserIssuedEvent(envelope: AskUserEnvelope): string {
-  return `[ask-user] event=issued question_id=${envelope.questionId} blocking_node_id=${envelope.blockingNodeId}\n`;
+  return `[ask-user] event=issued ask_id=${envelope.askId} blocking_node_id=${envelope.blockingNodeId}\n`;
 }

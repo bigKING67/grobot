@@ -107,14 +107,14 @@ const resolutionPrompt = buildAskUserResolutionPrompt({
   envelope: pendingEnvelope,
   answer: "fast",
 });
-const issuedRegistered = sessionStore.get(sessionKey)?.questionId === "ask_q_002";
+const issuedRegistered = sessionStore.get(sessionKey)?.askId === "ask_q_002";
 const queueSizeAfterEnqueue = sessionStore.size(sessionKey);
 const queuedStepOne = createAskUserTurnPromptContext({
   runtime,
   sessionKey,
   userText: "all",
 });
-const queueNextAfterResolveIsQ3 = queuedStepOne.pendingNextAsk?.questionId === "ask_q_003";
+const queueNextAfterResolveIsQ3 = queuedStepOne.pendingNextAsk?.askId === "ask_q_003";
 const queueSizeAfterResolve = queuedStepOne.queueSizeAfterResolve;
 const queuedStepTwo = createAskUserTurnPromptContext({
   runtime,
@@ -183,34 +183,34 @@ sessionStore.delete(sessionKey);
 const payload = {
   protocol_prefix_removed: promptContext.promptParts.every((part) => part.includes("[AskUser Resolution]")),
   resolution_prompt_injected: promptContext.promptParts.some((part) => part.includes("[AskUser Resolution]")),
-  resolution_prompt_builder_works: resolutionPrompt.includes("question_id=ask_q_001"),
+  resolution_prompt_builder_works: resolutionPrompt.includes("ask_id=ask_q_001"),
   resolved_answer: promptContext.resolvedAsk.answer,
-  resolved_event_has_question_id: formatAskUserResolvedEvent(promptContext.resolvedAsk).includes("question_id=ask_q_001"),
+  resolved_event_has_ask_id: formatAskUserResolvedEvent(promptContext.resolvedAsk).includes("ask_id=ask_q_001"),
   issued_registered: issuedRegistered,
   queue_size_after_enqueue: queueSizeAfterEnqueue,
   queue_dedupe_keeps_size: queueSizeAfterEnqueue === 2,
-  queue_resolve_first_matches_q2: queuedStepOne.resolvedAsk?.envelope.questionId === "ask_q_002",
+  queue_resolve_first_matches_q2: queuedStepOne.resolvedAsk?.envelope.askId === "ask_q_002",
   queue_next_after_resolve_is_q3: queueNextAfterResolveIsQ3,
   queue_size_after_resolve: queueSizeAfterResolve,
   queue_midway_prompt_deferred: queuedStepOne.promptParts.length === 0,
   queue_final_prompt_released: queuedStepTwo.promptParts.some((part) =>
     part.includes("question_count=2")
-    && part.includes("question_1_id=ask_q_002")
-    && part.includes("question_2_id=ask_q_003")),
+    && part.includes("ask_1_id=ask_q_002")
+    && part.includes("ask_2_id=ask_q_003")),
   queue_empty_after_batch_resolved: queueEmptyAfterBatchResolved,
   answer_numeric_index_maps_option: resolvedByIndex?.resolvedAsk.answer === "fast",
   answer_full_width_index_maps_option: resolvedByFullWidthIndex?.resolvedAsk.answer === "fast",
   answer_case_insensitive_option_maps_canonical: resolvedByOptionText?.resolvedAsk.answer === "fast",
   answer_blank_falls_back_default: resolvedByBlank?.resolvedAsk.answer === "safe",
-  queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.questionId === "ask_q_005",
-  queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.questionId === "ask_q_006",
+  queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.askId === "ask_q_005",
+  queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.askId === "ask_q_006",
   issued_display_has_reply_hint: display.includes("hint: reply directly with number / option label / free text"),
   issued_display_has_reply_guide: display.includes("hint: reply directly with number / option label / free text"),
   issued_display_hides_resume_token: !display.includes("resume_token"),
   issued_display_compact_options: !display.includes("\noptions:\n"),
   issued_display_has_options_preview: display.includes("options_preview: "),
   issued_display_overflow_mentions_more: overflowDisplay.includes("... +1 more"),
-  issued_event_has_question_id: formatAskUserIssuedEvent(nextEnvelope).includes("question_id=ask_q_002"),
+  issued_event_has_ask_id: formatAskUserIssuedEvent(nextEnvelope).includes("ask_id=ask_q_002"),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

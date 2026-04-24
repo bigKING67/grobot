@@ -141,7 +141,7 @@ export interface ReflectionTask {
 }
 
 export interface AskUserEnvelope {
-  questionId: string;
+  askId: string;
   blockingNodeId: string;
   question: string;
   options: string[];

@@ -5,7 +5,7 @@ export interface AskUserOption {
 }
 
 export interface AskUserEnvelope {
-  questionId: string;
+  askId: string;
   blockingNodeId: string;
   question: string;
   options: string[];
@@ -153,10 +153,10 @@ export function normalizeAskUserEnvelope(
   const nowIso = options.nowIso ?? (() => new Date().toISOString());
   const randomId = options.randomId
     ?? ((prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
-  const questionId = parseOptionalString(record.questionId, cleanText);
+  const askId = parseOptionalString(record.askId, cleanText);
   const blockingNodeId = parseOptionalString(record.blockingNodeId, cleanText);
   const question = parseOptionalString(record.question, cleanText);
-  if (!questionId || !blockingNodeId || !question) {
+  if (!askId || !blockingNodeId || !question) {
     return undefined;
   }
   const optionsDetailed = ensureAskUserOptions(
@@ -165,7 +165,7 @@ export function normalizeAskUserEnvelope(
     cleanText,
   );
   return {
-    questionId,
+    askId,
     blockingNodeId,
     question,
     options: optionsDetailed.map((option) => option.label),
@@ -197,20 +197,20 @@ export function normalizeAskUserEnvelopeFromPayload(
   if (!firstQuestion) {
     return undefined;
   }
-  const questionId = parseOptionalString(firstQuestion.id, cleanText);
+  const askId = parseOptionalString(firstQuestion.id, cleanText);
   const header = parseOptionalString(firstQuestion.header, cleanText);
   const question = parseOptionalString(firstQuestion.question, cleanText);
-  if (!questionId || !header || !question) {
+  if (!askId || !header || !question) {
     return undefined;
   }
   const optionsDetailed = ensureAskUserOptions(firstQuestion.options, 6, cleanText);
   return {
-    questionId,
+    askId,
     blockingNodeId: parseOptionalString(record.blocking_node_id, cleanText) ?? "node.unknown",
     question,
     options: optionsDetailed.map((option) => option.label),
     optionsDetailed,
-    questionKey: questionId,
+    questionKey: askId,
     header,
     questionIndex: parseOptionalPositiveInteger(record.question_index),
     questionTotal: parseOptionalPositiveInteger(record.question_total) ?? questionRecords.length,

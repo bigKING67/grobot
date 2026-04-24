@@ -909,11 +909,11 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       pendingAskBySession.set(sessionKey, envelope);
       const queueDepth = pendingAskBySession.size(sessionKey);
       const queueAction = queueDepth > queueDepthBefore ? "enqueued" : "updated";
-      const activeQuestionId = pendingAskBySession.get(sessionKey)?.questionId ?? envelope.questionId;
+      const activeAskId = pendingAskBySession.get(sessionKey)?.askId ?? envelope.askId;
       writeMemory({
         sessionKey,
         memoryLevel: "L1",
-        text: `ask_user issued question_id=${envelope.questionId} node=${envelope.blockingNodeId} queue_depth=${String(queueDepth)} queue_action=${queueAction} active_question_id=${activeQuestionId}`,
+        text: `ask_user issued ask_id=${envelope.askId} node=${envelope.blockingNodeId} queue_depth=${String(queueDepth)} queue_action=${queueAction} active_ask_id=${activeAskId}`,
         sourceEventType: "checkpoint_updated",
         executionVerified: false,
         tags: ["ask-user", "pending"],
@@ -932,7 +932,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       writeMemory({
         sessionKey,
         memoryLevel: "L2",
-        text: `ask_user resolved question_id=${resolvedAsk.envelope.questionId} answer="${resolvedAsk.answer}" remaining=${String(resolved.queueSizeAfterResolve)}`,
+        text: `ask_user resolved ask_id=${resolvedAsk.envelope.askId} answer="${resolvedAsk.answer}" remaining=${String(resolved.queueSizeAfterResolve)}`,
         sourceEventType: "ask_user_resolved",
         executionVerified: true,
         evidenceRef: {
