@@ -72,7 +72,7 @@ function buildValidPlanMarkdown() {
     "",
     "## Goal",
     "",
-    "验证 bridge /plan apply 执行失败路径的 policy 字段输出。",
+    "验证 bridge 自然语言执行计划失败路径的 policy 字段输出。",
     "",
     "## Scope In",
     "",
@@ -90,7 +90,7 @@ function buildValidPlanMarkdown() {
     "",
     "1. [ ] 构造可通过 review 的 plan 文档",
     "   - 完成判据: reviewPlanContent 返回通过。",
-    "   - 验证: /plan apply 能进入执行阶段。",
+    "   - 验证: `Implement the plan.` 能进入执行阶段。",
     "   - 回退: 恢复原 plan 文件内容。",
     "",
     "## Validation",
@@ -131,7 +131,7 @@ function main() {
     const applyFailure = runBridgeTurn(
       repoRoot,
       workDir,
-      "/plan apply force-apply-failure-policy-contract",
+      "Implement the plan.",
       runtimeFailEnv,
     );
     assert.equal(applyFailure.exit_code, 1);
@@ -153,9 +153,9 @@ function main() {
       true,
     );
     assert.equal(applyFailure.payload.plan?.active_plan_status, "apply_failed");
-    assert.equal(applyFailure.payload.plan?.active_plan_phase, "reviewing");
+    assert.equal(applyFailure.payload.plan?.active_plan_phase, "awaiting_decision");
 
-    const statusAfterApplyFailure = runBridgeTurn(repoRoot, workDir, "/plan status");
+    const statusAfterApplyFailure = runBridgeTurn(repoRoot, workDir, "/plan open");
     assert.equal(statusAfterApplyFailure.exit_code, 0);
     assert.equal(isObject(statusAfterApplyFailure.payload), true);
     assert.equal(statusAfterApplyFailure.payload.status, "ok");

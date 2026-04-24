@@ -1,0 +1,15 @@
+{
+  "schema": "plan_quality_guard_policy",
+  "schema_version": 1,
+  "profile": "dev",
+  "defaults": {
+    "mode": "warn"
+  },
+  "thresholds": {
+    "critical_score": 50,
+    "watch_score": 68,
+    "severe_drop_delta": 18,
+    "critical_regression_streak": 3,
+    "watch_on_trend_down": true
+  }
+}

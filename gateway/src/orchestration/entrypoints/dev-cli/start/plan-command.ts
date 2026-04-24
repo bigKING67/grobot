@@ -1,17 +1,40 @@
 export type ParsedPlanCommand =
   | { kind: "enter_mode" }
+  | { kind: "open" }
   | { kind: "enter"; goal: string }
-  | { kind: "status" }
-  | { kind: "apply"; extra: string }
-  | { kind: "cancel" }
   | { kind: "invalid"; reason: string };
+
+const PLAN_NATURAL_EXECUTION_PATTERNS: readonly RegExp[] = [
+  /^implement(?:\s+the)?\s+plan[.!?]?$/i,
+  /^execute(?:\s+the)?\s+plan[.!?]?$/i,
+  /^start\s+(?:implementing|implementation)[.!?]?$/i,
+  /^(?:开始|直接)(?:执行|实现)(?:这个|该)?(?:计划|方案)[。！？]?$/,
+];
+
+const PLAN_OPEN_ALIASES = new Set([
+  "open",
+]);
+
+const REMOVED_PLAN_SUBCOMMANDS = new Set([
+  "menu",
+  "enter",
+  "status",
+  "benchmark",
+  "check",
+  "approve",
+  "reject",
+  "verify",
+  "apply",
+  "cancel",
+]);
 
 export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   const input = inputRaw.trim();
-  if (!input.startsWith("/plan")) {
+  const planMatch = input.match(/^\/plan(?:\s+([\s\S]*))?$/);
+  if (!planMatch) {
     return { kind: "invalid", reason: "command must start with /plan" };
   }
-  const rest = input.slice("/plan".length).trim();
+  const rest = (planMatch[1] ?? "").trim();
   if (!rest) {
     return { kind: "enter_mode" };
   }
@@ -20,23 +43,26 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   const head = (firstSpace >= 0 ? rest.slice(0, firstSpace) : rest).trim().toLowerCase();
   const tail = (firstSpace >= 0 ? rest.slice(firstSpace + 1) : "").trim();
 
-  if (head === "status") {
-    return { kind: "status" };
+  if (PLAN_OPEN_ALIASES.has(head)) {
+    if (tail.length > 0) {
+      return { kind: "invalid", reason: "usage: /plan open" };
+    }
+    return { kind: "open" };
   }
-  if (head === "apply") {
-    return { kind: "apply", extra: tail };
-  }
-  if (head === "cancel") {
-    return { kind: "cancel" };
-  }
-
-  if (head === "show" || head === "options" || head === "discard") {
+  if (REMOVED_PLAN_SUBCOMMANDS.has(head)) {
     return {
       kind: "invalid",
-      reason:
-        `unsupported plan command: ${head}. supported: /plan | /plan <goal> | /plan status | /plan apply [extra] | /plan cancel`,
+      reason: "unsupported /plan subcommand. use /plan, /plan <goal>, or /plan open",
     };
   }
 
   return { kind: "enter", goal: rest };
+}
+
+export function isNaturalPlanExecutionIntent(inputRaw: string): boolean {
+  const input = inputRaw.trim();
+  if (!input) {
+    return false;
+  }
+  return PLAN_NATURAL_EXECUTION_PATTERNS.some((pattern) => pattern.test(input));
 }

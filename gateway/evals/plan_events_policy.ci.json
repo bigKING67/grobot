@@ -12,7 +12,10 @@
     "max_missing_files": 0,
     "max_review_failed_rate": 0.8,
     "max_guard_denied_rate": 1,
+    "max_quality_guard_blocked_rate": 1,
     "max_idempotent_hit_rate": 1,
+    "max_policy_fail_rate": 0.8,
+    "max_unknown_phase_rate": 0.2,
     "max_stale_recovery_count": 0
   }
 }

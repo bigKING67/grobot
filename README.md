@@ -470,8 +470,18 @@ grobot start \
       - `/model`：打开模型选择菜单（↑/↓ 或 j/k 或 Ctrl+n/p，数字直选，Enter/Space 确认，Esc 取消）。
       - 菜单包含 `Reset to startup model (...)` 快捷项，可回到启动模型并同步写回配置。
       - 旧子命令（如 `/model current`、`/model list`、`/model use`、`/model reset`）已废弃，统一改为 `/model` 菜单操作。
-    - 交互命令新增 `/plan` 主入口；回车后会打开 Plan action menu（创建目标、查看状态、执行、取消）。
-      - 兼容命令仍可用：`/plan <goal>`、`/plan status`、`/plan apply [extra]`、`/plan cancel`。
+    - 交互命令新增 `/plan` 主入口；命令面已精简为纯机制流：
+      - `/plan`：进入 plan mode；若已在 plan mode，则直接显示当前计划状态。
+      - `/plan <goal>`：以目标直接进入/刷新当前规划。
+      - `/plan open`：打开当前计划文件；非交互场景回退为显示当前计划状态。
+      - plan mode 下直接输入补充内容即可继续完善计划；直接回复 `Implement the plan.` 即可进入执行。
+      - 当前计划状态输出会包含质量守门观测字段：`plan_quality_guard_mode/level/reason/regression_streak`，以及策略来源字段：`plan_quality_guard_policy_profile/source/path/warning`。
+      - 当前计划状态同步输出可执行修复动作：`plan_quality_repair_actions`（按 `p0/p1/p2` 排序，带建议命令模板）。
+      - 质量守门策略已外置到 `gateway/evals/plan_quality_guard_policy.<profile>.json`（`dev/ci/prod`）；profile 可由 `GROBOT_PLAN_QUALITY_GUARD_PROFILE` 指定。
+      - 若设置 `GROBOT_PLAN_QUALITY_GUARD_POLICY_PATH=/abs/path.json`，将优先加载该策略文件；文件无效时会回退默认策略并在 status 输出 `plan_quality_guard_policy_warning`。
+      - `GROBOT_PLAN_QUALITY_GUARD_MODE` 仍可显式覆盖运行模式；未设置时使用策略文件中的 `defaults.mode`（`off|warn|strict`）。
+      - 计划质量对标可用 benchmark 工具：
+        - `npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/plan-quality-benchmark.ts --plan codex=/abs/codex-plan.md --plan claude=/abs/claude-plan.md --plan grobot=/abs/grobot-plan.md --print-json`
     - 交互命令 `/commands` 已菜单化；回车后进入命令管理菜单（list/new/set/show/enable/disable/delete）。
       - 兼容命令仍可用：`/commands list|new|set|show|enable|disable|delete ...`。
     - 交互命令新增 `/mcp`，用于查看当前会话的 MCP 生效列表与告警。

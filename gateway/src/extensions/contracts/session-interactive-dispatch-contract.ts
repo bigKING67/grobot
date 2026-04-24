@@ -93,6 +93,7 @@ async function runDispatchCase(
   options?: {
     stdinIsTty?: boolean;
     pendingAskCount?: number;
+    planMode?: boolean;
     nowMs?: number;
     activeSessionId?: string;
     disableRewindSession?: boolean;
@@ -198,24 +199,12 @@ async function runDispatchCase(
     writeHandoff: () => {
       events.push("writeHandoff");
     },
-    isPlanMode: () => false,
+    isPlanMode: () => options?.planMode === true,
     showPlanStatus: async () => {
       events.push("showPlanStatus");
     },
-    benchmarkPlan: async (commandRaw) => {
-      events.push(`benchmarkPlan:${commandRaw}`);
-    },
     enterPlan: async (goal) => {
       events.push(`enterPlan:${goal}`);
-    },
-    approvePlan: async (note) => {
-      events.push(`approvePlan:${note}`);
-    },
-    rejectPlan: async (reason) => {
-      events.push(`rejectPlan:${reason}`);
-    },
-    verifyPlan: async (result) => {
-      events.push(`verifyPlan:${result}`);
     },
     applyPlan: async () => {
       events.push("applyPlan");
@@ -237,9 +226,6 @@ async function runDispatchCase(
     },
     openCommandsMenu: async () => {
       events.push("openCommandsMenu");
-    },
-    openPlanMenu: async () => {
-      events.push("openPlanMenu");
     },
     openPlanInEditor: async () => {
       events.push("openPlanInEditor");
@@ -517,29 +503,10 @@ async function main(): Promise<void> {
   const modelMenu = await runDispatchCase("/model");
   const modelLegacyReset = await runDispatchCase("/model reset");
   const planMenu = await runDispatchCase("/plan", { stdinIsTty: true });
-  const planMenuAlias = await runDispatchCase("/plan menu", { stdinIsTty: true });
   const planOpenAliasTty = await runDispatchCase("/plan open", { stdinIsTty: true });
   const planOpenAlias = await runDispatchCase("/plan open", { stdinIsTty: false });
-  const planEnterOnly = await runDispatchCase("/plan enter", { stdinIsTty: true });
-  const planEnterWithGoal = await runDispatchCase("/plan enter 我要一份增长执行计划", { stdinIsTty: true });
   const planGoal = await runDispatchCase("/plan 我要一份抖音直播间规划", { stdinIsTty: true });
-  const planApprove = await runDispatchCase("/plan approve final pass", { stdinIsTty: true });
-  const planReject = await runDispatchCase("/plan reject scope is too broad", { stdinIsTty: true });
-  const planVerify = await runDispatchCase("/plan verify fail e2e mismatch", { stdinIsTty: true });
-  const planVerifyCn = await runDispatchCase("/plan 验证 通过 结果稳定", { stdinIsTty: true });
-  const planCheck = await runDispatchCase("/plan check", { stdinIsTty: true });
-  const planCheckCore = await runDispatchCase("/plan check core", { stdinIsTty: true });
-  const planCheckGeneric = await runDispatchCase("/plan check generic", { stdinIsTty: true });
-  const planCheckCn = await runDispatchCase("/plan 检查", { stdinIsTty: true });
-  const planLegacyStatus = await runDispatchCase("/plan status", { stdinIsTty: false });
-  const planLegacyBenchmark = await runDispatchCase("/plan benchmark strong=/tmp/strong-plan.md", {
-    stdinIsTty: false,
-  });
-  const planLegacyBenchmarkTty = await runDispatchCase("/plan benchmark strong=/tmp/strong-plan.md", {
-    stdinIsTty: true,
-  });
-  const planLegacyStatusTty = await runDispatchCase("/plan status", { stdinIsTty: true });
-  const planStatusWithTailTty = await runDispatchCase("/plan status extra", { stdinIsTty: true });
+  const planNaturalExecute = await runDispatchCase("Implement the plan.", { planMode: true });
   const statusCurrent = await runDispatchCase("/status");
   const statusCurrentTty = await runDispatchCase("/status", { stdinIsTty: true });
   const statusTheme = await runDispatchCase("/status theme nerd");
@@ -954,79 +921,22 @@ async function main(): Promise<void> {
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
-    plan_menu_dispatched: includesEvent(planMenu.events, "openPlanMenu"),
-    plan_menu_enters_plan_directly:
-      planMenu.events.some((event) => event.startsWith("enterPlan:")),
-    plan_menu_alias_enters_mode_directly:
-      includesEvent(planMenuAlias.events, "enterPlan:"),
-    plan_menu_alias_opened_menu:
-      includesEvent(planMenuAlias.events, "openPlanMenu"),
-    plan_open_alias_tty_opened_menu:
-      includesEvent(planOpenAliasTty.events, "openPlanMenu"),
+    plan_root_tty_enters_plan_directly:
+      includesEvent(planMenu.events, "enterPlan:"),
     plan_open_alias_tty_opened_editor:
       includesEvent(planOpenAliasTty.events, "openPlanInEditor"),
-    plan_open_alias_tty_enters_plan_directly:
-      planOpenAliasTty.events.some((event) => event.startsWith("enterPlan:")),
+    plan_open_alias_tty_skips_plan_entry:
+      !planOpenAliasTty.events.some((event) => event.startsWith("enterPlan:")),
     plan_open_alias_non_tty_warned:
       includesEvent(planOpenAlias.events, "writeStdout"),
     plan_open_alias_non_tty_dispatched_status:
       includesEvent(planOpenAlias.events, "showPlanStatus"),
-    plan_enter_only_tty_warned:
-      includesEvent(planEnterOnly.events, "writeStdout"),
-    plan_enter_only_tty_enters_mode_directly:
-      includesEvent(planEnterOnly.events, "enterPlan:"),
-    plan_enter_only_tty_treated_as_goal:
-      includesEvent(planEnterOnly.events, "enterPlan:enter"),
-    plan_enter_only_tty_opened_menu:
-      includesEvent(planEnterOnly.events, "openPlanMenu"),
-    plan_enter_with_goal_tty_enters_goal:
-      includesEvent(planEnterWithGoal.events, "enterPlan:我要一份增长执行计划"),
     plan_goal_tty_enters_plan_directly:
       includesEvent(planGoal.events, "enterPlan:我要一份抖音直播间规划"),
-    plan_goal_tty_opened_menu: includesEvent(planGoal.events, "openPlanMenu"),
-    plan_approve_tty_warned: includesEvent(planApprove.events, "writeStdout"),
-    plan_approve_tty_opened_menu: includesEvent(planApprove.events, "openPlanMenu"),
-    plan_approve_tty_dispatched: includesEvent(planApprove.events, "approvePlan:final pass"),
-    plan_reject_tty_warned: includesEvent(planReject.events, "writeStdout"),
-    plan_reject_tty_opened_menu: includesEvent(planReject.events, "openPlanMenu"),
-    plan_reject_tty_dispatched: includesEvent(planReject.events, "rejectPlan:scope is too broad"),
-    plan_verify_tty_warned: includesEvent(planVerify.events, "writeStdout"),
-    plan_verify_tty_opened_menu: includesEvent(planVerify.events, "openPlanMenu"),
-    plan_verify_tty_dispatched: includesEvent(planVerify.events, "verifyPlan:fail e2e mismatch"),
-    plan_verify_cn_alias_tty_warned: includesEvent(planVerifyCn.events, "writeStdout"),
-    plan_verify_cn_alias_tty_opened_menu: includesEvent(planVerifyCn.events, "openPlanMenu"),
-    plan_verify_cn_alias_tty_dispatched: includesEvent(planVerifyCn.events, "verifyPlan:通过 结果稳定"),
-    plan_check_tty_warned: includesEvent(planCheck.events, "writeStdout"),
-    plan_check_tty_opened_menu: includesEvent(planCheck.events, "openPlanMenu"),
-    plan_check_tty_dispatched: includesEvent(planCheck.events, "benchmarkPlan:/plan check"),
-    plan_check_core_tty_warned: includesEvent(planCheckCore.events, "writeStdout"),
-    plan_check_core_tty_opened_menu: includesEvent(planCheckCore.events, "openPlanMenu"),
-    plan_check_core_tty_dispatched: includesEvent(planCheckCore.events, "benchmarkPlan:/plan check core"),
-    plan_check_generic_tty_warned: includesEvent(planCheckGeneric.events, "writeStdout"),
-    plan_check_generic_tty_opened_menu: includesEvent(planCheckGeneric.events, "openPlanMenu"),
-    plan_check_generic_tty_dispatched:
-      includesEvent(planCheckGeneric.events, "benchmarkPlan:/plan check generic"),
-    plan_check_cn_alias_tty_warned: includesEvent(planCheckCn.events, "writeStdout"),
-    plan_check_cn_alias_tty_opened_menu: includesEvent(planCheckCn.events, "openPlanMenu"),
-    plan_check_cn_alias_tty_dispatched: includesEvent(planCheckCn.events, "benchmarkPlan:/plan 检查"),
-    plan_legacy_status_warned: includesEvent(planLegacyStatus.events, "writeStdout"),
-    plan_legacy_status_dispatched: includesEvent(planLegacyStatus.events, "showPlanStatus"),
-    plan_legacy_benchmark_dispatched: includesEvent(
-      planLegacyBenchmark.events,
-      "benchmarkPlan:/plan benchmark strong=/tmp/strong-plan.md",
-    ),
-    plan_legacy_benchmark_tty_warned: includesEvent(planLegacyBenchmarkTty.events, "writeStdout"),
-    plan_legacy_benchmark_tty_opened_menu: includesEvent(planLegacyBenchmarkTty.events, "openPlanMenu"),
-    plan_legacy_benchmark_tty_dispatched: includesEvent(
-      planLegacyBenchmarkTty.events,
-      "benchmarkPlan:/plan benchmark strong=/tmp/strong-plan.md",
-    ),
-    plan_legacy_status_tty_warned: includesEvent(planLegacyStatusTty.events, "writeStdout"),
-    plan_legacy_status_tty_dispatched: includesEvent(planLegacyStatusTty.events, "showPlanStatus"),
-    plan_legacy_status_tty_opened_menu: includesEvent(planLegacyStatusTty.events, "openPlanMenu"),
-    plan_status_with_tail_tty_warned: includesEvent(planStatusWithTailTty.events, "writeStdout"),
-    plan_status_with_tail_tty_dispatched: includesEvent(planStatusWithTailTty.events, "showPlanStatus"),
-    plan_status_with_tail_tty_opened_menu: includesEvent(planStatusWithTailTty.events, "openPlanMenu"),
+    plan_natural_execute_in_plan_mode_dispatches_apply:
+      includesEvent(planNaturalExecute.events, "applyPlan"),
+    plan_natural_execute_in_plan_mode_skips_plan_turn:
+      !includesEvent(planNaturalExecute.events, "runPlanTurn"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
     status_current_tty_opened_menu: includesEvent(statusCurrentTty.events, "openStatusMenu"),
     status_current_tty_dispatched_directly: includesEvent(statusCurrentTty.events, "showStatusCurrent"),

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { reviewPlanContent } from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
 import { createRunStartPlanMode } from "../../orchestration/entrypoints/dev-cli/start/run-start-plan-mode";
@@ -10,27 +10,6 @@ import {
   type SessionProviderRuntimeState,
   type SessionRegistryPayload,
 } from "../../orchestration/entrypoints/dev-cli/start/session-registry";
-
-interface ScenarioResult {
-  code: number;
-  failureObserved: boolean;
-  stdout: string;
-  stderr: string;
-  eventsText: string;
-  planMode: string;
-  hasActivePlan: boolean;
-  planMeta: SessionPlanMeta | undefined;
-  activePlanPath: string;
-}
-
-interface ProposedPlanScenarioResult {
-  code: number;
-  planMode: string;
-  activePlanStatus: string;
-  activePlanPhase: string;
-  activePlanContent: string;
-  eventsText: string;
-}
 
 function sanitizePlanSessionSegment(raw: string): string {
   const normalized = raw
@@ -45,14 +24,6 @@ function sanitizePlanSessionSegment(raw: string): string {
 
 function nowIsoUtc(): string {
   return new Date().toISOString();
-}
-
-function readTextSafe(path: string): string {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return "";
-  }
 }
 
 function createRuntimeState(sessionKey: string): RunStartRuntimeState {
@@ -75,6 +46,7 @@ function createRuntimeState(sessionKey: string): RunStartRuntimeState {
   let planMeta: SessionPlanMeta | undefined;
   let providerStates: SessionProviderRuntimeState[] = [];
   let historyMessages: ChatHistoryMessage[] = [];
+  let failureObserved = false;
   return {
     getSessionRegistry: () => sessionRegistry,
     getActiveSessionId: () => "main",
@@ -88,8 +60,10 @@ function createRuntimeState(sessionKey: string): RunStartRuntimeState {
     getRestoreSource: () => "empty",
     markHistoryCompacted: () => undefined,
     hasHistoryCompacted: () => false,
-    markFailureObserved: () => undefined,
-    hasFailureObserved: () => false,
+    markFailureObserved: () => {
+      failureObserved = true;
+    },
+    hasFailureObserved: () => failureObserved,
     getRestoredTurns: () => 0,
     getStickyProvider: () => undefined,
     setStickyProvider: () => undefined,
@@ -110,7 +84,7 @@ function createRuntimeState(sessionKey: string): RunStartRuntimeState {
   };
 }
 
-async function runScenario(errorClass: string): Promise<ScenarioResult> {
+async function main(): Promise<void> {
   const workDir = resolve(
     process.cwd(),
     ".grobot-contract-temp",
@@ -123,200 +97,121 @@ async function runScenario(errorClass: string): Promise<ScenarioResult> {
     persistHistoryState: async () => undefined,
     persistSessionRegistryState: async () => undefined,
   };
-  let failureObserved = false;
   let stdout = "";
   let stderr = "";
-  try {
-    const planMode = createRunStartPlanMode({
-      workDir,
-      runtimeState,
-      persistence,
-      executeTurn: async () => {
-        runtimeState.setProviderRuntimeStates([
-          {
-            provider_name: "mock-provider",
-            consecutive_failures: 1,
-            circuit_open_until_ms: 0,
-            last_error_class: errorClass,
-            last_error_message: `mock ${errorClass}`,
-            last_failed_at: nowIsoUtc(),
-          },
-        ]);
-        return 1;
-      },
-      requestRuntimeInterrupt: () => ({
-        code: "TURN_INTERRUPT_NOT_RUNNING",
-        interrupted: false,
-      }),
-      markFailureObserved: () => {
-        failureObserved = true;
-      },
-      writeStdout: (message: string) => {
-        stdout += message;
-      },
-      writeStderr: (message: string) => {
-        stderr += message;
-      },
-    });
+  const executeInputs: string[] = [];
 
-    const code = await planMode.enterPlan("contract semantic degradation smoke");
-    const planDir = `${workDir}/.grobot/plans/${sanitizePlanSessionSegment(sessionKey)}`;
-    const eventsPath = `${planDir}/events.jsonl`;
-    const eventsText = readTextSafe(eventsPath);
-    const meta = runtimeState.getPlanMeta();
-    return {
-      code,
-      failureObserved,
-      stdout,
-      stderr,
-      eventsText,
-      planMode: runtimeState.getPlanMode(),
-      hasActivePlan: Boolean(meta?.active_plan_id),
-      planMeta: meta,
-      activePlanPath: typeof meta?.active_plan_path === "string" ? meta.active_plan_path : "",
-    };
-  } finally {
-    rmSync(workDir, { recursive: true, force: true });
-  }
-}
-
-async function runProposedPlanIngestScenario(): Promise<ProposedPlanScenarioResult> {
-  const workDir = resolve(
-    process.cwd(),
-    ".grobot-contract-temp",
-    `plan-mode-proposed-${Date.now().toString(36)}-${Math.floor(Math.random() * 65_536).toString(16)}`,
-  );
-  mkdirSync(workDir, { recursive: true });
-  const sessionKey = "feishu:grobot:dm:plan-mode-proposed-contract";
-  const runtimeState = createRuntimeState(sessionKey);
-  const persistence: RunStartPersistence = {
-    persistHistoryState: async () => undefined,
-    persistSessionRegistryState: async () => undefined,
-  };
-  const proposedPlanBlock = [
-    "<proposed_plan>",
-    "# Runtime Plan Contract",
-    "## Summary",
-    "- Keep plan mode resilient when semantic index is unavailable.",
-    "## Key Changes",
-    "- Add policy-driven downgrade for planning phase semantic failures.",
-    "- Keep apply phase fail-fast to avoid silent divergence.",
-    "## Test Plan",
-    "- node gateway/tests/check-gateway-node.mjs",
-    "## Assumptions",
-    "- semantic fallback only applies during planning turns.",
-    "</proposed_plan>",
+  const validPlan = [
+    "# Contract Plan",
+    "",
+    "- session_id: feishu:grobot:dm:plan-mode-contract",
+    "- plan_id: p_contract",
+    "- seq: 1",
+    "- status: draft",
+    "",
+    "## Goal",
+    "",
+    "验证精简后的 plan 机制流：只保留 /plan、/plan <goal>、/plan open 与自然语言执行。",
+    "",
+    "## Scope In",
+    "",
+    "- 校验旧子命令被软失效。",
+    "- 校验 /plan open 会回到状态面。",
+    "- 校验 Implement the plan. 仍可触发执行。",
+    "",
+    "## Scope Out",
+    "",
+    "- 不恢复 approve/reject/verify/benchmark 命令表面。",
+    "",
+    "## Milestones",
+    "",
+    "1. [ ] 收敛命令面",
+    "   - 完成判据: 只暴露 /plan、/plan <goal>、/plan open。",
+    "   - 验证: contract 断言通过。",
+    "   - 回退: 恢复旧命令面前重新评估交互复杂度。",
+    "",
+    "## Validation",
+    "",
+    "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-plan-mode-contract.ts",
+    "",
+    "## Risk & Rollback",
+    "",
+    "- 风险: 旧帮助文案或 contract 未同步。",
+    "- 回退: 恢复精简前 surface 并重新整理说明。",
+    "",
   ].join("\n");
+
+  const review = reviewPlanContent(validPlan);
+
   try {
     const planMode = createRunStartPlanMode({
       workDir,
       runtimeState,
       persistence,
-      executeTurn: async () => {
-        const current = runtimeState.getHistoryMessages();
-        runtimeState.setHistoryMessages([
-          ...current,
-          {
-            role: "assistant",
-            content: [
-              "I prepared a complete plan.",
-              proposedPlanBlock,
-            ].join("\n\n"),
-          },
-        ]);
+      executeTurn: async (userInput) => {
+        executeInputs.push(userInput);
         return 0;
       },
       requestRuntimeInterrupt: () => ({
         code: "TURN_INTERRUPT_NOT_RUNNING",
         interrupted: false,
       }),
-      markFailureObserved: () => undefined,
-      writeStdout: () => undefined,
-      writeStderr: () => undefined,
+      markFailureObserved: () => {
+        runtimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        stdout += message;
+      },
+      writeStderr: (message) => {
+        stderr += message;
+      },
     });
 
-    const code = await planMode.enterPlan("structured plan ingest contract smoke");
-    const meta = runtimeState.getPlanMeta();
-    const activePlanPath = typeof meta?.active_plan_path === "string" ? meta.active_plan_path : "";
-    const activePlanContent = activePlanPath ? readTextSafe(activePlanPath) : "";
-    const planDir = `${workDir}/.grobot/plans/${sanitizePlanSessionSegment(sessionKey)}`;
-    const eventsPath = `${planDir}/events.jsonl`;
-    const eventsText = readTextSafe(eventsPath);
-    return {
-      code,
-      planMode: runtimeState.getPlanMode(),
-      activePlanStatus: String(meta?.active_plan_status ?? ""),
-      activePlanPhase: String(meta?.active_plan_phase ?? ""),
-      activePlanContent,
-      eventsText,
+    const enter = await planMode.handleMessageInput("/plan contract cleanup", {
+      messageMode: true,
+    });
+    const planModeAfterEnter = runtimeState.getPlanMode();
+    const planPath = planMode.getActivePlanPath();
+    if (!planPath) {
+      throw new Error("expected active plan path after /plan <goal>");
+    }
+    writeFileSync(planPath, `${validPlan}\n`, "utf8");
+
+    const open = await planMode.handleMessageInput("/plan open");
+    const execute = await planMode.handleMessageInput("Implement the plan.");
+
+    const eventsPath = resolve(
+      workDir,
+      ".grobot/plans",
+      sanitizePlanSessionSegment(sessionKey),
+      "events.jsonl",
+    );
+    const eventsText = readFileSync(eventsPath, "utf8");
+    const payload = {
+      review_passes_for_valid_plan: review.ok && review.blocked === false,
+      enter_plan_message_mode_handled: enter.handled && enter.code === 0,
+      enter_plan_sets_plan_only: planModeAfterEnter === "plan_only",
+      active_plan_path_present: typeof planPath === "string" && planPath.length > 0,
+      open_plan_surface_handled: open.handled && open.code === 0,
+      open_plan_surface_has_status_output: stdout.includes("plan_status_output_mode:"),
+      open_plan_surface_detects_live_decision_phase: stdout.includes("active_plan_phase: awaiting_decision"),
+      open_plan_surface_detects_live_status_source: stdout.includes("active_plan_status_source: live_snapshot"),
+      open_plan_surface_suggests_execute: stdout.includes("suggested_action_command: Implement the plan."),
+      execute_natural_language_handled: execute.handled && execute.code === 0,
+      execute_triggered_runtime_turn: executeInputs.length === 1,
+      execute_payload_is_not_literal_phrase:
+        executeInputs[0]?.trim() !== "Implement the plan.",
+      execute_exits_plan_only: runtimeState.getPlanMode() === "normal",
+      execute_clears_active_plan_meta: runtimeState.getPlanMeta() === undefined,
+      events_has_apply_succeeded: eventsText.includes("\"event\":\"plan_apply_succeeded\""),
+      events_has_verification_pending: eventsText.includes("\"event\":\"plan_verification_pending\""),
+      stderr_empty_on_success_path: stderr.trim().length === 0,
     };
+
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }
-}
-
-async function main(): Promise<void> {
-  const semantic = await runScenario("semantic_index_config_invalid");
-  const nonSemantic = await runScenario("upstream_http_error");
-  const proposed = await runProposedPlanIngestScenario();
-  const proposedReview = reviewPlanContent([
-    "<proposed_plan>",
-    "# Contract Review",
-    "## Summary",
-    "- Summary for plan review contract.",
-    "## Key Changes",
-    "- Add structured plan checks.",
-    "## Test Plan",
-    "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-plan-mode-contract.ts",
-    "## Assumptions",
-    "- Reviewer accepts markdown sections as canonical.",
-    "</proposed_plan>",
-  ].join("\n"));
-  const proposedMissingAssumptions = reviewPlanContent([
-    "<proposed_plan>",
-    "# Contract Review Missing Assumptions",
-    "## Summary",
-    "- Summary for plan review contract.",
-    "## Key Changes",
-    "- Add structured plan checks.",
-    "## Test Plan",
-    "- node gateway/tests/check-gateway-node.mjs",
-    "</proposed_plan>",
-  ].join("\n"));
-
-  const payload = {
-    semantic_turn_returns_success: semantic.code === 0,
-    semantic_failure_not_marked: semantic.failureObserved === false,
-    semantic_stdout_has_degrade_hint: semantic.stdout.includes("[plan] semantic context degraded"),
-    semantic_events_has_degraded: semantic.eventsText.includes("\"event\":\"plan_turn_degraded\""),
-    semantic_events_has_policy_degrade: semantic.eventsText.includes("policy_action=degrade"),
-    semantic_events_has_policy_reason: semantic.eventsText.includes(
-      "policy_reason=planning_semantic_context_unavailable",
-    ),
-    semantic_events_no_turn_failed: !semantic.eventsText.includes("\"event\":\"plan_turn_failed\""),
-    semantic_plan_mode_still_plan_only: semantic.planMode === "plan_only",
-    semantic_active_plan_kept: semantic.hasActivePlan,
-    semantic_phase_kept_drafting: semantic.planMeta?.active_plan_phase === "drafting",
-    non_semantic_turn_returns_failure: nonSemantic.code !== 0,
-    non_semantic_failure_marked: nonSemantic.failureObserved === true,
-    non_semantic_events_has_turn_failed: nonSemantic.eventsText.includes("\"event\":\"plan_turn_failed\""),
-    non_semantic_events_has_policy_fail: nonSemantic.eventsText.includes("policy_action=fail"),
-    proposed_turn_returns_success: proposed.code === 0,
-    proposed_plan_mode_kept: proposed.planMode === "plan_only",
-    proposed_plan_ingested: proposed.activePlanContent.includes("## Key Changes"),
-    proposed_plan_strips_tags: !proposed.activePlanContent.includes("<proposed_plan>"),
-    proposed_plan_status_is_draft: proposed.activePlanStatus === "draft",
-    proposed_plan_phase_is_drafting: proposed.activePlanPhase === "drafting",
-    proposed_events_has_content_replaced: proposed.eventsText.includes("\"event\":\"plan_content_replaced\""),
-    proposed_events_has_ingested_marker: proposed.eventsText.includes("\"event\":\"plan_proposed_plan_ingested\""),
-    proposed_review_passes: proposedReview.ok && proposedReview.blocked === false,
-    proposed_review_missing_assumptions_detected:
-      proposedMissingAssumptions.findings.some(
-        (item) => item.code === "proposed_plan_missing_section" && item.section === "Assumptions",
-      ),
-  };
-
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 void main();

@@ -127,6 +127,7 @@ function main() {
     bridgePayload.append_note_error_code,
     bridgePayload.review_error_code,
     bridgePayload.apply_blocked_error_code,
+    bridgePayload.benchmark_assert_fail_error_code,
   ]
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);

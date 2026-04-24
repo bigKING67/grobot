@@ -241,7 +241,7 @@ function buildAskUserQueueContinuationHint(queuedExtra: number): string {
   if (queuedExtra <= 0) {
     return "";
   }
-  return `[ask-user] queue has ${String(queuedExtra)} additional pending question(s). Continue replying directly.\n`;
+  return "[ask-user] 还有后续问题，继续直接回复即可。\n";
 }
 
 function normalizeRuntimeAskUserId(input: {

@@ -68,7 +68,10 @@ function writeFixtureFiles(tempRoot) {
         max_missing_files: 0,
         max_review_failed_rate: 0.8,
         max_guard_denied_rate: 0.8,
+        max_quality_guard_blocked_rate: 0.8,
         max_idempotent_hit_rate: 0.8,
+        max_policy_fail_rate: 0.8,
+        max_unknown_phase_rate: 0.8,
         max_stale_recovery_count: 2,
       },
     }, null, 2)}\n`,
@@ -89,7 +92,11 @@ function writeFixtureFiles(tempRoot) {
         missing_files_count: 0,
         review_failed_rate: 0.5,
         guard_denied_rate: 0.2,
+        quality_guard_blocked_rate: 0.1,
         idempotent_hit_rate: 0.1,
+        policy_action_fail_count: 1,
+        policy_action_degrade_count: 0,
+        plan_phase_unknown_count: 1,
         plan_recovered_stale_approved_count: 0,
       },
     }, null, 2)}\n`,
@@ -126,13 +133,29 @@ function main() {
       baselinePayload.policy_override_scope.allow_fields.includes("max_review_failed_rate"),
       true,
     );
+    assert.equal(
+      baselinePayload.policy_override_scope.allow_fields.includes("max_policy_fail_rate"),
+      true,
+    );
+    assert.equal(
+      baselinePayload.policy_override_scope.allow_fields.includes("max_quality_guard_blocked_rate"),
+      true,
+    );
+    assert.equal(
+      baselinePayload.policy_override_scope.allow_fields.includes("max_unknown_phase_rate"),
+      true,
+    );
+    assert.equal(Number(baselinePayload.metrics.policy_fail_rate), 0.1);
+    assert.equal(Number(baselinePayload.metrics.unknown_phase_rate), 0.1);
 
     const scoped = runGuard(repoRoot, fixture.policyPath, fixture.reportPath, {
       printJson: true,
       env: {
-        [POLICY_OVERRIDE_ALLOW_ENV]: "max_guard_denied_rate,max_review_failed_rate",
+        [POLICY_OVERRIDE_ALLOW_ENV]: "max_guard_denied_rate,max_review_failed_rate,max_policy_fail_rate,max_unknown_phase_rate",
         [POLICY_OVERRIDE_DENY_ENV]: "max_invalid_lines",
         GROBOT_PLAN_EVENTS_MAX_REVIEW_FAILED_RATE: "0.6",
+        GROBOT_PLAN_EVENTS_MAX_POLICY_FAIL_RATE: "0.5",
+        GROBOT_PLAN_EVENTS_MAX_UNKNOWN_PHASE_RATE: "0.5",
       },
     });
     assert.equal(scoped.code, 0, `scoped guard failed: ${scoped.stderr}`);
@@ -145,6 +168,14 @@ function main() {
       0.6,
     );
     assert.equal(
+      Number(scopedPayload.policy_overrides.max_policy_fail_rate),
+      0.5,
+    );
+    assert.equal(
+      Number(scopedPayload.policy_overrides.max_unknown_phase_rate),
+      0.5,
+    );
+    assert.equal(
       scopedPayload.policy_override_scope.allow_fields.includes("max_review_failed_rate"),
       true,
     );
@@ -153,8 +184,39 @@ function main() {
       true,
     );
     assert.equal(
+      scopedPayload.policy_override_scope.allow_fields.includes("max_policy_fail_rate"),
+      true,
+    );
+    assert.equal(
+      scopedPayload.policy_override_scope.allow_fields.includes("max_quality_guard_blocked_rate"),
+      false,
+    );
+    assert.equal(
+      scopedPayload.policy_override_scope.allow_fields.includes("max_unknown_phase_rate"),
+      true,
+    );
+    assert.equal(
       scopedPayload.policy_override_scope.deny_fields.includes("max_invalid_lines"),
       true,
+    );
+
+    const strictPolicyFail = runGuard(repoRoot, fixture.policyPath, fixture.reportPath, {
+      printJson: true,
+      env: {
+        GROBOT_PLAN_EVENTS_MAX_POLICY_FAIL_RATE: "0.01",
+      },
+    });
+    assert.equal(strictPolicyFail.code !== 0, true);
+    const strictPolicyFailPayload = parseJsonOutput(strictPolicyFail.stdout, "strictPolicyFail");
+    assert.equal(strictPolicyFailPayload.status, "error");
+    assert.equal(
+      Array.isArray(strictPolicyFailPayload.violations)
+        && strictPolicyFailPayload.violations.some((line) => String(line).includes("max_policy_fail_rate 0.01")),
+      true,
+    );
+    assert.equal(
+      Number(strictPolicyFailPayload.policy_overrides.max_policy_fail_rate),
+      0.01,
     );
 
     const overlap = runGuard(repoRoot, fixture.policyPath, fixture.reportPath, {
@@ -188,6 +250,7 @@ function main() {
         baseline_deny_source: baselinePayload.policy_override_scope.deny_source,
         scoped_allow_source: scopedPayload.policy_override_scope.allow_source,
         scoped_deny_source: scopedPayload.policy_override_scope.deny_source,
+        strict_policy_fail_rejected: true,
         overlap_rejected: true,
         text_mode_has_scope_counts: true,
       })}\n`,

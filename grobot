@@ -22,6 +22,7 @@ TS_DEV_CLI_RUNNER="$SCRIPT_DIR/scripts/run-ts-dev-cli.sh"
 FORWARD_ARGS=()
 TS_DEV_FLAG_SEEN=0
 PREV_ARG=""
+TS_DEV_CLI_AVAILABLE=0
 
 is_truthy() {
   local value
@@ -87,8 +88,10 @@ fi
 
 run_ts_dev_cli() {
   if [ ! -x "$TS_DEV_CLI_RUNNER" ]; then
+    TS_DEV_CLI_AVAILABLE=0
     return 86
   fi
+  TS_DEV_CLI_AVAILABLE=1
   if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
     "$TS_DEV_CLI_RUNNER" "${FORWARD_ARGS[@]}"
   else
@@ -106,7 +109,9 @@ if [ "$TS_DEV_CLI_EXIT_CODE" -eq 0 ]; then
 fi
 
 if [ "$TS_DEV_CLI_EXIT_CODE" -eq 86 ]; then
-  echo "error: ts-dev-cli is unavailable in this source checkout." >&2
+  if [ "$TS_DEV_CLI_AVAILABLE" -eq 0 ]; then
+    echo "error: ts-dev-cli is unavailable in this source checkout." >&2
+  fi
 elif [ "$TS_DEV_CLI_EXIT_CODE" -eq 2 ] || [ "$TS_DEV_CLI_EXIT_CODE" -eq 3 ]; then
   echo "error: command is not available in ts-dev-cli." >&2
 fi

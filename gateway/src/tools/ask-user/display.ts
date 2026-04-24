@@ -4,7 +4,6 @@ const ASK_USER_LINE_CHAR_LIMIT = 220;
 const ASK_USER_DEFAULT_OPTION_PREVIEW_LIMIT = 5;
 const ASK_USER_OPTION_ITEM_CHAR_LIMIT = 48;
 const ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT = 120;
-const ASK_USER_OPTION_DESCRIPTION_CHAR_LIMIT = 90;
 
 function compactSingleLine(value: string, maxChars: number): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -53,41 +52,15 @@ export function buildAskUserOptionsPreview(
 export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
   const optionsPreview = buildAskUserOptionsPreview(envelope.options);
   const question = compactSingleLine(envelope.question, ASK_USER_LINE_CHAR_LIMIT);
-  const header = compactSingleLine(envelope.header ?? "", 64);
-  const hasProgress = typeof envelope.questionIndex === "number" && typeof envelope.questionTotal === "number";
-  const progress = hasProgress
-    ? `question ${String(envelope.questionIndex)}/${String(envelope.questionTotal)}`
-    : undefined;
   const defaultOnTimeout = compactSingleLine(
     envelope.defaultOnTimeout,
     ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT,
   );
   const lines = [
-    "[ask-user] clarification needed",
-    header ? `header: ${header}` : undefined,
-    progress ? `progress: ${progress}` : undefined,
-    `question: ${question}`,
+    `[ask-user] ${question}`,
     `options_preview: ${optionsPreview.preview}`,
-    `default: ${defaultOnTimeout}`,
+    defaultOnTimeout ? `default: ${defaultOnTimeout}` : undefined,
   ].filter((line): line is string => typeof line === "string" && line.length > 0);
-  if (envelope.optionsDetailed.some((option) => option.description && option.description.trim().length > 0)) {
-    const limit = Math.min(envelope.optionsDetailed.length, 3);
-    for (let index = 0; index < limit; index += 1) {
-      const option = envelope.optionsDetailed[index];
-      if (!option) {
-        continue;
-      }
-      const label = compactSingleLine(option.label, ASK_USER_OPTION_ITEM_CHAR_LIMIT);
-      const description = compactSingleLine(
-        option.description ?? "",
-        ASK_USER_OPTION_DESCRIPTION_CHAR_LIMIT,
-      );
-      if (!description) {
-        continue;
-      }
-      lines.push(`option_${String(index + 1)}: ${label} — ${description}`);
-    }
-  }
   lines.push("hint: reply directly with number / option label / free text");
   return `${lines.join("\n")}\n`;
 }

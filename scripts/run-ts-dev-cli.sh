@@ -101,9 +101,18 @@ if [ "$NEEDS_BUILD" -eq 1 ]; then
     echo "ts-dev-cli bootstrap failed: npx is not available." >&2
     exit 86
   fi
-  if ! npx --yes --package typescript@5.6.3 tsc --project "$REPO_ROOT/gateway/tsconfig.json" --outDir "$OUT_DIR" --pretty false >/dev/null; then
-    echo "ts-dev-cli bootstrap failed: TypeScript compile error." >&2
-    exit 86
+
+  build_ts_dev_cli() {
+    npx --yes --package typescript@5.6.3 tsc --project "$REPO_ROOT/gateway/tsconfig.json" --outDir "$OUT_DIR" --pretty false
+  }
+
+  if ! build_ts_dev_cli; then
+    # One light retry absorbs transient tsc bootstrap flakes while still failing fast.
+    sleep 0.2
+    if ! build_ts_dev_cli; then
+      echo "ts-dev-cli bootstrap failed: TypeScript compile error (see diagnostics above)." >&2
+      exit 86
+    fi
   fi
 fi
 

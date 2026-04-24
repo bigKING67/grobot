@@ -1,5 +1,6 @@
 import { dispatchSlashCommand } from "../commands/slash/registry";
 import { buildInteractiveHelpScreen } from "../ui/screens/help-screen";
+import { isNaturalPlanExecutionIntent } from "./plan-command";
 
 export type SessionInteractiveAction = "continue" | "break";
 export type SessionMenuMode = "sessions" | "switch" | "continue" | "resume" | "rewind";
@@ -65,11 +66,7 @@ export interface SessionInteractiveHandlers {
   writeHandoff(): void;
   isPlanMode(): boolean;
   showPlanStatus(): Promise<void>;
-  benchmarkPlan(commandRaw: string): Promise<void>;
   enterPlan(goal: string): Promise<void>;
-  approvePlan(note: string): Promise<void>;
-  rejectPlan(reason: string): Promise<void>;
-  verifyPlan(result: string): Promise<void>;
   applyPlan(extra: string): Promise<void>;
   cancelPlan(): Promise<void>;
   requestPlanInterrupt(source: "command"): Promise<void>;
@@ -77,7 +74,6 @@ export interface SessionInteractiveHandlers {
   runPlanTurn(userInput: string): Promise<void>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
-  openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openPlanInEditor(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showHistory(query?: string): Promise<void>;
   promptSkillCreatorRequirement(
@@ -134,11 +130,7 @@ function consumePendingAskBlockedNotice(input: {
   const compactSuffix = suppressed > 0
     ? ` 已折叠 ${String(suppressed)} 条重复提示。`
     : "";
-  const promptSummary = input.promptSummary?.trim();
-  const summaryLine = promptSummary
-    ? `当前问题：${promptSummary}\n`
-    : "";
-  return `[ask-user] 当前有 ${String(input.queueSize)} 个待确认问题，请先直接回复。${compactSuffix}\n${summaryLine}\n`;
+  return `[ask-user] 当前有待确认问题，请先直接回复。${compactSuffix}\n\n`;
 }
 
 function parseSlashCommandName(userInput: string): string | undefined {
@@ -201,7 +193,11 @@ export async function dispatchSessionInteractiveInput(
     return "continue";
   }
   if (handlers.isPlanMode()) {
-    await handlers.runPlanTurn(userInput);
+    if (isNaturalPlanExecutionIntent(userInput)) {
+      await handlers.applyPlan(userInput);
+    } else {
+      await handlers.runPlanTurn(userInput);
+    }
     return "continue";
   }
 

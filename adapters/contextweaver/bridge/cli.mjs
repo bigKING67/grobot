@@ -930,6 +930,16 @@ function pickDominantErrorClass(errorClasses, fallbackErrorClass) {
   return normalized[0];
 }
 
+function shouldDegradePromptEnhancerFailure(errorClass) {
+  const normalized = typeof errorClass === "string" ? errorClass.trim() : "";
+  if (!normalized) {
+    return false;
+  }
+  return normalized === "semantic_index_config_invalid"
+    || normalized === "semantic_index_confirmation_required"
+    || normalized === "semantic_index_required";
+}
+
 function parseContextWeaverJsonOutput(stdout) {
   const cleaned = stripAnsi(String(stdout ?? "")).trim();
   if (!cleaned) {
@@ -1564,6 +1574,23 @@ async function runPromptEnhancer(payload, timeoutMs) {
   }).length;
   if (okCount === 0) {
     const errorClass = pickDominantErrorClass(errorClasses, "prompt_enhancer_failed");
+    if (shouldDegradePromptEnhancerFailure(errorClass)) {
+      const degradedWarning = `prompt enhancer degraded due to ${errorClass}`;
+      const degradedWarnings = warnings.length > 0
+        ? [...warnings, degradedWarning]
+        : [degradedWarning];
+      return {
+        tool: "prompt_enhancer",
+        language: "unknown",
+        technical_terms: [],
+        top_paths: [],
+        evidence: [],
+        context_block: "[Enhanced Context]\nlanguage=unknown\ntechnical_terms=<none>",
+        source_stats: sourceStats,
+        warnings: degradedWarnings,
+        duration_ms: 0,
+      };
+    }
     throw createError(
       errorClass,
       warnings.join("; ") || "prompt enhancer failed for all sources",

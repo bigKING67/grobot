@@ -14,14 +14,8 @@ interface CreateRunStartInteractiveHandlerInput {
   writeStderr(message: string): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
+  getPendingAskPromptSummary?(): string | undefined;
   showPendingAskQueue(limit?: number): void;
-  openPendingAskMenu(
-    withInputPaused: SessionInteractiveControls["withInputPaused"],
-  ): Promise<void>;
-  cancelPendingAsk(): void;
-  parkPendingAsk(): void;
-  clearPendingAsk(): void;
-  answerPendingAsk(answer: string): Promise<void>;
   showHelp(): void;
   showHealthStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -68,7 +62,7 @@ interface CreateRunStartInteractiveHandlerInput {
   runPlanTurn(userInput: string): Promise<number>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
-  openPlanMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
+  openPlanInEditor(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showHistory(query?: string): Promise<void>;
   promptSkillCreatorRequirement(
     withInputPaused: SessionInteractiveControls["withInputPaused"],
@@ -93,17 +87,9 @@ export function createRunStartInteractiveHandler(
       writeStdout: input.writeStdout,
       hasPendingAsk: input.hasPendingAsk,
       getPendingAskQueueSize: input.getPendingAskQueueSize,
+      getPendingAskPromptSummary: () => input.getPendingAskPromptSummary?.(),
       showPendingAskQueue: (limit) => {
         input.showPendingAskQueue(limit);
-      },
-      openPendingAskMenu: async (withInputPaused) => {
-        await input.openPendingAskMenu(withInputPaused);
-      },
-      cancelPendingAsk: input.cancelPendingAsk,
-      parkPendingAsk: input.parkPendingAsk,
-      clearPendingAsk: input.clearPendingAsk,
-      answerPendingAsk: async (answer) => {
-        await input.answerPendingAsk(answer);
       },
       showHelp: input.showHelp,
       showHealthStatus: input.showHealthStatus,
@@ -189,8 +175,8 @@ export function createRunStartInteractiveHandler(
       openCommandsMenu: async (withInputPaused) => {
         await input.openCommandsMenu(withInputPaused);
       },
-      openPlanMenu: async (withInputPaused) => {
-        await input.openPlanMenu(withInputPaused);
+      openPlanInEditor: async (withInputPaused) => {
+        await input.openPlanInEditor(withInputPaused);
       },
       showHistory: async (query) => {
         await input.showHistory(query);

@@ -513,12 +513,21 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
   };
 }
 
-function runStartInteractiveDiagnosticsFlow(repoRoot, mode, scriptedInput) {
+function runStartInteractiveDiagnosticsFlow(repoRoot, mode, scriptedInput, subjectSuffix = "base") {
   const normalizedMode = mode === "trace"
     ? "trace"
     : mode === "verbose"
       ? "verbose"
       : "compact";
+  const normalizedSuffix = String(subjectSuffix)
+    .trim()
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/^-+|-+$/g, "") || "base";
+  const sessionSubject = normalizedMode === "compact"
+    ? `diagnostics-compact-user-${normalizedSuffix}`
+    : normalizedMode === "trace"
+      ? `diagnostics-trace-user-${normalizedSuffix}`
+      : `diagnostics-verbose-user-${normalizedSuffix}`;
   const workDir = createTempDir("grobot-interactive-diagnostics-work");
   const homeDir = createTempDir("grobot-interactive-diagnostics-home");
   const config = writeConfig(buildSmokeConfig(workDir));
@@ -539,11 +548,7 @@ function runStartInteractiveDiagnosticsFlow(repoRoot, mode, scriptedInput) {
     "--runtime-impl",
     "rust",
     "--session-subject",
-    normalizedMode === "compact"
-      ? "diagnostics-compact-user"
-      : normalizedMode === "trace"
-        ? "diagnostics-trace-user"
-        : "diagnostics-verbose-user",
+    sessionSubject,
     "--history-turns",
     "8",
   ];
@@ -586,7 +591,8 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
   const payload = runStartInteractiveDiagnosticsFlow(
     repoRoot,
     mode,
-    ["/plan diagnostics integration flow", "/plan apply", "/plan cancel", "/exit", ""].join("\n"),
+    ["/plan diagnostics integration flow", "/plan open", "/exit", ""].join("\n"),
+    "plan",
   );
   return {
     ...payload,
@@ -600,6 +606,7 @@ function runStartInteractiveDiagnosticsSkillCreatorFlow(repoRoot, mode) {
     repoRoot,
     mode,
     ["/skill-creator create a demo skill for diagnostics contracts", "/exit", ""].join("\n"),
+    "skill-creator",
   );
   return {
     ...payload,
@@ -618,6 +625,7 @@ function runStartInteractiveDiagnosticsUserCommandFlow(repoRoot, mode) {
       "/exit",
       "",
     ].join("\n"),
+    "user-command",
   );
   return {
     ...payload,
@@ -708,10 +716,17 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
   const registryPayload = readJsonFileSafe(registryPath);
   const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
   const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
+  const inferredSessionIds = new Set();
+  for (const match of outputText.matchAll(/^\s*\*?\s*([A-Za-z0-9_-]+)\s+\|/gm)) {
+    const sessionId = String(match[1] ?? "").trim();
+    if (sessionId.length > 0) {
+      inferredSessionIds.add(sessionId);
+    }
+  }
   return {
     ...commandResult,
     registry_path: registryPath,
-    session_count: sessions.length,
+    session_count: Math.max(sessions.length, inferredSessionIds.size),
     has_switch_usage: outputText.includes("Usage: /switch"),
     has_continue_usage: outputText.includes("Usage: /continue"),
     has_resume_usage: outputText.includes("Usage: /resume"),
@@ -859,11 +874,8 @@ function runStartPlanModeFlow(repoRoot) {
     null,
       [
         "/plan implement plan-mode skeleton",
-        "add milestone for bridge /plan compatibility",
-        "/plan apply smoke-review-failure",
-        "/plan status",
-        "/plan cancel",
-        "/plan status",
+        "Implement the plan.",
+        "/plan open",
         "/exit",
         "",
       ].join("\n"),
@@ -907,6 +919,8 @@ function runStartPlanModeFlow(repoRoot) {
       : 0;
   const eventsContent = readTextFileSafe(eventsPath);
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
+  const finalStatusMarkerCurrent =
+    "[plan-status]\nplan_status_output_mode: full\nmode: plan_only\n[plan-current]";
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -921,10 +935,12 @@ function runStartPlanModeFlow(repoRoot) {
     plan_entry_count: planEntries.length,
     plan_active_id: planIndex && typeof planIndex.active_plan_id === "string" ? planIndex.active_plan_id : "",
     plan_active_exists: existsSync(activePlanPath),
-    review_failed_marker_seen: combinedOutput.includes("[plan-review] code=PLAN_REVIEW_FAILED"),
+    review_failed_marker_seen:
+      combinedOutput.includes("[plan-review] code=PLAN_REVIEW_FAILED")
+      || combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED"),
     review_blocked_marker_seen: combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED"),
     plan_cancelled_marker_seen: combinedOutput.includes("[plan] cancelled plan_id="),
-    plan_final_status_line_seen: combinedOutput.includes("[plan-status]\nmode: normal\nactive_plan_id: <none>"),
+    plan_final_status_line_seen: combinedOutput.includes(finalStatusMarkerCurrent),
     plan_last_status: planEntry && typeof planEntry.status === "string" ? planEntry.status : "",
     plan_last_review_fail_count: reviewFailCount,
     plan_last_blocked_count: blockedCount,

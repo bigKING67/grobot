@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+type PlanEventPhase = "drafting" | "awaiting_decision" | "applying" | "unknown";
+type PlanPolicyAction = "fail" | "degrade";
+
 interface ParsedCliArgs {
   eventsPaths: string[];
   outputPath: string;
@@ -17,11 +20,28 @@ interface PlanEventCounter {
   plan_review_passed_count: number;
   plan_review_failed_count: number;
   plan_recovered_stale_approved_count: number;
+  plan_recovered_stale_apply_count: number;
   plan_apply_started_count: number;
   plan_apply_succeeded_count: number;
   plan_apply_failed_count: number;
+  plan_turn_degraded_count: number;
+  plan_turn_failed_count: number;
+  plan_benchmark_run_count: number;
   plan_guard_denied_count: number;
+  plan_approval_blocked_count: number;
+  plan_apply_blocked_count: number;
+  plan_approval_blocked_quality_guard_count: number;
+  plan_apply_blocked_quality_guard_count: number;
   plan_apply_idempotent_hit_count: number;
+  plan_phase_drafting_count: number;
+  plan_phase_awaiting_decision_count: number;
+  plan_phase_applying_count: number;
+  plan_phase_unknown_count: number;
+  policy_action_fail_count: number;
+  policy_action_degrade_count: number;
+  block_reason_counts: Record<string, number>;
+  policy_reason_counts: Record<string, number>;
+  diagnostic_code_counts: Record<string, number>;
 }
 
 interface PlanEventsFileSummary extends PlanEventCounter {
@@ -45,6 +65,9 @@ interface PlanEventsTotals extends PlanEventCounter {
   apply_success_rate: number | null;
   review_failed_rate: number | null;
   guard_denied_rate: number | null;
+  approval_blocked_rate: number | null;
+  apply_blocked_rate: number | null;
+  quality_guard_blocked_rate: number | null;
   idempotent_hit_rate: number | null;
 }
 
@@ -58,6 +81,11 @@ interface PlanEventsReport {
 interface ParsedEventLine {
   event: string;
   sessionId: string;
+  phase: PlanEventPhase;
+  blockReason?: string;
+  policyAction?: PlanPolicyAction;
+  policyReason?: string;
+  diagnosticCode?: string;
 }
 
 function nowIsoUtc(): string {
@@ -74,11 +102,28 @@ function createCounter(): PlanEventCounter {
     plan_review_passed_count: 0,
     plan_review_failed_count: 0,
     plan_recovered_stale_approved_count: 0,
+    plan_recovered_stale_apply_count: 0,
     plan_apply_started_count: 0,
     plan_apply_succeeded_count: 0,
     plan_apply_failed_count: 0,
+    plan_turn_degraded_count: 0,
+    plan_turn_failed_count: 0,
+    plan_benchmark_run_count: 0,
     plan_guard_denied_count: 0,
+    plan_approval_blocked_count: 0,
+    plan_apply_blocked_count: 0,
+    plan_approval_blocked_quality_guard_count: 0,
+    plan_apply_blocked_quality_guard_count: 0,
     plan_apply_idempotent_hit_count: 0,
+    plan_phase_drafting_count: 0,
+    plan_phase_awaiting_decision_count: 0,
+    plan_phase_applying_count: 0,
+    plan_phase_unknown_count: 0,
+    policy_action_fail_count: 0,
+    policy_action_degrade_count: 0,
+    block_reason_counts: {},
+    policy_reason_counts: {},
+    diagnostic_code_counts: {},
   };
 }
 
@@ -140,6 +185,113 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   };
 }
 
+function extractDetailToken(
+  detail: string,
+  key: "policy_action" | "policy_reason" | "diagnostic_code" | "reason",
+): string | undefined {
+  if (!detail) {
+    return undefined;
+  }
+  const pattern = new RegExp(`(?:^|\\s)${key}=([^\\s]+)`);
+  const matched = pattern.exec(detail);
+  if (!matched) {
+    return undefined;
+  }
+  const value = String(matched[1] ?? "").trim();
+  return value.length > 0 ? value : undefined;
+}
+
+function parsePolicyAction(detail: string): PlanPolicyAction | undefined {
+  const action = extractDetailToken(detail, "policy_action");
+  if (action === "fail" || action === "degrade") {
+    return action;
+  }
+  return undefined;
+}
+
+function parsePolicyReason(detail: string): string | undefined {
+  return extractDetailToken(detail, "policy_reason");
+}
+
+function parseDiagnosticCode(detail: string): string | undefined {
+  return extractDetailToken(detail, "diagnostic_code");
+}
+
+function parseBlockReason(detail: string): string | undefined {
+  return extractDetailToken(detail, "reason");
+}
+
+function resolvePhaseFromStatus(statusRaw: string | undefined): PlanEventPhase | undefined {
+  if (!statusRaw) {
+    return undefined;
+  }
+  switch (statusRaw) {
+    case "draft":
+    case "blocked":
+    case "review_failed":
+    case "discarded":
+      return "drafting";
+    case "ready":
+    case "approved":
+    case "apply_failed":
+      return "awaiting_decision";
+    case "applying":
+    case "applied":
+      return "applying";
+    default:
+      return undefined;
+  }
+}
+
+function resolvePhaseFromEvent(event: string): PlanEventPhase {
+  switch (event) {
+    case "plan_mode_entered":
+    case "plan_created":
+    case "plan_progress_appended":
+    case "plan_guard_denied":
+    case "plan_turn_skipped":
+    case "plan_turn_interrupted":
+    case "plan_mode_cancelled":
+    case "plan_content_replaced":
+    case "plan_proposed_plan_ingested":
+    case "plan_approval_invalidated":
+    case "plan_turn_degraded":
+    case "plan_turn_failed":
+    case "plan_benchmark_run":
+    case "plan_interrupt_requested":
+    case "plan_interrupt_applied":
+    case "plan_interrupt_ignored":
+      return "drafting";
+    case "plan_review_passed":
+    case "plan_review_failed":
+    case "plan_approved":
+    case "plan_approval_confirmed":
+    case "plan_review_rejected":
+    case "plan_verification_pending":
+    case "plan_verification_passed":
+    case "plan_verification_failed":
+    case "plan_apply_blocked":
+      return "awaiting_decision";
+    case "plan_apply_started":
+    case "plan_apply_succeeded":
+    case "plan_apply_failed":
+    case "plan_apply_interrupted":
+    case "plan_apply_idempotent_hit":
+    case "plan_recovered_stale_apply":
+      return "applying";
+    default:
+      return "unknown";
+  }
+}
+
+function resolvePlanEventPhase(event: string, statusTo: string | undefined): PlanEventPhase {
+  const fromStatus = resolvePhaseFromStatus(statusTo);
+  if (fromStatus) {
+    return fromStatus;
+  }
+  return resolvePhaseFromEvent(event);
+}
+
 function parseEventLine(line: string): ParsedEventLine | undefined {
   let parsed: unknown;
   try {
@@ -156,13 +308,21 @@ function parseEventLine(line: string): ParsedEventLine | undefined {
     return undefined;
   }
   const rawSessionId = typeof record.session_id === "string" ? record.session_id.trim() : "";
+  const detail = typeof record.detail === "string" ? record.detail.trim() : "";
+  const statusTo = typeof record.status_to === "string" ? record.status_to.trim() : "";
   return {
     event,
     sessionId: rawSessionId.length > 0 ? rawSessionId : "unknown",
+    phase: resolvePlanEventPhase(event, statusTo.length > 0 ? statusTo : undefined),
+    blockReason: parseBlockReason(detail),
+    policyAction: parsePolicyAction(detail),
+    policyReason: parsePolicyReason(detail),
+    diagnosticCode: parseDiagnosticCode(detail),
   };
 }
 
-function applyEvent(counter: PlanEventCounter, event: string): void {
+function applyEvent(counter: PlanEventCounter, eventLine: ParsedEventLine): void {
+  const { event, phase, blockReason, policyAction, policyReason, diagnosticCode } = eventLine;
   counter.events_count += 1;
   switch (event) {
     case "plan_mode_entered":
@@ -186,6 +346,10 @@ function applyEvent(counter: PlanEventCounter, event: string): void {
     case "plan_recovered_stale_approved":
       counter.plan_recovered_stale_approved_count += 1;
       break;
+    case "plan_recovered_stale_apply":
+      counter.plan_recovered_stale_apply_count += 1;
+      counter.plan_recovered_stale_approved_count += 1;
+      break;
     case "plan_apply_started":
       counter.plan_apply_started_count += 1;
       break;
@@ -195,14 +359,66 @@ function applyEvent(counter: PlanEventCounter, event: string): void {
     case "plan_apply_failed":
       counter.plan_apply_failed_count += 1;
       break;
+    case "plan_turn_degraded":
+      counter.plan_turn_degraded_count += 1;
+      break;
+    case "plan_turn_failed":
+      counter.plan_turn_failed_count += 1;
+      break;
+    case "plan_benchmark_run":
+      counter.plan_benchmark_run_count += 1;
+      break;
     case "plan_guard_denied":
       counter.plan_guard_denied_count += 1;
+      break;
+    case "plan_approval_blocked":
+      counter.plan_approval_blocked_count += 1;
+      if (blockReason === "quality_guard_critical") {
+        counter.plan_approval_blocked_quality_guard_count += 1;
+      }
+      break;
+    case "plan_apply_blocked":
+      counter.plan_apply_blocked_count += 1;
+      if (blockReason === "quality_guard_critical") {
+        counter.plan_apply_blocked_quality_guard_count += 1;
+      }
       break;
     case "plan_apply_idempotent_hit":
       counter.plan_apply_idempotent_hit_count += 1;
       break;
     default:
       break;
+  }
+  switch (phase) {
+    case "drafting":
+      counter.plan_phase_drafting_count += 1;
+      break;
+    case "awaiting_decision":
+      counter.plan_phase_awaiting_decision_count += 1;
+      break;
+    case "applying":
+      counter.plan_phase_applying_count += 1;
+      break;
+    default:
+      counter.plan_phase_unknown_count += 1;
+      break;
+  }
+  if (policyAction === "fail") {
+    counter.policy_action_fail_count += 1;
+  } else if (policyAction === "degrade") {
+    counter.policy_action_degrade_count += 1;
+  }
+  if (policyReason) {
+    const current = counter.policy_reason_counts[policyReason] ?? 0;
+    counter.policy_reason_counts[policyReason] = current + 1;
+  }
+  if (diagnosticCode) {
+    const current = counter.diagnostic_code_counts[diagnosticCode] ?? 0;
+    counter.diagnostic_code_counts[diagnosticCode] = current + 1;
+  }
+  if (blockReason) {
+    const current = counter.block_reason_counts[blockReason] ?? 0;
+    counter.block_reason_counts[blockReason] = current + 1;
   }
 }
 
@@ -250,15 +466,15 @@ function buildReport(input: ParsedCliArgs): PlanEventsReport {
         invalidLines += 1;
         continue;
       }
-      applyEvent(fileCounter, eventRecord.event);
-      applyEvent(totalsCounter, eventRecord.event);
+      applyEvent(fileCounter, eventRecord);
+      applyEvent(totalsCounter, eventRecord);
       fileSessions.add(eventRecord.sessionId);
       if (!perSessionMap.has(eventRecord.sessionId)) {
         perSessionMap.set(eventRecord.sessionId, createCounter());
       }
       const sessionCounter = perSessionMap.get(eventRecord.sessionId);
       if (sessionCounter) {
-        applyEvent(sessionCounter, eventRecord.event);
+        applyEvent(sessionCounter, eventRecord);
       }
     }
     invalidLinesTotal += invalidLines;
@@ -287,6 +503,18 @@ function buildReport(input: ParsedCliArgs): PlanEventsReport {
     apply_success_rate: roundRate(totalsCounter.plan_apply_succeeded_count, totalsCounter.plan_apply_started_count),
     review_failed_rate: roundRate(totalsCounter.plan_review_failed_count, totalsCounter.plan_mode_entered_count),
     guard_denied_rate: roundRate(totalsCounter.plan_guard_denied_count, totalsCounter.plan_mode_entered_count),
+    approval_blocked_rate: roundRate(
+      totalsCounter.plan_approval_blocked_count,
+      totalsCounter.plan_mode_entered_count,
+    ),
+    apply_blocked_rate: roundRate(
+      totalsCounter.plan_apply_blocked_count,
+      totalsCounter.plan_mode_entered_count,
+    ),
+    quality_guard_blocked_rate: roundRate(
+      totalsCounter.plan_approval_blocked_quality_guard_count + totalsCounter.plan_apply_blocked_quality_guard_count,
+      totalsCounter.plan_mode_entered_count,
+    ),
     idempotent_hit_rate: roundRate(
       totalsCounter.plan_apply_idempotent_hit_count,
       totalsCounter.plan_apply_started_count + totalsCounter.plan_apply_idempotent_hit_count,

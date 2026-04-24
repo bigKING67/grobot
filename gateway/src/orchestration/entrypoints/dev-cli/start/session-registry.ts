@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { SessionScope } from "../../../../models/types";
 import { normalizeGaSessionStateSnapshot, type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
+import { type SessionPlanPhase } from "./plan-state";
 import {
   ChatHistoryMessage,
   compactSingleLine,
@@ -13,7 +14,6 @@ export const SESSION_REGISTRY_MAIN_ID = "main";
 export const SESSION_KEY_INSTANCE_SEPARATOR = "__s_";
 export const HISTORY_STORE_VERSION = 1;
 export type SessionPlanMode = "normal" | "plan_only";
-export type SessionPlanPhase = "drafting" | "reviewing" | "applying";
 
 export interface SessionPlanMeta {
   active_plan_id?: string;
@@ -184,8 +184,8 @@ function parsePlanPhase(value: unknown): SessionPlanPhase | undefined {
   if (value === "drafting") {
     return "drafting";
   }
-  if (value === "reviewing") {
-    return "reviewing";
+  if (value === "awaiting_decision") {
+    return "awaiting_decision";
   }
   if (value === "applying") {
     return "applying";

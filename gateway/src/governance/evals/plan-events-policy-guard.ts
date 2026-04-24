@@ -19,7 +19,10 @@ const ALLOWED_GATE_FIELDS = [
   "max_missing_files",
   "max_review_failed_rate",
   "max_guard_denied_rate",
+  "max_quality_guard_blocked_rate",
   "max_idempotent_hit_rate",
+  "max_policy_fail_rate",
+  "max_unknown_phase_rate",
   "max_stale_recovery_count",
 ] as const;
 const ALLOWED_GATE_FIELD_SET = new Set<string>(ALLOWED_GATE_FIELDS as readonly string[]);
@@ -45,7 +48,10 @@ interface LoadedPolicy {
     max_missing_files: number;
     max_review_failed_rate: number | null;
     max_guard_denied_rate: number | null;
+    max_quality_guard_blocked_rate: number | null;
     max_idempotent_hit_rate: number | null;
+    max_policy_fail_rate: number | null;
+    max_unknown_phase_rate: number | null;
     max_stale_recovery_count: number | null;
   };
 }
@@ -325,9 +331,21 @@ function loadPolicy(path: string): LoadedPolicy {
         "gates.max_review_failed_rate",
       ),
       max_guard_denied_rate: parseOptionalRate(gatesRaw.max_guard_denied_rate, "gates.max_guard_denied_rate"),
+      max_quality_guard_blocked_rate: parseOptionalRate(
+        gatesRaw.max_quality_guard_blocked_rate,
+        "gates.max_quality_guard_blocked_rate",
+      ),
       max_idempotent_hit_rate: parseOptionalRate(
         gatesRaw.max_idempotent_hit_rate,
         "gates.max_idempotent_hit_rate",
+      ),
+      max_policy_fail_rate: parseOptionalRate(
+        gatesRaw.max_policy_fail_rate,
+        "gates.max_policy_fail_rate",
+      ),
+      max_unknown_phase_rate: parseOptionalRate(
+        gatesRaw.max_unknown_phase_rate,
+        "gates.max_unknown_phase_rate",
       ),
       max_stale_recovery_count: parseOptionalInt(
         gatesRaw.max_stale_recovery_count,
@@ -429,6 +447,16 @@ function applyPolicyEnvOverrides(policy: LoadedPolicy): PolicyEnvOverrideResult 
     gates.max_guard_denied_rate = maxGuardDeniedRate;
     overrides.max_guard_denied_rate = maxGuardDeniedRate;
   }
+  const maxQualityGuardBlockedRateEnv = "GROBOT_PLAN_EVENTS_MAX_QUALITY_GUARD_BLOCKED_RATE";
+  const maxQualityGuardBlockedRate = parseEnvOptionalRateOverride(
+    maxQualityGuardBlockedRateEnv,
+    "gates.max_quality_guard_blocked_rate",
+  );
+  if (maxQualityGuardBlockedRate !== undefined) {
+    assertOverrideAllowed(scope, "max_quality_guard_blocked_rate", maxQualityGuardBlockedRateEnv);
+    gates.max_quality_guard_blocked_rate = maxQualityGuardBlockedRate;
+    overrides.max_quality_guard_blocked_rate = maxQualityGuardBlockedRate;
+  }
   const maxIdempotentHitRateEnv = "GROBOT_PLAN_EVENTS_MAX_IDEMPOTENT_HIT_RATE";
   const maxIdempotentHitRate = parseEnvOptionalRateOverride(
     maxIdempotentHitRateEnv,
@@ -438,6 +466,26 @@ function applyPolicyEnvOverrides(policy: LoadedPolicy): PolicyEnvOverrideResult 
     assertOverrideAllowed(scope, "max_idempotent_hit_rate", maxIdempotentHitRateEnv);
     gates.max_idempotent_hit_rate = maxIdempotentHitRate;
     overrides.max_idempotent_hit_rate = maxIdempotentHitRate;
+  }
+  const maxPolicyFailRateEnv = "GROBOT_PLAN_EVENTS_MAX_POLICY_FAIL_RATE";
+  const maxPolicyFailRate = parseEnvOptionalRateOverride(
+    maxPolicyFailRateEnv,
+    "gates.max_policy_fail_rate",
+  );
+  if (maxPolicyFailRate !== undefined) {
+    assertOverrideAllowed(scope, "max_policy_fail_rate", maxPolicyFailRateEnv);
+    gates.max_policy_fail_rate = maxPolicyFailRate;
+    overrides.max_policy_fail_rate = maxPolicyFailRate;
+  }
+  const maxUnknownPhaseRateEnv = "GROBOT_PLAN_EVENTS_MAX_UNKNOWN_PHASE_RATE";
+  const maxUnknownPhaseRate = parseEnvOptionalRateOverride(
+    maxUnknownPhaseRateEnv,
+    "gates.max_unknown_phase_rate",
+  );
+  if (maxUnknownPhaseRate !== undefined) {
+    assertOverrideAllowed(scope, "max_unknown_phase_rate", maxUnknownPhaseRateEnv);
+    gates.max_unknown_phase_rate = maxUnknownPhaseRate;
+    overrides.max_unknown_phase_rate = maxUnknownPhaseRate;
   }
   const maxStaleRecoveryCountEnv = "GROBOT_PLAN_EVENTS_MAX_STALE_RECOVERY_COUNT";
   const maxStaleRecoveryCount = parseEnvOptionalIntOverride(
@@ -473,6 +521,17 @@ function asNumber(record: JsonObject, key: string): number {
   return value;
 }
 
+function asNumberWithDefault(record: JsonObject, key: string, fallback = 0): number {
+  const value = record[key];
+  if (value == null) {
+    return fallback;
+  }
+  if (typeof value !== "number") {
+    throw new Error(`report totals.${key} must be number|null`);
+  }
+  return value;
+}
+
 function asNumberOrNull(record: JsonObject, key: string): number | null {
   const value = record[key];
   if (value == null) {
@@ -482,6 +541,13 @@ function asNumberOrNull(record: JsonObject, key: string): number | null {
     throw new Error(`report totals.${key} must be number|null`);
   }
   return value;
+}
+
+function divideOrNull(numerator: number, denominator: number): number | null {
+  if (denominator <= 0) {
+    return null;
+  }
+  return Number((numerator / denominator).toFixed(4));
 }
 
 function evaluatePolicy(policy: LoadedPolicy, report: JsonObject): {
@@ -509,7 +575,19 @@ function evaluatePolicy(policy: LoadedPolicy, report: JsonObject): {
     missing_files_count: asNumber(totalsRaw, "missing_files_count"),
     review_failed_rate: asNumberOrNull(totalsRaw, "review_failed_rate"),
     guard_denied_rate: asNumberOrNull(totalsRaw, "guard_denied_rate"),
+    quality_guard_blocked_rate: asNumberOrNull(totalsRaw, "quality_guard_blocked_rate"),
     idempotent_hit_rate: asNumberOrNull(totalsRaw, "idempotent_hit_rate"),
+    policy_action_fail_count: asNumberWithDefault(totalsRaw, "policy_action_fail_count", 0),
+    policy_action_degrade_count: asNumberWithDefault(totalsRaw, "policy_action_degrade_count", 0),
+    plan_phase_unknown_count: asNumberWithDefault(totalsRaw, "plan_phase_unknown_count", 0),
+    policy_fail_rate: divideOrNull(
+      asNumberWithDefault(totalsRaw, "policy_action_fail_count", 0),
+      asNumber(totalsRaw, "events_count"),
+    ),
+    unknown_phase_rate: divideOrNull(
+      asNumberWithDefault(totalsRaw, "plan_phase_unknown_count", 0),
+      asNumber(totalsRaw, "events_count"),
+    ),
     plan_recovered_stale_approved_count: asNumber(totalsRaw, "plan_recovered_stale_approved_count"),
   };
   const violations: string[] = [];
@@ -561,12 +639,39 @@ function evaluatePolicy(policy: LoadedPolicy, report: JsonObject): {
     );
   }
   if (
+    policy.gates.max_quality_guard_blocked_rate != null &&
+    metrics.quality_guard_blocked_rate != null &&
+    metrics.quality_guard_blocked_rate > policy.gates.max_quality_guard_blocked_rate
+  ) {
+    violations.push(
+      `quality_guard_blocked_rate ${String(metrics.quality_guard_blocked_rate)} > max_quality_guard_blocked_rate ${String(policy.gates.max_quality_guard_blocked_rate)}`,
+    );
+  }
+  if (
     policy.gates.max_idempotent_hit_rate != null &&
     metrics.idempotent_hit_rate != null &&
     metrics.idempotent_hit_rate > policy.gates.max_idempotent_hit_rate
   ) {
     violations.push(
       `idempotent_hit_rate ${String(metrics.idempotent_hit_rate)} > max_idempotent_hit_rate ${String(policy.gates.max_idempotent_hit_rate)}`,
+    );
+  }
+  if (
+    policy.gates.max_policy_fail_rate != null &&
+    metrics.policy_fail_rate != null &&
+    metrics.policy_fail_rate > policy.gates.max_policy_fail_rate
+  ) {
+    violations.push(
+      `policy_fail_rate ${String(metrics.policy_fail_rate)} > max_policy_fail_rate ${String(policy.gates.max_policy_fail_rate)}`,
+    );
+  }
+  if (
+    policy.gates.max_unknown_phase_rate != null &&
+    metrics.unknown_phase_rate != null &&
+    metrics.unknown_phase_rate > policy.gates.max_unknown_phase_rate
+  ) {
+    violations.push(
+      `unknown_phase_rate ${String(metrics.unknown_phase_rate)} > max_unknown_phase_rate ${String(policy.gates.max_unknown_phase_rate)}`,
     );
   }
   if (

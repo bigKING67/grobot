@@ -1,0 +1,31 @@
+{
+  "schema": "plan_quality_benchmark_preset_policy",
+  "schema_version": 1,
+  "profile": "dev",
+  "presets": {
+    "generic": {
+      "candidates": [
+        {
+          "label": "generic_agent",
+          "path": "/Users/gaoqian/Documents/sixseven/codeproject/GenericAgent/memory/plan_sop.md"
+        }
+      ]
+    },
+    "core": {
+      "candidates": [
+        {
+          "label": "codex_baseline",
+          "path": "/Users/gaoqian/Documents/sixseven/tools/all/src/commands.ts"
+        },
+        {
+          "label": "claude_baseline",
+          "path": "/Users/gaoqian/Documents/sixseven/tools/all/src/services/api/claude.ts"
+        },
+        {
+          "label": "generic_agent",
+          "path": "/Users/gaoqian/Documents/sixseven/codeproject/GenericAgent/memory/plan_sop.md"
+        }
+      ]
+    }
+  }
+}

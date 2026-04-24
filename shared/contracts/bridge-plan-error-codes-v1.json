@@ -32,6 +32,11 @@
       "description": "Review blocked due to unresolved-question findings."
     },
     {
+      "code": "PLAN_QUALITY_GUARD_BLOCKED",
+      "category": "plan_guard",
+      "description": "Plan quality guard blocked approval/apply until plan quality recovers."
+    },
+    {
       "code": "PLAN_APPROVAL_FAILED",
       "category": "plan_apply",
       "description": "Plan approval artifacts could not be persisted."

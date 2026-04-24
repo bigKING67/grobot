@@ -973,10 +973,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, controls, handlers }) => {
       const normalizedInput = userInput.trim();
       if (normalizedInput === "/plan") {
-        if (isInteractiveTerminal()) {
-          await handlers.openPlanMenu(controls.withInputPaused);
-          return "continue";
-        }
         if (handlers.isPlanMode()) {
           await handlers.showPlanStatus();
           return "continue";
@@ -994,26 +990,11 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       const parsed = parsePlanCommand(userInput);
-      // Keep direct-goal path ergonomic: `/plan <goal>` should not force users
-      // to re-enter the same goal in the menu prompt.
       if (parsed.kind === "enter") {
         await handlers.enterPlan(parsed.goal);
         return "continue";
       }
-      if (parsed.kind === "menu") {
-        if (isInteractiveTerminal()) {
-          await handlers.openPlanMenu(controls.withInputPaused);
-          return "continue";
-        }
-        handlers.writeStdout("[plan] /plan menu|open is interactive-only; showing current status in script mode.\n\n");
-        await handlers.showPlanStatus();
-        return "continue";
-      }
       if (parsed.kind === "enter_mode") {
-        if (isInteractiveTerminal()) {
-          await handlers.openPlanMenu(controls.withInputPaused);
-          return "continue";
-        }
         if (handlers.isPlanMode()) {
           await handlers.showPlanStatus();
           return "continue";
@@ -1021,53 +1002,25 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         await handlers.enterPlan("");
         return "continue";
       }
-      if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason}\n\n`);
-        return "continue";
-      }
-      if (parsed.kind === "status") {
+      if (parsed.kind === "open") {
+        if (isInteractiveTerminal()) {
+          await handlers.openPlanInEditor(controls.withInputPaused);
+          return "continue";
+        }
+        handlers.writeStdout("[plan] /plan open is interactive-only; showing current status in script mode.\n\n");
         await handlers.showPlanStatus();
         return "continue";
       }
-      if (parsed.kind === "benchmark") {
-        await handlers.benchmarkPlan(normalizedInput);
-        return "continue";
-      }
-      if (parsed.kind === "approve") {
-        await handlers.approvePlan(parsed.note);
-        return "continue";
-      }
-      if (parsed.kind === "reject") {
-        await handlers.rejectPlan(parsed.reason);
-        return "continue";
-      }
-      if (parsed.kind === "apply") {
-        await handlers.applyPlan(parsed.extra);
-        return "continue";
-      }
-      if (parsed.kind === "verify") {
-        await handlers.verifyPlan(parsed.result);
-        return "continue";
-      }
-      if (parsed.kind === "cancel") {
-        await handlers.cancelPlan();
+      if (parsed.kind === "invalid") {
+        handlers.writeStdout(`${parsed.reason}\n\n`);
         return "continue";
       }
       return "continue";
     },
     helpLines: [
-      "  /plan                Open plan actions menu (interactive)",
+      "  /plan                Enter plan mode; in plan mode show current plan status",
       "  /plan open           Open active plan file in editor (interactive)",
-      "  /plan <goal>         Enter plan mode and execute first requirement",
-      "  /plan status         Show active plan status summary",
-      "  /plan approve [note] Approve active plan",
-      "  /plan reject [reason] Reject active plan and continue refining",
-      "  /plan verify <pass|fail> [note] Record verification result for latest applied plan",
-      "  /plan apply [extra]  Apply approved plan and exit plan mode",
-      "  /plan cancel         Exit plan mode",
-      "  /plan check [core|generic]  Quick benchmark check-only (default: core)",
-      "  /plan benchmark ...  Compare active plan with external candidates",
-      "  /plan benchmark --preset <generic|core> [--assert-best <label>] [--check-only|--check]",
+      "  /plan <goal>         Enter plan mode and run first planning turn",
     ],
   },
   {
@@ -1306,8 +1259,7 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
   { command: "/model", description: "Open interactive model picker" },
   { command: "/status", description: "Show current status line config snapshot" },
-  { command: "/plan", description: "Open plan actions menu (use /plan <goal> for direct entry)" },
-  { command: "/plan check", description: "Quick benchmark check-only (default preset: core)" },
+  { command: "/plan", description: "Enter plan mode (or show plan status when already in plan mode)" },
   { command: "/interrupt", description: "Interrupt running turn (Esc: running interrupt, plan idle exits mode)" },
   { command: "/handoff", description: "Write HANDOFF.md" },
   { command: "/help", description: "Show interactive help screen" },
@@ -1373,7 +1325,8 @@ export function listSlashCommandCompatibilityNotes(): string[] {
   return [
     "  - /switch /continue remain compatibility shortcuts; prefer /sessions + /resume + /rewind.",
     "  - /checkpoint is an alias of /rewind.",
-    "  - Interactive mode is menu-first for /sessions and /status; /plan supports direct subcommands.",
+    "  - Interactive mode is menu-first for /sessions and /status.",
+    "  - /plan only supports: /plan, /plan <goal>, /plan open.",
     "  - Non-interactive scripts keep compatibility shortcuts where applicable.",
   ];
 }
@@ -1404,7 +1357,7 @@ export async function dispatchSlashCommand(
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
       handlers.writeStdout(
-        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan to open plan actions, /plan open to edit active plan file, /interrupt, or /exit.\n\n`,
+        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan, /plan open, /interrupt, or /exit.\n\n`,
       );
       return "continue";
     }

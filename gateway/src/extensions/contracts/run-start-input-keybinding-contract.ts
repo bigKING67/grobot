@@ -188,7 +188,7 @@ async function main(): Promise<void> {
       slashMenu.command === "/model" && slashMenu.submitImmediately,
     slash_apply_commands_menu_submit:
       slashCommandsMenu.command === "/commands" && slashCommandsMenu.submitImmediately,
-    slash_apply_plan_menu_submit:
+    slash_apply_plan_submit:
       slashPlanMenu.command === "/plan" && slashPlanMenu.submitImmediately,
     slash_apply_skill_creator_requires_input:
       slashSkillCreatorMenu.command === "/skill-creator" && slashSkillCreatorMenu.submitImmediately,

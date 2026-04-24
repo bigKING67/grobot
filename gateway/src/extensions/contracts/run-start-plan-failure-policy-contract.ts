@@ -43,13 +43,21 @@ function main(): void {
     planning_semantic_degrades: planningSemanticDecision.action === "degrade",
     planning_semantic_reason_matches:
       planningSemanticDecision.reason === "planning_semantic_context_unavailable",
+    planning_semantic_diagnostic_matches:
+      planningSemanticDecision.diagnosticCode === "PLAN_SEMANTIC_INDEX_CONFIG_INVALID",
     planning_semantic_has_hint: typeof planningSemanticDecision.hint === "string",
     planning_semantic_stale_fails: planningSemanticStaleDecision.action === "fail",
+    planning_semantic_stale_diagnostic_matches:
+      planningSemanticStaleDecision.diagnosticCode === "PLAN_TURN_EXIT_CODE_FAILURE",
     applying_semantic_still_fails: applyingSemanticDecision.action === "fail",
+    applying_semantic_diagnostic_matches:
+      applyingSemanticDecision.diagnosticCode === "PLAN_SEMANTIC_INDEX_REQUIRED",
     planning_provider_failure_reason_matches:
       planningProviderFailureDecision.reason === "provider_runtime_failure",
     planning_provider_failure_keeps_error_class:
       planningProviderFailureDecision.errorClass === "upstream_http_error",
+    planning_provider_failure_diagnostic_matches:
+      planningProviderFailureDecision.diagnosticCode === "PLAN_PROVIDER_RUNTIME_FAILURE",
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

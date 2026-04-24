@@ -13,6 +13,7 @@ export interface InteractiveActivityTracker {
   consumeStderrChunk(chunk: string): string;
   observeStderrChunk(chunk: string): void;
   flushBufferedStderr(): string;
+  readPromptActivitySnapshot(): { stageId: string; text: string } | undefined;
   readPromptActivity(): string | undefined;
 }
 
@@ -309,6 +310,18 @@ export function createInteractiveActivityTracker(
         setActivity(parsed.update);
       }
       return parsed.isDiagnostic ? "" : remainder;
+    },
+    readPromptActivitySnapshot: (): { stageId: string; text: string } | undefined => {
+      if (!snapshot) {
+        return undefined;
+      }
+      if (Date.now() - snapshot.updatedAtMs > promptRetentionMs) {
+        return undefined;
+      }
+      return {
+        stageId: snapshot.stageId,
+        text: snapshot.text,
+      };
     },
     readPromptActivity: (): string | undefined => {
       if (!snapshot) {

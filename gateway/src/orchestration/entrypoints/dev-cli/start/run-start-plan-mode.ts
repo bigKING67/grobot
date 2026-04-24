@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { resolvePlanFailureDecision } from "./plan-failure-policy";
-import { parsePlanCommand } from "./plan-command";
+import { isNaturalPlanExecutionIntent, parsePlanCommand } from "./plan-command";
 import {
   appendPlanEvent,
   appendPlanProgressNote,
@@ -38,8 +38,15 @@ import { type RunStartPersistence } from "./run-start-persistence";
 import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type ChatHistoryMessage } from "./session-history";
 import {
+  derivePlanPhaseFromStatus,
+  PLAN_EXECUTION_REPLY,
+  resolvePlanStatusRecommendation,
+  resolvePlanStatusRecommendationCommand,
+  resolvePlanStatusRecommendationLabel,
+} from "./plan-state";
+import { evaluateLivePlanDecisionSnapshot } from "./plan-live-status";
+import {
   setSessionPlanState,
-  type SessionPlanPhase,
   type SessionPlanMeta,
   type SessionPlanMode,
 } from "./session-registry";
@@ -86,7 +93,6 @@ const PLAN_INTERRUPT_NOT_RUNNING_CODE = "PLAN_INTERRUPT_NOT_RUNNING";
 const PLAN_INTERRUPT_NOT_PLAN_MODE_CODE = "PLAN_INTERRUPT_NOT_PLAN_MODE";
 const PLAN_STATUS_PREVIEW_MAX_LINES = 3;
 const PLAN_STATUS_PREVIEW_MAX_CHARS = 140;
-
 export type PlanInterruptSource = "command" | "cli_esc";
 
 export interface RunStartPlanTurnOptions {
@@ -113,9 +119,6 @@ export interface RunStartPlanMode {
   getActivePlanPath(): string | undefined;
   enterPlan(goal: string, options?: RunStartPlanTurnOptions): Promise<number>;
   showPlanStatus(): Promise<number>;
-  approvePlan(note: string): Promise<number>;
-  rejectPlan(reason: string): Promise<number>;
-  verifyPlan(result: string): Promise<number>;
   runPlanTurn(note: string, options?: RunStartPlanTurnOptions): Promise<number>;
   applyPlan(extra: string, options?: RunStartPlanTurnOptions): Promise<number>;
   cancelPlan(): Promise<number>;
@@ -223,237 +226,6 @@ function buildPlanStatusPreviewLines(content: string): string[] {
   return lines.slice(0, PLAN_STATUS_PREVIEW_MAX_LINES);
 }
 
-function derivePlanPhaseFromStatus(
-  status: SessionPlanMeta["active_plan_status"],
-): SessionPlanPhase | undefined {
-  if (status === "draft" || status === "blocked" || status === "review_failed") {
-    return "drafting";
-  }
-  if (status === "ready" || status === "approved" || status === "apply_failed") {
-    return "reviewing";
-  }
-  if (status === "applying") {
-    return "applying";
-  }
-  return undefined;
-}
-
-export function resolvePlanStatusRecommendation(input: {
-  mode: "normal" | "plan_only";
-  status?: SessionPlanMeta["active_plan_status"];
-  latestVerificationStatus?: "pending" | "passed" | "failed";
-  planQualityScore?: number;
-  planQualityTopHint?: string;
-  planQualityGuardLevel?: "healthy" | "watch" | "critical";
-  planQualityGuardReason?: string;
-  interactiveMenuFirst?: boolean;
-}): {
-  action: string;
-  reason: string;
-} {
-  if (input.planQualityGuardLevel === "critical") {
-    const guardReason = typeof input.planQualityGuardReason === "string" && input.planQualityGuardReason.trim().length > 0
-      ? `；${input.planQualityGuardReason.trim()}`
-      : "";
-    const topHint = typeof input.planQualityTopHint === "string" && input.planQualityTopHint.trim().length > 0
-      ? `；优先处理：${input.planQualityTopHint.trim()}`
-      : "";
-    return {
-      action: "/plan <note>",
-      reason: `quality guard=critical，当前计划不建议审批/执行${guardReason}${topHint}`,
-    };
-  }
-  if (typeof input.planQualityScore === "number" && input.planQualityScore < 70) {
-    const topHint = typeof input.planQualityTopHint === "string" && input.planQualityTopHint.trim().length > 0
-      ? `，优先处理：${input.planQualityTopHint.trim()}`
-      : "";
-    return {
-      action: "/plan <note>",
-      reason: `plan 质量分仅 ${String(input.planQualityScore)}，建议先补齐计划细节${topHint}`,
-    };
-  }
-  if (input.mode === "plan_only") {
-    const menuFirst = input.interactiveMenuFirst === true;
-    if (input.status === "draft" || input.status === "blocked" || input.status === "review_failed") {
-      return {
-        action: menuFirst ? "/plan (Quick check)" : "/plan check",
-        reason: menuFirst
-          ? "当前 plan 仍在草稿/阻塞阶段，建议先用 /plan 菜单执行 quick check"
-          : "当前 plan 仍在草稿/阻塞阶段，建议先执行 /plan check 再审批",
-      };
-    }
-    if (input.status === "ready") {
-      return {
-        action: menuFirst ? "/plan (Approve active plan)" : "/plan approve [note]",
-        reason: menuFirst
-          ? "plan 已通过 review，请用 /plan 打开动作菜单后执行审批"
-          : "plan 已通过 review，需先审批再 apply",
-      };
-    }
-    if (input.status === "approved") {
-      return {
-        action: menuFirst ? "/plan (Apply active plan)" : "/plan apply [extra]",
-        reason: menuFirst
-          ? "plan 已审批，请用 /plan 打开动作菜单后执行 apply"
-          : "plan 已审批，可执行 apply",
-      };
-    }
-    if (input.status === "applying") {
-      return {
-        action: "/plan status",
-        reason: "apply 正在进行，先查询状态",
-      };
-    }
-    if (input.status === "apply_failed") {
-      return {
-        action: menuFirst ? "/plan (Record verification: fail)" : "/plan verify fail <note>",
-        reason: menuFirst
-          ? "apply 失败，请用 /plan 打开动作菜单并记录验收结果"
-          : "apply 失败，先记录验收结论再进入下一轮",
-      };
-    }
-    return {
-      action: "/plan check",
-      reason: "当前 plan 仍在草稿阶段，建议先做 quick check",
-    };
-  }
-  if (input.status === "applied") {
-    const menuFirst = input.interactiveMenuFirst === true;
-    if (!input.latestVerificationStatus || input.latestVerificationStatus === "pending") {
-      return {
-        action: menuFirst ? "/plan (Record verification)" : "/plan verify pass|fail <note>",
-        reason: menuFirst
-          ? "最新 applied plan 还未完成验收，请用 /plan 打开动作菜单记录结果"
-          : "最新 applied plan 还未完成验收记录",
-      };
-    }
-    return {
-      action: "/plan <goal>",
-      reason: "最新 applied plan 已有验收结论，可开启新目标",
-    };
-  }
-  if (input.status === "apply_failed") {
-    const menuFirst = input.interactiveMenuFirst === true;
-    if (!input.latestVerificationStatus || input.latestVerificationStatus === "pending") {
-      return {
-        action: menuFirst ? "/plan (Record verification: fail)" : "/plan verify fail <note>",
-        reason: menuFirst
-          ? "最新 apply_failed plan 缺少验收记录，请用 /plan 打开动作菜单补录结果"
-          : "最新 apply_failed plan 缺少验收记录",
-      };
-    }
-    return {
-      action: "/plan <goal>",
-      reason: "失败结论已记录，可开启新目标或重规划",
-    };
-  }
-  return {
-    action: "/plan <goal>",
-    reason: "当前无活跃 plan",
-  };
-}
-
-export function resolvePlanStatusRecommendationCommand(actionRaw: string): string {
-  const normalized = actionRaw.trim().toLowerCase();
-  if (normalized.includes("quick check") || normalized.startsWith("/plan check")) {
-    return "/plan check";
-  }
-  if (normalized.includes("approve active plan") || normalized.startsWith("/plan approve")) {
-    return "/plan approve [note]";
-  }
-  if (normalized.includes("apply active plan") || normalized.startsWith("/plan apply")) {
-    return "/plan apply [extra]";
-  }
-  if (normalized.includes("record verification") || normalized.startsWith("/plan verify")) {
-    return "/plan verify <pass|fail> [note]";
-  }
-  if (normalized.startsWith("/plan status")) {
-    return "/plan status";
-  }
-  if (normalized.startsWith("/plan open")) {
-    return "/plan open";
-  }
-  if (normalized.startsWith("/plan cancel")) {
-    return "/plan cancel";
-  }
-  if (normalized.startsWith("/plan <goal>")) {
-    return "/plan <goal>";
-  }
-  if (normalized.startsWith("/plan <note>")) {
-    return "/plan <note>";
-  }
-  return actionRaw.trim();
-}
-
-export type PlanStatusRecommendationActionId =
-  | "check"
-  | "approve"
-  | "apply"
-  | "verify"
-  | "status"
-  | "open_file"
-  | "cancel"
-  | "enter"
-  | "unknown";
-
-export function resolvePlanStatusRecommendationActionId(actionRaw: string): PlanStatusRecommendationActionId {
-  const command = resolvePlanStatusRecommendationCommand(actionRaw).toLowerCase();
-  if (command.startsWith("/plan check")) {
-    return "check";
-  }
-  if (command.startsWith("/plan approve")) {
-    return "approve";
-  }
-  if (command.startsWith("/plan apply")) {
-    return "apply";
-  }
-  if (command.startsWith("/plan verify")) {
-    return "verify";
-  }
-  if (command.startsWith("/plan status")) {
-    return "status";
-  }
-  if (command.startsWith("/plan open")) {
-    return "open_file";
-  }
-  if (command.startsWith("/plan cancel")) {
-    return "cancel";
-  }
-  if (command.startsWith("/plan <goal>") || command.startsWith("/plan <note>")) {
-    return "enter";
-  }
-  return "unknown";
-}
-
-export function resolvePlanStatusRecommendationLabel(actionRaw: string): string {
-  const actionId = resolvePlanStatusRecommendationActionId(actionRaw);
-  if (actionId === "check") {
-    return "Quick check";
-  }
-  if (actionId === "approve") {
-    return "Approve plan";
-  }
-  if (actionId === "apply") {
-    return "Apply plan";
-  }
-  if (actionId === "verify") {
-    return "Record verification";
-  }
-  if (actionId === "status") {
-    return "Status summary";
-  }
-  if (actionId === "open_file") {
-    return "Open plan file";
-  }
-  if (actionId === "cancel") {
-    return "Exit plan mode";
-  }
-  if (actionId === "enter") {
-    return "Create / refine plan";
-  }
-  return "Plan action";
-}
-
 interface AssistantProposedPlanCandidate {
   content: string;
   historyIndex: number;
@@ -520,6 +292,27 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       return active.entry.plan_id;
     }
     return input.runtimeState.getPlanMeta()?.active_plan_id;
+  };
+
+  const evaluateActivePlanLiveSnapshot = (
+    active: NonNullable<ReturnType<typeof resolveActivePlan>>,
+    latestVerificationStatus?: "pending" | "passed" | "failed",
+  ) => {
+    const qualityGuardRuntime = resolveQualityGuardRuntime();
+    const liveSnapshot = evaluateLivePlanDecisionSnapshot({
+      workDir: input.workDir,
+      sessionId: planSessionKey(),
+      mode: "plan_only",
+      entry: active.entry,
+      planContent: active.content,
+      latestVerificationStatus,
+      guardPolicy: qualityGuardRuntime.policy,
+      guardMode: qualityGuardRuntime.guardMode,
+    });
+    return {
+      qualityGuardRuntime,
+      liveSnapshot,
+    };
   };
 
   const persistPlanState = async (
@@ -783,10 +576,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   };
 
   const shouldRenderCompactPlanStatus = (): boolean =>
-    process.stdin.isTTY && !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
+    Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
 
   const shouldRenderCompactPlanBenchmark = (): boolean =>
-    process.stdin.isTTY && !isEnvTruthy(process.env.GROBOT_PLAN_BENCHMARK_VERBOSE);
+    Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_PLAN_BENCHMARK_VERBOSE);
 
   const writePlanRecommendationLines = (recommendation: { action: string; reason: string }): void => {
     const suggestedCommand = resolvePlanStatusRecommendationCommand(recommendation.action);
@@ -823,7 +616,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     const writeCompactRecommendation = (recommendation: { action: string; reason: string }): void => {
       writePlanRecommendationLines(recommendation);
       input.writeStdout(
-        "plan_status_detail_hint: set GROBOT_PLAN_STATUS_VERBOSE=1 and run /plan status for full diagnostics.\n",
+        "plan_status_detail_hint: set GROBOT_PLAN_STATUS_VERBOSE=1 and rerun /plan for full diagnostics.\n",
       );
     };
 
@@ -837,9 +630,20 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0)
         .length;
+      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
+        planId: activeMeta.active_plan_id,
+      });
+      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
+        planId: activeMeta.active_plan_id,
+      });
+      const latestVerificationStatus = latestVerification?.status;
+      const { liveSnapshot } = evaluateActivePlanLiveSnapshot(
+        active,
+        latestVerificationStatus,
+      );
       input.writeStdout("[plan-current]\n");
       input.writeStdout(`title: ${activeMeta.active_plan_title ?? "<none>"}\n`);
-      input.writeStdout(`status: ${activeMeta.active_plan_status ?? "draft"}\n`);
+      input.writeStdout(`status: ${liveSnapshot.liveStatus}\n`);
       input.writeStdout(`path: ${activeMeta.active_plan_path ?? "<none>"}\n`);
       if (activeMeta.active_plan_path) {
         input.writeStdout("plan_open_hint: /plan open\n");
@@ -852,43 +656,20 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (activeNonEmptyLineCount > previewLines.length) {
         input.writeStdout("preview_more: ...\n");
       }
-
-      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
-        planId: activeMeta.active_plan_id,
-      });
-      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
-        planId: activeMeta.active_plan_id,
-      });
-      const latestVerificationStatus = latestVerification?.status;
-      const quality = evaluatePlanQuality(active.content);
-      const qualityTrend = evaluatePlanQualityTrend({
-        workDir: input.workDir,
-        sessionId: planSessionKey(),
-        currentPlanId: active.entry.plan_id,
-        currentScore: quality.score,
-      });
-      const qualityGuardRuntime = resolveQualityGuardRuntime();
-      const qualityGuard = evaluatePlanQualityGuard({
-        workDir: input.workDir,
-        sessionId: planSessionKey(),
-        currentPlanId: active.entry.plan_id,
-        quality,
-        trend: qualityTrend,
-        policy: qualityGuardRuntime.policy,
-      });
-      const repairActions = buildPlanQualityRepairActions({
-        planContent: active.content,
-        quality,
-        trend: qualityTrend,
-        guard: qualityGuard,
-      });
-      const topHint = repairActions[0]?.title ?? quality.rewriteHints[0];
+      const topHint = liveSnapshot.repairActions[0]?.title ?? liveSnapshot.quality.rewriteHints[0];
       input.writeStdout("[plan-summary]\n");
       input.writeStdout(`active_plan_id: ${activeMeta.active_plan_id ?? "<none>"}\n`);
-      input.writeStdout(`active_plan_status: ${activeMeta.active_plan_status ?? "draft"}\n`);
-      if (activeMeta.active_plan_phase) {
-        input.writeStdout(`active_plan_phase: ${activeMeta.active_plan_phase}\n`);
+      input.writeStdout(`active_plan_status: ${liveSnapshot.liveStatus}\n`);
+      input.writeStdout(`active_plan_phase: ${liveSnapshot.livePhase}\n`);
+      if (liveSnapshot.statusSource === "live_snapshot") {
+        input.writeStdout(`active_plan_stored_status: ${liveSnapshot.storedStatus}\n`);
+        if (liveSnapshot.storedPhase) {
+          input.writeStdout(`active_plan_stored_phase: ${liveSnapshot.storedPhase}\n`);
+        }
       }
+      input.writeStdout(`active_plan_status_source: ${liveSnapshot.statusSource}\n`);
+      input.writeStdout(`active_plan_decision_ready: ${liveSnapshot.decisionReady ? "yes" : "no"}\n`);
+      input.writeStdout(`active_plan_approval_stale: ${liveSnapshot.approvalStale ? "yes" : "no"}\n`);
       if (latestFailure) {
         input.writeStdout(`latest_failure_event: ${latestFailure.event}\n`);
         if (latestFailure.diagnosticCode) {
@@ -902,25 +683,15 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       } else {
         input.writeStdout("latest_verification_status: <none>\n");
       }
-      input.writeStdout(`plan_quality_score: ${String(quality.score)}\n`);
-      input.writeStdout(`plan_quality_grade: ${quality.grade}\n`);
-      input.writeStdout(`plan_quality_guard_level: ${qualityGuard.level}\n`);
-      input.writeStdout(`plan_quality_guard_mode: ${qualityGuardRuntime.guardMode}\n`);
+      input.writeStdout(`plan_quality_score: ${String(liveSnapshot.quality.score)}\n`);
+      input.writeStdout(`plan_quality_grade: ${liveSnapshot.quality.grade}\n`);
+      input.writeStdout(`plan_quality_guard_level: ${liveSnapshot.qualityGuard.level}\n`);
+      input.writeStdout(`plan_quality_guard_mode: ${liveSnapshot.qualityGuardMode}\n`);
       if (topHint) {
         input.writeStdout(`plan_quality_focus_hint: ${topHint}\n`);
       }
       writeCompactBenchmarkLines(latestFailure);
-      const recommendation = resolvePlanStatusRecommendation({
-        mode: "plan_only",
-        status: activeMeta.active_plan_status,
-        latestVerificationStatus,
-        planQualityScore: quality.score,
-        planQualityTopHint: topHint,
-        planQualityGuardLevel: qualityGuard.level,
-        planQualityGuardReason: qualityGuard.reason,
-        interactiveMenuFirst: true,
-      });
-      writeCompactRecommendation(recommendation);
+      writeCompactRecommendation(liveSnapshot.recommendation);
       input.writeStdout("\n");
       return 0;
     }
@@ -1080,72 +851,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     return 0;
   };
 
-  const parseVerifyIntent = (raw: string): {
-    status: "passed" | "failed";
-    note: string;
-  } => {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return { status: "passed", note: "" };
-    }
-    const parts = trimmed.split(/\s+/);
-    const head = (parts[0] ?? "").toLowerCase();
-    if (
-      head === "fail"
-      || head === "failed"
-      || head === "reject"
-      || head === "rejected"
-      || head === "失败"
-      || head === "未通过"
-      || head === "不通过"
-    ) {
-      return {
-        status: "failed",
-        note: trimmed.slice(parts[0]?.length ?? 0).trim(),
-      };
-    }
-    if (
-      head === "pass"
-      || head === "passed"
-      || head === "ok"
-      || head === "success"
-      || head === "通过"
-      || head === "成功"
-    ) {
-      return {
-        status: "passed",
-        note: trimmed.slice(parts[0]?.length ?? 0).trim(),
-      };
-    }
-    return { status: "passed", note: trimmed };
-  };
-
   const printPlanModeHint = (): void => {
     input.writeStdout(
       [
         "[plan] commands:",
         "  /plan",
-        "  (interactive: open plan actions menu; scripts: enter plan mode)",
-        "  /plan menu",
-        "  (interactive shortcut to open plan actions menu)",
+        "  (enter plan mode; in plan mode shows current plan status)",
         "  /plan open",
         "  (interactive: open active plan file in editor)",
         "  /plan <goal>",
-        "  (enter plan mode and execute first requirement)",
-        "  /plan status",
-        "  (show active plan status summary)",
-        "  /plan approve [note]",
-        "  /plan reject [reason]",
-        "  /plan verify <pass|fail> [note]",
-        "  /plan apply [extra]",
-        "  /plan cancel",
-        "  (approve/reject/verify/apply/cancel active plan lifecycle)",
-        "  /plan check [core|generic]",
-        "  (quick benchmark check-only, default preset=core)",
-        "  /plan benchmark [label=path ...] [--assert-best <label>] [--check-only|--check]",
-        "  /plan benchmark --preset <generic|core> [--assert-best <label>] [--check-only|--check]",
-        "  (compare active plan with external candidates)",
-        "  (send plain text to refine the active plan while in PLAN_ONLY)",
+        "  (enter plan mode and run first planning turn)",
+        "  (while in PLAN_ONLY, send plain text to refine plan)",
+        `  (to start execution, reply: ${PLAN_EXECUTION_REPLY})`,
         "",
       ].join("\n"),
     );
@@ -1227,7 +944,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         .length;
       input.writeStdout("[plan-current]\n");
       input.writeStdout(`title: ${activeMeta.active_plan_title ?? "<none>"}\n`);
-      input.writeStdout(`status: ${activeMeta.active_plan_status ?? "draft"}\n`);
+      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
+        planId: activeMeta.active_plan_id,
+      });
+      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
+        planId: activeMeta.active_plan_id,
+      });
+      const latestVerificationStatus = latestVerification?.status;
+      const { qualityGuardRuntime, liveSnapshot } = evaluateActivePlanLiveSnapshot(
+        active,
+        latestVerificationStatus,
+      );
+      input.writeStdout(`status: ${liveSnapshot.liveStatus}\n`);
       input.writeStdout(`path: ${activeMeta.active_plan_path ?? "<none>"}\n`);
       if (previewLines.length > 0) {
         for (let previewIndex = 0; previewIndex < previewLines.length; previewIndex += 1) {
@@ -1239,9 +967,16 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       }
       input.writeStdout("\n");
       input.writeStdout(`active_plan_id: ${activeMeta.active_plan_id ?? "<none>"}\n`);
-      input.writeStdout(`active_plan_status: ${activeMeta.active_plan_status ?? "draft"}\n`);
-      if (activeMeta.active_plan_phase) {
-        input.writeStdout(`active_plan_phase: ${activeMeta.active_plan_phase}\n`);
+      input.writeStdout(`active_plan_status: ${liveSnapshot.liveStatus}\n`);
+      input.writeStdout(`active_plan_phase: ${liveSnapshot.livePhase}\n`);
+      input.writeStdout(`active_plan_status_source: ${liveSnapshot.statusSource}\n`);
+      input.writeStdout(`active_plan_decision_ready: ${liveSnapshot.decisionReady ? "yes" : "no"}\n`);
+      input.writeStdout(`active_plan_approval_stale: ${liveSnapshot.approvalStale ? "yes" : "no"}\n`);
+      if (liveSnapshot.statusSource === "live_snapshot") {
+        input.writeStdout(`active_plan_stored_status: ${liveSnapshot.storedStatus}\n`);
+        if (liveSnapshot.storedPhase) {
+          input.writeStdout(`active_plan_stored_phase: ${liveSnapshot.storedPhase}\n`);
+        }
       }
       input.writeStdout(`active_plan_path: ${activeMeta.active_plan_path ?? "<none>"}\n`);
       if (activeMeta.active_plan_path) {
@@ -1249,9 +984,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       }
       input.writeStdout(`active_plan_seq: ${String(activeMeta.active_plan_seq ?? 0)}\n`);
       input.writeStdout(`active_plan_title: ${activeMeta.active_plan_title ?? "<none>"}\n`);
-      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
-        planId: activeMeta.active_plan_id,
-      });
       if (latestFailure) {
         input.writeStdout(`latest_failure_event: ${latestFailure.event}\n`);
         input.writeStdout(`latest_failure_at: ${latestFailure.at}\n`);
@@ -1282,32 +1014,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       } else {
         input.writeStdout("latest_failure_event: <none>\n");
       }
-      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
-        planId: activeMeta.active_plan_id,
-      });
-      const latestVerificationStatus = latestVerification?.status;
-      const quality = evaluatePlanQuality(active.content);
-      const qualityTrend = evaluatePlanQualityTrend({
-        workDir: input.workDir,
-        sessionId: planSessionKey(),
-        currentPlanId: active.entry.plan_id,
-        currentScore: quality.score,
-      });
-      const qualityGuardRuntime = resolveQualityGuardRuntime();
-      const qualityGuard = evaluatePlanQualityGuard({
-        workDir: input.workDir,
-        sessionId: planSessionKey(),
-        currentPlanId: active.entry.plan_id,
-        quality,
-        trend: qualityTrend,
-        policy: qualityGuardRuntime.policy,
-      });
-      const repairActions = buildPlanQualityRepairActions({
-        planContent: active.content,
-        quality,
-        trend: qualityTrend,
-        guard: qualityGuard,
-      });
       if (latestVerification) {
         input.writeStdout(`latest_verification_event: ${latestVerification.event}\n`);
         input.writeStdout(`latest_verification_status: ${latestVerification.status}\n`);
@@ -1315,25 +1021,25 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       } else {
         input.writeStdout("latest_verification_event: <none>\n");
       }
-      input.writeStdout(`plan_quality_score: ${String(quality.score)}\n`);
-      input.writeStdout(`plan_quality_grade: ${quality.grade}\n`);
-      input.writeStdout(`plan_quality_findings_count: ${String(quality.findingCount)}\n`);
-      input.writeStdout(`plan_quality_blocked: ${quality.blocked ? "yes" : "no"}\n`);
-      input.writeStdout(`plan_quality_recommendation: ${quality.recommendation}\n`);
-      input.writeStdout(`plan_quality_trend: ${qualityTrend.trend}\n`);
-      if (typeof qualityTrend.previousScore === "number") {
-        input.writeStdout(`plan_quality_previous_score: ${String(qualityTrend.previousScore)}\n`);
+      input.writeStdout(`plan_quality_score: ${String(liveSnapshot.quality.score)}\n`);
+      input.writeStdout(`plan_quality_grade: ${liveSnapshot.quality.grade}\n`);
+      input.writeStdout(`plan_quality_findings_count: ${String(liveSnapshot.quality.findingCount)}\n`);
+      input.writeStdout(`plan_quality_blocked: ${liveSnapshot.quality.blocked ? "yes" : "no"}\n`);
+      input.writeStdout(`plan_quality_recommendation: ${liveSnapshot.quality.recommendation}\n`);
+      input.writeStdout(`plan_quality_trend: ${liveSnapshot.qualityTrend.trend}\n`);
+      if (typeof liveSnapshot.qualityTrend.previousScore === "number") {
+        input.writeStdout(`plan_quality_previous_score: ${String(liveSnapshot.qualityTrend.previousScore)}\n`);
       }
-      if (typeof qualityTrend.deltaFromPrevious === "number") {
-        input.writeStdout(`plan_quality_delta_from_previous: ${String(qualityTrend.deltaFromPrevious)}\n`);
+      if (typeof liveSnapshot.qualityTrend.deltaFromPrevious === "number") {
+        input.writeStdout(`plan_quality_delta_from_previous: ${String(liveSnapshot.qualityTrend.deltaFromPrevious)}\n`);
       }
-      if (qualityTrend.previousPlanId) {
-        input.writeStdout(`plan_quality_previous_plan_id: ${qualityTrend.previousPlanId}\n`);
+      if (liveSnapshot.qualityTrend.previousPlanId) {
+        input.writeStdout(`plan_quality_previous_plan_id: ${liveSnapshot.qualityTrend.previousPlanId}\n`);
       }
-      input.writeStdout(`plan_quality_guard_mode: ${qualityGuardRuntime.guardMode}\n`);
-      input.writeStdout(`plan_quality_guard_level: ${qualityGuard.level}\n`);
-      input.writeStdout(`plan_quality_regression_streak: ${String(qualityGuard.regressionStreak)}\n`);
-      input.writeStdout(`plan_quality_guard_reason: ${qualityGuard.reason}\n`);
+      input.writeStdout(`plan_quality_guard_mode: ${liveSnapshot.qualityGuardMode}\n`);
+      input.writeStdout(`plan_quality_guard_level: ${liveSnapshot.qualityGuard.level}\n`);
+      input.writeStdout(`plan_quality_regression_streak: ${String(liveSnapshot.qualityGuard.regressionStreak)}\n`);
+      input.writeStdout(`plan_quality_guard_reason: ${liveSnapshot.qualityGuard.reason}\n`);
       input.writeStdout(`plan_quality_guard_policy_profile: ${qualityGuardRuntime.policy.profile}\n`);
       input.writeStdout(`plan_quality_guard_policy_source: ${qualityGuardRuntime.source}\n`);
       if (qualityGuardRuntime.policyPath) {
@@ -1342,27 +1048,17 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (qualityGuardRuntime.warning) {
         input.writeStdout(`plan_quality_guard_policy_warning: ${qualityGuardRuntime.warning}\n`);
       }
-      if (quality.rewriteHints.length > 0) {
-        input.writeStdout(`plan_quality_rewrite_hints: ${quality.rewriteHints.join(" | ")}\n`);
+      if (liveSnapshot.quality.rewriteHints.length > 0) {
+        input.writeStdout(`plan_quality_rewrite_hints: ${liveSnapshot.quality.rewriteHints.join(" | ")}\n`);
       }
-      if (repairActions.length > 0) {
-        const summary = repairActions
+      if (liveSnapshot.repairActions.length > 0) {
+        const summary = liveSnapshot.repairActions
           .map((item) => `[${item.priority}] ${item.title} => ${item.command}`)
           .join(" || ");
         input.writeStdout(`plan_quality_repair_actions: ${summary}\n`);
       }
       writeBenchmarkSignals(latestFailure);
-      const recommendation = resolvePlanStatusRecommendation({
-        mode: "plan_only",
-        status: activeMeta.active_plan_status,
-        latestVerificationStatus,
-        planQualityScore: quality.score,
-        planQualityTopHint: repairActions[0]?.title ?? quality.rewriteHints[0],
-        planQualityGuardLevel: qualityGuard.level,
-        planQualityGuardReason: qualityGuard.reason,
-        interactiveMenuFirst: process.stdin.isTTY,
-      });
-      writePlanRecommendationLines(recommendation);
+      writePlanRecommendationLines(liveSnapshot.recommendation);
     } else if (mode === "plan_only" && meta?.active_plan_id) {
       input.writeStdout(`active_plan_id: ${meta.active_plan_id}\n`);
       input.writeStdout(`active_plan_status: ${meta.active_plan_status ?? "draft"}\n`);
@@ -1650,7 +1346,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       });
       if (!presetResolved) {
         input.writeStderr(
-          `[plan-benchmark] unknown preset: ${preset} (supported: generic, core). try: /plan benchmark --preset core --assert-best active\n\n`,
+          `[plan-benchmark] unknown preset: ${preset} (supported: generic, core). try preset=core with assert-best=active\n\n`,
         );
         return 1;
       }
@@ -1726,7 +1422,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return 2;
       }
-      input.writeStderr("[plan-benchmark] no candidates to compare. Provide /plan benchmark <label=path> or create an active plan first.\n\n");
+      input.writeStderr("[plan-benchmark] no candidates to compare. Provide benchmark candidates as <label=path> or create an active plan first.\n\n");
       return 1;
     }
 
@@ -1790,7 +1486,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       if (renderCompactOutput) {
         input.writeStdout(
-          "plan_quality_benchmark_check_detail_hint: set GROBOT_PLAN_BENCHMARK_VERBOSE=1 and rerun /plan benchmark --check-only for full diagnostics.\n",
+          "plan_quality_benchmark_check_detail_hint: set GROBOT_PLAN_BENCHMARK_VERBOSE=1 and rerun this benchmark check for full diagnostics.\n",
         );
       } else {
         input.writeStdout(
@@ -1885,7 +1581,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     if (renderCompactOutput) {
       input.writeStdout(`plan_quality_benchmark_rows_count: ${String(rowsPayload.length)}\n`);
       input.writeStdout(
-        "plan_quality_benchmark_detail_hint: set GROBOT_PLAN_BENCHMARK_VERBOSE=1 and rerun /plan benchmark for full rows.\n",
+        "plan_quality_benchmark_detail_hint: set GROBOT_PLAN_BENCHMARK_VERBOSE=1 and rerun the benchmark for full rows.\n",
       );
     } else {
       input.writeStdout(`plan_quality_benchmark_rows: ${JSON.stringify(rowsPayload)}\n`);
@@ -1928,6 +1624,68 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     }
     input.writeStdout("\n");
     return 0;
+  };
+
+  const reviewActivePlanDecisionState = async (
+    active: NonNullable<ReturnType<typeof resolveActivePlan>>,
+  ): Promise<{
+    reviewedEntry: PlanArtifactEntry;
+    review: ReturnType<typeof reviewPlanContent>;
+    recommendation: ReturnType<typeof resolvePlanStatusRecommendation>;
+    repairActions: ReturnType<typeof buildPlanQualityRepairActions>;
+  } | undefined> => {
+    const review = reviewPlanContent(active.content);
+    const reviewedEntry = recordPlanReviewResult(
+      input.workDir,
+      planSessionKey(),
+      active.entry.plan_id,
+      review,
+      "cli",
+    );
+    if (!reviewedEntry) {
+      return undefined;
+    }
+    await persistPlanState(
+      "plan_only",
+      buildPlanMeta(reviewedEntry, active.planPath),
+    );
+    const quality = evaluatePlanQuality(active.content);
+    const qualityTrend = evaluatePlanQualityTrend({
+      workDir: input.workDir,
+      sessionId: planSessionKey(),
+      currentPlanId: reviewedEntry.plan_id,
+      currentScore: quality.score,
+    });
+    const qualityGuardRuntime = resolveQualityGuardRuntime();
+    const qualityGuard = evaluatePlanQualityGuard({
+      workDir: input.workDir,
+      sessionId: planSessionKey(),
+      currentPlanId: reviewedEntry.plan_id,
+      quality,
+      trend: qualityTrend,
+      policy: qualityGuardRuntime.policy,
+    });
+    const repairActions = buildPlanQualityRepairActions({
+      planContent: active.content,
+      quality,
+      trend: qualityTrend,
+      guard: qualityGuard,
+    });
+    const recommendation = resolvePlanStatusRecommendation({
+      mode: "plan_only",
+      status: reviewedEntry.status,
+      planQualityScore: quality.score,
+      planQualityTopHint: repairActions[0]?.title ?? quality.rewriteHints[0],
+      planQualityGuardLevel: qualityGuard.level,
+      planQualityGuardReason: qualityGuard.reason,
+      interactiveMenuFirst: true,
+    });
+    return {
+      reviewedEntry,
+      review,
+      recommendation,
+      repairActions,
+    };
   };
 
   const runPlanTurn = async (
@@ -2108,7 +1866,47 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           }
         }
       }
-      input.writeStdout(`[plan] updated file=${finalPlanPath ?? "<unknown>"}\n\n`);
+      const reviewedActive = resolveActivePlan();
+      if (!reviewedActive) {
+        input.writeStderr(
+          `[plan] review failed, active plan disappeared after update: ${meta.active_plan_id}\n`,
+        );
+        return 1;
+      }
+      const decisionState = await reviewActivePlanDecisionState(reviewedActive);
+      if (!decisionState) {
+        input.writeStderr(
+          `[plan] review failed, plan not found: ${meta.active_plan_id}\n`,
+        );
+        return 1;
+      }
+      const planPhase = derivePlanPhaseFromStatus(decisionState.reviewedEntry.status) ?? "drafting";
+      input.writeStdout(`[plan] updated file=${finalPlanPath ?? "<unknown>"}\n`);
+      input.writeStdout(
+        `[plan] phase=${planPhase} status=${decisionState.reviewedEntry.status}\n`,
+      );
+      if (!decisionState.review.ok) {
+        const reviewCode = decisionState.review.blocked
+          ? PLAN_REVIEW_BLOCKED_CODE
+          : PLAN_REVIEW_FAILED_CODE;
+        input.writeStdout(
+          `[plan-review] code=${reviewCode} findings=${formatReviewFindings(decisionState.review.findings)}\n`,
+        );
+        const topRepairAction = decisionState.repairActions[0];
+        input.writeStdout(
+          `[plan] next: ${topRepairAction?.command ?? decisionState.recommendation.action}\n`,
+        );
+        input.writeStdout(
+          `[plan] ${decisionState.recommendation.reason}\n\n`,
+        );
+        return 0;
+      }
+      input.writeStdout(
+        `[plan] ${decisionState.recommendation.reason}\n`,
+      );
+      input.writeStdout(
+        `[plan] next: ${decisionState.recommendation.action}\n\n`,
+      );
       return code;
     } finally {
       if (pendingInterruptSource) {
@@ -2119,212 +1917,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       }
       activeTurnPhase = "idle";
     }
-  };
-
-  const approvePlan = async (noteRaw: string): Promise<number> => {
-    const active = resolveActivePlan();
-    if (!active) {
-      input.writeStderr("[plan] no active plan to approve. Use /plan <goal> first.\n\n");
-      return 1;
-    }
-    if (active.entry.status === "applying") {
-      input.writeStderr(
-        `[plan] approve blocked by status=${active.entry.status} plan_id=${active.entry.plan_id}\n`,
-      );
-      return 1;
-    }
-    if (active.entry.status === "applied" || active.entry.status === "discarded") {
-      input.writeStderr(
-        `[plan] approve blocked by status=${active.entry.status} plan_id=${active.entry.plan_id}\n`,
-      );
-      return 1;
-    }
-    const guardQuality = evaluatePlanQuality(active.content);
-    const guardTrend = evaluatePlanQualityTrend({
-      workDir: input.workDir,
-      sessionId: planSessionKey(),
-      currentPlanId: active.entry.plan_id,
-      currentScore: guardQuality.score,
-    });
-    const qualityGuardRuntime = resolveQualityGuardRuntime();
-    const guardSummary = evaluatePlanQualityGuard({
-      workDir: input.workDir,
-      sessionId: planSessionKey(),
-      currentPlanId: active.entry.plan_id,
-      quality: guardQuality,
-      trend: guardTrend,
-      policy: qualityGuardRuntime.policy,
-    });
-    const guardMode = qualityGuardRuntime.guardMode;
-    if (guardMode === "strict" && guardSummary.level === "critical") {
-      appendPlanEvent(input.workDir, planSessionKey(), {
-        event: "plan_approval_blocked",
-        plan_id: active.entry.plan_id,
-        source: "cli",
-        detail: [
-          "reason=quality_guard_critical",
-          `guard_mode=${guardMode}`,
-          `guard_profile=${qualityGuardRuntime.policy.profile}`,
-          `guard_source=${qualityGuardRuntime.source}`,
-          `guard_level=${guardSummary.level}`,
-          `guard_reason=${guardSummary.reason.replace(/\s+/g, "_")}`,
-        ].join(" "),
-      });
-      input.writeStderr(
-        `[plan] code=${PLAN_QUALITY_GUARD_BLOCKED_CODE} approve blocked by quality guard (mode=${guardMode}, level=${guardSummary.level}): ${guardSummary.reason}\n`,
-      );
-      return 2;
-    }
-    const review = reviewPlanContent(active.content);
-    const reviewedEntry = recordPlanReviewResult(
-      input.workDir,
-      planSessionKey(),
-      active.entry.plan_id,
-      review,
-      "cli",
-    );
-    if (!reviewedEntry) {
-      input.writeStderr(
-        `[plan] review failed, plan not found: ${active.entry.plan_id}\n`,
-      );
-      return 1;
-    }
-    await persistPlanState(
-      "plan_only",
-      buildPlanMeta(reviewedEntry, active.planPath),
-    );
-    if (!review.ok) {
-      const reviewCode = review.blocked
-        ? PLAN_REVIEW_BLOCKED_CODE
-        : PLAN_REVIEW_FAILED_CODE;
-      input.writeStderr(
-        `[plan-review] code=${reviewCode} plan_id=${active.entry.plan_id} findings=${formatReviewFindings(review.findings)}\n\n`,
-      );
-      input.writeStderr(
-        `[plan-review-diagnostics] ${JSON.stringify({
-          code: reviewCode,
-          blocked: review.blocked,
-          findings_count: review.findings.length,
-          findings: review.findings.map((item) => ({
-            code: item.code,
-            section: item.section ?? "global",
-          })),
-        })}\n`,
-      );
-      return 2;
-    }
-    const approval = approvePlanArtifact(
-      input.workDir,
-      planSessionKey(),
-      active.entry.plan_id,
-      {
-        approvedBy: "cli",
-        source: "cli",
-      },
-    );
-    if (!approval.approved || !approval.entry || !approval.planHash || !approval.ticketId) {
-      input.writeStderr(
-        `[plan] approval failed plan_id=${active.entry.plan_id}\n`,
-      );
-      return 1;
-    }
-    await persistPlanState(
-      "plan_only",
-      buildPlanMeta(approval.entry, active.planPath),
-    );
-    const note = noteRaw.trim().replace(/\s+/g, " ").slice(0, 160);
-    appendPlanEvent(input.workDir, planSessionKey(), {
-      event: "plan_approval_confirmed",
-      plan_id: active.entry.plan_id,
-      source: "cli",
-      detail: note.length > 0
-        ? `approved_via=manual note=${note.replace(/\s+/g, "_")}`
-        : "approved_via=manual",
-    });
-    input.writeStdout(
-      `[plan] approved plan_id=${active.entry.plan_id} ticket=${approval.ticketId}\n\n`,
-    );
-    return 0;
-  };
-
-  const rejectPlan = async (reasonRaw: string): Promise<number> => {
-    const active = resolveActivePlan();
-    if (!active) {
-      input.writeStderr("[plan] no active plan to reject.\n\n");
-      return 1;
-    }
-    if (active.entry.status === "applied" || active.entry.status === "discarded") {
-      input.writeStderr(
-        `[plan] reject blocked by status=${active.entry.status} plan_id=${active.entry.plan_id}\n`,
-      );
-      return 1;
-    }
-    const normalizedReason = reasonRaw.trim().replace(/\s+/g, " ").slice(0, 200);
-    const review = {
-      ok: false,
-      blocked: false,
-      checked_at: new Date().toISOString(),
-      findings: [
-        {
-          code: "user_rejected",
-          section: "global",
-          message: normalizedReason.length > 0 ? normalizedReason : "rejected by /plan reject",
-        },
-      ],
-    } satisfies ReturnType<typeof reviewPlanContent>;
-    const reviewedEntry = recordPlanReviewResult(
-      input.workDir,
-      planSessionKey(),
-      active.entry.plan_id,
-      review,
-      "cli",
-    );
-    if (!reviewedEntry) {
-      input.writeStderr(
-        `[plan] reject failed, plan not found: ${active.entry.plan_id}\n`,
-      );
-      return 1;
-    }
-    await persistPlanState(
-      "plan_only",
-      buildPlanMeta(reviewedEntry, active.planPath),
-    );
-    appendPlanEvent(input.workDir, planSessionKey(), {
-      event: "plan_review_rejected",
-      plan_id: active.entry.plan_id,
-      source: "cli",
-      detail: normalizedReason.length > 0
-        ? `reason=${normalizedReason.replace(/\s+/g, "_")}`
-        : "reason=rejected_by_command",
-    });
-    input.writeStdout(
-      `[plan] rejected plan_id=${active.entry.plan_id}; update plan and re-approve when ready.\n\n`,
-    );
-    return 0;
-  };
-
-  const verifyPlan = async (resultRaw: string): Promise<number> => {
-    const latest = resolveLatestPlanEntry(["applied", "apply_failed"]);
-    if (!latest) {
-      input.writeStderr("[plan] no applied plan to verify.\n\n");
-      return 1;
-    }
-    const parsed = parseVerifyIntent(resultRaw);
-    const note = parsed.note.replace(/\s+/g, " ").slice(0, 200);
-    appendPlanEvent(input.workDir, planSessionKey(), {
-      event: parsed.status === "passed"
-        ? "plan_verification_passed"
-        : "plan_verification_failed",
-      plan_id: latest.plan_id,
-      source: "cli",
-      detail: note.length > 0
-        ? `verification_status=${parsed.status} note=${note.replace(/\s+/g, "_")}`
-        : `verification_status=${parsed.status}`,
-    });
-    input.writeStdout(
-      `[plan] verification recorded plan_id=${latest.plan_id} status=${parsed.status}\n\n`,
-    );
-    return 0;
   };
 
   const cancelPlan = async (): Promise<number> => {
@@ -2429,21 +2021,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return 2;
       }
-
-      const explicitApprovalRequired = isEnvTruthy(process.env.GROBOT_PLAN_REQUIRE_EXPLICIT_APPROVAL);
-      if (explicitApprovalRequired && active.entry.status !== "approved") {
-        appendPlanEvent(input.workDir, planSessionKey(), {
-          event: "plan_apply_blocked",
-          plan_id: active.entry.plan_id,
-          source: "cli",
-          detail: "reason=approval_required status_not_approved",
-        });
-        input.writeStderr(
-          `[plan] apply blocked by policy: explicit approval required. run /plan approve first (plan_id=${active.entry.plan_id}).\n`,
-        );
-        return 2;
-      }
-
       let approvedEntry = active.entry;
       let approvedHash = active.entry.approved_hash;
       let approvalTicketId = active.entry.approval_ticket_id;
@@ -2679,9 +2256,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         return { handled: true, code: await enterPlan(parsed.goal) };
       }
-      if (parsed.kind === "menu") {
-        return { handled: true, code: await showPlanStatus() };
-      }
       if (parsed.kind === "enter_mode") {
         if (input.runtimeState.getPlanMode() === "plan_only") {
           return { handled: true, code: await showPlanStatus() };
@@ -2697,34 +2271,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         return { handled: true, code: await enterPlan("") };
       }
-      if (parsed.kind === "status") {
+      if (parsed.kind === "open") {
         return { handled: true, code: await showPlanStatus() };
       }
-      if (parsed.kind === "benchmark") {
-        return {
-          handled: true,
-          code: await benchmarkPlan(parsed.candidates, {
-            preset: parsed.preset,
-            assertBest: parsed.assertBest,
-            checkOnly: parsed.checkOnly,
-          }),
-        };
-      }
-      if (parsed.kind === "approve") {
-        return { handled: true, code: await approvePlan(parsed.note) };
-      }
-      if (parsed.kind === "reject") {
-        return { handled: true, code: await rejectPlan(parsed.reason) };
-      }
-      if (parsed.kind === "apply") {
-        return { handled: true, code: await applyPlan(parsed.extra) };
-      }
-      if (parsed.kind === "verify") {
-        return { handled: true, code: await verifyPlan(parsed.result) };
-      }
-      return { handled: true, code: await cancelPlan() };
+      return { handled: true, code: 0 };
     }
     if (input.runtimeState.getPlanMode() === "plan_only") {
+      if (isNaturalPlanExecutionIntent(message)) {
+        return {
+          handled: true,
+          code: await applyPlan(message),
+        };
+      }
       return {
         handled: true,
         code: await runPlanTurn(message, {
@@ -2749,9 +2307,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     },
     enterPlan,
     showPlanStatus,
-    approvePlan,
-    rejectPlan,
-    verifyPlan,
     runPlanTurn,
     applyPlan,
     cancelPlan,
