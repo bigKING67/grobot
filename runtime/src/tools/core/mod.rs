@@ -1340,36 +1340,6 @@ fn get_usize_arg(args: &Map<String, Value>, key: &str, fallback: usize, max: usi
     parsed.clamp(1, max)
 }
 
-fn get_string_array_arg_with_char_limit(
-    args: &Map<String, Value>,
-    key: &str,
-    max_items: usize,
-    max_item_chars: usize,
-) -> Vec<String> {
-    let Some(raw_items) = args.get(key).and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let mut result = Vec::new();
-    for item in raw_items {
-        let Some(raw_text) = item.as_str() else {
-            continue;
-        };
-        let normalized = raw_text.trim();
-        if normalized.is_empty() {
-            continue;
-        }
-        let compact = truncate_output(normalized.to_string(), max_item_chars);
-        if compact.is_empty() {
-            continue;
-        }
-        result.push(compact);
-        if result.len() >= max_items {
-            break;
-        }
-    }
-    result
-}
-
 fn parse_ask_user_question_options_arg(raw: &Value) -> Vec<Value> {
     let Some(items) = raw.as_array() else {
         return Vec::new();

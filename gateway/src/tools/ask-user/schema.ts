@@ -141,74 +141,6 @@ function normalizeQuestionRecords(value: unknown): Record<string, unknown>[] {
   return rows;
 }
 
-function normalizeEnvelopeRecord(
-  record: Record<string, unknown>,
-  fieldMap: {
-    questionId: string;
-    blockingNodeId: string;
-    defaultOnTimeout: string;
-    resumeToken: string;
-    createdAt: string;
-    questionKey: string;
-    header: string;
-    questionIndex: string;
-    questionTotal: string;
-    requireStructuredQuestions?: boolean;
-  },
-  options: AskUserNormalizeOptions = {},
-): AskUserEnvelope | undefined {
-  const cleanText = options.cleanText ?? defaultCleanText;
-  const nowIso = options.nowIso ?? (() => new Date().toISOString());
-  const randomId = options.randomId
-    ?? ((prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
-  const questionRecords = normalizeQuestionRecords(record.questions);
-  const firstQuestion = questionRecords[0];
-  const requireStructuredQuestions = fieldMap.requireStructuredQuestions === true;
-  const question = requireStructuredQuestions
-    ? parseOptionalString(firstQuestion?.question, cleanText)
-    : (parseOptionalString(record.question, cleanText)
-      ?? parseOptionalString(firstQuestion?.question, cleanText));
-  if (!question) {
-    return undefined;
-  }
-  const optionsSource = requireStructuredQuestions
-    ? firstQuestion?.options
-    : (record.optionsDetailed ?? record.options ?? firstQuestion?.options);
-  const optionsDetailed = ensureAskUserOptions(optionsSource, 6, cleanText);
-  const questionTotal = parseOptionalPositiveInteger(record[fieldMap.questionTotal])
-    ?? parseOptionalPositiveInteger(record.questionTotal)
-    ?? (questionRecords.length > 0 ? questionRecords.length : undefined);
-  const questionIndex = parseOptionalPositiveInteger(record[fieldMap.questionIndex])
-    ?? parseOptionalPositiveInteger(record.questionIndex);
-  return {
-    questionId: parseOptionalString(record[fieldMap.questionId], cleanText)
-      ?? parseOptionalString(firstQuestion?.id, cleanText)
-      ?? randomId("askq"),
-    blockingNodeId: parseOptionalString(record[fieldMap.blockingNodeId], cleanText)
-      ?? "node.unknown",
-    question,
-    options: optionsDetailed.map((option) => option.label),
-    optionsDetailed,
-    questionKey: parseOptionalString(record[fieldMap.questionKey], cleanText)
-      ?? parseOptionalString(record.questionKey, cleanText)
-      ?? parseOptionalString(firstQuestion?.id, cleanText),
-    header: parseOptionalString(record[fieldMap.header], cleanText)
-      ?? parseOptionalString(record.header, cleanText)
-      ?? parseOptionalString(firstQuestion?.header, cleanText),
-    questionIndex,
-    questionTotal,
-    defaultOnTimeout: parseOptionalString(
-      record[fieldMap.defaultOnTimeout],
-      cleanText,
-    ) ?? "continue_with_best_effort",
-    resumeToken: parseOptionalString(record[fieldMap.resumeToken], cleanText)
-      ?? randomId("resume"),
-    createdAt: parseOptionalString(record[fieldMap.createdAt], cleanText)
-      ?? parseOptionalString(record.createdAt, cleanText)
-      ?? nowIso(),
-  };
-}
-
 export function normalizeAskUserEnvelope(
   raw: unknown,
   options: AskUserNormalizeOptions = {},
@@ -216,22 +148,36 @@ export function normalizeAskUserEnvelope(
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return undefined;
   }
-  return normalizeEnvelopeRecord(
-    raw as Record<string, unknown>,
-    {
-      questionId: "questionId",
-      blockingNodeId: "blockingNodeId",
-      defaultOnTimeout: "defaultOnTimeout",
-      resumeToken: "resumeToken",
-      createdAt: "createdAt",
-      questionKey: "questionKey",
-      header: "header",
-      questionIndex: "questionIndex",
-      questionTotal: "questionTotal",
-      requireStructuredQuestions: false,
-    },
-    options,
+  const record = raw as Record<string, unknown>;
+  const cleanText = options.cleanText ?? defaultCleanText;
+  const nowIso = options.nowIso ?? (() => new Date().toISOString());
+  const randomId = options.randomId
+    ?? ((prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
+  const questionId = parseOptionalString(record.questionId, cleanText);
+  const blockingNodeId = parseOptionalString(record.blockingNodeId, cleanText);
+  const question = parseOptionalString(record.question, cleanText);
+  if (!questionId || !blockingNodeId || !question) {
+    return undefined;
+  }
+  const optionsDetailed = ensureAskUserOptions(
+    record.optionsDetailed ?? record.options,
+    6,
+    cleanText,
   );
+  return {
+    questionId,
+    blockingNodeId,
+    question,
+    options: optionsDetailed.map((option) => option.label),
+    optionsDetailed,
+    questionKey: parseOptionalString(record.questionKey, cleanText),
+    header: parseOptionalString(record.header, cleanText),
+    questionIndex: parseOptionalPositiveInteger(record.questionIndex),
+    questionTotal: parseOptionalPositiveInteger(record.questionTotal),
+    defaultOnTimeout: parseOptionalString(record.defaultOnTimeout, cleanText) ?? "continue_with_best_effort",
+    resumeToken: parseOptionalString(record.resumeToken, cleanText) ?? randomId("resume"),
+    createdAt: parseOptionalString(record.createdAt, cleanText) ?? nowIso(),
+  };
 }
 
 export function normalizeAskUserEnvelopeFromPayload(
@@ -241,20 +187,35 @@ export function normalizeAskUserEnvelopeFromPayload(
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return undefined;
   }
-  return normalizeEnvelopeRecord(
-    raw as Record<string, unknown>,
-    {
-      questionId: "question_id",
-      blockingNodeId: "blocking_node_id",
-      defaultOnTimeout: "default_on_timeout",
-      resumeToken: "resume_token",
-      createdAt: "created_at",
-      questionKey: "question_key",
-      header: "header",
-      questionIndex: "question_index",
-      questionTotal: "question_total",
-      requireStructuredQuestions: true,
-    },
-    options,
-  );
+  const record = raw as Record<string, unknown>;
+  const cleanText = options.cleanText ?? defaultCleanText;
+  const nowIso = options.nowIso ?? (() => new Date().toISOString());
+  const randomId = options.randomId
+    ?? ((prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
+  const questionRecords = normalizeQuestionRecords(record.questions);
+  const firstQuestion = questionRecords[0];
+  if (!firstQuestion) {
+    return undefined;
+  }
+  const questionId = parseOptionalString(firstQuestion.id, cleanText);
+  const header = parseOptionalString(firstQuestion.header, cleanText);
+  const question = parseOptionalString(firstQuestion.question, cleanText);
+  if (!questionId || !header || !question) {
+    return undefined;
+  }
+  const optionsDetailed = ensureAskUserOptions(firstQuestion.options, 6, cleanText);
+  return {
+    questionId,
+    blockingNodeId: parseOptionalString(record.blocking_node_id, cleanText) ?? "node.unknown",
+    question,
+    options: optionsDetailed.map((option) => option.label),
+    optionsDetailed,
+    questionKey: questionId,
+    header,
+    questionIndex: parseOptionalPositiveInteger(record.question_index),
+    questionTotal: parseOptionalPositiveInteger(record.question_total) ?? questionRecords.length,
+    defaultOnTimeout: parseOptionalString(record.default_on_timeout, cleanText) ?? "continue_with_best_effort",
+    resumeToken: parseOptionalString(record.resume_token, cleanText) ?? randomId("resume"),
+    createdAt: parseOptionalString(record.created_at, cleanText) ?? nowIso(),
+  };
 }

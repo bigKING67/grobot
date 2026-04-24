@@ -136,7 +136,6 @@ export interface GaSessionStateSnapshot {
   skillCards: SkillCard[];
   reflectionQueue: ReflectionTask[];
   pendingAskQueue?: AskUserEnvelope[];
-  pendingAsk?: AskUserEnvelope;
   failureState?: SessionFailureState;
 }
 
@@ -422,19 +421,12 @@ export function normalizeGaSessionStateSnapshot(
       }
     }
   }
-  if (pendingAskQueue.length === 0) {
-    const pendingAskLegacy = normalizeAskUserEnvelope(record.pendingAsk);
-    if (pendingAskLegacy) {
-      pendingAskQueue.push(pendingAskLegacy);
-    }
-  }
-  const pendingAsk = pendingAskQueue[0];
   const failureState = normalizeFailureState(record.failureState);
   if (
     memory.length === 0
     && skillCards.length === 0
     && reflectionQueue.length === 0
-    && !pendingAsk
+    && pendingAskQueue.length === 0
     && !failureState
   ) {
     return undefined;
@@ -444,7 +436,6 @@ export function normalizeGaSessionStateSnapshot(
     skillCards,
     reflectionQueue,
     pendingAskQueue: pendingAskQueue.length > 0 ? pendingAskQueue : undefined,
-    pendingAsk,
     failureState,
   };
 }
@@ -970,8 +961,6 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
         for (const ask of normalized.pendingAskQueue) {
           pendingAskBySession.set(sessionKey, ask);
         }
-      } else if (normalized.pendingAsk) {
-        pendingAskBySession.set(sessionKey, normalized.pendingAsk);
       }
       if (normalized.failureState) {
         failureStateBySession.set(sessionKey, normalized.failureState);
@@ -985,9 +974,8 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
       const skillCards = [...(skillCardsBySession.get(sessionKey) ?? [])];
       const reflectionQueue = [...(reflectionBySession.get(sessionKey) ?? [])];
       const pendingAskQueue = pendingAskBySession.list(sessionKey);
-      const pendingAsk = pendingAskQueue[0];
       const failureState = failureStateBySession.get(sessionKey);
-      if (memory.length === 0 && skillCards.length === 0 && reflectionQueue.length === 0 && !pendingAsk && !failureState) {
+      if (memory.length === 0 && skillCards.length === 0 && reflectionQueue.length === 0 && pendingAskQueue.length === 0 && !failureState) {
         return undefined;
       }
       return {
@@ -995,7 +983,6 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
         skillCards,
         reflectionQueue,
         pendingAskQueue: pendingAskQueue.length > 0 ? pendingAskQueue : undefined,
-        pendingAsk,
         failureState,
       };
     },

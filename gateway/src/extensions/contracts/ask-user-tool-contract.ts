@@ -154,7 +154,7 @@ const expiredEnvelope = normalizeAskUserEnvelopeFromPayload({
   }],
   default_on_timeout: "no",
   resume_token: "resume_005",
-  createdAt: "2026-01-01T00:00:00.000Z",
+  created_at: "2026-01-01T00:00:00.000Z",
 });
 const freshEnvelope = normalizeAskUserEnvelopeFromPayload({
   blocking_node_id: "node.fresh",
@@ -166,7 +166,7 @@ const freshEnvelope = normalizeAskUserEnvelopeFromPayload({
   }],
   default_on_timeout: "yes",
   resume_token: "resume_006",
-  createdAt: "2026-01-01T00:00:12.000Z",
+  created_at: "2026-01-01T00:00:12.000Z",
 });
 if (!expiredEnvelope || !freshEnvelope) {
   throw new Error("failed to normalize ttl ask_user payload");
