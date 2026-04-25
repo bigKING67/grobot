@@ -10,6 +10,7 @@ import {
 import { createRunStartModelOps, type RunStartModelOps } from "./run-start-model-ops";
 import { createRunStartSessionMenuOps } from "./run-start-session-menu-ops";
 import { runSessionMenuPicker } from "./run-start-session-menu";
+import { runTerminalSelectMenu } from "./run-start-io";
 import { runStartMessageMode } from "./run-start-message-mode";
 import { createRunStartOutput } from "./run-start-output";
 import { createRunStartPersistence } from "./run-start-persistence";
@@ -21,6 +22,8 @@ import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { setSessionGaState } from "./session-registry";
 import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
+import { resolveStartupRewindDisambiguation } from "./session-rewind-startup-disambiguation";
+import { resolveStartupRewindTarget } from "./session-rewind-startup";
 import { resolveStartupResumeDisambiguation } from "./session-resume-startup-disambiguation";
 import { resolveStartupResumeTarget } from "./session-resume-startup";
 import {
@@ -135,6 +138,17 @@ function applyContextWindowOverride(input: {
   return previousAutoCompact !== nextAutoCompact || previousWindow !== normalizedNextWindow;
 }
 
+function formatStartupPickerPreview(value: string, maxLength = 42): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "-";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+}
+
 export async function runStart(
   options: Record<string, OptionValue>,
 ): Promise<number> {
@@ -159,6 +173,9 @@ export async function runStart(
     resumeLastRequested,
     resumeAllRequested,
     resumeSelector,
+    rewindRequested,
+    rewindSelector,
+    rewindMode,
     forkSession,
     resumeSessionAt,
     rewindFiles,
@@ -833,16 +850,70 @@ export async function runStart(
         modelOps.applyModelOverrideForActiveSession();
       }
     }
-    const shouldRunRewind = Boolean(resumeSessionAt)
+    const hasLegacyRewindCheckpointId = typeof resumeSessionAt === "string"
+      && resumeSessionAt.trim().length > 0;
+    const shouldRunRewind = rewindRequested
+      || hasLegacyRewindCheckpointId
       || (Array.isArray(rewindFiles) && rewindFiles.length > 0);
     if (shouldRunRewind) {
-      await sessionOps.rewindSession({
-        sessionId: runtimeState.getActiveSessionId(),
-        checkpointId: resumeSessionAt,
-        mode: Array.isArray(rewindFiles) && rewindFiles.length > 0 ? "code" : "both",
-        fileFilter: rewindFiles,
-        reason: resumed ? "cli:resume+rewind" : "cli:rewind",
+      const rewindQuery = (rewindSelector?.trim() ?? "")
+        || (resumeSessionAt?.trim() ?? "");
+      const rewindTarget = resolveStartupRewindTarget({
+        rewindRequested: shouldRunRewind,
+        rewindQuery,
+        rewindQueryStrict: rewindQuery.length > 0
+          && hasLegacyRewindCheckpointId
+          && !(rewindSelector?.trim()),
+        checkpoints: sessionOps.listRewindCheckpoints(
+          runtimeState.getActiveSessionId(),
+          64,
+        ),
       });
+      let targetCheckpointId = rewindTarget.targetCheckpointId;
+      if (rewindTarget.notice) {
+        output.writeStdout(rewindTarget.notice);
+      }
+      if (rewindTarget.requiresDisambiguation) {
+        const disambiguation = await resolveStartupRewindDisambiguation({
+          rewindTarget,
+          stdinIsTTY: Boolean(process.stdin.isTTY),
+          pickCheckpoint: async (candidates) => {
+            const picked = await runTerminalSelectMenu({
+              title: "Startup Rewind Checkpoint",
+              subtitle: `Session: ${runtimeState.getActiveSessionId()}`,
+              hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to skip startup rewind.",
+              items: candidates.map((checkpoint) => ({
+                id: checkpoint.checkpointId,
+                label: checkpoint.checkpointId,
+                description:
+                  `${checkpoint.createdAt} | files=${String(checkpoint.changedFilesCount)} | user=${
+                    formatStartupPickerPreview(checkpoint.userText)
+                  } | assistant=${formatStartupPickerPreview(checkpoint.assistantText)}`,
+              })),
+            });
+            if (picked.kind === "cancelled") {
+              return { kind: "cancelled" };
+            }
+            return {
+              kind: "checkpoint",
+              checkpointId: picked.item.id,
+            };
+          },
+        });
+        targetCheckpointId = disambiguation.targetCheckpointId;
+        for (const message of disambiguation.messages) {
+          output.writeStdout(message);
+        }
+      }
+      if (targetCheckpointId) {
+        await sessionOps.rewindSession({
+          sessionId: runtimeState.getActiveSessionId(),
+          checkpointId: targetCheckpointId,
+          mode: rewindMode,
+          fileFilter: rewindFiles,
+          reason: resumed ? "cli:resume+rewind" : "cli:rewind",
+        });
+      }
     }
     if (forkSession) {
       const forked = await sessionOps.forkFromSession(

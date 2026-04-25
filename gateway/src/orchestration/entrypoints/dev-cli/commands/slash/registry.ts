@@ -1,4 +1,5 @@
 import { parsePlanCommand } from "../../start/plan-command";
+import { resolveRewindQueryMatches } from "../../start/session-rewind-search";
 import { resolveResumeQueryMatches } from "../../start/session-resume-search";
 import {
   type SessionInteractiveAction,
@@ -224,30 +225,6 @@ function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
   };
 }
 
-function parseUpdatedAtMs(value: string): number {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeQueryText(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function stripBalancedQuotes(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length < 2) {
-    return trimmed;
-  }
-  const first = trimmed[0];
-  const last = trimmed[trimmed.length - 1];
-  const isQuote = first === "\"" || first === "'" || first === "`";
-  if (!isQuote || first !== last) {
-    return trimmed;
-  }
-  const inner = trimmed.slice(1, -1).trim();
-  return inner.length > 0 ? inner : trimmed;
-}
-
 function formatSingleLinePreview(value: string, maxLength = 56): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -308,144 +285,6 @@ function buildRewindNoMatchMessage(
   activeSessionId: string,
 ): string {
   return `[rewind] No checkpoints matching "${query}" in session "${activeSessionId}". Use ${command} to open menu.\n[rewind] Tip: match checkpoint-id/created-at/user/assistant; compact query ignores spaces, "_" and "-".\n\n`;
-}
-
-function resolvePrioritizedMatches<T>(
-  resolvers: ReadonlyArray<() => T[]>,
-  sortMatches: (matches: T[]) => T[],
-): T[] {
-  for (const resolve of resolvers) {
-    const matches = resolve();
-    if (matches.length > 0) {
-      return sortMatches(matches);
-    }
-  }
-  return [];
-}
-
-
-function normalizeRewindQueryText(value: string): string {
-  return normalizeQueryText(value);
-}
-
-function normalizeDigitsOnly(value: string): string {
-  return value.replace(/\D+/g, "");
-}
-
-function normalizeCompactText(value: string): string {
-  return normalizeQueryText(value).replace(/[\s_-]+/g, "");
-}
-
-function sortRewindQueryMatches(
-  matches: SessionInteractiveRewindCheckpointSummary[],
-): SessionInteractiveRewindCheckpointSummary[] {
-  matches.sort(
-    (
-      left: SessionInteractiveRewindCheckpointSummary,
-      right: SessionInteractiveRewindCheckpointSummary,
-    ) => {
-      const createdDiff = parseUpdatedAtMs(right.createdAt) - parseUpdatedAtMs(left.createdAt);
-      if (createdDiff !== 0) {
-        return createdDiff;
-      }
-      return right.checkpointId.localeCompare(left.checkpointId);
-    },
-  );
-  return matches;
-}
-
-function resolveRewindQueryMatches(
-  queryRaw: string,
-  checkpoints: readonly SessionInteractiveRewindCheckpointSummary[],
-): SessionInteractiveRewindCheckpointSummary[] {
-  const query = normalizeRewindQueryText(stripBalancedQuotes(queryRaw));
-  if (!query) {
-    return [];
-  }
-  const compactQuery = normalizeCompactText(query);
-  const hasCompactQuery = compactQuery.length > 0;
-  const queryDigits = normalizeDigitsOnly(query);
-  const prioritizedMatches = resolvePrioritizedMatches(
-    [
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.checkpointId) === query),
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.createdAt) === query),
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.userText) === query),
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.assistantText) === query),
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.checkpointId) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.createdAt) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.userText) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.assistantText) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.checkpointId).startsWith(compactQuery))
-        : [],
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.createdAt).startsWith(compactQuery))
-        : [],
-      () => queryDigits.length > 0
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeDigitsOnly(checkpoint.createdAt).startsWith(queryDigits))
-        : [],
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.checkpointId).startsWith(query)),
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.createdAt).startsWith(query)),
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.userText).startsWith(query)),
-      () => checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        normalizeRewindQueryText(checkpoint.assistantText).startsWith(query)),
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.userText).startsWith(compactQuery))
-        : [],
-      () => hasCompactQuery
-        ? checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-          normalizeCompactText(checkpoint.assistantText).startsWith(compactQuery))
-        : [],
-    ],
-    sortRewindQueryMatches,
-  );
-  if (prioritizedMatches.length > 0) {
-    return prioritizedMatches;
-  }
-  const containsMatches = checkpoints.filter((checkpoint: SessionInteractiveRewindCheckpointSummary) => {
-    const checkpointId = normalizeRewindQueryText(checkpoint.checkpointId);
-    const createdAt = normalizeRewindQueryText(checkpoint.createdAt);
-    const userText = normalizeRewindQueryText(checkpoint.userText);
-    const assistantText = normalizeRewindQueryText(checkpoint.assistantText);
-    const createdAtDigits = normalizeDigitsOnly(checkpoint.createdAt);
-    const checkpointIdCompact = normalizeCompactText(checkpoint.checkpointId);
-    const createdAtCompact = normalizeCompactText(checkpoint.createdAt);
-    const userTextCompact = normalizeCompactText(checkpoint.userText);
-    const assistantTextCompact = normalizeCompactText(checkpoint.assistantText);
-    return checkpointId.includes(query)
-      || createdAt.includes(query)
-      || userText.includes(query)
-      || assistantText.includes(query)
-      || (hasCompactQuery && checkpointIdCompact.includes(compactQuery))
-      || (hasCompactQuery && createdAtCompact.includes(compactQuery))
-      || (hasCompactQuery && userTextCompact.includes(compactQuery))
-      || (hasCompactQuery && assistantTextCompact.includes(compactQuery))
-      || (queryDigits.length > 0 && createdAtDigits.includes(queryDigits));
-  });
-  return sortRewindQueryMatches(containsMatches);
 }
 
 function parseRewindCommand(

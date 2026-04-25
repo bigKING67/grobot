@@ -43,6 +43,9 @@ import {
   resolveResumeRequested,
   resolveResumeSelector,
   resolveResumeSessionAt,
+  resolveRewindMode,
+  resolveRewindRequested,
+  resolveRewindSelector,
   resolveRewindFiles,
   resolveSessionPlatformOption,
   resolveSessionScopeOption,
@@ -955,6 +958,9 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const resumeLastRequested = resolveResumeLastRequested(options);
   const resumeAllRequested = resolveResumeAllRequested(options);
   const resumeSelector = resolveResumeSelector(options);
+  const rewindRequested = resolveRewindRequested(options);
+  const rewindSelector = resolveRewindSelector(options);
+  const rewindMode = resolveRewindMode(options);
   const forkSession = resolveForkSession(options);
   const resumeSessionAt = resolveResumeSessionAt(options);
   const rewindFiles = resolveRewindFiles(options);
@@ -1016,6 +1022,9 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     resumeLastRequested,
     resumeAllRequested,
     resumeSelector,
+    rewindRequested,
+    rewindSelector,
+    rewindMode,
     forkSession,
     resumeSessionAt,
     rewindFiles,

@@ -5,6 +5,7 @@ const DEFAULT_HISTORY_TURNS = 12;
 const MAX_HISTORY_TURNS = 64;
 const DEFAULT_HANDOFF_RECENT_TURNS = 6;
 const MAX_HANDOFF_RECENT_TURNS = 20;
+export type StartupRewindMode = "both" | "conversation" | "code" | "summarize";
 
 function parseBoolValue(raw: string | undefined, defaultValue: boolean): boolean {
   if (typeof raw !== "string" || raw.trim().length === 0) {
@@ -118,6 +119,39 @@ export function resolveForkSession(options: Record<string, OptionValue>): boolea
 
 export function resolveResumeSessionAt(options: Record<string, OptionValue>): string | undefined {
   return readOptionString(options, "resume-session-at");
+}
+
+function normalizeRewindMode(raw: string | undefined): StartupRewindMode | undefined {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (normalized === "both") {
+    return "both";
+  }
+  if (normalized === "conversation") {
+    return "conversation";
+  }
+  if (normalized === "code") {
+    return "code";
+  }
+  if (normalized === "summarize" || normalized === "summary") {
+    return "summarize";
+  }
+  return undefined;
+}
+
+export function resolveRewindRequested(options: Record<string, OptionValue>): boolean {
+  return Object.prototype.hasOwnProperty.call(options, "rewind");
+}
+
+export function resolveRewindSelector(options: Record<string, OptionValue>): string | undefined {
+  return readOptionString(options, "rewind");
+}
+
+export function resolveRewindMode(options: Record<string, OptionValue>): StartupRewindMode {
+  const explicit = normalizeRewindMode(readOptionString(options, "rewind-mode"));
+  if (explicit) {
+    return explicit;
+  }
+  return readOptionString(options, "rewind-files") ? "code" : "both";
 }
 
 export function resolveRewindFiles(options: Record<string, OptionValue>): string[] | undefined {

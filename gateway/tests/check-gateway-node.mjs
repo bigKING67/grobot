@@ -939,6 +939,84 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionResumeStartupDisambiguationContractPayload.no_disambiguation_has_no_messages, true);
   logStep("session-resume-startup-disambiguation-contract");
 
+  const sessionRewindStartupContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/session-rewind-startup-contract.ts",
+  ]);
+  assertSuccess("session-rewind-startup-contract", sessionRewindStartupContractResult);
+  const sessionRewindStartupContractPayload = parseJsonOutput(
+    "session-rewind-startup-contract",
+    sessionRewindStartupContractResult.stdout,
+  );
+  assert.equal(sessionRewindStartupContractPayload.no_intent_skips_rewind_target, true);
+  assert.equal(sessionRewindStartupContractPayload.no_intent_skips_notice, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_default_targets_latest, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_exact_id_targeted, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_single_query_match_targeted, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_auto_selects_top, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_requires_disambiguation, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_candidates_exposed, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_notice_contains_tip, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_notice_no_autoselect_literal, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_no_match_fallback_targets_latest, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_no_match_fallback_has_notice, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_no_match_without_fallback_has_notice, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_strict_exact_targeted, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_strict_no_match_skips_target, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_strict_no_match_has_skip_notice, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_requested_accepts_false_literal_as_query, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_selector_keeps_false_literal, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_mode_default_is_both, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_mode_rewind_files_defaults_code, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_mode_explicit_conversation, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_mode_summary_alias_maps_summarize, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_mode_invalid_falls_back_both, true);
+  logStep("session-rewind-startup-contract");
+
+  const sessionRewindStartupDisambiguationContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/session-rewind-startup-disambiguation-contract.ts",
+  ]);
+  assertSuccess(
+    "session-rewind-startup-disambiguation-contract",
+    sessionRewindStartupDisambiguationContractResult,
+  );
+  const sessionRewindStartupDisambiguationContractPayload = parseJsonOutput(
+    "session-rewind-startup-disambiguation-contract",
+    sessionRewindStartupDisambiguationContractResult.stdout,
+  );
+  assert.equal(
+    sessionRewindStartupDisambiguationContractPayload.tty_disambiguation_picks_explicit_checkpoint,
+    true,
+  );
+  assert.equal(
+    sessionRewindStartupDisambiguationContractPayload.tty_disambiguation_pick_has_no_messages,
+    true,
+  );
+  assert.equal(
+    sessionRewindStartupDisambiguationContractPayload.tty_disambiguation_cancel_clears_target,
+    true,
+  );
+  assert.equal(
+    sessionRewindStartupDisambiguationContractPayload.tty_disambiguation_cancel_has_notice,
+    true,
+  );
+  assert.equal(sessionRewindStartupDisambiguationContractPayload.non_tty_does_not_call_picker, true);
+  assert.equal(sessionRewindStartupDisambiguationContractPayload.non_tty_keeps_auto_selected_target, true);
+  assert.equal(
+    sessionRewindStartupDisambiguationContractPayload.non_tty_reports_auto_selected_notice,
+    true,
+  );
+  assert.equal(sessionRewindStartupDisambiguationContractPayload.no_disambiguation_keeps_target, true);
+  assert.equal(sessionRewindStartupDisambiguationContractPayload.no_disambiguation_has_no_messages, true);
+  logStep("session-rewind-startup-disambiguation-contract");
+
   const runStartInputKeybindingContractResult = runCommand("npx", [
     "--yes",
     "--package",
