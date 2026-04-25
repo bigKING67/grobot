@@ -72,6 +72,8 @@ import {
 } from "../../../../tools/context";
 import { readPersistentGraphIndexStatus } from "../../../../tools/context/graph/persistent-index";
 import {
+  buildRuntimeToolRecoveryFeedback,
+  readRuntimeToolSurfaceMetrics,
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
 } from "../../../../tools/runtime/tool-events";
@@ -2342,6 +2344,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         ...askUserTurnContext.promptParts,
         ...memoryInject.promptParts,
       ];
+      const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
+        metrics: readRuntimeToolSurfaceMetrics(input.workDir),
+      });
+      if (runtimeToolRecoveryFeedback.active) {
+        promptParts.push(runtimeToolRecoveryFeedback.promptBlock);
+        input.writeStderr(
+          `[tool-recovery] event=prompt_hint_injected stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} severity=${runtimeToolRecoveryFeedback.severity} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"}\n`,
+        );
+      }
       const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
       const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
       const providerKind = resolvePrimaryProviderKind(input);

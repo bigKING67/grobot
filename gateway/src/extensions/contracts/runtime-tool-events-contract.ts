@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { RuntimeEvent } from "../../models/types";
 import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../tools/runtime/runtime-error";
 import {
+  buildRuntimeToolRecoveryFeedback,
   readRuntimeToolSurfaceMetrics,
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
@@ -91,6 +92,16 @@ try {
   expectEqual(first.avgDurationMsByTool.read, 12, "first read avg");
   expectEqual(first.avgDurationMsByTool.edit, 18, "first edit avg");
   expectEqual(first.latestRecovery?.stage, "observe_first", "first latest recovery");
+  expectEqual(typeof first.latestRecovery?.observedAt, "string", "first latest recovery observedAt");
+
+  const activeFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: first,
+    nowMs: Date.parse(first.latestRecovery?.observedAt ?? ""),
+  });
+  expectEqual(activeFeedback.active, true, "active feedback enabled");
+  expectEqual(activeFeedback.severity, "info", "active feedback severity");
+  expectEqual(activeFeedback.recommendedNextAction, "observe_prior_tool_result", "active feedback action");
+  expect(activeFeedback.promptBlock.includes("Do not repeat an identical failing tool call"), "active feedback prompt rule");
 
   const readBack = readRuntimeToolSurfaceMetrics(workDir);
   expectEqual(readBack.callsTotal, 3, "readback calls");
@@ -101,6 +112,14 @@ try {
   expectEqual(second.failedTotal, 2, "second cumulative failed");
   expectEqual(second.callsByTool.read, 2, "second read count");
   expectEqual(second.callsByTool.edit, 2, "second edit count");
+
+  const staleFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: second,
+    nowMs: Date.parse(second.latestRecovery?.observedAt ?? "") + 2_000,
+    maxAgeMs: 1,
+  });
+  expectEqual(staleFeedback.active, false, "stale feedback disabled");
+  expectEqual(staleFeedback.reason, "stale_recovery", "stale feedback reason");
 } finally {
   rmSync(workDir, { recursive: true, force: true });
 }
@@ -123,4 +142,5 @@ process.stdout.write(JSON.stringify({
   summary_deferred_total: summary.deferredTotal,
   latest_recovery_stage: summary.latestRecovery?.stage,
   runtime_error_events: extractRuntimeErrorEvents(runtimeError).length,
+  feedback_active: true,
 }) + "\n");

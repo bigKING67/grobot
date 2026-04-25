@@ -21,7 +21,10 @@ import {
   estimateToolSchemaTokens,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
-import { readRuntimeToolSurfaceMetrics } from "../../../../tools/runtime/tool-events";
+import {
+  buildRuntimeToolRecoveryFeedback,
+  readRuntimeToolSurfaceMetrics,
+} from "../../../../tools/runtime/tool-events";
 import type { ToolSurfaceProfile, ToolSurfaceSource } from "../../../../models/types";
 import {
   assessGraphCacheWindowDegradation,
@@ -699,6 +702,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(projectTomlPath, runtimeBinaryPath);
   const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(workDir);
+  const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: runtimeToolSurfaceMetrics,
+  });
   const parsedScope = parseScope(sessionScopeRaw);
   const maskedApiKey = maskSecret(apiKey);
   const runtimeHealth =
@@ -1019,6 +1025,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         schema_estimated_tokens: runtimeToolContextPreview.schemaEstimatedTokens,
         advanced_tool_schema: runtimeToolContextPreview.advancedToolSchema,
         metrics: runtimeToolSurfaceMetrics,
+        recovery_feedback: {
+          active: runtimeToolRecoveryFeedback.active,
+          severity: runtimeToolRecoveryFeedback.severity,
+          reason: runtimeToolRecoveryFeedback.reason,
+          stage: runtimeToolRecoveryFeedback.stage,
+          tool_name: runtimeToolRecoveryFeedback.toolName,
+          error_class: runtimeToolRecoveryFeedback.errorClass,
+          recommended_next_action: runtimeToolRecoveryFeedback.recommendedNextAction,
+          prompt_injected: runtimeToolRecoveryFeedback.active,
+        },
         enabled_tools_source: runtimeToolContextPreview.enabledToolsSource,
         enabled_tools_source_detail: runtimeToolContextPreview.enabledToolsSourceDetail ?? null,
         manifest_fingerprint: runtimeToolContextPreview.manifestFingerprint,
@@ -1814,6 +1830,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_enabled_tools: ${runtimeToolContextPreview.enabledTools.join(",")}\n`,

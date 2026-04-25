@@ -1515,6 +1515,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolMetrics = isObject(runtimeTools?.metrics)
     ? runtimeTools.metrics
     : null;
+  const runtimeToolRecoveryFeedback = isObject(runtimeTools?.recovery_feedback)
+    ? runtimeTools.recovery_feedback
+    : null;
   const runtimeHealthCacheStats = isObject(runtimeHealth?.cache_stats)
     ? runtimeHealth.cache_stats
     : null;
@@ -1784,6 +1787,10 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_metrics_calls_total_type: typeof runtimeToolMetrics?.callsTotal,
     status_runtime_tool_metrics_failures_type: typeof runtimeToolMetrics?.failuresByErrorClass,
     status_runtime_tool_metrics_recovery_stages_type: typeof runtimeToolMetrics?.recoveryStages,
+    status_runtime_tool_recovery_feedback_present: Boolean(runtimeToolRecoveryFeedback),
+    status_runtime_tool_recovery_feedback_active_type: typeof runtimeToolRecoveryFeedback?.active,
+    status_runtime_tool_recovery_feedback_severity_type: typeof runtimeToolRecoveryFeedback?.severity,
+    status_runtime_tool_recovery_feedback_reason_type: typeof runtimeToolRecoveryFeedback?.reason,
     status_has_runtime_health_cache_stats: Boolean(runtimeHealthCacheStats),
     status_has_top_level_cache_stats: Boolean(topLevelCacheStats),
     status_cache_stats_location: cacheStatsLocation,

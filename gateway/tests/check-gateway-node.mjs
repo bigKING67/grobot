@@ -561,6 +561,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolEventsPayload.summary_deferred_total, 1);
   assert.equal(runtimeToolEventsPayload.latest_recovery_stage, "observe_first");
   assert.equal(runtimeToolEventsPayload.runtime_error_events, 5);
+  assert.equal(runtimeToolEventsPayload.feedback_active, true);
   logStep("runtime-tool-events-contract");
 
   const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
@@ -4604,6 +4605,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_metrics_calls_total_type, "number");
   assert.equal(statusPayload.status_runtime_tool_metrics_failures_type, "object");
   assert.equal(statusPayload.status_runtime_tool_metrics_recovery_stages_type, "object");
+  assert.equal(statusPayload.status_runtime_tool_recovery_feedback_present, true);
+  assert.equal(statusPayload.status_runtime_tool_recovery_feedback_active_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_recovery_feedback_severity_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_feedback_reason_type, "string");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_route_observed_source_type)),
     true,

@@ -15,6 +15,7 @@ export interface RuntimeToolRecoveryHint {
   recommendedNextAction: string;
   toolName?: string;
   errorClass?: string;
+  observedAt?: string;
 }
 
 export interface RuntimeToolEventSummary {
@@ -43,6 +44,19 @@ export interface RuntimeToolSurfaceMetricsSnapshot {
   path: string;
 }
 
+export type RuntimeToolRecoveryFeedbackSeverity = "none" | "info" | "warning";
+
+export interface RuntimeToolRecoveryFeedback {
+  active: boolean;
+  severity: RuntimeToolRecoveryFeedbackSeverity;
+  reason: string;
+  stage: RuntimeToolRecoveryStage | null;
+  toolName: string | null;
+  errorClass: string | null;
+  recommendedNextAction: string | null;
+  promptBlock: string;
+}
+
 interface RuntimeToolSurfaceMetricsState {
   version: 1;
   updatedAt: string;
@@ -64,6 +78,8 @@ const RUNTIME_TOOL_RECOVERY_STAGES: readonly RuntimeToolRecoveryStage[] = [
   "strategy_switch",
   "ask_user",
 ];
+
+const DEFAULT_RECOVERY_PROMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function emptySummary(): RuntimeToolEventSummary {
   return {
@@ -110,6 +126,15 @@ function payloadNumber(payload: Record<string, unknown>, key: string): number | 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function payloadIsoString(payload: Record<string, unknown>, key: string): string | undefined {
+  const value = payload[key];
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+  const parsedMs = Date.parse(value);
+  return Number.isFinite(parsedMs) ? value : undefined;
+}
+
 function normalizeRecoveryStage(value: unknown): RuntimeToolRecoveryStage | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -148,6 +173,7 @@ function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRec
       || "observe_and_continue",
     toolName: payloadString(payload, "tool_name") || payloadString(payload, "toolName") || undefined,
     errorClass: payloadString(payload, "error_class") || payloadString(payload, "errorClass") || undefined,
+    observedAt: payloadIsoString(payload, "observed_at") || payloadIsoString(payload, "observedAt"),
   };
 }
 
@@ -274,7 +300,10 @@ export function recordRuntimeToolSurfaceMetrics(input: {
   addMap(state.durationTotalMsByTool, summary.durationTotalMsByTool);
   addMap(state.durationCountByTool, summary.durationCountByTool);
   if (summary.latestRecovery) {
-    state.recentRecoveries.push(summary.latestRecovery);
+    state.recentRecoveries.push({
+      ...summary.latestRecovery,
+      observedAt: state.updatedAt,
+    });
     state.recentRecoveries = state.recentRecoveries.slice(-20);
   }
   mkdirSync(dirname(path), { recursive: true });
@@ -285,4 +314,115 @@ export function recordRuntimeToolSurfaceMetrics(input: {
 export function readRuntimeToolSurfaceMetrics(workDir: string): RuntimeToolSurfaceMetricsSnapshot {
   const path = metricsPathForWorkDir(workDir);
   return toSnapshot(path, readState(path));
+}
+
+function actionInstruction(action: string): string {
+  switch (action) {
+    case "observe_prior_tool_result":
+      return "Observe the previous tool result before issuing another high-risk or state-mutating tool call.";
+    case "fix_tool_arguments":
+      return "Fix the tool arguments first; do not repeat the same invalid call unchanged.";
+    case "locate_path_with_glob_before_retry":
+      return "Use glob to locate the path before retrying read, write, or edit on that target.";
+    case "read_target_before_mutation":
+      return "Read the target file first, then write or edit against the latest observed content.";
+    case "reread_target_then_retry":
+      return "Reread the target and rebuild the write/edit from the current file content before retrying.";
+    case "switch_tool_strategy":
+      return "Switch to a currently visible alternative tool or reduce scope instead of repeating the unavailable call.";
+    case "reduce_scope_or_use_alternate_tool":
+      return "Reduce command/tool scope, shorten timeout-prone work, or choose an alternate tool.";
+    case "request_approval_or_use_safer_tool":
+      return "Ask the user for approval when required, or choose a safer non-privileged tool path.";
+    case "request_environment_fix":
+      return "Ask the user to fix the environment or configuration before retrying.";
+    case "avoid_unknown_tool":
+      return "Avoid unknown tools and stay within the visible tool schema.";
+    default:
+      return "Inspect the error and change strategy before retrying.";
+  }
+}
+
+function severityForRecovery(stage: RuntimeToolRecoveryStage): RuntimeToolRecoveryFeedbackSeverity {
+  if (stage === "ask_user" || stage === "strategy_switch") {
+    return "warning";
+  }
+  if (stage === "observe_first" || stage === "local_fix") {
+    return "info";
+  }
+  return "none";
+}
+
+function parseObservedAtMs(recovery: RuntimeToolRecoveryHint, fallbackUpdatedAt: string | null): number | undefined {
+  const observedAt = recovery.observedAt || fallbackUpdatedAt || "";
+  const parsed = Date.parse(observedAt);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function buildRuntimeToolRecoveryFeedback(input: {
+  metrics: RuntimeToolSurfaceMetricsSnapshot;
+  nowMs?: number;
+  maxAgeMs?: number;
+}): RuntimeToolRecoveryFeedback {
+  const recovery = input.metrics.latestRecovery;
+  if (!recovery || recovery.stage === "none") {
+    return {
+      active: false,
+      severity: "none",
+      reason: "no_recent_recovery",
+      stage: null,
+      toolName: null,
+      errorClass: null,
+      recommendedNextAction: null,
+      promptBlock: "",
+    };
+  }
+  const nowMs = input.nowMs ?? Date.now();
+  const maxAgeMs = input.maxAgeMs ?? DEFAULT_RECOVERY_PROMPT_MAX_AGE_MS;
+  const observedAtMs = parseObservedAtMs(recovery, input.metrics.updatedAt);
+  if (typeof observedAtMs !== "number") {
+    return {
+      active: false,
+      severity: "none",
+      reason: "missing_recovery_timestamp",
+      stage: recovery.stage,
+      toolName: recovery.toolName ?? null,
+      errorClass: recovery.errorClass ?? null,
+      recommendedNextAction: recovery.recommendedNextAction,
+      promptBlock: "",
+    };
+  }
+  const ageMs = Math.max(0, nowMs - observedAtMs);
+  if (ageMs > maxAgeMs) {
+    return {
+      active: false,
+      severity: "none",
+      reason: "stale_recovery",
+      stage: recovery.stage,
+      toolName: recovery.toolName ?? null,
+      errorClass: recovery.errorClass ?? null,
+      recommendedNextAction: recovery.recommendedNextAction,
+      promptBlock: "",
+    };
+  }
+  const instruction = actionInstruction(recovery.recommendedNextAction);
+  const toolName = recovery.toolName ?? "unknown_tool";
+  const errorClass = recovery.errorClass ?? recovery.reason;
+  const promptBlock = [
+    "[Runtime Tool Recovery Hint]",
+    `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
+    `Required next action: ${recovery.recommendedNextAction}`,
+    `Execution rule: ${instruction}`,
+    "Do not repeat an identical failing tool call; change one concrete variable before retrying.",
+  ].join("\n");
+  return {
+    active: true,
+    severity: severityForRecovery(recovery.stage),
+    reason: "recent_recovery",
+    stage: recovery.stage,
+    toolName,
+    errorClass,
+    recommendedNextAction: recovery.recommendedNextAction,
+    promptBlock,
+  };
 }
