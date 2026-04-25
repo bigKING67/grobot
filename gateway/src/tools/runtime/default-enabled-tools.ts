@@ -948,6 +948,16 @@ export function adaptRuntimeToolContextForRecovery(input: {
       }),
     };
   }
+  if (input.recoveryFeedback.recoverable === false) {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: "recovery_requires_user_intervention",
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
 
   const source = input.context.toolSurfaceSource ?? "fallback";
   if (source === "env" || source === "cli" || source === "config" || source === "debug") {

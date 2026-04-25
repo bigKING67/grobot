@@ -121,7 +121,7 @@ function activeRecoveryFeedback(input: {
     toolName: input.toolName,
     errorClass: input.errorClass,
     recommendedNextAction: "switch_tool_strategy",
-    recoverable: input.recoverable ?? true,
+    recoverable: input.recoverable === undefined ? true : input.recoverable,
     promptBlock: "recovery prompt",
     ...(input.observedAt !== null
       ? { observedAt: input.observedAt ?? "2026-04-25T00:00:00.000Z" }
@@ -440,6 +440,56 @@ expectEqual(adaptedBrowser.context?.toolSurfaceSource, "metrics_recovery", "brow
 expectEqual(adaptedBrowser.adaptation.recoveryRecoverable, true, "browser recovery recoverable is exposed");
 expectEqual(adaptedBrowser.context?.toolSurfaceDecision?.profile, "coding", "recovery keeps original message decision trace");
 expectDeepEqual(adaptedBrowser.context?.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser recovery visible tools");
+
+const nonRecoverableBrowserRecovery = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "config_missing",
+    stage: "ask_user",
+    recoverable: false,
+  }),
+});
+expectEqual(nonRecoverableBrowserRecovery.adaptation.active, false, "nonrecoverable recovery does not adapt");
+expectEqual(
+  nonRecoverableBrowserRecovery.adaptation.reason,
+  "recovery_requires_user_intervention",
+  "nonrecoverable recovery reason",
+);
+expectEqual(
+  nonRecoverableBrowserRecovery.adaptation.recoveryRecoverable,
+  false,
+  "nonrecoverable recovery observable",
+);
+expectEqual(
+  nonRecoverableBrowserRecovery.context?.toolSurfaceProfile,
+  "coding",
+  "nonrecoverable recovery keeps coding profile",
+);
+
+const unknownRecoverabilityBrowserRecovery = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "tool_not_visible",
+    recoverable: null,
+  }),
+});
+expectEqual(
+  unknownRecoverabilityBrowserRecovery.adaptation.active,
+  true,
+  "unknown recoverability preserves legacy recovery adaptation",
+);
+expectEqual(
+  unknownRecoverabilityBrowserRecovery.adaptation.recoveryRecoverable,
+  null,
+  "unknown recoverability remains observable",
+);
+expectEqual(
+  unknownRecoverabilityBrowserRecovery.context?.toolSurfaceProfile,
+  "browser",
+  "unknown recoverability can still adapt browser profile",
+);
 
 const adaptedContext = adaptRuntimeToolContextForRecovery({
   context: coding,
