@@ -18,6 +18,7 @@ import {
   recordRuntimeToolSurfaceAdaptationOutcome,
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
+import { parseRuntimeToolSurfaceSchemaProfiles } from "../../orchestration/entrypoints/dev-cli/runtime-health";
 
 const baseContext = {
   workDir: "/tmp/grobot-runtime-tool-surface-contract",
@@ -182,6 +183,59 @@ expectEqual(browserProjection.projectionMode, "slim", "browser projection mode")
 expectEqual(browserProjection.schemaPropertyCount, 25, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
 expectEqual(browserProjection.suppressedSchemaPropertyCount, 22, "browser projection suppressed property count");
+
+const validRuntimeSchemaProfile = {
+  policy_version: "v1",
+  profile: "browser",
+  projection_mode: "slim",
+  advanced_tool_schema: false,
+  schema_fingerprint: "schema:test",
+  tool_names: ["web_scan", "web_execute_js"],
+  visible_tool_count: 2,
+  schema_property_count: 3,
+  full_schema_property_count: 5,
+  suppressed_schema_property_count: 2,
+  per_tool_property_count: {
+    web_scan: 1,
+    web_execute_js: 2,
+  },
+  per_tool_visible_args: {
+    web_scan: ["main_only"],
+    web_execute_js: ["script", "timeout_ms"],
+  },
+  per_tool_suppressed_args: {
+    web_scan: ["tmwd_mode"],
+    web_execute_js: ["native_fallback_action"],
+  },
+};
+expectEqual(
+  parseRuntimeToolSurfaceSchemaProfiles([validRuntimeSchemaProfile]).length,
+  1,
+  "runtime schema profile parser accepts exact arg metadata",
+);
+expectEqual(
+  parseRuntimeToolSurfaceSchemaProfiles([{
+    ...validRuntimeSchemaProfile,
+    per_tool_visible_args: {
+      web_scan: ["main_only", "main_only"],
+      web_execute_js: ["script", "timeout_ms"],
+    },
+  }]).length,
+  0,
+  "runtime schema profile parser rejects duplicate visible args",
+);
+expectEqual(
+  parseRuntimeToolSurfaceSchemaProfiles([{
+    ...validRuntimeSchemaProfile,
+    per_tool_suppressed_args: {
+      web_scan: ["tmwd_mode"],
+      web_execute_js: ["native_fallback_action"],
+      ghost_tool: [],
+    },
+  }]).length,
+  0,
+  "runtime schema profile parser rejects ghost arg metadata keys",
+);
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));
 expectEqual(browserAdvanced.toolSurfaceProfile, "browser_advanced", "browser advanced profile");

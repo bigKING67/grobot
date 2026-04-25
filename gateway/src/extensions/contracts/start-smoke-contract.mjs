@@ -6,6 +6,72 @@ function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function sortedObjectKeys(value) {
+  return isObject(value) ? Object.keys(value).sort() : null;
+}
+
+function sameStringArray(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  return left.every((item, index) => item === right[index]);
+}
+
+function sumStringArrayRecordLengths(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+  let total = 0;
+  for (const row of Object.values(value)) {
+    if (!Array.isArray(row) || !row.every((item) => typeof item === "string" && item.trim().length > 0)) {
+      return null;
+    }
+    total += row.length;
+  }
+  return total;
+}
+
+function assertRuntimeToolSchemaArgVisibility(projection) {
+  if (!isObject(projection)) {
+    throw new Error("runtime tool schema projection missing");
+  }
+  const perToolPropertyCount = isObject(projection.per_tool_property_count)
+    ? projection.per_tool_property_count
+    : null;
+  const perToolVisibleArgs = isObject(projection.per_tool_visible_args)
+    ? projection.per_tool_visible_args
+    : null;
+  const perToolSuppressedArgs = isObject(projection.per_tool_suppressed_args)
+    ? projection.per_tool_suppressed_args
+    : null;
+  const propertyKeys = sortedObjectKeys(perToolPropertyCount);
+  const visibleArgKeys = sortedObjectKeys(perToolVisibleArgs);
+  const suppressedArgKeys = sortedObjectKeys(perToolSuppressedArgs);
+  if (!sameStringArray(propertyKeys, visibleArgKeys) || !sameStringArray(propertyKeys, suppressedArgKeys)) {
+    throw new Error("runtime tool schema arg metadata keys do not match per-tool property keys");
+  }
+  const visibleArgTotal = sumStringArrayRecordLengths(perToolVisibleArgs);
+  const suppressedArgTotal = sumStringArrayRecordLengths(perToolSuppressedArgs);
+  if (visibleArgTotal !== projection.schema_property_count) {
+    throw new Error(
+      `runtime tool visible arg total mismatch: actual=${String(visibleArgTotal)} expected=${String(projection.schema_property_count)}`,
+    );
+  }
+  if (suppressedArgTotal !== projection.suppressed_schema_property_count) {
+    throw new Error(
+      `runtime tool suppressed arg total mismatch: actual=${String(suppressedArgTotal)} expected=${String(projection.suppressed_schema_property_count)}`,
+    );
+  }
+  for (const [toolName, rawCount] of Object.entries(perToolPropertyCount)) {
+    const visibleArgs = perToolVisibleArgs[toolName];
+    if (!Array.isArray(visibleArgs) || visibleArgs.length !== rawCount) {
+      throw new Error(
+        `runtime tool visible arg count mismatch for ${toolName}: actual=${String(Array.isArray(visibleArgs) ? visibleArgs.length : null)} expected=${String(rawCount)}`,
+      );
+    }
+  }
+}
+
 function parseJsonObjectSafe(raw) {
   const text = typeof raw === "string" ? raw.trim() : "";
   if (!text) {
@@ -1537,6 +1603,7 @@ function runStatusTsRust(repoRoot, windowSize) {
       `runtime tool schema projection drift detected: ${String(runtimeToolSchemaProjectionDrift.reason ?? "unknown")}`,
     );
   }
+  assertRuntimeToolSchemaArgVisibility(runtimeToolSchemaProjection);
   const runtimeToolSurfaceDecisionScores = isObject(runtimeToolSurfaceDecision?.scores)
     ? runtimeToolSurfaceDecision.scores
     : null;
@@ -1841,6 +1908,10 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolSchemaProjection?.per_tool_visible_args,
     status_runtime_tool_schema_projection_suppressed_args_type:
       typeof runtimeToolSchemaProjection?.per_tool_suppressed_args,
+    status_runtime_tool_schema_projection_visible_args_sum:
+      sumStringArrayRecordLengths(runtimeToolSchemaProjection?.per_tool_visible_args),
+    status_runtime_tool_schema_projection_suppressed_args_sum:
+      sumStringArrayRecordLengths(runtimeToolSchemaProjection?.per_tool_suppressed_args),
     status_runtime_tool_schema_projection_drift_present: Boolean(runtimeToolSchemaProjectionDrift),
     status_runtime_tool_schema_projection_drift_checked_type: typeof runtimeToolSchemaProjectionDrift?.checked,
     status_runtime_tool_schema_projection_drift_active_type: typeof runtimeToolSchemaProjectionDrift?.active,

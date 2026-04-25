@@ -183,13 +183,33 @@ function normalizeStringArray(value: unknown): string[] {
   return rows;
 }
 
-function dedupeStringArray(items: string[]): string[] {
+function dedupeStringArray(items: readonly string[]): string[] {
   const seen = new Set<string>();
   const rows: string[] = [];
   for (const item of items) {
     const normalized = item.trim();
     if (!normalized || seen.has(normalized)) {
       continue;
+    }
+    seen.add(normalized);
+    rows.push(normalized);
+  }
+  return rows;
+}
+
+function parseStrictStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const seen = new Set<string>();
+  const rows: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      return null;
+    }
+    const normalized = item.trim();
+    if (!normalized || seen.has(normalized)) {
+      return null;
     }
     seen.add(normalized);
     rows.push(normalized);
@@ -240,8 +260,8 @@ function parseStringArrayMap(value: unknown): Record<string, string[]> | null {
   const result: Record<string, string[]> = {};
   for (const [key, rawItems] of Object.entries(value)) {
     const toolName = key.trim();
-    const items = dedupeStringArray(normalizeStringArray(rawItems));
-    if (!toolName || !Array.isArray(rawItems)) {
+    const items = parseStrictStringArray(rawItems);
+    if (!toolName || items == null) {
       return null;
     }
     result[toolName] = items;
@@ -249,7 +269,16 @@ function parseStringArrayMap(value: unknown): Record<string, string[]> | null {
   return result;
 }
 
-function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
+function recordKeysMatch(record: Record<string, unknown>, expectedKeys: readonly string[]): boolean {
+  const actual = Object.keys(record).sort();
+  const expected = [...expectedKeys].sort();
+  if (actual.length !== expected.length) {
+    return false;
+  }
+  return actual.every((key, index) => key === expected[index]);
+}
+
+export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -287,6 +316,13 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
     const perToolArgsMatchCounts = perToolPropertyCount != null && perToolVisibleArgs != null
       ? toolNames.every((toolName) => perToolPropertyCount[toolName] === perToolVisibleArgs[toolName]?.length)
       : false;
+    const perToolMapsHaveExactKeys =
+      perToolPropertyCount != null
+      && perToolVisibleArgs != null
+      && perToolSuppressedArgs != null
+      && recordKeysMatch(perToolPropertyCount, toolNames)
+      && recordKeysMatch(perToolVisibleArgs, toolNames)
+      && recordKeysMatch(perToolSuppressedArgs, toolNames);
     if (
       !policyVersion
       || profile == null
@@ -310,6 +346,7 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
       || visibleArgSum !== schemaPropertyCount
       || suppressedArgSum !== suppressedSchemaPropertyCount
       || !perToolArgsMatchCounts
+      || !perToolMapsHaveExactKeys
       || toolNames.length !== visibleToolCount
     ) {
       continue;
