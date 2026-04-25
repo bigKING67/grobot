@@ -731,7 +731,43 @@ fn project_object_schema_properties(parameters: &Value, allowed_properties: &[&s
     {
         properties.retain(|key, _| allowed.contains(key.as_str()));
     }
+    prune_required_schema_array(projected.get_mut("required"), &allowed);
+    if projected
+        .get("required")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty)
+    {
+        if let Some(object) = projected.as_object_mut() {
+            object.remove("required");
+        }
+    }
+    if let Some(any_of) = projected.get_mut("anyOf").and_then(Value::as_array_mut) {
+        for branch in any_of.iter_mut() {
+            prune_required_schema_array(branch.get_mut("required"), &allowed);
+        }
+        any_of.retain(|branch| {
+            branch
+                .get("required")
+                .and_then(Value::as_array)
+                .is_none_or(|required| !required.is_empty())
+        });
+    }
+    if projected
+        .get("anyOf")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty)
+    {
+        if let Some(object) = projected.as_object_mut() {
+            object.remove("anyOf");
+        }
+    }
     projected
+}
+
+fn prune_required_schema_array(required: Option<&mut Value>, allowed: &HashSet<&str>) {
+    if let Some(required) = required.and_then(Value::as_array_mut) {
+        required.retain(|item| item.as_str().is_some_and(|name| allowed.contains(name)));
+    }
 }
 
 fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanced_tool_schema: bool) -> Value {

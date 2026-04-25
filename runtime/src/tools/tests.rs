@@ -233,6 +233,10 @@ mod tests {
         surface_parameters_with_advanced(profile, tools, tool_name, false)
     }
 
+    fn surface_definitions(profile: &str, advanced_tool_schema: bool) -> Vec<Value> {
+        local_tool_definitions_for_surface(&Vec::new(), Some(profile), advanced_tool_schema)
+    }
+
     fn surface_parameters_with_advanced(
         profile: &str,
         tools: Vec<&str>,
@@ -254,6 +258,35 @@ mod tests {
             .unwrap_or_else(|| panic!("missing projected tool schema for {tool_name}"))
     }
 
+    fn surface_tool_names(profile: &str) -> StdHashSet<String> {
+        surface_definitions(profile, false)
+            .iter()
+            .filter_map(|definition| {
+                definition
+                    .get("function")
+                    .and_then(Value::as_object)
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    fn surface_schema_property_count(profile: &str, advanced_tool_schema: bool) -> usize {
+        surface_definitions(profile, advanced_tool_schema)
+            .iter()
+            .map(|definition| {
+                definition
+                    .get("function")
+                    .and_then(Value::as_object)
+                    .and_then(|function| function.get("parameters"))
+                    .and_then(|parameters| parameters.get("properties"))
+                    .and_then(Value::as_object)
+                    .map_or(0, |properties| properties.len())
+            })
+            .sum()
+    }
+
     fn schema_property_names(parameters: &Value) -> StdHashSet<String> {
         parameters
             .get("properties")
@@ -272,6 +305,15 @@ mod tests {
         for name in names {
             assert!(!props.contains(*name), "projected schema should hide {name}");
         }
+    }
+
+    fn assert_surface_tool_names(profile: &str, names: &[&str]) {
+        let actual = surface_tool_names(profile);
+        let expected = names
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<StdHashSet<String>>();
+        assert_eq!(actual, expected, "{profile} surface tool set drifted");
     }
 
     #[test]
@@ -418,6 +460,100 @@ mod tests {
         assert!(!names.contains(TOOL_PROMPT_ENHANCER));
         assert!(!names.contains(TOOL_WEB_SCAN));
         assert!(!names.contains(TOOL_WEB_EXECUTE_JS));
+    }
+
+    #[test]
+    fn tool_surface_profiles_keep_intentional_tool_sets_and_schema_budgets() {
+        assert_surface_tool_names(
+            "minimal",
+            &[TOOL_READ, TOOL_EDIT, TOOL_WRITE, TOOL_ASK_USER_QUESTION],
+        );
+        assert_surface_tool_names(
+            "coding",
+            &[
+                TOOL_GLOB,
+                TOOL_SEARCH,
+                TOOL_READ,
+                TOOL_WRITE,
+                TOOL_EDIT,
+                TOOL_BASH,
+                TOOL_ASK_USER_QUESTION,
+            ],
+        );
+        assert_surface_tool_names(
+            "browser",
+            &[
+                TOOL_WEB_SCAN,
+                TOOL_WEB_EXECUTE_JS,
+                TOOL_READ,
+                TOOL_ASK_USER_QUESTION,
+            ],
+        );
+        assert_surface_tool_names(
+            "browser_advanced",
+            &[
+                TOOL_WEB_SCAN,
+                TOOL_WEB_EXECUTE_JS,
+                TOOL_READ,
+                TOOL_ASK_USER_QUESTION,
+            ],
+        );
+        assert_surface_tool_names(
+            "context",
+            &[TOOL_SEMANTIC_SEARCH, TOOL_READ, TOOL_ASK_USER_QUESTION],
+        );
+        assert_surface_tool_names(
+            "mcp",
+            &[TOOL_MCP_SERVERS, TOOL_MCP_CALL, TOOL_ASK_USER_QUESTION],
+        );
+
+        let full_debug_expected = local_tool_catalog()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect::<StdHashSet<String>>();
+        assert_eq!(surface_tool_names("full_debug"), full_debug_expected);
+
+        assert_eq!(surface_schema_property_count("minimal", false), 15);
+        assert_eq!(surface_schema_property_count("coding", false), 30);
+        assert_eq!(surface_schema_property_count("browser", false), 25);
+        assert_eq!(surface_schema_property_count("browser_advanced", false), 42);
+        assert_eq!(surface_schema_property_count("browser", true), 42);
+        assert_eq!(surface_schema_property_count("context", false), 20);
+        assert_eq!(surface_schema_property_count("mcp", false), 9);
+        assert_eq!(surface_schema_property_count("full_debug", false), 92);
+    }
+
+    #[test]
+    fn projected_object_schema_prunes_required_and_anyof_to_visible_properties() {
+        let projected = project_object_schema_properties(
+            &json!({
+                "type": "object",
+                "properties": {
+                    "keep": { "type": "string" },
+                    "alt": { "type": "string" },
+                    "drop": { "type": "string" }
+                },
+                "required": ["keep", "drop"],
+                "anyOf": [
+                    { "required": ["drop"] },
+                    { "required": ["alt"] }
+                ],
+                "additionalProperties": false
+            }),
+            &["keep", "alt"],
+        );
+
+        let props = schema_property_names(&projected);
+        assert_schema_props_include(&props, &["keep", "alt"]);
+        assert_schema_props_omit(&props, &["drop"]);
+        assert_eq!(projected.get("required"), Some(&json!(["keep"])));
+
+        let any_of = projected
+            .get("anyOf")
+            .and_then(Value::as_array)
+            .expect("anyOf should keep branches with visible required properties");
+        assert_eq!(any_of.len(), 1);
+        assert_eq!(any_of[0].get("required"), Some(&json!(["alt"])));
     }
 
     #[test]
