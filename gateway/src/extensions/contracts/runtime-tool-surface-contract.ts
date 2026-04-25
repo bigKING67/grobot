@@ -119,6 +119,12 @@ const filteredFullDebug = withEnvProfile("full_debug", () => build("普通 codin
 expectDeepEqual(filteredFullDebug.modelVisibleTools, ["read", "bash"], "filtered full_debug visible tools");
 expectDeepEqual(filteredFullDebug.enabledTools, ["read", "bash"], "filtered full_debug dispatch tools");
 
+const pageComponentCode = withEnvProfile(undefined, () => build("优化这个页面组件代码的布局逻辑"));
+expectEqual(pageComponentCode.toolSurfaceProfile, "coding", "page component code should stay coding");
+
+const contextEngineCode = withEnvProfile(undefined, () => build("看下上下文引擎代码里的 memory mechanism"));
+expectEqual(contextEngineCode.toolSurfaceProfile, "coding", "context engine code should stay coding");
+
 process.stdout.write(JSON.stringify({
   ok: true,
   policy_version: TOOL_SURFACE_POLICY_VERSION,
@@ -128,4 +134,6 @@ process.stdout.write(JSON.stringify({
   full_debug_dispatch_count: fullDebug.enabledTools?.length ?? 0,
   full_debug_dispatch_matches_visible:
     JSON.stringify(fullDebug.enabledTools) === JSON.stringify(fullDebug.modelVisibleTools),
+  page_component_code_profile: pageComponentCode.toolSurfaceProfile,
+  context_engine_code_profile: contextEngineCode.toolSurfaceProfile,
 }) + "\n");

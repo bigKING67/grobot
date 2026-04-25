@@ -982,6 +982,56 @@ fn build_tool_end_failure_event(
     }
 }
 
+fn classify_tool_recovery(error_class: &str, risk_class: &str) -> (&'static str, &'static str) {
+    match error_class {
+        "tool_execution_deferred" => ("observe_first", "observe_prior_tool_result"),
+        "invalid_tool_arguments" | "range_out_of_bounds" | "edit_no_changes" | "write_no_changes"
+        | "edit_overlap" => ("local_fix", "fix_tool_arguments"),
+        "path_not_found" => ("local_fix", "locate_path_with_glob_before_retry"),
+        "write_read_required" | "edit_read_required" | "write_partial_read_not_allowed" => {
+            ("local_fix", "read_target_before_mutation")
+        }
+        "write_stale_target" | "edit_stale_target" => ("local_fix", "reread_target_then_retry"),
+        "tool_not_visible" | "tool_disabled" | "unsupported_tool" | "semantic_tool_unavailable"
+        | "mcp_server_busy" | "mcp_server_unavailable" => ("strategy_switch", "switch_tool_strategy"),
+        "mcp_timeout" | "mcp_queue_timeout" | "bash_timeout" => {
+            ("strategy_switch", "reduce_scope_or_use_alternate_tool")
+        }
+        "bash_not_allowed" | "bash_security_denied" => {
+            ("ask_user", "request_approval_or_use_safer_tool")
+        }
+        "runtime_state_unavailable" | "tool_context_invalid" | "config_missing" => {
+            ("ask_user", "request_environment_fix")
+        }
+        _ if risk_class == "unknown" => ("strategy_switch", "avoid_unknown_tool"),
+        _ => ("strategy_switch", "inspect_error_and_switch_strategy"),
+    }
+}
+
+fn build_tool_recovery_event(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+    error_class: &str,
+) -> ModelTelemetryEvent {
+    let (stage, recommended_next_action) = classify_tool_recovery(error_class, risk_class);
+    ModelTelemetryEvent {
+        event_type: "tool_recovery".to_string(),
+        payload: Some(json!({
+            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
+            "tool_call_id": tool_call.id,
+            "tool_round": tool_round,
+            "batch_index": batch_index,
+            "risk_class": risk_class,
+            "error_class": error_class,
+            "recovery_stage": stage,
+            "recovery_reason": error_class,
+            "recommended_next_action": recommended_next_action,
+        })),
+    }
+}
+
 fn build_deferred_tool_output(
     tool_call: &ToolCallInput,
     tool_round: usize,
@@ -1652,6 +1702,13 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             risk_class,
                             &output,
                         ));
+                        telemetry_events.push(build_tool_recovery_event(
+                            &tool_call,
+                            current_tool_round,
+                            batch_index,
+                            risk_class,
+                            "tool_execution_deferred",
+                        ));
                         output
                     } else {
                         let started_at = std::time::Instant::now();
@@ -1680,6 +1737,13 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                     risk_class,
                                     duration_ms,
                                     &error,
+                                ));
+                                telemetry_events.push(build_tool_recovery_event(
+                                    &tool_call,
+                                    current_tool_round,
+                                    batch_index,
+                                    risk_class,
+                                    &error.error_class,
                                 ));
                                 return Err(
                                     ModelExecutionError::new(&error.error_class, error.message)

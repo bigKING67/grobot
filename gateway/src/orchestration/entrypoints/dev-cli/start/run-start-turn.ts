@@ -71,6 +71,11 @@ import {
   type PromptVariant,
 } from "../../../../tools/context";
 import { readPersistentGraphIndexStatus } from "../../../../tools/context/graph/persistent-index";
+import {
+  recordRuntimeToolSurfaceMetrics,
+  summarizeRuntimeToolEvents,
+} from "../../../../tools/runtime/tool-events";
+import { extractRuntimeErrorEvents } from "../../../../tools/runtime/runtime-error";
 
 export interface RuntimeProviderCandidate {
   name: string;
@@ -325,6 +330,30 @@ function buildRuntimeToolTraceMemory(input: {
     deferredCount,
     turnId: toolEndEvents[0]?.turnId,
   };
+}
+
+function recordRuntimeToolMetricsForEvents(input: {
+  workDir: string;
+  events: readonly RuntimeEvent[];
+  source: "runtime_turn" | "runtime_failure";
+  writeStderr(message: string): void;
+}): void {
+  const toolEventSummary = summarizeRuntimeToolEvents(input.events);
+  if (toolEventSummary.callsTotal === 0) {
+    return;
+  }
+  const metrics = recordRuntimeToolSurfaceMetrics({
+    workDir: input.workDir,
+    events: input.events,
+  });
+  input.writeStderr(
+    `[tool-metrics] event=recorded source=${input.source} calls=${String(toolEventSummary.callsTotal)} failed=${String(toolEventSummary.failedTotal)} deferred=${String(toolEventSummary.deferredTotal)} total_calls=${String(metrics.callsTotal)}\n`,
+  );
+  if (toolEventSummary.latestRecovery) {
+    input.writeStderr(
+      `[tool-recovery] stage=${toolEventSummary.latestRecovery.stage} reason=${toolEventSummary.latestRecovery.reason} action=${toolEventSummary.latestRecovery.recommendedNextAction} tool=${toolEventSummary.latestRecovery.toolName ?? "<none>"} error_class=${toolEventSummary.latestRecovery.errorClass ?? "<none>"}\n`,
+    );
+  }
 }
 
 function normalizeRuntimeAskUserId(input: {
@@ -2878,6 +2907,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           ? `${report.assistantMessage}\n\n`
           : `${report.assistantMessage}\n`;
         let askUserEvent = "";
+        recordRuntimeToolMetricsForEvents({
+          workDir: input.workDir,
+          events: report.events,
+          source: "runtime_turn",
+          writeStderr: input.writeStderr,
+        });
         if (runtimeAskUser) {
           const askUserEnvelopes = toAskUserEnvelopes(runtimeAskUser);
           for (const askUserEnvelope of askUserEnvelopes) {
@@ -2998,6 +3033,13 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           const rawMessage = String(error);
           const compactMessage = compactSingleLine(rawMessage, 240);
           const errorClass = resolveErrorClass(rawMessage);
+          const runtimeErrorEvents = extractRuntimeErrorEvents(error);
+          recordRuntimeToolMetricsForEvents({
+            workDir: input.workDir,
+            events: runtimeErrorEvents,
+            source: "runtime_failure",
+            writeStderr: input.writeStderr,
+          });
             if (errorClass === TURN_INTERRUPTED_ERROR_CLASS) {
               const providerStates = Array.from(providerStateMap.values());
               input.setProviderRuntimeStates(providerStates);

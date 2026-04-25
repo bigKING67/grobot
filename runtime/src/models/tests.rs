@@ -1235,7 +1235,13 @@ mod tests {
                 .iter()
                 .map(|event| event.event_type.as_str())
                 .collect::<Vec<&str>>(),
-            vec!["tool_start", "tool_end", "tool_start", "tool_end"]
+            vec![
+                "tool_start",
+                "tool_end",
+                "tool_start",
+                "tool_end",
+                "tool_recovery"
+            ]
         );
         assert_eq!(
             output.telemetry_events[1]
@@ -1260,6 +1266,22 @@ mod tests {
                 .and_then(|payload| payload.get("error_class"))
                 .and_then(Value::as_str),
             Some("tool_execution_deferred")
+        );
+        assert_eq!(
+            output.telemetry_events[4]
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("recovery_stage"))
+                .and_then(Value::as_str),
+            Some("observe_first")
+        );
+        assert_eq!(
+            output.telemetry_events[4]
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("recommended_next_action"))
+                .and_then(Value::as_str),
+            Some("observe_prior_tool_result")
         );
 
         let calls = server.finish();

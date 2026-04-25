@@ -540,7 +540,28 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolSurfacePayload.full_debug_visible_count, 14);
   assert.equal(runtimeToolSurfacePayload.full_debug_dispatch_count, 14);
   assert.equal(runtimeToolSurfacePayload.full_debug_dispatch_matches_visible, true);
+  assert.equal(runtimeToolSurfacePayload.page_component_code_profile, "coding");
+  assert.equal(runtimeToolSurfacePayload.context_engine_code_profile, "coding");
   logStep("runtime-tool-surface-contract");
+
+  const runtimeToolEventsResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-tool-events-contract.ts",
+  ]);
+  assertSuccess("runtime-tool-events-contract", runtimeToolEventsResult);
+  const runtimeToolEventsPayload = parseJsonOutput(
+    "runtime-tool-events-contract",
+    runtimeToolEventsResult.stdout,
+  );
+  assert.equal(runtimeToolEventsPayload.summary_calls_total, 3);
+  assert.equal(runtimeToolEventsPayload.summary_failed_total, 1);
+  assert.equal(runtimeToolEventsPayload.summary_deferred_total, 1);
+  assert.equal(runtimeToolEventsPayload.latest_recovery_stage, "observe_first");
+  assert.equal(runtimeToolEventsPayload.runtime_error_events, 5);
+  logStep("runtime-tool-events-contract");
 
   const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
   const semanticSearchToolPayload = parseJsonOutput(
@@ -4579,6 +4600,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_schema_fingerprint_type, "string");
   assert.equal(statusPayload.status_runtime_tool_schema_estimated_tokens_type, "number");
   assert.equal(statusPayload.status_runtime_tool_advanced_schema_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_metrics_present, true);
+  assert.equal(statusPayload.status_runtime_tool_metrics_calls_total_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_metrics_failures_type, "object");
+  assert.equal(statusPayload.status_runtime_tool_metrics_recovery_stages_type, "object");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_route_observed_source_type)),
     true,

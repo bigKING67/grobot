@@ -21,6 +21,7 @@ import {
   estimateToolSchemaTokens,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
+import { readRuntimeToolSurfaceMetrics } from "../../../../tools/runtime/tool-events";
 import type { ToolSurfaceProfile, ToolSurfaceSource } from "../../../../models/types";
 import {
   assessGraphCacheWindowDegradation,
@@ -697,6 +698,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   });
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(projectTomlPath, runtimeBinaryPath);
+  const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(workDir);
   const parsedScope = parseScope(sessionScopeRaw);
   const maskedApiKey = maskSecret(apiKey);
   const runtimeHealth =
@@ -1016,6 +1018,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         schema_fingerprint: runtimeToolContextPreview.schemaFingerprint,
         schema_estimated_tokens: runtimeToolContextPreview.schemaEstimatedTokens,
         advanced_tool_schema: runtimeToolContextPreview.advancedToolSchema,
+        metrics: runtimeToolSurfaceMetrics,
         enabled_tools_source: runtimeToolContextPreview.enabledToolsSource,
         enabled_tools_source_detail: runtimeToolContextPreview.enabledToolsSourceDetail ?? null,
         manifest_fingerprint: runtimeToolContextPreview.manifestFingerprint,
@@ -1804,6 +1807,13 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_advanced_schema: ${runtimeToolContextPreview.advancedToolSchema ? "true" : "false"}\n`,
+  );
+  process.stdout.write(`runtime_tool_metrics_path: ${runtimeToolSurfaceMetrics.path}\n`);
+  process.stdout.write(
+    `runtime_tool_metrics_calls_total: ${String(runtimeToolSurfaceMetrics.callsTotal)} failed=${String(runtimeToolSurfaceMetrics.failedTotal)} deferred=${String(runtimeToolSurfaceMetrics.deferredTotal)}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_enabled_tools: ${runtimeToolContextPreview.enabledTools.join(",")}\n`,

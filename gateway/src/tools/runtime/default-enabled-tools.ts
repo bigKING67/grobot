@@ -93,6 +93,24 @@ function includesAny(haystack: string, needles: readonly string[]): boolean {
   return needles.some((needle) => haystack.includes(needle));
 }
 
+function scoreMatches(haystack: string, needles: readonly string[], weight = 1): number {
+  return needles.reduce((score, needle) => score + (haystack.includes(needle) ? weight : 0), 0);
+}
+
+function chooseHighestScore(scores: Record<ToolSurfaceProfile, number>): ToolSurfaceProfile {
+  const priority: ToolSurfaceProfile[] = ["browser_advanced", "mcp", "browser", "context", "coding", "minimal", "full_debug"];
+  let best: ToolSurfaceProfile = "coding";
+  let bestScore = scores.coding;
+  for (const profile of priority) {
+    const score = scores[profile] ?? 0;
+    if (score > bestScore) {
+      best = profile;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : "coding";
+}
+
 export function resolveToolSurfaceProfileFromMessage(message: string | undefined): {
   profile: ToolSurfaceProfile;
   source: ToolSurfaceSource;
@@ -108,6 +126,35 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
   }
 
   const normalized = (message ?? "").toLowerCase();
+  const codeScore = scoreMatches(normalized, [
+    "code",
+    "repo",
+    "repository",
+    "src/",
+    "gateway/",
+    "runtime/",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs",
+    ".rs",
+    "function",
+    "class",
+    "interface",
+    "component",
+    "代码",
+    "源码",
+    "仓库",
+    "文件",
+    "组件",
+    "函数",
+    "接口",
+    "实现",
+    "修复",
+    "优化",
+    "编译",
+    "测试",
+  ]);
   if (includesAny(normalized, [
     "full_debug",
     "tool debug",
@@ -116,7 +163,17 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
   ])) {
     return { profile: "full_debug", source: "auto_intent", reason: "explicit tool debug intent" };
   }
-  if (includesAny(normalized, [
+
+  const scores: Record<ToolSurfaceProfile, number> = {
+    minimal: 0,
+    coding: Math.max(0, codeScore),
+    browser: 0,
+    browser_advanced: 0,
+    context: 0,
+    mcp: 0,
+    full_debug: 0,
+  };
+  scores.browser_advanced += scoreMatches(normalized, [
     "remote cdp",
     "cdp_endpoint",
     "debug chrome",
@@ -129,10 +186,8 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
     "远程调试",
     "坐标点击",
     "文件选择器",
-  ])) {
-    return { profile: "browser_advanced", source: "auto_intent", reason: "advanced browser intent" };
-  }
-  if (includesAny(normalized, [
+  ], 3);
+  scores.browser += scoreMatches(normalized, [
     "browser",
     "web_scan",
     "web_execute_js",
@@ -142,37 +197,46 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
     "dom",
     "浏览器",
     "网页",
-    "页面",
     "登录态",
-    "点击",
-  ])) {
-    return { profile: "browser", source: "auto_intent", reason: "browser intent" };
-  }
-  if (includesAny(normalized, [
+  ], 2);
+  scores.browser += scoreMatches(normalized, ["打开", "点击", "输入", "页面"], 1);
+  scores.mcp += scoreMatches(normalized, [
     "mcp",
     "connector",
     "mcp_call",
     "mcp server",
     "grok-search",
     "grok_search",
-  ])) {
-    return { profile: "mcp", source: "auto_intent", reason: "mcp intent" };
-  }
-  if (includesAny(normalized, [
+  ], 3);
+  scores.context += scoreMatches(normalized, [
     "semantic",
     "semantic_search",
     "memory",
     "wiki",
-    "context",
     "经验",
     "记忆",
     "知识库",
     "语义",
-    "上下文",
-  ])) {
-    return { profile: "context", source: "auto_intent", reason: "context recall intent" };
+  ], 2);
+  scores.context += scoreMatches(normalized, ["context", "上下文"], 1);
+
+  if (codeScore > 0) {
+    if (scores.browser > 0 && !includesAny(normalized, ["打开", "点击", "输入", "cookie", "登录态", "dom", "current page", "web_scan", "web_execute_js"])) {
+      scores.browser = Math.max(0, scores.browser - 2);
+    }
+    if (scores.context > 0 && includesAny(normalized, ["上下文引擎", "context engine", "memory mechanism", "记忆机制"])) {
+      scores.context = Math.max(0, scores.context - 3);
+    }
   }
-  return { profile: "coding", source: "auto_intent", reason: "default coding task" };
+
+  const profile = chooseHighestScore(scores);
+  return {
+    profile,
+    source: "auto_intent",
+    reason: profile === "coding"
+      ? "scored coding task"
+      : `scored ${profile} intent`,
+  };
 }
 
 export function toolNamesForSurfaceProfile(profile: ToolSurfaceProfile): string[] {

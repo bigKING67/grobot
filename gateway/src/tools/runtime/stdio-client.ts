@@ -11,6 +11,7 @@ import {
   RuntimeTurnInterrupt,
   RuntimeTurnResult,
 } from "../../models/types";
+import { RuntimeRpcError } from "./runtime-error";
 
 interface RpcErrorPayload {
   code: number;
@@ -59,6 +60,7 @@ function normalizeRuntimeEventType(raw: unknown): RuntimeEventType {
     "model_response",
     "tool_start",
     "tool_end",
+    "tool_recovery",
     "prompt_cache_hint_applied",
     "prompt_cache_usage_observed",
     "turn_stream_chunk",
@@ -557,6 +559,7 @@ export class StdioRustRuntimeClient implements RuntimeClient {
       const errorClass = asString(errorData?.error_class);
       const errorMessage = asString(errorData?.error_message);
       const traceId = asString(errorData?.trace_id);
+      const runtimeEvents = toEventObjects(traceId || `trace_${request.requestId}`, request.sessionKey, errorData?.events);
       const detail = [
         errorClass ? `class=${errorClass}` : "",
         traceId ? `trace=${traceId}` : "",
@@ -564,9 +567,13 @@ export class StdioRustRuntimeClient implements RuntimeClient {
       ]
         .filter((item) => item.length > 0)
         .join(" ");
-      throw new Error(
-        `runtime rpc error ${response.error.code}: ${response.error.message}${detail ? ` (${detail})` : ""}`,
-      );
+      throw new RuntimeRpcError({
+        message: `runtime rpc error ${response.error.code}: ${response.error.message}${detail ? ` (${detail})` : ""}`,
+        errorClass,
+        errorMessage,
+        traceId,
+        runtimeEvents,
+      });
     }
     return parseRuntimeResult(request, response);
   }

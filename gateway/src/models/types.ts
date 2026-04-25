@@ -231,6 +231,7 @@ export type RuntimeEventType =
   | "model_response"
   | "tool_start"
   | "tool_end"
+  | "tool_recovery"
   | "prompt_cache_hint_applied"
   | "prompt_cache_usage_observed"
   | "turn_stream_chunk"
