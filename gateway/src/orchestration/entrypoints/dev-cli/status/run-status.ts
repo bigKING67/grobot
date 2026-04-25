@@ -29,6 +29,7 @@ import {
   readRuntimeToolSurfaceMetrics,
 } from "../../../../tools/runtime/tool-events";
 import {
+  applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
   type RuntimeToolSurfaceAdaptationGuard,
@@ -730,10 +731,14 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     projectTomlPath,
   });
   const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(workDir);
-  const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
+  const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(workDir);
+  const rawRuntimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
     metrics: runtimeToolSurfaceMetrics,
   });
-  const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(workDir);
+  const runtimeToolRecoveryFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: rawRuntimeToolRecoveryFeedback,
+    snapshot: runtimeToolSurfaceAdaptationSnapshot,
+  });
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
     projectTomlPath,
@@ -1070,6 +1075,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           error_class: runtimeToolRecoveryFeedback.errorClass,
           recommended_next_action: runtimeToolRecoveryFeedback.recommendedNextAction,
           prompt_injected: runtimeToolRecoveryFeedback.active,
+          consumed: runtimeToolRecoveryFeedback.consumed ?? false,
+          consumed_reason: runtimeToolRecoveryFeedback.consumedReason ?? null,
+          consumed_at: runtimeToolRecoveryFeedback.consumedAt ?? null,
+          observed_at: runtimeToolRecoveryFeedback.observedAt ?? null,
         },
         surface_adaptation: {
           enabled: runtimeToolContextPreview.toolSurfaceAdaptation.enabled,
@@ -1092,6 +1101,8 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           recent_failure_class: runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.nextFailureClass ?? null,
           recent_adaptation_count: runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length,
           profile_outcomes: runtimeToolSurfaceAdaptationSnapshot.profileOutcomes,
+          recent_recovery_consumption_count: runtimeToolSurfaceAdaptationSnapshot.recentRecoveryConsumptions.length,
+          latest_recovery_consumption: runtimeToolSurfaceAdaptationSnapshot.latestRecoveryConsumption,
           guard: {
             active: runtimeToolContextPreview.toolSurfaceAdaptationGuard.active,
             reason: runtimeToolContextPreview.toolSurfaceAdaptationGuard.reason,
@@ -1897,7 +1908,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
+    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"}\n`,

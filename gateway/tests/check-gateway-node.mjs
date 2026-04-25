@@ -4609,6 +4609,15 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_active_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_severity_type, "string");
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_reason_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_feedback_consumed_type, "boolean");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_consumed_reason_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_observed_at_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_present, true);
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_active_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_reason_type, "string");
@@ -4618,6 +4627,11 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_path_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_recent_count_type, "number");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_profile_outcomes_type, "object");
+  assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_consumption_count_type, "number");
+  assert.equal(
+    ["object", "undefined"].includes(String(statusPayload.status_runtime_tool_surface_adaptation_outcome_latest_consumption_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_guard_present, true);
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_guard_active_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_guard_reason_type, "string");

@@ -81,10 +81,12 @@ import {
   summarizeRuntimeToolEvents,
 } from "../../../../tools/runtime/tool-events";
 import {
+  applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
   recordRuntimeToolSurfaceAdaptationOutcome,
+  recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
 import { extractRuntimeErrorEvents } from "../../../../tools/runtime/runtime-error";
 
@@ -374,6 +376,7 @@ function writeRuntimeToolSurfaceAdaptationOutcome(input: {
   verificationPass?: boolean;
   traceId?: string;
   startedAtIso?: string;
+  recoveryObservedAt?: string | null;
   writeStderr(message: string): void;
 }): void {
   const outcome = recordRuntimeToolSurfaceAdaptationOutcome({
@@ -383,6 +386,7 @@ function writeRuntimeToolSurfaceAdaptationOutcome(input: {
     verificationPass: input.verificationPass,
     traceId: input.traceId,
     startedAtIso: input.startedAtIso,
+    recoveryObservedAt: input.recoveryObservedAt,
   });
   if (!outcome.recorded || !outcome.record) {
     return;
@@ -2379,11 +2383,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         ...memoryInject.promptParts,
       ];
       const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(input.workDir);
-      const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
+      const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(input.workDir);
+      const rawRuntimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
         metrics: runtimeToolSurfaceMetrics,
       });
+      const runtimeToolRecoveryFeedback = applyRuntimeToolRecoveryConsumption({
+        feedback: rawRuntimeToolRecoveryFeedback,
+        snapshot: runtimeToolSurfaceAdaptationSnapshot,
+      });
       const runtimeToolSurfaceAdaptationStartedAtIso = nowIso();
-      const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(input.workDir);
       const baseRuntimeToolContextForTurn = buildRuntimeToolContextForMessage(input.runtimeToolContext, userText);
       const rawRuntimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
         context: baseRuntimeToolContextForTurn,
@@ -2412,6 +2420,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         if (guardPromptBlock) {
           promptParts.push(guardPromptBlock);
         }
+        recordRuntimeToolSurfaceRecoveryConsumption({
+          workDir: input.workDir,
+          guard: runtimeToolContextForTurn.guard,
+          recoveryFeedback: runtimeToolRecoveryFeedback,
+          nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
+        });
         input.writeStderr(
           `[tool-recovery] event=prompt_hint_guarded guard_reason=${runtimeToolContextForTurn.guard.reason} suppressed_action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"}\n`,
         );
@@ -2999,6 +3013,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           verificationPass: report.verification.pass,
           traceId: report.traceId,
           startedAtIso: runtimeToolSurfaceAdaptationStartedAtIso,
+          recoveryObservedAt: runtimeToolRecoveryFeedback.observedAt,
           writeStderr: input.writeStderr,
         });
         if (runtimeAskUser) {
@@ -3134,6 +3149,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             events: runtimeErrorEvents,
             verificationPass: false,
             startedAtIso: runtimeToolSurfaceAdaptationStartedAtIso,
+            recoveryObservedAt: runtimeToolRecoveryFeedback.observedAt,
             writeStderr: input.writeStderr,
           });
             if (errorClass === TURN_INTERRUPTED_ERROR_CLASS) {

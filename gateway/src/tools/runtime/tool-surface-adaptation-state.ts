@@ -9,6 +9,10 @@ import {
 import { summarizeRuntimeToolEvents, type RuntimeToolRecoveryFeedback } from "./tool-events";
 
 export type RuntimeToolSurfaceAdaptationOutcome = "recovered" | "failed" | "unknown";
+export type RuntimeToolRecoveryConsumptionReason =
+  | "recovered_signal_consumed"
+  | "repeated_profile_failure"
+  | "profile_oscillation";
 
 export interface RuntimeToolSurfaceAdaptationRecord {
   id: string;
@@ -38,6 +42,17 @@ export interface RuntimeToolSurfaceAdaptationProfileOutcome {
   recoveryRate: number | null;
 }
 
+export interface RuntimeToolRecoveryConsumptionRecord {
+  id: string;
+  reason: RuntimeToolRecoveryConsumptionReason;
+  recoveryStage: string | null;
+  recoveryToolName: string | null;
+  recoveryErrorClass: string | null;
+  recoveryObservedAt: string | null;
+  consumedAt: string;
+  traceId: string | null;
+}
+
 export interface RuntimeToolSurfaceAdaptationGuard {
   active: boolean;
   reason: string;
@@ -53,6 +68,8 @@ export interface RuntimeToolSurfaceAdaptationSnapshot {
   recentAdaptations: RuntimeToolSurfaceAdaptationRecord[];
   latestAdaptation: RuntimeToolSurfaceAdaptationRecord | null;
   profileOutcomes: Record<string, RuntimeToolSurfaceAdaptationProfileOutcome>;
+  recentRecoveryConsumptions: RuntimeToolRecoveryConsumptionRecord[];
+  latestRecoveryConsumption: RuntimeToolRecoveryConsumptionRecord | null;
 }
 
 interface RuntimeToolSurfaceAdaptationState {
@@ -60,11 +77,18 @@ interface RuntimeToolSurfaceAdaptationState {
   updatedAt: string;
   recentAdaptations: RuntimeToolSurfaceAdaptationRecord[];
   profileOutcomes: Record<string, RuntimeToolSurfaceAdaptationProfileOutcome>;
+  recentRecoveryConsumptions: RuntimeToolRecoveryConsumptionRecord[];
 }
 
 export interface RuntimeToolSurfaceAdaptationOutcomeWrite {
   recorded: boolean;
   record: RuntimeToolSurfaceAdaptationRecord | null;
+  snapshot: RuntimeToolSurfaceAdaptationSnapshot;
+}
+
+export interface RuntimeToolRecoveryConsumptionWrite {
+  recorded: boolean;
+  record: RuntimeToolRecoveryConsumptionRecord | null;
   snapshot: RuntimeToolSurfaceAdaptationSnapshot;
 }
 
@@ -88,6 +112,7 @@ function emptyState(): RuntimeToolSurfaceAdaptationState {
     updatedAt: "",
     recentAdaptations: [],
     profileOutcomes: {},
+    recentRecoveryConsumptions: [],
   };
 }
 
@@ -140,6 +165,14 @@ function normalizeOutcome(value: unknown): RuntimeToolSurfaceAdaptationOutcome {
     : "unknown";
 }
 
+function normalizeConsumptionReason(value: unknown): RuntimeToolRecoveryConsumptionReason | undefined {
+  return value === "recovered_signal_consumed"
+    || value === "repeated_profile_failure"
+    || value === "profile_oscillation"
+    ? value
+    : undefined;
+}
+
 function recomputeRecoveryRate(outcome: RuntimeToolSurfaceAdaptationProfileOutcome): RuntimeToolSurfaceAdaptationProfileOutcome {
   const denominator = outcome.recoveredTotal + outcome.failedTotal;
   return {
@@ -186,6 +219,26 @@ function normalizeAdaptationRecord(value: unknown): RuntimeToolSurfaceAdaptation
   };
 }
 
+function normalizeConsumptionRecord(value: unknown): RuntimeToolRecoveryConsumptionRecord | undefined {
+  const row = normalizeRecord(value);
+  const id = normalizeString(row.id);
+  const reason = normalizeConsumptionReason(row.reason);
+  const consumedAt = normalizeString(row.consumedAt);
+  if (!id || !reason || !consumedAt || typeof parseIsoMs(consumedAt) !== "number") {
+    return undefined;
+  }
+  return {
+    id,
+    reason,
+    recoveryStage: normalizeString(row.recoveryStage) ?? null,
+    recoveryToolName: normalizeString(row.recoveryToolName) ?? null,
+    recoveryErrorClass: normalizeString(row.recoveryErrorClass) ?? null,
+    recoveryObservedAt: normalizeString(row.recoveryObservedAt) ?? null,
+    consumedAt,
+    traceId: normalizeString(row.traceId) ?? null,
+  };
+}
+
 function readState(path: string): RuntimeToolSurfaceAdaptationState {
   if (!existsSync(path)) {
     return emptyState();
@@ -207,6 +260,12 @@ function readState(path: string): RuntimeToolSurfaceAdaptationState {
             .slice(-40)
         : [],
       profileOutcomes,
+      recentRecoveryConsumptions: Array.isArray(row.recentRecoveryConsumptions)
+        ? row.recentRecoveryConsumptions
+            .map((item) => normalizeConsumptionRecord(item))
+            .filter((item): item is RuntimeToolRecoveryConsumptionRecord => Boolean(item))
+            .slice(-40)
+        : [],
     };
   } catch {
     return emptyState();
@@ -221,6 +280,8 @@ function toSnapshot(path: string, state: RuntimeToolSurfaceAdaptationState): Run
     recentAdaptations: state.recentAdaptations,
     latestAdaptation: state.recentAdaptations[state.recentAdaptations.length - 1] ?? null,
     profileOutcomes: state.profileOutcomes,
+    recentRecoveryConsumptions: state.recentRecoveryConsumptions,
+    latestRecoveryConsumption: state.recentRecoveryConsumptions[state.recentRecoveryConsumptions.length - 1] ?? null,
   };
 }
 
@@ -290,6 +351,60 @@ function updateProfileOutcome(
   state.profileOutcomes[record.appliedProfile] = recomputeRecoveryRate(next);
 }
 
+function recoveryConsumptionKey(input: {
+  recoveryStage: string | null;
+  recoveryToolName: string | null;
+  recoveryErrorClass: string | null;
+}): string {
+  return [
+    input.recoveryStage ?? "<none>",
+    input.recoveryToolName ?? "<none>",
+    input.recoveryErrorClass ?? "<none>",
+  ].join("|");
+}
+
+function feedbackRecoveryKey(feedback: RuntimeToolRecoveryFeedback): string {
+  return recoveryConsumptionKey({
+    recoveryStage: feedback.stage,
+    recoveryToolName: feedback.toolName,
+    recoveryErrorClass: feedback.errorClass,
+  });
+}
+
+function parseIsoMs(value: string | null | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toConsumptionReason(reason: string): RuntimeToolRecoveryConsumptionReason | undefined {
+  return reason === "recovered_signal_consumed"
+    || reason === "repeated_profile_failure"
+    || reason === "profile_oscillation"
+    ? reason
+    : undefined;
+}
+
+function appendRecoveryConsumption(
+  state: RuntimeToolSurfaceAdaptationState,
+  record: RuntimeToolRecoveryConsumptionRecord,
+): boolean {
+  const latest = state.recentRecoveryConsumptions[state.recentRecoveryConsumptions.length - 1];
+  if (
+    latest
+    && latest.reason === record.reason
+    && latest.recoveryObservedAt === record.recoveryObservedAt
+    && recoveryConsumptionKey(latest) === recoveryConsumptionKey(record)
+  ) {
+    return false;
+  }
+  state.recentRecoveryConsumptions.push(record);
+  state.recentRecoveryConsumptions = state.recentRecoveryConsumptions.slice(-40);
+  return true;
+}
+
 export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
   workDir: string;
   adaptation: RuntimeToolSurfaceAdaptation;
@@ -297,6 +412,7 @@ export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
   verificationPass?: boolean;
   traceId?: string;
   startedAtIso?: string;
+  recoveryObservedAt?: string | null;
   nowIso?: string;
 }): RuntimeToolSurfaceAdaptationOutcomeWrite {
   const path = adaptationStatePathForWorkDir(input.workDir);
@@ -350,6 +466,64 @@ export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
   state.recentAdaptations.push(record);
   state.recentAdaptations = state.recentAdaptations.slice(-40);
   updateProfileOutcome(state, record);
+  if (record.outcome === "recovered") {
+    appendRecoveryConsumption(state, {
+      id: `tsc_${Date.now().toString(36)}_${state.recentRecoveryConsumptions.length.toString(36)}`,
+      reason: "recovered_signal_consumed",
+      recoveryStage: record.recoveryStage,
+      recoveryToolName: record.recoveryToolName,
+      recoveryErrorClass: record.recoveryErrorClass,
+      recoveryObservedAt: input.recoveryObservedAt ?? record.startedAt,
+      consumedAt: nowIso,
+      traceId,
+    });
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  return {
+    recorded: true,
+    record,
+    snapshot: toSnapshot(path, state),
+  };
+}
+
+export function recordRuntimeToolSurfaceRecoveryConsumption(input: {
+  workDir: string;
+  guard: RuntimeToolSurfaceAdaptationGuard;
+  recoveryFeedback: RuntimeToolRecoveryFeedback;
+  traceId?: string;
+  nowIso?: string;
+}): RuntimeToolRecoveryConsumptionWrite {
+  const path = adaptationStatePathForWorkDir(input.workDir);
+  const state = readState(path);
+  const reason = toConsumptionReason(input.guard.reason);
+  if (!input.guard.active || !input.recoveryFeedback.active || !reason) {
+    return {
+      recorded: false,
+      record: null,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const record: RuntimeToolRecoveryConsumptionRecord = {
+    id: `tsc_${Date.now().toString(36)}_${state.recentRecoveryConsumptions.length.toString(36)}`,
+    reason,
+    recoveryStage: input.recoveryFeedback.stage,
+    recoveryToolName: input.recoveryFeedback.toolName,
+    recoveryErrorClass: input.recoveryFeedback.errorClass,
+    recoveryObservedAt: input.recoveryFeedback.observedAt ?? null,
+    consumedAt: nowIso,
+    traceId: input.traceId ?? null,
+  };
+  const recorded = appendRecoveryConsumption(state, record);
+  if (!recorded) {
+    return {
+      recorded: false,
+      record: null,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  state.updatedAt = nowIso;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   return {
@@ -486,6 +660,52 @@ export function applyRuntimeToolSurfaceAdaptationGuard(input: {
       source: null,
     },
     guard,
+  };
+}
+
+export function applyRuntimeToolRecoveryConsumption(input: {
+  feedback: RuntimeToolRecoveryFeedback;
+  snapshot: RuntimeToolSurfaceAdaptationSnapshot;
+}): RuntimeToolRecoveryFeedback {
+  if (!input.feedback.active) {
+    return input.feedback;
+  }
+  const feedbackKey = feedbackRecoveryKey(input.feedback);
+  const feedbackObservedAtMs = parseIsoMs(input.feedback.observedAt);
+  if (typeof feedbackObservedAtMs !== "number") {
+    return {
+      ...input.feedback,
+      consumed: false,
+      consumedReason: null,
+      consumedAt: null,
+    };
+  }
+  const consumedRecord = [...input.snapshot.recentRecoveryConsumptions]
+    .reverse()
+    .find((record) => {
+      if (recoveryConsumptionKey(record) !== feedbackKey) {
+        return false;
+      }
+      const consumedAtMs = parseIsoMs(record.consumedAt);
+      return typeof consumedAtMs === "number" && consumedAtMs >= feedbackObservedAtMs;
+    });
+  if (!consumedRecord) {
+    return {
+      ...input.feedback,
+      consumed: false,
+      consumedReason: null,
+      consumedAt: null,
+    };
+  }
+  return {
+    ...input.feedback,
+    active: false,
+    severity: "none",
+    reason: `consumed_${consumedRecord.reason}`,
+    promptBlock: "",
+    consumed: true,
+    consumedReason: consumedRecord.reason,
+    consumedAt: consumedRecord.consumedAt,
   };
 }
 

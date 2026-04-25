@@ -55,6 +55,10 @@ export interface RuntimeToolRecoveryFeedback {
   errorClass: string | null;
   recommendedNextAction: string | null;
   promptBlock: string;
+  observedAt?: string | null;
+  consumed?: boolean;
+  consumedReason?: string | null;
+  consumedAt?: string | null;
 }
 
 interface RuntimeToolSurfaceMetricsState {
@@ -375,6 +379,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: null,
       recommendedNextAction: null,
       promptBlock: "",
+      observedAt: null,
     };
   }
   const nowMs = input.nowMs ?? Date.now();
@@ -390,6 +395,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: recovery.errorClass ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
       promptBlock: "",
+      observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
   }
   const ageMs = Math.max(0, nowMs - observedAtMs);
@@ -403,6 +409,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: recovery.errorClass ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
       promptBlock: "",
+      observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
   }
   const instruction = actionInstruction(recovery.recommendedNextAction);
@@ -424,5 +431,6 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     errorClass,
     recommendedNextAction: recovery.recommendedNextAction,
     promptBlock,
+    observedAt: recovery.observedAt ?? input.metrics.updatedAt,
   };
 }

@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   adaptRuntimeToolContextForRecovery,
@@ -10,10 +10,12 @@ import {
 import type { RuntimeEvent, RuntimeToolContext } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
 import {
+  applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
   recordRuntimeToolSurfaceAdaptationOutcome,
+  recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
 
 const baseContext = {
@@ -231,6 +233,34 @@ try {
   const initialAdaptationState = readRuntimeToolSurfaceAdaptationState(adaptationWorkDir);
   expectEqual(initialAdaptationState.latestAdaptation, null, "initial adaptation state has no latest record");
 
+  const invalidConsumptionWorkDir = join(adaptationWorkDir, "invalid-consumption");
+  const invalidConsumptionStateDir = join(invalidConsumptionWorkDir, ".grobot/runtime");
+  mkdirSync(invalidConsumptionStateDir, { recursive: true });
+  writeFileSync(
+    join(invalidConsumptionStateDir, "tool-surface-adaptation-state.json"),
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: "2026-04-25T00:00:00.000Z",
+      recentAdaptations: [],
+      profileOutcomes: {},
+      recentRecoveryConsumptions: [
+        {
+          id: "bad_consumption",
+          reason: "not_a_known_reason",
+          recoveryStage: "strategy_switch",
+          recoveryToolName: "web_scan",
+          recoveryErrorClass: "tool_not_visible",
+          recoveryObservedAt: "2026-04-25T00:00:00.000Z",
+          consumedAt: "not-a-date",
+          traceId: null,
+        },
+      ],
+    })}\n`,
+    "utf8",
+  );
+  const invalidConsumptionSnapshot = readRuntimeToolSurfaceAdaptationState(invalidConsumptionWorkDir);
+  expectEqual(invalidConsumptionSnapshot.recentRecoveryConsumptions.length, 0, "invalid consumption rows are ignored");
+
   const recoveredWrite = recordRuntimeToolSurfaceAdaptationOutcome({
     workDir: adaptationWorkDir,
     adaptation: adaptedBrowser.adaptation,
@@ -248,6 +278,44 @@ try {
   expectEqual(recoveredWrite.record?.outcome, "recovered", "recovered adaptation outcome");
   expectEqual(recoveredWrite.snapshot.profileOutcomes.browser.recoveredTotal, 1, "browser recovered total");
   expectEqual(recoveredWrite.snapshot.profileOutcomes.browser.recoveryRate, 1, "browser recovery rate");
+  expectEqual(recoveredWrite.snapshot.recentRecoveryConsumptions.length, 1, "recovered adaptation consumes recovery signal");
+  expectEqual(recoveredWrite.snapshot.latestRecoveryConsumption?.reason, "recovered_signal_consumed", "recovered consumption reason");
+
+  const consumedRecoveredFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: {
+      ...activeRecoveryFeedback({
+        toolName: "web_scan",
+        errorClass: "tool_not_visible",
+      }),
+      observedAt: "2026-04-25T00:00:00.500Z",
+    },
+    snapshot: recoveredWrite.snapshot,
+  });
+  expectEqual(consumedRecoveredFeedback.active, false, "recovered consumption suppresses stale recovery feedback");
+  expectEqual(consumedRecoveredFeedback.consumed, true, "recovered consumption marks feedback consumed");
+  expectEqual(consumedRecoveredFeedback.consumedReason, "recovered_signal_consumed", "recovered feedback consumed reason");
+
+  const newerRecoveredFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: {
+      ...activeRecoveryFeedback({
+        toolName: "web_scan",
+        errorClass: "tool_not_visible",
+      }),
+      observedAt: "2026-04-25T00:00:02.000Z",
+    },
+    snapshot: recoveredWrite.snapshot,
+  });
+  expectEqual(newerRecoveredFeedback.active, true, "newer recovery signal remains active after prior consumption");
+
+  const unobservedRecoveredFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: activeRecoveryFeedback({
+      toolName: "web_scan",
+      errorClass: "tool_not_visible",
+    }),
+    snapshot: recoveredWrite.snapshot,
+  });
+  expectEqual(unobservedRecoveredFeedback.active, true, "untimestamped active recovery feedback fails open");
+  expectEqual(unobservedRecoveredFeedback.consumed, false, "untimestamped active recovery feedback is not consumed");
 
   const consumedRecoveryGuard = applyRuntimeToolSurfaceAdaptationGuard({
     baseContext: coding,
@@ -308,6 +376,32 @@ try {
   expectEqual(guardedBrowser.context?.toolSurfaceProfile, "coding", "guard falls back to coding context");
   expectEqual(guardedBrowser.adaptation.active, false, "guard blocks active adaptation");
   expectEqual(guardedBrowser.adaptation.recommendedProfile, "browser", "guard keeps recommended profile observable");
+  const guardedConsumption = recordRuntimeToolSurfaceRecoveryConsumption({
+    workDir: adaptationWorkDir,
+    guard: guardedBrowser.guard,
+    recoveryFeedback: {
+      ...activeRecoveryFeedback({
+        toolName: "web_scan",
+        errorClass: "tool_not_visible",
+      }),
+      observedAt: "2026-04-25T00:00:03.000Z",
+    },
+    nowIso: "2026-04-25T00:00:04.000Z",
+  });
+  expectEqual(guardedConsumption.recorded, true, "guarded recovery consumption recorded");
+  expectEqual(guardedConsumption.record?.reason, "repeated_profile_failure", "guarded consumption reason");
+  const consumedGuardedFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: {
+      ...activeRecoveryFeedback({
+        toolName: "web_scan",
+        errorClass: "tool_not_visible",
+      }),
+      observedAt: "2026-04-25T00:00:03.500Z",
+    },
+    snapshot: guardedConsumption.snapshot,
+  });
+  expectEqual(consumedGuardedFeedback.active, false, "guarded consumption suppresses stale recovery feedback");
+  expectEqual(consumedGuardedFeedback.consumedReason, "repeated_profile_failure", "guarded feedback consumed reason");
 
   const oscillationWorkDir = join(adaptationWorkDir, "oscillation");
   mkdirSync(oscillationWorkDir, { recursive: true });
@@ -393,6 +487,7 @@ process.stdout.write(JSON.stringify({
   adapted_mcp_profile: adaptedMcp.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
   adaptation_guard_recovered_signal_consumed: true,
+  recovery_feedback_consumed_at_source: true,
   adaptation_guard_prompt_suppresses_recovery_hint: true,
   adaptation_guard_repeated_failure: true,
   adaptation_guard_profile_oscillation: true,
