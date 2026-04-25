@@ -3,6 +3,7 @@ import { runGatewayTurn } from "../../../main";
 import {
   type RuntimeAskUserInterrupt,
   type RuntimeAttachment,
+  type RuntimeEvent,
   type RuntimeModelConfig,
   type RuntimeToolContext,
 } from "../../../../models/types";
@@ -28,6 +29,7 @@ import {
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
+import { buildRuntimeToolContextForMessage } from "../../../../tools/runtime/default-enabled-tools";
 import { type MemoryOrchestrator } from "../../../../tools/memory";
 import {
   compressPromptSnapshotSectionsSemanticallyForBudget,
@@ -245,6 +247,84 @@ function buildAskUserQueueContinuationHint(queuedExtra: number): string {
     return "";
   }
   return "[ask-user] 还有后续问题，继续直接回复即可。\n";
+}
+
+function payloadString(payload: Record<string, unknown>, key: string): string {
+  const value = payload[key];
+  return typeof value === "string" ? value : "";
+}
+
+function payloadNumber(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function summarizeToolOutput(payload: Record<string, unknown>): string {
+  const outputSummary = payload.output_summary;
+  if (!outputSummary || typeof outputSummary !== "object" || Array.isArray(outputSummary)) {
+    return "";
+  }
+  const summary = outputSummary as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of [
+    "tool",
+    "count",
+    "limit_reached",
+    "engine",
+    "preferred_engine",
+    "exit_code",
+    "matches_count",
+    "entries_count",
+    "stdout_chars",
+    "stderr_chars",
+    "tool_content_chars",
+    "error_class",
+  ]) {
+    const value = summary[key];
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      parts.push(`${key}=${String(value)}`);
+    }
+  }
+  return parts.slice(0, 8).join(" ");
+}
+
+function buildRuntimeToolTraceMemory(input: {
+  events: readonly RuntimeEvent[];
+  userText: string;
+}): { text: string; toolCount: number; failedCount: number; deferredCount: number; turnId?: string } | undefined {
+  const toolEndEvents = input.events.filter((event) => event.eventType === "tool_end");
+  if (toolEndEvents.length === 0) {
+    return undefined;
+  }
+  const failedCount = toolEndEvents.filter((event) => payloadString(event.payload, "status") === "failed").length;
+  const deferredCount = toolEndEvents.filter((event) => payloadString(event.payload, "status") === "deferred").length;
+  const rows = toolEndEvents.slice(0, 6).map((event) => {
+    const payload = event.payload;
+    const durationMs = payloadNumber(payload, "duration_ms");
+    const durationLabel = typeof durationMs === "number" ? String(durationMs) : "n/a";
+    const summary = summarizeToolOutput(payload);
+    return [
+      `tool=${payloadString(payload, "tool_name") || "unknown_tool"}`,
+      `status=${payloadString(payload, "status") || "unknown"}`,
+      `risk=${payloadString(payload, "risk_class") || "unknown"}`,
+      `duration_ms=${durationLabel}`,
+      summary ? `summary=${summary}` : "",
+    ].filter(Boolean).join(" ");
+  });
+  const userHash = hashText(input.userText).toString(16);
+  const overflow = toolEndEvents.length > rows.length
+    ? `\n- omitted=${String(toolEndEvents.length - rows.length)}`
+    : "";
+  return {
+    text: [
+      `[runtime-tool-trace] user_hash=${userHash} total=${String(toolEndEvents.length)} failed=${String(failedCount)} deferred=${String(deferredCount)}`,
+      ...rows.map((row) => `- ${row}`),
+    ].join("\n") + overflow,
+    toolCount: toolEndEvents.length,
+    failedCount,
+    deferredCount,
+    turnId: toolEndEvents[0]?.turnId,
+  };
 }
 
 function normalizeRuntimeAskUserId(input: {
@@ -2670,7 +2750,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                   },
                     {
                       modelConfig: turnModelConfig.modelConfig,
-                      toolContext: input.runtimeToolContext,
+                      toolContext: buildRuntimeToolContextForMessage(input.runtimeToolContext, userText),
                       attachments: runtimeAttachments,
                       abortSignal: turnSignal,
                       systemPrompt: grobotSystemPrompt,
@@ -2832,6 +2912,31 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           }
           input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");
         } else {
+          const toolTraceMemory = buildRuntimeToolTraceMemory({
+            events: report.events,
+            userText,
+          });
+          if (toolTraceMemory) {
+            const ingestResult = input.memoryOrchestrator.ingest({
+              eventType: "tool_success",
+              sessionKey,
+              text: toolTraceMemory.text,
+              executionVerified: report.verification.pass && toolTraceMemory.failedCount === 0,
+              evidenceRef: {
+                traceId: report.traceId,
+                turnId: toolTraceMemory.turnId,
+                source: "runtime_tool_trace",
+              },
+              tags: [
+                "runtime_tool_trace",
+                toolTraceMemory.deferredCount > 0 ? "tool_deferred" : "tool_observed",
+              ],
+              confidence: toolTraceMemory.deferredCount > 0 ? 0.68 : 0.76,
+            });
+            for (const event of ingestResult.stderrEvents) {
+              input.writeStderr(event);
+            }
+          }
           const feedback = input.memoryOrchestrator.feedback({
             type: "turn_success",
             sessionKey,

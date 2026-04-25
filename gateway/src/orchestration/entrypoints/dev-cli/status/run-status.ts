@@ -14,7 +14,14 @@ import {
   runRuntimeToolsDescribe,
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
-import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
+import {
+  buildDefaultRuntimeEnabledTools,
+  buildRuntimeToolContextForMessage,
+  buildToolSurfaceFingerprint,
+  estimateToolSchemaTokens,
+  TOOL_SURFACE_POLICY_VERSION,
+} from "../../../../tools/runtime/default-enabled-tools";
+import type { ToolSurfaceProfile, ToolSurfaceSource } from "../../../../models/types";
 import {
   assessGraphCacheWindowDegradation,
   assessPersistentGraphWindowDegradation,
@@ -439,6 +446,14 @@ function resolveRouteDecisionSummary(input: {
 
 function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, runtimeBinaryPath?: string): {
   enabledTools: string[];
+  modelVisibleTools: string[];
+  toolSurfaceProfile: ToolSurfaceProfile;
+  toolSurfaceSource: ToolSurfaceSource;
+  toolSurfaceReason: string;
+  toolPolicyVersion: string;
+  advancedToolSchema: boolean;
+  schemaFingerprint: string;
+  schemaEstimatedTokens: number;
   enabledToolsSource: "runtime.tools.describe" | "start-default";
   enabledToolsSourceDetail?: string;
   manifestFingerprint: string;
@@ -490,8 +505,30 @@ function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, r
     ? "runtime.tools.describe"
     : "start-default";
   const bashAllowlist = readToolsAllowlistFromProjectToml(projectTomlPath);
+  const surfaced = buildRuntimeToolContextForMessage({
+    workDir: "",
+    enabledTools,
+    bashAllowlist,
+    maxToolRounds,
+    noToolFallbackMode,
+    maxRecoveryRounds,
+  }, undefined, manifestToolNames);
+  const toolSurfaceProfile = surfaced?.toolSurfaceProfile ?? "coding";
+  const modelVisibleTools = surfaced?.modelVisibleTools ?? enabledTools;
+  const schemaFingerprint = surfaced?.schemaFingerprint
+    ?? buildToolSurfaceFingerprint(toolSurfaceProfile, modelVisibleTools);
+  const schemaEstimatedTokens = surfaced?.schemaEstimatedTokens
+    ?? estimateToolSchemaTokens(modelVisibleTools, toolSurfaceProfile);
   return {
     enabledTools,
+    modelVisibleTools,
+    toolSurfaceProfile,
+    toolSurfaceSource: surfaced?.toolSurfaceSource ?? "fallback",
+    toolSurfaceReason: surfaced?.toolSurfaceReason ?? "status fallback",
+    toolPolicyVersion: surfaced?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
+    advancedToolSchema: surfaced?.advancedToolSchema ?? false,
+    schemaFingerprint,
+    schemaEstimatedTokens,
     enabledToolsSource,
     enabledToolsSourceDetail:
       enabledToolsSource === "start-default" && described && described.detail
@@ -970,6 +1007,15 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       },
       runtime_tools: {
         context: "enabled",
+        tool_surface_profile: runtimeToolContextPreview.toolSurfaceProfile,
+        tool_surface_source: runtimeToolContextPreview.toolSurfaceSource,
+        tool_surface_reason: runtimeToolContextPreview.toolSurfaceReason,
+        tool_policy_version: runtimeToolContextPreview.toolPolicyVersion,
+        model_visible_tools: runtimeToolContextPreview.modelVisibleTools,
+        dispatch_enabled_tools: runtimeToolContextPreview.enabledTools,
+        schema_fingerprint: runtimeToolContextPreview.schemaFingerprint,
+        schema_estimated_tokens: runtimeToolContextPreview.schemaEstimatedTokens,
+        advanced_tool_schema: runtimeToolContextPreview.advancedToolSchema,
         enabled_tools_source: runtimeToolContextPreview.enabledToolsSource,
         enabled_tools_source_detail: runtimeToolContextPreview.enabledToolsSourceDetail ?? null,
         manifest_fingerprint: runtimeToolContextPreview.manifestFingerprint,
@@ -1744,6 +1790,21 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_manifest_default_enabled_count: ${runtimeToolContextPreview.manifestDefaultEnabledCount}\n`,
   );
   process.stdout.write(`runtime_tool_work_dir: ${workDir}\n`);
+  process.stdout.write(
+    `runtime_tool_surface_profile: ${runtimeToolContextPreview.toolSurfaceProfile} (${runtimeToolContextPreview.toolSurfaceSource})\n`,
+  );
+  process.stdout.write(`runtime_tool_surface_reason: ${runtimeToolContextPreview.toolSurfaceReason}\n`);
+  process.stdout.write(`runtime_tool_policy_version: ${runtimeToolContextPreview.toolPolicyVersion}\n`);
+  process.stdout.write(
+    `runtime_tool_model_visible_tools: ${runtimeToolContextPreview.modelVisibleTools.join(",")}\n`,
+  );
+  process.stdout.write(`runtime_tool_schema_fingerprint: ${runtimeToolContextPreview.schemaFingerprint}\n`);
+  process.stdout.write(
+    `runtime_tool_schema_estimated_tokens: ${String(runtimeToolContextPreview.schemaEstimatedTokens)}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_advanced_schema: ${runtimeToolContextPreview.advancedToolSchema ? "true" : "false"}\n`,
+  );
   process.stdout.write(
     `runtime_tool_enabled_tools: ${runtimeToolContextPreview.enabledTools.join(",")}\n`,
   );

@@ -128,6 +128,7 @@ export class AgentLoop {
       verification,
       governance,
       shadowComparison,
+      events: primary.events,
       eventCount: primary.events.length,
     };
 

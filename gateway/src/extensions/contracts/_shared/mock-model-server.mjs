@@ -107,8 +107,8 @@ export async function startMockModelServer(options = {}) {
                       id: "call_1",
                       type: "function",
                       function: {
-                        name: "list",
-                        arguments: "{\"path\":\".\",\"max_entries\":16}",
+                        name: "glob",
+                        arguments: "{\"pattern\":\"*\",\"path\":\".\",\"max_entries\":16}",
                       },
                     },
                   ],

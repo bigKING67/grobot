@@ -343,6 +343,15 @@ impl ToolExecutor for LocalToolExecutor {
         }
         let tool_name = normalize_tool_name(&call.name);
         let context = parse_tool_context(input)?;
+        if !context.model_visible_tools.contains(&tool_name) {
+            return Err(ToolExecutionError::new(
+                "tool_not_visible",
+                format!(
+                    "tool is not visible in current tool surface profile: {tool_name} profile={}",
+                    context.tool_surface_profile
+                ),
+            ));
+        }
         if !context.enabled_tools.contains(&tool_name) {
             return Err(ToolExecutionError::new(
                 "tool_disabled",

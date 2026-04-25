@@ -790,6 +790,217 @@ fn build_no_tool_fallback_event(event_type: &str, payload: Value) -> ModelTeleme
     }
 }
 
+fn normalize_tool_name_for_telemetry(raw: &str) -> String {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return "unknown_tool".to_string();
+    }
+    normalized.to_string()
+}
+
+fn classify_tool_execution_risk(tool_name: &str) -> &'static str {
+    match tool_name.trim().to_ascii_lowercase().as_str() {
+        "bash" | "web_execute_js" | "mcp_call" | "code_runner" | "kimi_files_delete" => {
+            "high_risk"
+        }
+        "write" | "edit" => "mutating",
+        "ask_user_question" => "interrupt",
+        "list" | "glob" | "search" | "read" | "mcp_servers" | "web_scan" | "semantic_search"
+        | "prompt_enhancer" | "$web_search" | "web_search" | "fetch" | "date" | "rethink"
+        | "kimi_files_list" => "read_only",
+        _ => "unknown",
+    }
+}
+
+fn tool_requires_observation_boundary(risk_class: &str) -> bool {
+    matches!(risk_class, "high_risk" | "mutating" | "interrupt" | "unknown")
+}
+
+fn tool_duration_ms(started_at: std::time::Instant) -> u64 {
+    let millis = started_at.elapsed().as_millis();
+    if millis > u128::from(u64::MAX) {
+        return u64::MAX;
+    }
+    millis as u64
+}
+
+fn build_tool_start_event(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+) -> ModelTelemetryEvent {
+    ModelTelemetryEvent {
+        event_type: "tool_start".to_string(),
+        payload: Some(json!({
+            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
+            "tool_call_id": tool_call.id,
+            "tool_round": tool_round,
+            "batch_index": batch_index,
+            "risk_class": risk_class,
+        })),
+    }
+}
+
+fn build_tool_output_summary(tool_name: &str, output_content: &str) -> Value {
+    let mut summary = serde_json::Map::new();
+    summary.insert(
+        "tool_name".to_string(),
+        Value::String(normalize_tool_name_for_telemetry(tool_name)),
+    );
+    summary.insert(
+        "content_chars".to_string(),
+        json!(output_content.chars().count()),
+    );
+
+    let Ok(parsed) = serde_json::from_str::<Value>(output_content) else {
+        summary.insert("json".to_string(), Value::Bool(false));
+        return Value::Object(summary);
+    };
+    summary.insert("json".to_string(), Value::Bool(true));
+    let Some(object) = parsed.as_object() else {
+        return Value::Object(summary);
+    };
+
+    for key in [
+        "tool",
+        "type",
+        "count",
+        "limit_reached",
+        "engine",
+        "preferred_engine",
+        "exit_code",
+        "status",
+        "error_class",
+    ] {
+        if let Some(value) = object.get(key) {
+            summary.insert(key.to_string(), value.clone());
+        }
+    }
+    for (key, summary_key) in [
+        ("matches", "matches_count"),
+        ("entries", "entries_count"),
+        ("records", "records_count"),
+        ("evidence", "evidence_count"),
+        ("technical_terms", "technical_terms_count"),
+    ] {
+        if let Some(count) = object.get(key).and_then(Value::as_array).map(Vec::len) {
+            summary.insert(summary_key.to_string(), json!(count));
+        }
+    }
+    if let Some(stdout_chars) = object
+        .get("stdout")
+        .and_then(Value::as_str)
+        .map(|value| value.chars().count())
+    {
+        summary.insert("stdout_chars".to_string(), json!(stdout_chars));
+    }
+    if let Some(stderr_chars) = object
+        .get("stderr")
+        .and_then(Value::as_str)
+        .map(|value| value.chars().count())
+    {
+        summary.insert("stderr_chars".to_string(), json!(stderr_chars));
+    }
+    if let Some(content_chars) = object
+        .get("content")
+        .and_then(Value::as_str)
+        .map(|value| value.chars().count())
+    {
+        summary.insert("tool_content_chars".to_string(), json!(content_chars));
+    }
+    Value::Object(summary)
+}
+
+fn build_tool_end_success_event(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+    duration_ms: u64,
+    output: &ToolCallOutput,
+) -> ModelTelemetryEvent {
+    ModelTelemetryEvent {
+        event_type: "tool_end".to_string(),
+        payload: Some(json!({
+            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
+            "tool_call_id": tool_call.id,
+            "tool_round": tool_round,
+            "batch_index": batch_index,
+            "risk_class": risk_class,
+            "status": "ok",
+            "duration_ms": duration_ms,
+            "output_summary": build_tool_output_summary(&tool_call.name, &output.content),
+        })),
+    }
+}
+
+fn build_tool_end_deferred_event(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+    output: &ToolCallOutput,
+) -> ModelTelemetryEvent {
+    ModelTelemetryEvent {
+        event_type: "tool_end".to_string(),
+        payload: Some(json!({
+            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
+            "tool_call_id": tool_call.id,
+            "tool_round": tool_round,
+            "batch_index": batch_index,
+            "risk_class": risk_class,
+            "status": "deferred",
+            "duration_ms": 0,
+            "error_class": "tool_execution_deferred",
+            "output_summary": build_tool_output_summary(&tool_call.name, &output.content),
+        })),
+    }
+}
+
+fn build_tool_end_failure_event(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+    duration_ms: u64,
+    error: &ToolExecutionError,
+) -> ModelTelemetryEvent {
+    ModelTelemetryEvent {
+        event_type: "tool_end".to_string(),
+        payload: Some(json!({
+            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
+            "tool_call_id": tool_call.id,
+            "tool_round": tool_round,
+            "batch_index": batch_index,
+            "risk_class": risk_class,
+            "status": "failed",
+            "duration_ms": duration_ms,
+            "error_class": error.error_class,
+            "error_message": truncate_header_value_for_diagnostics(&error.message, 240),
+        })),
+    }
+}
+
+fn build_deferred_tool_output(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+) -> ToolCallOutput {
+    let content = serde_json::to_string(&json!({
+        "tool": normalize_tool_name_for_telemetry(&tool_call.name),
+        "status": "deferred",
+        "error_class": "tool_execution_deferred",
+        "message": "deferred because a mutating, high-risk, interrupting, or unknown-risk tool already ran in this batch; observe prior result and re-issue this tool call if it is still needed",
+        "tool_round": tool_round,
+        "batch_index": batch_index,
+        "risk_class": risk_class,
+    }))
+    .unwrap_or_else(|_| "{\"status\":\"deferred\"}".to_string());
+    ToolCallOutput { content }
+}
+
 fn parse_non_empty_string_field(
     payload: &serde_json::Map<String, Value>,
     key: &str,
@@ -1415,16 +1626,82 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                     )
                 })?;
                 messages.push(assistant_message);
-                for tool_call in tool_calls {
-                    let output = tools
-                        .execute_tool_call(&tool_call, input)
-                        .map_err(|error| ModelExecutionError::new(&error.error_class, error.message))?;
-                    if let Some(interrupt) = parse_tool_interrupt(&tool_call, &output)? {
-                        return Ok(ModelExecutionOutput {
-                            assistant_message: String::new(),
-                            telemetry_events,
-                            interrupt: Some(interrupt),
-                        });
+                let current_tool_round = tool_rounds.saturating_add(1);
+                let mut observation_boundary_consumed = false;
+                for (batch_index, tool_call) in tool_calls.into_iter().enumerate() {
+                    let risk_class = classify_tool_execution_risk(&tool_call.name);
+                    telemetry_events.push(build_tool_start_event(
+                        &tool_call,
+                        current_tool_round,
+                        batch_index,
+                        risk_class,
+                    ));
+                    let mut deferred_tool_call = false;
+                    let output = if observation_boundary_consumed {
+                        deferred_tool_call = true;
+                        let output = build_deferred_tool_output(
+                            &tool_call,
+                            current_tool_round,
+                            batch_index,
+                            risk_class,
+                        );
+                        telemetry_events.push(build_tool_end_deferred_event(
+                            &tool_call,
+                            current_tool_round,
+                            batch_index,
+                            risk_class,
+                            &output,
+                        ));
+                        output
+                    } else {
+                        let started_at = std::time::Instant::now();
+                        match tools.execute_tool_call(&tool_call, input) {
+                            Ok(output) => {
+                                let duration_ms = tool_duration_ms(started_at);
+                                telemetry_events.push(build_tool_end_success_event(
+                                    &tool_call,
+                                    current_tool_round,
+                                    batch_index,
+                                    risk_class,
+                                    duration_ms,
+                                    &output,
+                                ));
+                                if tool_requires_observation_boundary(risk_class) {
+                                    observation_boundary_consumed = true;
+                                }
+                                output
+                            }
+                            Err(error) => {
+                                let duration_ms = tool_duration_ms(started_at);
+                                telemetry_events.push(build_tool_end_failure_event(
+                                    &tool_call,
+                                    current_tool_round,
+                                    batch_index,
+                                    risk_class,
+                                    duration_ms,
+                                    &error,
+                                ));
+                                return Err(
+                                    ModelExecutionError::new(&error.error_class, error.message)
+                                        .with_telemetry_events(telemetry_events),
+                                );
+                            }
+                        }
+                    };
+                    if !deferred_tool_call {
+                        match parse_tool_interrupt(&tool_call, &output) {
+                            Ok(Some(interrupt)) => {
+                                return Ok(ModelExecutionOutput {
+                                    assistant_message: String::new(),
+                                    telemetry_events,
+                                    interrupt: Some(interrupt),
+                                });
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                return Err(error.with_telemetry_events(telemetry_events));
+                            }
+                        }
                     }
                     messages.push(json!({
                         "role": "tool",

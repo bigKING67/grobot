@@ -20,7 +20,10 @@ const BLOCK_PATTERNS = [
   { key: "python_shebang", regex: /^#!\/usr\/bin\/env python3\b/m },
   { key: "python_bin_flag", regex: /--python-bin\b/ },
 ];
-const PYTHON_FILE_IGNORE_PREFIXES = [".trellis/"];
+const PYTHON_FILE_IGNORE_PREFIXES = [
+  ".trellis/",
+  "packages/templates/skills/skill-creator/",
+];
 
 function walkPaths(startPath, output) {
   const stat = statSync(startPath);

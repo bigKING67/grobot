@@ -119,7 +119,7 @@ reply_in_thread = true
 resume_ttl_secs = 1800
 
 [tools]
-allow = ["list", "glob", "search", "read", "write", "edit", "shell", "git", "rg", "python3", "cargo", "npm"]
+allow = ["glob", "search", "read", "write", "edit", "bash", "ask_user_question"]
 deny = ["git reset --hard", "git push --force", "rm -rf /"]
 
 [mcp.instructions]

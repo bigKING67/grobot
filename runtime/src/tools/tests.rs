@@ -34,6 +34,12 @@ mod tests {
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["read".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -54,6 +60,12 @@ mod tests {
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["read".to_string(), "edit".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -74,6 +86,12 @@ mod tests {
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["read".to_string(), "write".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -94,6 +112,12 @@ mod tests {
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["read".to_string(), "write".to_string(), "edit".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -114,6 +138,12 @@ mod tests {
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["bash".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: Some(bash_allowlist),
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -138,6 +168,12 @@ mod tests {
                     "glob".to_string(),
                     "search".to_string(),
                 ]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -158,6 +194,12 @@ mod tests {
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["search".to_string(), "semantic_search".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("context".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -185,6 +227,29 @@ mod tests {
                 format!("failed to decode tool output json: {error}"),
             )
         })
+    }
+
+    fn surface_parameters(profile: &str, tools: Vec<&str>, tool_name: &str) -> Value {
+        let visible_tools = tools.into_iter().map(str::to_string).collect::<Vec<String>>();
+        let definitions = local_tool_definitions_for_surface(&visible_tools, Some(profile), false);
+        definitions
+            .into_iter()
+            .find_map(|definition| {
+                let function = definition.get("function")?.as_object()?;
+                if function.get("name").and_then(Value::as_str) != Some(tool_name) {
+                    return None;
+                }
+                function.get("parameters").cloned()
+            })
+            .unwrap_or_else(|| panic!("missing projected tool schema for {tool_name}"))
+    }
+
+    fn schema_property_names(parameters: &Value) -> StdHashSet<String> {
+        parameters
+            .get("properties")
+            .and_then(Value::as_object)
+            .map(|properties| properties.keys().cloned().collect::<StdHashSet<String>>())
+            .unwrap_or_default()
     }
 
     #[test]
@@ -216,9 +281,18 @@ mod tests {
             .map(ToString::to_string)
             .collect();
         assert!(default_enabled_names.is_subset(&catalog_names));
-        assert!(default_enabled_names.contains(TOOL_WEB_SCAN));
-        assert!(default_enabled_names.contains(TOOL_WEB_EXECUTE_JS));
+        assert!(default_enabled_names.contains(TOOL_GLOB));
+        assert!(default_enabled_names.contains(TOOL_SEARCH));
+        assert!(default_enabled_names.contains(TOOL_READ));
+        assert!(default_enabled_names.contains(TOOL_WRITE));
+        assert!(default_enabled_names.contains(TOOL_EDIT));
+        assert!(default_enabled_names.contains(TOOL_BASH));
         assert!(default_enabled_names.contains(TOOL_ASK_USER_QUESTION));
+        assert!(!default_enabled_names.contains(TOOL_LIST));
+        assert!(!default_enabled_names.contains(TOOL_WEB_SCAN));
+        assert!(!default_enabled_names.contains(TOOL_WEB_EXECUTE_JS));
+        assert!(!default_enabled_names.contains(TOOL_MCP_CALL));
+        assert!(!default_enabled_names.contains(TOOL_PROMPT_ENHANCER));
 
         let web_scan_schema = schema_by_name
             .get(TOOL_WEB_SCAN)
@@ -291,6 +365,87 @@ mod tests {
                 tool_name
             );
         }
+    }
+
+    #[test]
+    fn coding_surface_hides_browser_mcp_and_prompt_enhancer_tools() {
+        let definitions = local_tool_definitions_for_surface(&Vec::new(), Some("coding"), false);
+        let names = definitions
+            .iter()
+            .filter_map(|definition| {
+                definition
+                    .get("function")
+                    .and_then(Value::as_object)
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect::<StdHashSet<String>>();
+        assert_eq!(
+            names,
+            StdHashSet::from([
+                TOOL_GLOB.to_string(),
+                TOOL_SEARCH.to_string(),
+                TOOL_READ.to_string(),
+                TOOL_WRITE.to_string(),
+                TOOL_EDIT.to_string(),
+                TOOL_BASH.to_string(),
+                TOOL_ASK_USER_QUESTION.to_string(),
+            ])
+        );
+        assert!(!names.contains(TOOL_PROMPT_ENHANCER));
+        assert!(!names.contains(TOOL_WEB_SCAN));
+        assert!(!names.contains(TOOL_WEB_EXECUTE_JS));
+    }
+
+    #[test]
+    fn browser_surface_projects_slim_browser_schema() {
+        let scan_params = surface_parameters("browser", vec![TOOL_WEB_SCAN], TOOL_WEB_SCAN);
+        let scan_props = schema_property_names(&scan_params);
+        assert!(scan_props.contains("tabs_only"));
+        assert!(scan_props.contains("main_only"));
+        assert!(scan_props.contains("max_chars"));
+        assert!(!scan_props.contains("tmwd_mode"));
+        assert!(!scan_props.contains("cdp_endpoint"));
+
+        let exec_params =
+            surface_parameters("browser", vec![TOOL_WEB_EXECUTE_JS], TOOL_WEB_EXECUTE_JS);
+        let exec_props = schema_property_names(&exec_params);
+        assert!(exec_props.contains("script"));
+        assert!(exec_props.contains("code"));
+        assert!(exec_props.contains("timeout_ms"));
+        assert!(!exec_props.contains("tmwd_mode"));
+        assert!(!exec_props.contains("native_fallback_action"));
+        assert_eq!(
+            exec_params
+                .get("anyOf")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn browser_advanced_surface_exposes_debug_schema_without_full_native_actions() {
+        let scan_params =
+            surface_parameters("browser_advanced", vec![TOOL_WEB_SCAN], TOOL_WEB_SCAN);
+        let scan_props = schema_property_names(&scan_params);
+        assert!(scan_props.contains("tmwd_mode"));
+        assert!(scan_props.contains("tmwd_ws_endpoint"));
+        assert!(scan_props.contains("tmwd_link_endpoint"));
+        assert!(scan_props.contains("cdp_endpoint"));
+
+        let exec_params = surface_parameters(
+            "browser_advanced",
+            vec![TOOL_WEB_EXECUTE_JS],
+            TOOL_WEB_EXECUTE_JS,
+        );
+        let exec_props = schema_property_names(&exec_params);
+        assert!(exec_props.contains("tmwd_mode"));
+        assert!(exec_props.contains("target_url_contains"));
+        assert!(exec_props.contains("native_auto_fallback"));
+        assert!(!exec_props.contains("native_fallback_action"));
+        assert!(!exec_props.contains("native_fallback_args"));
     }
 
     #[test]
@@ -370,6 +525,8 @@ allow_tools = ["echo"]
             session_key: "test-session".to_string(),
             work_dir: workspace,
             enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "coding".to_string(),
             bash_allowlist: Vec::new(),
         };
         let policy = load_mcp_call_policy(&context);
@@ -413,6 +570,8 @@ audit_redact_secrets = false
             session_key: "test-session".to_string(),
             work_dir: workspace,
             enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "coding".to_string(),
             bash_allowlist: Vec::new(),
         };
         let policy = load_bash_runtime_policy(&context);
@@ -475,6 +634,8 @@ audit_redact_secrets = false
             session_key: "test-session".to_string(),
             work_dir: canonical_workspace,
             enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "coding".to_string(),
             bash_allowlist: Vec::new(),
         };
         let records = read_context_records_for_match(&context, "sample.txt", 4, 2, 1)
@@ -504,6 +665,8 @@ audit_redact_secrets = false
             session_key: "test-session".to_string(),
             work_dir: canonical_workspace,
             enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "coding".to_string(),
             bash_allowlist: Vec::new(),
         };
         let request = SearchRequest {
@@ -556,6 +719,33 @@ audit_redact_secrets = false
         )
         .expect_err("unknown list argument should fail");
         assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn dispatcher_rejects_tool_hidden_from_current_surface() {
+        let workspace = make_temp_workspace("tool-not-visible");
+        fs::write(workspace.join("notes.txt"), "secret").expect("write notes");
+        let mut input = make_read_only_input(&workspace);
+        if let Some(context) = input.tool_context.as_mut() {
+            context.model_visible_tools = Some(vec!["glob".to_string()]);
+        }
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("read should be hidden from this surface");
+        assert_eq!(error.error_class, "tool_not_visible");
+        assert!(
+            error.message.contains("profile=coding"),
+            "surface profile should be present in error: {}",
+            error.message
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -1095,6 +1285,12 @@ audit_redact_secrets = false
                     "write".to_string(),
                     "bash".to_string(),
                 ]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: Some(vec!["printf".to_string()]),
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -2564,6 +2760,12 @@ audit_redact_secrets = false
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["read".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -2625,6 +2827,12 @@ audit_redact_secrets = false
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec!["read".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -2716,6 +2924,12 @@ audit_redact_secrets = false
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(work_dir),
                 enabled_tools: Some(vec!["read".to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -3338,6 +3552,12 @@ audit_redact_secrets = false
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec![TOOL_SEMANTIC_SEARCH.to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("context".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -3374,6 +3594,12 @@ audit_redact_secrets = false
             tool_context: Some(RuntimeToolContextInput {
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec![TOOL_PROMPT_ENHANCER.to_string()]),
+                model_visible_tools: None,
+                tool_surface_profile: Some("full_debug".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(true),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,

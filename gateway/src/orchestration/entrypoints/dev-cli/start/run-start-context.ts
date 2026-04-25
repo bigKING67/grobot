@@ -26,7 +26,10 @@ import {
   resolveProjectTomlPath,
   resolveWorkDir,
 } from "../services/runtime-paths";
-import { buildDefaultRuntimeEnabledTools } from "../../../../tools/runtime/default-enabled-tools";
+import {
+  buildDefaultRuntimeEnabledTools,
+  buildRuntimeToolContextForMessage,
+} from "../../../../tools/runtime/default-enabled-tools";
 import { resolveMcpInstructionRuntime } from "../services/mcp-instruction-pack";
 import { resolveContextEngineConfig, type ContextEngineConfig } from "../../../../tools/context";
 import { createRunStartSessionStore } from "./run-start-session-store";
@@ -419,7 +422,14 @@ function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): R
       ? Math.min(Math.max(parsedMaxRecoveryRounds, 0), 8)
       : 2;
   const enabledTools = resolveRuntimeDefaultEnabledTools() ?? buildDefaultRuntimeEnabledTools();
-  return {
+  return buildRuntimeToolContextForMessage({
+    workDir,
+    enabledTools,
+    bashAllowlist,
+    maxToolRounds,
+    noToolFallbackMode,
+    maxRecoveryRounds,
+  }, undefined) ?? {
     workDir,
     enabledTools,
     bashAllowlist,

@@ -1,5 +1,5 @@
 use crate::models::engine::{RuntimeModelConfigInput, TurnExecuteInput};
-use crate::tools::tools::{ToolCallInput, ToolCallOutput, ToolExecutor};
+use crate::tools::tools::{ToolCallInput, ToolCallOutput, ToolExecutionError, ToolExecutor};
 use reqwest::blocking::multipart::{Form, Part};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};

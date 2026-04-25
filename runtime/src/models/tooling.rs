@@ -86,8 +86,25 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
     Ok(calls)
 }
 
-fn build_local_tool_definitions() -> Vec<Value> {
-    crate::tools::tools::local_tool_definitions()
+fn build_local_tool_definitions(input: &TurnExecuteInput) -> Vec<Value> {
+    let Some(context) = input.tool_context.as_ref() else {
+        return Vec::new();
+    };
+    let _surface_metadata = (
+        context.tool_surface_source.as_deref(),
+        context.tool_surface_reason.as_deref(),
+        context.tool_policy_version.as_deref(),
+    );
+    let visible_tools = context
+        .model_visible_tools
+        .clone()
+        .or_else(|| context.enabled_tools.clone())
+        .unwrap_or_default();
+    crate::tools::tools::local_tool_definitions_for_surface(
+        &visible_tools,
+        context.tool_surface_profile.as_deref(),
+        context.advanced_tool_schema.unwrap_or(false),
+    )
 }
 
 fn build_kimi_builtin_tool_definitions(config: &RuntimeModelConfig) -> Vec<Value> {
@@ -200,7 +217,7 @@ fn build_kimi_official_tool_definitions(config: &RuntimeModelConfig) -> Vec<Valu
 fn build_tool_definitions(input: &TurnExecuteInput, config: &RuntimeModelConfig) -> Option<Value> {
     let mut tools = Vec::new();
     if input.tool_context.is_some() {
-        tools.extend(build_local_tool_definitions());
+        tools.extend(build_local_tool_definitions(input));
     }
     tools.extend(build_kimi_builtin_tool_definitions(config));
     tools.extend(build_kimi_official_tool_definitions(config));

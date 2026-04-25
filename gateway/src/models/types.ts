@@ -89,9 +89,28 @@ export interface RuntimeModelConfig {
   providerOptions?: RuntimeProviderOptions;
 }
 
+export type ToolSurfaceProfile =
+  | "minimal"
+  | "coding"
+  | "browser"
+  | "browser_advanced"
+  | "context"
+  | "mcp"
+  | "full_debug";
+
+export type ToolSurfaceSource = "auto_intent" | "env" | "cli" | "config" | "debug" | "fallback";
+
 export interface RuntimeToolContext {
   workDir?: string;
   enabledTools?: string[];
+  modelVisibleTools?: string[];
+  toolSurfaceProfile?: ToolSurfaceProfile;
+  toolSurfaceSource?: ToolSurfaceSource;
+  toolSurfaceReason?: string;
+  toolPolicyVersion?: string;
+  advancedToolSchema?: boolean;
+  schemaEstimatedTokens?: number;
+  schemaFingerprint?: string;
   bashAllowlist?: string[];
   maxToolRounds?: number;
   noToolFallbackMode?: "off" | "safe" | "strict";
@@ -297,5 +316,6 @@ export interface TurnExecutionReport {
   verification: TurnVerificationResult;
   governance: GovernanceEvaluation;
   shadowComparison?: ShadowComparison;
+  events: RuntimeEvent[];
   eventCount: number;
 }

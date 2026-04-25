@@ -137,6 +137,18 @@ pub struct TurnExecuteToolContextParams {
     #[serde(default)]
     pub enabled_tools: Option<Vec<String>>,
     #[serde(default)]
+    pub model_visible_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub tool_surface_profile: Option<String>,
+    #[serde(default)]
+    pub tool_surface_source: Option<String>,
+    #[serde(default)]
+    pub tool_surface_reason: Option<String>,
+    #[serde(default)]
+    pub tool_policy_version: Option<String>,
+    #[serde(default)]
+    pub advanced_tool_schema: Option<bool>,
+    #[serde(default)]
     pub bash_allowlist: Option<Vec<String>>,
     #[serde(default)]
     pub max_tool_rounds: Option<u32>,

@@ -522,6 +522,26 @@ async function runGatewayContractSmoke() {
   assert.equal(localToolsPayload.lines.length >= 3, true);
   logStep("local-tools-contract file-mention-enrichment");
 
+  const runtimeToolSurfaceResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-tool-surface-contract.ts",
+  ]);
+  assertSuccess("runtime-tool-surface-contract", runtimeToolSurfaceResult);
+  const runtimeToolSurfacePayload = parseJsonOutput(
+    "runtime-tool-surface-contract",
+    runtimeToolSurfaceResult.stdout,
+  );
+  assert.equal(runtimeToolSurfacePayload.ok, true);
+  assert.equal(runtimeToolSurfacePayload.policy_version, "v1");
+  assert.equal(runtimeToolSurfacePayload.coding_visible_count, 7);
+  assert.equal(runtimeToolSurfacePayload.full_debug_visible_count, 14);
+  assert.equal(runtimeToolSurfacePayload.full_debug_dispatch_count, 14);
+  assert.equal(runtimeToolSurfacePayload.full_debug_dispatch_matches_visible, true);
+  logStep("runtime-tool-surface-contract");
+
   const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
   const semanticSearchToolPayload = parseJsonOutput(
     "local-tools-contract semantic-search-tool",
@@ -4545,6 +4565,20 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_has_route_observed_provider_runtime_states, true);
   assert.equal(statusPayload.status_has_route_ordered_providers, true);
   assert.equal(statusPayload.status_has_route_failover, true);
+  assert.equal(statusPayload.status_has_runtime_tools, true);
+  assert.equal(statusPayload.status_runtime_tool_surface_profile, "coding");
+  assert.equal(statusPayload.status_runtime_tool_surface_source_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_policy_version, "v1");
+  assert.equal(statusPayload.status_runtime_tool_model_visible_tools_is_array, true);
+  assert.equal(statusPayload.status_runtime_tool_model_visible_tool_count, 7);
+  assert.equal(statusPayload.status_runtime_tool_dispatch_enabled_tools_is_array, true);
+  assert.equal(statusPayload.status_runtime_tool_dispatch_enabled_tool_count, 7);
+  assert.equal(statusPayload.status_runtime_tool_model_visible_has_prompt_enhancer, false);
+  assert.equal(statusPayload.status_runtime_tool_model_visible_has_web_scan, false);
+  assert.equal(statusPayload.status_runtime_tool_model_visible_has_glob, true);
+  assert.equal(statusPayload.status_runtime_tool_schema_fingerprint_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_schema_estimated_tokens_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_advanced_schema_type, "boolean");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_route_observed_source_type)),
     true,
@@ -5746,7 +5780,7 @@ async function runTsRustExecutionSmoke() {
     toolCallFailureResult.stdout,
   );
   assert.equal(toolCallFailurePayload.exit_code !== 0, true);
-  assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_disabled"), true);
+  assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_not_visible"), true);
   assert.equal(Number(toolCallFailurePayload.runtime_call_count) >= 1, true);
   logStep("runtime-smoke-contract tool-call-fail-fast");
 

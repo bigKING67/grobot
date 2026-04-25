@@ -269,6 +269,27 @@ export interface MemoryOrchestratorIngestResult {
   stderrEvents: string[];
 }
 
+function mapMemoryEventTypeToSourceEventType(eventType: MemoryEventType):
+  | "turn_executed"
+  | "tool_executed"
+  | "checkpoint_updated"
+  | "reflection_generated"
+  | "ask_user_resolved" {
+  if (eventType === "ask_user_resolved") {
+    return "ask_user_resolved";
+  }
+  if (eventType === "tool_success") {
+    return "tool_executed";
+  }
+  if (eventType === "turn_success") {
+    return "turn_executed";
+  }
+  if (eventType === "manual_import") {
+    return "reflection_generated";
+  }
+  return "checkpoint_updated";
+}
+
 export interface MemoryOrchestratorRetrieveInput {
   sessionKey: string;
   userText: string;
@@ -969,7 +990,7 @@ export function createMemoryOrchestrator(input: CreateMemoryOrchestratorInput): 
         sessionKey: request.sessionKey,
         memoryLevel: request.executionVerified ? "L2" : "L1",
         text: normalizedText,
-        sourceEventType: request.eventType === "ask_user_resolved" ? "ask_user_resolved" : "checkpoint_updated",
+        sourceEventType: mapMemoryEventTypeToSourceEventType(request.eventType),
         executionVerified: request.executionVerified,
         evidenceRef: request.evidenceRef,
         tags: request.tags,

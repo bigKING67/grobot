@@ -13,6 +13,15 @@ const TOOL_SEMANTIC_SEARCH: &str = "semantic_search";
 const TOOL_PROMPT_ENHANCER: &str = "prompt_enhancer";
 const TOOL_ASK_USER_QUESTION: &str = "ask_user_question";
 
+const TOOL_SURFACE_POLICY_VERSION: &str = "v1";
+const TOOL_SURFACE_MINIMAL: &str = "minimal";
+const TOOL_SURFACE_CODING: &str = "coding";
+const TOOL_SURFACE_BROWSER: &str = "browser";
+const TOOL_SURFACE_BROWSER_ADVANCED: &str = "browser_advanced";
+const TOOL_SURFACE_CONTEXT: &str = "context";
+const TOOL_SURFACE_MCP: &str = "mcp";
+const TOOL_SURFACE_FULL_DEBUG: &str = "full_debug";
+
 const DEFAULT_MAX_RESULTS: usize = 50;
 const MAX_RESULTS_LIMIT: usize = 1_000;
 const DEFAULT_MAX_ENTRIES: usize = 200;
@@ -88,6 +97,8 @@ struct ToolContextResolved {
     session_key: String,
     work_dir: PathBuf,
     enabled_tools: HashSet<String>,
+    model_visible_tools: HashSet<String>,
+    tool_surface_profile: String,
     bash_allowlist: Vec<String>,
 }
 
@@ -319,7 +330,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 },
                 "additionalProperties": false
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_GLOB,
@@ -455,7 +466,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                     "include_disabled": { "type": "boolean" }
                 }
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_MCP_CALL,
@@ -469,7 +480,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 },
                 "required": ["server", "tool"]
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_WEB_SCAN,
@@ -495,7 +506,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 },
                 "additionalProperties": false
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_WEB_EXECUTE_JS,
@@ -552,7 +563,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 ],
                 "additionalProperties": false
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_SEMANTIC_SEARCH,
@@ -578,7 +589,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 },
                 "required": ["query"]
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_PROMPT_ENHANCER,
@@ -607,7 +618,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 },
                 "required": ["prompt"]
             }),
-            default_enabled: true,
+            default_enabled: false,
         },
         LocalToolCatalogEntry {
             name: TOOL_ASK_USER_QUESTION,
@@ -671,6 +682,164 @@ pub(crate) fn local_tool_definitions() -> Vec<Value> {
         .collect()
 }
 
+fn canonical_tool_surface_profile(raw: Option<&str>) -> &'static str {
+    match raw
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| TOOL_SURFACE_CODING.to_string())
+        .replace('-', "_")
+        .as_str()
+    {
+        TOOL_SURFACE_MINIMAL => TOOL_SURFACE_MINIMAL,
+        TOOL_SURFACE_BROWSER => TOOL_SURFACE_BROWSER,
+        TOOL_SURFACE_BROWSER_ADVANCED => TOOL_SURFACE_BROWSER_ADVANCED,
+        TOOL_SURFACE_CONTEXT => TOOL_SURFACE_CONTEXT,
+        TOOL_SURFACE_MCP => TOOL_SURFACE_MCP,
+        TOOL_SURFACE_FULL_DEBUG => TOOL_SURFACE_FULL_DEBUG,
+        _ => TOOL_SURFACE_CODING,
+    }
+}
+
+fn tool_surface_profile_names(profile: &str) -> Vec<&'static str> {
+    match canonical_tool_surface_profile(Some(profile)) {
+        TOOL_SURFACE_MINIMAL => vec![TOOL_READ, TOOL_EDIT, TOOL_WRITE, TOOL_ASK_USER_QUESTION],
+        TOOL_SURFACE_BROWSER => vec![TOOL_WEB_SCAN, TOOL_WEB_EXECUTE_JS, TOOL_READ, TOOL_ASK_USER_QUESTION],
+        TOOL_SURFACE_BROWSER_ADVANCED => vec![TOOL_WEB_SCAN, TOOL_WEB_EXECUTE_JS, TOOL_READ, TOOL_ASK_USER_QUESTION],
+        TOOL_SURFACE_CONTEXT => vec![TOOL_SEMANTIC_SEARCH, TOOL_READ, TOOL_ASK_USER_QUESTION],
+        TOOL_SURFACE_MCP => vec![TOOL_MCP_SERVERS, TOOL_MCP_CALL, TOOL_ASK_USER_QUESTION],
+        TOOL_SURFACE_FULL_DEBUG => local_tool_catalog().into_iter().map(|tool| tool.name).collect(),
+        _ => default_enabled_local_tool_names(),
+    }
+}
+
+fn schema_projection_mode(profile: &str, advanced_tool_schema: bool) -> &'static str {
+    if canonical_tool_surface_profile(Some(profile)) == TOOL_SURFACE_FULL_DEBUG {
+        return "full";
+    }
+    if advanced_tool_schema || canonical_tool_surface_profile(Some(profile)) == TOOL_SURFACE_BROWSER_ADVANCED {
+        return "advanced";
+    }
+    "slim"
+}
+
+fn project_object_schema_properties(parameters: &Value, allowed_properties: &[&str]) -> Value {
+    let mut projected = parameters.clone();
+    let allowed: HashSet<&str> = allowed_properties.iter().copied().collect();
+    if let Some(properties) = projected
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+    {
+        properties.retain(|key, _| allowed.contains(key.as_str()));
+    }
+    projected
+}
+
+fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanced_tool_schema: bool) -> Value {
+    let mode = schema_projection_mode(profile, advanced_tool_schema);
+    if mode == "full" {
+        return parameters.clone();
+    }
+    match (name, mode) {
+        (TOOL_WEB_SCAN, "slim") => project_object_schema_properties(
+            parameters,
+            &[
+                "tabs_only",
+                "text_only",
+                "main_only",
+                "switch_tab_id",
+                "session_id",
+                "session_url_pattern",
+                "max_chars",
+            ],
+        ),
+        (TOOL_WEB_EXECUTE_JS, "slim") => project_object_schema_properties(
+            parameters,
+            &[
+                "script",
+                "code",
+                "tab_id",
+                "switch_tab_id",
+                "session_id",
+                "session_url_pattern",
+                "timeout_ms",
+            ],
+        ),
+        (TOOL_WEB_SCAN, "advanced") => project_object_schema_properties(
+            parameters,
+            &[
+                "tabs_only",
+                "text_only",
+                "main_only",
+                "switch_tab_id",
+                "session_id",
+                "session_url_pattern",
+                "max_chars",
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+                "tmwd_link_endpoint",
+                "cdp_endpoint",
+            ],
+        ),
+        (TOOL_WEB_EXECUTE_JS, "advanced") => project_object_schema_properties(
+            parameters,
+            &[
+                "script",
+                "code",
+                "tab_id",
+                "switch_tab_id",
+                "session_id",
+                "session_url_pattern",
+                "timeout_ms",
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+                "tmwd_link_endpoint",
+                "cdp_endpoint",
+                "target_url_contains",
+                "native_auto_fallback",
+                "native_auto_fallback_policy",
+                "native_fallback_timeout_ms",
+            ],
+        ),
+        _ => parameters.clone(),
+    }
+}
+
+pub(crate) fn local_tool_definitions_for_surface(
+    visible_tools: &[String],
+    profile: Option<&str>,
+    advanced_tool_schema: bool,
+) -> Vec<Value> {
+    let profile = canonical_tool_surface_profile(profile);
+    let visible: HashSet<String> = if visible_tools.is_empty() {
+        tool_surface_profile_names(profile)
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    } else {
+        visible_tools
+            .iter()
+            .map(|item| item.trim().to_ascii_lowercase())
+            .filter(|item| !item.is_empty())
+            .collect()
+    };
+    local_tool_catalog()
+        .into_iter()
+        .filter(|tool| visible.contains(tool.name))
+        .map(|tool| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": project_tool_parameters(tool.name, &tool.parameters, profile, advanced_tool_schema),
+                }
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn default_enabled_local_tool_names() -> Vec<&'static str> {
     local_tool_catalog()
         .into_iter()
@@ -684,6 +853,10 @@ fn default_enabled_tools() -> HashSet<String> {
         .into_iter()
         .map(|item| item.to_string())
         .collect()
+}
+
+pub(crate) fn tool_surface_policy_version() -> &'static str {
+    TOOL_SURFACE_POLICY_VERSION
 }
 
 fn runtime_store() -> &'static Mutex<McpRuntimeStore> {
@@ -1354,20 +1527,11 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
             "tool_context.work_dir is not a directory",
         ));
     }
-    let enabled_tools = match tool_context.enabled_tools.as_ref() {
-        Some(values) => {
-            let mut set = HashSet::new();
-            for item in values {
-                let normalized = normalize_tool_name(item);
-                if normalized.is_empty() {
-                    continue;
-                }
-                set.insert(normalized);
-            }
-            set
-        }
-        None => default_enabled_tools(),
-    };
+    let enabled_tools = normalize_tool_name_set(tool_context.enabled_tools.as_ref())
+        .unwrap_or_else(default_enabled_tools);
+    let profile = canonical_tool_surface_profile(tool_context.tool_surface_profile.as_deref()).to_string();
+    let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref())
+        .unwrap_or_else(|| enabled_tools.clone());
     let bash_allowlist = tool_context
         .bash_allowlist
         .as_ref()
@@ -1388,7 +1552,23 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
         session_key,
         work_dir: canonical_work_dir,
         enabled_tools,
+        model_visible_tools,
+        tool_surface_profile: profile,
         bash_allowlist,
+    })
+}
+
+fn normalize_tool_name_set(values: Option<&Vec<String>>) -> Option<HashSet<String>> {
+    values.map(|rows| {
+        let mut set = HashSet::new();
+        for item in rows {
+            let normalized = normalize_tool_name(item);
+            if normalized.is_empty() {
+                continue;
+            }
+            set.insert(normalized);
+        }
+        set
     })
 }
 

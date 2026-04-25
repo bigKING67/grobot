@@ -32,7 +32,8 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             json!({
                 "protocol_version": RUNTIME_PROTOCOL_VERSION,
                 "tools": crate::tools::tools::local_tool_definitions(),
-                "default_enabled_tools": crate::tools::tools::default_enabled_local_tool_names()
+                "default_enabled_tools": crate::tools::tools::default_enabled_local_tool_names(),
+                "tool_policy_version": crate::tools::tools::tool_surface_policy_version()
             }),
         )),
         "runtime.turn.execute" => {
@@ -84,6 +85,12 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 tool_context: params.tool_context.map(|tool_context| RuntimeToolContextInput {
                     work_dir: tool_context.work_dir,
                     enabled_tools: tool_context.enabled_tools,
+                    model_visible_tools: tool_context.model_visible_tools,
+                    tool_surface_profile: tool_context.tool_surface_profile,
+                    tool_surface_source: tool_context.tool_surface_source,
+                    tool_surface_reason: tool_context.tool_surface_reason,
+                    tool_policy_version: tool_context.tool_policy_version,
+                    advanced_tool_schema: tool_context.advanced_tool_schema,
                     bash_allowlist: tool_context.bash_allowlist,
                     max_tool_rounds: tool_context.max_tool_rounds,
                     no_tool_fallback_mode: tool_context.no_tool_fallback_mode,

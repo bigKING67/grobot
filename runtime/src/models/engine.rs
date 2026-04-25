@@ -43,6 +43,12 @@ pub struct RuntimePromptCacheOptionsInput {
 pub struct RuntimeToolContextInput {
     pub work_dir: Option<String>,
     pub enabled_tools: Option<Vec<String>>,
+    pub model_visible_tools: Option<Vec<String>>,
+    pub tool_surface_profile: Option<String>,
+    pub tool_surface_source: Option<String>,
+    pub tool_surface_reason: Option<String>,
+    pub tool_policy_version: Option<String>,
+    pub advanced_tool_schema: Option<bool>,
     pub bash_allowlist: Option<Vec<String>>,
     pub max_tool_rounds: Option<u32>,
     pub no_tool_fallback_mode: Option<String>,

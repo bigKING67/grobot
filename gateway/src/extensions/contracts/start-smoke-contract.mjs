@@ -1503,6 +1503,15 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeHealth = isObject(parsedStatus?.runtime_health)
     ? parsedStatus.runtime_health
     : null;
+  const runtimeTools = isObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const runtimeToolModelVisibleTools = Array.isArray(runtimeTools?.model_visible_tools)
+    ? runtimeTools.model_visible_tools
+    : [];
+  const runtimeToolDispatchEnabledTools = Array.isArray(runtimeTools?.dispatch_enabled_tools)
+    ? runtimeTools.dispatch_enabled_tools
+    : [];
   const runtimeHealthCacheStats = isObject(runtimeHealth?.cache_stats)
     ? runtimeHealth.cache_stats
     : null;
@@ -1751,6 +1760,23 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_has_route_ordered_providers: Array.isArray(routeDecision?.ordered_providers),
     status_has_route_failover: Boolean(routeFailover),
     status_route_observed_source_type: typeof routeObserved?.source,
+    status_has_runtime_tools: Boolean(runtimeTools),
+    status_runtime_tool_surface_profile: runtimeTools?.tool_surface_profile ?? null,
+    status_runtime_tool_surface_source_type: typeof runtimeTools?.tool_surface_source,
+    status_runtime_tool_policy_version: runtimeTools?.tool_policy_version ?? null,
+    status_runtime_tool_model_visible_tools_is_array: Array.isArray(runtimeTools?.model_visible_tools),
+    status_runtime_tool_model_visible_tool_count: runtimeToolModelVisibleTools.length,
+    status_runtime_tool_dispatch_enabled_tools_is_array: Array.isArray(runtimeTools?.dispatch_enabled_tools),
+    status_runtime_tool_dispatch_enabled_tool_count: runtimeToolDispatchEnabledTools.length,
+    status_runtime_tool_model_visible_has_prompt_enhancer:
+      runtimeToolModelVisibleTools.includes("prompt_enhancer"),
+    status_runtime_tool_model_visible_has_web_scan:
+      runtimeToolModelVisibleTools.includes("web_scan"),
+    status_runtime_tool_model_visible_has_glob:
+      runtimeToolModelVisibleTools.includes("glob"),
+    status_runtime_tool_schema_fingerprint_type: typeof runtimeTools?.schema_fingerprint,
+    status_runtime_tool_schema_estimated_tokens_type: typeof runtimeTools?.schema_estimated_tokens,
+    status_runtime_tool_advanced_schema_type: typeof runtimeTools?.advanced_tool_schema,
     status_has_runtime_health_cache_stats: Boolean(runtimeHealthCacheStats),
     status_has_top_level_cache_stats: Boolean(topLevelCacheStats),
     status_cache_stats_location: cacheStatsLocation,

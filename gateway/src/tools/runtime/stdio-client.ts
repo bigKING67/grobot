@@ -282,6 +282,12 @@ function toRpcRequestLine(request: RuntimeRequest): string {
     ? {
         work_dir: runtimeToolContext.workDir,
         enabled_tools: runtimeToolContext.enabledTools,
+        model_visible_tools: runtimeToolContext.modelVisibleTools,
+        tool_surface_profile: runtimeToolContext.toolSurfaceProfile,
+        tool_surface_source: runtimeToolContext.toolSurfaceSource,
+        tool_surface_reason: runtimeToolContext.toolSurfaceReason,
+        tool_policy_version: runtimeToolContext.toolPolicyVersion,
+        advanced_tool_schema: runtimeToolContext.advancedToolSchema,
         bash_allowlist: runtimeToolContext.bashAllowlist,
         max_tool_rounds: runtimeToolContext.maxToolRounds,
         no_tool_fallback_mode: runtimeToolContext.noToolFallbackMode,
