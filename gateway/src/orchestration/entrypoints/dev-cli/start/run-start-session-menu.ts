@@ -67,18 +67,18 @@ function resolveSessionMenuTitle(mode: SessionMenuMode): string {
 
 function resolveSessionMenuHint(mode: SessionMenuMode): string {
   if (mode === "continue") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to inject summary bridge, Esc to cancel.";
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to inject summary bridge, / or Ctrl+f to filter, Esc to cancel.";
   }
   if (mode === "resume") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to restore selected session, Esc to cancel.";
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to restore selected session, / or Ctrl+f to filter, Esc to cancel.";
   }
   if (mode === "rewind") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to choose rewind target session, Esc to cancel.";
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to choose rewind target session, / or Ctrl+f to filter, Esc to cancel.";
   }
   if (mode === "sessions") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch/create, Esc to cancel.";
+    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch/create, / or Ctrl+f to filter, Esc to cancel.";
   }
-  return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch session, Esc to cancel.";
+  return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch session, / or Ctrl+f to filter, Esc to cancel.";
 }
 
 function buildSessionMenuItems(input: {

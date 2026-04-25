@@ -863,6 +863,82 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_third_mentions_suppressed_count, true);
   logStep("session-interactive-dispatch-contract");
 
+  const sessionResumeStartupContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/session-resume-startup-contract.ts",
+  ]);
+  assertSuccess("session-resume-startup-contract", sessionResumeStartupContractResult);
+  const sessionResumeStartupContractPayload = parseJsonOutput(
+    "session-resume-startup-contract",
+    sessionResumeStartupContractResult.stdout,
+  );
+  assert.equal(sessionResumeStartupContractPayload.no_intent_skips_resume_target, true);
+  assert.equal(sessionResumeStartupContractPayload.no_intent_skips_notice, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_default_targets_latest_non_active, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_last_targets_latest_non_active, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_exact_id_targeted, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_single_query_match_targeted, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_multiple_query_auto_selects_top, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_multiple_query_requires_disambiguation, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_multiple_query_candidates_exposed, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_multiple_query_notice_contains_tip, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_multiple_query_notice_no_autoselect_literal, true);
+  assert.equal(
+    sessionResumeStartupContractPayload.resume_no_match_fallback_targets_latest_non_active,
+    true,
+  );
+  assert.equal(sessionResumeStartupContractPayload.resume_no_match_fallback_has_notice, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_no_match_without_fallback_has_notice, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_all_can_match_active_title, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_all_flag_only_is_resume_intent, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_requested_accepts_false_literal_as_query, true);
+  assert.equal(sessionResumeStartupContractPayload.resume_selector_keeps_false_literal, true);
+  logStep("session-resume-startup-contract");
+
+  const sessionResumeStartupDisambiguationContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/session-resume-startup-disambiguation-contract.ts",
+  ]);
+  assertSuccess(
+    "session-resume-startup-disambiguation-contract",
+    sessionResumeStartupDisambiguationContractResult,
+  );
+  const sessionResumeStartupDisambiguationContractPayload = parseJsonOutput(
+    "session-resume-startup-disambiguation-contract",
+    sessionResumeStartupDisambiguationContractResult.stdout,
+  );
+  assert.equal(
+    sessionResumeStartupDisambiguationContractPayload.tty_disambiguation_picks_explicit_session,
+    true,
+  );
+  assert.equal(
+    sessionResumeStartupDisambiguationContractPayload.tty_disambiguation_pick_has_no_messages,
+    true,
+  );
+  assert.equal(
+    sessionResumeStartupDisambiguationContractPayload.tty_disambiguation_cancel_clears_target,
+    true,
+  );
+  assert.equal(
+    sessionResumeStartupDisambiguationContractPayload.tty_disambiguation_cancel_has_notice,
+    true,
+  );
+  assert.equal(sessionResumeStartupDisambiguationContractPayload.non_tty_does_not_call_picker, true);
+  assert.equal(sessionResumeStartupDisambiguationContractPayload.non_tty_keeps_auto_selected_target, true);
+  assert.equal(
+    sessionResumeStartupDisambiguationContractPayload.non_tty_reports_auto_selected_notice,
+    true,
+  );
+  assert.equal(sessionResumeStartupDisambiguationContractPayload.no_disambiguation_keeps_target, true);
+  assert.equal(sessionResumeStartupDisambiguationContractPayload.no_disambiguation_has_no_messages, true);
+  logStep("session-resume-startup-disambiguation-contract");
+
   const runStartInputKeybindingContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -891,6 +967,9 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.menu_digit_prefix_first_match_index, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_digits_to_index_10, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_digits_reject_leading_zero, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_search_compact_prefers_relevant_item, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_search_digits_match_timestamp_description, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_search_empty_returns_all, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_apply_menu_command, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_apply_commands_menu_submit, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_apply_plan_submit, true);
@@ -5901,9 +5980,11 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionMenuViewModelPayload.sessions_hint_has_ctrl_np, true);
   assert.equal(sessionMenuViewModelPayload.sessions_hint_has_number_direct, true);
   assert.equal(sessionMenuViewModelPayload.sessions_hint_has_enter_space, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_filter_shortcut, true);
   assert.equal(sessionMenuViewModelPayload.switch_hint_has_ctrl_np, true);
   assert.equal(sessionMenuViewModelPayload.continue_hint_has_ctrl_np, true);
   assert.equal(sessionMenuViewModelPayload.resume_hint_has_ctrl_np, true);
+  assert.equal(sessionMenuViewModelPayload.resume_hint_has_filter_shortcut, true);
   assert.equal(sessionMenuViewModelPayload.rewind_hint_has_ctrl_np, true);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
   assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);

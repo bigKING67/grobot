@@ -5,6 +5,7 @@ import {
   resolveCoalescedSubmitChunk,
   resolveFirstMenuPrefixMatchIndex,
   resolveInputShortcutAction,
+  resolveMenuSearchMatchedIndices,
   resolveMenuIndexFromDigits,
   resolveSlashSuggestionApplyResult,
   resolveSlashSuggestionKeyAction,
@@ -26,6 +27,46 @@ async function main(): Promise<void> {
   const arrowDownAction = decodeMenuInput("\u001b[B", menuItemsLength);
   const directIndexAction = decodeMenuInput("12", menuItemsLength);
   const directIndexCrlfAction = decodeMenuInput("2\r\n", menuItemsLength);
+  const menuSearchMatches = resolveMenuSearchMatchedIndices("legacy session", [
+    {
+      id: "main",
+      label: "Main Session",
+      description: "current context",
+      current: true,
+    },
+    {
+      id: "session_legacy",
+      label: "Legacy-Session",
+      description: "historical context",
+    },
+    {
+      id: "archive",
+      label: "Archive",
+      description: "created 2026-04-24",
+    },
+  ]);
+  const menuSearchDigitMatches = resolveMenuSearchMatchedIndices("20260424", [
+    {
+      id: "main",
+      label: "Main Session",
+      description: "current context",
+      current: true,
+    },
+    {
+      id: "session_legacy",
+      label: "Legacy-Session",
+      description: "historical context",
+    },
+    {
+      id: "archive",
+      label: "Archive",
+      description: "created 2026-04-24",
+    },
+  ]);
+  const menuSearchEmptyMatches = resolveMenuSearchMatchedIndices("", [
+    { id: "a", label: "A" },
+    { id: "b", label: "B" },
+  ]);
 
   const slashMenu = resolveSlashSuggestionApplyResult("/model");
   const slashCommandsMenu = resolveSlashSuggestionApplyResult("/commands");
@@ -184,6 +225,14 @@ async function main(): Promise<void> {
       resolveMenuIndexFromDigits("10", menuItemsLength) === 9,
     menu_digits_reject_leading_zero:
       typeof resolveMenuIndexFromDigits("01", menuItemsLength) === "undefined",
+    menu_search_compact_prefers_relevant_item:
+      menuSearchMatches.length > 0 && menuSearchMatches[0] === 1,
+    menu_search_digits_match_timestamp_description:
+      menuSearchDigitMatches.length > 0 && menuSearchDigitMatches[0] === 2,
+    menu_search_empty_returns_all:
+      menuSearchEmptyMatches.length === 2
+      && menuSearchEmptyMatches[0] === 0
+      && menuSearchEmptyMatches[1] === 1,
     slash_apply_menu_command:
       slashMenu.command === "/model" && slashMenu.submitImmediately,
     slash_apply_commands_menu_submit:

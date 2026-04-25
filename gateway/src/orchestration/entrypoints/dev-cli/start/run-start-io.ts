@@ -19,7 +19,11 @@ import {
   padToDisplayWidth,
   splitGraphemes,
 } from "../ui/interactive/display-width";
-import { type TerminalSelectMenuInput, type TerminalSelectMenuResult } from "../ui/screens/select-menu-screen";
+import {
+  type TerminalSelectMenuInput,
+  type TerminalSelectMenuItem,
+  type TerminalSelectMenuResult,
+} from "../ui/screens/select-menu-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
 const DEFAULT_SESSION_PROMPT = "› ";
@@ -132,6 +136,9 @@ const MENU_TRANSITION_DELAY_LIMIT_MS = 160;
 const MENU_OPEN_FRAME_DELAY_DEFAULTS: readonly [number, number] = [18, 34];
 const MENU_CLOSE_FRAME_DELAY_DEFAULTS: readonly [number, number] = [14, 28];
 const ANSI_SEQUENCE_PATTERN = /\x1b\[[0-9;?]+[A-Za-z]/g;
+const MENU_SEARCH_QUERY_LIMIT = 80;
+const MENU_SEARCH_TOGGLE_CONTROL = "\u0006"; // Ctrl+f
+const MENU_SEARCH_CLEAR_CONTROL = "\u0015"; // Ctrl+u
 
 type MenuTransitionDelays = readonly [number, number];
 type MenuTransitionPresetName = "fast" | "medium" | "slow";
@@ -1803,6 +1810,79 @@ function normalizeMenuIndex(itemsLength: number, initialIndex: number | undefine
   return rounded;
 }
 
+function normalizeMenuSearchQueryText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeMenuSearchCompactText(value: string): string {
+  return normalizeMenuSearchQueryText(value).replace(/[\s_-]+/g, "");
+}
+
+function normalizeMenuSearchDigits(value: string): string {
+  return value.replace(/\D+/g, "");
+}
+
+function isMenuSearchPrintableInput(rawInput: string): boolean {
+  if (!rawInput || rawInput.length === 0) {
+    return false;
+  }
+  if (rawInput.startsWith("\u001b")) {
+    return false;
+  }
+  return !/[\u0000-\u001f\u007f]/.test(rawInput);
+}
+
+function trimMenuSearchQuery(rawQuery: string): string {
+  const graphemes = splitGraphemes(rawQuery);
+  if (graphemes.length <= MENU_SEARCH_QUERY_LIMIT) {
+    return rawQuery;
+  }
+  return graphemes.slice(0, MENU_SEARCH_QUERY_LIMIT).join("");
+}
+
+export function resolveMenuSearchMatchedIndices(
+  queryRaw: string,
+  items: readonly TerminalSelectMenuItem[],
+): number[] {
+  const query = normalizeMenuSearchQueryText(queryRaw);
+  if (!query) {
+    return items.map((_, index) => index);
+  }
+  const compactQuery = normalizeMenuSearchCompactText(query);
+  const queryDigits = normalizeMenuSearchDigits(query);
+  const exactMatches: number[] = [];
+  const prefixMatches: number[] = [];
+  const containsMatches: number[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const fields = [item.id, item.label, item.description ?? ""];
+    const normalizedFields = fields.map((field) => normalizeMenuSearchQueryText(field));
+    const compactFields = fields.map((field) => normalizeMenuSearchCompactText(field));
+    const digitFields = fields.map((field) => normalizeMenuSearchDigits(field));
+    const exact = normalizedFields.some((field) => field === query)
+      || (compactQuery.length > 0 && compactFields.some((field) => field === compactQuery))
+      || (queryDigits.length > 0 && digitFields.some((field) => field === queryDigits));
+    if (exact) {
+      exactMatches.push(index);
+      continue;
+    }
+    const prefix = normalizedFields.some((field) => field.startsWith(query))
+      || (compactQuery.length > 0 && compactFields.some((field) => field.startsWith(compactQuery)))
+      || (queryDigits.length > 0 && digitFields.some((field) => field.startsWith(queryDigits)));
+    if (prefix) {
+      prefixMatches.push(index);
+      continue;
+    }
+    const contains = normalizedFields.some((field) => field.includes(query))
+      || (compactQuery.length > 0 && compactFields.some((field) => field.includes(compactQuery)))
+      || (queryDigits.length > 0 && digitFields.some((field) => field.includes(queryDigits)));
+    if (contains) {
+      containsMatches.push(index);
+    }
+  }
+  return [...exactMatches, ...prefixMatches, ...containsMatches];
+}
+
 export function decodeMenuInput(rawInput: string, itemsLength: number): MenuInputAction {
   if (rawInput.length === 0) {
     return { kind: "ignore" };
@@ -1927,7 +2007,13 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     menuTransitionPreset.close,
   );
   const supportsMenuTransitions = uiRenderer.mode === "interactive_tty";
-  let activeIndex = normalizeMenuIndex(input.items.length, input.initialIndex);
+  let visibleItemIndices = input.items.map((_, index) => index);
+  let activeIndex = normalizeMenuIndex(
+    visibleItemIndices.length,
+    normalizeMenuIndex(input.items.length, input.initialIndex),
+  );
+  let menuSearchMode = false;
+  let menuSearchQuery = "";
   let resolved = false;
   let openTransitionStageOneTimer: ReturnType<typeof setTimeout> | undefined;
   let openTransitionStageTwoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1962,8 +2048,47 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     }
   };
 
+  const resolveVisibleItems = (): TerminalSelectMenuItem[] =>
+    visibleItemIndices
+      .map((index) => input.items[index])
+      .filter((item): item is TerminalSelectMenuItem => typeof item !== "undefined");
+
+  const resolveActiveSourceIndex = (): number | undefined => {
+    if (activeIndex < 0 || activeIndex >= visibleItemIndices.length) {
+      return undefined;
+    }
+    return visibleItemIndices[activeIndex];
+  };
+
+  const buildRenderableMenu = (): TerminalSelectMenuInput => {
+    const visibleItems = resolveVisibleItems();
+    const searchActive = menuSearchMode || menuSearchQuery.trim().length > 0;
+    const baseSubtitle = input.subtitle?.trim();
+    const searchSubtitle = searchActive
+      ? `filter ${String(visibleItems.length)}/${String(input.items.length)}${menuSearchQuery.trim().length > 0 ? `: "${menuSearchQuery}"` : ""}`
+      : undefined;
+    const subtitle = [baseSubtitle, searchSubtitle]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .join(" · ");
+    const searchHint = searchActive
+      ? "Ctrl+f or / toggle filter · Ctrl+u clear · Esc exit filter"
+      : undefined;
+    const hint = [input.hint?.trim(), searchHint]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .join(" · ");
+    return {
+      ...input,
+      subtitle: subtitle.length > 0 ? subtitle : undefined,
+      hint: hint.length > 0 ? hint : undefined,
+      items: visibleItems,
+      initialIndex: normalizeMenuIndex(visibleItems.length, activeIndex),
+    };
+  };
+
   const render = (): void => {
-    const menuLines = uiRenderer.renderSelectMenu(input, activeIndex).split("\n");
+    const renderableMenu = buildRenderableMenu();
+    const renderedIndex = normalizeMenuIndex(renderableMenu.items.length, activeIndex);
+    const menuLines = uiRenderer.renderSelectMenu(renderableMenu, renderedIndex).split("\n");
     lastRenderedMenuLines = menuLines;
     if (supportsMenuTransitions && !hasRenderedOpenPreview) {
       hasRenderedOpenPreview = true;
@@ -1989,6 +2114,39 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     }
     clearOpenTransitionTimers();
     writeInlineMenuLines(menuLines);
+  };
+
+  const applyMenuSearchQuery = (nextQueryRaw: string): void => {
+    const previousSourceIndex = resolveActiveSourceIndex();
+    const normalizedNextQuery = trimMenuSearchQuery(nextQueryRaw);
+    menuSearchQuery = normalizedNextQuery;
+    visibleItemIndices = resolveMenuSearchMatchedIndices(menuSearchQuery, input.items);
+    if (visibleItemIndices.length === 0) {
+      activeIndex = 0;
+      render();
+      return;
+    }
+    if (typeof previousSourceIndex === "number") {
+      const preservedVisibleIndex = visibleItemIndices.indexOf(previousSourceIndex);
+      if (preservedVisibleIndex >= 0) {
+        activeIndex = preservedVisibleIndex;
+        render();
+        return;
+      }
+    }
+    activeIndex = normalizeMenuIndex(visibleItemIndices.length, 0);
+    render();
+  };
+
+  const dropMenuSearchLastGrapheme = (): void => {
+    if (menuSearchQuery.length === 0) {
+      return;
+    }
+    const graphemes = splitGraphemes(menuSearchQuery);
+    if (graphemes.length === 0) {
+      return;
+    }
+    applyMenuSearchQuery(graphemes.slice(0, -1).join(""));
   };
 
   const clearNumericSelectionBuffer = (): void => {
@@ -2066,12 +2224,20 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       runCloseTransition(result);
     };
 
-    const selectAndFinish = (nextIndex: number): void => {
-      activeIndex = nextIndex;
+    const selectAndFinish = (nextVisibleIndex: number): void => {
+      if (visibleItemIndices.length === 0) {
+        return;
+      }
+      const resolvedVisibleIndex = normalizeMenuIndex(visibleItemIndices.length, nextVisibleIndex);
+      const sourceIndex = visibleItemIndices[resolvedVisibleIndex];
+      if (typeof sourceIndex !== "number" || sourceIndex < 0 || sourceIndex >= input.items.length) {
+        return;
+      }
+      activeIndex = resolvedVisibleIndex;
       finish({
         kind: "selected",
-        item: input.items[activeIndex],
-        index: activeIndex,
+        item: input.items[sourceIndex],
+        index: sourceIndex,
       });
     };
 
@@ -2083,7 +2249,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         numericSelectionTimer = undefined;
         const index = resolveMenuIndexFromDigits(
           numericSelectionBuffer,
-          input.items.length,
+          visibleItemIndices.length,
         );
         if (typeof index === "number") {
           selectAndFinish(index);
@@ -2097,7 +2263,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       const nextDigits = `${numericSelectionBuffer}${digit}`;
       const firstMatchIndex = resolveFirstMenuPrefixMatchIndex(
         nextDigits,
-        input.items.length,
+        visibleItemIndices.length,
       );
       if (typeof firstMatchIndex !== "number") {
         clearNumericSelectionBuffer();
@@ -2107,11 +2273,11 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       activeIndex = firstMatchIndex;
       const exactIndex = resolveMenuIndexFromDigits(
         numericSelectionBuffer,
-        input.items.length,
+        visibleItemIndices.length,
       );
       const canContinue = hasMenuDigitsContinuation(
         numericSelectionBuffer,
-        input.items.length,
+        visibleItemIndices.length,
       );
       if (typeof exactIndex === "number" && !canContinue) {
         selectAndFinish(exactIndex);
@@ -2124,6 +2290,31 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
 
     const onData = (chunk: string): void => {
       const rawInput = String(chunk ?? "");
+      if (rawInput === MENU_SEARCH_TOGGLE_CONTROL || (!menuSearchMode && rawInput === "/")) {
+        menuSearchMode = !menuSearchMode || rawInput === "/";
+        render();
+        return;
+      }
+      if (rawInput === MENU_SEARCH_CLEAR_CONTROL && (menuSearchMode || menuSearchQuery.length > 0)) {
+        applyMenuSearchQuery("");
+        menuSearchMode = true;
+        return;
+      }
+      if (menuSearchMode) {
+        if (rawInput === "\u001b") {
+          menuSearchMode = false;
+          render();
+          return;
+        }
+        if (rawInput === "\u007f" || rawInput === "\b") {
+          dropMenuSearchLastGrapheme();
+          return;
+        }
+        if (isMenuSearchPrintableInput(rawInput)) {
+          applyMenuSearchQuery(`${menuSearchQuery}${rawInput}`);
+          return;
+        }
+      }
       if (/^[0-9]$/.test(rawInput)) {
         if (handleSingleDigitSelection(rawInput)) {
           return;
@@ -2134,21 +2325,29 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       if (/^[0-9]{2,}$/.test(rawInput.trim())) {
         const bufferedIndex = resolveMenuIndexFromDigits(
           rawInput.trim(),
-          input.items.length,
+          visibleItemIndices.length,
         );
         if (typeof bufferedIndex === "number") {
           selectAndFinish(bufferedIndex);
         }
         return;
       }
-      const action = decodeMenuInput(chunk, input.items.length);
+      const action = decodeMenuInput(chunk, visibleItemIndices.length);
       if (action.kind === "up") {
-        activeIndex = (activeIndex - 1 + input.items.length) % input.items.length;
+        if (visibleItemIndices.length === 0) {
+          render();
+          return;
+        }
+        activeIndex = (activeIndex - 1 + visibleItemIndices.length) % visibleItemIndices.length;
         render();
         return;
       }
       if (action.kind === "down") {
-        activeIndex = (activeIndex + 1) % input.items.length;
+        if (visibleItemIndices.length === 0) {
+          render();
+          return;
+        }
+        activeIndex = (activeIndex + 1) % visibleItemIndices.length;
         render();
         return;
       }
@@ -2157,10 +2356,23 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return;
       }
       if (action.kind === "enter") {
+        if (visibleItemIndices.length === 0) {
+          render();
+          return;
+        }
         selectAndFinish(activeIndex);
         return;
       }
       if (action.kind === "cancel") {
+        if (menuSearchMode) {
+          menuSearchMode = false;
+          render();
+          return;
+        }
+        if (menuSearchQuery.length > 0) {
+          applyMenuSearchQuery("");
+          return;
+        }
         finish({ kind: "cancelled" });
       }
     };

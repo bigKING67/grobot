@@ -9,6 +9,7 @@ import {
 } from "./run-start-interactive-mode";
 import { createRunStartModelOps, type RunStartModelOps } from "./run-start-model-ops";
 import { createRunStartSessionMenuOps } from "./run-start-session-menu-ops";
+import { runSessionMenuPicker } from "./run-start-session-menu";
 import { runStartMessageMode } from "./run-start-message-mode";
 import { createRunStartOutput } from "./run-start-output";
 import { createRunStartPersistence } from "./run-start-persistence";
@@ -20,6 +21,8 @@ import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { setSessionGaState } from "./session-registry";
 import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
+import { resolveStartupResumeDisambiguation } from "./session-resume-startup-disambiguation";
+import { resolveStartupResumeTarget } from "./session-resume-startup";
 import {
   applyMemoryDecayAutotuneToPolicy,
   applyMemoryStrategyAutotuneToPolicy,
@@ -153,7 +156,9 @@ export async function runStart(
     handoffRecentTurns,
     handoffAutoOnExit,
     resumeRequested,
-    resumeSessionId,
+    resumeLastRequested,
+    resumeAllRequested,
+    resumeSelector,
     forkSession,
     resumeSessionAt,
     rewindFiles,
@@ -792,20 +797,41 @@ export async function runStart(
   await modelOps.refreshModelCatalogCache();
   refreshContextWindowFromModelCatalog("startup_model_catalog");
 
-  const resolveDefaultResumeSessionId = (): string | undefined =>
-    sessionOps.listSessions().find((row) => !row.active)?.id;
-
   const applyStartupSessionActions = async (): Promise<void> => {
     let resumed = false;
-    const targetResumeSessionId = resumeSessionId
-      ?? (resumeRequested ? resolveDefaultResumeSessionId() : undefined);
+    const resumeTarget = resolveStartupResumeTarget({
+      resumeRequested,
+      resumeLastRequested,
+      resumeAllRequested,
+      resumeQuery: resumeSelector,
+      sessions: sessionOps.listSessions(),
+    });
+    let targetResumeSessionId = resumeTarget.targetSessionId;
+    if (resumeTarget.notice) {
+      output.writeStdout(resumeTarget.notice);
+    }
+    if (resumeTarget.requiresDisambiguation) {
+      const disambiguation = await resolveStartupResumeDisambiguation({
+        resumeTarget,
+        stdinIsTTY: Boolean(process.stdin.isTTY),
+        pickSession: async (candidates) =>
+          runSessionMenuPicker({
+            mode: "resume",
+            sessionNamespaceKey,
+            sessions: candidates,
+            withInputPaused: async <T>(operation: () => Promise<T>) => operation(),
+          }),
+      });
+      targetResumeSessionId = disambiguation.targetSessionId;
+      for (const message of disambiguation.messages) {
+        output.writeStdout(message);
+      }
+    }
     if (targetResumeSessionId) {
       resumed = await sessionOps.resumeFromSession(targetResumeSessionId, "cli:resume");
       if (resumed) {
         modelOps.applyModelOverrideForActiveSession();
       }
-    } else if (resumeRequested) {
-      output.writeStdout("[session] --resume requested but no resumable session found.\n\n");
     }
     const shouldRunRewind = Boolean(resumeSessionAt)
       || (Array.isArray(rewindFiles) && rewindFiles.length > 0);

@@ -38,9 +38,11 @@ import {
   resolveHandoffAutoOnExit,
   resolveHandoffRecentTurns,
   resolveHistoryTurns,
+  resolveResumeAllRequested,
+  resolveResumeLastRequested,
   resolveResumeRequested,
+  resolveResumeSelector,
   resolveResumeSessionAt,
-  resolveResumeSessionId,
   resolveRewindFiles,
   resolveSessionPlatformOption,
   resolveSessionScopeOption,
@@ -950,7 +952,9 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const handoffRecentTurns = resolveHandoffRecentTurns(options);
   const handoffAutoOnExit = resolveHandoffAutoOnExit(options);
   const resumeRequested = resolveResumeRequested(options);
-  const resumeSessionId = resolveResumeSessionId(options);
+  const resumeLastRequested = resolveResumeLastRequested(options);
+  const resumeAllRequested = resolveResumeAllRequested(options);
+  const resumeSelector = resolveResumeSelector(options);
   const forkSession = resolveForkSession(options);
   const resumeSessionAt = resolveResumeSessionAt(options);
   const rewindFiles = resolveRewindFiles(options);
@@ -1009,7 +1013,9 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     handoffRecentTurns,
     handoffAutoOnExit,
     resumeRequested,
-    resumeSessionId,
+    resumeLastRequested,
+    resumeAllRequested,
+    resumeSelector,
     forkSession,
     resumeSessionAt,
     rewindFiles,

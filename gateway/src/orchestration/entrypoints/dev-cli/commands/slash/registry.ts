@@ -1,4 +1,5 @@
 import { parsePlanCommand } from "../../start/plan-command";
+import { resolveResumeQueryMatches } from "../../start/session-resume-search";
 import {
   type SessionInteractiveAction,
   type SessionInteractiveControls,
@@ -247,18 +248,6 @@ function stripBalancedQuotes(value: string): string {
   return inner.length > 0 ? inner : trimmed;
 }
 
-function normalizeResumeQueryText(value: string): string {
-  return normalizeQueryText(value);
-}
-
-function normalizeResumeDigitsOnly(value: string): string {
-  return normalizeDigitsOnly(value);
-}
-
-function normalizeResumeCompactText(value: string): string {
-  return normalizeCompactText(value);
-}
-
 function formatSingleLinePreview(value: string, maxLength = 56): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -334,115 +323,6 @@ function resolvePrioritizedMatches<T>(
   return [];
 }
 
-function sortResumeQueryMatches(
-  matches: SessionInteractiveSessionSummary[],
-): SessionInteractiveSessionSummary[] {
-  matches.sort((left: SessionInteractiveSessionSummary, right: SessionInteractiveSessionSummary) => {
-    if (left.active !== right.active) {
-      return left.active ? 1 : -1;
-    }
-    const updatedDiff = parseUpdatedAtMs(right.updatedAt) - parseUpdatedAtMs(left.updatedAt);
-    if (updatedDiff !== 0) {
-      return updatedDiff;
-    }
-    return left.id.localeCompare(right.id);
-  });
-  return matches;
-}
-
-function resolveResumeQueryMatches(
-  queryRaw: string,
-  sessions: readonly SessionInteractiveSessionSummary[],
-): SessionInteractiveSessionSummary[] {
-  const query = normalizeResumeQueryText(stripBalancedQuotes(queryRaw));
-  if (!query) {
-    return [];
-  }
-  const compactQuery = normalizeResumeCompactText(query);
-  const hasCompactQuery = compactQuery.length > 0;
-  const queryDigits = normalizeResumeDigitsOnly(query);
-  const prioritizedMatches = resolvePrioritizedMatches(
-    [
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.id) === query),
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.title) === query),
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.summary) === query),
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.updatedAt) === query),
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.id) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.title) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.summary) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.updatedAt) === compactQuery)
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.id).startsWith(compactQuery))
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.title).startsWith(compactQuery))
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.summary).startsWith(compactQuery))
-        : [],
-      () => hasCompactQuery
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeCompactText(session.updatedAt).startsWith(compactQuery))
-        : [],
-      () => queryDigits.length > 0
-        ? sessions.filter((session: SessionInteractiveSessionSummary) =>
-          normalizeResumeDigitsOnly(session.updatedAt).startsWith(queryDigits))
-        : [],
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.id).startsWith(query)),
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.title).startsWith(query)),
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.summary).startsWith(query)),
-      () => sessions.filter((session: SessionInteractiveSessionSummary) =>
-        normalizeResumeQueryText(session.updatedAt).startsWith(query)),
-    ],
-    sortResumeQueryMatches,
-  );
-  if (prioritizedMatches.length > 0) {
-    return prioritizedMatches;
-  }
-  const containsMatches = sessions.filter((session: SessionInteractiveSessionSummary) => {
-    const id = normalizeResumeQueryText(session.id);
-    const title = normalizeResumeQueryText(session.title);
-    const summary = normalizeResumeQueryText(session.summary);
-    const updatedAt = normalizeResumeQueryText(session.updatedAt);
-    const idCompact = normalizeResumeCompactText(session.id);
-    const titleCompact = normalizeResumeCompactText(session.title);
-    const summaryCompact = normalizeResumeCompactText(session.summary);
-    const updatedAtCompact = normalizeResumeCompactText(session.updatedAt);
-    const updatedAtDigits = normalizeResumeDigitsOnly(session.updatedAt);
-    return id.includes(query)
-      || title.includes(query)
-      || summary.includes(query)
-      || updatedAt.includes(query)
-      || (hasCompactQuery && idCompact.includes(compactQuery))
-      || (hasCompactQuery && titleCompact.includes(compactQuery))
-      || (hasCompactQuery && summaryCompact.includes(compactQuery))
-      || (hasCompactQuery && updatedAtCompact.includes(compactQuery))
-      || (queryDigits.length > 0 && updatedAtDigits.includes(queryDigits));
-  });
-  return sortResumeQueryMatches(containsMatches);
-}
 
 function normalizeRewindQueryText(value: string): string {
   return normalizeQueryText(value);

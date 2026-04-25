@@ -95,11 +95,21 @@ export function resolveHandoffAutoOnExit(options: Record<string, OptionValue>): 
 }
 
 export function resolveResumeRequested(options: Record<string, OptionValue>): boolean {
-  return hasFlag(options, "resume");
+  return Object.prototype.hasOwnProperty.call(options, "resume")
+    || hasFlag(options, "resume-last")
+    || hasFlag(options, "resume-all");
 }
 
-export function resolveResumeSessionId(options: Record<string, OptionValue>): string | undefined {
+export function resolveResumeSelector(options: Record<string, OptionValue>): string | undefined {
   return readOptionString(options, "resume");
+}
+
+export function resolveResumeLastRequested(options: Record<string, OptionValue>): boolean {
+  return hasFlag(options, "resume-last");
+}
+
+export function resolveResumeAllRequested(options: Record<string, OptionValue>): boolean {
+  return hasFlag(options, "resume-all");
 }
 
 export function resolveForkSession(options: Record<string, OptionValue>): boolean {
