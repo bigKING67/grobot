@@ -110,7 +110,16 @@ export interface RunStartModelOps {
   applyModelOverrideForActiveSession(): void;
 }
 
-const MODEL_MENU_RESET_ID = "__reset_startup_model__";
+const MODEL_MENU_DESCRIPTIONS: Record<string, string> = {
+  "gpt-5.5": "Frontier model for complex coding, research, and real-world work.",
+  "gpt-5.4": "Strong model for everyday coding.",
+  "gpt-5.4-mini": "Small, fast, and cost-efficient model for simpler coding tasks.",
+  "gpt-5.3-codex": "Coding-optimized model.",
+  "gpt-5.2": "Optimized for professional work and long-running agents.",
+  "gpt-5.1-codex": "Optimized for Codex. Balance of reasoning quality and coding ability.",
+  "gpt-5.1-codex-mini": "Optimized for Codex. Cheaper, faster, but less capable.",
+  "gpt-4.1-codex": "Legacy model. Use when compatibility with older automations matters.",
+};
 
 function normalizeModelIds(raw: readonly string[]): string[] {
   const deduped = new Set<string>();
@@ -132,26 +141,53 @@ function normalizeSessionMetadataValue(
   return normalized.length > 0 ? normalized : fallback;
 }
 
+function formatTokenWindow(tokens: number | undefined): string | undefined {
+  if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) {
+    return undefined;
+  }
+  if (tokens >= 1_000_000) {
+    const value = tokens / 1_000_000;
+    return `${Number.isInteger(value) ? String(value) : value.toFixed(1)}M context window`;
+  }
+  if (tokens >= 1_000) {
+    return `${String(Math.round(tokens / 1_000))}K context window`;
+  }
+  return `${String(Math.floor(tokens))} token context window`;
+}
+
+function resolveModelMenuDescription(input: {
+  modelId: string;
+  modelContextWindowTokens?: number;
+}): string {
+  const normalizedModelId = input.modelId.trim();
+  const knownDescription = MODEL_MENU_DESCRIPTIONS[normalizedModelId];
+  if (knownDescription) {
+    return knownDescription;
+  }
+  const contextWindow = formatTokenWindow(input.modelContextWindowTokens);
+  if (contextWindow) {
+    return contextWindow;
+  }
+  return "Available from provider.";
+}
+
 function buildModelMenuItems(input: {
   modelIds: ReadonlyArray<string>;
   currentModel?: string;
   startupModel?: string;
+  modelContextWindowTokensById?: Record<string, number>;
 }): TerminalSelectMenuItem[] {
   const items: TerminalSelectMenuItem[] = [];
-  if (input.startupModel && input.startupModel.length > 0) {
-    items.push({
-      id: MODEL_MENU_RESET_ID,
-      label: `Reset to startup model (${input.startupModel})`,
-      description: "Apply startup model and sync provider.model to config_toml.",
-      current: false,
-    });
-  }
   for (const modelId of input.modelIds) {
+    const isCurrent = modelId === input.currentModel;
     items.push({
       id: modelId,
       label: modelId,
-      description: undefined,
-      current: modelId === input.currentModel,
+      description: resolveModelMenuDescription({
+        modelId,
+        modelContextWindowTokens: input.modelContextWindowTokensById?.[modelId],
+      }),
+      current: isCurrent,
     });
   }
   return items;
@@ -457,6 +493,7 @@ export function createRunStartModelOps(
       modelIds: available.modelIds,
       currentModel: available.currentModel,
       startupModel: startupPrimaryModel,
+      modelContextWindowTokensById: available.modelContextWindowTokensById,
     });
     const initialIndex = resolveModelMenuInitialIndex({
       items,
@@ -465,18 +502,25 @@ export function createRunStartModelOps(
     const picked = await withInputPaused(() =>
       runTerminalSelectMenu({
         title: "Select model",
-        subtitle: undefined,
+        subtitle:
+          "Switch between Grobot models. Applies to this session and future Grobot sessions. For other/previous model names, use /model use <id>.",
         hint: "Enter to confirm · Esc to exit",
         items,
         initialIndex,
+        variant: "model_picker",
+        modelPickerMeta: {
+          providerName: available.providerName,
+          currentModel: available.currentModel,
+          startupModel: startupPrimaryModel,
+          totalModelCount: available.modelIds.length,
+          sessionId: input.getActiveSessionId(),
+          sessionTitle: input.getActiveSessionMetadata?.()?.title,
+          sessionSummary: input.getActiveSessionMetadata?.()?.summary,
+        },
       }),
     );
     if (picked.kind === "cancelled") {
       input.writeStdout("[model] picker cancelled.\n\n");
-      return;
-    }
-    if (picked.item.id === MODEL_MENU_RESET_ID) {
-      await resetModel();
       return;
     }
     await switchModel(picked.item.id, available);

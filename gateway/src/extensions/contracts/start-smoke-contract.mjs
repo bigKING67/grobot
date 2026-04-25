@@ -507,8 +507,9 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
     ...commandResult,
     has_start_banner: hasStartBannerMarker(outputText),
     has_status_snapshot: outputText.includes("[status]"),
-    has_command_hint: outputText.includes("Enter message ("),
-    has_prompt_prefix: outputText.includes("› "),
+    has_no_command_hint:
+      !outputText.includes("Enter message")
+      && !outputText.includes("/ for commands · ? for shortcuts"),
     has_no_unsupported_command_error: outputText.includes("unsupported command for ts-dev-cli") === false,
   };
 }

@@ -1108,6 +1108,17 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.slash_key_no_suggestions_noop, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_partial_selected_highlighted, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_exact_selected_highlighted, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_keeps_selected_visible, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_highlights_selected, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_uses_restraint_not_bold, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_selected_has_pointer, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_does_not_wrap_to_first, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_has_no_row_up_marker, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_has_no_row_down_marker, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_keeps_compact_height, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_centers_selected_when_possible, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_narrow_hides_description, true);
+  assert.equal(runStartInputKeybindingContractPayload.slash_overlay_narrow_lines_within_width, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_input_with_args_highlighted, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_return_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_enter_detected, true);
@@ -1123,6 +1134,30 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_backslash_ignored, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_escape_ignored, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.interactive_plain_enter_defers_to_keypress, true);
+  assert.equal(runStartInputKeybindingContractPayload.interactive_plain_enter_recent_keypress_ignored, true);
+  assert.equal(runStartInputKeybindingContractPayload.interactive_plain_enter_fallback_submits, true);
+  assert.equal(runStartInputKeybindingContractPayload.interactive_text_submit_chunk_ignored, true);
+  assert.equal(runStartInputKeybindingContractPayload.shortcut_overlay_empty_question_toggles, true);
+  assert.equal(runStartInputKeybindingContractPayload.shortcut_overlay_draft_question_inserts, true);
+  assert.equal(runStartInputKeybindingContractPayload.shortcut_overlay_slash_question_inserts, true);
+  assert.equal(runStartInputKeybindingContractPayload.shortcut_overlay_ctrl_question_ignored, true);
+  assert.equal(runStartInputKeybindingContractPayload.footer_draft_hides_shortcut_hint, true);
+  assert.equal(runStartInputKeybindingContractPayload.footer_draft_hides_styled_shortcut_hint, true);
+  assert.equal(runStartInputKeybindingContractPayload.footer_empty_keeps_shortcut_hint, true);
+  assert.equal(runStartInputKeybindingContractPayload.footer_draft_removes_hint_only_line, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_has_open_horizontal_rails, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_has_no_corner_caps, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_has_no_vertical_body_rails, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_prompt_uses_claude_chevron, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_prompt_avoids_thin_chevron, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_has_no_left_gutter, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_border_tracks_body_width, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_cursor_column_matches_open_rails, true);
+  assert.equal(runStartInputKeybindingContractPayload.input_chrome_cursor_uses_left_padding, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_viewport_keeps_active_visible, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_viewport_scrolls_one_row_down, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_viewport_scrolls_one_row_up, true);
   logStep("run-start-input-keybinding-contract");
 
   const runStartPlanFailurePolicyContractResult = runCommand("npx", [
@@ -1275,6 +1310,9 @@ async function runGatewayContractSmoke() {
     runStartSlashSuggestionsContractResult.stdout,
   );
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_model, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_model_visible_in_first_page, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_default_limit_keeps_model, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_default_limit_size_ok, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_commands, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_resume, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_rewind, true);
@@ -1513,15 +1551,24 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.startup_has_logo_headline, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_logo_runtime_line, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_session_line, true);
-  assert.equal(devCliUiRendererContractPayload.startup_has_command_hint, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_no_command_hint, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_tips_title, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_recent_activity_title, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_recent_activity_empty_or_items, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_developed_by_67, true);
+  assert.equal(devCliUiRendererContractPayload.startup_has_no_dev_label, true);
+  assert.equal(devCliUiRendererContractPayload.startup_interactive_title_has_brand_color, true);
+  assert.equal(devCliUiRendererContractPayload.startup_interactive_title_has_muted_version_color, true);
+  assert.equal(devCliUiRendererContractPayload.startup_feed_title_uses_brand_color, true);
+  assert.equal(devCliUiRendererContractPayload.startup_feed_title_avoids_accent_color, true);
+  assert.equal(devCliUiRendererContractPayload.startup_feed_footer_uses_muted_color, true);
+  assert.equal(devCliUiRendererContractPayload.startup_feed_footer_avoids_info_color, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_no_join_artifact, true);
   assert.equal(devCliUiRendererContractPayload.startup_has_no_tee_glyph, true);
   assert.equal(devCliUiRendererContractPayload.startup_body_width_consistent, true);
   assert.equal(devCliUiRendererContractPayload.startup_feed_divider_count_expected, true);
   assert.equal(devCliUiRendererContractPayload.startup_brand_symbol_body_length_consistent, true);
+  assert.equal(devCliUiRendererContractPayload.startup_brand_symbol_has_claude_like_height, true);
   assert.equal(devCliUiRendererContractPayload.startup_registered_symbol_single_width, true);
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_ansi, true);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_ansi, false);
@@ -1531,7 +1578,38 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_secondary_description, true);
   assert.equal(devCliUiRendererContractPayload.menu_hint_is_compact, true);
   assert.equal(devCliUiRendererContractPayload.menu_hint_has_escape_back, true);
-  assert.equal(devCliUiRendererContractPayload.menu_hint_has_enter_space_action, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_enter_action, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_has_navigation_hint, true);
+  assert.equal(devCliUiRendererContractPayload.menu_hint_omits_secondary_key_chords, true);
+  assert.equal(devCliUiRendererContractPayload.menu_viewport_has_full_ordinal, true);
+  assert.equal(devCliUiRendererContractPayload.menu_viewport_hides_reset_ordinal, true);
+  assert.equal(devCliUiRendererContractPayload.menu_viewport_has_no_row_scroll_arrows, true);
+  assert.equal(devCliUiRendererContractPayload.menu_viewport_has_no_more_text, true);
+  assert.equal(devCliUiRendererContractPayload.menu_direct_render_has_no_row_scroll_marker, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_claude_pointer, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_thin_pointer, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_pane_divider, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_interactive_has_remember_color, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_decimal_index, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_bracket_index, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_current_uses_check, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_current_not_parenthesized, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_default_suffix, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_footer_hint, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_provider_card, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_startup_badge, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_current_badge, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_reset_badge, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_has_no_frame, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_interactive_has_no_current_badge, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_direct_render_has_no_row_scroll_marker, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_long_rows_within_width, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_long_current_suffix_preserved, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_long_default_suffix_preserved, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_narrow_rows_within_width, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_narrow_hides_description, true);
+  assert.equal(devCliUiRendererContractPayload.menu_long_rows_within_width, true);
+  assert.equal(devCliUiRendererContractPayload.menu_long_current_suffix_preserved, true);
   logStep("dev-cli-ui-renderer-contract");
 
   const devCliTurnScreenContractResult = runCommand("npx", [
@@ -1576,6 +1654,18 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliStatusLineContractPayload.wide_has_session_topic, true);
   assert.equal(devCliStatusLineContractPayload.narrow_line_within_width, true);
   assert.equal(devCliStatusLineContractPayload.narrow_has_short_session_id, true);
+  assert.equal(devCliStatusLineContractPayload.cjk_line_within_width, true);
+  assert.equal(devCliStatusLineContractPayload.cjk_narrow_keeps_context_signal, true);
+  assert.equal(devCliStatusLineContractPayload.tiny_line_within_width, true);
+  assert.equal(devCliStatusLineContractPayload.tiny_keeps_context_signal, true);
+  assert.equal(devCliStatusLineContractPayload.tiny_keeps_token_counter, true);
+  assert.equal(devCliStatusLineContractPayload.tiny_keeps_short_session_id, true);
+  assert.equal(devCliStatusLineContractPayload.tiny_not_session_only, true);
+  assert.equal(devCliStatusLineContractPayload.warning_has_separate_line, true);
+  assert.equal(devCliStatusLineContractPayload.warning_line_contains_critical, true);
+  assert.equal(devCliStatusLineContractPayload.warning_status_line_unchanged, true);
+  assert.equal(devCliStatusLineContractPayload.tokens_segment_toggle_effective, true);
+  assert.equal(devCliStatusLineContractPayload.plan_mode_badge_visible, true);
   logStep("dev-cli-status-line-contract");
 
   const terminalTextSanitizerContractResult = runCommand("npx", [
@@ -1638,6 +1728,61 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliInteractiveFramePayload.suffix_has_activity_line, true);
   assert.equal(devCliInteractiveFramePayload.suffix_has_no_prompt_frame, true);
   logStep("dev-cli-interactive-frame-contract");
+
+  const devCliBottomPaneContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-bottom-pane-contract.ts",
+  ]);
+  assertSuccess("dev-cli-bottom-pane-contract", devCliBottomPaneContractResult);
+  const devCliBottomPanePayload = parseJsonOutput(
+    "dev-cli-bottom-pane-contract",
+    devCliBottomPaneContractResult.stdout,
+  );
+  assert.equal(devCliBottomPanePayload.idle_has_no_divider, true);
+  assert.equal(devCliBottomPanePayload.idle_keeps_passive_status, true);
+  assert.equal(devCliBottomPanePayload.idle_has_shortcut_hint, true);
+  assert.equal(devCliBottomPanePayload.idle_omits_permanent_shift_enter_hint, true);
+  assert.equal(devCliBottomPanePayload.idle_footer_has_visual_weight, true);
+  assert.equal(devCliBottomPanePayload.idle_footer_style_keeps_plain_text, true);
+  assert.equal(devCliBottomPanePayload.idle_narrow_status_dimmed, true);
+  assert.equal(devCliBottomPanePayload.idle_narrow_hides_shortcut_hint, true);
+  assert.equal(devCliBottomPanePayload.idle_narrow_keeps_status, true);
+  assert.equal(devCliBottomPanePayload.idle_narrow_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.pending_has_no_divider, true);
+  assert.equal(devCliBottomPanePayload.pending_prioritizes_ask, true);
+  assert.equal(devCliBottomPanePayload.pending_narrow_keeps_ask_first, true);
+  assert.equal(devCliBottomPanePayload.pending_default_prompt_is_short, true);
+  assert.equal(devCliBottomPanePayload.pending_narrow_hides_secondary_status, true);
+  assert.equal(devCliBottomPanePayload.pending_omits_shift_enter_hint, true);
+  assert.equal(devCliBottomPanePayload.pending_warning_kept, true);
+  assert.equal(devCliBottomPanePayload.pending_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.pending_narrow_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.running_has_activity, true);
+  assert.equal(devCliBottomPanePayload.running_fallback_is_localized, true);
+  assert.equal(devCliBottomPanePayload.running_activity_has_visual_weight, true);
+  assert.equal(devCliBottomPanePayload.running_narrow_keeps_activity_first, true);
+  assert.equal(devCliBottomPanePayload.running_narrow_hides_secondary_status, true);
+  assert.equal(devCliBottomPanePayload.running_omits_shift_enter_hint, true);
+  assert.equal(devCliBottomPanePayload.running_status_secondary, true);
+  assert.equal(devCliBottomPanePayload.running_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.running_narrow_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_has_commands, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_has_shift_enter, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_has_history, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_has_hide_hint, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_aligns_key_column, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_has_visual_weight, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_style_uses_accent_and_dim, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_style_keeps_plain_text, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_wide_uses_two_columns, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_prioritizes_navigation, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_narrow_uses_single_column, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_narrow_lines_within_width, true);
+  logStep("dev-cli-bottom-pane-contract");
 
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
@@ -5993,7 +6138,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(bareInteractiveFlowPayload.exit_code, 0);
   assert.equal(bareInteractiveFlowPayload.has_start_banner, true);
   assert.equal(bareInteractiveFlowPayload.has_status_snapshot, true);
-  assert.equal(bareInteractiveFlowPayload.has_command_hint, true);
+  assert.equal(bareInteractiveFlowPayload.has_no_command_hint, true);
   assert.equal(bareInteractiveFlowPayload.has_no_unsupported_command_error, true);
   logStep("start-smoke-contract start-bare-interactive-session-flow");
 

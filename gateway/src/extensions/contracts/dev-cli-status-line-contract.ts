@@ -42,6 +42,18 @@ const cjkNarrow = renderStatusLinePrompt({
   promptLabel: "› ",
 });
 
+const tiny = renderStatusLinePrompt({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.643,
+  estimatedTokens: 3214,
+  targetTokenLimit: 5120,
+  sessionId,
+  sessionTopic: "login regression follow-up",
+  terminalColumns: 48,
+  promptLabel: "› ",
+});
+
 const warningPrompt = renderStatusLinePrompt({
   model: "kimi/kimi-k2-2026-04",
   projectFolder: "grobot",
@@ -87,12 +99,14 @@ const planModePrompt = renderStatusLinePrompt({
 const wideLines = wide.split("\n");
 const narrowLines = narrow.split("\n");
 const cjkLines = cjkNarrow.split("\n");
+const tinyLines = tiny.split("\n");
 const warningLines = warningPrompt.split("\n");
 const segmentToggleLines = segmentTogglePrompt.split("\n");
 const planModeLines = planModePrompt.split("\n");
 const wideStatusLine = wideLines[0] ?? "";
 const narrowStatusLine = narrowLines[0] ?? "";
 const cjkStatusLine = cjkLines[0] ?? "";
+const tinyStatusLine = tinyLines[0] ?? "";
 const warningStatusLine = warningLines[0] ?? "";
 const warningLine = warningLines[1] ?? "";
 const segmentToggleStatusLine = segmentToggleLines[0] ?? "";
@@ -111,6 +125,12 @@ const payload = {
   narrow_line_within_width: measureDisplayWidth(narrowStatusLine) <= 64,
   narrow_has_short_session_id: narrowStatusLine.includes(sessionShortId),
   cjk_line_within_width: measureDisplayWidth(cjkStatusLine) <= 48,
+  cjk_narrow_keeps_context_signal: cjkStatusLine.includes("ctx") && cjkStatusLine.includes("left"),
+  tiny_line_within_width: measureDisplayWidth(tinyStatusLine) <= 48,
+  tiny_keeps_context_signal: tinyStatusLine.includes("ctx 37% left"),
+  tiny_keeps_token_counter: tinyStatusLine.includes("5K win"),
+  tiny_keeps_short_session_id: tinyStatusLine.includes(sessionShortId),
+  tiny_not_session_only: tinyStatusLine !== sessionShortId,
   warning_has_separate_line: warningLines.length >= 2,
   warning_line_contains_critical: warningLine.includes("critical"),
   warning_status_line_unchanged: warningStatusLine.includes("context 94%") === false,

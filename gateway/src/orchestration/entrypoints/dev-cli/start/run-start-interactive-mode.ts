@@ -22,7 +22,8 @@ import {
   setTerminalWindowTitle,
 } from "../ui/interactive/terminal-text-sanitizer";
 import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
-import { renderStatusLinePrompt, type StatusLineConfig } from "../ui/screens/status-line-screen";
+import { renderBottomPaneFooter } from "../ui/screens/bottom-pane-screen";
+import { type StatusLineConfig } from "../ui/screens/status-line-screen";
 import { type RuntimeAttachment } from "../../../../models/types";
 
 export interface RunStartInteractiveTurnOptions {
@@ -40,6 +41,21 @@ const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
   "/exit",
   "/quit",
 ]);
+
+const INLINE_ACTIVITY_SPINNER_FRAMES = [
+  "⠋",
+  "⠙",
+  "⠹",
+  "⠸",
+  "⠼",
+  "⠴",
+  "⠦",
+  "⠧",
+  "⠇",
+  "⠏",
+] as const;
+const INLINE_ACTIVITY_TICK_MS = 120;
+const INTERACTIVE_SLASH_SUGGESTION_LIMIT = 64;
 
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
@@ -438,10 +454,11 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const processSummaryDetail = resolveProcessSummaryDetail();
   const suppressDiagnosticStderr = !traceDiagnosticsEnabled;
   const inlineProgressSupported = Boolean((process.stdout as { isTTY?: boolean }).isTTY)
-    && progressDiagnosticsEnabled
     && !traceDiagnosticsEnabled;
   let inlineProgressActive = false;
   let inlineProgressText = "";
+  let inlineActivityTicker: ReturnType<typeof setInterval> | undefined;
+  let inlineActivityTick = 0;
   const clearInlineProgress = (insertNewline: boolean): void => {
     if (!inlineProgressSupported || !inlineProgressActive) {
       return;
@@ -465,6 +482,38 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     process.stdout.write(`\r\x1b[2K${rendered}`);
     inlineProgressActive = true;
     inlineProgressText = rendered;
+  };
+  const renderInlineActivityTicker = (): void => {
+    if (!inlineProgressSupported || typeof activeTurnStartedAtMs !== "number") {
+      return;
+    }
+    const activityText = compactSummaryText(activityTracker.readPromptActivity() ?? "正在执行");
+    const elapsed = formatTurnElapsedCompact(Date.now() - activeTurnStartedAtMs);
+    const spinner = INLINE_ACTIVITY_SPINNER_FRAMES[
+      inlineActivityTick % INLINE_ACTIVITY_SPINNER_FRAMES.length
+    ] ?? "-";
+    writeProgressLine(`${spinner} ${activityText} (${elapsed} · Esc中断)`);
+    inlineActivityTick += 1;
+  };
+  const startInlineActivityTicker = (): void => {
+    if (!inlineProgressSupported || inlineActivityTicker) {
+      return;
+    }
+    inlineActivityTick = 0;
+    renderInlineActivityTicker();
+    inlineActivityTicker = setInterval(() => {
+      if (typeof activeTurnStartedAtMs !== "number") {
+        return;
+      }
+      renderInlineActivityTicker();
+    }, INLINE_ACTIVITY_TICK_MS);
+  };
+  const stopInlineActivityTicker = (insertNewline: boolean): void => {
+    if (inlineActivityTicker) {
+      clearInterval(inlineActivityTicker);
+      inlineActivityTicker = undefined;
+    }
+    clearInlineProgress(insertNewline);
   };
   const writeTurnSummaryLine = (inputSummary: {
     result: "ok" | "error" | "interrupted";
@@ -502,7 +551,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     if (inputSummary.activitySnapshot && shouldShowStage) {
       parts.push(`s="${compactSummaryText(inputSummary.activitySnapshot.text).replace(/"/g, "'")}"`);
     }
-    clearInlineProgress(false);
+    stopInlineActivityTicker(false);
     process.stdout.write(`${parts.join(" ")}\n`);
   };
   const activityTracker = createInteractiveActivityTracker(
@@ -522,14 +571,17 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   const writeInteractiveStderr = (message: string): void => {
     if (!suppressDiagnosticStderr) {
       activityTracker.observeStderrChunk(message);
-      clearInlineProgress(true);
+      stopInlineActivityTicker(true);
       process.stderr.write(message);
       return;
     }
     const forwarded = activityTracker.consumeStderrChunk(message);
     if (forwarded.length > 0) {
-      clearInlineProgress(true);
+      stopInlineActivityTicker(true);
       process.stderr.write(forwarded);
+      if (typeof activeTurnStartedAtMs === "number") {
+        renderInlineActivityTicker();
+      }
     }
   };
 
@@ -537,6 +589,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     writeStdout: (message) => {
       clearInlineProgress(false);
       process.stdout.write(message);
+      if (typeof activeTurnStartedAtMs === "number") {
+        renderInlineActivityTicker();
+      }
     },
     writeStderr: writeInteractiveStderr,
     hasPendingAsk: input.hasPendingAsk,
@@ -622,6 +677,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       if (interactiveMode) {
         activeTurnStartedAtMs = Date.now();
         activityTracker.markTurnStart();
+        startInlineActivityTicker();
         writeInteractiveTrace(`event=turn_start mode=${interactiveDiagnosticsMode}`);
       }
       try {
@@ -636,11 +692,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         if (suppressDiagnosticStderr) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
-            clearInlineProgress(true);
+            stopInlineActivityTicker(true);
             process.stderr.write(buffered);
           }
         }
         if (interactiveMode) {
+          stopInlineActivityTicker(false);
           const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
           const activitySnapshot = activityTracker.readPromptActivitySnapshot();
           activityTracker.markTurnFinished(
@@ -682,11 +739,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         if (suppressDiagnosticStderr) {
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
-            clearInlineProgress(true);
+            stopInlineActivityTicker(true);
             process.stderr.write(buffered);
           }
         }
         if (interactiveMode) {
+          stopInlineActivityTicker(false);
           const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
           const activitySnapshot = activityTracker.readPromptActivitySnapshot();
           activityTracker.markTurnFinished("error");
@@ -731,19 +789,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       fallback: input.contextWindowTokens,
     });
     const pendingAskCount = input.getPendingAskQueueSize();
-    const runningActivityText = (() => {
-      const activityText = activityTracker.readPromptActivity();
-      if (typeof activeTurnStartedAtMs !== "number") {
-        if (pendingAskCount > 0) {
-          return `待确认 ${String(pendingAskCount)} 项（直接回复继续）`;
-        }
-        return activityText;
-      }
-      const elapsed = formatTurnElapsedCompact(Date.now() - activeTurnStartedAtMs);
-      const base = activityText ?? "执行中";
-      return `${base} (${elapsed} · Esc中断)`;
-    })();
-    const renderedPrompt = renderStatusLinePrompt({
+    const renderedPrompt = renderBottomPaneFooter({
       model: `${modelSnapshot.providerName}/${modelSnapshot.model}`,
       projectFolder,
       contextWindowUsageRatio: budgetSnapshot.contextWindowUsageRatio,
@@ -754,8 +800,14 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       sessionTopic: input.getActiveSessionTopic(),
       planMode: input.isPlanMode(),
       terminalColumns,
-      activityText: runningActivityText,
-      promptLabel: "› ",
+      activityText:
+        typeof activeTurnStartedAtMs !== "number" && pendingAskCount <= 0
+          ? activityTracker.readPromptActivity()
+          : undefined,
+      promptLabel: "❯ ",
+      pendingAskCount,
+      pendingAskSummary: input.getPendingAskPromptSummary?.(),
+      running: typeof activeTurnStartedAtMs === "number",
       config: statusLineConfig,
     });
     const nextTitle = buildInteractiveWindowTitle({
@@ -772,7 +824,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     }
     return buildInteractivePromptLayout({
       renderedPrompt,
-      promptLabel: "› ",
+      promptLabel: "❯ ",
     });
   };
   const getSlashSuggestions = (lineInput: string) => {
@@ -787,7 +839,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       pendingAskCount,
       planMode: input.isPlanMode(),
       planSuggestionState,
-      maxItems: 8,
+      maxItems: INTERACTIVE_SLASH_SUGGESTION_LIMIT,
     });
     if (pendingAskCount <= 0) {
       return suggestions;
@@ -821,7 +873,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       },
     });
   } finally {
-    clearInlineProgress(false);
+    stopInlineActivityTicker(false);
     clearTerminalWindowTitle();
   }
 

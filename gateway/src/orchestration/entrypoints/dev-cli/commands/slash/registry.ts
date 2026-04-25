@@ -1010,22 +1010,6 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/exit", description: "Exit interactive mode" },
 ];
 
-const PRIMARY_HINT_COMMANDS: readonly string[] = [
-  "/help",
-  "/sessions",
-  "/resume",
-  "/rewind",
-  "/commands",
-  "/skill-creator",
-  "/history",
-  "/init",
-  "/context",
-  "/memory",
-  "/model",
-  "/plan",
-  "/exit",
-];
-
 const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {
   sessions: "/sessions",
   commands: "/commands",
@@ -1080,8 +1064,7 @@ export function listSlashCommandCompatibilityNotes(): string[] {
 }
 
 export function buildSlashCommandHint(): string {
-  const wrapped = PRIMARY_HINT_COMMANDS.map((command) => `\`${command}\``);
-  return `Enter message (${wrapped.join(", ")}; Ctrl+r: history search, Esc: running interrupt, plan idle exits mode):`;
+  return "";
 }
 
 export function listSlashCommandSuggestions(): readonly SlashCommandSuggestion[] {

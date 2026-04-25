@@ -40,19 +40,45 @@ const STARTUP_ICON_LINES = [
   "  G R O L A N D®  ",
 ];
 
+const STARTUP_DISPLAY_VERSION = "0.10.0";
+
 function resolveCliVersionLabel(): string {
-  const candidates = [
-    process.env.GROBOT_VERSION,
-    process.env.npm_package_version,
+  const override = (process.env.GROBOT_VERSION ?? "").trim();
+  const normalized = override.replace(/^v/i, "");
+  const version = normalized.length > 0 && !/dev/i.test(normalized)
+    ? normalized
+    : STARTUP_DISPLAY_VERSION;
+  return `${version} developed by 67`;
+}
+
+function buildStartupTitleSegments(versionLabel: string): StartScreenViewModel["titleSegments"] {
+  return [
+    {
+      text: "Grobot",
+      token: "brand",
+    },
+    {
+      text: ` ${versionLabel}`,
+      token: "muted",
+    },
   ];
-  for (const candidate of candidates) {
-    const normalized = (candidate ?? "").trim();
-    if (!normalized) {
-      continue;
-    }
-    return normalized.startsWith("v") ? normalized : `v${normalized}`;
+}
+
+function buildStartupTitle(versionLabel: string): string {
+  return compactFeedText(`Grobot ${versionLabel}`, 64);
+}
+
+function buildStartupTitleSegmentsForDisplay(versionLabel: string): StartScreenViewModel["titleSegments"] {
+  const title = buildStartupTitle(versionLabel);
+  if (title === `Grobot ${versionLabel}`) {
+    return buildStartupTitleSegments(versionLabel);
   }
-  return "dev";
+  return [
+    {
+      text: title,
+      token: "brand",
+    },
+  ];
 }
 
 function formatRelativeTimeAgo(value: string): string | undefined {
@@ -165,8 +191,10 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     compactFeedText(displayProjectPath, 180),
   ];
   const recentActivityLines = resolveRecentActivityLines(input.recentSessions);
+  const title = buildStartupTitle(versionLabel);
   const viewModel: StartScreenViewModel = {
-    title: compactFeedText(`Grobot ${versionLabel}`, 64),
+    title,
+    titleSegments: buildStartupTitleSegmentsForDisplay(versionLabel),
     hero: {
       brandLabel: "",
       iconLines: STARTUP_ICON_LINES,
@@ -187,8 +215,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
       },
     ],
     rows,
-    commandHint:
-      "Enter message (`/help`, `/sessions`, `/resume`, `/rewind`, `/commands`, `/skill-creator`, `/history`, `/model`, `/plan`, `/exit`; Ctrl+r: history search):",
+    commandHint: "",
   };
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,

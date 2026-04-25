@@ -1,13 +1,7 @@
 import { type CliRenderMode } from "../kernel/render-mode";
+import { terminalStyle } from "./terminal-style";
 
-export type CliThemeToken = "accent" | "brand" | "muted" | "info" | "title";
-
-const ANSI_RESET = "\x1b[0m";
-const ANSI_BOLD = "\x1b[1m";
-const ANSI_ACCENT = "\x1b[92m";
-const ANSI_BRAND = "\x1b[38;2;202;124;94m";
-const ANSI_INFO = "\x1b[96m";
-const ANSI_MUTED = "\x1b[90m";
+export type CliThemeToken = "accent" | "brand" | "muted" | "info" | "remember" | "title";
 
 export interface CliTheme {
   bold(value: string): string;
@@ -23,29 +17,28 @@ const noColorTheme: CliTheme = {
   currentTag: (value) => value,
 };
 
-function wrap(open: string, value: string): string {
-  return `${open}${value}${ANSI_RESET}`;
-}
-
 const ansiTheme: CliTheme = {
-  bold: (value) => wrap(ANSI_BOLD, value),
+  bold: terminalStyle.bold,
   color: (token, value) => {
     if (token === "accent") {
-      return wrap(ANSI_ACCENT, value);
+      return terminalStyle.accent(value);
     }
     if (token === "brand") {
-      return wrap(ANSI_BRAND, value);
+      return terminalStyle.brand(value);
     }
     if (token === "info") {
-      return wrap(ANSI_INFO, value);
+      return terminalStyle.info(value);
+    }
+    if (token === "remember") {
+      return terminalStyle.remember(value);
     }
     if (token === "muted") {
-      return wrap(ANSI_MUTED, value);
+      return terminalStyle.muted(value);
     }
-    return wrap(ANSI_BOLD, value);
+    return terminalStyle.bold(value);
   },
-  pointer: (value) => wrap(ANSI_ACCENT, value),
-  currentTag: (value) => wrap(ANSI_INFO, value),
+  pointer: terminalStyle.pointer,
+  currentTag: terminalStyle.currentTag,
 };
 
 export function createCliTheme(mode: CliRenderMode): CliTheme {

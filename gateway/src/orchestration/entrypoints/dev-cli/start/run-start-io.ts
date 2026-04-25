@@ -18,15 +18,19 @@ import {
   measureDisplayWidth,
   padToDisplayWidth,
   splitGraphemes,
+  stripAnsi,
 } from "../ui/interactive/display-width";
 import {
   type TerminalSelectMenuInput,
   type TerminalSelectMenuItem,
   type TerminalSelectMenuResult,
 } from "../ui/screens/select-menu-screen";
+import {
+  renderShortcutOverlayFooter,
+} from "../ui/screens/bottom-pane-screen";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
-const DEFAULT_SESSION_PROMPT = "› ";
+const DEFAULT_SESSION_PROMPT = "❯ ";
 const INLINE_IMAGE_PARSE_PATTERN = /\[Image #(\d+)\]/g;
 const INLINE_IMAGE_RENDER_PATTERN = /\[Image #\d+\]/g;
 const INLINE_IMAGE_REGISTRY_LIMIT = 512;
@@ -42,6 +46,11 @@ const BRACKETED_PASTE_START = "\u001B[200~";
 const BRACKETED_PASTE_END = "\u001B[201~";
 const BRACKETED_PASTE_BLOCK_PATTERN = /\u001B\[200~([\s\S]*?)\u001B\[201~/g;
 const BRACKETED_PASTE_BUFFER_LIMIT = 16_384;
+const PLAIN_ENTER_FALLBACK_DELAY_MS = 60;
+const ENTER_KEYPRESS_DEDUP_WINDOW_MS = 80;
+const DEFAULT_SELECT_VISIBLE_OPTION_COUNT = 5;
+const MODEL_PICKER_VISIBLE_OPTION_COUNT = 10;
+const INPUT_CHROME_BODY_LEFT_PADDING = 0;
 
 const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
 let nextInlineImageId = 1;
@@ -118,6 +127,9 @@ export interface CoalescedSubmitChunkResolution {
   normalizedChunk: string;
   shouldSubmit: boolean;
 }
+
+export type InteractiveEnterDataAction = "none" | "defer_to_keypress" | "submit";
+export type ShortcutOverlayKeyAction = "none" | "toggle_overlay" | "insert_text";
 
 export type MenuInputAction =
   | { kind: "up" }
@@ -420,6 +432,97 @@ export function resolveInputShortcutAction(input: {
   return "none";
 }
 
+export function resolveShortcutOverlayKeyAction(input: {
+  chunk: string;
+  key: KeypressPayload;
+  inputGraphemeLength: number;
+  hasActiveSlashSuggestions?: boolean;
+}): ShortcutOverlayKeyAction {
+  const chunk = String(input.chunk ?? "");
+  const sequence = String(input.key.sequence ?? chunk);
+  const name = (input.key.name ?? "").trim().toLowerCase();
+  const isQuestionMark = chunk === "?" || sequence === "?" || name === "?";
+  if (!isQuestionMark || input.key.ctrl || input.key.meta) {
+    return "none";
+  }
+  if ((input.hasActiveSlashSuggestions ?? false) || input.inputGraphemeLength > 0) {
+    return "insert_text";
+  }
+  return "toggle_overlay";
+}
+
+export function resolveDraftAwareFooterLines(input: {
+  footerLines: readonly string[];
+  inputGraphemeLength: number;
+}): string[] {
+  if (input.inputGraphemeLength <= 0) {
+    return [...input.footerLines];
+  }
+  return input.footerLines
+    .map((line) => {
+      const shortcutHint = "? for shortcuts";
+      const plainLine = stripAnsi(line);
+      if (plainLine === shortcutHint) {
+        return "";
+      }
+      const shortcutPrefix = `${shortcutHint} · `;
+      if (plainLine.startsWith(shortcutPrefix)) {
+        return plainLine.slice(shortcutPrefix.length).trimStart();
+      }
+      return line;
+    })
+    .filter((line) => line.length > 0);
+}
+
+export function renderInteractiveInputChromeLines(input: {
+  bodyLines: readonly string[];
+  inputBodyWidth: number;
+}): string[] {
+  const inputContentWidth =
+    typeof input.inputBodyWidth === "number" && Number.isFinite(input.inputBodyWidth)
+      ? Math.max(1, Math.floor(input.inputBodyWidth))
+      : 1;
+  const bodyPadding = " ".repeat(INPUT_CHROME_BODY_LEFT_PADDING);
+  const bodyPrefix = bodyPadding.length > 0 ? `${ANSI_DIM}${bodyPadding}${ANSI_RESET}` : "";
+  const horizontal = "─".repeat(inputContentWidth + INPUT_CHROME_BODY_LEFT_PADDING);
+  return [
+    `${ANSI_DIM}${horizontal}${ANSI_RESET}`,
+    ...input.bodyLines.map((line) =>
+      `${bodyPrefix}${padToDisplayWidth(line, inputContentWidth)}`),
+    `${ANSI_DIM}${horizontal}${ANSI_RESET}`,
+  ];
+}
+
+export function resolveInteractiveInputBodyWidth(input: {
+  terminalColumns: number;
+  promptLabelWidth: number;
+}): number {
+  const terminalColumns =
+    typeof input.terminalColumns === "number" && Number.isFinite(input.terminalColumns)
+      ? Math.max(1, Math.floor(input.terminalColumns))
+      : 1;
+  const promptLabelWidth =
+    typeof input.promptLabelWidth === "number" && Number.isFinite(input.promptLabelWidth)
+      ? Math.max(0, Math.floor(input.promptLabelWidth))
+      : 0;
+  return Math.max(promptLabelWidth + 8, terminalColumns);
+}
+
+export function resolveInteractiveInputCursorColumn(input: {
+  promptRelativeCursorColumn: number;
+}): number {
+  if (
+    typeof input.promptRelativeCursorColumn !== "number"
+    || !Number.isFinite(input.promptRelativeCursorColumn)
+  ) {
+    return INPUT_CHROME_BODY_LEFT_PADDING;
+  }
+  return INPUT_CHROME_BODY_LEFT_PADDING + Math.max(
+    0,
+    Math.floor(input.promptRelativeCursorColumn),
+  );
+}
+
 export function resolveCoalescedSubmitChunk(
   chunkRaw: string,
 ): CoalescedSubmitChunkResolution {
@@ -451,6 +554,25 @@ export function resolveCoalescedSubmitChunk(
     normalizedChunk: payload,
     shouldSubmit: true,
   };
+}
+
+export function isPlainEnterDataChunk(chunkRaw: string): boolean {
+  const chunk = String(chunkRaw ?? "");
+  return chunk === "\r" || chunk === "\n" || chunk === "\r\n";
+}
+
+export function resolveInteractiveEnterDataAction(input: {
+  chunk: string;
+  keypressSupported: boolean;
+  keypressHandledRecently?: boolean;
+}): InteractiveEnterDataAction {
+  if (!isPlainEnterDataChunk(input.chunk)) {
+    return "none";
+  }
+  if (!input.keypressSupported) {
+    return "submit";
+  }
+  return input.keypressHandledRecently ? "none" : "defer_to_keypress";
 }
 
 export function resolveMenuIndexFromDigits(
@@ -989,6 +1111,10 @@ export async function runSessionInputLoop(
     let slashSuggestionsHiddenForLine = "";
     let latestSnapshot: InputRenderSnapshot | undefined;
     let closed = false;
+    let pendingPlainEnterFallback: ReturnType<typeof setTimeout> | undefined;
+    let lastEnterKeypressHandledAt = 0;
+    let lastEnterDataHandledAt = 0;
+    let shortcutOverlayVisible = false;
 
     const moveCursorToOutputLine = (): void => {
       const snapshot = latestSnapshot;
@@ -1209,8 +1335,11 @@ export async function runSessionInputLoop(
     const buildRenderSnapshot = (): InputRenderSnapshot => {
       clampCursor();
       const terminalColumns = Math.max(32, resolveTerminalColumns());
-      const inputLineWidth = Math.max(promptLabelWidth + 8, terminalColumns - 1);
-      const wrapWidth = Math.max(1, inputLineWidth - promptLabelWidth);
+      const inputBodyWidth = resolveInteractiveInputBodyWidth({
+        terminalColumns,
+        promptLabelWidth,
+      });
+      const wrapWidth = Math.max(1, inputBodyWidth - promptLabelWidth);
       const descriptors = resolveDescriptors({
         valueGraphemes: graphemes,
         wrapWidth,
@@ -1230,12 +1359,20 @@ export async function runSessionInputLoop(
         return undefined;
       })();
 
-      const topBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
-      const bottomBorder = `${ANSI_DIM}${"─".repeat(inputLineWidth)}${ANSI_RESET}`;
       const slash = resolveSlashSuggestions(activeLineInput);
+      if (shortcutOverlayVisible && slash.panelLines.length > 0) {
+        shortcutOverlayVisible = false;
+      }
       const exactSlashMatch = shouldHighlightSlashInputToken({
         activeLineInput,
         suggestions: slash.suggestions,
+      });
+      const shortcutOverlayLines = shortcutOverlayVisible
+        ? renderShortcutOverlayFooter({ terminalColumns }).split("\n")
+        : [];
+      const visibleFooterLines = resolveDraftAwareFooterLines({
+        footerLines,
+        inputGraphemeLength: graphemes.length,
       });
       const bodyLines: string[] = descriptors.map((descriptor, index) => {
         const prefix = index === 0 ? promptLabel : continuationPrefix;
@@ -1253,22 +1390,26 @@ export async function runSessionInputLoop(
         const highlightedText = exactSlashMatch && index === activeLineIndex
           ? renderSlashCommandTokenHighlight(renderedText)
           : renderedText;
-        return padToDisplayWidth(`${prefix}${highlightedText}`, inputLineWidth);
+        return `${prefix}${highlightedText}`;
       });
-      const shouldRenderFooter = slash.panelLines.length === 0;
+      const shouldRenderFooter = slash.panelLines.length === 0 && !shortcutOverlayVisible;
       const renderedLines = [
-        topBorder,
-        ...bodyLines,
-        bottomBorder,
+        ...renderInteractiveInputChromeLines({
+          bodyLines,
+          inputBodyWidth,
+        }),
         ...slash.panelLines,
-        ...(shouldRenderFooter ? footerLines : []),
+        ...shortcutOverlayLines,
+        ...(shouldRenderFooter ? visibleFooterLines : []),
       ];
       const cursorRenderLineIndex = 1 + activeLineIndex;
       const cursorColumn = resolveCursorColumn(activeDescriptor);
       return {
         renderedLines,
         cursorRenderLineIndex,
-        cursorColumn,
+        cursorColumn: resolveInteractiveInputCursorColumn({
+          promptRelativeCursorColumn: cursorColumn,
+        }),
         descriptors,
         activeLineIndex,
         activeLineInput,
@@ -1416,12 +1557,21 @@ export async function runSessionInputLoop(
       }
     };
 
+    const clearPendingPlainEnterFallback = (): void => {
+      if (!pendingPlainEnterFallback) {
+        return;
+      }
+      clearTimeout(pendingPlainEnterFallback);
+      pendingPlainEnterFallback = undefined;
+    };
+
     return await new Promise<{ kind: "submit"; value: string } | { kind: "sigint" }>((resolve) => {
       const finish = (result: { kind: "submit"; value: string } | { kind: "sigint" }): void => {
         if (closed) {
           return;
         }
         closed = true;
+        clearPendingPlainEnterFallback();
         keypressInput.off?.("keypress", onKeypress);
         menuInput.off?.("data", onData);
         moveCursorToOutputLine();
@@ -1481,6 +1631,18 @@ export async function runSessionInputLoop(
           kind: "submit",
           value: graphemes.join(""),
         });
+      };
+
+      const schedulePlainEnterFallback = (): void => {
+        clearPendingPlainEnterFallback();
+        pendingPlainEnterFallback = setTimeout(() => {
+          pendingPlainEnterFallback = undefined;
+          if (closed || pauseDepth > 0) {
+            return;
+          }
+          lastEnterDataHandledAt = Date.now();
+          handleEnterLikeAction("submit");
+        }, PLAIN_ENTER_FALLBACK_DELAY_MS);
       };
 
       const handleEscapeLikeAction = (): boolean => {
@@ -1549,10 +1711,16 @@ export async function runSessionInputLoop(
           return;
         }
         if (raw === "\u0003") {
+          shortcutOverlayVisible = false;
           finish({ kind: "sigint" });
           return;
         }
         if (raw === "\u001b") {
+          if (shortcutOverlayVisible) {
+            shortcutOverlayVisible = false;
+            render();
+            return;
+          }
           if (handleEscapeLikeAction()) {
             return;
           }
@@ -1565,6 +1733,25 @@ export async function runSessionInputLoop(
           triggerEscInterrupt("idle");
           return;
         }
+        const enterDataAction = resolveInteractiveEnterDataAction({
+          chunk: raw,
+          keypressSupported: true,
+          keypressHandledRecently:
+            Date.now() - lastEnterKeypressHandledAt < ENTER_KEYPRESS_DEDUP_WINDOW_MS,
+        });
+        if (enterDataAction === "defer_to_keypress") {
+          schedulePlainEnterFallback();
+          return;
+        }
+        if (enterDataAction === "submit") {
+          lastEnterDataHandledAt = Date.now();
+          shortcutOverlayVisible = false;
+          handleEnterLikeAction("submit");
+          return;
+        }
+        if (enterDataAction === "none" && isPlainEnterDataChunk(raw)) {
+          return;
+        }
         const coalescedSubmit = resolveCoalescedSubmitChunk(raw);
         if (coalescedSubmit.shouldSubmit) {
           const normalized = stripBracketedPasteMarkers(coalescedSubmit.normalizedChunk)
@@ -1572,6 +1759,7 @@ export async function runSessionInputLoop(
           if (normalized.length > 0) {
             insertTextAtCursor(normalized);
           }
+          shortcutOverlayVisible = false;
           handleEnterLikeAction("submit");
           return;
         }
@@ -1580,6 +1768,8 @@ export async function runSessionInputLoop(
           key: {},
         });
         if (submitKeyAction !== "none") {
+          lastEnterDataHandledAt = Date.now();
+          shortcutOverlayVisible = false;
           handleEnterLikeAction(submitKeyAction);
         }
       };
@@ -1599,6 +1789,7 @@ export async function runSessionInputLoop(
           || (key.shift && key.name === "insert")
           || key.sequence === "\u0016";
         if (imagePasteTriggered) {
+          shortcutOverlayVisible = false;
           if (tryPasteInlineClipboardImage()) {
             render();
           }
@@ -1611,31 +1802,53 @@ export async function runSessionInputLoop(
         const moveSuggestionUp = key.name === "up" || (key.ctrl && key.name === "p");
         const moveSuggestionDown = key.name === "down" || (key.ctrl && key.name === "n");
 
+        const shortcutOverlayAction = resolveShortcutOverlayKeyAction({
+          chunk: rawInput,
+          key,
+          inputGraphemeLength: graphemes.length,
+          hasActiveSlashSuggestions,
+        });
+        if (shortcutOverlayAction === "toggle_overlay") {
+          shortcutOverlayVisible = !shortcutOverlayVisible;
+          render();
+          return;
+        }
+        if (shortcutOverlayVisible && key.name === "escape") {
+          shortcutOverlayVisible = false;
+          render();
+          return;
+        }
+
         const shortcutAction = resolveInputShortcutAction({
           chunk: rawInput,
           key,
         });
         if (shortcutAction === "sigint") {
+          shortcutOverlayVisible = false;
           finish({ kind: "sigint" });
           return;
         }
         if (shortcutAction === "history_search") {
+          shortcutOverlayVisible = false;
           void runHistorySearchShortcut();
           return;
         }
         if (key.name === "left") {
+          shortcutOverlayVisible = false;
           cursor -= 1;
           clampCursor();
           render();
           return;
         }
         if (key.name === "right") {
+          shortcutOverlayVisible = false;
           cursor += 1;
           clampCursor();
           render();
           return;
         }
         if (key.name === "home") {
+          shortcutOverlayVisible = false;
           const descriptor = latestSnapshot?.descriptors[latestSnapshot.activeLineIndex ?? 0];
           if (descriptor) {
             cursor = descriptor.start;
@@ -1644,6 +1857,7 @@ export async function runSessionInputLoop(
           return;
         }
         if (key.name === "end") {
+          shortcutOverlayVisible = false;
           const descriptor = latestSnapshot?.descriptors[latestSnapshot.activeLineIndex ?? 0];
           if (descriptor) {
             cursor = descriptor.end;
@@ -1652,6 +1866,7 @@ export async function runSessionInputLoop(
           return;
         }
         if (moveSuggestionUp) {
+          shortcutOverlayVisible = false;
           if (hasActiveSlashSuggestions) {
             activeSlashSuggestionIndex = normalizeSuggestionIndex(
               activeSuggestions.length,
@@ -1665,6 +1880,7 @@ export async function runSessionInputLoop(
           return;
         }
         if (moveSuggestionDown) {
+          shortcutOverlayVisible = false;
           if (hasActiveSlashSuggestions) {
             activeSlashSuggestionIndex = normalizeSuggestionIndex(
               activeSuggestions.length,
@@ -1678,6 +1894,7 @@ export async function runSessionInputLoop(
           return;
         }
         if (key.name === "backspace") {
+          shortcutOverlayVisible = false;
           if (!removeSelectedInlineImageToken() && cursor > 0) {
             graphemes.splice(cursor - 1, 1);
             cursor -= 1;
@@ -1686,6 +1903,7 @@ export async function runSessionInputLoop(
           return;
         }
         if (key.name === "delete") {
+          shortcutOverlayVisible = false;
           if (!removeSelectedInlineImageToken() && cursor < graphemes.length) {
             graphemes.splice(cursor, 1);
           }
@@ -1697,6 +1915,12 @@ export async function runSessionInputLoop(
           key,
         });
         if (submitKeyAction !== "none") {
+          if (Date.now() - lastEnterDataHandledAt < ENTER_KEYPRESS_DEDUP_WINDOW_MS) {
+            return;
+          }
+          clearPendingPlainEnterFallback();
+          lastEnterKeypressHandledAt = Date.now();
+          shortcutOverlayVisible = false;
           handleEnterLikeAction(submitKeyAction);
           return;
         }
@@ -1708,6 +1932,7 @@ export async function runSessionInputLoop(
             activeLineInput: latestSnapshot?.activeLineInput,
           });
           if (slashAction.kind === "apply") {
+            shortcutOverlayVisible = false;
             const replacedLine = replaceActiveLineWithCommand(slashAction.appliedCommand);
             if (typeof replacedLine === "string") {
               slashSuggestionsHiddenForLine = replacedLine;
@@ -1716,6 +1941,7 @@ export async function runSessionInputLoop(
             return;
           }
           if (slashAction.kind === "hide_panel") {
+            shortcutOverlayVisible = false;
             slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
             activeSlashSuggestionIndex = 0;
             render();
@@ -1724,6 +1950,7 @@ export async function runSessionInputLoop(
         }
         if (key.name === "escape") {
           if (handleEscapeLikeAction()) {
+            shortcutOverlayVisible = false;
             return;
           }
           const now = Date.now();
@@ -1746,12 +1973,14 @@ export async function runSessionInputLoop(
           if (normalized.length > 0) {
             insertTextAtCursor(normalized);
           }
+          shortcutOverlayVisible = false;
           handleEnterLikeAction("submit");
           return;
         }
         if (!normalized) {
           return;
         }
+        shortcutOverlayVisible = false;
         insertTextAtCursor(normalized);
         render();
       };
@@ -1808,6 +2037,73 @@ function normalizeMenuIndex(itemsLength: number, initialIndex: number | undefine
     return itemsLength - 1;
   }
   return rounded;
+}
+
+function normalizeMenuVisibleOptionCount(input: {
+  itemsLength: number;
+  visibleOptionCount?: number;
+  variant?: TerminalSelectMenuInput["variant"];
+}): number {
+  if (input.itemsLength <= 0) {
+    return 0;
+  }
+  const fallback = input.variant === "model_picker"
+    ? MODEL_PICKER_VISIBLE_OPTION_COUNT
+    : DEFAULT_SELECT_VISIBLE_OPTION_COUNT;
+  const requested =
+    typeof input.visibleOptionCount === "number" && Number.isFinite(input.visibleOptionCount)
+      ? Math.floor(input.visibleOptionCount)
+      : fallback;
+  return Math.max(1, Math.min(input.itemsLength, requested));
+}
+
+export function resolveTerminalSelectMenuViewport(input: {
+  itemsLength: number;
+  activeIndex: number;
+  visibleOptionCount?: number;
+  previousStartIndex?: number;
+  variant?: TerminalSelectMenuInput["variant"];
+}): {
+  startIndex: number;
+  endIndex: number;
+  visibleCount: number;
+  totalCount: number;
+  activeIndex: number;
+} {
+  const totalCount = Math.max(0, Math.floor(input.itemsLength));
+  if (totalCount <= 0) {
+    return {
+      startIndex: 0,
+      endIndex: 0,
+      visibleCount: 0,
+      totalCount: 0,
+      activeIndex: 0,
+    };
+  }
+  const activeIndex = normalizeMenuIndex(totalCount, input.activeIndex);
+  const visibleCount = normalizeMenuVisibleOptionCount({
+    itemsLength: totalCount,
+    visibleOptionCount: input.visibleOptionCount,
+    variant: input.variant,
+  });
+  const maxStart = Math.max(0, totalCount - visibleCount);
+  let startIndex =
+    typeof input.previousStartIndex === "number" && Number.isFinite(input.previousStartIndex)
+      ? Math.max(0, Math.min(maxStart, Math.floor(input.previousStartIndex)))
+      : Math.min(maxStart, Math.max(0, activeIndex - visibleCount + 1));
+  if (activeIndex < startIndex) {
+    startIndex = activeIndex;
+  } else if (activeIndex >= startIndex + visibleCount) {
+    startIndex = activeIndex - visibleCount + 1;
+  }
+  startIndex = Math.max(0, Math.min(maxStart, startIndex));
+  return {
+    startIndex,
+    endIndex: Math.min(totalCount, startIndex + visibleCount),
+    visibleCount,
+    totalCount,
+    activeIndex,
+  };
 }
 
 function normalizeMenuSearchQueryText(value: string): string {
@@ -2012,6 +2308,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     visibleItemIndices.length,
     normalizeMenuIndex(input.items.length, input.initialIndex),
   );
+  let viewportStartIndex = 0;
   let menuSearchMode = false;
   let menuSearchQuery = "";
   let resolved = false;
@@ -2048,8 +2345,24 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     }
   };
 
-  const resolveVisibleItems = (): TerminalSelectMenuItem[] =>
+  const resolveCurrentViewport = (): ReturnType<typeof resolveTerminalSelectMenuViewport> => {
+    const viewport = resolveTerminalSelectMenuViewport({
+      itemsLength: visibleItemIndices.length,
+      activeIndex,
+      visibleOptionCount: input.visibleOptionCount,
+      previousStartIndex: viewportStartIndex,
+      variant: input.variant,
+    });
+    viewportStartIndex = viewport.startIndex;
+    activeIndex = viewport.activeIndex;
+    return viewport;
+  };
+
+  const resolveVisibleItems = (
+    viewport: ReturnType<typeof resolveTerminalSelectMenuViewport>,
+  ): TerminalSelectMenuItem[] =>
     visibleItemIndices
+      .slice(viewport.startIndex, viewport.endIndex)
       .map((index) => input.items[index])
       .filter((item): item is TerminalSelectMenuItem => typeof item !== "undefined");
 
@@ -2061,11 +2374,16 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   };
 
   const buildRenderableMenu = (): TerminalSelectMenuInput => {
-    const visibleItems = resolveVisibleItems();
+    const viewport = resolveCurrentViewport();
+    const visibleItems = resolveVisibleItems(viewport);
+    const renderedActiveIndex = normalizeMenuIndex(
+      visibleItems.length,
+      activeIndex - viewport.startIndex,
+    );
     const searchActive = menuSearchMode || menuSearchQuery.trim().length > 0;
     const baseSubtitle = input.subtitle?.trim();
     const searchSubtitle = searchActive
-      ? `filter ${String(visibleItems.length)}/${String(input.items.length)}${menuSearchQuery.trim().length > 0 ? `: "${menuSearchQuery}"` : ""}`
+      ? `filter ${String(visibleItemIndices.length)}/${String(input.items.length)}${menuSearchQuery.trim().length > 0 ? `: "${menuSearchQuery}"` : ""}`
       : undefined;
     const subtitle = [baseSubtitle, searchSubtitle]
       .filter((value): value is string => typeof value === "string" && value.length > 0)
@@ -2081,13 +2399,21 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       subtitle: subtitle.length > 0 ? subtitle : undefined,
       hint: hint.length > 0 ? hint : undefined,
       items: visibleItems,
-      initialIndex: normalizeMenuIndex(visibleItems.length, activeIndex),
+      initialIndex: renderedActiveIndex,
+      viewport: {
+        startIndex: viewport.startIndex,
+        visibleCount: viewport.visibleCount,
+        totalCount: viewport.totalCount,
+      },
     };
   };
 
   const render = (): void => {
     const renderableMenu = buildRenderableMenu();
-    const renderedIndex = normalizeMenuIndex(renderableMenu.items.length, activeIndex);
+    const renderedIndex = normalizeMenuIndex(
+      renderableMenu.items.length,
+      renderableMenu.initialIndex,
+    );
     const menuLines = uiRenderer.renderSelectMenu(renderableMenu, renderedIndex).split("\n");
     lastRenderedMenuLines = menuLines;
     if (supportsMenuTransitions && !hasRenderedOpenPreview) {

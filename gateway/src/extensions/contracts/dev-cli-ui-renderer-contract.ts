@@ -30,6 +30,38 @@ function renderStartupAtColumns(
   }
 }
 
+function renderSelectAtColumns(
+  renderer: ReturnType<typeof createCliUiRenderer>,
+  menu: TerminalSelectMenuInput,
+  activeIndex: number,
+  columns: number,
+): string {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+  try {
+    Object.defineProperty(process.stdout, "columns", {
+      value: columns,
+      configurable: true,
+    });
+    return renderer.renderSelectMenu(menu, activeIndex);
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process.stdout, "columns", descriptor);
+    }
+  }
+}
+
+function renderedLinesWithinColumns(rendered: string, columns: number): boolean {
+  return stripAnsi(rendered)
+    .split("\n")
+    .every((line) => measureDisplayWidth(line) <= columns);
+}
+
+function renderedMenuRows(rendered: string): string[] {
+  return stripAnsi(rendered)
+    .split("\n")
+    .filter((line) => /^(?:[›❯]\s*)?\d+\./.test(line.trimStart()));
+}
+
 function extractStartupBodyLines(rendered: string): string[] {
   return stripAnsi(rendered)
     .split("\n")
@@ -88,11 +120,21 @@ const startupViewModel: StartScreenViewModel = {
     "  namespace: feishu:grobot:dm",
     "  session_id:session-main",
   ],
-  commandHint: "Enter message (`/help`, `/exit`):",
+  commandHint: "",
 };
 
 const startupBrandSymbolViewModel: StartScreenViewModel = {
-  title: "Grobot v0.1.0",
+  title: "Grobot 0.10.0 developed by 67",
+  titleSegments: [
+    {
+      text: "Grobot",
+      token: "brand",
+    },
+    {
+      text: " 0.10.0 developed by 67",
+      token: "muted",
+    },
+  ],
   hero: {
     brandLabel: "",
     iconLines: [
@@ -120,7 +162,7 @@ const startupBrandSymbolViewModel: StartScreenViewModel = {
     "claude-sonnet-4-5 (200K context) · API Usage Billing",
     "~/tmp/project",
   ],
-  commandHint: "Enter message (`/help`, `/exit`):",
+  commandHint: "",
 };
 
 const menuInput: TerminalSelectMenuInput = {
@@ -138,6 +180,140 @@ const menuInput: TerminalSelectMenuInput = {
       label: "model-b",
     },
   ],
+};
+
+const modelPickerInput: TerminalSelectMenuInput = {
+  title: "Select model",
+  subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
+  hint: "Enter to confirm · Esc to exit",
+  variant: "model_picker",
+  modelPickerMeta: {
+    providerName: "alpha",
+    currentModel: "model-a",
+    startupModel: "model-b",
+    totalModelCount: 2,
+    sessionId: "session-main",
+    sessionTitle: "demo session",
+    sessionSummary: "switch between session and startup defaults",
+  },
+  items: [
+    {
+      id: "model-a",
+      label: "model-a",
+      current: true,
+      description: "Current active model",
+    },
+    {
+      id: "model-b",
+      label: "model-b",
+      description: "Startup model",
+    },
+  ],
+};
+
+const longModelPickerInput: TerminalSelectMenuInput = {
+  title: "Select model",
+  subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
+  hint: "Enter to confirm · Esc to exit",
+  variant: "model_picker",
+  modelPickerMeta: {
+    providerName: "alpha",
+    currentModel: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
+    startupModel: "fallback-provider/kimi-k2-2026-04-experimental-context-window",
+  },
+  items: [
+    {
+      id: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
+      label: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
+      current: true,
+      description: "Available from provider with a long context description and routing metadata",
+    },
+    {
+      id: "fallback-provider/kimi-k2-2026-04-experimental-context-window",
+      label: "fallback-provider/kimi-k2-2026-04-experimental-context-window",
+      description: "Startup fallback model with a long provider detail",
+    },
+  ],
+};
+
+const longMenuInput: TerminalSelectMenuInput = {
+  title: "Select command",
+  subtitle: "Long row contract",
+  hint: "Use arrows",
+  items: [
+    {
+      id: "long-command",
+      label: "/very-long-command-name-that-should-not-break-the-terminal-layout",
+      current: true,
+      description: "A long command description that should wrap in the right column",
+    },
+    {
+      id: "other-command",
+      label: "/another-long-command-name-for-narrow-terminal-rendering",
+      description: "Another long command description for layout safety",
+    },
+  ],
+};
+
+const viewportMenuInput: TerminalSelectMenuInput = {
+  title: "Select command",
+  subtitle: "Viewport contract",
+  hint: "Use arrows",
+  viewport: {
+    startIndex: 7,
+    visibleCount: 4,
+    totalCount: 12,
+  },
+  items: [
+    {
+      id: "cmd-8",
+      label: "/context",
+      description: "Inspect context",
+    },
+    {
+      id: "cmd-9",
+      label: "/model",
+      description: "Switch model",
+    },
+    {
+      id: "cmd-10",
+      label: "/status",
+      description: "Open status",
+    },
+    {
+      id: "cmd-11",
+      label: "/commands",
+      description: "Browse commands",
+    },
+  ],
+};
+
+const directLargeMenuInput: TerminalSelectMenuInput = {
+  title: "Select command",
+  subtitle: "Direct renderer visible count",
+  hint: "Use arrows",
+  items: Array.from({ length: 8 }, (_, index) => ({
+    id: `cmd-${String(index + 1)}`,
+    label: `/cmd-${String(index + 1)}`,
+    description: `Command ${String(index + 1)}`,
+  })),
+};
+
+const directLargeModelPickerInput: TerminalSelectMenuInput = {
+  title: "Select model",
+  subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
+  hint: "Enter to confirm · Esc to exit",
+  variant: "model_picker",
+  modelPickerMeta: {
+    providerName: "alpha",
+    currentModel: "model-1",
+  },
+  items: Array.from({ length: 12 }, (_, index) => ({
+    id: `model-${String(index + 1)}`,
+    label: `model-${String(index + 1)}`,
+    current: index === 0,
+    description: `Model ${String(index + 1)}`,
+  })),
 };
 
 const interactiveRenderer = createCliUiRenderer({
@@ -191,6 +367,7 @@ const startupDividerCountExpected = startupVariantBodies.every((lines) => {
 const startupBrandSymbolVariants = [96, 110, 120].map((columns) =>
   renderStartupAtColumns(interactiveRenderer, startupBrandSymbolViewModel, columns)
 );
+const startupBrandSymbolInteractive = startupBrandSymbolVariants[1] ?? "";
 const startupBrandSymbolBodies = startupBrandSymbolVariants.map((rendered) =>
   extractStartupBodyLines(rendered)
 );
@@ -201,10 +378,21 @@ const startupBrandSymbolBodyLengthConsistent = startupBrandSymbolBodies.every((l
   const lengths = lines.map((line) => line.length);
   return new Set(lengths).size === 1;
 });
+const startupBrandSymbolHasClaudeLikeHeight = startupBrandSymbolBodies.every((lines) =>
+  lines.length >= 8
+);
 const startupRegisteredSymbolSingleWidth = measureDisplayWidth("®") === 1;
 const menuInteractive = interactiveRenderer.renderSelectMenu(menuInput, 0);
 const menuPlain = plainRenderer.renderSelectMenu(menuInput, 0);
 const menuNonTty = nonTtyRenderer.renderSelectMenu(menuInput, 0);
+const modelPickerInteractive = interactiveRenderer.renderSelectMenu(modelPickerInput, 0);
+const modelPickerPlain = plainRenderer.renderSelectMenu(modelPickerInput, 0);
+const viewportMenuPlain = plainRenderer.renderSelectMenu(viewportMenuInput, 1);
+const directLargeMenuPlain = plainRenderer.renderSelectMenu(directLargeMenuInput, 0);
+const directLargeModelPickerPlain = plainRenderer.renderSelectMenu(directLargeModelPickerInput, 0);
+const longModelPickerPlain = renderSelectAtColumns(plainRenderer, longModelPickerInput, 0, 72);
+const narrowModelPickerPlain = renderSelectAtColumns(plainRenderer, longModelPickerInput, 0, 52);
+const longMenuPlain = renderSelectAtColumns(plainRenderer, longMenuInput, 0, 72);
 
 const payload = {
   interactive_mode: interactiveRenderer.mode,
@@ -215,27 +403,116 @@ const payload = {
   startup_has_logo_headline: startupInteractive.includes("Grobot CLI v0.1.0"),
   startup_has_logo_runtime_line: startupInteractive.includes("alpha/model · 200k ctx budget · API Usage"),
   startup_has_session_line: startupInteractive.includes("session_id:session-main"),
-  startup_has_command_hint: startupInteractive.includes("Enter message"),
+  startup_has_no_command_hint:
+    !startupInteractive.includes("Enter message")
+    && !startupInteractive.includes("/ for commands")
+    && !startupInteractive.includes("? for shortcuts"),
   startup_has_tips_title: startupInteractive.includes("Tips for getting started"),
   startup_has_recent_activity_title: startupInteractive.includes("Recent activity"),
   startup_has_recent_activity_empty_or_items:
     startupInteractive.includes("No recent activity")
     || startupInteractive.includes("2h ago  Session planning update"),
+  startup_has_developed_by_67:
+    stripAnsi(startupBrandSymbolInteractive).includes("Grobot 0.10.0 developed by 67"),
+  startup_has_no_dev_label:
+    !/\bdev\b/i.test(stripAnsi(startupBrandSymbolInteractive)),
+  startup_interactive_title_has_brand_color:
+    startupBrandSymbolInteractive.includes("\x1b[38;2;202;124;94mGrobot\x1b[0m"),
+  startup_interactive_title_has_muted_version_color:
+    startupBrandSymbolInteractive.includes("\x1b[90m 0.10.0 developed by 67\x1b[0m"),
+  startup_feed_title_uses_brand_color:
+    startupBrandSymbolInteractive.includes("\x1b[38;2;202;124;94mTips for getting started"),
+  startup_feed_title_avoids_accent_color:
+    !startupBrandSymbolInteractive.includes("\x1b[92mTips for getting started"),
+  startup_feed_footer_uses_muted_color:
+    startupBrandSymbolInteractive.includes("\x1b[90m/sessions for more"),
+  startup_feed_footer_avoids_info_color:
+    !startupBrandSymbolInteractive.includes("\x1b[96m/sessions for more"),
   startup_has_no_join_artifact: startupNoJoinArtifact,
   startup_has_no_tee_glyph: startupNoTeeGlyph,
   startup_body_width_consistent: startupBodyWidthConsistent,
   startup_feed_divider_count_expected: startupDividerCountExpected,
   startup_brand_symbol_body_length_consistent: startupBrandSymbolBodyLengthConsistent,
+  startup_brand_symbol_has_claude_like_height: startupBrandSymbolHasClaudeLikeHeight,
   startup_registered_symbol_single_width: startupRegisteredSymbolSingleWidth,
   menu_interactive_has_ansi: hasAnsi(menuInteractive),
   menu_plain_has_ansi: hasAnsi(menuPlain),
   menu_non_tty_has_ansi: hasAnsi(menuNonTty),
-  menu_plain_has_pointer: menuPlain.includes("❯"),
+  menu_plain_has_pointer: menuPlain.includes("›"),
   menu_interactive_has_current_check: menuInteractive.includes("✓"),
-  menu_plain_has_secondary_description: menuPlain.includes("\n  Current active model"),
+  menu_plain_has_secondary_description: menuPlain.includes("Current active model"),
   menu_hint_is_compact: menuPlain.includes("·"),
   menu_hint_has_escape_back: menuPlain.includes("Esc back"),
-  menu_hint_has_enter_space_action: menuPlain.includes("Enter/Space select"),
+  menu_hint_has_enter_action: menuPlain.includes("Enter select"),
+  menu_hint_has_navigation_hint: menuPlain.includes("↑/↓ navigate"),
+  menu_hint_omits_secondary_key_chords:
+    !menuPlain.includes("j/k")
+    && !menuPlain.includes("Ctrl+n/p")
+    && !menuPlain.includes("1-9 jump")
+    && !menuPlain.includes("Enter/Space"),
+  menu_viewport_has_full_ordinal:
+    stripAnsi(viewportMenuPlain).includes("8.")
+    && stripAnsi(viewportMenuPlain).includes("9.")
+    && stripAnsi(viewportMenuPlain).includes("10."),
+  menu_viewport_hides_reset_ordinal:
+    !stripAnsi(viewportMenuPlain).includes("1. /context"),
+  menu_viewport_has_no_row_scroll_arrows:
+    renderedMenuRows(viewportMenuPlain).every((line) => {
+      const trimmed = line.trimStart();
+      return !trimmed.startsWith("↑") && !trimmed.startsWith("↓");
+    }),
+  menu_viewport_has_no_more_text:
+    !stripAnsi(viewportMenuPlain).toLowerCase().includes("more"),
+  menu_direct_render_uses_default_visible_count:
+    stripAnsi(directLargeMenuPlain).includes("5.")
+    && !stripAnsi(directLargeMenuPlain).includes("6."),
+  menu_direct_render_has_no_row_scroll_marker:
+    renderedMenuRows(directLargeMenuPlain).every((line) => {
+      const trimmed = line.trimStart();
+      return !trimmed.startsWith("↑") && !trimmed.startsWith("↓");
+    }),
+  model_picker_has_claude_pointer: stripAnsi(modelPickerPlain).includes("❯"),
+  model_picker_has_no_thin_pointer: !stripAnsi(modelPickerPlain).includes("›"),
+  model_picker_has_pane_divider: /^─+$/.test(stripAnsi(modelPickerPlain).split("\n")[0] ?? ""),
+  model_picker_interactive_has_remember_color: modelPickerInteractive.includes("\x1b[38;2;166;170;255m"),
+  model_picker_has_decimal_index: stripAnsi(modelPickerPlain).includes("1."),
+  model_picker_has_no_bracket_index: !stripAnsi(modelPickerPlain).includes("[1]"),
+  model_picker_current_uses_check: stripAnsi(modelPickerPlain).includes("model-a ✓"),
+  model_picker_current_not_parenthesized: !stripAnsi(modelPickerPlain).includes("(current)"),
+  model_picker_has_default_suffix: stripAnsi(modelPickerPlain).includes("model-b (default)"),
+  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter to confirm · Esc to exit"),
+  model_picker_has_no_provider_card: !stripAnsi(modelPickerPlain).includes("Provider"),
+  model_picker_has_no_startup_badge: !stripAnsi(modelPickerPlain).includes("STARTUP"),
+  model_picker_has_no_current_badge: !stripAnsi(modelPickerPlain).includes("CURRENT"),
+  model_picker_has_no_reset_badge: !stripAnsi(modelPickerPlain).includes("RESET"),
+  model_picker_has_no_frame: !stripAnsi(modelPickerPlain).includes("╭"),
+  model_picker_interactive_has_no_current_badge: !modelPickerInteractive.includes("CURRENT"),
+  model_picker_direct_render_uses_model_visible_count:
+    stripAnsi(directLargeModelPickerPlain).includes("10.")
+    && !stripAnsi(directLargeModelPickerPlain).includes("11."),
+  model_picker_direct_render_has_no_row_scroll_marker:
+    renderedMenuRows(directLargeModelPickerPlain).every((line) => {
+      const trimmed = line.trimStart();
+      return !trimmed.startsWith("↑") && !trimmed.startsWith("↓");
+    }),
+  model_picker_long_rows_within_width:
+    renderedLinesWithinColumns(longModelPickerPlain, 72),
+  model_picker_long_descriptions_do_not_wrap:
+    stripAnsi(longModelPickerPlain)
+      .split("\n")
+      .filter((line) => line.trim().length > 0).length <= 6,
+  model_picker_long_current_suffix_preserved:
+    stripAnsi(longModelPickerPlain).includes("✓"),
+  model_picker_long_default_suffix_preserved:
+    stripAnsi(longModelPickerPlain).includes("(default)"),
+  model_picker_narrow_rows_within_width:
+    renderedLinesWithinColumns(narrowModelPickerPlain, 52),
+  model_picker_narrow_hides_description:
+    !stripAnsi(narrowModelPickerPlain).includes("Available from provider"),
+  menu_long_rows_within_width:
+    renderedLinesWithinColumns(longMenuPlain, 72),
+  menu_long_current_suffix_preserved:
+    stripAnsi(longMenuPlain).includes("✓"),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

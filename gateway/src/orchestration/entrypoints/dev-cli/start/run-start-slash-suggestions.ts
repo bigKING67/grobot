@@ -55,6 +55,22 @@ const ROOT_SLASH_PRIMARY_BUILTIN_COMMANDS = new Set<string>([
   "exit",
 ]);
 
+const ROOT_SLASH_PRIORITY_COMMANDS: readonly string[] = [
+  "/sessions",
+  "/resume",
+  "/commands",
+  "/model",
+  "/plan",
+  "/rewind",
+  "/help",
+  "/exit",
+  "/skill-creator",
+  "/init",
+  "/context",
+  "/memory",
+  "/status",
+];
+
 const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
   {
     command: "/plan",
@@ -247,6 +263,26 @@ function toUserSuggestion(item: RunStartUserCommandSuggestion): RunStartSlashSug
   };
 }
 
+function orderRootSlashBuiltinSuggestions(
+  suggestions: readonly SlashCommandSuggestion[],
+): SlashCommandSuggestion[] {
+  const rank = new Map<string, number>();
+  ROOT_SLASH_PRIORITY_COMMANDS.forEach((command, index) => {
+    rank.set(command, index);
+  });
+  return suggestions
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const leftRank = rank.get(left.item.command) ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = rank.get(right.item.command) ?? Number.MAX_SAFE_INTEGER;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.item);
+}
+
 export function listRunStartSlashSuggestions(
   input: ListRunStartSlashSuggestionsInput,
 ): RunStartSlashSuggestion[] {
@@ -309,7 +345,9 @@ export function listRunStartSlashSuggestions(
     }
   }
 
-  const builtin = listSlashCommandSuggestions();
+  const builtin = isRootSlash
+    ? orderRootSlashBuiltinSuggestions(listSlashCommandSuggestions())
+    : listSlashCommandSuggestions();
   for (const entry of builtin) {
     appendSuggestion(toBuiltinSuggestion(entry));
   }

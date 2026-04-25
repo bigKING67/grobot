@@ -19,8 +19,14 @@ export interface StartScreenFeedViewModel {
   footer?: string;
 }
 
+export interface StartScreenTitleSegment {
+  text: string;
+  token?: CliThemeToken;
+}
+
 export interface StartScreenViewModel {
   title: string;
+  titleSegments?: StartScreenTitleSegment[];
   hero?: StartScreenHeroViewModel;
   feeds?: StartScreenFeedViewModel[];
   rows: string[];
@@ -143,6 +149,9 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
   if (viewModel.hero) {
     lines.push(createTextLine("Welcome back!", "title", "center"));
     lines.push(createTextLine(""));
+    if (centerHeroLayout) {
+      lines.push(createTextLine(""));
+    }
     const heroLines = renderHeroBlock(viewModel.hero).map((line) =>
       centerHeroLayout ? line.trim() : line.trimEnd()
     );
@@ -156,9 +165,18 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
   if (compactRows.length > 0) {
     if (lines.length > 0) {
       lines.push(createTextLine(""));
+      if (centerHeroLayout) {
+        lines.push(createTextLine(""));
+      }
     }
     for (const row of compactRows) {
       lines.push(createTextLine(row, "muted", centerHeroLayout ? "center" : "left"));
+    }
+  }
+
+  if (centerHeroLayout) {
+    while (lines.length < 8) {
+      lines.push(createTextLine(""));
     }
   }
 
@@ -231,7 +249,7 @@ function renderFeedSectionLines(
   const lines: StartScreenFeedColumnLine[] = [];
   lines.push({
     kind: "content",
-    text: theme.color("accent", padLine(section.title, width)),
+    text: theme.color("brand", padLine(section.title, width)),
   });
   for (const line of section.lines) {
     lines.push({
@@ -242,7 +260,7 @@ function renderFeedSectionLines(
   if (section.footer) {
     lines.push({
       kind: "content",
-      text: theme.color("info", padLine(section.footer, width)),
+      text: theme.color("muted", padLine(section.footer, width)),
     });
   }
   return lines;
@@ -278,20 +296,81 @@ function renderLineWithStyle(
   return content;
 }
 
-function buildCardBorders(
-  title: string,
+function resolveTitleSegments(viewModel: StartScreenViewModel): StartScreenTitleSegment[] {
+  const explicitSegments = (viewModel.titleSegments ?? []).filter((segment) =>
+    segment.text.length > 0
+  );
+  if (explicitSegments.length > 0) {
+    return explicitSegments;
+  }
+  const titleText = viewModel.title.trim().length > 0 ? viewModel.title.trim() : "Grobot";
+  return [
+    {
+      text: titleText,
+      token: "brand",
+    },
+  ];
+}
+
+function truncateTitleSegments(
+  segments: StartScreenTitleSegment[],
+  maxWidth: number,
+): StartScreenTitleSegment[] {
+  const truncated: StartScreenTitleSegment[] = [];
+  let remainingWidth = maxWidth;
+  for (const segment of segments) {
+    if (remainingWidth <= 0) {
+      break;
+    }
+    const segmentWidth = measureDisplayWidth(segment.text);
+    if (segmentWidth <= remainingWidth) {
+      truncated.push(segment);
+      remainingWidth -= segmentWidth;
+      continue;
+    }
+    const text = truncateDisplayWidth(segment.text, remainingWidth, {
+      ellipsis: "...",
+    });
+    if (text.length > 0) {
+      truncated.push({
+        ...segment,
+        text,
+      });
+    }
+    break;
+  }
+  return truncated;
+}
+
+function renderCardTopBorder(
+  viewModel: StartScreenViewModel,
   contentWidth: number,
-): {
-  topBorder: string;
-  bottomBorder: string;
-} {
-  const titleText = title.trim().length > 0 ? title.trim() : "Grobot";
-  const topTitle = ` ${truncateLine(titleText, Math.max(1, contentWidth))} `;
-  const fillWidth = Math.max(0, contentWidth + 2 - measureDisplayWidth(topTitle));
-  return {
-    topBorder: `╭${topTitle}${"─".repeat(fillWidth)}╮`,
-    bottomBorder: `╰${"─".repeat(contentWidth + 2)}╯`,
-  };
+  theme: ReturnType<typeof createCliTheme>,
+): string {
+  const segments = truncateTitleSegments(
+    resolveTitleSegments(viewModel),
+    Math.max(1, contentWidth),
+  );
+  const titleWidth = segments.reduce(
+    (width, segment) => width + measureDisplayWidth(segment.text),
+    0,
+  );
+  const fillWidth = Math.max(0, contentWidth + 2 - titleWidth - 2);
+  const titleText = segments.map((segment) =>
+    segment.token ? theme.color(segment.token, segment.text) : segment.text
+  ).join("");
+  return [
+    theme.color("brand", "╭ "),
+    titleText,
+    theme.color("brand", ` ${"─".repeat(fillWidth)}╮`),
+  ].join("");
+}
+
+function renderCardBottomBorder(
+  contentWidth: number,
+  theme: ReturnType<typeof createCliTheme>,
+): string {
+  return theme.color("brand", `╰${"─".repeat(contentWidth + 2)}╯`);
 }
 
 function renderSingleColumnCard(
@@ -414,8 +493,11 @@ function renderPlainStartScreen(viewModel: StartScreenViewModel): string {
     }
   }
 
-  lines.push("");
-  lines.push(viewModel.commandHint);
+  const compactHint = viewModel.commandHint.trim();
+  if (compactHint.length > 0) {
+    lines.push("");
+    lines.push(compactHint);
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -437,27 +519,25 @@ export function renderStartScreen(
   const effectiveColumns = columns ?? 110;
   const maxContentWidth = clamp(effectiveColumns - 8, 72, 116);
   const supportsTwoColumn = effectiveColumns >= 96;
-  const titleText = viewModel.title.trim().length > 0 ? viewModel.title.trim() : "Grobot";
 
   const cardLayout = supportsTwoColumn
     ? renderTwoColumnCard(viewModel, maxContentWidth, theme)
       ?? renderSingleColumnCard(viewModel, maxContentWidth, theme)
     : renderSingleColumnCard(viewModel, maxContentWidth, theme);
-  const borders = buildCardBorders(titleText, cardLayout.contentWidth);
 
   const lines: string[] = [];
   if (viewModel.hero?.brandLabel) {
     lines.push(theme.color("accent", viewModel.hero.brandLabel));
   }
-  lines.push(theme.color("brand", borders.topBorder));
+  lines.push(renderCardTopBorder(viewModel, cardLayout.contentWidth, theme));
   for (const line of cardLayout.bodyLines) {
     lines.push(`${theme.color("brand", "│")} ${line} ${theme.color("brand", "│")}`);
   }
-  lines.push(theme.color("brand", borders.bottomBorder));
+  lines.push(renderCardBottomBorder(cardLayout.contentWidth, theme));
   const compactHint = viewModel.commandHint.trim();
   if (compactHint.length > 0) {
     lines.push("");
-    lines.push(theme.color("info", compactHint));
+    lines.push(theme.color("muted", compactHint));
   }
   return `${lines.join("\n")}\n`;
 }

@@ -47,6 +47,10 @@ async function main(): Promise<void> {
       userInput: "/",
       maxItems: 80,
     });
+    const topLevelDefaultLimit = listRunStartSlashSuggestions({
+      homeDir,
+      userInput: "/",
+    });
     const pendingAskTopLevel = listRunStartSlashSuggestions({
       homeDir,
       userInput: "/",
@@ -115,6 +119,13 @@ async function main(): Promise<void> {
 
     const payload = {
       root_has_builtin_model: topLevel.some((item) => item.command === "/model" && item.source === "builtin"),
+      root_model_visible_in_first_page:
+        topLevel.findIndex((item) => item.command === "/model") >= 0
+        && topLevel.findIndex((item) => item.command === "/model") < 8,
+      root_default_limit_keeps_model:
+        topLevelDefaultLimit.some((item) => item.command === "/model"),
+      root_default_limit_size_ok:
+        topLevelDefaultLimit.length === 8,
       root_has_builtin_commands: topLevel.some((item) => item.command === "/commands" && item.source === "builtin"),
       root_has_builtin_resume: topLevel.some((item) => item.command === "/resume" && item.source === "builtin"),
       root_has_builtin_rewind: topLevel.some((item) => item.command === "/rewind" && item.source === "builtin"),

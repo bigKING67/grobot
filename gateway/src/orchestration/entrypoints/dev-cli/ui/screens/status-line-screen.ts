@@ -25,6 +25,12 @@ export interface StatusLinePromptInput {
   config?: StatusLineConfigInput;
 }
 
+export interface StatusLinePromptParts {
+  statusLine: string;
+  warningLine?: string;
+  activityLine?: string;
+}
+
 const SESSION_SHORT_ID_LEN = 8;
 const ANSI_RESET = "\u001B[0m";
 const ANSI_DIM = "\u001B[90m";
@@ -152,7 +158,7 @@ const STATUS_LINE_TEMPLATES: Record<StatusLineTemplateId, StatusLineTemplateConf
     id: "tiny",
     compactLabels: true,
     includeSessionTopic: false,
-    maxSegments: 1,
+    maxSegments: 3,
   },
 };
 
@@ -456,8 +462,14 @@ function resolveTemplateSegmentIds(input: {
     }
     return orderedEnabledSegments.slice(0, template.maxSegments);
   }
-  if (orderedEnabledSegments.includes("session")) {
-    return ["session"];
+  if (template.id === "tiny") {
+    const tinyPreferredOrder: StatusLineSegmentId[] = ["context", "tokens", "session"];
+    const selectedPreferred = tinyPreferredOrder
+      .filter((id) => orderedEnabledSegments.includes(id))
+      .slice(0, template.maxSegments);
+    if (selectedPreferred.length > 0) {
+      return selectedPreferred;
+    }
   }
   return [orderedEnabledSegments[0]];
 }
@@ -729,10 +741,14 @@ function appendPlanModeBadge(input: {
   return withBadge;
 }
 
-export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
+export function resolveStatusLinePromptParts(
+  input: StatusLinePromptInput,
+): StatusLinePromptParts {
   const config = normalizeStatusLineConfig(input.config);
   if (!config.enabled) {
-    return "";
+    return {
+      statusLine: "",
+    };
   }
   const statusLine = fitStatusLine({
     prompt: input,
@@ -765,12 +781,20 @@ export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
       ? truncateDisplayWidth(activityLine, terminalColumns)
       : activityLine
     : undefined;
-  const lines: string[] = [statusLineWithPlanMode];
-  if (warningToRender) {
-    lines.push(warningToRender);
-  }
-  if (activityToRender) {
-    lines.push(activityToRender);
-  }
-  return lines.join("\n");
+  return {
+    statusLine: statusLineWithPlanMode,
+    warningLine: warningToRender,
+    activityLine: activityToRender,
+  };
+}
+
+export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
+  const parts = resolveStatusLinePromptParts(input);
+  return [
+    parts.statusLine,
+    parts.warningLine,
+    parts.activityLine,
+  ]
+    .filter((line): line is string => typeof line === "string" && line.length > 0)
+    .join("\n");
 }

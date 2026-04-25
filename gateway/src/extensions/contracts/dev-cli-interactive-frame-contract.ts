@@ -15,23 +15,23 @@ const renderedPrompt = renderStatusLinePrompt({
   sessionTopic: "interactive frame closure validation",
   activityText: "正在整理上下文窗口",
   terminalColumns: 120,
-  promptLabel: "› ",
+  promptLabel: "❯ ",
 });
 
 const layout = resolveInteractivePromptLayout({
   promptText: {
     prefix: "",
-    inlinePrompt: "› ",
+    inlinePrompt: "❯ ",
     suffix: renderedPrompt,
     renderSuffixWhileTyping: true,
   },
-  fallbackPrompt: "› ",
+  fallbackPrompt: "❯ ",
 });
 const suffix = layout.suffix ?? "";
 
 const payload = {
   prefix_empty: layout.prefix.length === 0,
-  inline_prompt_matches: layout.inlinePrompt === "› ",
+  inline_prompt_matches: layout.inlinePrompt === "❯ ",
   suffix_has_status_line: suffix.includes("kimi/kimi-k2-2026-04"),
   suffix_has_activity_line: suffix.includes("正在整理上下文窗口"),
   suffix_has_no_prompt_frame:

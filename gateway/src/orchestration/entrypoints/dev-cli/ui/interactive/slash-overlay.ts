@@ -2,11 +2,12 @@ import {
   padToDisplayWidth,
   truncateDisplayWidth,
 } from "./display-width";
+import { TERMINAL_SYMBOL, terminalStyle } from "../theme/terminal-style";
 
-const ANSI_RESET = "\u001B[0m";
-const ANSI_BOLD = "\u001B[1m";
-const ANSI_SUGGESTION = "\u001B[96m";
-const ANSI_DIM = "\u001B[90m";
+const VISIBLE_SLASH_SUGGESTION_COUNT = 5;
+const SLASH_MARKER_WIDTH = 2;
+const SLASH_COLUMN_GAP = 2;
+const SLASH_TWO_COLUMN_MIN_WIDTH = 64;
 
 export interface SlashOverlaySuggestion {
   command: string;
@@ -41,8 +42,55 @@ export function normalizeSuggestionIndex(itemsLength: number, index: number): nu
   return normalized;
 }
 
+function resolveVisibleSuggestionWindow(input: {
+  itemsLength: number;
+  selectedIndex: number;
+  visibleCount: number;
+}): { start: number; end: number; selectedIndex: number } {
+  const selectedIndex = normalizeSuggestionIndex(input.itemsLength, input.selectedIndex);
+  const visibleCount = Math.max(1, Math.min(input.visibleCount, input.itemsLength));
+  const maxStart = Math.max(0, input.itemsLength - visibleCount);
+  const start = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(visibleCount / 2),
+      maxStart,
+    ),
+  );
+  return {
+    start,
+    end: start + visibleCount,
+    selectedIndex,
+  };
+}
+
 function normalizeDescription(input: SlashOverlaySuggestion): string {
   return (input.description ?? "").trim().replace(/\s+/g, " ");
+}
+
+function colorDim(value: string): string {
+  return terminalStyle.muted(value);
+}
+
+function colorSelected(value: string): string {
+  return terminalStyle.info(value);
+}
+
+function resolveCommandColumnWidth(input: {
+  terminalColumns: number;
+  showDescription: boolean;
+}): number {
+  const availableColumns = Math.max(24, input.terminalColumns - SLASH_MARKER_WIDTH);
+  if (!input.showDescription) {
+    return Math.max(12, availableColumns);
+  }
+  return Math.min(
+    34,
+    Math.max(
+      14,
+      Math.floor(Math.max(input.terminalColumns, 40) * 0.36),
+    ),
+  );
 }
 
 function hasSlashCommandArguments(lineInputRaw: string): boolean {
@@ -61,25 +109,37 @@ function formatSuggestionRow(input: {
   item: SlashOverlaySuggestion;
   commandColumnWidth: number;
   descriptionColumnWidth: number;
+  showDescription: boolean;
   selected: boolean;
 }): string {
   const commandText = truncateDisplayWidth(input.item.command.trim(), input.commandColumnWidth, {
     compact: false,
   });
-  const commandColumn = padToDisplayWidth(commandText, input.commandColumnWidth);
+  const commandColumn = input.showDescription
+    ? padToDisplayWidth(commandText, input.commandColumnWidth)
+    : commandText;
   const description = normalizeDescription(input.item);
-  const descriptionColumn = description.length > 0
+  const descriptionColumn = input.showDescription && description.length > 0
     ? truncateDisplayWidth(description, input.descriptionColumnWidth, {
       compact: false,
     })
     : "";
-  const line = descriptionColumn.length > 0
-    ? `${commandColumn}  ${descriptionColumn}`
-    : commandColumn;
-  if (input.selected) {
-    return `${ANSI_BOLD}${ANSI_SUGGESTION}${line}${ANSI_RESET}`;
-  }
-  return `${ANSI_DIM}${line}${ANSI_RESET}`;
+  const marker = (() => {
+    if (input.selected) {
+      return TERMINAL_SYMBOL.pointer;
+    }
+    return " ";
+  })();
+  const renderedMarker = input.selected
+    ? terminalStyle.pointer(marker)
+    : marker.trim().length > 0
+      ? colorDim(marker)
+      : " ";
+  const renderedCommand = input.selected ? colorSelected(commandColumn) : colorDim(commandColumn);
+  const renderedDescription = descriptionColumn.length > 0
+    ? `${" ".repeat(SLASH_COLUMN_GAP)}${colorDim(descriptionColumn)}`
+    : "";
+  return `${renderedMarker} ${renderedCommand}${renderedDescription}`;
 }
 
 export function formatSlashSuggestionPanel(
@@ -98,29 +158,37 @@ export function formatSlashSuggestionPanel(
   if (suggestions.length === 0) {
     return "";
   }
-  const limited = suggestions.slice(0, 8);
-  const normalizedSelectedIndex = normalizeSuggestionIndex(limited.length, selectedIndex);
-  const commandColumnWidth = Math.min(
-    36,
-    Math.max(
-      14,
-      Math.floor(Math.max(terminalColumns, 40) * 0.28),
-    ),
-  );
-  const descriptionColumnWidth = Math.max(16, terminalColumns - commandColumnWidth - 2);
+  const visibleWindow = resolveVisibleSuggestionWindow({
+    itemsLength: suggestions.length,
+    selectedIndex,
+    visibleCount: VISIBLE_SLASH_SUGGESTION_COUNT,
+  });
+  const visibleSuggestions = suggestions.slice(visibleWindow.start, visibleWindow.end);
+  const resolvedColumns = Math.max(40, Math.floor(Number.isFinite(terminalColumns) ? terminalColumns : 96));
+  const showDescription = resolvedColumns >= SLASH_TWO_COLUMN_MIN_WIDTH;
+  const commandColumnWidth = resolveCommandColumnWidth({
+    terminalColumns: resolvedColumns,
+    showDescription,
+  });
+  const descriptionColumnWidth = showDescription
+    ? Math.max(
+      0,
+      resolvedColumns
+        - SLASH_MARKER_WIDTH
+        - commandColumnWidth
+        - SLASH_COLUMN_GAP,
+    )
+    : 0;
   const lines: string[] = [];
-  for (let index = 0; index < limited.length; index += 1) {
-    const item = limited[index];
+  for (let index = 0; index < visibleSuggestions.length; index += 1) {
+    const item = visibleSuggestions[index];
     lines.push(formatSuggestionRow({
       item,
       commandColumnWidth,
       descriptionColumnWidth,
-      selected: index === normalizedSelectedIndex,
+      showDescription,
+      selected: visibleWindow.start + index === visibleWindow.selectedIndex,
     }));
-  }
-  const hiddenCount = suggestions.length - limited.length;
-  if (hiddenCount > 0) {
-    lines.push(`${ANSI_DIM}… and ${String(hiddenCount)} more${ANSI_RESET}`);
   }
   return `${lines.join("\n")}\n`;
 }
