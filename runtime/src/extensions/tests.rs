@@ -74,11 +74,23 @@ mod tests {
         let schema_profiles = payload["result"]["tool_surface_schema_profiles"]
             .as_array()
             .expect("tool_surface_schema_profiles should be array");
+        assert!(
+            payload["result"]["tool_surface_schema_profiles_fingerprint"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("schema_profiles:")),
+            "tools.describe should expose a stable schema profiles fingerprint"
+        );
         let browser_schema_profile = schema_profiles
             .iter()
             .find(|row| row["profile"].as_str() == Some("browser"))
             .expect("browser schema profile should be described");
         assert_eq!(browser_schema_profile["projection_mode"], "slim");
+        assert!(
+            browser_schema_profile["schema_fingerprint"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("schema:")),
+            "schema profile should expose a stable schema fingerprint"
+        );
         assert_eq!(
             browser_schema_profile["schema_property_count"].as_u64(),
             Some(25)

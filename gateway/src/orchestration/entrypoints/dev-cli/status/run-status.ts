@@ -184,7 +184,6 @@ function buildRuntimeDescribeSchemaProjectionSummary(input: {
   context: {
     dispatchEnabledTools: readonly string[];
     schemaEstimatedTokens: number;
-    schemaFingerprint: string;
   };
 }): RuntimeToolSurfaceProjectionSummary | null {
   if (!input.runtimeProfile) {
@@ -202,8 +201,104 @@ function buildRuntimeDescribeSchemaProjectionSummary(input: {
     fullSchemaPropertyCount: input.runtimeProfile.fullSchemaPropertyCount,
     suppressedSchemaPropertyCount: input.runtimeProfile.suppressedSchemaPropertyCount,
     schemaEstimatedTokens: input.context.schemaEstimatedTokens,
-    schemaFingerprint: input.context.schemaFingerprint,
+    schemaFingerprint: input.runtimeProfile.schemaFingerprint,
     perToolPropertyCount: { ...input.runtimeProfile.perToolPropertyCount },
+  };
+}
+
+interface RuntimeToolSurfaceProjectionDrift {
+  checked: boolean;
+  active: boolean;
+  reason: string;
+  runtimeSchemaFingerprint: string | null;
+  gatewaySchemaFingerprint: string;
+  runtimeProjectionMode: string | null;
+  gatewayProjectionMode: string;
+  runtimeSchemaPropertyCount: number | null;
+  gatewaySchemaPropertyCount: number;
+  runtimeFullSchemaPropertyCount: number | null;
+  gatewayFullSchemaPropertyCount: number;
+  runtimeSuppressedSchemaPropertyCount: number | null;
+  gatewaySuppressedSchemaPropertyCount: number;
+  runtimePerToolPropertyCount: Record<string, number> | null;
+  gatewayPerToolPropertyCount: Record<string, number>;
+}
+
+function sameNumberRecord(left: Record<string, number>, right: Record<string, number>): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
+}
+
+function buildRuntimeToolSurfaceProjectionDrift(input: {
+  runtimeSummary: RuntimeToolSurfaceProjectionSummary | null;
+  gatewayFallbackSummary: RuntimeToolSurfaceProjectionSummary;
+  runtimeDescribeOk: boolean;
+  runtimeDescribeDetail?: string;
+}): RuntimeToolSurfaceProjectionDrift {
+  const runtimeSummary = input.runtimeSummary;
+  const gatewayFallbackSummary = input.gatewayFallbackSummary;
+  if (!runtimeSummary) {
+    return {
+      checked: false,
+      active: false,
+      reason: input.runtimeDescribeOk
+        ? "runtime_schema_profile_unavailable"
+        : `runtime_tools_describe_unavailable:${input.runtimeDescribeDetail ?? "not_run"}`,
+      runtimeSchemaFingerprint: null,
+      gatewaySchemaFingerprint: gatewayFallbackSummary.schemaFingerprint,
+      runtimeProjectionMode: null,
+      gatewayProjectionMode: gatewayFallbackSummary.projectionMode,
+      runtimeSchemaPropertyCount: null,
+      gatewaySchemaPropertyCount: gatewayFallbackSummary.schemaPropertyCount,
+      runtimeFullSchemaPropertyCount: null,
+      gatewayFullSchemaPropertyCount: gatewayFallbackSummary.fullSchemaPropertyCount,
+      runtimeSuppressedSchemaPropertyCount: null,
+      gatewaySuppressedSchemaPropertyCount: gatewayFallbackSummary.suppressedSchemaPropertyCount,
+      runtimePerToolPropertyCount: null,
+      gatewayPerToolPropertyCount: { ...gatewayFallbackSummary.perToolPropertyCount },
+    };
+  }
+
+  const mismatches: string[] = [];
+  if (runtimeSummary.projectionMode !== gatewayFallbackSummary.projectionMode) {
+    mismatches.push("projection_mode");
+  }
+  if (runtimeSummary.visibleToolCount !== gatewayFallbackSummary.visibleToolCount) {
+    mismatches.push("visible_tool_count");
+  }
+  if (runtimeSummary.schemaPropertyCount !== gatewayFallbackSummary.schemaPropertyCount) {
+    mismatches.push("schema_property_count");
+  }
+  if (runtimeSummary.fullSchemaPropertyCount !== gatewayFallbackSummary.fullSchemaPropertyCount) {
+    mismatches.push("full_schema_property_count");
+  }
+  if (runtimeSummary.suppressedSchemaPropertyCount !== gatewayFallbackSummary.suppressedSchemaPropertyCount) {
+    mismatches.push("suppressed_schema_property_count");
+  }
+  if (!sameNumberRecord(runtimeSummary.perToolPropertyCount, gatewayFallbackSummary.perToolPropertyCount)) {
+    mismatches.push("per_tool_property_count");
+  }
+
+  return {
+    checked: true,
+    active: mismatches.length > 0,
+    reason: mismatches.length > 0 ? `mismatch:${mismatches.join(",")}` : "matched",
+    runtimeSchemaFingerprint: runtimeSummary.schemaFingerprint,
+    gatewaySchemaFingerprint: gatewayFallbackSummary.schemaFingerprint,
+    runtimeProjectionMode: runtimeSummary.projectionMode,
+    gatewayProjectionMode: gatewayFallbackSummary.projectionMode,
+    runtimeSchemaPropertyCount: runtimeSummary.schemaPropertyCount,
+    gatewaySchemaPropertyCount: gatewayFallbackSummary.schemaPropertyCount,
+    runtimeFullSchemaPropertyCount: runtimeSummary.fullSchemaPropertyCount,
+    gatewayFullSchemaPropertyCount: gatewayFallbackSummary.fullSchemaPropertyCount,
+    runtimeSuppressedSchemaPropertyCount: runtimeSummary.suppressedSchemaPropertyCount,
+    gatewaySuppressedSchemaPropertyCount: gatewayFallbackSummary.suppressedSchemaPropertyCount,
+    runtimePerToolPropertyCount: { ...runtimeSummary.perToolPropertyCount },
+    gatewayPerToolPropertyCount: { ...gatewayFallbackSummary.perToolPropertyCount },
   };
 }
 
@@ -532,6 +627,8 @@ function resolveRuntimeToolContextPreview(
   schemaFingerprint: string;
   schemaEstimatedTokens: number;
   schemaProjectionSummary: RuntimeToolSurfaceProjectionSummary;
+  schemaProjectionDrift: RuntimeToolSurfaceProjectionDrift;
+  schemaProfilesFingerprint: string | null;
   toolSurfaceAdaptation: RuntimeToolSurfaceAdaptation;
   toolSurfaceAdaptationGuard: RuntimeToolSurfaceAdaptationGuard;
   enabledToolsSource: "runtime.tools.describe" | "start-default";
@@ -623,14 +720,7 @@ function resolveRuntimeToolContextPreview(
         modelVisibleTools,
       })
     : null;
-  const schemaProjectionSummary = buildRuntimeDescribeSchemaProjectionSummary({
-    runtimeProfile: runtimeSchemaProfile,
-    context: {
-      dispatchEnabledTools,
-      schemaEstimatedTokens,
-      schemaFingerprint,
-    },
-  }) ?? buildRuntimeToolSurfaceProjectionSummary({
+  const fallbackSchemaProjectionSummary = buildRuntimeToolSurfaceProjectionSummary({
     enabledTools: dispatchEnabledTools,
     modelVisibleTools,
     toolSurfaceProfile,
@@ -640,6 +730,20 @@ function resolveRuntimeToolContextPreview(
     advancedToolSchema,
     schemaFingerprint,
     schemaEstimatedTokens,
+  });
+  const runtimeSchemaProjectionSummary = buildRuntimeDescribeSchemaProjectionSummary({
+    runtimeProfile: runtimeSchemaProfile,
+    context: {
+      dispatchEnabledTools,
+      schemaEstimatedTokens,
+    },
+  });
+  const schemaProjectionSummary = runtimeSchemaProjectionSummary ?? fallbackSchemaProjectionSummary;
+  const schemaProjectionDrift = buildRuntimeToolSurfaceProjectionDrift({
+    runtimeSummary: runtimeSchemaProjectionSummary,
+    gatewayFallbackSummary: fallbackSchemaProjectionSummary,
+    runtimeDescribeOk: described?.ok ?? false,
+    runtimeDescribeDetail: described?.detail,
   });
   return {
     enabledTools: dispatchEnabledTools,
@@ -653,6 +757,8 @@ function resolveRuntimeToolContextPreview(
     schemaFingerprint,
     schemaEstimatedTokens,
     schemaProjectionSummary,
+    schemaProjectionDrift,
+    schemaProfilesFingerprint: described?.toolSurfaceSchemaProfilesFingerprint ?? null,
     toolSurfaceAdaptation: guarded.adaptation,
     toolSurfaceAdaptationGuard: guarded.guard,
     enabledToolsSource,
@@ -721,6 +827,28 @@ function serializeRuntimeToolSurfaceProjectionSummary(
     schema_estimated_tokens: summary.schemaEstimatedTokens,
     schema_fingerprint: summary.schemaFingerprint,
     per_tool_property_count: summary.perToolPropertyCount,
+  };
+}
+
+function serializeRuntimeToolSurfaceProjectionDrift(
+  drift: RuntimeToolSurfaceProjectionDrift,
+): Record<string, unknown> {
+  return {
+    checked: drift.checked,
+    active: drift.active,
+    reason: drift.reason,
+    runtime_schema_fingerprint: drift.runtimeSchemaFingerprint,
+    gateway_schema_fingerprint: drift.gatewaySchemaFingerprint,
+    runtime_projection_mode: drift.runtimeProjectionMode,
+    gateway_projection_mode: drift.gatewayProjectionMode,
+    runtime_schema_property_count: drift.runtimeSchemaPropertyCount,
+    gateway_schema_property_count: drift.gatewaySchemaPropertyCount,
+    runtime_full_schema_property_count: drift.runtimeFullSchemaPropertyCount,
+    gateway_full_schema_property_count: drift.gatewayFullSchemaPropertyCount,
+    runtime_suppressed_schema_property_count: drift.runtimeSuppressedSchemaPropertyCount,
+    gateway_suppressed_schema_property_count: drift.gatewaySuppressedSchemaPropertyCount,
+    runtime_per_tool_property_count: drift.runtimePerToolPropertyCount,
+    gateway_per_tool_property_count: drift.gatewayPerToolPropertyCount,
   };
 }
 
@@ -1209,9 +1337,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         model_visible_tools: runtimeToolContextPreview.modelVisibleTools,
         dispatch_enabled_tools: runtimeToolContextPreview.enabledTools,
         schema_fingerprint: runtimeToolContextPreview.schemaFingerprint,
+        schema_profiles_fingerprint: runtimeToolContextPreview.schemaProfilesFingerprint,
         schema_estimated_tokens: runtimeToolContextPreview.schemaEstimatedTokens,
         advanced_tool_schema: runtimeToolContextPreview.advancedToolSchema,
         schema_projection: serializeRuntimeToolSurfaceProjectionSummary(runtimeToolContextPreview.schemaProjectionSummary),
+        schema_projection_drift: serializeRuntimeToolSurfaceProjectionDrift(runtimeToolContextPreview.schemaProjectionDrift),
         metrics: runtimeToolSurfaceMetrics,
         recovery_feedback: {
           active: runtimeToolRecoveryFeedback.active,
@@ -2055,6 +2185,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_model_visible_tools: ${runtimeToolContextPreview.modelVisibleTools.join(",")}\n`,
   );
   process.stdout.write(`runtime_tool_schema_fingerprint: ${runtimeToolContextPreview.schemaFingerprint}\n`);
+  if (runtimeToolContextPreview.schemaProfilesFingerprint) {
+    process.stdout.write(
+      `runtime_tool_schema_profiles_fingerprint: ${runtimeToolContextPreview.schemaProfilesFingerprint}\n`,
+    );
+  }
   process.stdout.write(
     `runtime_tool_schema_estimated_tokens: ${String(runtimeToolContextPreview.schemaEstimatedTokens)}\n`,
   );
@@ -2062,7 +2197,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_advanced_schema: ${runtimeToolContextPreview.advancedToolSchema ? "true" : "false"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_schema_projection: source=${runtimeToolContextPreview.schemaProjectionSummary.source} mode=${runtimeToolContextPreview.schemaProjectionSummary.projectionMode} visible_tools=${String(runtimeToolContextPreview.schemaProjectionSummary.visibleToolCount)} dispatch_enabled=${String(runtimeToolContextPreview.schemaProjectionSummary.dispatchEnabledToolCount)} properties=${String(runtimeToolContextPreview.schemaProjectionSummary.schemaPropertyCount)} full_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.fullSchemaPropertyCount)} suppressed_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.suppressedSchemaPropertyCount)}\n`,
+    `runtime_tool_schema_projection: source=${runtimeToolContextPreview.schemaProjectionSummary.source} mode=${runtimeToolContextPreview.schemaProjectionSummary.projectionMode} visible_tools=${String(runtimeToolContextPreview.schemaProjectionSummary.visibleToolCount)} dispatch_enabled=${String(runtimeToolContextPreview.schemaProjectionSummary.dispatchEnabledToolCount)} properties=${String(runtimeToolContextPreview.schemaProjectionSummary.schemaPropertyCount)} full_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.fullSchemaPropertyCount)} suppressed_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.suppressedSchemaPropertyCount)} fingerprint=${runtimeToolContextPreview.schemaProjectionSummary.schemaFingerprint}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_schema_projection_drift: checked=${runtimeToolContextPreview.schemaProjectionDrift.checked ? "true" : "false"} active=${runtimeToolContextPreview.schemaProjectionDrift.active ? "true" : "false"} reason=${runtimeToolContextPreview.schemaProjectionDrift.reason}\n`,
   );
   process.stdout.write(`runtime_tool_metrics_path: ${runtimeToolSurfaceMetrics.path}\n`);
   process.stdout.write(

@@ -589,6 +589,11 @@ mod tests {
         assert_eq!(coding["policy_version"], TOOL_SURFACE_POLICY_VERSION);
         assert_eq!(coding["projection_mode"], "slim");
         assert_eq!(coding["advanced_tool_schema"], false);
+        assert!(
+            coding["schema_fingerprint"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("schema:"))
+        );
         assert_eq!(coding["visible_tool_count"].as_u64(), Some(7));
         assert_eq!(coding["schema_property_count"].as_u64(), Some(30));
         assert_eq!(coding["full_schema_property_count"].as_u64(), Some(30));
@@ -630,6 +635,11 @@ mod tests {
         let full_debug = surface_schema_profile("full_debug");
         assert_eq!(full_debug["projection_mode"], "full");
         assert_eq!(full_debug["advanced_tool_schema"], true);
+        assert!(
+            full_debug["schema_fingerprint"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("schema:"))
+        );
         assert_eq!(full_debug["visible_tool_count"].as_u64(), Some(14));
         assert_eq!(full_debug["schema_property_count"].as_u64(), Some(92));
         assert_eq!(full_debug["full_schema_property_count"].as_u64(), Some(92));

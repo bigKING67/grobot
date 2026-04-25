@@ -853,6 +853,16 @@ fn schema_property_count(parameters: &Value) -> usize {
         .map_or(0, |properties| properties.len())
 }
 
+fn stable_json_fingerprint(prefix: &str, payload: &Value) -> String {
+    let text = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
+    let mut hash: u32 = 0x811c9dc5;
+    for byte in text.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    format!("{prefix}:{hash:08x}")
+}
+
 fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Value {
     let profile = canonical_tool_surface_profile(Some(profile));
     let mode = schema_projection_mode(profile, advanced_tool_schema);
@@ -860,6 +870,7 @@ fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Val
     let visible_tool_count = tool_names.len();
     let catalog = local_tool_catalog();
     let mut per_tool_property_count = Map::new();
+    let mut projected_tool_schemas = Vec::new();
     let mut schema_property_total = 0usize;
     let mut full_schema_property_total = 0usize;
 
@@ -872,14 +883,31 @@ fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Val
             schema_property_total += projected_count;
             full_schema_property_total += full_count;
             per_tool_property_count.insert(tool.name.to_string(), json!(projected_count));
+            projected_tool_schemas.push(json!({
+                "name": tool.name,
+                "parameters": projected_parameters,
+            }));
         }
     }
+    let advanced_schema_effective =
+        advanced_tool_schema || profile == TOOL_SURFACE_BROWSER_ADVANCED || profile == TOOL_SURFACE_FULL_DEBUG;
+    let schema_fingerprint = stable_json_fingerprint(
+        "schema",
+        &json!({
+            "policy_version": TOOL_SURFACE_POLICY_VERSION,
+            "profile": profile,
+            "projection_mode": mode,
+            "advanced_tool_schema": advanced_schema_effective,
+            "tools": projected_tool_schemas,
+        }),
+    );
 
     json!({
         "policy_version": TOOL_SURFACE_POLICY_VERSION,
         "profile": profile,
         "projection_mode": mode,
-        "advanced_tool_schema": advanced_tool_schema || profile == TOOL_SURFACE_BROWSER_ADVANCED || profile == TOOL_SURFACE_FULL_DEBUG,
+        "advanced_tool_schema": advanced_schema_effective,
+        "schema_fingerprint": schema_fingerprint,
         "tool_names": tool_names,
         "visible_tool_count": visible_tool_count,
         "schema_property_count": schema_property_total,
@@ -904,6 +932,16 @@ pub(crate) fn tool_surface_schema_profiles() -> Vec<Value> {
         tool_surface_schema_profile(profile, advanced_tool_schema)
     })
     .collect()
+}
+
+pub(crate) fn tool_surface_schema_profiles_fingerprint(profiles: &[Value]) -> String {
+    stable_json_fingerprint(
+        "schema_profiles",
+        &json!({
+            "policy_version": TOOL_SURFACE_POLICY_VERSION,
+            "profiles": profiles,
+        }),
+    )
 }
 
 pub(crate) fn local_tool_definitions_for_surface(

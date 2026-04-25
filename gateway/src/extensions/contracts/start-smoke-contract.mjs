@@ -1519,6 +1519,24 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolSchemaProjection = isObject(runtimeTools?.schema_projection)
     ? runtimeTools.schema_projection
     : null;
+  const runtimeToolSchemaProjectionDrift = isObject(runtimeTools?.schema_projection_drift)
+    ? runtimeTools.schema_projection_drift
+    : null;
+  if (runtimeToolSchemaProjection?.source !== "runtime.tools.describe") {
+    throw new Error(
+      `runtime tool schema projection should be sourced from runtime.tools.describe: ${String(runtimeToolSchemaProjection?.source ?? "missing")}`,
+    );
+  }
+  if (runtimeToolSchemaProjectionDrift?.checked !== true) {
+    throw new Error(
+      `runtime tool schema projection drift guard did not run: ${String(runtimeToolSchemaProjectionDrift?.reason ?? "missing")}`,
+    );
+  }
+  if (runtimeToolSchemaProjectionDrift?.active === true) {
+    throw new Error(
+      `runtime tool schema projection drift detected: ${String(runtimeToolSchemaProjectionDrift.reason ?? "unknown")}`,
+    );
+  }
   const runtimeToolSurfaceDecisionScores = isObject(runtimeToolSurfaceDecision?.scores)
     ? runtimeToolSurfaceDecision.scores
     : null;
@@ -1803,6 +1821,7 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_model_visible_has_glob:
       runtimeToolModelVisibleTools.includes("glob"),
     status_runtime_tool_schema_fingerprint_type: typeof runtimeTools?.schema_fingerprint,
+    status_runtime_tool_schema_profiles_fingerprint_type: typeof runtimeTools?.schema_profiles_fingerprint,
     status_runtime_tool_schema_estimated_tokens_type: typeof runtimeTools?.schema_estimated_tokens,
     status_runtime_tool_advanced_schema_type: typeof runtimeTools?.advanced_tool_schema,
     status_runtime_tool_schema_projection_present: Boolean(runtimeToolSchemaProjection),
@@ -1815,8 +1834,13 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_schema_projection_full_property_count_type: typeof runtimeToolSchemaProjection?.full_schema_property_count,
     status_runtime_tool_schema_projection_suppressed_property_count_type:
       typeof runtimeToolSchemaProjection?.suppressed_schema_property_count,
+    status_runtime_tool_schema_projection_fingerprint_type: typeof runtimeToolSchemaProjection?.schema_fingerprint,
     status_runtime_tool_schema_projection_per_tool_type:
       typeof runtimeToolSchemaProjection?.per_tool_property_count,
+    status_runtime_tool_schema_projection_drift_present: Boolean(runtimeToolSchemaProjectionDrift),
+    status_runtime_tool_schema_projection_drift_checked_type: typeof runtimeToolSchemaProjectionDrift?.checked,
+    status_runtime_tool_schema_projection_drift_active_type: typeof runtimeToolSchemaProjectionDrift?.active,
+    status_runtime_tool_schema_projection_drift_reason_type: typeof runtimeToolSchemaProjectionDrift?.reason,
     status_runtime_tool_surface_decision_present: Boolean(runtimeToolSurfaceDecision),
     status_runtime_tool_surface_decision_profile: runtimeToolSurfaceDecision?.profile ?? null,
     status_runtime_tool_surface_decision_reason_type: typeof runtimeToolSurfaceDecision?.reason,

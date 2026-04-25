@@ -113,6 +113,7 @@ export interface RuntimeToolSurfaceSchemaProfile {
   profile: ToolSurfaceProfile;
   projectionMode: RuntimeToolSurfaceProjectionMode;
   advancedToolSchema: boolean;
+  schemaFingerprint: string;
   toolNames: string[];
   visibleToolCount: number;
   schemaPropertyCount: number;
@@ -245,6 +246,9 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
     const advancedToolSchema = typeof row.advanced_tool_schema === "boolean"
       ? row.advanced_tool_schema
       : null;
+    const schemaFingerprint = typeof row.schema_fingerprint === "string"
+      ? row.schema_fingerprint.trim()
+      : "";
     const toolNames = dedupeStringArray(normalizeStringArray(row.tool_names));
     const visibleToolCount = asStrictNonNegativeInteger(row.visible_tool_count);
     const schemaPropertyCount = asStrictNonNegativeInteger(row.schema_property_count);
@@ -259,6 +263,7 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
       || profile == null
       || projectionMode == null
       || advancedToolSchema == null
+      || !schemaFingerprint
       || visibleToolCount == null
       || schemaPropertyCount == null
       || fullSchemaPropertyCount == null
@@ -276,6 +281,7 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
       profile,
       projectionMode,
       advancedToolSchema,
+      schemaFingerprint,
       toolNames,
       visibleToolCount,
       schemaPropertyCount,
@@ -507,6 +513,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
   toolNames: string[];
   defaultEnabledTools: string[];
   manifestFingerprint: string;
+  toolSurfaceSchemaProfilesFingerprint: string | null;
   toolSurfaceSchemaProfiles: RuntimeToolSurfaceSchemaProfile[];
 } {
   const input = JSON.stringify({
@@ -528,6 +535,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: [],
       defaultEnabledTools: [],
       manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolSurfaceSchemaProfilesFingerprint: null,
       toolSurfaceSchemaProfiles: [],
     };
   }
@@ -538,6 +546,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: [],
       defaultEnabledTools: [],
       manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolSurfaceSchemaProfilesFingerprint: null,
       toolSurfaceSchemaProfiles: [],
     };
   }
@@ -549,11 +558,17 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: [],
       defaultEnabledTools: [],
       manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolSurfaceSchemaProfilesFingerprint: null,
       toolSurfaceSchemaProfiles: [],
     };
   }
 
   const defaultEnabledTools = dedupeStringArray(normalizeStringArray(parsed.result.default_enabled_tools));
+  const toolSurfaceSchemaProfilesFingerprint =
+    typeof parsed.result.tool_surface_schema_profiles_fingerprint === "string"
+      && parsed.result.tool_surface_schema_profiles_fingerprint.trim().length > 0
+      ? parsed.result.tool_surface_schema_profiles_fingerprint.trim()
+      : null;
   const toolSurfaceSchemaProfiles = parseRuntimeToolSurfaceSchemaProfiles(parsed.result.tool_surface_schema_profiles);
   const rawTools = parsed.result.tools;
   const toolNames: string[] = [];
@@ -582,6 +597,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
   }
@@ -592,6 +608,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
   }
@@ -604,6 +621,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
   }
@@ -613,6 +631,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     toolNames: uniqueToolNames,
     defaultEnabledTools,
     manifestFingerprint,
+    toolSurfaceSchemaProfilesFingerprint,
     toolSurfaceSchemaProfiles,
   };
 }

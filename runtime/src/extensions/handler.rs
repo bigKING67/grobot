@@ -27,16 +27,22 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 }),
             ))
         }
-        "runtime.tools.describe" => Ok(success(
-            request.id,
-            json!({
+        "runtime.tools.describe" => {
+            let schema_profiles = crate::tools::tools::tool_surface_schema_profiles();
+            let schema_profiles_fingerprint =
+                crate::tools::tools::tool_surface_schema_profiles_fingerprint(&schema_profiles);
+            Ok(success(
+                request.id,
+                json!({
                 "protocol_version": RUNTIME_PROTOCOL_VERSION,
                 "tools": crate::tools::tools::local_tool_definitions(),
                 "default_enabled_tools": crate::tools::tools::default_enabled_local_tool_names(),
                 "tool_policy_version": crate::tools::tools::tool_surface_policy_version(),
-                "tool_surface_schema_profiles": crate::tools::tools::tool_surface_schema_profiles()
-            }),
-        )),
+                "tool_surface_schema_profiles_fingerprint": schema_profiles_fingerprint,
+                "tool_surface_schema_profiles": schema_profiles
+                }),
+            ))
+        }
         "runtime.turn.execute" => {
             let params: TurnExecuteParams = serde_json::from_value(request.params)
                 .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?;
