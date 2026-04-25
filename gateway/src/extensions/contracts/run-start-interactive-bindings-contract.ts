@@ -445,6 +445,7 @@ async function main(): Promise<void> {
       health_has_sticky_provider: outputText.includes("sticky_provider: alpha"),
       health_has_provider_row: outputText.includes("- alpha status=CLOSED"),
       context_status_has_header: outputText.includes("[context]"),
+      context_status_has_system_prompt_name: outputText.includes("system_prompt: SYSTEM.md built-in"),
       context_status_keeps_memory_separate: outputText.includes("not the same layer"),
       memory_status_has_header: outputText.includes("[memory]"),
       skills_status_counts_project_skill: outputText.includes(`project: path=${tempProjectRoot}/.grobot/skills exists=yes skills=1`),
@@ -456,6 +457,9 @@ async function main(): Promise<void> {
       ),
       init_prompt_blocks_trellis: turnInputs.some((item) =>
         item.includes("不要生成 Trellis 文件"),
+      ),
+      init_prompt_blocks_system_prompt_file: turnInputs.some((item) =>
+        item.includes("不要创建或修改 `SYSTEM.md`"),
       ),
       init_existing_agents_skips: outputText.includes("AGENTS.md already exists"),
       manual_handoff_reason: handoffReason,

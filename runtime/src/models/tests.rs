@@ -305,7 +305,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_system_prompt".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
-            system_prompt: Some("GRO built-in system prompt".to_string()),
+            system_prompt: Some("SYSTEM built-in system prompt".to_string()),
             user_message: "hello".to_string(),
             context_lines: vec![],
             model_config: Some(model_config_input),
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(messages[0].get("role").and_then(Value::as_str), Some("system"));
         assert_eq!(
             messages[0].get("content").and_then(Value::as_str),
-            Some("GRO built-in system prompt")
+            Some("SYSTEM built-in system prompt")
         );
         assert_eq!(messages[1].get("role").and_then(Value::as_str), Some("user"));
     }
@@ -353,7 +353,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_kimi_system_prompt".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
-            system_prompt: Some("GRO built-in system prompt".to_string()),
+            system_prompt: Some("SYSTEM built-in system prompt".to_string()),
             user_message: "describe this image".to_string(),
             context_lines: vec![],
             model_config: Some(model_config_input),

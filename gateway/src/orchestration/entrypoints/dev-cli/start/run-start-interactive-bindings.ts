@@ -216,7 +216,7 @@ function buildAgentsInitPrompt(input: {
     `- 项目根目录：${input.projectRoot}`,
     `- 当前工作目录：${input.workDir}`,
     "- 不要创建或修改 `CLAUDE.md`。",
-    "- 不要创建或修改 `GRO.md` 或 `SOUL.md`；`GRO.md` 是产品内置系统提示词。",
+    "- 不要创建或修改 `SYSTEM.md` 或 `SOUL.md`；`SYSTEM.md` 是产品内置系统提示词，不是项目文件。",
     "- 不要生成 Trellis 文件，也不要把 Trellis 描述为 grobot 用户需要使用的功能。",
     "- `AGENTS.md` 应描述项目结构、构建/测试命令、代码风格、验证要求、安全配置注意事项，以及 agent-specific instructions。",
     "- 内容应简洁、可执行、面向这个仓库；如果某些命令无法确认，写明需要用当前仓库脚本核验，不要编造。",
@@ -690,7 +690,7 @@ export function createRunStartInteractiveModeInput(
       [
         "[context]",
         "definition: current bounded prompt window assembled for this turn",
-        "system_prompt: GRO.md built-in",
+        "system_prompt: SYSTEM.md built-in",
         `context_engine: ${input.contextEngineConfig.enabled ? "on" : "off"} profile=${input.contextEngineConfig.profile}`,
         `context_window_tokens: ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "unknown"}`,
         `auto_compact_limit: ${typeof input.contextEngineConfig.autoCompactTokenLimit === "number" ? String(input.contextEngineConfig.autoCompactTokenLimit) : "auto"}`,

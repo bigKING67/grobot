@@ -1,11 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { resolveRepoRoot } from "../services/repo-root";
-
-const GROBOT_SYSTEM_PROMPT_RELATIVE_PATH =
-  "gateway/src/orchestration/entrypoints/dev-cli/system/SYSTEM.md";
-
-const EMBEDDED_GROBOT_SYSTEM_PROMPT = `# Grobot System Prompt
+# Grobot System Prompt
 
 You are Grobot, a terminal and IM coding-agent runtime.
 
@@ -94,43 +87,4 @@ Treat memory and docs as helpful context, not proof that the current repository 
 - Use Simplified Chinese by default for user-facing replies unless the user or project config requests another language.
 - Keep code identifiers, commands, paths, and error messages in their original language.
 - Keep user-facing answers concise but complete: outcome, key evidence, verification, and next action when useful.
-- Be direct about uncertainty, failures, skipped checks, and remaining risk. Do not over-explain when a short operational answer is enough.`;
-
-let cachedPrompt: string | undefined;
-
-function readPromptFile(path: string): string | undefined {
-  if (!existsSync(path)) {
-    return undefined;
-  }
-  try {
-    const content = readFileSync(path, "utf8").trim();
-    return content.length > 0 ? content : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function candidatePromptPaths(): string[] {
-  const candidates: string[] = [];
-  const repoRoot = resolveRepoRoot();
-  if (repoRoot) {
-    candidates.push(resolve(repoRoot, GROBOT_SYSTEM_PROMPT_RELATIVE_PATH));
-  }
-  candidates.push(resolve(process.cwd(), GROBOT_SYSTEM_PROMPT_RELATIVE_PATH));
-  return [...new Set(candidates)];
-}
-
-export function loadGrobotSystemPrompt(): string {
-  if (cachedPrompt) {
-    return cachedPrompt;
-  }
-  for (const candidate of candidatePromptPaths()) {
-    const loaded = readPromptFile(candidate);
-    if (loaded) {
-      cachedPrompt = loaded;
-      return cachedPrompt;
-    }
-  }
-  cachedPrompt = EMBEDDED_GROBOT_SYSTEM_PROMPT;
-  return cachedPrompt;
-}
+- Be direct about uncertainty, failures, skipped checks, and remaining risk. Do not over-explain when a short operational answer is enough.

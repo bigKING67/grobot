@@ -38,15 +38,24 @@ function main(): void {
     });
     assertEqual(outside.sources.length, 1, "outside source count");
 
-    const gro = loadGrobotSystemPrompt();
-    assertEqual(gro.includes("You are Grobot"), true, "gro identity");
-    assertEqual(gro.includes("Context is the bounded prompt window"), true, "gro context");
-    assertEqual(gro.includes("Memory is durable"), true, "gro memory");
+    const systemPrompt = loadGrobotSystemPrompt();
+    assertEqual(systemPrompt.includes("You are Grobot"), true, "system prompt identity");
+    assertEqual(
+      systemPrompt.includes("SYSTEM.md") && systemPrompt.includes("built into the product"),
+      true,
+      "system prompt filename",
+    );
+    assertEqual(
+      systemPrompt.includes("Context is the bounded prompt window"),
+      true,
+      "system prompt context",
+    );
+    assertEqual(systemPrompt.includes("Memory is durable"), true, "system prompt memory");
 
     process.stdout.write(`${JSON.stringify({
       sources_count: resolved.sources.length,
       outside_sources_count: outside.sources.length,
-      gro_loaded: true,
+      system_prompt_loaded: true,
     })}\n`);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
