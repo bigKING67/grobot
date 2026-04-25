@@ -180,6 +180,27 @@ expectEqual(pageComponentCode.toolSurfaceProfile, "coding", "page component code
 const contextEngineCode = withEnvProfile(undefined, () => build("看下上下文引擎代码里的 memory mechanism"));
 expectEqual(contextEngineCode.toolSurfaceProfile, "coding", "context engine code should stay coding");
 
+const webScanSchemaCode = withEnvProfile(undefined, () => build("优化 web_scan schema 和 web_execute_js contract"));
+expectEqual(webScanSchemaCode.toolSurfaceProfile, "coding", "browser tool symbols in code should stay coding");
+
+const browserSchemaCode = withEnvProfile(undefined, () => build("继续打磨 browser devtools schema 分层"));
+expectEqual(browserSchemaCode.toolSurfaceProfile, "coding", "browser schema work should stay coding");
+
+const mcpToolCode = withEnvProfile(undefined, () => build("修复 mcp_call 工具代码里的 routing policy"));
+expectEqual(mcpToolCode.toolSurfaceProfile, "coding", "mcp tool symbols in code should stay coding");
+
+const semanticToolCode = withEnvProfile(undefined, () => build("打磨 semantic_search runtime 实现和 memory orchestrator 状态"));
+expectEqual(semanticToolCode.toolSurfaceProfile, "coding", "semantic and memory implementation work should stay coding");
+
+const directBrowserToolUse = withEnvProfile(undefined, () => build("用 web_scan 扫描当前页面"));
+expectEqual(directBrowserToolUse.toolSurfaceProfile, "browser", "direct browser tool use should select browser");
+
+const directMcpToolUse = withEnvProfile(undefined, () => build("用 mcp_call 调 grok-search 查资料"));
+expectEqual(directMcpToolUse.toolSurfaceProfile, "mcp", "direct mcp tool use should select mcp");
+
+const directContextToolUse = withEnvProfile(undefined, () => build("用 semantic_search 查团队经验"));
+expectEqual(directContextToolUse.toolSurfaceProfile, "context", "direct semantic retrieval should select context");
+
 const adaptedBrowser = adaptRuntimeToolContextForRecovery({
   context: coding,
   recoveryFeedback: activeRecoveryFeedback({
@@ -213,6 +234,29 @@ const adaptedMcp = adaptRuntimeToolContextForRecovery({
 expectEqual(adaptedMcp.adaptation.active, true, "mcp recovery adaptation active");
 expectEqual(adaptedMcp.context?.toolSurfaceProfile, "mcp", "mcp recovery adapts profile");
 expectDeepEqual(adaptedMcp.context?.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user_question"], "mcp recovery visible tools");
+
+const codeSymbolRecovery = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "tool_not_visible",
+  }),
+  userMessage: "优化 web_scan schema 和 web_execute_js contract",
+});
+expectEqual(codeSymbolRecovery.adaptation.active, false, "code-symbol recovery should not switch browser profile");
+expectEqual(codeSymbolRecovery.adaptation.reason, "no_safe_profile_for_recovery", "code-symbol recovery reason");
+expectEqual(codeSymbolRecovery.context?.toolSurfaceProfile, "coding", "code-symbol recovery keeps coding profile");
+
+const directBrowserRecovery = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "tool_not_visible",
+  }),
+  userMessage: "用 web_scan 扫描当前页面",
+});
+expectEqual(directBrowserRecovery.adaptation.active, true, "direct browser recovery still adapts");
+expectEqual(directBrowserRecovery.context?.toolSurfaceProfile, "browser", "direct browser recovery profile");
 
 const staleRecovery = adaptRuntimeToolContextForRecovery({
   context: coding,
@@ -499,9 +543,18 @@ process.stdout.write(JSON.stringify({
     JSON.stringify(fullDebug.enabledTools) === JSON.stringify(fullDebug.modelVisibleTools),
   page_component_code_profile: pageComponentCode.toolSurfaceProfile,
   context_engine_code_profile: contextEngineCode.toolSurfaceProfile,
+  web_scan_schema_code_profile: webScanSchemaCode.toolSurfaceProfile,
+  browser_schema_code_profile: browserSchemaCode.toolSurfaceProfile,
+  mcp_tool_code_profile: mcpToolCode.toolSurfaceProfile,
+  semantic_tool_code_profile: semanticToolCode.toolSurfaceProfile,
+  direct_browser_tool_profile: directBrowserToolUse.toolSurfaceProfile,
+  direct_mcp_tool_profile: directMcpToolUse.toolSurfaceProfile,
+  direct_context_tool_profile: directContextToolUse.toolSurfaceProfile,
   adapted_browser_profile: adaptedBrowser.context?.toolSurfaceProfile,
   adapted_context_profile: adaptedContext.context?.toolSurfaceProfile,
   adapted_mcp_profile: adaptedMcp.context?.toolSurfaceProfile,
+  code_symbol_recovery_adapted: codeSymbolRecovery.adaptation.active,
+  direct_browser_recovery_profile: directBrowserRecovery.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
   adaptation_guard_recovered_signal_consumed: true,
   recovery_feedback_consumed_at_source: true,
