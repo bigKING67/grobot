@@ -1513,6 +1513,15 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolDispatchEnabledTools = Array.isArray(runtimeTools?.dispatch_enabled_tools)
     ? runtimeTools.dispatch_enabled_tools
     : [];
+  const runtimeToolSurfaceDecision = isObject(runtimeTools?.surface_decision)
+    ? runtimeTools.surface_decision
+    : null;
+  const runtimeToolSurfaceDecisionScores = isObject(runtimeToolSurfaceDecision?.scores)
+    ? runtimeToolSurfaceDecision.scores
+    : null;
+  const runtimeToolSurfaceDecisionSuppressed = Array.isArray(runtimeToolSurfaceDecision?.suppressed)
+    ? runtimeToolSurfaceDecision.suppressed
+    : [];
   const runtimeToolMetrics = isObject(runtimeTools?.metrics)
     ? runtimeTools.metrics
     : null;
@@ -1793,6 +1802,13 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_schema_fingerprint_type: typeof runtimeTools?.schema_fingerprint,
     status_runtime_tool_schema_estimated_tokens_type: typeof runtimeTools?.schema_estimated_tokens,
     status_runtime_tool_advanced_schema_type: typeof runtimeTools?.advanced_tool_schema,
+    status_runtime_tool_surface_decision_present: Boolean(runtimeToolSurfaceDecision),
+    status_runtime_tool_surface_decision_profile: runtimeToolSurfaceDecision?.profile ?? null,
+    status_runtime_tool_surface_decision_reason_type: typeof runtimeToolSurfaceDecision?.reason,
+    status_runtime_tool_surface_decision_scores_type: typeof runtimeToolSurfaceDecision?.scores,
+    status_runtime_tool_surface_decision_score_coding_type: typeof runtimeToolSurfaceDecisionScores?.coding,
+    status_runtime_tool_surface_decision_suppressed_is_array: Array.isArray(runtimeToolSurfaceDecision?.suppressed),
+    status_runtime_tool_surface_decision_suppressed_count: runtimeToolSurfaceDecisionSuppressed.length,
     status_runtime_tool_metrics_present: Boolean(runtimeToolMetrics),
     status_runtime_tool_metrics_calls_total_type: typeof runtimeToolMetrics?.callsTotal,
     status_runtime_tool_metrics_failures_type: typeof runtimeToolMetrics?.failuresByErrorClass,

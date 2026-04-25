@@ -4746,6 +4746,13 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_schema_fingerprint_type, "string");
   assert.equal(statusPayload.status_runtime_tool_schema_estimated_tokens_type, "number");
   assert.equal(statusPayload.status_runtime_tool_advanced_schema_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_present, true);
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_profile, "coding");
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_reason_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_scores_type, "object");
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_score_coding_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_suppressed_is_array, true);
+  assert.equal(statusPayload.status_runtime_tool_surface_decision_suppressed_count, 0);
   assert.equal(statusPayload.status_runtime_tool_metrics_present, true);
   assert.equal(statusPayload.status_runtime_tool_metrics_calls_total_type, "number");
   assert.equal(statusPayload.status_runtime_tool_metrics_failures_type, "object");

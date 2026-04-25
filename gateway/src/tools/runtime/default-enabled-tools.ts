@@ -1,4 +1,10 @@
-import type { RuntimeToolContext, ToolSurfaceProfile, ToolSurfaceSource } from "../../models/types";
+import type {
+  RuntimeToolContext,
+  RuntimeToolSurfaceDecision,
+  ToolSurfaceDecisionSuppression,
+  ToolSurfaceProfile,
+  ToolSurfaceSource,
+} from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "./tool-events";
 
 export const ALL_RUNTIME_LOCAL_TOOLS = [
@@ -115,6 +121,65 @@ function includesAny(haystack: string, needles: readonly string[]): boolean {
 
 function scoreMatches(haystack: string, needles: readonly string[], weight = 1): number {
   return needles.reduce((score, needle) => score + (haystack.includes(needle) ? weight : 0), 0);
+}
+
+function emptySurfaceScores(): Record<ToolSurfaceProfile, number> {
+  return {
+    minimal: 0,
+    coding: 0,
+    browser: 0,
+    browser_advanced: 0,
+    context: 0,
+    mcp: 0,
+    full_debug: 0,
+  };
+}
+
+function cloneSurfaceScores(scores: Record<ToolSurfaceProfile, number>): Record<ToolSurfaceProfile, number> {
+  return {
+    minimal: scores.minimal,
+    coding: scores.coding,
+    browser: scores.browser,
+    browser_advanced: scores.browser_advanced,
+    context: scores.context,
+    mcp: scores.mcp,
+    full_debug: scores.full_debug,
+  };
+}
+
+function buildSurfaceDecision(input: {
+  profile: ToolSurfaceProfile;
+  source: ToolSurfaceSource;
+  reason: string;
+  scores?: Record<ToolSurfaceProfile, number>;
+  suppressed?: readonly ToolSurfaceDecisionSuppression[];
+}): RuntimeToolSurfaceDecision {
+  return {
+    profile: input.profile,
+    source: input.source,
+    reason: input.reason,
+    scores: cloneSurfaceScores(input.scores ?? emptySurfaceScores()),
+    suppressed: [...(input.suppressed ?? [])],
+  };
+}
+
+function suppressSurfaceScore(input: {
+  scores: Record<ToolSurfaceProfile, number>;
+  suppressed: ToolSurfaceDecisionSuppression[];
+  profile: ToolSurfaceProfile;
+  reason: string;
+}): void {
+  const originalScore = input.scores[input.profile] ?? 0;
+  if (originalScore <= 0) {
+    return;
+  }
+  input.suppressed.push({
+    profile: input.profile,
+    reason: input.reason,
+    originalScore,
+    finalScore: 0,
+  });
+  input.scores[input.profile] = 0;
 }
 
 const CODE_MAINTENANCE_INTENT_TERMS = [
@@ -374,13 +439,20 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
   profile: ToolSurfaceProfile;
   source: ToolSurfaceSource;
   reason: string;
+  decision: RuntimeToolSurfaceDecision;
 } {
   const envProfile = normalizeProfile(process.env.GROBOT_TOOL_SURFACE_PROFILE);
   if (envProfile) {
+    const reason = "GROBOT_TOOL_SURFACE_PROFILE";
     return {
       profile: envProfile,
       source: "env",
-      reason: "GROBOT_TOOL_SURFACE_PROFILE",
+      reason,
+      decision: buildSurfaceDecision({
+        profile: envProfile,
+        source: "env",
+        reason,
+      }),
     };
   }
 
@@ -392,18 +464,25 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
     "工具调试",
     "全量工具",
   ])) {
-    return { profile: "full_debug", source: "auto_intent", reason: "explicit tool debug intent" };
+    const reason = "explicit tool debug intent";
+    const scores = emptySurfaceScores();
+    scores.full_debug = 1;
+    return {
+      profile: "full_debug",
+      source: "auto_intent",
+      reason,
+      decision: buildSurfaceDecision({
+        profile: "full_debug",
+        source: "auto_intent",
+        reason,
+        scores,
+      }),
+    };
   }
 
-  const scores: Record<ToolSurfaceProfile, number> = {
-    minimal: 0,
-    coding: Math.max(0, codeScore),
-    browser: 0,
-    browser_advanced: 0,
-    context: 0,
-    mcp: 0,
-    full_debug: 0,
-  };
+  const scores = emptySurfaceScores();
+  const suppressed: ToolSurfaceDecisionSuppression[] = [];
+  scores.coding = Math.max(0, codeScore);
   scores.browser_advanced += scoreMatches(normalized, [
     "remote cdp",
     "cdp_endpoint",
@@ -453,26 +532,54 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
 
   if (codeScore > 0) {
     if (scores.browser_advanced > 0 && !hasBrowserExecutionIntent(normalized)) {
-      scores.browser_advanced = 0;
+      suppressSurfaceScore({
+        scores,
+        suppressed,
+        profile: "browser_advanced",
+        reason: "code_symbol_not_browser_execution",
+      });
     }
     if (scores.browser > 0 && !hasBrowserExecutionIntent(normalized)) {
-      scores.browser = 0;
+      suppressSurfaceScore({
+        scores,
+        suppressed,
+        profile: "browser",
+        reason: "code_symbol_not_browser_execution",
+      });
     }
     if (scores.mcp > 0 && !hasMcpExecutionIntent(normalized)) {
-      scores.mcp = 0;
+      suppressSurfaceScore({
+        scores,
+        suppressed,
+        profile: "mcp",
+        reason: "code_symbol_not_mcp_execution",
+      });
     }
     if (scores.context > 0 && !hasContextRetrievalIntent(normalized)) {
-      scores.context = 0;
+      suppressSurfaceScore({
+        scores,
+        suppressed,
+        profile: "context",
+        reason: "code_symbol_not_context_retrieval",
+      });
     }
   }
 
   const profile = chooseHighestScore(scores);
+  const reason = profile === "coding"
+    ? (scores.coding > 0 ? "scored coding task" : "default coding task")
+    : `scored ${profile} intent`;
   return {
     profile,
     source: "auto_intent",
-    reason: profile === "coding"
-      ? "scored coding task"
-      : `scored ${profile} intent`,
+    reason,
+    decision: buildSurfaceDecision({
+      profile,
+      source: "auto_intent",
+      reason,
+      scores,
+      suppressed,
+    }),
   };
 }
 
@@ -500,6 +607,7 @@ function buildRuntimeToolContextForProfile(input: {
   profile: ToolSurfaceProfile;
   source: ToolSurfaceSource;
   reason: string;
+  decision?: RuntimeToolSurfaceDecision;
   availableTools?: readonly string[];
 }): RuntimeToolContext {
   const visibleTools = dedupeKnownToolNames(toolNamesForSurfaceProfile(input.profile), input.availableTools);
@@ -513,6 +621,7 @@ function buildRuntimeToolContextForProfile(input: {
     toolSurfaceProfile: input.profile,
     toolSurfaceSource: input.source,
     toolSurfaceReason: input.reason,
+    toolSurfaceDecision: input.decision ?? input.baseContext.toolSurfaceDecision,
     toolPolicyVersion: TOOL_SURFACE_POLICY_VERSION,
     advancedToolSchema: input.profile === "browser_advanced" || input.profile === "full_debug",
     schemaEstimatedTokens: estimateToolSchemaTokens(visibleTools, input.profile),
@@ -738,6 +847,7 @@ export function buildRuntimeToolContextForMessage(
     profile: decision.profile,
     source: decision.source,
     reason: decision.reason,
+    decision: decision.decision,
     availableTools,
   });
 }

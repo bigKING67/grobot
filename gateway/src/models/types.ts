@@ -107,6 +107,21 @@ export type ToolSurfaceSource =
   | "debug"
   | "fallback";
 
+export interface ToolSurfaceDecisionSuppression {
+  profile: ToolSurfaceProfile;
+  reason: string;
+  originalScore: number;
+  finalScore: number;
+}
+
+export interface RuntimeToolSurfaceDecision {
+  profile: ToolSurfaceProfile;
+  source: ToolSurfaceSource;
+  reason: string;
+  scores: Record<ToolSurfaceProfile, number>;
+  suppressed: ToolSurfaceDecisionSuppression[];
+}
+
 export interface RuntimeToolContext {
   workDir?: string;
   enabledTools?: string[];
@@ -114,6 +129,7 @@ export interface RuntimeToolContext {
   toolSurfaceProfile?: ToolSurfaceProfile;
   toolSurfaceSource?: ToolSurfaceSource;
   toolSurfaceReason?: string;
+  toolSurfaceDecision?: RuntimeToolSurfaceDecision;
   toolPolicyVersion?: string;
   advancedToolSchema?: boolean;
   schemaEstimatedTokens?: number;

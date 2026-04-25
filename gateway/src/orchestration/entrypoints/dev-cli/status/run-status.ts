@@ -36,7 +36,11 @@ import {
   type RuntimeToolSurfaceAdaptationGuard,
   type RuntimeToolSurfaceAdaptationSnapshot,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
-import type { ToolSurfaceProfile, ToolSurfaceSource } from "../../../../models/types";
+import type {
+  RuntimeToolSurfaceDecision,
+  ToolSurfaceProfile,
+  ToolSurfaceSource,
+} from "../../../../models/types";
 import {
   assessGraphCacheWindowDegradation,
   assessPersistentGraphWindowDegradation,
@@ -470,6 +474,7 @@ function resolveRuntimeToolContextPreview(
   toolSurfaceProfile: ToolSurfaceProfile;
   toolSurfaceSource: ToolSurfaceSource;
   toolSurfaceReason: string;
+  toolSurfaceDecision: RuntimeToolSurfaceDecision | null;
   toolPolicyVersion: string;
   advancedToolSchema: boolean;
   schemaFingerprint: string;
@@ -559,6 +564,7 @@ function resolveRuntimeToolContextPreview(
     toolSurfaceProfile,
     toolSurfaceSource: effectiveContext?.toolSurfaceSource ?? "fallback",
     toolSurfaceReason: effectiveContext?.toolSurfaceReason ?? "status fallback",
+    toolSurfaceDecision: effectiveContext?.toolSurfaceDecision ?? null,
     toolPolicyVersion: effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
     advancedToolSchema: effectiveContext?.advancedToolSchema ?? false,
     schemaFingerprint,
@@ -593,6 +599,24 @@ function serializeRuntimeToolRecoveryConsumption(record: RuntimeToolRecoveryCons
     recovery_observed_at: record.recoveryObservedAt,
     consumed_at: record.consumedAt,
     trace_id: record.traceId,
+  };
+}
+
+function serializeRuntimeToolSurfaceDecision(decision: RuntimeToolSurfaceDecision | null): Record<string, unknown> | null {
+  if (!decision) {
+    return null;
+  }
+  return {
+    profile: decision.profile,
+    source: decision.source,
+    reason: decision.reason,
+    scores: decision.scores,
+    suppressed: decision.suppressed.map((item) => ({
+      profile: item.profile,
+      reason: item.reason,
+      original_score: item.originalScore,
+      final_score: item.finalScore,
+    })),
   };
 }
 
@@ -1076,6 +1100,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         tool_surface_profile: runtimeToolContextPreview.toolSurfaceProfile,
         tool_surface_source: runtimeToolContextPreview.toolSurfaceSource,
         tool_surface_reason: runtimeToolContextPreview.toolSurfaceReason,
+        surface_decision: serializeRuntimeToolSurfaceDecision(runtimeToolContextPreview.toolSurfaceDecision),
         tool_policy_version: runtimeToolContextPreview.toolPolicyVersion,
         model_visible_tools: runtimeToolContextPreview.modelVisibleTools,
         dispatch_enabled_tools: runtimeToolContextPreview.enabledTools,
@@ -1909,6 +1934,17 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_surface_profile: ${runtimeToolContextPreview.toolSurfaceProfile} (${runtimeToolContextPreview.toolSurfaceSource})\n`,
   );
   process.stdout.write(`runtime_tool_surface_reason: ${runtimeToolContextPreview.toolSurfaceReason}\n`);
+  if (runtimeToolContextPreview.toolSurfaceDecision) {
+    const decisionScores = Object.entries(runtimeToolContextPreview.toolSurfaceDecision.scores)
+      .map(([profile, score]) => `${profile}:${String(score)}`)
+      .join(",");
+    const suppressed = runtimeToolContextPreview.toolSurfaceDecision.suppressed
+      .map((item) => `${item.profile}:${item.reason}:${String(item.originalScore)}->${String(item.finalScore)}`)
+      .join(",");
+    process.stdout.write(
+      `runtime_tool_surface_decision: profile=${runtimeToolContextPreview.toolSurfaceDecision.profile} reason=${runtimeToolContextPreview.toolSurfaceDecision.reason} scores=${decisionScores || "<empty>"} suppressed=${suppressed || "<none>"}\n`,
+    );
+  }
   process.stdout.write(`runtime_tool_policy_version: ${runtimeToolContextPreview.toolPolicyVersion}\n`);
   process.stdout.write(
     `runtime_tool_model_visible_tools: ${runtimeToolContextPreview.modelVisibleTools.join(",")}\n`,

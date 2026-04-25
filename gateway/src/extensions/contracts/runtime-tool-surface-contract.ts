@@ -62,6 +62,22 @@ function expectDeepEqual(actual: unknown, expected: unknown, message: string): v
   }
 }
 
+function expectDecisionProfile(context: RuntimeToolContext, expectedProfile: string, message: string): void {
+  expect(context.toolSurfaceDecision !== undefined, `${message}: decision missing`);
+  expectEqual(context.toolSurfaceDecision.profile, expectedProfile, `${message}: decision profile`);
+  expectEqual(typeof context.toolSurfaceDecision.reason, "string", `${message}: decision reason type`);
+  expectEqual(typeof context.toolSurfaceDecision.scores.coding, "number", `${message}: decision coding score type`);
+  expect(Array.isArray(context.toolSurfaceDecision.suppressed), `${message}: decision suppressed list`);
+}
+
+function expectSuppressedProfile(context: RuntimeToolContext, profile: string, reason: string, message: string): void {
+  const rows = context.toolSurfaceDecision?.suppressed ?? [];
+  const match = rows.find((item) => item.profile === profile && item.reason === reason);
+  expect(Boolean(match), `${message}: missing suppressed ${profile}/${reason}`);
+  expect(typeof match?.originalScore === "number" && match.originalScore > 0, `${message}: original score`);
+  expectEqual(match?.finalScore, 0, `${message}: final score`);
+}
+
 function event(eventType: RuntimeEvent["eventType"], payload: Record<string, unknown>): RuntimeEvent {
   return {
     traceId: "trace_runtime_tool_surface_contract",
@@ -114,6 +130,8 @@ const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
 const coding = withEnvProfile(undefined, () => build(undefined));
 expectEqual(coding.toolSurfaceProfile, "coding", "default profile");
 expectEqual(coding.toolSurfaceSource, "auto_intent", "default profile source");
+expectDecisionProfile(coding, "coding", "default profile decision");
+expectEqual(coding.toolSurfaceDecision?.suppressed.length, 0, "default decision has no suppressions");
 expectEqual(coding.toolPolicyVersion, TOOL_SURFACE_POLICY_VERSION, "policy version");
 expectDeepEqual(coding.modelVisibleTools, [
   "glob",
@@ -141,28 +159,33 @@ expectEqual(
 
 const browser = withEnvProfile(undefined, () => build("打开浏览器页面，扫描 DOM"));
 expectEqual(browser.toolSurfaceProfile, "browser", "browser profile");
+expectDecisionProfile(browser, "browser", "browser profile decision");
 expectDeepEqual(browser.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser visible tools");
 expectDeepEqual(browser.enabledTools, browser.modelVisibleTools, "browser dispatch tools");
 expectEqual(browser.advancedToolSchema, false, "browser slim schema");
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));
 expectEqual(browserAdvanced.toolSurfaceProfile, "browser_advanced", "browser advanced profile");
+expectDecisionProfile(browserAdvanced, "browser_advanced", "browser advanced profile decision");
 expectDeepEqual(browserAdvanced.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser advanced visible tools");
 expectEqual(browserAdvanced.advancedToolSchema, true, "browser advanced schema");
 
 const context = withEnvProfile(undefined, () => build("用记忆和语义上下文找相关经验"));
 expectEqual(context.toolSurfaceProfile, "context", "context profile");
+expectDecisionProfile(context, "context", "context profile decision");
 expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user_question"], "context visible tools");
 expectDeepEqual(context.enabledTools, context.modelVisibleTools, "context dispatch tools");
 
 const mcp = withEnvProfile(undefined, () => build("通过 MCP grok-search 查资料"));
 expectEqual(mcp.toolSurfaceProfile, "mcp", "mcp profile");
+expectDecisionProfile(mcp, "mcp", "mcp profile decision");
 expectDeepEqual(mcp.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user_question"], "mcp visible tools");
 expectDeepEqual(mcp.enabledTools, mcp.modelVisibleTools, "mcp dispatch tools");
 
 const fullDebug = withEnvProfile("full_debug", () => build("普通 coding task"));
 expectEqual(fullDebug.toolSurfaceProfile, "full_debug", "full_debug profile");
 expectEqual(fullDebug.toolSurfaceSource, "env", "full_debug source");
+expectDecisionProfile(fullDebug, "full_debug", "full_debug env decision");
 expectEqual(fullDebug.modelVisibleTools?.length, 14, "full_debug visible count");
 expectEqual(fullDebug.enabledTools?.length, 14, "full_debug dispatch count");
 expectEqual(fullDebug.modelVisibleTools?.includes("prompt_enhancer"), true, "full_debug shows prompt_enhancer");
@@ -182,24 +205,37 @@ expectEqual(contextEngineCode.toolSurfaceProfile, "coding", "context engine code
 
 const webScanSchemaCode = withEnvProfile(undefined, () => build("优化 web_scan schema 和 web_execute_js contract"));
 expectEqual(webScanSchemaCode.toolSurfaceProfile, "coding", "browser tool symbols in code should stay coding");
+expectDecisionProfile(webScanSchemaCode, "coding", "web_scan schema code decision");
+expectSuppressedProfile(webScanSchemaCode, "browser", "code_symbol_not_browser_execution", "web_scan schema code decision");
 
 const browserSchemaCode = withEnvProfile(undefined, () => build("继续打磨 browser devtools schema 分层"));
 expectEqual(browserSchemaCode.toolSurfaceProfile, "coding", "browser schema work should stay coding");
+expectDecisionProfile(browserSchemaCode, "coding", "browser schema code decision");
+expectSuppressedProfile(browserSchemaCode, "browser", "code_symbol_not_browser_execution", "browser schema code decision");
+expectSuppressedProfile(browserSchemaCode, "browser_advanced", "code_symbol_not_browser_execution", "browser schema code decision");
 
 const mcpToolCode = withEnvProfile(undefined, () => build("修复 mcp_call 工具代码里的 routing policy"));
 expectEqual(mcpToolCode.toolSurfaceProfile, "coding", "mcp tool symbols in code should stay coding");
+expectDecisionProfile(mcpToolCode, "coding", "mcp tool code decision");
+expectSuppressedProfile(mcpToolCode, "mcp", "code_symbol_not_mcp_execution", "mcp tool code decision");
 
 const semanticToolCode = withEnvProfile(undefined, () => build("打磨 semantic_search runtime 实现和 memory orchestrator 状态"));
 expectEqual(semanticToolCode.toolSurfaceProfile, "coding", "semantic and memory implementation work should stay coding");
+expectDecisionProfile(semanticToolCode, "coding", "semantic tool code decision");
+expectSuppressedProfile(semanticToolCode, "context", "code_symbol_not_context_retrieval", "semantic tool code decision");
 
 const directBrowserToolUse = withEnvProfile(undefined, () => build("用 web_scan 扫描当前页面"));
 expectEqual(directBrowserToolUse.toolSurfaceProfile, "browser", "direct browser tool use should select browser");
+expectDecisionProfile(directBrowserToolUse, "browser", "direct browser tool decision");
+expectEqual(directBrowserToolUse.toolSurfaceDecision?.suppressed.length, 0, "direct browser tool decision has no suppressions");
 
 const directMcpToolUse = withEnvProfile(undefined, () => build("用 mcp_call 调 grok-search 查资料"));
 expectEqual(directMcpToolUse.toolSurfaceProfile, "mcp", "direct mcp tool use should select mcp");
+expectDecisionProfile(directMcpToolUse, "mcp", "direct mcp tool decision");
 
 const directContextToolUse = withEnvProfile(undefined, () => build("用 semantic_search 查团队经验"));
 expectEqual(directContextToolUse.toolSurfaceProfile, "context", "direct semantic retrieval should select context");
+expectDecisionProfile(directContextToolUse, "context", "direct semantic tool decision");
 
 const adaptedBrowser = adaptRuntimeToolContextForRecovery({
   context: coding,
@@ -211,6 +247,7 @@ const adaptedBrowser = adaptRuntimeToolContextForRecovery({
 expectEqual(adaptedBrowser.adaptation.active, true, "browser recovery adaptation active");
 expectEqual(adaptedBrowser.context?.toolSurfaceProfile, "browser", "browser recovery adapts profile");
 expectEqual(adaptedBrowser.context?.toolSurfaceSource, "metrics_recovery", "browser recovery source");
+expectEqual(adaptedBrowser.context?.toolSurfaceDecision?.profile, "coding", "recovery keeps original message decision trace");
 expectDeepEqual(adaptedBrowser.context?.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser recovery visible tools");
 
 const adaptedContext = adaptRuntimeToolContextForRecovery({
@@ -544,10 +581,15 @@ process.stdout.write(JSON.stringify({
   page_component_code_profile: pageComponentCode.toolSurfaceProfile,
   context_engine_code_profile: contextEngineCode.toolSurfaceProfile,
   web_scan_schema_code_profile: webScanSchemaCode.toolSurfaceProfile,
+  web_scan_schema_suppressed_count: webScanSchemaCode.toolSurfaceDecision?.suppressed.length ?? 0,
   browser_schema_code_profile: browserSchemaCode.toolSurfaceProfile,
+  browser_schema_suppressed_count: browserSchemaCode.toolSurfaceDecision?.suppressed.length ?? 0,
   mcp_tool_code_profile: mcpToolCode.toolSurfaceProfile,
+  mcp_tool_code_suppressed_count: mcpToolCode.toolSurfaceDecision?.suppressed.length ?? 0,
   semantic_tool_code_profile: semanticToolCode.toolSurfaceProfile,
+  semantic_tool_code_suppressed_count: semanticToolCode.toolSurfaceDecision?.suppressed.length ?? 0,
   direct_browser_tool_profile: directBrowserToolUse.toolSurfaceProfile,
+  direct_browser_tool_suppressed_count: directBrowserToolUse.toolSurfaceDecision?.suppressed.length ?? 0,
   direct_mcp_tool_profile: directMcpToolUse.toolSurfaceProfile,
   direct_context_tool_profile: directContextToolUse.toolSurfaceProfile,
   adapted_browser_profile: adaptedBrowser.context?.toolSurfaceProfile,
