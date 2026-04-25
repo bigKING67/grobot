@@ -4317,6 +4317,35 @@ function runStatusTsRustMemoryLegacyFallback(repoRoot) {
   };
 }
 
+function runStatusRuntimeDescribeUnavailable(repoRoot) {
+  const workDir = createTempDir("grobot-status-runtime-describe-unavailable-work");
+  writeExecutionProjectToml(workDir);
+  const missingRuntimePath = "/tmp/grobot-missing-runtime";
+  const result = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "status",
+      "--work-dir",
+      workDir,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+    ],
+    { GROBOT_RUNTIME_BIN: missingRuntimePath },
+  );
+  return {
+    ...result,
+    missing_runtime_path: missingRuntimePath,
+    has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
+    has_unavailable_suppressed_args: result.stdout.includes(
+      "runtime_tool_schema_suppressed_args: <unavailable source=gateway.fallback>",
+    ),
+    has_unavailable_describe_reason: result.stdout.includes("runtime_tools_describe_unavailable:spawn_failed"),
+  };
+}
+
 function runStatusRejectLegacyFlag(repoRoot) {
   return runCommand(repoRoot, ["./grobot", "status", "--legacy-python-cli"]);
 }
@@ -4463,6 +4492,9 @@ function runCli(argv) {
       break;
     case "status-ts-rust-memory-legacy-fallback":
       payload = runStatusTsRustMemoryLegacyFallback(repoRoot);
+      break;
+    case "status-runtime-describe-unavailable":
+      payload = runStatusRuntimeDescribeUnavailable(repoRoot);
       break;
     case "status-reject-legacy-flag":
       payload = runStatusRejectLegacyFlag(repoRoot);

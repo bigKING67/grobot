@@ -124,6 +124,12 @@ export interface RuntimeToolSurfaceSchemaProfile {
   perToolSuppressedArgs: Record<string, string[]>;
 }
 
+export interface RuntimeToolSurfaceSchemaProfilesParseResult {
+  profiles: RuntimeToolSurfaceSchemaProfile[];
+  rawCount: number;
+  invalidReason: string | null;
+}
+
 export interface RuntimeHealthcheckOptions {
   cacheStatsWindowMs?: number;
   resetCacheStatsWindow?: boolean;
@@ -278,13 +284,20 @@ function recordKeysMatch(record: Record<string, unknown>, expectedKeys: readonly
   return actual.every((key, index) => key === expected[index]);
 }
 
-export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
+export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
+  value: unknown,
+): RuntimeToolSurfaceSchemaProfilesParseResult {
+  if (value == null) {
+    return { profiles: [], rawCount: 0, invalidReason: null };
+  }
   if (!Array.isArray(value)) {
-    return [];
+    return { profiles: [], rawCount: 0, invalidReason: "schema_profiles_not_array" };
   }
   const profiles: RuntimeToolSurfaceSchemaProfile[] = [];
+  let invalidRowCount = 0;
   for (const row of value) {
     if (!isRecord(row)) {
+      invalidRowCount += 1;
       continue;
     }
     const policyVersion = typeof row.policy_version === "string" ? row.policy_version.trim() : "";
@@ -349,6 +362,7 @@ export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeTo
       || !perToolMapsHaveExactKeys
       || toolNames.length !== visibleToolCount
     ) {
+      invalidRowCount += 1;
       continue;
     }
     profiles.push({
@@ -367,7 +381,15 @@ export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeTo
       perToolSuppressedArgs,
     });
   }
-  return profiles;
+  return {
+    profiles,
+    rawCount: value.length,
+    invalidReason: invalidRowCount > 0 ? `schema_profiles_invalid_rows:${invalidRowCount}` : null,
+  };
+}
+
+export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
+  return parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(value).profiles;
 }
 
 export function buildToolsManifestFingerprint(toolNames: string[], defaultEnabledTools: string[]): string {
@@ -646,7 +668,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       && parsed.result.tool_surface_schema_profiles_fingerprint.trim().length > 0
       ? parsed.result.tool_surface_schema_profiles_fingerprint.trim()
       : null;
-  const toolSurfaceSchemaProfiles = parseRuntimeToolSurfaceSchemaProfiles(parsed.result.tool_surface_schema_profiles);
+  const schemaProfilesParse = parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
+    parsed.result.tool_surface_schema_profiles,
+  );
+  const toolSurfaceSchemaProfiles = schemaProfilesParse.profiles;
   const rawTools = parsed.result.tools;
   const toolNames: string[] = [];
   if (Array.isArray(rawTools)) {
@@ -695,6 +720,39 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     return {
       ok: false,
       detail: `runtime_tools_describe_invalid_default_enabled_tools:${unknownDefaultEnabled.join(",")}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (schemaProfilesParse.invalidReason != null) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_schema_profiles:${schemaProfilesParse.invalidReason}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (toolSurfaceSchemaProfilesFingerprint && toolSurfaceSchemaProfiles.length === 0) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_schema_profiles",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (!toolSurfaceSchemaProfilesFingerprint && toolSurfaceSchemaProfiles.length > 0) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_schema_profiles_fingerprint",
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,

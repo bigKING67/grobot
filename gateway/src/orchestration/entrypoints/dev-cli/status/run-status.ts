@@ -839,7 +839,10 @@ function serializeRuntimeToolSurfaceProjectionSummary(
 }
 
 function formatRuntimeToolSuppressedArgs(summary: RuntimeToolSurfaceProjectionSummary): string {
-  const rows = Object.entries(summary.perToolSuppressedArgs ?? {})
+  if (!summary.perToolSuppressedArgs) {
+    return `<unavailable source=${summary.source}>`;
+  }
+  const rows = Object.entries(summary.perToolSuppressedArgs)
     .filter(([, args]) => args.length > 0)
     .map(([toolName, args]) => `${toolName}:${args.join("|")}`);
   if (rows.length === 0) {

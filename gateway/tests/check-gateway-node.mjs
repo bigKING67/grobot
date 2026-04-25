@@ -7427,6 +7427,21 @@ async function runTsRustExecutionSmoke() {
   );
   logStep("start-smoke-contract status-ts-rust-memory-legacy-fallback");
 
+  const runtimeDescribeUnavailableResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-runtime-describe-unavailable",
+    ["--repo-root", repoRoot],
+  );
+  const runtimeDescribeUnavailablePayload = parseJsonOutput(
+    "start-smoke-contract status-runtime-describe-unavailable",
+    runtimeDescribeUnavailableResult.stdout,
+  );
+  assert.equal(runtimeDescribeUnavailablePayload.exit_code, 0);
+  assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_projection, true);
+  assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_suppressed_args, true);
+  assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_describe_reason, true);
+  logStep("start-smoke-contract status-runtime-describe-unavailable");
+
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
     repoRoot,

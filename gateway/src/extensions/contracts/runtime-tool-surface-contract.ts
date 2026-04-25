@@ -18,7 +18,10 @@ import {
   recordRuntimeToolSurfaceAdaptationOutcome,
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
-import { parseRuntimeToolSurfaceSchemaProfiles } from "../../orchestration/entrypoints/dev-cli/runtime-health";
+import {
+  parseRuntimeToolSurfaceSchemaProfiles,
+  parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics,
+} from "../../orchestration/entrypoints/dev-cli/runtime-health";
 
 const baseContext = {
   workDir: "/tmp/grobot-runtime-tool-surface-contract",
@@ -213,6 +216,10 @@ expectEqual(
   1,
   "runtime schema profile parser accepts exact arg metadata",
 );
+const validRuntimeSchemaProfileDiagnostics =
+  parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics([validRuntimeSchemaProfile]);
+expectEqual(validRuntimeSchemaProfileDiagnostics.rawCount, 1, "runtime schema profile diagnostics raw count");
+expectEqual(validRuntimeSchemaProfileDiagnostics.invalidReason, null, "runtime schema profile diagnostics valid reason");
 expectEqual(
   parseRuntimeToolSurfaceSchemaProfiles([{
     ...validRuntimeSchemaProfile,
@@ -225,6 +232,17 @@ expectEqual(
   "runtime schema profile parser rejects duplicate visible args",
 );
 expectEqual(
+  parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics([{
+    ...validRuntimeSchemaProfile,
+    per_tool_visible_args: {
+      web_scan: ["main_only", "main_only"],
+      web_execute_js: ["script", "timeout_ms"],
+    },
+  }]).invalidReason,
+  "schema_profiles_invalid_rows:1",
+  "runtime schema profile diagnostics reports duplicate arg rows",
+);
+expectEqual(
   parseRuntimeToolSurfaceSchemaProfiles([{
     ...validRuntimeSchemaProfile,
     per_tool_suppressed_args: {
@@ -235,6 +253,11 @@ expectEqual(
   }]).length,
   0,
   "runtime schema profile parser rejects ghost arg metadata keys",
+);
+expectEqual(
+  parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics({ not: "array" }).invalidReason,
+  "schema_profiles_not_array",
+  "runtime schema profile diagnostics rejects non-array payloads",
 );
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));
