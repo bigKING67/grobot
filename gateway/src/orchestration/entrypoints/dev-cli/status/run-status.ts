@@ -1108,6 +1108,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           recovery_stage: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage,
           recovery_tool_name: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName,
           recovery_error_class: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass,
+          recovery_observed_at: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryObservedAt,
         },
         surface_adaptation_outcome: {
           path: runtimeToolSurfaceAdaptationSnapshot.path,

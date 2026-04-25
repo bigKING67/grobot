@@ -4768,6 +4768,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_reason_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_from_profile_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_applied_profile_type, "string");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_surface_adaptation_observed_at_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_present, true);
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_path_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_outcome_recent_count_type, "number");

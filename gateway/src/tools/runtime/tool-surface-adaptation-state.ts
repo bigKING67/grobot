@@ -23,6 +23,7 @@ export interface RuntimeToolSurfaceAdaptationRecord {
   recoveryStage: string | null;
   recoveryToolName: string | null;
   recoveryErrorClass: string | null;
+  recoveryObservedAt: string | null;
   startedAt: string;
   completedAt: string;
   traceId: string | null;
@@ -207,6 +208,7 @@ function normalizeAdaptationRecord(value: unknown): RuntimeToolSurfaceAdaptation
     recoveryStage: normalizeString(row.recoveryStage) ?? null,
     recoveryToolName: normalizeString(row.recoveryToolName) ?? null,
     recoveryErrorClass: normalizeString(row.recoveryErrorClass) ?? null,
+    recoveryObservedAt: normalizeString(row.recoveryObservedAt) ?? null,
     startedAt: normalizeString(row.startedAt) ?? "",
     completedAt: normalizeString(row.completedAt) ?? "",
     traceId: normalizeString(row.traceId) ?? null,
@@ -452,6 +454,7 @@ export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
     recoveryStage: input.adaptation.recoveryStage,
     recoveryToolName: input.adaptation.recoveryToolName,
     recoveryErrorClass: input.adaptation.recoveryErrorClass,
+    recoveryObservedAt: input.recoveryObservedAt ?? input.adaptation.recoveryObservedAt ?? null,
     startedAt: input.startedAtIso ?? input.events[0]?.timestampIso ?? nowIso,
     completedAt: nowIso,
     traceId,
@@ -473,7 +476,7 @@ export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
       recoveryStage: record.recoveryStage,
       recoveryToolName: record.recoveryToolName,
       recoveryErrorClass: record.recoveryErrorClass,
-      recoveryObservedAt: input.recoveryObservedAt ?? record.startedAt,
+      recoveryObservedAt: record.recoveryObservedAt ?? record.startedAt,
       consumedAt: nowIso,
       traceId,
     });
@@ -534,15 +537,23 @@ export function recordRuntimeToolSurfaceRecoveryConsumption(input: {
 }
 
 function adaptationGuardKey(input: {
-  appliedProfile: ToolSurfaceProfile;
+  appliedProfile?: ToolSurfaceProfile | null;
   recoveryToolName: string | null;
   recoveryErrorClass: string | null;
 }): string {
   return [
-    input.appliedProfile,
+    input.appliedProfile ?? "<none>",
     input.recoveryToolName ?? "<none>",
     input.recoveryErrorClass ?? "<none>",
   ].join("|");
+}
+
+function recoveryKey(input: {
+  recoveryStage: string | null;
+  recoveryToolName: string | null;
+  recoveryErrorClass: string | null;
+}): string {
+  return recoveryConsumptionKey(input);
 }
 
 function inactiveGuard(reason = "ok"): RuntimeToolSurfaceAdaptationGuard {
@@ -557,6 +568,27 @@ function inactiveGuard(reason = "ok"): RuntimeToolSurfaceAdaptationGuard {
 
 function isUnsuccessfulAdaptationOutcome(record: RuntimeToolSurfaceAdaptationRecord): boolean {
   return record.outcome === "failed" || record.outcome === "unknown";
+}
+
+function recoveredSignalStillApplies(input: {
+  snapshot: RuntimeToolSurfaceAdaptationSnapshot;
+  adaptation: RuntimeToolSurfaceAdaptation;
+  latestAdaptation: RuntimeToolSurfaceAdaptationRecord;
+}): boolean {
+  const observedAtMs = parseIsoMs(input.adaptation.recoveryObservedAt);
+  if (typeof observedAtMs !== "number") {
+    return false;
+  }
+  const candidateRecoveryKey = recoveryKey(input.adaptation);
+  const consumedRecord = [...input.snapshot.recentRecoveryConsumptions]
+    .reverse()
+    .find((record) => record.reason === "recovered_signal_consumed" && recoveryKey(record) === candidateRecoveryKey);
+  const consumedAtMs = parseIsoMs(consumedRecord?.consumedAt);
+  if (typeof consumedAtMs === "number") {
+    return consumedAtMs >= observedAtMs;
+  }
+  const completedAtMs = parseIsoMs(input.latestAdaptation.completedAt);
+  return typeof completedAtMs === "number" && completedAtMs >= observedAtMs;
 }
 
 export function assessRuntimeToolSurfaceAdaptationGuard(input: {
@@ -576,6 +608,11 @@ export function assessRuntimeToolSurfaceAdaptationGuard(input: {
     latestAdaptation
     && latestAdaptation.outcome === "recovered"
     && adaptationGuardKey(latestAdaptation) === candidateKey
+    && recoveredSignalStillApplies({
+      snapshot: input.snapshot,
+      adaptation: input.adaptation,
+      latestAdaptation,
+    })
   ) {
     return {
       active: true,

@@ -83,6 +83,7 @@ function activeRecoveryFeedback(input: {
   toolName: string;
   errorClass: string;
   stage?: RuntimeToolRecoveryFeedback["stage"];
+  observedAt?: string | null;
 }): RuntimeToolRecoveryFeedback {
   return {
     active: true,
@@ -93,6 +94,9 @@ function activeRecoveryFeedback(input: {
     errorClass: input.errorClass,
     recommendedNextAction: "switch_tool_strategy",
     promptBlock: "recovery prompt",
+    ...(input.observedAt !== null
+      ? { observedAt: input.observedAt ?? "2026-04-25T00:00:00.000Z" }
+      : {}),
   };
 }
 
@@ -307,10 +311,23 @@ try {
   });
   expectEqual(newerRecoveredFeedback.active, true, "newer recovery signal remains active after prior consumption");
 
+  const newerRecoveredAdaptation = adaptRuntimeToolContextForRecovery({
+    context: coding,
+    recoveryFeedback: newerRecoveredFeedback,
+  });
+  const newerRecoveredGuard = applyRuntimeToolSurfaceAdaptationGuard({
+    baseContext: coding,
+    result: newerRecoveredAdaptation,
+    snapshot: recoveredWrite.snapshot,
+  });
+  expectEqual(newerRecoveredGuard.guard.active, false, "newer recovery signal bypasses consumed guard");
+  expectEqual(newerRecoveredGuard.adaptation.active, true, "newer recovery signal can adapt after prior recovery");
+
   const unobservedRecoveredFeedback = applyRuntimeToolRecoveryConsumption({
     feedback: activeRecoveryFeedback({
       toolName: "web_scan",
       errorClass: "tool_not_visible",
+      observedAt: null,
     }),
     snapshot: recoveredWrite.snapshot,
   });
@@ -488,6 +505,7 @@ process.stdout.write(JSON.stringify({
   stale_recovery_adapted: staleRecovery.adaptation.active,
   adaptation_guard_recovered_signal_consumed: true,
   recovery_feedback_consumed_at_source: true,
+  newer_recovery_bypasses_consumed_guard: true,
   adaptation_guard_prompt_suppresses_recovery_hint: true,
   adaptation_guard_repeated_failure: true,
   adaptation_guard_profile_oscillation: true,

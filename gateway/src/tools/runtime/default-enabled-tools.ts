@@ -51,6 +51,7 @@ export interface RuntimeToolSurfaceAdaptation {
   recoveryStage: RuntimeToolRecoveryFeedback["stage"];
   recoveryToolName: string | null;
   recoveryErrorClass: string | null;
+  recoveryObservedAt: string | null;
 }
 
 export interface RuntimeToolSurfaceAdaptationResult {
@@ -325,6 +326,7 @@ function emptyAdaptation(input: {
     recoveryStage: input.recoveryFeedback?.stage ?? null,
     recoveryToolName: input.recoveryFeedback?.toolName ?? null,
     recoveryErrorClass: input.recoveryFeedback?.errorClass ?? null,
+    recoveryObservedAt: input.recoveryFeedback?.observedAt ?? null,
   };
 }
 
@@ -476,6 +478,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
       recoveryStage: input.recoveryFeedback.stage,
       recoveryToolName: input.recoveryFeedback.toolName,
       recoveryErrorClass: input.recoveryFeedback.errorClass,
+      recoveryObservedAt: input.recoveryFeedback.observedAt ?? null,
     },
   };
 }

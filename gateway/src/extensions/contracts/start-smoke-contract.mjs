@@ -1809,6 +1809,7 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
     status_runtime_tool_surface_adaptation_from_profile_type: typeof runtimeToolSurfaceAdaptation?.from_profile,
     status_runtime_tool_surface_adaptation_applied_profile_type: typeof runtimeToolSurfaceAdaptation?.applied_profile,
+    status_runtime_tool_surface_adaptation_observed_at_type: typeof runtimeToolSurfaceAdaptation?.recovery_observed_at,
     status_runtime_tool_surface_adaptation_outcome_present: Boolean(runtimeToolSurfaceAdaptationOutcome),
     status_runtime_tool_surface_adaptation_outcome_path_type: typeof runtimeToolSurfaceAdaptationOutcome?.path,
     status_runtime_tool_surface_adaptation_outcome_recent_count_type: typeof runtimeToolSurfaceAdaptationOutcome?.recent_adaptation_count,
