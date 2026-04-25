@@ -2,7 +2,7 @@
 mod tests {
     use super::{
         apply_prompt_cache_hints,
-        build_runtime_user_prompt, build_tool_definitions, extract_response_content,
+        build_runtime_messages, build_runtime_user_prompt, build_tool_definitions, extract_response_content,
         extract_prompt_cache_usage_observation,
         load_runtime_model_config, parse_model_response_payload, pick_auto_model,
         PromptCacheOptions, PromptCacheStrategy,
@@ -15,6 +15,7 @@ mod tests {
         RuntimeProviderOptionsInput, RuntimeToolContextInput, TurnExecuteInput,
     };
     use crate::tools::tools::LocalToolExecutor;
+    use reqwest::blocking::Client;
     use serde_json::{json, Value};
     use std::env;
     use std::ffi::OsString;
@@ -274,6 +275,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_1".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请总结一下".to_string(),
             context_lines: vec!["A".to_string(), "B".to_string()],
             model_config: None,
@@ -285,6 +287,95 @@ mod tests {
         assert!(prompt.contains("[Conversation Context]"));
         assert!(prompt.contains("A"));
         assert!(prompt.contains("B"));
+    }
+
+    #[test]
+    fn build_runtime_messages_prepends_system_prompt() {
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some("https://api.example.test/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("test-model".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let config = load_runtime_model_config(Some(&model_config_input))
+            .expect("resolve openai-compatible config");
+        let client = Client::new();
+        let input = TurnExecuteInput {
+            request_id: "req_system_prompt".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: Some("GRO built-in system prompt".to_string()),
+            user_message: "hello".to_string(),
+            context_lines: vec![],
+            model_config: Some(model_config_input),
+            tool_context: None,
+            attachments: vec![],
+        };
+        let messages = build_runtime_messages(&input, &client, &config)
+            .expect("runtime messages");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].get("role").and_then(Value::as_str), Some("system"));
+        assert_eq!(
+            messages[0].get("content").and_then(Value::as_str),
+            Some("GRO built-in system prompt")
+        );
+        assert_eq!(messages[1].get("role").and_then(Value::as_str), Some("user"));
+    }
+
+    #[test]
+    fn build_runtime_messages_keeps_system_prompt_before_kimi_image_parts() {
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some("https://api.moonshot.cn/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("kimi-k2.5".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("kimi".to_string()),
+            provider_options: Some(RuntimeProviderOptionsInput {
+                kimi: Some(RuntimeKimiOptionsInput {
+                    web_search_mode: None,
+                    disable_thinking_on_builtin_web_search: None,
+                    official_tools_allowlist: None,
+                    official_tool_formulas: None,
+                    prompt_cache: None,
+                    max_tokens: None,
+                    stream: None,
+                    temperature: None,
+                    top_p: None,
+                    files_enabled: Some(true),
+                    allow_file_admin: None,
+                }),
+            }),
+        };
+        let config = load_runtime_model_config(Some(&model_config_input))
+            .expect("resolve kimi config");
+        let client = Client::new();
+        let input = TurnExecuteInput {
+            request_id: "req_kimi_system_prompt".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: Some("GRO built-in system prompt".to_string()),
+            user_message: "describe this image".to_string(),
+            context_lines: vec![],
+            model_config: Some(model_config_input),
+            tool_context: None,
+            attachments: vec![crate::models::engine::RuntimeAttachmentInput {
+                attachment_type: "image".to_string(),
+                source_type: "url".to_string(),
+                source: "https://example.test/image.png".to_string(),
+                mime_type: Some("image/png".to_string()),
+                filename: Some("image.png".to_string()),
+            }],
+        };
+        let messages = build_runtime_messages(&input, &client, &config)
+            .expect("runtime messages");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].get("role").and_then(Value::as_str), Some("system"));
+        assert_eq!(messages[1].get("role").and_then(Value::as_str), Some("user"));
+        let user_parts = messages[1]
+            .get("content")
+            .and_then(Value::as_array)
+            .expect("kimi content parts");
+        assert!(user_parts.iter().any(|part| part.get("image_url").is_some()));
     }
 
     #[test]
@@ -302,6 +393,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_kimi_defaults".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请搜索今天的科技新闻".to_string(),
             context_lines: vec![],
             model_config: Some(model_config_input),
@@ -456,6 +548,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_prompt_cache_telemetry".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "please summarize".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -548,6 +641,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_prompt_cache_capability_missing".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "please summarize".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -640,6 +734,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_prompt_cache_retry".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "please summarize".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -741,6 +836,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_success".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请总结本轮进展".to_string(),
             context_lines: vec!["user: hi".to_string(), "assistant: hello".to_string()],
             model_config: Some(RuntimeModelConfigInput {
@@ -795,6 +891,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_http_error".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "ping".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -841,6 +938,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_kimi_retry".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请总结一下当前状态".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -896,6 +994,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_kimi_reasoning_retry".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请联网搜索今天热点".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -949,6 +1048,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_kimi_temp_retry".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请总结一下当前状态".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -1022,6 +1122,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_kimi_reasoning_context".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请列出当前目录文件".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -1073,6 +1174,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_cfg_missing".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "ping".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -1110,6 +1212,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_no_tool_fallback".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请处理这个任务".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -1184,6 +1287,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_no_tool_off".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请处理这个任务".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -1237,6 +1341,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_no_tool_exhausted".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请处理这个任务".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -1296,6 +1401,7 @@ mod tests {
         let input = TurnExecuteInput {
             request_id: "req_rt_tool_call".to_string(),
             session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
             user_message: "请调用工具".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {

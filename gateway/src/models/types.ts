@@ -28,6 +28,7 @@ export interface RuntimeRequest {
   protocolVersion: "runtime.v1";
   requestId: string;
   sessionKey: string;
+  systemPrompt?: string;
   userMessage: string;
   contextLines: string[];
   modelConfig?: RuntimeModelConfig;

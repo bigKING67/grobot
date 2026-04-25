@@ -25,6 +25,7 @@ interface CreateRunStartWireInput {
   historyTurns: number;
   sessionStore: SessionStoreController<SessionRegistryPayload, ChatHistoryMessage>;
   projectName: string;
+  projectRoot: string;
   workDir: string;
   handoffPath: string;
   handoffRecentTurns: number;
@@ -108,6 +109,7 @@ export function createRunStartWire(input: CreateRunStartWireInput): RunStartWire
     interruptStorePath: input.interruptStorePath,
     historyTurns: input.historyTurns,
     projectName: input.projectName,
+    projectRoot: input.projectRoot,
     workDir: input.workDir,
     subject: input.subject,
     executionPlane: input.executionPlane,

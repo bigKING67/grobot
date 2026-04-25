@@ -1095,20 +1095,32 @@ fn build_runtime_messages(
     config: &RuntimeModelConfig,
 ) -> Result<Vec<Value>, ModelExecutionError> {
     let prompt = build_runtime_user_prompt(input);
+    let mut system_messages: Vec<Value> = Vec::new();
+    if let Some(system_prompt) = input.system_prompt.as_deref().map(str::trim) {
+        if !system_prompt.is_empty() {
+            system_messages.push(json!({
+                "role": "system",
+                "content": system_prompt
+            }));
+        }
+    }
     if config.provider_kind != ProviderKind::Kimi || input.attachments.is_empty() {
-        return Ok(vec![json!({
+        let mut messages = system_messages;
+        messages.push(json!({
             "role": "user",
             "content": prompt
-        })]);
+        }));
+        return Ok(messages);
     }
     if !config.provider_options.kimi.files_enabled {
-        return Ok(vec![json!({
+        let mut messages = system_messages;
+        messages.push(json!({
             "role": "user",
             "content": prompt
-        })]);
+        }));
+        return Ok(messages);
     }
 
-    let mut system_messages: Vec<Value> = Vec::new();
     let mut user_parts: Vec<Value> = vec![json!({
         "type": "text",
         "text": prompt

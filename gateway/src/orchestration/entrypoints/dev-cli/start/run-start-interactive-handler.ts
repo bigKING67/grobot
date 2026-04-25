@@ -18,6 +18,11 @@ interface CreateRunStartInteractiveHandlerInput {
   showPendingAskQueue(limit?: number): void;
   showHelp(): void;
   showHealthStatus(): void;
+  showContextStatus(): void;
+  showMemoryStatus(): void;
+  showSkillsStatus(): void;
+  showMcpStatus(): void;
+  runInitProjectInstructions(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showStatusCurrent(): void;
   setStatusTheme(theme: string): void;
@@ -93,6 +98,10 @@ export function createRunStartInteractiveHandler(
       },
       showHelp: input.showHelp,
       showHealthStatus: input.showHealthStatus,
+      showContextStatus: input.showContextStatus,
+      showMemoryStatus: input.showMemoryStatus,
+      showSkillsStatus: input.showSkillsStatus,
+      showMcpStatus: input.showMcpStatus,
       openModelMenu: async (withInputPaused) => {
         await input.openModelMenu(withInputPaused);
       },
@@ -185,6 +194,9 @@ export function createRunStartInteractiveHandler(
         input.promptSkillCreatorRequirement(withInputPaused),
       runSkillCreator: async (requirement) => {
         await input.runSkillCreator(requirement);
+      },
+      runInitProjectInstructions: async () => {
+        await input.runInitProjectInstructions();
       },
       tryRunUserCommand: async (userInput) => input.tryRunUserCommand(userInput),
       runTurn: async (userInput) => {

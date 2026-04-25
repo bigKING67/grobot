@@ -836,8 +836,16 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_usage, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_prompted, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_dispatched, false);
+  assert.equal(sessionInteractiveDispatchPayload.init_dispatched, true);
+  assert.equal(sessionInteractiveDispatchPayload.init_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.context_dispatched_to_status, true);
+  assert.equal(sessionInteractiveDispatchPayload.context_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.memory_dispatched_to_status, true);
+  assert.equal(sessionInteractiveDispatchPayload.memory_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.skills_dispatched_to_status, true);
   assert.equal(sessionInteractiveDispatchPayload.skills_dispatched_to_stdout, true);
   assert.equal(sessionInteractiveDispatchPayload.skills_hits_run_turn, false);
+  assert.equal(sessionInteractiveDispatchPayload.mcp_dispatched_to_status, true);
   assert.equal(sessionInteractiveDispatchPayload.mcp_dispatched_to_stdout, true);
   assert.equal(sessionInteractiveDispatchPayload.mcp_hits_run_turn, false);
   assert.equal(sessionInteractiveDispatchPayload.user_command_checked, true);
@@ -1195,6 +1203,23 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(userCommandsContractPayload.stdout_rows_count) >= 1, true);
   logStep("user-commands-contract");
 
+  const agentsInstructionsContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/agents-instructions-contract.ts",
+  ]);
+  assertSuccess("agents-instructions-contract", agentsInstructionsContractResult);
+  const agentsInstructionsContractPayload = parseJsonOutput(
+    "agents-instructions-contract",
+    agentsInstructionsContractResult.stdout,
+  );
+  assert.equal(Number(agentsInstructionsContractPayload.sources_count), 2);
+  assert.equal(Number(agentsInstructionsContractPayload.outside_sources_count), 1);
+  assert.equal(agentsInstructionsContractPayload.gro_loaded, true);
+  logStep("agents-instructions-contract");
+
   const runStartSlashSuggestionsContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -1212,6 +1237,9 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_resume, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_rewind, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_skill_creator, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_init, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_context, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.root_has_builtin_memory, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_hides_removed_ask_surface, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_hides_plan_subcommands, true);
   assert.equal(runStartSlashSuggestionsContractPayload.root_has_user_shipit, true);
@@ -1821,6 +1849,16 @@ async function runGatewayContractSmoke() {
   assert.equal(interactiveBindingsPayload.health_has_header, true);
   assert.equal(interactiveBindingsPayload.health_has_sticky_provider, true);
   assert.equal(interactiveBindingsPayload.health_has_provider_row, true);
+  assert.equal(interactiveBindingsPayload.context_status_has_header, true);
+  assert.equal(interactiveBindingsPayload.context_status_keeps_memory_separate, true);
+  assert.equal(interactiveBindingsPayload.memory_status_has_header, true);
+  assert.equal(interactiveBindingsPayload.skills_status_counts_project_skill, true);
+  assert.equal(interactiveBindingsPayload.skills_status_counts_global_skill, true);
+  assert.equal(interactiveBindingsPayload.mcp_status_has_server, true);
+  assert.equal(interactiveBindingsPayload.mcp_status_instruction_pack_loaded, true);
+  assert.equal(interactiveBindingsPayload.init_prompt_targets_agents, true);
+  assert.equal(interactiveBindingsPayload.init_prompt_blocks_trellis, true);
+  assert.equal(interactiveBindingsPayload.init_existing_agents_skips, true);
   assert.equal(interactiveBindingsPayload.manual_handoff_reason, "manual-command");
   assert.equal(interactiveBindingsPayload.manual_handoff_to_stderr, false);
   assert.equal(interactiveBindingsPayload.auto_exit_to_stderr, false);

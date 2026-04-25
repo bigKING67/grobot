@@ -48,6 +48,7 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             let execution_result = execute_turn(TurnExecuteInput {
                 request_id: params.request_id,
                 session_key: params.session_key,
+                system_prompt: params.system_prompt,
                 user_message: params.user_message,
                 context_lines: params.context_lines,
                 model_config: params.model_config.map(|model_config| RuntimeModelConfigInput {

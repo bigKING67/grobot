@@ -21,6 +21,8 @@ import { type RunStartRuntimeState } from "../../orchestration/entrypoints/dev-c
 import { type RunStartSessionMenuOps } from "../../orchestration/entrypoints/dev-cli/start/run-start-session-menu-ops";
 import { createPlanArtifact } from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
 import { listRunStartSlashSuggestions } from "../../orchestration/entrypoints/dev-cli/start/run-start-slash-suggestions";
+import { resolveContextEngineConfig } from "../../tools/context";
+import { createMemoryOrchestrator } from "../../tools/memory";
 import {
   type RuntimeFailoverConfig,
   type RuntimeProviderCandidate,
@@ -117,6 +119,12 @@ function createRuntimeStateMock(input: {
 async function main(): Promise<void> {
   const tempWorkDir = `${process.cwd()}/.tmp-run-start-interactive-bindings-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
   mkdirSync(tempWorkDir, { recursive: true });
+  const tempHomeDir = `${tempWorkDir}/home`;
+  const tempProjectRoot = `${tempWorkDir}/project`;
+  mkdirSync(`${tempHomeDir}/skills/global-demo`, { recursive: true });
+  mkdirSync(`${tempProjectRoot}/.grobot/skills/project-demo`, { recursive: true });
+  writeFileSync(`${tempHomeDir}/skills/global-demo/SKILL.md`, "# Global demo\n", "utf8");
+  writeFileSync(`${tempProjectRoot}/.grobot/skills/project-demo/SKILL.md`, "# Project demo\n", "utf8");
   const stdoutChunks: string[] = [];
   const historyMessages: ChatHistoryMessage[] = [
     { role: "user", content: "first" },
@@ -200,7 +208,31 @@ async function main(): Promise<void> {
 
   let switchResult = true;
   const switchEvents: string[] = [];
+  const turnInputs: string[] = [];
   const gaMechanismRuntime = createGaMechanismRuntime();
+  const memoryOrchestrator = createMemoryOrchestrator({
+    ga: {
+      listMemory: () => [],
+      listSkillCards: () => [],
+      registerTurnSuccess: () => undefined,
+      registerTurnFailure: () => undefined,
+      writeMemory: () => ({ ok: true, code: "contract" }),
+    },
+    experience: {
+      getTeamDefault: () => "default",
+      buildRecallPrompt: () => ({ prompt: "", matched: 0, candidates: 0 }),
+      searchRecords: () => [],
+      registerTurnSuccess: () => ({
+        skipped: true,
+        reason: "contract",
+        verificationPassed: true,
+        evidenceRefPassed: true,
+        redactionPassed: true,
+      }),
+      registerTurnFailure: () => ({ matched: false }),
+    },
+    workDir: tempWorkDir,
+  });
   let handoffReason = "";
   let handoffToStderr = true;
   let autoExitToStderr = true;
@@ -229,14 +261,14 @@ async function main(): Promise<void> {
       rewindSession: async () => false,
     },
     executeTurn: async (userInput) => {
-      void userInput;
+      turnInputs.push(userInput);
       return 0;
     },
   };
 
   const interactiveModeInput = createRunStartInteractiveModeInput({
-    homeDir: "/tmp/home",
-    projectRoot: "/tmp/project",
+    homeDir: tempHomeDir,
+    projectRoot: tempProjectRoot,
     projectName: "grobot",
     workDir: tempWorkDir,
     sessionNamespaceKey: "feishu:grobot:dm:interactive-binding-contract",
@@ -245,6 +277,10 @@ async function main(): Promise<void> {
     handoffAutoOnExit: true,
     handoffRecentTurns: 6,
     handoffPath: `${tempWorkDir}/HANDOFF.md`,
+    contextEngineConfig: resolveContextEngineConfig({}),
+    memoryOrchestrator,
+    mcpInstructionPromptPrefix: "MCP instructions",
+    mcpInstructionServerNames: ["grok-search"],
     buildHelpText: () => "contract-help",
     runtimeProviderChain,
     runtimeFailoverConfig,
@@ -344,6 +380,13 @@ async function main(): Promise<void> {
     switchResult = false;
     await interactiveModeInput.switchActiveSession("session-b", "switch");
     interactiveModeInput.showHealthStatus();
+    interactiveModeInput.showContextStatus();
+    interactiveModeInput.showMemoryStatus();
+    interactiveModeInput.showSkillsStatus();
+    interactiveModeInput.showMcpStatus();
+    await interactiveModeInput.runInitProjectInstructions();
+    writeFileSync(`${tempProjectRoot}/AGENTS.md`, "# Existing agents\n", "utf8");
+    await interactiveModeInput.runInitProjectInstructions();
     interactiveModeInput.showStatusCurrent();
     interactiveModeInput.setStatusTheme("nerd");
     interactiveModeInput.setStatusLayoutMode("compact");
@@ -401,6 +444,20 @@ async function main(): Promise<void> {
       health_has_header: outputText.includes("[provider-health]"),
       health_has_sticky_provider: outputText.includes("sticky_provider: alpha"),
       health_has_provider_row: outputText.includes("- alpha status=CLOSED"),
+      context_status_has_header: outputText.includes("[context]"),
+      context_status_keeps_memory_separate: outputText.includes("not the same layer"),
+      memory_status_has_header: outputText.includes("[memory]"),
+      skills_status_counts_project_skill: outputText.includes(`project: path=${tempProjectRoot}/.grobot/skills exists=yes skills=1`),
+      skills_status_counts_global_skill: outputText.includes(`global: path=${tempHomeDir}/skills exists=yes skills=1`),
+      mcp_status_has_server: outputText.includes("servers: grok-search"),
+      mcp_status_instruction_pack_loaded: outputText.includes("instruction_pack: loaded"),
+      init_prompt_targets_agents: turnInputs.some((item) =>
+        item.includes(`必须创建文件：${tempProjectRoot}/AGENTS.md`),
+      ),
+      init_prompt_blocks_trellis: turnInputs.some((item) =>
+        item.includes("不要生成 Trellis 文件"),
+      ),
+      init_existing_agents_skips: outputText.includes("AGENTS.md already exists"),
       manual_handoff_reason: handoffReason,
       manual_handoff_to_stderr: handoffToStderr,
       auto_exit_to_stderr: autoExitToStderr,

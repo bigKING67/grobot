@@ -578,42 +578,58 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     ],
   },
   {
-    id: "skills",
-    matches: (userInput) => matchesInteractiveCommand(userInput, "/skills"),
+    id: "init",
+    matches: (userInput) => userInput === "/init",
     execute: async ({ handlers }) => {
-      handlers.writeStdout(
-        [
-          "[skills]",
-          "- project: ./.grobot/skills",
-          "- global: ~/.grobot/skills",
-          "- tip: run /skill-creator your-requirement to create new skills",
-          "- tip: use /commands to manage reusable local command templates",
-          "",
-        ].join("\n"),
-      );
+      await handlers.runInitProjectInstructions();
       return "continue";
     },
     helpLines: [
-      "  /skills              Show skill directories and quick usage hint",
+      "  /init                Create AGENTS.md with project instructions",
+    ],
+  },
+  {
+    id: "context",
+    matches: (userInput) => userInput === "/context",
+    execute: async ({ handlers }) => {
+      handlers.showContextStatus();
+      return "continue";
+    },
+    helpLines: [
+      "  /context             Show current-turn context assembly status",
+    ],
+  },
+  {
+    id: "memory",
+    matches: (userInput) => userInput === "/memory",
+    execute: async ({ handlers }) => {
+      handlers.showMemoryStatus();
+      return "continue";
+    },
+    helpLines: [
+      "  /memory              Show durable memory layer status",
+    ],
+  },
+  {
+    id: "skills",
+    matches: (userInput) => matchesInteractiveCommand(userInput, "/skills"),
+    execute: async ({ handlers }) => {
+      handlers.showSkillsStatus();
+      return "continue";
+    },
+    helpLines: [
+      "  /skills              Show configured skill directories and counts",
     ],
   },
   {
     id: "mcp",
     matches: (userInput) => matchesInteractiveCommand(userInput, "/mcp"),
     execute: async ({ handlers }) => {
-      handlers.writeStdout(
-        [
-          "[mcp]",
-          "- runtime route is auto-injected by governance policy",
-          "- if you need explicit MCP request, ask with `mcp_call(server=..., tool=...)` in prompt",
-          "- check route status with /health and start diagnostics",
-          "",
-        ].join("\n"),
-      );
+      handlers.showMcpStatus();
       return "continue";
     },
     helpLines: [
-      "  /mcp                 Show MCP usage hints in current CLI session",
+      "  /mcp                 Show MCP instruction and server status",
     ],
   },
   {
@@ -936,6 +952,9 @@ const HELP_ORDER: readonly string[] = [
   "help",
   "exit",
   "health",
+  "init",
+  "context",
+  "memory",
   "skills",
   "mcp",
   "interrupt",
@@ -959,6 +978,9 @@ const PRIMARY_HELP_ORDER: readonly string[] = [
 
 const UTILITY_HELP_ORDER: readonly string[] = [
   "health",
+  "init",
+  "context",
+  "memory",
   "skills",
   "mcp",
   "interrupt",
@@ -973,9 +995,12 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/commands", description: "Manage user-defined slash commands" },
   { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
   { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
+  { command: "/init", description: "Create AGENTS.md with project instructions" },
+  { command: "/context", description: "Show current-turn context assembly status" },
+  { command: "/memory", description: "Show durable memory layer status" },
   { command: "/health", description: "Show provider failover and circuit status" },
-  { command: "/skills", description: "Show skill directories and quick usage hint" },
-  { command: "/mcp", description: "Show MCP usage hints in current CLI session" },
+  { command: "/skills", description: "Show configured skill directories and counts" },
+  { command: "/mcp", description: "Show MCP instruction and server status" },
   { command: "/model", description: "Open interactive model picker" },
   { command: "/status", description: "Show current status line config snapshot" },
   { command: "/plan", description: "Enter plan mode (or show plan status when already in plan mode)" },
@@ -993,6 +1018,9 @@ const PRIMARY_HINT_COMMANDS: readonly string[] = [
   "/commands",
   "/skill-creator",
   "/history",
+  "/init",
+  "/context",
+  "/memory",
   "/model",
   "/plan",
   "/exit",
@@ -1002,6 +1030,7 @@ const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {
   sessions: "/sessions",
   commands: "/commands",
   "skill-creator": "/skill-creator",
+  init: "/init",
   model: "/model",
   history: "/history",
   new: "/new",

@@ -280,6 +280,10 @@ export interface RunStartInteractiveModeInput {
   interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
   buildHelpText(): string;
   showHealthStatus(): void;
+  showContextStatus(): void;
+  showMemoryStatus(): void;
+  showSkillsStatus(): void;
+  showMcpStatus(): void;
   hasPendingAsk(): boolean;
   getPendingAskQueueSize(): number;
   getPendingAskPromptSummary?(): string | undefined;
@@ -326,6 +330,9 @@ export interface RunStartInteractiveModeInput {
   ): Promise<string | undefined>;
   runSkillCreator(
     requirement: string,
+    options?: RunStartInteractiveTurnOptions,
+  ): Promise<void>;
+  runInitProjectInstructions(
     options?: RunStartInteractiveTurnOptions,
   ): Promise<void>;
   tryRunUserCommand(
@@ -544,6 +551,18 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showHealthStatus: () => {
       input.showHealthStatus();
     },
+    showContextStatus: () => {
+      input.showContextStatus();
+    },
+    showMemoryStatus: () => {
+      input.showMemoryStatus();
+    },
+    showSkillsStatus: () => {
+      input.showSkillsStatus();
+    },
+    showMcpStatus: () => {
+      input.showMcpStatus();
+    },
     openModelMenu: input.openModelMenu,
     showStatusCurrent: input.showStatusCurrent,
     setStatusTheme: input.setStatusTheme,
@@ -588,6 +607,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     promptSkillCreatorRequirement: input.promptSkillCreatorRequirement,
     runSkillCreator: (requirement) =>
       input.runSkillCreator(requirement, {
+        writeStderr: writeInteractiveStderr,
+      }),
+    runInitProjectInstructions: () =>
+      input.runInitProjectInstructions({
         writeStderr: writeInteractiveStderr,
       }),
     tryRunUserCommand: (userInput) =>

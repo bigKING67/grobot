@@ -41,11 +41,13 @@ function buildRuntimeRequest(
   runtimeModelConfig?: RuntimeModelConfig,
   runtimeToolContext?: RuntimeToolContext,
   runtimeAttachments?: RuntimeAttachment[],
+  runtimeSystemPrompt?: string,
 ): RuntimeRequest {
   return {
     protocolVersion: "runtime.v1",
     requestId: turn.requestId,
     sessionKey: turn.sessionKey,
+    systemPrompt: runtimeSystemPrompt,
     userMessage: turn.userMessage,
     contextLines,
     modelConfig: runtimeModelConfig,
@@ -86,6 +88,7 @@ export class AgentLoop {
     runtimeToolContext?: RuntimeToolContext,
     runtimeAttachments?: RuntimeAttachment[],
     runtimeExecuteOptions?: RuntimeExecuteOptions,
+    runtimeSystemPrompt?: string,
   ): Promise<TurnExecutionReport> {
     const startedAt = nowIso();
     const contextLines = await this.deps.contextAssembler.assemble(turn);
@@ -96,6 +99,7 @@ export class AgentLoop {
       runtimeModelConfig,
       runtimeToolContext,
       runtimeAttachments,
+      runtimeSystemPrompt,
     );
 
     const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest, runtimeExecuteOptions);

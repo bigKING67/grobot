@@ -62,6 +62,7 @@ pub struct RuntimeAttachmentInput {
 pub struct TurnExecuteInput {
     pub request_id: String,
     pub session_key: String,
+    pub system_prompt: Option<String>,
     pub user_message: String,
     pub context_lines: Vec<String>,
     pub model_config: Option<RuntimeModelConfigInput>,

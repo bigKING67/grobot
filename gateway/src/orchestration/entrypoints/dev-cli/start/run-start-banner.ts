@@ -176,7 +176,7 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
       {
         title: "Tips for getting started",
         lines: [
-          "Run /init to create a CLAUDE.md file with instructions",
+          "Run /init to create an AGENTS.md file with instructions",
         ],
       },
       {

@@ -121,6 +121,9 @@ async function main(): Promise<void> {
       root_has_builtin_skill_creator: topLevel.some(
         (item) => item.command === "/skill-creator" && item.source === "builtin",
       ),
+      root_has_builtin_init: topLevel.some((item) => item.command === "/init" && item.source === "builtin"),
+      root_has_builtin_context: topLevel.some((item) => item.command === "/context" && item.source === "builtin"),
+      root_has_builtin_memory: topLevel.some((item) => item.command === "/memory" && item.source === "builtin"),
       root_has_user_shipit: topLevel.some((item) => item.command === "/shipit" && item.source === "user"),
       root_disabled_marked: topLevel.some(
         (item) => item.command === "/pause_release" && item.description.includes("disabled"),

@@ -295,6 +295,7 @@ function toRpcRequestLine(request: RuntimeRequest): string {
     params: {
       request_id: request.requestId,
       session_key: request.sessionKey,
+      system_prompt: request.systemPrompt,
       user_message: request.userMessage,
       context_lines: request.contextLines,
       model_config: modelConfigPayload,

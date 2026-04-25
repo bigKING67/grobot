@@ -1,9 +1,12 @@
 import { type SessionStoreRuntime } from "../services/session-store";
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import {
   type InteractiveDiagnosticsMode,
   type RunStartInteractiveModeInput,
 } from "./run-start-interactive-mode";
+import { type ContextEngineConfig } from "../../../../tools/context";
+import { type MemoryOrchestrator } from "../../../../tools/memory";
 import { type RuntimeAttachment } from "../../../../models/types";
 import {
   type RunStartModelOps,
@@ -42,6 +45,7 @@ import {
   resolveRunStartPlanSuggestionState,
   type RunStartPlanSuggestionState,
 } from "./plan-suggestion-state";
+import { resolveAgentsInstructionBlock } from "../services/agents-instructions";
 
 interface CreateRunStartInteractiveModeInput {
   homeDir: string;
@@ -55,6 +59,11 @@ interface CreateRunStartInteractiveModeInput {
   handoffRecentTurns: number;
   handoffPath: string;
   contextWindowTokens?: number;
+  contextEngineConfig: ContextEngineConfig;
+  memoryOrchestrator: MemoryOrchestrator;
+  mcpInstructionPromptPrefix?: string;
+  mcpInstructionServerNames: string[];
+  mcpInstructionStrictFailure?: string;
   interactiveDiagnosticsEnabled?: boolean;
   interactiveDiagnosticsMode?: InteractiveDiagnosticsMode;
   buildHelpText(): string;
@@ -193,6 +202,37 @@ function buildSkillCreatorPrompt(input: {
   ].join("\n");
 }
 
+function buildAgentsInitPrompt(input: {
+  targetPath: string;
+  projectRoot: string;
+  workDir: string;
+}): string {
+  return [
+    "你正在执行 grobot 内置 `/init`。",
+    "目标：为当前项目生成项目级 `AGENTS.md`，这是用户可编辑的项目协作规范。",
+    "",
+    "硬性约束：",
+    `- 必须创建文件：${input.targetPath}`,
+    `- 项目根目录：${input.projectRoot}`,
+    `- 当前工作目录：${input.workDir}`,
+    "- 不要创建或修改 `CLAUDE.md`。",
+    "- 不要创建或修改 `GRO.md` 或 `SOUL.md`；`GRO.md` 是产品内置系统提示词。",
+    "- 不要生成 Trellis 文件，也不要把 Trellis 描述为 grobot 用户需要使用的功能。",
+    "- `AGENTS.md` 应描述项目结构、构建/测试命令、代码风格、验证要求、安全配置注意事项，以及 agent-specific instructions。",
+    "- 内容应简洁、可执行、面向这个仓库；如果某些命令无法确认，写明需要用当前仓库脚本核验，不要编造。",
+    "- 必须实际写入文件，不要只在聊天中展示内容。",
+    "",
+    "建议结构：",
+    "# Repository Guidelines",
+    "## Project Structure",
+    "## Build, Test, and Development Commands",
+    "## Coding Style and Naming",
+    "## Testing and Verification",
+    "## Security and Configuration",
+    "## Agent-Specific Instructions",
+  ].join("\n");
+}
+
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
@@ -202,6 +242,56 @@ function formatSpawnError(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+interface SkillDirectoryStatus {
+  path: string;
+  exists: boolean;
+  skillCount: number;
+  invalidDirectoryCount: number;
+}
+
+function safeIsDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function readSkillDirectoryStatus(path: string): SkillDirectoryStatus {
+  if (!existsSync(path) || !safeIsDirectory(path)) {
+    return {
+      path,
+      exists: false,
+      skillCount: 0,
+      invalidDirectoryCount: 0,
+    };
+  }
+  let skillCount = 0;
+  let invalidDirectoryCount = 0;
+  for (const entry of readdirSync(path)) {
+    const entryPath = `${trimTrailingSlashes(path)}/${entry}`;
+    if (!safeIsDirectory(entryPath)) {
+      continue;
+    }
+    const skillPath = `${entryPath}/SKILL.md`;
+    if (existsSync(skillPath)) {
+      skillCount += 1;
+    } else {
+      invalidDirectoryCount += 1;
+    }
+  }
+  return {
+    path,
+    exists: true,
+    skillCount,
+    invalidDirectoryCount,
+  };
+}
+
+function formatSkillDirectoryStatus(label: string, status: SkillDirectoryStatus): string {
+  return `${label}: path=${status.path} exists=${status.exists ? "yes" : "no"} skills=${String(status.skillCount)} invalid_dirs=${String(status.invalidDirectoryCount)}`;
 }
 
 function detectPlatformFromEnv(): "darwin" | "win32" | "other" {
@@ -586,6 +676,84 @@ export function createRunStartInteractiveModeInput(
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };
 
+  const showContextStatus = (): void => {
+    const agentsInstructions = resolveAgentsInstructionBlock({
+      projectRoot: input.projectRoot,
+      workDir: input.workDir,
+    });
+    const modelSnapshot = getModelSnapshot();
+    const cachedModelWindow = input.modelOps.getCachedModelContextWindowTokens(modelSnapshot.model);
+    const effectiveWindow = typeof cachedModelWindow === "number"
+      ? cachedModelWindow
+      : input.contextEngineConfig.contextWindowTokens;
+    input.output.writeStdout(
+      [
+        "[context]",
+        "definition: current bounded prompt window assembled for this turn",
+        "system_prompt: GRO.md built-in",
+        `context_engine: ${input.contextEngineConfig.enabled ? "on" : "off"} profile=${input.contextEngineConfig.profile}`,
+        `context_window_tokens: ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "unknown"}`,
+        `auto_compact_limit: ${typeof input.contextEngineConfig.autoCompactTokenLimit === "number" ? String(input.contextEngineConfig.autoCompactTokenLimit) : "auto"}`,
+        `history_messages: ${String(input.runtimeState.getHistoryMessages().length)}`,
+        `project_instruction_sources: ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "<none>"}`,
+        "memory_relation: memory may be retrieved and injected into context; it is not the same layer",
+        "",
+      ].join("\n"),
+    );
+  };
+
+  const showMemoryStatus = (): void => {
+    const policy = input.memoryOrchestrator.policySnapshot();
+    const sessionKey = input.runtimeState.getSessionKey();
+    const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
+    input.output.writeStdout(
+      [
+        "[memory]",
+        "definition: durable cross-turn/session/project recall layer",
+        `memory_orchestrator: ${policy.enabled ? "on" : "off"} version=${policy.version} budget_ratio=${policy.injectBudgetRatio.toFixed(2)} section_max=${String(policy.maxSectionTokens)} ga_rows=${String(policy.maxGaMemoryRows)} team_rows=${String(policy.maxTeamExperienceRows)} team_score_min=${policy.minTeamExperienceScore.toFixed(2)}`,
+        `decay: ${policy.decayEnabled ? "on" : "off"} max_rows=${String(policy.decayMaxRowsPerSession)} min_keep=${String(policy.decayMinRowsToKeep)}`,
+        `ga_state: memory_rows=${String(gaState?.memory.length ?? 0)} skill_cards=${String(gaState?.skillCards.length ?? 0)} reflections=${String(gaState?.reflectionQueue.length ?? 0)} pending_ask=${String(gaState?.pendingAskQueue?.length ?? 0)}`,
+        "context_relation: memory is durable source material; only selected memory snippets enter the current context window",
+        "",
+      ].join("\n"),
+    );
+  };
+
+  const showSkillsStatus = (): void => {
+    const projectSkillsDir = `${trimTrailingSlashes(input.projectRoot)}/.grobot/skills`;
+    const globalSkillsDir = `${trimTrailingSlashes(input.homeDir)}/skills`;
+    const projectStatus = readSkillDirectoryStatus(projectSkillsDir);
+    const globalStatus = readSkillDirectoryStatus(globalSkillsDir);
+    input.output.writeStdout(
+      [
+        "[skills]",
+        formatSkillDirectoryStatus("project", projectStatus),
+        formatSkillDirectoryStatus("global", globalStatus),
+        "tip: run /skill-creator <requirement> to create or update skills",
+        "tip: use /commands to manage reusable local command templates",
+        "",
+      ].join("\n"),
+    );
+  };
+
+  const showMcpStatus = (): void => {
+    const hasInstructionPack = (input.mcpInstructionPromptPrefix?.trim() ?? "").length > 0;
+    const serverNames = input.mcpInstructionServerNames.length > 0
+      ? input.mcpInstructionServerNames.join(",")
+      : "<none>";
+    input.output.writeStdout(
+      [
+        "[mcp]",
+        `servers: ${serverNames}`,
+        `instruction_pack: ${hasInstructionPack ? "loaded" : "none"}`,
+        `strict_failure: ${input.mcpInstructionStrictFailure ?? "<none>"}`,
+        "explicit_call_hint: mcp_call(server=..., tool=...)",
+        "route_hint: /health shows provider failover; startup diagnostics show MCP instruction injection",
+        "",
+      ].join("\n"),
+    );
+  };
+
   const openHistorySearch = async (historyInput: {
     currentInput: string;
   }): Promise<string | undefined> => {
@@ -768,6 +936,10 @@ export function createRunStartInteractiveModeInput(
       ),
     getPendingAskPromptSummary,
     showPendingAskQueue,
+    showContextStatus,
+    showMemoryStatus,
+    showSkillsStatus,
+    showMcpStatus,
     showHealthStatus: () => {
       input.output.writeStdout(
         formatProviderHealthSnapshot({
@@ -856,6 +1028,27 @@ export function createRunStartInteractiveModeInput(
         requirement: normalizedRequirement,
         projectRoot: input.projectRoot,
         homeDir: input.homeDir,
+      });
+      const code = await input.executeTurn(prompt, true, {
+        writeStderr: options?.writeStderr,
+      });
+      if (shouldMarkFailure(code)) {
+        input.runtimeState.markFailureObserved();
+      }
+    },
+    runInitProjectInstructions: async (options) => {
+      const targetPath = `${trimTrailingSlashes(input.projectRoot)}/AGENTS.md`;
+      if (existsSync(targetPath)) {
+        input.output.writeStdout(
+          `[init] AGENTS.md already exists at ${targetPath}. Skipping /init to avoid overwriting it.\n\n`,
+        );
+        return;
+      }
+      input.output.writeStdout(`[init] generating project instructions: ${targetPath}\n\n`);
+      const prompt = buildAgentsInitPrompt({
+        targetPath,
+        projectRoot: input.projectRoot,
+        workDir: input.workDir,
       });
       const code = await input.executeTurn(prompt, true, {
         writeStderr: options?.writeStderr,

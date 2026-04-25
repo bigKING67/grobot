@@ -117,6 +117,8 @@ pub struct TurnExecuteAttachmentParams {
 pub struct TurnExecuteParams {
     pub request_id: String,
     pub session_key: String,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
     pub user_message: String,
     #[serde(default)]
     pub context_lines: Vec<String>,

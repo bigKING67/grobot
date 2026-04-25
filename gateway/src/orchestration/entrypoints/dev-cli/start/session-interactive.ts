@@ -36,6 +36,10 @@ export interface SessionInteractiveHandlers {
   showPendingAskQueue(limit?: number): void;
   showHelp(): void;
   showHealthStatus(): void;
+  showContextStatus(): void;
+  showMemoryStatus(): void;
+  showSkillsStatus(): void;
+  showMcpStatus(): void;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   showStatusCurrent(): void;
   setStatusTheme(theme: string): void;
@@ -80,6 +84,7 @@ export interface SessionInteractiveHandlers {
     withInputPaused: SessionInteractiveControls["withInputPaused"],
   ): Promise<string | undefined>;
   runSkillCreator(requirement: string): Promise<void>;
+  runInitProjectInstructions(): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
   runTurn(userInput: string): Promise<void>;
   onTurnError(error: unknown): void;

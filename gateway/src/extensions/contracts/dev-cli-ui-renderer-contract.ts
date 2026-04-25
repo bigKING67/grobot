@@ -66,7 +66,7 @@ const startupViewModel: StartScreenViewModel = {
     {
       title: "Tips for getting started",
       lines: [
-        "Run /init to create a CLAUDE.md file with instructions",
+        "Run /init to create an AGENTS.md file with instructions",
       ],
       footer: "Use /help to list all commands",
     },
@@ -104,7 +104,7 @@ const startupBrandSymbolViewModel: StartScreenViewModel = {
     {
       title: "Tips for getting started",
       lines: [
-        "Run /init to create a CLAUDE.md file with instructions",
+        "Run /init to create an AGENTS.md file with instructions",
       ],
     },
     {

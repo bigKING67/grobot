@@ -7,6 +7,8 @@ import {
   type RuntimeToolContext,
 } from "../../../../models/types";
 import { consumeInterruptFlag } from "../services/interrupt-store";
+import { resolveAgentsInstructionBlock } from "../services/agents-instructions";
+import { loadGrobotSystemPrompt } from "../system/gro-system-prompt";
 import {
   compactSingleLine,
   trimHistoryMessages,
@@ -115,6 +117,7 @@ interface CreateRunStartTurnRunnerInput {
   interruptStorePath: string;
   historyTurns: number;
   projectName: string;
+  projectRoot: string;
   workDir: string;
   subject: string;
   executionPlane: ExecutionPlaneConfig;
@@ -1777,6 +1780,7 @@ function resolveProviderOrder(input: {
 
 export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInput) {
   const providerFlowStateMap = new Map<string, ProviderFlowState>();
+  const grobotSystemPrompt = loadGrobotSystemPrompt();
   let consecutiveCompactionFailures = 0;
   let previousTargetTokenLimit: number | undefined;
 
@@ -2220,61 +2224,69 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       for (const event of memoryInject.stderrEvents) {
         input.writeStderr(event);
       }
-      const promptParts = [...askUserTurnContext.promptParts, ...memoryInject.promptParts];
-    const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
-    const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
-    const providerKind = resolvePrimaryProviderKind(input);
-    const kimiMcpFirstRouteEnabled = shouldUseKimiMcpFirstRoute({
-      policy: input.kimiSearchRoutingPolicy,
-      providerKind,
-      userText,
-      mcpServerNames: input.mcpInstructionServerNames,
-    });
+      const agentsInstructions = resolveAgentsInstructionBlock({
+        projectRoot: input.projectRoot,
+        workDir: input.workDir,
+      });
+      const promptParts = [
+        ...(agentsInstructions.block ? [agentsInstructions.block] : []),
+        ...askUserTurnContext.promptParts,
+        ...memoryInject.promptParts,
+      ];
+      const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
+      const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
+      const providerKind = resolvePrimaryProviderKind(input);
+      const kimiMcpFirstRouteEnabled = shouldUseKimiMcpFirstRoute({
+        policy: input.kimiSearchRoutingPolicy,
+        providerKind,
+        userText,
+        mcpServerNames: input.mcpInstructionServerNames,
+      });
       const kimiSearchRoutingPrefix = buildKimiSearchRoutingPrefix({
         policy: input.kimiSearchRoutingPolicy,
         providerKind,
         userText,
         mcpServerNames: input.mcpInstructionServerNames,
       });
-    const askUserClarificationHint = input.gaMechanismRuntime.buildAskUserClarificationHint(sessionKey, userText);
-    if (askUserClarificationHint.length > 0) {
-      promptParts.push(askUserClarificationHint);
-      input.writeStderr("[ask-user] event=clarification_hint_injected\n");
-    }
-    const semanticPrefetch = buildSemanticPrefetchBlock({
-      enabled: input.contextEngineConfig.semanticPrefetch.enabled,
-      workDir: input.workDir,
-      userText,
-      timeoutMs: input.contextEngineConfig.semanticPrefetch.timeoutMs,
-      maxEvidence: input.contextEngineConfig.semanticPrefetch.maxEvidence,
-    });
-    if (semanticPrefetch.block && semanticPrefetch.block.trim().length > 0) {
-      promptParts.push(semanticPrefetch.block);
-      input.writeStderr(
-        `[context-engine] event=semantic_prefetch status=applied evidence=${String(semanticPrefetch.evidenceCount)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
-      );
-      if (semanticPrefetch.warning) {
-        input.writeStderr(
-          `[context-engine] event=semantic_prefetch status=warning message=${compactSingleLine(semanticPrefetch.warning, 140)}\n`,
-        );
+      const askUserClarificationHint = input.gaMechanismRuntime.buildAskUserClarificationHint(sessionKey, userText);
+      if (askUserClarificationHint.length > 0) {
+        promptParts.push(askUserClarificationHint);
+        input.writeStderr("[ask-user] event=clarification_hint_injected\n");
       }
-    } else if (input.contextEngineConfig.semanticPrefetch.enabled) {
-      if (semanticPrefetch.warning) {
+      const semanticPrefetch = buildSemanticPrefetchBlock({
+        enabled: input.contextEngineConfig.semanticPrefetch.enabled,
+        workDir: input.workDir,
+        userText,
+        timeoutMs: input.contextEngineConfig.semanticPrefetch.timeoutMs,
+        maxEvidence: input.contextEngineConfig.semanticPrefetch.maxEvidence,
+      });
+      if (semanticPrefetch.block && semanticPrefetch.block.trim().length > 0) {
+        promptParts.push(semanticPrefetch.block);
         input.writeStderr(
-          `[context-engine] event=semantic_prefetch status=degraded message=${compactSingleLine(semanticPrefetch.warning, 140)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
+          `[context-engine] event=semantic_prefetch status=applied evidence=${String(semanticPrefetch.evidenceCount)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
         );
-      } else {
-        input.writeStderr(
-          `[context-engine] event=semantic_prefetch status=empty duration_ms=${String(semanticPrefetch.durationMs)}\n`,
-        );
+        if (semanticPrefetch.warning) {
+          input.writeStderr(
+            `[context-engine] event=semantic_prefetch status=warning message=${compactSingleLine(semanticPrefetch.warning, 140)}\n`,
+          );
+        }
+      } else if (input.contextEngineConfig.semanticPrefetch.enabled) {
+        if (semanticPrefetch.warning) {
+          input.writeStderr(
+            `[context-engine] event=semantic_prefetch status=degraded message=${compactSingleLine(semanticPrefetch.warning, 140)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
+          );
+        } else {
+          input.writeStderr(
+            `[context-engine] event=semantic_prefetch status=empty duration_ms=${String(semanticPrefetch.durationMs)}\n`,
+          );
+        }
       }
-    }
-    if (mcpInstructionPrefix.length > 0 && mcpInstructionDecision.inject) {
-      promptParts.push(mcpInstructionPrefix);
-    }
-    if (kimiSearchRoutingPrefix.length > 0) {
-      promptParts.push(kimiSearchRoutingPrefix);
-    }
+      if (mcpInstructionPrefix.length > 0 && mcpInstructionDecision.inject) {
+        promptParts.push(mcpInstructionPrefix);
+      }
+      if (kimiSearchRoutingPrefix.length > 0) {
+        promptParts.push(kimiSearchRoutingPrefix);
+      }
       const composeTurnPrompt = (conversationPrompt: string): string => {
         const merged = [...promptParts, conversationPrompt];
         return merged.join("\n\n");
@@ -2661,6 +2673,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                       toolContext: input.runtimeToolContext,
                       attachments: runtimeAttachments,
                       abortSignal: turnSignal,
+                      systemPrompt: grobotSystemPrompt,
                     },
                   );
                 break;

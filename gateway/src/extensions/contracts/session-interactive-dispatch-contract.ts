@@ -140,6 +140,22 @@ async function runDispatchCase(
     showHealthStatus: () => {
       events.push("showHealthStatus");
     },
+    showContextStatus: () => {
+      events.push("showContextStatus");
+      events.push("writeStdout");
+    },
+    showMemoryStatus: () => {
+      events.push("showMemoryStatus");
+      events.push("writeStdout");
+    },
+    showSkillsStatus: () => {
+      events.push("showSkillsStatus");
+      events.push("writeStdout");
+    },
+    showMcpStatus: () => {
+      events.push("showMcpStatus");
+      events.push("writeStdout");
+    },
     openModelMenu: async () => {
       events.push("openModelMenu");
     },
@@ -239,6 +255,9 @@ async function runDispatchCase(
     },
     runSkillCreator: async (requirement) => {
       events.push(`runSkillCreator:${requirement}`);
+    },
+    runInitProjectInstructions: async () => {
+      events.push("runInitProjectInstructions");
     },
     tryRunUserCommand: async (userInput) => {
       events.push(`tryRunUserCommand:${userInput}`);
@@ -529,6 +548,9 @@ async function main(): Promise<void> {
   const skillCreatorWithDemand = await runDispatchCase("/skill-creator 帮我写一个数据分析的skill");
   const skillCreatorNoDemandTty = await runDispatchCase("/skill-creator", { stdinIsTty: true });
   const skillCreatorNoDemandNonTty = await runDispatchCase("/skill-creator", { stdinIsTty: false });
+  const initCommand = await runDispatchCase("/init");
+  const contextCommand = await runDispatchCase("/context");
+  const memoryCommand = await runDispatchCase("/memory");
   const skillsCommand = await runDispatchCase("/skills");
   const mcpCommand = await runDispatchCase("/mcp");
   const userCommandInvocation = await runDispatchCase("/shipit");
@@ -1002,8 +1024,16 @@ async function main(): Promise<void> {
       skillCreatorNoDemandNonTty.events,
       "runSkillCreator:补齐技能需求",
     ),
+    init_dispatched: includesEvent(initCommand.events, "runInitProjectInstructions"),
+    init_hits_run_turn: includesEvent(initCommand.events, "runTurn:/init"),
+    context_dispatched_to_status: includesEvent(contextCommand.events, "showContextStatus"),
+    context_hits_run_turn: includesEvent(contextCommand.events, "runTurn:/context"),
+    memory_dispatched_to_status: includesEvent(memoryCommand.events, "showMemoryStatus"),
+    memory_hits_run_turn: includesEvent(memoryCommand.events, "runTurn:/memory"),
+    skills_dispatched_to_status: includesEvent(skillsCommand.events, "showSkillsStatus"),
     skills_dispatched_to_stdout: includesEvent(skillsCommand.events, "writeStdout"),
     skills_hits_run_turn: includesEvent(skillsCommand.events, "runTurn:/skills"),
+    mcp_dispatched_to_status: includesEvent(mcpCommand.events, "showMcpStatus"),
     mcp_dispatched_to_stdout: includesEvent(mcpCommand.events, "writeStdout"),
     mcp_hits_run_turn: includesEvent(mcpCommand.events, "runTurn:/mcp"),
     user_command_checked: includesEvent(userCommandInvocation.events, "tryRunUserCommand:/shipit"),

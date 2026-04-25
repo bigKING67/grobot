@@ -27,6 +27,7 @@ mod tests {
         TurnExecuteInput {
             request_id: "req-read-v2".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run read".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -46,6 +47,7 @@ mod tests {
         TurnExecuteInput {
             request_id: "req-read-edit-v2".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run read and edit".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -65,6 +67,7 @@ mod tests {
         TurnExecuteInput {
             request_id: "req-read-write-v2".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run read and write".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -84,6 +87,7 @@ mod tests {
         TurnExecuteInput {
             request_id: "req-read-write-edit-v2".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run read, write and edit".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -103,6 +107,7 @@ mod tests {
         TurnExecuteInput {
             request_id: "req-bash-v2".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run bash".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -122,6 +127,7 @@ mod tests {
         TurnExecuteInput {
             request_id: "req-fs-v2".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run list/glob/search".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -145,6 +151,7 @@ mod tests {
         TurnExecuteInput {
             request_id: format!("req-search-semantic-{request_suffix}"),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run search and semantic_search".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -184,6 +191,7 @@ mod tests {
     fn local_tool_catalog_keeps_schema_defaults_and_dispatch_aligned() {
         let definitions = local_tool_definitions();
         let mut schema_names = StdHashSet::new();
+        let mut schema_by_name = StdHashMap::new();
         for definition in definitions {
             let function = definition
                 .get("function")
@@ -194,6 +202,7 @@ mod tests {
                 .and_then(Value::as_str)
                 .expect("tool definition function.name must be string");
             schema_names.insert(name.to_string());
+            schema_by_name.insert(name.to_string(), function.clone());
         }
 
         let catalog_names: StdHashSet<String> = local_tool_catalog()
@@ -207,7 +216,34 @@ mod tests {
             .map(ToString::to_string)
             .collect();
         assert!(default_enabled_names.is_subset(&catalog_names));
+        assert!(default_enabled_names.contains(TOOL_WEB_SCAN));
+        assert!(default_enabled_names.contains(TOOL_WEB_EXECUTE_JS));
         assert!(default_enabled_names.contains(TOOL_ASK_USER_QUESTION));
+
+        let web_execute_js_schema = schema_by_name
+            .get(TOOL_WEB_EXECUTE_JS)
+            .and_then(|function| function.get("parameters"))
+            .and_then(Value::as_object)
+            .expect("web_execute_js schema must expose parameters");
+        assert_eq!(
+            web_execute_js_schema
+                .get("anyOf")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2),
+            "web_execute_js must require script or code"
+        );
+        assert!(
+            web_execute_js_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .and_then(|properties| properties.get("native_fallback_action"))
+                .and_then(Value::as_object)
+                .and_then(|schema| schema.get("enum"))
+                .and_then(Value::as_array)
+                .is_some_and(|values| values.iter().any(|value| value == "click")),
+            "web_execute_js native fallback actions must match browser backend schema"
+        );
 
         for tool_name in &catalog_names {
             assert!(
@@ -953,6 +989,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-kimi-local-tools".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "run local tools".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -2328,6 +2365,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-kimi-route".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "read".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -2410,6 +2448,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-kimi-pdf-pages-reject".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "read".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -2470,6 +2509,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-kimi-model-gate".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "read".to_string(),
             context_lines: vec![],
             model_config: Some(RuntimeModelConfigInput {
@@ -2581,6 +2621,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-read-v2-manual-external-pdf".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "read pdf".to_string(),
             context_lines: vec![],
             model_config,
@@ -3202,6 +3243,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-semantic-search".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "semantic search".to_string(),
             context_lines: vec![],
             model_config: None,
@@ -3237,6 +3279,7 @@ audit_redact_secrets = false
         let input = TurnExecuteInput {
             request_id: "req-prompt-enhancer".to_string(),
             session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
             user_message: "enhance prompt".to_string(),
             context_lines: vec![],
             model_config: None,

@@ -22,6 +22,7 @@ export interface GatewayContext {
 }
 
 export interface GatewayRuntimeOptions {
+  systemPrompt?: string;
   modelConfig?: RuntimeModelConfig;
   toolContext?: RuntimeToolContext;
   attachments?: RuntimeAttachment[];
@@ -92,5 +93,6 @@ export async function runGatewayTurn(
     {
       signal: runtimeOptions?.abortSignal,
     },
+    runtimeOptions?.systemPrompt,
   );
 }
