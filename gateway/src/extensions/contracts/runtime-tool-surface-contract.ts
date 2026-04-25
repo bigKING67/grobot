@@ -11,6 +11,7 @@ import type { RuntimeEvent, RuntimeToolContext } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
+  buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
   recordRuntimeToolSurfaceAdaptationOutcome,
 } from "../../tools/runtime/tool-surface-adaptation-state";
@@ -258,6 +259,17 @@ try {
   expectEqual(consumedRecoveryGuard.context?.toolSurfaceProfile, "coding", "consumed guard falls back to coding context");
   expectEqual(consumedRecoveryGuard.adaptation.active, false, "consumed guard blocks stale recovered adaptation");
   expectEqual(consumedRecoveryGuard.adaptation.recommendedProfile, "browser", "consumed guard keeps recommended profile observable");
+  const consumedRecoveryGuardPrompt = buildRuntimeToolSurfaceAdaptationGuardPrompt({
+    guard: consumedRecoveryGuard.guard,
+    recoveryFeedback: activeRecoveryFeedback({
+      toolName: "web_scan",
+      errorClass: "tool_not_visible",
+    }),
+  });
+  expect(consumedRecoveryGuardPrompt.includes("Runtime Tool Surface Guard"), "guard prompt header");
+  expect(consumedRecoveryGuardPrompt.includes("recovered_signal_consumed"), "guard prompt reason");
+  expect(consumedRecoveryGuardPrompt.includes("Suppressed recovery hint"), "guard prompt suppresses stale recovery hint");
+  expect(consumedRecoveryGuardPrompt.includes("Treat that signal as consumed"), "guard prompt gives consumed signal rule");
 
   for (let index = 0; index < 2; index += 1) {
     recordRuntimeToolSurfaceAdaptationOutcome({
@@ -381,6 +393,7 @@ process.stdout.write(JSON.stringify({
   adapted_mcp_profile: adaptedMcp.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
   adaptation_guard_recovered_signal_consumed: true,
+  adaptation_guard_prompt_suppresses_recovery_hint: true,
   adaptation_guard_repeated_failure: true,
   adaptation_guard_profile_oscillation: true,
   adaptation_guard_ignores_recovered_oscillation: true,

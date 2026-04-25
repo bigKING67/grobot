@@ -82,6 +82,7 @@ import {
 } from "../../../../tools/runtime/tool-events";
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
+  buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
   recordRuntimeToolSurfaceAdaptationOutcome,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
@@ -2403,7 +2404,18 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           `[tool-surface] event=adaptation_guard reason=${runtimeToolContextForTurn.guard.reason} blocked_profile=${runtimeToolContextForTurn.guard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextForTurn.guard.matchingFailureCount)} recent_profiles=${runtimeToolContextForTurn.guard.recentProfileSequence.join(",") || "<empty>"}\n`,
         );
       }
-      if (runtimeToolRecoveryFeedback.active) {
+      if (runtimeToolRecoveryFeedback.active && runtimeToolContextForTurn.guard.active) {
+        const guardPromptBlock = buildRuntimeToolSurfaceAdaptationGuardPrompt({
+          guard: runtimeToolContextForTurn.guard,
+          recoveryFeedback: runtimeToolRecoveryFeedback,
+        });
+        if (guardPromptBlock) {
+          promptParts.push(guardPromptBlock);
+        }
+        input.writeStderr(
+          `[tool-recovery] event=prompt_hint_guarded guard_reason=${runtimeToolContextForTurn.guard.reason} suppressed_action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"}\n`,
+        );
+      } else if (runtimeToolRecoveryFeedback.active) {
         promptParts.push(runtimeToolRecoveryFeedback.promptBlock);
         input.writeStderr(
           `[tool-recovery] event=prompt_hint_injected stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} severity=${runtimeToolRecoveryFeedback.severity} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"}\n`,
