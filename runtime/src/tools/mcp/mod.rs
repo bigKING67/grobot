@@ -697,12 +697,65 @@ fn browser_facade_args_with_current_browser_default(
     (browser_args, applied_tmwd_default)
 }
 
+fn projected_tool_property_names_for_context(
+    context: &ToolContextResolved,
+    public_tool_name: &str,
+) -> Result<HashSet<String>, ToolExecutionError> {
+    let tool = local_tool_catalog()
+        .into_iter()
+        .find(|tool| tool.name == public_tool_name)
+        .ok_or_else(|| {
+            ToolExecutionError::new(
+                "tool_dispatch_not_implemented",
+                format!("missing local tool schema for browser facade: {public_tool_name}"),
+            )
+        })?;
+    let projected = project_tool_parameters(
+        tool.name,
+        &tool.parameters,
+        &context.tool_surface_profile,
+        context.advanced_tool_schema,
+    );
+    Ok(projected
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().cloned().collect::<HashSet<String>>())
+        .unwrap_or_default())
+}
+
+fn validate_browser_facade_args_visible(
+    context: &ToolContextResolved,
+    args: &Map<String, Value>,
+    public_tool_name: &str,
+) -> Result<(), ToolExecutionError> {
+    let visible_properties = projected_tool_property_names_for_context(context, public_tool_name)?;
+    let mut hidden_args = args
+        .keys()
+        .filter(|key| !visible_properties.contains(key.as_str()))
+        .cloned()
+        .collect::<Vec<String>>();
+    if hidden_args.is_empty() {
+        return Ok(());
+    }
+    hidden_args.sort();
+    let hidden_args_text = hidden_args.join(", ");
+    Err(ToolExecutionError::new(
+        "tool_argument_not_visible",
+        format!(
+            "{public_tool_name} argument(s) [{hidden_args_text}] are not visible in current tool surface profile={} advanced_tool_schema={}. Use browser_advanced for transport/debug tuning, full_debug for explicit native browser actions, or remove hidden arguments.",
+            context.tool_surface_profile,
+            context.advanced_tool_schema,
+        ),
+    ))
+}
+
 fn run_browser_structured_tool(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
     browser_tool_name: &str,
     public_tool_name: &str,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
+    validate_browser_facade_args_visible(context, args, public_tool_name)?;
     let (browser_args, applied_tmwd_default) = browser_facade_args_with_current_browser_default(args);
     let mut wrapped_args = Map::new();
     wrapped_args.insert(

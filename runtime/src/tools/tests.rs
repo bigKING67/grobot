@@ -209,6 +209,36 @@ mod tests {
         }
     }
 
+    fn make_browser_input(
+        workspace: &PathBuf,
+        profile: &str,
+        advanced_tool_schema: bool,
+    ) -> TurnExecuteInput {
+        TurnExecuteInput {
+            request_id: format!("req-browser-{profile}"),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
+            user_message: "run browser tool".to_string(),
+            context_lines: vec![],
+            model_config: None,
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(workspace.to_string_lossy().to_string()),
+                enabled_tools: Some(vec![TOOL_WEB_EXECUTE_JS.to_string()]),
+                model_visible_tools: Some(vec![TOOL_WEB_EXECUTE_JS.to_string()]),
+                tool_surface_profile: Some(profile.to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(advanced_tool_schema),
+                bash_allowlist: None,
+                max_tool_rounds: Some(8),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        }
+    }
+
     fn execute_tool_payload(
         executor: &LocalToolExecutor,
         input: &TurnExecuteInput,
@@ -314,6 +344,26 @@ mod tests {
             .map(|name| name.to_string())
             .collect::<StdHashSet<String>>();
         assert_eq!(actual, expected, "{profile} surface tool set drifted");
+    }
+
+    fn browser_test_context(profile: &str, advanced_tool_schema: bool) -> ToolContextResolved {
+        let visible_tools = HashSet::from([
+            TOOL_WEB_SCAN.to_string(),
+            TOOL_WEB_EXECUTE_JS.to_string(),
+        ]);
+        ToolContextResolved {
+            session_key: "browser-test-session".to_string(),
+            work_dir: env::temp_dir(),
+            enabled_tools: visible_tools.clone(),
+            model_visible_tools: visible_tools,
+            tool_surface_profile: profile.to_string(),
+            advanced_tool_schema,
+            bash_allowlist: Vec::new(),
+        }
+    }
+
+    fn json_object_args(value: Value) -> Map<String, Value> {
+        value.as_object().expect("test args must be object").clone()
     }
 
     #[test]
@@ -687,6 +737,82 @@ mod tests {
     }
 
     #[test]
+    fn browser_facade_rejects_hidden_args_at_execution_boundary() {
+        let slim_context = browser_test_context("browser", false);
+        let slim_args = json_object_args(json!({
+            "script": "return document.title",
+            "tmwd_mode": "remote_cdp"
+        }));
+        let error =
+            validate_browser_facade_args_visible(&slim_context, &slim_args, TOOL_WEB_EXECUTE_JS)
+                .expect_err("slim browser surface should reject hidden transport args");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        assert!(error.message.contains("tmwd_mode"));
+        assert!(error.message.contains("profile=browser"));
+
+        let advanced_context = browser_test_context("browser_advanced", false);
+        let advanced_args = json_object_args(json!({
+            "script": "return document.title",
+            "native_fallback_action": "click",
+            "native_fallback_args": { "x": 1, "y": 2 }
+        }));
+        let error = validate_browser_facade_args_visible(
+            &advanced_context,
+            &advanced_args,
+            TOOL_WEB_EXECUTE_JS,
+        )
+        .expect_err("browser_advanced should reject explicit native action args");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        assert!(error.message.contains("native_fallback_action"));
+        assert!(error.message.contains("native_fallback_args"));
+
+        let auto_fallback_args = json_object_args(json!({
+            "script": "return document.title",
+            "tmwd_mode": "tmwd",
+            "native_auto_fallback": true,
+            "native_auto_fallback_policy": "balanced",
+            "native_fallback_timeout_ms": 1000
+        }));
+        validate_browser_facade_args_visible(
+            &advanced_context,
+            &auto_fallback_args,
+            TOOL_WEB_EXECUTE_JS,
+        )
+        .expect("browser_advanced should allow bounded auto fallback tuning");
+
+        let full_debug_context = browser_test_context("full_debug", false);
+        validate_browser_facade_args_visible(
+            &full_debug_context,
+            &advanced_args,
+            TOOL_WEB_EXECUTE_JS,
+        )
+        .expect("full_debug should allow explicit native browser actions");
+    }
+
+    #[test]
+    fn web_execute_js_dispatch_blocks_hidden_native_args_before_mcp_backend() {
+        let workspace = make_temp_workspace("browser-native-gate");
+        let input = make_browser_input(&workspace, "browser_advanced", false);
+        let call = ToolCallInput {
+            id: "browser-native-gate-1".to_string(),
+            name: TOOL_WEB_EXECUTE_JS.to_string(),
+            arguments: json!({
+                "script": "return document.title",
+                "native_fallback_action": "click",
+                "native_fallback_args": { "x": 1, "y": 2 }
+            }),
+        };
+        let executor = LocalToolExecutor;
+        let error = executor
+            .execute_tool_call(&call, &input)
+            .expect_err("hidden native action args should be blocked before MCP dispatch");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        assert!(error.message.contains("native_fallback_action"));
+        assert!(!error.message.contains("browser-structured"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn full_debug_surface_exposes_full_native_browser_schema() {
         let scan_params = surface_parameters("full_debug", vec![TOOL_WEB_SCAN], TOOL_WEB_SCAN);
         let scan_props = schema_property_names(&scan_params);
@@ -794,6 +920,7 @@ allow_tools = ["echo"]
             enabled_tools: HashSet::new(),
             model_visible_tools: HashSet::new(),
             tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
             bash_allowlist: Vec::new(),
         };
         let policy = load_mcp_call_policy(&context);
@@ -839,6 +966,7 @@ audit_redact_secrets = false
             enabled_tools: HashSet::new(),
             model_visible_tools: HashSet::new(),
             tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
             bash_allowlist: Vec::new(),
         };
         let policy = load_bash_runtime_policy(&context);
@@ -903,6 +1031,7 @@ audit_redact_secrets = false
             enabled_tools: HashSet::new(),
             model_visible_tools: HashSet::new(),
             tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
             bash_allowlist: Vec::new(),
         };
         let records = read_context_records_for_match(&context, "sample.txt", 4, 2, 1)
@@ -934,6 +1063,7 @@ audit_redact_secrets = false
             enabled_tools: HashSet::new(),
             model_visible_tools: HashSet::new(),
             tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
             bash_allowlist: Vec::new(),
         };
         let request = SearchRequest {

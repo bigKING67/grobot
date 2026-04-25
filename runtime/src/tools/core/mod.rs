@@ -99,6 +99,7 @@ struct ToolContextResolved {
     enabled_tools: HashSet<String>,
     model_visible_tools: HashSet<String>,
     tool_surface_profile: String,
+    advanced_tool_schema: bool,
     bash_allowlist: Vec<String>,
 }
 
@@ -1571,6 +1572,7 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
     let profile = canonical_tool_surface_profile(tool_context.tool_surface_profile.as_deref()).to_string();
     let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref())
         .unwrap_or_else(|| enabled_tools.clone());
+    let advanced_tool_schema = tool_context.advanced_tool_schema.unwrap_or(false);
     let bash_allowlist = tool_context
         .bash_allowlist
         .as_ref()
@@ -1593,6 +1595,7 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
         enabled_tools,
         model_visible_tools,
         tool_surface_profile: profile,
+        advanced_tool_schema,
         bash_allowlist,
     })
 }
