@@ -397,6 +397,20 @@ export function assessRuntimeToolSurfaceAdaptationGuard(input: {
     recoveryToolName: input.adaptation.recoveryToolName,
     recoveryErrorClass: input.adaptation.recoveryErrorClass,
   });
+  const latestAdaptation = input.snapshot.latestAdaptation;
+  if (
+    latestAdaptation
+    && latestAdaptation.outcome === "recovered"
+    && adaptationGuardKey(latestAdaptation) === candidateKey
+  ) {
+    return {
+      active: true,
+      reason: "recovered_signal_consumed",
+      blockedProfile: input.adaptation.appliedProfile,
+      matchingFailureCount: 0,
+      recentProfileSequence: input.snapshot.recentAdaptations.slice(-4).map((record) => record.appliedProfile),
+    };
+  }
   let matchingFailureCount = 0;
   for (const record of [...input.snapshot.recentAdaptations].reverse()) {
     const recordKey = adaptationGuardKey(record);

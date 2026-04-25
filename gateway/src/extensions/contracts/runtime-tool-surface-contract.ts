@@ -248,6 +248,17 @@ try {
   expectEqual(recoveredWrite.snapshot.profileOutcomes.browser.recoveredTotal, 1, "browser recovered total");
   expectEqual(recoveredWrite.snapshot.profileOutcomes.browser.recoveryRate, 1, "browser recovery rate");
 
+  const consumedRecoveryGuard = applyRuntimeToolSurfaceAdaptationGuard({
+    baseContext: coding,
+    result: adaptedBrowser,
+    snapshot: recoveredWrite.snapshot,
+  });
+  expectEqual(consumedRecoveryGuard.guard.active, true, "recovered signal activates consumed guard");
+  expectEqual(consumedRecoveryGuard.guard.reason, "recovered_signal_consumed", "recovered signal consumed guard reason");
+  expectEqual(consumedRecoveryGuard.context?.toolSurfaceProfile, "coding", "consumed guard falls back to coding context");
+  expectEqual(consumedRecoveryGuard.adaptation.active, false, "consumed guard blocks stale recovered adaptation");
+  expectEqual(consumedRecoveryGuard.adaptation.recommendedProfile, "browser", "consumed guard keeps recommended profile observable");
+
   for (let index = 0; index < 2; index += 1) {
     recordRuntimeToolSurfaceAdaptationOutcome({
       workDir: adaptationWorkDir,
@@ -369,6 +380,7 @@ process.stdout.write(JSON.stringify({
   adapted_context_profile: adaptedContext.context?.toolSurfaceProfile,
   adapted_mcp_profile: adaptedMcp.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
+  adaptation_guard_recovered_signal_consumed: true,
   adaptation_guard_repeated_failure: true,
   adaptation_guard_profile_oscillation: true,
   adaptation_guard_ignores_recovered_oscillation: true,
