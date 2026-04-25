@@ -170,7 +170,7 @@ grobot --help
   - `grobot browser hub start`：启动 TMWD hub。
   - `grobot browser doctor`：诊断真实浏览器链路。
   - `grobot browser doctor --json`：输出机器可读诊断结果，便于企业部署或 GUI 直接读取。
-  - 使用说明见：[docs/browser-automation.md](docs/browser-automation.md)。
+  - 用户级教程见：[docs/chapter2-browser.md](docs/chapter2-browser.md)；工具/部署细节见：[docs/browser-automation.md](docs/browser-automation.md)。
 
 可选参数：
 

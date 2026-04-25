@@ -1413,6 +1413,22 @@ async function runGatewayContractSmoke() {
   assert.equal(Array.isArray(browserStructuredContractPayload.tool_call_transport_attempts), true);
   logStep("browser-structured-mcp-contract");
 
+  const browserDoctorSchemaResult = runCommand("node", [
+    "gateway/src/extensions/contracts/browser-doctor-json-schema-contract.mjs",
+  ], {
+    timeoutMs: 30_000,
+  });
+  assertSuccess("browser-doctor-json-schema-contract", browserDoctorSchemaResult);
+  const browserDoctorSchemaPayload = parseJsonOutput(
+    "browser-doctor-json-schema-contract",
+    browserDoctorSchemaResult.stdout,
+  );
+  assert.equal(browserDoctorSchemaPayload.ok, true);
+  assert.equal(browserDoctorSchemaPayload.validated_examples, 2);
+  assert.equal(Array.isArray(browserDoctorSchemaPayload.doctor_path_enum), true);
+  assert.equal(browserDoctorSchemaPayload.doctor_path_enum.includes("cdp"), true);
+  logStep("browser-doctor-json-schema-contract");
+
   const providerHealthFormatResult = runCommand("npx", [
     "--yes",
     "--package",

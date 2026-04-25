@@ -1,5 +1,7 @@
 # 浏览器能力
 
+面向最终用户的章节化教程见：[第 2 章 浏览器能力解锁](chapter2-browser.md)。
+
 `grobot` 的浏览器能力分两层：
 
 1. Agent 默认可直接调用的原子工具：`web_scan` / `web_execute_js`。
@@ -98,6 +100,18 @@ grobot browser doctor
 
 ```bash
 grobot browser doctor --json
+```
+
+机器可读输出契约固定在：
+
+```text
+docs/schemas/browser-doctor.schema.json
+```
+
+仓库内可用以下命令验证 schema 与示例 payload：
+
+```bash
+npm run check:browser-doctor:schema
 ```
 
 如果只是检查后端端口和传输层是否可达，而不要求当前浏览器已有可操作 tab/session，可加：
