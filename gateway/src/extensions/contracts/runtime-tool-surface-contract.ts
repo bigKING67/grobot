@@ -188,6 +188,31 @@ expectEqual(browserProjection.projectionMode, "slim", "browser projection mode")
 expectEqual(browserProjection.schemaPropertyCount, 25, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
 expectEqual(browserProjection.suppressedSchemaPropertyCount, 22, "browser projection suppressed property count");
+expectDeepEqual(
+  browserProjection.perToolVisibleArgs?.web_scan,
+  ["main_only", "max_chars", "session_id", "session_url_pattern", "switch_tab_id", "tabs_only", "text_only"],
+  "browser projection exposes slim web_scan arg names",
+);
+expectDeepEqual(
+  browserProjection.perToolSuppressedArgs?.web_execute_js,
+  [
+    "cdp_endpoint",
+    "native_auto_execute",
+    "native_auto_fallback",
+    "native_auto_fallback_policy",
+    "native_execute_action_scope",
+    "native_fallback_action",
+    "native_fallback_args",
+    "native_fallback_timeout_ms",
+    "no_monitor",
+    "target_url_contains",
+    "tmwd_link_endpoint",
+    "tmwd_mode",
+    "tmwd_transport",
+    "tmwd_ws_endpoint",
+  ],
+  "browser projection exposes slim web_execute_js suppressed arg names",
+);
 
 const validRuntimeSchemaProfile = {
   policy_version: "v1",

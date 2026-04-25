@@ -1588,6 +1588,10 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolSchemaProjectionDrift = isObject(runtimeTools?.schema_projection_drift)
     ? runtimeTools.schema_projection_drift
     : null;
+  const runtimeToolSchemaProjectionDriftArgMismatchDetails =
+    Array.isArray(runtimeToolSchemaProjectionDrift?.arg_mismatch_details)
+      ? runtimeToolSchemaProjectionDrift.arg_mismatch_details
+      : [];
   if (runtimeToolSchemaProjection?.source !== "runtime.tools.describe") {
     throw new Error(
       `runtime tool schema projection should be sourced from runtime.tools.describe: ${String(runtimeToolSchemaProjection?.source ?? "missing")}`,
@@ -1916,6 +1920,26 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_schema_projection_drift_checked_type: typeof runtimeToolSchemaProjectionDrift?.checked,
     status_runtime_tool_schema_projection_drift_active_type: typeof runtimeToolSchemaProjectionDrift?.active,
     status_runtime_tool_schema_projection_drift_reason_type: typeof runtimeToolSchemaProjectionDrift?.reason,
+    status_runtime_tool_schema_projection_drift_runtime_visible_args_type:
+      typeof runtimeToolSchemaProjectionDrift?.runtime_per_tool_visible_args,
+    status_runtime_tool_schema_projection_drift_gateway_visible_args_type:
+      typeof runtimeToolSchemaProjectionDrift?.gateway_per_tool_visible_args,
+    status_runtime_tool_schema_projection_drift_runtime_suppressed_args_type:
+      typeof runtimeToolSchemaProjectionDrift?.runtime_per_tool_suppressed_args,
+    status_runtime_tool_schema_projection_drift_gateway_suppressed_args_type:
+      typeof runtimeToolSchemaProjectionDrift?.gateway_per_tool_suppressed_args,
+    status_runtime_tool_schema_projection_drift_runtime_visible_args_sum:
+      sumStringArrayRecordLengths(runtimeToolSchemaProjectionDrift?.runtime_per_tool_visible_args),
+    status_runtime_tool_schema_projection_drift_gateway_visible_args_sum:
+      sumStringArrayRecordLengths(runtimeToolSchemaProjectionDrift?.gateway_per_tool_visible_args),
+    status_runtime_tool_schema_projection_drift_runtime_suppressed_args_sum:
+      sumStringArrayRecordLengths(runtimeToolSchemaProjectionDrift?.runtime_per_tool_suppressed_args),
+    status_runtime_tool_schema_projection_drift_gateway_suppressed_args_sum:
+      sumStringArrayRecordLengths(runtimeToolSchemaProjectionDrift?.gateway_per_tool_suppressed_args),
+    status_runtime_tool_schema_projection_drift_arg_mismatch_details_is_array:
+      Array.isArray(runtimeToolSchemaProjectionDrift?.arg_mismatch_details),
+    status_runtime_tool_schema_projection_drift_arg_mismatch_details_count:
+      runtimeToolSchemaProjectionDriftArgMismatchDetails.length,
     status_runtime_tool_surface_decision_present: Boolean(runtimeToolSurfaceDecision),
     status_runtime_tool_surface_decision_profile: runtimeToolSurfaceDecision?.profile ?? null,
     status_runtime_tool_surface_decision_reason_type: typeof runtimeToolSurfaceDecision?.reason,
@@ -4339,9 +4363,9 @@ function runStatusRuntimeDescribeUnavailable(repoRoot) {
     ...result,
     missing_runtime_path: missingRuntimePath,
     has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
-    has_unavailable_suppressed_args: result.stdout.includes(
-      "runtime_tool_schema_suppressed_args: <unavailable source=gateway.fallback>",
-    ),
+    has_gateway_fallback_suppressed_none: result.stdout.includes("runtime_tool_schema_suppressed_args: <none>"),
+    has_gateway_fallback_drift_args_none: result.stdout.includes("runtime_tool_schema_projection_drift_args: <none>"),
+    has_unavailable_suppressed_args: result.stdout.includes("runtime_tool_schema_suppressed_args: <unavailable"),
     has_unavailable_describe_reason: result.stdout.includes("runtime_tools_describe_unavailable:spawn_failed"),
   };
 }

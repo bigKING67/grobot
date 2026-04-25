@@ -228,6 +228,11 @@ interface RuntimeToolSurfaceProjectionDrift {
   gatewaySuppressedSchemaPropertyCount: number;
   runtimePerToolPropertyCount: Record<string, number> | null;
   gatewayPerToolPropertyCount: Record<string, number>;
+  runtimePerToolVisibleArgs: Record<string, string[]> | null;
+  gatewayPerToolVisibleArgs: Record<string, string[]>;
+  runtimePerToolSuppressedArgs: Record<string, string[]> | null;
+  gatewayPerToolSuppressedArgs: Record<string, string[]>;
+  argMismatchDetails: string[];
 }
 
 function sameNumberRecord(left: Record<string, number>, right: Record<string, number>): boolean {
@@ -237,6 +242,58 @@ function sameNumberRecord(left: Record<string, number>, right: Record<string, nu
     return false;
   }
   return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
+}
+
+function cloneStringArrayRecord(record: Record<string, string[]> | undefined): Record<string, string[]> | null {
+  if (!record) {
+    return null;
+  }
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, [...value]]));
+}
+
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((item, index) => item === right[index]);
+}
+
+function sameStringArrayRecord(
+  left: Record<string, string[]> | undefined,
+  right: Record<string, string[]> | undefined,
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (!sameStringArray(leftKeys, rightKeys)) {
+    return false;
+  }
+  return leftKeys.every((key) => sameStringArray(left[key] ?? [], right[key] ?? []));
+}
+
+function describeStringArrayRecordDiff(
+  label: string,
+  runtimeRecord: Record<string, string[]> | undefined,
+  gatewayRecord: Record<string, string[]> | undefined,
+): string[] {
+  if (!runtimeRecord || !gatewayRecord) {
+    return [`${label}:metadata_unavailable`];
+  }
+  const toolNames = [...new Set([...Object.keys(runtimeRecord), ...Object.keys(gatewayRecord)])].sort();
+  const details: string[] = [];
+  for (const toolName of toolNames) {
+    const runtimeArgs = runtimeRecord[toolName] ?? [];
+    const gatewayArgs = gatewayRecord[toolName] ?? [];
+    if (sameStringArray(runtimeArgs, gatewayArgs)) {
+      continue;
+    }
+    details.push(
+      `${label}:${toolName}:runtime=${runtimeArgs.join("|") || "-"}:gateway=${gatewayArgs.join("|") || "-"}`,
+    );
+  }
+  return details;
 }
 
 function buildRuntimeToolSurfaceProjectionDrift(input: {
@@ -266,10 +323,16 @@ function buildRuntimeToolSurfaceProjectionDrift(input: {
       gatewaySuppressedSchemaPropertyCount: gatewayFallbackSummary.suppressedSchemaPropertyCount,
       runtimePerToolPropertyCount: null,
       gatewayPerToolPropertyCount: { ...gatewayFallbackSummary.perToolPropertyCount },
+      runtimePerToolVisibleArgs: null,
+      gatewayPerToolVisibleArgs: cloneStringArrayRecord(gatewayFallbackSummary.perToolVisibleArgs) ?? {},
+      runtimePerToolSuppressedArgs: null,
+      gatewayPerToolSuppressedArgs: cloneStringArrayRecord(gatewayFallbackSummary.perToolSuppressedArgs) ?? {},
+      argMismatchDetails: [],
     };
   }
 
   const mismatches: string[] = [];
+  const argMismatchDetails: string[] = [];
   if (runtimeSummary.projectionMode !== gatewayFallbackSummary.projectionMode) {
     mismatches.push("projection_mode");
   }
@@ -288,6 +351,26 @@ function buildRuntimeToolSurfaceProjectionDrift(input: {
   if (!sameNumberRecord(runtimeSummary.perToolPropertyCount, gatewayFallbackSummary.perToolPropertyCount)) {
     mismatches.push("per_tool_property_count");
   }
+  if (!sameStringArrayRecord(runtimeSummary.perToolVisibleArgs, gatewayFallbackSummary.perToolVisibleArgs)) {
+    mismatches.push("per_tool_visible_args");
+    argMismatchDetails.push(
+      ...describeStringArrayRecordDiff(
+        "visible",
+        runtimeSummary.perToolVisibleArgs,
+        gatewayFallbackSummary.perToolVisibleArgs,
+      ),
+    );
+  }
+  if (!sameStringArrayRecord(runtimeSummary.perToolSuppressedArgs, gatewayFallbackSummary.perToolSuppressedArgs)) {
+    mismatches.push("per_tool_suppressed_args");
+    argMismatchDetails.push(
+      ...describeStringArrayRecordDiff(
+        "suppressed",
+        runtimeSummary.perToolSuppressedArgs,
+        gatewayFallbackSummary.perToolSuppressedArgs,
+      ),
+    );
+  }
 
   return {
     checked: true,
@@ -305,6 +388,11 @@ function buildRuntimeToolSurfaceProjectionDrift(input: {
     gatewaySuppressedSchemaPropertyCount: gatewayFallbackSummary.suppressedSchemaPropertyCount,
     runtimePerToolPropertyCount: { ...runtimeSummary.perToolPropertyCount },
     gatewayPerToolPropertyCount: { ...gatewayFallbackSummary.perToolPropertyCount },
+    runtimePerToolVisibleArgs: cloneStringArrayRecord(runtimeSummary.perToolVisibleArgs),
+    gatewayPerToolVisibleArgs: cloneStringArrayRecord(gatewayFallbackSummary.perToolVisibleArgs) ?? {},
+    runtimePerToolSuppressedArgs: cloneStringArrayRecord(runtimeSummary.perToolSuppressedArgs),
+    gatewayPerToolSuppressedArgs: cloneStringArrayRecord(gatewayFallbackSummary.perToolSuppressedArgs) ?? {},
+    argMismatchDetails,
   };
 }
 
@@ -851,6 +939,13 @@ function formatRuntimeToolSuppressedArgs(summary: RuntimeToolSurfaceProjectionSu
   return rows.join(";");
 }
 
+function formatRuntimeToolArgDriftDetails(drift: RuntimeToolSurfaceProjectionDrift): string {
+  if (drift.argMismatchDetails.length === 0) {
+    return "<none>";
+  }
+  return drift.argMismatchDetails.join(";");
+}
+
 function serializeRuntimeToolSurfaceProjectionDrift(
   drift: RuntimeToolSurfaceProjectionDrift,
 ): Record<string, unknown> {
@@ -870,6 +965,11 @@ function serializeRuntimeToolSurfaceProjectionDrift(
     gateway_suppressed_schema_property_count: drift.gatewaySuppressedSchemaPropertyCount,
     runtime_per_tool_property_count: drift.runtimePerToolPropertyCount,
     gateway_per_tool_property_count: drift.gatewayPerToolPropertyCount,
+    runtime_per_tool_visible_args: drift.runtimePerToolVisibleArgs,
+    gateway_per_tool_visible_args: drift.gatewayPerToolVisibleArgs,
+    runtime_per_tool_suppressed_args: drift.runtimePerToolSuppressedArgs,
+    gateway_per_tool_suppressed_args: drift.gatewayPerToolSuppressedArgs,
+    arg_mismatch_details: drift.argMismatchDetails,
   };
 }
 
@@ -2225,6 +2325,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_schema_projection_drift: checked=${runtimeToolContextPreview.schemaProjectionDrift.checked ? "true" : "false"} active=${runtimeToolContextPreview.schemaProjectionDrift.active ? "true" : "false"} reason=${runtimeToolContextPreview.schemaProjectionDrift.reason}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_schema_projection_drift_args: ${formatRuntimeToolArgDriftDetails(runtimeToolContextPreview.schemaProjectionDrift)}\n`,
   );
   process.stdout.write(`runtime_tool_metrics_path: ${runtimeToolSurfaceMetrics.path}\n`);
   process.stdout.write(

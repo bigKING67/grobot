@@ -118,31 +118,106 @@ const ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   web_execute_js: 640,
 };
 
-const FULL_SCHEMA_PROPERTY_COUNT: Record<string, number> = {
-  list: 3,
-  glob: 3,
-  search: 8,
-  read: 7,
-  write: 2,
-  edit: 2,
-  bash: 4,
-  mcp_servers: 2,
-  mcp_call: 3,
-  web_scan: 15,
-  web_execute_js: 21,
-  semantic_search: 9,
-  prompt_enhancer: 9,
-  ask_user_question: 4,
+const FULL_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
+  list: ["max_entries", "path", "recursive"],
+  glob: ["max_entries", "path", "pattern"],
+  search: ["case_sensitive", "context_after", "context_before", "fixed", "max_results", "path", "query", "regex"],
+  read: ["include_metadata", "limit", "line_end", "line_start", "offset", "pages", "path"],
+  write: ["content", "path"],
+  edit: ["edits", "path"],
+  bash: ["command", "max_output_bytes", "max_output_lines", "timeout_ms"],
+  mcp_servers: ["include_disabled", "ready_only"],
+  mcp_call: ["arguments", "server", "tool"],
+  web_scan: [
+    "cdp_endpoint",
+    "main_only",
+    "main_only_fallback_to_full",
+    "main_only_min_chars",
+    "main_only_min_coverage",
+    "max_chars",
+    "session_id",
+    "session_url_pattern",
+    "switch_tab_id",
+    "tabs_only",
+    "text_only",
+    "tmwd_link_endpoint",
+    "tmwd_mode",
+    "tmwd_transport",
+    "tmwd_ws_endpoint",
+  ],
+  web_execute_js: [
+    "cdp_endpoint",
+    "code",
+    "native_auto_execute",
+    "native_auto_fallback",
+    "native_auto_fallback_policy",
+    "native_execute_action_scope",
+    "native_fallback_action",
+    "native_fallback_args",
+    "native_fallback_timeout_ms",
+    "no_monitor",
+    "script",
+    "session_id",
+    "session_url_pattern",
+    "switch_tab_id",
+    "tab_id",
+    "target_url_contains",
+    "timeout_ms",
+    "tmwd_link_endpoint",
+    "tmwd_mode",
+    "tmwd_transport",
+    "tmwd_ws_endpoint",
+  ],
+  semantic_search: [
+    "bridge_script",
+    "include_org",
+    "max_segments",
+    "per_source_limit",
+    "query",
+    "refresh",
+    "sources",
+    "technical_terms",
+    "timeout_ms",
+  ],
+  prompt_enhancer: [
+    "bridge_script",
+    "explicit_paths",
+    "explicit_symbols",
+    "include_org",
+    "max_evidence",
+    "prompt",
+    "refresh",
+    "sources",
+    "timeout_ms",
+  ],
+  ask_user_question: ["blocking_node_id", "default_on_timeout", "questions", "resume_token"],
 };
 
-const SLIM_BROWSER_SCHEMA_PROPERTY_COUNT: Record<string, number> = {
-  web_scan: 7,
-  web_execute_js: 7,
+const SLIM_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
+  web_scan: ["main_only", "max_chars", "session_id", "session_url_pattern", "switch_tab_id", "tabs_only", "text_only"],
+  web_execute_js: ["code", "script", "session_id", "session_url_pattern", "switch_tab_id", "tab_id", "timeout_ms"],
 };
 
-const ADVANCED_BROWSER_SCHEMA_PROPERTY_COUNT: Record<string, number> = {
-  web_scan: 15,
-  web_execute_js: 16,
+const ADVANCED_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
+  web_scan: FULL_SCHEMA_ARG_NAMES.web_scan,
+  web_execute_js: [
+    "cdp_endpoint",
+    "code",
+    "native_auto_fallback",
+    "native_auto_fallback_policy",
+    "native_fallback_timeout_ms",
+    "script",
+    "session_id",
+    "session_url_pattern",
+    "switch_tab_id",
+    "tab_id",
+    "target_url_contains",
+    "timeout_ms",
+    "tmwd_link_endpoint",
+    "tmwd_mode",
+    "tmwd_transport",
+    "tmwd_ws_endpoint",
+  ],
 };
 
 export function buildDefaultRuntimeEnabledTools(): string[] {
@@ -164,16 +239,22 @@ function projectionModeForSurface(
 }
 
 function schemaPropertyCountForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): number {
-  if (projectionMode === "full") {
-    return FULL_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+  return schemaArgNamesForTool(toolName, projectionMode).length;
+}
+
+function schemaArgNamesForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): string[] {
+  if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_ARG_NAMES) {
+    return [...ADVANCED_BROWSER_SCHEMA_ARG_NAMES[toolName]];
   }
-  if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_PROPERTY_COUNT) {
-    return ADVANCED_BROWSER_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+  if (projectionMode === "slim" && toolName in SLIM_BROWSER_SCHEMA_ARG_NAMES) {
+    return [...SLIM_BROWSER_SCHEMA_ARG_NAMES[toolName]];
   }
-  if (projectionMode === "slim" && toolName in SLIM_BROWSER_SCHEMA_PROPERTY_COUNT) {
-    return SLIM_BROWSER_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
-  }
-  return FULL_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+  return [...(FULL_SCHEMA_ARG_NAMES[toolName] ?? [])];
+}
+
+function suppressedSchemaArgNamesForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): string[] {
+  const visibleArgNames = new Set(schemaArgNamesForTool(toolName, projectionMode));
+  return (FULL_SCHEMA_ARG_NAMES[toolName] ?? []).filter((argName) => !visibleArgNames.has(argName));
 }
 
 function sumSchemaPropertyCounts(
@@ -194,7 +275,23 @@ function sumSchemaPropertyCounts(
 }
 
 function sumFullSchemaPropertyCounts(toolNames: readonly string[]): number {
-  return toolNames.reduce((total, toolName) => total + (FULL_SCHEMA_PROPERTY_COUNT[toolName] ?? 0), 0);
+  return toolNames.reduce((total, toolName) => total + (FULL_SCHEMA_ARG_NAMES[toolName]?.length ?? 0), 0);
+}
+
+function buildSchemaArgMetadata(
+  toolNames: readonly string[],
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): {
+  perToolVisibleArgs: Record<string, string[]>;
+  perToolSuppressedArgs: Record<string, string[]>;
+} {
+  const perToolVisibleArgs: Record<string, string[]> = {};
+  const perToolSuppressedArgs: Record<string, string[]> = {};
+  for (const toolName of toolNames) {
+    perToolVisibleArgs[toolName] = schemaArgNamesForTool(toolName, projectionMode);
+    perToolSuppressedArgs[toolName] = suppressedSchemaArgNamesForTool(toolName, projectionMode);
+  }
+  return { perToolVisibleArgs, perToolSuppressedArgs };
 }
 
 export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolContext): RuntimeToolSurfaceProjectionSummary {
@@ -205,6 +302,7 @@ export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolCon
   const projectionMode = projectionModeForSurface(profile, advancedToolSchema);
   const { total: schemaPropertyCount, perToolPropertyCount } = sumSchemaPropertyCounts(visibleTools, projectionMode);
   const fullSchemaPropertyCount = sumFullSchemaPropertyCounts(visibleTools);
+  const { perToolVisibleArgs, perToolSuppressedArgs } = buildSchemaArgMetadata(visibleTools, projectionMode);
   return {
     source: "gateway.fallback",
     policyVersion: context.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
@@ -219,6 +317,8 @@ export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolCon
     schemaEstimatedTokens: context.schemaEstimatedTokens ?? estimateToolSchemaTokens(visibleTools, profile),
     schemaFingerprint: context.schemaFingerprint ?? buildToolSurfaceFingerprint(profile, visibleTools),
     perToolPropertyCount,
+    perToolVisibleArgs,
+    perToolSuppressedArgs,
   };
 }
 
