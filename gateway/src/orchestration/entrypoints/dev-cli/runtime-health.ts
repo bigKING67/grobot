@@ -1,6 +1,9 @@
 import { spawnSync } from "node:child_process";
 import type { ToolSurfaceProfile } from "../../../models/types";
-import type { RuntimeToolSurfaceProjectionMode } from "../../../tools/runtime/default-enabled-tools";
+import {
+  TOOL_SURFACE_POLICY_VERSION,
+  type RuntimeToolSurfaceProjectionMode,
+} from "../../../tools/runtime/default-enabled-tools";
 
 function removeTrailingSlashes(value: string): string {
   if (/^[\\/]+$/.test(value)) {
@@ -282,6 +285,40 @@ function recordKeysMatch(record: Record<string, unknown>, expectedKeys: readonly
     return false;
   }
   return actual.every((key, index) => key === expected[index]);
+}
+
+function stableJsonStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJsonStringify(item)).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJsonStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function fnv1a32HexFromUtf8(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const byte of Buffer.from(value, "utf8")) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+export function buildRuntimeToolSurfaceSchemaProfilesFingerprint(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const payload = stableJsonStringify({
+    policy_version: TOOL_SURFACE_POLICY_VERSION,
+    profiles: value,
+  });
+  return `schema_profiles:${fnv1a32HexFromUtf8(payload)}`;
 }
 
 export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
@@ -671,6 +708,9 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
   const schemaProfilesParse = parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
     parsed.result.tool_surface_schema_profiles,
   );
+  const schemaProfilesFingerprintFromPayload = buildRuntimeToolSurfaceSchemaProfilesFingerprint(
+    parsed.result.tool_surface_schema_profiles,
+  );
   const toolSurfaceSchemaProfiles = schemaProfilesParse.profiles;
   const rawTools = parsed.result.tools;
   const toolNames: string[] = [];
@@ -753,6 +793,23 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     return {
       ok: false,
       detail: "runtime_tools_describe_missing_schema_profiles_fingerprint",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (
+    toolSurfaceSchemaProfilesFingerprint
+    && schemaProfilesFingerprintFromPayload
+    && toolSurfaceSchemaProfilesFingerprint !== schemaProfilesFingerprintFromPayload
+  ) {
+    return {
+      ok: false,
+      detail:
+        `runtime_tools_describe_schema_profiles_fingerprint_mismatch:reported=${toolSurfaceSchemaProfilesFingerprint}`
+        + `:computed=${schemaProfilesFingerprintFromPayload}`,
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,

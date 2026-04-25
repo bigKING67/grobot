@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   adaptRuntimeToolContextForRecovery,
@@ -19,8 +19,10 @@ import {
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
 import {
+  buildRuntimeToolSurfaceSchemaProfilesFingerprint,
   parseRuntimeToolSurfaceSchemaProfiles,
   parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics,
+  runRuntimeToolsDescribe,
 } from "../../orchestration/entrypoints/dev-cli/runtime-health";
 
 const baseContext = {
@@ -220,6 +222,30 @@ const validRuntimeSchemaProfileDiagnostics =
   parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics([validRuntimeSchemaProfile]);
 expectEqual(validRuntimeSchemaProfileDiagnostics.rawCount, 1, "runtime schema profile diagnostics raw count");
 expectEqual(validRuntimeSchemaProfileDiagnostics.invalidReason, null, "runtime schema profile diagnostics valid reason");
+const validRuntimeSchemaProfilesFingerprint =
+  buildRuntimeToolSurfaceSchemaProfilesFingerprint([validRuntimeSchemaProfile]);
+expect(
+  typeof validRuntimeSchemaProfilesFingerprint === "string"
+    && validRuntimeSchemaProfilesFingerprint.startsWith("schema_profiles:"),
+  "runtime schema profile fingerprint has expected prefix",
+);
+expectEqual(
+  buildRuntimeToolSurfaceSchemaProfilesFingerprint([validRuntimeSchemaProfile]),
+  validRuntimeSchemaProfilesFingerprint,
+  "runtime schema profile fingerprint is stable",
+);
+expectEqual(
+  buildRuntimeToolSurfaceSchemaProfilesFingerprint({ not: "array" }),
+  null,
+  "runtime schema profile fingerprint rejects non-array payloads",
+);
+expect(
+  buildRuntimeToolSurfaceSchemaProfilesFingerprint([{
+    ...validRuntimeSchemaProfile,
+    suppressed_schema_property_count: 3,
+  }]) !== validRuntimeSchemaProfilesFingerprint,
+  "runtime schema profile fingerprint changes when profile payload changes",
+);
 expectEqual(
   parseRuntimeToolSurfaceSchemaProfiles([{
     ...validRuntimeSchemaProfile,
@@ -258,6 +284,35 @@ expectEqual(
   parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics({ not: "array" }).invalidReason,
   "schema_profiles_not_array",
   "runtime schema profile diagnostics rejects non-array payloads",
+);
+
+const fakeRuntimeDir = join(baseContext.workDir, "fake-runtime-tools-describe");
+rmSync(fakeRuntimeDir, { recursive: true, force: true });
+mkdirSync(fakeRuntimeDir, { recursive: true });
+const fakeRuntimePath = join(fakeRuntimeDir, "runtime.js");
+writeFileSync(
+  fakeRuntimePath,
+  `#!/usr/bin/env node\nconsole.log(${JSON.stringify(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "tools-describe-1",
+    result: {
+      tools: [
+        { type: "function", function: { name: "web_scan" } },
+        { type: "function", function: { name: "web_execute_js" } },
+      ],
+      default_enabled_tools: ["web_scan"],
+      tool_surface_schema_profiles_fingerprint: "schema_profiles:00000000",
+      tool_surface_schema_profiles: [validRuntimeSchemaProfile],
+    },
+  }))});\n`,
+  "utf8",
+);
+chmodSync(fakeRuntimePath, 0o755);
+const mismatchedRuntimeDescribe = runRuntimeToolsDescribe(fakeRuntimePath);
+expectEqual(mismatchedRuntimeDescribe.ok, false, "runtime tools describe rejects mismatched schema profile fingerprint");
+expect(
+  mismatchedRuntimeDescribe.detail.startsWith("runtime_tools_describe_schema_profiles_fingerprint_mismatch:"),
+  "runtime tools describe reports schema profile fingerprint mismatch",
 );
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));
