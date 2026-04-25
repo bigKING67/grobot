@@ -28,6 +28,12 @@ import {
   type RuntimeToolRecoveryFeedback,
   readRuntimeToolSurfaceMetrics,
 } from "../../../../tools/runtime/tool-events";
+import {
+  applyRuntimeToolSurfaceAdaptationGuard,
+  readRuntimeToolSurfaceAdaptationState,
+  type RuntimeToolSurfaceAdaptationGuard,
+  type RuntimeToolSurfaceAdaptationSnapshot,
+} from "../../../../tools/runtime/tool-surface-adaptation-state";
 import type { ToolSurfaceProfile, ToolSurfaceSource } from "../../../../models/types";
 import {
   assessGraphCacheWindowDegradation,
@@ -455,6 +461,7 @@ function resolveRuntimeToolContextPreview(
   projectTomlPath: string | undefined,
   runtimeBinaryPath: string | undefined,
   recoveryFeedback: RuntimeToolRecoveryFeedback,
+  adaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot,
 ): {
   enabledTools: string[];
   modelVisibleTools: string[];
@@ -466,6 +473,7 @@ function resolveRuntimeToolContextPreview(
   schemaFingerprint: string;
   schemaEstimatedTokens: number;
   toolSurfaceAdaptation: RuntimeToolSurfaceAdaptation;
+  toolSurfaceAdaptationGuard: RuntimeToolSurfaceAdaptationGuard;
   enabledToolsSource: "runtime.tools.describe" | "start-default";
   enabledToolsSourceDetail?: string;
   manifestFingerprint: string;
@@ -530,7 +538,12 @@ function resolveRuntimeToolContextPreview(
     recoveryFeedback,
     availableTools: manifestToolNames,
   });
-  const effectiveContext = adapted.context ?? surfaced;
+  const guarded = applyRuntimeToolSurfaceAdaptationGuard({
+    baseContext: surfaced,
+    result: adapted,
+    snapshot: adaptationSnapshot,
+  });
+  const effectiveContext = guarded.context ?? surfaced;
   const toolSurfaceProfile = effectiveContext?.toolSurfaceProfile ?? "coding";
   const modelVisibleTools = effectiveContext?.modelVisibleTools ?? enabledTools;
   const dispatchEnabledTools = effectiveContext?.enabledTools ?? enabledTools;
@@ -548,7 +561,8 @@ function resolveRuntimeToolContextPreview(
     advancedToolSchema: effectiveContext?.advancedToolSchema ?? false,
     schemaFingerprint,
     schemaEstimatedTokens,
-    toolSurfaceAdaptation: adapted.adaptation,
+    toolSurfaceAdaptation: guarded.adaptation,
+    toolSurfaceAdaptationGuard: guarded.guard,
     enabledToolsSource,
     enabledToolsSourceDetail:
       enabledToolsSource === "start-default" && described && described.detail
@@ -719,11 +733,13 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
     metrics: runtimeToolSurfaceMetrics,
   });
+  const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(workDir);
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
     projectTomlPath,
     runtimeBinaryPath,
     runtimeToolRecoveryFeedback,
+    runtimeToolSurfaceAdaptationSnapshot,
   );
   const parsedScope = parseScope(sessionScopeRaw);
   const maskedApiKey = maskSecret(apiKey);
@@ -1066,6 +1082,23 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           recovery_stage: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage,
           recovery_tool_name: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName,
           recovery_error_class: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass,
+        },
+        surface_adaptation_outcome: {
+          path: runtimeToolSurfaceAdaptationSnapshot.path,
+          updated_at: runtimeToolSurfaceAdaptationSnapshot.updatedAt,
+          recent_outcome: runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcome ?? null,
+          recent_profile: runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.appliedProfile ?? null,
+          recent_outcome_reason: runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcomeReason ?? null,
+          recent_failure_class: runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.nextFailureClass ?? null,
+          recent_adaptation_count: runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length,
+          profile_outcomes: runtimeToolSurfaceAdaptationSnapshot.profileOutcomes,
+          guard: {
+            active: runtimeToolContextPreview.toolSurfaceAdaptationGuard.active,
+            reason: runtimeToolContextPreview.toolSurfaceAdaptationGuard.reason,
+            blocked_profile: runtimeToolContextPreview.toolSurfaceAdaptationGuard.blockedProfile,
+            matching_failure_count: runtimeToolContextPreview.toolSurfaceAdaptationGuard.matchingFailureCount,
+            recent_profile_sequence: runtimeToolContextPreview.toolSurfaceAdaptationGuard.recentProfileSequence,
+          },
         },
         enabled_tools_source: runtimeToolContextPreview.enabledToolsSource,
         enabled_tools_source_detail: runtimeToolContextPreview.enabledToolsSourceDetail ?? null,
@@ -1868,6 +1901,12 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_surface_adaptation_outcome: recent=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcome ?? "<none>"} profile=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.appliedProfile ?? "<none>"} reason=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcomeReason ?? "<none>"} count=${String(runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length)}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_surface_adaptation_guard: active=${runtimeToolContextPreview.toolSurfaceAdaptationGuard.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptationGuard.reason} blocked_profile=${runtimeToolContextPreview.toolSurfaceAdaptationGuard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextPreview.toolSurfaceAdaptationGuard.matchingFailureCount)}\n`,
   );
   process.stdout.write(
     `runtime_tool_enabled_tools: ${runtimeToolContextPreview.enabledTools.join(",")}\n`,

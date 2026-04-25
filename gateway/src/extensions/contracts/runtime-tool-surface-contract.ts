@@ -1,3 +1,5 @@
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import {
   adaptRuntimeToolContextForRecovery,
   buildRuntimeToolContextForMessage,
@@ -5,8 +7,13 @@ import {
   estimateToolSchemaTokens,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../tools/runtime/default-enabled-tools";
-import type { RuntimeToolContext } from "../../models/types";
+import type { RuntimeEvent, RuntimeToolContext } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
+import {
+  applyRuntimeToolSurfaceAdaptationGuard,
+  readRuntimeToolSurfaceAdaptationState,
+  recordRuntimeToolSurfaceAdaptationOutcome,
+} from "../../tools/runtime/tool-surface-adaptation-state";
 
 const baseContext = {
   workDir: "/tmp/grobot-runtime-tool-surface-contract",
@@ -50,6 +57,17 @@ function expectDeepEqual(actual: unknown, expected: unknown, message: string): v
   if (actualJson !== expectedJson) {
     throw new Error(`${message}: actual=${actualJson} expected=${expectedJson}`);
   }
+}
+
+function event(eventType: RuntimeEvent["eventType"], payload: Record<string, unknown>): RuntimeEvent {
+  return {
+    traceId: "trace_runtime_tool_surface_contract",
+    turnId: "turn_runtime_tool_surface_contract",
+    sessionKey: "dev:tenant:dm:user",
+    eventType,
+    payload,
+    timestampIso: "2026-04-25T00:00:00.000Z",
+  };
 }
 
 function build(message: string | undefined, availableTools?: readonly string[]): RuntimeToolContext {
@@ -206,6 +224,136 @@ const envFullDebugRecovery = adaptRuntimeToolContextForRecovery({
 expectEqual(envFullDebugRecovery.adaptation.active, false, "env profile should not adapt");
 expectEqual(envFullDebugRecovery.context?.toolSurfaceProfile, "full_debug", "env profile remains full_debug");
 
+const adaptationWorkDir = join("/tmp", `grobot-runtime-tool-surface-adaptation-${String(process.pid)}-${String(Date.now())}`);
+mkdirSync(adaptationWorkDir, { recursive: true });
+try {
+  const initialAdaptationState = readRuntimeToolSurfaceAdaptationState(adaptationWorkDir);
+  expectEqual(initialAdaptationState.latestAdaptation, null, "initial adaptation state has no latest record");
+
+  const recoveredWrite = recordRuntimeToolSurfaceAdaptationOutcome({
+    workDir: adaptationWorkDir,
+    adaptation: adaptedBrowser.adaptation,
+    events: [
+      event("tool_end", {
+        tool_name: "web_scan",
+        status: "ok",
+      }),
+    ],
+    verificationPass: true,
+    traceId: "trace_recovered",
+    nowIso: "2026-04-25T00:00:01.000Z",
+  });
+  expectEqual(recoveredWrite.recorded, true, "recovered adaptation recorded");
+  expectEqual(recoveredWrite.record?.outcome, "recovered", "recovered adaptation outcome");
+  expectEqual(recoveredWrite.snapshot.profileOutcomes.browser.recoveredTotal, 1, "browser recovered total");
+  expectEqual(recoveredWrite.snapshot.profileOutcomes.browser.recoveryRate, 1, "browser recovery rate");
+
+  for (let index = 0; index < 2; index += 1) {
+    recordRuntimeToolSurfaceAdaptationOutcome({
+      workDir: adaptationWorkDir,
+      adaptation: adaptedBrowser.adaptation,
+      events: [
+        event("tool_end", {
+          tool_name: "web_scan",
+          status: "failed",
+          error_class: "tool_not_visible",
+        }),
+        event("tool_recovery", {
+          tool_name: "web_scan",
+          error_class: "tool_not_visible",
+          recovery_stage: "strategy_switch",
+          recovery_reason: "tool_not_visible",
+          recommended_next_action: "switch_tool_strategy",
+        }),
+      ],
+      verificationPass: false,
+      traceId: `trace_failed_${String(index)}`,
+      nowIso: `2026-04-25T00:00:0${String(index + 2)}.000Z`,
+    });
+  }
+  const failedSnapshot = readRuntimeToolSurfaceAdaptationState(adaptationWorkDir);
+  expectEqual(failedSnapshot.profileOutcomes.browser.failedTotal, 2, "browser failed total");
+  expectEqual(failedSnapshot.profileOutcomes.browser.recoveryRate, 0.3333, "browser recovery rate after failures");
+
+  const guardedBrowser = applyRuntimeToolSurfaceAdaptationGuard({
+    baseContext: coding,
+    result: adaptedBrowser,
+    snapshot: failedSnapshot,
+  });
+  expectEqual(guardedBrowser.guard.active, true, "repeated failed adaptation activates guard");
+  expectEqual(guardedBrowser.guard.reason, "repeated_profile_failure", "repeated failure guard reason");
+  expectEqual(guardedBrowser.context?.toolSurfaceProfile, "coding", "guard falls back to coding context");
+  expectEqual(guardedBrowser.adaptation.active, false, "guard blocks active adaptation");
+  expectEqual(guardedBrowser.adaptation.recommendedProfile, "browser", "guard keeps recommended profile observable");
+
+  const oscillationWorkDir = join(adaptationWorkDir, "oscillation");
+  mkdirSync(oscillationWorkDir, { recursive: true });
+  const oscillationSequence = [
+    { adaptation: adaptedBrowser.adaptation, toolName: "web_scan", errorClass: "tool_not_visible" },
+    { adaptation: adaptedContext.adaptation, toolName: "semantic_search", errorClass: "tool_not_visible" },
+    { adaptation: adaptedBrowser.adaptation, toolName: "web_scan", errorClass: "tool_not_visible" },
+  ];
+  for (const [index, item] of oscillationSequence.entries()) {
+    recordRuntimeToolSurfaceAdaptationOutcome({
+      workDir: oscillationWorkDir,
+      adaptation: item.adaptation,
+      events: [
+        event("tool_end", {
+          tool_name: item.toolName,
+          status: "failed",
+          error_class: item.errorClass,
+        }),
+      ],
+      verificationPass: false,
+      traceId: `trace_oscillation_${String(index)}`,
+      nowIso: `2026-04-25T00:01:0${String(index)}.000Z`,
+    });
+  }
+  const oscillationGuarded = applyRuntimeToolSurfaceAdaptationGuard({
+    baseContext: coding,
+    result: adaptedContext,
+    snapshot: readRuntimeToolSurfaceAdaptationState(oscillationWorkDir),
+  });
+  expectEqual(oscillationGuarded.guard.active, true, "failed A/B/A plus candidate B activates oscillation guard");
+  expectEqual(oscillationGuarded.guard.reason, "profile_oscillation", "oscillation guard reason");
+  expectDeepEqual(oscillationGuarded.guard.recentProfileSequence, ["browser", "context", "browser", "context"], "oscillation profile sequence");
+
+  const recoveredOscillationWorkDir = join(adaptationWorkDir, "recovered-oscillation");
+  mkdirSync(recoveredOscillationWorkDir, { recursive: true });
+  for (const [index, item] of oscillationSequence.entries()) {
+    recordRuntimeToolSurfaceAdaptationOutcome({
+      workDir: recoveredOscillationWorkDir,
+      adaptation: item.adaptation,
+      events: [
+        event("tool_end", {
+          tool_name: item.toolName,
+          status: "ok",
+        }),
+      ],
+      verificationPass: true,
+      traceId: `trace_recovered_oscillation_${String(index)}`,
+      nowIso: `2026-04-25T00:02:0${String(index)}.000Z`,
+    });
+  }
+  const recoveredOscillationGuarded = applyRuntimeToolSurfaceAdaptationGuard({
+    baseContext: coding,
+    result: adaptedContext,
+    snapshot: readRuntimeToolSurfaceAdaptationState(recoveredOscillationWorkDir),
+  });
+  expectEqual(recoveredOscillationGuarded.guard.active, false, "recovered A/B/A does not activate oscillation guard");
+  expectEqual(recoveredOscillationGuarded.adaptation.active, true, "successful alternation keeps candidate adaptation active");
+
+  const inactiveWrite = recordRuntimeToolSurfaceAdaptationOutcome({
+    workDir: adaptationWorkDir,
+    adaptation: staleRecovery.adaptation,
+    events: [],
+    verificationPass: true,
+  });
+  expectEqual(inactiveWrite.recorded, false, "inactive adaptation not recorded");
+} finally {
+  rmSync(adaptationWorkDir, { recursive: true, force: true });
+}
+
 process.stdout.write(JSON.stringify({
   ok: true,
   policy_version: TOOL_SURFACE_POLICY_VERSION,
@@ -221,4 +369,7 @@ process.stdout.write(JSON.stringify({
   adapted_context_profile: adaptedContext.context?.toolSurfaceProfile,
   adapted_mcp_profile: adaptedMcp.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
+  adaptation_guard_repeated_failure: true,
+  adaptation_guard_profile_oscillation: true,
+  adaptation_guard_ignores_recovered_oscillation: true,
 }) + "\n");

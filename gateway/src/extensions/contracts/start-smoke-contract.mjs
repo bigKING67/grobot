@@ -1521,6 +1521,12 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolSurfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
+  const runtimeToolSurfaceAdaptationOutcome = isObject(runtimeTools?.surface_adaptation_outcome)
+    ? runtimeTools.surface_adaptation_outcome
+    : null;
+  const runtimeToolSurfaceAdaptationGuard = isObject(runtimeToolSurfaceAdaptationOutcome?.guard)
+    ? runtimeToolSurfaceAdaptationOutcome.guard
+    : null;
   const runtimeHealthCacheStats = isObject(runtimeHealth?.cache_stats)
     ? runtimeHealth.cache_stats
     : null;
@@ -1799,6 +1805,13 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
     status_runtime_tool_surface_adaptation_from_profile_type: typeof runtimeToolSurfaceAdaptation?.from_profile,
     status_runtime_tool_surface_adaptation_applied_profile_type: typeof runtimeToolSurfaceAdaptation?.applied_profile,
+    status_runtime_tool_surface_adaptation_outcome_present: Boolean(runtimeToolSurfaceAdaptationOutcome),
+    status_runtime_tool_surface_adaptation_outcome_path_type: typeof runtimeToolSurfaceAdaptationOutcome?.path,
+    status_runtime_tool_surface_adaptation_outcome_recent_count_type: typeof runtimeToolSurfaceAdaptationOutcome?.recent_adaptation_count,
+    status_runtime_tool_surface_adaptation_outcome_profile_outcomes_type: typeof runtimeToolSurfaceAdaptationOutcome?.profile_outcomes,
+    status_runtime_tool_surface_adaptation_guard_present: Boolean(runtimeToolSurfaceAdaptationGuard),
+    status_runtime_tool_surface_adaptation_guard_active_type: typeof runtimeToolSurfaceAdaptationGuard?.active,
+    status_runtime_tool_surface_adaptation_guard_reason_type: typeof runtimeToolSurfaceAdaptationGuard?.reason,
     status_has_runtime_health_cache_stats: Boolean(runtimeHealthCacheStats),
     status_has_top_level_cache_stats: Boolean(topLevelCacheStats),
     status_cache_stats_location: cacheStatsLocation,

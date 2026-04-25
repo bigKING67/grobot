@@ -80,6 +80,11 @@ import {
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
 } from "../../../../tools/runtime/tool-events";
+import {
+  applyRuntimeToolSurfaceAdaptationGuard,
+  readRuntimeToolSurfaceAdaptationState,
+  recordRuntimeToolSurfaceAdaptationOutcome,
+} from "../../../../tools/runtime/tool-surface-adaptation-state";
 import { extractRuntimeErrorEvents } from "../../../../tools/runtime/runtime-error";
 
 export interface RuntimeProviderCandidate {
@@ -359,6 +364,31 @@ function recordRuntimeToolMetricsForEvents(input: {
       `[tool-recovery] stage=${toolEventSummary.latestRecovery.stage} reason=${toolEventSummary.latestRecovery.reason} action=${toolEventSummary.latestRecovery.recommendedNextAction} tool=${toolEventSummary.latestRecovery.toolName ?? "<none>"} error_class=${toolEventSummary.latestRecovery.errorClass ?? "<none>"}\n`,
     );
   }
+}
+
+function writeRuntimeToolSurfaceAdaptationOutcome(input: {
+  workDir: string;
+  adaptation: ReturnType<typeof adaptRuntimeToolContextForRecovery>["adaptation"];
+  events: readonly RuntimeEvent[];
+  verificationPass?: boolean;
+  traceId?: string;
+  startedAtIso?: string;
+  writeStderr(message: string): void;
+}): void {
+  const outcome = recordRuntimeToolSurfaceAdaptationOutcome({
+    workDir: input.workDir,
+    adaptation: input.adaptation,
+    events: input.events,
+    verificationPass: input.verificationPass,
+    traceId: input.traceId,
+    startedAtIso: input.startedAtIso,
+  });
+  if (!outcome.recorded || !outcome.record) {
+    return;
+  }
+  input.writeStderr(
+    `[tool-surface] event=adaptation_outcome profile=${outcome.record.appliedProfile} outcome=${outcome.record.outcome} reason=${outcome.record.outcomeReason} calls=${String(outcome.record.callsTotal)} failed=${String(outcome.record.failedTotal)} deferred=${String(outcome.record.deferredTotal)}\n`,
+  );
 }
 
 function normalizeRuntimeAskUserId(input: {
@@ -2351,14 +2381,26 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
         metrics: runtimeToolSurfaceMetrics,
       });
-      const runtimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
-        context: buildRuntimeToolContextForMessage(input.runtimeToolContext, userText),
+      const runtimeToolSurfaceAdaptationStartedAtIso = nowIso();
+      const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(input.workDir);
+      const baseRuntimeToolContextForTurn = buildRuntimeToolContextForMessage(input.runtimeToolContext, userText);
+      const rawRuntimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
+        context: baseRuntimeToolContextForTurn,
         recoveryFeedback: runtimeToolRecoveryFeedback,
         userMessage: userText,
+      });
+      const runtimeToolContextForTurn = applyRuntimeToolSurfaceAdaptationGuard({
+        baseContext: baseRuntimeToolContextForTurn,
+        result: rawRuntimeToolContextForTurn,
+        snapshot: runtimeToolSurfaceAdaptationSnapshot,
       });
       if (runtimeToolContextForTurn.adaptation.active) {
         input.writeStderr(
           `[tool-surface] event=adapted from=${runtimeToolContextForTurn.adaptation.fromProfile} to=${runtimeToolContextForTurn.adaptation.appliedProfile} source=${runtimeToolContextForTurn.adaptation.source ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"}\n`,
+        );
+      } else if (runtimeToolContextForTurn.guard.active) {
+        input.writeStderr(
+          `[tool-surface] event=adaptation_guard reason=${runtimeToolContextForTurn.guard.reason} blocked_profile=${runtimeToolContextForTurn.guard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextForTurn.guard.matchingFailureCount)} recent_profiles=${runtimeToolContextForTurn.guard.recentProfileSequence.join(",") || "<empty>"}\n`,
         );
       }
       if (runtimeToolRecoveryFeedback.active) {
@@ -2938,6 +2980,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           source: "runtime_turn",
           writeStderr: input.writeStderr,
         });
+        writeRuntimeToolSurfaceAdaptationOutcome({
+          workDir: input.workDir,
+          adaptation: runtimeToolContextForTurn.adaptation,
+          events: report.events,
+          verificationPass: report.verification.pass,
+          traceId: report.traceId,
+          startedAtIso: runtimeToolSurfaceAdaptationStartedAtIso,
+          writeStderr: input.writeStderr,
+        });
         if (runtimeAskUser) {
           const askUserEnvelopes = toAskUserEnvelopes(runtimeAskUser);
           for (const askUserEnvelope of askUserEnvelopes) {
@@ -3063,6 +3114,14 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             workDir: input.workDir,
             events: runtimeErrorEvents,
             source: "runtime_failure",
+            writeStderr: input.writeStderr,
+          });
+          writeRuntimeToolSurfaceAdaptationOutcome({
+            workDir: input.workDir,
+            adaptation: runtimeToolContextForTurn.adaptation,
+            events: runtimeErrorEvents,
+            verificationPass: false,
+            startedAtIso: runtimeToolSurfaceAdaptationStartedAtIso,
             writeStderr: input.writeStderr,
           });
             if (errorClass === TURN_INTERRUPTED_ERROR_CLASS) {
