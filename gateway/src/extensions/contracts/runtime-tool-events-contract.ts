@@ -4,6 +4,9 @@ import type { RuntimeEvent } from "../../models/types";
 import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../tools/runtime/runtime-error";
 import {
   buildRuntimeToolRecoveryFeedback,
+  isRuntimeToolRecoveryAction,
+  knownRuntimeToolRecoveryActions,
+  RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS,
   readRuntimeToolSurfaceMetrics,
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
@@ -80,6 +83,33 @@ expectEqual(summary.recoveryStages.observe_first, 1, "summary observe recovery")
 expectEqual(summary.latestRecovery?.stage, "observe_first", "summary latest recovery stage");
 expectEqual(summary.latestRecovery?.recommendedNextAction, "observe_prior_tool_result", "summary latest action");
 expectEqual(summary.latestRecovery?.recoverable, true, "summary latest recoverable");
+
+const knownRecoveryActions = knownRuntimeToolRecoveryActions();
+expect(knownRecoveryActions.includes("ask_user_for_config_or_switch_provider"), "catalog includes config action");
+expect(knownRecoveryActions.includes("inspect_error_and_switch_strategy"), "catalog includes default fallback action");
+expect(!knownRecoveryActions.includes("observe_and_continue" as never), "catalog rejects legacy observe_and_continue");
+for (const action of knownRecoveryActions) {
+  expect(
+    RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS[action].trim().length > 0,
+    `catalog action has instruction: ${action}`,
+  );
+  expect(isRuntimeToolRecoveryAction(action), `catalog action is recognized: ${action}`);
+}
+expect(!isRuntimeToolRecoveryAction("observe_and_continue"), "legacy observe_and_continue is not recognized");
+
+const missingActionSummary = summarizeRuntimeToolEvents([
+  event("tool_recovery", {
+    tool_name: "read",
+    error_class: "unknown_error",
+    recovery_stage: "strategy_switch",
+    recovery_reason: "unknown_error",
+  }),
+]);
+expectEqual(
+  missingActionSummary.latestRecovery?.recommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "missing action uses cataloged default",
+);
 
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
@@ -197,4 +227,6 @@ process.stdout.write(JSON.stringify({
   feedback_active: true,
   latest_recovery_recoverable: summary.latestRecovery?.recoverable,
   nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
+  recovery_action_catalog_size: knownRecoveryActions.length,
+  missing_action_default: missingActionSummary.latestRecovery?.recommendedNextAction,
 }) + "\n");

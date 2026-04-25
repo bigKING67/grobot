@@ -85,6 +85,7 @@ import {
   applyRuntimeToolSurfaceAdaptationGuard,
   buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
+  recordRuntimeToolNonRecoverableInterventionPrompt,
   recordRuntimeToolSurfaceAdaptationOutcome,
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
@@ -2443,6 +2444,18 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         input.writeStderr(
           `[tool-recovery] event=prompt_hint_injected stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} severity=${runtimeToolRecoveryFeedback.severity} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
         );
+        if (runtimeToolRecoveryFeedback.requiresUserIntervention) {
+          const interventionConsumption = recordRuntimeToolNonRecoverableInterventionPrompt({
+            workDir: input.workDir,
+            recoveryFeedback: runtimeToolRecoveryFeedback,
+            nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
+          });
+          if (interventionConsumption.recorded) {
+            input.writeStderr(
+              `[tool-recovery] event=nonrecoverable_intervention_prompted action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} consumed_at=${interventionConsumption.record?.consumedAt ?? "<none>"}\n`,
+            );
+          }
+        }
       }
       const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
       const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);

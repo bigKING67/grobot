@@ -86,6 +86,55 @@ const RUNTIME_TOOL_RECOVERY_STAGES: readonly RuntimeToolRecoveryStage[] = [
   "ask_user",
 ];
 
+export const RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS = {
+  observe_prior_tool_result:
+    "Observe the previous tool result before issuing another high-risk or state-mutating tool call.",
+  fix_tool_arguments:
+    "Fix the tool arguments first; do not repeat the same invalid call unchanged.",
+  stop_or_change_target_content:
+    "Stop retrying if the requested mutation is already applied, or change the target content explicitly.",
+  split_non_overlapping_edits:
+    "Split overlapping edits into distinct non-overlapping operations before retrying.",
+  locate_path_with_glob_before_retry:
+    "Use glob to locate the path before retrying read, write, or edit on that target.",
+  read_target_before_mutation:
+    "Read the target file first, then write or edit against the latest observed content.",
+  reread_target_then_retry:
+    "Reread the target and rebuild the write/edit from the current file content before retrying.",
+  inspect_visible_tool_schema_then_retry:
+    "Inspect the currently visible tool schema and retry only with visible arguments, or switch tools.",
+  switch_tool_strategy:
+    "Switch to a currently visible alternative tool or reduce scope instead of repeating the unavailable call.",
+  use_suggested_distinct_tool:
+    "Use the distinct tool suggested by the runtime guard instead of repeating the overlapping call.",
+  use_search_or_glob_fallback:
+    "Use search or glob fallback with scoped arguments before retrying semantic tooling.",
+  retry_with_smaller_scope_or_wait:
+    "Retry with a smaller scope, wait for queue/cooldown pressure to clear, or choose an alternate tool.",
+  use_media_read_or_external_extractor:
+    "Use the media-aware read path or an external extractor instead of forcing text read on binary content.",
+  request_approval_or_use_safer_tool:
+    "Ask the user for approval when required, or choose a safer non-privileged tool path.",
+  request_environment_fix:
+    "Ask the user to fix the environment or configuration before retrying.",
+  ask_user_for_config_or_switch_provider:
+    "Ask the user for missing configuration, or switch to a configured provider/tool path.",
+  avoid_unknown_tool:
+    "Avoid unknown tools and stay within the visible tool schema.",
+  inspect_error_and_switch_strategy:
+    "Inspect the error and change strategy before retrying.",
+} as const;
+
+export type RuntimeToolRecoveryAction = keyof typeof RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS;
+
+export function isRuntimeToolRecoveryAction(value: string): value is RuntimeToolRecoveryAction {
+  return Object.prototype.hasOwnProperty.call(RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS, value);
+}
+
+export function knownRuntimeToolRecoveryActions(): RuntimeToolRecoveryAction[] {
+  return Object.keys(RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS) as RuntimeToolRecoveryAction[];
+}
+
 const DEFAULT_RECOVERY_PROMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function emptySummary(): RuntimeToolEventSummary {
@@ -176,13 +225,14 @@ function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRec
   if (!stage || stage === "none") {
     return undefined;
   }
+  const recommendedNextAction =
+    payloadString(payload, "recommended_next_action")
+    || payloadString(payload, "recommendedNextAction")
+    || "inspect_error_and_switch_strategy";
   return {
     stage,
     reason: payloadString(payload, "recovery_reason") || payloadString(payload, "reason") || "unknown",
-    recommendedNextAction:
-      payloadString(payload, "recommended_next_action")
-      || payloadString(payload, "recommendedNextAction")
-      || "observe_and_continue",
+    recommendedNextAction,
     toolName: payloadString(payload, "tool_name") || payloadString(payload, "toolName") || undefined,
     errorClass: payloadString(payload, "error_class") || payloadString(payload, "errorClass") || undefined,
     recoverable:
@@ -333,46 +383,9 @@ export function readRuntimeToolSurfaceMetrics(workDir: string): RuntimeToolSurfa
 }
 
 function actionInstruction(action: string): string {
-  switch (action) {
-    case "observe_prior_tool_result":
-      return "Observe the previous tool result before issuing another high-risk or state-mutating tool call.";
-    case "fix_tool_arguments":
-      return "Fix the tool arguments first; do not repeat the same invalid call unchanged.";
-    case "locate_path_with_glob_before_retry":
-      return "Use glob to locate the path before retrying read, write, or edit on that target.";
-    case "read_target_before_mutation":
-      return "Read the target file first, then write or edit against the latest observed content.";
-    case "reread_target_then_retry":
-      return "Reread the target and rebuild the write/edit from the current file content before retrying.";
-    case "stop_or_change_target_content":
-      return "Stop retrying if the requested mutation is already applied, or change the target content explicitly.";
-    case "switch_tool_strategy":
-      return "Switch to a currently visible alternative tool or reduce scope instead of repeating the unavailable call.";
-    case "inspect_visible_tool_schema_then_retry":
-      return "Inspect the currently visible tool schema and retry only with visible arguments, or switch tools.";
-    case "split_non_overlapping_edits":
-      return "Split overlapping edits into distinct non-overlapping operations before retrying.";
-    case "use_suggested_distinct_tool":
-      return "Use the distinct tool suggested by the runtime guard instead of repeating the overlapping call.";
-    case "use_search_or_glob_fallback":
-      return "Use search or glob fallback with scoped arguments before retrying semantic tooling.";
-    case "reduce_scope_or_use_alternate_tool":
-      return "Reduce command/tool scope, shorten timeout-prone work, or choose an alternate tool.";
-    case "retry_with_smaller_scope_or_wait":
-      return "Retry with a smaller scope, wait for queue/cooldown pressure to clear, or choose an alternate tool.";
-    case "request_approval_or_use_safer_tool":
-      return "Ask the user for approval when required, or choose a safer non-privileged tool path.";
-    case "request_environment_fix":
-      return "Ask the user to fix the environment or configuration before retrying.";
-    case "ask_user_for_config_or_switch_provider":
-      return "Ask the user for missing configuration, or switch to a configured provider/tool path.";
-    case "use_media_read_or_external_extractor":
-      return "Use the media-aware read path or an external extractor instead of forcing text read on binary content.";
-    case "avoid_unknown_tool":
-      return "Avoid unknown tools and stay within the visible tool schema.";
-    default:
-      return "Inspect the error and change strategy before retrying.";
-  }
+  return isRuntimeToolRecoveryAction(action)
+    ? RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS[action]
+    : RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS.inspect_error_and_switch_strategy;
 }
 
 function severityForRecovery(stage: RuntimeToolRecoveryStage): RuntimeToolRecoveryFeedbackSeverity {

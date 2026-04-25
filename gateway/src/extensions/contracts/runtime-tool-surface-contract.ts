@@ -15,6 +15,7 @@ import {
   applyRuntimeToolSurfaceAdaptationGuard,
   buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
+  recordRuntimeToolNonRecoverableInterventionPrompt,
   recordRuntimeToolSurfaceAdaptationOutcome,
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
@@ -599,6 +600,63 @@ try {
   const invalidConsumptionSnapshot = readRuntimeToolSurfaceAdaptationState(invalidConsumptionWorkDir);
   expectEqual(invalidConsumptionSnapshot.recentRecoveryConsumptions.length, 0, "invalid consumption rows are ignored");
 
+  const nonrecoverableConsumptionWorkDir = join(adaptationWorkDir, "nonrecoverable-consumption");
+  mkdirSync(nonrecoverableConsumptionWorkDir, { recursive: true });
+  const nonrecoverableObservedAt = "2026-04-25T00:00:10.000Z";
+  const nonrecoverableFeedback = activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "config_missing",
+    stage: "ask_user",
+    observedAt: nonrecoverableObservedAt,
+    recoverable: false,
+  });
+  const nonrecoverableConsumption = recordRuntimeToolNonRecoverableInterventionPrompt({
+    workDir: nonrecoverableConsumptionWorkDir,
+    recoveryFeedback: nonrecoverableFeedback,
+    traceId: "trace_nonrecoverable_prompted",
+    nowIso: "2026-04-25T00:00:11.000Z",
+  });
+  expectEqual(nonrecoverableConsumption.recorded, true, "nonrecoverable intervention prompt consumption recorded");
+  expectEqual(
+    nonrecoverableConsumption.record?.reason,
+    "nonrecoverable_intervention_prompted",
+    "nonrecoverable intervention consumption reason",
+  );
+  expectEqual(
+    nonrecoverableConsumption.snapshot.latestRecoveryConsumption?.reason,
+    "nonrecoverable_intervention_prompted",
+    "nonrecoverable intervention latest consumption reason",
+  );
+  const duplicateNonrecoverableConsumption = recordRuntimeToolNonRecoverableInterventionPrompt({
+    workDir: nonrecoverableConsumptionWorkDir,
+    recoveryFeedback: nonrecoverableFeedback,
+    traceId: "trace_nonrecoverable_prompted_duplicate",
+    nowIso: "2026-04-25T00:00:12.000Z",
+  });
+  expectEqual(duplicateNonrecoverableConsumption.recorded, false, "nonrecoverable intervention prompt is deduped");
+  const consumedNonrecoverableFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: {
+      ...nonrecoverableFeedback,
+      observedAt: "2026-04-25T00:00:10.500Z",
+    },
+    snapshot: nonrecoverableConsumption.snapshot,
+  });
+  expectEqual(consumedNonrecoverableFeedback.active, false, "nonrecoverable consumption suppresses same prompt");
+  expectEqual(consumedNonrecoverableFeedback.consumed, true, "nonrecoverable consumption marks feedback consumed");
+  expectEqual(
+    consumedNonrecoverableFeedback.consumedReason,
+    "nonrecoverable_intervention_prompted",
+    "nonrecoverable consumed feedback reason",
+  );
+  const newerNonrecoverableFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: {
+      ...nonrecoverableFeedback,
+      observedAt: "2026-04-25T00:00:12.000Z",
+    },
+    snapshot: nonrecoverableConsumption.snapshot,
+  });
+  expectEqual(newerNonrecoverableFeedback.active, true, "newer nonrecoverable recovery remains active");
+
   const recoveredWrite = recordRuntimeToolSurfaceAdaptationOutcome({
     workDir: adaptationWorkDir,
     adaptation: adaptedBrowser.adaptation,
@@ -852,6 +910,8 @@ process.stdout.write(JSON.stringify({
   direct_browser_recovery_profile: directBrowserRecovery.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
   nonrecoverable_blocks_auto_adaptation: nonRecoverableBrowserRecovery.adaptation.autoAdaptationBlocked,
+  nonrecoverable_intervention_consumed: true,
+  newer_nonrecoverable_intervention_remains_active: true,
   adaptation_guard_recovered_signal_consumed: true,
   recovery_feedback_consumed_at_source: true,
   newer_recovery_bypasses_consumed_guard: true,

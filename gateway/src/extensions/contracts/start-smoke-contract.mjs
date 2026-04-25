@@ -4277,6 +4277,34 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
     }, null, 2)}\n`,
     "utf8",
   );
+  return observedAt;
+}
+
+function writeNonRecoverableToolRecoveryConsumption(workDir, observedAt) {
+  const runtimeDir = `${workDir}/.grobot/runtime`;
+  mkdirSync(runtimeDir, { recursive: true });
+  writeFileSync(
+    `${runtimeDir}/tool-surface-adaptation-state.json`,
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: "2026-04-25T00:02:00.000Z",
+      recentAdaptations: [],
+      profileOutcomes: {},
+      recentRecoveryConsumptions: [
+        {
+          id: "tsc_nonrecoverable_intervention_prompted_contract",
+          reason: "nonrecoverable_intervention_prompted",
+          recoveryStage: "ask_user",
+          recoveryToolName: "web_scan",
+          recoveryErrorClass: "config_missing",
+          recoveryObservedAt: observedAt,
+          consumedAt: "2026-04-25T00:02:00.000Z",
+          traceId: "trace_status_nonrecoverable_consumed_contract",
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 function runStatusNonRecoverableToolRecovery(repoRoot) {
@@ -4328,6 +4356,56 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("auto_adaptation_blocked=true"),
     text_has_nonrecoverable_reason:
       textResult.stdout.includes("recovery_requires_user_intervention"),
+  };
+}
+
+function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
+  const workDir = createTempDir("grobot-status-nonrecoverable-consumed-work");
+  writeExecutionProjectToml(workDir);
+  const observedAt = writeNonRecoverableToolRecoveryMetrics(workDir);
+  writeNonRecoverableToolRecoveryConsumption(workDir, observedAt);
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
+  const textResult = runCommand(repoRoot, statusArgs);
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeTools = isObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
+    ? runtimeTools.recovery_feedback
+    : null;
+  const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
+    ? runtimeTools.surface_adaptation
+    : null;
+  return {
+    exit_code: jsonResult.exit_code,
+    text_exit_code: textResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
+    recovery_feedback_active: recoveryFeedback?.active ?? null,
+    recovery_feedback_reason: recoveryFeedback?.reason ?? null,
+    recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
+    recovery_feedback_requires_user_intervention:
+      recoveryFeedback?.requires_user_intervention ?? null,
+    recovery_feedback_consumed: recoveryFeedback?.consumed ?? null,
+    recovery_feedback_consumed_reason: recoveryFeedback?.consumed_reason ?? null,
+    surface_adaptation_active: surfaceAdaptation?.active ?? null,
+    surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
+    surface_adaptation_auto_adaptation_blocked:
+      surfaceAdaptation?.auto_adaptation_blocked ?? null,
+    surface_adaptation_recovery_recoverable:
+      surfaceAdaptation?.recovery_recoverable ?? null,
+    text_has_consumed_nonrecoverable:
+      textResult.stdout.includes("consumed=true")
+      && textResult.stdout.includes("latest_consumption=nonrecoverable_intervention_prompted"),
   };
 }
 
@@ -4580,6 +4658,9 @@ function runCli(argv) {
     }
     case "status-nonrecoverable-tool-recovery":
       payload = runStatusNonRecoverableToolRecovery(repoRoot);
+      break;
+    case "status-nonrecoverable-tool-recovery-consumed":
+      payload = runStatusNonRecoverableToolRecoveryConsumed(repoRoot);
       break;
     case "start-context-pre-send-head-trim-flow":
       payload = runStartContextPreSendHeadTrimFlow(repoRoot);

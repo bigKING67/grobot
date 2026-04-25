@@ -543,6 +543,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolSurfacePayload.page_component_code_profile, "coding");
   assert.equal(runtimeToolSurfacePayload.context_engine_code_profile, "coding");
   assert.equal(runtimeToolSurfacePayload.nonrecoverable_blocks_auto_adaptation, true);
+  assert.equal(runtimeToolSurfacePayload.nonrecoverable_intervention_consumed, true);
+  assert.equal(runtimeToolSurfacePayload.newer_nonrecoverable_intervention_remains_active, true);
   logStep("runtime-tool-surface-contract");
 
   const runtimeToolEventsResult = runCommand("npx", [
@@ -564,6 +566,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolEventsPayload.runtime_error_events, 5);
   assert.equal(runtimeToolEventsPayload.feedback_active, true);
   assert.equal(runtimeToolEventsPayload.nonrecoverable_requires_user_intervention, true);
+  assert.equal(runtimeToolEventsPayload.missing_action_default, "inspect_error_and_switch_strategy");
+  assert.equal(runtimeToolEventsPayload.recovery_action_catalog_size >= 18, true);
   logStep("runtime-tool-events-contract");
 
   const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
@@ -5925,6 +5929,40 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.text_has_auto_adaptation_blocked, true);
   assert.equal(statusNonRecoverablePayload.text_has_nonrecoverable_reason, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery");
+
+  const statusNonRecoverableConsumedResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-nonrecoverable-tool-recovery-consumed",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+    {
+      timeoutMs: 240_000,
+    },
+  );
+  const statusNonRecoverableConsumedPayload = parseJsonOutput(
+    "start-smoke-contract status-nonrecoverable-tool-recovery-consumed",
+    statusNonRecoverableConsumedResult.stdout,
+  );
+  assert.equal(statusNonRecoverableConsumedPayload.exit_code, 0);
+  assert.equal(statusNonRecoverableConsumedPayload.text_exit_code, 0);
+  assert.equal(statusNonRecoverableConsumedPayload.status_json_parse_ok, true);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_feedback_active, false);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_feedback_reason, "consumed_nonrecoverable_intervention_prompted");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_feedback_recoverable, false);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_feedback_requires_user_intervention, true);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_feedback_consumed, true);
+  assert.equal(
+    statusNonRecoverableConsumedPayload.recovery_feedback_consumed_reason,
+    "nonrecoverable_intervention_prompted",
+  );
+  assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_active, false);
+  assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_reason, "consumed_nonrecoverable_intervention_prompted");
+  assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_auto_adaptation_blocked, false);
+  assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_recovery_recoverable, false);
+  assert.equal(statusNonRecoverableConsumedPayload.text_has_consumed_nonrecoverable, true);
+  logStep("start-smoke-contract status-nonrecoverable-tool-recovery-consumed");
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [
     "--repo-root",

@@ -12,7 +12,8 @@ export type RuntimeToolSurfaceAdaptationOutcome = "recovered" | "failed" | "unkn
 export type RuntimeToolRecoveryConsumptionReason =
   | "recovered_signal_consumed"
   | "repeated_profile_failure"
-  | "profile_oscillation";
+  | "profile_oscillation"
+  | "nonrecoverable_intervention_prompted";
 
 export interface RuntimeToolSurfaceAdaptationRecord {
   id: string;
@@ -170,6 +171,7 @@ function normalizeConsumptionReason(value: unknown): RuntimeToolRecoveryConsumpt
   return value === "recovered_signal_consumed"
     || value === "repeated_profile_failure"
     || value === "profile_oscillation"
+    || value === "nonrecoverable_intervention_prompted"
     ? value
     : undefined;
 }
@@ -385,6 +387,7 @@ function toConsumptionReason(reason: string): RuntimeToolRecoveryConsumptionReas
   return reason === "recovered_signal_consumed"
     || reason === "repeated_profile_failure"
     || reason === "profile_oscillation"
+    || reason === "nonrecoverable_intervention_prompted"
     ? reason
     : undefined;
 }
@@ -511,6 +514,50 @@ export function recordRuntimeToolSurfaceRecoveryConsumption(input: {
   const record: RuntimeToolRecoveryConsumptionRecord = {
     id: `tsc_${Date.now().toString(36)}_${state.recentRecoveryConsumptions.length.toString(36)}`,
     reason,
+    recoveryStage: input.recoveryFeedback.stage,
+    recoveryToolName: input.recoveryFeedback.toolName,
+    recoveryErrorClass: input.recoveryFeedback.errorClass,
+    recoveryObservedAt: input.recoveryFeedback.observedAt ?? null,
+    consumedAt: nowIso,
+    traceId: input.traceId ?? null,
+  };
+  const recorded = appendRecoveryConsumption(state, record);
+  if (!recorded) {
+    return {
+      recorded: false,
+      record: null,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  state.updatedAt = nowIso;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  return {
+    recorded: true,
+    record,
+    snapshot: toSnapshot(path, state),
+  };
+}
+
+export function recordRuntimeToolNonRecoverableInterventionPrompt(input: {
+  workDir: string;
+  recoveryFeedback: RuntimeToolRecoveryFeedback;
+  traceId?: string;
+  nowIso?: string;
+}): RuntimeToolRecoveryConsumptionWrite {
+  const path = adaptationStatePathForWorkDir(input.workDir);
+  const state = readState(path);
+  if (!input.recoveryFeedback.active || input.recoveryFeedback.recoverable !== false) {
+    return {
+      recorded: false,
+      record: null,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const record: RuntimeToolRecoveryConsumptionRecord = {
+    id: `tsc_${Date.now().toString(36)}_${state.recentRecoveryConsumptions.length.toString(36)}`,
+    reason: "nonrecoverable_intervention_prompted",
     recoveryStage: input.recoveryFeedback.stage,
     recoveryToolName: input.recoveryFeedback.toolName,
     recoveryErrorClass: input.recoveryFeedback.errorClass,
