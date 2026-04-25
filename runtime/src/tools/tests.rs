@@ -1705,6 +1705,40 @@ audit_redact_secrets = false
     }
 
     #[test]
+    fn tool_recovery_policy_uses_precise_next_actions_and_recoverability() {
+        let overlap = classify_tool_recovery("tool_overlap_blocked", "low_risk");
+        assert_eq!(overlap.stage, "strategy_switch");
+        assert_eq!(overlap.recommended_next_action, "use_suggested_distinct_tool");
+        assert!(overlap.recoverable);
+
+        let unsupported = classify_tool_recovery("tool_call_not_supported", "unknown");
+        assert_eq!(unsupported.stage, "strategy_switch");
+        assert_eq!(unsupported.recommended_next_action, "switch_tool_strategy");
+        assert!(unsupported.recoverable);
+
+        let stale_edit = classify_tool_recovery("edit_stale_target", "medium_risk");
+        assert_eq!(stale_edit.stage, "local_fix");
+        assert_eq!(stale_edit.recommended_next_action, "reread_target_then_retry");
+        assert!(stale_edit.recoverable);
+
+        let schema_drift = classify_tool_recovery("tool_argument_not_visible", "low_risk");
+        assert_eq!(schema_drift.stage, "strategy_switch");
+        assert_eq!(
+            schema_drift.recommended_next_action,
+            "inspect_visible_tool_schema_then_retry"
+        );
+        assert!(schema_drift.recoverable);
+
+        let missing_config = classify_tool_recovery("config_missing", "unknown");
+        assert_eq!(missing_config.stage, "ask_user");
+        assert_eq!(
+            missing_config.recommended_next_action,
+            "ask_user_for_config_or_switch_provider"
+        );
+        assert!(!missing_config.recoverable);
+    }
+
+    #[test]
     fn acquire_mcp_server_slot_rejects_when_queue_full() {
         let server_key = "test-queue-full";
         {

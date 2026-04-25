@@ -227,6 +227,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                 );
                 if error_class == "tool_call_not_supported" {
                     let tool_name = Self::extract_tool_name_from_not_supported(&error_message);
+                    let recovery_policy = classify_tool_recovery(&error_class, "unknown");
                     events.push(Self::build_event(
                         "tool_start",
                         &turn_id,
@@ -251,10 +252,10 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                             "tool_name": tool_name,
                             "risk_class": "unknown",
                             "error_class": error_class.clone(),
-                            "recovery_stage": "strategy_switch",
+                            "recovery_stage": recovery_policy.stage,
                             "recovery_reason": error_class.clone(),
-                            "recommended_next_action": "switch_tool_strategy",
-                            "recoverable": true
+                            "recommended_next_action": recovery_policy.recommended_next_action,
+                            "recoverable": recovery_policy.recoverable
                         })),
                     ));
                 }

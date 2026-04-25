@@ -8,7 +8,7 @@ use crate::models::engine::{
 use crate::models::model::{
     ModelExecutionInterrupt, ModelExecutor, ModelTelemetryEvent, OpenAiCompatibleModelExecutor,
 };
-use crate::tools::tools::{LocalToolExecutor, ToolExecutor};
+use crate::tools::tools::{classify_tool_recovery, LocalToolExecutor, ToolExecutor};
 use serde_json::{json, Value};
 
 include!("pipeline.rs");
