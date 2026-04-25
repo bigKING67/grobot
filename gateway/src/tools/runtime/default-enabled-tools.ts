@@ -65,6 +65,23 @@ export interface RuntimeToolSurfaceAdaptationResult {
   adaptation: RuntimeToolSurfaceAdaptation;
 }
 
+export type RuntimeToolSurfaceProjectionMode = "slim" | "advanced" | "full";
+
+export interface RuntimeToolSurfaceProjectionSummary {
+  policyVersion: string;
+  profile: ToolSurfaceProfile;
+  projectionMode: RuntimeToolSurfaceProjectionMode;
+  advancedToolSchema: boolean;
+  visibleToolCount: number;
+  dispatchEnabledToolCount: number;
+  schemaPropertyCount: number;
+  fullSchemaPropertyCount: number;
+  suppressedSchemaPropertyCount: number;
+  schemaEstimatedTokens: number;
+  schemaFingerprint: string;
+  perToolPropertyCount: Record<string, number>;
+}
+
 const PROFILE_VISIBLE_TOOLS: Record<ToolSurfaceProfile, readonly string[]> = {
   minimal: ["read", "edit", "write", "ask_user_question"],
   coding: DEFAULT_RUNTIME_ENABLED_TOOLS,
@@ -97,12 +114,107 @@ const ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   web_execute_js: 640,
 };
 
+const FULL_SCHEMA_PROPERTY_COUNT: Record<string, number> = {
+  list: 3,
+  glob: 3,
+  search: 8,
+  read: 7,
+  write: 2,
+  edit: 2,
+  bash: 4,
+  mcp_servers: 2,
+  mcp_call: 3,
+  web_scan: 15,
+  web_execute_js: 21,
+  semantic_search: 9,
+  prompt_enhancer: 9,
+  ask_user_question: 4,
+};
+
+const SLIM_BROWSER_SCHEMA_PROPERTY_COUNT: Record<string, number> = {
+  web_scan: 7,
+  web_execute_js: 7,
+};
+
+const ADVANCED_BROWSER_SCHEMA_PROPERTY_COUNT: Record<string, number> = {
+  web_scan: 15,
+  web_execute_js: 16,
+};
+
 export function buildDefaultRuntimeEnabledTools(): string[] {
   return [...DEFAULT_RUNTIME_ENABLED_TOOLS];
 }
 
 export function buildAllRuntimeLocalTools(): string[] {
   return [...ALL_RUNTIME_LOCAL_TOOLS];
+}
+
+function projectionModeForSurface(
+  profile: ToolSurfaceProfile,
+  advancedToolSchema: boolean,
+): RuntimeToolSurfaceProjectionMode {
+  if (profile === "full_debug") {
+    return "full";
+  }
+  return advancedToolSchema || profile === "browser_advanced" ? "advanced" : "slim";
+}
+
+function schemaPropertyCountForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): number {
+  if (projectionMode === "full") {
+    return FULL_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+  }
+  if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_PROPERTY_COUNT) {
+    return ADVANCED_BROWSER_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+  }
+  if (projectionMode === "slim" && toolName in SLIM_BROWSER_SCHEMA_PROPERTY_COUNT) {
+    return SLIM_BROWSER_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+  }
+  return FULL_SCHEMA_PROPERTY_COUNT[toolName] ?? 0;
+}
+
+function sumSchemaPropertyCounts(
+  toolNames: readonly string[],
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): {
+  total: number;
+  perToolPropertyCount: Record<string, number>;
+} {
+  const perToolPropertyCount: Record<string, number> = {};
+  let total = 0;
+  for (const toolName of toolNames) {
+    const count = schemaPropertyCountForTool(toolName, projectionMode);
+    perToolPropertyCount[toolName] = count;
+    total += count;
+  }
+  return { total, perToolPropertyCount };
+}
+
+function sumFullSchemaPropertyCounts(toolNames: readonly string[]): number {
+  return toolNames.reduce((total, toolName) => total + (FULL_SCHEMA_PROPERTY_COUNT[toolName] ?? 0), 0);
+}
+
+export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolContext): RuntimeToolSurfaceProjectionSummary {
+  const profile = context.toolSurfaceProfile ?? "coding";
+  const advancedToolSchema = context.advancedToolSchema ?? (profile === "browser_advanced" || profile === "full_debug");
+  const visibleTools = context.modelVisibleTools ?? toolNamesForSurfaceProfile(profile);
+  const dispatchEnabledTools = context.enabledTools ?? visibleTools;
+  const projectionMode = projectionModeForSurface(profile, advancedToolSchema);
+  const { total: schemaPropertyCount, perToolPropertyCount } = sumSchemaPropertyCounts(visibleTools, projectionMode);
+  const fullSchemaPropertyCount = sumFullSchemaPropertyCounts(visibleTools);
+  return {
+    policyVersion: context.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
+    profile,
+    projectionMode,
+    advancedToolSchema,
+    visibleToolCount: visibleTools.length,
+    dispatchEnabledToolCount: dispatchEnabledTools.length,
+    schemaPropertyCount,
+    fullSchemaPropertyCount,
+    suppressedSchemaPropertyCount: Math.max(0, fullSchemaPropertyCount - schemaPropertyCount),
+    schemaEstimatedTokens: context.schemaEstimatedTokens ?? estimateToolSchemaTokens(visibleTools, profile),
+    schemaFingerprint: context.schemaFingerprint ?? buildToolSurfaceFingerprint(profile, visibleTools),
+    perToolPropertyCount,
+  };
 }
 
 function normalizeProfile(raw: string | undefined): ToolSurfaceProfile | undefined {

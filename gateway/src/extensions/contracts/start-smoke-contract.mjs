@@ -1516,6 +1516,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolSurfaceDecision = isObject(runtimeTools?.surface_decision)
     ? runtimeTools.surface_decision
     : null;
+  const runtimeToolSchemaProjection = isObject(runtimeTools?.schema_projection)
+    ? runtimeTools.schema_projection
+    : null;
   const runtimeToolSurfaceDecisionScores = isObject(runtimeToolSurfaceDecision?.scores)
     ? runtimeToolSurfaceDecision.scores
     : null;
@@ -1802,6 +1805,17 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_schema_fingerprint_type: typeof runtimeTools?.schema_fingerprint,
     status_runtime_tool_schema_estimated_tokens_type: typeof runtimeTools?.schema_estimated_tokens,
     status_runtime_tool_advanced_schema_type: typeof runtimeTools?.advanced_tool_schema,
+    status_runtime_tool_schema_projection_present: Boolean(runtimeToolSchemaProjection),
+    status_runtime_tool_schema_projection_profile: runtimeToolSchemaProjection?.profile ?? null,
+    status_runtime_tool_schema_projection_mode_type: typeof runtimeToolSchemaProjection?.projection_mode,
+    status_runtime_tool_schema_projection_visible_count_type: typeof runtimeToolSchemaProjection?.visible_tool_count,
+    status_runtime_tool_schema_projection_dispatch_count_type: typeof runtimeToolSchemaProjection?.dispatch_enabled_tool_count,
+    status_runtime_tool_schema_projection_property_count_type: typeof runtimeToolSchemaProjection?.schema_property_count,
+    status_runtime_tool_schema_projection_full_property_count_type: typeof runtimeToolSchemaProjection?.full_schema_property_count,
+    status_runtime_tool_schema_projection_suppressed_property_count_type:
+      typeof runtimeToolSchemaProjection?.suppressed_schema_property_count,
+    status_runtime_tool_schema_projection_per_tool_type:
+      typeof runtimeToolSchemaProjection?.per_tool_property_count,
     status_runtime_tool_surface_decision_present: Boolean(runtimeToolSurfaceDecision),
     status_runtime_tool_surface_decision_profile: runtimeToolSurfaceDecision?.profile ?? null,
     status_runtime_tool_surface_decision_reason_type: typeof runtimeToolSurfaceDecision?.reason,

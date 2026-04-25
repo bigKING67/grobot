@@ -18,8 +18,10 @@ import {
   adaptRuntimeToolContextForRecovery,
   buildDefaultRuntimeEnabledTools,
   buildRuntimeToolContextForMessage,
+  buildRuntimeToolSurfaceProjectionSummary,
   buildToolSurfaceFingerprint,
   estimateToolSchemaTokens,
+  type RuntimeToolSurfaceProjectionSummary,
   type RuntimeToolSurfaceAdaptation,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
@@ -479,6 +481,7 @@ function resolveRuntimeToolContextPreview(
   advancedToolSchema: boolean;
   schemaFingerprint: string;
   schemaEstimatedTokens: number;
+  schemaProjectionSummary: RuntimeToolSurfaceProjectionSummary;
   toolSurfaceAdaptation: RuntimeToolSurfaceAdaptation;
   toolSurfaceAdaptationGuard: RuntimeToolSurfaceAdaptationGuard;
   enabledToolsSource: "runtime.tools.describe" | "start-default";
@@ -558,17 +561,33 @@ function resolveRuntimeToolContextPreview(
     ?? buildToolSurfaceFingerprint(toolSurfaceProfile, modelVisibleTools);
   const schemaEstimatedTokens = effectiveContext?.schemaEstimatedTokens
     ?? estimateToolSchemaTokens(modelVisibleTools, toolSurfaceProfile);
+  const toolSurfaceSource = effectiveContext?.toolSurfaceSource ?? "fallback";
+  const toolSurfaceReason = effectiveContext?.toolSurfaceReason ?? "status fallback";
+  const toolPolicyVersion = effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION;
+  const advancedToolSchema = effectiveContext?.advancedToolSchema ?? false;
+  const schemaProjectionSummary = buildRuntimeToolSurfaceProjectionSummary({
+    enabledTools: dispatchEnabledTools,
+    modelVisibleTools,
+    toolSurfaceProfile,
+    toolSurfaceSource,
+    toolSurfaceReason,
+    toolPolicyVersion,
+    advancedToolSchema,
+    schemaFingerprint,
+    schemaEstimatedTokens,
+  });
   return {
     enabledTools: dispatchEnabledTools,
     modelVisibleTools,
     toolSurfaceProfile,
-    toolSurfaceSource: effectiveContext?.toolSurfaceSource ?? "fallback",
-    toolSurfaceReason: effectiveContext?.toolSurfaceReason ?? "status fallback",
+    toolSurfaceSource,
+    toolSurfaceReason,
     toolSurfaceDecision: effectiveContext?.toolSurfaceDecision ?? null,
-    toolPolicyVersion: effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
-    advancedToolSchema: effectiveContext?.advancedToolSchema ?? false,
+    toolPolicyVersion,
+    advancedToolSchema,
     schemaFingerprint,
     schemaEstimatedTokens,
+    schemaProjectionSummary,
     toolSurfaceAdaptation: guarded.adaptation,
     toolSurfaceAdaptationGuard: guarded.guard,
     enabledToolsSource,
@@ -617,6 +636,25 @@ function serializeRuntimeToolSurfaceDecision(decision: RuntimeToolSurfaceDecisio
       original_score: item.originalScore,
       final_score: item.finalScore,
     })),
+  };
+}
+
+function serializeRuntimeToolSurfaceProjectionSummary(
+  summary: RuntimeToolSurfaceProjectionSummary,
+): Record<string, unknown> {
+  return {
+    policy_version: summary.policyVersion,
+    profile: summary.profile,
+    projection_mode: summary.projectionMode,
+    advanced_tool_schema: summary.advancedToolSchema,
+    visible_tool_count: summary.visibleToolCount,
+    dispatch_enabled_tool_count: summary.dispatchEnabledToolCount,
+    schema_property_count: summary.schemaPropertyCount,
+    full_schema_property_count: summary.fullSchemaPropertyCount,
+    suppressed_schema_property_count: summary.suppressedSchemaPropertyCount,
+    schema_estimated_tokens: summary.schemaEstimatedTokens,
+    schema_fingerprint: summary.schemaFingerprint,
+    per_tool_property_count: summary.perToolPropertyCount,
   };
 }
 
@@ -1107,6 +1145,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         schema_fingerprint: runtimeToolContextPreview.schemaFingerprint,
         schema_estimated_tokens: runtimeToolContextPreview.schemaEstimatedTokens,
         advanced_tool_schema: runtimeToolContextPreview.advancedToolSchema,
+        schema_projection: serializeRuntimeToolSurfaceProjectionSummary(runtimeToolContextPreview.schemaProjectionSummary),
         metrics: runtimeToolSurfaceMetrics,
         recovery_feedback: {
           active: runtimeToolRecoveryFeedback.active,
@@ -1955,6 +1994,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_advanced_schema: ${runtimeToolContextPreview.advancedToolSchema ? "true" : "false"}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_schema_projection: mode=${runtimeToolContextPreview.schemaProjectionSummary.projectionMode} visible_tools=${String(runtimeToolContextPreview.schemaProjectionSummary.visibleToolCount)} dispatch_enabled=${String(runtimeToolContextPreview.schemaProjectionSummary.dispatchEnabledToolCount)} properties=${String(runtimeToolContextPreview.schemaProjectionSummary.schemaPropertyCount)} full_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.fullSchemaPropertyCount)} suppressed_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.suppressedSchemaPropertyCount)}\n`,
   );
   process.stdout.write(`runtime_tool_metrics_path: ${runtimeToolSurfaceMetrics.path}\n`);
   process.stdout.write(

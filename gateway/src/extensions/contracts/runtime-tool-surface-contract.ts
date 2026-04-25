@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   adaptRuntimeToolContextForRecovery,
   buildRuntimeToolContextForMessage,
+  buildRuntimeToolSurfaceProjectionSummary,
   buildToolSurfaceFingerprint,
   estimateToolSchemaTokens,
   TOOL_SURFACE_POLICY_VERSION,
@@ -95,6 +96,10 @@ function build(message: string | undefined, availableTools?: readonly string[]):
   return context;
 }
 
+function projection(context: RuntimeToolContext) {
+  return buildRuntimeToolSurfaceProjectionSummary(context);
+}
+
 function activeRecoveryFeedback(input: {
   toolName: string;
   errorClass: string;
@@ -156,6 +161,13 @@ expectEqual(
   estimateToolSchemaTokens(coding.modelVisibleTools ?? [], "coding"),
   "coding schema token estimate",
 );
+const codingProjection = projection(coding);
+expectEqual(codingProjection.projectionMode, "slim", "coding projection mode");
+expectEqual(codingProjection.visibleToolCount, 7, "coding projection visible tool count");
+expectEqual(codingProjection.dispatchEnabledToolCount, 7, "coding projection dispatch tool count");
+expectEqual(codingProjection.schemaPropertyCount, 30, "coding projection schema property count");
+expectEqual(codingProjection.fullSchemaPropertyCount, 30, "coding projection full property count");
+expectEqual(codingProjection.suppressedSchemaPropertyCount, 0, "coding projection suppressed property count");
 
 const browser = withEnvProfile(undefined, () => build("打开浏览器页面，扫描 DOM"));
 expectEqual(browser.toolSurfaceProfile, "browser", "browser profile");
@@ -163,12 +175,22 @@ expectDecisionProfile(browser, "browser", "browser profile decision");
 expectDeepEqual(browser.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser visible tools");
 expectDeepEqual(browser.enabledTools, browser.modelVisibleTools, "browser dispatch tools");
 expectEqual(browser.advancedToolSchema, false, "browser slim schema");
+const browserProjection = projection(browser);
+expectEqual(browserProjection.projectionMode, "slim", "browser projection mode");
+expectEqual(browserProjection.schemaPropertyCount, 25, "browser projection schema property count");
+expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
+expectEqual(browserProjection.suppressedSchemaPropertyCount, 22, "browser projection suppressed property count");
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));
 expectEqual(browserAdvanced.toolSurfaceProfile, "browser_advanced", "browser advanced profile");
 expectDecisionProfile(browserAdvanced, "browser_advanced", "browser advanced profile decision");
 expectDeepEqual(browserAdvanced.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser advanced visible tools");
 expectEqual(browserAdvanced.advancedToolSchema, true, "browser advanced schema");
+const browserAdvancedProjection = projection(browserAdvanced);
+expectEqual(browserAdvancedProjection.projectionMode, "advanced", "browser advanced projection mode");
+expectEqual(browserAdvancedProjection.schemaPropertyCount, 42, "browser advanced projection schema property count");
+expectEqual(browserAdvancedProjection.fullSchemaPropertyCount, 47, "browser advanced projection full property count");
+expectEqual(browserAdvancedProjection.suppressedSchemaPropertyCount, 5, "browser advanced projection suppressed property count");
 
 const context = withEnvProfile(undefined, () => build("用记忆和语义上下文找相关经验"));
 expectEqual(context.toolSurfaceProfile, "context", "context profile");
@@ -192,6 +214,10 @@ expectEqual(fullDebug.modelVisibleTools?.includes("prompt_enhancer"), true, "ful
 expectEqual(fullDebug.modelVisibleTools?.includes("web_scan"), true, "full_debug shows web_scan");
 expectDeepEqual(fullDebug.enabledTools, fullDebug.modelVisibleTools, "full_debug dispatch matches visible");
 expectEqual(fullDebug.advancedToolSchema, true, "full_debug advanced schema");
+const fullDebugProjection = projection(fullDebug);
+expectEqual(fullDebugProjection.projectionMode, "full", "full_debug projection mode");
+expectEqual(fullDebugProjection.schemaPropertyCount, 92, "full_debug projection schema property count");
+expectEqual(fullDebugProjection.suppressedSchemaPropertyCount, 0, "full_debug suppressed property count");
 
 const filteredFullDebug = withEnvProfile("full_debug", () => build("普通 coding task", ["read", "bash"]));
 expectDeepEqual(filteredFullDebug.modelVisibleTools, ["read", "bash"], "filtered full_debug visible tools");
