@@ -12,6 +12,14 @@ const browserStructuredServerPath = resolve(
   "adapters/browser-structured-mcp/server.mjs",
 );
 
+function normalizeTmwdMode(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "auto" || normalized === "tmwd" || normalized === "remote_cdp" || normalized === "cdp") {
+    return normalized;
+  }
+  throw new Error("invalid --tmwd-mode value (expected auto|tmwd|remote_cdp|cdp)");
+}
+
 function parseArgs(argv) {
   const parsed = {
     timeout_ms: 12_000,
@@ -36,11 +44,7 @@ function parseArgs(argv) {
       continue;
     }
     if (token === "--tmwd-mode") {
-      const value = String(argv[index + 1] ?? "").trim().toLowerCase();
-      if (value !== "auto" && value !== "tmwd" && value !== "cdp") {
-        throw new Error("invalid --tmwd-mode value");
-      }
-      parsed.tmwd_mode = value;
+      parsed.tmwd_mode = normalizeTmwdMode(argv[index + 1]);
       index += 1;
       continue;
     }
@@ -262,7 +266,7 @@ function buildLivePrereqHint(cli) {
     `tmwd_ws=${cli.tmwd_ws_endpoint}`,
     `tmwd_link=${cli.tmwd_link_endpoint}`,
     `cdp=${cli.cdp_endpoint}`,
-    "ensure tmwd-hub is running (`npm run browser:tmwd:hub:start`) and/or Chrome CDP is available.",
+    "ensure tmwd-hub is running (`npm run browser:tmwd:hub:start`) and/or remote-debugging CDP is available.",
   ].join(" ");
 }
 

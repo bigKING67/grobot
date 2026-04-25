@@ -14,3 +14,4 @@ Examples:
 - `grok-search.md`
 - `contextweaver.md`
 - `browser-structured.md`
+- `js-reverse.md`

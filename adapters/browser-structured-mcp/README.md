@@ -2,14 +2,20 @@
 
 This adapter is the MCP-first entry for structured browser extraction.
 Current design follows GA browser strategy:
-- CDP as the primary control plane
+- TMWD user-browser control as the default product path
+- explicit remote-debugging CDP as a diagnostic / CI / reverse-engineering path
 - GA-like `web_scan` / `web_execute_js` response shapes
 - bridge command protocol (`cmd=tabs|cookies|cdp|batch`)
+
+The runtime-facing core tools (`web_scan` / `web_execute_js`) default to
+`tmwd_mode="tmwd"`, so ordinary Agent browser work uses the user's already-open
+Chrome/Edge window, tabs, cookies, and login state. The direct MCP backend keeps
+`tmwd_mode="auto"` for diagnostics and low-level contract tests.
 
 ## Tools
 
 - `browser_scan`: GA-style scan with tabs + content (`tabs_only`, `text_only`, `main_only`, `switch_tab_id`).
-- `browser_execute_js`: GA-style JS execution over CDP bridge protocol.
+- `browser_execute_js`: GA-style JS execution over TMWD bridge commands or explicit remote-debugging CDP.
 - `browser_extract`: structured extraction from HTML or active page.
 - `browser_diff`: compare snapshots and return signatures.
 - `browser_tab_ops`: list/switch/current + TMWebDriver-like session ops.
@@ -21,7 +27,7 @@ Current design follows GA browser strategy:
 - `tab_id` / `switch_tab_id`: target tab selection
 - `session_id`: TMWebDriver-like session selection (session id == current target id)
 - `session_url_pattern`: resolve target by URL/title pattern before execute
-- `tmwd_mode`: `auto` (default) | `tmwd` | `cdp`
+- `tmwd_mode`: `auto` (direct MCP default) | `tmwd` | `remote_cdp` | `cdp` (legacy alias)
 - `tmwd_transport`: `auto` (default) | `ws` | `link`
 - `tmwd_ws_endpoint`: TMWebDriver WS endpoint, default `ws://127.0.0.1:18765`
 - `tmwd_link_endpoint`: TMWebDriver link API, default `http://127.0.0.1:18766/link`
@@ -34,8 +40,8 @@ Current design follows GA browser strategy:
 - `native_fallback_args`: action arguments passed to native fallback tool
 - `native_fallback_timeout_ms`: timeout for fallback execution/dry-run
 - `timeout_ms`: command timeout
-- `cdp_endpoint`: CDP HTTP endpoint, default `http://127.0.0.1:9222`
-- `target_url_contains`: optional target selector hint for CDP target picking
+- `cdp_endpoint`: remote-debugging CDP HTTP endpoint, default `http://127.0.0.1:9222`
+- `target_url_contains`: optional target selector hint for remote-debugging CDP target picking
 
 ### browser_scan arguments (key)
 
@@ -60,7 +66,12 @@ Bridge command examples:
 {"cmd":"batch","commands":[{"cmd":"tabs"},{"cmd":"cdp","method":"Runtime.evaluate","params":{"expression":"document.URL"}}]}
 ```
 
-`batch` supports GA-style `$N.path` references and now keeps partial results on failure (`{ ok:false, error, results:[...] }`), which is useful for chained DOM/CDP pipelines.
+In bridge-command examples, `cmd:"cdp"` means "send this DevTools command through
+the selected browser route". It does not by itself switch the session to an
+external remote-debugging Chrome. Use `tmwd_mode="remote_cdp"` only when you
+intentionally want the external debug endpoint path.
+
+`batch` supports GA-style `$N.path` references and now keeps partial results on failure (`{ ok:false, error, results:[...] }`), which is useful for chained DOM/DevTools pipelines.
 
 `browser_tab_ops` supports TMWebDriver-like session operations:
 
@@ -98,7 +109,8 @@ Bridge command examples:
 - `next_step` (`safe_to_execute` or `requirements_missing`)
 
 Typical usage boundary:
-- Main chain still prefers `browser_execute_js` / `browser_scan` (TMWD/CDP).
+- Main chain still prefers `browser_execute_js` / `browser_scan` over native input.
+- For user-login tasks, prefer the TMWD route; use remote-debugging CDP only when explicit.
 - Use `browser_native_input` only when browser-side automation is blocked  
   (e.g. `isTrusted` restrictions, native file chooser, popup/focus constraints).
 
@@ -197,13 +209,13 @@ Useful options:
 ```bash
 npm run check:browser-structured:mcp:live -- --tmwd-mode auto --tmwd-transport auto
 npm run check:browser-structured:mcp:live -- --tmwd-mode tmwd --tmwd-transport link
-npm run check:browser-structured:mcp:live -- --tmwd-mode cdp --cdp-endpoint http://127.0.0.1:9222
+npm run check:browser-structured:mcp:live -- --tmwd-mode remote_cdp --cdp-endpoint http://127.0.0.1:9222
 npm run check:browser-structured:mcp:live -- --target-url-contains docs.trytrellis.app
 npm run check:browser-structured:mcp:live -- --require-cookie
 ```
 
 Live contract failure usually means runtime prerequisites are missing
-(TMWD hub/extension or CDP endpoint), not contract regression.
+(TMWD hub/extension or remote-debugging CDP endpoint), not contract regression.
 
 Before running live contract, you can diagnose runtime readiness:
 
@@ -231,7 +243,7 @@ Gate options:
 npm run check:browser-structured:mcp:live:gate -- --doctor-only
 npm run check:browser-structured:mcp:live:gate -- --force-live
 npm run check:browser-structured:mcp:live:gate -- --allow-empty-tabs
-npm run check:browser-structured:mcp:live:gate -- --tmwd-mode cdp --cdp-endpoint http://127.0.0.1:9222
+npm run check:browser-structured:mcp:live:gate -- --tmwd-mode remote_cdp --cdp-endpoint http://127.0.0.1:9222
 npm run check:browser-structured:mcp:live:gate -- --no-ensure-tmwd-hub
 npm run check:browser-structured:mcp:live:gate -- --ensure-tmwd-hub-wait-ms 6000
 npm run check:browser-structured:mcp:live:gate -- --session-ready-wait-ms 10000
@@ -247,14 +259,14 @@ Mode-specific diagnose examples:
 
 ```bash
 npm run check:browser-structured:mcp:live:doctor -- --tmwd-mode tmwd --tmwd-transport auto
-npm run check:browser-structured:mcp:live:doctor -- --tmwd-mode cdp --cdp-endpoint http://127.0.0.1:9222
+npm run check:browser-structured:mcp:live:doctor -- --tmwd-mode remote_cdp --cdp-endpoint http://127.0.0.1:9222
 npm run check:browser-structured:mcp:live:doctor -- --allow-empty-tabs
 ```
 
 Doctor now checks protocol-level readiness (not only TCP):
 - TMWebDriver WS `tabs` probe (tab count)
 - TMWebDriver link `get_all_sessions` probe (session count)
-- CDP `/json/version` + `/json/list` (page count)
+- remote-debugging CDP `/json/version` + `/json/list` (page count)
 
 ### Run TMWebDriver Hub (inside grobot)
 
@@ -297,13 +309,16 @@ enabled = true
 ## Notes
 
 - No Playwright main chain is used.
-- CDP is optional. It is only needed for `tmwd_mode=cdp` or when `tmwd_mode=auto` falls back to CDP.
+- Remote-debugging CDP is optional. It is only needed for `tmwd_mode=remote_cdp`
+  (or legacy `tmwd_mode=cdp`) or when direct-MCP `tmwd_mode=auto` falls back to
+  the external debug endpoint.
 - For default `tmwd_mode=auto` + `tmwd_transport=auto`, the main path is TMWebDriver link (`18766`) when hub + extension are alive.
 - GA extension source has been vendored under `adapters/browser-structured-mcp/ga_tmwd_cdp_bridge/` for parity reference.
 - Transport routing:
-  - `tmwd_mode=auto`: try TMWebDriver (WS/link) first, fallback to CDP direct
-  - `tmwd_mode=tmwd`: force TMWebDriver only (no CDP fallback)
-  - `tmwd_mode=cdp`: force CDP direct only
+  - `tmwd_mode=auto`: try TMWebDriver (WS/link) first, fallback to external remote-debugging CDP
+  - `tmwd_mode=tmwd`: force TMWebDriver only (no external CDP fallback)
+  - `tmwd_mode=remote_cdp`: force external remote-debugging CDP only
+  - `tmwd_mode=cdp`: legacy alias for `remote_cdp`; avoid in new docs/prompts
 - TMWebDriver transport routing (inside `tmwd_mode=tmwd|auto`):
   - `tmwd_transport=auto`: try WS(18765) first, fallback to link(18766)
   - `tmwd_transport=ws`: force WS only

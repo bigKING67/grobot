@@ -8,6 +8,8 @@ export const DEFAULT_RUNTIME_ENABLED_TOOLS = [
   "bash",
   "mcp_servers",
   "mcp_call",
+  "web_scan",
+  "web_execute_js",
   "semantic_search",
   "prompt_enhancer",
   "ask_user_question",

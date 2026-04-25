@@ -220,11 +220,50 @@ mod tests {
         assert!(default_enabled_names.contains(TOOL_WEB_EXECUTE_JS));
         assert!(default_enabled_names.contains(TOOL_ASK_USER_QUESTION));
 
+        let web_scan_schema = schema_by_name
+            .get(TOOL_WEB_SCAN)
+            .and_then(|function| function.get("parameters"))
+            .and_then(Value::as_object)
+            .expect("web_scan schema must expose parameters");
+        assert_eq!(
+            web_scan_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .and_then(|properties| properties.get("tmwd_mode"))
+                .and_then(Value::as_object)
+                .and_then(|schema| schema.get("default"))
+                .and_then(Value::as_str),
+            Some("tmwd"),
+            "core browser facade must default to the user's current TMWD browser"
+        );
+        assert!(
+            web_scan_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .and_then(|properties| properties.get("tmwd_mode"))
+                .and_then(Value::as_object)
+                .and_then(|schema| schema.get("enum"))
+                .and_then(Value::as_array)
+                .is_some_and(|values| values.iter().any(|value| value == "remote_cdp")),
+            "core browser facade should expose remote_cdp alias for external debug Chrome"
+        );
+
         let web_execute_js_schema = schema_by_name
             .get(TOOL_WEB_EXECUTE_JS)
             .and_then(|function| function.get("parameters"))
             .and_then(Value::as_object)
             .expect("web_execute_js schema must expose parameters");
+        assert_eq!(
+            web_execute_js_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .and_then(|properties| properties.get("tmwd_mode"))
+                .and_then(Value::as_object)
+                .and_then(|schema| schema.get("default"))
+                .and_then(Value::as_str),
+            Some("tmwd"),
+            "core browser facade must default to the user's current TMWD browser"
+        );
         assert_eq!(
             web_execute_js_schema
                 .get("anyOf")
@@ -252,6 +291,55 @@ mod tests {
                 tool_name
             );
         }
+    }
+
+    #[test]
+    fn browser_facade_defaults_to_tmwd_without_overriding_explicit_mode() {
+        let args = Map::new();
+        let (defaulted, applied) = browser_facade_args_with_current_browser_default(&args);
+        assert!(applied);
+        assert_eq!(
+            defaulted.get("tmwd_mode").and_then(Value::as_str),
+            Some("tmwd")
+        );
+
+        let mut explicit = Map::new();
+        explicit.insert(
+            "tmwd_mode".to_string(),
+            Value::String("remote_cdp".to_string()),
+        );
+        let (kept, applied) = browser_facade_args_with_current_browser_default(&explicit);
+        assert!(!applied);
+        assert_eq!(
+            kept.get("tmwd_mode").and_then(Value::as_str),
+            Some("remote_cdp")
+        );
+
+        let mut legacy = Map::new();
+        legacy.insert("tmwd_mode".to_string(), Value::String("cdp".to_string()));
+        let (kept, applied) = browser_facade_args_with_current_browser_default(&legacy);
+        assert!(!applied);
+        assert_eq!(kept.get("tmwd_mode").and_then(Value::as_str), Some("cdp"));
+    }
+
+    #[test]
+    fn browser_context_kind_makes_remote_cdp_explicit() {
+        assert_eq!(
+            browser_context_kind_from_transport(&json!({ "transport": "tmwd_ws" })),
+            "tmwd_user_browser"
+        );
+        assert_eq!(
+            browser_context_kind_from_transport(&json!({ "transport": "tmwd_link" })),
+            "tmwd_user_browser"
+        );
+        assert_eq!(
+            browser_context_kind_from_transport(&json!({ "transport": "cdp" })),
+            "remote_cdp_debug_browser"
+        );
+        assert_eq!(
+            browser_context_kind_from_transport(&json!({ "transport": null })),
+            "unknown"
+        );
     }
 
     #[test]

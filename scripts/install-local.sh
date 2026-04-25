@@ -341,10 +341,12 @@ bootstrap_global_home() {
   normalized_home="$GROBOT_HOME_DIR"
   local config_template_source="$REPO_ROOT/packages/templates/config.toml.example"
   local builtin_skill_creator_source="$REPO_ROOT/packages/templates/skills/skill-creator"
+  local builtin_js_reverse_source="$REPO_ROOT/packages/templates/skills/js-reverse"
   local config_example_path="$normalized_home/config.toml.example"
   local config_path="$normalized_home/config.toml"
   local mcp_servers_path="$normalized_home/mcp/servers.toml"
   local builtin_skill_creator_target="$normalized_home/skills/skill-creator"
+  local builtin_js_reverse_target="$normalized_home/skills/js-reverse"
   local required_dirs=(
     "$normalized_home"
     "$normalized_home/hooks"
@@ -430,6 +432,10 @@ description: Create and improve skills from user requirements.
 Use this built-in skill to create new skills under `.grobot/skills`.
 EOF
     fi
+  fi
+
+  if [ -d "$builtin_js_reverse_source" ]; then
+    copy_dir_if_missing "$builtin_js_reverse_source" "$builtin_js_reverse_target" >/dev/null || true
   fi
 
   write_text_file_if_missing "$normalized_home/commands/README.md" <<'EOF'
@@ -557,6 +563,25 @@ fi
 
 bootstrap_global_home
 
+run_browser_extension_setup() {
+  local setup_script
+  setup_script="$REPO_ROOT/scripts/browser-setup.mjs"
+  if [ ! -f "$setup_script" ]; then
+    echo "  browser:   extension setup skipped (script not found: $setup_script)"
+    return 0
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  browser:   extension setup skipped (node not found in PATH)"
+    return 0
+  fi
+  if GROBOT_HOME="$GROBOT_HOME_DIR" node "$setup_script" --json >/dev/null; then
+    echo "  browser:   extension prepared at $GROBOT_HOME_DIR/browser/tmwd_cdp_bridge"
+    return 0
+  fi
+  echo "  browser:   extension setup failed; run 'grobot browser setup' for details" >&2
+  return 0
+}
+
 run_browser_native_setup() {
   if [ "$RUN_BROWSER_NATIVE_SETUP" -ne 1 ]; then
     echo "  browser:   native setup skipped (--no-browser-native-setup)"
@@ -590,4 +615,5 @@ run_browser_native_setup() {
   return 0
 }
 
+run_browser_extension_setup
 run_browser_native_setup

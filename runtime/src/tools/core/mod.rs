@@ -7,6 +7,8 @@ const TOOL_EDIT: &str = "edit";
 const TOOL_BASH: &str = "bash";
 const TOOL_MCP_SERVERS: &str = "mcp_servers";
 const TOOL_MCP_CALL: &str = "mcp_call";
+const TOOL_WEB_SCAN: &str = "web_scan";
+const TOOL_WEB_EXECUTE_JS: &str = "web_execute_js";
 const TOOL_SEMANTIC_SEARCH: &str = "semantic_search";
 const TOOL_PROMPT_ENHANCER: &str = "prompt_enhancer";
 const TOOL_ASK_USER_QUESTION: &str = "ask_user_question";
@@ -466,6 +468,89 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                     "arguments": { "type": "object" }
                 },
                 "required": ["server", "tool"]
+            }),
+            default_enabled: true,
+        },
+        LocalToolCatalogEntry {
+            name: TOOL_WEB_SCAN,
+            description: "Scan the user's real browser via TMWD by default. Use this as the primary browser reading tool for tabs, current page text, logged-in pages, and session-aware page inspection. Use tmwd_mode=remote_cdp only for explicit debug Chrome/CI contexts.",
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "tabs_only": { "type": "boolean", "default": false },
+                    "text_only": { "type": "boolean", "default": false },
+                    "main_only": { "type": "boolean", "default": false },
+                    "main_only_fallback_to_full": { "type": "boolean", "default": true },
+                    "main_only_min_chars": { "type": "number", "minimum": 100, "maximum": 10_000 },
+                    "main_only_min_coverage": { "type": "number", "minimum": 0.05, "maximum": 0.95 },
+                    "switch_tab_id": { "type": "string" },
+                    "session_id": { "type": "string" },
+                    "session_url_pattern": { "type": "string" },
+                    "max_chars": { "type": "number", "minimum": 1_000, "maximum": 300_000 },
+                    "tmwd_mode": { "type": "string", "enum": ["auto", "tmwd", "remote_cdp", "cdp"], "default": "tmwd" },
+                    "tmwd_transport": { "type": "string", "enum": ["auto", "ws", "link"], "default": "auto" },
+                    "tmwd_ws_endpoint": { "type": "string" },
+                    "tmwd_link_endpoint": { "type": "string" },
+                    "cdp_endpoint": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+            default_enabled: true,
+        },
+        LocalToolCatalogEntry {
+            name: TOOL_WEB_EXECUTE_JS,
+            description: "Execute JavaScript or a GA-style browser bridge command in the user's real browser via TMWD by default. Use this as the primary browser action tool for navigation, DOM operations, DevTools bridge commands, cookies, tabs, and batch browser actions. Use tmwd_mode=remote_cdp only for explicit debug Chrome/CI contexts.",
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "script": { "type": "string" },
+                    "code": { "type": "string" },
+                    "tab_id": { "type": "string" },
+                    "switch_tab_id": { "type": "string" },
+                    "session_id": { "type": "string" },
+                    "session_url_pattern": { "type": "string" },
+                    "no_monitor": { "type": "boolean", "default": false },
+                    "timeout_ms": { "type": "number", "minimum": 100, "maximum": 120_000 },
+                    "tmwd_mode": { "type": "string", "enum": ["auto", "tmwd", "remote_cdp", "cdp"], "default": "tmwd" },
+                    "tmwd_transport": { "type": "string", "enum": ["auto", "ws", "link"], "default": "auto" },
+                    "tmwd_ws_endpoint": { "type": "string" },
+                    "tmwd_link_endpoint": { "type": "string" },
+                    "cdp_endpoint": { "type": "string" },
+                    "target_url_contains": { "type": "string" },
+                    "native_auto_fallback": { "type": "boolean", "default": false },
+                    "native_auto_fallback_policy": {
+                        "type": "string",
+                        "enum": ["strict", "balanced", "aggressive"],
+                        "default": "balanced"
+                    },
+                    "native_auto_execute": { "type": "boolean", "default": false },
+                    "native_execute_action_scope": {
+                        "type": "string",
+                        "enum": ["non_pointer", "all"],
+                        "default": "non_pointer"
+                    },
+                    "native_fallback_action": {
+                        "type": "string",
+                        "enum": [
+                            "activate_window",
+                            "move",
+                            "click",
+                            "double_click",
+                            "press",
+                            "type",
+                            "paste",
+                            "scroll",
+                            "get_window_rect"
+                        ]
+                    },
+                    "native_fallback_args": { "type": "object" },
+                    "native_fallback_timeout_ms": { "type": "number", "minimum": 500, "maximum": 30_000 }
+                },
+                "anyOf": [
+                    { "required": ["script"] },
+                    { "required": ["code"] }
+                ],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },

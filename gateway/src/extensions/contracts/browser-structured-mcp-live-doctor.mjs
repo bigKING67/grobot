@@ -2,6 +2,18 @@
 import { Socket } from "node:net";
 import WebSocket from "ws";
 
+function normalizeTmwdMode(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "auto" || normalized === "tmwd" || normalized === "remote_cdp" || normalized === "cdp") {
+    return normalized;
+  }
+  throw new Error("invalid --tmwd-mode value (expected auto|tmwd|remote_cdp|cdp)");
+}
+
+function isRemoteCdpMode(mode) {
+  return mode === "remote_cdp" || mode === "cdp";
+}
+
 function parseArgs(argv) {
   const parsed = {
     timeout_ms: 1_500,
@@ -24,11 +36,7 @@ function parseArgs(argv) {
       continue;
     }
     if (token === "--tmwd-mode") {
-      const value = String(argv[index + 1] ?? "").trim().toLowerCase();
-      if (value !== "auto" && value !== "tmwd" && value !== "cdp") {
-        throw new Error("invalid --tmwd-mode value");
-      }
-      parsed.tmwd_mode = value;
+      parsed.tmwd_mode = normalizeTmwdMode(argv[index + 1]);
       index += 1;
       continue;
     }
@@ -70,6 +78,10 @@ function parseArgs(argv) {
     }
     if (token === "--allow-empty-tabs") {
       parsed.allow_empty_tabs = true;
+      continue;
+    }
+    if (token === "--json") {
+      parsed.json = true;
       continue;
     }
     if (!token) {
@@ -390,7 +402,7 @@ function evaluateModeReadiness(cli, checks) {
         : `tmwd_${cli.tmwd_transport}`,
     };
   }
-  if (cli.tmwd_mode === "cdp") {
+  if (isRemoteCdpMode(cli.tmwd_mode)) {
     return {
       ready: cdpReady,
       reason: cdpReady ? "cdp_ready" : "cdp_unavailable",
@@ -460,7 +472,7 @@ async function run() {
     checks,
     suggestions: [
       "For TMWebDriver path, run: npm run browser:tmwd:hub:start",
-      "For CDP path, launch Chrome with --remote-debugging-port=9222",
+      "For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222",
       "Use --allow-empty-tabs when checking connectivity only (without active tabs/sessions).",
       "Then run live contract: npm run check:browser-structured:mcp:live",
     ],

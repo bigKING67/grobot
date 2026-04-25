@@ -6,6 +6,8 @@
 
 - 支持 Feishu / Telegram 首发接入，后续可扩展更多渠道。
 - 支持 100 并发会话，并保证严格会话隔离与可恢复执行。
+- 支持真实浏览器操作：`web_scan` / `web_execute_js` 作为 Agent 默认原子工具，复用本机浏览器登录态。
+- 支持可选 JS 逆向增强：签名链路、Hook 采样、补环境复现与去混淆工作流见 `docs/browser-reverse.md`。
 - 通过流程工程（harness、context、memory、eval、trace、安全）在非顶级模型上获得接近旗舰体验的稳定效果。
 - 保持模型供应商可替换（Kimi 2.5、GPT-5.4 级别、OpenAI-compatible 等）。
 
@@ -163,6 +165,12 @@ grobot --help
 - 若仅做排障/探测：`npm run browser:native:doctor`。
 - Windows 环境无需 `cliclick`；请在部署 bootstrap 里执行 `npm run browser:native:setup`，依赖检查以 `powershell|pwsh` 就绪为准。
 - 完整安装/更新说明见：[docs/local-install.md](docs/local-install.md)。
+- 浏览器能力初始化：
+  - `grobot browser setup`：生成稳定扩展目录 `~/.grobot/browser/tmwd_cdp_bridge/`。
+  - `grobot browser hub start`：启动 TMWD hub。
+  - `grobot browser doctor`：诊断真实浏览器链路。
+  - `grobot browser doctor --json`：输出机器可读诊断结果，便于企业部署或 GUI 直接读取。
+  - 使用说明见：[docs/browser-automation.md](docs/browser-automation.md)。
 
 可选参数：
 
@@ -423,7 +431,9 @@ grobot start \
 - 切换 provider 时会重放当前会话历史消息（最近 N 轮），用于尽量保持上下文连续。
 - 若显式传入 `--base-url/--api-key/--model`（或对应 `GROBOT_*` 环境变量），则按单 provider 直连执行，不走 config provider 链。
 - 会话持久化支持 `file` 与 `redis`（生产建议 Redis）。
-- 运行态已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`（通过 Chat Completions `tools` 调用）。
+- 运行态已内置基础本地工具：`list`、`glob`、`search`、`read`、`write`、`edit`、`bash`、`mcp_servers`、`mcp_call`、`web_scan`、`web_execute_js`（通过 Chat Completions `tools` 调用）。
+- 浏览器任务默认使用 `web_scan` / `web_execute_js`，底层复用 `browser-structured` 后端；普通 Agent 不需要直接拼 `mcp_call(server="browser-structured", ...)`。
+- JS 逆向、签名链路、Hook、补环境和去混淆属于可选专家层，见：[docs/browser-reverse.md](docs/browser-reverse.md)。
 - `bash` 放行受 `.grobot/project.toml` 的 `[tools].allow` 控制；`read/write/edit` 仅允许访问 `--work-dir` 目录内路径。
 - `read` 支持两套范围参数：兼容旧版 `line_start/line_end`，以及推荐的 `offset/limit`；两套参数不可混用。
 - `read` 文本输出默认硬限制为 `2000` 行或 `50KB`（先命中先截断），超出时会返回 `has_more + next_offset` 便于继续读取。

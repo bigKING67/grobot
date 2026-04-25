@@ -324,6 +324,8 @@ pub(crate) fn is_local_tool_dispatch_supported(tool_name: &str) -> bool {
             | TOOL_BASH
             | TOOL_MCP_SERVERS
             | TOOL_MCP_CALL
+            | TOOL_WEB_SCAN
+            | TOOL_WEB_EXECUTE_JS
             | TOOL_SEMANTIC_SEARCH
             | TOOL_PROMPT_ENHANCER
             | TOOL_ASK_USER_QUESTION
@@ -372,6 +374,8 @@ impl ToolExecutor for LocalToolExecutor {
             TOOL_BASH => run_bash(&context, args),
             TOOL_MCP_SERVERS => run_mcp_servers(&context, args),
             TOOL_MCP_CALL => run_mcp_call(&context, args),
+            TOOL_WEB_SCAN => run_web_scan(&context, args),
+            TOOL_WEB_EXECUTE_JS => run_web_execute_js(&context, args),
             TOOL_SEMANTIC_SEARCH => run_semantic_search(&context, args, input),
             TOOL_PROMPT_ENHANCER => run_prompt_enhancer(&context, args, input),
             TOOL_ASK_USER_QUESTION => run_ask_user_question(&context, args),

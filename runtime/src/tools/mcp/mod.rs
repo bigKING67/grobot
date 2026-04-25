@@ -586,3 +586,199 @@ fn run_mcp_call(
     });
     Ok(ToolCallOutput::from_payload(payload))
 }
+
+fn extract_mcp_json_content_payload(content: &Value) -> Value {
+    let Some(items) = content.as_array() else {
+        return content.clone();
+    };
+    for item in items {
+        let Some(object) = item.as_object() else {
+            continue;
+        };
+        if object.get("type").and_then(Value::as_str) == Some("json") {
+            if let Some(payload) = object.get("json") {
+                return payload.clone();
+            }
+        }
+        if object.get("type").and_then(Value::as_str) == Some("text") {
+            if let Some(text) = object.get("text").and_then(Value::as_str) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(text) {
+                    return parsed;
+                }
+            }
+        }
+    }
+    content.clone()
+}
+
+fn browser_tool_status(backend_payload: &Value, mcp_is_error: bool) -> &'static str {
+    if mcp_is_error {
+        return "error";
+    }
+    let status = backend_payload
+        .get("status")
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    if status == "failed" || status == "error" {
+        "error"
+    } else {
+        "ok"
+    }
+}
+
+fn browser_tool_diagnostic_hint(backend_payload: &Value, mcp_is_error: bool) -> String {
+    let error_code = backend_payload
+        .get("error_code")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if !error_code.is_empty() {
+        match error_code {
+            "NO_EXTENSION" => {
+                return "Browser extension is not connected. Run `grobot browser setup`, load the generated extension directory, then run `grobot browser doctor`.".to_string();
+            }
+            "NO_SESSION" => {
+                return "No browser session/tab is available. Open a normal web page and retry `grobot browser doctor`.".to_string();
+            }
+            "TRANSPORT_UNAVAILABLE" => {
+                return "Browser transport is unavailable. Run `grobot browser hub start` and retry `grobot browser doctor`.".to_string();
+            }
+            "CDP_DENIED" | "CSP_BLOCKED" => {
+                return "Browser policy blocked the JS/DevTools path. Retry with a narrower script or use explicit native fallback after dry-run.".to_string();
+            }
+            "TIMEOUT" => {
+                return "Browser action timed out. Narrow the target tab/session or increase timeout_ms.".to_string();
+            }
+            _ => {
+                return format!("Browser backend returned error_code={error_code}; inspect transport_attempts and backend result.");
+            }
+        }
+    }
+    if mcp_is_error {
+        return "Browser backend returned an MCP tool error; inspect result.content for details.".to_string();
+    }
+    "Browser backend completed; inspect result.transport and result.transport_attempts for the active route.".to_string()
+}
+
+fn browser_context_kind_from_transport(backend_payload: &Value) -> &'static str {
+    match backend_payload
+        .get("transport")
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("tmwd_ws") | Some("tmwd_link") => "tmwd_user_browser",
+        Some("cdp") => "remote_cdp_debug_browser",
+        _ => "unknown",
+    }
+}
+
+fn browser_context_note_for_kind(context_kind: &str) -> &'static str {
+    match context_kind {
+        "tmwd_user_browser" => {
+            "Using the user's real browser through TMWD; tabs, cookies, and login state are expected to match the open browser."
+        }
+        "remote_cdp_debug_browser" => {
+            "Using an external remote-debugging CDP browser; it may be a separate window/profile without the user's current tabs or login state."
+        }
+        _ => "Browser context could not be identified from backend transport; inspect result.transport_attempts.",
+    }
+}
+
+fn browser_facade_args_with_current_browser_default(
+    args: &Map<String, Value>,
+) -> (Map<String, Value>, bool) {
+    let mut browser_args = args.clone();
+    let applied_tmwd_default = !browser_args.contains_key("tmwd_mode");
+    if applied_tmwd_default {
+        browser_args.insert("tmwd_mode".to_string(), Value::String("tmwd".to_string()));
+    }
+    (browser_args, applied_tmwd_default)
+}
+
+fn run_browser_structured_tool(
+    context: &ToolContextResolved,
+    args: &Map<String, Value>,
+    browser_tool_name: &str,
+    public_tool_name: &str,
+) -> Result<ToolCallOutput, ToolExecutionError> {
+    let (browser_args, applied_tmwd_default) = browser_facade_args_with_current_browser_default(args);
+    let mut wrapped_args = Map::new();
+    wrapped_args.insert(
+        "server".to_string(),
+        Value::String("browser-structured".to_string()),
+    );
+    wrapped_args.insert(
+        "tool".to_string(),
+        Value::String(browser_tool_name.to_string()),
+    );
+    wrapped_args.insert("arguments".to_string(), Value::Object(browser_args));
+
+    let output = run_mcp_call(context, &wrapped_args).map_err(|error| {
+        ToolExecutionError::new(
+            &error.error_class,
+            format!(
+                "{public_tool_name} backend `browser-structured` unavailable: {}. Run `grobot browser setup`, `grobot browser hub start`, then `grobot browser doctor`.",
+                error.message
+            ),
+        )
+    })?;
+    let mcp_payload = serde_json::from_str::<Value>(&output.content).map_err(|error| {
+        ToolExecutionError::new(
+            "tool_execution_failed",
+            format!("{public_tool_name} failed to parse browser backend envelope: {error}"),
+        )
+    })?;
+    let result = mcp_payload.get("result").cloned().unwrap_or_else(|| json!({}));
+    let mcp_is_error = result
+        .get("is_error")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let content = result.get("content").cloned().unwrap_or_else(|| json!([]));
+    let backend_payload = extract_mcp_json_content_payload(&content);
+    let status = browser_tool_status(&backend_payload, mcp_is_error);
+    let diagnostic_hint = browser_tool_diagnostic_hint(&backend_payload, mcp_is_error);
+    let browser_context_kind = browser_context_kind_from_transport(&backend_payload);
+    let browser_context_note = browser_context_note_for_kind(browser_context_kind);
+    let payload = json!({
+        "tool": public_tool_name,
+        "status": status,
+        "backend": "browser-structured",
+        "backend_server": "browser-structured",
+        "mapped_tool": browser_tool_name,
+        "facade_default_tmwd_mode_applied": applied_tmwd_default,
+        "browser_context_kind": browser_context_kind,
+        "browser_context_note": browser_context_note,
+        "error_code": backend_payload.get("error_code").cloned().unwrap_or(Value::Null),
+        "retryable": backend_payload.get("retryable").cloned().unwrap_or(Value::Null),
+        "transport": backend_payload.get("transport").cloned().unwrap_or(Value::Null),
+        "transport_attempts": backend_payload.get("transport_attempts").cloned().unwrap_or_else(|| json!([])),
+        "diagnostic_hint": diagnostic_hint,
+        "result": backend_payload,
+        "mcp": {
+            "available_tools": mcp_payload.get("available_tools").cloned().unwrap_or_else(|| json!([])),
+            "session_reused": mcp_payload.get("session_reused").cloned().unwrap_or(Value::Bool(false)),
+            "session_recovered": mcp_payload.get("session_recovered").cloned().unwrap_or(Value::Bool(false)),
+            "session_pid": mcp_payload.get("session_pid").cloned().unwrap_or(Value::Null),
+            "runtime_state": mcp_payload.get("runtime_state").cloned().unwrap_or_else(|| json!({})),
+            "raw_preview": result.get("raw_preview").cloned().unwrap_or(Value::String(String::new())),
+            "structured_content_preview": result.get("structured_content_preview").cloned().unwrap_or(Value::String(String::new()))
+        }
+    });
+    Ok(ToolCallOutput::from_payload(payload))
+}
+
+fn run_web_scan(
+    context: &ToolContextResolved,
+    args: &Map<String, Value>,
+) -> Result<ToolCallOutput, ToolExecutionError> {
+    run_browser_structured_tool(context, args, "browser_scan", TOOL_WEB_SCAN)
+}
+
+fn run_web_execute_js(
+    context: &ToolContextResolved,
+    args: &Map<String, Value>,
+) -> Result<ToolCallOutput, ToolExecutionError> {
+    run_browser_structured_tool(context, args, "browser_execute_js", TOOL_WEB_EXECUTE_JS)
+}

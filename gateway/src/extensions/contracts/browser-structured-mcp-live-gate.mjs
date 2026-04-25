@@ -26,6 +26,18 @@ const DEFAULT_EVENT_LOG_PATH = resolve(
   "browser-live-gate-events.jsonl",
 );
 
+function normalizeTmwdMode(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "auto" || normalized === "tmwd" || normalized === "remote_cdp" || normalized === "cdp") {
+    return normalized;
+  }
+  throw new Error("invalid --tmwd-mode value (expected auto|tmwd|remote_cdp|cdp)");
+}
+
+function isRemoteCdpMode(mode) {
+  return mode === "remote_cdp" || mode === "cdp";
+}
+
 function parseArgs(argv) {
   const parsed = {
     timeout_ms: 12_000,
@@ -57,11 +69,7 @@ function parseArgs(argv) {
       continue;
     }
     if (token === "--tmwd-mode") {
-      const value = String(argv[index + 1] ?? "").trim().toLowerCase();
-      if (value !== "auto" && value !== "tmwd" && value !== "cdp") {
-        throw new Error("invalid --tmwd-mode value");
-      }
-      parsed.tmwd_mode = value;
+      parsed.tmwd_mode = normalizeTmwdMode(argv[index + 1]);
       index += 1;
       continue;
     }
@@ -116,6 +124,10 @@ function parseArgs(argv) {
     }
     if (token === "--doctor-only") {
       parsed.doctor_only = true;
+      continue;
+    }
+    if (token === "--json") {
+      parsed.json = true;
       continue;
     }
     if (token === "--force-live") {
@@ -265,7 +277,7 @@ function emitAndReturn(config, payload) {
 function doctorHints(config) {
   const hints = [
     "Run TMWebDriver hub: npm run browser:tmwd:hub:start",
-    "OR launch Chrome with CDP: --remote-debugging-port=9222",
+    "OR launch a remote-debugging CDP Chrome: --remote-debugging-port=9222",
     "Then retry gate: npm run check:browser-structured:mcp:live:gate",
     `Current mode=${config.tmwd_mode} transport=${config.tmwd_transport}`,
   ];
@@ -320,7 +332,7 @@ function shouldAttemptEnsureTmwdHub(config, doctorPayload) {
   if (config.ensure_tmwd_hub !== true) {
     return false;
   }
-  if (config.tmwd_mode === "cdp") {
+  if (isRemoteCdpMode(config.tmwd_mode)) {
     return false;
   }
   const wsReachable = doctorPayload?.checks?.tmwd_ws_tcp?.reachable === true;
@@ -405,7 +417,7 @@ function shouldWaitForSessionReady(config, doctorPayload) {
   if (config.allow_empty_tabs === true) {
     return false;
   }
-  if (config.tmwd_mode === "cdp") {
+  if (isRemoteCdpMode(config.tmwd_mode)) {
     return false;
   }
   const wsTcpReachable = doctorPayload?.checks?.tmwd_ws_tcp?.reachable === true;

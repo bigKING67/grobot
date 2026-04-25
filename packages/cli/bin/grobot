@@ -174,6 +174,62 @@ if [ "$FIRST_ARG" = "--version" ] || [ "$FIRST_ARG" = "-V" ] || [ "$FIRST_ARG" =
   exit 0
 fi
 
+if [ "$FIRST_ARG" = "browser" ]; then
+  shift
+  BROWSER_SUBCOMMAND="${1:-help}"
+  case "$BROWSER_SUBCOMMAND" in
+    setup)
+      shift
+      exec node "$PACKAGE_ROOT/scripts/browser-setup.mjs" "$@"
+      ;;
+    doctor)
+      shift
+      exec node "$PACKAGE_ROOT/gateway/src/extensions/contracts/browser-structured-mcp-live-gate.mjs" --doctor-only "$@"
+      ;;
+    status)
+      shift
+      exec node "$PACKAGE_ROOT/adapters/browser-structured-mcp/tmwd-hub-control.mjs" status "$@"
+      ;;
+    hub)
+      shift
+      HUB_ACTION="${1:-status}"
+      case "$HUB_ACTION" in
+        start|stop|status)
+          shift
+          exec node "$PACKAGE_ROOT/adapters/browser-structured-mcp/tmwd-hub-control.mjs" "$HUB_ACTION" "$@"
+          ;;
+        *)
+          echo "usage: grobot browser hub <start|stop|status> [options]" >&2
+          exit 2
+          ;;
+      esac
+      ;;
+    help|--help|-h)
+      cat <<'EOF'
+usage: grobot browser <command>
+
+Commands:
+  setup          Prepare a stable browser extension directory under ~/.grobot/browser/tmwd_cdp_bridge
+  doctor         Diagnose real-browser backend readiness (JSON by default; accepts --json)
+  status         Show TMWD hub status
+  hub start      Start the TMWD hub
+  hub stop       Stop the TMWD hub
+  hub status     Show TMWD hub status
+
+Doctor options:
+  --tmwd-mode auto|tmwd|remote_cdp|cdp   Prefer tmwd for user-browser tasks; cdp is legacy alias
+  --allow-empty-tabs                     Check transport readiness without requiring a tab/session
+  --disable-event-log                    Do not append browser-live-gate event records
+EOF
+      exit 0
+      ;;
+    *)
+      echo "usage: grobot browser <setup|doctor|status|hub>" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 FORWARD_ARGS=()
 TS_DEV_FLAG_SEEN=0
 PREV_ARG=""

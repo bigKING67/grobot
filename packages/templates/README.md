@@ -6,6 +6,7 @@ Current template set:
 
 - `config.toml.example`: global home configuration sample.
 - `skills/skill-creator`: built-in global `~/.grobot/skills/skill-creator` template.
+- `skills/js-reverse`: optional browser reverse-engineering skill for signing, Hook, environment patching, and deobfuscation workflows.
 
 Future additions can include:
 

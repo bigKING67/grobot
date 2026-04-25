@@ -4,14 +4,21 @@ Scope: `[[servers]].name = "browser-structured"`
 
 ## Routing Priority
 
+0. For normal browser work, prefer core runtime tools first:
+   - `web_scan`
+   - `web_execute_js`
+   The core facade defaults to `tmwd_mode="tmwd"` so "current browser / logged-in page" tasks do not silently fall back to a separate remote-debugging CDP Chrome. Direct `mcp_call(server="browser-structured", ...)` is for diagnostics, backend-specific operations, or cases not covered by the core facade.
 1. Default to browser-side structured tooling first:
    - `browser_scan`
    - `browser_execute_js`
    - `browser_extract`
    - `browser_tab_ops`
-2. Prefer TMWebDriver path before CDP when available:
-   - `tmwd_mode=auto` (default)
+2. Prefer TMWebDriver path for user-browser tasks:
+   - core facade default: `tmwd_mode=tmwd`
+   - direct backend diagnostic default: `tmwd_mode=auto`
    - `tmwd_transport=auto` (default)
+   Use `tmwd_mode=remote_cdp` only for CI, controlled debug browsers, reverse-engineering protocol work, or explicit user request. Legacy `tmwd_mode=cdp` is accepted as a compatibility alias but should not be used in new docs/prompts.
+   Preserve result context labels: `tmwd_user_browser` means the user's real browser/login state; `remote_cdp_debug_browser` means an external debug Chrome with no assumed current tabs/cookies.
 3. Only escalate to `browser_native_input` when browser-side automation is blocked.
 4. Before first native action in a session, call `browser_native_input` with `action="capabilities"` to validate local prerequisites.
 5. Before risky native action (pointer/keyboard), call the same action with `dry_run=true` and proceed only when `next_step=safe_to_execute`.
@@ -53,11 +60,11 @@ Use `browser_native_input` only for scenarios such as:
 
 - `isTrusted`-gated interactions.
 - OS-level file chooser / native picker.
-- Browser popup/focus restrictions that JS/CDP cannot recover.
+- Browser popup/focus restrictions that JS / DevTools bridge cannot recover.
 - Window activation / pointer operations that require native event injection.
 - `browser_execute_js` returned `native_input_suggested=true` with a concrete hint.
 
-Do not use native input as first choice for normal DOM or CDP actions.
+Do not use native input as first choice for normal DOM or DevTools bridge actions.
 
 ## Safety Boundaries
 

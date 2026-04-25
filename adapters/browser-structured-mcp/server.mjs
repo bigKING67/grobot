@@ -29,7 +29,7 @@ const tmwdWsRuntime = {
 
 const TOOL_SCHEMAS = {
     browser_scan: {
-      description: "GA-style web_scan: tabs + simplified content from active tab.",
+      description: "GA-style web_scan: tabs + simplified content from active tab. Direct MCP default is auto; core web_scan defaults to TMWD user browser.",
       inputSchema: {
         type: "object",
         properties: {
@@ -37,7 +37,7 @@ const TOOL_SCHEMAS = {
           switch_tab_id: { type: "string" },
           session_id: { type: "string" },
           session_url_pattern: { type: "string" },
-          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "cdp"], default: "auto" },
+          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
           tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
           tmwd_ws_endpoint: { type: "string" },
           tmwd_link_endpoint: { type: "string" },
@@ -52,7 +52,7 @@ const TOOL_SCHEMAS = {
       },
   },
   browser_execute_js: {
-    description: "GA-style web_execute_js via CDP bridge protocol (cmd=tabs/cookies/cdp/batch) or plain JS.",
+    description: "GA-style web_execute_js via TMWD bridge commands (cmd=tabs/cookies/cdp/batch) or plain JS. Direct MCP default is auto; core web_execute_js defaults to TMWD user browser.",
     inputSchema: {
       type: "object",
         properties: {
@@ -62,7 +62,7 @@ const TOOL_SCHEMAS = {
           switch_tab_id: { type: "string" },
           session_id: { type: "string" },
           session_url_pattern: { type: "string" },
-          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "cdp"], default: "auto" },
+          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
           tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
           tmwd_ws_endpoint: { type: "string" },
           tmwd_link_endpoint: { type: "string" },
@@ -112,7 +112,7 @@ const TOOL_SCHEMAS = {
         properties: {
           html: { type: "string" },
           selector_limit: { type: "number", minimum: 1, maximum: 300 },
-          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "cdp"], default: "auto" },
+          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
           tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
           tmwd_ws_endpoint: { type: "string" },
           tmwd_link_endpoint: { type: "string" },
@@ -135,7 +135,7 @@ const TOOL_SCHEMAS = {
     },
   },
   browser_tab_ops: {
-    description: "Tab operations over CDP targets.",
+    description: "Tab/session operations over the selected browser route (TMWD user browser or explicit remote-debugging CDP).",
     inputSchema: {
       type: "object",
       properties: {
@@ -147,7 +147,7 @@ const TOOL_SCHEMAS = {
           session_id: { type: "string" },
           url_pattern: { type: "string" },
           include_disconnected: { type: "boolean", default: false },
-          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "cdp"], default: "auto" },
+          tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
           tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
           tmwd_ws_endpoint: { type: "string" },
           tmwd_link_endpoint: { type: "string" },
@@ -339,7 +339,7 @@ function resolveTmwdMode(raw) {
   if (normalized === "tmwd") {
     return "tmwd";
   }
-  if (normalized === "cdp") {
+  if (normalized === "cdp" || normalized === "remote_cdp") {
     return "cdp";
   }
   return "auto";
@@ -3493,7 +3493,7 @@ function buildNativeInputSuggestion(errorCode, errorMessage, policy = "balanced"
       reason: "browser_policy_blocked",
       suggested_tool: "browser_native_input",
       suggested_action: "click",
-      note: "Browser policy blocked JS/CDP path; native input may be required.",
+      note: "Browser policy blocked JS/DevTools path; native input may be required.",
       policy,
     };
   }

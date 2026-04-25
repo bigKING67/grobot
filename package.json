@@ -10,9 +10,13 @@
     "packages/cli/bin/grobot",
     "packages/templates/config.toml.example",
     "packages/templates/skills",
+    "docs",
+    "scripts/browser-setup.mjs",
     "adapters/contextweaver/bridge/cli.mjs",
     "adapters/contextweaver/vendor/contextweaver/dist",
     "adapters/contextweaver/vendor/contextweaver/skills",
+    "adapters/browser-structured-mcp",
+    "gateway/src/extensions/contracts/browser-structured-mcp*.mjs",
     "shared/config/toml-config.mjs",
     "shared/retrieval/contextweaver-retrieval.mjs",
     "README.md"
@@ -93,6 +97,7 @@
     "browser:tmwd:hub:start": "node adapters/browser-structured-mcp/tmwd-hub-control.mjs start",
     "browser:tmwd:hub:stop": "node adapters/browser-structured-mcp/tmwd-hub-control.mjs stop",
     "browser:tmwd:hub:status": "node adapters/browser-structured-mcp/tmwd-hub-control.mjs status",
+    "browser:setup": "node scripts/browser-setup.mjs",
     "browser:native:doctor": "node adapters/browser-structured-mcp/native-deps-setup.mjs",
     "browser:native:setup": "node adapters/browser-structured-mcp/native-deps-setup.mjs --install --yes",
     "browser:native:setup:json": "node adapters/browser-structured-mcp/native-deps-setup.mjs --install --yes --json"
