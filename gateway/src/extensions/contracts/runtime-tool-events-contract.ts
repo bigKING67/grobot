@@ -50,6 +50,7 @@ const events: RuntimeEvent[] = [
     recovery_stage: "local_fix",
     recovery_reason: "edit_stale_target",
     recommended_next_action: "reread_target_then_retry",
+    recoverable: true,
   }),
   event("tool_end", {
     tool_name: "bash",
@@ -62,6 +63,7 @@ const events: RuntimeEvent[] = [
     recovery_stage: "observe_first",
     recovery_reason: "tool_execution_deferred",
     recommended_next_action: "observe_prior_tool_result",
+    recoverable: true,
   }),
 ];
 
@@ -77,6 +79,43 @@ expectEqual(summary.recoveryStages.local_fix, 1, "summary local recovery");
 expectEqual(summary.recoveryStages.observe_first, 1, "summary observe recovery");
 expectEqual(summary.latestRecovery?.stage, "observe_first", "summary latest recovery stage");
 expectEqual(summary.latestRecovery?.recommendedNextAction, "observe_prior_tool_result", "summary latest action");
+expectEqual(summary.latestRecovery?.recoverable, true, "summary latest recoverable");
+
+const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
+const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: nonRecoverableObservedAt,
+    callsTotal: 0,
+    failedTotal: 0,
+    deferredTotal: 0,
+    callsByTool: {},
+    failuresByErrorClass: {},
+    recoveryStages: { ask_user: 1 },
+    avgDurationMsByTool: {},
+    latestRecovery: {
+      stage: "ask_user",
+      reason: "config_missing",
+      recommendedNextAction: "ask_user_for_config_or_switch_provider",
+      toolName: "read",
+      errorClass: "config_missing",
+      recoverable: false,
+      observedAt: nonRecoverableObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-nonrecoverable",
+  },
+  nowMs: Date.parse(nonRecoverableObservedAt),
+});
+expectEqual(nonRecoverableFeedback.active, true, "nonrecoverable feedback active");
+expectEqual(nonRecoverableFeedback.severity, "warning", "nonrecoverable feedback severity");
+expect(
+  nonRecoverableFeedback.promptBlock.includes("Recoverability: requires_user_intervention"),
+  "nonrecoverable feedback recoverability"
+);
+expect(
+  nonRecoverableFeedback.promptBlock.includes("Ask the user for missing configuration"),
+  "nonrecoverable feedback action instruction"
+);
 
 const workDir = join("/tmp", `grobot-runtime-tool-events-${String(process.pid)}-${String(Date.now())}`);
 mkdirSync(workDir, { recursive: true });
@@ -101,6 +140,7 @@ try {
   expectEqual(activeFeedback.active, true, "active feedback enabled");
   expectEqual(activeFeedback.severity, "info", "active feedback severity");
   expectEqual(activeFeedback.recommendedNextAction, "observe_prior_tool_result", "active feedback action");
+  expect(activeFeedback.promptBlock.includes("Recoverability: auto_recoverable"), "active feedback recoverability");
   expect(activeFeedback.promptBlock.includes("Do not repeat an identical failing tool call"), "active feedback prompt rule");
 
   const readBack = readRuntimeToolSurfaceMetrics(workDir);
@@ -143,4 +183,5 @@ process.stdout.write(JSON.stringify({
   latest_recovery_stage: summary.latestRecovery?.stage,
   runtime_error_events: extractRuntimeErrorEvents(runtimeError).length,
   feedback_active: true,
+  latest_recovery_recoverable: summary.latestRecovery?.recoverable,
 }) + "\n");

@@ -3,7 +3,7 @@ mod tests {
     use super::{
         apply_prompt_cache_hints,
         build_runtime_messages, build_runtime_user_prompt, build_tool_definitions, extract_response_content,
-        extract_prompt_cache_usage_observation,
+        extract_prompt_cache_usage_observation, classify_tool_recovery,
         load_runtime_model_config, parse_model_response_payload, pick_auto_model,
         PromptCacheOptions, PromptCacheStrategy,
         should_disable_thinking_for_kimi_builtin_web_search, ModelExecutor,
@@ -1283,6 +1283,14 @@ mod tests {
                 .and_then(Value::as_str),
             Some("observe_prior_tool_result")
         );
+        assert_eq!(
+            output.telemetry_events[4]
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("recoverable"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
 
         let calls = server.finish();
         assert_eq!(calls.len(), 2);
@@ -1306,6 +1314,35 @@ mod tests {
             deferred_payload["error_class"].as_str(),
             Some("tool_execution_deferred")
         );
+    }
+
+    #[test]
+    fn tool_recovery_policy_uses_precise_next_actions_and_recoverability() {
+        let overlap = classify_tool_recovery("tool_overlap_blocked", "low_risk");
+        assert_eq!(overlap.stage, "strategy_switch");
+        assert_eq!(overlap.recommended_next_action, "use_suggested_distinct_tool");
+        assert!(overlap.recoverable);
+
+        let stale_edit = classify_tool_recovery("edit_stale_target", "medium_risk");
+        assert_eq!(stale_edit.stage, "local_fix");
+        assert_eq!(stale_edit.recommended_next_action, "reread_target_then_retry");
+        assert!(stale_edit.recoverable);
+
+        let schema_drift = classify_tool_recovery("tool_argument_not_visible", "low_risk");
+        assert_eq!(schema_drift.stage, "strategy_switch");
+        assert_eq!(
+            schema_drift.recommended_next_action,
+            "inspect_visible_tool_schema_then_retry"
+        );
+        assert!(schema_drift.recoverable);
+
+        let missing_config = classify_tool_recovery("config_missing", "unknown");
+        assert_eq!(missing_config.stage, "ask_user");
+        assert_eq!(
+            missing_config.recommended_next_action,
+            "ask_user_for_config_or_switch_provider"
+        );
+        assert!(!missing_config.recoverable);
     }
 
     #[test]

@@ -15,6 +15,7 @@ export interface RuntimeToolRecoveryHint {
   recommendedNextAction: string;
   toolName?: string;
   errorClass?: string;
+  recoverable?: boolean;
   observedAt?: string;
 }
 
@@ -130,6 +131,11 @@ function payloadNumber(payload: Record<string, unknown>, key: string): number | 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function payloadBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
+  const value = payload[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function payloadIsoString(payload: Record<string, unknown>, key: string): string | undefined {
   const value = payload[key];
   if (typeof value !== "string" || !value.trim()) {
@@ -177,6 +183,10 @@ function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRec
       || "observe_and_continue",
     toolName: payloadString(payload, "tool_name") || payloadString(payload, "toolName") || undefined,
     errorClass: payloadString(payload, "error_class") || payloadString(payload, "errorClass") || undefined,
+    recoverable:
+      payloadBoolean(payload, "recoverable")
+      ?? payloadBoolean(payload, "auto_recoverable")
+      ?? payloadBoolean(payload, "autoRecoverable"),
     observedAt: payloadIsoString(payload, "observed_at") || payloadIsoString(payload, "observedAt"),
   };
 }
@@ -332,14 +342,30 @@ function actionInstruction(action: string): string {
       return "Read the target file first, then write or edit against the latest observed content.";
     case "reread_target_then_retry":
       return "Reread the target and rebuild the write/edit from the current file content before retrying.";
+    case "stop_or_change_target_content":
+      return "Stop retrying if the requested mutation is already applied, or change the target content explicitly.";
     case "switch_tool_strategy":
       return "Switch to a currently visible alternative tool or reduce scope instead of repeating the unavailable call.";
+    case "inspect_visible_tool_schema_then_retry":
+      return "Inspect the currently visible tool schema and retry only with visible arguments, or switch tools.";
+    case "split_non_overlapping_edits":
+      return "Split overlapping edits into distinct non-overlapping operations before retrying.";
+    case "use_suggested_distinct_tool":
+      return "Use the distinct tool suggested by the runtime guard instead of repeating the overlapping call.";
+    case "use_search_or_glob_fallback":
+      return "Use search or glob fallback with scoped arguments before retrying semantic tooling.";
     case "reduce_scope_or_use_alternate_tool":
       return "Reduce command/tool scope, shorten timeout-prone work, or choose an alternate tool.";
+    case "retry_with_smaller_scope_or_wait":
+      return "Retry with a smaller scope, wait for queue/cooldown pressure to clear, or choose an alternate tool.";
     case "request_approval_or_use_safer_tool":
       return "Ask the user for approval when required, or choose a safer non-privileged tool path.";
     case "request_environment_fix":
       return "Ask the user to fix the environment or configuration before retrying.";
+    case "ask_user_for_config_or_switch_provider":
+      return "Ask the user for missing configuration, or switch to a configured provider/tool path.";
+    case "use_media_read_or_external_extractor":
+      return "Use the media-aware read path or an external extractor instead of forcing text read on binary content.";
     case "avoid_unknown_tool":
       return "Avoid unknown tools and stay within the visible tool schema.";
     default:
@@ -415,9 +441,11 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const instruction = actionInstruction(recovery.recommendedNextAction);
   const toolName = recovery.toolName ?? "unknown_tool";
   const errorClass = recovery.errorClass ?? recovery.reason;
+  const recoverability = recovery.recoverable === false ? "requires_user_intervention" : "auto_recoverable";
   const promptBlock = [
     "[Runtime Tool Recovery Hint]",
     `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
+    `Recoverability: ${recoverability}`,
     `Required next action: ${recovery.recommendedNextAction}`,
     `Execution rule: ${instruction}`,
     "Do not repeat an identical failing tool call; change one concrete variable before retrying.",
