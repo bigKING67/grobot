@@ -542,6 +542,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolSurfacePayload.full_debug_dispatch_matches_visible, true);
   assert.equal(runtimeToolSurfacePayload.page_component_code_profile, "coding");
   assert.equal(runtimeToolSurfacePayload.context_engine_code_profile, "coding");
+  assert.equal(runtimeToolSurfacePayload.nonrecoverable_blocks_auto_adaptation, true);
   logStep("runtime-tool-surface-contract");
 
   const runtimeToolEventsResult = runCommand("npx", [
@@ -562,6 +563,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolEventsPayload.latest_recovery_stage, "observe_first");
   assert.equal(runtimeToolEventsPayload.runtime_error_events, 5);
   assert.equal(runtimeToolEventsPayload.feedback_active, true);
+  assert.equal(runtimeToolEventsPayload.nonrecoverable_requires_user_intervention, true);
   logStep("runtime-tool-events-contract");
 
   const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
@@ -4786,6 +4788,7 @@ async function runTsRustExecutionSmoke() {
     ["boolean", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_recoverable_type)),
     true,
   );
+  assert.equal(statusPayload.status_runtime_tool_recovery_feedback_requires_user_intervention_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_consumed_type, "boolean");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_consumed_reason_type)),
@@ -4800,6 +4803,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_reason_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_from_profile_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_applied_profile_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_surface_adaptation_auto_blocked_type, "boolean");
   assert.equal(
     ["boolean", "object"].includes(String(statusPayload.status_runtime_tool_surface_adaptation_recoverable_type)),
     true,
@@ -5893,6 +5897,34 @@ async function runTsRustExecutionSmoke() {
     7,
   );
   logStep("start-smoke-contract status-ts-rust-window-size");
+
+  const statusNonRecoverableResult = runContract("start-smoke-contract.mjs", "status-nonrecoverable-tool-recovery", [
+    "--repo-root",
+    repoRoot,
+  ], {
+    timeoutMs: 240_000,
+  });
+  const statusNonRecoverablePayload = parseJsonOutput(
+    "start-smoke-contract status-nonrecoverable-tool-recovery",
+    statusNonRecoverableResult.stdout,
+  );
+  assert.equal(statusNonRecoverablePayload.exit_code, 0);
+  assert.equal(statusNonRecoverablePayload.text_exit_code, 0);
+  assert.equal(statusNonRecoverablePayload.status_json_parse_ok, true);
+  assert.equal(statusNonRecoverablePayload.recovery_feedback_active, true);
+  assert.equal(statusNonRecoverablePayload.recovery_feedback_stage, "ask_user");
+  assert.equal(statusNonRecoverablePayload.recovery_feedback_recoverable, false);
+  assert.equal(statusNonRecoverablePayload.recovery_feedback_requires_user_intervention, true);
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_active, false);
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_reason, "recovery_requires_user_intervention");
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_from_profile, "coding");
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_applied_profile, "coding");
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_auto_adaptation_blocked, true);
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_recovery_recoverable, false);
+  assert.equal(statusNonRecoverablePayload.text_has_requires_user_intervention, true);
+  assert.equal(statusNonRecoverablePayload.text_has_auto_adaptation_blocked, true);
+  assert.equal(statusNonRecoverablePayload.text_has_nonrecoverable_reason, true);
+  logStep("start-smoke-contract status-nonrecoverable-tool-recovery");
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [
     "--repo-root",

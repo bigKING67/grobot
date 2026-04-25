@@ -122,6 +122,7 @@ function activeRecoveryFeedback(input: {
     errorClass: input.errorClass,
     recommendedNextAction: "switch_tool_strategy",
     recoverable: input.recoverable === undefined ? true : input.recoverable,
+    requiresUserIntervention: input.recoverable === false,
     promptBlock: "recovery prompt",
     ...(input.observedAt !== null
       ? { observedAt: input.observedAt ?? "2026-04-25T00:00:00.000Z" }
@@ -138,6 +139,7 @@ const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
   errorClass: "tool_not_visible",
   recommendedNextAction: "switch_tool_strategy",
   recoverable: null,
+  requiresUserIntervention: false,
   promptBlock: "",
 };
 
@@ -457,6 +459,11 @@ expectEqual(
   "nonrecoverable recovery reason",
 );
 expectEqual(
+  nonRecoverableBrowserRecovery.adaptation.autoAdaptationBlocked,
+  true,
+  "nonrecoverable recovery blocks automatic adaptation",
+);
+expectEqual(
   nonRecoverableBrowserRecovery.adaptation.recoveryRecoverable,
   false,
   "nonrecoverable recovery observable",
@@ -479,6 +486,11 @@ expectEqual(
   unknownRecoverabilityBrowserRecovery.adaptation.active,
   true,
   "unknown recoverability preserves legacy recovery adaptation",
+);
+expectEqual(
+  unknownRecoverabilityBrowserRecovery.adaptation.autoAdaptationBlocked,
+  false,
+  "unknown recoverability does not block automatic adaptation",
 );
 expectEqual(
   unknownRecoverabilityBrowserRecovery.adaptation.recoveryRecoverable,
@@ -839,6 +851,7 @@ process.stdout.write(JSON.stringify({
   code_symbol_recovery_adapted: codeSymbolRecovery.adaptation.active,
   direct_browser_recovery_profile: directBrowserRecovery.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
+  nonrecoverable_blocks_auto_adaptation: nonRecoverableBrowserRecovery.adaptation.autoAdaptationBlocked,
   adaptation_guard_recovered_signal_consumed: true,
   recovery_feedback_consumed_at_source: true,
   newer_recovery_bypasses_consumed_guard: true,

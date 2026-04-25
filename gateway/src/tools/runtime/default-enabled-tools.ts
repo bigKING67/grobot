@@ -54,6 +54,7 @@ export interface RuntimeToolSurfaceAdaptation {
   appliedProfile: ToolSurfaceProfile;
   recommendedProfile: ToolSurfaceProfile | null;
   source: ToolSurfaceSource | null;
+  autoAdaptationBlocked: boolean;
   recoveryStage: RuntimeToolRecoveryFeedback["stage"];
   recoveryToolName: string | null;
   recoveryErrorClass: string | null;
@@ -863,6 +864,7 @@ function emptyAdaptation(input: {
     appliedProfile: fromProfile,
     recommendedProfile: input.recommendedProfile ?? null,
     source: input.source ?? null,
+    autoAdaptationBlocked: Boolean(input.recoveryFeedback?.active && input.recoveryFeedback.recoverable === false),
     recoveryStage: input.recoveryFeedback?.stage ?? null,
     recoveryToolName: input.recoveryFeedback?.toolName ?? null,
     recoveryErrorClass: input.recoveryFeedback?.errorClass ?? null,
@@ -1031,6 +1033,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
       appliedProfile: recommendedProfile,
       recommendedProfile,
       source: "metrics_recovery",
+      autoAdaptationBlocked: false,
       recoveryStage: input.recoveryFeedback.stage,
       recoveryToolName: input.recoveryFeedback.toolName,
       recoveryErrorClass: input.recoveryFeedback.errorClass,

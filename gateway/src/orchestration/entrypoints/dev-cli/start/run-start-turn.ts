@@ -2405,11 +2405,20 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       });
       if (runtimeToolContextForTurn.adaptation.active) {
         input.writeStderr(
-          `[tool-surface] event=adapted from=${runtimeToolContextForTurn.adaptation.fromProfile} to=${runtimeToolContextForTurn.adaptation.appliedProfile} source=${runtimeToolContextForTurn.adaptation.source ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"}\n`,
+          `[tool-surface] event=adapted from=${runtimeToolContextForTurn.adaptation.fromProfile} to=${runtimeToolContextForTurn.adaptation.appliedProfile} source=${runtimeToolContextForTurn.adaptation.source ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"} recoverable=${runtimeToolContextForTurn.adaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextForTurn.adaptation.recoveryRecoverable)} auto_adaptation_blocked=${runtimeToolContextForTurn.adaptation.autoAdaptationBlocked ? "true" : "false"}\n`,
+        );
+      } else if (runtimeToolContextForTurn.adaptation.autoAdaptationBlocked) {
+        input.writeStderr(
+          `[tool-surface] event=adaptation_blocked reason=${runtimeToolContextForTurn.adaptation.reason} from=${runtimeToolContextForTurn.adaptation.fromProfile} applied=${runtimeToolContextForTurn.adaptation.appliedProfile} recommended=${runtimeToolContextForTurn.adaptation.recommendedProfile ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"} recoverable=${runtimeToolContextForTurn.adaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextForTurn.adaptation.recoveryRecoverable)} auto_adaptation_blocked=true\n`,
         );
       } else if (runtimeToolContextForTurn.guard.active) {
         input.writeStderr(
           `[tool-surface] event=adaptation_guard reason=${runtimeToolContextForTurn.guard.reason} blocked_profile=${runtimeToolContextForTurn.guard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextForTurn.guard.matchingFailureCount)} recent_profiles=${runtimeToolContextForTurn.guard.recentProfileSequence.join(",") || "<empty>"}\n`,
+        );
+      }
+      if (runtimeToolRecoveryFeedback.active && runtimeToolRecoveryFeedback.requiresUserIntervention) {
+        input.writeStderr(
+          `[tool-recovery] event=requires_user_intervention stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextForTurn.adaptation.autoAdaptationBlocked ? "true" : "false"}\n`,
         );
       }
       if (runtimeToolRecoveryFeedback.active && runtimeToolContextForTurn.guard.active) {
@@ -2427,12 +2436,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
         });
         input.writeStderr(
-          `[tool-recovery] event=prompt_hint_guarded guard_reason=${runtimeToolContextForTurn.guard.reason} suppressed_action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"}\n`,
+          `[tool-recovery] event=prompt_hint_guarded guard_reason=${runtimeToolContextForTurn.guard.reason} suppressed_action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
         );
       } else if (runtimeToolRecoveryFeedback.active) {
         promptParts.push(runtimeToolRecoveryFeedback.promptBlock);
         input.writeStderr(
-          `[tool-recovery] event=prompt_hint_injected stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} severity=${runtimeToolRecoveryFeedback.severity} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"}\n`,
+          `[tool-recovery] event=prompt_hint_injected stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} severity=${runtimeToolRecoveryFeedback.severity} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
         );
       }
       const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";

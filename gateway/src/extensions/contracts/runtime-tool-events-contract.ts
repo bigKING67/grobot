@@ -109,6 +109,7 @@ const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
 expectEqual(nonRecoverableFeedback.active, true, "nonrecoverable feedback active");
 expectEqual(nonRecoverableFeedback.severity, "warning", "nonrecoverable feedback severity");
 expectEqual(nonRecoverableFeedback.recoverable, false, "nonrecoverable feedback recoverable");
+expectEqual(nonRecoverableFeedback.requiresUserIntervention, true, "nonrecoverable feedback requires intervention");
 expect(
   nonRecoverableFeedback.promptBlock.includes("Recoverability: requires_user_intervention"),
   "nonrecoverable feedback recoverability"
@@ -116,6 +117,14 @@ expect(
 expect(
   nonRecoverableFeedback.promptBlock.includes("Ask the user for missing configuration"),
   "nonrecoverable feedback action instruction"
+);
+expect(
+  nonRecoverableFeedback.promptBlock.includes("Automatic recovery is blocked"),
+  "nonrecoverable feedback blocks automatic recovery"
+);
+expect(
+  nonRecoverableFeedback.promptBlock.includes("Do not retry the failing tool automatically"),
+  "nonrecoverable feedback forbids automatic retry"
 );
 
 const workDir = join("/tmp", `grobot-runtime-tool-events-${String(process.pid)}-${String(Date.now())}`);
@@ -142,8 +151,9 @@ try {
   expectEqual(activeFeedback.severity, "info", "active feedback severity");
   expectEqual(activeFeedback.recommendedNextAction, "observe_prior_tool_result", "active feedback action");
   expectEqual(activeFeedback.recoverable, true, "active feedback recoverable");
+  expectEqual(activeFeedback.requiresUserIntervention, false, "active feedback does not require intervention");
   expect(activeFeedback.promptBlock.includes("Recoverability: auto_recoverable"), "active feedback recoverability");
-  expect(activeFeedback.promptBlock.includes("Do not repeat an identical failing tool call"), "active feedback prompt rule");
+  expect(activeFeedback.promptBlock.includes("do not repeat an identical failing tool call"), "active feedback prompt rule");
 
   const readBack = readRuntimeToolSurfaceMetrics(workDir);
   expectEqual(readBack.callsTotal, 3, "readback calls");
@@ -186,4 +196,5 @@ process.stdout.write(JSON.stringify({
   runtime_error_events: extractRuntimeErrorEvents(runtimeError).length,
   feedback_active: true,
   latest_recovery_recoverable: summary.latestRecovery?.recoverable,
+  nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
 }) + "\n");

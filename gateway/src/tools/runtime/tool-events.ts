@@ -56,6 +56,7 @@ export interface RuntimeToolRecoveryFeedback {
   errorClass: string | null;
   recommendedNextAction: string | null;
   recoverable: boolean | null;
+  requiresUserIntervention: boolean;
   promptBlock: string;
   observedAt?: string | null;
   consumed?: boolean;
@@ -406,6 +407,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: null,
       recommendedNextAction: null,
       recoverable: null,
+      requiresUserIntervention: false,
       promptBlock: "",
       observedAt: null,
     };
@@ -423,6 +425,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: recovery.errorClass ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
       recoverable: recovery.recoverable ?? null,
+      requiresUserIntervention: false,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
@@ -438,6 +441,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: recovery.errorClass ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
       recoverable: recovery.recoverable ?? null,
+      requiresUserIntervention: false,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
@@ -445,14 +449,18 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const instruction = actionInstruction(recovery.recommendedNextAction);
   const toolName = recovery.toolName ?? "unknown_tool";
   const errorClass = recovery.errorClass ?? recovery.reason;
-  const recoverability = recovery.recoverable === false ? "requires_user_intervention" : "auto_recoverable";
+  const requiresUserIntervention = recovery.recoverable === false;
+  const recoverability = requiresUserIntervention ? "requires_user_intervention" : "auto_recoverable";
+  const executionDiscipline = requiresUserIntervention
+    ? "Automatic recovery is blocked for this issue. Do not retry the failing tool automatically; ask the user or fix the required configuration, approval, or environment first."
+    : "Automatic recovery is allowed only after changing one concrete variable; do not repeat an identical failing tool call unchanged.";
   const promptBlock = [
     "[Runtime Tool Recovery Hint]",
     `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
     `Recoverability: ${recoverability}`,
     `Required next action: ${recovery.recommendedNextAction}`,
     `Execution rule: ${instruction}`,
-    "Do not repeat an identical failing tool call; change one concrete variable before retrying.",
+    `Execution discipline: ${executionDiscipline}`,
   ].join("\n");
   return {
     active: true,
@@ -463,6 +471,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     errorClass,
     recommendedNextAction: recovery.recommendedNextAction,
     recoverable: recovery.recoverable ?? null,
+    requiresUserIntervention,
     promptBlock,
     observedAt: recovery.observedAt ?? input.metrics.updatedAt,
   };

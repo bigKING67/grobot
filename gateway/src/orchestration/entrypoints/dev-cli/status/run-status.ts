@@ -1473,6 +1473,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           error_class: runtimeToolRecoveryFeedback.errorClass,
           recommended_next_action: runtimeToolRecoveryFeedback.recommendedNextAction,
           recoverable: runtimeToolRecoveryFeedback.recoverable,
+          requires_user_intervention: runtimeToolRecoveryFeedback.requiresUserIntervention,
           prompt_injected: runtimeToolRecoveryFeedback.active,
           consumed: runtimeToolRecoveryFeedback.consumed ?? false,
           consumed_reason: runtimeToolRecoveryFeedback.consumedReason ?? null,
@@ -1487,6 +1488,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           applied_profile: runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile,
           recommended_profile: runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile,
           source: runtimeToolContextPreview.toolSurfaceAdaptation.source,
+          auto_adaptation_blocked: runtimeToolContextPreview.toolSurfaceAdaptation.autoAdaptationBlocked,
           recovery_stage: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage,
           recovery_tool_name: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName,
           recovery_error_class: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass,
@@ -2339,10 +2341,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
+    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"}\n`,
+    `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextPreview.toolSurfaceAdaptation.autoAdaptationBlocked ? "true" : "false"} recovery_recoverable=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable)} stage=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation_outcome: recent=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcome ?? "<none>"} profile=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.appliedProfile ?? "<none>"} reason=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcomeReason ?? "<none>"} count=${String(runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length)} recovery_consumptions=${String(runtimeToolSurfaceAdaptationSnapshot.recentRecoveryConsumptions.length)} latest_consumption=${runtimeToolSurfaceAdaptationSnapshot.latestRecoveryConsumption?.reason ?? "<none>"}\n`,

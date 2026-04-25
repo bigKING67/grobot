@@ -1956,6 +1956,8 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_recovery_feedback_severity_type: typeof runtimeToolRecoveryFeedback?.severity,
     status_runtime_tool_recovery_feedback_reason_type: typeof runtimeToolRecoveryFeedback?.reason,
     status_runtime_tool_recovery_feedback_recoverable_type: typeof runtimeToolRecoveryFeedback?.recoverable,
+    status_runtime_tool_recovery_feedback_requires_user_intervention_type:
+      typeof runtimeToolRecoveryFeedback?.requires_user_intervention,
     status_runtime_tool_recovery_feedback_consumed_type: typeof runtimeToolRecoveryFeedback?.consumed,
     status_runtime_tool_recovery_feedback_consumed_reason_type: typeof runtimeToolRecoveryFeedback?.consumed_reason,
     status_runtime_tool_recovery_feedback_observed_at_type: typeof runtimeToolRecoveryFeedback?.observed_at,
@@ -1964,6 +1966,8 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
     status_runtime_tool_surface_adaptation_from_profile_type: typeof runtimeToolSurfaceAdaptation?.from_profile,
     status_runtime_tool_surface_adaptation_applied_profile_type: typeof runtimeToolSurfaceAdaptation?.applied_profile,
+    status_runtime_tool_surface_adaptation_auto_blocked_type:
+      typeof runtimeToolSurfaceAdaptation?.auto_adaptation_blocked,
     status_runtime_tool_surface_adaptation_recoverable_type: typeof runtimeToolSurfaceAdaptation?.recovery_recoverable,
     status_runtime_tool_surface_adaptation_observed_at_type: typeof runtimeToolSurfaceAdaptation?.recovery_observed_at,
     status_runtime_tool_surface_adaptation_outcome_present: Boolean(runtimeToolSurfaceAdaptationOutcome),
@@ -4242,6 +4246,91 @@ function runStartContextMemoryDecayAutotuneHysteresisFlow(repoRoot) {
   };
 }
 
+function writeNonRecoverableToolRecoveryMetrics(workDir) {
+  const runtimeDir = `${workDir}/.grobot/runtime`;
+  mkdirSync(runtimeDir, { recursive: true });
+  const observedAt = "2026-04-25T00:01:00.000Z";
+  writeFileSync(
+    `${runtimeDir}/tool-surface-metrics.json`,
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: observedAt,
+      callsTotal: 1,
+      failedTotal: 1,
+      deferredTotal: 0,
+      callsByTool: { web_scan: 1 },
+      failuresByErrorClass: { config_missing: 1 },
+      recoveryStages: { ask_user: 1 },
+      durationTotalMsByTool: { web_scan: 12 },
+      durationCountByTool: { web_scan: 1 },
+      recentRecoveries: [
+        {
+          stage: "ask_user",
+          reason: "config_missing",
+          recommendedNextAction: "ask_user_for_config_or_switch_provider",
+          toolName: "web_scan",
+          errorClass: "config_missing",
+          recoverable: false,
+          observedAt,
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function runStatusNonRecoverableToolRecovery(repoRoot) {
+  const workDir = createTempDir("grobot-status-nonrecoverable-work");
+  writeExecutionProjectToml(workDir);
+  writeNonRecoverableToolRecoveryMetrics(workDir);
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
+  const textResult = runCommand(repoRoot, statusArgs);
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeTools = isObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
+    ? runtimeTools.recovery_feedback
+    : null;
+  const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
+    ? runtimeTools.surface_adaptation
+    : null;
+  return {
+    exit_code: jsonResult.exit_code,
+    text_exit_code: textResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
+    recovery_feedback_active: recoveryFeedback?.active ?? null,
+    recovery_feedback_stage: recoveryFeedback?.stage ?? null,
+    recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
+    recovery_feedback_requires_user_intervention:
+      recoveryFeedback?.requires_user_intervention ?? null,
+    surface_adaptation_active: surfaceAdaptation?.active ?? null,
+    surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
+    surface_adaptation_from_profile: surfaceAdaptation?.from_profile ?? null,
+    surface_adaptation_applied_profile: surfaceAdaptation?.applied_profile ?? null,
+    surface_adaptation_auto_adaptation_blocked:
+      surfaceAdaptation?.auto_adaptation_blocked ?? null,
+    surface_adaptation_recovery_recoverable:
+      surfaceAdaptation?.recovery_recoverable ?? null,
+    text_has_requires_user_intervention:
+      textResult.stdout.includes("requires_user_intervention=true"),
+    text_has_auto_adaptation_blocked:
+      textResult.stdout.includes("auto_adaptation_blocked=true"),
+    text_has_nonrecoverable_reason:
+      textResult.stdout.includes("recovery_requires_user_intervention"),
+  };
+}
+
 function runStatusTsRustDeprecatedFlag(repoRoot) {
   const workDir = createTempDir("grobot-status-work");
   writeExecutionProjectToml(workDir);
@@ -4489,6 +4578,9 @@ function runCli(argv) {
       payload = runStatusTsRust(repoRoot, normalizedWindowSize);
       break;
     }
+    case "status-nonrecoverable-tool-recovery":
+      payload = runStatusNonRecoverableToolRecovery(repoRoot);
+      break;
     case "start-context-pre-send-head-trim-flow":
       payload = runStartContextPreSendHeadTrimFlow(repoRoot);
       break;
