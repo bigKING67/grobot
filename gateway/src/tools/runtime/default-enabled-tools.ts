@@ -1,4 +1,5 @@
 import type { RuntimeToolContext, ToolSurfaceProfile, ToolSurfaceSource } from "../../models/types";
+import type { RuntimeToolRecoveryFeedback } from "./tool-events";
 
 export const ALL_RUNTIME_LOCAL_TOOLS = [
   "list",
@@ -38,6 +39,24 @@ export const TOOL_SURFACE_PROFILES = [
   "mcp",
   "full_debug",
 ] as const satisfies readonly ToolSurfaceProfile[];
+
+export interface RuntimeToolSurfaceAdaptation {
+  enabled: boolean;
+  active: boolean;
+  reason: string;
+  fromProfile: ToolSurfaceProfile;
+  appliedProfile: ToolSurfaceProfile;
+  recommendedProfile: ToolSurfaceProfile | null;
+  source: ToolSurfaceSource | null;
+  recoveryStage: RuntimeToolRecoveryFeedback["stage"];
+  recoveryToolName: string | null;
+  recoveryErrorClass: string | null;
+}
+
+export interface RuntimeToolSurfaceAdaptationResult {
+  context: RuntimeToolContext | undefined;
+  adaptation: RuntimeToolSurfaceAdaptation;
+}
 
 const PROFILE_VISIBLE_TOOLS: Record<ToolSurfaceProfile, readonly string[]> = {
   minimal: ["read", "edit", "write", "ask_user_question"],
@@ -97,6 +116,38 @@ function scoreMatches(haystack: string, needles: readonly string[], weight = 1):
   return needles.reduce((score, needle) => score + (haystack.includes(needle) ? weight : 0), 0);
 }
 
+function scoreCodeIntent(haystack: string): number {
+  return scoreMatches(haystack, [
+    "code",
+    "repo",
+    "repository",
+    "src/",
+    "gateway/",
+    "runtime/",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs",
+    ".rs",
+    "function",
+    "class",
+    "interface",
+    "component",
+    "代码",
+    "源码",
+    "仓库",
+    "文件",
+    "组件",
+    "函数",
+    "接口",
+    "实现",
+    "修复",
+    "优化",
+    "编译",
+    "测试",
+  ]);
+}
+
 function chooseHighestScore(scores: Record<ToolSurfaceProfile, number>): ToolSurfaceProfile {
   const priority: ToolSurfaceProfile[] = ["browser_advanced", "mcp", "browser", "context", "coding", "minimal", "full_debug"];
   let best: ToolSurfaceProfile = "coding";
@@ -126,35 +177,7 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
   }
 
   const normalized = (message ?? "").toLowerCase();
-  const codeScore = scoreMatches(normalized, [
-    "code",
-    "repo",
-    "repository",
-    "src/",
-    "gateway/",
-    "runtime/",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".mjs",
-    ".rs",
-    "function",
-    "class",
-    "interface",
-    "component",
-    "代码",
-    "源码",
-    "仓库",
-    "文件",
-    "组件",
-    "函数",
-    "接口",
-    "实现",
-    "修复",
-    "优化",
-    "编译",
-    "测试",
-  ]);
+  const codeScore = scoreCodeIntent(normalized);
   if (includesAny(normalized, [
     "full_debug",
     "tool debug",
@@ -258,6 +281,205 @@ function dedupeKnownToolNames(toolNames: readonly string[], availableTools?: rea
   return rows;
 }
 
+function buildRuntimeToolContextForProfile(input: {
+  baseContext: RuntimeToolContext;
+  profile: ToolSurfaceProfile;
+  source: ToolSurfaceSource;
+  reason: string;
+  availableTools?: readonly string[];
+}): RuntimeToolContext {
+  const visibleTools = dedupeKnownToolNames(toolNamesForSurfaceProfile(input.profile), input.availableTools);
+  const enabledTools = input.profile === "full_debug"
+    ? dedupeKnownToolNames(ALL_RUNTIME_LOCAL_TOOLS, input.availableTools)
+    : visibleTools;
+  return {
+    ...input.baseContext,
+    enabledTools,
+    modelVisibleTools: visibleTools,
+    toolSurfaceProfile: input.profile,
+    toolSurfaceSource: input.source,
+    toolSurfaceReason: input.reason,
+    toolPolicyVersion: TOOL_SURFACE_POLICY_VERSION,
+    advancedToolSchema: input.profile === "browser_advanced" || input.profile === "full_debug",
+    schemaEstimatedTokens: estimateToolSchemaTokens(visibleTools, input.profile),
+    schemaFingerprint: buildToolSurfaceFingerprint(input.profile, visibleTools),
+  };
+}
+
+function emptyAdaptation(input: {
+  context?: RuntimeToolContext;
+  reason: string;
+  recommendedProfile?: ToolSurfaceProfile | null;
+  source?: ToolSurfaceSource | null;
+  recoveryFeedback?: RuntimeToolRecoveryFeedback;
+}): RuntimeToolSurfaceAdaptation {
+  const fromProfile = input.context?.toolSurfaceProfile ?? "coding";
+  return {
+    enabled: true,
+    active: false,
+    reason: input.reason,
+    fromProfile,
+    appliedProfile: fromProfile,
+    recommendedProfile: input.recommendedProfile ?? null,
+    source: input.source ?? null,
+    recoveryStage: input.recoveryFeedback?.stage ?? null,
+    recoveryToolName: input.recoveryFeedback?.toolName ?? null,
+    recoveryErrorClass: input.recoveryFeedback?.errorClass ?? null,
+  };
+}
+
+function inferProfileFromRecovery(input: {
+  feedback: RuntimeToolRecoveryFeedback;
+  userMessage?: string;
+}): ToolSurfaceProfile | undefined {
+  const recoveryText = [
+    input.feedback.toolName ?? "",
+    input.feedback.errorClass ?? "",
+    input.feedback.recommendedNextAction ?? "",
+  ].join(" ").toLowerCase();
+  const unavailableSignal = includesAny(recoveryText, [
+    "tool_not_visible",
+    "tool_disabled",
+    "semantic_tool_unavailable",
+  ]);
+  if (!unavailableSignal && input.feedback.stage !== "strategy_switch") {
+    return undefined;
+  }
+  if (includesAny(recoveryText, ["web_scan", "web_execute_js"])) {
+    return "browser";
+  }
+  if (includesAny(recoveryText, ["mcp_servers", "mcp_call", "grok-search", "grok_search"])) {
+    return "mcp";
+  }
+  if (includesAny(recoveryText, ["semantic_search", "semantic_tool_unavailable"])) {
+    return "context";
+  }
+
+  const normalizedMessage = (input.userMessage ?? "").toLowerCase();
+  if (!normalizedMessage) {
+    return undefined;
+  }
+  const codeFocused = scoreCodeIntent(normalizedMessage) > 0;
+  if (codeFocused) {
+    return undefined;
+  }
+  if (includesAny(normalizedMessage, ["browser", "浏览器", "网页", "dom", "web_scan", "web_execute_js", "点击", "打开"])) {
+    return "browser";
+  }
+  if (includesAny(normalizedMessage, ["mcp", "grok-search", "grok_search", "mcp_call"])) {
+    return "mcp";
+  }
+  if (includesAny(normalizedMessage, ["semantic_search", "语义", "知识库", "记忆", "经验"])) {
+    return "context";
+  }
+  return undefined;
+}
+
+export function adaptRuntimeToolContextForRecovery(input: {
+  context: RuntimeToolContext | undefined;
+  recoveryFeedback: RuntimeToolRecoveryFeedback;
+  userMessage?: string;
+  availableTools?: readonly string[];
+}): RuntimeToolSurfaceAdaptationResult {
+  if (!input.context) {
+    return {
+      context: undefined,
+      adaptation: emptyAdaptation({
+        reason: "missing_tool_context",
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
+  if (!input.recoveryFeedback.active) {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: input.recoveryFeedback.reason,
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
+
+  const source = input.context.toolSurfaceSource ?? "fallback";
+  if (source === "env" || source === "cli" || source === "config" || source === "debug") {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: `explicit_surface_source_${source}`,
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
+
+  const fromProfile = input.context.toolSurfaceProfile ?? "coding";
+  if (fromProfile !== "coding" && fromProfile !== "minimal") {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: `current_profile_${fromProfile}_wins`,
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
+
+  const recommendedProfile = inferProfileFromRecovery({
+    feedback: input.recoveryFeedback,
+    userMessage: input.userMessage,
+  });
+  if (!recommendedProfile) {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: "no_safe_profile_for_recovery",
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
+  if (recommendedProfile === fromProfile) {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: "already_on_recommended_profile",
+        recommendedProfile,
+        recoveryFeedback: input.recoveryFeedback,
+      }),
+    };
+  }
+
+  const reason = [
+    "recent_recovery_surface_adaptation",
+    `tool=${input.recoveryFeedback.toolName ?? "<none>"}`,
+    `error_class=${input.recoveryFeedback.errorClass ?? "<none>"}`,
+  ].join(" ");
+  const adaptedContext = buildRuntimeToolContextForProfile({
+    baseContext: input.context,
+    profile: recommendedProfile,
+    source: "metrics_recovery",
+    reason,
+    availableTools: input.availableTools,
+  });
+  return {
+    context: adaptedContext,
+    adaptation: {
+      enabled: true,
+      active: true,
+      reason,
+      fromProfile,
+      appliedProfile: recommendedProfile,
+      recommendedProfile,
+      source: "metrics_recovery",
+      recoveryStage: input.recoveryFeedback.stage,
+      recoveryToolName: input.recoveryFeedback.toolName,
+      recoveryErrorClass: input.recoveryFeedback.errorClass,
+    },
+  };
+}
+
 export function estimateToolSchemaTokens(toolNames: readonly string[], profile: ToolSurfaceProfile): number {
   return Math.max(1, Math.ceil(toolNames.reduce((total, toolName) => {
     if (profile === "browser_advanced" || profile === "full_debug") {
@@ -290,20 +512,11 @@ export function buildRuntimeToolContextForMessage(
     return undefined;
   }
   const decision = resolveToolSurfaceProfileFromMessage(message);
-  const visibleTools = dedupeKnownToolNames(toolNamesForSurfaceProfile(decision.profile), availableTools);
-  const enabledTools = decision.profile === "full_debug"
-    ? dedupeKnownToolNames(ALL_RUNTIME_LOCAL_TOOLS, availableTools)
-    : visibleTools;
-  return {
-    ...baseContext,
-    enabledTools,
-    modelVisibleTools: visibleTools,
-    toolSurfaceProfile: decision.profile,
-    toolSurfaceSource: decision.source,
-    toolSurfaceReason: decision.reason,
-    toolPolicyVersion: TOOL_SURFACE_POLICY_VERSION,
-    advancedToolSchema: decision.profile === "browser_advanced" || decision.profile === "full_debug",
-    schemaEstimatedTokens: estimateToolSchemaTokens(visibleTools, decision.profile),
-    schemaFingerprint: buildToolSurfaceFingerprint(decision.profile, visibleTools),
-  };
+  return buildRuntimeToolContextForProfile({
+    baseContext,
+    profile: decision.profile,
+    source: decision.source,
+    reason: decision.reason,
+    availableTools,
+  });
 }

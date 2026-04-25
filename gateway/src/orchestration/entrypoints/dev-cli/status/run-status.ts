@@ -15,14 +15,17 @@ import {
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
 import {
+  adaptRuntimeToolContextForRecovery,
   buildDefaultRuntimeEnabledTools,
   buildRuntimeToolContextForMessage,
   buildToolSurfaceFingerprint,
   estimateToolSchemaTokens,
+  type RuntimeToolSurfaceAdaptation,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
 import {
   buildRuntimeToolRecoveryFeedback,
+  type RuntimeToolRecoveryFeedback,
   readRuntimeToolSurfaceMetrics,
 } from "../../../../tools/runtime/tool-events";
 import type { ToolSurfaceProfile, ToolSurfaceSource } from "../../../../models/types";
@@ -448,7 +451,11 @@ function resolveRouteDecisionSummary(input: {
   };
 }
 
-function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, runtimeBinaryPath?: string): {
+function resolveRuntimeToolContextPreview(
+  projectTomlPath: string | undefined,
+  runtimeBinaryPath: string | undefined,
+  recoveryFeedback: RuntimeToolRecoveryFeedback,
+): {
   enabledTools: string[];
   modelVisibleTools: string[];
   toolSurfaceProfile: ToolSurfaceProfile;
@@ -458,6 +465,7 @@ function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, r
   advancedToolSchema: boolean;
   schemaFingerprint: string;
   schemaEstimatedTokens: number;
+  toolSurfaceAdaptation: RuntimeToolSurfaceAdaptation;
   enabledToolsSource: "runtime.tools.describe" | "start-default";
   enabledToolsSourceDetail?: string;
   manifestFingerprint: string;
@@ -517,22 +525,30 @@ function resolveRuntimeToolContextPreview(projectTomlPath: string | undefined, r
     noToolFallbackMode,
     maxRecoveryRounds,
   }, undefined, manifestToolNames);
-  const toolSurfaceProfile = surfaced?.toolSurfaceProfile ?? "coding";
-  const modelVisibleTools = surfaced?.modelVisibleTools ?? enabledTools;
-  const schemaFingerprint = surfaced?.schemaFingerprint
+  const adapted = adaptRuntimeToolContextForRecovery({
+    context: surfaced,
+    recoveryFeedback,
+    availableTools: manifestToolNames,
+  });
+  const effectiveContext = adapted.context ?? surfaced;
+  const toolSurfaceProfile = effectiveContext?.toolSurfaceProfile ?? "coding";
+  const modelVisibleTools = effectiveContext?.modelVisibleTools ?? enabledTools;
+  const dispatchEnabledTools = effectiveContext?.enabledTools ?? enabledTools;
+  const schemaFingerprint = effectiveContext?.schemaFingerprint
     ?? buildToolSurfaceFingerprint(toolSurfaceProfile, modelVisibleTools);
-  const schemaEstimatedTokens = surfaced?.schemaEstimatedTokens
+  const schemaEstimatedTokens = effectiveContext?.schemaEstimatedTokens
     ?? estimateToolSchemaTokens(modelVisibleTools, toolSurfaceProfile);
   return {
-    enabledTools,
+    enabledTools: dispatchEnabledTools,
     modelVisibleTools,
     toolSurfaceProfile,
-    toolSurfaceSource: surfaced?.toolSurfaceSource ?? "fallback",
-    toolSurfaceReason: surfaced?.toolSurfaceReason ?? "status fallback",
-    toolPolicyVersion: surfaced?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
-    advancedToolSchema: surfaced?.advancedToolSchema ?? false,
+    toolSurfaceSource: effectiveContext?.toolSurfaceSource ?? "fallback",
+    toolSurfaceReason: effectiveContext?.toolSurfaceReason ?? "status fallback",
+    toolPolicyVersion: effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
+    advancedToolSchema: effectiveContext?.advancedToolSchema ?? false,
     schemaFingerprint,
     schemaEstimatedTokens,
+    toolSurfaceAdaptation: adapted.adaptation,
     enabledToolsSource,
     enabledToolsSourceDetail:
       enabledToolsSource === "start-default" && described && described.detail
@@ -699,12 +715,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     noShadowModeArg: hasFlag(options, "no-shadow-mode"),
     projectTomlPath,
   });
-  const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
-  const runtimeToolContextPreview = resolveRuntimeToolContextPreview(projectTomlPath, runtimeBinaryPath);
   const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(workDir);
   const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
     metrics: runtimeToolSurfaceMetrics,
   });
+  const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
+  const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
+    projectTomlPath,
+    runtimeBinaryPath,
+    runtimeToolRecoveryFeedback,
+  );
   const parsedScope = parseScope(sessionScopeRaw);
   const maskedApiKey = maskSecret(apiKey);
   const runtimeHealth =
@@ -1034,6 +1054,18 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           error_class: runtimeToolRecoveryFeedback.errorClass,
           recommended_next_action: runtimeToolRecoveryFeedback.recommendedNextAction,
           prompt_injected: runtimeToolRecoveryFeedback.active,
+        },
+        surface_adaptation: {
+          enabled: runtimeToolContextPreview.toolSurfaceAdaptation.enabled,
+          active: runtimeToolContextPreview.toolSurfaceAdaptation.active,
+          reason: runtimeToolContextPreview.toolSurfaceAdaptation.reason,
+          from_profile: runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile,
+          applied_profile: runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile,
+          recommended_profile: runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile,
+          source: runtimeToolContextPreview.toolSurfaceAdaptation.source,
+          recovery_stage: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage,
+          recovery_tool_name: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName,
+          recovery_error_class: runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass,
         },
         enabled_tools_source: runtimeToolContextPreview.enabledToolsSource,
         enabled_tools_source_detail: runtimeToolContextPreview.enabledToolsSourceDetail ?? null,
@@ -1833,6 +1865,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_enabled_tools: ${runtimeToolContextPreview.enabledTools.join(",")}\n`,

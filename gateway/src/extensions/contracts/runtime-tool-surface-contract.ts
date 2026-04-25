@@ -1,10 +1,12 @@
 import {
+  adaptRuntimeToolContextForRecovery,
   buildRuntimeToolContextForMessage,
   buildToolSurfaceFingerprint,
   estimateToolSchemaTokens,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../tools/runtime/default-enabled-tools";
 import type { RuntimeToolContext } from "../../models/types";
+import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
 
 const baseContext = {
   workDir: "/tmp/grobot-runtime-tool-surface-contract",
@@ -55,6 +57,34 @@ function build(message: string | undefined, availableTools?: readonly string[]):
   expect(context !== undefined, "runtime tool context should be built");
   return context;
 }
+
+function activeRecoveryFeedback(input: {
+  toolName: string;
+  errorClass: string;
+  stage?: RuntimeToolRecoveryFeedback["stage"];
+}): RuntimeToolRecoveryFeedback {
+  return {
+    active: true,
+    severity: "warning",
+    reason: "recent_recovery",
+    stage: input.stage ?? "strategy_switch",
+    toolName: input.toolName,
+    errorClass: input.errorClass,
+    recommendedNextAction: "switch_tool_strategy",
+    promptBlock: "recovery prompt",
+  };
+}
+
+const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
+  active: false,
+  severity: "none",
+  reason: "stale_recovery",
+  stage: "strategy_switch",
+  toolName: "web_scan",
+  errorClass: "tool_not_visible",
+  recommendedNextAction: "switch_tool_strategy",
+  promptBlock: "",
+};
 
 const coding = withEnvProfile(undefined, () => build(undefined));
 expectEqual(coding.toolSurfaceProfile, "coding", "default profile");
@@ -125,6 +155,57 @@ expectEqual(pageComponentCode.toolSurfaceProfile, "coding", "page component code
 const contextEngineCode = withEnvProfile(undefined, () => build("看下上下文引擎代码里的 memory mechanism"));
 expectEqual(contextEngineCode.toolSurfaceProfile, "coding", "context engine code should stay coding");
 
+const adaptedBrowser = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "tool_not_visible",
+  }),
+});
+expectEqual(adaptedBrowser.adaptation.active, true, "browser recovery adaptation active");
+expectEqual(adaptedBrowser.context?.toolSurfaceProfile, "browser", "browser recovery adapts profile");
+expectEqual(adaptedBrowser.context?.toolSurfaceSource, "metrics_recovery", "browser recovery source");
+expectDeepEqual(adaptedBrowser.context?.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser recovery visible tools");
+
+const adaptedContext = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "semantic_search",
+    errorClass: "tool_not_visible",
+  }),
+});
+expectEqual(adaptedContext.adaptation.active, true, "context recovery adaptation active");
+expectEqual(adaptedContext.context?.toolSurfaceProfile, "context", "context recovery adapts profile");
+expectDeepEqual(adaptedContext.context?.modelVisibleTools, ["semantic_search", "read", "ask_user_question"], "context recovery visible tools");
+
+const adaptedMcp = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "mcp_call",
+    errorClass: "tool_disabled",
+  }),
+});
+expectEqual(adaptedMcp.adaptation.active, true, "mcp recovery adaptation active");
+expectEqual(adaptedMcp.context?.toolSurfaceProfile, "mcp", "mcp recovery adapts profile");
+expectDeepEqual(adaptedMcp.context?.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user_question"], "mcp recovery visible tools");
+
+const staleRecovery = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: inactiveRecoveryFeedback,
+});
+expectEqual(staleRecovery.adaptation.active, false, "stale recovery does not adapt");
+expectEqual(staleRecovery.context?.toolSurfaceProfile, "coding", "stale recovery keeps coding profile");
+
+const envFullDebugRecovery = adaptRuntimeToolContextForRecovery({
+  context: fullDebug,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "tool_not_visible",
+  }),
+});
+expectEqual(envFullDebugRecovery.adaptation.active, false, "env profile should not adapt");
+expectEqual(envFullDebugRecovery.context?.toolSurfaceProfile, "full_debug", "env profile remains full_debug");
+
 process.stdout.write(JSON.stringify({
   ok: true,
   policy_version: TOOL_SURFACE_POLICY_VERSION,
@@ -136,4 +217,8 @@ process.stdout.write(JSON.stringify({
     JSON.stringify(fullDebug.enabledTools) === JSON.stringify(fullDebug.modelVisibleTools),
   page_component_code_profile: pageComponentCode.toolSurfaceProfile,
   context_engine_code_profile: contextEngineCode.toolSurfaceProfile,
+  adapted_browser_profile: adaptedBrowser.context?.toolSurfaceProfile,
+  adapted_context_profile: adaptedContext.context?.toolSurfaceProfile,
+  adapted_mcp_profile: adaptedMcp.context?.toolSurfaceProfile,
+  stale_recovery_adapted: staleRecovery.adaptation.active,
 }) + "\n");

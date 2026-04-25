@@ -29,7 +29,10 @@ import {
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
-import { buildRuntimeToolContextForMessage } from "../../../../tools/runtime/default-enabled-tools";
+import {
+  adaptRuntimeToolContextForRecovery,
+  buildRuntimeToolContextForMessage,
+} from "../../../../tools/runtime/default-enabled-tools";
 import { type MemoryOrchestrator } from "../../../../tools/memory";
 import {
   compressPromptSnapshotSectionsSemanticallyForBudget,
@@ -2344,9 +2347,20 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         ...askUserTurnContext.promptParts,
         ...memoryInject.promptParts,
       ];
+      const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(input.workDir);
       const runtimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
-        metrics: readRuntimeToolSurfaceMetrics(input.workDir),
+        metrics: runtimeToolSurfaceMetrics,
       });
+      const runtimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
+        context: buildRuntimeToolContextForMessage(input.runtimeToolContext, userText),
+        recoveryFeedback: runtimeToolRecoveryFeedback,
+        userMessage: userText,
+      });
+      if (runtimeToolContextForTurn.adaptation.active) {
+        input.writeStderr(
+          `[tool-surface] event=adapted from=${runtimeToolContextForTurn.adaptation.fromProfile} to=${runtimeToolContextForTurn.adaptation.appliedProfile} source=${runtimeToolContextForTurn.adaptation.source ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"}\n`,
+        );
+      }
       if (runtimeToolRecoveryFeedback.active) {
         promptParts.push(runtimeToolRecoveryFeedback.promptBlock);
         input.writeStderr(
@@ -2790,7 +2804,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                   },
                     {
                       modelConfig: turnModelConfig.modelConfig,
-                      toolContext: buildRuntimeToolContextForMessage(input.runtimeToolContext, userText),
+                      toolContext: runtimeToolContextForTurn.context,
                       attachments: runtimeAttachments,
                       abortSignal: turnSignal,
                       systemPrompt: grobotSystemPrompt,

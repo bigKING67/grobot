@@ -98,7 +98,14 @@ export type ToolSurfaceProfile =
   | "mcp"
   | "full_debug";
 
-export type ToolSurfaceSource = "auto_intent" | "env" | "cli" | "config" | "debug" | "fallback";
+export type ToolSurfaceSource =
+  | "auto_intent"
+  | "metrics_recovery"
+  | "env"
+  | "cli"
+  | "config"
+  | "debug"
+  | "fallback";
 
 export interface RuntimeToolContext {
   workDir?: string;
