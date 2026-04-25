@@ -111,6 +111,7 @@ function activeRecoveryFeedback(input: {
   errorClass: string;
   stage?: RuntimeToolRecoveryFeedback["stage"];
   observedAt?: string | null;
+  recoverable?: boolean | null;
 }): RuntimeToolRecoveryFeedback {
   return {
     active: true,
@@ -120,6 +121,7 @@ function activeRecoveryFeedback(input: {
     toolName: input.toolName,
     errorClass: input.errorClass,
     recommendedNextAction: "switch_tool_strategy",
+    recoverable: input.recoverable ?? true,
     promptBlock: "recovery prompt",
     ...(input.observedAt !== null
       ? { observedAt: input.observedAt ?? "2026-04-25T00:00:00.000Z" }
@@ -135,6 +137,7 @@ const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
   toolName: "web_scan",
   errorClass: "tool_not_visible",
   recommendedNextAction: "switch_tool_strategy",
+  recoverable: null,
   promptBlock: "",
 };
 
@@ -434,6 +437,7 @@ const adaptedBrowser = adaptRuntimeToolContextForRecovery({
 expectEqual(adaptedBrowser.adaptation.active, true, "browser recovery adaptation active");
 expectEqual(adaptedBrowser.context?.toolSurfaceProfile, "browser", "browser recovery adapts profile");
 expectEqual(adaptedBrowser.context?.toolSurfaceSource, "metrics_recovery", "browser recovery source");
+expectEqual(adaptedBrowser.adaptation.recoveryRecoverable, true, "browser recovery recoverable is exposed");
 expectEqual(adaptedBrowser.context?.toolSurfaceDecision?.profile, "coding", "recovery keeps original message decision trace");
 expectDeepEqual(adaptedBrowser.context?.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser recovery visible tools");
 

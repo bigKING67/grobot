@@ -4782,6 +4782,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_active_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_severity_type, "string");
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_reason_type, "string");
+  assert.equal(
+    ["boolean", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_recoverable_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_feedback_consumed_type, "boolean");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_consumed_reason_type)),
@@ -4796,6 +4800,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_reason_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_from_profile_type, "string");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_applied_profile_type, "string");
+  assert.equal(
+    ["boolean", "object"].includes(String(statusPayload.status_runtime_tool_surface_adaptation_recoverable_type)),
+    true,
+  );
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_surface_adaptation_observed_at_type)),
     true,

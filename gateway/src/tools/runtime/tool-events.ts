@@ -55,6 +55,7 @@ export interface RuntimeToolRecoveryFeedback {
   toolName: string | null;
   errorClass: string | null;
   recommendedNextAction: string | null;
+  recoverable: boolean | null;
   promptBlock: string;
   observedAt?: string | null;
   consumed?: boolean;
@@ -404,6 +405,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       toolName: null,
       errorClass: null,
       recommendedNextAction: null,
+      recoverable: null,
       promptBlock: "",
       observedAt: null,
     };
@@ -420,6 +422,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       toolName: recovery.toolName ?? null,
       errorClass: recovery.errorClass ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
+      recoverable: recovery.recoverable ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
@@ -434,6 +437,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       toolName: recovery.toolName ?? null,
       errorClass: recovery.errorClass ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
+      recoverable: recovery.recoverable ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
@@ -458,6 +462,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     toolName,
     errorClass,
     recommendedNextAction: recovery.recommendedNextAction,
+    recoverable: recovery.recoverable ?? null,
     promptBlock,
     observedAt: recovery.observedAt ?? input.metrics.updatedAt,
   };

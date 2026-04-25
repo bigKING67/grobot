@@ -108,6 +108,7 @@ const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
 });
 expectEqual(nonRecoverableFeedback.active, true, "nonrecoverable feedback active");
 expectEqual(nonRecoverableFeedback.severity, "warning", "nonrecoverable feedback severity");
+expectEqual(nonRecoverableFeedback.recoverable, false, "nonrecoverable feedback recoverable");
 expect(
   nonRecoverableFeedback.promptBlock.includes("Recoverability: requires_user_intervention"),
   "nonrecoverable feedback recoverability"
@@ -140,6 +141,7 @@ try {
   expectEqual(activeFeedback.active, true, "active feedback enabled");
   expectEqual(activeFeedback.severity, "info", "active feedback severity");
   expectEqual(activeFeedback.recommendedNextAction, "observe_prior_tool_result", "active feedback action");
+  expectEqual(activeFeedback.recoverable, true, "active feedback recoverable");
   expect(activeFeedback.promptBlock.includes("Recoverability: auto_recoverable"), "active feedback recoverability");
   expect(activeFeedback.promptBlock.includes("Do not repeat an identical failing tool call"), "active feedback prompt rule");
 
