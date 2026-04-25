@@ -91,6 +91,12 @@ mod tests {
                 .is_some_and(|value| value.starts_with("schema:")),
             "schema profile should expose a stable schema fingerprint"
         );
+        assert!(
+            browser_schema_profile["per_tool_suppressed_args"]["web_execute_js"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|value| value == "native_fallback_action")),
+            "browser schema profile should expose suppressed browser args"
+        );
         assert_eq!(
             browser_schema_profile["schema_property_count"].as_u64(),
             Some(25)

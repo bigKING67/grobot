@@ -846,11 +846,14 @@ fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanc
     }
 }
 
-fn schema_property_count(parameters: &Value) -> usize {
-    parameters
+fn schema_property_names(parameters: &Value) -> Vec<String> {
+    let mut names = parameters
         .get("properties")
         .and_then(Value::as_object)
-        .map_or(0, |properties| properties.len())
+        .map(|properties| properties.keys().cloned().collect::<Vec<String>>())
+        .unwrap_or_default();
+    names.sort();
+    names
 }
 
 fn stable_json_fingerprint(prefix: &str, payload: &Value) -> String {
@@ -870,6 +873,8 @@ fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Val
     let visible_tool_count = tool_names.len();
     let catalog = local_tool_catalog();
     let mut per_tool_property_count = Map::new();
+    let mut per_tool_visible_args = Map::new();
+    let mut per_tool_suppressed_args = Map::new();
     let mut projected_tool_schemas = Vec::new();
     let mut schema_property_total = 0usize;
     let mut full_schema_property_total = 0usize;
@@ -878,13 +883,24 @@ fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Val
         if let Some(tool) = catalog.iter().find(|entry| entry.name == *tool_name) {
             let projected_parameters =
                 project_tool_parameters(tool.name, &tool.parameters, profile, advanced_tool_schema);
-            let projected_count = schema_property_count(&projected_parameters);
-            let full_count = schema_property_count(&tool.parameters);
+            let visible_args = schema_property_names(&projected_parameters);
+            let full_args = schema_property_names(&tool.parameters);
+            let visible_arg_set = visible_args.iter().cloned().collect::<HashSet<String>>();
+            let suppressed_args = full_args
+                .iter()
+                .filter(|name| !visible_arg_set.contains(*name))
+                .cloned()
+                .collect::<Vec<String>>();
+            let projected_count = visible_args.len();
+            let full_count = full_args.len();
             schema_property_total += projected_count;
             full_schema_property_total += full_count;
             per_tool_property_count.insert(tool.name.to_string(), json!(projected_count));
+            per_tool_visible_args.insert(tool.name.to_string(), json!(visible_args));
+            per_tool_suppressed_args.insert(tool.name.to_string(), json!(suppressed_args));
             projected_tool_schemas.push(json!({
                 "name": tool.name,
+                "full_property_names": full_args,
                 "parameters": projected_parameters,
             }));
         }
@@ -914,6 +930,8 @@ fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Val
         "full_schema_property_count": full_schema_property_total,
         "suppressed_schema_property_count": full_schema_property_total.saturating_sub(schema_property_total),
         "per_tool_property_count": per_tool_property_count,
+        "per_tool_visible_args": per_tool_visible_args,
+        "per_tool_suppressed_args": per_tool_suppressed_args,
     })
 }
 

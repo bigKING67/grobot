@@ -203,6 +203,12 @@ function buildRuntimeDescribeSchemaProjectionSummary(input: {
     schemaEstimatedTokens: input.context.schemaEstimatedTokens,
     schemaFingerprint: input.runtimeProfile.schemaFingerprint,
     perToolPropertyCount: { ...input.runtimeProfile.perToolPropertyCount },
+    perToolVisibleArgs: Object.fromEntries(
+      Object.entries(input.runtimeProfile.perToolVisibleArgs).map(([toolName, args]) => [toolName, [...args]]),
+    ),
+    perToolSuppressedArgs: Object.fromEntries(
+      Object.entries(input.runtimeProfile.perToolSuppressedArgs).map(([toolName, args]) => [toolName, [...args]]),
+    ),
   };
 }
 
@@ -827,7 +833,19 @@ function serializeRuntimeToolSurfaceProjectionSummary(
     schema_estimated_tokens: summary.schemaEstimatedTokens,
     schema_fingerprint: summary.schemaFingerprint,
     per_tool_property_count: summary.perToolPropertyCount,
+    per_tool_visible_args: summary.perToolVisibleArgs ?? null,
+    per_tool_suppressed_args: summary.perToolSuppressedArgs ?? null,
   };
+}
+
+function formatRuntimeToolSuppressedArgs(summary: RuntimeToolSurfaceProjectionSummary): string {
+  const rows = Object.entries(summary.perToolSuppressedArgs ?? {})
+    .filter(([, args]) => args.length > 0)
+    .map(([toolName, args]) => `${toolName}:${args.join("|")}`);
+  if (rows.length === 0) {
+    return "<none>";
+  }
+  return rows.join(";");
 }
 
 function serializeRuntimeToolSurfaceProjectionDrift(
@@ -2198,6 +2216,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_schema_projection: source=${runtimeToolContextPreview.schemaProjectionSummary.source} mode=${runtimeToolContextPreview.schemaProjectionSummary.projectionMode} visible_tools=${String(runtimeToolContextPreview.schemaProjectionSummary.visibleToolCount)} dispatch_enabled=${String(runtimeToolContextPreview.schemaProjectionSummary.dispatchEnabledToolCount)} properties=${String(runtimeToolContextPreview.schemaProjectionSummary.schemaPropertyCount)} full_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.fullSchemaPropertyCount)} suppressed_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.suppressedSchemaPropertyCount)} fingerprint=${runtimeToolContextPreview.schemaProjectionSummary.schemaFingerprint}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_schema_suppressed_args: ${formatRuntimeToolSuppressedArgs(runtimeToolContextPreview.schemaProjectionSummary)}\n`,
   );
   process.stdout.write(
     `runtime_tool_schema_projection_drift: checked=${runtimeToolContextPreview.schemaProjectionDrift.checked ? "true" : "false"} active=${runtimeToolContextPreview.schemaProjectionDrift.active ? "true" : "false"} reason=${runtimeToolContextPreview.schemaProjectionDrift.reason}\n`,

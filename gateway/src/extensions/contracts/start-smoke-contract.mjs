@@ -1837,6 +1837,10 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_schema_projection_fingerprint_type: typeof runtimeToolSchemaProjection?.schema_fingerprint,
     status_runtime_tool_schema_projection_per_tool_type:
       typeof runtimeToolSchemaProjection?.per_tool_property_count,
+    status_runtime_tool_schema_projection_visible_args_type:
+      typeof runtimeToolSchemaProjection?.per_tool_visible_args,
+    status_runtime_tool_schema_projection_suppressed_args_type:
+      typeof runtimeToolSchemaProjection?.per_tool_suppressed_args,
     status_runtime_tool_schema_projection_drift_present: Boolean(runtimeToolSchemaProjectionDrift),
     status_runtime_tool_schema_projection_drift_checked_type: typeof runtimeToolSchemaProjectionDrift?.checked,
     status_runtime_tool_schema_projection_drift_active_type: typeof runtimeToolSchemaProjectionDrift?.active,

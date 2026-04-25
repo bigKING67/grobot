@@ -614,6 +614,47 @@ mod tests {
             Some(7)
         );
         assert_eq!(
+            browser["per_tool_visible_args"][TOOL_WEB_SCAN]
+                .as_array()
+                .expect("web_scan visible args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec![
+                "main_only",
+                "max_chars",
+                "session_id",
+                "session_url_pattern",
+                "switch_tab_id",
+                "tabs_only",
+                "text_only",
+            ]
+        );
+        assert_eq!(
+            browser["per_tool_suppressed_args"][TOOL_WEB_EXECUTE_JS]
+                .as_array()
+                .expect("web_execute_js suppressed args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec![
+                "cdp_endpoint",
+                "native_auto_execute",
+                "native_auto_fallback",
+                "native_auto_fallback_policy",
+                "native_execute_action_scope",
+                "native_fallback_action",
+                "native_fallback_args",
+                "native_fallback_timeout_ms",
+                "no_monitor",
+                "target_url_contains",
+                "tmwd_link_endpoint",
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+            ]
+        );
+        assert_eq!(
             browser["per_tool_property_count"][TOOL_WEB_EXECUTE_JS].as_u64(),
             Some(7)
         );
@@ -630,6 +671,21 @@ mod tests {
         assert_eq!(
             browser_advanced["per_tool_property_count"][TOOL_WEB_EXECUTE_JS].as_u64(),
             Some(16)
+        );
+        assert_eq!(
+            browser_advanced["per_tool_suppressed_args"][TOOL_WEB_EXECUTE_JS]
+                .as_array()
+                .expect("advanced web_execute_js suppressed args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec![
+                "native_auto_execute",
+                "native_execute_action_scope",
+                "native_fallback_action",
+                "native_fallback_args",
+                "no_monitor",
+            ]
         );
 
         let full_debug = surface_schema_profile("full_debug");

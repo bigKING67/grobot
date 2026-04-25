@@ -120,6 +120,8 @@ export interface RuntimeToolSurfaceSchemaProfile {
   fullSchemaPropertyCount: number;
   suppressedSchemaPropertyCount: number;
   perToolPropertyCount: Record<string, number>;
+  perToolVisibleArgs: Record<string, string[]>;
+  perToolSuppressedArgs: Record<string, string[]>;
 }
 
 export interface RuntimeHealthcheckOptions {
@@ -231,6 +233,22 @@ function parsePropertyCountMap(value: unknown): Record<string, number> | null {
   return result;
 }
 
+function parseStringArrayMap(value: unknown): Record<string, string[]> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const result: Record<string, string[]> = {};
+  for (const [key, rawItems] of Object.entries(value)) {
+    const toolName = key.trim();
+    const items = dedupeStringArray(normalizeStringArray(rawItems));
+    if (!toolName || !Array.isArray(rawItems)) {
+      return null;
+    }
+    result[toolName] = items;
+  }
+  return result;
+}
+
 function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
   if (!Array.isArray(value)) {
     return [];
@@ -255,9 +273,20 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
     const fullSchemaPropertyCount = asStrictNonNegativeInteger(row.full_schema_property_count);
     const suppressedSchemaPropertyCount = asStrictNonNegativeInteger(row.suppressed_schema_property_count);
     const perToolPropertyCount = parsePropertyCountMap(row.per_tool_property_count);
+    const perToolVisibleArgs = parseStringArrayMap(row.per_tool_visible_args);
+    const perToolSuppressedArgs = parseStringArrayMap(row.per_tool_suppressed_args);
     const perToolSum = perToolPropertyCount == null
       ? null
       : toolNames.reduce((total, toolName) => total + (perToolPropertyCount[toolName] ?? Number.NaN), 0);
+    const visibleArgSum = perToolVisibleArgs == null
+      ? null
+      : toolNames.reduce((total, toolName) => total + (perToolVisibleArgs[toolName]?.length ?? Number.NaN), 0);
+    const suppressedArgSum = perToolSuppressedArgs == null
+      ? null
+      : toolNames.reduce((total, toolName) => total + (perToolSuppressedArgs[toolName]?.length ?? Number.NaN), 0);
+    const perToolArgsMatchCounts = perToolPropertyCount != null && perToolVisibleArgs != null
+      ? toolNames.every((toolName) => perToolPropertyCount[toolName] === perToolVisibleArgs[toolName]?.length)
+      : false;
     if (
       !policyVersion
       || profile == null
@@ -269,9 +298,18 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
       || fullSchemaPropertyCount == null
       || suppressedSchemaPropertyCount == null
       || perToolPropertyCount == null
+      || perToolVisibleArgs == null
+      || perToolSuppressedArgs == null
       || perToolSum == null
+      || visibleArgSum == null
+      || suppressedArgSum == null
       || !Number.isFinite(perToolSum)
+      || !Number.isFinite(visibleArgSum)
+      || !Number.isFinite(suppressedArgSum)
       || perToolSum !== schemaPropertyCount
+      || visibleArgSum !== schemaPropertyCount
+      || suppressedArgSum !== suppressedSchemaPropertyCount
+      || !perToolArgsMatchCounts
       || toolNames.length !== visibleToolCount
     ) {
       continue;
@@ -288,6 +326,8 @@ function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfa
       fullSchemaPropertyCount,
       suppressedSchemaPropertyCount,
       perToolPropertyCount,
+      perToolVisibleArgs,
+      perToolSuppressedArgs,
     });
   }
   return profiles;

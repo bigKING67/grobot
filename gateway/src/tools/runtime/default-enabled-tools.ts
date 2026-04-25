@@ -82,6 +82,8 @@ export interface RuntimeToolSurfaceProjectionSummary {
   schemaEstimatedTokens: number;
   schemaFingerprint: string;
   perToolPropertyCount: Record<string, number>;
+  perToolVisibleArgs?: Record<string, string[]>;
+  perToolSuppressedArgs?: Record<string, string[]>;
 }
 
 const PROFILE_VISIBLE_TOOLS: Record<ToolSurfaceProfile, readonly string[]> = {
