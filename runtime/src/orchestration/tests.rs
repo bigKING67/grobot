@@ -169,6 +169,7 @@ mod tests {
                 "model_request",
                 "tool_start",
                 "tool_end",
+                "tool_recovery",
                 "turn_failed",
                 "turn_end"
             ]
@@ -184,6 +185,17 @@ mod tests {
             .expect("tool_end payload");
         assert_eq!(tool_end_payload["status"], "failed");
         assert_eq!(tool_end_payload["error_class"], "tool_call_not_supported");
+        let tool_recovery_payload = failure.events[4]
+            .payload
+            .as_ref()
+            .expect("tool_recovery payload");
+        assert_eq!(tool_recovery_payload["tool_name"], "lookup");
+        assert_eq!(tool_recovery_payload["recovery_stage"], "strategy_switch");
+        assert_eq!(
+            tool_recovery_payload["recommended_next_action"],
+            "switch_tool_strategy"
+        );
+        assert_eq!(tool_recovery_payload["recoverable"], true);
     }
 
     #[derive(Debug, Clone, Copy)]

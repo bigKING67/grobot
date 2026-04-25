@@ -244,6 +244,19 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                             "error_message": error_message.clone()
                         })),
                     ));
+                    events.push(Self::build_event(
+                        "tool_recovery",
+                        &turn_id,
+                        Some(json!({
+                            "tool_name": tool_name,
+                            "risk_class": "unknown",
+                            "error_class": error_class.clone(),
+                            "recovery_stage": "strategy_switch",
+                            "recovery_reason": error_class.clone(),
+                            "recommended_next_action": "switch_tool_strategy",
+                            "recoverable": true
+                        })),
+                    ));
                 }
                 events.push(Self::build_event(
                     "turn_failed",
