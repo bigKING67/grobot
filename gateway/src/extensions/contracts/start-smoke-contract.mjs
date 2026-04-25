@@ -1806,6 +1806,7 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_schema_estimated_tokens_type: typeof runtimeTools?.schema_estimated_tokens,
     status_runtime_tool_advanced_schema_type: typeof runtimeTools?.advanced_tool_schema,
     status_runtime_tool_schema_projection_present: Boolean(runtimeToolSchemaProjection),
+    status_runtime_tool_schema_projection_source_type: typeof runtimeToolSchemaProjection?.source,
     status_runtime_tool_schema_projection_profile: runtimeToolSchemaProjection?.profile ?? null,
     status_runtime_tool_schema_projection_mode_type: typeof runtimeToolSchemaProjection?.projection_mode,
     status_runtime_tool_schema_projection_visible_count_type: typeof runtimeToolSchemaProjection?.visible_tool_count,

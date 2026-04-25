@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import type { ToolSurfaceProfile } from "../../../models/types";
+import type { RuntimeToolSurfaceProjectionMode } from "../../../tools/runtime/default-enabled-tools";
 
 function removeTrailingSlashes(value: string): string {
   if (/^[\\/]+$/.test(value)) {
@@ -33,6 +35,29 @@ function asNonNegativeInteger(value: unknown): number | null {
   }
   return normalized;
 }
+
+function asStrictNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    return null;
+  }
+  return value;
+}
+
+const RUNTIME_TOOL_SURFACE_PROFILES: readonly ToolSurfaceProfile[] = [
+  "minimal",
+  "coding",
+  "browser",
+  "browser_advanced",
+  "context",
+  "mcp",
+  "full_debug",
+];
+
+const RUNTIME_TOOL_SURFACE_PROJECTION_MODES: readonly RuntimeToolSurfaceProjectionMode[] = [
+  "slim",
+  "advanced",
+  "full",
+];
 
 export interface RuntimeOverlapGuardMetrics {
   blockedTotal: number;
@@ -81,6 +106,19 @@ export interface RuntimeCacheStats {
   windowPolicyMs: number | null;
   modelCatalog: RuntimeModelCatalogCacheStats;
   promptCache: RuntimePromptCacheStats;
+}
+
+export interface RuntimeToolSurfaceSchemaProfile {
+  policyVersion: string;
+  profile: ToolSurfaceProfile;
+  projectionMode: RuntimeToolSurfaceProjectionMode;
+  advancedToolSchema: boolean;
+  toolNames: string[];
+  visibleToolCount: number;
+  schemaPropertyCount: number;
+  fullSchemaPropertyCount: number;
+  suppressedSchemaPropertyCount: number;
+  perToolPropertyCount: Record<string, number>;
 }
 
 export interface RuntimeHealthcheckOptions {
@@ -154,6 +192,99 @@ function dedupeStringArray(items: string[]): string[] {
     rows.push(normalized);
   }
   return rows;
+}
+
+function parseToolSurfaceProfile(value: unknown): ToolSurfaceProfile | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/-/g, "_");
+  return RUNTIME_TOOL_SURFACE_PROFILES.includes(normalized as ToolSurfaceProfile)
+    ? normalized as ToolSurfaceProfile
+    : null;
+}
+
+function parseProjectionMode(value: unknown): RuntimeToolSurfaceProjectionMode | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return RUNTIME_TOOL_SURFACE_PROJECTION_MODES.includes(normalized as RuntimeToolSurfaceProjectionMode)
+    ? normalized as RuntimeToolSurfaceProjectionMode
+    : null;
+}
+
+function parsePropertyCountMap(value: unknown): Record<string, number> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const result: Record<string, number> = {};
+  for (const [key, rawCount] of Object.entries(value)) {
+    const toolName = key.trim();
+    const count = asStrictNonNegativeInteger(rawCount);
+    if (!toolName || count == null) {
+      return null;
+    }
+    result[toolName] = count;
+  }
+  return result;
+}
+
+function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const profiles: RuntimeToolSurfaceSchemaProfile[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) {
+      continue;
+    }
+    const policyVersion = typeof row.policy_version === "string" ? row.policy_version.trim() : "";
+    const profile = parseToolSurfaceProfile(row.profile);
+    const projectionMode = parseProjectionMode(row.projection_mode);
+    const advancedToolSchema = typeof row.advanced_tool_schema === "boolean"
+      ? row.advanced_tool_schema
+      : null;
+    const toolNames = dedupeStringArray(normalizeStringArray(row.tool_names));
+    const visibleToolCount = asStrictNonNegativeInteger(row.visible_tool_count);
+    const schemaPropertyCount = asStrictNonNegativeInteger(row.schema_property_count);
+    const fullSchemaPropertyCount = asStrictNonNegativeInteger(row.full_schema_property_count);
+    const suppressedSchemaPropertyCount = asStrictNonNegativeInteger(row.suppressed_schema_property_count);
+    const perToolPropertyCount = parsePropertyCountMap(row.per_tool_property_count);
+    const perToolSum = perToolPropertyCount == null
+      ? null
+      : toolNames.reduce((total, toolName) => total + (perToolPropertyCount[toolName] ?? Number.NaN), 0);
+    if (
+      !policyVersion
+      || profile == null
+      || projectionMode == null
+      || advancedToolSchema == null
+      || visibleToolCount == null
+      || schemaPropertyCount == null
+      || fullSchemaPropertyCount == null
+      || suppressedSchemaPropertyCount == null
+      || perToolPropertyCount == null
+      || perToolSum == null
+      || !Number.isFinite(perToolSum)
+      || perToolSum !== schemaPropertyCount
+      || toolNames.length !== visibleToolCount
+    ) {
+      continue;
+    }
+    profiles.push({
+      policyVersion,
+      profile,
+      projectionMode,
+      advancedToolSchema,
+      toolNames,
+      visibleToolCount,
+      schemaPropertyCount,
+      fullSchemaPropertyCount,
+      suppressedSchemaPropertyCount,
+      perToolPropertyCount,
+    });
+  }
+  return profiles;
 }
 
 export function buildToolsManifestFingerprint(toolNames: string[], defaultEnabledTools: string[]): string {
@@ -376,6 +507,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
   toolNames: string[];
   defaultEnabledTools: string[];
   manifestFingerprint: string;
+  toolSurfaceSchemaProfiles: RuntimeToolSurfaceSchemaProfile[];
 } {
   const input = JSON.stringify({
     jsonrpc: "2.0",
@@ -389,38 +521,42 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     timeout: 4_000,
     maxBuffer: 1_048_576,
   });
-    if (run.error) {
-      return {
-        ok: false,
-        detail: `spawn_failed: ${String(run.error)}`,
-        toolNames: [],
-        defaultEnabledTools: [],
-        manifestFingerprint: buildToolsManifestFingerprint([], []),
-      };
-    }
-    if (run.status !== 0) {
-      return {
-        ok: false,
-        detail: `exit_status_${String(run.status)} stderr=${String(run.stderr || "").trim()}`,
-        toolNames: [],
-        defaultEnabledTools: [],
-        manifestFingerprint: buildToolsManifestFingerprint([], []),
-      };
-    }
+  if (run.error) {
+    return {
+      ok: false,
+      detail: `spawn_failed: ${String(run.error)}`,
+      toolNames: [],
+      defaultEnabledTools: [],
+      manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolSurfaceSchemaProfiles: [],
+    };
+  }
+  if (run.status !== 0) {
+    return {
+      ok: false,
+      detail: `exit_status_${String(run.status)} stderr=${String(run.stderr || "").trim()}`,
+      toolNames: [],
+      defaultEnabledTools: [],
+      manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolSurfaceSchemaProfiles: [],
+    };
+  }
   const parsed = parseRuntimeJsonRpcResult(String(run.stdout || ""));
-    if (!parsed.ok || !parsed.result) {
-      return {
-        ok: false,
-        detail: parsed.detail,
-        toolNames: [],
-        defaultEnabledTools: [],
-        manifestFingerprint: buildToolsManifestFingerprint([], []),
-      };
-    }
+  if (!parsed.ok || !parsed.result) {
+    return {
+      ok: false,
+      detail: parsed.detail,
+      toolNames: [],
+      defaultEnabledTools: [],
+      manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolSurfaceSchemaProfiles: [],
+    };
+  }
 
-    const defaultEnabledTools = dedupeStringArray(normalizeStringArray(parsed.result.default_enabled_tools));
-    const rawTools = parsed.result.tools;
-    const toolNames: string[] = [];
+  const defaultEnabledTools = dedupeStringArray(normalizeStringArray(parsed.result.default_enabled_tools));
+  const toolSurfaceSchemaProfiles = parseRuntimeToolSurfaceSchemaProfiles(parsed.result.tool_surface_schema_profiles);
+  const rawTools = parsed.result.tools;
+  const toolNames: string[] = [];
   if (Array.isArray(rawTools)) {
     for (const row of rawTools) {
       if (!isRecord(row) || !isRecord(row.function)) {
@@ -434,45 +570,49 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       if (!normalized) {
         continue;
       }
-        toolNames.push(normalized);
-      }
+      toolNames.push(normalized);
     }
-    const uniqueToolNames = dedupeStringArray(toolNames);
-    const manifestFingerprint = buildToolsManifestFingerprint(uniqueToolNames, defaultEnabledTools);
-    if (uniqueToolNames.length === 0) {
-      return {
-        ok: false,
-        detail: "runtime_tools_describe_missing_tools",
-        toolNames: uniqueToolNames,
-        defaultEnabledTools,
-        manifestFingerprint,
-      };
-    }
-    if (defaultEnabledTools.length === 0) {
-      return {
-        ok: false,
-        detail: "runtime_tools_describe_missing_default_enabled_tools",
-        toolNames: uniqueToolNames,
-        defaultEnabledTools,
-        manifestFingerprint,
-      };
-    }
-    const toolNameSet = new Set(uniqueToolNames);
-    const unknownDefaultEnabled = defaultEnabledTools.filter((toolName) => !toolNameSet.has(toolName));
-    if (unknownDefaultEnabled.length > 0) {
-      return {
-        ok: false,
-        detail: `runtime_tools_describe_invalid_default_enabled_tools:${unknownDefaultEnabled.join(",")}`,
-        toolNames: uniqueToolNames,
-        defaultEnabledTools,
-        manifestFingerprint,
-      };
-    }
+  }
+  const uniqueToolNames = dedupeStringArray(toolNames);
+  const manifestFingerprint = buildToolsManifestFingerprint(uniqueToolNames, defaultEnabledTools);
+  if (uniqueToolNames.length === 0) {
     return {
-      ok: true,
-      detail: "runtime.tools.describe=ok",
+      ok: false,
+      detail: "runtime_tools_describe_missing_tools",
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolSurfaceSchemaProfiles,
     };
   }
+  if (defaultEnabledTools.length === 0) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_default_enabled_tools",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  const toolNameSet = new Set(uniqueToolNames);
+  const unknownDefaultEnabled = defaultEnabledTools.filter((toolName) => !toolNameSet.has(toolName));
+  if (unknownDefaultEnabled.length > 0) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_default_enabled_tools:${unknownDefaultEnabled.join(",")}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  return {
+    ok: true,
+    detail: "runtime.tools.describe=ok",
+    toolNames: uniqueToolNames,
+    defaultEnabledTools,
+    manifestFingerprint,
+    toolSurfaceSchemaProfiles,
+  };
+}

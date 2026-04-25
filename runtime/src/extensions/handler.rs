@@ -33,7 +33,8 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 "protocol_version": RUNTIME_PROTOCOL_VERSION,
                 "tools": crate::tools::tools::local_tool_definitions(),
                 "default_enabled_tools": crate::tools::tools::default_enabled_local_tool_names(),
-                "tool_policy_version": crate::tools::tools::tool_surface_policy_version()
+                "tool_policy_version": crate::tools::tools::tool_surface_policy_version(),
+                "tool_surface_schema_profiles": crate::tools::tools::tool_surface_schema_profiles()
             }),
         )),
         "runtime.turn.execute" => {

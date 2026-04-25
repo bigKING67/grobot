@@ -162,6 +162,7 @@ expectEqual(
   "coding schema token estimate",
 );
 const codingProjection = projection(coding);
+expectEqual(codingProjection.source, "gateway.fallback", "coding projection source");
 expectEqual(codingProjection.projectionMode, "slim", "coding projection mode");
 expectEqual(codingProjection.visibleToolCount, 7, "coding projection visible tool count");
 expectEqual(codingProjection.dispatchEnabledToolCount, 7, "coding projection dispatch tool count");
@@ -176,6 +177,7 @@ expectDeepEqual(browser.modelVisibleTools, ["web_scan", "web_execute_js", "read"
 expectDeepEqual(browser.enabledTools, browser.modelVisibleTools, "browser dispatch tools");
 expectEqual(browser.advancedToolSchema, false, "browser slim schema");
 const browserProjection = projection(browser);
+expectEqual(browserProjection.source, "gateway.fallback", "browser projection source");
 expectEqual(browserProjection.projectionMode, "slim", "browser projection mode");
 expectEqual(browserProjection.schemaPropertyCount, 25, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
@@ -187,6 +189,7 @@ expectDecisionProfile(browserAdvanced, "browser_advanced", "browser advanced pro
 expectDeepEqual(browserAdvanced.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser advanced visible tools");
 expectEqual(browserAdvanced.advancedToolSchema, true, "browser advanced schema");
 const browserAdvancedProjection = projection(browserAdvanced);
+expectEqual(browserAdvancedProjection.source, "gateway.fallback", "browser advanced projection source");
 expectEqual(browserAdvancedProjection.projectionMode, "advanced", "browser advanced projection mode");
 expectEqual(browserAdvancedProjection.schemaPropertyCount, 42, "browser advanced projection schema property count");
 expectEqual(browserAdvancedProjection.fullSchemaPropertyCount, 47, "browser advanced projection full property count");
@@ -215,6 +218,7 @@ expectEqual(fullDebug.modelVisibleTools?.includes("web_scan"), true, "full_debug
 expectDeepEqual(fullDebug.enabledTools, fullDebug.modelVisibleTools, "full_debug dispatch matches visible");
 expectEqual(fullDebug.advancedToolSchema, true, "full_debug advanced schema");
 const fullDebugProjection = projection(fullDebug);
+expectEqual(fullDebugProjection.source, "gateway.fallback", "full_debug projection source");
 expectEqual(fullDebugProjection.projectionMode, "full", "full_debug projection mode");
 expectEqual(fullDebugProjection.schemaPropertyCount, 92, "full_debug projection schema property count");
 expectEqual(fullDebugProjection.suppressedSchemaPropertyCount, 0, "full_debug suppressed property count");

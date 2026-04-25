@@ -12,6 +12,7 @@ import {
   resolveRuntimeBinaryPath,
   runRuntimeHealthcheck,
   runRuntimeToolsDescribe,
+  type RuntimeToolSurfaceSchemaProfile,
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
 import {
@@ -155,6 +156,55 @@ function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
     return parseTomlStringArray(kvMatch[2]);
   }
   return [];
+}
+
+function sameToolNameSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const rightSet = new Set(right);
+  return left.every((toolName) => rightSet.has(toolName));
+}
+
+function findRuntimeToolSurfaceSchemaProfile(input: {
+  profiles: readonly RuntimeToolSurfaceSchemaProfile[];
+  profile: ToolSurfaceProfile;
+  advancedToolSchema: boolean;
+  modelVisibleTools: readonly string[];
+}): RuntimeToolSurfaceSchemaProfile | null {
+  return input.profiles.find((profile) => (
+    profile.profile === input.profile
+    && profile.advancedToolSchema === input.advancedToolSchema
+    && sameToolNameSet(profile.toolNames, input.modelVisibleTools)
+  )) ?? null;
+}
+
+function buildRuntimeDescribeSchemaProjectionSummary(input: {
+  runtimeProfile: RuntimeToolSurfaceSchemaProfile | null;
+  context: {
+    dispatchEnabledTools: readonly string[];
+    schemaEstimatedTokens: number;
+    schemaFingerprint: string;
+  };
+}): RuntimeToolSurfaceProjectionSummary | null {
+  if (!input.runtimeProfile) {
+    return null;
+  }
+  return {
+    source: "runtime.tools.describe",
+    policyVersion: input.runtimeProfile.policyVersion,
+    profile: input.runtimeProfile.profile,
+    projectionMode: input.runtimeProfile.projectionMode,
+    advancedToolSchema: input.runtimeProfile.advancedToolSchema,
+    visibleToolCount: input.runtimeProfile.visibleToolCount,
+    dispatchEnabledToolCount: input.context.dispatchEnabledTools.length,
+    schemaPropertyCount: input.runtimeProfile.schemaPropertyCount,
+    fullSchemaPropertyCount: input.runtimeProfile.fullSchemaPropertyCount,
+    suppressedSchemaPropertyCount: input.runtimeProfile.suppressedSchemaPropertyCount,
+    schemaEstimatedTokens: input.context.schemaEstimatedTokens,
+    schemaFingerprint: input.context.schemaFingerprint,
+    perToolPropertyCount: { ...input.runtimeProfile.perToolPropertyCount },
+  };
 }
 
 function parseOptionalPositiveInt(value: string | undefined): number | undefined {
@@ -565,7 +615,22 @@ function resolveRuntimeToolContextPreview(
   const toolSurfaceReason = effectiveContext?.toolSurfaceReason ?? "status fallback";
   const toolPolicyVersion = effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION;
   const advancedToolSchema = effectiveContext?.advancedToolSchema ?? false;
-  const schemaProjectionSummary = buildRuntimeToolSurfaceProjectionSummary({
+  const runtimeSchemaProfile = described?.ok
+    ? findRuntimeToolSurfaceSchemaProfile({
+        profiles: described.toolSurfaceSchemaProfiles,
+        profile: toolSurfaceProfile,
+        advancedToolSchema,
+        modelVisibleTools,
+      })
+    : null;
+  const schemaProjectionSummary = buildRuntimeDescribeSchemaProjectionSummary({
+    runtimeProfile: runtimeSchemaProfile,
+    context: {
+      dispatchEnabledTools,
+      schemaEstimatedTokens,
+      schemaFingerprint,
+    },
+  }) ?? buildRuntimeToolSurfaceProjectionSummary({
     enabledTools: dispatchEnabledTools,
     modelVisibleTools,
     toolSurfaceProfile,
@@ -643,6 +708,7 @@ function serializeRuntimeToolSurfaceProjectionSummary(
   summary: RuntimeToolSurfaceProjectionSummary,
 ): Record<string, unknown> {
   return {
+    source: summary.source,
     policy_version: summary.policyVersion,
     profile: summary.profile,
     projection_mode: summary.projectionMode,
@@ -1996,7 +2062,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_advanced_schema: ${runtimeToolContextPreview.advancedToolSchema ? "true" : "false"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_schema_projection: mode=${runtimeToolContextPreview.schemaProjectionSummary.projectionMode} visible_tools=${String(runtimeToolContextPreview.schemaProjectionSummary.visibleToolCount)} dispatch_enabled=${String(runtimeToolContextPreview.schemaProjectionSummary.dispatchEnabledToolCount)} properties=${String(runtimeToolContextPreview.schemaProjectionSummary.schemaPropertyCount)} full_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.fullSchemaPropertyCount)} suppressed_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.suppressedSchemaPropertyCount)}\n`,
+    `runtime_tool_schema_projection: source=${runtimeToolContextPreview.schemaProjectionSummary.source} mode=${runtimeToolContextPreview.schemaProjectionSummary.projectionMode} visible_tools=${String(runtimeToolContextPreview.schemaProjectionSummary.visibleToolCount)} dispatch_enabled=${String(runtimeToolContextPreview.schemaProjectionSummary.dispatchEnabledToolCount)} properties=${String(runtimeToolContextPreview.schemaProjectionSummary.schemaPropertyCount)} full_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.fullSchemaPropertyCount)} suppressed_properties=${String(runtimeToolContextPreview.schemaProjectionSummary.suppressedSchemaPropertyCount)}\n`,
   );
   process.stdout.write(`runtime_tool_metrics_path: ${runtimeToolSurfaceMetrics.path}\n`);
   process.stdout.write(

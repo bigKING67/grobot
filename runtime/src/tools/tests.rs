@@ -317,6 +317,13 @@ mod tests {
             .sum()
     }
 
+    fn surface_schema_profile(profile: &str) -> Value {
+        tool_surface_schema_profiles()
+            .into_iter()
+            .find(|row| row.get("profile").and_then(Value::as_str) == Some(profile))
+            .unwrap_or_else(|| panic!("missing schema profile metadata for {profile}"))
+    }
+
     fn schema_property_names(parameters: &Value) -> StdHashSet<String> {
         parameters
             .get("properties")
@@ -571,6 +578,62 @@ mod tests {
         assert_eq!(surface_schema_property_count("context", false), 20);
         assert_eq!(surface_schema_property_count("mcp", false), 9);
         assert_eq!(surface_schema_property_count("full_debug", false), 92);
+    }
+
+    #[test]
+    fn tool_surface_schema_profiles_describe_projected_schema_budgets() {
+        let profiles = tool_surface_schema_profiles();
+        assert_eq!(profiles.len(), 7);
+
+        let coding = surface_schema_profile("coding");
+        assert_eq!(coding["policy_version"], TOOL_SURFACE_POLICY_VERSION);
+        assert_eq!(coding["projection_mode"], "slim");
+        assert_eq!(coding["advanced_tool_schema"], false);
+        assert_eq!(coding["visible_tool_count"].as_u64(), Some(7));
+        assert_eq!(coding["schema_property_count"].as_u64(), Some(30));
+        assert_eq!(coding["full_schema_property_count"].as_u64(), Some(30));
+        assert_eq!(coding["suppressed_schema_property_count"].as_u64(), Some(0));
+        assert_eq!(
+            coding["per_tool_property_count"][TOOL_SEARCH].as_u64(),
+            Some(8)
+        );
+
+        let browser = surface_schema_profile("browser");
+        assert_eq!(browser["projection_mode"], "slim");
+        assert_eq!(browser["advanced_tool_schema"], false);
+        assert_eq!(browser["schema_property_count"].as_u64(), Some(25));
+        assert_eq!(browser["full_schema_property_count"].as_u64(), Some(47));
+        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(22));
+        assert_eq!(
+            browser["per_tool_property_count"][TOOL_WEB_SCAN].as_u64(),
+            Some(7)
+        );
+        assert_eq!(
+            browser["per_tool_property_count"][TOOL_WEB_EXECUTE_JS].as_u64(),
+            Some(7)
+        );
+
+        let browser_advanced = surface_schema_profile("browser_advanced");
+        assert_eq!(browser_advanced["projection_mode"], "advanced");
+        assert_eq!(browser_advanced["advanced_tool_schema"], true);
+        assert_eq!(browser_advanced["schema_property_count"].as_u64(), Some(42));
+        assert_eq!(browser_advanced["full_schema_property_count"].as_u64(), Some(47));
+        assert_eq!(
+            browser_advanced["suppressed_schema_property_count"].as_u64(),
+            Some(5)
+        );
+        assert_eq!(
+            browser_advanced["per_tool_property_count"][TOOL_WEB_EXECUTE_JS].as_u64(),
+            Some(16)
+        );
+
+        let full_debug = surface_schema_profile("full_debug");
+        assert_eq!(full_debug["projection_mode"], "full");
+        assert_eq!(full_debug["advanced_tool_schema"], true);
+        assert_eq!(full_debug["visible_tool_count"].as_u64(), Some(14));
+        assert_eq!(full_debug["schema_property_count"].as_u64(), Some(92));
+        assert_eq!(full_debug["full_schema_property_count"].as_u64(), Some(92));
+        assert_eq!(full_debug["suppressed_schema_property_count"].as_u64(), Some(0));
     }
 
     #[test]

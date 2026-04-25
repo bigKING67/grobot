@@ -66,8 +66,10 @@ export interface RuntimeToolSurfaceAdaptationResult {
 }
 
 export type RuntimeToolSurfaceProjectionMode = "slim" | "advanced" | "full";
+export type RuntimeToolSurfaceProjectionSource = "runtime.tools.describe" | "gateway.fallback";
 
 export interface RuntimeToolSurfaceProjectionSummary {
+  source: RuntimeToolSurfaceProjectionSource;
   policyVersion: string;
   profile: ToolSurfaceProfile;
   projectionMode: RuntimeToolSurfaceProjectionMode;
@@ -202,6 +204,7 @@ export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolCon
   const { total: schemaPropertyCount, perToolPropertyCount } = sumSchemaPropertyCounts(visibleTools, projectionMode);
   const fullSchemaPropertyCount = sumFullSchemaPropertyCounts(visibleTools);
   return {
+    source: "gateway.fallback",
     policyVersion: context.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
     profile,
     projectionMode,

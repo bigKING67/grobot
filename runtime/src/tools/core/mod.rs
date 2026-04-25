@@ -846,6 +846,66 @@ fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanc
     }
 }
 
+fn schema_property_count(parameters: &Value) -> usize {
+    parameters
+        .get("properties")
+        .and_then(Value::as_object)
+        .map_or(0, |properties| properties.len())
+}
+
+fn tool_surface_schema_profile(profile: &str, advanced_tool_schema: bool) -> Value {
+    let profile = canonical_tool_surface_profile(Some(profile));
+    let mode = schema_projection_mode(profile, advanced_tool_schema);
+    let tool_names = tool_surface_profile_names(profile);
+    let visible_tool_count = tool_names.len();
+    let catalog = local_tool_catalog();
+    let mut per_tool_property_count = Map::new();
+    let mut schema_property_total = 0usize;
+    let mut full_schema_property_total = 0usize;
+
+    for tool_name in &tool_names {
+        if let Some(tool) = catalog.iter().find(|entry| entry.name == *tool_name) {
+            let projected_parameters =
+                project_tool_parameters(tool.name, &tool.parameters, profile, advanced_tool_schema);
+            let projected_count = schema_property_count(&projected_parameters);
+            let full_count = schema_property_count(&tool.parameters);
+            schema_property_total += projected_count;
+            full_schema_property_total += full_count;
+            per_tool_property_count.insert(tool.name.to_string(), json!(projected_count));
+        }
+    }
+
+    json!({
+        "policy_version": TOOL_SURFACE_POLICY_VERSION,
+        "profile": profile,
+        "projection_mode": mode,
+        "advanced_tool_schema": advanced_tool_schema || profile == TOOL_SURFACE_BROWSER_ADVANCED || profile == TOOL_SURFACE_FULL_DEBUG,
+        "tool_names": tool_names,
+        "visible_tool_count": visible_tool_count,
+        "schema_property_count": schema_property_total,
+        "full_schema_property_count": full_schema_property_total,
+        "suppressed_schema_property_count": full_schema_property_total.saturating_sub(schema_property_total),
+        "per_tool_property_count": per_tool_property_count,
+    })
+}
+
+pub(crate) fn tool_surface_schema_profiles() -> Vec<Value> {
+    [
+        (TOOL_SURFACE_MINIMAL, false),
+        (TOOL_SURFACE_CODING, false),
+        (TOOL_SURFACE_BROWSER, false),
+        (TOOL_SURFACE_BROWSER_ADVANCED, true),
+        (TOOL_SURFACE_CONTEXT, false),
+        (TOOL_SURFACE_MCP, false),
+        (TOOL_SURFACE_FULL_DEBUG, true),
+    ]
+    .into_iter()
+    .map(|(profile, advanced_tool_schema)| {
+        tool_surface_schema_profile(profile, advanced_tool_schema)
+    })
+    .collect()
+}
+
 pub(crate) fn local_tool_definitions_for_surface(
     visible_tools: &[String],
     profile: Option<&str>,

@@ -71,6 +71,31 @@ mod tests {
             .filter_map(Value::as_str)
             .collect::<Vec<&str>>();
         assert!(default_names.contains(&"ask_user_question"));
+        let schema_profiles = payload["result"]["tool_surface_schema_profiles"]
+            .as_array()
+            .expect("tool_surface_schema_profiles should be array");
+        let browser_schema_profile = schema_profiles
+            .iter()
+            .find(|row| row["profile"].as_str() == Some("browser"))
+            .expect("browser schema profile should be described");
+        assert_eq!(browser_schema_profile["projection_mode"], "slim");
+        assert_eq!(
+            browser_schema_profile["schema_property_count"].as_u64(),
+            Some(25)
+        );
+        assert_eq!(
+            browser_schema_profile["suppressed_schema_property_count"].as_u64(),
+            Some(22)
+        );
+        let full_debug_schema_profile = schema_profiles
+            .iter()
+            .find(|row| row["profile"].as_str() == Some("full_debug"))
+            .expect("full_debug schema profile should be described");
+        assert_eq!(full_debug_schema_profile["projection_mode"], "full");
+        assert_eq!(
+            full_debug_schema_profile["schema_property_count"].as_u64(),
+            Some(92)
+        );
         let has_ask_user_tool = tools.iter().any(|tool| {
             tool.get("function")
                 .and_then(Value::as_object)
