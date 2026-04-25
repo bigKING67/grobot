@@ -32,6 +32,7 @@ import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
+  type RuntimeToolRecoveryConsumptionRecord,
   type RuntimeToolSurfaceAdaptationGuard,
   type RuntimeToolSurfaceAdaptationSnapshot,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
@@ -579,6 +580,22 @@ function resolveRuntimeToolContextPreview(
   };
 }
 
+function serializeRuntimeToolRecoveryConsumption(record: RuntimeToolRecoveryConsumptionRecord | null): Record<string, unknown> | null {
+  if (!record) {
+    return null;
+  }
+  return {
+    id: record.id,
+    reason: record.reason,
+    recovery_stage: record.recoveryStage,
+    recovery_tool_name: record.recoveryToolName,
+    recovery_error_class: record.recoveryErrorClass,
+    recovery_observed_at: record.recoveryObservedAt,
+    consumed_at: record.consumedAt,
+    trace_id: record.traceId,
+  };
+}
+
 export async function runStatus(options: Record<string, OptionValue>): Promise<number> {
   const outputJson = hasFlag(options, "json");
   const homeDir = resolveHomeDir(options);
@@ -1102,7 +1119,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           recent_adaptation_count: runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length,
           profile_outcomes: runtimeToolSurfaceAdaptationSnapshot.profileOutcomes,
           recent_recovery_consumption_count: runtimeToolSurfaceAdaptationSnapshot.recentRecoveryConsumptions.length,
-          latest_recovery_consumption: runtimeToolSurfaceAdaptationSnapshot.latestRecoveryConsumption,
+          latest_recovery_consumption: serializeRuntimeToolRecoveryConsumption(
+            runtimeToolSurfaceAdaptationSnapshot.latestRecoveryConsumption,
+          ),
           guard: {
             active: runtimeToolContextPreview.toolSurfaceAdaptationGuard.active,
             reason: runtimeToolContextPreview.toolSurfaceAdaptationGuard.reason,
@@ -1914,7 +1933,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_surface_adaptation_outcome: recent=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcome ?? "<none>"} profile=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.appliedProfile ?? "<none>"} reason=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcomeReason ?? "<none>"} count=${String(runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length)}\n`,
+    `runtime_tool_surface_adaptation_outcome: recent=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcome ?? "<none>"} profile=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.appliedProfile ?? "<none>"} reason=${runtimeToolSurfaceAdaptationSnapshot.latestAdaptation?.outcomeReason ?? "<none>"} count=${String(runtimeToolSurfaceAdaptationSnapshot.recentAdaptations.length)} recovery_consumptions=${String(runtimeToolSurfaceAdaptationSnapshot.recentRecoveryConsumptions.length)} latest_consumption=${runtimeToolSurfaceAdaptationSnapshot.latestRecoveryConsumption?.reason ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation_guard: active=${runtimeToolContextPreview.toolSurfaceAdaptationGuard.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptationGuard.reason} blocked_profile=${runtimeToolContextPreview.toolSurfaceAdaptationGuard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextPreview.toolSurfaceAdaptationGuard.matchingFailureCount)}\n`,
