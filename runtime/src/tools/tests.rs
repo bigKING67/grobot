@@ -230,8 +230,18 @@ mod tests {
     }
 
     fn surface_parameters(profile: &str, tools: Vec<&str>, tool_name: &str) -> Value {
+        surface_parameters_with_advanced(profile, tools, tool_name, false)
+    }
+
+    fn surface_parameters_with_advanced(
+        profile: &str,
+        tools: Vec<&str>,
+        tool_name: &str,
+        advanced_tool_schema: bool,
+    ) -> Value {
         let visible_tools = tools.into_iter().map(str::to_string).collect::<Vec<String>>();
-        let definitions = local_tool_definitions_for_surface(&visible_tools, Some(profile), false);
+        let definitions =
+            local_tool_definitions_for_surface(&visible_tools, Some(profile), advanced_tool_schema);
         definitions
             .into_iter()
             .find_map(|definition| {
@@ -250,6 +260,18 @@ mod tests {
             .and_then(Value::as_object)
             .map(|properties| properties.keys().cloned().collect::<StdHashSet<String>>())
             .unwrap_or_default()
+    }
+
+    fn assert_schema_props_include(props: &StdHashSet<String>, names: &[&str]) {
+        for name in names {
+            assert!(props.contains(*name), "projected schema should expose {name}");
+        }
+    }
+
+    fn assert_schema_props_omit(props: &StdHashSet<String>, names: &[&str]) {
+        for name in names {
+            assert!(!props.contains(*name), "projected schema should hide {name}");
+        }
     }
 
     #[test]
@@ -402,20 +424,43 @@ mod tests {
     fn browser_surface_projects_slim_browser_schema() {
         let scan_params = surface_parameters("browser", vec![TOOL_WEB_SCAN], TOOL_WEB_SCAN);
         let scan_props = schema_property_names(&scan_params);
-        assert!(scan_props.contains("tabs_only"));
-        assert!(scan_props.contains("main_only"));
-        assert!(scan_props.contains("max_chars"));
-        assert!(!scan_props.contains("tmwd_mode"));
-        assert!(!scan_props.contains("cdp_endpoint"));
+        assert_schema_props_include(&scan_props, &["tabs_only", "main_only", "max_chars"]);
+        assert_schema_props_omit(
+            &scan_props,
+            &[
+                "main_only_fallback_to_full",
+                "main_only_min_chars",
+                "main_only_min_coverage",
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+                "tmwd_link_endpoint",
+                "cdp_endpoint",
+            ],
+        );
 
         let exec_params =
             surface_parameters("browser", vec![TOOL_WEB_EXECUTE_JS], TOOL_WEB_EXECUTE_JS);
         let exec_props = schema_property_names(&exec_params);
-        assert!(exec_props.contains("script"));
-        assert!(exec_props.contains("code"));
-        assert!(exec_props.contains("timeout_ms"));
-        assert!(!exec_props.contains("tmwd_mode"));
-        assert!(!exec_props.contains("native_fallback_action"));
+        assert_schema_props_include(&exec_props, &["script", "code", "timeout_ms"]);
+        assert_schema_props_omit(
+            &exec_props,
+            &[
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+                "tmwd_link_endpoint",
+                "cdp_endpoint",
+                "target_url_contains",
+                "native_auto_fallback",
+                "native_auto_fallback_policy",
+                "native_auto_execute",
+                "native_execute_action_scope",
+                "native_fallback_action",
+                "native_fallback_args",
+                "native_fallback_timeout_ms",
+            ],
+        );
         assert_eq!(
             exec_params
                 .get("anyOf")
@@ -430,10 +475,19 @@ mod tests {
         let scan_params =
             surface_parameters("browser_advanced", vec![TOOL_WEB_SCAN], TOOL_WEB_SCAN);
         let scan_props = schema_property_names(&scan_params);
-        assert!(scan_props.contains("tmwd_mode"));
-        assert!(scan_props.contains("tmwd_ws_endpoint"));
-        assert!(scan_props.contains("tmwd_link_endpoint"));
-        assert!(scan_props.contains("cdp_endpoint"));
+        assert_schema_props_include(
+            &scan_props,
+            &[
+                "main_only_fallback_to_full",
+                "main_only_min_chars",
+                "main_only_min_coverage",
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+                "tmwd_link_endpoint",
+                "cdp_endpoint",
+            ],
+        );
 
         let exec_params = surface_parameters(
             "browser_advanced",
@@ -441,11 +495,88 @@ mod tests {
             TOOL_WEB_EXECUTE_JS,
         );
         let exec_props = schema_property_names(&exec_params);
-        assert!(exec_props.contains("tmwd_mode"));
-        assert!(exec_props.contains("target_url_contains"));
-        assert!(exec_props.contains("native_auto_fallback"));
-        assert!(!exec_props.contains("native_fallback_action"));
-        assert!(!exec_props.contains("native_fallback_args"));
+        assert_schema_props_include(
+            &exec_props,
+            &[
+                "tmwd_mode",
+                "tmwd_transport",
+                "tmwd_ws_endpoint",
+                "tmwd_link_endpoint",
+                "cdp_endpoint",
+                "target_url_contains",
+                "native_auto_fallback",
+                "native_auto_fallback_policy",
+                "native_fallback_timeout_ms",
+            ],
+        );
+        assert_schema_props_omit(
+            &exec_props,
+            &[
+                "native_auto_execute",
+                "native_execute_action_scope",
+                "native_fallback_action",
+                "native_fallback_args",
+            ],
+        );
+    }
+
+    #[test]
+    fn advanced_tool_schema_flag_promotes_browser_schema_without_full_native_actions() {
+        let exec_params = surface_parameters_with_advanced(
+            "browser",
+            vec![TOOL_WEB_EXECUTE_JS],
+            TOOL_WEB_EXECUTE_JS,
+            true,
+        );
+        let exec_props = schema_property_names(&exec_params);
+        assert_schema_props_include(
+            &exec_props,
+            &[
+                "tmwd_mode",
+                "target_url_contains",
+                "native_auto_fallback",
+                "native_auto_fallback_policy",
+                "native_fallback_timeout_ms",
+            ],
+        );
+        assert_schema_props_omit(
+            &exec_props,
+            &[
+                "native_auto_execute",
+                "native_execute_action_scope",
+                "native_fallback_action",
+                "native_fallback_args",
+            ],
+        );
+    }
+
+    #[test]
+    fn full_debug_surface_exposes_full_native_browser_schema() {
+        let scan_params = surface_parameters("full_debug", vec![TOOL_WEB_SCAN], TOOL_WEB_SCAN);
+        let scan_props = schema_property_names(&scan_params);
+        assert_schema_props_include(
+            &scan_props,
+            &[
+                "main_only_fallback_to_full",
+                "main_only_min_chars",
+                "main_only_min_coverage",
+                "tmwd_mode",
+                "cdp_endpoint",
+            ],
+        );
+
+        let exec_params =
+            surface_parameters("full_debug", vec![TOOL_WEB_EXECUTE_JS], TOOL_WEB_EXECUTE_JS);
+        let exec_props = schema_property_names(&exec_params);
+        assert_schema_props_include(
+            &exec_props,
+            &[
+                "native_auto_execute",
+                "native_execute_action_scope",
+                "native_fallback_action",
+                "native_fallback_args",
+            ],
+        );
     }
 
     #[test]
