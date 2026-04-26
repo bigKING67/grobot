@@ -119,6 +119,74 @@ expectEqual(
   "missing action uses cataloged default",
 );
 
+const structuredRecoveryObservedAt = "2026-04-25T00:00:30.000Z";
+const structuredRecoveryEvents: RuntimeEvent[] = [
+  event("tool_recovery", {
+    tool_name: "edit",
+    error_class: "edit_not_found",
+    error_message: "edit.edits[0] not found in sample.txt; closest_lines=line 1: \"alpha_count = 1;\"",
+    error_data: {
+      path: "sample.txt",
+      edit_index: 0,
+      diagnostics: {
+        diagnostic_kind: "edit_not_found",
+        closest_lines: [
+          {
+            line: 1,
+            preview: "alpha_count = 1;",
+          },
+        ],
+      },
+    },
+    recovery_stage: "local_fix",
+    recovery_reason: "edit_not_found",
+    recommended_next_action: "reread_target_then_retry_exact_old_text",
+    recoverable: true,
+    observed_at: structuredRecoveryObservedAt,
+  }),
+];
+const structuredRecoverySummary = summarizeRuntimeToolEvents(structuredRecoveryEvents);
+expectEqual(
+  structuredRecoverySummary.latestRecovery?.errorData?.path,
+  "sample.txt",
+  "summary preserves structured error data path",
+);
+expectEqual(
+  (structuredRecoverySummary.latestRecovery?.errorData?.diagnostics as Record<string, unknown> | undefined)
+    ?.diagnostic_kind,
+  "edit_not_found",
+  "summary preserves structured diagnostics kind",
+);
+const structuredFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 0,
+    failedTotal: 0,
+    deferredTotal: 0,
+    callsByTool: {},
+    failuresByErrorClass: {},
+    recoveryStages: { local_fix: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: structuredRecoverySummary.latestRecovery ?? null,
+    path: "/tmp/grobot-runtime-tool-events-structured",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expectEqual(structuredFeedback.errorData?.path, "sample.txt", "feedback preserves structured error data path");
+expect(
+  structuredFeedback.promptBlock.includes("Structured error data: path=sample.txt edit_index=0"),
+  "feedback summarizes structured error data",
+);
+expect(
+  structuredFeedback.promptBlock.includes("closest_lines=line 1 \"alpha_count = 1;\""),
+  "feedback summarizes structured closest lines",
+);
+
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {

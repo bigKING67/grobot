@@ -4282,6 +4282,9 @@ audit_redact_secrets = false
             "unexpected mixed line endings error: {}",
             error.message
         );
+        let data = error.data.as_ref().expect("mixed line ending error data");
+        assert_eq!(data["path"].as_str(), Some("mixed.txt"));
+        assert_eq!(data["line_ending"].as_str(), Some("mixed"));
         assert_eq!(
             fs::read_to_string(&target).expect("read original file"),
             original
@@ -4340,6 +4343,27 @@ audit_redact_secrets = false
         assert!(error.message.contains("candidates=line 1: \"same\""));
         assert!(error.message.contains("line 3: \"same\""));
         assert!(error.message.contains("retry with a unique old_text"));
+        let data = error.data.as_ref().expect("duplicate match error data");
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["edit_index"].as_u64(), Some(0));
+        assert_eq!(data["match_count"].as_u64(), Some(2));
+        assert_eq!(data["match_mode"].as_str(), Some("exact"));
+        assert_eq!(
+            data["diagnostics"]["diagnostic_kind"].as_str(),
+            Some("edit_match_candidates")
+        );
+        assert_eq!(
+            data["diagnostics"]["candidates"][0]["line"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            data["diagnostics"]["candidates"][0]["preview"].as_str(),
+            Some("same")
+        );
+        assert_eq!(
+            data["diagnostics"]["candidates"][1]["line"].as_u64(),
+            Some(3)
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -4375,6 +4399,21 @@ audit_redact_secrets = false
         assert_eq!(error.error_class, "edit_not_found");
         assert!(error.message.contains("closest_lines=line 1: \"alpha_count = 1;\""));
         assert!(error.message.contains("retry with exact old_text"));
+        let data = error.data.as_ref().expect("missing match error data");
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["edit_index"].as_u64(), Some(0));
+        assert_eq!(
+            data["diagnostics"]["diagnostic_kind"].as_str(),
+            Some("edit_not_found")
+        );
+        assert_eq!(
+            data["diagnostics"]["closest_lines"][0]["line"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            data["diagnostics"]["closest_lines"][0]["preview"].as_str(),
+            Some("alpha_count = 1;")
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

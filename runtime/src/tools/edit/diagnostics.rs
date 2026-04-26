@@ -7,7 +7,16 @@ struct EditCandidatePreview {
     preview: String,
 }
 
-fn build_edit_match_candidates_detail(content: &str, ranges: &[(usize, usize)]) -> String {
+#[derive(Debug, Clone)]
+struct EditDiagnosticDetail {
+    message: String,
+    data: Value,
+}
+
+fn build_edit_match_candidates_detail(
+    content: &str,
+    ranges: &[(usize, usize)],
+) -> EditDiagnosticDetail {
     let candidates = ranges
         .iter()
         .take(EDIT_DIAGNOSTIC_CANDIDATE_LIMIT)
@@ -16,27 +25,56 @@ fn build_edit_match_candidates_detail(content: &str, ranges: &[(usize, usize)]) 
             preview: preview_line_for_offset(content, *start),
         })
         .collect::<Vec<EditCandidatePreview>>();
-    format_edit_candidate_list(
-        "candidates",
-        &candidates,
-        "recovery=read target around candidate lines and retry with a unique old_text",
-    )
+    EditDiagnosticDetail {
+        message: format_edit_candidate_list(
+            "candidates",
+            &candidates,
+            "recovery=read target around candidate lines and retry with a unique old_text",
+        ),
+        data: json!({
+            "diagnostic_kind": "edit_match_candidates",
+            "candidate_label": "candidates",
+            "candidate_limit": EDIT_DIAGNOSTIC_CANDIDATE_LIMIT,
+            "candidates": edit_candidates_to_value(&candidates),
+            "recovery_hint": "read target around candidate lines and retry with a unique old_text"
+        }),
+    }
 }
 
-fn build_edit_not_found_detail(content: &str, old_text: &str) -> String {
+fn build_edit_not_found_detail(content: &str, old_text: &str) -> EditDiagnosticDetail {
     let candidates = nearest_edit_candidate_lines(
         content,
         old_text,
         EDIT_DIAGNOSTIC_CANDIDATE_LIMIT,
     );
     if candidates.is_empty() {
-        return "recovery=read target then retry with exact old_text from the latest file content".to_string();
+        return EditDiagnosticDetail {
+            message:
+                "recovery=read target then retry with exact old_text from the latest file content"
+                    .to_string(),
+            data: json!({
+                "diagnostic_kind": "edit_not_found",
+                "candidate_label": "closest_lines",
+                "candidate_limit": EDIT_DIAGNOSTIC_CANDIDATE_LIMIT,
+                "closest_lines": [],
+                "recovery_hint": "read target then retry with exact old_text from the latest file content"
+            }),
+        };
     }
-    format_edit_candidate_list(
-        "closest_lines",
-        &candidates,
-        "recovery=read target around closest_lines and retry with exact old_text",
-    )
+    EditDiagnosticDetail {
+        message: format_edit_candidate_list(
+            "closest_lines",
+            &candidates,
+            "recovery=read target around closest_lines and retry with exact old_text",
+        ),
+        data: json!({
+            "diagnostic_kind": "edit_not_found",
+            "candidate_label": "closest_lines",
+            "candidate_limit": EDIT_DIAGNOSTIC_CANDIDATE_LIMIT,
+            "closest_lines": edit_candidates_to_value(&candidates),
+            "recovery_hint": "read target around closest_lines and retry with exact old_text"
+        }),
+    }
 }
 
 fn append_edit_diagnostics(message: String, detail: String) -> String {
@@ -67,6 +105,20 @@ fn format_edit_candidate_list(
         .collect::<Vec<String>>()
         .join(", ");
     format!("{label}={rows}; {recovery}")
+}
+
+fn edit_candidates_to_value(candidates: &[EditCandidatePreview]) -> Value {
+    Value::Array(
+        candidates
+            .iter()
+            .map(|candidate| {
+                json!({
+                    "line": candidate.line,
+                    "preview": candidate.preview,
+                })
+            })
+            .collect(),
+    )
 }
 
 fn preview_line_for_offset(content: &str, byte_offset: usize) -> String {

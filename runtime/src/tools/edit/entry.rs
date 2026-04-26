@@ -77,12 +77,19 @@ fn run_edit(
     let (bom, raw_without_bom) = split_utf8_bom(&file_content);
     let text_format = inspect_text_content_format(raw_without_bom);
     if text_format.line_ending == "mixed" {
-        return Err(ToolExecutionError::new(
-            "edit_mixed_line_endings_not_supported",
-            format!(
-                "edit cannot safely preserve mixed line endings for {relative_path}; use write with exact full file content or normalize line endings first"
-            ),
-        ));
+        return Err(
+            ToolExecutionError::new(
+                "edit_mixed_line_endings_not_supported",
+                format!(
+                    "edit cannot safely preserve mixed line endings for {relative_path}; use write with exact full file content or normalize line endings first"
+                ),
+            )
+            .with_data(json!({
+                "path": relative_path,
+                "line_ending": "mixed",
+                "recovery_hint": "use write with exact full file content or normalize line endings first"
+            })),
+        );
     }
     let original_line_ending = detect_line_ending(raw_without_bom);
     let original_line_ending_label = line_ending_label(raw_without_bom, original_line_ending);
@@ -102,17 +109,26 @@ fn run_edit(
             (start, end, false)
         } else if exact_ranges.len() > 1 {
             let detail = build_edit_match_candidates_detail(&base_content, &exact_ranges);
-            return Err(ToolExecutionError::new(
-                "edit_match_not_unique",
-                append_edit_diagnostics(
-                    format!(
-                        "edit.edits[{edit_index}].old_text matched {} times in {}",
-                        exact_ranges.len(),
-                        relative_path
+            return Err(
+                ToolExecutionError::new(
+                    "edit_match_not_unique",
+                    append_edit_diagnostics(
+                        format!(
+                            "edit.edits[{edit_index}].old_text matched {} times in {}",
+                            exact_ranges.len(),
+                            relative_path
+                        ),
+                        detail.message,
                     ),
-                    detail,
-                ),
-            ));
+                )
+                .with_data(json!({
+                    "path": relative_path,
+                    "edit_index": edit_index,
+                    "match_count": exact_ranges.len(),
+                    "match_mode": "exact",
+                    "diagnostics": detail.data,
+                })),
+            );
         } else {
             let fuzzy_ranges = find_all_safe_fuzzy_match_ranges(&base_content, &edit.old_text);
             if fuzzy_ranges.len() == 1 {
@@ -120,26 +136,42 @@ fn run_edit(
                 (start, end, true)
             } else if fuzzy_ranges.is_empty() {
                 let detail = build_edit_not_found_detail(&base_content, &edit.old_text);
-                return Err(ToolExecutionError::new(
-                    "edit_not_found",
-                    append_edit_diagnostics(
-                        format!("edit.edits[{edit_index}] not found in {relative_path}"),
-                        detail,
-                    ),
-                ));
+                return Err(
+                    ToolExecutionError::new(
+                        "edit_not_found",
+                        append_edit_diagnostics(
+                            format!("edit.edits[{edit_index}] not found in {relative_path}"),
+                            detail.message,
+                        ),
+                    )
+                    .with_data(json!({
+                        "path": relative_path,
+                        "edit_index": edit_index,
+                        "diagnostics": detail.data,
+                    })),
+                );
             } else {
                 let detail = build_edit_match_candidates_detail(&base_content, &fuzzy_ranges);
-                return Err(ToolExecutionError::new(
-                    "edit_match_not_unique",
-                    append_edit_diagnostics(
-                        format!(
-                            "edit.edits[{edit_index}] fuzzy matched {} times in {}",
-                            fuzzy_ranges.len(),
-                            relative_path
+                return Err(
+                    ToolExecutionError::new(
+                        "edit_match_not_unique",
+                        append_edit_diagnostics(
+                            format!(
+                                "edit.edits[{edit_index}] fuzzy matched {} times in {}",
+                                fuzzy_ranges.len(),
+                                relative_path
+                            ),
+                            detail.message,
                         ),
-                        detail,
-                    ),
-                ));
+                    )
+                    .with_data(json!({
+                        "path": relative_path,
+                        "edit_index": edit_index,
+                        "match_count": fuzzy_ranges.len(),
+                        "match_mode": "fuzzy",
+                        "diagnostics": detail.data,
+                    })),
+                );
             }
         };
         matches.push(EditMatch {

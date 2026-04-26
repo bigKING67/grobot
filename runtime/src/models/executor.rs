@@ -1189,6 +1189,7 @@ fn build_tool_end_failure_event(
             "duration_ms": duration_ms,
             "error_class": error.error_class,
             "error_message": truncate_header_value_for_diagnostics(&error.message, 240),
+            "error_data": error.data.clone(),
         })),
     }
 }
@@ -1200,6 +1201,7 @@ fn build_tool_recovery_event(
     risk_class: &str,
     error_class: &str,
     error_message: Option<&str>,
+    error_data: Option<&Value>,
 ) -> ModelTelemetryEvent {
     let policy = classify_tool_recovery(error_class, risk_class);
     ModelTelemetryEvent {
@@ -1212,6 +1214,7 @@ fn build_tool_recovery_event(
             "risk_class": risk_class,
             "error_class": error_class,
             "error_message": error_message.map(|message| truncate_header_value_for_diagnostics(message, 240)),
+            "error_data": error_data.cloned(),
             "recovery_stage": policy.stage,
             "recovery_reason": error_class,
             "recommended_next_action": policy.recommended_next_action,
@@ -1903,6 +1906,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             risk_class,
                             "tool_execution_deferred",
                             None,
+                            None,
                         ));
                         (output, budgeted_output)
                     } else {
@@ -1943,6 +1947,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                     risk_class,
                                     &error.error_class,
                                     Some(error.message.as_str()),
+                                    error.data.as_ref(),
                                 ));
                                 return Err(
                                     ModelExecutionError::new(&error.error_class, error.message)

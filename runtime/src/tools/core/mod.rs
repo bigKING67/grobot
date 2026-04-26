@@ -82,6 +82,7 @@ impl ToolCallOutput {
 pub struct ToolExecutionError {
     pub error_class: String,
     pub message: String,
+    pub data: Option<Value>,
 }
 
 impl ToolExecutionError {
@@ -89,7 +90,13 @@ impl ToolExecutionError {
         Self {
             error_class: error_class.to_string(),
             message: message.into(),
+            data: None,
         }
+    }
+
+    pub fn with_data(mut self, data: Value) -> Self {
+        self.data = Some(data);
+        self
     }
 }
 

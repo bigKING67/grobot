@@ -91,6 +91,21 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone)]
+    struct FailingToolExecutor {
+        error: ToolExecutionError,
+    }
+
+    impl ToolExecutor for FailingToolExecutor {
+        fn execute_tool_call(
+            &self,
+            _call: &ToolCallInput,
+            _input: &TurnExecuteInput,
+        ) -> Result<ToolCallOutput, ToolExecutionError> {
+            Err(self.error.clone())
+        }
+    }
+
     fn find_header_end(raw: &[u8]) -> Option<usize> {
         raw.windows(4).position(|window| window == b"\r\n\r\n")
     }
@@ -1740,6 +1755,103 @@ mod tests {
             .expect_err("expected tool_call_not_supported");
         assert_eq!(error.error_class, "tool_call_not_supported");
         assert!(error.message.contains("lookup"));
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn executor_emits_structured_tool_error_data_in_tool_events() {
+        let _env_guard = env_lock().lock().expect("lock env");
+        let server = start_mock_http_server(
+            "200 OK",
+            r#"{"id":"mock","choices":[{"message":{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"edit","arguments":"{\"path\":\"sample.txt\",\"edits\":[{\"old_text\":\"alpha\",\"new_text\":\"beta\"}]}"} }]}}]}"#,
+        );
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+        let input = TurnExecuteInput {
+            request_id: "req_rt_tool_error_data".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
+            user_message: "edit file".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(server.base_url.clone()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("runtime-test-model".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: None,
+                provider_options: None,
+            }),
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(".".to_string()),
+                enabled_tools: Some(vec!["edit".to_string()]),
+                model_visible_tools: Some(vec!["edit".to_string()]),
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
+                bash_allowlist: None,
+                max_tool_rounds: Some(4),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        };
+        let tool_error = ToolExecutionError::new(
+            "edit_not_found",
+            "edit.edits[0] not found in sample.txt; closest_lines=line 1: \"alpha\"",
+        )
+        .with_data(json!({
+            "path": "sample.txt",
+            "edit_index": 0,
+            "diagnostics": {
+                "diagnostic_kind": "edit_not_found",
+                "closest_lines": [
+                    {
+                        "line": 1,
+                        "preview": "alpha"
+                    }
+                ]
+            }
+        }));
+        let executor = OpenAiCompatibleModelExecutor;
+        let error = executor
+            .generate_assistant_message(
+                &input,
+                &FailingToolExecutor { error: tool_error },
+            )
+            .expect_err("expected structured tool failure");
+        assert_eq!(error.error_class, "edit_not_found");
+        let tool_end_payload = error.telemetry_events[1]
+            .payload
+            .as_ref()
+            .expect("tool_end payload");
+        assert_eq!(
+            tool_end_payload["error_data"]["path"].as_str(),
+            Some("sample.txt")
+        );
+        assert_eq!(
+            tool_end_payload["error_data"]["diagnostics"]["closest_lines"][0]["line"].as_u64(),
+            Some(1)
+        );
+        let recovery_payload = error.telemetry_events[2]
+            .payload
+            .as_ref()
+            .expect("tool_recovery payload");
+        assert_eq!(
+            recovery_payload["error_data"]["path"].as_str(),
+            Some("sample.txt")
+        );
+        assert_eq!(
+            recovery_payload["error_data"]["diagnostics"]["closest_lines"][0]["preview"].as_str(),
+            Some("alpha")
+        );
 
         let calls = server.finish();
         assert_eq!(calls.len(), 1);
