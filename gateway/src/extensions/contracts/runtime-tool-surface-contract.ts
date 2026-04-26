@@ -305,6 +305,25 @@ expect(
 expectEqual(
   parseRuntimeToolSurfaceSchemaProfiles([{
     ...validRuntimeSchemaProfile,
+    full_schema_property_count: 6,
+  }]).length,
+  0,
+  "runtime schema profile parser rejects inconsistent full schema counts",
+);
+expectEqual(
+  parseRuntimeToolSurfaceSchemaProfiles([{
+    ...validRuntimeSchemaProfile,
+    per_tool_suppressed_args: {
+      web_scan: ["main_only"],
+      web_execute_js: ["native_fallback_action"],
+    },
+  }]).length,
+  0,
+  "runtime schema profile parser rejects overlapping visible and suppressed args",
+);
+expectEqual(
+  parseRuntimeToolSurfaceSchemaProfiles([{
+    ...validRuntimeSchemaProfile,
     per_tool_visible_args: {
       web_scan: ["main_only", "main_only"],
       web_execute_js: ["script", "timeout_ms"],
@@ -415,6 +434,46 @@ expectEqual(
 expect(
   mismatchedRecoveryRuntimeDescribe.detail.startsWith("runtime_tools_describe_recovery_catalog_fingerprint_mismatch:"),
   "runtime tools describe reports recovery catalog fingerprint mismatch",
+);
+
+const fakeIncompleteSchemaProfilesPath = join(fakeRuntimeDir, "runtime-incomplete-schema-profiles.js");
+writeFileSync(
+  fakeIncompleteSchemaProfilesPath,
+  `#!/usr/bin/env node\nconsole.log(${JSON.stringify(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "tools-describe-1",
+    result: {
+      tools: [
+        { type: "function", function: { name: "web_scan" } },
+        { type: "function", function: { name: "web_execute_js" } },
+      ],
+      default_enabled_tools: ["web_scan"],
+      tool_recovery_policy_version: "v1",
+      tool_recovery_actions: [
+        "inspect_visible_tool_schema_then_retry",
+        "ask_user_for_config_or_switch_provider",
+        "inspect_error_and_switch_strategy",
+      ],
+      tool_recovery_catalog_fingerprint: buildRuntimeToolRecoveryCatalogFingerprint(validRuntimeRecoveryCatalog),
+      tool_recovery_catalog: validRuntimeRecoveryCatalog,
+      tool_surface_schema_profiles_fingerprint: buildRuntimeToolSurfaceSchemaProfilesFingerprint([validRuntimeSchemaProfile]),
+      tool_surface_schema_profiles: [validRuntimeSchemaProfile],
+    },
+  }))});\n`,
+  "utf8",
+);
+chmodSync(fakeIncompleteSchemaProfilesPath, 0o755);
+const incompleteSchemaProfilesRuntimeDescribe = runRuntimeToolsDescribe(fakeIncompleteSchemaProfilesPath);
+expectEqual(
+  incompleteSchemaProfilesRuntimeDescribe.ok,
+  false,
+  "runtime tools describe rejects incomplete schema profile set",
+);
+expect(
+  incompleteSchemaProfilesRuntimeDescribe.detail.includes(
+    "runtime_tools_describe_invalid_schema_profiles:schema_profiles_missing_profiles:",
+  ),
+  "runtime tools describe reports missing schema profiles",
 );
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));

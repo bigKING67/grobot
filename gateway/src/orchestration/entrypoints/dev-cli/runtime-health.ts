@@ -303,6 +303,24 @@ function recordKeysMatch(record: Record<string, unknown>, expectedKeys: readonly
   return actual.every((key, index) => key === expected[index]);
 }
 
+function stringArraysDisjoint(left: readonly string[], right: readonly string[]): boolean {
+  const leftSet = new Set(left);
+  return right.every((item) => !leftSet.has(item));
+}
+
+function expectedSchemaProjectionForProfile(profile: ToolSurfaceProfile): {
+  projectionMode: RuntimeToolSurfaceProjectionMode;
+  advancedToolSchema: boolean;
+} {
+  if (profile === "full_debug") {
+    return { projectionMode: "full", advancedToolSchema: true };
+  }
+  if (profile === "browser_advanced") {
+    return { projectionMode: "advanced", advancedToolSchema: true };
+  }
+  return { projectionMode: "slim", advancedToolSchema: false };
+}
+
 function stableJsonStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableJsonStringify(item)).join(",")}]`;
@@ -396,6 +414,12 @@ export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
     const perToolArgsMatchCounts = perToolPropertyCount != null && perToolVisibleArgs != null
       ? toolNames.every((toolName) => perToolPropertyCount[toolName] === perToolVisibleArgs[toolName]?.length)
       : false;
+    const perToolArgPartitionsDisjoint = perToolVisibleArgs != null && perToolSuppressedArgs != null
+      ? toolNames.every((toolName) => stringArraysDisjoint(
+        perToolVisibleArgs[toolName] ?? [],
+        perToolSuppressedArgs[toolName] ?? [],
+      ))
+      : false;
     const perToolMapsHaveExactKeys =
       perToolPropertyCount != null
       && perToolVisibleArgs != null
@@ -425,7 +449,9 @@ export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
       || perToolSum !== schemaPropertyCount
       || visibleArgSum !== schemaPropertyCount
       || suppressedArgSum !== suppressedSchemaPropertyCount
+      || fullSchemaPropertyCount !== schemaPropertyCount + suppressedSchemaPropertyCount
       || !perToolArgsMatchCounts
+      || !perToolArgPartitionsDisjoint
       || !perToolMapsHaveExactKeys
       || toolNames.length !== visibleToolCount
     ) {
@@ -457,6 +483,53 @@ export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
 
 export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
   return parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(value).profiles;
+}
+
+function validateRuntimeToolSurfaceSchemaProfilesAgainstManifest(input: {
+  profiles: readonly RuntimeToolSurfaceSchemaProfile[];
+  toolNames: readonly string[];
+}): string | null {
+  if (input.profiles.length === 0) {
+    return null;
+  }
+  const seenProfiles = new Set<ToolSurfaceProfile>();
+  const duplicateProfiles: string[] = [];
+  for (const profile of input.profiles) {
+    if (seenProfiles.has(profile.profile)) {
+      duplicateProfiles.push(profile.profile);
+    }
+    seenProfiles.add(profile.profile);
+  }
+  if (duplicateProfiles.length > 0) {
+    return `schema_profiles_duplicate_profiles:${dedupeStringArray(duplicateProfiles).join(",")}`;
+  }
+  const missingProfiles = RUNTIME_TOOL_SURFACE_PROFILES.filter((profile) => !seenProfiles.has(profile));
+  if (missingProfiles.length > 0) {
+    return `schema_profiles_missing_profiles:${missingProfiles.join(",")}`;
+  }
+  const unknownProfiles = [...seenProfiles].filter((profile) => !RUNTIME_TOOL_SURFACE_PROFILES.includes(profile));
+  if (unknownProfiles.length > 0) {
+    return `schema_profiles_unknown_profiles:${unknownProfiles.join(",")}`;
+  }
+
+  const manifestToolNames = new Set(input.toolNames);
+  for (const profile of input.profiles) {
+    if (profile.policyVersion !== TOOL_SURFACE_POLICY_VERSION) {
+      return `schema_profiles_policy_version_mismatch:${profile.profile}:${profile.policyVersion}`;
+    }
+    const expectedProjection = expectedSchemaProjectionForProfile(profile.profile);
+    if (
+      profile.projectionMode !== expectedProjection.projectionMode
+      || profile.advancedToolSchema !== expectedProjection.advancedToolSchema
+    ) {
+      return `schema_profiles_projection_mismatch:${profile.profile}`;
+    }
+    const unknownToolNames = profile.toolNames.filter((toolName) => !manifestToolNames.has(toolName));
+    if (unknownToolNames.length > 0) {
+      return `schema_profiles_unknown_tools:${profile.profile}:${unknownToolNames.join(",")}`;
+    }
+  }
+  return null;
 }
 
 export function parseRuntimeToolRecoveryCatalogWithDiagnostics(
@@ -1078,6 +1151,25 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       detail:
         `runtime_tools_describe_schema_profiles_fingerprint_mismatch:reported=${toolSurfaceSchemaProfilesFingerprint}`
         + `:computed=${schemaProfilesFingerprintFromPayload}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  const schemaProfileManifestInvalidReason = validateRuntimeToolSurfaceSchemaProfilesAgainstManifest({
+    profiles: toolSurfaceSchemaProfiles,
+    toolNames: uniqueToolNames,
+  });
+  if (schemaProfileManifestInvalidReason != null) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_schema_profiles:${schemaProfileManifestInvalidReason}`,
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,

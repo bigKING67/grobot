@@ -33,7 +33,11 @@ instructions are cataloged in
 - `tool_surface_schema_profiles_fingerprint`
 - `tool_surface_schema_profiles`
 
-Gateway validates both fingerprints before trusting runtime describe output.
+Gateway validates both fingerprints before trusting runtime describe output. It
+also rejects malformed schema profile rows, incomplete profile sets, profile
+projection drift, unknown tool names, and visible/suppressed argument overlap so
+the reported schema budget cannot silently diverge from the executable runtime
+tool manifest.
 
 ## Recoverability contract
 
