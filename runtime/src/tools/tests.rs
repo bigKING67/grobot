@@ -1702,6 +1702,18 @@ audit_redact_secrets = false
         let error = ToolExecutionError::new("mcp_timeout", "MCP tools/call timed out after 100 ms");
         assert_eq!(classify_error_bucket(&error), "timeout");
         assert!(is_recoverable_mcp_error(&error));
+
+        let timeout_error = run_with_process_timeout(0, 5, "tools/call", || {
+            thread::sleep(Duration::from_millis(20));
+            Ok::<(), ToolExecutionError>(())
+        })
+        .expect_err("timeout wrapper should surface mcp_timeout");
+        assert_eq!(timeout_error.error_class, "mcp_timeout");
+        let data = timeout_error.data.expect("timeout should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_timeout"));
+        assert_eq!(data["operation"].as_str(), Some("tools/call"));
+        assert_eq!(data["timeout_ms"].as_u64(), Some(5));
+        assert_eq!(data["pid"].as_u64(), Some(0));
     }
 
     #[test]
@@ -1874,6 +1886,14 @@ audit_redact_secrets = false
         };
         let error = acquire_mcp_server_slot(&server, server_key, &policy).expect_err("expected queue full");
         assert_eq!(error.error_class, "mcp_server_busy");
+        let data = error.data.as_ref().expect("queue full should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_server_busy"));
+        assert_eq!(data["server"].as_str(), Some("mock"));
+        assert_eq!(data["server_key"].as_str(), Some(server_key));
+        assert_eq!(data["in_flight"].as_u64(), Some(1));
+        assert_eq!(data["queue_waiting"].as_u64(), Some(1));
+        assert_eq!(data["max_concurrency_per_server"].as_u64(), Some(1));
+        assert_eq!(data["max_queue_per_server"].as_u64(), Some(1));
 
         let mut store = lock_runtime_store().expect("lock runtime store");
         let state = store.states.get(server_key).expect("state should exist");
@@ -1915,6 +1935,11 @@ audit_redact_secrets = false
         };
         let error = acquire_mcp_server_slot(&server, server_key, &policy).expect_err("expected queue timeout");
         assert_eq!(error.error_class, "mcp_queue_timeout");
+        let data = error.data.as_ref().expect("queue timeout should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_queue_timeout"));
+        assert_eq!(data["server"].as_str(), Some("mock"));
+        assert_eq!(data["timeout_ms"].as_u64(), Some(10));
+        assert_eq!(data["queue_waiting"].as_u64(), Some(0));
 
         let mut store = lock_runtime_store().expect("lock runtime store");
         let state = store.states.get(server_key).expect("state should exist");
@@ -1922,6 +1947,109 @@ audit_redact_secrets = false
         assert_eq!(state.queue_timeout_calls, 1);
         assert_eq!(state.queue_waiting, 0);
         store.states.remove(server_key);
+    }
+
+    #[test]
+    fn acquire_mcp_server_slot_reports_circuit_open_data() {
+        let server_key = "test-circuit-open";
+        let open_until = current_epoch_secs().saturating_add(30);
+        {
+            let mut store = lock_runtime_store().expect("lock runtime store");
+            store.states.remove(server_key);
+            let state = store.states.entry(server_key.to_string()).or_default();
+            state.circuit_open_until_epoch_secs = open_until;
+            state.consecutive_failures = 3;
+        }
+
+        let server = McpServerResolved {
+            name: "mock".to_string(),
+            command: "node".to_string(),
+            args: vec![],
+            env: StdHashMap::new(),
+            enabled: true,
+            source: "test".to_string(),
+            ready: true,
+            ready_reason: "ok".to_string(),
+        };
+        let policy = McpCallPolicy {
+            max_concurrency_per_server: 1,
+            max_queue_per_server: 1,
+            failure_threshold: 3,
+            cooldown_secs: 10,
+            latency_sample_limit: 64,
+            call_timeout_ms: 20,
+            session_idle_ttl_secs: 60,
+            allow_tools: vec![],
+        };
+        let error = acquire_mcp_server_slot(&server, server_key, &policy).expect_err("expected circuit open");
+        assert_eq!(error.error_class, "mcp_circuit_open");
+        let data = error.data.as_ref().expect("circuit open should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_circuit_open"));
+        assert_eq!(data["server"].as_str(), Some("mock"));
+        assert_eq!(data["server_key"].as_str(), Some(server_key));
+        assert_eq!(
+            data["circuit_open_until_epoch_secs"].as_u64(),
+            Some(open_until)
+        );
+        assert_eq!(data["cooldown_secs"].as_u64(), Some(10));
+        assert_eq!(data["consecutive_failures"].as_u64(), Some(3));
+
+        let mut store = lock_runtime_store().expect("lock runtime store");
+        store.states.remove(server_key);
+    }
+
+    #[test]
+    fn run_mcp_call_rejects_blocked_tool_with_structured_data() {
+        let root = make_temp_workspace("mcp-tool-blocked-data");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        fs::write(
+            grobot_dir.join("mcp.toml"),
+            r#"
+[[servers]]
+name = "mock-blocked"
+command = "sh"
+enabled = true
+"#,
+        )
+        .expect("write mcp registry");
+        fs::write(
+            grobot_dir.join("project.toml"),
+            r#"
+[tools.mcp]
+allow_tools = ["allowed_tool"]
+"#,
+        )
+        .expect("write mcp policy");
+
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace,
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": "mock-blocked",
+            "tool": "blocked_tool",
+            "arguments": {}
+        }));
+        let error = run_mcp_call(&context, &args).expect_err("blocked MCP tool should fail before spawn");
+        assert_eq!(error.error_class, "mcp_tool_blocked");
+        let data = error.data.as_ref().expect("blocked tool should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_tool_blocked"));
+        assert_eq!(data["server"].as_str(), Some("mock-blocked"));
+        assert_eq!(data["tool_name"].as_str(), Some("blocked_tool"));
+        assert_eq!(data["operation"].as_str(), Some("policy_check"));
+        assert_eq!(data["allow_tools"].as_array().map(|items| items.len()), Some(1));
+
+        let mut store = lock_runtime_store().expect("lock runtime store");
+        store.states.remove("mock-blocked");
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
     }
 
     #[test]

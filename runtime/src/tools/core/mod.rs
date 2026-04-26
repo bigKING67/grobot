@@ -128,6 +128,45 @@ fn path_resolution_error_data(
     Value::Object(data)
 }
 
+fn mcp_server_gate_error_data(
+    diagnostic_kind: &str,
+    server: &McpServerResolved,
+    server_key: &str,
+    state: &McpRuntimeState,
+    policy: &McpCallPolicy,
+    timeout_ms: Option<u64>,
+    recovery_hint: &str,
+) -> Value {
+    let mut data = Map::new();
+    data.insert("diagnostic_kind".to_string(), json!(diagnostic_kind));
+    data.insert("server".to_string(), json!(server.name.as_str()));
+    data.insert("server_key".to_string(), json!(server_key));
+    data.insert("in_flight".to_string(), json!(state.in_flight));
+    data.insert("queue_waiting".to_string(), json!(state.queue_waiting));
+    data.insert(
+        "max_concurrency_per_server".to_string(),
+        json!(policy.max_concurrency_per_server),
+    );
+    data.insert(
+        "max_queue_per_server".to_string(),
+        json!(policy.max_queue_per_server),
+    );
+    data.insert(
+        "circuit_open_until_epoch_secs".to_string(),
+        json!(state.circuit_open_until_epoch_secs),
+    );
+    data.insert("cooldown_secs".to_string(), json!(policy.cooldown_secs));
+    data.insert(
+        "consecutive_failures".to_string(),
+        json!(state.consecutive_failures),
+    );
+    data.insert("recovery_hint".to_string(), json!(recovery_hint));
+    if let Some(timeout_ms) = timeout_ms {
+        data.insert("timeout_ms".to_string(), json!(timeout_ms));
+    }
+    Value::Object(data)
+}
+
 #[derive(Debug, Clone)]
 struct ToolContextResolved {
     session_key: String,
@@ -1154,7 +1193,14 @@ where
         return Err(ToolExecutionError::new(
             "mcp_timeout",
             format!("MCP {operation_name} timed out after {timeout_ms} ms"),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "mcp_timeout",
+            "operation": operation_name,
+            "timeout_ms": timeout_ms,
+            "pid": pid,
+            "recovery_hint": "retry with smaller scope, wait for queue pressure to clear, or choose an alternate MCP tool"
+        })));
     }
     result
 }
@@ -1325,7 +1371,16 @@ fn acquire_mcp_server_slot(
                     "MCP server `{}` circuit open until {}",
                     server.name, state.circuit_open_until_epoch_secs
                 ),
-            ));
+            )
+            .with_data(mcp_server_gate_error_data(
+                "mcp_circuit_open",
+                server,
+                server_key,
+                state,
+                policy,
+                None,
+                "wait for circuit cooldown or choose an alternate server/tool",
+            )));
         }
 
         if state.in_flight < policy.max_concurrency_per_server.max(1) {
@@ -1347,7 +1402,16 @@ fn acquire_mcp_server_slot(
                         "MCP server `{}` queue full (in_flight={}, queue_waiting={}, max_queue={})",
                         server.name, state.in_flight, state.queue_waiting, policy.max_queue_per_server
                     ),
-                ));
+                )
+                .with_data(mcp_server_gate_error_data(
+                    "mcp_server_busy",
+                    server,
+                    server_key,
+                    state,
+                    policy,
+                    None,
+                    "wait for queue pressure to clear or choose an alternate server/tool",
+                )));
             }
             state.queue_waiting = state.queue_waiting.saturating_add(1);
             queued = true;
@@ -1368,7 +1432,16 @@ fn acquire_mcp_server_slot(
                     "MCP server `{}` queue wait timed out after {} ms",
                     server.name, policy.call_timeout_ms
                 ),
-            ));
+            )
+            .with_data(mcp_server_gate_error_data(
+                "mcp_queue_timeout",
+                server,
+                server_key,
+                state,
+                policy,
+                Some(policy.call_timeout_ms),
+                "retry later, reduce concurrency, or choose an alternate server/tool",
+            )));
         }
         thread::sleep(Duration::from_millis(3));
     }

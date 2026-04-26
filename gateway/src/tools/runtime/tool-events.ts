@@ -292,11 +292,41 @@ function compactRecoveryCandidateList(label: string, value: unknown): string | u
   return `${label}=${rows.join(", ")}`;
 }
 
+function compactRecoveryStringList(label: string, value: unknown): string | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  const rows = normalized.map((item) => quoteRecoveryPreview(item)).slice(0, 4);
+  if (rows.length === 0) {
+    return undefined;
+  }
+  const overflow = normalized.length > rows.length ? `,+${String(normalized.length - rows.length)}` : "";
+  return `${label}=[${rows.join(",")}${overflow}]`;
+}
+
 function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined): string | undefined {
   if (!errorData) {
     return undefined;
   }
   const parts: string[] = [];
+  const server = typeof errorData.server === "string" ? compactRecoveryDetail(errorData.server) : undefined;
+  if (server) {
+    parts.push(`server=${server}`);
+  }
+  const serverKey = typeof errorData.server_key === "string" ? compactRecoveryDetail(errorData.server_key) : undefined;
+  if (serverKey) {
+    parts.push(`server_key=${serverKey}`);
+  }
+  const toolName = typeof errorData.tool_name === "string" ? compactRecoveryDetail(errorData.tool_name) : undefined;
+  if (toolName) {
+    parts.push(`tool_name=${toolName}`);
+  }
+  const operation = typeof errorData.operation === "string" ? compactRecoveryDetail(errorData.operation) : undefined;
+  if (operation) {
+    parts.push(`operation=${operation}`);
+  }
   const path = typeof errorData.path === "string" ? compactRecoveryDetail(errorData.path) : undefined;
   if (path) {
     parts.push(`path=${path}`);
@@ -322,6 +352,38 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (typeof errorData.allowlist_rule_count === "number" && Number.isFinite(errorData.allowlist_rule_count)) {
     parts.push(`allowlist_rule_count=${String(Math.trunc(errorData.allowlist_rule_count))}`);
   }
+  if (typeof errorData.in_flight === "number" && Number.isFinite(errorData.in_flight)) {
+    parts.push(`in_flight=${String(Math.trunc(errorData.in_flight))}`);
+  }
+  if (typeof errorData.queue_waiting === "number" && Number.isFinite(errorData.queue_waiting)) {
+    parts.push(`queue_waiting=${String(Math.trunc(errorData.queue_waiting))}`);
+  }
+  if (
+    typeof errorData.max_concurrency_per_server === "number"
+    && Number.isFinite(errorData.max_concurrency_per_server)
+  ) {
+    parts.push(`max_concurrency_per_server=${String(Math.trunc(errorData.max_concurrency_per_server))}`);
+  }
+  if (typeof errorData.max_queue_per_server === "number" && Number.isFinite(errorData.max_queue_per_server)) {
+    parts.push(`max_queue_per_server=${String(Math.trunc(errorData.max_queue_per_server))}`);
+  }
+  if (
+    typeof errorData.circuit_open_until_epoch_secs === "number"
+    && Number.isFinite(errorData.circuit_open_until_epoch_secs)
+  ) {
+    parts.push(`circuit_open_until_epoch_secs=${String(Math.trunc(errorData.circuit_open_until_epoch_secs))}`);
+  }
+  if (typeof errorData.enabled === "boolean") {
+    parts.push(`enabled=${String(errorData.enabled)}`);
+  }
+  if (typeof errorData.ready === "boolean") {
+    parts.push(`ready=${String(errorData.ready)}`);
+  }
+  const readyReason =
+    typeof errorData.ready_reason === "string" ? compactRecoveryDetail(errorData.ready_reason) : undefined;
+  if (readyReason) {
+    parts.push(`ready_reason=${readyReason}`);
+  }
   const deniedSegment =
     typeof errorData.denied_segment === "string" ? compactRecoveryDetail(errorData.denied_segment) : undefined;
   if (deniedSegment) {
@@ -332,6 +394,18 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   }
   if (typeof errorData.duration_ms === "number" && Number.isFinite(errorData.duration_ms)) {
     parts.push(`duration_ms=${String(Math.trunc(errorData.duration_ms))}`);
+  }
+  const rpcErrorCode = errorData.rpc_error_code;
+  if (
+    (typeof rpcErrorCode === "number" && Number.isFinite(rpcErrorCode))
+    || (typeof rpcErrorCode === "string" && rpcErrorCode.trim())
+  ) {
+    parts.push(`rpc_error_code=${String(rpcErrorCode)}`);
+  }
+  const rpcErrorMessage =
+    typeof errorData.rpc_error_message === "string" ? compactRecoveryDetail(errorData.rpc_error_message) : undefined;
+  if (rpcErrorMessage) {
+    parts.push(`rpc_error_message=${quoteRecoveryPreview(rpcErrorMessage)}`);
   }
 
   const diagnostics = normalizeRecord(errorData.diagnostics);
@@ -348,6 +422,18 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     ?? compactRecoveryCandidateList("closest_lines", diagnostics.closest_lines);
   if (candidates) {
     parts.push(candidates);
+  }
+  const availableTools = compactRecoveryStringList("available_tools", errorData.available_tools);
+  if (availableTools) {
+    parts.push(availableTools);
+  }
+  const allowTools = compactRecoveryStringList("allow_tools", errorData.allow_tools);
+  if (allowTools) {
+    parts.push(allowTools);
+  }
+  const availableServers = compactRecoveryStringList("available_servers", errorData.available_servers);
+  if (availableServers) {
+    parts.push(availableServers);
   }
   return compactRecoveryDetail(parts.join(" "));
 }

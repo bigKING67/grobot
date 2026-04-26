@@ -230,6 +230,58 @@ expect(
   "feedback summarizes denied bash segment",
 );
 
+const mcpStructuredFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 0,
+    failedTotal: 0,
+    deferredTotal: 0,
+    callsByTool: {},
+    failuresByErrorClass: {},
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "mcp_tool_blocked",
+      recommendedNextAction: "request_approval_or_use_safer_tool",
+      toolName: "mcp_call",
+      errorClass: "mcp_tool_blocked",
+      errorData: {
+        diagnostic_kind: "mcp_tool_blocked",
+        server: "grok-search",
+        server_key: "grok-search",
+        tool_name: "web_search",
+        operation: "policy_check",
+        allow_tools: ["get_sources"],
+        ready: true,
+        ready_reason: "ok",
+        recovery_hint: "use an allowed MCP tool or request policy change",
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-mcp-structured",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expect(
+  mcpStructuredFeedback.promptBlock.includes("server=grok-search"),
+  "feedback summarizes MCP server",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("tool_name=web_search"),
+  "feedback summarizes MCP tool name",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("allow_tools=[\"get_sources\"]"),
+  "feedback summarizes MCP allow_tools",
+);
+
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {

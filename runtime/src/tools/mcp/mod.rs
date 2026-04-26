@@ -1,9 +1,93 @@
+fn mcp_error_data_map(
+    diagnostic_kind: &str,
+    operation: &str,
+    reason: &str,
+    recovery_hint: &str,
+) -> Map<String, Value> {
+    let mut data = Map::new();
+    data.insert("diagnostic_kind".to_string(), json!(diagnostic_kind));
+    data.insert("operation".to_string(), json!(operation));
+    data.insert("reason".to_string(), json!(reason));
+    data.insert("recovery_hint".to_string(), json!(recovery_hint));
+    data
+}
+
+fn mcp_error_data(
+    diagnostic_kind: &str,
+    operation: &str,
+    reason: &str,
+    recovery_hint: &str,
+) -> Value {
+    Value::Object(mcp_error_data_map(
+        diagnostic_kind,
+        operation,
+        reason,
+        recovery_hint,
+    ))
+}
+
+fn mcp_server_error_data(
+    diagnostic_kind: &str,
+    server: &McpServerResolved,
+    tool_name: Option<&str>,
+    operation: &str,
+    reason: &str,
+    recovery_hint: &str,
+) -> Value {
+    let mut data = mcp_error_data_map(diagnostic_kind, operation, reason, recovery_hint);
+    data.insert("server".to_string(), json!(server.name.as_str()));
+    data.insert(
+        "server_key".to_string(),
+        json!(normalize_server_key(&server.name)),
+    );
+    data.insert("enabled".to_string(), json!(server.enabled));
+    data.insert("ready".to_string(), json!(server.ready));
+    data.insert("ready_reason".to_string(), json!(server.ready_reason.as_str()));
+    data.insert("source".to_string(), json!(server.source.as_str()));
+    if let Some(tool_name) = tool_name {
+        data.insert("tool_name".to_string(), json!(tool_name));
+    }
+    Value::Object(data)
+}
+
+fn mcp_rpc_error_data(request_id: i64, error: &Value) -> Value {
+    let mut data = mcp_error_data_map(
+        "mcp_rpc_error",
+        "read_response",
+        "json_rpc_error",
+        "inspect MCP rpc error and change tool arguments or strategy",
+    );
+    data.insert("request_id".to_string(), json!(request_id));
+    if let Some(code) = error.get("code") {
+        data.insert("rpc_error_code".to_string(), code.clone());
+    }
+    if let Some(message) = error.get("message").and_then(Value::as_str) {
+        data.insert(
+            "rpc_error_message".to_string(),
+            json!(truncate_output(message.to_string(), 256)),
+        );
+    }
+    if let Some(details) = error.get("data") {
+        data.insert(
+            "rpc_error_data_preview".to_string(),
+            json!(stringify_value_preview(details, 256)),
+        );
+    }
+    Value::Object(data)
+}
+
 fn write_mcp_message(stdin: &mut ChildStdin, payload: &Value) -> Result<(), ToolExecutionError> {
     let body = serde_json::to_string(payload).map_err(|error| {
         ToolExecutionError::new(
             "mcp_protocol_error",
             format!("failed to serialize MCP payload: {error}"),
         )
+        .with_data(mcp_error_data(
+            "mcp_protocol_error",
+            "serialize_request",
+            "serialize_failed",
+            "inspect MCP request arguments and remove non-serializable values",
+        ))
     })?;
     let header = format!("Content-Length: {}\r\n\r\n", body.as_bytes().len());
     stdin.write_all(header.as_bytes()).map_err(|error| {
@@ -11,18 +95,36 @@ fn write_mcp_message(stdin: &mut ChildStdin, payload: &Value) -> Result<(), Tool
             "mcp_transport_error",
             format!("failed to write MCP header: {error}"),
         )
+        .with_data(mcp_error_data(
+            "mcp_transport_error",
+            "write_header",
+            "write_failed",
+            "restart the MCP session or choose an alternate server/tool",
+        ))
     })?;
     stdin.write_all(body.as_bytes()).map_err(|error| {
         ToolExecutionError::new(
             "mcp_transport_error",
             format!("failed to write MCP body: {error}"),
         )
+        .with_data(mcp_error_data(
+            "mcp_transport_error",
+            "write_body",
+            "write_failed",
+            "restart the MCP session or choose an alternate server/tool",
+        ))
     })?;
     stdin.flush().map_err(|error| {
         ToolExecutionError::new(
             "mcp_transport_error",
             format!("failed to flush MCP request: {error}"),
         )
+        .with_data(mcp_error_data(
+            "mcp_transport_error",
+            "flush_request",
+            "flush_failed",
+            "restart the MCP session or choose an alternate server/tool",
+        ))
     })?;
     Ok(())
 }
@@ -36,12 +138,24 @@ fn read_mcp_message(reader: &mut BufReader<ChildStdout>) -> Result<Value, ToolEx
                 "mcp_transport_error",
                 format!("failed to read MCP header line: {error}"),
             )
+            .with_data(mcp_error_data(
+                "mcp_transport_error",
+                "read_header",
+                "read_failed",
+                "restart the MCP session or choose an alternate server/tool",
+            ))
         })?;
         if read == 0 {
             return Err(ToolExecutionError::new(
                 "mcp_transport_error",
                 "MCP server closed stdout before response",
-            ));
+            )
+            .with_data(mcp_error_data(
+                "mcp_transport_error",
+                "read_header",
+                "stdout_closed",
+                "restart the MCP session or choose an alternate server/tool",
+            )));
         }
         let normalized = line.trim_end_matches(['\r', '\n']);
         if normalized.is_empty() {
@@ -56,12 +170,24 @@ fn read_mcp_message(reader: &mut BufReader<ChildStdout>) -> Result<Value, ToolEx
                     "mcp_protocol_error",
                     format!("invalid MCP content-length header: {error}"),
                 )
+                .with_data(mcp_error_data(
+                    "mcp_protocol_error",
+                    "read_header",
+                    "invalid_content_length",
+                    "restart the MCP server or choose an alternate server/tool",
+                ))
             })?;
             content_length = Some(parsed);
         }
     }
     let length = content_length.ok_or_else(|| {
         ToolExecutionError::new("mcp_protocol_error", "MCP response missing content-length")
+            .with_data(mcp_error_data(
+                "mcp_protocol_error",
+                "read_header",
+                "missing_content_length",
+                "restart the MCP server or choose an alternate server/tool",
+            ))
     })?;
     let mut body = vec![0_u8; length];
     reader.read_exact(&mut body).map_err(|error| {
@@ -69,12 +195,24 @@ fn read_mcp_message(reader: &mut BufReader<ChildStdout>) -> Result<Value, ToolEx
             "mcp_transport_error",
             format!("failed to read MCP response body: {error}"),
         )
+        .with_data(mcp_error_data(
+            "mcp_transport_error",
+            "read_body",
+            "read_failed",
+            "restart the MCP session or choose an alternate server/tool",
+        ))
     })?;
     serde_json::from_slice::<Value>(&body).map_err(|error| {
         ToolExecutionError::new(
             "mcp_protocol_error",
             format!("invalid MCP JSON payload: {error}"),
         )
+        .with_data(mcp_error_data(
+            "mcp_protocol_error",
+            "parse_response",
+            "invalid_json",
+            "restart the MCP server or choose an alternate server/tool",
+        ))
     })
 }
 
@@ -97,14 +235,26 @@ fn read_mcp_result_for_id(
             return Err(ToolExecutionError::new(
                 "mcp_rpc_error",
                 format!("MCP response contains error: {detail}"),
-            ));
+            )
+            .with_data(mcp_rpc_error_data(request_id, error)));
         }
         return Ok(message.get("result").cloned().unwrap_or_else(|| json!({})));
     }
     Err(ToolExecutionError::new(
         "mcp_protocol_error",
         "MCP response id not observed within read budget",
-    ))
+    )
+    .with_data({
+        let mut data = mcp_error_data_map(
+            "mcp_protocol_error",
+            "read_response",
+            "response_id_not_observed",
+            "restart the MCP session or choose an alternate server/tool",
+        );
+        data.insert("request_id".to_string(), json!(request_id));
+        data.insert("read_budget".to_string(), json!(64));
+        Value::Object(data)
+    }))
 }
 
 fn extract_mcp_tool_names(payload: &Value) -> Vec<String> {
@@ -165,19 +315,52 @@ fn spawn_mcp_session(
     command.stdout(Stdio::piped());
     command.stderr(Stdio::null());
     let mut child = command.spawn().map_err(|error| {
+        let mut data = mcp_server_error_data(
+            "mcp_spawn_failed",
+            server,
+            None,
+            "spawn_server",
+            "spawn_failed",
+            "fix MCP server command/configuration before retrying",
+        );
+        if let Value::Object(ref mut row) = data {
+            row.insert("command".to_string(), json!(server.command.as_str()));
+            row.insert("arg_count".to_string(), json!(server.args.len()));
+        }
         ToolExecutionError::new(
             "mcp_spawn_failed",
             format!("failed to spawn MCP server `{}`: {error}", server.command),
         )
+        .with_data(data)
     })?;
     let stdin = child
         .stdin
         .take()
-        .ok_or_else(|| ToolExecutionError::new("mcp_transport_error", "missing MCP stdin pipe"))?;
+        .ok_or_else(|| {
+            ToolExecutionError::new("mcp_transport_error", "missing MCP stdin pipe")
+                .with_data(mcp_server_error_data(
+                    "mcp_transport_error",
+                    server,
+                    None,
+                    "take_stdin_pipe",
+                    "missing_stdin_pipe",
+                    "fix MCP server stdio configuration before retrying",
+                ))
+        })?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| ToolExecutionError::new("mcp_transport_error", "missing MCP stdout pipe"))?;
+        .ok_or_else(|| {
+            ToolExecutionError::new("mcp_transport_error", "missing MCP stdout pipe")
+                .with_data(mcp_server_error_data(
+                    "mcp_transport_error",
+                    server,
+                    None,
+                    "take_stdout_pipe",
+                    "missing_stdout_pipe",
+                    "fix MCP server stdio configuration before retrying",
+                ))
+        })?;
     let mut session = McpSessionHandle {
         child,
         stdin,
@@ -254,10 +437,25 @@ fn run_mcp_call_on_session(
         .iter()
         .any(|candidate| candidate == tool_name)
     {
+        let mut data = mcp_server_error_data(
+            "mcp_tool_not_found",
+            server,
+            Some(tool_name),
+            "tools/call",
+            "tool_not_advertised",
+            "inspect available_tools and choose an existing MCP tool",
+        );
+        if let Value::Object(ref mut row) = data {
+            row.insert(
+                "available_tools".to_string(),
+                json!(session.available_tools.clone()),
+            );
+        }
         return Err(ToolExecutionError::new(
             "mcp_tool_not_found",
             format!("MCP tool `{tool_name}` not found on server `{}`", server.name),
-        ));
+        )
+        .with_data(data));
     }
     write_mcp_message(
         &mut session.stdin,
@@ -394,16 +592,39 @@ fn run_mcp_call(
         .iter()
         .find(|candidate| candidate.name == server_name)
         .ok_or_else(|| {
+            let available_servers = servers
+                .iter()
+                .map(|candidate| candidate.name.clone())
+                .collect::<Vec<String>>();
             ToolExecutionError::new(
                 "mcp_server_not_found",
                 format!("MCP server not found: {server_name}"),
             )
+            .with_data({
+                let mut data = mcp_error_data_map(
+                    "mcp_server_not_found",
+                    "resolve_server",
+                    "server_not_configured",
+                    "inspect mcp_servers and choose a configured server",
+                );
+                data.insert("server".to_string(), json!(server_name));
+                data.insert("available_servers".to_string(), json!(available_servers));
+                Value::Object(data)
+            })
         })?;
     if !server.enabled {
         return Err(ToolExecutionError::new(
             "mcp_server_unready",
             format!("MCP server `{}` is disabled", server.name),
-        ));
+        )
+        .with_data(mcp_server_error_data(
+            "mcp_server_unready",
+            server,
+            Some(&tool_name),
+            "resolve_server",
+            "server_disabled",
+            "enable the MCP server or choose a different configured server/tool",
+        )));
     }
     if !server.ready {
         return Err(ToolExecutionError::new(
@@ -412,7 +633,15 @@ fn run_mcp_call(
                 "MCP server `{}` is unready: {}",
                 server.name, server.ready_reason
             ),
-        ));
+        )
+        .with_data(mcp_server_error_data(
+            "mcp_server_unready",
+            server,
+            Some(&tool_name),
+            "resolve_server",
+            "server_unready",
+            "fix MCP server command/readiness before retrying",
+        )));
     }
     let server_key = normalize_server_key(&server.name);
 
@@ -420,10 +649,22 @@ fn run_mcp_call(
         let mut store = lock_runtime_store()?;
         let state = store.states.entry(server_key.clone()).or_default();
         state.policy_denied_calls = state.policy_denied_calls.saturating_add(1);
+        let mut data = mcp_server_error_data(
+            "mcp_tool_blocked",
+            server,
+            Some(&tool_name),
+            "policy_check",
+            "tool_not_allowed",
+            "use an allowed MCP tool or request policy change",
+        );
+        if let Value::Object(ref mut row) = data {
+            row.insert("allow_tools".to_string(), json!(policy.allow_tools.clone()));
+        }
         return Err(ToolExecutionError::new(
             "mcp_tool_blocked",
             format!("MCP tool \"{tool_name}\" blocked by [tools.mcp].allow_tools"),
-        ));
+        )
+        .with_data(data));
     }
 
     let call_started_at = Instant::now();
@@ -465,7 +706,17 @@ fn run_mcp_call(
             let primary = run_mcp_call_on_session(
                 session
                     .as_mut()
-                    .ok_or_else(|| ToolExecutionError::new("mcp_runtime_error", "missing MCP session"))?,
+                    .ok_or_else(|| {
+                        ToolExecutionError::new("mcp_runtime_error", "missing MCP session")
+                            .with_data(mcp_server_error_data(
+                                "mcp_runtime_error",
+                                server,
+                                Some(&tool_name),
+                                "tools/call",
+                                "missing_session",
+                                "retry with a fresh MCP session or choose an alternate server/tool",
+                            ))
+                    })?,
                 server,
                 &tool_name,
                 &call_arguments,
