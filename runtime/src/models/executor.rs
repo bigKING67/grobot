@@ -1199,6 +1199,7 @@ fn build_tool_recovery_event(
     batch_index: usize,
     risk_class: &str,
     error_class: &str,
+    error_message: Option<&str>,
 ) -> ModelTelemetryEvent {
     let policy = classify_tool_recovery(error_class, risk_class);
     ModelTelemetryEvent {
@@ -1210,6 +1211,7 @@ fn build_tool_recovery_event(
             "batch_index": batch_index,
             "risk_class": risk_class,
             "error_class": error_class,
+            "error_message": error_message.map(|message| truncate_header_value_for_diagnostics(message, 240)),
             "recovery_stage": policy.stage,
             "recovery_reason": error_class,
             "recommended_next_action": policy.recommended_next_action,
@@ -1900,6 +1902,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             batch_index,
                             risk_class,
                             "tool_execution_deferred",
+                            None,
                         ));
                         (output, budgeted_output)
                     } else {
@@ -1939,6 +1942,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                     batch_index,
                                     risk_class,
                                     &error.error_class,
+                                    Some(error.message.as_str()),
                                 ));
                                 return Err(
                                     ModelExecutionError::new(&error.error_class, error.message)

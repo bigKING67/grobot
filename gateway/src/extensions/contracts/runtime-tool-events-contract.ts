@@ -65,6 +65,7 @@ const events: RuntimeEvent[] = [
   event("tool_recovery", {
     tool_name: "bash",
     error_class: "tool_execution_deferred",
+    error_message: "deferred until the prior high-risk tool result is observed",
     recovery_stage: "observe_first",
     recovery_reason: "tool_execution_deferred",
     recommended_next_action: "observe_prior_tool_result",
@@ -84,6 +85,11 @@ expectEqual(summary.recoveryStages.local_fix, 1, "summary local recovery");
 expectEqual(summary.recoveryStages.observe_first, 1, "summary observe recovery");
 expectEqual(summary.latestRecovery?.stage, "observe_first", "summary latest recovery stage");
 expectEqual(summary.latestRecovery?.recommendedNextAction, "observe_prior_tool_result", "summary latest action");
+expectEqual(
+  summary.latestRecovery?.errorMessage,
+  "deferred until the prior high-risk tool result is observed",
+  "summary latest error detail",
+);
 expectEqual(summary.latestRecovery?.recoverable, true, "summary latest recoverable");
 
 const knownRecoveryActions = knownRuntimeToolRecoveryActions();
@@ -187,8 +193,14 @@ try {
   expectEqual(activeFeedback.active, true, "active feedback enabled");
   expectEqual(activeFeedback.severity, "info", "active feedback severity");
   expectEqual(activeFeedback.recommendedNextAction, "observe_prior_tool_result", "active feedback action");
+  expectEqual(
+    activeFeedback.errorMessage,
+    "deferred until the prior high-risk tool result is observed",
+    "active feedback error detail",
+  );
   expectEqual(activeFeedback.recoverable, true, "active feedback recoverable");
   expectEqual(activeFeedback.requiresUserIntervention, false, "active feedback does not require intervention");
+  expect(activeFeedback.promptBlock.includes("Error detail: deferred until"), "active feedback includes error detail");
   expect(activeFeedback.promptBlock.includes("Recoverability: auto_recoverable"), "active feedback recoverability");
   expect(activeFeedback.promptBlock.includes("do not repeat an identical failing tool call"), "active feedback prompt rule");
 

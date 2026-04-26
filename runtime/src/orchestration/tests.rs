@@ -191,6 +191,12 @@ mod tests {
             .expect("tool_recovery payload");
         assert_eq!(tool_recovery_payload["tool_name"], "lookup");
         assert_eq!(tool_recovery_payload["recovery_stage"], "strategy_switch");
+        assert!(
+            tool_recovery_payload["error_message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("lookup")
+        );
         assert_eq!(
             tool_recovery_payload["recommended_next_action"],
             "switch_tool_strategy"

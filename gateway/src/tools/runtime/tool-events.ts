@@ -16,6 +16,7 @@ export interface RuntimeToolRecoveryHint {
   recommendedNextAction: string;
   toolName?: string;
   errorClass?: string;
+  errorMessage?: string;
   recoverable?: boolean;
   requiresUserIntervention?: boolean;
   observedAt?: string;
@@ -75,6 +76,7 @@ export interface RuntimeToolRecoveryFeedback {
   stage: RuntimeToolRecoveryStage | null;
   toolName: string | null;
   errorClass: string | null;
+  errorMessage?: string | null;
   recommendedNextAction: string | null;
   recoverable: boolean | null;
   requiresUserIntervention: boolean;
@@ -231,6 +233,18 @@ function payloadIsoString(payload: Record<string, unknown>, key: string): string
   return Number.isFinite(parsedMs) ? value : undefined;
 }
 
+function compactRecoveryDetail(value: string): string | undefined {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return undefined;
+  }
+  const maxChars = 360;
+  if (compact.length <= maxChars) {
+    return compact;
+  }
+  return `${compact.slice(0, maxChars)}...`;
+}
+
 function normalizeRecoveryStage(value: unknown): RuntimeToolRecoveryStage | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -361,6 +375,9 @@ function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRec
     recommendedNextAction,
     toolName: payloadString(payload, "tool_name") || payloadString(payload, "toolName") || undefined,
     errorClass: payloadString(payload, "error_class") || payloadString(payload, "errorClass") || undefined,
+    errorMessage: compactRecoveryDetail(
+      payloadString(payload, "error_message") || payloadString(payload, "errorMessage"),
+    ),
     recoverable:
       payloadBoolean(payload, "recoverable")
       ?? payloadBoolean(payload, "auto_recoverable")
@@ -638,6 +655,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       stage: null,
       toolName: null,
       errorClass: null,
+      errorMessage: null,
       recommendedNextAction: null,
       recoverable: null,
       requiresUserIntervention: false,
@@ -662,6 +680,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       stage: recovery.stage,
       toolName: recovery.toolName ?? null,
       errorClass: recovery.errorClass ?? null,
+      errorMessage: recovery.errorMessage ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
       recoverable: recovery.recoverable ?? null,
       requiresUserIntervention: false,
@@ -684,6 +703,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       stage: recovery.stage,
       toolName: recovery.toolName ?? null,
       errorClass: recovery.errorClass ?? null,
+      errorMessage: recovery.errorMessage ?? null,
       recommendedNextAction: recovery.recommendedNextAction,
       recoverable: recovery.recoverable ?? null,
       requiresUserIntervention: false,
@@ -700,6 +720,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const instruction = actionInstruction(recovery.recommendedNextAction);
   const toolName = recovery.toolName ?? "unknown_tool";
   const errorClass = recovery.errorClass ?? recovery.reason;
+  const errorMessage = recovery.errorMessage ?? null;
   const requiresUserIntervention = recovery.requiresUserIntervention ?? (recovery.recoverable === false);
   const recoverability = requiresUserIntervention ? "requires_user_intervention" : "auto_recoverable";
   const executionDiscipline = requiresUserIntervention
@@ -708,6 +729,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const promptBlock = [
     "[Runtime Tool Recovery Hint]",
     `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
+    errorMessage ? `Error detail: ${errorMessage}` : null,
     recovery.sameToolErrorCount
       ? `Repeated failure pressure: same_tool_error_count=${String(recovery.sameToolErrorCount)} escalated=${recovery.escalated ? "true" : "false"} reason=${recovery.escalationReason ?? "<none>"}`
       : null,
@@ -726,6 +748,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     stage: recovery.stage,
     toolName,
     errorClass,
+    errorMessage,
     recommendedNextAction: recovery.recommendedNextAction,
     recoverable: recovery.recoverable ?? null,
     requiresUserIntervention,

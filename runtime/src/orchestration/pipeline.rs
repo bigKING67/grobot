@@ -252,6 +252,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                             "tool_name": tool_name,
                             "risk_class": "unknown",
                             "error_class": error_class.clone(),
+                            "error_message": error_message.clone(),
                             "recovery_stage": recovery_policy.stage,
                             "recovery_reason": error_class.clone(),
                             "recommended_next_action": recovery_policy.recommended_next_action,
