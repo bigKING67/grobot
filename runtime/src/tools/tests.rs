@@ -1737,6 +1737,22 @@ audit_redact_secrets = false
         );
         assert!(missing_edit.recoverable);
 
+        let escaped_path = classify_tool_recovery("path_escape_blocked", "low_risk");
+        assert_eq!(escaped_path.stage, "local_fix");
+        assert_eq!(
+            escaped_path.recommended_next_action,
+            "choose_workspace_relative_path"
+        );
+        assert!(escaped_path.recoverable);
+
+        let invalid_path = classify_tool_recovery("path_invalid", "low_risk");
+        assert_eq!(invalid_path.stage, "local_fix");
+        assert_eq!(
+            invalid_path.recommended_next_action,
+            "choose_regular_file_path"
+        );
+        assert!(invalid_path.recoverable);
+
         let schema_drift = classify_tool_recovery("tool_argument_not_visible", "low_risk");
         assert_eq!(schema_drift.stage, "strategy_switch");
         assert_eq!(
@@ -1775,6 +1791,8 @@ audit_redact_secrets = false
 
         let actions = tool_recovery_action_names();
         assert!(actions.contains(&"ask_user_for_config_or_switch_provider"));
+        assert!(actions.contains(&"choose_regular_file_path"));
+        assert!(actions.contains(&"choose_workspace_relative_path"));
         assert!(actions.contains(&"narrow_edit_old_text_to_unique_match"));
         assert!(actions.contains(&"reread_target_then_retry_exact_old_text"));
         assert!(actions.contains(&"inspect_error_and_switch_strategy"));

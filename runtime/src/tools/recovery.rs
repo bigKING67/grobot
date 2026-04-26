@@ -99,6 +99,20 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
+        &["path_escape_blocked"],
+        "*",
+        "local_fix",
+        "choose_workspace_relative_path",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
+        &["path_invalid"],
+        "*",
+        "local_fix",
+        "choose_regular_file_path",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
         &["write_read_required", "edit_read_required", "write_partial_read_not_allowed"],
         "*",
         "local_fix",

@@ -133,6 +133,10 @@ export const RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS = {
     "Reread the target around the suggested candidate lines, copy the exact current text, and retry the edit with that old_text.",
   locate_path_with_glob_before_retry:
     "Use glob to locate the path before retrying read, write, or edit on that target.",
+  choose_workspace_relative_path:
+    "Replace the path with a workspace-contained relative path; do not use parent traversal or absolute paths outside the workspace.",
+  choose_regular_file_path:
+    "Choose an existing regular file path, or create a valid missing leaf whose parent can be safely resolved inside the workspace.",
   read_target_before_mutation:
     "Read the target file first, then write or edit against the latest observed content.",
   reread_target_then_retry:
