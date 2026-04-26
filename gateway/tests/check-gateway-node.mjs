@@ -1272,6 +1272,11 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.prompt_slot_idle_hint_hidden_for_draft, true);
   assert.equal(runStartInputKeybindingContractPayload.prompt_slot_short_fullscreen_drops_status_first, true);
   assert.equal(runStartInputKeybindingContractPayload.prompt_slot_hidden_input_renders_no_footer, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_runtime_status_footer_renders, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_runtime_suggestions_suppress_status_footer, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_runtime_shortcut_overlay_suppresses_status_footer, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_runtime_pending_ask_renders_footer, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_runtime_draft_without_status_hides_footer, true);
   logStep("run-start-input-keybinding-contract");
 
   const runStartPlanFailurePolicyContractResult = runCommand("npx", [
@@ -1775,6 +1780,11 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliActivityFeedPayload.env_default_suppresses_feed, true);
   assert.equal(devCliActivityFeedPayload.env_compact_enables_feed, true);
   assert.equal(devCliActivityFeedPayload.env_full_enables_verbose_feed, true);
+  assert.equal(devCliActivityFeedPayload.transcript_default_disables_turn_feed, true);
+  assert.equal(devCliActivityFeedPayload.transcript_env_enables_separate_turn_feed_chunk, true);
+  assert.equal(devCliActivityFeedPayload.transcript_ask_user_suppresses_turn_feed, true);
+  assert.equal(devCliActivityFeedPayload.transcript_non_interactive_suppresses_turn_feed, true);
+  assert.equal(devCliActivityFeedPayload.transcript_env_resolver, true);
   assert.equal(devCliActivityFeedPayload.empty_without_tool_events, true);
   assert.equal(devCliActivityFeedPayload.rows_within_width, true);
   assert.equal(devCliActivityFeedPayload.no_invalid_tokens, true);
@@ -2002,9 +2012,14 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliTerminalMarkdownPayload.strong_renders_bold, true);
   assert.equal(devCliTerminalMarkdownPayload.inline_code_renders_dim, true);
   assert.equal(devCliTerminalMarkdownPayload.fenced_code_preserves_markdown_markers, true);
-  assert.equal(devCliTerminalMarkdownPayload.heading_renders_without_hash_marker, true);
+  assert.equal(devCliTerminalMarkdownPayload.heading_preserves_hash_marker, true);
   assert.equal(devCliTerminalMarkdownPayload.plain_text_preserved, true);
   assert.equal(devCliTerminalMarkdownPayload.disabled_preserves_raw_markdown, true);
+  assert.equal(devCliTerminalMarkdownPayload.off_mode_preserves_raw_markdown, true);
+  assert.equal(devCliTerminalMarkdownPayload.rich_mode_currently_uses_basic_renderer, true);
+  assert.equal(devCliTerminalMarkdownPayload.env_off_resolves_off, true);
+  assert.equal(devCliTerminalMarkdownPayload.env_basic_default, true);
+  assert.equal(devCliTerminalMarkdownPayload.env_rich_resolves_rich, true);
   logStep("dev-cli-terminal-markdown-contract");
 
   const devCliAskUserPanelContractResult = runCommand("npx", [

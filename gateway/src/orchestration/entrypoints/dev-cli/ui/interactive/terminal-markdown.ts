@@ -8,13 +8,33 @@ const STRONG_UNDERSCORE_PATTERN = /__([^\n_](?:[^\n]*?[^\n_])?)__/g;
 const INLINE_CODE_PATTERN = /`([^`\n]+)`/g;
 const HEADING_PATTERN = /^(#{1,6})\s+(.+)$/;
 
+export type TerminalMarkdownMode = "off" | "basic" | "rich";
+
+export function resolveTerminalMarkdownMode(valueRaw?: string): TerminalMarkdownMode {
+  const value = (valueRaw ?? "").trim().toLowerCase();
+  if (
+    value === "0"
+    || value === "false"
+    || value === "no"
+    || value === "off"
+    || value === "disable"
+    || value === "disabled"
+  ) {
+    return "off";
+  }
+  if (value === "rich" || value === "full") {
+    return "rich";
+  }
+  return "basic";
+}
+
 function renderInlineMarkdown(line: string): string {
   if (!line || ANSI_PATTERN.test(line)) {
     return line;
   }
   const headingMatch = HEADING_PATTERN.exec(line);
   if (headingMatch) {
-    return `${ANSI_BOLD}${headingMatch[2] ?? ""}${ANSI_RESET}`;
+    return `${ANSI_BOLD}${headingMatch[1] ?? ""} ${headingMatch[2] ?? ""}${ANSI_RESET}`;
   }
   return line
     .replace(
@@ -34,8 +54,10 @@ function renderInlineMarkdown(line: string): string {
 export function renderTerminalMarkdown(input: {
   text: string;
   enabled?: boolean;
+  mode?: TerminalMarkdownMode;
 }): string {
-  if (input.enabled === false || input.text.length === 0) {
+  const mode = input.enabled === false ? "off" : input.mode ?? "basic";
+  if (mode === "off" || input.text.length === 0) {
     return input.text;
   }
 

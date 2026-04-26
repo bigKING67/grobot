@@ -1,9 +1,12 @@
+import { type PromptSlotStateInput } from "./prompt-slot-state";
+
 export interface SessionPromptLayout {
   prefix: string;
   inlinePrompt: string;
   suffix?: string;
   renderSuffixWhileTyping?: boolean;
   reservedInputRows?: number;
+  promptSlot?: Partial<PromptSlotStateInput>;
 }
 
 function deriveBottomBorder(topBorder: string): string | undefined {
@@ -29,6 +32,7 @@ export function resolveInteractivePromptLayout(input: {
       suffix: input.promptText.suffix,
       renderSuffixWhileTyping: input.promptText.renderSuffixWhileTyping,
       reservedInputRows: input.promptText.reservedInputRows,
+      promptSlot: input.promptText.promptSlot,
     };
   }
   const promptText = input.promptText;

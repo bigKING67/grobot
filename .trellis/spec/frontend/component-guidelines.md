@@ -44,6 +44,14 @@ Use a three-layer structure for each interaction component:
 3. Keep output textual and parseable for logs where possible (`[session] ...`, `[ask-user] ...` prefixes).
 4. Prefer concise, line-based layout for menus/prompts to support both human reading and scripting.
 
+## Prompt Slot Ownership
+
+1. The active input loop owns the prompt-bottom slot. Status, idle hints, pending ask summaries, shortcut overlays, and slash suggestions must not be appended ad hoc from unrelated turn-output code.
+2. Use `resolvePromptSlotState()` and the input-loop footer resolver before rendering footer/status lines. Slash suggestions, shortcut overlays, history search, select menus, pending asks, and running activity must preempt ordinary status lines in that priority order.
+3. Submitted transcript output must stay input-only: never include status/footer lines in the finalized user input block.
+4. Runtime activity feed diagnostics must stay separate from the final assistant answer. If a debug transcript feed is enabled, write it as a separate output segment and keep it out of conversation history.
+5. Terminal Markdown rendering must be gated (`off`/`basic`/future `rich`) and must preserve copyable Markdown structure where practical, especially heading markers and fenced code blocks.
+
 ---
 
 ## Accessibility And Operator Ergonomics

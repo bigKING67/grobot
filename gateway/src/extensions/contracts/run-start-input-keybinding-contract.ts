@@ -6,6 +6,7 @@ import {
   resolveCoalescedSubmitChunk,
   resolveDraftAwareFooterLines,
   resolveFirstMenuPrefixMatchIndex,
+  resolveSessionInputFooterLines,
   resolveInputShortcutAction,
   resolveInteractiveInputBodyWidth,
   renderInteractiveInputChromeLines,
@@ -492,6 +493,44 @@ async function main(): Promise<void> {
     hasStatusLine: true,
     running: true,
   });
+  const runtimeFooterStatus = resolveSessionInputFooterLines({
+    footerLines: ["status line"],
+    inputGraphemeLength: 0,
+    promptSlot: {
+      hasStatusLine: true,
+    },
+  });
+  const runtimeFooterSuggestions = resolveSessionInputFooterLines({
+    footerLines: ["status line"],
+    inputGraphemeLength: 0,
+    hasSuggestions: true,
+    promptSlot: {
+      hasStatusLine: true,
+    },
+  });
+  const runtimeFooterShortcutOverlay = resolveSessionInputFooterLines({
+    footerLines: ["status line"],
+    inputGraphemeLength: 0,
+    shortcutOverlayVisible: true,
+    promptSlot: {
+      hasStatusLine: true,
+    },
+  });
+  const runtimeFooterPendingAsk = resolveSessionInputFooterLines({
+    footerLines: ["ask 1 pending"],
+    inputGraphemeLength: 0,
+    promptSlot: {
+      pendingAskCount: 1,
+      hasStatusLine: true,
+    },
+  });
+  const runtimeFooterDraftNoStatus = resolveSessionInputFooterLines({
+    footerLines: ["? for shortcuts"],
+    inputGraphemeLength: 2,
+    promptSlot: {
+      hasStatusLine: false,
+    },
+  });
 
   const payload = {
     menu_enter_is_confirm: enterAction.kind === "enter",
@@ -760,6 +799,23 @@ async function main(): Promise<void> {
     prompt_slot_hidden_input_renders_no_footer:
       promptSlotHiddenInput.bottomSlot.kind === "none"
       && !promptSlotHiddenInput.bottomSlot.renderFooter,
+    prompt_slot_runtime_status_footer_renders:
+      runtimeFooterStatus.promptSlotState.bottomSlot.kind === "status"
+      && runtimeFooterStatus.footerLines.length === 1
+      && runtimeFooterStatus.footerLines[0] === "status line",
+    prompt_slot_runtime_suggestions_suppress_status_footer:
+      runtimeFooterSuggestions.promptSlotState.bottomSlot.kind === "suggestions"
+      && runtimeFooterSuggestions.footerLines.length === 0,
+    prompt_slot_runtime_shortcut_overlay_suppresses_status_footer:
+      runtimeFooterShortcutOverlay.promptSlotState.bottomSlot.kind === "shortcut_overlay"
+      && runtimeFooterShortcutOverlay.footerLines.length === 0,
+    prompt_slot_runtime_pending_ask_renders_footer:
+      runtimeFooterPendingAsk.promptSlotState.bottomSlot.kind === "pending_ask"
+      && runtimeFooterPendingAsk.footerLines.length === 1
+      && runtimeFooterPendingAsk.footerLines[0] === "ask 1 pending",
+    prompt_slot_runtime_draft_without_status_hides_footer:
+      runtimeFooterDraftNoStatus.promptSlotState.bottomSlot.kind === "none"
+      && runtimeFooterDraftNoStatus.footerLines.length === 0,
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

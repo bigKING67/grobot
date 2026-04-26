@@ -4,6 +4,10 @@ import {
   renderRuntimeActivityFeed,
   resolveRuntimeActivityFeedDetailMode,
 } from "../../orchestration/entrypoints/dev-cli/ui/screens/activity-feed-screen";
+import {
+  buildTurnTerminalOutputSegments,
+  resolveRuntimeActivityFeedTranscriptEnabled,
+} from "../../orchestration/entrypoints/dev-cli/start/run-start-turn";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
@@ -129,8 +133,37 @@ const emptyRendered = renderRuntimeActivityFeed({
     }),
   ],
 });
+const turnOutputDefault = buildTurnTerminalOutputSegments({
+  assistantMessage: "final answer",
+  interactiveMode: true,
+  events: feedEvents,
+  activityFeedDetailValue: "compact",
+});
+const turnOutputTranscript = buildTurnTerminalOutputSegments({
+  assistantMessage: "final answer",
+  interactiveMode: true,
+  events: feedEvents,
+  activityFeedDetailValue: "compact",
+  activityFeedTranscriptValue: "1",
+});
+const turnOutputAskUser = buildTurnTerminalOutputSegments({
+  assistantMessage: "needs confirmation",
+  interactiveMode: true,
+  runtimeAskUser: true,
+  events: feedEvents,
+  activityFeedDetailValue: "compact",
+  activityFeedTranscriptValue: "1",
+});
+const turnOutputNonInteractive = buildTurnTerminalOutputSegments({
+  assistantMessage: "**raw final**",
+  interactiveMode: false,
+  events: feedEvents,
+  activityFeedDetailValue: "compact",
+  activityFeedTranscriptValue: "1",
+});
 const plain = stripAnsi(rendered);
 const fullPlain = stripAnsi(fullRendered);
+const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const payload = {
   renders_real_tool_rows: plain.includes("Searched") && plain.includes("Read gateway/src"),
@@ -157,6 +190,23 @@ const payload = {
   env_full_enables_verbose_feed:
     resolveRuntimeActivityFeedDetailMode("full") === "full"
     && resolveRuntimeActivityFeedDetailMode("debug") === "full",
+  transcript_default_disables_turn_feed:
+    turnOutputDefault.activityFeed === ""
+    && turnOutputDefault.assistantOutput === "final answer\n\n",
+  transcript_env_enables_separate_turn_feed_chunk:
+    turnTranscriptPlain.includes("Searched")
+    && turnOutputTranscript.assistantOutput === "final answer\n\n"
+    && !stripAnsi(turnOutputTranscript.assistantOutput).includes("Searched"),
+  transcript_ask_user_suppresses_turn_feed:
+    turnOutputAskUser.activityFeed === "",
+  transcript_non_interactive_suppresses_turn_feed:
+    turnOutputNonInteractive.activityFeed === ""
+    && turnOutputNonInteractive.assistantOutput === "**raw final**\n",
+  transcript_env_resolver:
+    resolveRuntimeActivityFeedTranscriptEnabled("1")
+    && resolveRuntimeActivityFeedTranscriptEnabled("on")
+    && !resolveRuntimeActivityFeedTranscriptEnabled(undefined)
+    && !resolveRuntimeActivityFeedTranscriptEnabled("0"),
   empty_without_tool_events: emptyRendered === "",
   rows_within_width: lines.every((line) => measureDisplayWidth(line) <= 96),
   no_invalid_tokens:

@@ -24,7 +24,11 @@ import {
   renderRuntimeFailureSummary,
   renderTurnInterruptedNotice,
 } from "../ui/screens/turn-screen";
-import { renderTerminalMarkdown } from "../ui/interactive/terminal-markdown";
+import {
+  renderTerminalMarkdown,
+  resolveTerminalMarkdownMode,
+  type TerminalMarkdownMode,
+} from "../ui/interactive/terminal-markdown";
 import {
   renderRuntimeActivityFeed,
   resolveRuntimeActivityFeedDetailMode,
@@ -117,8 +121,63 @@ export type KimiSearchRoutingPolicy =
   | "builtin_only"
   | "mcp_only";
 
+export interface TurnTerminalOutputSegments {
+  activityFeed: string;
+  assistantOutput: string;
+}
+
 export const TURN_INTERRUPTED_ERROR_CLASS = "turn_interrupted";
 export const TURN_INTERRUPTED_EXIT_CODE = 130;
+
+export function resolveRuntimeActivityFeedTranscriptEnabled(valueRaw?: string): boolean {
+  const value = (valueRaw ?? "").trim().toLowerCase();
+  return value === "1"
+    || value === "true"
+    || value === "yes"
+    || value === "on"
+    || value === "transcript";
+}
+
+export function buildTurnTerminalOutputSegments(input: {
+  assistantMessage: string;
+  interactiveMode: boolean;
+  runtimeAskUser?: boolean;
+  events?: readonly RuntimeEvent[];
+  terminalColumns?: number;
+  terminalMarkdownMode?: TerminalMarkdownMode;
+  activityFeedDetailValue?: string;
+  activityFeedTranscriptValue?: string;
+}): TurnTerminalOutputSegments {
+  const assistantMessageForTerminal = input.interactiveMode
+    ? renderTerminalMarkdown({
+      text: input.assistantMessage,
+      mode: input.terminalMarkdownMode ?? resolveTerminalMarkdownMode(undefined),
+    })
+    : input.assistantMessage;
+  const assistantOutput = input.interactiveMode
+    ? `${assistantMessageForTerminal}\n\n`
+    : `${assistantMessageForTerminal}\n`;
+  if (
+    !input.interactiveMode
+    || input.runtimeAskUser
+    || !resolveRuntimeActivityFeedTranscriptEnabled(input.activityFeedTranscriptValue)
+  ) {
+    return {
+      activityFeed: "",
+      assistantOutput,
+    };
+  }
+  const activityFeedDetailMode = resolveRuntimeActivityFeedDetailMode(input.activityFeedDetailValue);
+  const activityFeed = renderRuntimeActivityFeed({
+    events: input.events ?? [],
+    terminalColumns: input.terminalColumns ?? resolveInteractiveTerminalColumns(),
+    detailMode: activityFeedDetailMode,
+  });
+  return {
+    activityFeed,
+    assistantOutput,
+  };
+}
 
 export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
@@ -3022,12 +3081,17 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           ? report.runtimeInterrupt.askUser
           : undefined;
         let assistantTextForHistory = report.assistantMessage;
-        const assistantMessageForTerminal = interactiveMode
-          ? renderTerminalMarkdown({ text: report.assistantMessage })
-          : report.assistantMessage;
-        let turnStdout = interactiveMode
-          ? `${assistantMessageForTerminal}\n\n`
-          : `${assistantMessageForTerminal}\n`;
+        const terminalOutputSegments = buildTurnTerminalOutputSegments({
+          assistantMessage: report.assistantMessage,
+          interactiveMode,
+          runtimeAskUser: Boolean(runtimeAskUser),
+          events: report.events,
+          terminalMarkdownMode: resolveTerminalMarkdownMode(process.env.GROBOT_TERMINAL_MARKDOWN),
+          activityFeedDetailValue: process.env.GROBOT_ACTIVITY_FEED_DETAIL,
+          activityFeedTranscriptValue: process.env.GROBOT_ACTIVITY_FEED_TRANSCRIPT,
+        });
+        const activityFeedStdout = terminalOutputSegments.activityFeed;
+        let turnStdout = terminalOutputSegments.assistantOutput;
         let askUserEvent = "";
         recordRuntimeToolMetricsForEvents({
           workDir: input.workDir,
@@ -3116,19 +3180,6 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             input.writeStderr(event);
           }
         }
-        if (!runtimeAskUser && interactiveMode) {
-          const activityFeedDetailMode = resolveRuntimeActivityFeedDetailMode(
-            process.env.GROBOT_ACTIVITY_FEED_DETAIL,
-          );
-          const activityFeed = renderRuntimeActivityFeed({
-            events: report.events,
-            terminalColumns: resolveInteractiveTerminalColumns(),
-            detailMode: activityFeedDetailMode,
-          });
-          if (activityFeed.length > 0) {
-            turnStdout = `${activityFeed}${turnStdout}`;
-          }
-        }
           await recordTurn(
             userText,
             assistantTextForHistory,
@@ -3136,6 +3187,9 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             providerStates,
             options?.onTurnRecorded,
           );
+          if (activityFeedStdout.length > 0) {
+            input.writeStdout(activityFeedStdout);
+          }
           input.writeStdout(turnStdout);
           if (askUserEvent.length > 0) {
             input.writeStderr(askUserEvent);

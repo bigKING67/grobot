@@ -21,6 +21,11 @@ import {
   stripAnsi,
 } from "../ui/interactive/display-width";
 import {
+  resolvePromptSlotState,
+  type PromptSlotState,
+  type PromptSlotStateInput,
+} from "../ui/interactive/prompt-slot-state";
+import {
   normalizeSelectNavigationState,
   reduceSelectNavigation,
   type SelectNavigationAction,
@@ -649,6 +654,52 @@ export function resolveDraftAwareFooterLines(input: {
     .filter((line) => line.length > 0);
 }
 
+function shouldRenderResolvedFooterLines(slotState: PromptSlotState): boolean {
+  return slotState.bottomSlot.kind === "status"
+    || slotState.bottomSlot.kind === "idle_hint"
+    || slotState.bottomSlot.kind === "pending_ask"
+    || slotState.bottomSlot.kind === "running_activity";
+}
+
+export function resolveSessionInputFooterLines(input: {
+  footerLines: readonly string[];
+  inputGraphemeLength: number;
+  promptSlot?: Partial<PromptSlotStateInput>;
+  hasSuggestions?: boolean;
+  shortcutOverlayVisible?: boolean;
+  historySearchOpen?: boolean;
+  terminalRows?: number;
+  fullscreen?: boolean;
+}): {
+  promptSlotState: PromptSlotState;
+  footerLines: string[];
+} {
+  const promptSlotState = resolvePromptSlotState({
+    ...(input.promptSlot ?? {}),
+    inputVisible: input.promptSlot?.inputVisible ?? true,
+    hasSuggestions: input.hasSuggestions,
+    shortcutOverlayVisible: input.shortcutOverlayVisible,
+    historySearchOpen: input.historySearchOpen,
+    hasStatusLine: input.promptSlot?.hasStatusLine ?? input.footerLines.length > 0,
+    hasDraft: input.inputGraphemeLength > 0,
+    terminalRows: input.promptSlot?.terminalRows ?? input.terminalRows,
+    fullscreen: input.promptSlot?.fullscreen ?? input.fullscreen,
+  });
+  if (!promptSlotState.bottomSlot.renderFooter || !shouldRenderResolvedFooterLines(promptSlotState)) {
+    return {
+      promptSlotState,
+      footerLines: [],
+    };
+  }
+  return {
+    promptSlotState,
+    footerLines: resolveDraftAwareFooterLines({
+      footerLines: input.footerLines,
+      inputGraphemeLength: input.inputGraphemeLength,
+    }),
+  };
+}
+
 export function renderInteractiveInputChromeLines(input: {
   bodyLines: readonly string[];
   inputBodyWidth: number;
@@ -1176,6 +1227,22 @@ export async function runSessionInputLoop(
     return 96;
   };
 
+  const resolveTerminalRows = (): number | undefined => {
+    const stdout = process.stdout as unknown as {
+      isTTY?: boolean;
+      rows?: number;
+    };
+    if (
+      stdout.isTTY
+      && typeof stdout.rows === "number"
+      && Number.isFinite(stdout.rows)
+      && stdout.rows > 0
+    ) {
+      return Math.floor(stdout.rows);
+    }
+    return undefined;
+  };
+
   const codeOffsetFromGraphemeIndex = (
     graphemes: readonly string[],
     index: number,
@@ -1481,10 +1548,17 @@ export async function runSessionInputLoop(
       const shortcutOverlayLines = shortcutOverlayVisible
         ? renderShortcutOverlayFooter({ terminalColumns }).split("\n")
         : [];
-      const visibleFooterLines = resolveDraftAwareFooterLines({
+      const footerResolution = resolveSessionInputFooterLines({
         footerLines,
         inputGraphemeLength: graphemes.length,
+        promptSlot: resolvedPrompt.promptSlot,
+        hasSuggestions: slash.panelLines.length > 0,
+        shortcutOverlayVisible,
+        historySearchOpen: historySearchInFlight,
+        terminalRows: resolveTerminalRows(),
+        fullscreen: true,
       });
+      const visibleFooterLines = footerResolution.footerLines;
       const bodyLines: string[] = descriptors.map((descriptor, index) => {
         const prefix = index === 0 ? promptLabel : continuationPrefix;
         const selectedOffsetInLine =
@@ -1503,7 +1577,6 @@ export async function runSessionInputLoop(
           : renderedText;
         return `${prefix}${highlightedText}`;
       });
-      const shouldRenderFooter = slash.panelLines.length === 0 && !shortcutOverlayVisible;
       const renderedLines = [
         ...renderInteractiveInputChromeLines({
           bodyLines,
@@ -1511,7 +1584,7 @@ export async function runSessionInputLoop(
         }),
         ...slash.panelLines,
         ...shortcutOverlayLines,
-        ...(shouldRenderFooter ? visibleFooterLines : []),
+        ...visibleFooterLines,
       ];
       const cursorRenderLineIndex = 1 + activeLineIndex;
       const cursorColumn = resolveCursorColumn(activeDescriptor);

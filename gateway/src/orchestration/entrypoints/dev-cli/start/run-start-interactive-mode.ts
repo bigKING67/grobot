@@ -74,6 +74,7 @@ function resolveTerminalColumns(): number | undefined {
 function buildInteractivePromptLayout(input: {
   renderedPrompt: string;
   promptLabel: string;
+  promptSlot?: SessionPromptLayout["promptSlot"];
 }): SessionPromptLayout {
   const suffix = input.renderedPrompt
     .split("\n")
@@ -85,7 +86,24 @@ function buildInteractivePromptLayout(input: {
     inlinePrompt: input.promptLabel,
     suffix,
     renderSuffixWhileTyping: true,
+    promptSlot: input.promptSlot,
   };
+}
+
+function resolveTerminalRows(): number | undefined {
+  const stdout = process.stdout as unknown as {
+    isTTY?: boolean;
+    rows?: number;
+  };
+  if (
+    stdout.isTTY
+    && typeof stdout.rows === "number"
+    && Number.isFinite(stdout.rows)
+    && stdout.rows > 0
+  ) {
+    return Math.floor(stdout.rows);
+  }
+  return undefined;
 }
 
 function resolvePromptBudgetSnapshot(workDir: string): {
@@ -836,6 +854,13 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     return buildInteractivePromptLayout({
       renderedPrompt,
       promptLabel: "❯ ",
+      promptSlot: {
+        pendingAskCount,
+        running: typeof activeTurnStartedAtMs === "number",
+        hasStatusLine: renderedPrompt.trim().length > 0,
+        terminalRows: resolveTerminalRows(),
+        fullscreen: true,
+      },
     });
   };
   const getSlashSuggestions = (lineInput: string) => {
