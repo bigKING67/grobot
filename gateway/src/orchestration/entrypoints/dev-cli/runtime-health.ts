@@ -127,8 +127,22 @@ export interface RuntimeToolSurfaceSchemaProfile {
   perToolSuppressedArgs: Record<string, string[]>;
 }
 
+export interface RuntimeToolRecoveryCatalogRow {
+  errorClasses: string[];
+  riskClass: string;
+  stage: string;
+  recommendedNextAction: string;
+  recoverable: boolean;
+}
+
 export interface RuntimeToolSurfaceSchemaProfilesParseResult {
   profiles: RuntimeToolSurfaceSchemaProfile[];
+  rawCount: number;
+  invalidReason: string | null;
+}
+
+export interface RuntimeToolRecoveryCatalogParseResult {
+  rows: RuntimeToolRecoveryCatalogRow[];
   rawCount: number;
   invalidReason: string | null;
 }
@@ -321,6 +335,20 @@ export function buildRuntimeToolSurfaceSchemaProfilesFingerprint(value: unknown)
   return `schema_profiles:${fnv1a32HexFromUtf8(payload)}`;
 }
 
+export function buildRuntimeToolRecoveryCatalogFingerprint(
+  value: unknown,
+  policyVersion = TOOL_SURFACE_POLICY_VERSION,
+): string | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const payload = stableJsonStringify({
+    policy_version: policyVersion,
+    catalog: value,
+  });
+  return `recovery_catalog:${fnv1a32HexFromUtf8(payload)}`;
+}
+
 export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
   value: unknown,
 ): RuntimeToolSurfaceSchemaProfilesParseResult {
@@ -427,6 +455,56 @@ export function parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(
 
 export function parseRuntimeToolSurfaceSchemaProfiles(value: unknown): RuntimeToolSurfaceSchemaProfile[] {
   return parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics(value).profiles;
+}
+
+export function parseRuntimeToolRecoveryCatalogWithDiagnostics(
+  value: unknown,
+): RuntimeToolRecoveryCatalogParseResult {
+  if (value == null) {
+    return { rows: [], rawCount: 0, invalidReason: null };
+  }
+  if (!Array.isArray(value)) {
+    return { rows: [], rawCount: 0, invalidReason: "recovery_catalog_not_array" };
+  }
+  const rows: RuntimeToolRecoveryCatalogRow[] = [];
+  let invalidRowCount = 0;
+  for (const item of value) {
+    if (!isRecord(item)) {
+      invalidRowCount += 1;
+      continue;
+    }
+    const errorClasses = parseStrictStringArray(item.error_classes);
+    const riskClass = typeof item.risk_class === "string" ? item.risk_class.trim() : "";
+    const stage = typeof item.stage === "string" ? item.stage.trim() : "";
+    const recommendedNextAction =
+      typeof item.recommended_next_action === "string"
+        ? item.recommended_next_action.trim()
+        : "";
+    const recoverable = typeof item.recoverable === "boolean" ? item.recoverable : null;
+    if (
+      errorClasses == null
+      || errorClasses.length === 0
+      || !riskClass
+      || !stage
+      || !recommendedNextAction
+      || recoverable == null
+    ) {
+      invalidRowCount += 1;
+      continue;
+    }
+    rows.push({
+      errorClasses,
+      riskClass,
+      stage,
+      recommendedNextAction,
+      recoverable,
+    });
+  }
+  return {
+    rows,
+    rawCount: value.length,
+    invalidReason: invalidRowCount > 0 ? `recovery_catalog_invalid_rows:${invalidRowCount}` : null,
+  };
 }
 
 export function buildToolsManifestFingerprint(toolNames: string[], defaultEnabledTools: string[]): string {
@@ -649,6 +727,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
   toolNames: string[];
   defaultEnabledTools: string[];
   manifestFingerprint: string;
+  toolRecoveryPolicyVersion: string | null;
+  toolRecoveryCatalogFingerprint: string | null;
+  toolRecoveryActions: string[];
+  toolRecoveryCatalog: RuntimeToolRecoveryCatalogRow[];
   toolSurfaceSchemaProfilesFingerprint: string | null;
   toolSurfaceSchemaProfiles: RuntimeToolSurfaceSchemaProfile[];
 } {
@@ -671,6 +753,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: [],
       defaultEnabledTools: [],
       manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolRecoveryPolicyVersion: null,
+      toolRecoveryCatalogFingerprint: null,
+      toolRecoveryActions: [],
+      toolRecoveryCatalog: [],
       toolSurfaceSchemaProfilesFingerprint: null,
       toolSurfaceSchemaProfiles: [],
     };
@@ -682,6 +768,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: [],
       defaultEnabledTools: [],
       manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolRecoveryPolicyVersion: null,
+      toolRecoveryCatalogFingerprint: null,
+      toolRecoveryActions: [],
+      toolRecoveryCatalog: [],
       toolSurfaceSchemaProfilesFingerprint: null,
       toolSurfaceSchemaProfiles: [],
     };
@@ -694,12 +784,35 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: [],
       defaultEnabledTools: [],
       manifestFingerprint: buildToolsManifestFingerprint([], []),
+      toolRecoveryPolicyVersion: null,
+      toolRecoveryCatalogFingerprint: null,
+      toolRecoveryActions: [],
+      toolRecoveryCatalog: [],
       toolSurfaceSchemaProfilesFingerprint: null,
       toolSurfaceSchemaProfiles: [],
     };
   }
 
   const defaultEnabledTools = dedupeStringArray(normalizeStringArray(parsed.result.default_enabled_tools));
+  const toolRecoveryPolicyVersion =
+    typeof parsed.result.tool_recovery_policy_version === "string"
+      && parsed.result.tool_recovery_policy_version.trim().length > 0
+      ? parsed.result.tool_recovery_policy_version.trim()
+      : null;
+  const toolRecoveryCatalogFingerprint =
+    typeof parsed.result.tool_recovery_catalog_fingerprint === "string"
+      && parsed.result.tool_recovery_catalog_fingerprint.trim().length > 0
+      ? parsed.result.tool_recovery_catalog_fingerprint.trim()
+      : null;
+  const toolRecoveryActions = dedupeStringArray(normalizeStringArray(parsed.result.tool_recovery_actions));
+  const recoveryCatalogParse = parseRuntimeToolRecoveryCatalogWithDiagnostics(
+    parsed.result.tool_recovery_catalog,
+  );
+  const recoveryCatalogFingerprintFromPayload = buildRuntimeToolRecoveryCatalogFingerprint(
+    parsed.result.tool_recovery_catalog,
+    toolRecoveryPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
+  );
+  const toolRecoveryCatalog = recoveryCatalogParse.rows;
   const toolSurfaceSchemaProfilesFingerprint =
     typeof parsed.result.tool_surface_schema_profiles_fingerprint === "string"
       && parsed.result.tool_surface_schema_profiles_fingerprint.trim().length > 0
@@ -739,6 +852,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -750,6 +867,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -763,6 +884,139 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (recoveryCatalogParse.invalidReason != null) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_recovery_catalog:${recoveryCatalogParse.invalidReason}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (!toolRecoveryPolicyVersion && (toolRecoveryCatalog.length > 0 || toolRecoveryActions.length > 0)) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_recovery_policy_version",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (toolRecoveryCatalogFingerprint && toolRecoveryCatalog.length === 0) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_recovery_catalog",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (!toolRecoveryCatalogFingerprint && toolRecoveryCatalog.length > 0) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_recovery_catalog_fingerprint",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (
+    toolRecoveryCatalogFingerprint
+    && recoveryCatalogFingerprintFromPayload
+    && toolRecoveryCatalogFingerprint !== recoveryCatalogFingerprintFromPayload
+  ) {
+    return {
+      ok: false,
+      detail:
+        `runtime_tools_describe_recovery_catalog_fingerprint_mismatch:reported=${toolRecoveryCatalogFingerprint}`
+        + `:computed=${recoveryCatalogFingerprintFromPayload}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (toolRecoveryActions.length === 0) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_recovery_actions",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  const catalogActionSet = new Set(toolRecoveryCatalog.map((row) => row.recommendedNextAction));
+  const unknownRecoveryActions = toolRecoveryActions.filter((action) => !catalogActionSet.has(action));
+  const missingRecoveryActions = [...catalogActionSet].filter((action) => !toolRecoveryActions.includes(action));
+  if (missingRecoveryActions.length > 0) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_missing_recovery_actions:${missingRecoveryActions.join(",")}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+    };
+  }
+  if (unknownRecoveryActions.length > 0) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_recovery_actions:${unknownRecoveryActions.join(",")}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -774,6 +1028,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -785,6 +1043,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -796,6 +1058,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -813,6 +1079,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolNames: uniqueToolNames,
       defaultEnabledTools,
       manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
       toolSurfaceSchemaProfilesFingerprint,
       toolSurfaceSchemaProfiles,
     };
@@ -823,6 +1093,10 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     toolNames: uniqueToolNames,
     defaultEnabledTools,
     manifestFingerprint,
+    toolRecoveryPolicyVersion,
+    toolRecoveryCatalogFingerprint,
+    toolRecoveryActions,
+    toolRecoveryCatalog,
     toolSurfaceSchemaProfilesFingerprint,
     toolSurfaceSchemaProfiles,
   };

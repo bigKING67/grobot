@@ -71,6 +71,33 @@ mod tests {
             .filter_map(Value::as_str)
             .collect::<Vec<&str>>();
         assert!(default_names.contains(&"ask_user_question"));
+        let recovery_actions = payload["result"]["tool_recovery_actions"]
+            .as_array()
+            .expect("tool_recovery_actions should be array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<&str>>();
+        assert!(recovery_actions.contains(&"ask_user_for_config_or_switch_provider"));
+        assert!(recovery_actions.contains(&"inspect_error_and_switch_strategy"));
+        assert!(!recovery_actions.contains(&"observe_and_continue"));
+        assert_eq!(
+            payload["result"]["tool_recovery_policy_version"].as_str(),
+            Some("v1")
+        );
+        let recovery_catalog = payload["result"]["tool_recovery_catalog"]
+            .as_array()
+            .expect("tool_recovery_catalog should be array");
+        assert!(
+            payload["result"]["tool_recovery_catalog_fingerprint"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("recovery_catalog:")),
+            "tools.describe should expose a stable recovery catalog fingerprint"
+        );
+        assert!(recovery_catalog.iter().any(|row| {
+            row["recommended_next_action"] == "ask_user_for_config_or_switch_provider"
+                && row["stage"] == "ask_user"
+                && row["recoverable"] == false
+        }));
         let schema_profiles = payload["result"]["tool_surface_schema_profiles"]
             .as_array()
             .expect("tool_surface_schema_profiles should be array");

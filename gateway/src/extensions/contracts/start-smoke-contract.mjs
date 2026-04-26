@@ -4249,7 +4249,7 @@ function runStartContextMemoryDecayAutotuneHysteresisFlow(repoRoot) {
 function writeNonRecoverableToolRecoveryMetrics(workDir) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });
-  const observedAt = "2026-04-25T00:01:00.000Z";
+  const observedAt = new Date().toISOString();
   writeFileSync(
     `${runtimeDir}/tool-surface-metrics.json`,
     `${JSON.stringify({
@@ -4283,11 +4283,12 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
 function writeNonRecoverableToolRecoveryConsumption(workDir, observedAt) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });
+  const consumedAt = new Date(Date.parse(observedAt) + 60_000).toISOString();
   writeFileSync(
     `${runtimeDir}/tool-surface-adaptation-state.json`,
     `${JSON.stringify({
       version: 1,
-      updatedAt: "2026-04-25T00:02:00.000Z",
+      updatedAt: consumedAt,
       recentAdaptations: [],
       profileOutcomes: {},
       recentRecoveryConsumptions: [
@@ -4298,7 +4299,7 @@ function writeNonRecoverableToolRecoveryConsumption(workDir, observedAt) {
           recoveryToolName: "web_scan",
           recoveryErrorClass: "config_missing",
           recoveryObservedAt: observedAt,
-          consumedAt: "2026-04-25T00:02:00.000Z",
+          consumedAt,
           traceId: "trace_status_nonrecoverable_consumed_contract",
         },
       ],

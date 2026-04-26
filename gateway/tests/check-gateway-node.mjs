@@ -570,6 +570,25 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolEventsPayload.recovery_action_catalog_size >= 18, true);
   logStep("runtime-tool-events-contract");
 
+  const runtimeToolRecoveryFlowResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-tool-recovery-flow-contract.ts",
+  ]);
+  assertSuccess("runtime-tool-recovery-flow-contract", runtimeToolRecoveryFlowResult);
+  const runtimeToolRecoveryFlowPayload = parseJsonOutput(
+    "runtime-tool-recovery-flow-contract",
+    runtimeToolRecoveryFlowResult.stdout,
+  );
+  assert.equal(runtimeToolRecoveryFlowPayload.ok, true);
+  assert.equal(runtimeToolRecoveryFlowPayload.first_prompt_injected, true);
+  assert.equal(runtimeToolRecoveryFlowPayload.first_nonrecoverable_consumption_recorded, true);
+  assert.equal(runtimeToolRecoveryFlowPayload.second_feedback_consumed, true);
+  assert.equal(runtimeToolRecoveryFlowPayload.second_prompt_reinjected, false);
+  logStep("runtime-tool-recovery-flow-contract");
+
   const semanticSearchToolResult = runContract("local-tools-contract.mjs", "semantic-search-tool");
   const semanticSearchToolPayload = parseJsonOutput(
     "local-tools-contract semantic-search-tool",
@@ -4709,6 +4728,23 @@ async function runTsRustExecutionSmoke() {
     duration_ms: runtimeInterruptContractPayload.duration_ms,
     call_count: runtimeInterruptContractPayload.call_count,
   });
+
+  const runtimeToolGovernanceResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-tool-governance-contract.ts",
+  ]);
+  assertSuccess("runtime-tool-governance-contract", runtimeToolGovernanceResult);
+  const runtimeToolGovernancePayload = parseJsonOutput(
+    "runtime-tool-governance-contract",
+    runtimeToolGovernanceResult.stdout,
+  );
+  assert.equal(runtimeToolGovernancePayload.ok, true);
+  assert.equal(runtimeToolGovernancePayload.runtime_schema_budget_violations, 0);
+  assert.equal(runtimeToolGovernancePayload.runtime_recovery_action_count >= 18, true);
+  logStep("runtime-tool-governance-contract");
 
   let statusPayload = null;
   let statusAttempts = 0;

@@ -83,12 +83,10 @@ import {
 import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
-  buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
-  recordRuntimeToolNonRecoverableInterventionPrompt,
   recordRuntimeToolSurfaceAdaptationOutcome,
-  recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
+import { applyRuntimeToolRecoveryPromptFlow } from "../../../../tools/runtime/recovery-prompt-flow";
 import { extractRuntimeErrorEvents } from "../../../../tools/runtime/runtime-error";
 
 export interface RuntimeProviderCandidate {
@@ -2417,45 +2415,16 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           `[tool-surface] event=adaptation_guard reason=${runtimeToolContextForTurn.guard.reason} blocked_profile=${runtimeToolContextForTurn.guard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextForTurn.guard.matchingFailureCount)} recent_profiles=${runtimeToolContextForTurn.guard.recentProfileSequence.join(",") || "<empty>"}\n`,
         );
       }
-      if (runtimeToolRecoveryFeedback.active && runtimeToolRecoveryFeedback.requiresUserIntervention) {
-        input.writeStderr(
-          `[tool-recovery] event=requires_user_intervention stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextForTurn.adaptation.autoAdaptationBlocked ? "true" : "false"}\n`,
-        );
-      }
-      if (runtimeToolRecoveryFeedback.active && runtimeToolContextForTurn.guard.active) {
-        const guardPromptBlock = buildRuntimeToolSurfaceAdaptationGuardPrompt({
-          guard: runtimeToolContextForTurn.guard,
-          recoveryFeedback: runtimeToolRecoveryFeedback,
-        });
-        if (guardPromptBlock) {
-          promptParts.push(guardPromptBlock);
-        }
-        recordRuntimeToolSurfaceRecoveryConsumption({
-          workDir: input.workDir,
-          guard: runtimeToolContextForTurn.guard,
-          recoveryFeedback: runtimeToolRecoveryFeedback,
-          nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
-        });
-        input.writeStderr(
-          `[tool-recovery] event=prompt_hint_guarded guard_reason=${runtimeToolContextForTurn.guard.reason} suppressed_action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
-        );
-      } else if (runtimeToolRecoveryFeedback.active) {
-        promptParts.push(runtimeToolRecoveryFeedback.promptBlock);
-        input.writeStderr(
-          `[tool-recovery] event=prompt_hint_injected stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} severity=${runtimeToolRecoveryFeedback.severity} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
-        );
-        if (runtimeToolRecoveryFeedback.requiresUserIntervention) {
-          const interventionConsumption = recordRuntimeToolNonRecoverableInterventionPrompt({
-            workDir: input.workDir,
-            recoveryFeedback: runtimeToolRecoveryFeedback,
-            nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
-          });
-          if (interventionConsumption.recorded) {
-            input.writeStderr(
-              `[tool-recovery] event=nonrecoverable_intervention_prompted action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} consumed_at=${interventionConsumption.record?.consumedAt ?? "<none>"}\n`,
-            );
-          }
-        }
+      const recoveryPromptFlow = applyRuntimeToolRecoveryPromptFlow({
+        workDir: input.workDir,
+        recoveryFeedback: runtimeToolRecoveryFeedback,
+        guard: runtimeToolContextForTurn.guard,
+        adaptation: runtimeToolContextForTurn.adaptation,
+        nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
+      });
+      promptParts.push(...recoveryPromptFlow.promptBlocks);
+      for (const event of recoveryPromptFlow.stderrEvents) {
+        input.writeStderr(event);
       }
       const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
       const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);

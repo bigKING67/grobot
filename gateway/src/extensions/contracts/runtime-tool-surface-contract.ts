@@ -20,6 +20,7 @@ import {
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
 import {
+  buildRuntimeToolRecoveryCatalogFingerprint,
   buildRuntimeToolSurfaceSchemaProfilesFingerprint,
   parseRuntimeToolSurfaceSchemaProfiles,
   parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics,
@@ -244,6 +245,29 @@ const validRuntimeSchemaProfile = {
     web_execute_js: ["native_fallback_action"],
   },
 };
+const validRuntimeRecoveryCatalog = [
+  {
+    error_classes: ["tool_argument_not_visible"],
+    risk_class: "*",
+    stage: "strategy_switch",
+    recommended_next_action: "inspect_visible_tool_schema_then_retry",
+    recoverable: true,
+  },
+  {
+    error_classes: ["config_missing"],
+    risk_class: "*",
+    stage: "ask_user",
+    recommended_next_action: "ask_user_for_config_or_switch_provider",
+    recoverable: false,
+  },
+  {
+    error_classes: ["*"],
+    risk_class: "*",
+    stage: "strategy_switch",
+    recommended_next_action: "inspect_error_and_switch_strategy",
+    recoverable: true,
+  },
+];
 expectEqual(
   parseRuntimeToolSurfaceSchemaProfiles([validRuntimeSchemaProfile]).length,
   1,
@@ -332,6 +356,14 @@ writeFileSync(
         { type: "function", function: { name: "web_execute_js" } },
       ],
       default_enabled_tools: ["web_scan"],
+      tool_recovery_policy_version: "v1",
+      tool_recovery_actions: [
+        "inspect_visible_tool_schema_then_retry",
+        "ask_user_for_config_or_switch_provider",
+        "inspect_error_and_switch_strategy",
+      ],
+      tool_recovery_catalog_fingerprint: buildRuntimeToolRecoveryCatalogFingerprint(validRuntimeRecoveryCatalog),
+      tool_recovery_catalog: validRuntimeRecoveryCatalog,
       tool_surface_schema_profiles_fingerprint: "schema_profiles:00000000",
       tool_surface_schema_profiles: [validRuntimeSchemaProfile],
     },
@@ -344,6 +376,44 @@ expectEqual(mismatchedRuntimeDescribe.ok, false, "runtime tools describe rejects
 expect(
   mismatchedRuntimeDescribe.detail.startsWith("runtime_tools_describe_schema_profiles_fingerprint_mismatch:"),
   "runtime tools describe reports schema profile fingerprint mismatch",
+);
+
+const fakeRecoveryMismatchPath = join(fakeRuntimeDir, "runtime-recovery-mismatch.js");
+writeFileSync(
+  fakeRecoveryMismatchPath,
+  `#!/usr/bin/env node\nconsole.log(${JSON.stringify(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "tools-describe-1",
+    result: {
+      tools: [
+        { type: "function", function: { name: "web_scan" } },
+        { type: "function", function: { name: "web_execute_js" } },
+      ],
+      default_enabled_tools: ["web_scan"],
+      tool_recovery_policy_version: "v1",
+      tool_recovery_actions: [
+        "inspect_visible_tool_schema_then_retry",
+        "ask_user_for_config_or_switch_provider",
+        "inspect_error_and_switch_strategy",
+      ],
+      tool_recovery_catalog_fingerprint: "recovery_catalog:00000000",
+      tool_recovery_catalog: validRuntimeRecoveryCatalog,
+      tool_surface_schema_profiles_fingerprint: buildRuntimeToolSurfaceSchemaProfilesFingerprint([validRuntimeSchemaProfile]),
+      tool_surface_schema_profiles: [validRuntimeSchemaProfile],
+    },
+  }))});\n`,
+  "utf8",
+);
+chmodSync(fakeRecoveryMismatchPath, 0o755);
+const mismatchedRecoveryRuntimeDescribe = runRuntimeToolsDescribe(fakeRecoveryMismatchPath);
+expectEqual(
+  mismatchedRecoveryRuntimeDescribe.ok,
+  false,
+  "runtime tools describe rejects mismatched recovery catalog fingerprint",
+);
+expect(
+  mismatchedRecoveryRuntimeDescribe.detail.startsWith("runtime_tools_describe_recovery_catalog_fingerprint_mismatch:"),
+  "runtime tools describe reports recovery catalog fingerprint mismatch",
 );
 
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));

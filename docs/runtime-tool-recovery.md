@@ -21,6 +21,17 @@ instructions are cataloged in
 `gateway/src/tools/runtime/tool-events.ts` as
 `RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS`.
 
+`runtime.tools.describe` is also a governance surface now. It exposes:
+
+- `tool_recovery_policy_version`
+- `tool_recovery_actions`
+- `tool_recovery_catalog_fingerprint`
+- `tool_recovery_catalog`
+- `tool_surface_schema_profiles_fingerprint`
+- `tool_surface_schema_profiles`
+
+Gateway validates both fingerprints before trusting runtime describe output.
+
 ## Recoverability contract
 
 `tool_recovery.recoverable` controls whether the gateway may recover
@@ -52,6 +63,11 @@ Surface adaptation is intentionally narrow:
 
 The orchestration entrypoint should stay thin. It may compose these helpers, but
 policy belongs in `gateway/src/tools/runtime/*`.
+
+The start-turn prompt branch is routed through
+`gateway/src/tools/runtime/recovery-prompt-flow.ts`, so one-shot recovery prompt
+behavior can be contract-tested without embedding branch-heavy logic directly in
+`run-start-turn.ts`.
 
 ## Consumption rules
 
@@ -96,9 +112,16 @@ Focused contracts:
 
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
+npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-flow-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-contract.ts
 node gateway/src/extensions/contracts/start-smoke-contract.mjs status-nonrecoverable-tool-recovery --repo-root .
 node gateway/src/extensions/contracts/start-smoke-contract.mjs status-nonrecoverable-tool-recovery-consumed --repo-root .
+```
+
+Runtime/governance contract after building the Rust runtime:
+
+```bash
+npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-governance-contract.ts
 ```
 
 Full gate:

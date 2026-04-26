@@ -1736,6 +1736,64 @@ audit_redact_secrets = false
             "ask_user_for_config_or_switch_provider"
         );
         assert!(!missing_config.recoverable);
+
+        let unknown_risk = classify_tool_recovery("mystery_error", "unknown");
+        assert_eq!(unknown_risk.stage, "strategy_switch");
+        assert_eq!(unknown_risk.recommended_next_action, "avoid_unknown_tool");
+        assert!(unknown_risk.recoverable);
+
+        let fallback = classify_tool_recovery("mystery_error", "medium_risk");
+        assert_eq!(fallback.stage, "strategy_switch");
+        assert_eq!(
+            fallback.recommended_next_action,
+            "inspect_error_and_switch_strategy"
+        );
+        assert!(fallback.recoverable);
+    }
+
+    #[test]
+    fn tool_recovery_catalog_describes_runtime_policy_contract() {
+        let catalog = tool_recovery_catalog();
+        assert_eq!(tool_recovery_policy_version(), "v1");
+        assert!(!catalog.is_empty());
+
+        let actions = tool_recovery_action_names();
+        assert!(actions.contains(&"ask_user_for_config_or_switch_provider"));
+        assert!(actions.contains(&"inspect_error_and_switch_strategy"));
+        assert!(!actions.contains(&"observe_and_continue"));
+
+        let fingerprint = tool_recovery_catalog_fingerprint(&catalog);
+        assert!(fingerprint.starts_with("recovery_catalog:"));
+
+        let config_missing = catalog
+            .iter()
+            .find(|row| {
+                row["recommended_next_action"]
+                    .as_str()
+                    .is_some_and(|value| value == "ask_user_for_config_or_switch_provider")
+            })
+            .expect("config_missing recovery row should exist");
+        assert_eq!(config_missing["stage"].as_str(), Some("ask_user"));
+        assert_eq!(config_missing["recoverable"].as_bool(), Some(false));
+        assert_eq!(
+            config_missing["error_classes"]
+                .as_array()
+                .expect("error_classes array")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec!["config_missing"]
+        );
+
+        let unknown_risk = catalog
+            .iter()
+            .find(|row| {
+                row["risk_class"].as_str() == Some("unknown")
+                    && row["recommended_next_action"].as_str()
+                        == Some("avoid_unknown_tool")
+            })
+            .expect("unknown risk recovery row should exist");
+        assert_eq!(unknown_risk["recoverable"].as_bool(), Some(true));
     }
 
     #[test]

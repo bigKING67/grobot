@@ -31,6 +31,9 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             let schema_profiles = crate::tools::tools::tool_surface_schema_profiles();
             let schema_profiles_fingerprint =
                 crate::tools::tools::tool_surface_schema_profiles_fingerprint(&schema_profiles);
+            let recovery_catalog = crate::tools::tools::tool_recovery_catalog();
+            let recovery_catalog_fingerprint =
+                crate::tools::tools::tool_recovery_catalog_fingerprint(&recovery_catalog);
             Ok(success(
                 request.id,
                 json!({
@@ -38,6 +41,10 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 "tools": crate::tools::tools::local_tool_definitions(),
                 "default_enabled_tools": crate::tools::tools::default_enabled_local_tool_names(),
                 "tool_policy_version": crate::tools::tools::tool_surface_policy_version(),
+                "tool_recovery_policy_version": crate::tools::tools::tool_recovery_policy_version(),
+                "tool_recovery_actions": crate::tools::tools::tool_recovery_action_names(),
+                "tool_recovery_catalog_fingerprint": recovery_catalog_fingerprint,
+                "tool_recovery_catalog": recovery_catalog,
                 "tool_surface_schema_profiles_fingerprint": schema_profiles_fingerprint,
                 "tool_surface_schema_profiles": schema_profiles
                 }),
