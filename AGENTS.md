@@ -20,3 +20,10 @@ If you're using Codex, project-scoped helpers may also live in:
 Keep this managed block so 'trellis update' can refresh the instructions.
 
 <!-- TRELLIS:END -->
+
+## Project Codex Collaboration Preferences
+
+- In this `grobot` project, the user explicitly allows Codex to call `spawn_agent` for development work when it materially improves quality or speed.
+- Prefer using subagents for `L1-F`, `L1-V`, `L2`, multi-module, or clearly parallelizable work; keep trivial `L0` edits local.
+- Before delegating, keep write scopes disjoint and concrete. The main agent remains responsible for reviewing subagent output, integrating changes, and running verification.
+- If a higher-priority platform or runtime tool rule restricts `spawn_agent`, follow that rule and note the reason in the handoff or final response.
