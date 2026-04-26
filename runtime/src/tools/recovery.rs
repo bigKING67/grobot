@@ -92,6 +92,13 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
+        &["edit_mixed_line_endings_not_supported"],
+        "*",
+        "strategy_switch",
+        "use_write_or_normalize_line_endings",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
         &["path_not_found"],
         "*",
         "local_fix",

@@ -131,6 +131,8 @@ export const RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS = {
     "Use the candidate lines from the edit error to make old_text uniquely identify exactly one span before retrying.",
   reread_target_then_retry_exact_old_text:
     "Reread the target around the suggested candidate lines, copy the exact current text, and retry the edit with that old_text.",
+  use_write_or_normalize_line_endings:
+    "Use write with the exact full file content, or first normalize the file's mixed line endings intentionally before retrying edit.",
   locate_path_with_glob_before_retry:
     "Use glob to locate the path before retrying read, write, or edit on that target.",
   choose_workspace_relative_path:

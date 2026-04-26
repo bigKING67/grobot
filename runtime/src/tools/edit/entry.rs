@@ -75,6 +75,15 @@ fn run_edit(
         ));
     }
     let (bom, raw_without_bom) = split_utf8_bom(&file_content);
+    let text_format = inspect_text_content_format(raw_without_bom);
+    if text_format.line_ending == "mixed" {
+        return Err(ToolExecutionError::new(
+            "edit_mixed_line_endings_not_supported",
+            format!(
+                "edit cannot safely preserve mixed line endings for {relative_path}; use write with exact full file content or normalize line endings first"
+            ),
+        ));
+    }
     let original_line_ending = detect_line_ending(raw_without_bom);
     let original_line_ending_label = line_ending_label(raw_without_bom, original_line_ending);
     let base_content = normalize_to_lf(raw_without_bom);

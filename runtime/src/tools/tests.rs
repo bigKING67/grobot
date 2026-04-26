@@ -1737,6 +1737,14 @@ audit_redact_secrets = false
         );
         assert!(missing_edit.recoverable);
 
+        let mixed_line_edit = classify_tool_recovery("edit_mixed_line_endings_not_supported", "medium_risk");
+        assert_eq!(mixed_line_edit.stage, "strategy_switch");
+        assert_eq!(
+            mixed_line_edit.recommended_next_action,
+            "use_write_or_normalize_line_endings"
+        );
+        assert!(mixed_line_edit.recoverable);
+
         let escaped_path = classify_tool_recovery("path_escape_blocked", "low_risk");
         assert_eq!(escaped_path.stage, "local_fix");
         assert_eq!(
@@ -1795,6 +1803,7 @@ audit_redact_secrets = false
         assert!(actions.contains(&"choose_workspace_relative_path"));
         assert!(actions.contains(&"narrow_edit_old_text_to_unique_match"));
         assert!(actions.contains(&"reread_target_then_retry_exact_old_text"));
+        assert!(actions.contains(&"use_write_or_normalize_line_endings"));
         assert!(actions.contains(&"inspect_error_and_switch_strategy"));
         assert!(!actions.contains(&"observe_and_continue"));
 
@@ -4234,6 +4243,48 @@ audit_redact_secrets = false
         assert_eq!(
             fs::read_to_string(&target).expect("read edited file"),
             "\u{FEFF}first\r\nSECOND\r\nthird\r\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_rejects_mixed_line_endings_without_rewriting_file() {
+        let workspace = make_temp_workspace("edit-v2-mixed-line-endings");
+        let target = workspace.join("mixed.txt");
+        let original = "first\r\nsecond\nthird\r\n";
+        fs::write(&target, original).expect("write mixed line ending file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "mixed.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "mixed.txt",
+                "edits": [{"old_text": "second\n", "new_text": "SECOND\n"}]
+            }),
+        )
+        .expect_err("edit should reject mixed line endings");
+        assert_eq!(error.error_class, "edit_mixed_line_endings_not_supported");
+        assert!(
+            error.message.contains("use write with exact full file content"),
+            "unexpected mixed line endings error: {}",
+            error.message
+        );
+        assert_eq!(
+            fs::read_to_string(&target).expect("read original file"),
+            original
         );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
