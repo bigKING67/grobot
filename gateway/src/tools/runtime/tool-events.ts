@@ -379,6 +379,9 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (typeof errorData.ready === "boolean") {
     parts.push(`ready=${String(errorData.ready)}`);
   }
+  if (typeof errorData.is_error === "boolean") {
+    parts.push(`is_error=${String(errorData.is_error)}`);
+  }
   const readyReason =
     typeof errorData.ready_reason === "string" ? compactRecoveryDetail(errorData.ready_reason) : undefined;
   if (readyReason) {
@@ -406,6 +409,17 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     typeof errorData.rpc_error_message === "string" ? compactRecoveryDetail(errorData.rpc_error_message) : undefined;
   if (rpcErrorMessage) {
     parts.push(`rpc_error_message=${quoteRecoveryPreview(rpcErrorMessage)}`);
+  }
+  const resultPreview =
+    typeof errorData.result_preview === "string" ? compactRecoveryDetail(errorData.result_preview) : undefined;
+  if (resultPreview) {
+    parts.push(`result_preview=${quoteRecoveryPreview(resultPreview)}`);
+  }
+  const structuredContentPreview = typeof errorData.structured_content_preview === "string"
+    ? compactRecoveryDetail(errorData.structured_content_preview)
+    : undefined;
+  if (structuredContentPreview) {
+    parts.push(`structured_content_preview=${quoteRecoveryPreview(structuredContentPreview)}`);
   }
 
   const diagnostics = normalizeRecord(errorData.diagnostics);

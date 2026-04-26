@@ -76,6 +76,50 @@ fn mcp_rpc_error_data(request_id: i64, error: &Value) -> Value {
     Value::Object(data)
 }
 
+fn mcp_tool_result_error(
+    server: &McpServerResolved,
+    tool_name: &str,
+    execution: &McpCallExecution,
+) -> ToolExecutionError {
+    let mut data = mcp_server_error_data(
+        "mcp_tool_result_error",
+        server,
+        Some(tool_name),
+        "tools/call",
+        "tool_result_error",
+        "inspect MCP tool result content and change arguments, reduce scope, or choose an alternate tool",
+    );
+    if let Value::Object(ref mut row) = data {
+        row.insert(
+            "available_tools".to_string(),
+            json!(execution.available_tools.clone()),
+        );
+        row.insert("is_error".to_string(), json!(execution.is_error));
+        if !execution.raw_preview.trim().is_empty() {
+            row.insert(
+                "result_preview".to_string(),
+                json!(execution.raw_preview.clone()),
+            );
+        }
+        if !execution.structured_content_preview.trim().is_empty() {
+            row.insert(
+                "structured_content_preview".to_string(),
+                json!(execution.structured_content_preview.clone()),
+            );
+        }
+    }
+    let message = if execution.raw_preview.trim().is_empty() {
+        format!("MCP tool `{tool_name}` on server `{}` returned isError=true", server.name)
+    } else {
+        format!(
+            "MCP tool `{tool_name}` on server `{}` returned isError=true: {}",
+            server.name,
+            truncate_output(execution.raw_preview.clone(), 180)
+        )
+    };
+    ToolExecutionError::new("mcp_tool_result_error", message).with_data(data)
+}
+
 fn write_mcp_message(stdin: &mut ChildStdin, payload: &Value) -> Result<(), ToolExecutionError> {
     let body = serde_json::to_string(payload).map_err(|error| {
         ToolExecutionError::new(
@@ -818,6 +862,11 @@ fn run_mcp_call(
     }
 
     let executed = call_result?;
+    let observed_error = if executed.is_error {
+        Some(mcp_tool_result_error(server, &tool_name, &executed))
+    } else {
+        None
+    };
     let payload = json!({
         "tool": TOOL_MCP_CALL,
         "status": "ok",
@@ -835,7 +884,12 @@ fn run_mcp_call(
             "structured_content_preview": executed.structured_content_preview,
         }
     });
-    Ok(ToolCallOutput::from_payload(payload))
+    let output = ToolCallOutput::from_payload(payload);
+    if let Some(error) = observed_error {
+        Ok(output.with_observed_error(error))
+    } else {
+        Ok(output)
+    }
 }
 
 fn extract_mcp_json_content_payload(content: &Value) -> Value {

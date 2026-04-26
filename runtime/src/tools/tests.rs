@@ -1781,6 +1781,14 @@ audit_redact_secrets = false
         );
         assert!(schema_drift.recoverable);
 
+        let mcp_tool_result = classify_tool_recovery("mcp_tool_result_error", "high_risk");
+        assert_eq!(mcp_tool_result.stage, "strategy_switch");
+        assert_eq!(
+            mcp_tool_result.recommended_next_action,
+            "inspect_error_and_switch_strategy"
+        );
+        assert!(mcp_tool_result.recoverable);
+
         let missing_config = classify_tool_recovery("config_missing", "unknown");
         assert_eq!(missing_config.stage, "ask_user");
         assert_eq!(
@@ -2050,6 +2058,38 @@ allow_tools = ["allowed_tool"]
         let mut store = lock_runtime_store().expect("lock runtime store");
         store.states.remove("mock-blocked");
         fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn mcp_tool_result_error_reports_observable_failure_data() {
+        let server = McpServerResolved {
+            name: "mock".to_string(),
+            command: "node".to_string(),
+            args: vec![],
+            env: StdHashMap::new(),
+            enabled: true,
+            source: "test".to_string(),
+            ready: true,
+            ready_reason: "ok".to_string(),
+        };
+        let execution = McpCallExecution {
+            available_tools: vec!["echo".to_string(), "fail".to_string()],
+            is_error: true,
+            content: json!([{ "type": "text", "text": "bad args" }]),
+            raw_preview: "bad args".to_string(),
+            structured_content_preview: "{\"reason\":\"bad args\"}".to_string(),
+        };
+        let error = mcp_tool_result_error(&server, "fail", &execution);
+        assert_eq!(error.error_class, "mcp_tool_result_error");
+        assert!(error.message.contains("isError=true"));
+        let data = error.data.as_ref().expect("tool result error should include data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_tool_result_error"));
+        assert_eq!(data["server"].as_str(), Some("mock"));
+        assert_eq!(data["tool_name"].as_str(), Some("fail"));
+        assert_eq!(data["operation"].as_str(), Some("tools/call"));
+        assert_eq!(data["is_error"].as_bool(), Some(true));
+        assert_eq!(data["result_preview"].as_str(), Some("bad args"));
+        assert_eq!(data["available_tools"].as_array().map(|items| items.len()), Some(2));
     }
 
     #[test]

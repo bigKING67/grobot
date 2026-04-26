@@ -187,7 +187,7 @@ fn run_kimi_builtin_web_search(
         )),
         KimiWebSearchMode::BuiltinPreferred | KimiWebSearchMode::BuiltinOnly => {
             let content = serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string());
-            Ok(ToolCallOutput { content })
+            Ok(ToolCallOutput::from_content(content))
         }
     }
 }
@@ -289,7 +289,7 @@ fn run_kimi_formula_tool(
     } else {
         serde_json::to_string(&content_value).unwrap_or_else(|_| "{}".to_string())
     };
-    Ok(ToolCallOutput { content })
+    Ok(ToolCallOutput::from_content(content))
 }
 
 fn run_kimi_files_list(input: &TurnExecuteInput) -> Result<ToolCallOutput, ToolExecutionError> {
@@ -332,7 +332,7 @@ fn run_kimi_files_list(input: &TurnExecuteInput) -> Result<ToolCallOutput, ToolE
             format!("kimi files list status={} body={detail}", status.as_u16()),
         ));
     }
-    Ok(ToolCallOutput { content: body })
+    Ok(ToolCallOutput::from_content(body))
 }
 
 fn run_kimi_files_delete(
@@ -385,7 +385,7 @@ fn run_kimi_files_delete(
             format!("kimi files delete status={} body={detail}", status.as_u16()),
         ));
     }
-    Ok(ToolCallOutput { content: body })
+    Ok(ToolCallOutput::from_content(body))
 }
 
 fn execute_kimi_tool_call(

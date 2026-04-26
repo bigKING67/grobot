@@ -1194,6 +1194,36 @@ fn build_tool_end_failure_event(
     }
 }
 
+fn build_tool_end_observed_failure_event(
+    tool_call: &ToolCallInput,
+    tool_round: usize,
+    batch_index: usize,
+    risk_class: &str,
+    duration_ms: u64,
+    output: &ToolCallOutput,
+    budget: &BudgetedToolMessageContent,
+    error: &ToolExecutionError,
+) -> ModelTelemetryEvent {
+    ModelTelemetryEvent {
+        event_type: "tool_end".to_string(),
+        payload: Some(json!({
+            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
+            "tool_call_id": tool_call.id,
+            "tool_round": tool_round,
+            "batch_index": batch_index,
+            "risk_class": risk_class,
+            "status": "failed",
+            "observed_by_model": true,
+            "duration_ms": duration_ms,
+            "error_class": error.error_class,
+            "error_message": truncate_header_value_for_diagnostics(&error.message, 240),
+            "error_data": error.data.clone(),
+            "output_summary": build_tool_output_summary(&tool_call.name, &output.content),
+            "output_budget": build_tool_message_budget_event_payload(budget),
+        })),
+    }
+}
+
 fn build_tool_recovery_event(
     tool_call: &ToolCallInput,
     tool_round: usize,
@@ -1239,7 +1269,7 @@ fn build_deferred_tool_output(
         "risk_class": risk_class,
     }))
     .unwrap_or_else(|_| "{\"status\":\"deferred\"}".to_string());
-    ToolCallOutput { content }
+    ToolCallOutput::from_content(content)
 }
 
 fn parse_non_empty_string_field(
@@ -1916,15 +1946,37 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                 let duration_ms = tool_duration_ms(started_at);
                                 let budgeted_output =
                                     budget_tool_message_content(&tool_call.name, &output.content);
-                                telemetry_events.push(build_tool_end_success_event(
-                                    &tool_call,
-                                    current_tool_round,
-                                    batch_index,
-                                    risk_class,
-                                    duration_ms,
-                                    &output,
-                                    &budgeted_output,
-                                ));
+                                if let Some(observed_error) = output.observed_error.as_ref() {
+                                    telemetry_events.push(build_tool_end_observed_failure_event(
+                                        &tool_call,
+                                        current_tool_round,
+                                        batch_index,
+                                        risk_class,
+                                        duration_ms,
+                                        &output,
+                                        &budgeted_output,
+                                        observed_error,
+                                    ));
+                                    telemetry_events.push(build_tool_recovery_event(
+                                        &tool_call,
+                                        current_tool_round,
+                                        batch_index,
+                                        risk_class,
+                                        &observed_error.error_class,
+                                        Some(observed_error.message.as_str()),
+                                        observed_error.data.as_ref(),
+                                    ));
+                                } else {
+                                    telemetry_events.push(build_tool_end_success_event(
+                                        &tool_call,
+                                        current_tool_round,
+                                        batch_index,
+                                        risk_class,
+                                        duration_ms,
+                                        &output,
+                                        &budgeted_output,
+                                    ));
+                                }
                                 if tool_requires_observation_boundary(risk_class) {
                                     observation_boundary_consumed = true;
                                 }

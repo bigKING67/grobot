@@ -282,6 +282,53 @@ expect(
   "feedback summarizes MCP allow_tools",
 );
 
+const mcpObservedResultFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { mcp_call: 1 },
+    failuresByErrorClass: { mcp_tool_result_error: 1 },
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "mcp_tool_result_error",
+      recommendedNextAction: "inspect_error_and_switch_strategy",
+      toolName: "mcp_call",
+      errorClass: "mcp_tool_result_error",
+      errorData: {
+        diagnostic_kind: "mcp_tool_result_error",
+        server: "mock",
+        tool_name: "fail",
+        operation: "tools/call",
+        is_error: true,
+        result_preview: "bad args",
+        structured_content_preview: "{\"reason\":\"bad args\"}",
+        available_tools: ["echo", "fail"],
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-mcp-result-structured",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("diagnostic_kind=mcp_tool_result_error"),
+  "feedback summarizes MCP tool result diagnostic kind",
+);
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("result_preview=\"bad args\""),
+  "feedback summarizes MCP tool result preview",
+);
+
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {

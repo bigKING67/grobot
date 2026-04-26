@@ -169,6 +169,13 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
+        &["mcp_tool_result_error"],
+        "*",
+        "strategy_switch",
+        "inspect_error_and_switch_strategy",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
         &[
             "mcp_timeout",
             "mcp_queue_timeout",

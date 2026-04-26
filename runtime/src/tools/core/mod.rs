@@ -69,12 +69,25 @@ pub struct ToolCallInput {
 #[derive(Debug, Clone)]
 pub struct ToolCallOutput {
     pub content: String,
+    pub observed_error: Option<ToolExecutionError>,
 }
 
 impl ToolCallOutput {
+    pub fn from_content(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            observed_error: None,
+        }
+    }
+
     fn from_payload(payload: Value) -> Self {
         let content = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
-        Self { content }
+        Self::from_content(content)
+    }
+
+    pub(crate) fn with_observed_error(mut self, error: ToolExecutionError) -> Self {
+        self.observed_error = Some(error);
+        self
     }
 }
 

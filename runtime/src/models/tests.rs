@@ -85,9 +85,24 @@ mod tests {
             _call: &ToolCallInput,
             _input: &TurnExecuteInput,
         ) -> Result<ToolCallOutput, ToolExecutionError> {
-            Ok(ToolCallOutput {
-                content: self.content.clone(),
-            })
+            Ok(ToolCallOutput::from_content(self.content.clone()))
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct ObservedErrorToolExecutor {
+        content: String,
+        error: ToolExecutionError,
+    }
+
+    impl ToolExecutor for ObservedErrorToolExecutor {
+        fn execute_tool_call(
+            &self,
+            _call: &ToolCallInput,
+            _input: &TurnExecuteInput,
+        ) -> Result<ToolCallOutput, ToolExecutionError> {
+            Ok(ToolCallOutput::from_content(self.content.clone())
+                .with_observed_error(self.error.clone()))
         }
     }
 
@@ -1855,5 +1870,121 @@ mod tests {
 
         let calls = server.finish();
         assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn executor_emits_recovery_for_observed_tool_result_error_without_aborting_turn() {
+        let _env_guard = env_lock().lock().expect("lock env");
+        let server = start_mock_http_server_sequence(&[
+            (
+                "200 OK",
+                r#"{"id":"mock","choices":[{"message":{"tool_calls":[{"id":"mcp_1","type":"function","function":{"name":"mcp_call","arguments":"{\"server\":\"mock\",\"tool\":\"fail\",\"arguments\":{}}"}}]}}]}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"id":"mock","choices":[{"message":{"content":"DONE_AFTER_OBSERVED_TOOL_ERROR"}}]}"#,
+            ),
+        ]);
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+        let input = TurnExecuteInput {
+            request_id: "req_rt_observed_tool_error".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
+            user_message: "run mcp tool".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(server.base_url.clone()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("runtime-test-model".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: None,
+                provider_options: None,
+            }),
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(".".to_string()),
+                enabled_tools: Some(vec!["mcp_call".to_string()]),
+                model_visible_tools: Some(vec!["mcp_call".to_string()]),
+                tool_surface_profile: Some("mcp".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
+                bash_allowlist: None,
+                max_tool_rounds: Some(4),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        };
+        let observed_error = ToolExecutionError::new(
+            "mcp_tool_result_error",
+            "MCP tool `fail` on server `mock` returned isError=true: bad args",
+        )
+        .with_data(json!({
+            "diagnostic_kind": "mcp_tool_result_error",
+            "server": "mock",
+            "tool_name": "fail",
+            "operation": "tools/call",
+            "is_error": true,
+            "result_preview": "bad args"
+        }));
+        let tool_output = r#"{"tool":"mcp_call","status":"ok","server":"mock","tool_name":"fail","result":{"is_error":true,"raw_preview":"bad args"}}"#;
+        let executor = OpenAiCompatibleModelExecutor;
+        let output = executor
+            .generate_assistant_message(
+                &input,
+                &ObservedErrorToolExecutor {
+                    content: tool_output.to_string(),
+                    error: observed_error,
+                },
+            )
+            .expect("observed MCP tool result error should be fed back to model");
+        assert_eq!(output.assistant_message, "DONE_AFTER_OBSERVED_TOOL_ERROR");
+        assert_eq!(
+            output
+                .telemetry_events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<&str>>(),
+            vec!["tool_start", "tool_end", "tool_recovery"]
+        );
+        let tool_end_payload = output.telemetry_events[1]
+            .payload
+            .as_ref()
+            .expect("tool_end payload");
+        assert_eq!(tool_end_payload["status"].as_str(), Some("failed"));
+        assert_eq!(tool_end_payload["observed_by_model"].as_bool(), Some(true));
+        assert_eq!(
+            tool_end_payload["error_class"].as_str(),
+            Some("mcp_tool_result_error")
+        );
+        assert_eq!(
+            tool_end_payload["error_data"]["result_preview"].as_str(),
+            Some("bad args")
+        );
+        let recovery_payload = output.telemetry_events[2]
+            .payload
+            .as_ref()
+            .expect("tool_recovery payload");
+        assert_eq!(
+            recovery_payload["recommended_next_action"].as_str(),
+            Some("inspect_error_and_switch_strategy")
+        );
+        assert_eq!(
+            recovery_payload["error_data"]["diagnostic_kind"].as_str(),
+            Some("mcp_tool_result_error")
+        );
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 2);
+        assert!(
+            calls[1].body.contains("bad args"),
+            "second model request should observe the failed MCP tool output"
+        );
     }
 }
