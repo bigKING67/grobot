@@ -218,6 +218,18 @@ consumption, timeline, health, readiness, and gate decisions. Both
 `status --json` and `grobot start` must use this helper instead of rebuilding
 the chain locally.
 
+Policy is injected through the full recovery decision chain:
+
+```text
+policy -> health -> readiness -> gate -> status/start-turn observability
+```
+
+`buildRuntimeToolRecoveryHealthSummary(...)` accepts the same policy snapshot as
+readiness/gate so health scoring, penalty weights, and thresholds can be tested
+or overridden as one unit. Text fields for readiness/gate are formatted through
+shared formatter helpers instead of separate string templates in status and
+start-turn code.
+
 ## Consumption rules
 
 Recovery hints are one-shot per observed recovery key:
@@ -392,7 +404,10 @@ The intended gate contract is:
   the referenced `attention_*` recovery before the next risky tool sequence.
 - `fail`: readiness is blocked, operator action is required, automatic recovery
   is denied, or the readiness fields are internally inconsistent. Automation
-  must stop and follow `recommended_next_action`.
+  must stop automatic recovery/adaptation and follow `recommended_next_action`.
+  In `grobot start`, this blocks automatic tool-surface/profile adaptation; the
+  turn may still continue with an explicit recovery prompt unless the prompt
+  flow requires user intervention.
 
 Text status mirrors the decisive fields for quick terminal inspection:
 
@@ -439,6 +454,10 @@ escalation thresholds (`2/3`), health thresholds (`85/60`), and health
 penalties. Readiness/gate contracts additionally assert that custom policy
 thresholds are forwarded into `recovery_readiness`, `recovery_gate`, and their
 text status surfaces.
+
+The timeline contract also covers a full recovery loop: once all historical
+recoveries are consumed, health returns to `good`, readiness returns to
+`ready`, and the gate returns to `pass`.
 
 Runtime/governance contract after building the Rust runtime:
 

@@ -114,3 +114,24 @@ export function buildRuntimeToolRecoveryReadinessGate(input: {
     attentionRequiresUserIntervention: input.readiness.attentionRequiresUserIntervention,
   };
 }
+
+export function formatRuntimeToolRecoveryGateFields(
+  gate: RuntimeToolRecoveryReadinessGateDecision,
+): string {
+  return [
+    `status=${gate.status}`,
+    `passed=${gate.passed ? "true" : "false"}`,
+    `blocking=${gate.blocking ? "true" : "false"}`,
+    `severity=${gate.severity}`,
+    `reason=${gate.reason}`,
+    `action=${gate.recommendedNextAction ?? "<none>"}`,
+    `readiness=${gate.readinessStatus}`,
+    `auto_recovery_allowed=${gate.automaticRecoveryAllowed ? "true" : "false"}`,
+    `operator_action_required=${gate.operatorActionRequired ? "true" : "false"}`,
+    `attention_key=${gate.attentionRecoveryKey ?? "<none>"}`,
+    `attention_stage=${gate.attentionStage ?? "<none>"}`,
+    `policy_version=${gate.policyVersion}`,
+    `health=${gate.healthLevel}/${String(gate.healthScore)}`,
+    `health_thresholds=${String(gate.watchScoreThreshold)}/${String(gate.riskScoreThreshold)}`,
+  ].join(" ");
+}

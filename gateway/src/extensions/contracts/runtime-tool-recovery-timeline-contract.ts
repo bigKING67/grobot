@@ -6,6 +6,7 @@ import {
 import { buildRuntimeToolRecoveryDecision } from "../../tools/runtime/tool-recovery-decision";
 import { buildRuntimeToolRecoveryReadinessSummary } from "../../tools/runtime/tool-recovery-readiness";
 import type { RuntimeToolRecoveryFeedback, RuntimeToolSurfaceMetricsSnapshot } from "../../tools/runtime/tool-events";
+import type { RuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
 import type { RuntimeToolSurfaceAdaptationSnapshot } from "../../tools/runtime/tool-surface-adaptation-state";
 
 function expect(condition: boolean, message: string): asserts condition {
@@ -31,6 +32,33 @@ const expectedEscalation = {
   escalationPolicyVersion: "v1",
   baseStage: "strategy_switch" as const,
   baseRecommendedNextAction: "switch_tool_strategy",
+};
+
+const customPolicy: RuntimeToolRecoveryPolicySnapshot = {
+  version: "v-test-health",
+  promptMaxAgeMs: 1_000,
+  timelineMaxEntries: 5,
+  adaptationHistoryMaxEntries: 5,
+  recoveryConsumptionHistoryMaxEntries: 5,
+  guard: {
+    repeatedProfileFailureThreshold: 2,
+    recentProfileSequenceSize: 4,
+    oscillationProfileWindowSize: 4,
+  },
+  escalation: {
+    sameToolErrorStrategySwitchThreshold: 2,
+    sameToolErrorAskUserThreshold: 3,
+  },
+  health: {
+    riskScoreThreshold: 40,
+    watchScoreThreshold: 90,
+    penalties: {
+      activeRecovery: 5,
+      activeNonrecoverable: 7,
+      stuckNonrecoverable: 11,
+      historicalUnconsumed: 13,
+    },
+  },
 };
 
 const metrics: RuntimeToolSurfaceMetricsSnapshot = {
@@ -249,6 +277,47 @@ expectEqual(activeDecision.readiness.status, "blocked", "active decision readine
 expectEqual(activeDecision.gate.status, "fail", "active decision gate status");
 expectEqual(activeDecision.gate.reason, "blocked_operator_action_required", "active decision gate reason");
 
+const customPolicyActiveHealth = buildRuntimeToolRecoveryHealthSummary({
+  timeline: activeTimeline,
+  nowMs: Date.parse(latestObservedAt) + 2_000,
+  policy: customPolicy,
+});
+expectEqual(customPolicyActiveHealth.score, 64, "custom policy active health score");
+expectEqual(customPolicyActiveHealth.level, "risk", "custom policy active health level");
+expectEqual(
+  customPolicyActiveHealth.components.activeRecoveryPenalty,
+  5,
+  "custom policy active recovery penalty",
+);
+expectEqual(
+  customPolicyActiveHealth.components.activeNonrecoverablePenalty,
+  7,
+  "custom policy active nonrecoverable penalty",
+);
+expectEqual(
+  customPolicyActiveHealth.components.stuckNonrecoverablePenalty,
+  11,
+  "custom policy stuck nonrecoverable penalty",
+);
+expectEqual(
+  customPolicyActiveHealth.components.historicalUnconsumedPenalty,
+  13,
+  "custom policy historical unconsumed penalty",
+);
+
+const customPolicyActiveDecision = buildRuntimeToolRecoveryDecision({
+  metrics,
+  adaptationSnapshot: emptyAdaptationSnapshot,
+  nowMs: Date.parse(latestObservedAt) + 2_000,
+  policy: customPolicy,
+});
+expectEqual(customPolicyActiveDecision.policy.version, "v-test-health", "custom policy decision version");
+expectEqual(customPolicyActiveDecision.health.score, 64, "custom policy decision health score");
+expectEqual(customPolicyActiveDecision.readiness.policyVersion, "v-test-health", "custom policy decision readiness policy");
+expectEqual(customPolicyActiveDecision.readiness.watchScoreThreshold, 90, "custom policy decision readiness watch threshold");
+expectEqual(customPolicyActiveDecision.gate.policyVersion, "v-test-health", "custom policy decision gate policy");
+expectEqual(customPolicyActiveDecision.gate.watchScoreThreshold, 90, "custom policy decision gate watch threshold");
+
 const consumedAdaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot = {
   ...emptyAdaptationSnapshot,
   updatedAt: consumedAt,
@@ -410,6 +479,60 @@ expectEqual(consumedDecision.readiness.status, "degraded", "consumed decision re
 expectEqual(consumedDecision.gate.status, "warn", "consumed decision gate status");
 expectEqual(consumedDecision.gate.reason, "degraded_auto_recovery_allowed", "consumed decision gate reason");
 
+const fullyRecoveredAdaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot = {
+  ...emptyAdaptationSnapshot,
+  updatedAt: consumedAt,
+  recentRecoveryConsumptions: [
+    {
+      id: "tsc_timeline_contract_latest_consumed",
+      reason: "nonrecoverable_intervention_prompted",
+      recoveryStage: "ask_user",
+      recoveryToolName: "web_scan",
+      recoveryErrorClass: "config_missing",
+      recoveryObservedAt: latestObservedAt,
+      consumedAt,
+      traceId: "trace_timeline_contract_latest",
+    },
+    {
+      id: "tsc_timeline_contract_older_recovered",
+      reason: "recovered_signal_consumed",
+      recoveryStage: "local_fix",
+      recoveryToolName: "read",
+      recoveryErrorClass: "path_not_found",
+      recoveryObservedAt: olderObservedAt,
+      consumedAt,
+      traceId: "trace_timeline_contract_older",
+    },
+  ],
+  latestRecoveryConsumption: {
+    id: "tsc_timeline_contract_older_recovered",
+    reason: "recovered_signal_consumed",
+    recoveryStage: "local_fix",
+    recoveryToolName: "read",
+    recoveryErrorClass: "path_not_found",
+    recoveryObservedAt: olderObservedAt,
+    consumedAt,
+    traceId: "trace_timeline_contract_older",
+  },
+};
+
+const fullyRecoveredDecision = buildRuntimeToolRecoveryDecision({
+  metrics,
+  adaptationSnapshot: fullyRecoveredAdaptationSnapshot,
+  nowMs: Date.parse(consumedAt),
+});
+expectEqual(fullyRecoveredDecision.feedback.consumed, true, "fully recovered latest feedback consumed");
+expectEqual(fullyRecoveredDecision.timeline[0]?.consumed ?? false, true, "fully recovered latest timeline consumed");
+expectEqual(fullyRecoveredDecision.timeline[1]?.consumed ?? false, true, "fully recovered older timeline consumed");
+expectEqual(fullyRecoveredDecision.health.score, 100, "fully recovered health score");
+expectEqual(fullyRecoveredDecision.health.level, "good", "fully recovered health level");
+expectEqual(fullyRecoveredDecision.health.unconsumedCount, 0, "fully recovered unconsumed count");
+expectEqual(fullyRecoveredDecision.health.attentionSource, "none", "fully recovered attention source");
+expectEqual(fullyRecoveredDecision.readiness.status, "ready", "fully recovered readiness status");
+expectEqual(fullyRecoveredDecision.readiness.automaticRecoveryAllowed, true, "fully recovered automatic recovery");
+expectEqual(fullyRecoveredDecision.gate.status, "pass", "fully recovered gate status");
+expectEqual(fullyRecoveredDecision.gate.reason, "ready", "fully recovered gate reason");
+
 process.stdout.write(JSON.stringify({
   ok: true,
   active_timeline_count: activeTimeline.length,
@@ -434,4 +557,10 @@ process.stdout.write(JSON.stringify({
   consumed_readiness_status: consumedReadiness.status,
   consumed_readiness_auto_allowed: consumedReadiness.automaticRecoveryAllowed,
   consumed_decision_gate_reason: consumedDecision.gate.reason,
+  custom_policy_active_health_score: customPolicyActiveHealth.score,
+  custom_policy_decision_policy_version: customPolicyActiveDecision.policy.version,
+  custom_policy_decision_watch_threshold: customPolicyActiveDecision.gate.watchScoreThreshold,
+  fully_recovered_health_level: fullyRecoveredDecision.health.level,
+  fully_recovered_readiness_status: fullyRecoveredDecision.readiness.status,
+  fully_recovered_gate_status: fullyRecoveredDecision.gate.status,
 }) + "\n");

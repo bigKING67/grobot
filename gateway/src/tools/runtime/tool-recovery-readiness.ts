@@ -83,3 +83,21 @@ export function buildRuntimeToolRecoveryReadinessSummary(input: {
     attentionRequiresUserIntervention: input.health.attentionRequiresUserIntervention,
   };
 }
+
+export function formatRuntimeToolRecoveryReadinessFields(
+  summary: RuntimeToolRecoveryReadinessSummary,
+): string {
+  return [
+    `status=${summary.status}`,
+    `ready=${summary.ready ? "true" : "false"}`,
+    `auto_recovery_allowed=${summary.automaticRecoveryAllowed ? "true" : "false"}`,
+    `operator_action_required=${summary.operatorActionRequired ? "true" : "false"}`,
+    `reason=${summary.reason}`,
+    `action=${summary.recommendedNextAction ?? "<none>"}`,
+    `attention_key=${summary.attentionRecoveryKey ?? "<none>"}`,
+    `attention_stage=${summary.attentionStage ?? "<none>"}`,
+    `policy_version=${summary.policyVersion}`,
+    `health=${summary.healthLevel}/${String(summary.healthScore)}`,
+    `health_thresholds=${String(summary.watchScoreThreshold)}/${String(summary.riskScoreThreshold)}`,
+  ].join(" ");
+}

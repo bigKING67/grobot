@@ -602,6 +602,12 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_readiness_status, "degraded");
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_readiness_auto_allowed, true);
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_decision_gate_reason, "degraded_auto_recovery_allowed");
+  assert.equal(runtimeToolRecoveryTimelinePayload.custom_policy_active_health_score, 64);
+  assert.equal(runtimeToolRecoveryTimelinePayload.custom_policy_decision_policy_version, "v-test-health");
+  assert.equal(runtimeToolRecoveryTimelinePayload.custom_policy_decision_watch_threshold, 90);
+  assert.equal(runtimeToolRecoveryTimelinePayload.fully_recovered_health_level, "good");
+  assert.equal(runtimeToolRecoveryTimelinePayload.fully_recovered_readiness_status, "ready");
+  assert.equal(runtimeToolRecoveryTimelinePayload.fully_recovered_gate_status, "pass");
   logStep("runtime-tool-recovery-timeline-contract");
 
   const runtimeToolRecoveryReadinessResult = runCommand("npx", [
@@ -639,6 +645,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolRecoveryReadinessPayload.policy_forwarded_gate_policy_version, "v-test-readiness");
   assert.equal(runtimeToolRecoveryReadinessPayload.policy_forwarded_gate_risk_threshold, 42);
   assert.equal(runtimeToolRecoveryReadinessPayload.policy_forwarded_gate_watch_threshold, 77);
+  assert.equal(runtimeToolRecoveryReadinessPayload.readiness_formatter_has_thresholds, true);
+  assert.equal(runtimeToolRecoveryReadinessPayload.gate_formatter_has_thresholds, true);
   logStep("runtime-tool-recovery-readiness-contract");
 
   const runtimeToolRecoveryFlowResult = runCommand("npx", [

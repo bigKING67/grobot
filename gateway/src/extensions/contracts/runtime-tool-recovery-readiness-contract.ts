@@ -1,9 +1,11 @@
 import {
   buildRuntimeToolRecoveryReadinessGate,
+  formatRuntimeToolRecoveryGateFields,
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../tools/runtime/tool-recovery-readiness-gate";
 import {
   buildRuntimeToolRecoveryReadinessSummary,
+  formatRuntimeToolRecoveryReadinessFields,
   type RuntimeToolRecoveryReadinessSummary,
 } from "../../tools/runtime/tool-recovery-readiness";
 import type { RuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
@@ -320,6 +322,23 @@ expectEqual(policyForwardedGate.riskScoreThreshold, 42, "policy forwarded gate r
 expectEqual(policyForwardedGate.watchScoreThreshold, 77, "policy forwarded gate watch threshold");
 expectEqual(policyForwardedGate.healthScore, 76, "policy forwarded gate health score");
 
+const policyForwardedReadinessFields = formatRuntimeToolRecoveryReadinessFields(policyForwardedReadiness);
+expect(
+  policyForwardedReadinessFields.includes("policy_version=v-test-readiness")
+    && policyForwardedReadinessFields.includes("health_thresholds=77/42")
+    && policyForwardedReadinessFields.includes("attention_stage=local_fix"),
+  "readiness formatter includes policy thresholds and attention stage",
+);
+
+const policyForwardedGateFields = formatRuntimeToolRecoveryGateFields(policyForwardedGate);
+expect(
+  policyForwardedGateFields.includes("status=warn")
+    && policyForwardedGateFields.includes("reason=degraded_auto_recovery_allowed")
+    && policyForwardedGateFields.includes("policy_version=v-test-readiness")
+    && policyForwardedGateFields.includes("health_thresholds=77/42"),
+  "gate formatter includes reason and policy thresholds",
+);
+
 expect(
   [
     readyGate.reason,
@@ -357,4 +376,6 @@ process.stdout.write(JSON.stringify({
   policy_forwarded_gate_policy_version: policyForwardedGate.policyVersion,
   policy_forwarded_gate_risk_threshold: policyForwardedGate.riskScoreThreshold,
   policy_forwarded_gate_watch_threshold: policyForwardedGate.watchScoreThreshold,
+  readiness_formatter_has_thresholds: policyForwardedReadinessFields.includes("health_thresholds=77/42"),
+  gate_formatter_has_thresholds: policyForwardedGateFields.includes("health_thresholds=77/42"),
 }) + "\n");

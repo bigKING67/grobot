@@ -8,7 +8,7 @@ import {
   resolveRuntimeToolRecoveryConsumption,
   type RuntimeToolSurfaceAdaptationSnapshot,
 } from "./tool-surface-adaptation-state";
-import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
+import { RUNTIME_TOOL_RECOVERY_POLICY, type RuntimeToolRecoveryPolicySnapshot } from "./tool-recovery-policy";
 
 export interface RuntimeToolRecoveryIdentityInput {
   observedAt: string | null;
@@ -123,18 +123,19 @@ function classifyRecoveryHealthLevel(input: {
   activeRecoveryCount: number;
   unconsumedCount: number;
   score: number;
+  policy: RuntimeToolRecoveryPolicySnapshot;
 }): "good" | "watch" | "risk" {
   if (
     input.activeNonrecoverableCount > 0
     || input.stuckNonrecoverableCount > 0
-    || input.score < RUNTIME_TOOL_RECOVERY_POLICY.health.riskScoreThreshold
+    || input.score < input.policy.health.riskScoreThreshold
   ) {
     return "risk";
   }
   if (
     input.activeRecoveryCount > 0
     || input.unconsumedCount > 0
-    || input.score < RUNTIME_TOOL_RECOVERY_POLICY.health.watchScoreThreshold
+    || input.score < input.policy.health.watchScoreThreshold
   ) {
     return "watch";
   }
@@ -227,7 +228,9 @@ export function buildRuntimeToolRecoveryTimeline(input: {
 export function buildRuntimeToolRecoveryHealthSummary(input: {
   timeline: readonly RuntimeToolRecoveryTimelineEntry[];
   nowMs?: number;
+  policy?: RuntimeToolRecoveryPolicySnapshot;
 }): RuntimeToolRecoveryHealthSummary {
+  const policy = input.policy ?? RUNTIME_TOOL_RECOVERY_POLICY;
   const nowMs = input.nowMs ?? Date.now();
   const latest = input.timeline[0] ?? null;
   const firstUnconsumed = input.timeline.find((entry) => !entry.consumed) ?? null;
@@ -264,14 +267,14 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
 
   const latestObservedAtMs = latest?.observedAt ? Date.parse(latest.observedAt) : Number.NaN;
   const latestAgeMs = Number.isFinite(latestObservedAtMs) ? Math.max(0, nowMs - latestObservedAtMs) : null;
-  const activeRecoveryPenalty = activeRecoveryCount * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.activeRecovery;
+  const activeRecoveryPenalty = activeRecoveryCount * policy.health.penalties.activeRecovery;
   const activeNonrecoverablePenalty =
-    activeNonrecoverableCount * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.activeNonrecoverable;
+    activeNonrecoverableCount * policy.health.penalties.activeNonrecoverable;
   const stuckNonrecoverablePenalty =
-    stuckNonrecoverableCount * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.stuckNonrecoverable;
+    stuckNonrecoverableCount * policy.health.penalties.stuckNonrecoverable;
   const historicalUnconsumedPenalty =
     Math.max(0, unconsumedCount - activeRecoveryCount)
-    * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.historicalUnconsumed;
+    * policy.health.penalties.historicalUnconsumed;
   const score = clampScore(
     100
       - activeRecoveryPenalty
@@ -285,6 +288,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     activeRecoveryCount,
     unconsumedCount,
     score,
+    policy,
   });
   const reason = recoveryHealthReason({
     activeNonrecoverableCount,

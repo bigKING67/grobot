@@ -54,11 +54,12 @@ export function buildRuntimeToolRecoveryDecision(input: {
     adaptationSnapshot: input.adaptationSnapshot,
     recoveryFeedback: feedback,
   });
+  const policy = input.policy ?? getRuntimeToolRecoveryPolicySnapshot();
   const health = buildRuntimeToolRecoveryHealthSummary({
     timeline,
     nowMs: input.nowMs,
+    policy,
   });
-  const policy = input.policy ?? getRuntimeToolRecoveryPolicySnapshot();
   const readiness = buildRuntimeToolRecoveryReadinessSummary({
     health,
     policy,
