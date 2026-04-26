@@ -94,6 +94,13 @@ export interface RuntimeToolRecoveryConsumptionWrite {
   snapshot: RuntimeToolSurfaceAdaptationSnapshot;
 }
 
+export interface RuntimeToolRecoveryConsumptionStatus {
+  consumed: boolean;
+  consumedReason: RuntimeToolRecoveryConsumptionReason | null;
+  consumedAt: string | null;
+  matchedRecord: RuntimeToolRecoveryConsumptionRecord | null;
+}
+
 export interface RuntimeToolSurfaceAdaptationGuardedResult extends RuntimeToolSurfaceAdaptationResult {
   guard: RuntimeToolSurfaceAdaptationGuard;
 }
@@ -365,14 +372,6 @@ function recoveryConsumptionKey(input: {
     input.recoveryToolName ?? "<none>",
     input.recoveryErrorClass ?? "<none>",
   ].join("|");
-}
-
-function feedbackRecoveryKey(feedback: RuntimeToolRecoveryFeedback): string {
-  return recoveryConsumptionKey({
-    recoveryStage: feedback.stage,
-    recoveryToolName: feedback.toolName,
-    recoveryErrorClass: feedback.errorClass,
-  });
 }
 
 function parseIsoMs(value: string | null | undefined): number | undefined {
@@ -754,26 +753,14 @@ export function applyRuntimeToolRecoveryConsumption(input: {
   if (!input.feedback.active) {
     return input.feedback;
   }
-  const feedbackKey = feedbackRecoveryKey(input.feedback);
-  const feedbackObservedAtMs = parseIsoMs(input.feedback.observedAt);
-  if (typeof feedbackObservedAtMs !== "number") {
-    return {
-      ...input.feedback,
-      consumed: false,
-      consumedReason: null,
-      consumedAt: null,
-    };
-  }
-  const consumedRecord = [...input.snapshot.recentRecoveryConsumptions]
-    .reverse()
-    .find((record) => {
-      if (recoveryConsumptionKey(record) !== feedbackKey) {
-        return false;
-      }
-      const consumedAtMs = parseIsoMs(record.consumedAt);
-      return typeof consumedAtMs === "number" && consumedAtMs >= feedbackObservedAtMs;
-    });
-  if (!consumedRecord) {
+  const consumption = resolveRuntimeToolRecoveryConsumption({
+    snapshot: input.snapshot,
+    recoveryStage: input.feedback.stage,
+    recoveryToolName: input.feedback.toolName,
+    recoveryErrorClass: input.feedback.errorClass,
+    recoveryObservedAt: input.feedback.observedAt ?? null,
+  });
+  if (!consumption.consumed) {
     return {
       ...input.feedback,
       consumed: false,
@@ -785,11 +772,49 @@ export function applyRuntimeToolRecoveryConsumption(input: {
     ...input.feedback,
     active: false,
     severity: "none",
-    reason: `consumed_${consumedRecord.reason}`,
+    reason: `consumed_${consumption.consumedReason}`,
     promptBlock: "",
     consumed: true,
-    consumedReason: consumedRecord.reason,
-    consumedAt: consumedRecord.consumedAt,
+    consumedReason: consumption.consumedReason,
+    consumedAt: consumption.consumedAt,
+  };
+}
+
+export function resolveRuntimeToolRecoveryConsumption(input: {
+  snapshot: RuntimeToolSurfaceAdaptationSnapshot;
+  recoveryStage: string | null;
+  recoveryToolName: string | null;
+  recoveryErrorClass: string | null;
+  recoveryObservedAt: string | null;
+}): RuntimeToolRecoveryConsumptionStatus {
+  const observedAtMs = parseIsoMs(input.recoveryObservedAt);
+  if (typeof observedAtMs !== "number") {
+    return {
+      consumed: false,
+      consumedReason: null,
+      consumedAt: null,
+      matchedRecord: null,
+    };
+  }
+  const candidateKey = recoveryConsumptionKey({
+    recoveryStage: input.recoveryStage,
+    recoveryToolName: input.recoveryToolName,
+    recoveryErrorClass: input.recoveryErrorClass,
+  });
+  const matchedRecord = [...input.snapshot.recentRecoveryConsumptions]
+    .reverse()
+    .find((record) => {
+      if (recoveryConsumptionKey(record) !== candidateKey) {
+        return false;
+      }
+      const consumedAtMs = parseIsoMs(record.consumedAt);
+      return typeof consumedAtMs === "number" && consumedAtMs >= observedAtMs;
+    }) ?? null;
+  return {
+    consumed: matchedRecord !== null,
+    consumedReason: matchedRecord?.reason ?? null,
+    consumedAt: matchedRecord?.consumedAt ?? null,
+    matchedRecord,
   };
 }
 

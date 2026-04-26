@@ -570,6 +570,29 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolEventsPayload.recovery_action_catalog_size >= 18, true);
   logStep("runtime-tool-events-contract");
 
+  const runtimeToolRecoveryTimelineResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts",
+  ]);
+  assertSuccess("runtime-tool-recovery-timeline-contract", runtimeToolRecoveryTimelineResult);
+  const runtimeToolRecoveryTimelinePayload = parseJsonOutput(
+    "runtime-tool-recovery-timeline-contract",
+    runtimeToolRecoveryTimelineResult.stdout,
+  );
+  assert.equal(runtimeToolRecoveryTimelinePayload.ok, true);
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_timeline_count, 2);
+  assert.equal(typeof runtimeToolRecoveryTimelinePayload.active_latest_recovery_key, "string");
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_health_level, "risk");
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_health_score, 36);
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_health_stuck_nonrecoverable, true);
+  assert.equal(runtimeToolRecoveryTimelinePayload.consumed_latest_recovery_consumed, true);
+  assert.equal(runtimeToolRecoveryTimelinePayload.consumed_health_level, "watch");
+  assert.equal(runtimeToolRecoveryTimelinePayload.consumed_health_unconsumed_count, 1);
+  logStep("runtime-tool-recovery-timeline-contract");
+
   const runtimeToolRecoveryFlowResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -4838,6 +4861,57 @@ async function runTsRustExecutionSmoke() {
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_feedback_observed_at_type)),
     true,
   );
+  assert.equal(statusPayload.status_runtime_tool_recovery_timeline_is_array, true);
+  assert.equal(statusPayload.status_runtime_tool_recovery_timeline_count >= 0, true);
+  assert.equal(
+    ["string", "undefined"].includes(String(statusPayload.status_runtime_tool_recovery_timeline_latest_recovery_key_type)),
+    true,
+  );
+  assert.equal(
+    ["boolean", "undefined"].includes(String(statusPayload.status_runtime_tool_recovery_timeline_latest_active_type)),
+    true,
+  );
+  assert.equal(
+    ["boolean", "undefined"].includes(String(statusPayload.status_runtime_tool_recovery_timeline_latest_consumed_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "object", "undefined"].includes(String(statusPayload.status_runtime_tool_recovery_timeline_latest_stage_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_present, true);
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_timeline_count_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_score_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_level_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_reason_type, "string");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_health_recommended_action_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_attention_source_type, "string");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_health_attention_key_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_health_attention_tool_name_type)),
+    true,
+  );
+  assert.equal(
+    statusPayload.status_runtime_tool_recovery_health_attention_requires_user_intervention_type,
+    "boolean",
+  );
+  assert.equal(
+    ["number", "object"].includes(String(statusPayload.status_runtime_tool_recovery_health_attention_age_ms_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_active_count_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_unconsumed_count_type, "number");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_health_latest_key_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_runtime_tool_recovery_health_has_stuck_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_present, true);
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_active_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_reason_type, "string");
@@ -5955,6 +6029,35 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_feedback_stage, "ask_user");
   assert.equal(statusNonRecoverablePayload.recovery_feedback_recoverable, false);
   assert.equal(statusNonRecoverablePayload.recovery_feedback_requires_user_intervention, true);
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_count, 2);
+  assert.equal(typeof statusNonRecoverablePayload.recovery_timeline_latest_recovery_key, "string");
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_latest_active, true);
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_latest_consumed, false);
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_latest_stage, "ask_user");
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_latest_tool_name, "web_scan");
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_previous_tool_name, "read");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_health_latest_recovery_key,
+    statusNonRecoverablePayload.recovery_timeline_latest_recovery_key,
+  );
+  assert.equal(statusNonRecoverablePayload.recovery_health_score, 36);
+  assert.equal(statusNonRecoverablePayload.recovery_health_level, "risk");
+  assert.equal(statusNonRecoverablePayload.recovery_health_reason, "active_nonrecoverable_recovery");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_health_recommended_next_action,
+    "ask_user_for_config_or_switch_provider",
+  );
+  assert.equal(statusNonRecoverablePayload.recovery_health_attention_source, "latest");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_health_attention_recovery_key,
+    statusNonRecoverablePayload.recovery_timeline_latest_recovery_key,
+  );
+  assert.equal(statusNonRecoverablePayload.recovery_health_attention_tool_name, "web_scan");
+  assert.equal(statusNonRecoverablePayload.recovery_health_attention_requires_user_intervention, true);
+  assert.equal(statusNonRecoverablePayload.recovery_health_active_recovery_count, 1);
+  assert.equal(statusNonRecoverablePayload.recovery_health_active_nonrecoverable_count, 1);
+  assert.equal(statusNonRecoverablePayload.recovery_health_unconsumed_count, 2);
+  assert.equal(statusNonRecoverablePayload.recovery_health_has_stuck_nonrecoverable, true);
   assert.equal(statusNonRecoverablePayload.surface_adaptation_active, false);
   assert.equal(statusNonRecoverablePayload.surface_adaptation_reason, "recovery_requires_user_intervention");
   assert.equal(statusNonRecoverablePayload.surface_adaptation_from_profile, "coding");
@@ -5964,6 +6067,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.text_has_requires_user_intervention, true);
   assert.equal(statusNonRecoverablePayload.text_has_auto_adaptation_blocked, true);
   assert.equal(statusNonRecoverablePayload.text_has_nonrecoverable_reason, true);
+  assert.equal(statusNonRecoverablePayload.text_has_recovery_timeline, true);
+  assert.equal(statusNonRecoverablePayload.text_has_recovery_health, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery");
 
   const statusNonRecoverableConsumedResult = runContract(
@@ -5993,11 +6098,49 @@ async function runTsRustExecutionSmoke() {
     statusNonRecoverableConsumedPayload.recovery_feedback_consumed_reason,
     "nonrecoverable_intervention_prompted",
   );
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_timeline_count, 2);
+  assert.equal(typeof statusNonRecoverableConsumedPayload.recovery_timeline_latest_recovery_key, "string");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_timeline_latest_active, false);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_timeline_latest_consumed, true);
+  assert.equal(
+    statusNonRecoverableConsumedPayload.recovery_timeline_latest_consumed_reason,
+    "nonrecoverable_intervention_prompted",
+  );
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_timeline_latest_stage, "ask_user");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_timeline_latest_tool_name, "web_scan");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_timeline_previous_tool_name, "read");
+  assert.equal(
+    statusNonRecoverableConsumedPayload.recovery_health_latest_recovery_key,
+    statusNonRecoverableConsumedPayload.recovery_timeline_latest_recovery_key,
+  );
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_score, 96);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_level, "watch");
+  assert.equal(
+    statusNonRecoverableConsumedPayload.recovery_health_reason,
+    "historical_unconsumed_recovery",
+  );
+  assert.equal(
+    statusNonRecoverableConsumedPayload.recovery_health_recommended_next_action,
+    "locate_path_with_glob_before_retry",
+  );
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_attention_source, "historical_unconsumed");
+  assert.equal(
+    statusNonRecoverableConsumedPayload.recovery_health_attention_recovery_key,
+    statusNonRecoverableConsumedPayload.recovery_timeline_previous_recovery_key,
+  );
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_attention_tool_name, "read");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_attention_requires_user_intervention, false);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_active_recovery_count, 0);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_active_nonrecoverable_count, 0);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_unconsumed_count, 1);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_health_has_stuck_nonrecoverable, false);
   assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_active, false);
   assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_reason, "consumed_nonrecoverable_intervention_prompted");
   assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_auto_adaptation_blocked, false);
   assert.equal(statusNonRecoverableConsumedPayload.surface_adaptation_recovery_recoverable, false);
   assert.equal(statusNonRecoverableConsumedPayload.text_has_consumed_nonrecoverable, true);
+  assert.equal(statusNonRecoverableConsumedPayload.text_has_recovery_timeline, true);
+  assert.equal(statusNonRecoverableConsumedPayload.text_has_recovery_health, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery-consumed");
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [

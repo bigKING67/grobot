@@ -41,6 +41,7 @@ export interface RuntimeToolSurfaceMetricsSnapshot {
   failuresByErrorClass: Record<string, number>;
   recoveryStages: Record<string, number>;
   avgDurationMsByTool: Record<string, number>;
+  recentRecoveries: RuntimeToolRecoveryHint[];
   latestRecovery: RuntimeToolRecoveryHint | null;
   path: string;
 }
@@ -306,6 +307,7 @@ function toSnapshot(path: string, state: RuntimeToolSurfaceMetricsState): Runtim
     failuresByErrorClass: state.failuresByErrorClass,
     recoveryStages: state.recoveryStages,
     avgDurationMsByTool,
+    recentRecoveries: state.recentRecoveries,
     latestRecovery: state.recentRecoveries[state.recentRecoveries.length - 1] ?? null,
     path,
   };

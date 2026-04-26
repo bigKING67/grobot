@@ -15,6 +15,9 @@ keeping every recovery decision observable in `status --json`.
 5. Gateway records recovery consumption in
    `.grobot/runtime/tool-surface-adaptation-state.json` when the hint has been
    resolved, blocked, or shown once for human intervention.
+6. Gateway projects `metrics.recentRecoveries` +
+   `surface_adaptation_outcome.recentRecoveryConsumptions` into a merged
+   `recovery_timeline` for `status --json`.
 
 The Rust policy source is `runtime/src/tools/recovery.rs`. Gateway action
 instructions are cataloged in
@@ -94,15 +97,76 @@ again.
 - `recovery_feedback.requires_user_intervention`
 - `recovery_feedback.consumed`
 - `recovery_feedback.consumed_reason`
+- `recovery_timeline[]`
+- `recovery_health`
 - `surface_adaptation.active`
 - `surface_adaptation.reason`
 - `surface_adaptation.auto_adaptation_blocked`
 - `surface_adaptation.recovery_recoverable`
 - `surface_adaptation_outcome.latest_recovery_consumption`
 
+`recovery_timeline` is ordered newest-first and keeps each recent recovery
+annotated with:
+
+- `recovery_key`
+- `observed_at`
+- `tool_name`
+- `error_class`
+- `stage`
+- `recommended_next_action`
+- `recoverable`
+- `requires_user_intervention`
+- `active`
+- `consumed`
+- `consumed_reason`
+- `consumed_at`
+
+`recovery_health` provides a compact machine-readable summary for automation and
+diagnostics:
+
+- `score`
+- `level` (`good|watch|risk`)
+- `reason`
+- `recommended_next_action`
+- `attention_source` (`none|latest|historical_unconsumed`)
+- `attention_recovery_key`
+- `attention_stage`
+- `attention_tool_name`
+- `attention_error_class`
+- `attention_requires_user_intervention`
+- `attention_age_ms`
+- `timeline_entry_count`
+- `active_recovery_count`
+- `active_nonrecoverable_count`
+- `unconsumed_count`
+- `consumed_count`
+- `stuck_nonrecoverable_count`
+- `has_stuck_nonrecoverable`
+- `latest_recovery_key`
+- `latest_age_ms`
+
+The intended contract is:
+
+- `good`: no active or historical unresolved pressure worth operator attention
+- `watch`: historical or low-grade recovery pressure exists; inspect before the
+  next risky tool sequence
+- `risk`: active nonrecoverable or otherwise stuck recovery pressure exists;
+  follow `recommended_next_action` before continuing
+
+`attention_*` makes the recommendation traceable:
+
+- `attention_source=latest`: the recommended action points at the newest active
+  recovery entry.
+- `attention_source=historical_unconsumed`: the newest recovery may already be
+  consumed, but an older unresolved recovery still requires action.
+- `attention_recovery_key`: the exact recovery entry the action refers to, so
+  automation does not have to guess from `latest_*`.
+
 Text status mirrors the decisive fields for quick terminal inspection:
 
 - `runtime_tool_recovery_feedback: ...`
+- `runtime_tool_recovery_timeline: ...`
+- `runtime_tool_recovery_health: ...`
 - `runtime_tool_surface_adaptation: ...`
 - `runtime_tool_surface_adaptation_outcome: ...`
 
@@ -112,6 +176,7 @@ Focused contracts:
 
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
+npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-flow-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-contract.ts
 node gateway/src/extensions/contracts/start-smoke-contract.mjs status-nonrecoverable-tool-recovery --repo-root .

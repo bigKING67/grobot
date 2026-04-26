@@ -32,6 +32,12 @@ import {
   readRuntimeToolSurfaceMetrics,
 } from "../../../../tools/runtime/tool-events";
 import {
+  buildRuntimeToolRecoveryHealthSummary,
+  buildRuntimeToolRecoveryTimeline,
+  type RuntimeToolRecoveryHealthSummary,
+  type RuntimeToolRecoveryTimelineEntry,
+} from "../../../../tools/runtime/tool-recovery-timeline";
+import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
@@ -886,6 +892,58 @@ function serializeRuntimeToolRecoveryConsumption(record: RuntimeToolRecoveryCons
   };
 }
 
+function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTimelineEntry): Record<string, unknown> {
+  return {
+    recovery_key: entry.recoveryKey,
+    observed_at: entry.observedAt,
+    tool_name: entry.toolName,
+    error_class: entry.errorClass,
+    stage: entry.stage,
+    reason: entry.reason,
+    recommended_next_action: entry.recommendedNextAction,
+    recoverable: entry.recoverable,
+    requires_user_intervention: entry.requiresUserIntervention,
+    active: entry.active,
+    consumed: entry.consumed,
+    consumed_reason: entry.consumedReason,
+    consumed_at: entry.consumedAt,
+  };
+}
+
+function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryHealthSummary): Record<string, unknown> {
+  return {
+    score: summary.score,
+    level: summary.level,
+    reason: summary.reason,
+    recommended_next_action: summary.recommendedNextAction,
+    attention_source: summary.attentionSource,
+    attention_recovery_key: summary.attentionRecoveryKey,
+    attention_stage: summary.attentionStage,
+    attention_tool_name: summary.attentionToolName,
+    attention_error_class: summary.attentionErrorClass,
+    attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
+    attention_age_ms: summary.attentionAgeMs,
+    latest_recommended_next_action: summary.latestRecommendedNextAction,
+    timeline_entry_count: summary.timelineEntryCount,
+    active_recovery_count: summary.activeRecoveryCount,
+    active_nonrecoverable_count: summary.activeNonrecoverableCount,
+    unconsumed_count: summary.unconsumedCount,
+    consumed_count: summary.consumedCount,
+    nonrecoverable_count: summary.nonrecoverableCount,
+    stuck_nonrecoverable_count: summary.stuckNonrecoverableCount,
+    has_stuck_nonrecoverable: summary.hasStuckNonrecoverable,
+    latest_recovery_key: summary.latestRecoveryKey,
+    latest_stage: summary.latestStage,
+    latest_tool_name: summary.latestToolName,
+    latest_error_class: summary.latestErrorClass,
+    latest_requires_user_intervention: summary.latestRequiresUserIntervention,
+    latest_age_ms: summary.latestAgeMs,
+    components: summary.components,
+    error_class_counts: summary.errorClassCounts,
+    tool_name_counts: summary.toolNameCounts,
+  };
+}
+
 function serializeRuntimeToolSurfaceDecision(decision: RuntimeToolSurfaceDecision | null): Record<string, unknown> | null {
   if (!decision) {
     return null;
@@ -1132,6 +1190,14 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeToolRecoveryFeedback = applyRuntimeToolRecoveryConsumption({
     feedback: rawRuntimeToolRecoveryFeedback,
     snapshot: runtimeToolSurfaceAdaptationSnapshot,
+  });
+  const runtimeToolRecoveryTimeline = buildRuntimeToolRecoveryTimeline({
+    metrics: runtimeToolSurfaceMetrics,
+    adaptationSnapshot: runtimeToolSurfaceAdaptationSnapshot,
+    recoveryFeedback: runtimeToolRecoveryFeedback,
+  });
+  const runtimeToolRecoveryHealth = buildRuntimeToolRecoveryHealthSummary({
+    timeline: runtimeToolRecoveryTimeline,
   });
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
@@ -1480,6 +1546,8 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           consumed_at: runtimeToolRecoveryFeedback.consumedAt ?? null,
           observed_at: runtimeToolRecoveryFeedback.observedAt ?? null,
         },
+        recovery_timeline: runtimeToolRecoveryTimeline.map(serializeRuntimeToolRecoveryTimelineEntry),
+        recovery_health: serializeRuntimeToolRecoveryHealthSummary(runtimeToolRecoveryHealth),
         surface_adaptation: {
           enabled: runtimeToolContextPreview.toolSurfaceAdaptation.enabled,
           active: runtimeToolContextPreview.toolSurfaceAdaptation.active,
@@ -2342,6 +2410,13 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
+  );
+  const latestRuntimeToolRecoveryTimelineEntry = runtimeToolRecoveryTimeline[0] ?? null;
+  process.stdout.write(
+    `runtime_tool_recovery_timeline: entries=${String(runtimeToolRecoveryTimeline.length)} latest=${latestRuntimeToolRecoveryTimelineEntry ? `${latestRuntimeToolRecoveryTimelineEntry.toolName ?? "<none>"}/${latestRuntimeToolRecoveryTimelineEntry.errorClass ?? "<none>"}` : "<none>"} stage=${latestRuntimeToolRecoveryTimelineEntry?.stage ?? "<none>"} active=${latestRuntimeToolRecoveryTimelineEntry?.active ? "true" : "false"} consumed=${latestRuntimeToolRecoveryTimelineEntry?.consumed ? "true" : "false"}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_recovery_health: score=${String(runtimeToolRecoveryHealth.score)} level=${runtimeToolRecoveryHealth.level} reason=${runtimeToolRecoveryHealth.reason} action=${runtimeToolRecoveryHealth.recommendedNextAction ?? "<none>"} attention_source=${runtimeToolRecoveryHealth.attentionSource} attention_key=${runtimeToolRecoveryHealth.attentionRecoveryKey ?? "<none>"} active=${String(runtimeToolRecoveryHealth.activeRecoveryCount)} active_nonrecoverable=${String(runtimeToolRecoveryHealth.activeNonrecoverableCount)} unconsumed=${String(runtimeToolRecoveryHealth.unconsumedCount)} stuck_nonrecoverable=${runtimeToolRecoveryHealth.hasStuckNonrecoverable ? "true" : "false"} latest_key=${runtimeToolRecoveryHealth.latestRecoveryKey ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextPreview.toolSurfaceAdaptation.autoAdaptationBlocked ? "true" : "false"} recovery_recoverable=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable)} stage=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass ?? "<none>"}\n`,

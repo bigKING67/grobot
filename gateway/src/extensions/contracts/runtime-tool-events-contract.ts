@@ -123,6 +123,7 @@ const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
     failuresByErrorClass: {},
     recoveryStages: { ask_user: 1 },
     avgDurationMsByTool: {},
+    recentRecoveries: [],
     latestRecovery: {
       stage: "ask_user",
       reason: "config_missing",
@@ -170,6 +171,7 @@ try {
   expectEqual(first.deferredTotal, 1, "first deferred");
   expectEqual(first.avgDurationMsByTool.read, 12, "first read avg");
   expectEqual(first.avgDurationMsByTool.edit, 18, "first edit avg");
+  expectEqual(first.recentRecoveries.length, 1, "first recent recoveries length");
   expectEqual(first.latestRecovery?.stage, "observe_first", "first latest recovery");
   expectEqual(typeof first.latestRecovery?.observedAt, "string", "first latest recovery observedAt");
 
@@ -187,6 +189,7 @@ try {
 
   const readBack = readRuntimeToolSurfaceMetrics(workDir);
   expectEqual(readBack.callsTotal, 3, "readback calls");
+  expectEqual(readBack.recentRecoveries.length, 1, "readback recent recoveries length");
   expectEqual(readBack.latestRecovery?.recommendedNextAction, "observe_prior_tool_result", "readback latest action");
 
   const second = recordRuntimeToolSurfaceMetrics({ workDir, events: events.slice(0, 2) });
@@ -194,6 +197,7 @@ try {
   expectEqual(second.failedTotal, 2, "second cumulative failed");
   expectEqual(second.callsByTool.read, 2, "second read count");
   expectEqual(second.callsByTool.edit, 2, "second edit count");
+  expectEqual(second.recentRecoveries.length, 1, "second recent recoveries length is unchanged without recovery events");
 
   const staleFeedback = buildRuntimeToolRecoveryFeedback({
     metrics: second,

@@ -1620,6 +1620,15 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolRecoveryFeedback = isObject(runtimeTools?.recovery_feedback)
     ? runtimeTools.recovery_feedback
     : null;
+  const runtimeToolRecoveryTimeline = Array.isArray(runtimeTools?.recovery_timeline)
+    ? runtimeTools.recovery_timeline
+    : [];
+  const runtimeToolRecoveryTimelineLatest = isObject(runtimeToolRecoveryTimeline[0])
+    ? runtimeToolRecoveryTimeline[0]
+    : null;
+  const runtimeToolRecoveryHealth = isObject(runtimeTools?.recovery_health)
+    ? runtimeTools.recovery_health
+    : null;
   const runtimeToolSurfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -1961,6 +1970,42 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_recovery_feedback_consumed_type: typeof runtimeToolRecoveryFeedback?.consumed,
     status_runtime_tool_recovery_feedback_consumed_reason_type: typeof runtimeToolRecoveryFeedback?.consumed_reason,
     status_runtime_tool_recovery_feedback_observed_at_type: typeof runtimeToolRecoveryFeedback?.observed_at,
+    status_runtime_tool_recovery_timeline_is_array: Array.isArray(runtimeTools?.recovery_timeline),
+    status_runtime_tool_recovery_timeline_count: runtimeToolRecoveryTimeline.length,
+    status_runtime_tool_recovery_timeline_latest_recovery_key_type:
+      typeof runtimeToolRecoveryTimelineLatest?.recovery_key,
+    status_runtime_tool_recovery_timeline_latest_active_type: typeof runtimeToolRecoveryTimelineLatest?.active,
+    status_runtime_tool_recovery_timeline_latest_consumed_type: typeof runtimeToolRecoveryTimelineLatest?.consumed,
+    status_runtime_tool_recovery_timeline_latest_stage_type: typeof runtimeToolRecoveryTimelineLatest?.stage,
+    status_runtime_tool_recovery_health_present: Boolean(runtimeToolRecoveryHealth),
+    status_runtime_tool_recovery_health_timeline_count_type:
+      typeof runtimeToolRecoveryHealth?.timeline_entry_count,
+    status_runtime_tool_recovery_health_score_type:
+      typeof runtimeToolRecoveryHealth?.score,
+    status_runtime_tool_recovery_health_level_type:
+      typeof runtimeToolRecoveryHealth?.level,
+    status_runtime_tool_recovery_health_reason_type:
+      typeof runtimeToolRecoveryHealth?.reason,
+    status_runtime_tool_recovery_health_recommended_action_type:
+      typeof runtimeToolRecoveryHealth?.recommended_next_action,
+    status_runtime_tool_recovery_health_attention_source_type:
+      typeof runtimeToolRecoveryHealth?.attention_source,
+    status_runtime_tool_recovery_health_attention_key_type:
+      typeof runtimeToolRecoveryHealth?.attention_recovery_key,
+    status_runtime_tool_recovery_health_attention_tool_name_type:
+      typeof runtimeToolRecoveryHealth?.attention_tool_name,
+    status_runtime_tool_recovery_health_attention_requires_user_intervention_type:
+      typeof runtimeToolRecoveryHealth?.attention_requires_user_intervention,
+    status_runtime_tool_recovery_health_attention_age_ms_type:
+      typeof runtimeToolRecoveryHealth?.attention_age_ms,
+    status_runtime_tool_recovery_health_active_count_type:
+      typeof runtimeToolRecoveryHealth?.active_recovery_count,
+    status_runtime_tool_recovery_health_unconsumed_count_type:
+      typeof runtimeToolRecoveryHealth?.unconsumed_count,
+    status_runtime_tool_recovery_health_latest_key_type:
+      typeof runtimeToolRecoveryHealth?.latest_recovery_key,
+    status_runtime_tool_recovery_health_has_stuck_type:
+      typeof runtimeToolRecoveryHealth?.has_stuck_nonrecoverable,
     status_runtime_tool_surface_adaptation_present: Boolean(runtimeToolSurfaceAdaptation),
     status_runtime_tool_surface_adaptation_active_type: typeof runtimeToolSurfaceAdaptation?.active,
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
@@ -4250,6 +4295,7 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });
   const observedAt = new Date().toISOString();
+  const previousObservedAt = new Date(Date.parse(observedAt) - 5 * 60_000).toISOString();
   writeFileSync(
     `${runtimeDir}/tool-surface-metrics.json`,
     `${JSON.stringify({
@@ -4264,6 +4310,15 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
       durationTotalMsByTool: { web_scan: 12 },
       durationCountByTool: { web_scan: 1 },
       recentRecoveries: [
+        {
+          stage: "local_fix",
+          reason: "path_not_found",
+          recommendedNextAction: "locate_path_with_glob_before_retry",
+          toolName: "read",
+          errorClass: "path_not_found",
+          recoverable: true,
+          observedAt: previousObservedAt,
+        },
         {
           stage: "ask_user",
           reason: "config_missing",
@@ -4331,6 +4386,14 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
   const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
     ? runtimeTools.recovery_feedback
     : null;
+  const recoveryTimeline = Array.isArray(runtimeTools?.recovery_timeline)
+    ? runtimeTools.recovery_timeline
+    : [];
+  const latestRecoveryTimeline = isObject(recoveryTimeline[0]) ? recoveryTimeline[0] : null;
+  const previousRecoveryTimeline = isObject(recoveryTimeline[1]) ? recoveryTimeline[1] : null;
+  const recoveryHealth = isObject(runtimeTools?.recovery_health)
+    ? runtimeTools.recovery_health
+    : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -4343,6 +4406,33 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
     recovery_feedback_requires_user_intervention:
       recoveryFeedback?.requires_user_intervention ?? null,
+    recovery_timeline_count: recoveryTimeline.length,
+    recovery_timeline_latest_recovery_key: latestRecoveryTimeline?.recovery_key ?? null,
+    recovery_timeline_latest_active: latestRecoveryTimeline?.active ?? null,
+    recovery_timeline_latest_consumed: latestRecoveryTimeline?.consumed ?? null,
+    recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
+    recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_previous_recovery_key: previousRecoveryTimeline?.recovery_key ?? null,
+    recovery_timeline_previous_tool_name: previousRecoveryTimeline?.tool_name ?? null,
+    recovery_health_active_recovery_count: recoveryHealth?.active_recovery_count ?? null,
+    recovery_health_active_nonrecoverable_count:
+      recoveryHealth?.active_nonrecoverable_count ?? null,
+    recovery_health_unconsumed_count: recoveryHealth?.unconsumed_count ?? null,
+    recovery_health_has_stuck_nonrecoverable:
+      recoveryHealth?.has_stuck_nonrecoverable ?? null,
+    recovery_health_latest_recovery_key: recoveryHealth?.latest_recovery_key ?? null,
+    recovery_health_score: recoveryHealth?.score ?? null,
+    recovery_health_level: recoveryHealth?.level ?? null,
+    recovery_health_reason: recoveryHealth?.reason ?? null,
+    recovery_health_recommended_next_action:
+      recoveryHealth?.recommended_next_action ?? null,
+    recovery_health_attention_source: recoveryHealth?.attention_source ?? null,
+    recovery_health_attention_recovery_key:
+      recoveryHealth?.attention_recovery_key ?? null,
+    recovery_health_attention_tool_name:
+      recoveryHealth?.attention_tool_name ?? null,
+    recovery_health_attention_requires_user_intervention:
+      recoveryHealth?.attention_requires_user_intervention ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_from_profile: surfaceAdaptation?.from_profile ?? null,
@@ -4357,6 +4447,13 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("auto_adaptation_blocked=true"),
     text_has_nonrecoverable_reason:
       textResult.stdout.includes("recovery_requires_user_intervention"),
+    text_has_recovery_timeline:
+      textResult.stdout.includes("runtime_tool_recovery_timeline: entries=2")
+      && textResult.stdout.includes("latest=web_scan/config_missing"),
+    text_has_recovery_health:
+      textResult.stdout.includes("runtime_tool_recovery_health:")
+      && textResult.stdout.includes("active_nonrecoverable=1")
+      && textResult.stdout.includes("stuck_nonrecoverable=true"),
   };
 }
 
@@ -4384,6 +4481,14 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
   const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
     ? runtimeTools.recovery_feedback
     : null;
+  const recoveryTimeline = Array.isArray(runtimeTools?.recovery_timeline)
+    ? runtimeTools.recovery_timeline
+    : [];
+  const latestRecoveryTimeline = isObject(recoveryTimeline[0]) ? recoveryTimeline[0] : null;
+  const previousRecoveryTimeline = isObject(recoveryTimeline[1]) ? recoveryTimeline[1] : null;
+  const recoveryHealth = isObject(runtimeTools?.recovery_health)
+    ? runtimeTools.recovery_health
+    : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -4398,6 +4503,34 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryFeedback?.requires_user_intervention ?? null,
     recovery_feedback_consumed: recoveryFeedback?.consumed ?? null,
     recovery_feedback_consumed_reason: recoveryFeedback?.consumed_reason ?? null,
+    recovery_timeline_count: recoveryTimeline.length,
+    recovery_timeline_latest_recovery_key: latestRecoveryTimeline?.recovery_key ?? null,
+    recovery_timeline_latest_active: latestRecoveryTimeline?.active ?? null,
+    recovery_timeline_latest_consumed: latestRecoveryTimeline?.consumed ?? null,
+    recovery_timeline_latest_consumed_reason: latestRecoveryTimeline?.consumed_reason ?? null,
+    recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
+    recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_previous_recovery_key: previousRecoveryTimeline?.recovery_key ?? null,
+    recovery_timeline_previous_tool_name: previousRecoveryTimeline?.tool_name ?? null,
+    recovery_health_active_recovery_count: recoveryHealth?.active_recovery_count ?? null,
+    recovery_health_active_nonrecoverable_count:
+      recoveryHealth?.active_nonrecoverable_count ?? null,
+    recovery_health_unconsumed_count: recoveryHealth?.unconsumed_count ?? null,
+    recovery_health_has_stuck_nonrecoverable:
+      recoveryHealth?.has_stuck_nonrecoverable ?? null,
+    recovery_health_latest_recovery_key: recoveryHealth?.latest_recovery_key ?? null,
+    recovery_health_score: recoveryHealth?.score ?? null,
+    recovery_health_level: recoveryHealth?.level ?? null,
+    recovery_health_reason: recoveryHealth?.reason ?? null,
+    recovery_health_recommended_next_action:
+      recoveryHealth?.recommended_next_action ?? null,
+    recovery_health_attention_source: recoveryHealth?.attention_source ?? null,
+    recovery_health_attention_recovery_key:
+      recoveryHealth?.attention_recovery_key ?? null,
+    recovery_health_attention_tool_name:
+      recoveryHealth?.attention_tool_name ?? null,
+    recovery_health_attention_requires_user_intervention:
+      recoveryHealth?.attention_requires_user_intervention ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_auto_adaptation_blocked:
@@ -4407,6 +4540,14 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     text_has_consumed_nonrecoverable:
       textResult.stdout.includes("consumed=true")
       && textResult.stdout.includes("latest_consumption=nonrecoverable_intervention_prompted"),
+    text_has_recovery_timeline:
+      textResult.stdout.includes("runtime_tool_recovery_timeline: entries=2")
+      && textResult.stdout.includes("latest=web_scan/config_missing")
+      && textResult.stdout.includes("consumed=true"),
+    text_has_recovery_health:
+      textResult.stdout.includes("runtime_tool_recovery_health:")
+      && textResult.stdout.includes("active_nonrecoverable=0")
+      && textResult.stdout.includes("stuck_nonrecoverable=false"),
   };
 }
 
