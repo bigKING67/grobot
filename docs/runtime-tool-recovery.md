@@ -72,6 +72,23 @@ The start-turn prompt branch is routed through
 behavior can be contract-tested without embedding branch-heavy logic directly in
 `run-start-turn.ts`.
 
+## Policy source of truth
+
+Recovery policy is centralized in:
+
+- `gateway/src/tools/runtime/tool-recovery-policy.ts`
+
+That module defines the shared knobs for:
+
+- prompt max age before a recovery hint becomes stale
+- recovery timeline retention
+- adaptation / recovery-consumption history retention
+- guard thresholds for repeated profile failure and oscillation
+- health score thresholds and penalty weights
+
+The intent is to prevent silent drift between `tool-events`,
+`tool-surface-adaptation-state`, `tool-recovery-timeline`, and `status --json`.
+
 ## Consumption rules
 
 Recovery hints are one-shot per observed recovery key:
@@ -99,6 +116,7 @@ again.
 - `recovery_feedback.consumed_reason`
 - `recovery_timeline[]`
 - `recovery_health`
+- `recovery_policy`
 - `surface_adaptation.active`
 - `surface_adaptation.reason`
 - `surface_adaptation.auto_adaptation_blocked`
@@ -167,6 +185,7 @@ Text status mirrors the decisive fields for quick terminal inspection:
 - `runtime_tool_recovery_feedback: ...`
 - `runtime_tool_recovery_timeline: ...`
 - `runtime_tool_recovery_health: ...`
+- `runtime_tool_recovery_policy: ...`
 - `runtime_tool_surface_adaptation: ...`
 - `runtime_tool_surface_adaptation_outcome: ...`
 

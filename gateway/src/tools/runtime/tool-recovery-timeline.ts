@@ -8,6 +8,7 @@ import {
   resolveRuntimeToolRecoveryConsumption,
   type RuntimeToolSurfaceAdaptationSnapshot,
 } from "./tool-surface-adaptation-state";
+import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
 
 export interface RuntimeToolRecoveryIdentityInput {
   observedAt: string | null;
@@ -117,10 +118,18 @@ function classifyRecoveryHealthLevel(input: {
   unconsumedCount: number;
   score: number;
 }): "good" | "watch" | "risk" {
-  if (input.activeNonrecoverableCount > 0 || input.stuckNonrecoverableCount > 0 || input.score < 60) {
+  if (
+    input.activeNonrecoverableCount > 0
+    || input.stuckNonrecoverableCount > 0
+    || input.score < RUNTIME_TOOL_RECOVERY_POLICY.health.riskScoreThreshold
+  ) {
     return "risk";
   }
-  if (input.activeRecoveryCount > 0 || input.unconsumedCount > 0 || input.score < 85) {
+  if (
+    input.activeRecoveryCount > 0
+    || input.unconsumedCount > 0
+    || input.score < RUNTIME_TOOL_RECOVERY_POLICY.health.watchScoreThreshold
+  ) {
     return "watch";
   }
   return "good";
@@ -243,10 +252,14 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
 
   const latestObservedAtMs = latest?.observedAt ? Date.parse(latest.observedAt) : Number.NaN;
   const latestAgeMs = Number.isFinite(latestObservedAtMs) ? Math.max(0, nowMs - latestObservedAtMs) : null;
-  const activeRecoveryPenalty = activeRecoveryCount * 12;
-  const activeNonrecoverablePenalty = activeNonrecoverableCount * 28;
-  const stuckNonrecoverablePenalty = stuckNonrecoverableCount * 20;
-  const historicalUnconsumedPenalty = Math.max(0, unconsumedCount - activeRecoveryCount) * 4;
+  const activeRecoveryPenalty = activeRecoveryCount * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.activeRecovery;
+  const activeNonrecoverablePenalty =
+    activeNonrecoverableCount * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.activeNonrecoverable;
+  const stuckNonrecoverablePenalty =
+    stuckNonrecoverableCount * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.stuckNonrecoverable;
+  const historicalUnconsumedPenalty =
+    Math.max(0, unconsumedCount - activeRecoveryCount)
+    * RUNTIME_TOOL_RECOVERY_POLICY.health.penalties.historicalUnconsumed;
   const score = clampScore(
     100
       - activeRecoveryPenalty

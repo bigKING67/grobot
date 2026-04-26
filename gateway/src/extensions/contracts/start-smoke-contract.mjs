@@ -1629,6 +1629,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolRecoveryHealth = isObject(runtimeTools?.recovery_health)
     ? runtimeTools.recovery_health
     : null;
+  const runtimeToolRecoveryPolicy = isObject(runtimeTools?.recovery_policy)
+    ? runtimeTools.recovery_policy
+    : null;
   const runtimeToolSurfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -2006,6 +2009,21 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryHealth?.latest_recovery_key,
     status_runtime_tool_recovery_health_has_stuck_type:
       typeof runtimeToolRecoveryHealth?.has_stuck_nonrecoverable,
+    status_runtime_tool_recovery_policy_present: Boolean(runtimeToolRecoveryPolicy),
+    status_runtime_tool_recovery_policy_version_type:
+      typeof runtimeToolRecoveryPolicy?.version,
+    status_runtime_tool_recovery_policy_prompt_max_age_ms_type:
+      typeof runtimeToolRecoveryPolicy?.prompt_max_age_ms,
+    status_runtime_tool_recovery_policy_timeline_max_entries_type:
+      typeof runtimeToolRecoveryPolicy?.timeline_max_entries,
+    status_runtime_tool_recovery_policy_adaptation_history_max_entries_type:
+      typeof runtimeToolRecoveryPolicy?.adaptation_history_max_entries,
+    status_runtime_tool_recovery_policy_recovery_consumption_history_max_entries_type:
+      typeof runtimeToolRecoveryPolicy?.recovery_consumption_history_max_entries,
+    status_runtime_tool_recovery_policy_guard_type:
+      typeof runtimeToolRecoveryPolicy?.guard,
+    status_runtime_tool_recovery_policy_health_type:
+      typeof runtimeToolRecoveryPolicy?.health,
     status_runtime_tool_surface_adaptation_present: Boolean(runtimeToolSurfaceAdaptation),
     status_runtime_tool_surface_adaptation_active_type: typeof runtimeToolSurfaceAdaptation?.active,
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
@@ -4394,6 +4412,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
   const recoveryHealth = isObject(runtimeTools?.recovery_health)
     ? runtimeTools.recovery_health
     : null;
+  const recoveryPolicy = isObject(runtimeTools?.recovery_policy)
+    ? runtimeTools.recovery_policy
+    : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -4433,6 +4454,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryHealth?.attention_tool_name ?? null,
     recovery_health_attention_requires_user_intervention:
       recoveryHealth?.attention_requires_user_intervention ?? null,
+    recovery_policy_version: recoveryPolicy?.version ?? null,
+    recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_from_profile: surfaceAdaptation?.from_profile ?? null,
@@ -4454,6 +4477,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_health:")
       && textResult.stdout.includes("active_nonrecoverable=1")
       && textResult.stdout.includes("stuck_nonrecoverable=true"),
+    text_has_recovery_policy:
+      textResult.stdout.includes("runtime_tool_recovery_policy:")
+      && textResult.stdout.includes("timeline_max_entries=20"),
   };
 }
 
@@ -4488,6 +4514,9 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
   const previousRecoveryTimeline = isObject(recoveryTimeline[1]) ? recoveryTimeline[1] : null;
   const recoveryHealth = isObject(runtimeTools?.recovery_health)
     ? runtimeTools.recovery_health
+    : null;
+  const recoveryPolicy = isObject(runtimeTools?.recovery_policy)
+    ? runtimeTools.recovery_policy
     : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
@@ -4531,6 +4560,8 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryHealth?.attention_tool_name ?? null,
     recovery_health_attention_requires_user_intervention:
       recoveryHealth?.attention_requires_user_intervention ?? null,
+    recovery_policy_version: recoveryPolicy?.version ?? null,
+    recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_auto_adaptation_blocked:
@@ -4548,6 +4579,9 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_health:")
       && textResult.stdout.includes("active_nonrecoverable=0")
       && textResult.stdout.includes("stuck_nonrecoverable=false"),
+    text_has_recovery_policy:
+      textResult.stdout.includes("runtime_tool_recovery_policy:")
+      && textResult.stdout.includes("timeline_max_entries=20"),
   };
 }
 

@@ -38,6 +38,10 @@ import {
   type RuntimeToolRecoveryTimelineEntry,
 } from "../../../../tools/runtime/tool-recovery-timeline";
 import {
+  getRuntimeToolRecoveryPolicySnapshot,
+  type RuntimeToolRecoveryPolicySnapshot,
+} from "../../../../tools/runtime/tool-recovery-policy";
+import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
@@ -944,6 +948,31 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
   };
 }
 
+function serializeRuntimeToolRecoveryPolicySummary(summary: RuntimeToolRecoveryPolicySnapshot): Record<string, unknown> {
+  return {
+    version: summary.version,
+    prompt_max_age_ms: summary.promptMaxAgeMs,
+    timeline_max_entries: summary.timelineMaxEntries,
+    adaptation_history_max_entries: summary.adaptationHistoryMaxEntries,
+    recovery_consumption_history_max_entries: summary.recoveryConsumptionHistoryMaxEntries,
+    guard: {
+      repeated_profile_failure_threshold: summary.guard.repeatedProfileFailureThreshold,
+      recent_profile_sequence_size: summary.guard.recentProfileSequenceSize,
+      oscillation_profile_window_size: summary.guard.oscillationProfileWindowSize,
+    },
+    health: {
+      risk_score_threshold: summary.health.riskScoreThreshold,
+      watch_score_threshold: summary.health.watchScoreThreshold,
+      penalties: {
+        active_recovery: summary.health.penalties.activeRecovery,
+        active_nonrecoverable: summary.health.penalties.activeNonrecoverable,
+        stuck_nonrecoverable: summary.health.penalties.stuckNonrecoverable,
+        historical_unconsumed: summary.health.penalties.historicalUnconsumed,
+      },
+    },
+  };
+}
+
 function serializeRuntimeToolSurfaceDecision(decision: RuntimeToolSurfaceDecision | null): Record<string, unknown> | null {
   if (!decision) {
     return null;
@@ -1199,6 +1228,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeToolRecoveryHealth = buildRuntimeToolRecoveryHealthSummary({
     timeline: runtimeToolRecoveryTimeline,
   });
+  const runtimeToolRecoveryPolicy = getRuntimeToolRecoveryPolicySnapshot();
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
     projectTomlPath,
@@ -1548,6 +1578,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         },
         recovery_timeline: runtimeToolRecoveryTimeline.map(serializeRuntimeToolRecoveryTimelineEntry),
         recovery_health: serializeRuntimeToolRecoveryHealthSummary(runtimeToolRecoveryHealth),
+        recovery_policy: serializeRuntimeToolRecoveryPolicySummary(runtimeToolRecoveryPolicy),
         surface_adaptation: {
           enabled: runtimeToolContextPreview.toolSurfaceAdaptation.enabled,
           active: runtimeToolContextPreview.toolSurfaceAdaptation.active,
@@ -2417,6 +2448,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_recovery_health: score=${String(runtimeToolRecoveryHealth.score)} level=${runtimeToolRecoveryHealth.level} reason=${runtimeToolRecoveryHealth.reason} action=${runtimeToolRecoveryHealth.recommendedNextAction ?? "<none>"} attention_source=${runtimeToolRecoveryHealth.attentionSource} attention_key=${runtimeToolRecoveryHealth.attentionRecoveryKey ?? "<none>"} active=${String(runtimeToolRecoveryHealth.activeRecoveryCount)} active_nonrecoverable=${String(runtimeToolRecoveryHealth.activeNonrecoverableCount)} unconsumed=${String(runtimeToolRecoveryHealth.unconsumedCount)} stuck_nonrecoverable=${runtimeToolRecoveryHealth.hasStuckNonrecoverable ? "true" : "false"} latest_key=${runtimeToolRecoveryHealth.latestRecoveryKey ?? "<none>"}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_recovery_policy: version=${runtimeToolRecoveryPolicy.version} prompt_max_age_ms=${String(runtimeToolRecoveryPolicy.promptMaxAgeMs)} timeline_max_entries=${String(runtimeToolRecoveryPolicy.timelineMaxEntries)} adaptation_history_max_entries=${String(runtimeToolRecoveryPolicy.adaptationHistoryMaxEntries)} recovery_consumption_history_max_entries=${String(runtimeToolRecoveryPolicy.recoveryConsumptionHistoryMaxEntries)} guard_repeat_failures=${String(runtimeToolRecoveryPolicy.guard.repeatedProfileFailureThreshold)} guard_recent_profile_sequence=${String(runtimeToolRecoveryPolicy.guard.recentProfileSequenceSize)} guard_oscillation_window=${String(runtimeToolRecoveryPolicy.guard.oscillationProfileWindowSize)} health_thresholds=${String(runtimeToolRecoveryPolicy.health.watchScoreThreshold)}/${String(runtimeToolRecoveryPolicy.health.riskScoreThreshold)} health_penalties=${String(runtimeToolRecoveryPolicy.health.penalties.activeRecovery)}/${String(runtimeToolRecoveryPolicy.health.penalties.activeNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.stuckNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.historicalUnconsumed)}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextPreview.toolSurfaceAdaptation.autoAdaptationBlocked ? "true" : "false"} recovery_recoverable=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable)} stage=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass ?? "<none>"}\n`,

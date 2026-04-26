@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { RuntimeEvent } from "../../models/types";
+import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
 
 export type RuntimeToolRecoveryStage =
   | "none"
@@ -136,8 +137,6 @@ export function knownRuntimeToolRecoveryActions(): RuntimeToolRecoveryAction[] {
   return Object.keys(RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS) as RuntimeToolRecoveryAction[];
 }
 
-const DEFAULT_RECOVERY_PROMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
 function emptySummary(): RuntimeToolEventSummary {
   return {
     callsTotal: 0,
@@ -270,7 +269,7 @@ function readState(path: string): RuntimeToolSurfaceMetricsState {
         ? row.recentRecoveries
             .map((item) => normalizeRecoveryHint(normalizeRecord(item)))
             .filter((item): item is RuntimeToolRecoveryHint => Boolean(item))
-            .slice(-20)
+            .slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.timelineMaxEntries)
         : [],
     };
   } catch {
@@ -372,7 +371,7 @@ export function recordRuntimeToolSurfaceMetrics(input: {
       ...summary.latestRecovery,
       observedAt: state.updatedAt,
     });
-    state.recentRecoveries = state.recentRecoveries.slice(-20);
+    state.recentRecoveries = state.recentRecoveries.slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.timelineMaxEntries);
   }
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
@@ -428,7 +427,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     };
   }
   const nowMs = input.nowMs ?? Date.now();
-  const maxAgeMs = input.maxAgeMs ?? DEFAULT_RECOVERY_PROMPT_MAX_AGE_MS;
+  const maxAgeMs = input.maxAgeMs ?? RUNTIME_TOOL_RECOVERY_POLICY.promptMaxAgeMs;
   const observedAtMs = parseObservedAtMs(recovery, input.metrics.updatedAt);
   if (typeof observedAtMs !== "number") {
     return {

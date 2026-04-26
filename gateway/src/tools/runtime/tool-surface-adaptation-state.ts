@@ -6,6 +6,7 @@ import {
   type RuntimeToolSurfaceAdaptation,
   type RuntimeToolSurfaceAdaptationResult,
 } from "./default-enabled-tools";
+import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
 import { summarizeRuntimeToolEvents, type RuntimeToolRecoveryFeedback } from "./tool-events";
 
 export type RuntimeToolSurfaceAdaptationOutcome = "recovered" | "failed" | "unknown";
@@ -268,14 +269,14 @@ function readState(path: string): RuntimeToolSurfaceAdaptationState {
         ? row.recentAdaptations
             .map((item) => normalizeAdaptationRecord(item))
             .filter((item): item is RuntimeToolSurfaceAdaptationRecord => Boolean(item))
-            .slice(-40)
+            .slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.adaptationHistoryMaxEntries)
         : [],
       profileOutcomes,
       recentRecoveryConsumptions: Array.isArray(row.recentRecoveryConsumptions)
         ? row.recentRecoveryConsumptions
             .map((item) => normalizeConsumptionRecord(item))
             .filter((item): item is RuntimeToolRecoveryConsumptionRecord => Boolean(item))
-            .slice(-40)
+            .slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.recoveryConsumptionHistoryMaxEntries)
         : [],
     };
   } catch {
@@ -405,7 +406,9 @@ function appendRecoveryConsumption(
     return false;
   }
   state.recentRecoveryConsumptions.push(record);
-  state.recentRecoveryConsumptions = state.recentRecoveryConsumptions.slice(-40);
+  state.recentRecoveryConsumptions = state.recentRecoveryConsumptions.slice(
+    -1 * RUNTIME_TOOL_RECOVERY_POLICY.recoveryConsumptionHistoryMaxEntries,
+  );
   return true;
 }
 
@@ -469,7 +472,9 @@ export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
   };
   state.updatedAt = nowIso;
   state.recentAdaptations.push(record);
-  state.recentAdaptations = state.recentAdaptations.slice(-40);
+  state.recentAdaptations = state.recentAdaptations.slice(
+    -1 * RUNTIME_TOOL_RECOVERY_POLICY.adaptationHistoryMaxEntries,
+  );
   updateProfileOutcome(state, record);
   if (record.outcome === "recovered") {
     appendRecoveryConsumption(state, {
@@ -665,7 +670,9 @@ export function assessRuntimeToolSurfaceAdaptationGuard(input: {
       reason: "recovered_signal_consumed",
       blockedProfile: input.adaptation.appliedProfile,
       matchingFailureCount: 0,
-      recentProfileSequence: input.snapshot.recentAdaptations.slice(-4).map((record) => record.appliedProfile),
+      recentProfileSequence: input.snapshot.recentAdaptations
+        .slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.guard.recentProfileSequenceSize)
+        .map((record) => record.appliedProfile),
     };
   }
   let matchingFailureCount = 0;
@@ -679,23 +686,27 @@ export function assessRuntimeToolSurfaceAdaptationGuard(input: {
     }
     matchingFailureCount += 1;
   }
-  if (matchingFailureCount >= 2) {
+  if (matchingFailureCount >= RUNTIME_TOOL_RECOVERY_POLICY.guard.repeatedProfileFailureThreshold) {
     return {
       active: true,
       reason: "repeated_profile_failure",
       blockedProfile: input.adaptation.appliedProfile,
       matchingFailureCount,
-      recentProfileSequence: input.snapshot.recentAdaptations.slice(-4).map((record) => record.appliedProfile),
+      recentProfileSequence: input.snapshot.recentAdaptations
+        .slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.guard.recentProfileSequenceSize)
+        .map((record) => record.appliedProfile),
     };
   }
 
-  const recentRecords = input.snapshot.recentAdaptations.slice(-3);
+  const recentRecords = input.snapshot.recentAdaptations.slice(
+    -1 * Math.max(0, RUNTIME_TOOL_RECOVERY_POLICY.guard.oscillationProfileWindowSize - 1),
+  );
   const recentProfileSequence = [
     ...recentRecords.map((record) => record.appliedProfile),
     input.adaptation.appliedProfile,
   ];
   if (
-    recentProfileSequence.length >= 4
+    recentProfileSequence.length >= RUNTIME_TOOL_RECOVERY_POLICY.guard.oscillationProfileWindowSize
     && recentRecords.every(isUnsuccessfulAdaptationOutcome)
     && recentProfileSequence[0] === recentProfileSequence[2]
     && recentProfileSequence[1] === recentProfileSequence[3]
