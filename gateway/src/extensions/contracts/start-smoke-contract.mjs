@@ -72,6 +72,87 @@ function assertRuntimeToolSchemaArgVisibility(projection) {
   }
 }
 
+const RUNTIME_TOOL_RECOVERY_ESCALATION_STATUS_KEYS = [
+  "same_tool_error_count",
+  "escalated",
+  "escalation_reason",
+  "escalation_policy_version",
+  "base_recovery_stage",
+  "base_recommended_next_action",
+];
+
+const EXPECTED_REPEATED_TOOL_RECOVERY_ESCALATION_STATUS = {
+  same_tool_error_count: 3,
+  escalated: true,
+  escalation_reason: "same_tool_error_exhausted",
+  escalation_policy_version: "v1",
+  base_recovery_stage: "strategy_switch",
+  base_recommended_next_action: "switch_tool_strategy",
+};
+
+function hasOwnKey(value, key) {
+  return isObject(value) && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function runtimeToolRecoveryEscalationTextSurface(textOutput) {
+  const text = typeof textOutput === "string" ? textOutput : "";
+  const escalationTuple =
+    "same_tool_error_count=.*escalated=.*escalation_reason=.*"
+    + "escalation_policy_version=.*base_recovery_stage=.*base_recommended_next_action=";
+  return {
+    text_has_recovery_feedback_escalation_tuple:
+      new RegExp(`runtime_tool_recovery_feedback: [^\\n]*${escalationTuple}`).test(text),
+    text_has_recovery_timeline_escalation_tuple:
+      new RegExp(`runtime_tool_recovery_timeline: [^\\n]*${escalationTuple}`).test(text),
+  };
+}
+
+function assertRuntimeToolRecoveryEscalationStatusSurface(input) {
+  const recoveryFeedback = isObject(input?.recoveryFeedback)
+    ? input.recoveryFeedback
+    : null;
+  if (!recoveryFeedback) {
+    throw new Error("runtime tool recovery feedback missing");
+  }
+  for (const key of RUNTIME_TOOL_RECOVERY_ESCALATION_STATUS_KEYS) {
+    if (!hasOwnKey(recoveryFeedback, key)) {
+      throw new Error(`runtime tool recovery feedback missing escalation field: ${key}`);
+    }
+  }
+  const latestRecoveryTimeline = isObject(input?.latestRecoveryTimeline)
+    ? input.latestRecoveryTimeline
+    : null;
+  if (!latestRecoveryTimeline) {
+    throw new Error("runtime tool recovery timeline latest entry missing");
+  }
+  for (const key of RUNTIME_TOOL_RECOVERY_ESCALATION_STATUS_KEYS) {
+    if (!hasOwnKey(latestRecoveryTimeline, key)) {
+      throw new Error(`runtime tool recovery timeline missing escalation field: ${key}`);
+    }
+  }
+  const textSurface = runtimeToolRecoveryEscalationTextSurface(input?.textOutput);
+  if (!textSurface.text_has_recovery_feedback_escalation_tuple) {
+    throw new Error("text status missing recovery feedback escalation tuple");
+  }
+  if (!textSurface.text_has_recovery_timeline_escalation_tuple) {
+    throw new Error("text status missing recovery timeline escalation tuple");
+  }
+  if (isObject(input?.expectedLatest)) {
+    for (const [key, expected] of Object.entries(input.expectedLatest)) {
+      if (recoveryFeedback[key] !== expected) {
+        throw new Error(
+          `runtime tool recovery feedback escalation field mismatch: ${key} actual=${String(recoveryFeedback[key])} expected=${String(expected)}`,
+        );
+      }
+      if (latestRecoveryTimeline[key] !== expected) {
+        throw new Error(
+          `runtime tool recovery timeline escalation field mismatch: ${key} actual=${String(latestRecoveryTimeline[key])} expected=${String(expected)}`,
+        );
+      }
+    }
+  }
+}
+
 function parseJsonObjectSafe(raw) {
   const text = typeof raw === "string" ? raw.trim() : "";
   if (!text) {
@@ -2081,6 +2162,18 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_recovery_feedback_consumed_type: typeof runtimeToolRecoveryFeedback?.consumed,
     status_runtime_tool_recovery_feedback_consumed_reason_type: typeof runtimeToolRecoveryFeedback?.consumed_reason,
     status_runtime_tool_recovery_feedback_observed_at_type: typeof runtimeToolRecoveryFeedback?.observed_at,
+    status_runtime_tool_recovery_feedback_same_tool_error_count_type:
+      typeof runtimeToolRecoveryFeedback?.same_tool_error_count,
+    status_runtime_tool_recovery_feedback_escalated_type:
+      typeof runtimeToolRecoveryFeedback?.escalated,
+    status_runtime_tool_recovery_feedback_escalation_reason_type:
+      typeof runtimeToolRecoveryFeedback?.escalation_reason,
+    status_runtime_tool_recovery_feedback_escalation_policy_version_type:
+      typeof runtimeToolRecoveryFeedback?.escalation_policy_version,
+    status_runtime_tool_recovery_feedback_base_recovery_stage_type:
+      typeof runtimeToolRecoveryFeedback?.base_recovery_stage,
+    status_runtime_tool_recovery_feedback_base_recommended_next_action_type:
+      typeof runtimeToolRecoveryFeedback?.base_recommended_next_action,
     status_runtime_tool_recovery_timeline_is_array: Array.isArray(runtimeTools?.recovery_timeline),
     status_runtime_tool_recovery_timeline_count: runtimeToolRecoveryTimeline.length,
     status_runtime_tool_recovery_timeline_latest_recovery_key_type:
@@ -2088,6 +2181,18 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_runtime_tool_recovery_timeline_latest_active_type: typeof runtimeToolRecoveryTimelineLatest?.active,
     status_runtime_tool_recovery_timeline_latest_consumed_type: typeof runtimeToolRecoveryTimelineLatest?.consumed,
     status_runtime_tool_recovery_timeline_latest_stage_type: typeof runtimeToolRecoveryTimelineLatest?.stage,
+    status_runtime_tool_recovery_timeline_latest_same_tool_error_count_type:
+      typeof runtimeToolRecoveryTimelineLatest?.same_tool_error_count,
+    status_runtime_tool_recovery_timeline_latest_escalated_type:
+      typeof runtimeToolRecoveryTimelineLatest?.escalated,
+    status_runtime_tool_recovery_timeline_latest_escalation_reason_type:
+      typeof runtimeToolRecoveryTimelineLatest?.escalation_reason,
+    status_runtime_tool_recovery_timeline_latest_escalation_policy_version_type:
+      typeof runtimeToolRecoveryTimelineLatest?.escalation_policy_version,
+    status_runtime_tool_recovery_timeline_latest_base_recovery_stage_type:
+      typeof runtimeToolRecoveryTimelineLatest?.base_recovery_stage,
+    status_runtime_tool_recovery_timeline_latest_base_recommended_next_action_type:
+      typeof runtimeToolRecoveryTimelineLatest?.base_recommended_next_action,
     status_runtime_tool_recovery_health_present: Boolean(runtimeToolRecoveryHealth),
     status_runtime_tool_recovery_health_timeline_count_type:
       typeof runtimeToolRecoveryHealth?.timeline_entry_count,
@@ -4481,11 +4586,18 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
         },
         {
           stage: "ask_user",
-          reason: "config_missing",
+          reason: "same_tool_error_exhausted",
           recommendedNextAction: "ask_user_for_config_or_switch_provider",
           toolName: "web_scan",
           errorClass: "config_missing",
           recoverable: false,
+          requiresUserIntervention: true,
+          sameToolErrorCount: 3,
+          escalated: true,
+          escalationReason: "same_tool_error_exhausted",
+          escalationPolicyVersion: "v1",
+          baseStage: "strategy_switch",
+          baseRecommendedNextAction: "switch_tool_strategy",
           observedAt,
         },
       ],
@@ -4654,6 +4766,13 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
+  const recoveryEscalationTextSurface = runtimeToolRecoveryEscalationTextSurface(textResult.stdout);
+  assertRuntimeToolRecoveryEscalationStatusSurface({
+    recoveryFeedback,
+    latestRecoveryTimeline,
+    textOutput: textResult.stdout,
+    expectedLatest: EXPECTED_REPEATED_TOOL_RECOVERY_ESCALATION_STATUS,
+  });
   return {
     exit_code: jsonResult.exit_code,
     text_exit_code: textResult.exit_code,
@@ -4663,12 +4782,35 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
     recovery_feedback_requires_user_intervention:
       recoveryFeedback?.requires_user_intervention ?? null,
+    recovery_feedback_same_tool_error_count:
+      recoveryFeedback?.same_tool_error_count ?? null,
+    recovery_feedback_escalated: recoveryFeedback?.escalated ?? null,
+    recovery_feedback_escalation_reason:
+      recoveryFeedback?.escalation_reason ?? null,
+    recovery_feedback_escalation_policy_version:
+      recoveryFeedback?.escalation_policy_version ?? null,
+    recovery_feedback_base_recovery_stage:
+      recoveryFeedback?.base_recovery_stage ?? null,
+    recovery_feedback_base_recommended_next_action:
+      recoveryFeedback?.base_recommended_next_action ?? null,
     recovery_timeline_count: recoveryTimeline.length,
     recovery_timeline_latest_recovery_key: latestRecoveryTimeline?.recovery_key ?? null,
     recovery_timeline_latest_active: latestRecoveryTimeline?.active ?? null,
     recovery_timeline_latest_consumed: latestRecoveryTimeline?.consumed ?? null,
     recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
     recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_latest_same_tool_error_count:
+      latestRecoveryTimeline?.same_tool_error_count ?? null,
+    recovery_timeline_latest_escalated:
+      latestRecoveryTimeline?.escalated ?? null,
+    recovery_timeline_latest_escalation_reason:
+      latestRecoveryTimeline?.escalation_reason ?? null,
+    recovery_timeline_latest_escalation_policy_version:
+      latestRecoveryTimeline?.escalation_policy_version ?? null,
+    recovery_timeline_latest_base_recovery_stage:
+      latestRecoveryTimeline?.base_recovery_stage ?? null,
+    recovery_timeline_latest_base_recommended_next_action:
+      latestRecoveryTimeline?.base_recommended_next_action ?? null,
     recovery_timeline_previous_recovery_key: previousRecoveryTimeline?.recovery_key ?? null,
     recovery_timeline_previous_tool_name: previousRecoveryTimeline?.tool_name ?? null,
     recovery_health_active_recovery_count: recoveryHealth?.active_recovery_count ?? null,
@@ -4740,6 +4882,7 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_gate:")
       && textResult.stdout.includes("status=fail")
       && textResult.stdout.includes("reason=blocked_operator_action_required"),
+    ...recoveryEscalationTextSurface,
   };
 }
 
@@ -4787,6 +4930,13 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
+  const recoveryEscalationTextSurface = runtimeToolRecoveryEscalationTextSurface(textResult.stdout);
+  assertRuntimeToolRecoveryEscalationStatusSurface({
+    recoveryFeedback,
+    latestRecoveryTimeline,
+    textOutput: textResult.stdout,
+    expectedLatest: EXPECTED_REPEATED_TOOL_RECOVERY_ESCALATION_STATUS,
+  });
   return {
     exit_code: jsonResult.exit_code,
     text_exit_code: textResult.exit_code,
@@ -4798,6 +4948,17 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryFeedback?.requires_user_intervention ?? null,
     recovery_feedback_consumed: recoveryFeedback?.consumed ?? null,
     recovery_feedback_consumed_reason: recoveryFeedback?.consumed_reason ?? null,
+    recovery_feedback_same_tool_error_count:
+      recoveryFeedback?.same_tool_error_count ?? null,
+    recovery_feedback_escalated: recoveryFeedback?.escalated ?? null,
+    recovery_feedback_escalation_reason:
+      recoveryFeedback?.escalation_reason ?? null,
+    recovery_feedback_escalation_policy_version:
+      recoveryFeedback?.escalation_policy_version ?? null,
+    recovery_feedback_base_recovery_stage:
+      recoveryFeedback?.base_recovery_stage ?? null,
+    recovery_feedback_base_recommended_next_action:
+      recoveryFeedback?.base_recommended_next_action ?? null,
     recovery_timeline_count: recoveryTimeline.length,
     recovery_timeline_latest_recovery_key: latestRecoveryTimeline?.recovery_key ?? null,
     recovery_timeline_latest_active: latestRecoveryTimeline?.active ?? null,
@@ -4805,6 +4966,18 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     recovery_timeline_latest_consumed_reason: latestRecoveryTimeline?.consumed_reason ?? null,
     recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
     recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_latest_same_tool_error_count:
+      latestRecoveryTimeline?.same_tool_error_count ?? null,
+    recovery_timeline_latest_escalated:
+      latestRecoveryTimeline?.escalated ?? null,
+    recovery_timeline_latest_escalation_reason:
+      latestRecoveryTimeline?.escalation_reason ?? null,
+    recovery_timeline_latest_escalation_policy_version:
+      latestRecoveryTimeline?.escalation_policy_version ?? null,
+    recovery_timeline_latest_base_recovery_stage:
+      latestRecoveryTimeline?.base_recovery_stage ?? null,
+    recovery_timeline_latest_base_recommended_next_action:
+      latestRecoveryTimeline?.base_recommended_next_action ?? null,
     recovery_timeline_previous_recovery_key: previousRecoveryTimeline?.recovery_key ?? null,
     recovery_timeline_previous_tool_name: previousRecoveryTimeline?.tool_name ?? null,
     recovery_health_active_recovery_count: recoveryHealth?.active_recovery_count ?? null,
@@ -4872,6 +5045,7 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_gate:")
       && textResult.stdout.includes("status=warn")
       && textResult.stdout.includes("reason=degraded_auto_recovery_allowed"),
+    ...recoveryEscalationTextSurface,
   };
 }
 

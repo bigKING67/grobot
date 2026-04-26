@@ -416,6 +416,16 @@ node gateway/src/extensions/contracts/start-smoke-contract.mjs status-nonrecover
 node gateway/src/extensions/contracts/start-smoke-contract.mjs status-nonrecoverable-tool-recovery-consumed --repo-root .
 ```
 
+The two status smoke contracts also assert that escalation diagnostics survive
+both `status --json` and text status:
+
+- `same_tool_error_count`
+- `escalated`
+- `escalation_reason`
+- `escalation_policy_version`
+- `base_recovery_stage`
+- `base_recommended_next_action`
+
 Runtime/governance contract after building the Rust runtime:
 
 ```bash
