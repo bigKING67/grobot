@@ -27,6 +27,12 @@ export interface RuntimeToolRecoveryTimelineEntry {
   recommendedNextAction: string | null;
   recoverable: boolean | null;
   requiresUserIntervention: boolean;
+  sameToolErrorCount: number | null;
+  escalated: boolean;
+  escalationReason: string | null;
+  escalationPolicyVersion: string | null;
+  baseStage: RuntimeToolRecoveryStage | null;
+  baseRecommendedNextAction: string | null;
   active: boolean;
   consumed: boolean;
   consumedReason: string | null;
@@ -197,7 +203,13 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         reason: recovery.reason,
         recommendedNextAction: recovery.recommendedNextAction,
         recoverable: recovery.recoverable ?? null,
-        requiresUserIntervention: recovery.recoverable === false,
+        requiresUserIntervention: recovery.requiresUserIntervention ?? (recovery.recoverable === false),
+        sameToolErrorCount: recovery.sameToolErrorCount ?? null,
+        escalated: recovery.escalated ?? false,
+        escalationReason: recovery.escalationReason ?? null,
+        escalationPolicyVersion: recovery.escalationPolicyVersion ?? null,
+        baseStage: recovery.baseStage ?? null,
+        baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
         active:
           input.recoveryFeedback.active
           && matchesFeedbackRecovery({

@@ -112,6 +112,41 @@ For nonrecoverable recoveries, the gateway sets:
 - `runtime_tools.surface_adaptation.auto_adaptation_blocked=true`
 - `runtime_tools.surface_adaptation.reason=recovery_gate_blocked_operator_action_required`
 
+## Repeated failure escalation
+
+The gateway persists repeated recovery pressure by `(tool_name, error_class)` in
+`.grobot/runtime/tool-surface-metrics.json`. `recoveryCountsByKey` is a
+cumulative diagnostic map, while `latestRecoveryRepeatKey` /
+`latestRecoveryRepeatCount` drive escalation and reset after a tool batch with no
+new recovery event. This is a gateway-side loop guard because normal runtime
+tool failures usually terminate the current model turn; the repeated pattern
+becomes visible across turns rather than inside one model loop.
+
+The effective recovery hint can be stricter than the raw runtime hint:
+
+- First occurrence: preserve the runtime stage/action.
+- Second occurrence of the same tool/error: escalate lower-grade stages to
+  `strategy_switch` with `recommended_next_action=switch_tool_strategy`.
+- Third and later occurrence: escalate lower-grade stages to `ask_user` with
+  `recommended_next_action=ask_user_for_config_or_switch_provider`,
+  `recoverable=false`, and `requires_user_intervention=true`.
+
+Escalation never downgrades a runtime-provided `strategy_switch` or `ask_user`.
+When the gateway changes the effective hint, it records:
+
+- `same_tool_error_count`
+- `escalated`
+- `escalation_reason` (`same_tool_error_repeated` or
+  `same_tool_error_exhausted`)
+- `escalation_policy_version`
+- `base_recovery_stage`
+- `base_recommended_next_action`
+
+The active prompt hint includes the repeat count and the base recovery so the
+model can see why a local retry is no longer acceptable. This implements the
+GA-style staged discipline: local fix first, strategy switch second, human
+intervention when the same failure keeps repeating.
+
 ## Surface adaptation rules
 
 Surface adaptation is intentionally narrow:
@@ -150,6 +185,7 @@ That module defines the shared knobs for:
 - recovery timeline retention
 - adaptation / recovery-consumption history retention
 - guard thresholds for repeated profile failure and oscillation
+- escalation thresholds for repeated `(tool_name, error_class)` failures
 - health score thresholds and penalty weights
 
 The intent is to prevent silent drift between `tool-events`,
@@ -178,10 +214,19 @@ again.
 `./grobot status --json` exposes the current state under
 `runtime_tools`:
 
+- `metrics.recoveryCountsByKey`
+- `metrics.latestRecoveryRepeatKey`
+- `metrics.latestRecoveryRepeatCount`
 - `recovery_feedback.active`
 - `recovery_feedback.reason`
 - `recovery_feedback.recoverable`
 - `recovery_feedback.requires_user_intervention`
+- `recovery_feedback.same_tool_error_count`
+- `recovery_feedback.escalated`
+- `recovery_feedback.escalation_reason`
+- `recovery_feedback.escalation_policy_version`
+- `recovery_feedback.base_recovery_stage`
+- `recovery_feedback.base_recommended_next_action`
 - `recovery_feedback.consumed`
 - `recovery_feedback.consumed_reason`
 - `recovery_timeline[]`
@@ -189,6 +234,8 @@ again.
 - `recovery_policy`
 - `recovery_readiness`
 - `recovery_gate`
+- `recovery_policy.escalation.same_tool_error_strategy_switch_threshold`
+- `recovery_policy.escalation.same_tool_error_ask_user_threshold`
 - `surface_adaptation.active`
 - `surface_adaptation.reason`
 - `surface_adaptation.auto_adaptation_blocked`
@@ -206,6 +253,12 @@ annotated with:
 - `recommended_next_action`
 - `recoverable`
 - `requires_user_intervention`
+- `same_tool_error_count`
+- `escalated`
+- `escalation_reason`
+- `escalation_policy_version`
+- `base_recovery_stage`
+- `base_recommended_next_action`
 - `active`
 - `consumed`
 - `consumed_reason`

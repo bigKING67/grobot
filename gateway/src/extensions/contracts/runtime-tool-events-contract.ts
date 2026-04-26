@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeEvent } from "../../models/types";
 import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../tools/runtime/runtime-error";
@@ -122,6 +122,9 @@ const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
     callsByTool: {},
     failuresByErrorClass: {},
     recoveryStages: { ask_user: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
     avgDurationMsByTool: {},
     recentRecoveries: [],
     latestRecovery: {
@@ -210,6 +213,164 @@ try {
   rmSync(workDir, { recursive: true, force: true });
 }
 
+const repeatedWorkDir = join("/tmp", `grobot-runtime-tool-repeated-recovery-${String(process.pid)}-${String(Date.now())}`);
+mkdirSync(repeatedWorkDir, { recursive: true });
+try {
+  const oldStateDir = join(repeatedWorkDir, ".grobot/runtime");
+  mkdirSync(oldStateDir, { recursive: true });
+  writeFileSync(
+    join(oldStateDir, "tool-surface-metrics.json"),
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: "2026-04-25T00:00:00.000Z",
+      callsTotal: 0,
+      failedTotal: 0,
+      deferredTotal: 0,
+      callsByTool: {},
+      failuresByErrorClass: {},
+      recoveryStages: {},
+      durationTotalMsByTool: {},
+      durationCountByTool: {},
+      recentRecoveries: [],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  const oldStateReadback = readRuntimeToolSurfaceMetrics(repeatedWorkDir);
+  expectEqual(
+    Object.keys(oldStateReadback.recoveryCountsByKey).length,
+    0,
+    "old state without recoveryCountsByKey is backward tolerant",
+  );
+  expectEqual(oldStateReadback.latestRecoveryRepeatKey, null, "old state repeat key defaults null");
+  expectEqual(oldStateReadback.latestRecoveryRepeatCount, 0, "old state repeat count defaults zero");
+
+  const repeatedRecoveryEvents: RuntimeEvent[] = [
+    event("tool_end", {
+      tool_name: "read",
+      status: "failed",
+      error_class: "path_not_found",
+      duration_ms: 4,
+    }),
+    event("tool_recovery", {
+      tool_name: "read",
+      error_class: "path_not_found",
+      recovery_stage: "local_fix",
+      recovery_reason: "path_not_found",
+      recommended_next_action: "locate_path_with_glob_before_retry",
+      recoverable: true,
+    }),
+  ];
+
+  const firstRepeated = recordRuntimeToolSurfaceMetrics({
+    workDir: repeatedWorkDir,
+    events: repeatedRecoveryEvents,
+  });
+  expectEqual(firstRepeated.latestRecovery?.stage, "local_fix", "first repeated recovery keeps local fix");
+  expectEqual(firstRepeated.latestRecovery?.sameToolErrorCount, 1, "first repeated recovery count");
+  expectEqual(firstRepeated.latestRecovery?.escalated, false, "first repeated recovery not escalated");
+  expectEqual(
+    firstRepeated.recoveryCountsByKey["tool_error:read:path_not_found"],
+    1,
+    "first repeated recovery key count",
+  );
+  expectEqual(firstRepeated.latestRecoveryRepeatKey, "tool_error:read:path_not_found", "first latest repeat key");
+  expectEqual(firstRepeated.latestRecoveryRepeatCount, 1, "first latest repeat count");
+
+  const secondRepeated = recordRuntimeToolSurfaceMetrics({
+    workDir: repeatedWorkDir,
+    events: repeatedRecoveryEvents,
+  });
+  const secondFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: secondRepeated,
+    nowMs: Date.parse(secondRepeated.latestRecovery?.observedAt ?? ""),
+  });
+  expectEqual(secondRepeated.latestRecovery?.stage, "strategy_switch", "second repeated recovery escalates stage");
+  expectEqual(
+    secondRepeated.latestRecovery?.recommendedNextAction,
+    "switch_tool_strategy",
+    "second repeated recovery escalates action",
+  );
+  expectEqual(secondRepeated.latestRecovery?.recoverable, true, "second repeated recovery remains recoverable");
+  expectEqual(secondRepeated.latestRecovery?.sameToolErrorCount, 2, "second repeated recovery count");
+  expectEqual(secondRepeated.latestRecovery?.escalated, true, "second repeated recovery escalated flag");
+  expectEqual(
+    secondRepeated.latestRecovery?.escalationReason,
+    "same_tool_error_repeated",
+    "second repeated recovery reason",
+  );
+  expectEqual(secondRepeated.latestRecovery?.baseStage, "local_fix", "second repeated recovery base stage");
+  expectEqual(
+    secondRepeated.latestRecovery?.baseRecommendedNextAction,
+    "locate_path_with_glob_before_retry",
+    "second repeated recovery base action",
+  );
+  expectEqual(secondRepeated.latestRecoveryRepeatCount, 2, "second latest repeat count");
+  expectEqual(secondFeedback.active, true, "second repeated feedback active");
+  expectEqual(secondFeedback.reason, "repeated_recovery_escalated", "second repeated feedback reason");
+  expectEqual(secondFeedback.severity, "warning", "second repeated feedback severity");
+  expectEqual(secondFeedback.requiresUserIntervention, false, "second repeated feedback remains automatic");
+  expect(
+    secondFeedback.promptBlock.includes("same_tool_error_count=2 escalated=true"),
+    "second repeated feedback prompt includes repeat count",
+  );
+
+  const thirdRepeated = recordRuntimeToolSurfaceMetrics({
+    workDir: repeatedWorkDir,
+    events: repeatedRecoveryEvents,
+  });
+  const thirdFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: thirdRepeated,
+    nowMs: Date.parse(thirdRepeated.latestRecovery?.observedAt ?? ""),
+  });
+  expectEqual(thirdRepeated.latestRecovery?.stage, "ask_user", "third repeated recovery escalates to ask_user");
+  expectEqual(
+    thirdRepeated.latestRecovery?.recommendedNextAction,
+    "ask_user_for_config_or_switch_provider",
+    "third repeated recovery asks user",
+  );
+  expectEqual(thirdRepeated.latestRecovery?.recoverable, false, "third repeated recovery blocks automatic retry");
+  expectEqual(thirdRepeated.latestRecovery?.requiresUserIntervention, true, "third repeated recovery intervention");
+  expectEqual(thirdRepeated.latestRecovery?.sameToolErrorCount, 3, "third repeated recovery count");
+  expectEqual(
+    thirdRepeated.latestRecovery?.escalationReason,
+    "same_tool_error_exhausted",
+    "third repeated recovery exhausted reason",
+  );
+  expectEqual(
+    thirdRepeated.recoveryCountsByKey["tool_error:read:path_not_found"],
+    3,
+    "third repeated recovery key count",
+  );
+  expectEqual(thirdRepeated.latestRecoveryRepeatCount, 3, "third latest repeat count");
+  expectEqual(thirdFeedback.requiresUserIntervention, true, "third repeated feedback requires intervention");
+  expect(
+    thirdFeedback.promptBlock.includes("Automatic recovery is blocked"),
+    "third repeated feedback blocks automatic retry",
+  );
+
+  const successReset = recordRuntimeToolSurfaceMetrics({
+    workDir: repeatedWorkDir,
+    events: [
+      event("tool_end", {
+        tool_name: "read",
+        status: "ok",
+        duration_ms: 3,
+      }),
+    ],
+  });
+  expectEqual(successReset.latestRecoveryRepeatKey, null, "successful tool batch resets repeat key");
+  expectEqual(successReset.latestRecoveryRepeatCount, 0, "successful tool batch resets repeat count");
+
+  const afterReset = recordRuntimeToolSurfaceMetrics({
+    workDir: repeatedWorkDir,
+    events: repeatedRecoveryEvents,
+  });
+  expectEqual(afterReset.latestRecovery?.stage, "local_fix", "after reset recovery does not stay escalated");
+  expectEqual(afterReset.latestRecovery?.sameToolErrorCount, 1, "after reset recovery count restarts");
+} finally {
+  rmSync(repeatedWorkDir, { recursive: true, force: true });
+}
+
 const runtimeError = new RuntimeRpcError({
   message: "runtime rpc error -32001: runtime turn execution failed",
   errorClass: "edit_stale_target",
@@ -231,6 +392,7 @@ process.stdout.write(JSON.stringify({
   feedback_active: true,
   latest_recovery_recoverable: summary.latestRecovery?.recoverable,
   nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
+  repeated_recovery_escalation: true,
   recovery_action_catalog_size: knownRecoveryActions.length,
   missing_action_default: missingActionSummary.latestRecovery?.recommendedNextAction,
 }) + "\n");

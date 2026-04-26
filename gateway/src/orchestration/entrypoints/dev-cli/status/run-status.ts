@@ -906,6 +906,12 @@ function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTim
     recommended_next_action: entry.recommendedNextAction,
     recoverable: entry.recoverable,
     requires_user_intervention: entry.requiresUserIntervention,
+    same_tool_error_count: entry.sameToolErrorCount,
+    escalated: entry.escalated,
+    escalation_reason: entry.escalationReason,
+    escalation_policy_version: entry.escalationPolicyVersion,
+    base_recovery_stage: entry.baseStage,
+    base_recommended_next_action: entry.baseRecommendedNextAction,
     active: entry.active,
     consumed: entry.consumed,
     consumed_reason: entry.consumedReason,
@@ -958,6 +964,10 @@ function serializeRuntimeToolRecoveryPolicySummary(summary: RuntimeToolRecoveryP
       repeated_profile_failure_threshold: summary.guard.repeatedProfileFailureThreshold,
       recent_profile_sequence_size: summary.guard.recentProfileSequenceSize,
       oscillation_profile_window_size: summary.guard.oscillationProfileWindowSize,
+    },
+    escalation: {
+      same_tool_error_strategy_switch_threshold: summary.escalation.sameToolErrorStrategySwitchThreshold,
+      same_tool_error_ask_user_threshold: summary.escalation.sameToolErrorAskUserThreshold,
     },
     health: {
       risk_score_threshold: summary.health.riskScoreThreshold,
@@ -1617,6 +1627,12 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           recommended_next_action: runtimeToolRecoveryFeedback.recommendedNextAction,
           recoverable: runtimeToolRecoveryFeedback.recoverable,
           requires_user_intervention: runtimeToolRecoveryFeedback.requiresUserIntervention,
+          same_tool_error_count: runtimeToolRecoveryFeedback.sameToolErrorCount ?? null,
+          escalated: runtimeToolRecoveryFeedback.escalated ?? false,
+          escalation_reason: runtimeToolRecoveryFeedback.escalationReason ?? null,
+          escalation_policy_version: runtimeToolRecoveryFeedback.escalationPolicyVersion ?? null,
+          base_recovery_stage: runtimeToolRecoveryFeedback.baseStage ?? null,
+          base_recommended_next_action: runtimeToolRecoveryFeedback.baseRecommendedNextAction ?? null,
           prompt_injected: runtimeToolRecoveryFeedback.active,
           consumed: runtimeToolRecoveryFeedback.consumed ?? false,
           consumed_reason: runtimeToolRecoveryFeedback.consumedReason ?? null,
@@ -2489,7 +2505,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"}\n`,
+    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} same_tool_error_count=${runtimeToolRecoveryFeedback.sameToolErrorCount ?? "<none>"} escalated=${runtimeToolRecoveryFeedback.escalated ? "true" : "false"} escalation_reason=${runtimeToolRecoveryFeedback.escalationReason ?? "<none>"}\n`,
   );
   const latestRuntimeToolRecoveryTimelineEntry = runtimeToolRecoveryTimeline[0] ?? null;
   process.stdout.write(
@@ -2499,7 +2515,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_recovery_health: score=${String(runtimeToolRecoveryHealth.score)} level=${runtimeToolRecoveryHealth.level} reason=${runtimeToolRecoveryHealth.reason} action=${runtimeToolRecoveryHealth.recommendedNextAction ?? "<none>"} attention_source=${runtimeToolRecoveryHealth.attentionSource} attention_key=${runtimeToolRecoveryHealth.attentionRecoveryKey ?? "<none>"} active=${String(runtimeToolRecoveryHealth.activeRecoveryCount)} active_nonrecoverable=${String(runtimeToolRecoveryHealth.activeNonrecoverableCount)} unconsumed=${String(runtimeToolRecoveryHealth.unconsumedCount)} stuck_nonrecoverable=${runtimeToolRecoveryHealth.hasStuckNonrecoverable ? "true" : "false"} latest_key=${runtimeToolRecoveryHealth.latestRecoveryKey ?? "<none>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_policy: version=${runtimeToolRecoveryPolicy.version} prompt_max_age_ms=${String(runtimeToolRecoveryPolicy.promptMaxAgeMs)} timeline_max_entries=${String(runtimeToolRecoveryPolicy.timelineMaxEntries)} adaptation_history_max_entries=${String(runtimeToolRecoveryPolicy.adaptationHistoryMaxEntries)} recovery_consumption_history_max_entries=${String(runtimeToolRecoveryPolicy.recoveryConsumptionHistoryMaxEntries)} guard_repeat_failures=${String(runtimeToolRecoveryPolicy.guard.repeatedProfileFailureThreshold)} guard_recent_profile_sequence=${String(runtimeToolRecoveryPolicy.guard.recentProfileSequenceSize)} guard_oscillation_window=${String(runtimeToolRecoveryPolicy.guard.oscillationProfileWindowSize)} health_thresholds=${String(runtimeToolRecoveryPolicy.health.watchScoreThreshold)}/${String(runtimeToolRecoveryPolicy.health.riskScoreThreshold)} health_penalties=${String(runtimeToolRecoveryPolicy.health.penalties.activeRecovery)}/${String(runtimeToolRecoveryPolicy.health.penalties.activeNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.stuckNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.historicalUnconsumed)}\n`,
+    `runtime_tool_recovery_policy: version=${runtimeToolRecoveryPolicy.version} prompt_max_age_ms=${String(runtimeToolRecoveryPolicy.promptMaxAgeMs)} timeline_max_entries=${String(runtimeToolRecoveryPolicy.timelineMaxEntries)} adaptation_history_max_entries=${String(runtimeToolRecoveryPolicy.adaptationHistoryMaxEntries)} recovery_consumption_history_max_entries=${String(runtimeToolRecoveryPolicy.recoveryConsumptionHistoryMaxEntries)} guard_repeat_failures=${String(runtimeToolRecoveryPolicy.guard.repeatedProfileFailureThreshold)} guard_recent_profile_sequence=${String(runtimeToolRecoveryPolicy.guard.recentProfileSequenceSize)} guard_oscillation_window=${String(runtimeToolRecoveryPolicy.guard.oscillationProfileWindowSize)} escalation_thresholds=${String(runtimeToolRecoveryPolicy.escalation.sameToolErrorStrategySwitchThreshold)}/${String(runtimeToolRecoveryPolicy.escalation.sameToolErrorAskUserThreshold)} health_thresholds=${String(runtimeToolRecoveryPolicy.health.watchScoreThreshold)}/${String(runtimeToolRecoveryPolicy.health.riskScoreThreshold)} health_penalties=${String(runtimeToolRecoveryPolicy.health.penalties.activeRecovery)}/${String(runtimeToolRecoveryPolicy.health.penalties.activeNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.stuckNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.historicalUnconsumed)}\n`,
   );
   process.stdout.write(
     `runtime_tool_recovery_readiness: status=${runtimeToolRecoveryReadiness.status} ready=${runtimeToolRecoveryReadiness.ready ? "true" : "false"} auto_recovery_allowed=${runtimeToolRecoveryReadiness.automaticRecoveryAllowed ? "true" : "false"} operator_action_required=${runtimeToolRecoveryReadiness.operatorActionRequired ? "true" : "false"} reason=${runtimeToolRecoveryReadiness.reason} action=${runtimeToolRecoveryReadiness.recommendedNextAction ?? "<none>"} attention_key=${runtimeToolRecoveryReadiness.attentionRecoveryKey ?? "<none>"} attention_stage=${runtimeToolRecoveryReadiness.attentionStage ?? "<none>"} policy_version=${runtimeToolRecoveryReadiness.policyVersion} health=${runtimeToolRecoveryReadiness.healthLevel}/${String(runtimeToolRecoveryReadiness.healthScore)}\n`,

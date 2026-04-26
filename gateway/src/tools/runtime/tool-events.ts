@@ -17,7 +17,14 @@ export interface RuntimeToolRecoveryHint {
   toolName?: string;
   errorClass?: string;
   recoverable?: boolean;
+  requiresUserIntervention?: boolean;
   observedAt?: string;
+  sameToolErrorCount?: number;
+  escalated?: boolean;
+  escalationReason?: string;
+  escalationPolicyVersion?: string;
+  baseStage?: RuntimeToolRecoveryStage;
+  baseRecommendedNextAction?: string;
 }
 
 export interface RuntimeToolEventSummary {
@@ -41,6 +48,9 @@ export interface RuntimeToolSurfaceMetricsSnapshot {
   callsByTool: Record<string, number>;
   failuresByErrorClass: Record<string, number>;
   recoveryStages: Record<string, number>;
+  recoveryCountsByKey: Record<string, number>;
+  latestRecoveryRepeatKey: string | null;
+  latestRecoveryRepeatCount: number;
   avgDurationMsByTool: Record<string, number>;
   recentRecoveries: RuntimeToolRecoveryHint[];
   latestRecovery: RuntimeToolRecoveryHint | null;
@@ -59,6 +69,12 @@ export interface RuntimeToolRecoveryFeedback {
   recommendedNextAction: string | null;
   recoverable: boolean | null;
   requiresUserIntervention: boolean;
+  sameToolErrorCount?: number | null;
+  escalated?: boolean;
+  escalationReason?: string | null;
+  escalationPolicyVersion?: string | null;
+  baseStage?: RuntimeToolRecoveryStage | null;
+  baseRecommendedNextAction?: string | null;
   promptBlock: string;
   observedAt?: string | null;
   consumed?: boolean;
@@ -75,6 +91,9 @@ interface RuntimeToolSurfaceMetricsState {
   callsByTool: Record<string, number>;
   failuresByErrorClass: Record<string, number>;
   recoveryStages: Record<string, number>;
+  recoveryCountsByKey: Record<string, number>;
+  latestRecoveryRepeatKey: string;
+  latestRecoveryRepeatCount: number;
   durationTotalMsByTool: Record<string, number>;
   durationCountByTool: Record<string, number>;
   recentRecoveries: RuntimeToolRecoveryHint[];
@@ -160,6 +179,9 @@ function emptyState(): RuntimeToolSurfaceMetricsState {
     callsByTool: {},
     failuresByErrorClass: {},
     recoveryStages: {},
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: "",
+    latestRecoveryRepeatCount: 0,
     durationTotalMsByTool: {},
     durationCountByTool: {},
     recentRecoveries: [],
@@ -205,6 +227,87 @@ function normalizeRecoveryStage(value: unknown): RuntimeToolRecoveryStage | unde
     : undefined;
 }
 
+function normalizePositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function normalizeRecoveryKeyPart(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : "<none>";
+}
+
+function recoveryRepeatKey(recovery: RuntimeToolRecoveryHint): string {
+  return [
+    "tool_error",
+    normalizeRecoveryKeyPart(recovery.toolName),
+    normalizeRecoveryKeyPart(recovery.errorClass ?? recovery.reason),
+  ].join(":");
+}
+
+function recoveryStageRank(stage: RuntimeToolRecoveryStage): number {
+  if (stage === "ask_user") {
+    return 3;
+  }
+  if (stage === "strategy_switch") {
+    return 2;
+  }
+  if (stage === "local_fix" || stage === "observe_first") {
+    return 1;
+  }
+  return 0;
+}
+
+function applyRepeatedRecoveryEscalation(input: {
+  recovery: RuntimeToolRecoveryHint;
+  sameToolErrorCount: number;
+}): RuntimeToolRecoveryHint {
+  const base = input.recovery;
+  const baseStage = base.baseStage ?? base.stage;
+  const baseRecommendedNextAction = base.baseRecommendedNextAction ?? base.recommendedNextAction;
+  const common: RuntimeToolRecoveryHint = {
+    ...base,
+    sameToolErrorCount: input.sameToolErrorCount,
+    escalationPolicyVersion: RUNTIME_TOOL_RECOVERY_POLICY.version,
+    requiresUserIntervention: base.requiresUserIntervention ?? (base.recoverable === false),
+  };
+  if (
+    input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorAskUserThreshold
+    && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
+  ) {
+    return {
+      ...common,
+      stage: "ask_user",
+      recommendedNextAction: "ask_user_for_config_or_switch_provider",
+      recoverable: false,
+      requiresUserIntervention: true,
+      escalated: true,
+      escalationReason: "same_tool_error_exhausted",
+      baseStage,
+      baseRecommendedNextAction,
+    };
+  }
+  if (
+    input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorStrategySwitchThreshold
+    && recoveryStageRank(base.stage) < recoveryStageRank("strategy_switch")
+  ) {
+    return {
+      ...common,
+      stage: "strategy_switch",
+      recommendedNextAction: "switch_tool_strategy",
+      recoverable: true,
+      requiresUserIntervention: false,
+      escalated: true,
+      escalationReason: "same_tool_error_repeated",
+      baseStage,
+      baseRecommendedNextAction,
+    };
+  }
+  return {
+    ...common,
+    escalated: false,
+  };
+}
+
 function increment(map: Record<string, number>, key: string, count = 1): void {
   if (!key) {
     return;
@@ -239,7 +342,25 @@ function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRec
       payloadBoolean(payload, "recoverable")
       ?? payloadBoolean(payload, "auto_recoverable")
       ?? payloadBoolean(payload, "autoRecoverable"),
+    requiresUserIntervention:
+      payloadBoolean(payload, "requires_user_intervention")
+      ?? payloadBoolean(payload, "requiresUserIntervention"),
     observedAt: payloadIsoString(payload, "observed_at") || payloadIsoString(payload, "observedAt"),
+    sameToolErrorCount:
+      normalizePositiveInteger(payload.same_tool_error_count)
+      ?? normalizePositiveInteger(payload.sameToolErrorCount),
+    escalated: payloadBoolean(payload, "escalated"),
+    escalationReason:
+      payloadString(payload, "escalation_reason") || payloadString(payload, "escalationReason") || undefined,
+    escalationPolicyVersion:
+      payloadString(payload, "escalation_policy_version")
+      || payloadString(payload, "escalationPolicyVersion")
+      || undefined,
+    baseStage: normalizeRecoveryStage(payload.base_recovery_stage ?? payload.baseStage),
+    baseRecommendedNextAction:
+      payloadString(payload, "base_recommended_next_action")
+      || payloadString(payload, "baseRecommendedNextAction")
+      || undefined,
   };
 }
 
@@ -263,6 +384,9 @@ function readState(path: string): RuntimeToolSurfaceMetricsState {
       callsByTool: normalizeNumberMap(row.callsByTool),
       failuresByErrorClass: normalizeNumberMap(row.failuresByErrorClass),
       recoveryStages: normalizeNumberMap(row.recoveryStages),
+      recoveryCountsByKey: normalizeNumberMap(row.recoveryCountsByKey),
+      latestRecoveryRepeatKey: typeof row.latestRecoveryRepeatKey === "string" ? row.latestRecoveryRepeatKey : "",
+      latestRecoveryRepeatCount: normalizePositiveInteger(row.latestRecoveryRepeatCount) ?? 0,
       durationTotalMsByTool: normalizeNumberMap(row.durationTotalMsByTool),
       durationCountByTool: normalizeNumberMap(row.durationCountByTool),
       recentRecoveries: Array.isArray(row.recentRecoveries)
@@ -305,6 +429,9 @@ function toSnapshot(path: string, state: RuntimeToolSurfaceMetricsState): Runtim
     callsByTool: state.callsByTool,
     failuresByErrorClass: state.failuresByErrorClass,
     recoveryStages: state.recoveryStages,
+    recoveryCountsByKey: state.recoveryCountsByKey,
+    latestRecoveryRepeatKey: state.latestRecoveryRepeatKey || null,
+    latestRecoveryRepeatCount: state.latestRecoveryRepeatCount,
     avgDurationMsByTool,
     recentRecoveries: state.recentRecoveries,
     latestRecovery: state.recentRecoveries[state.recentRecoveries.length - 1] ?? null,
@@ -367,11 +494,26 @@ export function recordRuntimeToolSurfaceMetrics(input: {
   addMap(state.durationTotalMsByTool, summary.durationTotalMsByTool);
   addMap(state.durationCountByTool, summary.durationCountByTool);
   if (summary.latestRecovery) {
+    const repeatKey = recoveryRepeatKey(summary.latestRecovery);
+    increment(state.recoveryCountsByKey, repeatKey);
+    const sameToolErrorCount =
+      state.latestRecoveryRepeatKey === repeatKey
+        ? state.latestRecoveryRepeatCount + 1
+        : 1;
+    state.latestRecoveryRepeatKey = repeatKey;
+    state.latestRecoveryRepeatCount = sameToolErrorCount;
+    const escalatedRecovery = applyRepeatedRecoveryEscalation({
+      recovery: summary.latestRecovery,
+      sameToolErrorCount,
+    });
     state.recentRecoveries.push({
-      ...summary.latestRecovery,
+      ...escalatedRecovery,
       observedAt: state.updatedAt,
     });
     state.recentRecoveries = state.recentRecoveries.slice(-1 * RUNTIME_TOOL_RECOVERY_POLICY.timelineMaxEntries);
+  } else {
+    state.latestRecoveryRepeatKey = "";
+    state.latestRecoveryRepeatCount = 0;
   }
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
@@ -422,6 +564,12 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       recommendedNextAction: null,
       recoverable: null,
       requiresUserIntervention: false,
+      sameToolErrorCount: null,
+      escalated: false,
+      escalationReason: null,
+      escalationPolicyVersion: null,
+      baseStage: null,
+      baseRecommendedNextAction: null,
       promptBlock: "",
       observedAt: null,
     };
@@ -440,6 +588,12 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       recommendedNextAction: recovery.recommendedNextAction,
       recoverable: recovery.recoverable ?? null,
       requiresUserIntervention: false,
+      sameToolErrorCount: recovery.sameToolErrorCount ?? null,
+      escalated: recovery.escalated ?? false,
+      escalationReason: recovery.escalationReason ?? null,
+      escalationPolicyVersion: recovery.escalationPolicyVersion ?? null,
+      baseStage: recovery.baseStage ?? null,
+      baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
@@ -456,6 +610,12 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       recommendedNextAction: recovery.recommendedNextAction,
       recoverable: recovery.recoverable ?? null,
       requiresUserIntervention: false,
+      sameToolErrorCount: recovery.sameToolErrorCount ?? null,
+      escalated: recovery.escalated ?? false,
+      escalationReason: recovery.escalationReason ?? null,
+      escalationPolicyVersion: recovery.escalationPolicyVersion ?? null,
+      baseStage: recovery.baseStage ?? null,
+      baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     };
@@ -463,7 +623,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const instruction = actionInstruction(recovery.recommendedNextAction);
   const toolName = recovery.toolName ?? "unknown_tool";
   const errorClass = recovery.errorClass ?? recovery.reason;
-  const requiresUserIntervention = recovery.recoverable === false;
+  const requiresUserIntervention = recovery.requiresUserIntervention ?? (recovery.recoverable === false);
   const recoverability = requiresUserIntervention ? "requires_user_intervention" : "auto_recoverable";
   const executionDiscipline = requiresUserIntervention
     ? "Automatic recovery is blocked for this issue. Do not retry the failing tool automatically; ask the user or fix the required configuration, approval, or environment first."
@@ -471,21 +631,33 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const promptBlock = [
     "[Runtime Tool Recovery Hint]",
     `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
+    recovery.sameToolErrorCount
+      ? `Repeated failure pressure: same_tool_error_count=${String(recovery.sameToolErrorCount)} escalated=${recovery.escalated ? "true" : "false"} reason=${recovery.escalationReason ?? "<none>"}`
+      : null,
+    recovery.escalated && recovery.baseStage
+      ? `Base recovery was stage=${recovery.baseStage} action=${recovery.baseRecommendedNextAction ?? "<none>"} before gateway escalation.`
+      : null,
     `Recoverability: ${recoverability}`,
     `Required next action: ${recovery.recommendedNextAction}`,
     `Execution rule: ${instruction}`,
     `Execution discipline: ${executionDiscipline}`,
-  ].join("\n");
+  ].filter((line): line is string => typeof line === "string").join("\n");
   return {
     active: true,
     severity: severityForRecovery(recovery.stage),
-    reason: "recent_recovery",
+    reason: recovery.escalated ? "repeated_recovery_escalated" : "recent_recovery",
     stage: recovery.stage,
     toolName,
     errorClass,
     recommendedNextAction: recovery.recommendedNextAction,
     recoverable: recovery.recoverable ?? null,
     requiresUserIntervention,
+    sameToolErrorCount: recovery.sameToolErrorCount ?? null,
+    escalated: recovery.escalated ?? false,
+    escalationReason: recovery.escalationReason ?? null,
+    escalationPolicyVersion: recovery.escalationPolicyVersion ?? null,
+    baseStage: recovery.baseStage ?? null,
+    baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
     promptBlock,
     observedAt: recovery.observedAt ?? input.metrics.updatedAt,
   };

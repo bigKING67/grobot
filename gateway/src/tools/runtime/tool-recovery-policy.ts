@@ -9,6 +9,10 @@ export interface RuntimeToolRecoveryPolicySnapshot {
     recentProfileSequenceSize: number;
     oscillationProfileWindowSize: number;
   };
+  escalation: {
+    sameToolErrorStrategySwitchThreshold: number;
+    sameToolErrorAskUserThreshold: number;
+  };
   health: {
     riskScoreThreshold: number;
     watchScoreThreshold: number;
@@ -34,6 +38,10 @@ export const RUNTIME_TOOL_RECOVERY_POLICY: RuntimeToolRecoveryPolicySnapshot = {
     recentProfileSequenceSize: 4,
     oscillationProfileWindowSize: 4,
   },
+  escalation: {
+    sameToolErrorStrategySwitchThreshold: 2,
+    sameToolErrorAskUserThreshold: 3,
+  },
   health: {
     riskScoreThreshold: 60,
     watchScoreThreshold: 85,
@@ -57,6 +65,11 @@ export function getRuntimeToolRecoveryPolicySnapshot(): RuntimeToolRecoveryPolic
       repeatedProfileFailureThreshold: RUNTIME_TOOL_RECOVERY_POLICY.guard.repeatedProfileFailureThreshold,
       recentProfileSequenceSize: RUNTIME_TOOL_RECOVERY_POLICY.guard.recentProfileSequenceSize,
       oscillationProfileWindowSize: RUNTIME_TOOL_RECOVERY_POLICY.guard.oscillationProfileWindowSize,
+    },
+    escalation: {
+      sameToolErrorStrategySwitchThreshold:
+        RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorStrategySwitchThreshold,
+      sameToolErrorAskUserThreshold: RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorAskUserThreshold,
     },
     health: {
       riskScoreThreshold: RUNTIME_TOOL_RECOVERY_POLICY.health.riskScoreThreshold,

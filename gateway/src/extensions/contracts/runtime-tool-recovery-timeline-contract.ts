@@ -42,6 +42,12 @@ const metrics: RuntimeToolSurfaceMetricsSnapshot = {
     local_fix: 1,
     ask_user: 1,
   },
+  recoveryCountsByKey: {
+    "tool_error:read:path_not_found": 1,
+    "tool_error:web_scan:config_missing": 1,
+  },
+  latestRecoveryRepeatKey: "tool_error:web_scan:config_missing",
+  latestRecoveryRepeatCount: 1,
   avgDurationMsByTool: {
     read: 8,
     web_scan: 12,
