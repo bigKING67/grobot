@@ -24,6 +24,7 @@ import {
 import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderBottomPaneFooter } from "../ui/screens/bottom-pane-screen";
 import { type StatusLineConfig } from "../ui/screens/status-line-screen";
+import { renderStatusIndicatorLine } from "../ui/screens/status-indicator-screen";
 import { type RuntimeAttachment } from "../../../../models/types";
 
 export interface RunStartInteractiveTurnOptions {
@@ -42,18 +43,6 @@ const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
   "/quit",
 ]);
 
-const INLINE_ACTIVITY_SPINNER_FRAMES = [
-  "⠋",
-  "⠙",
-  "⠹",
-  "⠸",
-  "⠼",
-  "⠴",
-  "⠦",
-  "⠧",
-  "⠇",
-  "⠏",
-] as const;
 const INLINE_ACTIVITY_TICK_MS = 120;
 const INTERACTIVE_SLASH_SUGGESTION_LIMIT = 64;
 
@@ -242,7 +231,10 @@ function resolveProcessSummaryDetail(): ProcessSummaryDetail {
   if (raw === "full") {
     return "full";
   }
-  return "compact";
+  if (raw === "compact") {
+    return "compact";
+  }
+  return "none";
 }
 
 function resolveInteractiveDiagnosticsMode(input: {
@@ -304,6 +296,9 @@ export interface RunStartInteractiveModeInput {
   getPendingAskQueueSize(): number;
   getPendingAskPromptSummary?(): string | undefined;
   showPendingAskQueue(limit?: number): void;
+  selectPendingAskAnswer(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<string | undefined>;
   getCachedModelContextWindowTokens(modelId: string): number | undefined;
   refreshModelCatalogCache(): Promise<void>;
   openModelMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -360,6 +355,7 @@ export interface RunStartInteractiveModeInput {
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
@@ -459,6 +455,14 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   let inlineProgressText = "";
   let inlineActivityTicker: ReturnType<typeof setInterval> | undefined;
   let inlineActivityTick = 0;
+  let stdoutNeedsLineBreak = false;
+  const ensureInteractiveStdoutLineBoundary = (): void => {
+    if (!stdoutNeedsLineBreak) {
+      return;
+    }
+    process.stdout.write("\n");
+    stdoutNeedsLineBreak = false;
+  };
   const clearInlineProgress = (insertNewline: boolean): void => {
     if (!inlineProgressSupported || !inlineProgressActive) {
       return;
@@ -488,11 +492,13 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       return;
     }
     const activityText = compactSummaryText(activityTracker.readPromptActivity() ?? "正在执行");
-    const elapsed = formatTurnElapsedCompact(Date.now() - activeTurnStartedAtMs);
-    const spinner = INLINE_ACTIVITY_SPINNER_FRAMES[
-      inlineActivityTick % INLINE_ACTIVITY_SPINNER_FRAMES.length
-    ] ?? "-";
-    writeProgressLine(`${spinner} ${activityText} (${elapsed} · Esc中断)`);
+    writeProgressLine(renderStatusIndicatorLine({
+      message: activityText,
+      startedAtMs: activeTurnStartedAtMs,
+      nowMs: Date.now(),
+      tick: inlineActivityTick,
+      terminalColumns: resolveTerminalColumns(),
+    }));
     inlineActivityTick += 1;
   };
   const startInlineActivityTicker = (): void => {
@@ -551,6 +557,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     if (inputSummary.activitySnapshot && shouldShowStage) {
       parts.push(`s="${compactSummaryText(inputSummary.activitySnapshot.text).replace(/"/g, "'")}"`);
     }
+    ensureInteractiveStdoutLineBoundary();
     stopInlineActivityTicker(false);
     process.stdout.write(`${parts.join(" ")}\n`);
   };
@@ -584,15 +591,16 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       }
     }
   };
+  const writeInteractiveStdout = (message: string): void => {
+    stopInlineActivityTicker(true);
+    process.stdout.write(message);
+    if (message.length > 0) {
+      stdoutNeedsLineBreak = !message.endsWith("\n");
+    }
+  };
 
   const handleInteractiveInput = createRunStartInteractiveHandler({
-    writeStdout: (message) => {
-      clearInlineProgress(false);
-      process.stdout.write(message);
-      if (typeof activeTurnStartedAtMs === "number") {
-        renderInlineActivityTicker();
-      }
-    },
+    writeStdout: writeInteractiveStdout,
     writeStderr: writeInteractiveStderr,
     hasPendingAsk: input.hasPendingAsk,
     getPendingAskQueueSize: input.getPendingAskQueueSize,
@@ -600,8 +608,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showPendingAskQueue: (limit) => {
       input.showPendingAskQueue(limit);
     },
+    selectPendingAskAnswer: input.selectPendingAskAnswer,
     showHelp: () => {
-      process.stdout.write(input.buildHelpText());
+      writeInteractiveStdout(input.buildHelpText());
     },
     showHealthStatus: () => {
       input.showHealthStatus();
@@ -686,6 +695,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           interactiveMode,
           {
             attachments: inlineAttachmentResolution.attachments,
+            writeStdout: writeInteractiveStdout,
             writeStderr: writeInteractiveStderr,
           },
         );
@@ -707,6 +717,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
                 ? "ok"
                 : "error",
           );
+          ensureInteractiveStdoutLineBoundary();
           writeTurnSummaryLine({
             result: code === TURN_INTERRUPTED_EXIT_CODE
               ? "interrupted"
@@ -748,6 +759,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
           const activitySnapshot = activityTracker.readPromptActivitySnapshot();
           activityTracker.markTurnFinished("error");
+          ensureInteractiveStdoutLineBoundary();
           writeTurnSummaryLine({
             result: "error",
             elapsedMs,
@@ -801,8 +813,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       planMode: input.isPlanMode(),
       terminalColumns,
       activityText:
-        typeof activeTurnStartedAtMs !== "number" && pendingAskCount <= 0
-          ? activityTracker.readPromptActivity()
+        pendingAskCount <= 0
+          ? (activityTracker.readActivitySnapshot()?.title ?? activityTracker.readPromptActivity())
           : undefined,
       promptLabel: "❯ ",
       pendingAskCount,

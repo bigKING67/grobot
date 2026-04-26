@@ -129,10 +129,14 @@ async function runDispatchCase(
     getPendingAskQueueSize: () => pendingAskCount,
     getPendingAskPromptSummary: () =>
       pendingAskCount > 0
-        ? "question=Need project scope? | options=1:core | 2:all | default=core"
+        ? "Enter/? 选择 · 1-2 直接回复"
         : undefined,
     showPendingAskQueue: (limit) => {
       events.push(`showPendingAskQueue:${typeof limit === "number" ? String(limit) : "default"}`);
+    },
+    selectPendingAskAnswer: async () => {
+      events.push("selectPendingAskAnswer");
+      return "core";
     },
     showHelp: () => {
       events.push("showHelp");
@@ -563,6 +567,8 @@ async function main(): Promise<void> {
   const pendingAskAllowAsk = await runDispatchCase("/ask", { pendingAskCount: 2 });
   const pendingAskAllowAskInvalidArgs = await runDispatchCase("/ask status", { pendingAskCount: 2 });
   const pendingAskPlainAnswer = await runDispatchCase("继续执行快速方案", { pendingAskCount: 2 });
+  const pendingAskEmptyOpensSelector = await runDispatchCase("", { pendingAskCount: 2 });
+  const pendingAskQuestionMarkOpensSelector = await runDispatchCase("?", { pendingAskCount: 2 });
   const pendingAskBlockedBurstFirst = await runDispatchCase("/model", {
     pendingAskCount: 3,
     nowMs: 1_000_000,
@@ -1044,9 +1050,12 @@ async function main(): Promise<void> {
       "openStatusMenu",
     ),
     pending_ask_blocked_status_hint_has_reply_guidance:
-      pendingAskBlockedStatus.stdout.includes("请先直接回复"),
+      pendingAskBlockedStatus.stdout.includes("请先回复后再执行其他命令"),
     pending_ask_blocked_status_hint_has_prompt_summary:
-      pendingAskBlockedStatus.stdout.includes("当前问题：question=Need project scope?"),
+      pendingAskBlockedStatus.stdout.includes("Enter/? 选择")
+      && !pendingAskBlockedStatus.stdout.includes("question="),
+    pending_ask_blocked_status_hint_has_short_menu_hint:
+      pendingAskBlockedStatus.stdout.includes("Enter/? 选择"),
     pending_ask_help_allowed: includesEvent(pendingAskAllowHelp.events, "showHelp"),
     pending_ask_help_blocked_warned: includesEvent(pendingAskAllowHelp.events, "writeStdout"),
     pending_ask_interrupt_allowed: includesEvent(
@@ -1079,6 +1088,22 @@ async function main(): Promise<void> {
     pending_ask_plain_text_blocked_warned: includesEvent(
       pendingAskPlainAnswer.events,
       "writeStdout",
+    ),
+    pending_ask_empty_opens_selector: includesEvent(
+      pendingAskEmptyOpensSelector.events,
+      "selectPendingAskAnswer",
+    ),
+    pending_ask_empty_selection_runs_turn: includesEvent(
+      pendingAskEmptyOpensSelector.events,
+      "runTurn:core",
+    ),
+    pending_ask_question_mark_opens_selector: includesEvent(
+      pendingAskQuestionMarkOpensSelector.events,
+      "selectPendingAskAnswer",
+    ),
+    pending_ask_question_mark_selection_runs_turn: includesEvent(
+      pendingAskQuestionMarkOpensSelector.events,
+      "runTurn:core",
     ),
     pending_ask_burst_first_warned: includesEvent(
       pendingAskBlockedBurstFirst.events,

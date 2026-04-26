@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function isObject(value) {
@@ -349,6 +349,108 @@ function createTempDir(prefix) {
   const dir = resolve("/tmp", `${prefix}-${random}`);
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function stableJsonStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJsonStringify(item)).join(",")}]`;
+  }
+  if (isObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJsonStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function fnv1a32HexFromUtf8(value) {
+  let hash = 0x811c9dc5;
+  for (const byte of Buffer.from(value, "utf8")) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function buildRuntimeToolRecoveryCatalogFingerprint(catalog, policyVersion = "v1") {
+  const payload = stableJsonStringify({
+    policy_version: policyVersion,
+    catalog,
+  });
+  return `recovery_catalog:${fnv1a32HexFromUtf8(payload)}`;
+}
+
+function writeFakeRuntimeToolsDescribe(payload) {
+  const runtimeDir = createTempDir("grobot-fake-runtime-tools-describe");
+  const runtimePath = `${runtimeDir}/grobot-runtime`;
+  const response = {
+    jsonrpc: "2.0",
+    id: "tools-describe-1",
+    result: payload,
+  };
+  writeFileSync(
+    runtimePath,
+    [
+      "#!/usr/bin/env node",
+      "process.stdin.resume();",
+      "process.stdin.on('end', () => {",
+      `  process.stdout.write(${JSON.stringify(`${JSON.stringify(response)}\n`)});`,
+      "});",
+      "process.stdin.on('data', () => {});",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  chmodSync(runtimePath, 0o755);
+  return runtimePath;
+}
+
+function buildInvalidSchemaProfileToolsDescribePayload() {
+  const toolNames = ["glob", "search", "read", "write", "edit", "bash", "ask_user"];
+  const recoveryCatalog = [
+    {
+      error_classes: ["config_missing"],
+      risk_class: "missing_config",
+      stage: "ask_user",
+      recommended_next_action: "ask_user_for_config_or_switch_provider",
+      recoverable: false,
+    },
+  ];
+  return {
+    tools: toolNames.map((name) => ({
+      type: "function",
+      function: {
+        name,
+        description: `fake ${name}`,
+        parameters: { type: "object", properties: {} },
+      },
+    })),
+    default_enabled_tools: toolNames,
+    tool_recovery_policy_version: "v1",
+    tool_recovery_catalog_fingerprint: buildRuntimeToolRecoveryCatalogFingerprint(recoveryCatalog),
+    tool_recovery_actions: ["ask_user_for_config_or_switch_provider"],
+    tool_recovery_catalog: recoveryCatalog,
+    tool_surface_schema_profiles_fingerprint: "schema_profiles:invalid-test",
+    tool_surface_schema_profiles: [
+      {
+        policy_version: "v1",
+        profile: "coding",
+        projection_mode: "slim",
+        advanced_tool_schema: false,
+        schema_fingerprint: "schema:v1:invalid-test",
+        tool_names: ["read"],
+        visible_tool_count: "1",
+        schema_property_count: 1,
+        full_schema_property_count: 1,
+        suppressed_schema_property_count: 0,
+        per_tool_property_count: { read: 1 },
+        per_tool_visible_args: { read: ["path"] },
+        per_tool_suppressed_args: { read: [] },
+      },
+    ],
+  };
 }
 
 function sanitizeSessionKey(sessionKey) {
@@ -4952,6 +5054,86 @@ function runStartRuntimeDescribeFallbackDiagnostic(repoRoot) {
   };
 }
 
+function runStatusRuntimeDescribeInvalidSchemaProfiles(repoRoot) {
+  const workDir = createTempDir("grobot-status-runtime-describe-invalid-schema-work");
+  writeExecutionProjectToml(workDir);
+  const fakeRuntimePath = writeFakeRuntimeToolsDescribe(buildInvalidSchemaProfileToolsDescribePayload());
+  const result = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "status",
+      "--work-dir",
+      workDir,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+    ],
+    { GROBOT_RUNTIME_BIN: fakeRuntimePath },
+  );
+  return {
+    ...result,
+    fake_runtime_path: fakeRuntimePath,
+    has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
+    has_start_default_source: result.stdout.includes("runtime_tool_enabled_tools_source: start-default"),
+    has_invalid_schema_reason: result.stdout.includes(
+      "runtime_tools_describe_invalid_schema_profiles:schema_profiles_invalid_rows:1",
+    ),
+  };
+}
+
+function runStartRuntimeDescribeInvalidSchemaProfiles(repoRoot) {
+  const workDir = createTempDir("grobot-start-runtime-describe-invalid-schema-work");
+  const homeDir = createTempDir("grobot-start-runtime-describe-invalid-schema-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  writeExecutionProjectToml(workDir);
+  const fakeRuntimePath = writeFakeRuntimeToolsDescribe(buildInvalidSchemaProfileToolsDescribePayload());
+  const result = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "runtime-describe-invalid-schema-user",
+      "--history-turns",
+      "2",
+    ],
+    {
+      GROBOT_RUNTIME_BIN: fakeRuntimePath,
+      GROBOT_STARTUP_DIAGNOSTICS: "0",
+      GROBOT_INTERACTIVE_DIAGNOSTICS: "0",
+      GROBOT_ALLOW_TS_DEV_CLI: "1",
+      GROBOT_ALLOW_REDIS_FALLBACK: "1",
+    },
+    ["/exit", ""].join("\n"),
+  );
+  return {
+    ...result,
+    fake_runtime_path: fakeRuntimePath,
+    has_tool_surface_fallback_event: result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
+    has_start_default_source: result.stderr.includes("enabled_tools_source=start-default"),
+    has_invalid_schema_reason: result.stderr.includes(
+      "runtime_tools_describe_invalid_schema_profiles:schema_profiles_invalid_rows:1",
+    ),
+    has_fallback_manifest: result.stderr.includes("manifest_fingerprint=fallback:"),
+    has_schema_profiles_none: result.stderr.includes("schema_profiles_fingerprint=<none>"),
+  };
+}
+
 function runStatusRejectLegacyFlag(repoRoot) {
   return runCommand(repoRoot, ["./grobot", "status", "--legacy-python-cli"]);
 }
@@ -5113,6 +5295,12 @@ function runCli(argv) {
       break;
     case "start-runtime-describe-fallback-diagnostic":
       payload = runStartRuntimeDescribeFallbackDiagnostic(repoRoot);
+      break;
+    case "status-runtime-describe-invalid-schema-profiles":
+      payload = runStatusRuntimeDescribeInvalidSchemaProfiles(repoRoot);
+      break;
+    case "start-runtime-describe-invalid-schema-profiles":
+      payload = runStartRuntimeDescribeInvalidSchemaProfiles(repoRoot);
       break;
     case "status-reject-legacy-flag":
       payload = runStatusRejectLegacyFlag(repoRoot);

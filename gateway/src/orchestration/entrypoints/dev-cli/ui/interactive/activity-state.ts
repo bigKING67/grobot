@@ -1,9 +1,25 @@
 interface ActivityUpdate {
   stageId: string;
   text: string;
+  status?: ActivityStatus;
 }
 
-interface ActivitySnapshot extends ActivityUpdate {
+export type ActivityKind =
+  | "context"
+  | "runtime"
+  | "route"
+  | "ask-user"
+  | "tool"
+  | "memory"
+  | "governance";
+
+export type ActivityStatus = "running" | "done" | "warning" | "error";
+
+export interface ActivitySnapshot extends ActivityUpdate {
+  kind: ActivityKind;
+  title: string;
+  detail?: string;
+  status: ActivityStatus;
   updatedAtMs: number;
 }
 
@@ -14,6 +30,7 @@ export interface InteractiveActivityTracker {
   observeStderrChunk(chunk: string): void;
   flushBufferedStderr(): string;
   readPromptActivitySnapshot(): { stageId: string; text: string } | undefined;
+  readActivitySnapshot(): ActivitySnapshot | undefined;
   readPromptActivity(): string | undefined;
 }
 
@@ -42,6 +59,60 @@ const DIAGNOSTIC_TAGS = new Set<string>([
   "runtime-model",
   "runtime-route",
 ]);
+
+function resolveActivityKind(stageId: string): ActivityKind {
+  if (stageId.startsWith("context_")) {
+    return "context";
+  }
+  if (stageId.startsWith("runtime_route")) {
+    return "route";
+  }
+  if (stageId.startsWith("runtime_") || stageId.startsWith("execution") || stageId.startsWith("turn_")) {
+    return "runtime";
+  }
+  if (stageId.startsWith("ask_user")) {
+    return "ask-user";
+  }
+  if (stageId.startsWith("memory_") || stageId.startsWith("experience_") || stageId === "reflection") {
+    return "memory";
+  }
+  if (stageId.startsWith("governance")) {
+    return "governance";
+  }
+  return "runtime";
+}
+
+function resolveActivityStatus(input: ActivityUpdate): ActivityStatus {
+  if (input.status) {
+    return input.status;
+  }
+  if (
+    input.stageId.includes("warning")
+    || input.stageId.includes("degraded")
+    || input.stageId.includes("retry")
+    || input.stageId.includes("recovery")
+  ) {
+    return "warning";
+  }
+  if (input.stageId.includes("error") || input.stageId.includes("failed")) {
+    return "error";
+  }
+  if (input.stageId.includes("done") || input.stageId.includes("finished_ok")) {
+    return "done";
+  }
+  return "running";
+}
+
+function toActivitySnapshot(next: ActivityUpdate, updatedAtMs: number): ActivitySnapshot {
+  const title = next.text.trim();
+  return {
+    ...next,
+    kind: resolveActivityKind(next.stageId),
+    title,
+    status: resolveActivityStatus(next),
+    updatedAtMs,
+  };
+}
 
 function extractField(line: string, key: string): string | undefined {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -233,10 +304,7 @@ export function createInteractiveActivityTracker(
   const setActivity = (next: ActivityUpdate): void => {
     const now = Date.now();
     const nextSignature = `${next.stageId}:${next.text}`;
-    snapshot = {
-      ...next,
-      updatedAtMs: now,
-    };
+    snapshot = toActivitySnapshot(next, now);
     if (!writeProgressLine) {
       return;
     }
@@ -277,22 +345,23 @@ export function createInteractiveActivityTracker(
     },
     markTurnFinished: (status): void => {
       if (status === "ok") {
-        setActivity({
-          stageId: "turn_finished_ok",
-          text: "执行完成，等待下一条输入",
-        });
+        snapshot = undefined;
+        lastEmittedSignature = "";
+        lastEmittedAtMs = 0;
         return;
       }
       if (status === "interrupted") {
         setActivity({
           stageId: "turn_finished_interrupted",
           text: "执行已中断",
+          status: "warning",
         });
         return;
       }
       setActivity({
         stageId: "turn_finished_error",
         text: "执行失败，请查看错误输出",
+        status: "error",
       });
     },
     consumeStderrChunk: (chunk): string => processChunk(chunk, true),
@@ -321,6 +390,17 @@ export function createInteractiveActivityTracker(
       return {
         stageId: snapshot.stageId,
         text: snapshot.text,
+      };
+    },
+    readActivitySnapshot: (): ActivitySnapshot | undefined => {
+      if (!snapshot) {
+        return undefined;
+      }
+      if (Date.now() - snapshot.updatedAtMs > promptRetentionMs) {
+        return undefined;
+      }
+      return {
+        ...snapshot,
       };
     },
     readPromptActivity: (): string | undefined => {

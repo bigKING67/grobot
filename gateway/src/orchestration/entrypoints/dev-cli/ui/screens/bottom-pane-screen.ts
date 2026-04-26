@@ -48,6 +48,7 @@ const SHORTCUT_OVERLAY_KEY_COLUMN_WIDTH = 11;
 const SHORTCUT_OVERLAY_KEY_GAP = "  ";
 const SHORTCUT_OVERLAY_COLUMN_GAP = "  ";
 const SHORTCUT_OVERLAY_FALLBACK_COLUMN_WIDTH = 27;
+const PENDING_ASK_DEFAULT_ACTION_HINT = "Enter/? 选择";
 
 function resolveTerminalColumns(columns: number | undefined): number {
   if (typeof columns !== "number" || !Number.isFinite(columns)) {
@@ -78,14 +79,35 @@ function buildPendingAskLine(input: BottomPanePromptInput): string | undefined {
     return undefined;
   }
   const summary = compactSpaces(input.pendingAskSummary ?? "");
-  const baseLine = summary.length > 0
-    ? `待确认 ${String(pendingAskCount)} 项 · ${summary}`
-    : `待确认 ${String(pendingAskCount)} 项 · 回复继续`;
+  const actionHint = resolvePendingAskActionHint(summary);
+  const baseLine = `待确认 ${String(pendingAskCount)} 项 · ${actionHint}`;
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   if (terminalColumns > 0) {
     return truncateDisplayWidth(baseLine, terminalColumns);
   }
   return baseLine;
+}
+
+function resolvePendingAskActionHint(summary: string): string {
+  if (!summary) {
+    return PENDING_ASK_DEFAULT_ACTION_HINT;
+  }
+  const normalized = summary.toLowerCase();
+  const looksLikeDiagnostic =
+    normalized.includes("question=")
+    || normalized.includes("options_")
+    || normalized.includes("output_mode")
+    || normalized.includes("followups")
+    || normalized.includes("[ask-user]");
+  const looksLikeActionHint =
+    normalized.includes("enter/?")
+    || normalized.startsWith("enter ")
+    || summary.startsWith("输入回复");
+  const looksLikeQuestion = !looksLikeActionHint && /[?？]/.test(summary);
+  if (looksLikeDiagnostic || looksLikeQuestion) {
+    return PENDING_ASK_DEFAULT_ACTION_HINT;
+  }
+  return summary;
 }
 
 function buildInputHintLine(input: BottomPanePromptInput): string | undefined {
@@ -312,10 +334,7 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
     pushLine(pendingAskLine);
     pushLine(parts.warningLine);
   } else if (mode === "pending") {
-    pushLine(pendingAskLine);
-    if (renderSecondaryStatus) {
-      pushLine(BOTTOM_PANE_STYLE.dimLine(parts.statusLine));
-    }
+    pushLine(pendingAskLine ? BOTTOM_PANE_STYLE.dimLine(pendingAskLine) : undefined);
     pushLine(parts.warningLine);
   } else {
     pushLine(BOTTOM_PANE_STYLE.idleFooterLine(joinFooterSummary({

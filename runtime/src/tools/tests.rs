@@ -408,7 +408,7 @@ mod tests {
         assert!(default_enabled_names.contains(TOOL_WRITE));
         assert!(default_enabled_names.contains(TOOL_EDIT));
         assert!(default_enabled_names.contains(TOOL_BASH));
-        assert!(default_enabled_names.contains(TOOL_ASK_USER_QUESTION));
+        assert!(default_enabled_names.contains(TOOL_ASK_USER));
         assert!(!default_enabled_names.contains(TOOL_LIST));
         assert!(!default_enabled_names.contains(TOOL_WEB_SCAN));
         assert!(!default_enabled_names.contains(TOOL_WEB_EXECUTE_JS));
@@ -511,7 +511,7 @@ mod tests {
                 TOOL_WRITE.to_string(),
                 TOOL_EDIT.to_string(),
                 TOOL_BASH.to_string(),
-                TOOL_ASK_USER_QUESTION.to_string(),
+                TOOL_ASK_USER.to_string(),
             ])
         );
         assert!(!names.contains(TOOL_PROMPT_ENHANCER));
@@ -523,7 +523,7 @@ mod tests {
     fn tool_surface_profiles_keep_intentional_tool_sets_and_schema_budgets() {
         assert_surface_tool_names(
             "minimal",
-            &[TOOL_READ, TOOL_EDIT, TOOL_WRITE, TOOL_ASK_USER_QUESTION],
+            &[TOOL_READ, TOOL_EDIT, TOOL_WRITE, TOOL_ASK_USER],
         );
         assert_surface_tool_names(
             "coding",
@@ -534,7 +534,7 @@ mod tests {
                 TOOL_WRITE,
                 TOOL_EDIT,
                 TOOL_BASH,
-                TOOL_ASK_USER_QUESTION,
+                TOOL_ASK_USER,
             ],
         );
         assert_surface_tool_names(
@@ -543,7 +543,7 @@ mod tests {
                 TOOL_WEB_SCAN,
                 TOOL_WEB_EXECUTE_JS,
                 TOOL_READ,
-                TOOL_ASK_USER_QUESTION,
+                TOOL_ASK_USER,
             ],
         );
         assert_surface_tool_names(
@@ -552,16 +552,16 @@ mod tests {
                 TOOL_WEB_SCAN,
                 TOOL_WEB_EXECUTE_JS,
                 TOOL_READ,
-                TOOL_ASK_USER_QUESTION,
+                TOOL_ASK_USER,
             ],
         );
         assert_surface_tool_names(
             "context",
-            &[TOOL_SEMANTIC_SEARCH, TOOL_READ, TOOL_ASK_USER_QUESTION],
+            &[TOOL_SEMANTIC_SEARCH, TOOL_READ, TOOL_ASK_USER],
         );
         assert_surface_tool_names(
             "mcp",
-            &[TOOL_MCP_SERVERS, TOOL_MCP_CALL, TOOL_ASK_USER_QUESTION],
+            &[TOOL_MCP_SERVERS, TOOL_MCP_CALL, TOOL_ASK_USER],
         );
 
         let full_debug_expected = local_tool_catalog()

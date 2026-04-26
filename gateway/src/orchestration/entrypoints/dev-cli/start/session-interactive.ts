@@ -34,6 +34,9 @@ export interface SessionInteractiveHandlers {
   getPendingAskQueueSize(): number;
   getPendingAskPromptSummary?(): string | undefined;
   showPendingAskQueue(limit?: number): void;
+  selectPendingAskAnswer(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<string | undefined>;
   showHelp(): void;
   showHealthStatus(): void;
   showContextStatus(): void;
@@ -135,7 +138,9 @@ function consumePendingAskBlockedNotice(input: {
   const compactSuffix = suppressed > 0
     ? ` 已折叠 ${String(suppressed)} 条重复提示。`
     : "";
-  return `[ask-user] 当前有待确认问题，请先直接回复。${compactSuffix}\n\n`;
+  const summary = input.promptSummary?.trim();
+  const summaryText = summary ? ` · ${summary}` : " · Enter/? 选择";
+  return `当前有待确认问题${summaryText}。请先回复后再执行其他命令。${compactSuffix}\n\n`;
 }
 
 function parseSlashCommandName(userInput: string): string | undefined {
@@ -169,7 +174,31 @@ export async function dispatchSessionInteractiveInput(
   handlers: SessionInteractiveHandlers,
 ): Promise<SessionInteractiveAction> {
   const userInput = userInputRaw.trim();
+  if (!userInput && handlers.hasPendingAsk()) {
+    const selectedAnswer = await handlers.selectPendingAskAnswer(controls.withInputPaused);
+    if (!selectedAnswer) {
+      return "continue";
+    }
+    try {
+      await handlers.runTurn(selectedAnswer);
+    } catch (error) {
+      handlers.onTurnError(error);
+    }
+    return "continue";
+  }
   if (!userInput) {
+    return "continue";
+  }
+  if (handlers.hasPendingAsk() && userInput === "?") {
+    const selectedAnswer = await handlers.selectPendingAskAnswer(controls.withInputPaused);
+    if (!selectedAnswer) {
+      return "continue";
+    }
+    try {
+      await handlers.runTurn(selectedAnswer);
+    } catch (error) {
+      handlers.onTurnError(error);
+    }
     return "continue";
   }
   if (isRemovedAskCommand(userInput)) {

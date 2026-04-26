@@ -39,6 +39,18 @@ projection drift, unknown tool names, and visible/suppressed argument overlap so
 the reported schema budget cannot silently diverge from the executable runtime
 tool manifest.
 
+Tool schema budget is an explicit contract, not a comment. Gateway fallback
+projections and runtime-reported schema profiles are both checked against
+`gateway/src/tools/runtime/tool-surface-budget.ts`, including visible tool count,
+projected/full/suppressed argument counts, and estimated schema-token ceilings.
+This keeps browser schema slimming measurable and prevents accidental tool
+surface expansion from silently increasing prompt cost.
+
+The canonical human-intervention primitive is `ask_user`. Older
+`ask_user_question` tool calls are accepted only as a runtime compatibility
+alias at dispatch/interrupt parsing boundaries; new tool manifests and gateway
+fallback surfaces must expose `ask_user`.
+
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
 `status` reports `runtime_tool_enabled_tools_source_detail` and the real

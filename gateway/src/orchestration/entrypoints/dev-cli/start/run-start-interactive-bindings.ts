@@ -40,7 +40,11 @@ import {
 } from "./run-start-io";
 import { compactSingleLine, type ChatHistoryMessage } from "./session-history";
 import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
-import { buildAskUserOptionsPreview } from "../../../../tools/ask-user";
+import {
+  buildAskUserDisplay,
+  buildAskUserOptionDisplayLabel,
+  buildAskUserPendingSummary,
+} from "../../../../tools/ask-user";
 import {
   resolveRunStartPlanSuggestionState,
   type RunStartPlanSuggestionState,
@@ -88,6 +92,7 @@ interface CreateRunStartInteractiveModeInput {
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
@@ -801,7 +806,7 @@ export function createRunStartInteractiveModeInput(
     const expired = input.gaMechanismRuntime.purgeExpiredPendingAsk(sessionKey);
     if (notify && expired.length > 0) {
       input.output.writeStdout(
-        `[ask-user] removed ${String(expired.length)} expired pending question(s).\n\n`,
+        `已移除 ${String(expired.length)} 个过期待确认问题。\n\n`,
       );
     }
     return expired.length;
@@ -822,14 +827,54 @@ export function createRunStartInteractiveModeInput(
     if (!active) {
       return undefined;
     }
-    const question = compactSingleLine(active.question, 96);
-    const optionsPreview = buildAskUserOptionsPreview(active.options, 3).preview;
-    const defaultAnswer = resolveDefaultAskAnswer(active.defaultOnTimeout);
-    const parts = [`question=${question}`, `options=${optionsPreview}`];
-    if (defaultAnswer) {
-      parts.push(`default=${compactSingleLine(defaultAnswer, 32)}`);
+    return buildAskUserPendingSummary(active);
+  };
+
+  const selectPendingAskAnswer = async (
+    withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<string | undefined> => {
+    purgeExpiredPendingAsk(true);
+    const sessionKey = input.runtimeState.getSessionKey();
+    const active = input.gaMechanismRuntime.getPendingAsk(sessionKey);
+    if (!active) {
+      input.output.writeStdout("没有待确认问题。\n\n");
+      return undefined;
     }
-    return compactSingleLine(parts.join(" | "), 180);
+    if (!process.stdin.isTTY) {
+      input.output.writeStdout(buildAskUserDisplay(active));
+      return undefined;
+    }
+    if (active.optionsDetailed.length <= 0) {
+      const reply = await withInputPaused(() =>
+        runTerminalLinePrompt({
+          prompt: "回复> ",
+        }),
+      );
+      if (reply.kind === "cancelled") {
+        return undefined;
+      }
+      const answer = reply.value.trim();
+      return answer.length > 0 ? answer : undefined;
+    }
+    const selected = await withInputPaused(() =>
+      runTerminalSelectMenu({
+        title: active.header ? `需要确认 · ${active.header}` : "需要确认",
+        subtitle: compactSingleLine(active.question, 96),
+        hint: "↑/↓ 或 j/k 选择 · 数字直选 · Enter 确认 · Esc 返回",
+        visibleOptionCount: Math.min(6, active.optionsDetailed.length),
+        items: active.optionsDetailed.map((option, index) => ({
+          id: option.value ?? option.label,
+          label: buildAskUserOptionDisplayLabel(option.label, index),
+          description: option.description
+            ? compactSingleLine(option.description, 96)
+            : "选择后立即继续当前任务",
+        })),
+      }),
+    );
+    if (selected.kind === "cancelled") {
+      return undefined;
+    }
+    return selected.item.id;
   };
 
   const showPendingAskQueue = (limit?: number): void => {
@@ -838,25 +883,21 @@ export function createRunStartInteractiveModeInput(
     const sessionKey = input.runtimeState.getSessionKey();
     const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
     if (queue.length === 0) {
-      input.output.writeStdout("[ask-user] no pending question.\n\n");
+      input.output.writeStdout("没有待确认问题。\n\n");
       return;
     }
     const active = queue[0];
     if (!active) {
-      input.output.writeStdout("[ask-user] no pending question.\n\n");
+      input.output.writeStdout("没有待确认问题。\n\n");
       return;
     }
-    const optionsPreview = buildAskUserOptionsPreview(active.options, 5);
     const defaultAnswer = resolveDefaultAskAnswer(active.defaultOnTimeout);
-    const lines: string[] = [
-      `[ask-user] ${compactSingleLine(active.question, 220)}`,
-      `options_preview: ${optionsPreview.preview}`,
-      `pending_total: ${String(queue.length)}`,
-    ];
+    const lines: string[] = [buildAskUserDisplay(active).trimEnd()];
+    lines.push(`  待确认：${String(queue.length)} 项`);
     if (defaultAnswer) {
-      lines.push(`default: ${compactSingleLine(defaultAnswer, 120)}`);
+      lines.push(`  默认：${compactSingleLine(defaultAnswer, 120)}`);
     }
-    lines.push("hint: reply directly in chat");
+    lines.push("  Enter/? 打开选择菜单；数字可直接回复；Esc 取消后问题仍保留。");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };
@@ -935,6 +976,7 @@ export function createRunStartInteractiveModeInput(
         input.runtimeState.getSessionKey(),
       ),
     getPendingAskPromptSummary,
+    selectPendingAskAnswer,
     showPendingAskQueue,
     showContextStatus,
     showMemoryStatus,

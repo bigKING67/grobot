@@ -6,8 +6,14 @@ import {
   buildRuntimeToolSurfaceProjectionSummary,
   buildToolSurfaceFingerprint,
   estimateToolSchemaTokens,
+  TOOL_SURFACE_PROFILES,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../tools/runtime/default-enabled-tools";
+import {
+  RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION,
+  RUNTIME_TOOL_SURFACE_BUDGETS,
+  validateRuntimeToolSurfaceBudget,
+} from "../../tools/runtime/tool-surface-budget";
 import type { RuntimeEvent, RuntimeToolContext } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
 import {
@@ -26,11 +32,15 @@ import {
   parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics,
   runRuntimeToolsDescribe,
 } from "../../orchestration/entrypoints/dev-cli/runtime-health";
+import {
+  normalizeRuntimeToolsDescribeDetail,
+  resolveRuntimeToolDescribeDecision,
+} from "../../orchestration/entrypoints/dev-cli/services/runtime-tool-describe-decision";
 import { buildRuntimeToolRecoveryReadinessGate } from "../../tools/runtime/tool-recovery-readiness-gate";
 
 const baseContext = {
   workDir: "/tmp/grobot-runtime-tool-surface-contract",
-  enabledTools: ["glob", "search", "read", "write", "edit", "bash", "ask_user_question"],
+  enabledTools: ["glob", "search", "read", "write", "edit", "bash", "ask_user"],
   maxToolRounds: 8,
 };
 
@@ -109,6 +119,18 @@ function projection(context: RuntimeToolContext) {
   return buildRuntimeToolSurfaceProjectionSummary(context);
 }
 
+function expectProjectionWithinBudget(
+  context: RuntimeToolContext,
+  message: string,
+): void {
+  const summary = projection(context);
+  const validation = validateRuntimeToolSurfaceBudget(summary);
+  expect(
+    validation.ok,
+    `${message}: schema budget violations=${validation.violations.join(",")}`,
+  );
+}
+
 function activeRecoveryFeedback(input: {
   toolName: string;
   errorClass: string;
@@ -146,6 +168,13 @@ const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
   promptBlock: "",
 };
 
+expectEqual(RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION, "v1", "runtime tool surface budget policy version");
+expectDeepEqual(
+  Object.keys(RUNTIME_TOOL_SURFACE_BUDGETS).sort(),
+  [...TOOL_SURFACE_PROFILES].sort(),
+  "runtime tool surface budgets cover every profile",
+);
+
 const coding = withEnvProfile(undefined, () => build(undefined));
 expectEqual(coding.toolSurfaceProfile, "coding", "default profile");
 expectEqual(coding.toolSurfaceSource, "auto_intent", "default profile source");
@@ -159,7 +188,7 @@ expectDeepEqual(coding.modelVisibleTools, [
   "write",
   "edit",
   "bash",
-  "ask_user_question",
+  "ask_user",
 ], "coding visible tools");
 expectDeepEqual(coding.enabledTools, coding.modelVisibleTools, "coding dispatch tools");
 expectEqual(coding.modelVisibleTools?.includes("prompt_enhancer"), false, "coding hides prompt_enhancer");
@@ -183,11 +212,22 @@ expectEqual(codingProjection.dispatchEnabledToolCount, 7, "coding projection dis
 expectEqual(codingProjection.schemaPropertyCount, 30, "coding projection schema property count");
 expectEqual(codingProjection.fullSchemaPropertyCount, 30, "coding projection full property count");
 expectEqual(codingProjection.suppressedSchemaPropertyCount, 0, "coding projection suppressed property count");
+expectProjectionWithinBudget(coding, "coding projection budget");
+
+const minimal = withEnvProfile("minimal", () => build("普通 coding task"));
+expectEqual(minimal.toolSurfaceProfile, "minimal", "minimal profile");
+expectEqual(minimal.toolSurfaceSource, "env", "minimal source");
+expectDeepEqual(minimal.modelVisibleTools, ["read", "edit", "write", "ask_user"], "minimal visible tools");
+const minimalProjection = projection(minimal);
+expectEqual(minimalProjection.projectionMode, "slim", "minimal projection mode");
+expectEqual(minimalProjection.schemaPropertyCount, 15, "minimal projection schema property count");
+expectEqual(minimalProjection.suppressedSchemaPropertyCount, 0, "minimal suppressed property count");
+expectProjectionWithinBudget(minimal, "minimal projection budget");
 
 const browser = withEnvProfile(undefined, () => build("打开浏览器页面，扫描 DOM"));
 expectEqual(browser.toolSurfaceProfile, "browser", "browser profile");
 expectDecisionProfile(browser, "browser", "browser profile decision");
-expectDeepEqual(browser.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser visible tools");
+expectDeepEqual(browser.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user"], "browser visible tools");
 expectDeepEqual(browser.enabledTools, browser.modelVisibleTools, "browser dispatch tools");
 expectEqual(browser.advancedToolSchema, false, "browser slim schema");
 const browserProjection = projection(browser);
@@ -196,6 +236,7 @@ expectEqual(browserProjection.projectionMode, "slim", "browser projection mode")
 expectEqual(browserProjection.schemaPropertyCount, 25, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
 expectEqual(browserProjection.suppressedSchemaPropertyCount, 22, "browser projection suppressed property count");
+expectProjectionWithinBudget(browser, "browser projection budget");
 expectDeepEqual(
   browserProjection.perToolVisibleArgs?.web_scan,
   ["main_only", "max_chars", "session_id", "session_url_pattern", "switch_tab_id", "tabs_only", "text_only"],
@@ -397,6 +438,35 @@ expect(
   mismatchedRuntimeDescribe.detail.startsWith("runtime_tools_describe_schema_profiles_fingerprint_mismatch:"),
   "runtime tools describe reports schema profile fingerprint mismatch",
 );
+expectEqual(
+  normalizeRuntimeToolsDescribeDetail("spawn_failed: missing"),
+  "runtime_tools_describe_unavailable:spawn_failed: missing",
+  "runtime tools describe detail normalizes generic failures",
+);
+expectEqual(
+  normalizeRuntimeToolsDescribeDetail(mismatchedRuntimeDescribe.detail),
+  mismatchedRuntimeDescribe.detail,
+  "runtime tools describe detail preserves machine-readable describe failures",
+);
+const notRunDescribeDecision = resolveRuntimeToolDescribeDecision({ runtimeBinaryPath: null });
+expectEqual(notRunDescribeDecision.enabledToolsSource, "start-default", "not-run describe decision falls back");
+expectEqual(
+  notRunDescribeDecision.enabledToolsSourceDetail,
+  "runtime_tools_describe_unavailable:not_run",
+  "not-run describe decision is observable",
+);
+expectEqual(
+  notRunDescribeDecision.schemaProfilesFingerprint,
+  null,
+  "not-run describe decision omits schema profile fingerprint",
+);
+const invalidDescribeDecision = resolveRuntimeToolDescribeDecision({ runtimeBinaryPath: fakeRuntimePath });
+expectEqual(invalidDescribeDecision.enabledToolsSource, "start-default", "invalid describe decision falls back");
+expect(
+  invalidDescribeDecision.enabledToolsSourceDetail?.startsWith("runtime_tools_describe_schema_profiles_fingerprint_mismatch:")
+    === true,
+  "invalid describe decision exposes exact invalid describe reason",
+);
 
 const fakeRecoveryMismatchPath = join(fakeRuntimeDir, "runtime-recovery-mismatch.js");
 writeFileSync(
@@ -479,7 +549,7 @@ expect(
 const browserAdvanced = withEnvProfile(undefined, () => build("用 remote CDP devtools 调试当前页面"));
 expectEqual(browserAdvanced.toolSurfaceProfile, "browser_advanced", "browser advanced profile");
 expectDecisionProfile(browserAdvanced, "browser_advanced", "browser advanced profile decision");
-expectDeepEqual(browserAdvanced.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser advanced visible tools");
+expectDeepEqual(browserAdvanced.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user"], "browser advanced visible tools");
 expectEqual(browserAdvanced.advancedToolSchema, true, "browser advanced schema");
 const browserAdvancedProjection = projection(browserAdvanced);
 expectEqual(browserAdvancedProjection.source, "gateway.fallback", "browser advanced projection source");
@@ -487,18 +557,21 @@ expectEqual(browserAdvancedProjection.projectionMode, "advanced", "browser advan
 expectEqual(browserAdvancedProjection.schemaPropertyCount, 42, "browser advanced projection schema property count");
 expectEqual(browserAdvancedProjection.fullSchemaPropertyCount, 47, "browser advanced projection full property count");
 expectEqual(browserAdvancedProjection.suppressedSchemaPropertyCount, 5, "browser advanced projection suppressed property count");
+expectProjectionWithinBudget(browserAdvanced, "browser advanced projection budget");
 
 const context = withEnvProfile(undefined, () => build("用记忆和语义上下文找相关经验"));
 expectEqual(context.toolSurfaceProfile, "context", "context profile");
 expectDecisionProfile(context, "context", "context profile decision");
-expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user_question"], "context visible tools");
+expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user"], "context visible tools");
 expectDeepEqual(context.enabledTools, context.modelVisibleTools, "context dispatch tools");
+expectProjectionWithinBudget(context, "context projection budget");
 
 const mcp = withEnvProfile(undefined, () => build("通过 MCP grok-search 查资料"));
 expectEqual(mcp.toolSurfaceProfile, "mcp", "mcp profile");
 expectDecisionProfile(mcp, "mcp", "mcp profile decision");
-expectDeepEqual(mcp.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user_question"], "mcp visible tools");
+expectDeepEqual(mcp.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user"], "mcp visible tools");
 expectDeepEqual(mcp.enabledTools, mcp.modelVisibleTools, "mcp dispatch tools");
+expectProjectionWithinBudget(mcp, "mcp projection budget");
 
 const fullDebug = withEnvProfile("full_debug", () => build("普通 coding task"));
 expectEqual(fullDebug.toolSurfaceProfile, "full_debug", "full_debug profile");
@@ -515,6 +588,7 @@ expectEqual(fullDebugProjection.source, "gateway.fallback", "full_debug projecti
 expectEqual(fullDebugProjection.projectionMode, "full", "full_debug projection mode");
 expectEqual(fullDebugProjection.schemaPropertyCount, 92, "full_debug projection schema property count");
 expectEqual(fullDebugProjection.suppressedSchemaPropertyCount, 0, "full_debug suppressed property count");
+expectProjectionWithinBudget(fullDebug, "full_debug projection budget");
 
 const filteredFullDebug = withEnvProfile("full_debug", () => build("普通 coding task", ["read", "bash"]));
 expectDeepEqual(filteredFullDebug.modelVisibleTools, ["read", "bash"], "filtered full_debug visible tools");
@@ -572,7 +646,7 @@ expectEqual(adaptedBrowser.context?.toolSurfaceProfile, "browser", "browser reco
 expectEqual(adaptedBrowser.context?.toolSurfaceSource, "metrics_recovery", "browser recovery source");
 expectEqual(adaptedBrowser.adaptation.recoveryRecoverable, true, "browser recovery recoverable is exposed");
 expectEqual(adaptedBrowser.context?.toolSurfaceDecision?.profile, "coding", "recovery keeps original message decision trace");
-expectDeepEqual(adaptedBrowser.context?.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user_question"], "browser recovery visible tools");
+expectDeepEqual(adaptedBrowser.context?.modelVisibleTools, ["web_scan", "web_execute_js", "read", "ask_user"], "browser recovery visible tools");
 
 const nonRecoverableBrowserRecovery = adaptRuntimeToolContextForRecovery({
   context: coding,
@@ -685,7 +759,7 @@ const adaptedContext = adaptRuntimeToolContextForRecovery({
 });
 expectEqual(adaptedContext.adaptation.active, true, "context recovery adaptation active");
 expectEqual(adaptedContext.context?.toolSurfaceProfile, "context", "context recovery adapts profile");
-expectDeepEqual(adaptedContext.context?.modelVisibleTools, ["semantic_search", "read", "ask_user_question"], "context recovery visible tools");
+expectDeepEqual(adaptedContext.context?.modelVisibleTools, ["semantic_search", "read", "ask_user"], "context recovery visible tools");
 
 const adaptedMcp = adaptRuntimeToolContextForRecovery({
   context: coding,
@@ -696,7 +770,7 @@ const adaptedMcp = adaptRuntimeToolContextForRecovery({
 });
 expectEqual(adaptedMcp.adaptation.active, true, "mcp recovery adaptation active");
 expectEqual(adaptedMcp.context?.toolSurfaceProfile, "mcp", "mcp recovery adapts profile");
-expectDeepEqual(adaptedMcp.context?.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user_question"], "mcp recovery visible tools");
+expectDeepEqual(adaptedMcp.context?.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user"], "mcp recovery visible tools");
 
 const codeSymbolRecovery = adaptRuntimeToolContextForRecovery({
   context: coding,

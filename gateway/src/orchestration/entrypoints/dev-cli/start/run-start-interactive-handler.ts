@@ -16,6 +16,9 @@ interface CreateRunStartInteractiveHandlerInput {
   getPendingAskQueueSize(): number;
   getPendingAskPromptSummary?(): string | undefined;
   showPendingAskQueue(limit?: number): void;
+  selectPendingAskAnswer(
+    withInputPaused: SessionInteractiveControls["withInputPaused"],
+  ): Promise<string | undefined>;
   showHelp(): void;
   showHealthStatus(): void;
   showContextStatus(): void;
@@ -96,6 +99,8 @@ export function createRunStartInteractiveHandler(
       showPendingAskQueue: (limit) => {
         input.showPendingAskQueue(limit);
       },
+      selectPendingAskAnswer: async (withInputPaused) =>
+        input.selectPendingAskAnswer(withInputPaused),
       showHelp: input.showHelp,
       showHealthStatus: input.showHealthStatus,
       showContextStatus: input.showContextStatus,

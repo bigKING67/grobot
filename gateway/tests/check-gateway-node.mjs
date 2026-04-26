@@ -981,7 +981,8 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_opened_menu, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_hint_has_reply_guidance, true);
-  assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_hint_has_prompt_summary, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_hint_has_prompt_summary, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_blocked_status_hint_has_short_menu_hint, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_allowed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_help_blocked_warned, false);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_interrupt_allowed, true);
@@ -993,6 +994,10 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_ask_invalid_args_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_runs_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_plain_text_blocked_warned, false);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_empty_opens_selector, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_empty_selection_runs_turn, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_question_mark_opens_selector, true);
+  assert.equal(sessionInteractiveDispatchPayload.pending_ask_question_mark_selection_runs_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_first_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_second_suppressed, true);
   assert.equal(sessionInteractiveDispatchPayload.pending_ask_burst_third_warned, true);
@@ -1719,6 +1724,47 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliTurnScreenContractPayload.failure_summary_ends_with_newline, true);
   logStep("dev-cli-turn-screen-contract");
 
+  const devCliActivityFeedContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-activity-feed-contract.ts",
+  ]);
+  assertSuccess("dev-cli-activity-feed-contract", devCliActivityFeedContractResult);
+  const devCliActivityFeedPayload = parseJsonOutput(
+    "dev-cli-activity-feed-contract",
+    devCliActivityFeedContractResult.stdout,
+  );
+  assert.equal(devCliActivityFeedPayload.renders_real_tool_rows, true);
+  assert.equal(devCliActivityFeedPayload.renders_edit_with_diff_stats, true);
+  assert.equal(devCliActivityFeedPayload.renders_failed_bash, true);
+  assert.equal(devCliActivityFeedPayload.renders_recovery_row, true);
+  assert.equal(devCliActivityFeedPayload.nested_payload_supported, true);
+  assert.equal(devCliActivityFeedPayload.empty_without_tool_events, true);
+  assert.equal(devCliActivityFeedPayload.rows_within_width, true);
+  assert.equal(devCliActivityFeedPayload.no_invalid_tokens, true);
+  logStep("dev-cli-activity-feed-contract");
+
+  const devCliActivityStateContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-activity-state-contract.ts",
+  ]);
+  assertSuccess("dev-cli-activity-state-contract", devCliActivityStateContractResult);
+  const devCliActivityStatePayload = parseJsonOutput(
+    "dev-cli-activity-state-contract",
+    devCliActivityStateContractResult.stdout,
+  );
+  assert.equal(devCliActivityStatePayload.start_snapshot_visible, true);
+  assert.equal(devCliActivityStatePayload.route_diagnostic_visible, true);
+  assert.equal(devCliActivityStatePayload.ok_finish_clears_prompt_activity, true);
+  assert.equal(devCliActivityStatePayload.error_finish_remains_visible, true);
+  assert.equal(devCliActivityStatePayload.no_done_footer_noise, true);
+  logStep("dev-cli-activity-state-contract");
+
   const devCliStatusLineContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -1773,6 +1819,32 @@ async function runGatewayContractSmoke() {
   assert.equal(terminalTextSanitizerContractPayload.title_truncation_uses_ellipsis, true);
   assert.equal(terminalTextSanitizerContractPayload.title_zero_budget_empty, true);
   logStep("terminal-text-sanitizer-contract");
+
+  const devCliStatusIndicatorContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-status-indicator-contract.ts",
+  ]);
+  assertSuccess("dev-cli-status-indicator-contract", devCliStatusIndicatorContractResult);
+  const devCliStatusIndicatorPayload = parseJsonOutput(
+    "dev-cli-status-indicator-contract",
+    devCliStatusIndicatorContractResult.stdout,
+  );
+  assert.equal(devCliStatusIndicatorPayload.line_contains_elapsed, true);
+  assert.equal(devCliStatusIndicatorPayload.line_uses_braille_spinner, true);
+  assert.equal(devCliStatusIndicatorPayload.line_has_brand_shimmer, true);
+  assert.equal(devCliStatusIndicatorPayload.line_has_muted_base, true);
+  assert.equal(devCliStatusIndicatorPayload.deterministic_for_same_tick, true);
+  assert.equal(devCliStatusIndicatorPayload.narrow_keeps_interrupt_hint, true);
+  assert.equal(devCliStatusIndicatorPayload.narrow_width_within_columns, true);
+  assert.equal(devCliStatusIndicatorPayload.wide_width_within_columns, true);
+  assert.equal(devCliStatusIndicatorPayload.reduced_motion_no_brand_sweep, true);
+  assert.equal(devCliStatusIndicatorPayload.no_invalid_tokens, true);
+  assert.equal(devCliStatusIndicatorPayload.elapsed_formats_minutes, true);
+  assert.equal(devCliStatusIndicatorPayload.elapsed_formats_hours, true);
+  logStep("dev-cli-status-indicator-contract");
 
   const devCliStatusLineStabilityContractResult = runCommand("npx", [
     "--yes",
@@ -1841,6 +1913,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliBottomPanePayload.pending_prioritizes_ask, true);
   assert.equal(devCliBottomPanePayload.pending_narrow_keeps_ask_first, true);
   assert.equal(devCliBottomPanePayload.pending_default_prompt_is_short, true);
+  assert.equal(devCliBottomPanePayload.pending_wide_hides_secondary_status, true);
   assert.equal(devCliBottomPanePayload.pending_narrow_hides_secondary_status, true);
   assert.equal(devCliBottomPanePayload.pending_omits_shift_enter_hint, true);
   assert.equal(devCliBottomPanePayload.pending_warning_kept, true);
@@ -1906,8 +1979,9 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.issued_display_has_reply_guide, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_resume_token, true);
   assert.equal(askUserToolContractPayload.issued_display_compact_options, true);
-  assert.equal(askUserToolContractPayload.issued_display_has_options_preview, true);
-  assert.equal(askUserToolContractPayload.issued_display_overflow_mentions_more, true);
+  assert.equal(askUserToolContractPayload.issued_display_hides_log_prefix, true);
+  assert.equal(askUserToolContractPayload.issued_display_hides_options_preview, true);
+  assert.equal(askUserToolContractPayload.issued_display_overflow_lists_sixth_option, true);
   assert.equal(askUserToolContractPayload.issued_event_has_ask_id, true);
   logStep("ask-user-tool-contract");
 
@@ -2163,17 +2237,23 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_estimated_tokens), 512);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
   assert.equal(interactiveBindingsPayload.ask_status_no_pending_warned, true);
-  assert.equal(interactiveBindingsPayload.ask_status_has_options_preview, true);
-  assert.equal(interactiveBindingsPayload.ask_status_has_output_mode_full, false);
-  assert.equal(interactiveBindingsPayload.ask_status_has_options_more, false);
-  assert.equal(interactiveBindingsPayload.ask_status_has_followups_total, false);
-  assert.equal(interactiveBindingsPayload.ask_status_has_followup_row, false);
-  assert.equal(interactiveBindingsPayload.ask_status_hint_mentions_reply_direct, false);
-  assert.equal(interactiveBindingsPayload.ask_status_hint_mentions_status_only, false);
-  assert.equal(interactiveBindingsPayload.ask_status_compact_has_header, false);
-  assert.equal(interactiveBindingsPayload.ask_status_compact_has_output_mode, false);
-  assert.equal(interactiveBindingsPayload.ask_status_compact_has_detail_hint, false);
-  assert.equal(interactiveBindingsPayload.ask_status_compact_has_followups_total, false);
+  assert.equal(interactiveBindingsPayload.ask_status_has_clean_question, true);
+  assert.equal(interactiveBindingsPayload.ask_status_has_clean_options, true);
+  assert.equal(interactiveBindingsPayload.ask_status_has_menu_hint, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_options_preview, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_log_prefix, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_output_mode_full, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_options_more, true);
+  assert.equal(interactiveBindingsPayload.ask_status_has_pending_total, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_followup_row, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_reply_direct_log_hint, true);
+  assert.equal(interactiveBindingsPayload.ask_status_hides_status_only_log_hint, true);
+  assert.equal(interactiveBindingsPayload.ask_queue_hint_hides_log_prefix, true);
+  assert.equal(interactiveBindingsPayload.ask_queue_hint_mentions_followup_count, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_has_header, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_hides_output_mode, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_hides_detail_hint, true);
+  assert.equal(interactiveBindingsPayload.ask_status_compact_has_pending_total, true);
   assert.equal(interactiveBindingsPayload.ask_status_compact_hides_followup_rows, true);
   assert.equal(interactiveBindingsPayload.ask_status_compact_hides_status_only_hint, true);
   logStep("run-start-interactive-bindings-contract");
@@ -6621,8 +6701,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.exit_code, 0);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.diagnostic_mode, "verbose");
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, true);
-  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_summary_lines, true);
-  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_short_process_summary_code, true);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_summary_lines, false);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_short_process_summary_code, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_trace_lines, false);
   logStep("start-smoke-contract start-interactive-diagnostics-verbose-flow");
@@ -7893,6 +7973,38 @@ async function runTsRustExecutionSmoke() {
   assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_fallback_manifest, true);
   assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_schema_profiles_none, true);
   logStep("start-smoke-contract start-runtime-describe-fallback-diagnostic");
+
+  const runtimeDescribeInvalidSchemaStatusResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-runtime-describe-invalid-schema-profiles",
+    ["--repo-root", repoRoot],
+  );
+  const runtimeDescribeInvalidSchemaStatusPayload = parseJsonOutput(
+    "start-smoke-contract status-runtime-describe-invalid-schema-profiles",
+    runtimeDescribeInvalidSchemaStatusResult.stdout,
+  );
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.exit_code, 0);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_gateway_fallback_projection, true);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_start_default_source, true);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_invalid_schema_reason, true);
+  logStep("start-smoke-contract status-runtime-describe-invalid-schema-profiles");
+
+  const runtimeDescribeInvalidSchemaStartResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-runtime-describe-invalid-schema-profiles",
+    ["--repo-root", repoRoot],
+  );
+  const runtimeDescribeInvalidSchemaStartPayload = parseJsonOutput(
+    "start-smoke-contract start-runtime-describe-invalid-schema-profiles",
+    runtimeDescribeInvalidSchemaStartResult.stdout,
+  );
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.exit_code, 0);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_tool_surface_fallback_event, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_start_default_source, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_invalid_schema_reason, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_fallback_manifest, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_schema_profiles_none, true);
+  logStep("start-smoke-contract start-runtime-describe-invalid-schema-profiles");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",

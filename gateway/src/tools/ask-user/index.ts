@@ -13,7 +13,11 @@ export {
   buildAskUserResolutionPrompt,
   buildAskUserResolutionPromptBatch,
 } from "./protocol";
-export { buildAskUserDisplay } from "./display";
+export {
+  buildAskUserDisplay,
+  buildAskUserOptionDisplayLabel,
+  buildAskUserPendingSummary,
+} from "./display";
 export { AskUserSessionStore } from "./resolver";
 export type { AskUserRuntimeAdapter, AskUserTurnPromptContext } from "./runtime";
 export {

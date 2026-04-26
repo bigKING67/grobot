@@ -24,6 +24,7 @@ import {
   renderRuntimeFailureSummary,
   renderTurnInterruptedNotice,
 } from "../ui/screens/turn-screen";
+import { renderRuntimeActivityFeed } from "../ui/screens/activity-feed-screen";
 import {
   type AskUserEnvelope,
   createAskUserTurnPromptContext,
@@ -117,6 +118,7 @@ export const TURN_INTERRUPTED_EXIT_CODE = 130;
 export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
   attachments?: RuntimeAttachment[];
+  writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
   onTurnRecorded?(input: {
     userText: string;
@@ -258,11 +260,11 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function buildAskUserQueueContinuationHint(queuedExtra: number): string {
+export function buildAskUserQueueContinuationHint(queuedExtra: number): string {
   if (queuedExtra <= 0) {
     return "";
   }
-  return "[ask-user] 还有后续问题，继续直接回复即可。\n";
+  return `还有 ${String(queuedExtra)} 个后续确认，继续选择或直接回复即可。\n`;
 }
 
 function payloadString(payload: Record<string, unknown>, key: string): string {
@@ -273,6 +275,22 @@ function payloadString(payload: Record<string, unknown>, key: string): string {
 function payloadNumber(payload: Record<string, unknown>, key: string): number | undefined {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function resolveInteractiveTerminalColumns(): number | undefined {
+  const stdout = process.stdout as unknown as {
+    isTTY?: boolean;
+    columns?: number;
+  };
+  if (
+    stdout.isTTY
+    && typeof stdout.columns === "number"
+    && Number.isFinite(stdout.columns)
+    && stdout.columns > 0
+  ) {
+    return Math.floor(stdout.columns);
+  }
+  return undefined;
 }
 
 function summarizeToolOutput(payload: Record<string, unknown>): string {
@@ -1974,9 +1992,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
     interactiveMode: boolean,
     options?: RunStartTurnExecuteOptions,
   ): Promise<number> => {
-    const input = typeof options?.writeStderr === "function"
-      ? { ...baseInput, writeStderr: options.writeStderr }
-      : baseInput;
+    const input =
+      typeof options?.writeStdout === "function"
+      || typeof options?.writeStderr === "function"
+        ? {
+          ...baseInput,
+          writeStdout: options.writeStdout ?? baseInput.writeStdout,
+          writeStderr: options.writeStderr ?? baseInput.writeStderr,
+        }
+        : baseInput;
     const turnSignal = options?.signal;
     const runtimeAttachments = options?.attachments;
     throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
@@ -2032,7 +2056,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           : askUserDisplay;
         await recordTurn(
           userText,
-          `[ask-user] ${activeAskEnvelope.question}`,
+          `需要确认：${activeAskEnvelope.question}`,
           input.getStickyProvider(),
           input.getProviderRuntimeStates(),
           options?.onTurnRecorded,
@@ -3023,7 +3047,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           if (!activeAskEnvelope) {
             throw new Error("ask_user interrupt emitted empty question set");
           }
-          assistantTextForHistory = `[ask-user] ${activeAskEnvelope.question}`;
+          assistantTextForHistory = `需要确认：${activeAskEnvelope.question}`;
           const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
           if (interactiveMode) {
             const queuedExtra = Math.max(0, queueDepth - 1);
@@ -3083,6 +3107,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           });
           for (const event of feedback.stderrEvents) {
             input.writeStderr(event);
+          }
+        }
+        if (!runtimeAskUser && interactiveMode) {
+          const activityFeed = renderRuntimeActivityFeed({
+            events: report.events,
+            terminalColumns: resolveInteractiveTerminalColumns(),
+          });
+          if (activityFeed.length > 0) {
+            turnStdout = `${activityFeed}${turnStdout}`;
           }
         }
           await recordTurn(

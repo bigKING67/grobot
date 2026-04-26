@@ -1,4 +1,5 @@
 import { resolveRuntimeBinaryPath, runRuntimeToolsDescribe } from "../../orchestration/entrypoints/dev-cli/runtime-health";
+import { estimateToolSchemaTokens } from "../../tools/runtime/default-enabled-tools";
 import { knownRuntimeToolRecoveryActions } from "../../tools/runtime/tool-events";
 import { validateRuntimeToolSurfaceBudget } from "../../tools/runtime/tool-surface-budget";
 
@@ -57,6 +58,7 @@ const budgetViolations = describe.toolSurfaceSchemaProfiles
       schemaPropertyCount: profile.schemaPropertyCount,
       fullSchemaPropertyCount: profile.fullSchemaPropertyCount,
       suppressedSchemaPropertyCount: profile.suppressedSchemaPropertyCount,
+      schemaEstimatedTokens: estimateToolSchemaTokens(profile.toolNames, profile.profile),
     }),
   }))
   .filter((row) => !row.validation.ok);

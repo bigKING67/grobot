@@ -22,7 +22,7 @@ export const ALL_RUNTIME_LOCAL_TOOLS = [
   "web_execute_js",
   "semantic_search",
   "prompt_enhancer",
-  "ask_user_question",
+  "ask_user",
 ] as const;
 
 export const DEFAULT_RUNTIME_ENABLED_TOOLS = [
@@ -32,7 +32,7 @@ export const DEFAULT_RUNTIME_ENABLED_TOOLS = [
   "write",
   "edit",
   "bash",
-  "ask_user_question",
+  "ask_user",
 ] as const;
 
 export const TOOL_SURFACE_POLICY_VERSION = "v1";
@@ -90,12 +90,12 @@ export interface RuntimeToolSurfaceProjectionSummary {
 }
 
 const PROFILE_VISIBLE_TOOLS: Record<ToolSurfaceProfile, readonly string[]> = {
-  minimal: ["read", "edit", "write", "ask_user_question"],
+  minimal: ["read", "edit", "write", "ask_user"],
   coding: DEFAULT_RUNTIME_ENABLED_TOOLS,
-  browser: ["web_scan", "web_execute_js", "read", "ask_user_question"],
-  browser_advanced: ["web_scan", "web_execute_js", "read", "ask_user_question"],
-  context: ["semantic_search", "read", "ask_user_question"],
-  mcp: ["mcp_servers", "mcp_call", "ask_user_question"],
+  browser: ["web_scan", "web_execute_js", "read", "ask_user"],
+  browser_advanced: ["web_scan", "web_execute_js", "read", "ask_user"],
+  context: ["semantic_search", "read", "ask_user"],
+  mcp: ["mcp_servers", "mcp_call", "ask_user"],
   full_debug: ALL_RUNTIME_LOCAL_TOOLS,
 };
 
@@ -113,7 +113,7 @@ const PROFILE_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   web_execute_js: 260,
   semantic_search: 190,
   prompt_enhancer: 210,
-  ask_user_question: 160,
+  ask_user: 160,
 };
 
 const ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
@@ -193,7 +193,7 @@ const FULL_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
     "sources",
     "timeout_ms",
   ],
-  ask_user_question: ["blocking_node_id", "default_on_timeout", "questions", "resume_token"],
+  ask_user: ["blocking_node_id", "default_on_timeout", "questions", "resume_token"],
 };
 
 const SLIM_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {

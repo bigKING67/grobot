@@ -4,6 +4,8 @@ const ASK_USER_LINE_CHAR_LIMIT = 220;
 const ASK_USER_DEFAULT_OPTION_PREVIEW_LIMIT = 5;
 const ASK_USER_OPTION_ITEM_CHAR_LIMIT = 48;
 const ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT = 120;
+const ASK_USER_DISPLAY_OPTION_LIMIT = 6;
+const ASK_USER_PENDING_SUMMARY_LIMIT = 96;
 
 function compactSingleLine(value: string, maxChars: number): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -14,6 +16,22 @@ function compactSingleLine(value: string, maxChars: number): string {
     return normalized.slice(0, Math.max(0, maxChars));
   }
   return `${normalized.slice(0, maxChars - 1)}…`;
+}
+
+function stripLeadingOptionOrdinal(value: string): string {
+  return value
+    .trim()
+    .replace(/^\s*(?:\d+|[０-９]+)(?:[\uFE0F\u20E3]|[.)、:：-])*\s*/u, "")
+    .trim();
+}
+
+export function buildAskUserOptionDisplayLabel(value: string, index: number): string {
+  const stripped = stripLeadingOptionOrdinal(value);
+  const normalized = compactSingleLine(
+    stripped.length > 0 ? stripped : value,
+    ASK_USER_OPTION_ITEM_CHAR_LIMIT,
+  );
+  return normalized.length > 0 ? normalized : `Option ${String(index + 1)}`;
 }
 
 export function buildAskUserOptionsPreview(
@@ -50,17 +68,44 @@ export function buildAskUserOptionsPreview(
 }
 
 export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
-  const optionsPreview = buildAskUserOptionsPreview(envelope.options);
+  const header = compactSingleLine(envelope.header ?? "需要你选择", 72);
   const question = compactSingleLine(envelope.question, ASK_USER_LINE_CHAR_LIMIT);
-  const defaultOnTimeout = compactSingleLine(
-    envelope.defaultOnTimeout,
-    ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT,
-  );
-  const lines = [
-    `[ask-user] ${question}`,
-    `options_preview: ${optionsPreview.preview}`,
-    defaultOnTimeout ? `default: ${defaultOnTimeout}` : undefined,
-  ].filter((line): line is string => typeof line === "string" && line.length > 0);
-  lines.push("hint: reply directly with number / option label / free text");
+  const lines = [`需要确认 · ${header}`, `  ${question}`, ""];
+  if (envelope.options.length > 0) {
+    const visibleOptions = envelope.options.slice(0, ASK_USER_DISPLAY_OPTION_LIMIT);
+    visibleOptions.forEach((option, index) => {
+      const marker = index === 0 ? "›" : " ";
+      lines.push(
+        `  ${marker} ${String(index + 1)}  ${buildAskUserOptionDisplayLabel(option, index)}`,
+      );
+    });
+    const hiddenCount = Math.max(0, envelope.options.length - visibleOptions.length);
+    if (hiddenCount > 0) {
+      lines.push(`    ... 还有 ${String(hiddenCount)} 项`);
+    }
+    lines.push("");
+    lines.push("  Enter 打开选择菜单 · 数字直接回复 · 也可输入自定义回复。");
+  } else {
+    const defaultOnTimeout = compactSingleLine(
+      envelope.defaultOnTimeout,
+      ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT,
+    );
+    lines.push("  请输入你的回复。");
+    if (defaultOnTimeout) {
+      lines.push(`  默认：${defaultOnTimeout}`);
+    }
+  }
   return `${lines.join("\n")}\n`;
+}
+
+export function buildAskUserPendingSummary(envelope: AskUserEnvelope): string {
+  if (envelope.options.length <= 0) {
+    return "输入回复继续";
+  }
+  const maxOption = Math.min(envelope.options.length, 9);
+  const numericHint = maxOption > 1 ? `1-${String(maxOption)}` : "1";
+  return compactSingleLine(
+    `Enter/? 选择 · ${numericHint} 直接回复`,
+    ASK_USER_PENDING_SUMMARY_LIMIT,
+  );
 }

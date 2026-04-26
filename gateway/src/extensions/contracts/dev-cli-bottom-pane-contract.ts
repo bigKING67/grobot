@@ -37,7 +37,7 @@ const pendingFooter = renderBottomPaneFooter({
   terminalColumns: 64,
   promptLabel: "› ",
   pendingAskCount: 2,
-  pendingAskSummary: "Allow npm run check?",
+  pendingAskSummary: "Enter/? 选择 · 1-2 直接回复",
 });
 
 const narrowPendingFooter = renderBottomPaneFooter({
@@ -51,7 +51,7 @@ const narrowPendingFooter = renderBottomPaneFooter({
   terminalColumns: 48,
   promptLabel: "› ",
   pendingAskCount: 2,
-  pendingAskSummary: "Allow npm run check?",
+  pendingAskSummary: "question=Allow npm run check? options_preview=1:yes",
 });
 
 const pendingWithoutSummaryFooter = renderBottomPaneFooter({
@@ -159,8 +159,18 @@ const payload = {
   pending_prioritizes_ask: (pendingLines[0] ?? "").includes("待确认 2 项"),
   pending_narrow_keeps_ask_first: (narrowPendingLines[0] ?? "").includes("待确认 2 项"),
   pending_default_prompt_is_short:
-    pendingWithoutSummaryFooter.includes("待确认 1 项 · 回复继续")
+    pendingWithoutSummaryFooter.includes("待确认 1 项 · Enter/? 选择")
     && !pendingWithoutSummaryFooter.includes("直接回复继续"),
+  pending_uses_action_hint_not_question:
+    pendingFooter.includes("Enter/? 选择")
+    && pendingFooter.includes("1-2 直接回复")
+    && !pendingFooter.includes("Allow npm run check"),
+  pending_narrow_sanitizes_raw_summary:
+    narrowPendingFooter.includes("待确认 2 项 · Enter/? 选择")
+    && !narrowPendingFooter.includes("question=")
+    && !narrowPendingFooter.includes("options_preview"),
+  pending_wide_hides_secondary_status:
+    !pendingFooter.includes("kimi/") && !pendingFooter.includes("019d8b75"),
   pending_narrow_hides_secondary_status:
     !narrowPendingFooter.includes("kimi/") && !narrowPendingFooter.includes("019d8b75"),
   pending_omits_shift_enter_hint: !pendingFooter.includes("shift + enter for newline"),

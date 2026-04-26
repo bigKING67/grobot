@@ -328,7 +328,8 @@ pub(crate) fn is_local_tool_dispatch_supported(tool_name: &str) -> bool {
             | TOOL_WEB_EXECUTE_JS
             | TOOL_SEMANTIC_SEARCH
             | TOOL_PROMPT_ENHANCER
-            | TOOL_ASK_USER_QUESTION
+            | TOOL_ASK_USER
+            | TOOL_ASK_USER_LEGACY
     )
 }
 
@@ -387,7 +388,7 @@ impl ToolExecutor for LocalToolExecutor {
             TOOL_WEB_EXECUTE_JS => run_web_execute_js(&context, args),
             TOOL_SEMANTIC_SEARCH => run_semantic_search(&context, args, input),
             TOOL_PROMPT_ENHANCER => run_prompt_enhancer(&context, args, input),
-            TOOL_ASK_USER_QUESTION => run_ask_user_question(&context, args),
+            TOOL_ASK_USER | TOOL_ASK_USER_LEGACY => run_ask_user(&context, args),
             _ => Err(ToolExecutionError::new(
                 "tool_dispatch_not_implemented",
                 format!("dispatch table missing handler for: {}", call.name),

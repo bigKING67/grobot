@@ -143,6 +143,15 @@ export type TerminalLinePromptResult =
   | { kind: "submitted"; value: string }
   | { kind: "cancelled" };
 
+interface InputLineDescriptor {
+  start: number;
+  end: number;
+  text: string;
+  textWidth: number;
+  codeStart: number;
+  codeEnd: number;
+}
+
 const MENU_DIGIT_SELECTION_COMMIT_DELAY_MS = 250;
 const MENU_TRANSITION_DELAY_LIMIT_MS = 160;
 const MENU_OPEN_FRAME_DELAY_DEFAULTS: readonly [number, number] = [18, 34];
@@ -252,6 +261,136 @@ function buildMenuTransitionFrame(
       return "";
     }
     return `${ANSI_DIM}${plain}${ANSI_RESET}`;
+  });
+}
+
+function buildCodeOffsets(graphemes: readonly string[]): number[] {
+  const offsets: number[] = [0];
+  let total = 0;
+  for (const grapheme of graphemes) {
+    total += grapheme.length;
+    offsets.push(total);
+  }
+  return offsets;
+}
+
+function resolveInputLineDescriptors(input: {
+  valueGraphemes: readonly string[];
+  wrapWidth: number;
+}): InputLineDescriptor[] {
+  const descriptors: InputLineDescriptor[] = [];
+  const value = input.valueGraphemes.join("");
+  const codeOffsets = buildCodeOffsets(input.valueGraphemes);
+  const pushDescriptor = (start: number, end: number): void => {
+    const normalizedStart = Math.max(0, Math.min(start, input.valueGraphemes.length));
+    const normalizedEnd = Math.max(normalizedStart, Math.min(end, input.valueGraphemes.length));
+    const codeStart = codeOffsets[normalizedStart] ?? 0;
+    const codeEnd = codeOffsets[normalizedEnd] ?? codeStart;
+    const text = value.slice(codeStart, codeEnd);
+    descriptors.push({
+      start: normalizedStart,
+      end: normalizedEnd,
+      text,
+      textWidth: measureDisplayWidth(text),
+      codeStart,
+      codeEnd,
+    });
+  };
+
+  let lineStart = 0;
+  let lineWidth = 0;
+  for (let index = 0; index < input.valueGraphemes.length; index += 1) {
+    const grapheme = input.valueGraphemes[index] ?? "";
+    if (grapheme === "\n") {
+      pushDescriptor(lineStart, index);
+      lineStart = index + 1;
+      lineWidth = 0;
+      continue;
+    }
+    const graphemeWidth = Math.max(1, getGraphemeDisplayWidth(grapheme));
+    if (lineWidth > 0 && lineWidth + graphemeWidth > input.wrapWidth) {
+      pushDescriptor(lineStart, index);
+      lineStart = index;
+      lineWidth = 0;
+    }
+    lineWidth += graphemeWidth;
+  }
+  pushDescriptor(lineStart, input.valueGraphemes.length);
+  if (descriptors.length === 0) {
+    pushDescriptor(0, 0);
+  }
+  return descriptors;
+}
+
+function renderInlineImageTokensForDisplay(input: {
+  text: string;
+  theme: "plain" | "nerd_font" | "ccline" | undefined;
+  selectedStartOffset?: number;
+}): string {
+  if (!input.text || !input.text.includes("[Image #")) {
+    return input.text;
+  }
+  const tokenColor = resolveInlineImageTokenColor(input.theme);
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const match of input.text.matchAll(INLINE_IMAGE_RENDER_PATTERN)) {
+    const start = match.index ?? 0;
+    const token = match[0] ?? "";
+    if (start > cursor) {
+      chunks.push(input.text.slice(cursor, start));
+    }
+    if (
+      typeof input.selectedStartOffset === "number"
+      && start === input.selectedStartOffset
+    ) {
+      chunks.push(`${ANSI_INVERSE}${tokenColor}${token}${ANSI_RESET}`);
+    } else {
+      chunks.push(`${tokenColor}${token}${ANSI_RESET}`);
+    }
+    cursor = start + token.length;
+  }
+  if (cursor < input.text.length) {
+    chunks.push(input.text.slice(cursor));
+  }
+  return chunks.join("");
+}
+
+export function renderSubmittedInputTranscriptLines(input: {
+  value: string;
+  promptLabel?: string;
+  terminalColumns?: number;
+  theme?: "plain" | "nerd_font" | "ccline";
+}): string[] {
+  const promptLabel = input.promptLabel && input.promptLabel.length > 0
+    ? input.promptLabel
+    : DEFAULT_SESSION_PROMPT;
+  const promptLabelWidth = Math.max(1, measureDisplayWidth(promptLabel));
+  const terminalColumns =
+    typeof input.terminalColumns === "number"
+    && Number.isFinite(input.terminalColumns)
+      ? Math.max(32, Math.floor(input.terminalColumns))
+      : 96;
+  const inputBodyWidth = resolveInteractiveInputBodyWidth({
+    terminalColumns,
+    promptLabelWidth,
+  });
+  const wrapWidth = Math.max(1, inputBodyWidth - promptLabelWidth);
+  const graphemes = splitGraphemes(input.value);
+  const descriptors = resolveInputLineDescriptors({
+    valueGraphemes: graphemes,
+    wrapWidth,
+  });
+  const continuationPrefix = " ".repeat(promptLabelWidth);
+  const bodyLines = descriptors.map((descriptor, index) => {
+    const prefix = index === 0 ? promptLabel : continuationPrefix;
+    return `${prefix}${renderInlineImageTokensForDisplay({
+      text: descriptor.text,
+      theme: input.theme,
+    })}`;
+  });
+  return renderInteractiveInputChromeLines({
+    bodyLines,
+    inputBodyWidth,
   });
 }
 
@@ -863,15 +1002,6 @@ export async function runSessionInputLoop(
     }
     return;
   }
-  interface InputLineDescriptor {
-    start: number;
-    end: number;
-    text: string;
-    textWidth: number;
-    codeStart: number;
-    codeEnd: number;
-  }
-
   interface InputRenderSnapshot {
     renderedLines: string[];
     cursorRenderLineIndex: number;
@@ -1010,16 +1140,6 @@ export async function runSessionInputLoop(
     return 96;
   };
 
-  const buildCodeOffsets = (graphemes: readonly string[]): number[] => {
-    const offsets: number[] = [0];
-    let total = 0;
-    for (const grapheme of graphemes) {
-      total += grapheme.length;
-      offsets.push(total);
-    }
-    return offsets;
-  };
-
   const codeOffsetFromGraphemeIndex = (
     graphemes: readonly string[],
     index: number,
@@ -1048,38 +1168,7 @@ export async function runSessionInputLoop(
     return graphemes.length;
   };
 
-  const renderInlineImageTokens = (input: {
-    text: string;
-    theme: "plain" | "nerd_font" | "ccline" | undefined;
-    selectedStartOffset?: number;
-  }): string => {
-    if (!input.text || !input.text.includes("[Image #")) {
-      return input.text;
-    }
-    const tokenColor = resolveInlineImageTokenColor(input.theme);
-    const chunks: string[] = [];
-    let cursor = 0;
-    for (const match of input.text.matchAll(INLINE_IMAGE_RENDER_PATTERN)) {
-      const start = match.index ?? 0;
-      const token = match[0] ?? "";
-      if (start > cursor) {
-        chunks.push(input.text.slice(cursor, start));
-      }
-      if (
-        typeof input.selectedStartOffset === "number"
-        && start === input.selectedStartOffset
-      ) {
-        chunks.push(`${ANSI_INVERSE}${tokenColor}${token}${ANSI_RESET}`);
-      } else {
-        chunks.push(`${tokenColor}${token}${ANSI_RESET}`);
-      }
-      cursor = start + token.length;
-    }
-    if (cursor < input.text.length) {
-      chunks.push(input.text.slice(cursor));
-    }
-    return chunks.join("");
-  };
+  const renderInlineImageTokens = renderInlineImageTokensForDisplay;
 
   const readSingleTurnInput = async (
     resolvedPrompt: SessionPromptLayout,
@@ -1116,6 +1205,17 @@ export async function runSessionInputLoop(
     let lastEnterDataHandledAt = 0;
     let shortcutOverlayVisible = false;
 
+    const moveCursorToRenderedTop = (): boolean => {
+      if (lastRenderedLineCount <= 0) {
+        return false;
+      }
+      process.stdout.write("\r");
+      if (lastCursorRenderLineIndex > 0) {
+        process.stdout.write(`\x1b[${String(lastCursorRenderLineIndex)}A`);
+      }
+      return true;
+    };
+
     const moveCursorToOutputLine = (): void => {
       const snapshot = latestSnapshot;
       if (!snapshot) {
@@ -1131,6 +1231,24 @@ export async function runSessionInputLoop(
         process.stdout.write(`\x1b[${String(linesDown)}B`);
       }
       process.stdout.write("\n");
+    };
+
+    const replaceRenderedInputWithSubmittedTranscript = (value: string): void => {
+      const moved = moveCursorToRenderedTop();
+      if (moved) {
+        process.stdout.write("\x1b[J");
+      }
+      const lines = renderSubmittedInputTranscriptLines({
+        value,
+        promptLabel,
+        terminalColumns: resolveTerminalColumns(),
+        theme: getTheme(),
+      });
+      process.stdout.write(lines.join("\n"));
+      process.stdout.write("\n");
+      lastRenderedLineCount = 0;
+      lastCursorRenderLineIndex = 0;
+      latestSnapshot = undefined;
     };
 
     const clampCursor = (): void => {
@@ -1201,50 +1319,7 @@ export async function runSessionInputLoop(
     const resolveDescriptors = (input: {
       valueGraphemes: readonly string[];
       wrapWidth: number;
-    }): InputLineDescriptor[] => {
-      const descriptors: InputLineDescriptor[] = [];
-      const value = input.valueGraphemes.join("");
-      const codeOffsets = buildCodeOffsets(input.valueGraphemes);
-      const pushDescriptor = (start: number, end: number): void => {
-        const normalizedStart = Math.max(0, Math.min(start, input.valueGraphemes.length));
-        const normalizedEnd = Math.max(normalizedStart, Math.min(end, input.valueGraphemes.length));
-        const codeStart = codeOffsets[normalizedStart] ?? 0;
-        const codeEnd = codeOffsets[normalizedEnd] ?? codeStart;
-        const text = value.slice(codeStart, codeEnd);
-        descriptors.push({
-          start: normalizedStart,
-          end: normalizedEnd,
-          text,
-          textWidth: measureDisplayWidth(text),
-          codeStart,
-          codeEnd,
-        });
-      };
-
-      let lineStart = 0;
-      let lineWidth = 0;
-      for (let index = 0; index < input.valueGraphemes.length; index += 1) {
-        const grapheme = input.valueGraphemes[index] ?? "";
-        if (grapheme === "\n") {
-          pushDescriptor(lineStart, index);
-          lineStart = index + 1;
-          lineWidth = 0;
-          continue;
-        }
-        const graphemeWidth = Math.max(1, getGraphemeDisplayWidth(grapheme));
-        if (lineWidth > 0 && lineWidth + graphemeWidth > input.wrapWidth) {
-          pushDescriptor(lineStart, index);
-          lineStart = index;
-          lineWidth = 0;
-        }
-        lineWidth += graphemeWidth;
-      }
-      pushDescriptor(lineStart, input.valueGraphemes.length);
-      if (descriptors.length === 0) {
-        pushDescriptor(0, 0);
-      }
-      return descriptors;
-    };
+    }): InputLineDescriptor[] => resolveInputLineDescriptors(input);
 
     const resolveCursorLineIndex = (
       descriptors: readonly InputLineDescriptor[],
@@ -1574,7 +1649,11 @@ export async function runSessionInputLoop(
         clearPendingPlainEnterFallback();
         keypressInput.off?.("keypress", onKeypress);
         menuInput.off?.("data", onData);
-        moveCursorToOutputLine();
+        if (result.kind === "submit") {
+          replaceRenderedInputWithSubmittedTranscript(result.value);
+        } else {
+          moveCursorToOutputLine();
+        }
         resolve(result);
       };
 

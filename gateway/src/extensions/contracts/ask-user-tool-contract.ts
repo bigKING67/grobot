@@ -204,12 +204,16 @@ const payload = {
   answer_blank_falls_back_default: resolvedByBlank?.resolvedAsk.answer === "safe",
   queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.askId === "ask_q_005",
   queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.askId === "ask_q_006",
-  issued_display_has_reply_hint: display.includes("hint: reply directly with number / option label / free text"),
-  issued_display_has_reply_guide: display.includes("hint: reply directly with number / option label / free text"),
+  issued_display_has_reply_hint: display.includes("Enter 打开选择菜单"),
+  issued_display_has_reply_guide: display.includes("数字直接回复"),
   issued_display_hides_resume_token: !display.includes("resume_token"),
   issued_display_compact_options: !display.includes("\noptions:\n"),
-  issued_display_has_options_preview: display.includes("options_preview: "),
-  issued_display_overflow_mentions_more: overflowDisplay.includes("... +1 more"),
+  issued_display_hides_log_prefix: !display.includes("[ask-user]"),
+  issued_display_hides_options_preview: !display.includes("options_preview: "),
+  issued_display_hides_raw_question_prefix: !display.includes("question="),
+  issued_display_uses_confirmation_card: display.includes("需要确认 ·"),
+  issued_display_overflow_lists_sixth_option: overflowDisplay.includes("还有 0 项") === false
+    && overflowDisplay.includes("6  option-6"),
   issued_event_has_ask_id: formatAskUserIssuedEvent(nextEnvelope).includes("ask_id=ask_q_002"),
 };
 

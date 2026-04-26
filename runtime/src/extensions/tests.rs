@@ -70,7 +70,7 @@ mod tests {
             .iter()
             .filter_map(Value::as_str)
             .collect::<Vec<&str>>();
-        assert!(default_names.contains(&"ask_user_question"));
+        assert!(default_names.contains(&"ask_user"));
         let recovery_actions = payload["result"]["tool_recovery_actions"]
             .as_array()
             .expect("tool_recovery_actions should be array")
@@ -146,7 +146,7 @@ mod tests {
                 .and_then(Value::as_object)
                 .and_then(|function| function.get("name"))
                 .and_then(Value::as_str)
-                == Some("ask_user_question")
+                == Some("ask_user")
         });
         assert!(has_ask_user_tool);
     }

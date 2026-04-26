@@ -583,7 +583,7 @@ function buildAskUserHintPrompt(input: {
     "[AskUser Tool Hint]",
     `reason=${input.reason}`,
     `user_input=${cleanText(input.userText).slice(0, 160)}`,
-    "If critical constraints are still missing, call ask_user_question exactly once.",
+    "If critical constraints are still missing, call ask_user exactly once.",
     "Question must be specific and unblock a single next action.",
     "Keep options <= 3 and avoid open-ended prompts unless necessary.",
   ].join("\n");

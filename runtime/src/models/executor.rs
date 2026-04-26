@@ -804,7 +804,7 @@ fn classify_tool_execution_risk(tool_name: &str) -> &'static str {
             "high_risk"
         }
         "write" | "edit" => "mutating",
-        "ask_user_question" => "interrupt",
+        "ask_user" | "ask_user_question" => "interrupt",
         "list" | "glob" | "search" | "read" | "mcp_servers" | "web_scan" | "semantic_search"
         | "prompt_enhancer" | "$web_search" | "web_search" | "fetch" | "date" | "rethink"
         | "kimi_files_list" => "read_only",
@@ -842,6 +842,20 @@ fn build_tool_start_event(
     }
 }
 
+fn truncate_multiline_tool_summary(raw: &str, max_chars: usize, max_lines: usize) -> String {
+    let mut normalized = raw
+        .lines()
+        .take(max_lines)
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if normalized.chars().count() <= max_chars {
+        return normalized;
+    }
+    normalized = normalized.chars().take(max_chars).collect::<String>();
+    format!("{normalized}…")
+}
+
 fn build_tool_output_summary(tool_name: &str, output_content: &str) -> Value {
     let mut summary = serde_json::Map::new();
     summary.insert(
@@ -872,10 +886,38 @@ fn build_tool_output_summary(tool_name: &str, output_content: &str) -> Value {
         "exit_code",
         "status",
         "error_class",
+        "kind",
+        "path",
+        "operation",
+        "line_start",
+        "line_end",
+        "has_more",
+        "first_changed_line",
+        "blocks_requested",
+        "replacements",
+        "fuzzy_fallback_used",
+        "bytes_written",
     ] {
         if let Some(value) = object.get(key) {
             summary.insert(key.to_string(), value.clone());
         }
+    }
+    if let Some(diff) = object.get("diff").and_then(Value::as_str) {
+        summary.insert(
+            "diff_preview".to_string(),
+            Value::String(truncate_multiline_tool_summary(diff, 900, 8)),
+        );
+    }
+    if let Some(command_preview) = object
+        .get("audit")
+        .and_then(Value::as_object)
+        .and_then(|audit| audit.get("command_preview"))
+        .and_then(Value::as_str)
+    {
+        summary.insert(
+            "command_preview".to_string(),
+            Value::String(truncate_header_value_for_diagnostics(command_preview, 160)),
+        );
     }
     for (key, summary_key) in [
         ("matches", "matches_count"),
@@ -1108,33 +1150,36 @@ fn parse_tool_interrupt(
     tool_call: &ToolCallInput,
     output: &ToolCallOutput,
 ) -> Result<Option<ModelExecutionInterrupt>, ModelExecutionError> {
-    if !tool_call.name.trim().eq_ignore_ascii_case("ask_user_question") {
+    let tool_name = tool_call.name.trim();
+    if !tool_name.eq_ignore_ascii_case("ask_user")
+        && !tool_name.eq_ignore_ascii_case("ask_user_question")
+    {
         return Ok(None);
     }
     let parsed: Value = serde_json::from_str(output.content.as_str()).map_err(|error| {
         ModelExecutionError::new(
             "invalid_tool_output",
-            format!("ask_user_question output is not valid JSON: {error}"),
+            format!("{tool_name} output is not valid JSON: {error}"),
         )
     })?;
     let payload = parsed.as_object().ok_or_else(|| {
         ModelExecutionError::new(
             "invalid_tool_output",
-            "ask_user_question output must be a JSON object",
+            format!("{tool_name} output must be a JSON object"),
         )
     })?;
     let payload_type = parse_non_empty_string_field(payload, "type").unwrap_or_default();
     if payload_type != "ask_user" {
         return Err(ModelExecutionError::new(
             "invalid_tool_output",
-            "ask_user_question output type must be ask_user",
+            format!("{tool_name} output type must be ask_user"),
         ));
     }
     let questions = parse_ask_user_questions(payload);
     if questions.is_empty() {
         return Err(ModelExecutionError::new(
             "invalid_tool_output",
-            "ask_user_question output missing valid questions[]",
+            format!("{tool_name} output missing valid questions[]"),
         ));
     }
     let blocking_node_id = parse_non_empty_string_field(payload, "blocking_node_id")

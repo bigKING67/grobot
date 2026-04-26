@@ -8,6 +8,7 @@ import {
   resolveInputShortcutAction,
   resolveInteractiveInputBodyWidth,
   renderInteractiveInputChromeLines,
+  renderSubmittedInputTranscriptLines,
   resolveInteractiveEnterDataAction,
   resolveInteractiveInputCursorColumn,
   resolveMenuSearchMatchedIndices,
@@ -354,6 +355,15 @@ async function main(): Promise<void> {
     bodyLines: ["❯ hello"],
     inputBodyWidth: 20,
   });
+  const submittedTranscriptLines = renderSubmittedInputTranscriptLines({
+    value: "你是啥模型",
+    promptLabel: "❯ ",
+    terminalColumns: 96,
+    theme: "ccline",
+  });
+  const submittedTranscriptPlain = submittedTranscriptLines
+    .map(stripAnsi)
+    .join("\n");
   const inputChromeTopLinePlain = stripAnsi(inputChromeLines[0] ?? "");
   const inputChromeBodyLine = inputChromeLines[1] ?? "";
   const inputChromeBodyLinePlain = stripAnsi(inputChromeBodyLine);
@@ -564,6 +574,17 @@ async function main(): Promise<void> {
       inputChromeFullTerminalWidth === 80,
     input_chrome_respects_prompt_minimum_width:
       inputChromeSmallTerminalWidth === 12,
+    submitted_transcript_keeps_user_text:
+      submittedTranscriptPlain.includes("❯ 你是啥模型"),
+    submitted_transcript_omits_status_footer:
+      !submittedTranscriptPlain.includes("? for shortcuts")
+      && !submittedTranscriptPlain.includes("window")
+      && !submittedTranscriptPlain.includes("kimi/"),
+    submitted_transcript_is_input_frame_only:
+      submittedTranscriptLines.length === 3
+      && submittedTranscriptPlain.split("\n").filter((line) => /^─+$/.test(line)).length === 2,
+    submitted_transcript_lines_within_width:
+      submittedTranscriptLines.every((line) => measureDisplayWidth(line) <= 96),
     menu_viewport_keeps_active_visible:
       initialMenuViewport.startIndex > 0
       && initialMenuViewport.endIndex === 9

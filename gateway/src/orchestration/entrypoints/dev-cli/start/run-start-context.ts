@@ -11,11 +11,6 @@ import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
 import {
-  buildToolsManifestFingerprint,
-  resolveRuntimeBinaryPath,
-  runRuntimeToolsDescribe,
-} from "../runtime-health";
-import {
   basenameFromPath,
   resolveConfigTomlPath,
   resolveExperiencePoolPath,
@@ -28,9 +23,12 @@ import {
   resolveWorkDir,
 } from "../services/runtime-paths";
 import {
-  buildDefaultRuntimeEnabledTools,
   buildRuntimeToolContextForMessage,
 } from "../../../../tools/runtime/default-enabled-tools";
+import {
+  resolveRuntimeToolDescribeDecision,
+  type RuntimeToolEnabledToolsSource,
+} from "../services/runtime-tool-describe-decision";
 import { resolveMcpInstructionRuntime } from "../services/mcp-instruction-pack";
 import { resolveContextEngineConfig, type ContextEngineConfig } from "../../../../tools/context";
 import { createRunStartSessionStore } from "./run-start-session-store";
@@ -388,7 +386,7 @@ function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
 }
 
 export interface RuntimeToolContextDiagnostics {
-  enabledToolsSource: "runtime.tools.describe" | "start-default";
+  enabledToolsSource: RuntimeToolEnabledToolsSource;
   enabledToolsSourceDetail?: string;
   manifestFingerprint: string;
   manifestToolCount: number;
@@ -399,49 +397,6 @@ export interface RuntimeToolContextDiagnostics {
 export interface ResolvedRuntimeToolContext {
   context: RuntimeToolContext;
   diagnostics: RuntimeToolContextDiagnostics;
-}
-
-function normalizeRuntimeToolsDescribeFallbackDetail(detail: string): string {
-  const normalized = detail.trim();
-  if (!normalized) {
-    return "runtime_tools_describe_unavailable:unknown";
-  }
-  if (normalized.startsWith("runtime_tools_describe_")) {
-    return normalized;
-  }
-  return `runtime_tools_describe_unavailable:${normalized}`;
-}
-
-function resolveRuntimeDefaultEnabledTools(): {
-  enabledTools: string[];
-  diagnostics: RuntimeToolContextDiagnostics;
-} {
-  const runtimeBinaryPath = resolveRuntimeBinaryPath();
-  const described = runRuntimeToolsDescribe(runtimeBinaryPath);
-  if (described.ok && described.defaultEnabledTools.length > 0) {
-    return {
-      enabledTools: [...described.defaultEnabledTools],
-      diagnostics: {
-        enabledToolsSource: "runtime.tools.describe",
-        manifestFingerprint: described.manifestFingerprint,
-        manifestToolCount: described.toolNames.length,
-        manifestDefaultEnabledCount: described.defaultEnabledTools.length,
-        schemaProfilesFingerprint: described.toolSurfaceSchemaProfilesFingerprint,
-      },
-    };
-  }
-  const fallbackEnabledTools = buildDefaultRuntimeEnabledTools();
-  return {
-    enabledTools: fallbackEnabledTools,
-    diagnostics: {
-      enabledToolsSource: "start-default",
-      enabledToolsSourceDetail: normalizeRuntimeToolsDescribeFallbackDetail(described.detail),
-      manifestFingerprint: `fallback:${buildToolsManifestFingerprint(fallbackEnabledTools, fallbackEnabledTools)}`,
-      manifestToolCount: fallbackEnabledTools.length,
-      manifestDefaultEnabledCount: fallbackEnabledTools.length,
-      schemaProfilesFingerprint: null,
-    },
-  };
 }
 
 function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): ResolvedRuntimeToolContext {
@@ -470,8 +425,8 @@ function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): R
     typeof parsedMaxRecoveryRounds === "number" && Number.isFinite(parsedMaxRecoveryRounds)
       ? Math.min(Math.max(parsedMaxRecoveryRounds, 0), 8)
       : 2;
-  const runtimeDefaultTools = resolveRuntimeDefaultEnabledTools();
-  const enabledTools = runtimeDefaultTools.enabledTools;
+  const runtimeToolDescribeDecision = resolveRuntimeToolDescribeDecision();
+  const enabledTools = runtimeToolDescribeDecision.enabledTools;
   const context = buildRuntimeToolContextForMessage({
     workDir,
     enabledTools,
@@ -489,7 +444,14 @@ function resolveRuntimeToolContext(workDir: string, projectTomlPath?: string): R
   };
   return {
     context,
-    diagnostics: runtimeDefaultTools.diagnostics,
+    diagnostics: {
+      enabledToolsSource: runtimeToolDescribeDecision.enabledToolsSource,
+      enabledToolsSourceDetail: runtimeToolDescribeDecision.enabledToolsSourceDetail,
+      manifestFingerprint: runtimeToolDescribeDecision.manifestFingerprint,
+      manifestToolCount: runtimeToolDescribeDecision.manifestToolCount,
+      manifestDefaultEnabledCount: runtimeToolDescribeDecision.manifestDefaultEnabledCount,
+      schemaProfilesFingerprint: runtimeToolDescribeDecision.schemaProfilesFingerprint,
+    },
   };
 }
 

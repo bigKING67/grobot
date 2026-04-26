@@ -11,7 +11,8 @@ const TOOL_WEB_SCAN: &str = "web_scan";
 const TOOL_WEB_EXECUTE_JS: &str = "web_execute_js";
 const TOOL_SEMANTIC_SEARCH: &str = "semantic_search";
 const TOOL_PROMPT_ENHANCER: &str = "prompt_enhancer";
-const TOOL_ASK_USER_QUESTION: &str = "ask_user_question";
+const TOOL_ASK_USER: &str = "ask_user";
+const TOOL_ASK_USER_LEGACY: &str = "ask_user_question";
 
 const TOOL_SURFACE_POLICY_VERSION: &str = "v1";
 const TOOL_SURFACE_MINIMAL: &str = "minimal";
@@ -622,7 +623,7 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             default_enabled: false,
         },
         LocalToolCatalogEntry {
-            name: TOOL_ASK_USER_QUESTION,
+            name: TOOL_ASK_USER,
             description: "Interrupt current turn and ask user one or more structured clarification questions",
             parameters: json!({
                 "type": "object",
@@ -703,11 +704,11 @@ fn canonical_tool_surface_profile(raw: Option<&str>) -> &'static str {
 
 fn tool_surface_profile_names(profile: &str) -> Vec<&'static str> {
     match canonical_tool_surface_profile(Some(profile)) {
-        TOOL_SURFACE_MINIMAL => vec![TOOL_READ, TOOL_EDIT, TOOL_WRITE, TOOL_ASK_USER_QUESTION],
-        TOOL_SURFACE_BROWSER => vec![TOOL_WEB_SCAN, TOOL_WEB_EXECUTE_JS, TOOL_READ, TOOL_ASK_USER_QUESTION],
-        TOOL_SURFACE_BROWSER_ADVANCED => vec![TOOL_WEB_SCAN, TOOL_WEB_EXECUTE_JS, TOOL_READ, TOOL_ASK_USER_QUESTION],
-        TOOL_SURFACE_CONTEXT => vec![TOOL_SEMANTIC_SEARCH, TOOL_READ, TOOL_ASK_USER_QUESTION],
-        TOOL_SURFACE_MCP => vec![TOOL_MCP_SERVERS, TOOL_MCP_CALL, TOOL_ASK_USER_QUESTION],
+        TOOL_SURFACE_MINIMAL => vec![TOOL_READ, TOOL_EDIT, TOOL_WRITE, TOOL_ASK_USER],
+        TOOL_SURFACE_BROWSER => vec![TOOL_WEB_SCAN, TOOL_WEB_EXECUTE_JS, TOOL_READ, TOOL_ASK_USER],
+        TOOL_SURFACE_BROWSER_ADVANCED => vec![TOOL_WEB_SCAN, TOOL_WEB_EXECUTE_JS, TOOL_READ, TOOL_ASK_USER],
+        TOOL_SURFACE_CONTEXT => vec![TOOL_SEMANTIC_SEARCH, TOOL_READ, TOOL_ASK_USER],
+        TOOL_SURFACE_MCP => vec![TOOL_MCP_SERVERS, TOOL_MCP_CALL, TOOL_ASK_USER],
         TOOL_SURFACE_FULL_DEBUG => local_tool_catalog().into_iter().map(|tool| tool.name).collect(),
         _ => default_enabled_local_tool_names(),
     }
@@ -1763,7 +1764,7 @@ fn get_usize_arg(args: &Map<String, Value>, key: &str, fallback: usize, max: usi
     parsed.clamp(1, max)
 }
 
-fn parse_ask_user_question_options_arg(raw: &Value) -> Vec<Value> {
+fn parse_ask_user_options_arg(raw: &Value) -> Vec<Value> {
     let Some(items) = raw.as_array() else {
         return Vec::new();
     };
@@ -1818,7 +1819,7 @@ fn parse_ask_user_question_options_arg(raw: &Value) -> Vec<Value> {
     normalized
 }
 
-fn parse_ask_user_questions_arg(args: &Map<String, Value>) -> Vec<Value> {
+fn parse_ask_user_arg_questions(args: &Map<String, Value>) -> Vec<Value> {
     let Some(raw_questions) = args.get("questions").and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -1852,7 +1853,7 @@ fn parse_ask_user_questions_arg(args: &Map<String, Value>) -> Vec<Value> {
         };
         let options = question_obj
             .get("options")
-            .map(parse_ask_user_question_options_arg)
+            .map(parse_ask_user_options_arg)
             .unwrap_or_default();
         questions.push(json!({
             "id": id,
@@ -1883,15 +1884,15 @@ fn now_unix_label() -> String {
     format!("unix:{secs}")
 }
 
-fn run_ask_user_question(
+fn run_ask_user(
     _context: &ToolContextResolved,
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
-    let questions = parse_ask_user_questions_arg(args);
+    let questions = parse_ask_user_arg_questions(args);
     if questions.is_empty() {
         return Err(ToolExecutionError::new(
             "invalid_tool_arguments",
-            "ask_user_question.questions must include at least one valid item",
+            "ask_user.questions must include at least one valid item",
         ));
     }
     let blocking_node_id =
@@ -1901,7 +1902,7 @@ fn run_ask_user_question(
     let resume_token =
         get_string_arg(args, "resume_token").unwrap_or_else(|| build_runtime_generated_id("resume"));
     let payload = json!({
-        "tool": TOOL_ASK_USER_QUESTION,
+        "tool": TOOL_ASK_USER,
         "type": "ask_user",
         "blocking_node_id": blocking_node_id,
         "questions": questions,

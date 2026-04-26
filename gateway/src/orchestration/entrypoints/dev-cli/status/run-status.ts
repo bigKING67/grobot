@@ -8,16 +8,13 @@ import {
   readProviderSnapshotFromToml,
 } from "../provider-probe";
 import {
-  buildToolsManifestFingerprint,
   resolveRuntimeBinaryPath,
   runRuntimeHealthcheck,
-  runRuntimeToolsDescribe,
   type RuntimeToolSurfaceSchemaProfile,
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
 import {
   adaptRuntimeToolContextForRecovery,
-  buildDefaultRuntimeEnabledTools,
   buildRuntimeToolContextForMessage,
   buildRuntimeToolSurfaceProjectionSummary,
   buildToolSurfaceFingerprint,
@@ -103,6 +100,11 @@ import {
   resolveSessionScopeOption,
   resolveSessionSubjectOption,
 } from "../start/session-options";
+import {
+  normalizeRuntimeToolsDescribeDetail,
+  resolveRuntimeToolDescribeDecision,
+  type RuntimeToolEnabledToolsSource,
+} from "../services/runtime-tool-describe-decision";
 
 function stripInlineComment(rawLine: string): string {
   const hashIndex = rawLine.indexOf("#");
@@ -316,13 +318,16 @@ function buildRuntimeToolSurfaceProjectionDrift(input: {
 }): RuntimeToolSurfaceProjectionDrift {
   const runtimeSummary = input.runtimeSummary;
   const gatewayFallbackSummary = input.gatewayFallbackSummary;
+  const runtimeDescribeUnavailableReason = normalizeRuntimeToolsDescribeDetail(
+    input.runtimeDescribeDetail ?? "not_run",
+  );
   if (!runtimeSummary) {
     return {
       checked: false,
       active: false,
       reason: input.runtimeDescribeOk
         ? "runtime_schema_profile_unavailable"
-        : `runtime_tools_describe_unavailable:${input.runtimeDescribeDetail ?? "not_run"}`,
+        : runtimeDescribeUnavailableReason,
       runtimeSchemaFingerprint: null,
       gatewaySchemaFingerprint: gatewayFallbackSummary.schemaFingerprint,
       runtimeProjectionMode: null,
@@ -738,7 +743,7 @@ function resolveRuntimeToolContextPreview(
   schemaProfilesFingerprint: string | null;
   toolSurfaceAdaptation: RuntimeToolSurfaceAdaptation;
   toolSurfaceAdaptationGuard: RuntimeToolSurfaceAdaptationGuard;
-  enabledToolsSource: "runtime.tools.describe" | "start-default";
+  enabledToolsSource: RuntimeToolEnabledToolsSource;
   enabledToolsSourceDetail?: string;
   manifestFingerprint: string;
   manifestToolCount: number;
@@ -772,22 +777,13 @@ function resolveRuntimeToolContextPreview(
     typeof parsedMaxRecoveryRounds === "number" && Number.isFinite(parsedMaxRecoveryRounds)
       ? Math.min(Math.max(parsedMaxRecoveryRounds, 0), 8)
       : 2;
-  const described = runtimeBinaryPath ? runRuntimeToolsDescribe(runtimeBinaryPath) : undefined;
-  const hasRuntimeDefaultEnabledTools = Boolean(
-    described?.ok && Array.isArray(described.defaultEnabledTools) && described.defaultEnabledTools.length > 0,
-  );
-  const enabledTools = hasRuntimeDefaultEnabledTools && described
-    ? [...described.defaultEnabledTools]
-    : buildDefaultRuntimeEnabledTools();
-  const manifestToolNames = hasRuntimeDefaultEnabledTools && described
-    ? [...described.toolNames]
-    : [...enabledTools];
-  const manifestFingerprint = hasRuntimeDefaultEnabledTools && described
-    ? described.manifestFingerprint
-    : `fallback:${buildToolsManifestFingerprint(manifestToolNames, enabledTools)}`;
-  const enabledToolsSource = hasRuntimeDefaultEnabledTools
-    ? "runtime.tools.describe"
-    : "start-default";
+  const runtimeToolDescribeDecision = resolveRuntimeToolDescribeDecision({
+    runtimeBinaryPath: runtimeBinaryPath ?? null,
+  });
+  const enabledTools = runtimeToolDescribeDecision.enabledTools;
+  const manifestToolNames = runtimeToolDescribeDecision.manifestToolNames;
+  const manifestFingerprint = runtimeToolDescribeDecision.manifestFingerprint;
+  const enabledToolsSource = runtimeToolDescribeDecision.enabledToolsSource;
   const bashAllowlist = readToolsAllowlistFromProjectToml(projectTomlPath);
   const surfaced = buildRuntimeToolContextForMessage({
     workDir: "",
@@ -820,9 +816,9 @@ function resolveRuntimeToolContextPreview(
   const toolSurfaceReason = effectiveContext?.toolSurfaceReason ?? "status fallback";
   const toolPolicyVersion = effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION;
   const advancedToolSchema = effectiveContext?.advancedToolSchema ?? false;
-  const runtimeSchemaProfile = described?.ok
+  const runtimeSchemaProfile = runtimeToolDescribeDecision.runtimeDescribeOk
     ? findRuntimeToolSurfaceSchemaProfile({
-        profiles: described.toolSurfaceSchemaProfiles,
+        profiles: runtimeToolDescribeDecision.schemaProfiles,
         profile: toolSurfaceProfile,
         advancedToolSchema,
         modelVisibleTools,
@@ -850,8 +846,10 @@ function resolveRuntimeToolContextPreview(
   const schemaProjectionDrift = buildRuntimeToolSurfaceProjectionDrift({
     runtimeSummary: runtimeSchemaProjectionSummary,
     gatewayFallbackSummary: fallbackSchemaProjectionSummary,
-    runtimeDescribeOk: described?.ok ?? false,
-    runtimeDescribeDetail: described?.detail,
+    runtimeDescribeOk: runtimeToolDescribeDecision.runtimeDescribeOk,
+    runtimeDescribeDetail: runtimeToolDescribeDecision.enabledToolsSourceDetail
+      ?? runtimeToolDescribeDecision.rawRuntimeDescribeDetail
+      ?? undefined,
   });
   return {
     enabledTools: dispatchEnabledTools,
@@ -866,14 +864,11 @@ function resolveRuntimeToolContextPreview(
     schemaEstimatedTokens,
     schemaProjectionSummary,
     schemaProjectionDrift,
-    schemaProfilesFingerprint: described?.toolSurfaceSchemaProfilesFingerprint ?? null,
+    schemaProfilesFingerprint: runtimeToolDescribeDecision.schemaProfilesFingerprint,
     toolSurfaceAdaptation: guarded.adaptation,
     toolSurfaceAdaptationGuard: guarded.guard,
     enabledToolsSource,
-    enabledToolsSourceDetail:
-      enabledToolsSource === "start-default" && described && described.detail
-        ? described.detail
-        : undefined,
+    enabledToolsSourceDetail: runtimeToolDescribeDecision.enabledToolsSourceDetail,
     manifestFingerprint,
     manifestToolCount: manifestToolNames.length,
     manifestDefaultEnabledCount: enabledTools.length,

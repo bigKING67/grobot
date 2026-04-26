@@ -10,6 +10,7 @@ export interface RuntimeToolSurfaceBudgetPolicy {
   schemaPropertyCountMax: number;
   fullSchemaPropertyCountMax: number;
   suppressedSchemaPropertyCountMax: number;
+  schemaEstimatedTokensMax: number;
 }
 
 export interface RuntimeToolSurfaceBudgetValidation {
@@ -27,6 +28,7 @@ type RuntimeToolSurfaceBudgetLike = Pick<
   | "schemaPropertyCount"
   | "fullSchemaPropertyCount"
   | "suppressedSchemaPropertyCount"
+  | "schemaEstimatedTokens"
 >;
 
 export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToolSurfaceBudgetPolicy> = {
@@ -37,6 +39,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 15,
     fullSchemaPropertyCountMax: 15,
     suppressedSchemaPropertyCountMax: 0,
+    schemaEstimatedTokensMax: 560,
   },
   coding: {
     profile: "coding",
@@ -45,6 +48,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 30,
     fullSchemaPropertyCountMax: 30,
     suppressedSchemaPropertyCountMax: 0,
+    schemaEstimatedTokensMax: 1010,
   },
   browser: {
     profile: "browser",
@@ -53,6 +57,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 25,
     fullSchemaPropertyCountMax: 47,
     suppressedSchemaPropertyCountMax: 22,
+    schemaEstimatedTokensMax: 790,
   },
   browser_advanced: {
     profile: "browser_advanced",
@@ -61,6 +66,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 42,
     fullSchemaPropertyCountMax: 47,
     suppressedSchemaPropertyCountMax: 5,
+    schemaEstimatedTokensMax: 1320,
   },
   context: {
     profile: "context",
@@ -69,6 +75,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 20,
     fullSchemaPropertyCountMax: 20,
     suppressedSchemaPropertyCountMax: 0,
+    schemaEstimatedTokensMax: 510,
   },
   mcp: {
     profile: "mcp",
@@ -77,6 +84,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 9,
     fullSchemaPropertyCountMax: 9,
     suppressedSchemaPropertyCountMax: 0,
+    schemaEstimatedTokensMax: 340,
   },
   full_debug: {
     profile: "full_debug",
@@ -85,6 +93,7 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     schemaPropertyCountMax: 92,
     fullSchemaPropertyCountMax: 92,
     suppressedSchemaPropertyCountMax: 0,
+    schemaEstimatedTokensMax: 2680,
   },
 };
 
@@ -116,6 +125,11 @@ export function validateRuntimeToolSurfaceBudget(
   if (input.suppressedSchemaPropertyCount > budget.suppressedSchemaPropertyCountMax) {
     violations.push(
       `suppressed_schema_property_count:${String(input.suppressedSchemaPropertyCount)}>${String(budget.suppressedSchemaPropertyCountMax)}`,
+    );
+  }
+  if (input.schemaEstimatedTokens > budget.schemaEstimatedTokensMax) {
+    violations.push(
+      `schema_estimated_tokens:${String(input.schemaEstimatedTokens)}>${String(budget.schemaEstimatedTokensMax)}`,
     );
   }
   return {

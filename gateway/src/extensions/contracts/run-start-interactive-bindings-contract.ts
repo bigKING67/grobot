@@ -24,6 +24,7 @@ import { listRunStartSlashSuggestions } from "../../orchestration/entrypoints/de
 import { resolveContextEngineConfig } from "../../tools/context";
 import { createMemoryOrchestrator } from "../../tools/memory";
 import {
+  buildAskUserQueueContinuationHint,
   type RuntimeFailoverConfig,
   type RuntimeProviderCandidate,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-turn";
@@ -478,24 +479,34 @@ async function main(): Promise<void> {
       status_theme_after_update: statusConfigAfter.theme,
       status_layout_after_update: statusConfigAfter.layoutMode,
       status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
-      ask_status_no_pending_warned: outputText.includes("[ask-user] no pending question."),
-      ask_status_has_options_preview: outputText.includes("options_preview: "),
-      ask_status_has_output_mode_full: outputText.includes("ask_status_output_mode: full"),
-      ask_status_has_options_more: outputText.includes("options_more: +1"),
-      ask_status_has_followups_total: outputText.includes("pending_followups_total: 1"),
-      ask_status_has_followup_row: outputText.includes("pending_followup_1: ask_q_contract_002"),
-      ask_status_hint_mentions_reply_direct:
-        outputText.includes("hint: reply directly in chat to answer active question"),
-      ask_status_hint_mentions_status_only:
-        outputText.includes("hint: ask-user actions are automatic; there is no /ask command"),
+      ask_status_no_pending_warned: outputText.includes("没有待确认问题。"),
+      ask_status_has_clean_question:
+        outputText.includes("需要确认 · Profile") && outputText.includes("Choose profile"),
+      ask_status_has_clean_options:
+        outputText.includes("› 1  safe") && outputText.includes("6  fallback"),
+      ask_status_has_menu_hint: outputText.includes("Enter 打开选择菜单"),
+      ask_status_hides_options_preview: !outputText.includes("options_preview: "),
+      ask_status_hides_log_prefix: !outputText.includes("[ask-user]"),
+      ask_status_hides_output_mode_full: !outputText.includes("ask_status_output_mode: full"),
+      ask_status_hides_options_more: !outputText.includes("options_more: +1"),
+      ask_status_has_pending_total: outputText.includes("待确认：2 项"),
+      ask_status_hides_followup_row: !outputText.includes("pending_followup_1: ask_q_contract_002"),
+      ask_status_hides_reply_direct_log_hint:
+        !outputText.includes("hint: reply directly in chat to answer active question"),
+      ask_status_hides_status_only_log_hint:
+        !outputText.includes("hint: ask-user actions are automatic; there is no /ask command"),
+      ask_queue_hint_hides_log_prefix:
+        !buildAskUserQueueContinuationHint(1).includes("[ask-user]"),
+      ask_queue_hint_mentions_followup_count:
+        buildAskUserQueueContinuationHint(2).includes("还有 2 个后续确认"),
       ask_status_compact_has_header:
-        askStatusCompactText.includes("[ask-user] active question"),
-      ask_status_compact_has_output_mode:
-        askStatusCompactText.includes("ask_status_output_mode: compact"),
-      ask_status_compact_has_detail_hint:
-        askStatusCompactText.includes("ask_status_detail_hint: set GROBOT_ASK_STATUS_VERBOSE=1 and rerun status display"),
-      ask_status_compact_has_followups_total:
-        askStatusCompactText.includes("pending_followups_total: 1"),
+        askStatusCompactText.includes("需要确认 · Profile"),
+      ask_status_compact_hides_output_mode:
+        !askStatusCompactText.includes("ask_status_output_mode: compact"),
+      ask_status_compact_hides_detail_hint:
+        !askStatusCompactText.includes("ask_status_detail_hint:"),
+      ask_status_compact_has_pending_total:
+        askStatusCompactText.includes("待确认：2 项"),
       ask_status_compact_hides_followup_rows:
         !askStatusCompactText.includes("pending_followup_1: "),
       ask_status_compact_hides_status_only_hint:
