@@ -20,6 +20,7 @@ use walkdir::WalkDir;
 include!("core/mod.rs");
 include!("recovery.rs");
 include!("file_snapshot/mod.rs");
+include!("text_format.rs");
 include!("read/mod.rs");
 include!("list/mod.rs");
 include!("glob/mod.rs");

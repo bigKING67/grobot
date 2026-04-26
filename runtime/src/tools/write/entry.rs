@@ -5,8 +5,11 @@ fn run_write(
     let request = parse_write_request(args)?;
     let target = ensure_within_workspace(&context.work_dir, &request.path, true)?;
     let relative_path = relative_to_work_dir(&context.work_dir, &target);
+    let text_format = inspect_text_content_format(request.content.as_str());
 
+    let mut created_parent_dirs = false;
     if let Some(parent) = target.parent() {
+        created_parent_dirs = !parent.exists();
         fs::create_dir_all(parent).map_err(|error| {
             ToolExecutionError::new(
                 "tool_execution_failed",
@@ -99,6 +102,10 @@ fn run_write(
         "path": relative_path,
         "operation": operation,
         "bytes_written": request.content.as_bytes().len(),
+        "line_ending": text_format.line_ending,
+        "bom_written": text_format.bom_detected,
+        "created_parent_dirs": created_parent_dirs,
+        "existed_before": existed_before,
     });
     Ok(ToolCallOutput::from_payload(payload))
 }

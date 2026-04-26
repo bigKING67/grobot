@@ -7,6 +7,8 @@ fn build_text_payload(
     request: &ReadRequest,
     result: &ReadTextResult,
     target: &Path,
+    text_format: TextFormatMetadata,
+    full_view: bool,
 ) -> Value {
     let mut payload = json!({
         "tool": TOOL_READ,
@@ -28,6 +30,10 @@ fn build_text_payload(
             "line_limit": request.line_limit,
             "size_bytes": file_size_for_meta(target),
             "read_bytes": result.read_bytes,
+            "line_ending": text_format.line_ending,
+            "bom_detected": text_format.bom_detected,
+            "encoding": "utf-8",
+            "snapshot_full_view": full_view,
         });
     }
     payload
@@ -55,7 +61,14 @@ fn build_file_unchanged_payload(
         payload["meta"] = json!({
             "kind": cached.kind,
             "range_mode": request.range_mode,
+            "start_line": request.start_line,
             "line_limit": cached.line_limit,
+            "size_bytes": cached.size_bytes,
+            "read_bytes": cached.read_bytes,
+            "line_ending": cached.line_ending,
+            "bom_detected": cached.bom_detected,
+            "encoding": "utf-8",
+            "snapshot_full_view": cached.full_view,
             "mtime_ms": mtime_ms.min(u128::from(u64::MAX)) as u64,
             "cache": "hit",
         });

@@ -58,6 +58,11 @@ struct ReadCacheEntry {
     next_offset: Option<usize>,
     kind: &'static str,
     content_hash: Option<u64>,
+    size_bytes: u64,
+    read_bytes: usize,
+    line_ending: &'static str,
+    bom_detected: bool,
+    full_view: bool,
 }
 
 #[derive(Debug, Default)]
@@ -83,10 +88,11 @@ fn should_try_small_file_full_read_for_hash(request: &ReadRequest, target: &Path
 fn read_text_window_with_guard_hash(
     target: &Path,
     request: &ReadRequest,
-) -> Result<(ReadTextResult, Option<u64>), ToolExecutionError> {
+) -> Result<(ReadTextResult, Option<u64>, TextFormatMetadata), ToolExecutionError> {
     if !should_try_small_file_full_read_for_hash(request, target) {
         let text_result = read_text_window(target, request)?;
-        return Ok((text_result, None));
+        let text_format = inspect_text_file_format(target)?;
+        return Ok((text_result, None, text_format));
     }
 
     let file_bytes = fs::read(target)
@@ -97,13 +103,14 @@ fn read_text_window_with_guard_hash(
             "read only supports utf-8 text files",
         )
     })?;
+    let text_format = inspect_text_content_format(file_content.as_str());
     let text_result = read_text_window_from_content(file_content.as_str(), request)?;
     let content_hash = if is_full_text_read_for_write(request, text_result.has_more) {
         Some(hash_write_guard_text(file_content.as_str()))
     } else {
         None
     };
-    Ok((text_result, content_hash))
+    Ok((text_result, content_hash, text_format))
 }
 
 fn run_read(
@@ -148,9 +155,10 @@ fn run_read(
             return Ok(ToolCallOutput::from_payload(payload));
         }
 
-        let (text_result, precomputed_content_hash) = read_text_window_with_guard_hash(&target, &request)?;
-        let payload = build_text_payload(&relative_path, &request, &text_result, &target);
+        let (text_result, precomputed_content_hash, text_format) =
+            read_text_window_with_guard_hash(&target, &request)?;
         let full_view = is_full_text_read_for_write(&request, text_result.has_more);
+        let payload = build_text_payload(&relative_path, &request, &text_result, &target, text_format, full_view);
         let content_hash = if full_view {
             match precomputed_content_hash {
                 Some(value) => Some(value),
@@ -170,6 +178,11 @@ fn run_read(
                 next_offset: text_result.next_offset,
                 kind: "text",
                 content_hash,
+                size_bytes: file_size_for_meta(&target),
+                read_bytes: text_result.read_bytes,
+                line_ending: text_format.line_ending,
+                bom_detected: text_format.bom_detected,
+                full_view,
             },
         );
         record_write_read_snapshot(

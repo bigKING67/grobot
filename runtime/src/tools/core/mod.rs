@@ -1928,16 +1928,35 @@ fn ensure_within_workspace(
             ToolExecutionError::new("path_invalid", format!("failed to resolve path: {error}"))
         })?
     } else if allow_missing_leaf {
-        let parent = candidate.parent().ok_or_else(|| {
-            ToolExecutionError::new("path_invalid", "path parent is invalid")
-        })?;
-        let resolved_parent = fs::canonicalize(parent).map_err(|error| {
+        if candidate
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err(ToolExecutionError::new(
+                "path_escape_blocked",
+                "missing write targets must not contain parent traversal",
+            ));
+        }
+
+        let mut cursor = candidate.as_path();
+        let mut missing_components = Vec::new();
+        while !cursor.exists() {
+            let component = cursor.file_name().ok_or_else(|| {
+                ToolExecutionError::new("path_invalid", "path parent is invalid")
+            })?;
+            missing_components.push(component.to_os_string());
+            cursor = cursor.parent().ok_or_else(|| {
+                ToolExecutionError::new("path_invalid", "path parent is invalid")
+            })?;
+        }
+
+        let mut resolved_parent = fs::canonicalize(cursor).map_err(|error| {
             ToolExecutionError::new("path_invalid", format!("failed to resolve parent: {error}"))
         })?;
-        let file_name = candidate.file_name().ok_or_else(|| {
-            ToolExecutionError::new("path_invalid", "path filename is invalid")
-        })?;
-        resolved_parent.join(file_name)
+        for component in missing_components.iter().rev() {
+            resolved_parent.push(component);
+        }
+        resolved_parent
     } else {
         return Err(ToolExecutionError::new(
             "path_not_found",

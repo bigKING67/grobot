@@ -2503,10 +2503,59 @@ audit_redact_secrets = false
         .expect("write create should succeed");
         assert_eq!(payload["tool"].as_str(), Some("write"));
         assert_eq!(payload["operation"].as_str(), Some("create"));
+        assert_eq!(payload["line_ending"].as_str(), Some("lf"));
+        assert_eq!(payload["bom_written"].as_bool(), Some(false));
+        assert_eq!(payload["created_parent_dirs"].as_bool(), Some(false));
+        assert_eq!(payload["existed_before"].as_bool(), Some(false));
         assert_eq!(
             fs::read_to_string(workspace.join("new-file.txt")).expect("read created file"),
             "hello\nworld\n"
         );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_reports_bom_crlf_and_created_parent_metadata() {
+        let workspace = make_temp_workspace("write-v2-format-meta");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "nested/format.txt",
+                "content": "\u{FEFF}hello\r\nworld\r\n"
+            }),
+        )
+        .expect("write create should succeed");
+        assert_eq!(payload["operation"].as_str(), Some("create"));
+        assert_eq!(payload["line_ending"].as_str(), Some("crlf"));
+        assert_eq!(payload["bom_written"].as_bool(), Some(true));
+        assert_eq!(payload["created_parent_dirs"].as_bool(), Some(true));
+        assert_eq!(
+            fs::read_to_string(workspace.join("nested/format.txt")).expect("read created file"),
+            "\u{FEFF}hello\r\nworld\r\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn write_v2_rejects_parent_traversal_for_missing_target() {
+        let workspace = make_temp_workspace("write-v2-missing-traversal");
+        let input = make_read_write_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "write",
+            json!({
+                "path": "nested/../escape.txt",
+                "content": "blocked\n"
+            }),
+        )
+        .expect_err("missing write targets with parent traversal should fail");
+        assert_eq!(error.error_class, "path_escape_blocked");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -3674,6 +3723,44 @@ audit_redact_secrets = false
     }
 
     #[test]
+    fn read_v2_metadata_reports_text_format_and_snapshot_scope() {
+        let workspace = make_temp_workspace("read-v2-format-meta");
+        fs::write(
+            workspace.join("format.txt"),
+            "\u{FEFF}line1\r\nline2\r\n",
+        )
+        .expect("write text with bom and crlf");
+        let input = make_read_only_input(&workspace);
+        let executor = LocalToolExecutor;
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "format.txt"
+            }),
+        )
+        .expect("read should succeed");
+        assert_eq!(payload["kind"].as_str(), Some("text"));
+        assert_eq!(payload["meta"]["line_ending"].as_str(), Some("crlf"));
+        assert_eq!(payload["meta"]["bom_detected"].as_bool(), Some(true));
+        assert_eq!(payload["meta"]["encoding"].as_str(), Some("utf-8"));
+        assert_eq!(payload["meta"]["snapshot_full_view"].as_bool(), Some(true));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn text_format_detects_mixed_line_endings_and_bom() {
+        let mixed = inspect_text_content_format("line1\r\nline2\nline3");
+        assert_eq!(mixed.line_ending, "mixed");
+        assert!(!mixed.bom_detected);
+
+        let bom_single_line = inspect_text_content_format("\u{FEFF}single-line");
+        assert_eq!(bom_single_line.line_ending, "none");
+        assert!(bom_single_line.bom_detected);
+    }
+
+    #[test]
     fn read_v2_returns_empty_content_for_empty_text_file() {
         let workspace = make_temp_workspace("read-v2-empty-file");
         fs::write(workspace.join("empty.txt"), "").expect("write empty file");
@@ -3722,6 +3809,13 @@ audit_redact_secrets = false
             .expect("second read should succeed");
         let second_payload: Value = serde_json::from_str(&second.content).expect("second read output should be json");
         assert_eq!(second_payload["kind"].as_str(), Some("file_unchanged"));
+        assert_eq!(second_payload["meta"]["cache"].as_str(), Some("hit"));
+        assert_eq!(second_payload["meta"]["line_ending"].as_str(), Some("lf"));
+        assert_eq!(second_payload["meta"]["bom_detected"].as_bool(), Some(false));
+        assert_eq!(
+            second_payload["meta"]["snapshot_full_view"].as_bool(),
+            Some(false)
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
