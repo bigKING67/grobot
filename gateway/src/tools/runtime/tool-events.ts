@@ -237,10 +237,20 @@ function normalizeRecoveryKeyPart(value: string | undefined): string {
 }
 
 function recoveryRepeatKey(recovery: RuntimeToolRecoveryHint): string {
+  return recoveryRepeatKeyFromParts({
+    toolName: recovery.toolName,
+    errorClass: recovery.errorClass ?? recovery.reason,
+  });
+}
+
+function recoveryRepeatKeyFromParts(input: {
+  toolName: string | null | undefined;
+  errorClass: string | null | undefined;
+}): string {
   return [
     "tool_error",
-    normalizeRecoveryKeyPart(recovery.toolName),
-    normalizeRecoveryKeyPart(recovery.errorClass ?? recovery.reason),
+    normalizeRecoveryKeyPart(input.toolName ?? undefined),
+    normalizeRecoveryKeyPart(input.errorClass ?? undefined),
   ].join(":");
 }
 
@@ -523,6 +533,47 @@ export function recordRuntimeToolSurfaceMetrics(input: {
 export function readRuntimeToolSurfaceMetrics(workDir: string): RuntimeToolSurfaceMetricsSnapshot {
   const path = metricsPathForWorkDir(workDir);
   return toSnapshot(path, readState(path));
+}
+
+export function clearRuntimeToolRecoveryRepeatPressure(input: {
+  workDir: string;
+  toolName?: string | null;
+  errorClass?: string | null;
+  nowIso?: string;
+}): {
+  cleared: boolean;
+  snapshot: RuntimeToolSurfaceMetricsSnapshot;
+} {
+  const path = metricsPathForWorkDir(input.workDir);
+  const state = readState(path);
+  if (!state.latestRecoveryRepeatKey || state.latestRecoveryRepeatCount <= 0) {
+    return {
+      cleared: false,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  const expectedKey =
+    input.toolName || input.errorClass
+      ? recoveryRepeatKeyFromParts({
+          toolName: input.toolName,
+          errorClass: input.errorClass,
+        })
+      : "";
+  if (expectedKey && expectedKey !== state.latestRecoveryRepeatKey) {
+    return {
+      cleared: false,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  state.latestRecoveryRepeatKey = "";
+  state.latestRecoveryRepeatCount = 0;
+  state.updatedAt = input.nowIso ?? new Date().toISOString();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  return {
+    cleared: true,
+    snapshot: toSnapshot(path, state),
+  };
 }
 
 function actionInstruction(action: string): string {

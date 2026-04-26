@@ -4,6 +4,7 @@ import type { RuntimeEvent } from "../../models/types";
 import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../tools/runtime/runtime-error";
 import {
   buildRuntimeToolRecoveryFeedback,
+  clearRuntimeToolRecoveryRepeatPressure,
   isRuntimeToolRecoveryAction,
   knownRuntimeToolRecoveryActions,
   RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS,
@@ -367,6 +368,23 @@ try {
   });
   expectEqual(afterReset.latestRecovery?.stage, "local_fix", "after reset recovery does not stay escalated");
   expectEqual(afterReset.latestRecovery?.sameToolErrorCount, 1, "after reset recovery count restarts");
+  const mismatchedClear = clearRuntimeToolRecoveryRepeatPressure({
+    workDir: repeatedWorkDir,
+    toolName: "web_scan",
+    errorClass: "path_not_found",
+    nowIso: "2026-04-25T00:02:00.000Z",
+  });
+  expectEqual(mismatchedClear.cleared, false, "mismatched repeat pressure clear is ignored");
+  expectEqual(mismatchedClear.snapshot.latestRecoveryRepeatCount, 1, "mismatched clear keeps repeat count");
+  const matchingClear = clearRuntimeToolRecoveryRepeatPressure({
+    workDir: repeatedWorkDir,
+    toolName: "read",
+    errorClass: "path_not_found",
+    nowIso: "2026-04-25T00:02:01.000Z",
+  });
+  expectEqual(matchingClear.cleared, true, "matching repeat pressure clear succeeds");
+  expectEqual(matchingClear.snapshot.latestRecoveryRepeatKey, null, "matching clear resets repeat key");
+  expectEqual(matchingClear.snapshot.latestRecoveryRepeatCount, 0, "matching clear resets repeat count");
 } finally {
   rmSync(repeatedWorkDir, { recursive: true, force: true });
 }

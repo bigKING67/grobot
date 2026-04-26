@@ -7,7 +7,11 @@ import {
   type RuntimeToolSurfaceAdaptationResult,
 } from "./default-enabled-tools";
 import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
-import { summarizeRuntimeToolEvents, type RuntimeToolRecoveryFeedback } from "./tool-events";
+import {
+  clearRuntimeToolRecoveryRepeatPressure,
+  summarizeRuntimeToolEvents,
+  type RuntimeToolRecoveryFeedback,
+} from "./tool-events";
 
 export type RuntimeToolSurfaceAdaptationOutcome = "recovered" | "failed" | "unknown";
 export type RuntimeToolRecoveryConsumptionReason =
@@ -487,6 +491,12 @@ export function recordRuntimeToolSurfaceAdaptationOutcome(input: {
       consumedAt: nowIso,
       traceId,
     });
+    clearRuntimeToolRecoveryRepeatPressure({
+      workDir: input.workDir,
+      toolName: record.recoveryToolName,
+      errorClass: record.recoveryErrorClass,
+      nowIso,
+    });
   }
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
@@ -536,6 +546,12 @@ export function recordRuntimeToolSurfaceRecoveryConsumption(input: {
   state.updatedAt = nowIso;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  clearRuntimeToolRecoveryRepeatPressure({
+    workDir: input.workDir,
+    toolName: input.recoveryFeedback.toolName,
+    errorClass: input.recoveryFeedback.errorClass,
+    nowIso,
+  });
   return {
     recorded: true,
     record,
@@ -580,6 +596,12 @@ export function recordRuntimeToolNonRecoverableInterventionPrompt(input: {
   state.updatedAt = nowIso;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  clearRuntimeToolRecoveryRepeatPressure({
+    workDir: input.workDir,
+    toolName: input.recoveryFeedback.toolName,
+    errorClass: input.recoveryFeedback.errorClass,
+    nowIso,
+  });
   return {
     recorded: true,
     record,

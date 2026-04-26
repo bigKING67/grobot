@@ -1,8 +1,13 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { RuntimeEvent } from "../../models/types";
 import { applyRuntimeToolRecoveryPromptFlow } from "../../tools/runtime/recovery-prompt-flow";
 import { applyRuntimeToolRecoveryConsumption, readRuntimeToolSurfaceAdaptationState } from "../../tools/runtime/tool-surface-adaptation-state";
-import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
+import {
+  readRuntimeToolSurfaceMetrics,
+  recordRuntimeToolSurfaceMetrics,
+  type RuntimeToolRecoveryFeedback,
+} from "../../tools/runtime/tool-events";
 import type { RuntimeToolSurfaceAdaptation } from "../../tools/runtime/default-enabled-tools";
 import type { RuntimeToolSurfaceAdaptationGuard } from "../../tools/runtime/tool-surface-adaptation-state";
 
@@ -34,6 +39,17 @@ function activeNonrecoverableFeedback(observedAt: string): RuntimeToolRecoveryFe
   };
 }
 
+function event(eventType: RuntimeEvent["eventType"], payload: Record<string, unknown>): RuntimeEvent {
+  return {
+    traceId: "trace_runtime_tool_recovery_flow_contract",
+    turnId: "turn_runtime_tool_recovery_flow_contract",
+    sessionKey: "dev:tenant:dm:user",
+    eventType,
+    payload,
+    timestampIso: "2026-04-26T00:00:00.000Z",
+  };
+}
+
 const inactiveGuard: RuntimeToolSurfaceAdaptationGuard = {
   active: false,
   reason: "ok",
@@ -62,6 +78,46 @@ const workDir = join("/tmp", `grobot-runtime-tool-recovery-flow-${String(process
 mkdirSync(workDir, { recursive: true });
 
 try {
+  const repeatedWebScanFailureEvents = [
+    event("tool_end", {
+      tool_name: "web_scan",
+      status: "failed",
+      error_class: "config_missing",
+      duration_ms: 4,
+    }),
+    event("tool_recovery", {
+      tool_name: "web_scan",
+      error_class: "config_missing",
+      recovery_stage: "local_fix",
+      recovery_reason: "config_missing",
+      recommended_next_action: "request_environment_fix",
+      recoverable: true,
+    }),
+  ];
+  recordRuntimeToolSurfaceMetrics({
+    workDir,
+    events: repeatedWebScanFailureEvents,
+  });
+  recordRuntimeToolSurfaceMetrics({
+    workDir,
+    events: repeatedWebScanFailureEvents,
+  });
+  recordRuntimeToolSurfaceMetrics({
+    workDir,
+    events: repeatedWebScanFailureEvents,
+  });
+  const repeatedPressureBeforePrompt = readRuntimeToolSurfaceMetrics(workDir);
+  expectEqual(
+    repeatedPressureBeforePrompt.latestRecoveryRepeatKey,
+    "tool_error:web_scan:config_missing",
+    "repeat pressure exists before intervention prompt",
+  );
+  expectEqual(
+    repeatedPressureBeforePrompt.latestRecoveryRepeatCount,
+    3,
+    "repeat pressure count exists before intervention prompt",
+  );
+
   const rawFeedback = activeNonrecoverableFeedback("2026-04-26T00:00:00.000Z");
 
   const firstFeedback = applyRuntimeToolRecoveryConsumption({
@@ -96,6 +152,17 @@ try {
     firstFlow.stderrEvents.some((line) => line.includes("event=nonrecoverable_intervention_prompted")),
     "first flow emits nonrecoverable_intervention_prompted event",
   );
+  const repeatedPressureAfterPrompt = readRuntimeToolSurfaceMetrics(workDir);
+  expectEqual(
+    repeatedPressureAfterPrompt.latestRecoveryRepeatKey,
+    null,
+    "intervention prompt clears repeat pressure key",
+  );
+  expectEqual(
+    repeatedPressureAfterPrompt.latestRecoveryRepeatCount,
+    0,
+    "intervention prompt clears repeat pressure count",
+  );
 
   const secondFeedback = applyRuntimeToolRecoveryConsumption({
     feedback: rawFeedback,
@@ -128,6 +195,7 @@ try {
     ok: true,
     first_prompt_injected: firstFlow.promptInjected,
     first_nonrecoverable_consumption_recorded: firstFlow.nonrecoverableConsumptionRecorded,
+    repeat_pressure_cleared_after_prompt: repeatedPressureAfterPrompt.latestRecoveryRepeatCount === 0,
     second_feedback_consumed: secondFeedback.consumed ?? false,
     second_prompt_reinjected: secondFlow.promptInjected,
   }) + "\n");

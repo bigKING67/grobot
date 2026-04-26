@@ -122,6 +122,19 @@ new recovery event. This is a gateway-side loop guard because normal runtime
 tool failures usually terminate the current model turn; the repeated pattern
 becomes visible across turns rather than inside one model loop.
 
+Repeat pressure is also cleared when the matching recovery is consumed:
+
+- a recovery-driven adaptation completes successfully
+  (`recovered_signal_consumed`)
+- a guard consumes the active recovery hint
+  (`repeated_profile_failure` / `profile_oscillation`)
+- a nonrecoverable recovery is shown once for human intervention
+  (`nonrecoverable_intervention_prompted`)
+
+This keeps escalation tied to live failure pressure. Historical counters remain
+available in `recoveryCountsByKey`, but consumed or recovered hints stop
+poisoning the next independent attempt.
+
 The effective recovery hint can be stricter than the raw runtime hint:
 
 - First occurrence: preserve the runtime stage/action.
