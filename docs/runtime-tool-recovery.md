@@ -179,6 +179,9 @@ Surface adaptation is intentionally narrow:
 - The same gate is used by both `status --json` preview and the actual
   `grobot start` turn path; start-turn orchestration must not re-implement a
   separate recovery/adaptation policy.
+- When the start-turn gate blocks automatic surface adaptation, stderr emits
+  `[tool-recovery-gate] event=blocked ... policy_version=... health_thresholds=<watch>/<risk>`
+  so the runtime decision can be diagnosed without a separate status command.
 - Nonrecoverable feedback never switches profiles automatically.
 - Explicit user/config/env/debug profiles are not overridden by recovery.
 - The adaptation guard blocks repeated failed profile switches and profile

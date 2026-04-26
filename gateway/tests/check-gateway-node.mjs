@@ -6705,6 +6705,7 @@ async function runTsRustExecutionSmoke() {
     assert.equal(recoveryGatePayload.exit_code, 0);
     assert.equal(recoveryGatePayload.has_gate_blocked_surface, true);
     assert.equal(recoveryGatePayload.has_recovery_gate_blocked_event, true);
+    assert.equal(recoveryGatePayload.has_recovery_gate_policy_context, true);
     assert.equal(recoveryGatePayload.has_no_auto_browser_adaptation, true);
     assert.equal(recoveryGatePayload.has_auto_adaptation_blocked, true);
     assert.equal(recoveryGatePayload.has_recoverable_latest_signal, true);

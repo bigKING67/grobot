@@ -2501,7 +2501,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         );
         if (runtimeToolRecoveryGate.blocking) {
           input.writeStderr(
-            `[tool-recovery-gate] event=blocked reason=${runtimeToolRecoveryGate.reason} readiness=${runtimeToolRecoveryGate.readinessStatus} health=${runtimeToolRecoveryGate.healthLevel}/${String(runtimeToolRecoveryGate.healthScore)} action=${runtimeToolRecoveryGate.recommendedNextAction ?? "<none>"} attention_stage=${runtimeToolRecoveryGate.attentionStage ?? "<none>"} attention_tool=${runtimeToolRecoveryGate.attentionToolName ?? "<none>"} attention_error_class=${runtimeToolRecoveryGate.attentionErrorClass ?? "<none>"}\n`,
+            `[tool-recovery-gate] event=blocked reason=${runtimeToolRecoveryGate.reason} readiness=${runtimeToolRecoveryGate.readinessStatus} health=${runtimeToolRecoveryGate.healthLevel}/${String(runtimeToolRecoveryGate.healthScore)} health_thresholds=${String(runtimeToolRecoveryGate.watchScoreThreshold)}/${String(runtimeToolRecoveryGate.riskScoreThreshold)} policy_version=${runtimeToolRecoveryGate.policyVersion} action=${runtimeToolRecoveryGate.recommendedNextAction ?? "<none>"} attention_stage=${runtimeToolRecoveryGate.attentionStage ?? "<none>"} attention_tool=${runtimeToolRecoveryGate.attentionToolName ?? "<none>"} attention_error_class=${runtimeToolRecoveryGate.attentionErrorClass ?? "<none>"}\n`,
           );
         }
       } else if (runtimeToolContextForTurn.guard.active) {

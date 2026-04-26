@@ -4883,6 +4883,9 @@ function runStartRecoveryGateBlocksSurfaceAdaptation(repoRoot) {
     has_recovery_gate_blocked_event:
       result.stderr.includes("[tool-recovery-gate] event=blocked")
       && result.stderr.includes("reason=blocked_operator_action_required"),
+    has_recovery_gate_policy_context:
+      new RegExp("\\[tool-recovery-gate\\] [^\\n]*policy_version=v1").test(result.stderr)
+      && new RegExp("\\[tool-recovery-gate\\] [^\\n]*health_thresholds=85/60").test(result.stderr),
     has_no_auto_browser_adaptation:
       !result.stderr.includes("[tool-surface] event=adapted")
       && !result.stderr.includes("to=browser"),
