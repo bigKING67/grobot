@@ -543,6 +543,11 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolSurfacePayload.page_component_code_profile, "coding");
   assert.equal(runtimeToolSurfacePayload.context_engine_code_profile, "coding");
   assert.equal(runtimeToolSurfacePayload.nonrecoverable_blocks_auto_adaptation, true);
+  assert.equal(runtimeToolSurfacePayload.gate_blocks_surface_adaptation, true);
+  assert.equal(
+    runtimeToolSurfacePayload.gate_blocked_surface_adaptation_reason,
+    "recovery_gate_automatic_recovery_denied",
+  );
   assert.equal(runtimeToolSurfacePayload.nonrecoverable_intervention_consumed, true);
   assert.equal(runtimeToolSurfacePayload.newer_nonrecoverable_intervention_remains_active, true);
   logStep("runtime-tool-surface-contract");
@@ -6146,7 +6151,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_health_unconsumed_count, 2);
   assert.equal(statusNonRecoverablePayload.recovery_health_has_stuck_nonrecoverable, true);
   assert.equal(statusNonRecoverablePayload.surface_adaptation_active, false);
-  assert.equal(statusNonRecoverablePayload.surface_adaptation_reason, "recovery_requires_user_intervention");
+  assert.equal(statusNonRecoverablePayload.surface_adaptation_reason, "recovery_gate_blocked_operator_action_required");
   assert.equal(statusNonRecoverablePayload.surface_adaptation_from_profile, "coding");
   assert.equal(statusNonRecoverablePayload.surface_adaptation_applied_profile, "coding");
   assert.equal(statusNonRecoverablePayload.surface_adaptation_auto_adaptation_blocked, true);

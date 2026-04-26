@@ -6,6 +6,7 @@ import type {
   ToolSurfaceSource,
 } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "./tool-events";
+import type { RuntimeToolRecoveryReadinessGateDecision } from "./tool-recovery-readiness-gate";
 
 export const ALL_RUNTIME_LOCAL_TOOLS = [
   "list",
@@ -854,6 +855,7 @@ function emptyAdaptation(input: {
   recommendedProfile?: ToolSurfaceProfile | null;
   source?: ToolSurfaceSource | null;
   recoveryFeedback?: RuntimeToolRecoveryFeedback;
+  recoveryGate?: RuntimeToolRecoveryReadinessGateDecision;
 }): RuntimeToolSurfaceAdaptation {
   const fromProfile = input.context?.toolSurfaceProfile ?? "coding";
   return {
@@ -864,7 +866,10 @@ function emptyAdaptation(input: {
     appliedProfile: fromProfile,
     recommendedProfile: input.recommendedProfile ?? null,
     source: input.source ?? null,
-    autoAdaptationBlocked: Boolean(input.recoveryFeedback?.active && input.recoveryFeedback.recoverable === false),
+    autoAdaptationBlocked: Boolean(
+      input.recoveryGate?.blocking
+      || (input.recoveryFeedback?.active && input.recoveryFeedback.recoverable === false),
+    ),
     recoveryStage: input.recoveryFeedback?.stage ?? null,
     recoveryToolName: input.recoveryFeedback?.toolName ?? null,
     recoveryErrorClass: input.recoveryFeedback?.errorClass ?? null,
@@ -928,6 +933,7 @@ function inferProfileFromRecovery(input: {
 export function adaptRuntimeToolContextForRecovery(input: {
   context: RuntimeToolContext | undefined;
   recoveryFeedback: RuntimeToolRecoveryFeedback;
+  recoveryGate?: RuntimeToolRecoveryReadinessGateDecision;
   userMessage?: string;
   availableTools?: readonly string[];
 }): RuntimeToolSurfaceAdaptationResult {
@@ -937,6 +943,18 @@ export function adaptRuntimeToolContextForRecovery(input: {
       adaptation: emptyAdaptation({
         reason: "missing_tool_context",
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
+      }),
+    };
+  }
+  if (input.recoveryGate?.blocking) {
+    return {
+      context: input.context,
+      adaptation: emptyAdaptation({
+        context: input.context,
+        reason: `recovery_gate_${input.recoveryGate.reason}`,
+        recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }
@@ -947,6 +965,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
         context: input.context,
         reason: input.recoveryFeedback.reason,
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }
@@ -957,6 +976,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
         context: input.context,
         reason: "recovery_requires_user_intervention",
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }
@@ -969,6 +989,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
         context: input.context,
         reason: `explicit_surface_source_${source}`,
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }
@@ -981,6 +1002,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
         context: input.context,
         reason: `current_profile_${fromProfile}_wins`,
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }
@@ -996,6 +1018,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
         context: input.context,
         reason: "no_safe_profile_for_recovery",
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }
@@ -1007,6 +1030,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
         reason: "already_on_recommended_profile",
         recommendedProfile,
         recoveryFeedback: input.recoveryFeedback,
+        recoveryGate: input.recoveryGate,
       }),
     };
   }

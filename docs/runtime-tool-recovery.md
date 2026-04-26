@@ -51,7 +51,7 @@ For nonrecoverable recoveries, the gateway sets:
 - `runtime_tools.recovery_feedback.recoverable=false`
 - `runtime_tools.recovery_feedback.requires_user_intervention=true`
 - `runtime_tools.surface_adaptation.auto_adaptation_blocked=true`
-- `runtime_tools.surface_adaptation.reason=recovery_requires_user_intervention`
+- `runtime_tools.surface_adaptation.reason=recovery_gate_blocked_operator_action_required`
 
 ## Surface adaptation rules
 
@@ -59,6 +59,9 @@ Surface adaptation is intentionally narrow:
 
 - Active recoverable feedback can switch to a better tool profile, for example
   from `coding` to `browser`, `context`, or `mcp`.
+- `recovery_gate` is evaluated before profile inference. When the gate is
+  `fail`, automatic surface adaptation is blocked even if the latest feedback
+  still looks recoverable.
 - Nonrecoverable feedback never switches profiles automatically.
 - Explicit user/config/env/debug profiles are not overridden by recovery.
 - The adaptation guard blocks repeated failed profile switches and profile

@@ -726,6 +726,7 @@ function resolveRuntimeToolContextPreview(
   projectTomlPath: string | undefined,
   runtimeBinaryPath: string | undefined,
   recoveryFeedback: RuntimeToolRecoveryFeedback,
+  recoveryGate: RuntimeToolRecoveryReadinessGateDecision,
   adaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot,
 ): {
   enabledTools: string[];
@@ -805,6 +806,7 @@ function resolveRuntimeToolContextPreview(
   const adapted = adaptRuntimeToolContextForRecovery({
     context: surfaced,
     recoveryFeedback,
+    recoveryGate,
     availableTools: manifestToolNames,
   });
   const guarded = applyRuntimeToolSurfaceAdaptationGuard({
@@ -1302,6 +1304,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     projectTomlPath,
     runtimeBinaryPath,
     runtimeToolRecoveryFeedback,
+    runtimeToolRecoveryGate,
     runtimeToolSurfaceAdaptationSnapshot,
   );
   const parsedScope = parseScope(sessionScopeRaw);

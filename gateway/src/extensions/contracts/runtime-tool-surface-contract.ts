@@ -26,6 +26,7 @@ import {
   parseRuntimeToolSurfaceSchemaProfilesWithDiagnostics,
   runRuntimeToolsDescribe,
 } from "../../orchestration/entrypoints/dev-cli/runtime-health";
+import { buildRuntimeToolRecoveryReadinessGate } from "../../tools/runtime/tool-recovery-readiness-gate";
 
 const baseContext = {
   workDir: "/tmp/grobot-runtime-tool-surface-contract",
@@ -574,6 +575,48 @@ expectEqual(
   "unknown recoverability can still adapt browser profile",
 );
 
+const gateBlockedBrowserRecovery = adaptRuntimeToolContextForRecovery({
+  context: coding,
+  recoveryFeedback: activeRecoveryFeedback({
+    toolName: "web_scan",
+    errorClass: "tool_not_visible",
+    recoverable: true,
+  }),
+  recoveryGate: buildRuntimeToolRecoveryReadinessGate({
+    readiness: {
+      status: "degraded",
+      ready: false,
+      automaticRecoveryAllowed: false,
+      operatorActionRequired: false,
+      reason: "health_watch:policy_denied_recovery",
+      recommendedNextAction: "inspect_runtime_tool_recovery_policy",
+      policyVersion: "v1",
+      healthLevel: "watch",
+      healthScore: 94,
+      riskScoreThreshold: 70,
+      watchScoreThreshold: 95,
+      attentionRecoveryKey: "strategy_switch:web_scan:tool_not_visible:2026-04-25T00:00:00.000Z",
+      attentionSource: "latest",
+      attentionStage: "strategy_switch",
+      attentionToolName: "web_scan",
+      attentionErrorClass: "tool_not_visible",
+      attentionRequiresUserIntervention: false,
+    },
+  }),
+});
+expectEqual(gateBlockedBrowserRecovery.adaptation.active, false, "gate fail blocks surface adaptation");
+expectEqual(
+  gateBlockedBrowserRecovery.adaptation.reason,
+  "recovery_gate_automatic_recovery_denied",
+  "gate fail adaptation reason",
+);
+expectEqual(
+  gateBlockedBrowserRecovery.adaptation.autoAdaptationBlocked,
+  true,
+  "gate fail marks automatic adaptation blocked",
+);
+expectEqual(gateBlockedBrowserRecovery.context?.toolSurfaceProfile, "coding", "gate fail keeps coding profile");
+
 const adaptedContext = adaptRuntimeToolContextForRecovery({
   context: coding,
   recoveryFeedback: activeRecoveryFeedback({
@@ -980,6 +1023,8 @@ process.stdout.write(JSON.stringify({
   direct_browser_recovery_profile: directBrowserRecovery.context?.toolSurfaceProfile,
   stale_recovery_adapted: staleRecovery.adaptation.active,
   nonrecoverable_blocks_auto_adaptation: nonRecoverableBrowserRecovery.adaptation.autoAdaptationBlocked,
+  gate_blocks_surface_adaptation: gateBlockedBrowserRecovery.adaptation.autoAdaptationBlocked,
+  gate_blocked_surface_adaptation_reason: gateBlockedBrowserRecovery.adaptation.reason,
   nonrecoverable_intervention_consumed: true,
   newer_nonrecoverable_intervention_remains_active: true,
   adaptation_guard_recovered_signal_consumed: true,
