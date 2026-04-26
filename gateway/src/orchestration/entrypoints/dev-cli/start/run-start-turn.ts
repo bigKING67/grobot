@@ -81,6 +81,13 @@ import {
   summarizeRuntimeToolEvents,
 } from "../../../../tools/runtime/tool-events";
 import {
+  buildRuntimeToolRecoveryHealthSummary,
+  buildRuntimeToolRecoveryTimeline,
+} from "../../../../tools/runtime/tool-recovery-timeline";
+import { getRuntimeToolRecoveryPolicySnapshot } from "../../../../tools/runtime/tool-recovery-policy";
+import { buildRuntimeToolRecoveryReadinessSummary } from "../../../../tools/runtime/tool-recovery-readiness";
+import { buildRuntimeToolRecoveryReadinessGate } from "../../../../tools/runtime/tool-recovery-readiness-gate";
+import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
@@ -2391,10 +2398,28 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         snapshot: runtimeToolSurfaceAdaptationSnapshot,
       });
       const runtimeToolSurfaceAdaptationStartedAtIso = nowIso();
+      const runtimeToolRecoveryTimeline = buildRuntimeToolRecoveryTimeline({
+        metrics: runtimeToolSurfaceMetrics,
+        adaptationSnapshot: runtimeToolSurfaceAdaptationSnapshot,
+        recoveryFeedback: runtimeToolRecoveryFeedback,
+      });
+      const runtimeToolRecoveryHealth = buildRuntimeToolRecoveryHealthSummary({
+        timeline: runtimeToolRecoveryTimeline,
+        nowMs: Date.parse(runtimeToolSurfaceAdaptationStartedAtIso),
+      });
+      const runtimeToolRecoveryPolicy = getRuntimeToolRecoveryPolicySnapshot();
+      const runtimeToolRecoveryReadiness = buildRuntimeToolRecoveryReadinessSummary({
+        health: runtimeToolRecoveryHealth,
+        policy: runtimeToolRecoveryPolicy,
+      });
+      const runtimeToolRecoveryGate = buildRuntimeToolRecoveryReadinessGate({
+        readiness: runtimeToolRecoveryReadiness,
+      });
       const baseRuntimeToolContextForTurn = buildRuntimeToolContextForMessage(input.runtimeToolContext, userText);
       const rawRuntimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
         context: baseRuntimeToolContextForTurn,
         recoveryFeedback: runtimeToolRecoveryFeedback,
+        recoveryGate: runtimeToolRecoveryGate,
         userMessage: userText,
       });
       const runtimeToolContextForTurn = applyRuntimeToolSurfaceAdaptationGuard({
@@ -2410,6 +2435,11 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         input.writeStderr(
           `[tool-surface] event=adaptation_blocked reason=${runtimeToolContextForTurn.adaptation.reason} from=${runtimeToolContextForTurn.adaptation.fromProfile} applied=${runtimeToolContextForTurn.adaptation.appliedProfile} recommended=${runtimeToolContextForTurn.adaptation.recommendedProfile ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"} recoverable=${runtimeToolContextForTurn.adaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextForTurn.adaptation.recoveryRecoverable)} auto_adaptation_blocked=true\n`,
         );
+        if (runtimeToolRecoveryGate.blocking) {
+          input.writeStderr(
+            `[tool-recovery-gate] event=blocked reason=${runtimeToolRecoveryGate.reason} readiness=${runtimeToolRecoveryGate.readinessStatus} health=${runtimeToolRecoveryGate.healthLevel}/${String(runtimeToolRecoveryGate.healthScore)} action=${runtimeToolRecoveryGate.recommendedNextAction ?? "<none>"} attention_stage=${runtimeToolRecoveryGate.attentionStage ?? "<none>"} attention_tool=${runtimeToolRecoveryGate.attentionToolName ?? "<none>"} attention_error_class=${runtimeToolRecoveryGate.attentionErrorClass ?? "<none>"}\n`,
+          );
+        }
       } else if (runtimeToolContextForTurn.guard.active) {
         input.writeStderr(
           `[tool-surface] event=adaptation_guard reason=${runtimeToolContextForTurn.guard.reason} blocked_profile=${runtimeToolContextForTurn.guard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextForTurn.guard.matchingFailureCount)} recent_profiles=${runtimeToolContextForTurn.guard.recentProfileSequence.join(",") || "<empty>"}\n`,

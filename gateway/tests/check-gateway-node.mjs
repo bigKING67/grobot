@@ -6324,6 +6324,43 @@ async function runTsRustExecutionSmoke() {
   assert.equal(String(lastCall.prompt).includes("ts rust hard-cut"), true);
   logStep("start-smoke-contract failover-runs-ts-rust", { attempts: failoverRunsAttempts });
 
+  const recoveryGateModel = await startMockModelServer();
+  try {
+    const recoveryGateResult = await runContractAsync(
+      "start-smoke-contract.mjs",
+      "start-recovery-gate-blocks-surface-adaptation",
+      ["--repo-root", repoRoot],
+      {
+        timeoutMs: 240_000,
+        env: {
+          ...process.env,
+          GROBOT_BASE_URL: recoveryGateModel.baseUrl,
+          GROBOT_API_KEY: "mock-runtime-key",
+          GROBOT_MODEL: "mock-runtime-model",
+          GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+        },
+      },
+    );
+    const recoveryGatePayload = parseJsonOutput(
+      "start-smoke-contract start-recovery-gate-blocks-surface-adaptation",
+      recoveryGateResult.stdout,
+    );
+    assert.equal(recoveryGatePayload.exit_code, 0);
+    assert.equal(recoveryGatePayload.has_gate_blocked_surface, true);
+    assert.equal(recoveryGatePayload.has_recovery_gate_blocked_event, true);
+    assert.equal(recoveryGatePayload.has_no_auto_browser_adaptation, true);
+    assert.equal(recoveryGatePayload.has_auto_adaptation_blocked, true);
+    assert.equal(recoveryGatePayload.has_recoverable_latest_signal, true);
+    const recoveryGateCalls = recoveryGateModel.getCalls();
+    assert.equal(recoveryGateCalls.length >= 1, true);
+    const recoveryGateLastCall = recoveryGateCalls[recoveryGateCalls.length - 1] ?? {};
+    assert.equal(String(recoveryGateLastCall.prompt).includes("[Runtime Tool Recovery Hint]"), true);
+    assert.equal(String(recoveryGateLastCall.prompt).includes("stage=strategy_switch"), true);
+  } finally {
+    await recoveryGateModel.close();
+  }
+  logStep("start-smoke-contract start-recovery-gate-blocks-surface-adaptation");
+
   const providerConfigResult = runContract(
     "runtime-smoke-contract.mjs",
     "provider-config-passthrough",

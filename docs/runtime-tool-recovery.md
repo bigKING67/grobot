@@ -62,6 +62,9 @@ Surface adaptation is intentionally narrow:
 - `recovery_gate` is evaluated before profile inference. When the gate is
   `fail`, automatic surface adaptation is blocked even if the latest feedback
   still looks recoverable.
+- The same gate is used by both `status --json` preview and the actual
+  `grobot start` turn path; start-turn orchestration must not re-implement a
+  separate recovery/adaptation policy.
 - Nonrecoverable feedback never switches profiles automatically.
 - Explicit user/config/env/debug profiles are not overridden by recovery.
 - The adaptation guard blocks repeated failed profile switches and profile

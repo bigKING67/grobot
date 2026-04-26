@@ -4393,6 +4393,49 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
   return observedAt;
 }
 
+function writeGateBlockedRecoverableToolRecoveryMetrics(workDir) {
+  const runtimeDir = `${workDir}/.grobot/runtime`;
+  mkdirSync(runtimeDir, { recursive: true });
+  const observedAt = new Date().toISOString();
+  const previousObservedAt = new Date(Date.parse(observedAt) - 5 * 60_000).toISOString();
+  writeFileSync(
+    `${runtimeDir}/tool-surface-metrics.json`,
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: observedAt,
+      callsTotal: 2,
+      failedTotal: 2,
+      deferredTotal: 0,
+      callsByTool: { read: 1, web_scan: 1 },
+      failuresByErrorClass: { config_missing: 1, tool_not_visible: 1 },
+      recoveryStages: { ask_user: 1, strategy_switch: 1 },
+      durationTotalMsByTool: { read: 8, web_scan: 12 },
+      durationCountByTool: { read: 1, web_scan: 1 },
+      recentRecoveries: [
+        {
+          stage: "ask_user",
+          reason: "config_missing",
+          recommendedNextAction: "ask_user_for_config_or_switch_provider",
+          toolName: "read",
+          errorClass: "config_missing",
+          recoverable: false,
+          observedAt: previousObservedAt,
+        },
+        {
+          stage: "strategy_switch",
+          reason: "tool_not_visible",
+          recommendedNextAction: "switch_to_web_scan_surface",
+          toolName: "web_scan",
+          errorClass: "tool_not_visible",
+          recoverable: true,
+          observedAt,
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 function writeNonRecoverableToolRecoveryConsumption(workDir, observedAt) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });
@@ -4419,6 +4462,51 @@ function writeNonRecoverableToolRecoveryConsumption(workDir, observedAt) {
     }, null, 2)}\n`,
     "utf8",
   );
+}
+
+function runStartRecoveryGateBlocksSurfaceAdaptation(repoRoot) {
+  const workDir = createTempDir("grobot-start-recovery-gate-work");
+  const config = writeConfig(buildFailoverConfig(workDir));
+  writeGateBlockedRecoverableToolRecoveryMetrics(workDir);
+  const result = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "recovery-gate-surface-user",
+    "--no-shadow-mode",
+    "--provider",
+    "failing",
+    "--message",
+    "ts rust recovery gate surface smoke",
+  ]);
+  return {
+    ...result,
+    has_gate_blocked_surface:
+      result.stderr.includes("[tool-surface] event=adaptation_blocked")
+      && result.stderr.includes("reason=recovery_gate_blocked_operator_action_required"),
+    has_recovery_gate_blocked_event:
+      result.stderr.includes("[tool-recovery-gate] event=blocked")
+      && result.stderr.includes("reason=blocked_operator_action_required"),
+    has_no_auto_browser_adaptation:
+      !result.stderr.includes("[tool-surface] event=adapted")
+      && !result.stderr.includes("to=browser"),
+    has_auto_adaptation_blocked:
+      result.stderr.includes("auto_adaptation_blocked=true"),
+    has_recoverable_latest_signal:
+      result.stderr.includes("stage=strategy_switch")
+      && result.stderr.includes("tool=web_scan")
+      && result.stderr.includes("recoverable=true"),
+  };
 }
 
 function runStatusNonRecoverableToolRecovery(repoRoot) {
@@ -4910,6 +4998,9 @@ function runCli(argv) {
       break;
     case "failover-runs-ts-rust":
       payload = runFailoverTsRust(repoRoot);
+      break;
+    case "start-recovery-gate-blocks-surface-adaptation":
+      payload = runStartRecoveryGateBlocksSurfaceAdaptation(repoRoot);
       break;
     case "provider-pool-multi-turn-ts-rust":
       payload = runProviderPoolMultiTurnTsRust(
