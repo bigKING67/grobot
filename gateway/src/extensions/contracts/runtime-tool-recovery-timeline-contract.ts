@@ -24,6 +24,15 @@ const olderObservedAt = "2026-04-26T00:00:00.000Z";
 const latestObservedAt = "2026-04-26T00:05:00.000Z";
 const consumedAt = "2026-04-26T00:06:00.000Z";
 
+const expectedEscalation = {
+  sameToolErrorCount: 3,
+  escalated: true,
+  escalationReason: "same_tool_error_exhausted",
+  escalationPolicyVersion: "v1",
+  baseStage: "strategy_switch" as const,
+  baseRecommendedNextAction: "switch_tool_strategy",
+};
+
 const metrics: RuntimeToolSurfaceMetricsSnapshot = {
   version: 1,
   updatedAt: latestObservedAt,
@@ -64,21 +73,25 @@ const metrics: RuntimeToolSurfaceMetricsSnapshot = {
     },
     {
       stage: "ask_user",
-      reason: "config_missing",
+      reason: "same_tool_error_exhausted",
       recommendedNextAction: "ask_user_for_config_or_switch_provider",
       toolName: "web_scan",
       errorClass: "config_missing",
       recoverable: false,
+      requiresUserIntervention: true,
+      ...expectedEscalation,
       observedAt: latestObservedAt,
     },
   ],
   latestRecovery: {
     stage: "ask_user",
-    reason: "config_missing",
+    reason: "same_tool_error_exhausted",
     recommendedNextAction: "ask_user_for_config_or_switch_provider",
     toolName: "web_scan",
     errorClass: "config_missing",
     recoverable: false,
+    requiresUserIntervention: true,
+    ...expectedEscalation,
     observedAt: latestObservedAt,
   },
   path: "/tmp/grobot-runtime-tool-recovery-timeline-contract",
@@ -123,6 +136,28 @@ expectEqual(activeTimeline[0].toolName, "web_scan", "active timeline latest tool
 expectEqual(activeTimeline[0].stage, "ask_user", "active timeline latest stage");
 expectEqual(activeTimeline[0].active, true, "active timeline latest active");
 expectEqual(activeTimeline[0].consumed, false, "active timeline latest consumed");
+expectEqual(
+  activeTimeline[0].sameToolErrorCount,
+  expectedEscalation.sameToolErrorCount,
+  "active timeline latest repeat count",
+);
+expectEqual(activeTimeline[0].escalated, expectedEscalation.escalated, "active timeline latest escalated");
+expectEqual(
+  activeTimeline[0].escalationReason,
+  expectedEscalation.escalationReason,
+  "active timeline latest escalation reason",
+);
+expectEqual(
+  activeTimeline[0].escalationPolicyVersion,
+  expectedEscalation.escalationPolicyVersion,
+  "active timeline latest escalation policy version",
+);
+expectEqual(activeTimeline[0].baseStage, expectedEscalation.baseStage, "active timeline latest base stage");
+expectEqual(
+  activeTimeline[0].baseRecommendedNextAction,
+  expectedEscalation.baseRecommendedNextAction,
+  "active timeline latest base action",
+);
 expectEqual(activeTimeline[1].toolName, "read", "active timeline older tool");
 expectEqual(activeTimeline[1].active, false, "active timeline older active");
 
@@ -186,6 +221,28 @@ expectEqual(activeReadiness.attentionRecoveryKey, expectedLatestRecoveryKey, "ac
 expectEqual(activeReadiness.attentionStage, "ask_user", "active readiness attention stage");
 expectEqual(activeDecision.feedback.active, true, "active decision feedback active");
 expectEqual(activeDecision.feedback.consumed, false, "active decision feedback consumed");
+expectEqual(
+  activeDecision.feedback.sameToolErrorCount,
+  expectedEscalation.sameToolErrorCount,
+  "active decision feedback repeat count",
+);
+expectEqual(activeDecision.feedback.escalated, expectedEscalation.escalated, "active decision feedback escalated");
+expectEqual(
+  activeDecision.feedback.escalationReason,
+  expectedEscalation.escalationReason,
+  "active decision feedback escalation reason",
+);
+expectEqual(
+  activeDecision.feedback.escalationPolicyVersion,
+  expectedEscalation.escalationPolicyVersion,
+  "active decision feedback escalation policy version",
+);
+expectEqual(activeDecision.feedback.baseStage, expectedEscalation.baseStage, "active decision feedback base stage");
+expectEqual(
+  activeDecision.feedback.baseRecommendedNextAction,
+  expectedEscalation.baseRecommendedNextAction,
+  "active decision feedback base action",
+);
 expectEqual(activeDecision.timeline[0].recoveryKey, activeTimeline[0].recoveryKey, "active decision timeline parity");
 expectEqual(activeDecision.health.score, activeHealth.score, "active decision health parity");
 expectEqual(activeDecision.readiness.status, "blocked", "active decision readiness status");
@@ -244,6 +301,28 @@ expectEqual(
   "nonrecoverable_intervention_prompted",
   "consumed timeline latest consumed reason",
 );
+expectEqual(
+  consumedTimeline[0].sameToolErrorCount,
+  expectedEscalation.sameToolErrorCount,
+  "consumed timeline latest repeat count",
+);
+expectEqual(consumedTimeline[0].escalated, expectedEscalation.escalated, "consumed timeline latest escalated");
+expectEqual(
+  consumedTimeline[0].escalationReason,
+  expectedEscalation.escalationReason,
+  "consumed timeline latest escalation reason",
+);
+expectEqual(
+  consumedTimeline[0].escalationPolicyVersion,
+  expectedEscalation.escalationPolicyVersion,
+  "consumed timeline latest escalation policy version",
+);
+expectEqual(consumedTimeline[0].baseStage, expectedEscalation.baseStage, "consumed timeline latest base stage");
+expectEqual(
+  consumedTimeline[0].baseRecommendedNextAction,
+  expectedEscalation.baseRecommendedNextAction,
+  "consumed timeline latest base action",
+);
 
 const consumedHealth = buildRuntimeToolRecoveryHealthSummary({
   timeline: consumedTimeline,
@@ -295,6 +374,36 @@ expectEqual(
   "consumed_nonrecoverable_intervention_prompted",
   "consumed decision feedback reason",
 );
+expectEqual(
+  consumedDecision.feedback.sameToolErrorCount,
+  expectedEscalation.sameToolErrorCount,
+  "consumed decision feedback repeat count",
+);
+expectEqual(
+  consumedDecision.feedback.escalated,
+  expectedEscalation.escalated,
+  "consumed decision feedback escalated",
+);
+expectEqual(
+  consumedDecision.feedback.escalationReason,
+  expectedEscalation.escalationReason,
+  "consumed decision feedback escalation reason",
+);
+expectEqual(
+  consumedDecision.feedback.escalationPolicyVersion,
+  expectedEscalation.escalationPolicyVersion,
+  "consumed decision feedback escalation policy version",
+);
+expectEqual(
+  consumedDecision.feedback.baseStage,
+  expectedEscalation.baseStage,
+  "consumed decision feedback base stage",
+);
+expectEqual(
+  consumedDecision.feedback.baseRecommendedNextAction,
+  expectedEscalation.baseRecommendedNextAction,
+  "consumed decision feedback base action",
+);
 expectEqual(consumedDecision.timeline[0].consumed, true, "consumed decision timeline latest consumed");
 expectEqual(consumedDecision.health.score, consumedHealth.score, "consumed decision health parity");
 expectEqual(consumedDecision.readiness.status, "degraded", "consumed decision readiness status");
@@ -305,6 +414,9 @@ process.stdout.write(JSON.stringify({
   ok: true,
   active_timeline_count: activeTimeline.length,
   active_latest_recovery_key: activeTimeline[0]?.recoveryKey ?? null,
+  active_latest_same_tool_error_count: activeTimeline[0]?.sameToolErrorCount ?? null,
+  active_latest_escalated: activeTimeline[0]?.escalated ?? null,
+  active_latest_escalation_reason: activeTimeline[0]?.escalationReason ?? null,
   active_health_level: activeHealth.level,
   active_health_score: activeHealth.score,
   active_health_stuck_nonrecoverable: activeHealth.hasStuckNonrecoverable,
@@ -313,6 +425,9 @@ process.stdout.write(JSON.stringify({
   active_readiness_auto_allowed: activeReadiness.automaticRecoveryAllowed,
   active_decision_gate_reason: activeDecision.gate.reason,
   consumed_latest_recovery_consumed: consumedTimeline[0]?.consumed ?? null,
+  consumed_latest_same_tool_error_count: consumedTimeline[0]?.sameToolErrorCount ?? null,
+  consumed_latest_escalated: consumedTimeline[0]?.escalated ?? null,
+  consumed_latest_escalation_reason: consumedTimeline[0]?.escalationReason ?? null,
   consumed_health_level: consumedHealth.level,
   consumed_health_unconsumed_count: consumedHealth.unconsumedCount,
   consumed_health_attention_source: consumedHealth.attentionSource,
