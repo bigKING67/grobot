@@ -483,8 +483,9 @@ async function main(): Promise<void> {
       ask_status_has_clean_question:
         outputText.includes("需要确认 · Profile") && outputText.includes("Choose profile"),
       ask_status_has_clean_options:
-        outputText.includes("› 1  safe") && outputText.includes("6  fallback"),
-      ask_status_has_menu_hint: outputText.includes("Enter 打开选择菜单"),
+        outputText.includes("❯ 1  safe") && outputText.includes("6  fallback"),
+      ask_status_has_menu_hint:
+        outputText.includes("Enter 确认") && outputText.includes("Esc 返回输入框"),
       ask_status_hides_options_preview: !outputText.includes("options_preview: "),
       ask_status_hides_log_prefix: !outputText.includes("[ask-user]"),
       ask_status_hides_output_mode_full: !outputText.includes("ask_status_output_mode: full"),

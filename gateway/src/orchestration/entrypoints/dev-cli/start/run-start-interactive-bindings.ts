@@ -35,15 +35,16 @@ import {
 } from "../ui/screens/status-line-screen";
 import { createRunStartUserCommandsRuntime } from "./run-start-user-commands";
 import {
+  runAskUserQuestionnairePanel,
   runTerminalLinePrompt,
   runTerminalSelectMenu,
 } from "./run-start-io";
 import { compactSingleLine, type ChatHistoryMessage } from "./session-history";
 import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import {
-  buildAskUserDisplay,
-  buildAskUserOptionDisplayLabel,
+  buildAskUserQueueDisplay,
   buildAskUserPendingSummary,
+  createAskUserQuestionnaireState,
 } from "../../../../tools/ask-user";
 import {
   resolveRunStartPlanSuggestionState,
@@ -840,41 +841,25 @@ export function createRunStartInteractiveModeInput(
       input.output.writeStdout("没有待确认问题。\n\n");
       return undefined;
     }
+    const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
+    const questionnaireState = createAskUserQuestionnaireState();
     if (!process.stdin.isTTY) {
-      input.output.writeStdout(buildAskUserDisplay(active));
+      input.output.writeStdout(buildAskUserQueueDisplay({
+        queue: queue.length > 0 ? queue : [active],
+        state: questionnaireState,
+      }));
       return undefined;
     }
-    if (active.optionsDetailed.length <= 0) {
-      const reply = await withInputPaused(() =>
-        runTerminalLinePrompt({
-          prompt: "回复> ",
-        }),
-      );
-      if (reply.kind === "cancelled") {
-        return undefined;
-      }
-      const answer = reply.value.trim();
-      return answer.length > 0 ? answer : undefined;
-    }
-    const selected = await withInputPaused(() =>
-      runTerminalSelectMenu({
-        title: active.header ? `需要确认 · ${active.header}` : "需要确认",
-        subtitle: compactSingleLine(active.question, 96),
-        hint: "↑/↓ 或 j/k 选择 · 数字直选 · Enter 确认 · Esc 返回",
-        visibleOptionCount: Math.min(6, active.optionsDetailed.length),
-        items: active.optionsDetailed.map((option, index) => ({
-          id: option.value ?? option.label,
-          label: buildAskUserOptionDisplayLabel(option.label, index),
-          description: option.description
-            ? compactSingleLine(option.description, 96)
-            : "选择后立即继续当前任务",
-        })),
+    const effectiveQueue = queue.length > 0 ? queue : [active];
+    const result = await withInputPaused(() =>
+      runAskUserQuestionnairePanel({
+        queue: effectiveQueue,
       }),
     );
-    if (selected.kind === "cancelled") {
+    if (result.kind === "cancelled") {
       return undefined;
     }
-    return selected.item.id;
+    return result.text.trim().length > 0 ? result.text : undefined;
   };
 
   const showPendingAskQueue = (limit?: number): void => {
@@ -892,12 +877,16 @@ export function createRunStartInteractiveModeInput(
       return;
     }
     const defaultAnswer = resolveDefaultAskAnswer(active.defaultOnTimeout);
-    const lines: string[] = [buildAskUserDisplay(active).trimEnd()];
-    lines.push(`  待确认：${String(queue.length)} 项`);
-    if (defaultAnswer) {
+    const lines: string[] = [buildAskUserQueueDisplay({
+      queue,
+      state: createAskUserQuestionnaireState(),
+    }).trimEnd()];
+    if (!lines[0]?.includes("待确认：")) {
+      lines.push(`  待确认：${String(queue.length)} 项`);
+    }
+    if (defaultAnswer && !lines[0]?.includes("默认：")) {
       lines.push(`  默认：${compactSingleLine(defaultAnswer, 120)}`);
     }
-    lines.push("  Enter/? 打开选择菜单；数字可直接回复；Esc 取消后问题仍保留。");
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);
   };

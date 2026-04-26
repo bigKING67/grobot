@@ -16,6 +16,49 @@ export interface StatusIndicatorInput {
   reducedMotion?: boolean;
   spinnerFrames?: readonly string[];
   interruptHint?: string;
+  tokenText?: string;
+  thinkingText?: string;
+}
+
+export interface StatusIndicatorPartsInput {
+  terminalColumns?: number;
+  spinner: string;
+  message: string;
+  elapsedText: string;
+  interruptHint?: string;
+  tokenText?: string;
+  thinkingText?: string;
+}
+
+export interface StatusIndicatorParts {
+  messageWidth: number;
+  suffix: string;
+  showElapsed: boolean;
+  showInterruptHint: boolean;
+  showTokens: boolean;
+  showThinking: boolean;
+}
+
+export interface StatusIndicatorStallState {
+  mountedAtMs: number;
+  lastTokenLength: number;
+  lastTokenAtMs: number;
+  lastSmoothAtMs: number;
+  stalledIntensity: number;
+}
+
+export interface StatusIndicatorStallInput {
+  previousState?: StatusIndicatorStallState;
+  nowMs: number;
+  tokenLength?: number;
+  hasActiveTools?: boolean;
+  reducedMotion?: boolean;
+}
+
+export interface StatusIndicatorStallResolution {
+  state: StatusIndicatorStallState;
+  isStalled: boolean;
+  stalledIntensity: number;
 }
 
 const DEFAULT_STATUS_SPINNER_FRAMES = [
@@ -32,12 +75,30 @@ const DEFAULT_STATUS_SPINNER_FRAMES = [
 ] as const;
 const GLIMMER_PADDING_WIDTH = 20;
 const GLIMMER_HOTSPOT_RADIUS = 1;
+const STALLED_AFTER_MS = 3_000;
+const STALLED_FADE_MS = 2_000;
+const STALLED_SMOOTH_STEP_MS = 50;
+const STALLED_SMOOTH_FACTOR = 0.1;
 
 function resolveTerminalColumns(columns: number | undefined): number {
   if (typeof columns !== "number" || !Number.isFinite(columns)) {
     return 0;
   }
   return Math.max(0, Math.floor(columns));
+}
+
+function normalizeTimestamp(value: number | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function normalizeTokenLength(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
 }
 
 export function formatStatusIndicatorElapsed(elapsedMs: number): string {
@@ -54,6 +115,75 @@ export function formatStatusIndicatorElapsed(elapsedMs: number): string {
   return `${String(seconds)}s`;
 }
 
+export function resolveStatusIndicatorStallState(
+  input: StatusIndicatorStallInput,
+): StatusIndicatorStallResolution {
+  const nowMs = normalizeTimestamp(input.nowMs, 0);
+  const tokenLength = normalizeTokenLength(input.tokenLength);
+  const hasActiveTools = input.hasActiveTools === true;
+  const previousState = input.previousState;
+  const mountedAtMs = previousState?.mountedAtMs ?? nowMs;
+  let lastTokenLength = previousState?.lastTokenLength ?? tokenLength;
+  let lastTokenAtMs = previousState?.lastTokenAtMs ?? nowMs;
+  let lastSmoothAtMs = previousState?.lastSmoothAtMs ?? nowMs;
+  let stalledIntensity = previousState?.stalledIntensity ?? 0;
+
+  if (tokenLength > lastTokenLength) {
+    lastTokenLength = tokenLength;
+    lastTokenAtMs = nowMs;
+    lastSmoothAtMs = nowMs;
+    stalledIntensity = 0;
+  }
+
+  const timeSinceLastToken = (() => {
+    if (hasActiveTools) {
+      lastTokenAtMs = nowMs;
+      return 0;
+    }
+    if (tokenLength > 0) {
+      return Math.max(0, nowMs - lastTokenAtMs);
+    }
+    return Math.max(0, nowMs - mountedAtMs);
+  })();
+  const isStalled = timeSinceLastToken > STALLED_AFTER_MS && !hasActiveTools;
+  const rawIntensity = isStalled
+    ? Math.min((timeSinceLastToken - STALLED_AFTER_MS) / STALLED_FADE_MS, 1)
+    : 0;
+
+  if (input.reducedMotion) {
+    stalledIntensity = rawIntensity;
+    lastSmoothAtMs = nowMs;
+  } else if (rawIntensity > 0 || stalledIntensity > 0) {
+    const deltaMs = Math.max(0, nowMs - lastSmoothAtMs);
+    if (deltaMs >= STALLED_SMOOTH_STEP_MS) {
+      const steps = Math.floor(deltaMs / STALLED_SMOOTH_STEP_MS);
+      for (let index = 0; index < steps; index += 1) {
+        const diff = rawIntensity - stalledIntensity;
+        if (Math.abs(diff) < 0.01) {
+          stalledIntensity = rawIntensity;
+          break;
+        }
+        stalledIntensity += diff * STALLED_SMOOTH_FACTOR;
+      }
+      lastSmoothAtMs = nowMs;
+    }
+  } else {
+    lastSmoothAtMs = nowMs;
+  }
+
+  return {
+    state: {
+      mountedAtMs,
+      lastTokenLength,
+      lastTokenAtMs,
+      lastSmoothAtMs,
+      stalledIntensity,
+    },
+    isStalled,
+    stalledIntensity,
+  };
+}
+
 function resolveSpinnerFrame(input: StatusIndicatorInput): string {
   const frames = input.spinnerFrames && input.spinnerFrames.length > 0
     ? input.spinnerFrames
@@ -62,6 +192,133 @@ function resolveSpinnerFrame(input: StatusIndicatorInput): string {
     ? Math.max(0, Math.floor(input.tick))
     : 0;
   return frames[tick % frames.length] ?? "-";
+}
+
+function normalizeOptionalPart(value: string | undefined): string {
+  return compactSpaces(value ?? "");
+}
+
+function buildStatusSuffix(input: {
+  elapsedText?: string;
+  interruptHint?: string;
+  tokenText?: string;
+  thinkingText?: string;
+}): string {
+  const leadingParts = [
+    input.thinkingText,
+    input.tokenText,
+    input.elapsedText,
+  ].filter((part): part is string => typeof part === "string" && part.length > 0);
+  const interruptHint = input.interruptHint ?? "";
+  const body = interruptHint
+    ? leadingParts.length > 0
+      ? `${leadingParts.join(" · ")} • ${interruptHint}`
+      : interruptHint
+    : leadingParts.join(" · ");
+  return body ? ` (${body})` : "";
+}
+
+function resolveMinimumStatusMessageWidth(terminalColumns: number): number {
+  if (terminalColumns <= 0) {
+    return 0;
+  }
+  if (terminalColumns < 24) {
+    return 1;
+  }
+  if (terminalColumns < 32) {
+    return 3;
+  }
+  return 6;
+}
+
+export function resolveStatusIndicatorParts(
+  input: StatusIndicatorPartsInput,
+): StatusIndicatorParts {
+  const terminalColumns = resolveTerminalColumns(input.terminalColumns);
+  const spinnerWidth = measureDisplayWidth(input.spinner);
+  const gapWidth = input.spinner ? 1 : 0;
+  const elapsedText = normalizeOptionalPart(input.elapsedText);
+  const interruptHint = normalizeOptionalPart(input.interruptHint);
+  const tokenText = normalizeOptionalPart(input.tokenText);
+  const rawThinkingText = normalizeOptionalPart(input.thinkingText);
+  const thinkingText = rawThinkingText.length > 0
+    ? rawThinkingText
+    : "";
+  const compactThinkingText =
+    thinkingText.startsWith("thinking ") ? "thinking" : thinkingText;
+
+  const candidates = [
+    {
+      elapsedText,
+      interruptHint,
+      tokenText,
+      thinkingText,
+    },
+    {
+      elapsedText,
+      interruptHint,
+      tokenText,
+      thinkingText: compactThinkingText !== thinkingText ? compactThinkingText : "",
+    },
+    {
+      elapsedText,
+      interruptHint,
+      tokenText: "",
+      thinkingText: compactThinkingText,
+    },
+    {
+      elapsedText,
+      interruptHint,
+      tokenText: "",
+      thinkingText: "",
+    },
+    {
+      elapsedText: "",
+      interruptHint,
+      tokenText: "",
+      thinkingText: "",
+    },
+    {
+      elapsedText,
+      interruptHint: "",
+      tokenText: "",
+      thinkingText: "",
+    },
+    {
+      elapsedText: "",
+      interruptHint: "",
+      tokenText: "",
+      thinkingText: "",
+    },
+  ].map((candidate) => ({
+    ...candidate,
+    suffix: buildStatusSuffix(candidate),
+  }));
+
+  const minMessageWidth = resolveMinimumStatusMessageWidth(terminalColumns);
+  const resolved = terminalColumns <= 0
+    ? candidates[0]
+    : candidates.find((candidate) => {
+      const suffixWidth = measureDisplayWidth(candidate.suffix);
+      return terminalColumns - spinnerWidth - gapWidth - suffixWidth >= minMessageWidth;
+    }) ?? candidates[candidates.length - 1];
+  const suffix = resolved?.suffix ?? "";
+  const fallbackMessageWidth = measureDisplayWidth(input.message);
+  const messageWidth = terminalColumns > 0
+    ? Math.max(
+      1,
+      terminalColumns - spinnerWidth - gapWidth - measureDisplayWidth(suffix),
+    )
+    : fallbackMessageWidth;
+
+  return {
+    messageWidth,
+    suffix,
+    showElapsed: (resolved?.elapsedText ?? "").length > 0,
+    showInterruptHint: (resolved?.interruptHint ?? "").length > 0,
+    showTokens: (resolved?.tokenText ?? "").length > 0,
+    showThinking: (resolved?.thinkingText ?? "").length > 0,
+  };
 }
 
 function shouldHighlightGrapheme(input: {
@@ -119,29 +376,30 @@ export function renderStatusIndicatorLine(input: StatusIndicatorInput): string {
     : Date.now();
   const elapsed = formatStatusIndicatorElapsed(nowMs - input.startedAtMs);
   const interruptHint = compactSpaces(input.interruptHint ?? "esc to interrupt");
-  const suffix = ` (${elapsed} • ${interruptHint})`;
   const rawMessage = compactSpaces(input.message ?? "正在执行");
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   const spinner = resolveSpinnerFrame(input);
-  const spinnerWidth = measureDisplayWidth(spinner);
-  const suffixWidth = measureDisplayWidth(suffix);
-  const gapWidth = 1;
-  const reserveWidth = spinnerWidth + gapWidth + suffixWidth;
-  const messageWidth = terminalColumns > 0
-    ? Math.max(1, terminalColumns - reserveWidth)
-    : measureDisplayWidth(rawMessage);
+  const statusParts = resolveStatusIndicatorParts({
+    terminalColumns: input.terminalColumns,
+    spinner,
+    message: rawMessage,
+    elapsedText: elapsed,
+    interruptHint,
+    tokenText: input.tokenText,
+    thinkingText: input.thinkingText,
+  });
   const message = terminalColumns > 0
-    ? truncateDisplayWidth(rawMessage, messageWidth, { compact: true })
+    ? truncateDisplayWidth(rawMessage, statusParts.messageWidth, { compact: true })
     : rawMessage;
   const styledMessage = renderStatusIndicatorMessage({
     message,
     tick: input.tick,
     reducedMotion: input.reducedMotion,
   });
-  const line = `${terminalStyle.brand(spinner)} ${styledMessage}${terminalStyle.muted(suffix)}`;
+  const line = `${terminalStyle.brand(spinner)} ${styledMessage}${terminalStyle.muted(statusParts.suffix)}`;
   if (terminalColumns <= 0 || measureDisplayWidth(line) <= terminalColumns) {
     return line;
   }
-  const fallback = `${spinner} ${message}${suffix}`;
+  const fallback = `${spinner} ${message}${statusParts.suffix}`;
   return terminalStyle.muted(truncateDisplayWidth(fallback, terminalColumns, { compact: true }));
 }

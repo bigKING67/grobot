@@ -440,7 +440,6 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     contextWindowTokens: startupCatalogContextWindowTokens,
     recentSessions: startupRecentSessions,
   });
-
   const interactiveDiagnosticsMode = resolveInteractiveDiagnosticsMode({
     interactiveDiagnosticsEnabled: input.interactiveDiagnosticsEnabled,
     interactiveDiagnosticsMode: input.interactiveDiagnosticsMode,
@@ -866,6 +865,13 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
       getSlashSuggestions,
       getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
+      shouldSuppressSubmitTranscript: (value) => {
+        if (input.getPendingAskQueueSize() <= 0) {
+          return false;
+        }
+        const normalized = value.trim();
+        return normalized.length === 0 || normalized === "?";
+      },
       openHistorySearch: (historyInput) =>
         input.openHistorySearch({
           currentInput: historyInput.currentInput,

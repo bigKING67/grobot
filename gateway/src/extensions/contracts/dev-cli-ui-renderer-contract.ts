@@ -185,7 +185,7 @@ const menuInput: TerminalSelectMenuInput = {
 const modelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
-  hint: "Enter to confirm · Esc to exit",
+  hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
@@ -211,10 +211,29 @@ const modelPickerInput: TerminalSelectMenuInput = {
   ],
 };
 
+const askUserMenuInput: TerminalSelectMenuInput = {
+  title: "需要确认 · Scope · 1/2",
+  subtitle: "Choose execution mode · [Scope] Risk 提交",
+  hint: "↑/↓ 选择 · 1-2 直选 · Enter 确认 · Esc 返回输入框",
+  variant: "ask_user",
+  items: [
+    {
+      id: "safe",
+      label: "safe",
+      description: "Run checks before continuing",
+    },
+    {
+      id: "fast",
+      label: "fast",
+      description: "Skip optional checks",
+    },
+  ],
+};
+
 const longModelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
-  hint: "Enter to confirm · Esc to exit",
+  hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
@@ -302,7 +321,7 @@ const directLargeMenuInput: TerminalSelectMenuInput = {
 const directLargeModelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
-  hint: "Enter to confirm · Esc to exit",
+  hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
@@ -387,6 +406,8 @@ const menuPlain = plainRenderer.renderSelectMenu(menuInput, 0);
 const menuNonTty = nonTtyRenderer.renderSelectMenu(menuInput, 0);
 const modelPickerInteractive = interactiveRenderer.renderSelectMenu(modelPickerInput, 0);
 const modelPickerPlain = plainRenderer.renderSelectMenu(modelPickerInput, 0);
+const askUserMenuInteractive = interactiveRenderer.renderSelectMenu(askUserMenuInput, 0);
+const askUserMenuPlain = plainRenderer.renderSelectMenu(askUserMenuInput, 0);
 const viewportMenuPlain = plainRenderer.renderSelectMenu(viewportMenuInput, 1);
 const directLargeMenuPlain = plainRenderer.renderSelectMenu(directLargeMenuInput, 0);
 const directLargeModelPickerPlain = plainRenderer.renderSelectMenu(directLargeModelPickerInput, 0);
@@ -442,9 +463,9 @@ const payload = {
   menu_interactive_has_current_check: menuInteractive.includes("✓"),
   menu_plain_has_secondary_description: menuPlain.includes("Current active model"),
   menu_hint_is_compact: menuPlain.includes("·"),
-  menu_hint_has_escape_back: menuPlain.includes("Esc back"),
-  menu_hint_has_enter_action: menuPlain.includes("Enter select"),
-  menu_hint_has_navigation_hint: menuPlain.includes("↑/↓ navigate"),
+  menu_hint_has_escape_back: menuPlain.includes("Esc 返回"),
+  menu_hint_has_enter_action: menuPlain.includes("Enter 确认"),
+  menu_hint_has_navigation_hint: menuPlain.includes("↑/↓ 选择"),
   menu_hint_omits_secondary_key_chords:
     !menuPlain.includes("j/k")
     && !menuPlain.includes("Ctrl+n/p")
@@ -474,19 +495,32 @@ const payload = {
   model_picker_has_claude_pointer: stripAnsi(modelPickerPlain).includes("❯"),
   model_picker_has_no_thin_pointer: !stripAnsi(modelPickerPlain).includes("›"),
   model_picker_has_pane_divider: /^─+$/.test(stripAnsi(modelPickerPlain).split("\n")[0] ?? ""),
-  model_picker_interactive_has_remember_color: modelPickerInteractive.includes("\x1b[38;2;166;170;255m"),
+  model_picker_interactive_uses_warm_brand_color:
+    modelPickerInteractive.includes("\x1b[38;2;202;124;94m")
+    && !modelPickerInteractive.includes("\x1b[38;2;166;170;255m"),
   model_picker_has_decimal_index: stripAnsi(modelPickerPlain).includes("1."),
   model_picker_has_no_bracket_index: !stripAnsi(modelPickerPlain).includes("[1]"),
   model_picker_current_uses_check: stripAnsi(modelPickerPlain).includes("model-a ✓"),
   model_picker_current_not_parenthesized: !stripAnsi(modelPickerPlain).includes("(current)"),
   model_picker_has_default_suffix: stripAnsi(modelPickerPlain).includes("model-b (default)"),
-  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter to confirm · Esc to exit"),
+  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter 确认 · Esc 返回"),
   model_picker_has_no_provider_card: !stripAnsi(modelPickerPlain).includes("Provider"),
   model_picker_has_no_startup_badge: !stripAnsi(modelPickerPlain).includes("STARTUP"),
   model_picker_has_no_current_badge: !stripAnsi(modelPickerPlain).includes("CURRENT"),
   model_picker_has_no_reset_badge: !stripAnsi(modelPickerPlain).includes("RESET"),
   model_picker_has_no_frame: !stripAnsi(modelPickerPlain).includes("╭"),
   model_picker_interactive_has_no_current_badge: !modelPickerInteractive.includes("CURRENT"),
+  ask_user_menu_uses_panel_divider: /^─+$/.test(stripAnsi(askUserMenuPlain).split("\n")[0] ?? ""),
+  ask_user_menu_uses_warm_brand_color:
+    askUserMenuInteractive.includes("\x1b[38;2;202;124;94m"),
+  ask_user_menu_has_progress_title:
+    stripAnsi(askUserMenuPlain).includes("需要确认 · Scope · 1/2"),
+  ask_user_menu_has_input_return_hint:
+    stripAnsi(askUserMenuPlain).includes("Esc 返回输入框"),
+  ask_user_menu_preserves_option_descriptions:
+    stripAnsi(askUserMenuPlain).includes("Run checks before continuing"),
+  ask_user_menu_uses_claude_pointer:
+    stripAnsi(askUserMenuPlain).includes("❯"),
   model_picker_direct_render_uses_model_visible_count:
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),

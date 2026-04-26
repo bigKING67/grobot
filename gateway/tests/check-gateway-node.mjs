@@ -1179,6 +1179,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.menu_escape_is_cancel, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_arrow_up_is_up, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_arrow_down_is_down, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_page_up_is_page_up, true);
+  assert.equal(runStartInputKeybindingContractPayload.menu_page_down_is_page_down, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_multi_digits_direct_index, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_digit_coalesced_crlf_direct_index, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_digit_prefix_has_continuation, true);
@@ -1208,6 +1210,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_has_no_row_down_marker, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_keeps_compact_height, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_scroll_window_centers_selected_when_possible, true);
+  assert.equal(runStartInputKeybindingContractPayload.suggestion_window_reusable_selected_centered, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_narrow_hides_description, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_overlay_narrow_lines_within_width, true);
   assert.equal(runStartInputKeybindingContractPayload.slash_input_with_args_highlighted, true);
@@ -1222,6 +1225,13 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_crlf_detected, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_lf_detected, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_other_submit_text, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_other_submit_crlf_text, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_other_submit_cjk_text, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_numeric_submit_selects_standard_option, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_other_numeric_submit_focuses_other, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_other_printable_text, true);
+  assert.equal(runStartInputKeybindingContractPayload.ask_user_panel_other_backspace, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_backslash_ignored, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_coalesced_escape_ignored, true);
   assert.equal(runStartInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
@@ -1249,6 +1259,19 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.menu_viewport_keeps_active_visible, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_viewport_scrolls_one_row_down, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_viewport_scrolls_one_row_up, true);
+  assert.equal(runStartInputKeybindingContractPayload.select_navigation_page_down_clamps_to_last, true);
+  assert.equal(runStartInputKeybindingContractPayload.select_navigation_page_up_returns_by_page, true);
+  assert.equal(runStartInputKeybindingContractPayload.select_navigation_wrap_next, true);
+  assert.equal(runStartInputKeybindingContractPayload.select_navigation_set_options_clamps_focus, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_select_menu_owns_focus_without_footer, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_suggestions_suppress_status, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_history_preempts_suggestions, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_pending_ask_preempts_status, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_running_preempts_status, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_status_when_input_idle, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_idle_hint_hidden_for_draft, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_short_fullscreen_drops_status_first, true);
+  assert.equal(runStartInputKeybindingContractPayload.prompt_slot_hidden_input_renders_no_footer, true);
   logStep("run-start-input-keybinding-contract");
 
   const runStartPlanFailurePolicyContractResult = runCommand("npx", [
@@ -1680,7 +1703,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.model_picker_has_claude_pointer, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_has_no_thin_pointer, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_has_pane_divider, true);
-  assert.equal(devCliUiRendererContractPayload.model_picker_interactive_has_remember_color, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_interactive_uses_warm_brand_color, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_has_decimal_index, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_has_no_bracket_index, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_current_uses_check, true);
@@ -1693,6 +1716,12 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.model_picker_has_no_reset_badge, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_has_no_frame, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_interactive_has_no_current_badge, true);
+  assert.equal(devCliUiRendererContractPayload.ask_user_menu_uses_panel_divider, true);
+  assert.equal(devCliUiRendererContractPayload.ask_user_menu_uses_warm_brand_color, true);
+  assert.equal(devCliUiRendererContractPayload.ask_user_menu_has_progress_title, true);
+  assert.equal(devCliUiRendererContractPayload.ask_user_menu_has_input_return_hint, true);
+  assert.equal(devCliUiRendererContractPayload.ask_user_menu_preserves_option_descriptions, true);
+  assert.equal(devCliUiRendererContractPayload.ask_user_menu_uses_claude_pointer, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_direct_render_has_no_row_scroll_marker, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_long_rows_within_width, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_long_current_suffix_preserved, true);
@@ -1737,10 +1766,15 @@ async function runGatewayContractSmoke() {
     devCliActivityFeedContractResult.stdout,
   );
   assert.equal(devCliActivityFeedPayload.renders_real_tool_rows, true);
+  assert.equal(devCliActivityFeedPayload.compact_hides_key_value_details, true);
   assert.equal(devCliActivityFeedPayload.renders_edit_with_diff_stats, true);
   assert.equal(devCliActivityFeedPayload.renders_failed_bash, true);
   assert.equal(devCliActivityFeedPayload.renders_recovery_row, true);
   assert.equal(devCliActivityFeedPayload.nested_payload_supported, true);
+  assert.equal(devCliActivityFeedPayload.none_mode_suppresses_feed, true);
+  assert.equal(devCliActivityFeedPayload.env_default_suppresses_feed, true);
+  assert.equal(devCliActivityFeedPayload.env_compact_enables_feed, true);
+  assert.equal(devCliActivityFeedPayload.env_full_enables_verbose_feed, true);
   assert.equal(devCliActivityFeedPayload.empty_without_tool_events, true);
   assert.equal(devCliActivityFeedPayload.rows_within_width, true);
   assert.equal(devCliActivityFeedPayload.no_invalid_tokens, true);
@@ -1844,6 +1878,15 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliStatusIndicatorPayload.no_invalid_tokens, true);
   assert.equal(devCliStatusIndicatorPayload.elapsed_formats_minutes, true);
   assert.equal(devCliStatusIndicatorPayload.elapsed_formats_hours, true);
+  assert.equal(devCliStatusIndicatorPayload.rich_wide_shows_thinking_tokens_elapsed_interrupt, true);
+  assert.equal(devCliStatusIndicatorPayload.rich_wide_width_within_columns, true);
+  assert.equal(devCliStatusIndicatorPayload.rich_narrow_preserves_interrupt_over_optional_parts, true);
+  assert.equal(devCliStatusIndicatorPayload.rich_narrow_width_within_columns, true);
+  assert.equal(devCliStatusIndicatorPayload.rich_tiny_keeps_interrupt_before_elapsed, true);
+  assert.equal(devCliStatusIndicatorPayload.stall_detects_no_token_progress, true);
+  assert.equal(devCliStatusIndicatorPayload.stall_active_tools_resets_timer, true);
+  assert.equal(devCliStatusIndicatorPayload.stall_token_progress_resets_intensity, true);
+  assert.equal(devCliStatusIndicatorPayload.stall_smoothing_is_gradual, true);
   logStep("dev-cli-status-indicator-contract");
 
   const devCliStatusLineStabilityContractResult = runCommand("npx", [
@@ -1901,9 +1944,10 @@ async function runGatewayContractSmoke() {
   );
   assert.equal(devCliBottomPanePayload.idle_has_no_divider, true);
   assert.equal(devCliBottomPanePayload.idle_keeps_passive_status, true);
-  assert.equal(devCliBottomPanePayload.idle_has_shortcut_hint, true);
+  assert.equal(devCliBottomPanePayload.idle_hides_shortcut_hint, true);
   assert.equal(devCliBottomPanePayload.idle_omits_permanent_shift_enter_hint, true);
   assert.equal(devCliBottomPanePayload.idle_footer_has_visual_weight, true);
+  assert.equal(devCliBottomPanePayload.idle_footer_uses_muted_not_high_saturation, true);
   assert.equal(devCliBottomPanePayload.idle_footer_style_keeps_plain_text, true);
   assert.equal(devCliBottomPanePayload.idle_narrow_status_dimmed, true);
   assert.equal(devCliBottomPanePayload.idle_narrow_hides_shortcut_hint, true);
@@ -1943,6 +1987,56 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliBottomPanePayload.shortcut_overlay_narrow_lines_within_width, true);
   logStep("dev-cli-bottom-pane-contract");
 
+  const devCliTerminalMarkdownContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-terminal-markdown-contract.ts",
+  ]);
+  assertSuccess("dev-cli-terminal-markdown-contract", devCliTerminalMarkdownContractResult);
+  const devCliTerminalMarkdownPayload = parseJsonOutput(
+    "dev-cli-terminal-markdown-contract",
+    devCliTerminalMarkdownContractResult.stdout,
+  );
+  assert.equal(devCliTerminalMarkdownPayload.strong_renders_bold, true);
+  assert.equal(devCliTerminalMarkdownPayload.inline_code_renders_dim, true);
+  assert.equal(devCliTerminalMarkdownPayload.fenced_code_preserves_markdown_markers, true);
+  assert.equal(devCliTerminalMarkdownPayload.heading_renders_without_hash_marker, true);
+  assert.equal(devCliTerminalMarkdownPayload.plain_text_preserved, true);
+  assert.equal(devCliTerminalMarkdownPayload.disabled_preserves_raw_markdown, true);
+  logStep("dev-cli-terminal-markdown-contract");
+
+  const devCliAskUserPanelContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/dev-cli-ask-user-panel-contract.ts",
+  ]);
+  assertSuccess("dev-cli-ask-user-panel-contract", devCliAskUserPanelContractResult);
+  const devCliAskUserPanelPayload = parseJsonOutput(
+    "dev-cli-ask-user-panel-contract",
+    devCliAskUserPanelContractResult.stdout,
+  );
+  assert.equal(devCliAskUserPanelPayload.panel_has_brand_divider, true);
+  assert.equal(devCliAskUserPanelPayload.panel_omits_raw_ask_user_label, true);
+  assert.equal(devCliAskUserPanelPayload.panel_has_codex_like_progress, true);
+  assert.equal(devCliAskUserPanelPayload.panel_has_claude_like_question_tabs, true);
+  assert.equal(devCliAskUserPanelPayload.panel_question_separate_from_options, true);
+  assert.equal(devCliAskUserPanelPayload.panel_preserves_option_descriptions, true);
+  assert.equal(devCliAskUserPanelPayload.panel_has_other_type_something_row, true);
+  assert.equal(devCliAskUserPanelPayload.panel_has_direct_keyboard_hints, true);
+  assert.equal(devCliAskUserPanelPayload.panel_review_has_submit_edit_cancel, true);
+  assert.equal(devCliAskUserPanelPayload.panel_review_has_answer_summary, true);
+  assert.equal(devCliAskUserPanelPayload.panel_text_input_renders_value, true);
+  assert.equal(devCliAskUserPanelPayload.panel_narrow_keeps_lines_within_width, true);
+  assert.equal(devCliAskUserPanelPayload.panel_wide_keeps_lines_within_width, true);
+  assert.equal(devCliAskUserPanelPayload.panel_interactive_uses_warm_brand_color, true);
+  assert.equal(devCliAskUserPanelPayload.panel_no_box_frame, true);
+  assert.equal(devCliAskUserPanelPayload.panel_narrow_keeps_progress, true);
+  logStep("dev-cli-ask-user-panel-contract");
+
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -1972,17 +2066,45 @@ async function runGatewayContractSmoke() {
   assert.equal(askUserToolContractPayload.answer_numeric_index_maps_option, true);
   assert.equal(askUserToolContractPayload.answer_full_width_index_maps_option, true);
   assert.equal(askUserToolContractPayload.answer_case_insensitive_option_maps_canonical, true);
+  assert.equal(askUserToolContractPayload.answer_other_literal_is_custom, true);
+  assert.equal(askUserToolContractPayload.answer_other_id_literal_is_custom, true);
+  assert.equal(askUserToolContractPayload.answer_out_of_range_index_is_custom, true);
   assert.equal(askUserToolContractPayload.answer_blank_falls_back_default, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_removed_expired, true);
   assert.equal(askUserToolContractPayload.queue_ttl_prune_keeps_fresh, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_hint, true);
   assert.equal(askUserToolContractPayload.issued_display_has_reply_guide, true);
+  assert.equal(askUserToolContractPayload.issued_display_uses_prompt_chevron, true);
+  assert.equal(askUserToolContractPayload.issued_display_has_other_type_something, true);
+  assert.equal(askUserToolContractPayload.issued_display_shows_question_progress, true);
+  assert.equal(askUserToolContractPayload.issued_display_shows_option_description, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_resume_token, true);
   assert.equal(askUserToolContractPayload.issued_display_compact_options, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_log_prefix, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_options_preview, true);
   assert.equal(askUserToolContractPayload.issued_display_overflow_lists_sixth_option, true);
   assert.equal(askUserToolContractPayload.issued_event_has_ask_id, true);
+  assert.equal(askUserToolContractPayload.ask_user_menu_title_has_progress, true);
+  assert.equal(askUserToolContractPayload.ask_user_menu_hint_returns_to_input, true);
+  assert.equal(askUserToolContractPayload.ask_user_menu_omits_noisy_default_descriptions, true);
+  assert.equal(askUserToolContractPayload.ask_user_menu_preserves_option_descriptions, true);
+  assert.equal(askUserToolContractPayload.ask_user_queue_display_shows_progress, true);
+  assert.equal(askUserToolContractPayload.ask_user_queue_display_hides_raw_diagnostics, true);
+  assert.equal(askUserToolContractPayload.questionnaire_navigation_prev_stays_in_bounds, true);
+  assert.equal(askUserToolContractPayload.questionnaire_navigation_option_wraps, true);
+  assert.equal(askUserToolContractPayload.questionnaire_answer_focused_advances, true);
+  assert.equal(askUserToolContractPayload.questionnaire_view_has_question_tabs, true);
+  assert.equal(askUserToolContractPayload.questionnaire_view_has_other_input_option, true);
+  assert.equal(askUserToolContractPayload.questionnaire_review_available, true);
+  assert.equal(askUserToolContractPayload.questionnaire_selection_maps_canonical_value, true);
+  assert.equal(askUserToolContractPayload.questionnaire_batch_answer_text_is_numbered, true);
+  assert.equal(askUserToolContractPayload.questionnaire_review_menu_has_submit_and_edit, true);
+  assert.equal(askUserToolContractPayload.batch_numbered_answers_release_prompt, true);
+  assert.equal(askUserToolContractPayload.batch_numbered_answers_resolve_all, true);
+  assert.equal(askUserToolContractPayload.batch_legacy_numbered_answers_still_resolve_all, true);
+  assert.equal(askUserToolContractPayload.batch_partial_numbered_answer_does_not_release_prompt, true);
+  assert.equal(askUserToolContractPayload.batch_invalid_numbered_answer_does_not_release_prompt, true);
+  assert.equal(askUserToolContractPayload.batch_json_encoded_custom_answer_stays_single_answer, true);
   logStep("ask-user-tool-contract");
 
   const gaSkillPromptContractResult = runCommand("npx", [

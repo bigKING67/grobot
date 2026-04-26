@@ -129,7 +129,7 @@ async function runDispatchCase(
     getPendingAskQueueSize: () => pendingAskCount,
     getPendingAskPromptSummary: () =>
       pendingAskCount > 0
-        ? "Enter/? 选择 · 1-2 直接回复"
+        ? "Enter 打开选择 · 1-2 直接回复"
         : undefined,
     showPendingAskQueue: (limit) => {
       events.push(`showPendingAskQueue:${typeof limit === "number" ? String(limit) : "default"}`);
@@ -1052,10 +1052,10 @@ async function main(): Promise<void> {
     pending_ask_blocked_status_hint_has_reply_guidance:
       pendingAskBlockedStatus.stdout.includes("请先回复后再执行其他命令"),
     pending_ask_blocked_status_hint_has_prompt_summary:
-      pendingAskBlockedStatus.stdout.includes("Enter/? 选择")
+      pendingAskBlockedStatus.stdout.includes("Enter 打开选择")
       && !pendingAskBlockedStatus.stdout.includes("question="),
     pending_ask_blocked_status_hint_has_short_menu_hint:
-      pendingAskBlockedStatus.stdout.includes("Enter/? 选择"),
+      pendingAskBlockedStatus.stdout.includes("Enter 打开选择"),
     pending_ask_help_allowed: includesEvent(pendingAskAllowHelp.events, "showHelp"),
     pending_ask_help_blocked_warned: includesEvent(pendingAskAllowHelp.events, "writeStdout"),
     pending_ask_interrupt_allowed: includesEvent(

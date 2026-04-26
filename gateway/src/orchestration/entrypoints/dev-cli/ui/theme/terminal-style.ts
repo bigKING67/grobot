@@ -1,10 +1,10 @@
 export const TERMINAL_ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
-  accent: "\x1b[92m",
   brand: "\x1b[38;2;202;124;94m",
-  info: "\x1b[96m",
-  remember: "\x1b[38;2;166;170;255m",
+  accent: "\x1b[38;2;202;124;94m",
+  info: "\x1b[38;2;176;150;134m",
+  remember: "\x1b[38;2;174;141;123m",
   muted: "\x1b[90m",
 } as const;
 
@@ -43,12 +43,12 @@ export const terminalStyle = {
     return wrap(TERMINAL_ANSI.muted, value);
   },
   selected(value: string): string {
-    return `${TERMINAL_ANSI.bold}${TERMINAL_ANSI.info}${value}${TERMINAL_ANSI.reset}`;
+    return `${TERMINAL_ANSI.bold}${TERMINAL_ANSI.brand}${value}${TERMINAL_ANSI.reset}`;
   },
   pointer(value: string = TERMINAL_SYMBOL.pointer): string {
-    return wrap(TERMINAL_ANSI.accent, value);
+    return wrap(TERMINAL_ANSI.brand, value);
   },
   currentTag(value: string): string {
-    return wrap(TERMINAL_ANSI.info, value);
+    return wrap(TERMINAL_ANSI.brand, value);
   },
 } as const;

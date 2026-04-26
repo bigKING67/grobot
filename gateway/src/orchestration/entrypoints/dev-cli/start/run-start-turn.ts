@@ -24,9 +24,14 @@ import {
   renderRuntimeFailureSummary,
   renderTurnInterruptedNotice,
 } from "../ui/screens/turn-screen";
-import { renderRuntimeActivityFeed } from "../ui/screens/activity-feed-screen";
+import { renderTerminalMarkdown } from "../ui/interactive/terminal-markdown";
+import {
+  renderRuntimeActivityFeed,
+  resolveRuntimeActivityFeedDetailMode,
+} from "../ui/screens/activity-feed-screen";
 import {
   type AskUserEnvelope,
+  buildAskUserQueueDisplay,
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
@@ -2027,8 +2032,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       });
       if (askUserTurnContext.resolvedEvent.length > 0) {
         input.writeStderr(askUserTurnContext.resolvedEvent);
-        if (askUserTurnContext.resolvedAsk) {
-          const resolvedAsk = askUserTurnContext.resolvedAsk;
+        for (const resolvedAsk of askUserTurnContext.resolvedAsks) {
           const ingestResult = input.memoryOrchestrator.ingest({
             eventType: "ask_user_resolved",
             sessionKey,
@@ -2049,11 +2053,13 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       if (askUserTurnContext.pendingNextAsk) {
         const activeAskEnvelope = askUserTurnContext.pendingNextAsk;
         const queueDepth = askUserTurnContext.queueSizeAfterResolve;
-        const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
-        const queueHint = buildAskUserQueueContinuationHint(Math.max(0, queueDepth - 1));
-        const turnStdout = interactiveMode && queueHint
-          ? `${askUserDisplay}\n${queueHint}`
-          : askUserDisplay;
+        const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
+        const askUserDisplay = interactiveMode
+          ? buildAskUserQueueDisplay({
+            queue: queue.length > 0 ? queue : [activeAskEnvelope],
+          })
+          : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
+        const turnStdout = askUserDisplay;
         await recordTurn(
           userText,
           `需要确认：${activeAskEnvelope.question}`,
@@ -3016,9 +3022,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           ? report.runtimeInterrupt.askUser
           : undefined;
         let assistantTextForHistory = report.assistantMessage;
+        const assistantMessageForTerminal = interactiveMode
+          ? renderTerminalMarkdown({ text: report.assistantMessage })
+          : report.assistantMessage;
         let turnStdout = interactiveMode
-          ? `${report.assistantMessage}\n\n`
-          : `${report.assistantMessage}\n`;
+          ? `${assistantMessageForTerminal}\n\n`
+          : `${assistantMessageForTerminal}\n`;
         let askUserEvent = "";
         recordRuntimeToolMetricsForEvents({
           workDir: input.workDir,
@@ -3048,14 +3057,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             throw new Error("ask_user interrupt emitted empty question set");
           }
           assistantTextForHistory = `需要确认：${activeAskEnvelope.question}`;
-          const askUserDisplay = input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
-          if (interactiveMode) {
-            const queuedExtra = Math.max(0, queueDepth - 1);
-            const queueHint = buildAskUserQueueContinuationHint(queuedExtra);
-            turnStdout = `${askUserDisplay}\n${queueHint}`;
-          } else {
-            turnStdout = askUserDisplay;
-          }
+          const pendingAskQueue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
+          turnStdout = interactiveMode
+            ? buildAskUserQueueDisplay({
+              queue: pendingAskQueue.length > 0 ? pendingAskQueue : [activeAskEnvelope],
+            })
+            : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
           askUserEvent = askUserEnvelopes
             .map((envelope) => formatAskUserIssuedEvent(envelope))
             .join("");
@@ -3110,9 +3117,13 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           }
         }
         if (!runtimeAskUser && interactiveMode) {
+          const activityFeedDetailMode = resolveRuntimeActivityFeedDetailMode(
+            process.env.GROBOT_ACTIVITY_FEED_DETAIL,
+          );
           const activityFeed = renderRuntimeActivityFeed({
             events: report.events,
             terminalColumns: resolveInteractiveTerminalColumns(),
+            detailMode: activityFeedDetailMode,
           });
           if (activityFeed.length > 0) {
             turnStdout = `${activityFeed}${turnStdout}`;

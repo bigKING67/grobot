@@ -1,11 +1,19 @@
 import {
   AskUserSessionStore,
+  buildAskUserBatchAnswerText,
+  buildAskUserQueueDisplay,
   buildAskUserDisplay,
+  buildAskUserReviewMenuDescriptor,
+  buildAskUserSelectMenuDescriptor,
   buildAskUserResolutionPrompt,
+  buildAskUserQuestionnaireView,
+  createAskUserQuestionnaireState,
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
   formatAskUserResolvedEvent,
   normalizeAskUserEnvelopeFromPayload,
+  reduceAskUserQuestionnaire,
+  resolveAskUserAnswerFromSelection,
   type AskUserRuntimeAdapter,
 } from "../../tools/ask-user";
 
@@ -81,6 +89,27 @@ runtime.registerPendingAsk(sessionKey, {
   question: "Need risk review now?",
 });
 const display = runtime.buildAskUserDisplay(nextEnvelope);
+const describedEnvelope = {
+  ...nextEnvelope,
+  questionIndex: 1,
+  questionTotal: 2,
+  options: ["safe", "fast"],
+  optionsDetailed: [
+    {
+      label: "safe",
+      value: "safe",
+      description: "Run checks before continuing",
+    },
+    {
+      label: "fast",
+      value: "fast",
+      description: "Skip optional checks",
+    },
+  ],
+};
+const describedDisplay = runtime.buildAskUserDisplay({
+  ...describedEnvelope,
+});
 const overflowEnvelope = normalizeAskUserEnvelopeFromPayload({
   blocking_node_id: "node.overflow.options",
   questions: [{
@@ -143,6 +172,12 @@ const resolvedByFullWidthIndex = sessionStore.resolve(sessionKey, "２");
 runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByOptionText = sessionStore.resolve(sessionKey, "FAST");
 runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByOtherLiteral = sessionStore.resolve(sessionKey, "Other");
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByOtherIdLiteral = sessionStore.resolve(sessionKey, "__other__");
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
+const resolvedByOutOfRangeIndex = sessionStore.resolve(sessionKey, "3");
+runtime.registerPendingAsk(sessionKey, optionEnvelope);
 const resolvedByBlank = sessionStore.resolve(sessionKey, "   ");
 const expiredEnvelope = normalizeAskUserEnvelopeFromPayload({
   blocking_node_id: "node.expired",
@@ -180,6 +215,100 @@ const expiredByTtl = sessionStore.pruneExpired(sessionKey, {
 const remainingAfterTtlPrune = sessionStore.list(sessionKey);
 sessionStore.delete(sessionKey);
 
+const questionnaireInitialState = createAskUserQuestionnaireState({
+  focusedOptionIndex: 0,
+});
+const questionnaireNextState = reduceAskUserQuestionnaire(questionnaireInitialState, {
+  type: "next_option",
+  optionCount: describedEnvelope.optionsDetailed.length,
+});
+const questionnairePreviousQuestionState = reduceAskUserQuestionnaire(questionnaireInitialState, {
+  type: "previous_question",
+  totalCount: 2,
+});
+const questionnaireAnsweredState = reduceAskUserQuestionnaire(questionnaireNextState, {
+  type: "set_answer",
+  askId: describedEnvelope.askId,
+  answer: "fast",
+  totalCount: 2,
+});
+const questionnaireReviewState = reduceAskUserQuestionnaire(questionnaireAnsweredState, {
+  type: "go_review",
+});
+const questionnaireView = buildAskUserQuestionnaireView({
+  queue: [describedEnvelope, thirdEnvelope],
+  state: questionnaireInitialState,
+});
+const questionnaireReviewView = buildAskUserQuestionnaireView({
+  queue: [describedEnvelope, thirdEnvelope],
+  state: questionnaireReviewState,
+});
+const askUserMenuDescriptor = buildAskUserSelectMenuDescriptor({
+  queue: [describedEnvelope, thirdEnvelope],
+  state: questionnaireInitialState,
+});
+const askUserQueueDisplay = buildAskUserQueueDisplay({
+  queue: [describedEnvelope, thirdEnvelope],
+  state: questionnaireInitialState,
+});
+const selectedAnswerFromInteraction = resolveAskUserAnswerFromSelection(describedEnvelope, 1);
+runtime.registerPendingAsk(sessionKey, nextEnvelope);
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
+const batchAnswerText = buildAskUserBatchAnswerText({
+  queue: [nextEnvelope, thirdEnvelope],
+  answers: {
+    [nextEnvelope.askId]: "all",
+    [thirdEnvelope.askId]: "yes",
+  },
+});
+const reviewMenuDescriptor = buildAskUserReviewMenuDescriptor({
+  queue: [nextEnvelope, thirdEnvelope],
+  answers: {
+    [nextEnvelope.askId]: "all",
+    [thirdEnvelope.askId]: "yes",
+  },
+});
+const batchPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: batchAnswerText,
+});
+const batchQueueEmptyAfterResolve = sessionStore.size(sessionKey) === 0;
+runtime.registerPendingAsk(sessionKey, nextEnvelope);
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
+const legacyBatchPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: "1. all\n2. yes",
+});
+const legacyBatchQueueEmptyAfterResolve = sessionStore.size(sessionKey) === 0;
+runtime.registerPendingAsk(sessionKey, nextEnvelope);
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
+const partialBatchPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: "1. all",
+});
+const partialBatchLeavesOnePending = sessionStore.size(sessionKey) === 1;
+sessionStore.delete(sessionKey);
+runtime.registerPendingAsk(sessionKey, nextEnvelope);
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
+const invalidBatchPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: "1. all\n3. yes",
+});
+const invalidBatchLeavesOnePending = sessionStore.size(sessionKey) === 1;
+sessionStore.delete(sessionKey);
+runtime.registerPendingAsk(sessionKey, nextEnvelope);
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
+const jsonEncodedBatchPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: `1. ${JSON.stringify("1. draft\n2. confirm")}\n2. ${JSON.stringify("yes")}`,
+});
+const jsonEncodedBatchQueueEmptyAfterResolve = sessionStore.size(sessionKey) === 0;
+
 const payload = {
   protocol_prefix_removed: promptContext.promptParts.every((part) => part.includes("[AskUser Resolution]")),
   resolution_prompt_injected: promptContext.promptParts.some((part) => part.includes("[AskUser Resolution]")),
@@ -201,11 +330,21 @@ const payload = {
   answer_numeric_index_maps_option: resolvedByIndex?.resolvedAsk.answer === "fast",
   answer_full_width_index_maps_option: resolvedByFullWidthIndex?.resolvedAsk.answer === "fast",
   answer_case_insensitive_option_maps_canonical: resolvedByOptionText?.resolvedAsk.answer === "fast",
+  answer_other_literal_is_custom: resolvedByOtherLiteral?.resolvedAsk.answer === "Other",
+  answer_other_id_literal_is_custom: resolvedByOtherIdLiteral?.resolvedAsk.answer === "__other__",
+  answer_out_of_range_index_is_custom: resolvedByOutOfRangeIndex?.resolvedAsk.answer === "3",
   answer_blank_falls_back_default: resolvedByBlank?.resolvedAsk.answer === "safe",
   queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.askId === "ask_q_005",
   queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.askId === "ask_q_006",
   issued_display_has_reply_hint: display.includes("Enter 打开选择菜单"),
   issued_display_has_reply_guide: display.includes("数字直接回复"),
+  issued_display_uses_prompt_chevron: display.includes("❯ 1"),
+  issued_display_has_other_type_something:
+    display.includes("Other  Type something.")
+    && display.includes("Other 输入"),
+  issued_display_shows_question_progress: describedDisplay.includes("Scope · 1/2"),
+  issued_display_shows_option_description:
+    describedDisplay.includes("safe — Run checks before continuing"),
   issued_display_hides_resume_token: !display.includes("resume_token"),
   issued_display_compact_options: !display.includes("\noptions:\n"),
   issued_display_hides_log_prefix: !display.includes("[ask-user]"),
@@ -213,8 +352,81 @@ const payload = {
   issued_display_hides_raw_question_prefix: !display.includes("question="),
   issued_display_uses_confirmation_card: display.includes("需要确认 ·"),
   issued_display_overflow_lists_sixth_option: overflowDisplay.includes("还有 0 项") === false
-    && overflowDisplay.includes("6  option-6"),
+    && overflowDisplay.includes("Other  Type something.")
+    && overflowDisplay.includes("还有 1 项"),
   issued_event_has_ask_id: formatAskUserIssuedEvent(nextEnvelope).includes("ask_id=ask_q_002"),
+  ask_user_menu_title_has_progress:
+    askUserMenuDescriptor?.title.includes("Scope · 1/2") === true,
+  ask_user_menu_hint_returns_to_input:
+    askUserMenuDescriptor?.hint.includes("Esc 返回输入框") === true,
+  ask_user_menu_omits_noisy_default_descriptions:
+    askUserMenuDescriptor?.items.every((item) =>
+      item.description !== "选择后立即继续当前任务") === true,
+  ask_user_menu_preserves_option_descriptions:
+    askUserMenuDescriptor?.items[0]?.description === "Run checks before continuing",
+  ask_user_queue_display_shows_progress:
+    askUserQueueDisplay.includes("需要确认 · Scope · 1/2")
+    && askUserQueueDisplay.includes("[Scope]"),
+  ask_user_queue_display_hides_raw_diagnostics:
+    !askUserQueueDisplay.includes("[ask-user]")
+    && !askUserQueueDisplay.includes("question=")
+    && !askUserQueueDisplay.includes("resume_token"),
+  questionnaire_navigation_prev_stays_in_bounds:
+    questionnairePreviousQuestionState.currentQuestionIndex === 0,
+  questionnaire_navigation_option_wraps:
+    reduceAskUserQuestionnaire(questionnaireInitialState, {
+      type: "previous_option",
+      optionCount: describedEnvelope.optionsDetailed.length,
+    }).focusedOptionIndex === describedEnvelope.optionsDetailed.length - 1,
+  questionnaire_answer_focused_advances:
+    questionnaireAnsweredState.currentQuestionIndex === 1
+    && questionnaireAnsweredState.answers[describedEnvelope.askId] === "fast",
+  questionnaire_view_has_question_tabs:
+    questionnaireView.kind === "question"
+    && questionnaireView.navigationText.includes("[Scope]")
+    && questionnaireView.optionItems.length === 3,
+  questionnaire_view_has_other_input_option:
+    questionnaireView.kind === "question"
+    && questionnaireView.optionItems.some((item) =>
+      item.kind === "other"
+      && item.label === "Other"
+      && item.placeholder === "Type something."
+      && item.id === "__other__"),
+  questionnaire_review_available:
+    questionnaireReviewView.kind === "review"
+    && questionnaireReviewView.reviewItems.some((item) => item.answer === "fast"),
+  questionnaire_selection_maps_canonical_value: selectedAnswerFromInteraction === "fast",
+  questionnaire_batch_answer_text_is_numbered:
+    batchAnswerText === "1. \"all\"\n2. \"yes\"",
+  questionnaire_review_menu_has_submit_and_edit:
+    reviewMenuDescriptor.items[0]?.id === "__submit"
+    && reviewMenuDescriptor.items.some((item) => item.id === "edit:1")
+    && reviewMenuDescriptor.items.some((item) => item.id === "__cancel"),
+  batch_numbered_answers_release_prompt:
+    batchPromptContext.promptParts.some((part) => part.includes("question_count=2")),
+  batch_numbered_answers_resolve_all:
+    batchPromptContext.resolvedAsks.length === 2
+    && batchPromptContext.resolvedAsks[0]?.answer === "all"
+    && batchPromptContext.resolvedAsks[1]?.answer === "yes"
+    && batchQueueEmptyAfterResolve,
+  batch_legacy_numbered_answers_still_resolve_all:
+    legacyBatchPromptContext.resolvedAsks.length === 2
+    && legacyBatchPromptContext.resolvedAsks[0]?.answer === "all"
+    && legacyBatchPromptContext.resolvedAsks[1]?.answer === "yes"
+    && legacyBatchQueueEmptyAfterResolve,
+  batch_partial_numbered_answer_does_not_release_prompt:
+    partialBatchPromptContext.resolvedAsks.length === 1
+    && partialBatchPromptContext.promptParts.length === 0
+    && partialBatchLeavesOnePending,
+  batch_invalid_numbered_answer_does_not_release_prompt:
+    invalidBatchPromptContext.resolvedAsks.length === 1
+    && invalidBatchPromptContext.promptParts.length === 0
+    && invalidBatchLeavesOnePending,
+  batch_json_encoded_custom_answer_stays_single_answer:
+    jsonEncodedBatchPromptContext.resolvedAsks.length === 2
+    && jsonEncodedBatchPromptContext.resolvedAsks[0]?.answer === "1. draft 2. confirm"
+    && jsonEncodedBatchPromptContext.resolvedAsks[1]?.answer === "yes"
+    && jsonEncodedBatchQueueEmptyAfterResolve,
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

@@ -48,7 +48,7 @@ const SHORTCUT_OVERLAY_KEY_COLUMN_WIDTH = 11;
 const SHORTCUT_OVERLAY_KEY_GAP = "  ";
 const SHORTCUT_OVERLAY_COLUMN_GAP = "  ";
 const SHORTCUT_OVERLAY_FALLBACK_COLUMN_WIDTH = 27;
-const PENDING_ASK_DEFAULT_ACTION_HINT = "Enter/? 选择";
+const PENDING_ASK_DEFAULT_ACTION_HINT = "Enter 打开选择";
 
 function resolveTerminalColumns(columns: number | undefined): number {
   if (typeof columns !== "number" || !Number.isFinite(columns)) {
@@ -80,7 +80,7 @@ function buildPendingAskLine(input: BottomPanePromptInput): string | undefined {
   }
   const summary = compactSpaces(input.pendingAskSummary ?? "");
   const actionHint = resolvePendingAskActionHint(summary);
-  const baseLine = `待确认 ${String(pendingAskCount)} 项 · ${actionHint}`;
+  const baseLine = `需要确认 ${String(pendingAskCount)} 项 · ${actionHint}`;
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   if (terminalColumns > 0) {
     return truncateDisplayWidth(baseLine, terminalColumns);
@@ -101,6 +101,7 @@ function resolvePendingAskActionHint(summary: string): string {
     || normalized.includes("[ask-user]");
   const looksLikeActionHint =
     normalized.includes("enter/?")
+    || normalized.includes("enter 打开")
     || normalized.startsWith("enter ")
     || summary.startsWith("输入回复");
   const looksLikeQuestion = !looksLikeActionHint && /[?？]/.test(summary);
@@ -110,11 +111,8 @@ function resolvePendingAskActionHint(summary: string): string {
   return summary;
 }
 
-function buildInputHintLine(input: BottomPanePromptInput): string | undefined {
-  if (resolveBottomPaneFooterMode(input) !== "idle") {
-    return undefined;
-  }
-  return "? for shortcuts";
+function buildInputHintLine(): string | undefined {
+  return undefined;
 }
 
 function fitFooterLine(input: {
@@ -194,21 +192,16 @@ const BOTTOM_PANE_STYLE = {
     if (!line || terminalStyle.hasAnsi(line)) {
       return line;
     }
-    const highlightedHint =
-      `${TERMINAL_ANSI.info}? for shortcuts${TERMINAL_ANSI.reset}${TERMINAL_ANSI.muted}`;
-    return `${TERMINAL_ANSI.muted}${line.replace(
-      "? for shortcuts",
-      highlightedHint,
-    )}${TERMINAL_ANSI.reset}`;
+    return `${TERMINAL_ANSI.muted}${line}${TERMINAL_ANSI.reset}`;
   },
   activityLine(line: string): string {
     if (!line || terminalStyle.hasAnsi(line)) {
       return line;
     }
     if (line.startsWith("~")) {
-      return `${terminalStyle.info("~")}${line.slice(1)}`;
+      return `${terminalStyle.brand("~")}${terminalStyle.muted(line.slice(1))}`;
     }
-    return line;
+    return terminalStyle.muted(line);
   },
   shortcutOverlayLine(line: string): string {
     if (!line) {
@@ -219,7 +212,7 @@ const BOTTOM_PANE_STYLE = {
       b[0].length - a[0].length
     )) {
       const highlightedKey =
-        `${TERMINAL_ANSI.reset}${TERMINAL_ANSI.info}${keyLabel}`
+        `${TERMINAL_ANSI.reset}${TERMINAL_ANSI.brand}${keyLabel}`
         + `${TERMINAL_ANSI.reset}${TERMINAL_ANSI.muted}`;
       rendered = rendered.replace(
         new RegExp(escapeRegExp(keyLabel), "g"),
@@ -313,7 +306,7 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
   const parts = resolveStatusLinePromptParts(input);
   const mode = resolveBottomPaneFooterMode(input);
   const pendingAskLine = buildPendingAskLine(input);
-  const inputHintLine = buildInputHintLine(input);
+  const inputHintLine = buildInputHintLine();
   const renderSecondaryStatus = shouldRenderSecondaryStatus(input);
   const lines: string[] = [];
   const pushLine = (line: string | undefined): void => {

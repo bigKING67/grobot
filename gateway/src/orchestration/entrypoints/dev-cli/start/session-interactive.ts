@@ -139,7 +139,7 @@ function consumePendingAskBlockedNotice(input: {
     ? ` 已折叠 ${String(suppressed)} 条重复提示。`
     : "";
   const summary = input.promptSummary?.trim();
-  const summaryText = summary ? ` · ${summary}` : " · Enter/? 选择";
+  const summaryText = summary ? ` · ${summary}` : " · Enter 打开选择";
   return `当前有待确认问题${summaryText}。请先回复后再执行其他命令。${compactSuffix}\n\n`;
 }
 

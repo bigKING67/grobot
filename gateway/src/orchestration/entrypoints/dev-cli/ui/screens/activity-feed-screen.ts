@@ -11,7 +11,10 @@ export interface RuntimeActivityFeedInput {
   terminalColumns?: number;
   maxItems?: number;
   maxDiffLines?: number;
+  detailMode?: RuntimeActivityFeedDetailMode;
 }
+
+export type RuntimeActivityFeedDetailMode = "none" | "compact" | "full";
 
 interface ActivityFeedRow {
   title: string;
@@ -22,6 +25,22 @@ interface ActivityFeedRow {
 const DEFAULT_MAX_ITEMS = 8;
 const DEFAULT_MAX_DIFF_LINES = 5;
 const DEFAULT_TERMINAL_COLUMNS = 96;
+
+export function resolveRuntimeActivityFeedDetailMode(
+  valueRaw: string | undefined,
+): RuntimeActivityFeedDetailMode {
+  const value = (valueRaw ?? "").trim().toLowerCase();
+  if (!value || value === "0" || value === "false" || value === "off" || value === "none") {
+    return "none";
+  }
+  if (value === "1" || value === "true" || value === "on" || value === "compact") {
+    return "compact";
+  }
+  if (value === "full" || value === "verbose" || value === "debug") {
+    return "full";
+  }
+  return "none";
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -349,19 +368,25 @@ function styleTitle(row: ActivityFeedRow, line: string): string {
 }
 
 export function renderRuntimeActivityFeed(input: RuntimeActivityFeedInput): string {
+  if (input.detailMode === "none") {
+    return "";
+  }
   const rows = buildRows(input);
   if (rows.length === 0) {
     return "";
   }
+  const detailMode = input.detailMode ?? "compact";
   const terminalColumns = typeof input.terminalColumns === "number" && Number.isFinite(input.terminalColumns)
     ? Math.max(24, Math.floor(input.terminalColumns))
     : DEFAULT_TERMINAL_COLUMNS;
   const output: string[] = [];
   for (const row of rows) {
     output.push(styleTitle(row, fitLine(row.title, Math.max(1, terminalColumns - 2))));
-    for (const detail of row.detailLines) {
-      const plain = `  └ ${detail}`;
-      output.push(terminalStyle.muted(fitLine(plain, terminalColumns)));
+    if (detailMode === "full") {
+      for (const detail of row.detailLines) {
+        const plain = `  └ ${detail}`;
+        output.push(terminalStyle.muted(fitLine(plain, terminalColumns)));
+      }
     }
   }
   return `${output.join("\n")}\n`;

@@ -2,6 +2,10 @@ import {
   padToDisplayWidth,
   truncateDisplayWidth,
 } from "./display-width";
+import {
+  resolveVisibleSuggestionWindow,
+  normalizeSuggestionIndex,
+} from "./suggestion-window";
 import { TERMINAL_SYMBOL, terminalStyle } from "../theme/terminal-style";
 
 const VISIBLE_SLASH_SUGGESTION_COUNT = 5;
@@ -31,38 +35,7 @@ export function resolveSlashOverlayColumns(): number {
   return 96;
 }
 
-export function normalizeSuggestionIndex(itemsLength: number, index: number): number {
-  if (itemsLength <= 0) {
-    return 0;
-  }
-  const normalized = index % itemsLength;
-  if (normalized < 0) {
-    return normalized + itemsLength;
-  }
-  return normalized;
-}
-
-function resolveVisibleSuggestionWindow(input: {
-  itemsLength: number;
-  selectedIndex: number;
-  visibleCount: number;
-}): { start: number; end: number; selectedIndex: number } {
-  const selectedIndex = normalizeSuggestionIndex(input.itemsLength, input.selectedIndex);
-  const visibleCount = Math.max(1, Math.min(input.visibleCount, input.itemsLength));
-  const maxStart = Math.max(0, input.itemsLength - visibleCount);
-  const start = Math.max(
-    0,
-    Math.min(
-      selectedIndex - Math.floor(visibleCount / 2),
-      maxStart,
-    ),
-  );
-  return {
-    start,
-    end: start + visibleCount,
-    selectedIndex,
-  };
-}
+export { normalizeSuggestionIndex };
 
 function normalizeDescription(input: SlashOverlaySuggestion): string {
   return (input.description ?? "").trim().replace(/\s+/g, " ");
@@ -73,7 +46,7 @@ function colorDim(value: string): string {
 }
 
 function colorSelected(value: string): string {
-  return terminalStyle.info(value);
+  return terminalStyle.brand(value);
 }
 
 function resolveCommandColumnWidth(input: {
@@ -159,11 +132,11 @@ export function formatSlashSuggestionPanel(
     return "";
   }
   const visibleWindow = resolveVisibleSuggestionWindow({
-    itemsLength: suggestions.length,
+    items: suggestions,
     selectedIndex,
     visibleCount: VISIBLE_SLASH_SUGGESTION_COUNT,
   });
-  const visibleSuggestions = suggestions.slice(visibleWindow.start, visibleWindow.end);
+  const visibleSuggestions = visibleWindow.visibleItems;
   const resolvedColumns = Math.max(40, Math.floor(Number.isFinite(terminalColumns) ? terminalColumns : 96));
   const showDescription = resolvedColumns >= SLASH_TWO_COLUMN_MIN_WIDTH;
   const commandColumnWidth = resolveCommandColumnWidth({
@@ -187,7 +160,7 @@ export function formatSlashSuggestionPanel(
       commandColumnWidth,
       descriptionColumnWidth,
       showDescription,
-      selected: visibleWindow.start + index === visibleWindow.selectedIndex,
+      selected: index === visibleWindow.selectedVisibleIndex,
     }));
   }
   return `${lines.join("\n")}\n`;

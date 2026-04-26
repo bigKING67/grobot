@@ -1,5 +1,6 @@
 import {
   decodeMenuInput,
+  decodeAskUserPanelInput,
   hasMenuDigitsContinuation,
   isHistorySearchShortcut,
   resolveCoalescedSubmitChunk,
@@ -22,6 +23,16 @@ import {
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
 import { formatSlashSuggestionPanel } from "../../orchestration/entrypoints/dev-cli/ui/interactive/slash-overlay";
 import { measureDisplayWidth } from "../../orchestration/entrypoints/dev-cli/ui/interactive/display-width";
+import {
+  resolveVisibleSuggestionWindow,
+} from "../../orchestration/entrypoints/dev-cli/ui/interactive/suggestion-window";
+import {
+  normalizeSelectNavigationState,
+  reduceSelectNavigation,
+} from "../../orchestration/entrypoints/dev-cli/ui/interactive/select-navigation";
+import {
+  resolvePromptSlotState,
+} from "../../orchestration/entrypoints/dev-cli/ui/interactive/prompt-slot-state";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
@@ -38,6 +49,8 @@ async function main(): Promise<void> {
   const escapeAction = decodeMenuInput("\u001b", menuItemsLength);
   const arrowUpAction = decodeMenuInput("\u001b[A", menuItemsLength);
   const arrowDownAction = decodeMenuInput("\u001b[B", menuItemsLength);
+  const pageUpAction = decodeMenuInput("\u001b[5~", menuItemsLength);
+  const pageDownAction = decodeMenuInput("\u001b[6~", menuItemsLength);
   const directIndexAction = decodeMenuInput("12", menuItemsLength);
   const directIndexCrlfAction = decodeMenuInput("2\r\n", menuItemsLength);
   const menuSearchMatches = resolveMenuSearchMatchedIndices("legacy session", [
@@ -181,6 +194,11 @@ async function main(): Promise<void> {
   const slashOverlayCenteredSelectedRow = slashOverlayCenteredLines.findIndex((line) =>
     line.includes("/seven"),
   );
+  const genericSuggestionWindow = resolveVisibleSuggestionWindow({
+    items: ["/one", "/two", "/three", "/four", "/five", "/six", "/seven"],
+    selectedIndex: 5,
+    visibleCount: 3,
+  });
   const slashOverlayWithArgs = formatSlashSuggestionPanel(
     [{ command: "/plan", description: "Enter plan mode" }],
     "/plan 帮我写一份抖音直播规划",
@@ -271,6 +289,13 @@ async function main(): Promise<void> {
   const coalescedSubmit = resolveCoalescedSubmitChunk("hello\r");
   const coalescedSubmitCrLf = resolveCoalescedSubmitChunk("hello\r\n");
   const coalescedSubmitLf = resolveCoalescedSubmitChunk("hello\n");
+  const askUserPanelOtherSubmit = decodeAskUserPanelInput("hello\r", 3, true);
+  const askUserPanelOtherSubmitCrLf = decodeAskUserPanelInput("hello\r\n", 3, true);
+  const askUserPanelOtherSubmitCjk = decodeAskUserPanelInput("补充说明\r", 3, true);
+  const askUserPanelNumericSubmit = decodeAskUserPanelInput("2\r", 3, false);
+  const askUserPanelOtherIndexSubmit = decodeAskUserPanelInput("3\r", 3, false);
+  const askUserPanelOtherPrintable = decodeAskUserPanelInput("补", 3, true);
+  const askUserPanelOtherBackspace = decodeAskUserPanelInput("\u007f", 3, true);
   const coalescedWithBackslash = resolveCoalescedSubmitChunk("\\\r");
   const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
   const submitChunkOnlyLf = resolveSubmitKeyAction({
@@ -340,7 +365,7 @@ async function main(): Promise<void> {
     inputGraphemeLength: 3,
   });
   const styledDraftFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["\u001B[90m\u001B[96m? for shortcuts\u001B[0m\u001B[90m · grobot · ctx 42%\u001B[0m"],
+    footerLines: ["\u001B[90m\u001B[38;2;202;124;94m? for shortcuts\u001B[0m\u001B[90m · grobot · ctx 42%\u001B[0m"],
     inputGraphemeLength: 3,
   });
   const emptyFooterLines = resolveDraftAwareFooterLines({
@@ -401,6 +426,72 @@ async function main(): Promise<void> {
     visibleOptionCount: 5,
     previousStartIndex: nextMenuViewport.startIndex,
   });
+  const selectNavigationInitial = normalizeSelectNavigationState({
+    optionCount: 12,
+    focusedIndex: 8,
+    visibleOptionCount: 5,
+    initialPlacement: "end",
+  });
+  const selectNavigationPageDown = reduceSelectNavigation(selectNavigationInitial, {
+    type: "page_down",
+  });
+  const selectNavigationPageUp = reduceSelectNavigation(selectNavigationPageDown, {
+    type: "page_up",
+  });
+  const selectNavigationWrapNext = reduceSelectNavigation(
+    normalizeSelectNavigationState({
+      optionCount: 12,
+      focusedIndex: 11,
+      visibleOptionCount: 5,
+    }),
+    { type: "next" },
+  );
+  const selectNavigationSetOptions = reduceSelectNavigation(selectNavigationInitial, {
+    type: "set_options",
+    optionCount: 3,
+  });
+  const promptSlotSelectMenu = resolvePromptSlotState({
+    selectMenuOpen: true,
+    hasStatusLine: true,
+  });
+  const promptSlotSuggestions = resolvePromptSlotState({
+    hasSuggestions: true,
+    hasStatusLine: true,
+  });
+  const promptSlotHistorySearch = resolvePromptSlotState({
+    historySearchOpen: true,
+    hasSuggestions: true,
+  });
+  const promptSlotPendingAsk = resolvePromptSlotState({
+    pendingAskCount: 2,
+    hasStatusLine: true,
+  });
+  const promptSlotRunning = resolvePromptSlotState({
+    running: true,
+    pendingAskCount: 0,
+    hasStatusLine: true,
+  });
+  const promptSlotStatus = resolvePromptSlotState({
+    hasStatusLine: true,
+    hasDraft: false,
+  });
+  const promptSlotIdleHint = resolvePromptSlotState({
+    hasDraft: false,
+  });
+  const promptSlotDraft = resolvePromptSlotState({
+    hasStatusLine: false,
+    hasDraft: true,
+  });
+  const promptSlotShortFullscreen = resolvePromptSlotState({
+    hasStatusLine: true,
+    terminalRows: 18,
+    fullscreen: true,
+  });
+  const promptSlotHiddenInput = resolvePromptSlotState({
+    inputVisible: false,
+    hasStatusLine: true,
+    running: true,
+  });
 
   const payload = {
     menu_enter_is_confirm: enterAction.kind === "enter",
@@ -412,6 +503,8 @@ async function main(): Promise<void> {
     menu_escape_is_cancel: escapeAction.kind === "cancel",
     menu_arrow_up_is_up: arrowUpAction.kind === "up",
     menu_arrow_down_is_down: arrowDownAction.kind === "down",
+    menu_page_up_is_page_up: pageUpAction.kind === "page_up",
+    menu_page_down_is_page_down: pageDownAction.kind === "page_down",
     menu_multi_digits_direct_index:
       directIndexAction.kind === "select_index" && directIndexAction.index === 11,
     menu_digit_coalesced_crlf_direct_index:
@@ -460,15 +553,15 @@ async function main(): Promise<void> {
     slash_key_no_suggestions_noop:
       noopAction.kind === "noop",
     slash_overlay_partial_selected_highlighted:
-      slashOverlayPartial.includes("\u001B[96m"),
+      slashOverlayPartial.includes("\u001B[38;2;202;124;94m"),
     slash_overlay_exact_selected_highlighted:
-      slashOverlayExact.includes("\u001B[96m"),
+      slashOverlayExact.includes("\u001B[38;2;202;124;94m"),
     slash_overlay_scroll_window_keeps_selected_visible:
       slashOverlayScrolled.includes("/model"),
     slash_overlay_scroll_window_highlights_selected:
-      slashOverlayScrolledModelLine.includes("\u001B[96m/model"),
+      slashOverlayScrolledModelLine.includes("\u001B[38;2;202;124;94m/model"),
     slash_overlay_scroll_window_uses_restraint_not_bold:
-      !slashOverlayScrolledModelLine.includes("\u001B[1m\u001B[96m/model"),
+      !slashOverlayScrolledModelLine.includes("\u001B[1m\u001B[38;2;202;124;94m/model"),
     slash_overlay_selected_has_pointer:
       stripAnsi(slashOverlayScrolledModelLine).startsWith("› /model"),
     slash_overlay_scroll_window_does_not_wrap_to_first:
@@ -481,6 +574,11 @@ async function main(): Promise<void> {
       slashOverlayScrolledLines.length === 5,
     slash_overlay_scroll_window_centers_selected_when_possible:
       slashOverlayCenteredSelectedRow >= 2 && slashOverlayCenteredSelectedRow <= 5,
+    suggestion_window_reusable_selected_centered:
+      genericSuggestionWindow.startIndex === 4
+      && genericSuggestionWindow.endIndex === 7
+      && genericSuggestionWindow.selectedVisibleIndex === 1
+      && genericSuggestionWindow.visibleItems[1] === "/six",
     slash_overlay_narrow_hides_description:
       !stripAnsi(slashOverlayNarrow).includes("Open interactive model picker"),
     slash_overlay_narrow_lines_within_width:
@@ -510,6 +608,26 @@ async function main(): Promise<void> {
     submit_coalesced_lf_detected:
       coalescedSubmitLf.shouldSubmit
       && coalescedSubmitLf.normalizedChunk === "hello",
+    ask_user_panel_other_submit_text:
+      askUserPanelOtherSubmit.kind === "submit_text"
+      && askUserPanelOtherSubmit.value === "hello",
+    ask_user_panel_other_submit_crlf_text:
+      askUserPanelOtherSubmitCrLf.kind === "submit_text"
+      && askUserPanelOtherSubmitCrLf.value === "hello",
+    ask_user_panel_other_submit_cjk_text:
+      askUserPanelOtherSubmitCjk.kind === "submit_text"
+      && askUserPanelOtherSubmitCjk.value === "补充说明",
+    ask_user_panel_numeric_submit_selects_standard_option:
+      askUserPanelNumericSubmit.kind === "select_index"
+      && askUserPanelNumericSubmit.index === 1,
+    ask_user_panel_other_numeric_submit_focuses_other:
+      askUserPanelOtherIndexSubmit.kind === "select_index"
+      && askUserPanelOtherIndexSubmit.index === 2,
+    ask_user_panel_other_printable_text:
+      askUserPanelOtherPrintable.kind === "text"
+      && askUserPanelOtherPrintable.value === "补",
+    ask_user_panel_other_backspace:
+      askUserPanelOtherBackspace.kind === "backspace",
     submit_coalesced_backslash_ignored:
       !coalescedWithBackslash.shouldSubmit
       && coalescedWithBackslash.normalizedChunk === "\\\r",
@@ -595,6 +713,53 @@ async function main(): Promise<void> {
     menu_viewport_scrolls_one_row_up:
       previousMenuViewport.startIndex === nextMenuViewport.startIndex - 1
       && previousMenuViewport.endIndex === 9,
+    select_navigation_page_down_clamps_to_last:
+      selectNavigationPageDown.focusedIndex === 11
+      && selectNavigationPageDown.visibleToIndex === 12,
+    select_navigation_page_up_returns_by_page:
+      selectNavigationPageUp.focusedIndex === 6
+      && selectNavigationPageUp.visibleFromIndex <= selectNavigationPageUp.focusedIndex,
+    select_navigation_wrap_next:
+      selectNavigationWrapNext.focusedIndex === 0
+      && selectNavigationWrapNext.visibleFromIndex === 0,
+    select_navigation_set_options_clamps_focus:
+      selectNavigationSetOptions.optionCount === 3
+      && selectNavigationSetOptions.focusedIndex === 2,
+    prompt_slot_select_menu_owns_focus_without_footer:
+      promptSlotSelectMenu.focusOwner === "select_menu"
+      && promptSlotSelectMenu.bottomSlot.kind === "select_menu"
+      && !promptSlotSelectMenu.bottomSlot.renderFooter
+      && !promptSlotSelectMenu.bottomSlot.renderStatus,
+    prompt_slot_suggestions_suppress_status:
+      promptSlotSuggestions.focusOwner === "slash_suggestions"
+      && promptSlotSuggestions.bottomSlot.kind === "suggestions"
+      && promptSlotSuggestions.bottomSlot.renderFooter
+      && !promptSlotSuggestions.bottomSlot.renderStatus,
+    prompt_slot_history_preempts_suggestions:
+      promptSlotHistorySearch.focusOwner === "history_search"
+      && promptSlotHistorySearch.bottomSlot.kind === "history_search",
+    prompt_slot_pending_ask_preempts_status:
+      promptSlotPendingAsk.focusOwner === "pending_ask"
+      && promptSlotPendingAsk.bottomSlot.kind === "pending_ask"
+      && !promptSlotPendingAsk.bottomSlot.renderStatus,
+    prompt_slot_running_preempts_status:
+      promptSlotRunning.focusOwner === "running_activity"
+      && promptSlotRunning.bottomSlot.kind === "running_activity"
+      && !promptSlotRunning.bottomSlot.renderStatus,
+    prompt_slot_status_when_input_idle:
+      promptSlotStatus.focusOwner === "input"
+      && promptSlotStatus.bottomSlot.kind === "status"
+      && promptSlotStatus.bottomSlot.renderStatus,
+    prompt_slot_idle_hint_hidden_for_draft:
+      promptSlotIdleHint.bottomSlot.kind === "idle_hint"
+      && promptSlotIdleHint.bottomSlot.renderIdleHint
+      && promptSlotDraft.bottomSlot.kind === "none",
+    prompt_slot_short_fullscreen_drops_status_first:
+      promptSlotShortFullscreen.bottomSlot.kind === "idle_hint"
+      && !promptSlotShortFullscreen.bottomSlot.renderStatus,
+    prompt_slot_hidden_input_renders_no_footer:
+      promptSlotHiddenInput.bottomSlot.kind === "none"
+      && !promptSlotHiddenInput.bottomSlot.renderFooter,
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

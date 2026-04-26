@@ -37,7 +37,7 @@ const pendingFooter = renderBottomPaneFooter({
   terminalColumns: 64,
   promptLabel: "› ",
   pendingAskCount: 2,
-  pendingAskSummary: "Enter/? 选择 · 1-2 直接回复",
+  pendingAskSummary: "Enter 打开选择 · 1-2 直接回复",
 });
 
 const narrowPendingFooter = renderBottomPaneFooter({
@@ -140,12 +140,14 @@ const payload = {
   idle_keeps_passive_status:
     (idleLines[0] ?? "").includes("grobot")
     && (idleLines[0] ?? "").includes("ctx"),
-  idle_has_shortcut_hint: idleFooter.includes("? for shortcuts"),
+  idle_hides_shortcut_hint: !idleFooter.includes("? for shortcuts"),
   idle_omits_permanent_shift_enter_hint: !idleFooter.includes("shift + enter for newline"),
   idle_footer_has_visual_weight:
-    /\u001B\[96m\? for shortcuts/.test(idleFooter) && /\u001B\[90m/.test(idleFooter),
+    !/\u001B\[96m/.test(idleFooter) && /\u001B\[90m/.test(idleFooter),
+  idle_footer_uses_muted_not_high_saturation:
+    /\u001B\[90m/.test(idleFooter) && !/\u001B\[92m/.test(idleFooter),
   idle_footer_style_keeps_plain_text:
-    collapseSpaces(idleFooter).includes("? for shortcuts")
+    !collapseSpaces(idleFooter).includes("? for shortcuts")
     && collapseSpaces(idleFooter).includes("grobot")
     && collapseSpaces(idleFooter).includes("ctx"),
   idle_narrow_status_dimmed:
@@ -156,17 +158,17 @@ const payload = {
   idle_narrow_lines_within_width:
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
   pending_has_no_divider: !/^─+$/.test(pendingLines[0] ?? ""),
-  pending_prioritizes_ask: (pendingLines[0] ?? "").includes("待确认 2 项"),
-  pending_narrow_keeps_ask_first: (narrowPendingLines[0] ?? "").includes("待确认 2 项"),
+  pending_prioritizes_ask: (pendingLines[0] ?? "").includes("需要确认 2 项"),
+  pending_narrow_keeps_ask_first: (narrowPendingLines[0] ?? "").includes("需要确认 2 项"),
   pending_default_prompt_is_short:
-    pendingWithoutSummaryFooter.includes("待确认 1 项 · Enter/? 选择")
+    pendingWithoutSummaryFooter.includes("需要确认 1 项 · Enter 打开选择")
     && !pendingWithoutSummaryFooter.includes("直接回复继续"),
   pending_uses_action_hint_not_question:
-    pendingFooter.includes("Enter/? 选择")
+    pendingFooter.includes("Enter 打开选择")
     && pendingFooter.includes("1-2 直接回复")
     && !pendingFooter.includes("Allow npm run check"),
   pending_narrow_sanitizes_raw_summary:
-    narrowPendingFooter.includes("待确认 2 项 · Enter/? 选择")
+    narrowPendingFooter.includes("需要确认 2 项 · Enter 打开选择")
     && !narrowPendingFooter.includes("question=")
     && !narrowPendingFooter.includes("options_preview"),
   pending_wide_hides_secondary_status:
@@ -182,7 +184,7 @@ const payload = {
   running_fallback_is_localized:
     stripAnsi(runningFallbackFooter).includes("~ 正在处理")
     && !stripAnsi(runningFallbackFooter).includes("~ running"),
-  running_activity_has_visual_weight: /\u001B\[96m~/.test(runningFooter),
+  running_activity_has_visual_weight: /\u001B\[38;2;202;124;94m~/.test(runningFooter),
   running_narrow_keeps_activity_first:
     (narrowRunningLines[0] ?? "").includes("正在构建上下文"),
   running_narrow_hides_secondary_status:
@@ -214,9 +216,11 @@ const payload = {
       ),
     ),
   shortcut_overlay_has_visual_weight:
-    /\u001B\[96m/.test(shortcutOverlayFooter) && /\u001B\[90m/.test(shortcutOverlayFooter),
+    /\u001B\[38;2;202;124;94m/.test(shortcutOverlayFooter) && /\u001B\[90m/.test(shortcutOverlayFooter),
   shortcut_overlay_style_uses_accent_and_dim:
-    shortcutOverlayLines.every((line) => /\u001B\[96m/.test(line) && /\u001B\[90m/.test(line)),
+    shortcutOverlayLines.every((line) =>
+      /\u001B\[38;2;202;124;94m/.test(line) && /\u001B\[90m/.test(line)
+    ),
   shortcut_overlay_style_keeps_plain_text:
     collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter for newline")
     && collapseSpaces(shortcutOverlayFooter).includes("Ctrl+V paste image"),

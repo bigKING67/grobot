@@ -6,6 +6,8 @@ const ASK_USER_OPTION_ITEM_CHAR_LIMIT = 48;
 const ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT = 120;
 const ASK_USER_DISPLAY_OPTION_LIMIT = 6;
 const ASK_USER_PENDING_SUMMARY_LIMIT = 96;
+const ASK_USER_OTHER_OPTION_LABEL = "Other";
+const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type something.";
 
 function compactSingleLine(value: string, maxChars: number): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -32,6 +34,35 @@ export function buildAskUserOptionDisplayLabel(value: string, index: number): st
     ASK_USER_OPTION_ITEM_CHAR_LIMIT,
   );
   return normalized.length > 0 ? normalized : `Option ${String(index + 1)}`;
+}
+
+function buildAskUserOptionDisplayText(envelope: AskUserEnvelope, index: number): string {
+  const label = buildAskUserOptionDisplayLabel(envelope.options[index] ?? "", index);
+  const description = compactSingleLine(
+    envelope.optionsDetailed[index]?.description ?? "",
+    ASK_USER_OPTION_ITEM_CHAR_LIMIT,
+  );
+  if (!description) {
+    return label;
+  }
+  return compactSingleLine(`${label} — ${description}`, ASK_USER_LINE_CHAR_LIMIT);
+}
+
+function buildAskUserDisplayHeader(envelope: AskUserEnvelope): string {
+  const header = compactSingleLine(envelope.header ?? "需要你选择", 72);
+  if (
+    typeof envelope.questionIndex === "number"
+    && Number.isFinite(envelope.questionIndex)
+    && typeof envelope.questionTotal === "number"
+    && Number.isFinite(envelope.questionTotal)
+    && envelope.questionTotal > 1
+  ) {
+    return compactSingleLine(
+      `${header} · ${String(envelope.questionIndex)}/${String(envelope.questionTotal)}`,
+      72,
+    );
+  }
+  return header;
 }
 
 export function buildAskUserOptionsPreview(
@@ -68,23 +99,27 @@ export function buildAskUserOptionsPreview(
 }
 
 export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
-  const header = compactSingleLine(envelope.header ?? "需要你选择", 72);
+  const header = buildAskUserDisplayHeader(envelope);
   const question = compactSingleLine(envelope.question, ASK_USER_LINE_CHAR_LIMIT);
   const lines = [`需要确认 · ${header}`, `  ${question}`, ""];
   if (envelope.options.length > 0) {
-    const visibleOptions = envelope.options.slice(0, ASK_USER_DISPLAY_OPTION_LIMIT);
-    visibleOptions.forEach((option, index) => {
-      const marker = index === 0 ? "›" : " ";
+    const visibleStandardLimit = Math.max(0, ASK_USER_DISPLAY_OPTION_LIMIT - 1);
+    const visibleOptions = envelope.options.slice(0, visibleStandardLimit);
+    visibleOptions.forEach((_option, index) => {
+      const marker = index === 0 ? "❯" : " ";
       lines.push(
-        `  ${marker} ${String(index + 1)}  ${buildAskUserOptionDisplayLabel(option, index)}`,
+        `  ${marker} ${String(index + 1)}  ${buildAskUserOptionDisplayText(envelope, index)}`,
       );
     });
+    lines.push(
+      `    ${ASK_USER_OTHER_OPTION_LABEL}  ${ASK_USER_OTHER_OPTION_PLACEHOLDER}`,
+    );
     const hiddenCount = Math.max(0, envelope.options.length - visibleOptions.length);
     if (hiddenCount > 0) {
       lines.push(`    ... 还有 ${String(hiddenCount)} 项`);
     }
     lines.push("");
-    lines.push("  Enter 打开选择菜单 · 数字直接回复 · 也可输入自定义回复。");
+    lines.push("  Enter 打开选择菜单 · 数字直接回复 · Other 输入。");
   } else {
     const defaultOnTimeout = compactSingleLine(
       envelope.defaultOnTimeout,
@@ -100,12 +135,12 @@ export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
 
 export function buildAskUserPendingSummary(envelope: AskUserEnvelope): string {
   if (envelope.options.length <= 0) {
-    return "输入回复继续";
+    return "直接输入回复";
   }
-  const maxOption = Math.min(envelope.options.length, 9);
-  const numericHint = maxOption > 1 ? `1-${String(maxOption)}` : "1";
+  const standardMaxOption = Math.min(envelope.options.length, 9);
+  const numericHint = standardMaxOption > 1 ? `1-${String(standardMaxOption)}` : "1";
   return compactSingleLine(
-    `Enter/? 选择 · ${numericHint} 直接回复`,
+    `Enter 打开选择 · ${numericHint} 直选 · Other 输入`,
     ASK_USER_PENDING_SUMMARY_LIMIT,
   );
 }

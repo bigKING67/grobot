@@ -40,7 +40,7 @@ export interface TerminalSelectMenuInput {
   initialIndex?: number;
   visibleOptionCount?: number;
   viewport?: TerminalSelectMenuViewport;
-  variant?: "default" | "model_picker";
+  variant?: "default" | "model_picker" | "ask_user";
   modelPickerMeta?: TerminalSelectMenuModelPickerMeta;
 }
 
@@ -59,7 +59,7 @@ interface RenderTerminalSelectMenuInput {
 const MENU_POINTER = TERMINAL_SYMBOL.pointer;
 const MODEL_PICKER_POINTER = "❯";
 const MODEL_PICKER_CHECK = "✓";
-const MODEL_PICKER_DEFAULT_HINT = "Enter to confirm · Esc to exit";
+const MODEL_PICKER_DEFAULT_HINT = "Enter 确认 · Esc 返回";
 const MODEL_PICKER_DEFAULT_SUBTITLE =
   "Switch between Grobot models. Applies to this session and future Grobot sessions.";
 const MENU_TWO_COLUMN_MIN_WIDTH = 64;
@@ -69,6 +69,8 @@ const MENU_MIN_LABEL_WIDTH = 8;
 const DEFAULT_RENDER_VISIBLE_OPTION_COUNT = 5;
 const MODEL_PICKER_RENDER_VISIBLE_OPTION_COUNT = 10;
 const MODEL_PICKER_DIVIDER_MAX_WIDTH = 120;
+const ASK_USER_RENDER_VISIBLE_OPTION_COUNT = 6;
+const ASK_USER_DIVIDER_MAX_WIDTH = 96;
 
 interface RenderMenuRow {
   leftPlain: string;
@@ -99,12 +101,13 @@ function resolveMenuPrimaryAction(hintRaw: string): "select" | "apply" | "contin
 }
 
 function buildCompactMenuHint(hintRaw?: string): string {
-  const fallback = "↑/↓ navigate · Enter select · Esc back";
+  const fallback = "↑/↓ 选择 · Enter 确认 · Esc 返回";
   if (!hintRaw || hintRaw.trim().length === 0) {
     return fallback;
   }
   const action = resolveMenuPrimaryAction(hintRaw);
-  return `↑/↓ navigate · Enter ${action} · Esc back`;
+  const actionLabel = action === "apply" ? "应用" : action === "continue" ? "继续" : "确认";
+  return `↑/↓ 选择 · Enter ${actionLabel} · Esc 返回`;
 }
 
 function sanitizeMenuText(value: string | undefined, fallback = ""): string {
@@ -159,9 +162,15 @@ function resolveRenderVisibleOptionCount(menu: TerminalSelectMenuInput): number 
   if (itemCount <= 0) {
     return 0;
   }
-  const fallback = menu.variant === "model_picker"
-    ? MODEL_PICKER_RENDER_VISIBLE_OPTION_COUNT
-    : DEFAULT_RENDER_VISIBLE_OPTION_COUNT;
+  const fallback = (() => {
+    if (menu.variant === "model_picker") {
+      return MODEL_PICKER_RENDER_VISIBLE_OPTION_COUNT;
+    }
+    if (menu.variant === "ask_user") {
+      return ASK_USER_RENDER_VISIBLE_OPTION_COUNT;
+    }
+    return DEFAULT_RENDER_VISIBLE_OPTION_COUNT;
+  })();
   const requested =
     typeof menu.visibleOptionCount === "number" && Number.isFinite(menu.visibleOptionCount)
       ? Math.floor(menu.visibleOptionCount)
@@ -241,7 +250,7 @@ function resolveModelPickerMarker(input: {
   if (input.isActive) {
     return {
       plain: MODEL_PICKER_POINTER,
-      rendered: input.theme.color("remember", MODEL_PICKER_POINTER),
+      rendered: input.theme.pointer(MODEL_PICKER_POINTER),
     };
   }
   return {
@@ -429,8 +438,8 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   const subtitle = sanitizeMenuText(input.menu.subtitle, MODEL_PICKER_DEFAULT_SUBTITLE);
   const dividerWidth = Math.max(44, Math.min(MODEL_PICKER_DIVIDER_MAX_WIDTH, columns));
 
-  lines.push(theme.color("remember", "─".repeat(dividerWidth)));
-  lines.push(theme.color("remember", theme.bold(`  ${title}`)));
+  lines.push(theme.color("brand", "─".repeat(dividerWidth)));
+  lines.push(theme.color("brand", theme.bold(`  ${title}`)));
   if (surfaceWidth >= 56 && subtitle.length > 0) {
     lines.push(`  ${theme.color("muted", truncateDisplayWidth(subtitle, surfaceWidth - 2))}`);
   }
@@ -483,6 +492,79 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   return lines.join("\n");
 }
 
+function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
+  const mode = resolveCliRenderMode({
+    stdinIsTTY: input.stdinIsTTY,
+    stdoutIsTTY: input.stdoutIsTTY,
+    env: input.env,
+  });
+  const theme = createCliTheme(mode);
+  const columns = resolveMenuColumns();
+  const surfaceWidth = Math.max(44, Math.min(88, columns - 4));
+  const dividerWidth = Math.max(44, Math.min(ASK_USER_DIVIDER_MAX_WIDTH, columns));
+  const viewport = resolveRenderViewport(input.menu);
+  const ordinalWidth = `${String(Math.max(1, viewport.totalCount))}.`.length;
+  const hasDescriptionColumn = shouldRenderMenuDescriptions(surfaceWidth);
+  const labelBudget = resolveMenuLabelBudget({
+    surfaceWidth,
+    ordinalWidth,
+    hasDescriptionColumn,
+  });
+  const title = sanitizeMenuText(input.menu.title, "需要确认");
+  const subtitle = sanitizeMenuText(input.menu.subtitle);
+  const hint = sanitizeMenuText(input.menu.hint, "↑/↓ 选择 · Enter 确认 · Esc 返回输入框");
+  const lines: string[] = [];
+
+  lines.push(theme.color("brand", "─".repeat(dividerWidth)));
+  lines.push(`  ${theme.color("brand", theme.bold(title))}`);
+  if (surfaceWidth >= 56 && subtitle.length > 0) {
+    lines.push(`  ${theme.color("muted", truncateDisplayWidth(subtitle, surfaceWidth - 2))}`);
+  }
+  lines.push("");
+
+  const rows: RenderMenuRow[] = [];
+  for (let index = 0; index < input.menu.items.length; index += 1) {
+    const item = input.menu.items[index];
+    const isActive = index === input.activeIndex;
+    const marker = resolveModelPickerMarker({
+      rowIndex: index,
+      rowCount: input.menu.items.length,
+      isActive,
+      viewport,
+      theme,
+    });
+    const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`
+      .padEnd(ordinalWidth);
+    const ordinal = isActive
+      ? theme.color("accent", ordinalPlain)
+      : theme.color("muted", ordinalPlain);
+    const labelPlain = sanitizeMenuText(item.label, item.id);
+    const currentSuffix = item.current ? " ✓" : "";
+    const labelParts = truncateMenuLabelWithSuffix({
+      label: labelPlain,
+      suffix: currentSuffix,
+      maxWidth: labelBudget,
+    });
+    const renderedLabel = isActive
+      ? theme.color("accent", labelParts.plain)
+      : `${labelParts.label}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+    rows.push({
+      leftPlain: `${marker.plain} ${ordinalPlain} ${labelParts.plain}`,
+      leftRendered: `${marker.rendered} ${ordinal} ${renderedLabel}`,
+      description: hasDescriptionColumn ? sanitizeMenuText(item.description) : "",
+    });
+  }
+  lines.push(...renderTwoColumnRows({
+    rows,
+    maxWidth: surfaceWidth,
+    theme,
+  }));
+
+  lines.push("");
+  lines.push(theme.color("muted", `  ${hint}`));
+  return lines.join("\n");
+}
+
 export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): string {
   const prepared = prepareStandaloneRenderMenu(input);
   const preparedInput = {
@@ -492,6 +574,9 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
   };
   if (preparedInput.menu.variant === "model_picker") {
     return renderModelPickerMenu(preparedInput);
+  }
+  if (preparedInput.menu.variant === "ask_user") {
+    return renderAskUserMenu(preparedInput);
   }
   const mode = resolveCliRenderMode({
     stdinIsTTY: preparedInput.stdinIsTTY,

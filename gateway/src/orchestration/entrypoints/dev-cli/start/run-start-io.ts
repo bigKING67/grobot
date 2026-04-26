@@ -21,13 +21,31 @@ import {
   stripAnsi,
 } from "../ui/interactive/display-width";
 import {
+  normalizeSelectNavigationState,
+  reduceSelectNavigation,
+  type SelectNavigationAction,
+} from "../ui/interactive/select-navigation";
+import {
   type TerminalSelectMenuInput,
   type TerminalSelectMenuItem,
   type TerminalSelectMenuResult,
 } from "../ui/screens/select-menu-screen";
 import {
+  renderAskUserPanelScreen,
+} from "../ui/screens/ask-user-panel-screen";
+import {
   renderShortcutOverlayFooter,
 } from "../ui/screens/bottom-pane-screen";
+import {
+  buildAskUserBatchAnswerText,
+  buildAskUserQuestionnaireView,
+  createAskUserQuestionnaireState,
+  reduceAskUserQuestionnaire,
+  resolveAskUserAnswerFromSelection,
+  type AskUserEnvelope,
+  type AskUserQuestionnaireState,
+  type AskUserQuestionnaireView,
+} from "../../../../tools/ask-user";
 
 const HANDOFF_FILENAME = "HANDOFF.md";
 const DEFAULT_SESSION_PROMPT = "❯ ";
@@ -37,11 +55,12 @@ const INLINE_IMAGE_REGISTRY_LIMIT = 512;
 const ANSI_RESET = "\u001B[0m";
 const ANSI_BOLD = "\u001B[1m";
 const ANSI_DIM = "\u001B[90m";
-const ANSI_SUGGESTION = "\u001B[96m";
+const ANSI_BRAND = "\u001B[38;2;202;124;94m";
+const ANSI_SUGGESTION = ANSI_BRAND;
 const ANSI_INVERSE = "\u001B[7m";
-const ANSI_INLINE_IMAGE_TOKEN_PLAIN = "\u001B[96m";
-const ANSI_INLINE_IMAGE_TOKEN_NERD = "\u001B[94m";
-const ANSI_INLINE_IMAGE_TOKEN_CCLINE = "\u001B[1m\u001B[96m";
+const ANSI_INLINE_IMAGE_TOKEN_PLAIN = ANSI_BRAND;
+const ANSI_INLINE_IMAGE_TOKEN_NERD = ANSI_BRAND;
+const ANSI_INLINE_IMAGE_TOKEN_CCLINE = `\u001B[1m${ANSI_BRAND}`;
 const BRACKETED_PASTE_START = "\u001B[200~";
 const BRACKETED_PASTE_END = "\u001B[201~";
 const BRACKETED_PASTE_BLOCK_PATTERN = /\u001B\[200~([\s\S]*?)\u001B\[201~/g;
@@ -71,6 +90,7 @@ export interface SessionInputLoopOptions {
   onEscapeInterrupt?: (phase: SessionEscapeInterruptPhase) => void | Promise<void>;
   getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
   getInlineImageHighlightTheme?: () => "plain" | "nerd_font" | "ccline" | undefined;
+  shouldSuppressSubmitTranscript?: (value: string) => boolean;
   openHistorySearch?: (input: {
     currentInput: string;
   }) => Promise<string | undefined>;
@@ -134,6 +154,8 @@ export type ShortcutOverlayKeyAction = "none" | "toggle_overlay" | "insert_text"
 export type MenuInputAction =
   | { kind: "up" }
   | { kind: "down" }
+  | { kind: "page_up" }
+  | { kind: "page_down" }
   | { kind: "enter" }
   | { kind: "cancel" }
   | { kind: "ignore" }
@@ -141,6 +163,20 @@ export type MenuInputAction =
 
 export type TerminalLinePromptResult =
   | { kind: "submitted"; value: string }
+  | { kind: "cancelled" };
+
+export interface TerminalAskUserQuestionnairePanelInput {
+  queue: readonly AskUserEnvelope[];
+  initialState?: AskUserQuestionnaireState;
+  terminalColumns?: number;
+}
+
+export type TerminalAskUserQuestionnairePanelResult =
+  | {
+    kind: "submitted";
+    answers: Record<string, string>;
+    text: string;
+  }
   | { kind: "cancelled" };
 
 interface InputLineDescriptor {
@@ -1650,7 +1686,26 @@ export async function runSessionInputLoop(
         keypressInput.off?.("keypress", onKeypress);
         menuInput.off?.("data", onData);
         if (result.kind === "submit") {
-          replaceRenderedInputWithSubmittedTranscript(result.value);
+          const suppressTranscript = (() => {
+            try {
+              return options.shouldSuppressSubmitTranscript?.(result.value) === true;
+            } catch {
+              return false;
+            }
+          })();
+          if (suppressTranscript) {
+            const moved = moveCursorToRenderedTop();
+            if (moved) {
+              process.stdout.write("\x1b[J");
+            } else {
+              process.stdout.write("\n");
+            }
+            lastRenderedLineCount = 0;
+            lastCursorRenderLineIndex = 0;
+            latestSnapshot = undefined;
+          } else {
+            replaceRenderedInputWithSubmittedTranscript(result.value);
+          }
         } else {
           moveCursorToOutputLine();
         }
@@ -1725,6 +1780,11 @@ export async function runSessionInputLoop(
       };
 
       const handleEscapeLikeAction = (): boolean => {
+        if (shortcutOverlayVisible) {
+          shortcutOverlayVisible = false;
+          render();
+          return true;
+        }
         const slashState = resolveSlashState();
         const slashAction = resolveSlashSuggestionKeyAction({
           key: "escape",
@@ -1732,13 +1792,22 @@ export async function runSessionInputLoop(
           selectedCommand: slashState.activeSuggestions[activeSlashSuggestionIndex]?.command,
           activeLineInput: latestSnapshot?.activeLineInput,
         });
-        if (slashAction.kind !== "hide_panel") {
-          return false;
+        if (slashAction.kind === "hide_panel") {
+          slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
+          activeSlashSuggestionIndex = 0;
+          render();
+          return true;
         }
-        slashSuggestionsHiddenForLine = slashAction.hiddenLineInput;
-        activeSlashSuggestionIndex = 0;
-        render();
-        return true;
+        if (graphemes.length > 0) {
+          graphemes = [];
+          cursor = 0;
+          activeSlashSuggestionIndex = 0;
+          lastSlashLineInput = "";
+          slashSuggestionsHiddenForLine = "";
+          render();
+          return true;
+        }
+        return false;
       };
 
       const onData = (chunk: string): void => {
@@ -2128,7 +2197,9 @@ function normalizeMenuVisibleOptionCount(input: {
   }
   const fallback = input.variant === "model_picker"
     ? MODEL_PICKER_VISIBLE_OPTION_COUNT
-    : DEFAULT_SELECT_VISIBLE_OPTION_COUNT;
+    : input.variant === "ask_user"
+      ? 6
+      : DEFAULT_SELECT_VISIBLE_OPTION_COUNT;
   const requested =
     typeof input.visibleOptionCount === "number" && Number.isFinite(input.visibleOptionCount)
       ? Math.floor(input.visibleOptionCount)
@@ -2165,23 +2236,19 @@ export function resolveTerminalSelectMenuViewport(input: {
     visibleOptionCount: input.visibleOptionCount,
     variant: input.variant,
   });
-  const maxStart = Math.max(0, totalCount - visibleCount);
-  let startIndex =
-    typeof input.previousStartIndex === "number" && Number.isFinite(input.previousStartIndex)
-      ? Math.max(0, Math.min(maxStart, Math.floor(input.previousStartIndex)))
-      : Math.min(maxStart, Math.max(0, activeIndex - visibleCount + 1));
-  if (activeIndex < startIndex) {
-    startIndex = activeIndex;
-  } else if (activeIndex >= startIndex + visibleCount) {
-    startIndex = activeIndex - visibleCount + 1;
-  }
-  startIndex = Math.max(0, Math.min(maxStart, startIndex));
+  const navigation = normalizeSelectNavigationState({
+    optionCount: totalCount,
+    focusedIndex: activeIndex,
+    visibleOptionCount: visibleCount,
+    previousVisibleFromIndex: input.previousStartIndex,
+    initialPlacement: "end",
+  });
   return {
-    startIndex,
-    endIndex: Math.min(totalCount, startIndex + visibleCount),
-    visibleCount,
-    totalCount,
-    activeIndex,
+    startIndex: navigation.visibleFromIndex,
+    endIndex: navigation.visibleToIndex,
+    visibleCount: navigation.visibleOptionCount,
+    totalCount: navigation.optionCount,
+    activeIndex: navigation.focusedIndex,
   };
 }
 
@@ -2308,6 +2375,12 @@ export function decodeMenuInput(rawInput: string, itemsLength: number): MenuInpu
   if (rawInput.startsWith("\u001b[B") || rawInput.startsWith("\u001bOB")) {
     return { kind: "down" };
   }
+  if (rawInput.startsWith("\u001b[5~")) {
+    return { kind: "page_up" };
+  }
+  if (rawInput.startsWith("\u001b[6~")) {
+    return { kind: "page_down" };
+  }
   return { kind: "ignore" };
 }
 
@@ -2344,6 +2417,594 @@ export async function runTerminalLinePrompt(input: {
         value: String(answer ?? ""),
       });
     });
+  });
+}
+
+export type AskUserPanelInputAction =
+  | { kind: "up" }
+  | { kind: "down" }
+  | { kind: "left" }
+  | { kind: "right" }
+  | { kind: "tab" }
+  | { kind: "enter" }
+  | { kind: "backspace" }
+  | { kind: "cancel" }
+  | { kind: "select_index"; index: number }
+  | { kind: "text"; value: string }
+  | { kind: "submit_text"; value: string }
+  | { kind: "ignore" };
+
+function resolveTerminalColumns(fallback?: number): number {
+  if (typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0) {
+    return Math.floor(fallback);
+  }
+  const stdout = process.stdout as { columns?: number };
+  if (typeof stdout.columns === "number" && Number.isFinite(stdout.columns) && stdout.columns > 0) {
+    return Math.floor(stdout.columns);
+  }
+  return 80;
+}
+
+function clampAskUserPanelIndex(index: number, count: number): number {
+  if (count <= 0) {
+    return 0;
+  }
+  if (!Number.isFinite(index)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(count - 1, Math.floor(index)));
+}
+
+function wrapAskUserPanelIndex(index: number, count: number): number {
+  if (count <= 0) {
+    return 0;
+  }
+  const normalized = Math.floor(index) % count;
+  return normalized < 0 ? normalized + count : normalized;
+}
+
+function resolveAskUserPanelCurrentEnvelope(input: {
+  queue: readonly AskUserEnvelope[];
+  state: AskUserQuestionnaireState;
+}): AskUserEnvelope | undefined {
+  return input.queue[clampAskUserPanelIndex(input.state.currentQuestionIndex, input.queue.length)];
+}
+
+function isAskUserStandardOptionAnswer(input: {
+  envelope: AskUserEnvelope;
+  answer: string;
+}): boolean {
+  const normalized = input.answer.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return input.envelope.optionsDetailed.some((option) => {
+    const label = option.label.trim().toLowerCase();
+    const value = (option.value ?? option.label).trim().toLowerCase();
+    return normalized === label || normalized === value;
+  });
+}
+
+function resolveFirstUnansweredAskUserQuestionIndex(input: {
+  queue: readonly AskUserEnvelope[];
+  answers: Record<string, string>;
+}): number | undefined {
+  for (let index = 0; index < input.queue.length; index += 1) {
+    const envelope = input.queue[index];
+    if (!envelope) {
+      continue;
+    }
+    if (!input.answers[envelope.askId]?.trim()) {
+      return index;
+    }
+  }
+  return undefined;
+}
+
+function syncAskUserPanelTextInput(
+  state: AskUserQuestionnaireState,
+  queue: readonly AskUserEnvelope[],
+): AskUserQuestionnaireState {
+  const envelope = resolveAskUserPanelCurrentEnvelope({ queue, state });
+  const answer = envelope ? state.answers[envelope.askId]?.trim() ?? "" : "";
+  const value = envelope && answer && !isAskUserStandardOptionAnswer({ envelope, answer })
+    ? answer
+    : "";
+  if (state.textInputValue === value) {
+    return state;
+  }
+  return reduceAskUserQuestionnaire(state, {
+    type: "set_text_input_value",
+    value,
+  });
+}
+
+function isAskUserPanelPrintableInput(rawInput: string): boolean {
+  if (!rawInput || rawInput.length === 0 || rawInput.startsWith("\u001b")) {
+    return false;
+  }
+  return !/[\u0000-\u001f\u007f]/.test(rawInput);
+}
+
+export function decodeAskUserPanelInput(
+  rawInput: string,
+  optionCount: number,
+  textInputMode: boolean,
+): AskUserPanelInputAction {
+  if (rawInput.length === 0) {
+    return { kind: "ignore" };
+  }
+  const coalescedSubmit = resolveCoalescedSubmitChunk(rawInput);
+  if (coalescedSubmit.shouldSubmit) {
+    const normalizedPayload = coalescedSubmit.normalizedChunk.trim();
+    if (normalizedPayload.length === 0) {
+      return { kind: "enter" };
+    }
+    if (/^\d+$/.test(normalizedPayload)) {
+      const parsedIndex = Number.parseInt(normalizedPayload, 10) - 1;
+      if (parsedIndex >= 0 && parsedIndex < optionCount) {
+        return { kind: "select_index", index: parsedIndex };
+      }
+    }
+    if (isAskUserPanelPrintableInput(coalescedSubmit.normalizedChunk)) {
+      return {
+        kind: "submit_text",
+        value: coalescedSubmit.normalizedChunk,
+      };
+    }
+  }
+  if (rawInput.length === 1) {
+    if (rawInput === "\u0003" || rawInput === "\u001b") {
+      return { kind: "cancel" };
+    }
+    if (rawInput === "\r" || rawInput === "\n" || (!textInputMode && rawInput === " ")) {
+      return { kind: "enter" };
+    }
+    if (rawInput === "\t") {
+      return { kind: "tab" };
+    }
+    if (rawInput === "\u007f" || rawInput === "\b") {
+      return { kind: "backspace" };
+    }
+    if (textInputMode && isAskUserPanelPrintableInput(rawInput)) {
+      return { kind: "text", value: rawInput };
+    }
+    if (rawInput === "k" || rawInput === "\u0010") {
+      return { kind: "up" };
+    }
+    if (rawInput === "j" || rawInput === "\u000e") {
+      return { kind: "down" };
+    }
+    if (rawInput === "h") {
+      return { kind: "left" };
+    }
+    if (rawInput === "l") {
+      return { kind: "right" };
+    }
+    if (/^[1-9]$/.test(rawInput)) {
+      const parsedIndex = Number.parseInt(rawInput, 10) - 1;
+      if (parsedIndex >= 0 && parsedIndex < optionCount) {
+        return { kind: "select_index", index: parsedIndex };
+      }
+    }
+    if (isAskUserPanelPrintableInput(rawInput)) {
+      return { kind: "text", value: rawInput };
+    }
+  }
+  if (rawInput.startsWith("\u001b[A") || rawInput.startsWith("\u001bOA")) {
+    return { kind: "up" };
+  }
+  if (rawInput.startsWith("\u001b[B") || rawInput.startsWith("\u001bOB")) {
+    return { kind: "down" };
+  }
+  if (rawInput.startsWith("\u001b[D") || rawInput.startsWith("\u001bOD")) {
+    return { kind: "left" };
+  }
+  if (rawInput.startsWith("\u001b[C") || rawInput.startsWith("\u001bOC")) {
+    return { kind: "right" };
+  }
+  return { kind: "ignore" };
+}
+
+export async function runAskUserQuestionnairePanel(
+  input: TerminalAskUserQuestionnairePanelInput,
+): Promise<TerminalAskUserQuestionnairePanelResult> {
+  if (!process.stdin.isTTY || input.queue.length <= 0) {
+    return { kind: "cancelled" };
+  }
+  const stdin = process.stdin as unknown as MenuInputStream;
+  const setRawMode = stdin.setRawMode;
+  const onInput = stdin.on;
+  const offInput = stdin.off;
+  const resumeInput = stdin.resume;
+  if (
+    typeof setRawMode !== "function" ||
+    typeof onInput !== "function" ||
+    typeof offInput !== "function" ||
+    typeof resumeInput !== "function"
+  ) {
+    return { kind: "cancelled" };
+  }
+
+  const stdout = process.stdout;
+  let state = syncAskUserPanelTextInput(
+    createAskUserQuestionnaireState(input.initialState),
+    input.queue,
+  );
+  let reviewIndex = 0;
+  let resolved = false;
+  let lastRenderedFrameLineCount = 0;
+
+  const writeInlinePanelLines = (panelLines: readonly string[]): void => {
+    if (lastRenderedFrameLineCount > 0) {
+      stdout.write("\r");
+      stdout.write(`\x1b[${String(lastRenderedFrameLineCount)}A`);
+    }
+    stdout.write("\x1b[J");
+    stdout.write(panelLines.join("\n"));
+    stdout.write("\n");
+    lastRenderedFrameLineCount = panelLines.length;
+  };
+
+  const render = (): void => {
+    const view = buildAskUserQuestionnaireView({
+      queue: input.queue,
+      state,
+    });
+    const current = resolveAskUserPanelCurrentEnvelope({
+      queue: input.queue,
+      state,
+    });
+    const textInputValue = current ? state.textInputValue || state.answers[current.askId] : "";
+    writeInlinePanelLines(
+      renderAskUserPanelScreen({
+        view,
+        terminalColumns: resolveTerminalColumns(input.terminalColumns),
+        activeReviewIndex: reviewIndex,
+        textInputValue,
+      }).split("\n"),
+    );
+  };
+
+  return await new Promise<TerminalAskUserQuestionnairePanelResult>((resolve) => {
+    const teardownInput = (): void => {
+      offInput.call(stdin, "data", onData);
+      try {
+        setRawMode.call(stdin, false);
+      } catch {
+        // ignore raw mode teardown errors
+      }
+    };
+
+    const finish = (result: TerminalAskUserQuestionnairePanelResult): void => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      teardownInput();
+      if (lastRenderedFrameLineCount > 0) {
+        stdout.write("\r");
+        stdout.write(`\x1b[${String(lastRenderedFrameLineCount)}A`);
+        stdout.write("\x1b[J");
+        lastRenderedFrameLineCount = 0;
+      }
+      stdout.write("\x1b[?25h");
+      resolve(result);
+    };
+
+    const submitAll = (): void => {
+      const text = buildAskUserBatchAnswerText({
+        queue: input.queue,
+        answers: state.answers,
+      });
+      finish({
+        kind: "submitted",
+        answers: state.answers,
+        text,
+      });
+    };
+
+    const goQuestion = (index: number): void => {
+      state = syncAskUserPanelTextInput(
+        reduceAskUserQuestionnaire(state, {
+          type: "go_question",
+          index,
+          totalCount: input.queue.length,
+        }),
+        input.queue,
+      );
+      reviewIndex = 0;
+      render();
+    };
+
+    const goReview = (): void => {
+      state = reduceAskUserQuestionnaire(state, {
+        type: "go_review",
+      });
+      reviewIndex = 0;
+      render();
+    };
+
+    const commitAnswer = (answer: string): void => {
+      const current = resolveAskUserPanelCurrentEnvelope({
+        queue: input.queue,
+        state,
+      });
+      if (!current) {
+        finish({ kind: "cancelled" });
+        return;
+      }
+      const trimmedAnswer = answer.trim();
+      if (!trimmedAnswer && current.optionsDetailed.length <= 0) {
+        render();
+        return;
+      }
+      const previousQuestionIndex = state.currentQuestionIndex;
+      state = reduceAskUserQuestionnaire(state, {
+        type: "set_answer",
+        askId: current.askId,
+        answer: trimmedAnswer,
+        totalCount: input.queue.length,
+      });
+      if (input.queue.length <= 1) {
+        submitAll();
+        return;
+      }
+      if (state.currentQuestionIndex === previousQuestionIndex) {
+        goReview();
+        return;
+      }
+      state = syncAskUserPanelTextInput(state, input.queue);
+      render();
+    };
+
+    const handleQuestionAction = (
+      action: AskUserPanelInputAction,
+      view: Extract<AskUserQuestionnaireView, { kind: "question" }>,
+    ): void => {
+      const current = resolveAskUserPanelCurrentEnvelope({
+        queue: input.queue,
+        state,
+      });
+      if (!current) {
+        finish({ kind: "cancelled" });
+        return;
+      }
+      const focusedItem = view.optionItems[state.focusedOptionIndex];
+      const focusedOther = focusedItem?.kind === "other";
+      const otherIndex = view.optionItems.findIndex((item) => item.kind === "other");
+      if (action.kind === "cancel") {
+        if ((current.optionsDetailed.length <= 0 || focusedOther) && state.textInputValue.length > 0) {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "set_text_input_value",
+            value: "",
+          });
+          render();
+          return;
+        }
+        if (focusedOther && current.optionsDetailed.length > 0) {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "focus_option",
+            index: 0,
+            optionCount: view.optionItems.length,
+          });
+          render();
+          return;
+        }
+        finish({ kind: "cancelled" });
+        return;
+      }
+      if (action.kind === "up") {
+        state = reduceAskUserQuestionnaire(state, {
+          type: "previous_option",
+          optionCount: Math.max(1, view.optionItems.length),
+        });
+        render();
+        return;
+      }
+      if (action.kind === "down") {
+        state = reduceAskUserQuestionnaire(state, {
+          type: "next_option",
+          optionCount: Math.max(1, view.optionItems.length),
+        });
+        render();
+        return;
+      }
+      if (action.kind === "left") {
+        state = syncAskUserPanelTextInput(
+          reduceAskUserQuestionnaire(state, {
+            type: "previous_question",
+            totalCount: input.queue.length,
+          }),
+          input.queue,
+        );
+        render();
+        return;
+      }
+      if (action.kind === "right") {
+        state = syncAskUserPanelTextInput(
+          reduceAskUserQuestionnaire(state, {
+            type: "next_question",
+            totalCount: input.queue.length,
+          }),
+          input.queue,
+        );
+        render();
+        return;
+      }
+      if (action.kind === "tab") {
+        if (input.queue.length > 1) {
+          goReview();
+        }
+        return;
+      }
+      if (action.kind === "backspace" && (current.optionsDetailed.length <= 0 || focusedOther)) {
+        const graphemes = splitGraphemes(state.textInputValue);
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_value",
+          value: graphemes.slice(0, -1).join(""),
+        });
+        render();
+        return;
+      }
+      if (action.kind === "text" && (current.optionsDetailed.length <= 0 || focusedOther)) {
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_value",
+          value: `${state.textInputValue}${action.value}`,
+        });
+        render();
+        return;
+      }
+      if (action.kind === "text" && current.optionsDetailed.length > 0 && otherIndex >= 0) {
+        state = reduceAskUserQuestionnaire(state, {
+          type: "focus_option",
+          index: otherIndex,
+          optionCount: view.optionItems.length,
+        });
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_value",
+          value: action.value,
+        });
+        render();
+        return;
+      }
+      if (action.kind === "submit_text") {
+        if (current.optionsDetailed.length > 0 && otherIndex >= 0) {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "focus_option",
+            index: otherIndex,
+            optionCount: view.optionItems.length,
+          });
+        }
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_value",
+          value: action.value,
+        });
+        commitAnswer(action.value);
+        return;
+      }
+      if (action.kind === "select_index") {
+        const selectedItem = view.optionItems[action.index];
+        if (selectedItem?.kind === "other") {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "focus_option",
+            index: action.index,
+            optionCount: view.optionItems.length,
+          });
+          render();
+          return;
+        }
+        const selectedAnswer = resolveAskUserAnswerFromSelection(current, action.index);
+        if (selectedAnswer) {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "focus_option",
+            index: action.index,
+            optionCount: current.optionsDetailed.length,
+          });
+          commitAnswer(selectedAnswer);
+        }
+        return;
+      }
+      if (action.kind === "enter") {
+        if (focusedOther) {
+          commitAnswer(state.textInputValue);
+          return;
+        }
+        if (current.optionsDetailed.length > 0) {
+          const selectedAnswer = resolveAskUserAnswerFromSelection(current, state.focusedOptionIndex);
+          if (selectedAnswer) {
+            commitAnswer(selectedAnswer);
+          }
+          return;
+        }
+        commitAnswer(state.textInputValue);
+      }
+    };
+
+    const handleReviewAction = (action: AskUserPanelInputAction): void => {
+      const itemCount = input.queue.length + 2;
+      if (action.kind === "up") {
+        reviewIndex = wrapAskUserPanelIndex(reviewIndex - 1, itemCount);
+        render();
+        return;
+      }
+      if (action.kind === "down") {
+        reviewIndex = wrapAskUserPanelIndex(reviewIndex + 1, itemCount);
+        render();
+        return;
+      }
+      if (action.kind === "left") {
+        goQuestion(Math.max(0, input.queue.length - 1));
+        return;
+      }
+      if (action.kind === "right") {
+        goQuestion(0);
+        return;
+      }
+      if (action.kind === "enter" || action.kind === "select_index") {
+        const selectedIndex = action.kind === "select_index"
+          ? clampAskUserPanelIndex(action.index, itemCount)
+          : reviewIndex;
+        if (selectedIndex === 0) {
+          const firstUnanswered = resolveFirstUnansweredAskUserQuestionIndex({
+            queue: input.queue,
+            answers: state.answers,
+          });
+          if (typeof firstUnanswered === "number") {
+            goQuestion(firstUnanswered);
+            return;
+          }
+          submitAll();
+          return;
+        }
+        if (selectedIndex === itemCount - 1) {
+          finish({ kind: "cancelled" });
+          return;
+        }
+        goQuestion(selectedIndex - 1);
+      }
+    };
+
+    const onData = (chunk: string): void => {
+      const view = buildAskUserQuestionnaireView({
+        queue: input.queue,
+        state,
+      });
+      const optionCount = view.kind === "question" ? view.optionItems.length : input.queue.length + 2;
+      const textInputMode = view.kind === "question"
+        && (
+          view.optionItems.length <= 0
+          || view.optionItems[view.activeOptionIndex]?.kind === "other"
+        );
+      const action = decodeAskUserPanelInput(
+        String(chunk ?? ""),
+        optionCount,
+        textInputMode,
+      );
+      if (view.kind === "question") {
+        handleQuestionAction(action, view);
+        return;
+      }
+      if (action.kind === "cancel") {
+        finish({ kind: "cancelled" });
+        return;
+      }
+      if (view.kind === "review") {
+        handleReviewAction(action);
+      }
+    };
+
+    stdout.write("\x1b[?25l");
+    stdin.setEncoding?.("utf8");
+    onInput.call(stdin, "data", onData);
+    try {
+      setRawMode.call(stdin, true);
+    } catch {
+      finish({ kind: "cancelled" });
+      return;
+    }
+    resumeInput.call(stdin);
+    render();
   });
 }
 
@@ -2693,6 +3354,28 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       return true;
     };
 
+    const applyNavigationAction = (action: SelectNavigationAction): void => {
+      if (visibleItemIndices.length === 0) {
+        render();
+        return;
+      }
+      const visibleOptionCount = normalizeMenuVisibleOptionCount({
+        itemsLength: visibleItemIndices.length,
+        visibleOptionCount: input.visibleOptionCount,
+        variant: input.variant,
+      });
+      const state = normalizeSelectNavigationState({
+        optionCount: visibleItemIndices.length,
+        focusedIndex: activeIndex,
+        visibleOptionCount,
+        previousVisibleFromIndex: viewportStartIndex,
+      });
+      const nextState = reduceSelectNavigation(state, action);
+      activeIndex = nextState.focusedIndex;
+      viewportStartIndex = nextState.visibleFromIndex;
+      render();
+    };
+
     const onData = (chunk: string): void => {
       const rawInput = String(chunk ?? "");
       if (rawInput === MENU_SEARCH_TOGGLE_CONTROL || (!menuSearchMode && rawInput === "/")) {
@@ -2739,21 +3422,19 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       }
       const action = decodeMenuInput(chunk, visibleItemIndices.length);
       if (action.kind === "up") {
-        if (visibleItemIndices.length === 0) {
-          render();
-          return;
-        }
-        activeIndex = (activeIndex - 1 + visibleItemIndices.length) % visibleItemIndices.length;
-        render();
+        applyNavigationAction({ type: "previous" });
         return;
       }
       if (action.kind === "down") {
-        if (visibleItemIndices.length === 0) {
-          render();
-          return;
-        }
-        activeIndex = (activeIndex + 1) % visibleItemIndices.length;
-        render();
+        applyNavigationAction({ type: "next" });
+        return;
+      }
+      if (action.kind === "page_up") {
+        applyNavigationAction({ type: "page_up" });
+        return;
+      }
+      if (action.kind === "page_down") {
+        applyNavigationAction({ type: "page_down" });
         return;
       }
       if (action.kind === "select_index") {
