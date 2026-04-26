@@ -4,6 +4,12 @@ import {
   TOOL_SURFACE_POLICY_VERSION,
   type RuntimeToolSurfaceProjectionMode,
 } from "../../../tools/runtime/default-enabled-tools";
+import {
+  parseRuntimeToolMessageBudgetProfilesWithDiagnostics,
+  RUNTIME_TOOL_OUTPUT_BUDGET_POLICY_VERSION,
+  type RuntimeToolMessageBudgetProfile,
+  validateRuntimeToolMessageBudgetProfilesAgainstPolicy,
+} from "../../../tools/runtime/tool-output-budget";
 
 function removeTrailingSlashes(value: string): string {
   if (/^[\\/]+$/.test(value)) {
@@ -808,6 +814,8 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
   toolRecoveryCatalog: RuntimeToolRecoveryCatalogRow[];
   toolSurfaceSchemaProfilesFingerprint: string | null;
   toolSurfaceSchemaProfiles: RuntimeToolSurfaceSchemaProfile[];
+  toolMessageBudgetPolicyVersion?: string | null;
+  toolMessageBudgetProfiles?: RuntimeToolMessageBudgetProfile[];
 } {
   const input = JSON.stringify({
     jsonrpc: "2.0",
@@ -900,6 +908,15 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     parsed.result.tool_surface_schema_profiles,
   );
   const toolSurfaceSchemaProfiles = schemaProfilesParse.profiles;
+  const toolMessageBudgetPolicyVersion =
+    typeof parsed.result.tool_message_budget_policy_version === "string"
+      && parsed.result.tool_message_budget_policy_version.trim().length > 0
+      ? parsed.result.tool_message_budget_policy_version.trim()
+      : null;
+  const budgetProfilesParse = parseRuntimeToolMessageBudgetProfilesWithDiagnostics(
+    parsed.result.tool_message_budget_profiles,
+  );
+  const toolMessageBudgetProfiles = budgetProfilesParse.profiles;
   const rawTools = parsed.result.tools;
   const toolNames: string[] = [];
   if (Array.isArray(rawTools)) {
@@ -1181,6 +1198,76 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
       toolSurfaceSchemaProfiles,
     };
   }
+  if (!toolMessageBudgetPolicyVersion) {
+    return {
+      ok: false,
+      detail: "runtime_tools_describe_missing_tool_message_budget_policy_version",
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+      toolMessageBudgetPolicyVersion,
+      toolMessageBudgetProfiles,
+    };
+  }
+  if (toolMessageBudgetPolicyVersion !== RUNTIME_TOOL_OUTPUT_BUDGET_POLICY_VERSION) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_tool_message_budget_policy_version_mismatch:${toolMessageBudgetPolicyVersion}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+      toolMessageBudgetPolicyVersion,
+      toolMessageBudgetProfiles,
+    };
+  }
+  if (budgetProfilesParse.invalidReason != null) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_tool_message_budget_profiles:${budgetProfilesParse.invalidReason}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+      toolMessageBudgetPolicyVersion,
+      toolMessageBudgetProfiles,
+    };
+  }
+  const budgetProfileInvalidReason =
+    validateRuntimeToolMessageBudgetProfilesAgainstPolicy(toolMessageBudgetProfiles);
+  if (budgetProfileInvalidReason != null) {
+    return {
+      ok: false,
+      detail: `runtime_tools_describe_invalid_tool_message_budget_profiles:${budgetProfileInvalidReason}`,
+      toolNames: uniqueToolNames,
+      defaultEnabledTools,
+      manifestFingerprint,
+      toolRecoveryPolicyVersion,
+      toolRecoveryCatalogFingerprint,
+      toolRecoveryActions,
+      toolRecoveryCatalog,
+      toolSurfaceSchemaProfilesFingerprint,
+      toolSurfaceSchemaProfiles,
+      toolMessageBudgetPolicyVersion,
+      toolMessageBudgetProfiles,
+    };
+  }
   return {
     ok: true,
     detail: "runtime.tools.describe=ok",
@@ -1193,5 +1280,7 @@ export function runRuntimeToolsDescribe(runtimeBinaryPath: string): {
     toolRecoveryCatalog,
     toolSurfaceSchemaProfilesFingerprint,
     toolSurfaceSchemaProfiles,
+    toolMessageBudgetPolicyVersion,
+    toolMessageBudgetProfiles,
   };
 }

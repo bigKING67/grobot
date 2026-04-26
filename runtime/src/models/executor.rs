@@ -824,6 +824,171 @@ fn tool_duration_ms(started_at: std::time::Instant) -> u64 {
     millis as u64
 }
 
+const TOOL_MESSAGE_BUDGET_POLICY_VERSION: &str = "v1";
+const TOOL_MESSAGE_DEFAULT_MAX_CHARS: usize = 80_000;
+const TOOL_MESSAGE_BROWSER_MAX_CHARS: usize = 48_000;
+const TOOL_MESSAGE_MCP_MAX_CHARS: usize = 48_000;
+const TOOL_MESSAGE_PREVIEW_OVERHEAD_CHARS: usize = 2_000;
+const TOOL_MESSAGE_PREVIEW_MIN_CHARS: usize = 512;
+
+#[derive(Debug, Clone)]
+struct BudgetedToolMessageContent {
+    content: String,
+    truncated: bool,
+    original_chars: usize,
+    returned_chars: usize,
+    max_chars: usize,
+}
+
+pub(crate) fn tool_message_budget_policy_version() -> &'static str {
+    TOOL_MESSAGE_BUDGET_POLICY_VERSION
+}
+
+pub(crate) fn tool_message_budget_profiles() -> Value {
+    json!([
+        {
+            "tool_name": "*",
+            "max_chars": TOOL_MESSAGE_DEFAULT_MAX_CHARS,
+            "applies_to": "model_tool_message_content"
+        },
+        {
+            "tool_name": "mcp_call",
+            "max_chars": TOOL_MESSAGE_MCP_MAX_CHARS,
+            "applies_to": "model_tool_message_content"
+        },
+        {
+            "tool_name": "web_scan",
+            "max_chars": TOOL_MESSAGE_BROWSER_MAX_CHARS,
+            "applies_to": "model_tool_message_content"
+        },
+        {
+            "tool_name": "web_execute_js",
+            "max_chars": TOOL_MESSAGE_BROWSER_MAX_CHARS,
+            "applies_to": "model_tool_message_content"
+        }
+    ])
+}
+
+fn tool_message_max_chars(tool_name: &str) -> usize {
+    match normalize_tool_name_for_telemetry(tool_name).as_str() {
+        "mcp_call" => TOOL_MESSAGE_MCP_MAX_CHARS,
+        "web_scan" | "web_execute_js" => TOOL_MESSAGE_BROWSER_MAX_CHARS,
+        _ => TOOL_MESSAGE_DEFAULT_MAX_CHARS,
+    }
+}
+
+fn truncate_middle_chars(raw: &str, max_chars: usize) -> String {
+    let total_chars = raw.chars().count();
+    if total_chars <= max_chars {
+        return raw.to_string();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    let head_chars = max_chars / 2;
+    let tail_chars = max_chars.saturating_sub(head_chars);
+    let head = raw.chars().take(head_chars).collect::<String>();
+    let tail = raw
+        .chars()
+        .rev()
+        .take(tail_chars)
+        .collect::<Vec<char>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    let omitted = total_chars.saturating_sub(head_chars.saturating_add(tail_chars));
+    format!(
+        "{head}\n...[tool output truncated by message budget; omitted_chars={omitted}]...\n{tail}"
+    )
+}
+
+fn budget_envelope_content(
+    tool_name: &str,
+    output_content: &str,
+    original_chars: usize,
+    max_chars: usize,
+    preview_chars: usize,
+) -> String {
+    let preview = if preview_chars == 0 {
+        Value::Null
+    } else {
+        Value::String(truncate_middle_chars(output_content, preview_chars))
+    };
+    let payload = json!({
+        "tool": normalize_tool_name_for_telemetry(tool_name),
+        "status": "truncated",
+        "output_budget": {
+            "policy_version": TOOL_MESSAGE_BUDGET_POLICY_VERSION,
+            "truncated": true,
+            "reason": "tool_message_budget",
+            "original_chars": original_chars,
+            "max_chars": max_chars,
+            "retry_hint": "Retry with a narrower path/query/max_chars/limit, or inspect the original artifact through a scoped tool call."
+        },
+        "summary": build_tool_output_summary(tool_name, output_content),
+        "preview": preview
+    });
+    serde_json::to_string(&payload).unwrap_or_else(|_| {
+        "{\"status\":\"truncated\",\"output_budget\":{\"truncated\":true}}".to_string()
+    })
+}
+
+fn budget_tool_message_content(tool_name: &str, output_content: &str) -> BudgetedToolMessageContent {
+    let original_chars = output_content.chars().count();
+    let max_chars = tool_message_max_chars(tool_name);
+    if original_chars <= max_chars {
+        return BudgetedToolMessageContent {
+            content: output_content.to_string(),
+            truncated: false,
+            original_chars,
+            returned_chars: original_chars,
+            max_chars,
+        };
+    }
+
+    let mut preview_chars = max_chars
+        .saturating_sub(TOOL_MESSAGE_PREVIEW_OVERHEAD_CHARS)
+        .max(TOOL_MESSAGE_PREVIEW_MIN_CHARS);
+    loop {
+        let content = budget_envelope_content(
+            tool_name,
+            output_content,
+            original_chars,
+            max_chars,
+            preview_chars,
+        );
+        let returned_chars = content.chars().count();
+        if returned_chars <= max_chars || preview_chars == 0 {
+            return BudgetedToolMessageContent {
+                content,
+                truncated: true,
+                original_chars,
+                returned_chars,
+                max_chars,
+            };
+        }
+        preview_chars = if preview_chars <= TOOL_MESSAGE_PREVIEW_MIN_CHARS {
+            0
+        } else {
+            preview_chars
+                .saturating_mul(3)
+                .saturating_div(4)
+                .max(TOOL_MESSAGE_PREVIEW_MIN_CHARS)
+        };
+    }
+}
+
+fn build_tool_message_budget_event_payload(budget: &BudgetedToolMessageContent) -> Value {
+    json!({
+        "policy_version": TOOL_MESSAGE_BUDGET_POLICY_VERSION,
+        "truncated": budget.truncated,
+        "reason": if budget.truncated { Value::String("tool_message_budget".to_string()) } else { Value::Null },
+        "original_chars": budget.original_chars,
+        "returned_chars": budget.returned_chars,
+        "max_chars": budget.max_chars,
+    })
+}
+
 fn build_tool_start_event(
     tool_call: &ToolCallInput,
     tool_round: usize,
@@ -961,6 +1126,7 @@ fn build_tool_end_success_event(
     risk_class: &str,
     duration_ms: u64,
     output: &ToolCallOutput,
+    budget: &BudgetedToolMessageContent,
 ) -> ModelTelemetryEvent {
     ModelTelemetryEvent {
         event_type: "tool_end".to_string(),
@@ -973,6 +1139,7 @@ fn build_tool_end_success_event(
             "status": "ok",
             "duration_ms": duration_ms,
             "output_summary": build_tool_output_summary(&tool_call.name, &output.content),
+            "output_budget": build_tool_message_budget_event_payload(budget),
         })),
     }
 }
@@ -983,6 +1150,7 @@ fn build_tool_end_deferred_event(
     batch_index: usize,
     risk_class: &str,
     output: &ToolCallOutput,
+    budget: &BudgetedToolMessageContent,
 ) -> ModelTelemetryEvent {
     ModelTelemetryEvent {
         event_type: "tool_end".to_string(),
@@ -996,6 +1164,7 @@ fn build_tool_end_deferred_event(
             "duration_ms": 0,
             "error_class": "tool_execution_deferred",
             "output_summary": build_tool_output_summary(&tool_call.name, &output.content),
+            "output_budget": build_tool_message_budget_event_payload(budget),
         })),
     }
 }
@@ -1707,7 +1876,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                         risk_class,
                     ));
                     let mut deferred_tool_call = false;
-                    let output = if observation_boundary_consumed {
+                    let (output, budgeted_output) = if observation_boundary_consumed {
                         deferred_tool_call = true;
                         let output = build_deferred_tool_output(
                             &tool_call,
@@ -1715,12 +1884,15 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             batch_index,
                             risk_class,
                         );
+                        let budgeted_output =
+                            budget_tool_message_content(&tool_call.name, &output.content);
                         telemetry_events.push(build_tool_end_deferred_event(
                             &tool_call,
                             current_tool_round,
                             batch_index,
                             risk_class,
                             &output,
+                            &budgeted_output,
                         ));
                         telemetry_events.push(build_tool_recovery_event(
                             &tool_call,
@@ -1729,12 +1901,14 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             risk_class,
                             "tool_execution_deferred",
                         ));
-                        output
+                        (output, budgeted_output)
                     } else {
                         let started_at = std::time::Instant::now();
                         match tools.execute_tool_call(&tool_call, input) {
                             Ok(output) => {
                                 let duration_ms = tool_duration_ms(started_at);
+                                let budgeted_output =
+                                    budget_tool_message_content(&tool_call.name, &output.content);
                                 telemetry_events.push(build_tool_end_success_event(
                                     &tool_call,
                                     current_tool_round,
@@ -1742,11 +1916,12 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                     risk_class,
                                     duration_ms,
                                     &output,
+                                    &budgeted_output,
                                 ));
                                 if tool_requires_observation_boundary(risk_class) {
                                     observation_boundary_consumed = true;
                                 }
-                                output
+                                (output, budgeted_output)
                             }
                             Err(error) => {
                                 let duration_ms = tool_duration_ms(started_at);
@@ -1791,7 +1966,7 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "name": tool_call.name,
-                        "content": output.content,
+                        "content": budgeted_output.content,
                     }));
                 }
                 tool_rounds += 1;

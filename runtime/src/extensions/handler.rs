@@ -46,7 +46,9 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 "tool_recovery_catalog_fingerprint": recovery_catalog_fingerprint,
                 "tool_recovery_catalog": recovery_catalog,
                 "tool_surface_schema_profiles_fingerprint": schema_profiles_fingerprint,
-                "tool_surface_schema_profiles": schema_profiles
+                "tool_surface_schema_profiles": schema_profiles,
+                "tool_message_budget_policy_version": crate::models::model::tool_message_budget_policy_version(),
+                "tool_message_budget_profiles": crate::models::model::tool_message_budget_profiles()
                 }),
             ))
         }

@@ -58,6 +58,34 @@ tools, and required suppression reasons. This protects the minimal toolset from
 drifting into broad `full_debug` exposure or confusing code-maintenance mentions
 of `web_scan`, `mcp_call`, or `semantic_search` with actual execution intent.
 
+Tool output budget is enforced at the model-loop boundary. Local tools may
+return their full structured payload to the runtime caller, but before that
+payload is appended as a `role=tool` message for the next model request, the
+runtime applies the `tool_message_budget_policy_version` contract exposed by
+`runtime.tools.describe`. Oversized tool messages are converted into a compact
+JSON envelope containing:
+
+- `output_budget`: policy version, truncation flag, original size, ceiling, and
+  retry hint.
+- `summary`: normalized tool output metadata from the original payload.
+- `preview`: bounded middle-truncated text so the model still sees the shape of
+  the output without paying the full dynamic context cost.
+
+The current budget targets the highest-risk dynamic outputs first:
+
+- default tool message ceiling: `80_000` chars.
+- `mcp_call`, `web_scan`, and `web_execute_js`: `48_000` chars.
+
+Gateway validates the reported budget rows against
+`gateway/src/tools/runtime/tool-output-budget.ts`; missing, duplicate, unknown,
+or expanded budget rows make `runtime.tools.describe` invalid instead of
+silently increasing dynamic context cost.
+
+`tool_end.output_summary` remains based on the original payload, while
+`tool_end.output_budget` records whether the model-facing tool message was
+compressed. This preserves direct tool fidelity for operators and tests while
+protecting the next model turn from accidental raw DOM/MCP payload floods.
+
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
 `status` reports `runtime_tool_enabled_tools_source_detail` and the real

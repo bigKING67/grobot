@@ -84,6 +84,18 @@ mod tests {
             payload["result"]["tool_recovery_policy_version"].as_str(),
             Some("v1")
         );
+        assert_eq!(
+            payload["result"]["tool_message_budget_policy_version"].as_str(),
+            Some("v1")
+        );
+        let message_budget_profiles = payload["result"]["tool_message_budget_profiles"]
+            .as_array()
+            .expect("tool_message_budget_profiles should be array");
+        assert!(message_budget_profiles.iter().any(|row| {
+            row["tool_name"] == "web_scan"
+                && row["applies_to"] == "model_tool_message_content"
+                && row["max_chars"].as_u64().is_some()
+        }));
         let recovery_catalog = payload["result"]["tool_recovery_catalog"]
             .as_array()
             .expect("tool_recovery_catalog should be array");

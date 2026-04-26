@@ -14,6 +14,12 @@ import {
   RUNTIME_TOOL_SURFACE_BUDGETS,
   validateRuntimeToolSurfaceBudget,
 } from "../../tools/runtime/tool-surface-budget";
+import {
+  parseRuntimeToolMessageBudgetProfilesWithDiagnostics,
+  RUNTIME_TOOL_MESSAGE_BUDGETS,
+  RUNTIME_TOOL_OUTPUT_BUDGET_POLICY_VERSION,
+  validateRuntimeToolMessageBudgetProfilesAgainstPolicy,
+} from "../../tools/runtime/tool-output-budget";
 import { RUNTIME_TOOL_SURFACE_ROUTING_EVALS } from "../../tools/runtime/tool-surface-routing-evals";
 import type { RuntimeEvent, RuntimeToolContext } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
@@ -170,10 +176,54 @@ const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
 };
 
 expectEqual(RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION, "v1", "runtime tool surface budget policy version");
+expectEqual(RUNTIME_TOOL_OUTPUT_BUDGET_POLICY_VERSION, "v1", "runtime tool output budget policy version");
 expectDeepEqual(
   Object.keys(RUNTIME_TOOL_SURFACE_BUDGETS).sort(),
   [...TOOL_SURFACE_PROFILES].sort(),
   "runtime tool surface budgets cover every profile",
+);
+expectDeepEqual(
+  RUNTIME_TOOL_MESSAGE_BUDGETS,
+  {
+    "*": 80_000,
+    mcp_call: 48_000,
+    web_scan: 48_000,
+    web_execute_js: 48_000,
+  },
+  "runtime tool message budgets are fixed by contract",
+);
+
+const validToolMessageBudgetProfiles = Object.entries(RUNTIME_TOOL_MESSAGE_BUDGETS).map(
+  ([toolName, maxChars]) => ({
+    tool_name: toolName,
+    max_chars: maxChars,
+    applies_to: "model_tool_message_content",
+  }),
+);
+const parsedToolMessageBudgets =
+  parseRuntimeToolMessageBudgetProfilesWithDiagnostics(validToolMessageBudgetProfiles);
+expectEqual(parsedToolMessageBudgets.invalidReason, null, "tool message budget profiles parse");
+expectEqual(parsedToolMessageBudgets.profiles.length, 4, "tool message budget profile count");
+expectEqual(
+  validateRuntimeToolMessageBudgetProfilesAgainstPolicy(parsedToolMessageBudgets.profiles),
+  null,
+  "tool message budget profiles validate",
+);
+expectEqual(
+  parseRuntimeToolMessageBudgetProfilesWithDiagnostics([
+    ...validToolMessageBudgetProfiles,
+    { tool_name: "web_scan", max_chars: 48_000, applies_to: "model_tool_message_content" },
+  ]).invalidReason,
+  "tool_message_budget_profiles_invalid_rows:1",
+  "duplicate tool message budget profiles are invalid",
+);
+expect(
+  validateRuntimeToolMessageBudgetProfilesAgainstPolicy([
+    ...parsedToolMessageBudgets.profiles.filter((row) => row.toolName !== "web_scan"),
+    { toolName: "web_scan", maxChars: 64_000, appliesTo: "model_tool_message_content" },
+  ])?.startsWith("tool_message_budget_profiles_max_chars_mismatch:web_scan:")
+    === true,
+  "tool message budget mismatch is invalid",
 );
 
 for (const row of RUNTIME_TOOL_SURFACE_ROUTING_EVALS) {
