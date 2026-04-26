@@ -86,13 +86,25 @@ fn validate_resolved_read_target(target: PathBuf) -> Result<PathBuf, ToolExecuti
         return Err(ToolExecutionError::new(
             "path_invalid",
             format!("read target is not a file: {}", target.display()),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "read_path_invalid",
+            "path": target.to_string_lossy().to_string(),
+            "reason": "not_file",
+            "recovery_hint": "choose an existing regular file path"
+        })));
     }
     if is_blocked_device_path(&target) {
         return Err(ToolExecutionError::new(
             "path_invalid",
             format!("read target is blocked device file: {}", target.display()),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "read_path_invalid",
+            "path": target.to_string_lossy().to_string(),
+            "reason": "blocked_device_file",
+            "recovery_hint": "choose an existing regular file path inside the workspace"
+        })));
     }
     let metadata = fs::metadata(&target).map_err(|error| {
         ToolExecutionError::new(
@@ -104,7 +116,13 @@ fn validate_resolved_read_target(target: PathBuf) -> Result<PathBuf, ToolExecuti
         return Err(ToolExecutionError::new(
             "path_invalid",
             format!("read target is not a regular file: {}", target.display()),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "read_path_invalid",
+            "path": target.to_string_lossy().to_string(),
+            "reason": "not_regular_file",
+            "recovery_hint": "choose an existing regular file path"
+        })));
     }
     #[cfg(unix)]
     {
@@ -118,7 +136,13 @@ fn validate_resolved_read_target(target: PathBuf) -> Result<PathBuf, ToolExecuti
             return Err(ToolExecutionError::new(
                 "path_invalid",
                 format!("read target is unsupported special file: {}", target.display()),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "read_path_invalid",
+                "path": target.to_string_lossy().to_string(),
+                "reason": "unsupported_special_file",
+                "recovery_hint": "choose an existing regular file path"
+            })));
         }
     }
     Ok(target)
@@ -142,6 +166,12 @@ fn resolve_read_target(
     }
     Err(last_not_found.unwrap_or_else(|| {
         ToolExecutionError::new("path_not_found", format!("path not found: {normalized}"))
+            .with_data(json!({
+                "diagnostic_kind": "path_not_found",
+                "path": normalized,
+                "reason": "target_does_not_exist",
+                "recovery_hint": "use glob to locate the path before retrying read"
+            }))
     }))
 }
 

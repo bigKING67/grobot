@@ -187,6 +187,49 @@ expect(
   "feedback summarizes structured closest lines",
 );
 
+const bashStructuredFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 0,
+    failedTotal: 0,
+    deferredTotal: 0,
+    callsByTool: {},
+    failuresByErrorClass: {},
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "bash_not_allowed",
+      recommendedNextAction: "request_approval_or_use_safer_tool",
+      toolName: "bash",
+      errorClass: "bash_not_allowed",
+      errorData: {
+        diagnostic_kind: "bash_not_allowed",
+        denied_segment: "uname",
+        allowlist_rule_count: 1,
+        recovery_hint: "use an allowlisted command segment or request approval/configuration",
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-bash-structured",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expect(
+  bashStructuredFeedback.promptBlock.includes("diagnostic_kind=bash_not_allowed"),
+  "feedback summarizes top-level diagnostic kind",
+);
+expect(
+  bashStructuredFeedback.promptBlock.includes("denied_segment=\"uname\""),
+  "feedback summarizes denied bash segment",
+);
+
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {

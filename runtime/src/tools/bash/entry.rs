@@ -16,7 +16,13 @@ fn run_bash(
         return Err(ToolExecutionError::new(
             "bash_not_allowed",
             format!("command segment not allowed by allowlist: {denied_segment}"),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "bash_not_allowed",
+            "denied_segment": denied_segment,
+            "allowlist_rule_count": context.bash_allowlist.len(),
+            "recovery_hint": "use an allowlisted command segment or request approval/configuration"
+        })));
     }
 
     let execution = execute_bash_command(context, &request, &policy)?;
@@ -53,7 +59,15 @@ fn run_bash(
             &policy,
         );
         cleanup_bash_spill_files(&execution.stdout, &execution.stderr);
-        return Err(ToolExecutionError::new("bash_timeout", message));
+        return Err(ToolExecutionError::new("bash_timeout", message).with_data(json!({
+            "diagnostic_kind": "bash_timeout",
+            "timeout_ms": request.timeout_ms,
+            "duration_ms": execution.duration_ms,
+            "full_output_path": full_output_path,
+            "stdout_truncated": stdout_summary.truncated,
+            "stderr_truncated": stderr_summary.truncated,
+            "recovery_hint": "retry with a smaller command scope, increase timeout within policy, or inspect persisted output"
+        })));
     }
     let audit_matches: Vec<Value> = allow_decision
         .matches

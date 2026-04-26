@@ -100,6 +100,34 @@ impl ToolExecutionError {
     }
 }
 
+fn path_resolution_error_data(
+    raw_path: &str,
+    candidate: Option<&Path>,
+    allow_missing_leaf: bool,
+    diagnostic_kind: &str,
+    reason: &str,
+) -> Value {
+    let mut data = Map::new();
+    let recovery_hint = match diagnostic_kind {
+        "path_not_found" => "use glob to locate the path before retrying",
+        "path_escape_blocked" => "choose a workspace-contained relative path and retry",
+        "path_invalid" => "choose an existing regular file path or a safe missing leaf",
+        _ => "choose a valid workspace-contained path and retry",
+    };
+    data.insert("diagnostic_kind".to_string(), json!(diagnostic_kind));
+    data.insert("path".to_string(), json!(raw_path));
+    data.insert("allow_missing_leaf".to_string(), json!(allow_missing_leaf));
+    data.insert("reason".to_string(), json!(reason));
+    data.insert("recovery_hint".to_string(), json!(recovery_hint));
+    if let Some(candidate_path) = candidate {
+        data.insert(
+            "candidate_path".to_string(),
+            json!(candidate_path.to_string_lossy().to_string()),
+        );
+    }
+    Value::Object(data)
+}
+
 #[derive(Debug, Clone)]
 struct ToolContextResolved {
     session_key: String,
@@ -1933,6 +1961,13 @@ fn ensure_within_workspace(
     let resolved = if candidate.exists() {
         fs::canonicalize(&candidate).map_err(|error| {
             ToolExecutionError::new("path_invalid", format!("failed to resolve path: {error}"))
+                .with_data(path_resolution_error_data(
+                    raw_path,
+                    Some(candidate.as_path()),
+                    allow_missing_leaf,
+                    "path_invalid",
+                    "failed_to_resolve_path",
+                ))
         })?
     } else if allow_missing_leaf {
         if candidate
@@ -1942,7 +1977,14 @@ fn ensure_within_workspace(
             return Err(ToolExecutionError::new(
                 "path_escape_blocked",
                 "missing write targets must not contain parent traversal",
-            ));
+            )
+            .with_data(path_resolution_error_data(
+                raw_path,
+                Some(candidate.as_path()),
+                allow_missing_leaf,
+                "path_escape_blocked",
+                "parent_traversal_in_missing_target",
+            )));
         }
 
         let mut cursor = candidate.as_path();
@@ -1950,15 +1992,36 @@ fn ensure_within_workspace(
         while !cursor.exists() {
             let component = cursor.file_name().ok_or_else(|| {
                 ToolExecutionError::new("path_invalid", "path parent is invalid")
+                    .with_data(path_resolution_error_data(
+                        raw_path,
+                        Some(candidate.as_path()),
+                        allow_missing_leaf,
+                        "path_invalid",
+                        "missing_parent_component",
+                    ))
             })?;
             missing_components.push(component.to_os_string());
             cursor = cursor.parent().ok_or_else(|| {
                 ToolExecutionError::new("path_invalid", "path parent is invalid")
+                    .with_data(path_resolution_error_data(
+                        raw_path,
+                        Some(candidate.as_path()),
+                        allow_missing_leaf,
+                        "path_invalid",
+                        "missing_parent_path",
+                    ))
             })?;
         }
 
         let mut resolved_parent = fs::canonicalize(cursor).map_err(|error| {
             ToolExecutionError::new("path_invalid", format!("failed to resolve parent: {error}"))
+                .with_data(path_resolution_error_data(
+                    raw_path,
+                    Some(cursor),
+                    allow_missing_leaf,
+                    "path_invalid",
+                    "failed_to_resolve_parent",
+                ))
         })?;
         for component in missing_components.iter().rev() {
             resolved_parent.push(component);
@@ -1968,13 +2031,27 @@ fn ensure_within_workspace(
         return Err(ToolExecutionError::new(
             "path_not_found",
             format!("path not found: {}", candidate.display()),
-        ));
+        )
+        .with_data(path_resolution_error_data(
+            raw_path,
+            Some(candidate.as_path()),
+            allow_missing_leaf,
+            "path_not_found",
+            "target_does_not_exist",
+        )));
     };
     if !resolved.starts_with(work_dir) {
         return Err(ToolExecutionError::new(
             "path_escape_blocked",
             "path escapes workspace",
-        ));
+        )
+        .with_data(path_resolution_error_data(
+            raw_path,
+            Some(resolved.as_path()),
+            allow_missing_leaf,
+            "path_escape_blocked",
+            "resolved_path_outside_workspace",
+        )));
     }
     Ok(resolved)
 }

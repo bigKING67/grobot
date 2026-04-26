@@ -35,7 +35,14 @@ fn run_write(
             return Err(ToolExecutionError::new(
                 "path_invalid",
                 format!("write target is not a regular file: {}", target.display()),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "write_path_invalid",
+                "path": relative_path,
+                "target_path": target.to_string_lossy().to_string(),
+                "reason": "not_regular_file",
+                "recovery_hint": "choose an existing regular file path or a safe missing leaf"
+            })));
         }
         ensure_text_read_allowed(&target)?;
         let current_mtime_ms = read_file_mtime_ms(&target)?;
@@ -43,13 +50,26 @@ fn run_write(
             ToolExecutionError::new(
                 "write_read_required",
                 format!("write requires a prior full read in the same session: {relative_path}"),
-            )
+            ).with_data(json!({
+                "diagnostic_kind": "write_read_required",
+                "path": relative_path,
+                "required_read_scope": "full",
+                "recovery_hint": "read the full target file before retrying write"
+            }))
         })?;
         if !snapshot.full_view {
             return Err(ToolExecutionError::new(
                 "write_partial_read_not_allowed",
                 format!("write requires a full read before updating existing file: {relative_path}"),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "write_partial_read_not_allowed",
+                "path": relative_path,
+                "snapshot_full_view": snapshot.full_view,
+                "required_read_scope": "full",
+                "snapshot_mtime_ms": snapshot.mtime_ms.to_string(),
+                "recovery_hint": "read the full target file before retrying write"
+            })));
         }
         let current_bytes = fs::read(&target).map_err(|error| {
             ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}"))
@@ -71,7 +91,14 @@ fn run_write(
             ToolExecutionError::new(
                 "write_stale_target",
                 format!("write read snapshot missing content hash for {relative_path}"),
-            )
+            ).with_data(json!({
+                "diagnostic_kind": "write_stale_target",
+                "path": relative_path,
+                "reason": "snapshot_content_hash_missing",
+                "snapshot_mtime_ms": snapshot.mtime_ms.to_string(),
+                "current_mtime_ms": current_mtime_ms.to_string(),
+                "recovery_hint": "reread target then rebuild the write from current content"
+            }))
         })?;
         let mtime_changed = snapshot.mtime_ms != current_mtime_ms;
         if snapshot_hash != current_hash {
@@ -81,13 +108,28 @@ fn run_write(
                     "write target content changed since last read for {} (expected hash={}, actual hash={}, expected mtime_ms={}, actual mtime_ms={}, mtime_changed={})",
                     relative_path, snapshot_hash, current_hash, snapshot.mtime_ms, current_mtime_ms, mtime_changed
                 ),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "write_stale_target",
+                "path": relative_path,
+                "expected_hash": snapshot_hash,
+                "actual_hash": current_hash,
+                "expected_mtime_ms": snapshot.mtime_ms.to_string(),
+                "actual_mtime_ms": current_mtime_ms.to_string(),
+                "mtime_changed": mtime_changed,
+                "recovery_hint": "reread target then rebuild the write from current content"
+            })));
         }
         if current_content == request.content {
             return Err(ToolExecutionError::new(
                 "write_no_changes",
                 format!("write produced no changes for {relative_path}"),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "write_no_changes",
+                "path": relative_path,
+                "recovery_hint": "stop retrying or change content intentionally"
+            })));
         }
         ("update", Some(metadata.permissions()))
     } else {

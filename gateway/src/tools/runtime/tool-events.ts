@@ -301,6 +301,15 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (path) {
     parts.push(`path=${path}`);
   }
+  const candidatePath =
+    typeof errorData.candidate_path === "string" ? compactRecoveryDetail(errorData.candidate_path) : undefined;
+  if (candidatePath) {
+    parts.push(`candidate_path=${candidatePath}`);
+  }
+  const reason = typeof errorData.reason === "string" ? compactRecoveryDetail(errorData.reason) : undefined;
+  if (reason) {
+    parts.push(`reason=${reason}`);
+  }
   if (typeof errorData.edit_index === "number" && Number.isFinite(errorData.edit_index)) {
     parts.push(`edit_index=${String(Math.trunc(errorData.edit_index))}`);
   }
@@ -310,10 +319,25 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (typeof errorData.match_count === "number" && Number.isFinite(errorData.match_count)) {
     parts.push(`match_count=${String(Math.trunc(errorData.match_count))}`);
   }
+  if (typeof errorData.allowlist_rule_count === "number" && Number.isFinite(errorData.allowlist_rule_count)) {
+    parts.push(`allowlist_rule_count=${String(Math.trunc(errorData.allowlist_rule_count))}`);
+  }
+  const deniedSegment =
+    typeof errorData.denied_segment === "string" ? compactRecoveryDetail(errorData.denied_segment) : undefined;
+  if (deniedSegment) {
+    parts.push(`denied_segment=${quoteRecoveryPreview(deniedSegment)}`);
+  }
+  if (typeof errorData.timeout_ms === "number" && Number.isFinite(errorData.timeout_ms)) {
+    parts.push(`timeout_ms=${String(Math.trunc(errorData.timeout_ms))}`);
+  }
+  if (typeof errorData.duration_ms === "number" && Number.isFinite(errorData.duration_ms)) {
+    parts.push(`duration_ms=${String(Math.trunc(errorData.duration_ms))}`);
+  }
 
   const diagnostics = normalizeRecord(errorData.diagnostics);
-  const diagnosticKind =
-    typeof diagnostics.diagnostic_kind === "string" && diagnostics.diagnostic_kind.trim()
+  const diagnosticKind = typeof errorData.diagnostic_kind === "string" && errorData.diagnostic_kind.trim()
+    ? errorData.diagnostic_kind.trim()
+    : typeof diagnostics.diagnostic_kind === "string" && diagnostics.diagnostic_kind.trim()
       ? diagnostics.diagnostic_kind.trim()
       : undefined;
   if (diagnosticKind) {

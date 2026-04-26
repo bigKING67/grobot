@@ -3,17 +3,32 @@ fn validate_bash_command_security(command: &str) -> Result<(), ToolExecutionErro
         return Err(ToolExecutionError::new(
             "bash_security_denied",
             "bash command contains NUL byte",
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "bash_security_denied",
+            "reason": "nul_byte",
+            "recovery_hint": "remove the forbidden shell construct or use a safer command"
+        })));
     }
     if let Some(index) = first_disallowed_control_char_index(command) {
         return Err(ToolExecutionError::new(
             "bash_security_denied",
             format!("bash command contains disallowed control character at index {index}"),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "bash_security_denied",
+            "reason": "disallowed_control_character",
+            "char_index": index,
+            "recovery_hint": "remove the disallowed control character and retry"
+        })));
     }
 
     if let Some(reason) = find_bash_security_violation(command) {
-        return Err(ToolExecutionError::new("bash_security_denied", reason));
+        return Err(ToolExecutionError::new("bash_security_denied", reason).with_data(json!({
+            "diagnostic_kind": "bash_security_denied",
+            "reason": reason,
+            "recovery_hint": "remove the forbidden shell construct or use a safer command"
+        })));
     }
 
     Ok(())

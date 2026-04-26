@@ -2146,6 +2146,10 @@ audit_redact_secrets = false
         )
         .expect_err("compound command should fail when any segment is not allowlisted");
         assert_eq!(error.error_class, "bash_not_allowed");
+        let data = error.data.as_ref().expect("bash allowlist error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("bash_not_allowed"));
+        assert_eq!(data["denied_segment"].as_str(), Some("uname"));
+        assert_eq!(data["allowlist_rule_count"].as_u64(), Some(1));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2182,6 +2186,15 @@ audit_redact_secrets = false
         )
         .expect_err("command substitution should be blocked");
         assert_eq!(error.error_class, "bash_security_denied");
+        let data = error.data.as_ref().expect("bash security error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("bash_security_denied")
+        );
+        assert_eq!(
+            data["reason"].as_str(),
+            Some("command substitution using $(...) is blocked")
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2275,6 +2288,9 @@ audit_redact_secrets = false
             "unexpected control char error: {}",
             error.message
         );
+        let data = error.data.as_ref().expect("bash control char error data");
+        assert_eq!(data["reason"].as_str(), Some("disallowed_control_character"));
+        assert!(data["char_index"].as_u64().is_some());
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2299,6 +2315,9 @@ audit_redact_secrets = false
             "timeout error message should mention timeout, got: {}",
             error.message
         );
+        let data = error.data.as_ref().expect("bash timeout error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("bash_timeout"));
+        assert_eq!(data["timeout_ms"].as_u64(), Some(100));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2583,6 +2602,13 @@ audit_redact_secrets = false
         )
         .expect_err("missing write targets with parent traversal should fail");
         assert_eq!(error.error_class, "path_escape_blocked");
+        let data = error.data.as_ref().expect("path traversal error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("path_escape_blocked"));
+        assert_eq!(
+            data["reason"].as_str(),
+            Some("parent_traversal_in_missing_target")
+        );
+        assert_eq!(data["path"].as_str(), Some("nested/../escape.txt"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2603,6 +2629,13 @@ audit_redact_secrets = false
         )
         .expect_err("write without prior read should fail");
         assert_eq!(error.error_class, "write_read_required");
+        let data = error.data.as_ref().expect("write read-required error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("write_read_required")
+        );
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["required_read_scope"].as_str(), Some("full"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2634,6 +2667,13 @@ audit_redact_secrets = false
         )
         .expect_err("write after partial read should fail");
         assert_eq!(error.error_class, "write_partial_read_not_allowed");
+        let data = error.data.as_ref().expect("write partial-read error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("write_partial_read_not_allowed")
+        );
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["snapshot_full_view"].as_bool(), Some(false));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2668,6 +2708,12 @@ audit_redact_secrets = false
         )
         .expect_err("stale write should fail");
         assert_eq!(error.error_class, "write_stale_target");
+        let data = error.data.as_ref().expect("write stale error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("write_stale_target"));
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert!(data["expected_hash"].as_u64().is_some());
+        assert!(data["actual_hash"].as_u64().is_some());
+        assert_eq!(data["mtime_changed"].as_bool(), Some(true));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -2737,6 +2783,9 @@ audit_redact_secrets = false
         )
         .expect_err("noop write should fail");
         assert_eq!(error.error_class, "write_no_changes");
+        let data = error.data.as_ref().expect("write noop error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("write_no_changes"));
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -3725,6 +3774,28 @@ audit_redact_secrets = false
         assert!(is_blocked_device_path(std::path::Path::new("/dev/fd/1")));
         assert!(is_blocked_device_path(std::path::Path::new("/proc/self/fd/2")));
         assert!(!is_blocked_device_path(std::path::Path::new("/tmp/read-ok.txt")));
+    }
+
+    #[test]
+    fn read_v2_path_not_found_reports_structured_error_data() {
+        let workspace = make_temp_workspace("read-v2-path-not-found-data");
+        let input = make_read_only_input(&workspace);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "missing.txt"
+            }),
+        )
+        .expect_err("missing read target should fail");
+        assert_eq!(error.error_class, "path_not_found");
+        let data = error.data.as_ref().expect("path not found error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("path_not_found"));
+        assert_eq!(data["path"].as_str(), Some("missing.txt"));
+        assert_eq!(data["reason"].as_str(), Some("target_does_not_exist"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
     #[test]
