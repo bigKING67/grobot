@@ -4903,6 +4903,55 @@ function runStatusRuntimeDescribeUnavailable(repoRoot) {
   };
 }
 
+function runStartRuntimeDescribeFallbackDiagnostic(repoRoot) {
+  const workDir = createTempDir("grobot-start-runtime-describe-fallback-work");
+  const homeDir = createTempDir("grobot-start-runtime-describe-fallback-home");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  writeExecutionProjectToml(workDir);
+  const missingRuntimePath = "/tmp/grobot-missing-runtime";
+  const result = runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--home",
+      homeDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "runtime-describe-fallback-user",
+      "--history-turns",
+      "2",
+    ],
+    {
+      GROBOT_RUNTIME_BIN: missingRuntimePath,
+      GROBOT_STARTUP_DIAGNOSTICS: "0",
+      GROBOT_INTERACTIVE_DIAGNOSTICS: "0",
+      GROBOT_ALLOW_TS_DEV_CLI: "1",
+      GROBOT_ALLOW_REDIS_FALLBACK: "1",
+    },
+    ["/exit", ""].join("\n"),
+  );
+  return {
+    ...result,
+    missing_runtime_path: missingRuntimePath,
+    has_tool_surface_fallback_event: result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
+    has_start_default_source: result.stderr.includes("enabled_tools_source=start-default"),
+    has_describe_reason: result.stderr.includes("runtime_tools_describe_unavailable:spawn_failed"),
+    has_fallback_manifest: result.stderr.includes("manifest_fingerprint=fallback:"),
+    has_schema_profiles_none: result.stderr.includes("schema_profiles_fingerprint=<none>"),
+  };
+}
+
 function runStatusRejectLegacyFlag(repoRoot) {
   return runCommand(repoRoot, ["./grobot", "status", "--legacy-python-cli"]);
 }
@@ -5061,6 +5110,9 @@ function runCli(argv) {
       break;
     case "status-runtime-describe-unavailable":
       payload = runStatusRuntimeDescribeUnavailable(repoRoot);
+      break;
+    case "start-runtime-describe-fallback-diagnostic":
+      payload = runStartRuntimeDescribeFallbackDiagnostic(repoRoot);
       break;
     case "status-reject-legacy-flag":
       payload = runStatusRejectLegacyFlag(repoRoot);

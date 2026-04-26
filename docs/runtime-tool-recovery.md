@@ -39,6 +39,14 @@ projection drift, unknown tool names, and visible/suppressed argument overlap so
 the reported schema budget cannot silently diverge from the executable runtime
 tool manifest.
 
+If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
+the gateway start-default tool set, but the degradation must stay observable:
+`status` reports `runtime_tool_enabled_tools_source_detail` and the real
+`grobot start` path emits a single
+`[tool-surface] event=runtime_describe_fallback` stderr line with the fallback
+reason and manifest fingerprint. Normal successful describe resolution stays
+quiet unless startup diagnostics are enabled.
+
 ## Recoverability contract
 
 `tool_recovery.recoverable` controls whether the gateway may recover

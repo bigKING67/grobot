@@ -7877,6 +7877,23 @@ async function runTsRustExecutionSmoke() {
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_describe_reason, true);
   logStep("start-smoke-contract status-runtime-describe-unavailable");
 
+  const startRuntimeDescribeFallbackDiagnosticResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-runtime-describe-fallback-diagnostic",
+    ["--repo-root", repoRoot],
+  );
+  const startRuntimeDescribeFallbackDiagnosticPayload = parseJsonOutput(
+    "start-smoke-contract start-runtime-describe-fallback-diagnostic",
+    startRuntimeDescribeFallbackDiagnosticResult.stdout,
+  );
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.exit_code, 0);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_tool_surface_fallback_event, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_start_default_source, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_describe_reason, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_fallback_manifest, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_schema_profiles_none, true);
+  logStep("start-smoke-contract start-runtime-describe-fallback-diagnostic");
+
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
     repoRoot,

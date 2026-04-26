@@ -149,6 +149,17 @@ function formatStartupPickerPreview(value: string, maxLength = 42): string {
   return `${normalized.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
+function formatDiagnosticToken(value: string | undefined, fallback = "<none>"): string {
+  const normalized = (value ?? fallback)
+    .replace(/[^\x20-\x7E]+/g, "_")
+    .replace(/\s+/g, "_")
+    .trim();
+  if (!normalized) {
+    return fallback;
+  }
+  return normalized.slice(0, 360);
+}
+
 export async function runStart(
   options: Record<string, OptionValue>,
 ): Promise<number> {
@@ -194,6 +205,7 @@ export async function runStart(
     runtimeModelConfigSource,
     contextEngineConfig,
     runtimeToolContext,
+    runtimeToolContextDiagnostics,
     kimiSearchRoutingPolicy,
     statusLineConfig,
     mcpInstructionPromptPrefix,
@@ -228,6 +240,15 @@ export async function runStart(
     }
     output.writeStderr(message);
   };
+  if (runtimeToolContextDiagnostics.enabledToolsSource === "runtime.tools.describe") {
+    writeStartupDiagnostics(
+      `[tool-surface] event=runtime_describe_ok enabled_tools_source=${runtimeToolContextDiagnostics.enabledToolsSource} manifest_fingerprint=${runtimeToolContextDiagnostics.manifestFingerprint} manifest_tool_count=${String(runtimeToolContextDiagnostics.manifestToolCount)} default_enabled_count=${String(runtimeToolContextDiagnostics.manifestDefaultEnabledCount)} schema_profiles_fingerprint=${runtimeToolContextDiagnostics.schemaProfilesFingerprint ?? "<none>"}\n`,
+    );
+  } else {
+    output.writeStderr(
+      `[tool-surface] event=runtime_describe_fallback enabled_tools_source=${runtimeToolContextDiagnostics.enabledToolsSource} reason=${formatDiagnosticToken(runtimeToolContextDiagnostics.enabledToolsSourceDetail)} manifest_fingerprint=${runtimeToolContextDiagnostics.manifestFingerprint} manifest_tool_count=${String(runtimeToolContextDiagnostics.manifestToolCount)} default_enabled_count=${String(runtimeToolContextDiagnostics.manifestDefaultEnabledCount)} schema_profiles_fingerprint=${runtimeToolContextDiagnostics.schemaProfilesFingerprint ?? "<none>"}\n`,
+    );
+  }
   const defaultContextWindowTokens = Math.max(
     1_024,
     normalizePositiveInt(contextEngineConfig.contextWindowTokens) ?? 1_024,
