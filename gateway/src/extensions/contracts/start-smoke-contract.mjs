@@ -140,6 +140,20 @@ function runtimeToolRecoveryEscalationTextSurface(textOutput) {
   };
 }
 
+function runtimeToolRecoveryReadinessTextSurface(textOutput) {
+  const text = typeof textOutput === "string" ? textOutput : "";
+  const healthThresholds = [
+    EXPECTED_RUNTIME_TOOL_RECOVERY_POLICY_STATUS.health.watch_score_threshold,
+    EXPECTED_RUNTIME_TOOL_RECOVERY_POLICY_STATUS.health.risk_score_threshold,
+  ].join("/");
+  return {
+    text_has_recovery_readiness_thresholds:
+      new RegExp(`runtime_tool_recovery_readiness: [^\\n]*health_thresholds=${healthThresholds}`).test(text),
+    text_has_recovery_gate_thresholds:
+      new RegExp(`runtime_tool_recovery_gate: [^\\n]*health_thresholds=${healthThresholds}`).test(text),
+  };
+}
+
 function assertRuntimeToolRecoveryEscalationStatusSurface(input) {
   const recoveryFeedback = isObject(input?.recoveryFeedback)
     ? input.recoveryFeedback
@@ -4925,6 +4939,7 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     ? runtimeTools.surface_adaptation
     : null;
   const recoveryEscalationTextSurface = runtimeToolRecoveryEscalationTextSurface(textResult.stdout);
+  const recoveryReadinessTextSurface = runtimeToolRecoveryReadinessTextSurface(textResult.stdout);
   assertRuntimeToolRecoveryPolicyStatusSurface({
     recoveryPolicy,
     textOutput: textResult.stdout,
@@ -5009,6 +5024,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
     recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
     recovery_readiness_policy_version: recoveryReadiness?.policy_version ?? null,
+    recovery_readiness_watch_threshold: recoveryReadiness?.watch_score_threshold ?? null,
+    recovery_readiness_risk_threshold: recoveryReadiness?.risk_score_threshold ?? null,
     recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
     recovery_gate_status: recoveryGate?.status ?? null,
     recovery_gate_passed: recoveryGate?.passed ?? null,
@@ -5019,6 +5036,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_gate_auto_allowed: recoveryGate?.automatic_recovery_allowed ?? null,
     recovery_gate_operator_action_required: recoveryGate?.operator_action_required ?? null,
     recovery_gate_policy_version: recoveryGate?.policy_version ?? null,
+    recovery_gate_watch_threshold: recoveryGate?.watch_score_threshold ?? null,
+    recovery_gate_risk_threshold: recoveryGate?.risk_score_threshold ?? null,
     recovery_gate_attention_stage: recoveryGate?.attention_stage ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
@@ -5055,6 +5074,7 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       && textResult.stdout.includes("status=fail")
       && textResult.stdout.includes("reason=blocked_operator_action_required"),
     ...recoveryEscalationTextSurface,
+    ...recoveryReadinessTextSurface,
   };
 }
 
@@ -5103,6 +5123,7 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     ? runtimeTools.surface_adaptation
     : null;
   const recoveryEscalationTextSurface = runtimeToolRecoveryEscalationTextSurface(textResult.stdout);
+  const recoveryReadinessTextSurface = runtimeToolRecoveryReadinessTextSurface(textResult.stdout);
   assertRuntimeToolRecoveryPolicyStatusSurface({
     recoveryPolicy,
     textOutput: textResult.stdout,
@@ -5190,6 +5211,8 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
     recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
     recovery_readiness_policy_version: recoveryReadiness?.policy_version ?? null,
+    recovery_readiness_watch_threshold: recoveryReadiness?.watch_score_threshold ?? null,
+    recovery_readiness_risk_threshold: recoveryReadiness?.risk_score_threshold ?? null,
     recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
     recovery_gate_status: recoveryGate?.status ?? null,
     recovery_gate_passed: recoveryGate?.passed ?? null,
@@ -5200,6 +5223,8 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     recovery_gate_auto_allowed: recoveryGate?.automatic_recovery_allowed ?? null,
     recovery_gate_operator_action_required: recoveryGate?.operator_action_required ?? null,
     recovery_gate_policy_version: recoveryGate?.policy_version ?? null,
+    recovery_gate_watch_threshold: recoveryGate?.watch_score_threshold ?? null,
+    recovery_gate_risk_threshold: recoveryGate?.risk_score_threshold ?? null,
     recovery_gate_attention_stage: recoveryGate?.attention_stage ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
@@ -5232,6 +5257,7 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       && textResult.stdout.includes("status=warn")
       && textResult.stdout.includes("reason=degraded_auto_recovery_allowed"),
     ...recoveryEscalationTextSurface,
+    ...recoveryReadinessTextSurface,
   };
 }
 

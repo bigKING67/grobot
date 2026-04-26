@@ -402,6 +402,10 @@ Text status mirrors the decisive fields for quick terminal inspection:
 - `runtime_tool_surface_adaptation: ...`
 - `runtime_tool_surface_adaptation_outcome: ...`
 
+The readiness and gate text lines include `health_thresholds=<watch>/<risk>` so
+operators can evaluate the displayed health score without jumping back to the
+policy JSON block.
+
 ## Verification
 
 Focused contracts:
@@ -429,7 +433,9 @@ both `status --json` and text status:
 They also lock the policy snapshot exposed by `runtime_tools.recovery_policy`
 against the text status line, including guard thresholds, repeated tool-error
 escalation thresholds (`2/3`), health thresholds (`85/60`), and health
-penalties.
+penalties. Readiness/gate contracts additionally assert that custom policy
+thresholds are forwarded into `recovery_readiness`, `recovery_gate`, and their
+text status surfaces.
 
 Runtime/governance contract after building the Rust runtime:
 

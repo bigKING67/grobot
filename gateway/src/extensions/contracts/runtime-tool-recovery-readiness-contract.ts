@@ -2,7 +2,12 @@ import {
   buildRuntimeToolRecoveryReadinessGate,
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../tools/runtime/tool-recovery-readiness-gate";
-import type { RuntimeToolRecoveryReadinessSummary } from "../../tools/runtime/tool-recovery-readiness";
+import {
+  buildRuntimeToolRecoveryReadinessSummary,
+  type RuntimeToolRecoveryReadinessSummary,
+} from "../../tools/runtime/tool-recovery-readiness";
+import type { RuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
+import type { RuntimeToolRecoveryHealthSummary } from "../../tools/runtime/tool-recovery-timeline";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -40,6 +45,73 @@ function makeReadiness(
     ...overrides,
   };
 }
+
+function makeHealth(overrides: Partial<RuntimeToolRecoveryHealthSummary>): RuntimeToolRecoveryHealthSummary {
+  return {
+    score: 100,
+    level: "good",
+    reason: "stable",
+    recommendedNextAction: null,
+    attentionSource: "none",
+    attentionRecoveryKey: null,
+    attentionStage: null,
+    attentionToolName: null,
+    attentionErrorClass: null,
+    attentionRequiresUserIntervention: false,
+    attentionAgeMs: null,
+    latestRecommendedNextAction: null,
+    timelineEntryCount: 0,
+    activeRecoveryCount: 0,
+    activeNonrecoverableCount: 0,
+    unconsumedCount: 0,
+    consumedCount: 0,
+    nonrecoverableCount: 0,
+    stuckNonrecoverableCount: 0,
+    hasStuckNonrecoverable: false,
+    latestRecoveryKey: null,
+    latestStage: null,
+    latestToolName: null,
+    latestErrorClass: null,
+    latestRequiresUserIntervention: false,
+    latestAgeMs: null,
+    components: {
+      activeRecoveryPenalty: 0,
+      activeNonrecoverablePenalty: 0,
+      stuckNonrecoverablePenalty: 0,
+      historicalUnconsumedPenalty: 0,
+    },
+    errorClassCounts: {},
+    toolNameCounts: {},
+    ...overrides,
+  };
+}
+
+const customPolicy: RuntimeToolRecoveryPolicySnapshot = {
+  version: "v-test-readiness",
+  promptMaxAgeMs: 123,
+  timelineMaxEntries: 7,
+  adaptationHistoryMaxEntries: 8,
+  recoveryConsumptionHistoryMaxEntries: 9,
+  guard: {
+    repeatedProfileFailureThreshold: 4,
+    recentProfileSequenceSize: 5,
+    oscillationProfileWindowSize: 6,
+  },
+  escalation: {
+    sameToolErrorStrategySwitchThreshold: 10,
+    sameToolErrorAskUserThreshold: 11,
+  },
+  health: {
+    riskScoreThreshold: 42,
+    watchScoreThreshold: 77,
+    penalties: {
+      activeRecovery: 1,
+      activeNonrecoverable: 2,
+      stuckNonrecoverable: 3,
+      historicalUnconsumed: 4,
+    },
+  },
+};
 
 function assertGate(input: {
   name: string;
@@ -202,6 +274,52 @@ assertGate({
   reason: "readiness_state_inconsistent",
 });
 
+const policyForwardedReadiness = buildRuntimeToolRecoveryReadinessSummary({
+  policy: customPolicy,
+  health: makeHealth({
+    level: "watch",
+    score: 76,
+    reason: "historical_unconsumed_recovery",
+    recommendedNextAction: "inspect_recovery_timeline",
+    attentionSource: "historical_unconsumed",
+    attentionRecoveryKey: "recovery:local_fix:read:path_not_found:2026-04-26T00:00:00.000Z",
+    attentionStage: "local_fix",
+    attentionToolName: "read",
+    attentionErrorClass: "path_not_found",
+    unconsumedCount: 1,
+  }),
+});
+expectEqual(policyForwardedReadiness.status, "degraded", "policy forwarded readiness status");
+expectEqual(policyForwardedReadiness.ready, false, "policy forwarded readiness ready");
+expectEqual(
+  policyForwardedReadiness.automaticRecoveryAllowed,
+  true,
+  "policy forwarded automatic recovery",
+);
+expectEqual(policyForwardedReadiness.operatorActionRequired, false, "policy forwarded operator action");
+expectEqual(policyForwardedReadiness.policyVersion, "v-test-readiness", "policy forwarded version");
+expectEqual(policyForwardedReadiness.riskScoreThreshold, 42, "policy forwarded risk threshold");
+expectEqual(policyForwardedReadiness.watchScoreThreshold, 77, "policy forwarded watch threshold");
+expectEqual(policyForwardedReadiness.healthScore, 76, "policy forwarded health score");
+expectEqual(policyForwardedReadiness.attentionStage, "local_fix", "policy forwarded attention stage");
+
+const policyForwardedGate = buildRuntimeToolRecoveryReadinessGate({
+  readiness: policyForwardedReadiness,
+});
+assertGate({
+  name: "policy forwarded",
+  gate: policyForwardedGate,
+  status: "warn",
+  passed: true,
+  blocking: false,
+  severity: "warning",
+  reason: "degraded_auto_recovery_allowed",
+});
+expectEqual(policyForwardedGate.policyVersion, "v-test-readiness", "policy forwarded gate version");
+expectEqual(policyForwardedGate.riskScoreThreshold, 42, "policy forwarded gate risk threshold");
+expectEqual(policyForwardedGate.watchScoreThreshold, 77, "policy forwarded gate watch threshold");
+expectEqual(policyForwardedGate.healthScore, 76, "policy forwarded gate health score");
+
 expect(
   [
     readyGate.reason,
@@ -210,6 +328,7 @@ expect(
     degradedAutoDeniedGate.reason,
     blockedAutoDeniedGate.reason,
     inconsistentGate.reason,
+    policyForwardedGate.reason,
   ].every((reason) => typeof reason === "string" && reason.length > 0),
   "gate reasons stay machine readable",
 );
@@ -228,4 +347,14 @@ process.stdout.write(JSON.stringify({
   auto_denied_reason: degradedAutoDeniedGate.reason,
   blocked_auto_denied_reason: blockedAutoDeniedGate.reason,
   inconsistent_reason: inconsistentGate.reason,
+  policy_forwarded_readiness_status: policyForwardedReadiness.status,
+  policy_forwarded_readiness_policy_version: policyForwardedReadiness.policyVersion,
+  policy_forwarded_readiness_risk_threshold: policyForwardedReadiness.riskScoreThreshold,
+  policy_forwarded_readiness_watch_threshold: policyForwardedReadiness.watchScoreThreshold,
+  policy_forwarded_readiness_auto_allowed: policyForwardedReadiness.automaticRecoveryAllowed,
+  policy_forwarded_gate_status: policyForwardedGate.status,
+  policy_forwarded_gate_reason: policyForwardedGate.reason,
+  policy_forwarded_gate_policy_version: policyForwardedGate.policyVersion,
+  policy_forwarded_gate_risk_threshold: policyForwardedGate.riskScoreThreshold,
+  policy_forwarded_gate_watch_threshold: policyForwardedGate.watchScoreThreshold,
 }) + "\n");
