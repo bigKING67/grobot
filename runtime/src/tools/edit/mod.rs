@@ -5,6 +5,7 @@ include!("state.rs");
 include!("text.rs");
 include!("args.rs");
 include!("matcher.rs");
+include!("diagnostics.rs");
 include!("diff.rs");
 include!("write.rs");
 include!("entry.rs");

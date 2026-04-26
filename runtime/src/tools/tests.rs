@@ -4099,6 +4099,8 @@ audit_redact_secrets = false
         .expect("edit should succeed");
 
         assert_eq!(payload["first_changed_line"].as_u64(), Some(2));
+        assert_eq!(payload["line_ending"].as_str(), Some("crlf"));
+        assert_eq!(payload["bom_preserved"].as_bool(), Some(true));
         assert_eq!(
             fs::read_to_string(&target).expect("read edited file"),
             "\u{FEFF}first\r\nSECOND\r\nthird\r\n"
@@ -4125,6 +4127,138 @@ audit_redact_secrets = false
         )
         .expect_err("legacy arguments should fail");
         assert_eq!(error.error_class, "invalid_tool_arguments");
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_reports_duplicate_candidate_lines() {
+        let workspace = make_temp_workspace("edit-v2-duplicate-candidates");
+        fs::write(workspace.join("sample.txt"), "same\nmiddle\nsame\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "same\n", "new_text": "SAME\n"}]
+            }),
+        )
+        .expect_err("duplicate match should fail");
+        assert_eq!(error.error_class, "edit_match_not_unique");
+        assert!(error.message.contains("candidates=line 1: \"same\""));
+        assert!(error.message.contains("line 3: \"same\""));
+        assert!(error.message.contains("retry with a unique old_text"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_reports_missing_match_candidate_lines() {
+        let workspace = make_temp_workspace("edit-v2-missing-candidates");
+        fs::write(
+            workspace.join("sample.txt"),
+            "alpha_count = 1;\nbeta_count = 2;\n",
+        )
+        .expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "alpha_count = 99;\n", "new_text": "alpha_count = 2;\n"}]
+            }),
+        )
+        .expect_err("missing match should fail");
+        assert_eq!(error.error_class, "edit_not_found");
+        assert!(error.message.contains("closest_lines=line 1: \"alpha_count = 1;\""));
+        assert!(error.message.contains("retry with exact old_text"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_reports_lf_metadata_without_bom() {
+        let workspace = make_temp_workspace("edit-v2-lf-metadata");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+            }),
+        )
+        .expect("edit should succeed");
+        assert_eq!(payload["line_ending"].as_str(), Some("lf"));
+        assert_eq!(payload["bom_preserved"].as_bool(), Some(false));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_reports_none_line_ending_for_single_line() {
+        let workspace = make_temp_workspace("edit-v2-none-line-ending");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "single").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "single", "new_text": "single-line"}]
+            }),
+        )
+        .expect("edit should succeed");
+        assert_eq!(payload["line_ending"].as_str(), Some("none"));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "single-line"
+        );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

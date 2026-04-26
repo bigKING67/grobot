@@ -76,6 +76,7 @@ fn run_edit(
     }
     let (bom, raw_without_bom) = split_utf8_bom(&file_content);
     let original_line_ending = detect_line_ending(raw_without_bom);
+    let original_line_ending_label = line_ending_label(raw_without_bom, original_line_ending);
     let base_content = normalize_to_lf(raw_without_bom);
 
     let mut matches: Vec<EditMatch> = Vec::new();
@@ -91,12 +92,16 @@ fn run_edit(
             let (start, end) = exact_ranges[0];
             (start, end, false)
         } else if exact_ranges.len() > 1 {
+            let detail = build_edit_match_candidates_detail(&base_content, &exact_ranges);
             return Err(ToolExecutionError::new(
                 "edit_match_not_unique",
-                format!(
-                    "edit.edits[{edit_index}].old_text matched {} times in {}",
-                    exact_ranges.len(),
-                    relative_path
+                append_edit_diagnostics(
+                    format!(
+                        "edit.edits[{edit_index}].old_text matched {} times in {}",
+                        exact_ranges.len(),
+                        relative_path
+                    ),
+                    detail,
                 ),
             ));
         } else {
@@ -105,17 +110,25 @@ fn run_edit(
                 let (start, end) = fuzzy_ranges[0];
                 (start, end, true)
             } else if fuzzy_ranges.is_empty() {
+                let detail = build_edit_not_found_detail(&base_content, &edit.old_text);
                 return Err(ToolExecutionError::new(
                     "edit_not_found",
-                    format!("edit.edits[{edit_index}] not found in {relative_path}"),
+                    append_edit_diagnostics(
+                        format!("edit.edits[{edit_index}] not found in {relative_path}"),
+                        detail,
+                    ),
                 ));
             } else {
+                let detail = build_edit_match_candidates_detail(&base_content, &fuzzy_ranges);
                 return Err(ToolExecutionError::new(
                     "edit_match_not_unique",
-                    format!(
-                        "edit.edits[{edit_index}] fuzzy matched {} times in {}",
-                        fuzzy_ranges.len(),
-                        relative_path
+                    append_edit_diagnostics(
+                        format!(
+                            "edit.edits[{edit_index}] fuzzy matched {} times in {}",
+                            fuzzy_ranges.len(),
+                            relative_path
+                        ),
+                        detail,
                     ),
                 ));
             }
@@ -171,6 +184,8 @@ fn run_edit(
         "replacements": matches.len(),
         "fuzzy_fallback_used": fuzzy_fallback_used,
         "first_changed_line": first_changed_line,
+        "line_ending": original_line_ending_label,
+        "bom_preserved": !bom.is_empty(),
         "diff": diff,
     });
     Ok(ToolCallOutput::from_payload(payload))

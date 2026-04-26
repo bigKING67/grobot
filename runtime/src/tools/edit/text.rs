@@ -16,6 +16,16 @@ fn detect_line_ending(content: &str) -> &'static str {
     }
 }
 
+fn line_ending_label(content: &str, line_ending: &str) -> &'static str {
+    if !content.contains('\n') && !content.contains('\r') {
+        "none"
+    } else if line_ending == "\r\n" {
+        "crlf"
+    } else {
+        "lf"
+    }
+}
+
 fn normalize_to_lf(content: &str) -> String {
     content.replace("\r\n", "\n").replace('\r', "\n")
 }
