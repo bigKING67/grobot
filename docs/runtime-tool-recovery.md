@@ -160,6 +160,13 @@ model can see why a local retry is no longer acceptable. This implements the
 GA-style staged discipline: local fix first, strategy switch second, human
 intervention when the same failure keeps repeating.
 
+The same escalation fields are emitted on recovery prompt-flow stderr events and
+text status lines. Operators should not have to expand `promptBlock` or JSON to
+see why a hint was escalated; `same_tool_error_count`, `escalated`,
+`escalation_reason`, `escalation_policy_version`, `base_recovery_stage`, and
+`base_recommended_next_action` are kept together as a single observability
+tuple.
+
 ## Surface adaptation rules
 
 Surface adaptation is intentionally narrow:

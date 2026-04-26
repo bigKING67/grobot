@@ -59,6 +59,15 @@ export interface RuntimeToolSurfaceMetricsSnapshot {
 
 export type RuntimeToolRecoveryFeedbackSeverity = "none" | "info" | "warning";
 
+export interface RuntimeToolRecoveryEscalationFields {
+  sameToolErrorCount?: number | null;
+  escalated?: boolean | null;
+  escalationReason?: string | null;
+  escalationPolicyVersion?: string | null;
+  baseStage?: RuntimeToolRecoveryStage | null;
+  baseRecommendedNextAction?: string | null;
+}
+
 export interface RuntimeToolRecoveryFeedback {
   active: boolean;
   severity: RuntimeToolRecoveryFeedbackSeverity;
@@ -533,6 +542,19 @@ export function recordRuntimeToolSurfaceMetrics(input: {
 export function readRuntimeToolSurfaceMetrics(workDir: string): RuntimeToolSurfaceMetricsSnapshot {
   const path = metricsPathForWorkDir(workDir);
   return toSnapshot(path, readState(path));
+}
+
+export function formatRuntimeToolRecoveryEscalationFields(
+  recovery: RuntimeToolRecoveryEscalationFields,
+): string {
+  return [
+    `same_tool_error_count=${recovery.sameToolErrorCount ?? "<none>"}`,
+    `escalated=${recovery.escalated ? "true" : "false"}`,
+    `escalation_reason=${recovery.escalationReason ?? "<none>"}`,
+    `escalation_policy_version=${recovery.escalationPolicyVersion ?? "<none>"}`,
+    `base_recovery_stage=${recovery.baseStage ?? "<none>"}`,
+    `base_recommended_next_action=${recovery.baseRecommendedNextAction ?? "<none>"}`,
+  ].join(" ");
 }
 
 export function clearRuntimeToolRecoveryRepeatPressure(input: {

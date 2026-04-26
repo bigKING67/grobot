@@ -34,6 +34,12 @@ function activeNonrecoverableFeedback(observedAt: string): RuntimeToolRecoveryFe
     recommendedNextAction: "ask_user_for_config_or_switch_provider",
     recoverable: false,
     requiresUserIntervention: true,
+    sameToolErrorCount: 3,
+    escalated: true,
+    escalationReason: "same_tool_error_exhausted",
+    escalationPolicyVersion: "v1",
+    baseStage: "local_fix",
+    baseRecommendedNextAction: "request_environment_fix",
     promptBlock: "[Runtime Tool Recovery Hint]\nRecent tool issue: stage=ask_user tool=web_scan error_class=config_missing",
     observedAt,
   };
@@ -143,6 +149,22 @@ try {
   expect(
     firstFlow.stderrEvents.some((line) => line.includes("event=requires_user_intervention")),
     "first flow emits requires_user_intervention event",
+  );
+  expect(
+    firstFlow.stderrEvents.every((line) => line.includes("same_tool_error_count=3")),
+    "first flow stderr events include repeat count",
+  );
+  expect(
+    firstFlow.stderrEvents.every((line) => line.includes("escalated=true")),
+    "first flow stderr events include escalated flag",
+  );
+  expect(
+    firstFlow.stderrEvents.every((line) => line.includes("escalation_reason=same_tool_error_exhausted")),
+    "first flow stderr events include escalation reason",
+  );
+  expect(
+    firstFlow.stderrEvents.every((line) => line.includes("base_recovery_stage=local_fix")),
+    "first flow stderr events include base recovery stage",
   );
   expect(
     firstFlow.stderrEvents.some((line) => line.includes("event=prompt_hint_injected")),

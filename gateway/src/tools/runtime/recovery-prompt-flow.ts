@@ -1,5 +1,8 @@
 import type { RuntimeToolSurfaceAdaptation } from "./default-enabled-tools";
-import type { RuntimeToolRecoveryFeedback } from "./tool-events";
+import {
+  formatRuntimeToolRecoveryEscalationFields,
+  type RuntimeToolRecoveryFeedback,
+} from "./tool-events";
 import {
   buildRuntimeToolSurfaceAdaptationGuardPrompt,
   recordRuntimeToolNonRecoverableInterventionPrompt,
@@ -30,10 +33,11 @@ export function applyRuntimeToolRecoveryPromptFlow(input: {
   let guardPromptInjected = false;
   let nonrecoverableConsumptionRecorded = false;
   let guardConsumptionRecorded = false;
+  const recoveryEscalationFields = formatRuntimeToolRecoveryEscalationFields(input.recoveryFeedback);
 
   if (input.recoveryFeedback.active && input.recoveryFeedback.requiresUserIntervention) {
     stderrEvents.push(
-      `[tool-recovery] event=requires_user_intervention stage=${input.recoveryFeedback.stage ?? "<none>"} action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} auto_adaptation_blocked=${input.adaptation.autoAdaptationBlocked ? "true" : "false"}\n`,
+      `[tool-recovery] event=requires_user_intervention stage=${input.recoveryFeedback.stage ?? "<none>"} action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} auto_adaptation_blocked=${input.adaptation.autoAdaptationBlocked ? "true" : "false"} ${recoveryEscalationFields}\n`,
     );
   }
 
@@ -55,7 +59,7 @@ export function applyRuntimeToolRecoveryPromptFlow(input: {
     });
     guardConsumptionRecorded = consumption.recorded;
     stderrEvents.push(
-      `[tool-recovery] event=prompt_hint_guarded guard_reason=${input.guard.reason} suppressed_action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} recoverable=${input.recoveryFeedback.recoverable === null ? "<unknown>" : String(input.recoveryFeedback.recoverable)} requires_user_intervention=${input.recoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
+      `[tool-recovery] event=prompt_hint_guarded guard_reason=${input.guard.reason} suppressed_action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} recoverable=${input.recoveryFeedback.recoverable === null ? "<unknown>" : String(input.recoveryFeedback.recoverable)} requires_user_intervention=${input.recoveryFeedback.requiresUserIntervention ? "true" : "false"} ${recoveryEscalationFields}\n`,
     );
     return {
       promptBlocks,
@@ -71,7 +75,7 @@ export function applyRuntimeToolRecoveryPromptFlow(input: {
     promptBlocks.push(input.recoveryFeedback.promptBlock);
     promptInjected = true;
     stderrEvents.push(
-      `[tool-recovery] event=prompt_hint_injected stage=${input.recoveryFeedback.stage ?? "<none>"} severity=${input.recoveryFeedback.severity} action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} recoverable=${input.recoveryFeedback.recoverable === null ? "<unknown>" : String(input.recoveryFeedback.recoverable)} requires_user_intervention=${input.recoveryFeedback.requiresUserIntervention ? "true" : "false"}\n`,
+      `[tool-recovery] event=prompt_hint_injected stage=${input.recoveryFeedback.stage ?? "<none>"} severity=${input.recoveryFeedback.severity} action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} recoverable=${input.recoveryFeedback.recoverable === null ? "<unknown>" : String(input.recoveryFeedback.recoverable)} requires_user_intervention=${input.recoveryFeedback.requiresUserIntervention ? "true" : "false"} ${recoveryEscalationFields}\n`,
     );
     if (input.recoveryFeedback.requiresUserIntervention) {
       const consumption = recordRuntimeToolNonRecoverableInterventionPrompt({
@@ -83,7 +87,7 @@ export function applyRuntimeToolRecoveryPromptFlow(input: {
       nonrecoverableConsumptionRecorded = consumption.recorded;
       if (consumption.recorded) {
         stderrEvents.push(
-          `[tool-recovery] event=nonrecoverable_intervention_prompted action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} consumed_at=${consumption.record?.consumedAt ?? "<none>"}\n`,
+          `[tool-recovery] event=nonrecoverable_intervention_prompted action=${input.recoveryFeedback.recommendedNextAction ?? "<none>"} tool=${input.recoveryFeedback.toolName ?? "<none>"} error_class=${input.recoveryFeedback.errorClass ?? "<none>"} consumed_at=${consumption.record?.consumedAt ?? "<none>"} ${recoveryEscalationFields}\n`,
         );
       }
     }

@@ -24,6 +24,7 @@ import {
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
 import {
+  formatRuntimeToolRecoveryEscalationFields,
   type RuntimeToolRecoveryFeedback,
   readRuntimeToolSurfaceMetrics,
 } from "../../../../tools/runtime/tool-events";
@@ -2505,11 +2506,11 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} same_tool_error_count=${runtimeToolRecoveryFeedback.sameToolErrorCount ?? "<none>"} escalated=${runtimeToolRecoveryFeedback.escalated ? "true" : "false"} escalation_reason=${runtimeToolRecoveryFeedback.escalationReason ?? "<none>"}\n`,
+    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} ${formatRuntimeToolRecoveryEscalationFields(runtimeToolRecoveryFeedback)}\n`,
   );
   const latestRuntimeToolRecoveryTimelineEntry = runtimeToolRecoveryTimeline[0] ?? null;
   process.stdout.write(
-    `runtime_tool_recovery_timeline: entries=${String(runtimeToolRecoveryTimeline.length)} latest=${latestRuntimeToolRecoveryTimelineEntry ? `${latestRuntimeToolRecoveryTimelineEntry.toolName ?? "<none>"}/${latestRuntimeToolRecoveryTimelineEntry.errorClass ?? "<none>"}` : "<none>"} stage=${latestRuntimeToolRecoveryTimelineEntry?.stage ?? "<none>"} active=${latestRuntimeToolRecoveryTimelineEntry?.active ? "true" : "false"} consumed=${latestRuntimeToolRecoveryTimelineEntry?.consumed ? "true" : "false"}\n`,
+    `runtime_tool_recovery_timeline: entries=${String(runtimeToolRecoveryTimeline.length)} latest=${latestRuntimeToolRecoveryTimelineEntry ? `${latestRuntimeToolRecoveryTimelineEntry.toolName ?? "<none>"}/${latestRuntimeToolRecoveryTimelineEntry.errorClass ?? "<none>"}` : "<none>"} stage=${latestRuntimeToolRecoveryTimelineEntry?.stage ?? "<none>"} active=${latestRuntimeToolRecoveryTimelineEntry?.active ? "true" : "false"} consumed=${latestRuntimeToolRecoveryTimelineEntry?.consumed ? "true" : "false"} ${latestRuntimeToolRecoveryTimelineEntry ? formatRuntimeToolRecoveryEscalationFields(latestRuntimeToolRecoveryTimelineEntry) : "same_tool_error_count=<none> escalated=false escalation_reason=<none> escalation_policy_version=<none> base_recovery_stage=<none> base_recommended_next_action=<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_recovery_health: score=${String(runtimeToolRecoveryHealth.score)} level=${runtimeToolRecoveryHealth.level} reason=${runtimeToolRecoveryHealth.reason} action=${runtimeToolRecoveryHealth.recommendedNextAction ?? "<none>"} attention_source=${runtimeToolRecoveryHealth.attentionSource} attention_key=${runtimeToolRecoveryHealth.attentionRecoveryKey ?? "<none>"} active=${String(runtimeToolRecoveryHealth.activeRecoveryCount)} active_nonrecoverable=${String(runtimeToolRecoveryHealth.activeNonrecoverableCount)} unconsumed=${String(runtimeToolRecoveryHealth.unconsumedCount)} stuck_nonrecoverable=${runtimeToolRecoveryHealth.hasStuckNonrecoverable ? "true" : "false"} latest_key=${runtimeToolRecoveryHealth.latestRecoveryKey ?? "<none>"}\n`,

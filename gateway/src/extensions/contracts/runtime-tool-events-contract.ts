@@ -5,6 +5,7 @@ import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../tools/runtime/
 import {
   buildRuntimeToolRecoveryFeedback,
   clearRuntimeToolRecoveryRepeatPressure,
+  formatRuntimeToolRecoveryEscalationFields,
   isRuntimeToolRecoveryAction,
   knownRuntimeToolRecoveryActions,
   RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS,
@@ -313,6 +314,16 @@ try {
   expect(
     secondFeedback.promptBlock.includes("same_tool_error_count=2 escalated=true"),
     "second repeated feedback prompt includes repeat count",
+  );
+  expect(
+    formatRuntimeToolRecoveryEscalationFields(secondFeedback)
+      .includes("base_recovery_stage=local_fix"),
+    "second repeated feedback formats base stage",
+  );
+  expect(
+    formatRuntimeToolRecoveryEscalationFields(secondFeedback)
+      .includes("escalation_policy_version=v1"),
+    "second repeated feedback formats policy version",
   );
 
   const thirdRepeated = recordRuntimeToolSurfaceMetrics({
