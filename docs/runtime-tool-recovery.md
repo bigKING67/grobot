@@ -426,6 +426,11 @@ both `status --json` and text status:
 - `base_recovery_stage`
 - `base_recommended_next_action`
 
+They also lock the policy snapshot exposed by `runtime_tools.recovery_policy`
+against the text status line, including guard thresholds, repeated tool-error
+escalation thresholds (`2/3`), health thresholds (`85/60`), and health
+penalties.
+
 Runtime/governance contract after building the Rust runtime:
 
 ```bash

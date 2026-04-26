@@ -90,8 +90,41 @@ const EXPECTED_REPEATED_TOOL_RECOVERY_ESCALATION_STATUS = {
   base_recommended_next_action: "switch_tool_strategy",
 };
 
+const EXPECTED_RUNTIME_TOOL_RECOVERY_POLICY_STATUS = {
+  version: "v1",
+  prompt_max_age_ms: 86_400_000,
+  timeline_max_entries: 20,
+  adaptation_history_max_entries: 40,
+  recovery_consumption_history_max_entries: 40,
+  guard: {
+    repeated_profile_failure_threshold: 2,
+    recent_profile_sequence_size: 4,
+    oscillation_profile_window_size: 4,
+  },
+  escalation: {
+    same_tool_error_strategy_switch_threshold: 2,
+    same_tool_error_ask_user_threshold: 3,
+  },
+  health: {
+    risk_score_threshold: 60,
+    watch_score_threshold: 85,
+    penalties: {
+      active_recovery: 12,
+      active_nonrecoverable: 28,
+      stuck_nonrecoverable: 20,
+      historical_unconsumed: 4,
+    },
+  },
+};
+
 function hasOwnKey(value, key) {
   return isObject(value) && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function assertEqualValue(actual, expected, message) {
+  if (actual !== expected) {
+    throw new Error(`${message}: actual=${String(actual)} expected=${String(expected)}`);
+  }
 }
 
 function runtimeToolRecoveryEscalationTextSurface(textOutput) {
@@ -149,6 +182,116 @@ function assertRuntimeToolRecoveryEscalationStatusSurface(input) {
           `runtime tool recovery timeline escalation field mismatch: ${key} actual=${String(latestRecoveryTimeline[key])} expected=${String(expected)}`,
         );
       }
+    }
+  }
+}
+
+function assertRuntimeToolRecoveryPolicyStatusSurface(input) {
+  const recoveryPolicy = isObject(input?.recoveryPolicy)
+    ? input.recoveryPolicy
+    : null;
+  if (!recoveryPolicy) {
+    throw new Error("runtime tool recovery policy missing");
+  }
+  const expected = EXPECTED_RUNTIME_TOOL_RECOVERY_POLICY_STATUS;
+  assertEqualValue(recoveryPolicy.version, expected.version, "runtime recovery policy version");
+  assertEqualValue(
+    recoveryPolicy.prompt_max_age_ms,
+    expected.prompt_max_age_ms,
+    "runtime recovery policy prompt max age",
+  );
+  assertEqualValue(
+    recoveryPolicy.timeline_max_entries,
+    expected.timeline_max_entries,
+    "runtime recovery policy timeline max entries",
+  );
+  assertEqualValue(
+    recoveryPolicy.adaptation_history_max_entries,
+    expected.adaptation_history_max_entries,
+    "runtime recovery policy adaptation history max entries",
+  );
+  assertEqualValue(
+    recoveryPolicy.recovery_consumption_history_max_entries,
+    expected.recovery_consumption_history_max_entries,
+    "runtime recovery policy consumption history max entries",
+  );
+  assertEqualValue(
+    recoveryPolicy.guard?.repeated_profile_failure_threshold,
+    expected.guard.repeated_profile_failure_threshold,
+    "runtime recovery policy guard repeat threshold",
+  );
+  assertEqualValue(
+    recoveryPolicy.guard?.recent_profile_sequence_size,
+    expected.guard.recent_profile_sequence_size,
+    "runtime recovery policy guard recent profile sequence",
+  );
+  assertEqualValue(
+    recoveryPolicy.guard?.oscillation_profile_window_size,
+    expected.guard.oscillation_profile_window_size,
+    "runtime recovery policy guard oscillation window",
+  );
+  assertEqualValue(
+    recoveryPolicy.escalation?.same_tool_error_strategy_switch_threshold,
+    expected.escalation.same_tool_error_strategy_switch_threshold,
+    "runtime recovery policy strategy-switch threshold",
+  );
+  assertEqualValue(
+    recoveryPolicy.escalation?.same_tool_error_ask_user_threshold,
+    expected.escalation.same_tool_error_ask_user_threshold,
+    "runtime recovery policy ask-user threshold",
+  );
+  assertEqualValue(
+    recoveryPolicy.health?.risk_score_threshold,
+    expected.health.risk_score_threshold,
+    "runtime recovery policy health risk threshold",
+  );
+  assertEqualValue(
+    recoveryPolicy.health?.watch_score_threshold,
+    expected.health.watch_score_threshold,
+    "runtime recovery policy health watch threshold",
+  );
+  assertEqualValue(
+    recoveryPolicy.health?.penalties?.active_recovery,
+    expected.health.penalties.active_recovery,
+    "runtime recovery policy active recovery penalty",
+  );
+  assertEqualValue(
+    recoveryPolicy.health?.penalties?.active_nonrecoverable,
+    expected.health.penalties.active_nonrecoverable,
+    "runtime recovery policy active nonrecoverable penalty",
+  );
+  assertEqualValue(
+    recoveryPolicy.health?.penalties?.stuck_nonrecoverable,
+    expected.health.penalties.stuck_nonrecoverable,
+    "runtime recovery policy stuck nonrecoverable penalty",
+  );
+  assertEqualValue(
+    recoveryPolicy.health?.penalties?.historical_unconsumed,
+    expected.health.penalties.historical_unconsumed,
+    "runtime recovery policy historical unconsumed penalty",
+  );
+
+  const text = typeof input?.textOutput === "string" ? input.textOutput : "";
+  if (!text) {
+    return;
+  }
+  const requiredTextSnippets = [
+    "runtime_tool_recovery_policy:",
+    `version=${expected.version}`,
+    `prompt_max_age_ms=${String(expected.prompt_max_age_ms)}`,
+    `timeline_max_entries=${String(expected.timeline_max_entries)}`,
+    `adaptation_history_max_entries=${String(expected.adaptation_history_max_entries)}`,
+    `recovery_consumption_history_max_entries=${String(expected.recovery_consumption_history_max_entries)}`,
+    `guard_repeat_failures=${String(expected.guard.repeated_profile_failure_threshold)}`,
+    `guard_recent_profile_sequence=${String(expected.guard.recent_profile_sequence_size)}`,
+    `guard_oscillation_window=${String(expected.guard.oscillation_profile_window_size)}`,
+    `escalation_thresholds=${String(expected.escalation.same_tool_error_strategy_switch_threshold)}/${String(expected.escalation.same_tool_error_ask_user_threshold)}`,
+    `health_thresholds=${String(expected.health.watch_score_threshold)}/${String(expected.health.risk_score_threshold)}`,
+    `health_penalties=${String(expected.health.penalties.active_recovery)}/${String(expected.health.penalties.active_nonrecoverable)}/${String(expected.health.penalties.stuck_nonrecoverable)}/${String(expected.health.penalties.historical_unconsumed)}`,
+  ];
+  for (const snippet of requiredTextSnippets) {
+    if (!text.includes(snippet)) {
+      throw new Error(`text status missing runtime recovery policy snippet: ${snippet}`);
     }
   }
 }
@@ -1815,6 +1958,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolRecoveryPolicy = isObject(runtimeTools?.recovery_policy)
     ? runtimeTools.recovery_policy
     : null;
+  assertRuntimeToolRecoveryPolicyStatusSurface({
+    recoveryPolicy: runtimeToolRecoveryPolicy,
+  });
   const runtimeToolRecoveryReadiness = isObject(runtimeTools?.recovery_readiness)
     ? runtimeTools.recovery_readiness
     : null;
@@ -2235,8 +2381,20 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryPolicy?.recovery_consumption_history_max_entries,
     status_runtime_tool_recovery_policy_guard_type:
       typeof runtimeToolRecoveryPolicy?.guard,
+    status_runtime_tool_recovery_policy_guard_repeat_threshold:
+      runtimeToolRecoveryPolicy?.guard?.repeated_profile_failure_threshold ?? null,
     status_runtime_tool_recovery_policy_health_type:
       typeof runtimeToolRecoveryPolicy?.health,
+    status_runtime_tool_recovery_policy_escalation_type:
+      typeof runtimeToolRecoveryPolicy?.escalation,
+    status_runtime_tool_recovery_policy_escalation_strategy_switch_threshold:
+      runtimeToolRecoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
+    status_runtime_tool_recovery_policy_escalation_ask_user_threshold:
+      runtimeToolRecoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    status_runtime_tool_recovery_policy_health_watch_threshold:
+      runtimeToolRecoveryPolicy?.health?.watch_score_threshold ?? null,
+    status_runtime_tool_recovery_policy_health_risk_threshold:
+      runtimeToolRecoveryPolicy?.health?.risk_score_threshold ?? null,
     status_runtime_tool_recovery_readiness_present: Boolean(runtimeToolRecoveryReadiness),
     status_runtime_tool_recovery_readiness_status_type:
       typeof runtimeToolRecoveryReadiness?.status,
@@ -4767,6 +4925,10 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     ? runtimeTools.surface_adaptation
     : null;
   const recoveryEscalationTextSurface = runtimeToolRecoveryEscalationTextSurface(textResult.stdout);
+  assertRuntimeToolRecoveryPolicyStatusSurface({
+    recoveryPolicy,
+    textOutput: textResult.stdout,
+  });
   assertRuntimeToolRecoveryEscalationStatusSurface({
     recoveryFeedback,
     latestRecoveryTimeline,
@@ -4834,6 +4996,14 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryHealth?.attention_requires_user_intervention ?? null,
     recovery_policy_version: recoveryPolicy?.version ?? null,
     recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
+    recovery_policy_escalation_strategy_switch_threshold:
+      recoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
+    recovery_policy_escalation_ask_user_threshold:
+      recoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    recovery_policy_health_watch_threshold:
+      recoveryPolicy?.health?.watch_score_threshold ?? null,
+    recovery_policy_health_risk_threshold:
+      recoveryPolicy?.health?.risk_score_threshold ?? null,
     recovery_readiness_status: recoveryReadiness?.status ?? null,
     recovery_readiness_ready: recoveryReadiness?.ready ?? null,
     recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
@@ -4873,7 +5043,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       && textResult.stdout.includes("stuck_nonrecoverable=true"),
     text_has_recovery_policy:
       textResult.stdout.includes("runtime_tool_recovery_policy:")
-      && textResult.stdout.includes("timeline_max_entries=20"),
+      && textResult.stdout.includes("timeline_max_entries=20")
+      && textResult.stdout.includes("escalation_thresholds=2/3")
+      && textResult.stdout.includes("health_thresholds=85/60"),
     text_has_recovery_readiness:
       textResult.stdout.includes("runtime_tool_recovery_readiness:")
       && textResult.stdout.includes("status=blocked")
@@ -4931,6 +5103,10 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     ? runtimeTools.surface_adaptation
     : null;
   const recoveryEscalationTextSurface = runtimeToolRecoveryEscalationTextSurface(textResult.stdout);
+  assertRuntimeToolRecoveryPolicyStatusSurface({
+    recoveryPolicy,
+    textOutput: textResult.stdout,
+  });
   assertRuntimeToolRecoveryEscalationStatusSurface({
     recoveryFeedback,
     latestRecoveryTimeline,
@@ -5001,6 +5177,14 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryHealth?.attention_requires_user_intervention ?? null,
     recovery_policy_version: recoveryPolicy?.version ?? null,
     recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
+    recovery_policy_escalation_strategy_switch_threshold:
+      recoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
+    recovery_policy_escalation_ask_user_threshold:
+      recoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    recovery_policy_health_watch_threshold:
+      recoveryPolicy?.health?.watch_score_threshold ?? null,
+    recovery_policy_health_risk_threshold:
+      recoveryPolicy?.health?.risk_score_threshold ?? null,
     recovery_readiness_status: recoveryReadiness?.status ?? null,
     recovery_readiness_ready: recoveryReadiness?.ready ?? null,
     recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
@@ -5036,7 +5220,9 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       && textResult.stdout.includes("stuck_nonrecoverable=false"),
     text_has_recovery_policy:
       textResult.stdout.includes("runtime_tool_recovery_policy:")
-      && textResult.stdout.includes("timeline_max_entries=20"),
+      && textResult.stdout.includes("timeline_max_entries=20")
+      && textResult.stdout.includes("escalation_thresholds=2/3")
+      && textResult.stdout.includes("health_thresholds=85/60"),
     text_has_recovery_readiness:
       textResult.stdout.includes("runtime_tool_recovery_readiness:")
       && textResult.stdout.includes("status=degraded")
