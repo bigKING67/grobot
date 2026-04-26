@@ -10,6 +10,49 @@
 
 ## 生产安装（推荐）
 
+### 方式 A：收到对应系统安装包（无 GitHub 依赖）
+
+安装包输出目录固定为：
+
+```bash
+/Users/gaoqian/Documents/sixseven/codeproject/grobot-release-bundles/
+```
+
+发送给用户时按系统选择：
+
+- macOS Apple Silicon：`grobot-darwin-arm64.tar.gz`
+- macOS Intel：`grobot-darwin-x64.tar.gz`
+- Linux x64：`grobot-linux-x64.tar.gz`
+- Linux arm64：`grobot-linux-arm64.tar.gz`
+- Windows x64：`grobot-windows-x64.zip`
+
+首次安装：
+
+```bash
+# macOS / Linux：解压后进入目录
+./grobot install
+
+# Windows PowerShell：解压后进入目录
+.\grobot.ps1 install
+```
+
+安装完成后：
+
+```bash
+grobot --version
+grobot
+```
+
+构建这些安装包：
+
+```bash
+npm run core:release:bundles
+```
+
+说明：当前 bundle 是“原生 launcher + bundled Grobot app”的预发布分发形态，仍要求用户机器有 Node.js；完整 standalone core 发布后可移除该要求。
+
+### 方式 B：从 GitHub Release 安装
+
 ```bash
 # 从 release 安装（stable/latest/指定版本均可）
 grobot install stable --repo <owner/name>

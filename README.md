@@ -109,6 +109,38 @@ grobot init --project --hooks-samples
 
 ### 原生安装分发（给别人用）
 
+无 GitHub 账号或不能访问 GitHub 时，优先发送对应系统的 bundle：
+
+```bash
+# 生成到 /Users/gaoqian/Documents/sixseven/codeproject/grobot-release-bundles/
+npm run core:release:bundles
+```
+
+产物：
+
+- `grobot-darwin-arm64.tar.gz`
+- `grobot-darwin-x64.tar.gz`
+- `grobot-linux-x64.tar.gz`
+- `grobot-linux-arm64.tar.gz`
+- `grobot-windows-x64.zip`
+
+用户首次安装：
+
+```bash
+# macOS / Linux
+./grobot install
+
+# Windows PowerShell
+.\grobot.ps1 install
+```
+
+安装后日常使用：
+
+```bash
+grobot --version
+grobot
+```
+
 ```bash
 # 推荐：从 release 安装原生二进制（Claude 风格）
 grobot install stable --repo <owner/name>

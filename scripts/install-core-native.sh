@@ -112,6 +112,41 @@ display_path() {
   printf '%s' "$path"
 }
 
+find_local_bundle_binary() {
+  local platform="$1"
+  local asset_file=""
+  asset_file="$(asset_file_for_platform "$platform")"
+  if [ -z "$asset_file" ]; then
+    return 0
+  fi
+
+  local roots=()
+  roots+=("$(pwd)")
+  roots+=("$(cd "$SCRIPT_DIR/.." && pwd)")
+  roots+=("$(cd "$SCRIPT_DIR/.." && pwd)/dist/core-artifacts")
+  roots+=("$(cd "$SCRIPT_DIR/.." && pwd)/dist/native")
+
+  local root
+  for root in "${roots[@]}"; do
+    [ -n "$root" ] || continue
+    if [ -x "$root/$asset_file" ]; then
+      printf '%s' "$root/$asset_file"
+      return 0
+    fi
+    # Only accept the generic launcher name from a portable bundle root. A source
+    # checkout also has ./grobot, but installing that wrapper as a core would
+    # create a recursive broken install path.
+    if [ -x "$root/grobot" ] && [ "$platform" != "windows-x64" ] && [ -f "$root/core-artifacts.manifest.json" ] && [ -f "$root/VERSION" ] && [ -f "$root/app/scripts/run-ts-dev-cli.sh" ]; then
+      printf '%s' "$root/grobot"
+      return 0
+    fi
+    if [ -x "$root/grobot.exe" ] && [ "$platform" = "windows-x64" ] && [ -f "$root/core-artifacts.manifest.json" ] && [ -f "$root/VERSION" ] && [ -f "$root/app/scripts/run-ts-dev-cli.ps1" ]; then
+      printf '%s' "$root/grobot.exe"
+      return 0
+    fi
+  done
+}
+
 resolve_release_tag() {
   local repo="$1"
   local requested_target="$2"
@@ -230,6 +265,7 @@ cleanup_old_versions() {
   fi
 }
 
+SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_INPUT="latest"
 TARGET_OVERRIDE=""
 RELEASE_REPO="${GROBOT_CORE_RELEASE_REPO:-}"
@@ -379,6 +415,17 @@ EXPECTED_SHA256="$(printf '%s' "$EXPECTED_SHA256" | tr '[:upper:]' '[:lower:]')"
 if [ -n "$EXPECTED_SHA256" ] && ! printf '%s' "$EXPECTED_SHA256" | LC_ALL=C grep -E '^[0-9a-f]{64}$' >/dev/null 2>&1; then
   echo "invalid --sha256 format: expected 64 hex chars" >&2
   exit 1
+fi
+
+if [ -z "$CORE_BINARY_PATH" ] && [ -z "$DIRECT_URL" ] && [ -z "$RELEASE_REPO" ]; then
+  LOCAL_BUNDLE_BINARY="$(find_local_bundle_binary "$PLATFORM_KEY")"
+  if [ -n "$LOCAL_BUNDLE_BINARY" ]; then
+    CORE_BINARY_PATH="$LOCAL_BUNDLE_BINARY"
+    LOCAL_BUNDLE_VERSION_FILE="$(dirname "$LOCAL_BUNDLE_BINARY")/VERSION"
+    if [ -f "$LOCAL_BUNDLE_VERSION_FILE" ] && { [ "$TARGET_INPUT" = "latest" ] || [ "$TARGET_INPUT" = "stable" ]; }; then
+      TARGET_INPUT="$(tr -d '\r\n' < "$LOCAL_BUNDLE_VERSION_FILE")"
+    fi
+  fi
 fi
 
 TMP_DIR="$(mktemp -d)"
