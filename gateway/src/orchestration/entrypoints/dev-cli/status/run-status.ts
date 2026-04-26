@@ -46,6 +46,10 @@ import {
   type RuntimeToolRecoveryReadinessSummary,
 } from "../../../../tools/runtime/tool-recovery-readiness";
 import {
+  buildRuntimeToolRecoveryReadinessGate,
+  type RuntimeToolRecoveryReadinessGateDecision,
+} from "../../../../tools/runtime/tool-recovery-readiness-gate";
+import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
@@ -1001,6 +1005,35 @@ function serializeRuntimeToolRecoveryReadinessSummary(
   };
 }
 
+function serializeRuntimeToolRecoveryReadinessGate(
+  gate: RuntimeToolRecoveryReadinessGateDecision,
+): Record<string, unknown> {
+  return {
+    status: gate.status,
+    passed: gate.passed,
+    blocking: gate.blocking,
+    severity: gate.severity,
+    reason: gate.reason,
+    recommended_next_action: gate.recommendedNextAction,
+    readiness_status: gate.readinessStatus,
+    readiness_ready: gate.readinessReady,
+    readiness_reason: gate.readinessReason,
+    automatic_recovery_allowed: gate.automaticRecoveryAllowed,
+    operator_action_required: gate.operatorActionRequired,
+    policy_version: gate.policyVersion,
+    health_level: gate.healthLevel,
+    health_score: gate.healthScore,
+    risk_score_threshold: gate.riskScoreThreshold,
+    watch_score_threshold: gate.watchScoreThreshold,
+    attention_recovery_key: gate.attentionRecoveryKey,
+    attention_source: gate.attentionSource,
+    attention_stage: gate.attentionStage,
+    attention_tool_name: gate.attentionToolName,
+    attention_error_class: gate.attentionErrorClass,
+    attention_requires_user_intervention: gate.attentionRequiresUserIntervention,
+  };
+}
+
 function serializeRuntimeToolSurfaceDecision(decision: RuntimeToolSurfaceDecision | null): Record<string, unknown> | null {
   if (!decision) {
     return null;
@@ -1260,6 +1293,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeToolRecoveryReadiness = buildRuntimeToolRecoveryReadinessSummary({
     health: runtimeToolRecoveryHealth,
     policy: runtimeToolRecoveryPolicy,
+  });
+  const runtimeToolRecoveryGate = buildRuntimeToolRecoveryReadinessGate({
+    readiness: runtimeToolRecoveryReadiness,
   });
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
@@ -1612,6 +1648,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         recovery_health: serializeRuntimeToolRecoveryHealthSummary(runtimeToolRecoveryHealth),
         recovery_policy: serializeRuntimeToolRecoveryPolicySummary(runtimeToolRecoveryPolicy),
         recovery_readiness: serializeRuntimeToolRecoveryReadinessSummary(runtimeToolRecoveryReadiness),
+        recovery_gate: serializeRuntimeToolRecoveryReadinessGate(runtimeToolRecoveryGate),
         surface_adaptation: {
           enabled: runtimeToolContextPreview.toolSurfaceAdaptation.enabled,
           active: runtimeToolContextPreview.toolSurfaceAdaptation.active,
@@ -2487,6 +2524,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_recovery_readiness: status=${runtimeToolRecoveryReadiness.status} ready=${runtimeToolRecoveryReadiness.ready ? "true" : "false"} auto_recovery_allowed=${runtimeToolRecoveryReadiness.automaticRecoveryAllowed ? "true" : "false"} operator_action_required=${runtimeToolRecoveryReadiness.operatorActionRequired ? "true" : "false"} reason=${runtimeToolRecoveryReadiness.reason} action=${runtimeToolRecoveryReadiness.recommendedNextAction ?? "<none>"} attention_key=${runtimeToolRecoveryReadiness.attentionRecoveryKey ?? "<none>"} attention_stage=${runtimeToolRecoveryReadiness.attentionStage ?? "<none>"} policy_version=${runtimeToolRecoveryReadiness.policyVersion} health=${runtimeToolRecoveryReadiness.healthLevel}/${String(runtimeToolRecoveryReadiness.healthScore)}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_recovery_gate: status=${runtimeToolRecoveryGate.status} passed=${runtimeToolRecoveryGate.passed ? "true" : "false"} blocking=${runtimeToolRecoveryGate.blocking ? "true" : "false"} severity=${runtimeToolRecoveryGate.severity} reason=${runtimeToolRecoveryGate.reason} action=${runtimeToolRecoveryGate.recommendedNextAction ?? "<none>"} readiness=${runtimeToolRecoveryGate.readinessStatus} auto_recovery_allowed=${runtimeToolRecoveryGate.automaticRecoveryAllowed ? "true" : "false"} operator_action_required=${runtimeToolRecoveryGate.operatorActionRequired ? "true" : "false"} attention_key=${runtimeToolRecoveryGate.attentionRecoveryKey ?? "<none>"} attention_stage=${runtimeToolRecoveryGate.attentionStage ?? "<none>"} policy_version=${runtimeToolRecoveryGate.policyVersion} health=${runtimeToolRecoveryGate.healthLevel}/${String(runtimeToolRecoveryGate.healthScore)}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextPreview.toolSurfaceAdaptation.autoAdaptationBlocked ? "true" : "false"} recovery_recoverable=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable)} stage=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass ?? "<none>"}\n`,

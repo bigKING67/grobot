@@ -1635,6 +1635,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolRecoveryReadiness = isObject(runtimeTools?.recovery_readiness)
     ? runtimeTools.recovery_readiness
     : null;
+  const runtimeToolRecoveryGate = isObject(runtimeTools?.recovery_gate)
+    ? runtimeTools.recovery_gate
+    : null;
   const runtimeToolSurfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -2042,6 +2045,25 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryReadiness?.policy_version,
     status_runtime_tool_recovery_readiness_attention_stage_type:
       typeof runtimeToolRecoveryReadiness?.attention_stage,
+    status_runtime_tool_recovery_gate_present: Boolean(runtimeToolRecoveryGate),
+    status_runtime_tool_recovery_gate_status_type:
+      typeof runtimeToolRecoveryGate?.status,
+    status_runtime_tool_recovery_gate_passed_type:
+      typeof runtimeToolRecoveryGate?.passed,
+    status_runtime_tool_recovery_gate_blocking_type:
+      typeof runtimeToolRecoveryGate?.blocking,
+    status_runtime_tool_recovery_gate_severity_type:
+      typeof runtimeToolRecoveryGate?.severity,
+    status_runtime_tool_recovery_gate_reason_type:
+      typeof runtimeToolRecoveryGate?.reason,
+    status_runtime_tool_recovery_gate_readiness_status_type:
+      typeof runtimeToolRecoveryGate?.readiness_status,
+    status_runtime_tool_recovery_gate_auto_allowed_type:
+      typeof runtimeToolRecoveryGate?.automatic_recovery_allowed,
+    status_runtime_tool_recovery_gate_operator_action_type:
+      typeof runtimeToolRecoveryGate?.operator_action_required,
+    status_runtime_tool_recovery_gate_attention_stage_type:
+      typeof runtimeToolRecoveryGate?.attention_stage,
     status_runtime_tool_surface_adaptation_present: Boolean(runtimeToolSurfaceAdaptation),
     status_runtime_tool_surface_adaptation_active_type: typeof runtimeToolSurfaceAdaptation?.active,
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
@@ -4436,6 +4458,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
   const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
     ? runtimeTools.recovery_readiness
     : null;
+  const recoveryGate = isObject(runtimeTools?.recovery_gate)
+    ? runtimeTools.recovery_gate
+    : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -4483,6 +4508,16 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
     recovery_readiness_policy_version: recoveryReadiness?.policy_version ?? null,
     recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
+    recovery_gate_status: recoveryGate?.status ?? null,
+    recovery_gate_passed: recoveryGate?.passed ?? null,
+    recovery_gate_blocking: recoveryGate?.blocking ?? null,
+    recovery_gate_severity: recoveryGate?.severity ?? null,
+    recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_readiness_status: recoveryGate?.readiness_status ?? null,
+    recovery_gate_auto_allowed: recoveryGate?.automatic_recovery_allowed ?? null,
+    recovery_gate_operator_action_required: recoveryGate?.operator_action_required ?? null,
+    recovery_gate_policy_version: recoveryGate?.policy_version ?? null,
+    recovery_gate_attention_stage: recoveryGate?.attention_stage ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_from_profile: surfaceAdaptation?.from_profile ?? null,
@@ -4511,6 +4546,10 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_readiness:")
       && textResult.stdout.includes("status=blocked")
       && textResult.stdout.includes("attention_stage=ask_user"),
+    text_has_recovery_gate:
+      textResult.stdout.includes("runtime_tool_recovery_gate:")
+      && textResult.stdout.includes("status=fail")
+      && textResult.stdout.includes("reason=blocked_operator_action_required"),
   };
 }
 
@@ -4551,6 +4590,9 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     : null;
   const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
     ? runtimeTools.recovery_readiness
+    : null;
+  const recoveryGate = isObject(runtimeTools?.recovery_gate)
+    ? runtimeTools.recovery_gate
     : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
@@ -4602,6 +4644,16 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
     recovery_readiness_policy_version: recoveryReadiness?.policy_version ?? null,
     recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
+    recovery_gate_status: recoveryGate?.status ?? null,
+    recovery_gate_passed: recoveryGate?.passed ?? null,
+    recovery_gate_blocking: recoveryGate?.blocking ?? null,
+    recovery_gate_severity: recoveryGate?.severity ?? null,
+    recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_readiness_status: recoveryGate?.readiness_status ?? null,
+    recovery_gate_auto_allowed: recoveryGate?.automatic_recovery_allowed ?? null,
+    recovery_gate_operator_action_required: recoveryGate?.operator_action_required ?? null,
+    recovery_gate_policy_version: recoveryGate?.policy_version ?? null,
+    recovery_gate_attention_stage: recoveryGate?.attention_stage ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_auto_adaptation_blocked:
@@ -4626,6 +4678,10 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_readiness:")
       && textResult.stdout.includes("status=degraded")
       && textResult.stdout.includes("attention_stage=local_fix"),
+    text_has_recovery_gate:
+      textResult.stdout.includes("runtime_tool_recovery_gate:")
+      && textResult.stdout.includes("status=warn")
+      && textResult.stdout.includes("reason=degraded_auto_recovery_allowed"),
   };
 }
 

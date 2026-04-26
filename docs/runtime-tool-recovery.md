@@ -118,6 +118,7 @@ again.
 - `recovery_health`
 - `recovery_policy`
 - `recovery_readiness`
+- `recovery_gate`
 - `surface_adaptation.active`
 - `surface_adaptation.reason`
 - `surface_adaptation.auto_adaptation_blocked`
@@ -211,6 +212,42 @@ The intended readiness contract is:
 - `blocked`: health is in `risk`; automatic recovery is blocked until the
   recommended action or operator intervention clears the pressure.
 
+`recovery_gate` turns readiness into a direct pass/warn/fail decision so CI,
+operators, and orchestration code do not re-implement readiness policy:
+
+- `status` (`pass|warn|fail`)
+- `passed`
+- `blocking`
+- `severity` (`none|warning|error`)
+- `reason`
+- `recommended_next_action`
+- `readiness_status`
+- `readiness_ready`
+- `readiness_reason`
+- `automatic_recovery_allowed`
+- `operator_action_required`
+- `policy_version`
+- `health_level`
+- `health_score`
+- `risk_score_threshold`
+- `watch_score_threshold`
+- `attention_recovery_key`
+- `attention_source`
+- `attention_stage`
+- `attention_tool_name`
+- `attention_error_class`
+- `attention_requires_user_intervention`
+
+The intended gate contract is:
+
+- `pass`: readiness is `ready`; automatic recovery may proceed normally.
+- `warn`: readiness is `degraded`, but automatic recovery remains allowed and
+  no operator action is required. Automation may continue, but should surface
+  the referenced `attention_*` recovery before the next risky tool sequence.
+- `fail`: readiness is blocked, operator action is required, automatic recovery
+  is denied, or the readiness fields are internally inconsistent. Automation
+  must stop and follow `recommended_next_action`.
+
 Text status mirrors the decisive fields for quick terminal inspection:
 
 - `runtime_tool_recovery_feedback: ...`
@@ -218,6 +255,7 @@ Text status mirrors the decisive fields for quick terminal inspection:
 - `runtime_tool_recovery_health: ...`
 - `runtime_tool_recovery_policy: ...`
 - `runtime_tool_recovery_readiness: ...`
+- `runtime_tool_recovery_gate: ...`
 - `runtime_tool_surface_adaptation: ...`
 - `runtime_tool_surface_adaptation_outcome: ...`
 
@@ -228,6 +266,7 @@ Focused contracts:
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts
+npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-readiness-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-flow-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-contract.ts
 node gateway/src/extensions/contracts/start-smoke-contract.mjs status-nonrecoverable-tool-recovery --repo-root .

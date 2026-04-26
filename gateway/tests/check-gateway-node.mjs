@@ -597,6 +597,33 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_readiness_auto_allowed, true);
   logStep("runtime-tool-recovery-timeline-contract");
 
+  const runtimeToolRecoveryReadinessResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-tool-recovery-readiness-contract.ts",
+  ]);
+  assertSuccess("runtime-tool-recovery-readiness-contract", runtimeToolRecoveryReadinessResult);
+  const runtimeToolRecoveryReadinessPayload = parseJsonOutput(
+    "runtime-tool-recovery-readiness-contract",
+    runtimeToolRecoveryReadinessResult.stdout,
+  );
+  assert.equal(runtimeToolRecoveryReadinessPayload.ok, true);
+  assert.equal(runtimeToolRecoveryReadinessPayload.ready_status, "pass");
+  assert.equal(runtimeToolRecoveryReadinessPayload.ready_passed, true);
+  assert.equal(runtimeToolRecoveryReadinessPayload.degraded_status, "warn");
+  assert.equal(runtimeToolRecoveryReadinessPayload.degraded_passed, true);
+  assert.equal(runtimeToolRecoveryReadinessPayload.degraded_reason, "degraded_auto_recovery_allowed");
+  assert.equal(runtimeToolRecoveryReadinessPayload.blocked_status, "fail");
+  assert.equal(runtimeToolRecoveryReadinessPayload.blocked_passed, false);
+  assert.equal(runtimeToolRecoveryReadinessPayload.blocked_reason, "blocked_operator_action_required");
+  assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_status, "fail");
+  assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_reason, "automatic_recovery_denied");
+  assert.equal(runtimeToolRecoveryReadinessPayload.blocked_auto_denied_reason, "blocked_auto_recovery_denied");
+  assert.equal(runtimeToolRecoveryReadinessPayload.inconsistent_reason, "readiness_state_inconsistent");
+  logStep("runtime-tool-recovery-readiness-contract");
+
   const runtimeToolRecoveryFlowResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -4941,6 +4968,19 @@ async function runTsRustExecutionSmoke() {
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_readiness_attention_stage_type)),
     true,
   );
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_present, true);
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_status_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_passed_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_blocking_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_severity_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_reason_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_readiness_status_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_auto_allowed_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_operator_action_type, "boolean");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_gate_attention_stage_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_present, true);
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_active_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_reason_type, "string");
@@ -6091,6 +6131,16 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_readiness_operator_action_required, true);
   assert.equal(statusNonRecoverablePayload.recovery_readiness_policy_version, "v1");
   assert.equal(statusNonRecoverablePayload.recovery_readiness_attention_stage, "ask_user");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_status, "fail");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_passed, false);
+  assert.equal(statusNonRecoverablePayload.recovery_gate_blocking, true);
+  assert.equal(statusNonRecoverablePayload.recovery_gate_severity, "error");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_readiness_status, "blocked");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_auto_allowed, false);
+  assert.equal(statusNonRecoverablePayload.recovery_gate_operator_action_required, true);
+  assert.equal(statusNonRecoverablePayload.recovery_gate_policy_version, "v1");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_attention_stage, "ask_user");
   assert.equal(statusNonRecoverablePayload.recovery_health_active_recovery_count, 1);
   assert.equal(statusNonRecoverablePayload.recovery_health_active_nonrecoverable_count, 1);
   assert.equal(statusNonRecoverablePayload.recovery_health_unconsumed_count, 2);
@@ -6108,6 +6158,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.text_has_recovery_health, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_policy, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_readiness, true);
+  assert.equal(statusNonRecoverablePayload.text_has_recovery_gate, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery");
 
   const statusNonRecoverableConsumedResult = runContract(
@@ -6177,6 +6228,16 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverableConsumedPayload.recovery_readiness_operator_action_required, false);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_readiness_policy_version, "v1");
   assert.equal(statusNonRecoverableConsumedPayload.recovery_readiness_attention_stage, "local_fix");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_status, "warn");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_passed, true);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_blocking, false);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_severity, "warning");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_reason, "degraded_auto_recovery_allowed");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_readiness_status, "degraded");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_auto_allowed, true);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_operator_action_required, false);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_policy_version, "v1");
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_gate_attention_stage, "local_fix");
   assert.equal(statusNonRecoverableConsumedPayload.recovery_health_active_recovery_count, 0);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_health_active_nonrecoverable_count, 0);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_health_unconsumed_count, 1);
@@ -6190,6 +6251,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverableConsumedPayload.text_has_recovery_health, true);
   assert.equal(statusNonRecoverableConsumedPayload.text_has_recovery_policy, true);
   assert.equal(statusNonRecoverableConsumedPayload.text_has_recovery_readiness, true);
+  assert.equal(statusNonRecoverableConsumedPayload.text_has_recovery_gate, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery-consumed");
 
   const rejectResult = runContract("start-smoke-contract.mjs", "package-launcher-rejects-python", [
@@ -7917,6 +7979,7 @@ function ensureContractsExist() {
     "history-compaction-contract.mjs",
     "semantic-search-regression-contract.mjs",
     "browser-structured-mcp-contract.mjs",
+    "runtime-tool-recovery-readiness-contract.ts",
     "bridge-plan-failure-policy-contract.ts",
     "bridge-plan-apply-failure-contract.mjs",
     "bridge-cli-contract.mjs",
