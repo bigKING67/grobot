@@ -125,6 +125,10 @@ export const RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS = {
     "Stop retrying if the requested mutation is already applied, or change the target content explicitly.",
   split_non_overlapping_edits:
     "Split overlapping edits into distinct non-overlapping operations before retrying.",
+  narrow_edit_old_text_to_unique_match:
+    "Use the candidate lines from the edit error to make old_text uniquely identify exactly one span before retrying.",
+  reread_target_then_retry_exact_old_text:
+    "Reread the target around the suggested candidate lines, copy the exact current text, and retry the edit with that old_text.",
   locate_path_with_glob_before_retry:
     "Use glob to locate the path before retrying read, write, or edit on that target.",
   read_target_before_mutation:

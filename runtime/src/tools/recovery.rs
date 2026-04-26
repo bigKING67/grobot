@@ -78,6 +78,20 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
+        &["edit_match_not_unique"],
+        "*",
+        "local_fix",
+        "narrow_edit_old_text_to_unique_match",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
+        &["edit_not_found"],
+        "*",
+        "local_fix",
+        "reread_target_then_retry_exact_old_text",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
         &["path_not_found"],
         "*",
         "local_fix",

@@ -1721,6 +1721,22 @@ audit_redact_secrets = false
         assert_eq!(stale_edit.recommended_next_action, "reread_target_then_retry");
         assert!(stale_edit.recoverable);
 
+        let duplicate_edit = classify_tool_recovery("edit_match_not_unique", "medium_risk");
+        assert_eq!(duplicate_edit.stage, "local_fix");
+        assert_eq!(
+            duplicate_edit.recommended_next_action,
+            "narrow_edit_old_text_to_unique_match"
+        );
+        assert!(duplicate_edit.recoverable);
+
+        let missing_edit = classify_tool_recovery("edit_not_found", "medium_risk");
+        assert_eq!(missing_edit.stage, "local_fix");
+        assert_eq!(
+            missing_edit.recommended_next_action,
+            "reread_target_then_retry_exact_old_text"
+        );
+        assert!(missing_edit.recoverable);
+
         let schema_drift = classify_tool_recovery("tool_argument_not_visible", "low_risk");
         assert_eq!(schema_drift.stage, "strategy_switch");
         assert_eq!(
@@ -1759,6 +1775,8 @@ audit_redact_secrets = false
 
         let actions = tool_recovery_action_names();
         assert!(actions.contains(&"ask_user_for_config_or_switch_provider"));
+        assert!(actions.contains(&"narrow_edit_old_text_to_unique_match"));
+        assert!(actions.contains(&"reread_target_then_retry_exact_old_text"));
         assert!(actions.contains(&"inspect_error_and_switch_strategy"));
         assert!(!actions.contains(&"observe_and_continue"));
 
