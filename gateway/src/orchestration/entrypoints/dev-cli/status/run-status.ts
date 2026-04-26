@@ -27,30 +27,24 @@ import {
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
 import {
-  buildRuntimeToolRecoveryFeedback,
   type RuntimeToolRecoveryFeedback,
   readRuntimeToolSurfaceMetrics,
 } from "../../../../tools/runtime/tool-events";
 import {
-  buildRuntimeToolRecoveryHealthSummary,
-  buildRuntimeToolRecoveryTimeline,
   type RuntimeToolRecoveryHealthSummary,
   type RuntimeToolRecoveryTimelineEntry,
 } from "../../../../tools/runtime/tool-recovery-timeline";
 import {
-  getRuntimeToolRecoveryPolicySnapshot,
   type RuntimeToolRecoveryPolicySnapshot,
 } from "../../../../tools/runtime/tool-recovery-policy";
 import {
-  buildRuntimeToolRecoveryReadinessSummary,
   type RuntimeToolRecoveryReadinessSummary,
 } from "../../../../tools/runtime/tool-recovery-readiness";
 import {
-  buildRuntimeToolRecoveryReadinessGate,
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../../../tools/runtime/tool-recovery-readiness-gate";
+import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
-  applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
   type RuntimeToolRecoveryConsumptionRecord,
@@ -1276,29 +1270,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   });
   const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(workDir);
   const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(workDir);
-  const rawRuntimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
-    metrics: runtimeToolSurfaceMetrics,
-  });
-  const runtimeToolRecoveryFeedback = applyRuntimeToolRecoveryConsumption({
-    feedback: rawRuntimeToolRecoveryFeedback,
-    snapshot: runtimeToolSurfaceAdaptationSnapshot,
-  });
-  const runtimeToolRecoveryTimeline = buildRuntimeToolRecoveryTimeline({
+  const runtimeToolRecoveryDecision = buildRuntimeToolRecoveryDecision({
     metrics: runtimeToolSurfaceMetrics,
     adaptationSnapshot: runtimeToolSurfaceAdaptationSnapshot,
-    recoveryFeedback: runtimeToolRecoveryFeedback,
   });
-  const runtimeToolRecoveryHealth = buildRuntimeToolRecoveryHealthSummary({
-    timeline: runtimeToolRecoveryTimeline,
-  });
-  const runtimeToolRecoveryPolicy = getRuntimeToolRecoveryPolicySnapshot();
-  const runtimeToolRecoveryReadiness = buildRuntimeToolRecoveryReadinessSummary({
-    health: runtimeToolRecoveryHealth,
-    policy: runtimeToolRecoveryPolicy,
-  });
-  const runtimeToolRecoveryGate = buildRuntimeToolRecoveryReadinessGate({
-    readiness: runtimeToolRecoveryReadiness,
-  });
+  const runtimeToolRecoveryFeedback = runtimeToolRecoveryDecision.feedback;
+  const runtimeToolRecoveryTimeline = runtimeToolRecoveryDecision.timeline;
+  const runtimeToolRecoveryHealth = runtimeToolRecoveryDecision.health;
+  const runtimeToolRecoveryPolicy = runtimeToolRecoveryDecision.policy;
+  const runtimeToolRecoveryReadiness = runtimeToolRecoveryDecision.readiness;
+  const runtimeToolRecoveryGate = runtimeToolRecoveryDecision.gate;
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
     projectTomlPath,

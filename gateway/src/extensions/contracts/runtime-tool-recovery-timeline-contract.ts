@@ -3,6 +3,7 @@ import {
   buildRuntimeToolRecoveryKey,
   buildRuntimeToolRecoveryTimeline,
 } from "../../tools/runtime/tool-recovery-timeline";
+import { buildRuntimeToolRecoveryDecision } from "../../tools/runtime/tool-recovery-decision";
 import { buildRuntimeToolRecoveryReadinessSummary } from "../../tools/runtime/tool-recovery-readiness";
 import type { RuntimeToolRecoveryFeedback, RuntimeToolSurfaceMetricsSnapshot } from "../../tools/runtime/tool-events";
 import type { RuntimeToolSurfaceAdaptationSnapshot } from "../../tools/runtime/tool-surface-adaptation-state";
@@ -134,6 +135,11 @@ const activeHealth = buildRuntimeToolRecoveryHealthSummary({
 const activeReadiness = buildRuntimeToolRecoveryReadinessSummary({
   health: activeHealth,
 });
+const activeDecision = buildRuntimeToolRecoveryDecision({
+  metrics,
+  adaptationSnapshot: emptyAdaptationSnapshot,
+  nowMs: Date.parse(latestObservedAt) + 2_000,
+});
 
 expectEqual(activeHealth.timelineEntryCount, 2, "active health timeline count");
 expectEqual(activeHealth.score, 36, "active health score");
@@ -172,6 +178,13 @@ expectEqual(activeReadiness.operatorActionRequired, true, "active readiness oper
 expectEqual(activeReadiness.policyVersion, "v1", "active readiness policy version");
 expectEqual(activeReadiness.attentionRecoveryKey, expectedLatestRecoveryKey, "active readiness attention key");
 expectEqual(activeReadiness.attentionStage, "ask_user", "active readiness attention stage");
+expectEqual(activeDecision.feedback.active, true, "active decision feedback active");
+expectEqual(activeDecision.feedback.consumed, false, "active decision feedback consumed");
+expectEqual(activeDecision.timeline[0].recoveryKey, activeTimeline[0].recoveryKey, "active decision timeline parity");
+expectEqual(activeDecision.health.score, activeHealth.score, "active decision health parity");
+expectEqual(activeDecision.readiness.status, "blocked", "active decision readiness status");
+expectEqual(activeDecision.gate.status, "fail", "active decision gate status");
+expectEqual(activeDecision.gate.reason, "blocked_operator_action_required", "active decision gate reason");
 
 const consumedAdaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot = {
   ...emptyAdaptationSnapshot,
@@ -233,6 +246,11 @@ const consumedHealth = buildRuntimeToolRecoveryHealthSummary({
 const consumedReadiness = buildRuntimeToolRecoveryReadinessSummary({
   health: consumedHealth,
 });
+const consumedDecision = buildRuntimeToolRecoveryDecision({
+  metrics,
+  adaptationSnapshot: consumedAdaptationSnapshot,
+  nowMs: Date.parse(consumedAt),
+});
 
 expectEqual(consumedHealth.activeRecoveryCount, 0, "consumed health active count");
 expectEqual(consumedHealth.score, 96, "consumed health score");
@@ -265,6 +283,17 @@ expectEqual(consumedReadiness.automaticRecoveryAllowed, true, "consumed readines
 expectEqual(consumedReadiness.operatorActionRequired, false, "consumed readiness operator action");
 expectEqual(consumedReadiness.attentionRecoveryKey, consumedTimeline[1]?.recoveryKey ?? null, "consumed readiness attention key");
 expectEqual(consumedReadiness.attentionStage, "local_fix", "consumed readiness attention stage");
+expectEqual(consumedDecision.feedback.consumed, true, "consumed decision feedback consumed");
+expectEqual(
+  consumedDecision.feedback.reason,
+  "consumed_nonrecoverable_intervention_prompted",
+  "consumed decision feedback reason",
+);
+expectEqual(consumedDecision.timeline[0].consumed, true, "consumed decision timeline latest consumed");
+expectEqual(consumedDecision.health.score, consumedHealth.score, "consumed decision health parity");
+expectEqual(consumedDecision.readiness.status, "degraded", "consumed decision readiness status");
+expectEqual(consumedDecision.gate.status, "warn", "consumed decision gate status");
+expectEqual(consumedDecision.gate.reason, "degraded_auto_recovery_allowed", "consumed decision gate reason");
 
 process.stdout.write(JSON.stringify({
   ok: true,
@@ -276,10 +305,12 @@ process.stdout.write(JSON.stringify({
   active_health_attention_source: activeHealth.attentionSource,
   active_readiness_status: activeReadiness.status,
   active_readiness_auto_allowed: activeReadiness.automaticRecoveryAllowed,
+  active_decision_gate_reason: activeDecision.gate.reason,
   consumed_latest_recovery_consumed: consumedTimeline[0]?.consumed ?? null,
   consumed_health_level: consumedHealth.level,
   consumed_health_unconsumed_count: consumedHealth.unconsumedCount,
   consumed_health_attention_source: consumedHealth.attentionSource,
   consumed_readiness_status: consumedReadiness.status,
   consumed_readiness_auto_allowed: consumedReadiness.automaticRecoveryAllowed,
+  consumed_decision_gate_reason: consumedDecision.gate.reason,
 }) + "\n");

@@ -83,6 +83,7 @@ behavior can be contract-tested without embedding branch-heavy logic directly in
 Recovery policy is centralized in:
 
 - `gateway/src/tools/runtime/tool-recovery-policy.ts`
+- `gateway/src/tools/runtime/tool-recovery-decision.ts`
 
 That module defines the shared knobs for:
 
@@ -94,6 +95,10 @@ That module defines the shared knobs for:
 
 The intent is to prevent silent drift between `tool-events`,
 `tool-surface-adaptation-state`, `tool-recovery-timeline`, and `status --json`.
+`tool-recovery-decision.ts` is the shared composition point for feedback
+consumption, timeline, health, readiness, and gate decisions. Both
+`status --json` and `grobot start` must use this helper instead of rebuilding
+the chain locally.
 
 ## Consumption rules
 

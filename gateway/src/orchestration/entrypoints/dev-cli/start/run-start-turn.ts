@@ -75,20 +75,12 @@ import {
 } from "../../../../tools/context";
 import { readPersistentGraphIndexStatus } from "../../../../tools/context/graph/persistent-index";
 import {
-  buildRuntimeToolRecoveryFeedback,
   readRuntimeToolSurfaceMetrics,
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
 } from "../../../../tools/runtime/tool-events";
+import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
-  buildRuntimeToolRecoveryHealthSummary,
-  buildRuntimeToolRecoveryTimeline,
-} from "../../../../tools/runtime/tool-recovery-timeline";
-import { getRuntimeToolRecoveryPolicySnapshot } from "../../../../tools/runtime/tool-recovery-policy";
-import { buildRuntimeToolRecoveryReadinessSummary } from "../../../../tools/runtime/tool-recovery-readiness";
-import { buildRuntimeToolRecoveryReadinessGate } from "../../../../tools/runtime/tool-recovery-readiness-gate";
-import {
-  applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
   recordRuntimeToolSurfaceAdaptationOutcome,
@@ -2390,31 +2382,14 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       ];
       const runtimeToolSurfaceMetrics = readRuntimeToolSurfaceMetrics(input.workDir);
       const runtimeToolSurfaceAdaptationSnapshot = readRuntimeToolSurfaceAdaptationState(input.workDir);
-      const rawRuntimeToolRecoveryFeedback = buildRuntimeToolRecoveryFeedback({
-        metrics: runtimeToolSurfaceMetrics,
-      });
-      const runtimeToolRecoveryFeedback = applyRuntimeToolRecoveryConsumption({
-        feedback: rawRuntimeToolRecoveryFeedback,
-        snapshot: runtimeToolSurfaceAdaptationSnapshot,
-      });
       const runtimeToolSurfaceAdaptationStartedAtIso = nowIso();
-      const runtimeToolRecoveryTimeline = buildRuntimeToolRecoveryTimeline({
+      const runtimeToolRecoveryDecision = buildRuntimeToolRecoveryDecision({
         metrics: runtimeToolSurfaceMetrics,
         adaptationSnapshot: runtimeToolSurfaceAdaptationSnapshot,
-        recoveryFeedback: runtimeToolRecoveryFeedback,
-      });
-      const runtimeToolRecoveryHealth = buildRuntimeToolRecoveryHealthSummary({
-        timeline: runtimeToolRecoveryTimeline,
         nowMs: Date.parse(runtimeToolSurfaceAdaptationStartedAtIso),
       });
-      const runtimeToolRecoveryPolicy = getRuntimeToolRecoveryPolicySnapshot();
-      const runtimeToolRecoveryReadiness = buildRuntimeToolRecoveryReadinessSummary({
-        health: runtimeToolRecoveryHealth,
-        policy: runtimeToolRecoveryPolicy,
-      });
-      const runtimeToolRecoveryGate = buildRuntimeToolRecoveryReadinessGate({
-        readiness: runtimeToolRecoveryReadiness,
-      });
+      const runtimeToolRecoveryFeedback = runtimeToolRecoveryDecision.feedback;
+      const runtimeToolRecoveryGate = runtimeToolRecoveryDecision.gate;
       const baseRuntimeToolContextForTurn = buildRuntimeToolContextForMessage(input.runtimeToolContext, userText);
       const rawRuntimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
         context: baseRuntimeToolContextForTurn,

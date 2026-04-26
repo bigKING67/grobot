@@ -595,11 +595,13 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolRecoveryTimelinePayload.active_health_stuck_nonrecoverable, true);
   assert.equal(runtimeToolRecoveryTimelinePayload.active_readiness_status, "blocked");
   assert.equal(runtimeToolRecoveryTimelinePayload.active_readiness_auto_allowed, false);
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_decision_gate_reason, "blocked_operator_action_required");
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_latest_recovery_consumed, true);
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_health_level, "watch");
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_health_unconsumed_count, 1);
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_readiness_status, "degraded");
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_readiness_auto_allowed, true);
+  assert.equal(runtimeToolRecoveryTimelinePayload.consumed_decision_gate_reason, "degraded_auto_recovery_allowed");
   logStep("runtime-tool-recovery-timeline-contract");
 
   const runtimeToolRecoveryReadinessResult = runCommand("npx", [
