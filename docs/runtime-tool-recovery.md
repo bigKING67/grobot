@@ -51,6 +51,13 @@ The canonical human-intervention primitive is `ask_user`. Older
 alias at dispatch/interrupt parsing boundaries; new tool manifests and gateway
 fallback surfaces must expose `ask_user`.
 
+Tool-surface routing is contract-tested by
+`gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a
+representative user intent to the expected profile, visible tool set, forbidden
+tools, and required suppression reasons. This protects the minimal toolset from
+drifting into broad `full_debug` exposure or confusing code-maintenance mentions
+of `web_scan`, `mcp_call`, or `semantic_search` with actual execution intent.
+
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
 `status` reports `runtime_tool_enabled_tools_source_detail` and the real

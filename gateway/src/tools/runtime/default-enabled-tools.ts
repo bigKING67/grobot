@@ -554,6 +554,39 @@ const CONTEXT_DIRECT_RETRIEVAL_TERMS = [
   "wiki 查",
 ] as const;
 
+const ASK_USER_DIRECT_TOOL_TERMS = [
+  "use ask_user",
+  "run ask_user",
+  "call ask_user",
+  "invoke ask_user",
+  "用 ask_user",
+  "使用 ask_user",
+  "调用 ask_user",
+  "执行 ask_user",
+] as const;
+
+const ASK_USER_HUMAN_INTERVENTION_TERMS = [
+  "ask user",
+  "ask the user",
+  "clarify with user",
+  "user confirmation",
+  "confirm with user",
+  "need user input",
+  "human intervention",
+  "missing constraints",
+  "missing information",
+  "问用户",
+  "询问用户",
+  "让用户确认",
+  "用户确认",
+  "需要用户",
+  "人工确认",
+  "人工介入",
+  "缺失约束",
+  "缺少信息",
+  "信息不完整",
+] as const;
+
 function scoreCodeIntent(haystack: string): number {
   return scoreMatches(haystack, [
     "code",
@@ -641,6 +674,13 @@ function hasContextRetrievalIntent(haystack: string): boolean {
     ]));
 }
 
+function hasAskUserInterventionIntent(haystack: string): boolean {
+  if (includesAny(haystack, ASK_USER_DIRECT_TOOL_TERMS)) {
+    return true;
+  }
+  return !hasCodeMaintenanceIntent(haystack) && includesAny(haystack, ASK_USER_HUMAN_INTERVENTION_TERMS);
+}
+
 function chooseHighestScore(scores: Record<ToolSurfaceProfile, number>): ToolSurfaceProfile {
   const priority: ToolSurfaceProfile[] = ["browser_advanced", "mcp", "browser", "context", "coding", "minimal", "full_debug"];
   let best: ToolSurfaceProfile = "coding";
@@ -703,6 +743,9 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
   const scores = emptySurfaceScores();
   const suppressed: ToolSurfaceDecisionSuppression[] = [];
   scores.coding = Math.max(0, codeScore);
+  if (hasAskUserInterventionIntent(normalized)) {
+    scores.minimal += 3;
+  }
   scores.browser_advanced += scoreMatches(normalized, [
     "remote cdp",
     "cdp_endpoint",

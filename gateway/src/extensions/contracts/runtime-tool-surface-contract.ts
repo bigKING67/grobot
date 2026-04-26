@@ -14,6 +14,7 @@ import {
   RUNTIME_TOOL_SURFACE_BUDGETS,
   validateRuntimeToolSurfaceBudget,
 } from "../../tools/runtime/tool-surface-budget";
+import { RUNTIME_TOOL_SURFACE_ROUTING_EVALS } from "../../tools/runtime/tool-surface-routing-evals";
 import type { RuntimeEvent, RuntimeToolContext } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "../../tools/runtime/tool-events";
 import {
@@ -174,6 +175,28 @@ expectDeepEqual(
   [...TOOL_SURFACE_PROFILES].sort(),
   "runtime tool surface budgets cover every profile",
 );
+
+for (const row of RUNTIME_TOOL_SURFACE_ROUTING_EVALS) {
+  const routed = withEnvProfile(undefined, () => build(row.message));
+  expectEqual(routed.toolSurfaceProfile, row.expectedProfile, `${row.id}: profile`);
+  expectEqual(routed.toolSurfaceSource, row.expectedSource, `${row.id}: source`);
+  expectDeepEqual(routed.modelVisibleTools, row.expectedVisibleTools, `${row.id}: visible tools`);
+  for (const forbiddenToolName of row.forbiddenVisibleTools ?? []) {
+    expect(
+      routed.modelVisibleTools?.includes(forbiddenToolName) !== true,
+      `${row.id}: forbidden visible tool ${forbiddenToolName}`,
+    );
+  }
+  for (const suppression of row.requiredSuppressed ?? []) {
+    expectSuppressedProfile(
+      routed,
+      suppression.profile,
+      suppression.reason,
+      `${row.id}: suppression`,
+    );
+  }
+  expectProjectionWithinBudget(routed, `${row.id}: projection budget`);
+}
 
 const coding = withEnvProfile(undefined, () => build(undefined));
 expectEqual(coding.toolSurfaceProfile, "coding", "default profile");
@@ -1129,6 +1152,7 @@ try {
 process.stdout.write(JSON.stringify({
   ok: true,
   policy_version: TOOL_SURFACE_POLICY_VERSION,
+  routing_eval_count: RUNTIME_TOOL_SURFACE_ROUTING_EVALS.length,
   coding_visible_count: coding.modelVisibleTools?.length ?? 0,
   browser_visible_count: browser.modelVisibleTools?.length ?? 0,
   full_debug_visible_count: fullDebug.modelVisibleTools?.length ?? 0,
