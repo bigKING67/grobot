@@ -42,6 +42,10 @@ import {
   type RuntimeToolRecoveryPolicySnapshot,
 } from "../../../../tools/runtime/tool-recovery-policy";
 import {
+  buildRuntimeToolRecoveryReadinessSummary,
+  type RuntimeToolRecoveryReadinessSummary,
+} from "../../../../tools/runtime/tool-recovery-readiness";
+import {
   applyRuntimeToolRecoveryConsumption,
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
@@ -973,6 +977,30 @@ function serializeRuntimeToolRecoveryPolicySummary(summary: RuntimeToolRecoveryP
   };
 }
 
+function serializeRuntimeToolRecoveryReadinessSummary(
+  summary: RuntimeToolRecoveryReadinessSummary,
+): Record<string, unknown> {
+  return {
+    status: summary.status,
+    ready: summary.ready,
+    automatic_recovery_allowed: summary.automaticRecoveryAllowed,
+    operator_action_required: summary.operatorActionRequired,
+    reason: summary.reason,
+    recommended_next_action: summary.recommendedNextAction,
+    policy_version: summary.policyVersion,
+    health_level: summary.healthLevel,
+    health_score: summary.healthScore,
+    risk_score_threshold: summary.riskScoreThreshold,
+    watch_score_threshold: summary.watchScoreThreshold,
+    attention_recovery_key: summary.attentionRecoveryKey,
+    attention_source: summary.attentionSource,
+    attention_stage: summary.attentionStage,
+    attention_tool_name: summary.attentionToolName,
+    attention_error_class: summary.attentionErrorClass,
+    attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
+  };
+}
+
 function serializeRuntimeToolSurfaceDecision(decision: RuntimeToolSurfaceDecision | null): Record<string, unknown> | null {
   if (!decision) {
     return null;
@@ -1229,6 +1257,10 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     timeline: runtimeToolRecoveryTimeline,
   });
   const runtimeToolRecoveryPolicy = getRuntimeToolRecoveryPolicySnapshot();
+  const runtimeToolRecoveryReadiness = buildRuntimeToolRecoveryReadinessSummary({
+    health: runtimeToolRecoveryHealth,
+    policy: runtimeToolRecoveryPolicy,
+  });
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
   const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
     projectTomlPath,
@@ -1579,6 +1611,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         recovery_timeline: runtimeToolRecoveryTimeline.map(serializeRuntimeToolRecoveryTimelineEntry),
         recovery_health: serializeRuntimeToolRecoveryHealthSummary(runtimeToolRecoveryHealth),
         recovery_policy: serializeRuntimeToolRecoveryPolicySummary(runtimeToolRecoveryPolicy),
+        recovery_readiness: serializeRuntimeToolRecoveryReadinessSummary(runtimeToolRecoveryReadiness),
         surface_adaptation: {
           enabled: runtimeToolContextPreview.toolSurfaceAdaptation.enabled,
           active: runtimeToolContextPreview.toolSurfaceAdaptation.active,
@@ -2451,6 +2484,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   );
   process.stdout.write(
     `runtime_tool_recovery_policy: version=${runtimeToolRecoveryPolicy.version} prompt_max_age_ms=${String(runtimeToolRecoveryPolicy.promptMaxAgeMs)} timeline_max_entries=${String(runtimeToolRecoveryPolicy.timelineMaxEntries)} adaptation_history_max_entries=${String(runtimeToolRecoveryPolicy.adaptationHistoryMaxEntries)} recovery_consumption_history_max_entries=${String(runtimeToolRecoveryPolicy.recoveryConsumptionHistoryMaxEntries)} guard_repeat_failures=${String(runtimeToolRecoveryPolicy.guard.repeatedProfileFailureThreshold)} guard_recent_profile_sequence=${String(runtimeToolRecoveryPolicy.guard.recentProfileSequenceSize)} guard_oscillation_window=${String(runtimeToolRecoveryPolicy.guard.oscillationProfileWindowSize)} health_thresholds=${String(runtimeToolRecoveryPolicy.health.watchScoreThreshold)}/${String(runtimeToolRecoveryPolicy.health.riskScoreThreshold)} health_penalties=${String(runtimeToolRecoveryPolicy.health.penalties.activeRecovery)}/${String(runtimeToolRecoveryPolicy.health.penalties.activeNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.stuckNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.historicalUnconsumed)}\n`,
+  );
+  process.stdout.write(
+    `runtime_tool_recovery_readiness: status=${runtimeToolRecoveryReadiness.status} ready=${runtimeToolRecoveryReadiness.ready ? "true" : "false"} auto_recovery_allowed=${runtimeToolRecoveryReadiness.automaticRecoveryAllowed ? "true" : "false"} operator_action_required=${runtimeToolRecoveryReadiness.operatorActionRequired ? "true" : "false"} reason=${runtimeToolRecoveryReadiness.reason} action=${runtimeToolRecoveryReadiness.recommendedNextAction ?? "<none>"} attention_key=${runtimeToolRecoveryReadiness.attentionRecoveryKey ?? "<none>"} attention_stage=${runtimeToolRecoveryReadiness.attentionStage ?? "<none>"} policy_version=${runtimeToolRecoveryReadiness.policyVersion} health=${runtimeToolRecoveryReadiness.healthLevel}/${String(runtimeToolRecoveryReadiness.healthScore)}\n`,
   );
   process.stdout.write(
     `runtime_tool_surface_adaptation: active=${runtimeToolContextPreview.toolSurfaceAdaptation.active ? "true" : "false"} reason=${runtimeToolContextPreview.toolSurfaceAdaptation.reason} from=${runtimeToolContextPreview.toolSurfaceAdaptation.fromProfile} applied=${runtimeToolContextPreview.toolSurfaceAdaptation.appliedProfile} recommended=${runtimeToolContextPreview.toolSurfaceAdaptation.recommendedProfile ?? "<none>"} auto_adaptation_blocked=${runtimeToolContextPreview.toolSurfaceAdaptation.autoAdaptationBlocked ? "true" : "false"} recovery_recoverable=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextPreview.toolSurfaceAdaptation.recoveryRecoverable)} stage=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextPreview.toolSurfaceAdaptation.recoveryErrorClass ?? "<none>"}\n`,

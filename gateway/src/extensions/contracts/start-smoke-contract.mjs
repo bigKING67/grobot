@@ -1632,6 +1632,9 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeToolRecoveryPolicy = isObject(runtimeTools?.recovery_policy)
     ? runtimeTools.recovery_policy
     : null;
+  const runtimeToolRecoveryReadiness = isObject(runtimeTools?.recovery_readiness)
+    ? runtimeTools.recovery_readiness
+    : null;
   const runtimeToolSurfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -2024,6 +2027,21 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryPolicy?.guard,
     status_runtime_tool_recovery_policy_health_type:
       typeof runtimeToolRecoveryPolicy?.health,
+    status_runtime_tool_recovery_readiness_present: Boolean(runtimeToolRecoveryReadiness),
+    status_runtime_tool_recovery_readiness_status_type:
+      typeof runtimeToolRecoveryReadiness?.status,
+    status_runtime_tool_recovery_readiness_ready_type:
+      typeof runtimeToolRecoveryReadiness?.ready,
+    status_runtime_tool_recovery_readiness_auto_allowed_type:
+      typeof runtimeToolRecoveryReadiness?.automatic_recovery_allowed,
+    status_runtime_tool_recovery_readiness_operator_action_type:
+      typeof runtimeToolRecoveryReadiness?.operator_action_required,
+    status_runtime_tool_recovery_readiness_reason_type:
+      typeof runtimeToolRecoveryReadiness?.reason,
+    status_runtime_tool_recovery_readiness_policy_version_type:
+      typeof runtimeToolRecoveryReadiness?.policy_version,
+    status_runtime_tool_recovery_readiness_attention_stage_type:
+      typeof runtimeToolRecoveryReadiness?.attention_stage,
     status_runtime_tool_surface_adaptation_present: Boolean(runtimeToolSurfaceAdaptation),
     status_runtime_tool_surface_adaptation_active_type: typeof runtimeToolSurfaceAdaptation?.active,
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
@@ -4415,6 +4433,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
   const recoveryPolicy = isObject(runtimeTools?.recovery_policy)
     ? runtimeTools.recovery_policy
     : null;
+  const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
+    ? runtimeTools.recovery_readiness
+    : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
     : null;
@@ -4456,6 +4477,12 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryHealth?.attention_requires_user_intervention ?? null,
     recovery_policy_version: recoveryPolicy?.version ?? null,
     recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
+    recovery_readiness_status: recoveryReadiness?.status ?? null,
+    recovery_readiness_ready: recoveryReadiness?.ready ?? null,
+    recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
+    recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
+    recovery_readiness_policy_version: recoveryReadiness?.policy_version ?? null,
+    recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_from_profile: surfaceAdaptation?.from_profile ?? null,
@@ -4480,6 +4507,10 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     text_has_recovery_policy:
       textResult.stdout.includes("runtime_tool_recovery_policy:")
       && textResult.stdout.includes("timeline_max_entries=20"),
+    text_has_recovery_readiness:
+      textResult.stdout.includes("runtime_tool_recovery_readiness:")
+      && textResult.stdout.includes("status=blocked")
+      && textResult.stdout.includes("attention_stage=ask_user"),
   };
 }
 
@@ -4517,6 +4548,9 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     : null;
   const recoveryPolicy = isObject(runtimeTools?.recovery_policy)
     ? runtimeTools.recovery_policy
+    : null;
+  const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
+    ? runtimeTools.recovery_readiness
     : null;
   const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
     ? runtimeTools.surface_adaptation
@@ -4562,6 +4596,12 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryHealth?.attention_requires_user_intervention ?? null,
     recovery_policy_version: recoveryPolicy?.version ?? null,
     recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
+    recovery_readiness_status: recoveryReadiness?.status ?? null,
+    recovery_readiness_ready: recoveryReadiness?.ready ?? null,
+    recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
+    recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
+    recovery_readiness_policy_version: recoveryReadiness?.policy_version ?? null,
+    recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_auto_adaptation_blocked:
@@ -4582,6 +4622,10 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
     text_has_recovery_policy:
       textResult.stdout.includes("runtime_tool_recovery_policy:")
       && textResult.stdout.includes("timeline_max_entries=20"),
+    text_has_recovery_readiness:
+      textResult.stdout.includes("runtime_tool_recovery_readiness:")
+      && textResult.stdout.includes("status=degraded")
+      && textResult.stdout.includes("attention_stage=local_fix"),
   };
 }
 

@@ -3,6 +3,7 @@ import {
   buildRuntimeToolRecoveryKey,
   buildRuntimeToolRecoveryTimeline,
 } from "../../tools/runtime/tool-recovery-timeline";
+import { buildRuntimeToolRecoveryReadinessSummary } from "../../tools/runtime/tool-recovery-readiness";
 import type { RuntimeToolRecoveryFeedback, RuntimeToolSurfaceMetricsSnapshot } from "../../tools/runtime/tool-events";
 import type { RuntimeToolSurfaceAdaptationSnapshot } from "../../tools/runtime/tool-surface-adaptation-state";
 
@@ -130,6 +131,9 @@ const activeHealth = buildRuntimeToolRecoveryHealthSummary({
   timeline: activeTimeline,
   nowMs: Date.parse(latestObservedAt) + 2_000,
 });
+const activeReadiness = buildRuntimeToolRecoveryReadinessSummary({
+  health: activeHealth,
+});
 
 expectEqual(activeHealth.timelineEntryCount, 2, "active health timeline count");
 expectEqual(activeHealth.score, 36, "active health score");
@@ -161,6 +165,13 @@ expectEqual(activeHealth.latestRecoveryKey, expectedLatestRecoveryKey, "active h
 expectEqual(activeHealth.latestAgeMs, 2_000, "active health latest age");
 expectEqual(activeHealth.errorClassCounts.config_missing, 1, "active health config_missing count");
 expectEqual(activeHealth.toolNameCounts.web_scan, 1, "active health web_scan count");
+expectEqual(activeReadiness.status, "blocked", "active readiness status");
+expectEqual(activeReadiness.ready, false, "active readiness ready");
+expectEqual(activeReadiness.automaticRecoveryAllowed, false, "active readiness automatic recovery");
+expectEqual(activeReadiness.operatorActionRequired, true, "active readiness operator action");
+expectEqual(activeReadiness.policyVersion, "v1", "active readiness policy version");
+expectEqual(activeReadiness.attentionRecoveryKey, expectedLatestRecoveryKey, "active readiness attention key");
+expectEqual(activeReadiness.attentionStage, "ask_user", "active readiness attention stage");
 
 const consumedAdaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot = {
   ...emptyAdaptationSnapshot,
@@ -219,6 +230,9 @@ const consumedHealth = buildRuntimeToolRecoveryHealthSummary({
   timeline: consumedTimeline,
   nowMs: Date.parse(consumedAt),
 });
+const consumedReadiness = buildRuntimeToolRecoveryReadinessSummary({
+  health: consumedHealth,
+});
 
 expectEqual(consumedHealth.activeRecoveryCount, 0, "consumed health active count");
 expectEqual(consumedHealth.score, 96, "consumed health score");
@@ -245,6 +259,12 @@ expectEqual(consumedHealth.consumedCount, 1, "consumed health consumed count");
 expectEqual(consumedHealth.stuckNonrecoverableCount, 0, "consumed health stuck nonrecoverable count");
 expectEqual(consumedHealth.hasStuckNonrecoverable, false, "consumed health stuck flag");
 expectEqual(consumedHealth.latestRecoveryKey, expectedLatestRecoveryKey, "consumed health latest key");
+expectEqual(consumedReadiness.status, "degraded", "consumed readiness status");
+expectEqual(consumedReadiness.ready, false, "consumed readiness ready");
+expectEqual(consumedReadiness.automaticRecoveryAllowed, true, "consumed readiness automatic recovery");
+expectEqual(consumedReadiness.operatorActionRequired, false, "consumed readiness operator action");
+expectEqual(consumedReadiness.attentionRecoveryKey, consumedTimeline[1]?.recoveryKey ?? null, "consumed readiness attention key");
+expectEqual(consumedReadiness.attentionStage, "local_fix", "consumed readiness attention stage");
 
 process.stdout.write(JSON.stringify({
   ok: true,
@@ -254,8 +274,12 @@ process.stdout.write(JSON.stringify({
   active_health_score: activeHealth.score,
   active_health_stuck_nonrecoverable: activeHealth.hasStuckNonrecoverable,
   active_health_attention_source: activeHealth.attentionSource,
+  active_readiness_status: activeReadiness.status,
+  active_readiness_auto_allowed: activeReadiness.automaticRecoveryAllowed,
   consumed_latest_recovery_consumed: consumedTimeline[0]?.consumed ?? null,
   consumed_health_level: consumedHealth.level,
   consumed_health_unconsumed_count: consumedHealth.unconsumedCount,
   consumed_health_attention_source: consumedHealth.attentionSource,
+  consumed_readiness_status: consumedReadiness.status,
+  consumed_readiness_auto_allowed: consumedReadiness.automaticRecoveryAllowed,
 }) + "\n");

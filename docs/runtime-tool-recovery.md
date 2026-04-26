@@ -117,6 +117,7 @@ again.
 - `recovery_timeline[]`
 - `recovery_health`
 - `recovery_policy`
+- `recovery_readiness`
 - `surface_adaptation.active`
 - `surface_adaptation.reason`
 - `surface_adaptation.auto_adaptation_blocked`
@@ -180,12 +181,43 @@ The intended contract is:
 - `attention_recovery_key`: the exact recovery entry the action refers to, so
   automation does not have to guess from `latest_*`.
 
+`recovery_readiness` converts health + policy into a direct operator/CI signal:
+
+- `status` (`ready|degraded|blocked`)
+- `ready`
+- `automatic_recovery_allowed`
+- `operator_action_required`
+- `reason`
+- `recommended_next_action`
+- `policy_version`
+- `health_level`
+- `health_score`
+- `risk_score_threshold`
+- `watch_score_threshold`
+- `attention_recovery_key`
+- `attention_source`
+- `attention_stage`
+- `attention_tool_name`
+- `attention_error_class`
+- `attention_requires_user_intervention`
+
+The intended readiness contract is:
+
+- `ready`: no active or unresolved recovery pressure; normal automatic recovery
+  may continue.
+- `degraded`: health is in `watch`; automation should inspect the referenced
+  recovery, but automatic recovery can continue when no operator action is
+  required.
+- `blocked`: health is in `risk`; automatic recovery is blocked until the
+  recommended action or operator intervention clears the pressure.
+
 Text status mirrors the decisive fields for quick terminal inspection:
 
 - `runtime_tool_recovery_feedback: ...`
 - `runtime_tool_recovery_timeline: ...`
 - `runtime_tool_recovery_health: ...`
 - `runtime_tool_recovery_policy: ...`
+- `runtime_tool_recovery_readiness: ...`
 - `runtime_tool_surface_adaptation: ...`
 - `runtime_tool_surface_adaptation_outcome: ...`
 
