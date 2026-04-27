@@ -13,6 +13,8 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    static BROWSER_MCP_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
     fn make_temp_workspace(prefix: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -371,6 +373,53 @@ mod tests {
 
     fn json_object_args(value: Value) -> Map<String, Value> {
         value.as_object().expect("test args must be object").clone()
+    }
+
+    fn toml_basic_string(value: &str) -> String {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+
+    fn clear_mcp_runtime_state(server_key: &str) {
+        let stale_session = {
+            let mut store = lock_runtime_store().expect("lock runtime store");
+            store.states.remove(server_key);
+            store.sessions.remove(server_key)
+        };
+        if let Some(mut session) = stale_session {
+            close_mcp_session(&mut session);
+        }
+    }
+
+    fn fake_browser_structured_mcp_server_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/tools/fixtures/fake-browser-structured-mcp.mjs")
+    }
+
+    fn write_fake_browser_mcp_registry(
+        grobot_dir: &Path,
+        backend_payload: &Value,
+        mcp_is_error: bool,
+    ) {
+        let server_script = fake_browser_structured_mcp_server_path();
+        let backend_json =
+            serde_json::to_string(backend_payload).expect("serialize backend fixture");
+        fs::write(
+            grobot_dir.join("mcp.toml"),
+            format!(
+                "\
+[[servers]]
+name = \"browser-structured\"
+command = \"node\"
+args = [{}]
+enabled = true
+env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ERROR = {} }}
+",
+                toml_basic_string(&server_script.to_string_lossy()),
+                toml_basic_string(&backend_json),
+                toml_basic_string(if mcp_is_error { "1" } else { "0" })
+            ),
+        )
+        .expect("write browser MCP registry");
     }
 
     #[test]
@@ -1067,6 +1116,140 @@ mod tests {
             data["facade_default_tmwd_mode_applied"].as_bool(),
             Some(true)
         );
+    }
+
+    #[test]
+    fn web_scan_reports_browser_backend_error_as_observed_error_from_mcp() {
+        let _browser_mcp_guard = BROWSER_MCP_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("lock browser MCP fixture");
+        let root = make_temp_workspace("browser-backend-error-flow");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        let backend_payload = json!({
+            "status": "error",
+            "error_code": "NO_EXTENSION",
+            "retryable": true,
+            "transport_attempts": [
+                {
+                    "transport": "tmwd_ws",
+                    "status": "failed",
+                    "error_code": "NO_EXTENSION"
+                }
+            ]
+        });
+        write_fake_browser_mcp_registry(&grobot_dir, &backend_payload, false);
+
+        clear_mcp_runtime_state("browser-structured");
+        let mut context = browser_test_context("browser", false);
+        context.work_dir = workspace.clone();
+        let output = run_web_scan(&context, &Map::new())
+            .expect("browser backend status=error should stay observable");
+        let payload: Value =
+            serde_json::from_str(&output.content).expect("web_scan output should be json");
+        assert_eq!(payload["tool"].as_str(), Some(TOOL_WEB_SCAN));
+        assert_eq!(payload["status"].as_str(), Some("error"));
+        assert_eq!(payload["backend"].as_str(), Some("browser-structured"));
+        assert_eq!(payload["mapped_tool"].as_str(), Some("browser_scan"));
+        assert_eq!(payload["error_code"].as_str(), Some("NO_EXTENSION"));
+        assert_eq!(
+            payload["facade_default_tmwd_mode_applied"].as_bool(),
+            Some(true)
+        );
+
+        let observed = output
+            .observed_error
+            .as_ref()
+            .expect("browser backend result error should be observed by the model");
+        assert_eq!(observed.error_class, "browser_backend_result_error");
+        let data = observed
+            .data
+            .as_ref()
+            .expect("observed browser error should include structured data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("browser_backend_result_error")
+        );
+        assert_eq!(data["tool"].as_str(), Some(TOOL_WEB_SCAN));
+        assert_eq!(data["mapped_tool"].as_str(), Some("browser_scan"));
+        assert_eq!(data["error_code"].as_str(), Some("NO_EXTENSION"));
+        assert_eq!(data["retryable"].as_bool(), Some(true));
+        assert_eq!(data["transport_attempts_count"].as_u64(), Some(1));
+        assert!(data["diagnostic_hint"]
+            .as_str()
+            .expect("diagnostic hint should be present")
+            .contains("Browser extension"));
+
+        clear_mcp_runtime_state("browser-structured");
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn web_execute_js_reports_mcp_is_error_as_observed_browser_error() {
+        let _browser_mcp_guard = BROWSER_MCP_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("lock browser MCP fixture");
+        let root = make_temp_workspace("browser-mcp-is-error-flow");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        let backend_payload = json!({
+            "status": "ok",
+            "transport": "tmwd_ws",
+            "title": "fixture"
+        });
+        write_fake_browser_mcp_registry(&grobot_dir, &backend_payload, true);
+
+        clear_mcp_runtime_state("browser-structured");
+        let mut context = browser_test_context("browser", false);
+        context.work_dir = workspace.clone();
+        let output = run_web_execute_js(
+            &context,
+            &json_object_args(json!({ "script": "return document.title" })),
+        )
+        .expect("browser MCP isError=true should stay observable");
+        let payload: Value =
+            serde_json::from_str(&output.content).expect("web_execute_js output should be json");
+        assert_eq!(payload["tool"].as_str(), Some(TOOL_WEB_EXECUTE_JS));
+        assert_eq!(payload["status"].as_str(), Some("error"));
+        assert_eq!(payload["mapped_tool"].as_str(), Some("browser_execute_js"));
+        assert_eq!(
+            payload["browser_context_kind"].as_str(),
+            Some("tmwd_user_browser")
+        );
+
+        let observed = output
+            .observed_error
+            .as_ref()
+            .expect("MCP isError=true should produce an observed browser error");
+        assert_eq!(observed.error_class, "browser_backend_result_error");
+        let data = observed
+            .data
+            .as_ref()
+            .expect("observed browser MCP error should include structured data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("browser_backend_result_error")
+        );
+        assert_eq!(data["tool"].as_str(), Some(TOOL_WEB_EXECUTE_JS));
+        assert_eq!(data["mapped_tool"].as_str(), Some("browser_execute_js"));
+        assert_eq!(data["is_error"].as_bool(), Some(true));
+        assert_eq!(
+            data["browser_context_kind"].as_str(),
+            Some("tmwd_user_browser")
+        );
+        assert!(data["diagnostic_hint"]
+            .as_str()
+            .expect("diagnostic hint should be present")
+            .contains("MCP tool error"));
+
+        clear_mcp_runtime_state("browser-structured");
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
     }
 
     #[test]
