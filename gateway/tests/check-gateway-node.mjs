@@ -5159,6 +5159,12 @@ async function runTsRustExecutionSmoke() {
     ),
     true,
   );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_feedback_browser_environment_recovery_type),
+    ),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_timeline_is_array, true);
   assert.equal(statusPayload.status_runtime_tool_recovery_timeline_count >= 0, true);
   assert.equal(
@@ -6516,6 +6522,86 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.text_has_recovery_readiness_thresholds, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_gate_thresholds, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery");
+
+  const statusBrowserEnvironmentRecoveryResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-browser-environment-tool-recovery",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+    {
+      timeoutMs: 240_000,
+    },
+  );
+  const statusBrowserEnvironmentRecoveryPayload = parseJsonOutput(
+    "start-smoke-contract status-browser-environment-tool-recovery",
+    statusBrowserEnvironmentRecoveryResult.stdout,
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.exit_code, 0);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.text_exit_code, 0);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.status_json_parse_ok, true);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_active, true);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_stage, "ask_user");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_action, "request_environment_fix");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_recoverable, false);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_requires_user_intervention, true);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_same_tool_error_count, 2);
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_feedback_escalation_reason,
+    "browser_environment_error_repeated",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_browser_error_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_browser_action, "setup_and_doctor");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_feedback_browser_retry_allowed, false);
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_feedback_browser_commands,
+    "grobot browser setup|grobot browser doctor",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_stage, "ask_user");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_tool_name, "web_scan");
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_error_class,
+    "browser_backend_result_error",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_browser_error_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_browser_action, "setup_and_doctor");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_browser_retry_allowed, false);
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_timeline_latest_browser_commands,
+    "grobot browser setup|grobot browser doctor",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_health_attention_browser_error_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_health_attention_browser_action, "setup_and_doctor");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_health_attention_browser_retry_allowed, false);
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_health_attention_browser_commands,
+    "grobot browser setup|grobot browser doctor",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_health_latest_browser_error_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_health_latest_browser_action, "setup_and_doctor");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_readiness_status, "blocked");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_readiness_operator_action_required, true);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_readiness_attention_browser_error_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_readiness_attention_browser_action, "setup_and_doctor");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_readiness_attention_browser_retry_allowed, false);
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_readiness_attention_browser_commands,
+    "grobot browser setup|grobot browser doctor",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_status, "fail");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_error_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_action, "setup_and_doctor");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_retry_allowed, false);
+  assert.equal(
+    statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_commands,
+    "grobot browser setup|grobot browser doctor",
+  );
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.text_has_recovery_feedback_browser_environment, true);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.text_has_recovery_readiness_browser_environment, true);
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.text_has_recovery_gate_browser_environment, true);
+  logStep("start-smoke-contract status-browser-environment-tool-recovery");
 
   const statusNonRecoverableConsumedResult = runContract(
     "start-smoke-contract.mjs",

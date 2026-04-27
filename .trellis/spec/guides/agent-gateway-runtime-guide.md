@@ -184,6 +184,11 @@ Gateway status output should include route and cache observability fields:
   - `same_tool_error_strategy_switch_threshold`
   - `same_tool_error_ask_user_threshold`
   - `browser_environment_ask_user_threshold`
+- `runtime_tool_recovery_feedback.browser_environment_recovery`
+  - `error_code`
+  - `action`
+  - `retry_allowed`
+  - `commands`
 - `runtime_tool_recovery_timeline[*].browser_environment_recovery`
   - `error_code`
   - `action`
@@ -199,9 +204,12 @@ Browser facade recovery must treat repeated environment failures as operator-act
 `TRANSPORT_UNAVAILABLE`, the second same-tool recovery escalates to `ask_user` with
 `recommended_next_action=request_environment_fix`. Retryable browser execution failures such as
 `TIMEOUT` keep the generic repeated-error thresholds. The recovery prompt must include the
-browser-specific execution block: do not retry the failing browser tool automatically; request the
-relevant setup/hub/doctor action (`grobot browser setup`, `grobot browser hub start`,
-`grobot browser doctor`) and retry only after the browser environment is ready.
+browser-specific execution rule instead of the generic environment instruction: ask the user to
+repair the browser environment with the listed setup/hub/doctor commands, and do not retry the
+browser tool until `grobot browser doctor` confirms the environment is ready. The following
+`Browser environment fix:` line must carry the concrete recovery plan commands
+(`grobot browser setup`, `grobot browser hub start`, `grobot browser doctor`) and the specific
+retry prerequisite for the observed error code.
 
 ---
 

@@ -43,7 +43,10 @@ import {
   formatRuntimeToolRecoveryGateFields,
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../../../tools/runtime/tool-recovery-readiness-gate";
-import type { BrowserEnvironmentRecoveryPlan } from "../../../../tools/runtime/browser-environment-recovery";
+import {
+  formatBrowserEnvironmentRecoveryPlan,
+  type BrowserEnvironmentRecoveryPlan,
+} from "../../../../tools/runtime/browser-environment-recovery";
 import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
@@ -913,6 +916,50 @@ function serializeBrowserEnvironmentRecoveryPlan(
   };
 }
 
+function serializeRuntimeToolRecoveryFeedback(
+  feedback: RuntimeToolRecoveryFeedback,
+): Record<string, unknown> {
+  return {
+    active: feedback.active,
+    severity: feedback.severity,
+    reason: feedback.reason,
+    stage: feedback.stage,
+    tool_name: feedback.toolName,
+    error_class: feedback.errorClass,
+    recommended_next_action: feedback.recommendedNextAction,
+    recoverable: feedback.recoverable,
+    requires_user_intervention: feedback.requiresUserIntervention,
+    same_tool_error_count: feedback.sameToolErrorCount ?? null,
+    escalated: feedback.escalated ?? false,
+    escalation_reason: feedback.escalationReason ?? null,
+    escalation_policy_version: feedback.escalationPolicyVersion ?? null,
+    base_recovery_stage: feedback.baseStage ?? null,
+    base_recommended_next_action: feedback.baseRecommendedNextAction ?? null,
+    prompt_injected: feedback.active,
+    consumed: feedback.consumed ?? false,
+    consumed_reason: feedback.consumedReason ?? null,
+    consumed_at: feedback.consumedAt ?? null,
+    observed_at: feedback.observedAt ?? null,
+    browser_environment_recovery:
+      serializeBrowserEnvironmentRecoveryPlan(feedback.browserEnvironmentRecovery ?? null),
+  };
+}
+
+function formatRuntimeToolRecoveryFeedbackFields(feedback: RuntimeToolRecoveryFeedback): string {
+  return [
+    `active=${feedback.active ? "true" : "false"}`,
+    `severity=${feedback.severity}`,
+    `reason=${feedback.reason}`,
+    `recoverable=${feedback.recoverable === null ? "<unknown>" : String(feedback.recoverable)}`,
+    `requires_user_intervention=${feedback.requiresUserIntervention ? "true" : "false"}`,
+    `consumed=${feedback.consumed ? "true" : "false"}`,
+    `stage=${feedback.stage ?? "<none>"}`,
+    `action=${feedback.recommendedNextAction ?? "<none>"}`,
+    `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(feedback.browserEnvironmentRecovery ?? null)}`,
+    formatRuntimeToolRecoveryEscalationFields(feedback),
+  ].join(" ");
+}
+
 function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTimelineEntry): Record<string, unknown> {
   return {
     recovery_key: entry.recoveryKey,
@@ -1645,28 +1692,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         schema_projection: serializeRuntimeToolSurfaceProjectionSummary(runtimeToolContextPreview.schemaProjectionSummary),
         schema_projection_drift: serializeRuntimeToolSurfaceProjectionDrift(runtimeToolContextPreview.schemaProjectionDrift),
         metrics: runtimeToolSurfaceMetrics,
-        recovery_feedback: {
-          active: runtimeToolRecoveryFeedback.active,
-          severity: runtimeToolRecoveryFeedback.severity,
-          reason: runtimeToolRecoveryFeedback.reason,
-          stage: runtimeToolRecoveryFeedback.stage,
-          tool_name: runtimeToolRecoveryFeedback.toolName,
-          error_class: runtimeToolRecoveryFeedback.errorClass,
-          recommended_next_action: runtimeToolRecoveryFeedback.recommendedNextAction,
-          recoverable: runtimeToolRecoveryFeedback.recoverable,
-          requires_user_intervention: runtimeToolRecoveryFeedback.requiresUserIntervention,
-          same_tool_error_count: runtimeToolRecoveryFeedback.sameToolErrorCount ?? null,
-          escalated: runtimeToolRecoveryFeedback.escalated ?? false,
-          escalation_reason: runtimeToolRecoveryFeedback.escalationReason ?? null,
-          escalation_policy_version: runtimeToolRecoveryFeedback.escalationPolicyVersion ?? null,
-          base_recovery_stage: runtimeToolRecoveryFeedback.baseStage ?? null,
-          base_recommended_next_action: runtimeToolRecoveryFeedback.baseRecommendedNextAction ?? null,
-          prompt_injected: runtimeToolRecoveryFeedback.active,
-          consumed: runtimeToolRecoveryFeedback.consumed ?? false,
-          consumed_reason: runtimeToolRecoveryFeedback.consumedReason ?? null,
-          consumed_at: runtimeToolRecoveryFeedback.consumedAt ?? null,
-          observed_at: runtimeToolRecoveryFeedback.observedAt ?? null,
-        },
+        recovery_feedback: serializeRuntimeToolRecoveryFeedback(runtimeToolRecoveryFeedback),
         recovery_timeline: runtimeToolRecoveryTimeline.map(serializeRuntimeToolRecoveryTimelineEntry),
         recovery_health: serializeRuntimeToolRecoveryHealthSummary(runtimeToolRecoveryHealth),
         recovery_policy: serializeRuntimeToolRecoveryPolicySummary(runtimeToolRecoveryPolicy),
@@ -2533,7 +2559,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_metrics_recovery_stages: ${Object.keys(runtimeToolSurfaceMetrics.recoveryStages).length > 0 ? JSON.stringify(runtimeToolSurfaceMetrics.recoveryStages) : "<empty>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_feedback: active=${runtimeToolRecoveryFeedback.active ? "true" : "false"} severity=${runtimeToolRecoveryFeedback.severity} reason=${runtimeToolRecoveryFeedback.reason} recoverable=${runtimeToolRecoveryFeedback.recoverable === null ? "<unknown>" : String(runtimeToolRecoveryFeedback.recoverable)} requires_user_intervention=${runtimeToolRecoveryFeedback.requiresUserIntervention ? "true" : "false"} consumed=${runtimeToolRecoveryFeedback.consumed ? "true" : "false"} stage=${runtimeToolRecoveryFeedback.stage ?? "<none>"} action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} ${formatRuntimeToolRecoveryEscalationFields(runtimeToolRecoveryFeedback)}\n`,
+    `runtime_tool_recovery_feedback: ${formatRuntimeToolRecoveryFeedbackFields(runtimeToolRecoveryFeedback)}\n`,
   );
   const latestRuntimeToolRecoveryTimelineEntry = runtimeToolRecoveryTimeline[0] ?? null;
   process.stdout.write(

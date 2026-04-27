@@ -2341,6 +2341,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryFeedback?.base_recovery_stage,
     status_runtime_tool_recovery_feedback_base_recommended_next_action_type:
       typeof runtimeToolRecoveryFeedback?.base_recommended_next_action,
+    status_runtime_tool_recovery_feedback_browser_environment_recovery_type:
+      typeof runtimeToolRecoveryFeedback?.browser_environment_recovery,
     status_runtime_tool_recovery_timeline_is_array: Array.isArray(runtimeTools?.recovery_timeline),
     status_runtime_tool_recovery_timeline_count: runtimeToolRecoveryTimeline.length,
     status_runtime_tool_recovery_timeline_latest_recovery_key_type:
@@ -4794,6 +4796,62 @@ function writeNonRecoverableToolRecoveryMetrics(workDir) {
   return observedAt;
 }
 
+function writeBrowserEnvironmentToolRecoveryMetrics(workDir) {
+  const runtimeDir = `${workDir}/.grobot/runtime`;
+  mkdirSync(runtimeDir, { recursive: true });
+  const observedAt = new Date().toISOString();
+  writeFileSync(
+    `${runtimeDir}/tool-surface-metrics.json`,
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: observedAt,
+      callsTotal: 1,
+      failedTotal: 1,
+      deferredTotal: 0,
+      callsByTool: { web_scan: 1 },
+      failuresByErrorClass: { browser_backend_result_error: 1 },
+      recoveryStages: { ask_user: 1 },
+      recoveryCountsByKey: { "tool_error:web_scan:browser_backend_result_error": 2 },
+      latestRecoveryRepeatKey: "tool_error:web_scan:browser_backend_result_error",
+      latestRecoveryRepeatCount: 2,
+      durationTotalMsByTool: { web_scan: 8 },
+      durationCountByTool: { web_scan: 1 },
+      recentRecoveries: [
+        {
+          stage: "ask_user",
+          reason: "browser_backend_result_error",
+          recommendedNextAction: "request_environment_fix",
+          toolName: "web_scan",
+          errorClass: "browser_backend_result_error",
+          errorMessage: "web_scan backend returned error_code=NO_EXTENSION: Browser extension is not connected.",
+          errorData: {
+            diagnostic_kind: "browser_backend_result_error",
+            tool: "web_scan",
+            backend: "browser-structured",
+            mapped_tool: "browser_scan",
+            operation: "backend_result",
+            error_code: "NO_EXTENSION",
+            retryable: true,
+            transport_attempts_count: 1,
+            browser_context_kind: "unknown",
+            diagnostic_hint: "Browser extension is not connected. Run `grobot browser setup`.",
+          },
+          recoverable: false,
+          requiresUserIntervention: true,
+          sameToolErrorCount: 2,
+          escalated: true,
+          escalationReason: "browser_environment_error_repeated",
+          escalationPolicyVersion: "v1",
+          baseStage: "strategy_switch",
+          baseRecommendedNextAction: "inspect_error_and_switch_strategy",
+          observedAt,
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 function writeGateBlockedRecoverableToolRecoveryMetrics(workDir) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });
@@ -5096,6 +5154,133 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       && textResult.stdout.includes("reason=blocked_operator_action_required"),
     ...recoveryEscalationTextSurface,
     ...recoveryReadinessTextSurface,
+  };
+}
+
+function browserEnvironmentRecoveryPlanSummary(plan) {
+  return isObject(plan)
+    ? {
+        error_code: plan.error_code ?? null,
+        action: plan.action ?? null,
+        retry_allowed: plan.retry_allowed ?? null,
+        commands: Array.isArray(plan.commands) ? plan.commands.join("|") : null,
+      }
+    : {
+        error_code: null,
+        action: null,
+        retry_allowed: null,
+        commands: null,
+      };
+}
+
+function runStatusBrowserEnvironmentToolRecovery(repoRoot) {
+  const workDir = createTempDir("grobot-status-browser-environment-recovery-work");
+  writeExecutionProjectToml(workDir);
+  writeBrowserEnvironmentToolRecoveryMetrics(workDir);
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
+  const textResult = runCommand(repoRoot, statusArgs);
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeTools = isObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
+    ? runtimeTools.recovery_feedback
+    : null;
+  const recoveryTimeline = Array.isArray(runtimeTools?.recovery_timeline)
+    ? runtimeTools.recovery_timeline
+    : [];
+  const latestRecoveryTimeline = isObject(recoveryTimeline[0]) ? recoveryTimeline[0] : null;
+  const recoveryHealth = isObject(runtimeTools?.recovery_health)
+    ? runtimeTools.recovery_health
+    : null;
+  const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
+    ? runtimeTools.recovery_readiness
+    : null;
+  const recoveryGate = isObject(runtimeTools?.recovery_gate)
+    ? runtimeTools.recovery_gate
+    : null;
+  const timelinePlan = browserEnvironmentRecoveryPlanSummary(
+    latestRecoveryTimeline?.browser_environment_recovery,
+  );
+  const healthAttentionPlan = browserEnvironmentRecoveryPlanSummary(
+    recoveryHealth?.attention_browser_environment_recovery,
+  );
+  const healthLatestPlan = browserEnvironmentRecoveryPlanSummary(
+    recoveryHealth?.latest_browser_environment_recovery,
+  );
+  const readinessAttentionPlan = browserEnvironmentRecoveryPlanSummary(
+    recoveryReadiness?.attention_browser_environment_recovery,
+  );
+  const gateAttentionPlan = browserEnvironmentRecoveryPlanSummary(
+    recoveryGate?.attention_browser_environment_recovery,
+  );
+  const feedbackPlan = browserEnvironmentRecoveryPlanSummary(
+    recoveryFeedback?.browser_environment_recovery,
+  );
+  const textBrowserRecoverySnippet =
+    "browser_environment_recovery=code=NO_EXTENSION action=setup_and_doctor retry_allowed=false commands=grobot browser setup|grobot browser doctor";
+  return {
+    exit_code: jsonResult.exit_code,
+    text_exit_code: textResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
+    recovery_feedback_active: recoveryFeedback?.active ?? null,
+    recovery_feedback_stage: recoveryFeedback?.stage ?? null,
+    recovery_feedback_action: recoveryFeedback?.recommended_next_action ?? null,
+    recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
+    recovery_feedback_requires_user_intervention:
+      recoveryFeedback?.requires_user_intervention ?? null,
+    recovery_feedback_same_tool_error_count:
+      recoveryFeedback?.same_tool_error_count ?? null,
+    recovery_feedback_escalation_reason:
+      recoveryFeedback?.escalation_reason ?? null,
+    recovery_feedback_browser_error_code: feedbackPlan.error_code,
+    recovery_feedback_browser_action: feedbackPlan.action,
+    recovery_feedback_browser_retry_allowed: feedbackPlan.retry_allowed,
+    recovery_feedback_browser_commands: feedbackPlan.commands,
+    recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
+    recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_latest_error_class: latestRecoveryTimeline?.error_class ?? null,
+    recovery_timeline_latest_browser_error_code: timelinePlan.error_code,
+    recovery_timeline_latest_browser_action: timelinePlan.action,
+    recovery_timeline_latest_browser_retry_allowed: timelinePlan.retry_allowed,
+    recovery_timeline_latest_browser_commands: timelinePlan.commands,
+    recovery_health_attention_browser_error_code: healthAttentionPlan.error_code,
+    recovery_health_attention_browser_action: healthAttentionPlan.action,
+    recovery_health_attention_browser_retry_allowed: healthAttentionPlan.retry_allowed,
+    recovery_health_attention_browser_commands: healthAttentionPlan.commands,
+    recovery_health_latest_browser_error_code: healthLatestPlan.error_code,
+    recovery_health_latest_browser_action: healthLatestPlan.action,
+    recovery_readiness_status: recoveryReadiness?.status ?? null,
+    recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
+    recovery_readiness_attention_browser_error_code: readinessAttentionPlan.error_code,
+    recovery_readiness_attention_browser_action: readinessAttentionPlan.action,
+    recovery_readiness_attention_browser_retry_allowed: readinessAttentionPlan.retry_allowed,
+    recovery_readiness_attention_browser_commands: readinessAttentionPlan.commands,
+    recovery_gate_status: recoveryGate?.status ?? null,
+    recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_attention_browser_error_code: gateAttentionPlan.error_code,
+    recovery_gate_attention_browser_action: gateAttentionPlan.action,
+    recovery_gate_attention_browser_retry_allowed: gateAttentionPlan.retry_allowed,
+    recovery_gate_attention_browser_commands: gateAttentionPlan.commands,
+    text_has_recovery_feedback_browser_environment:
+      textResult.stdout.includes("runtime_tool_recovery_feedback:")
+      && textResult.stdout.includes(textBrowserRecoverySnippet),
+    text_has_recovery_readiness_browser_environment:
+      textResult.stdout.includes("runtime_tool_recovery_readiness:")
+      && textResult.stdout.includes(textBrowserRecoverySnippet),
+    text_has_recovery_gate_browser_environment:
+      textResult.stdout.includes("runtime_tool_recovery_gate:")
+      && textResult.stdout.includes(textBrowserRecoverySnippet),
   };
 }
 
@@ -5666,6 +5851,9 @@ function runCli(argv) {
     }
     case "status-nonrecoverable-tool-recovery":
       payload = runStatusNonRecoverableToolRecovery(repoRoot);
+      break;
+    case "status-browser-environment-tool-recovery":
+      payload = runStatusBrowserEnvironmentToolRecovery(repoRoot);
       break;
     case "status-nonrecoverable-tool-recovery-consumed":
       payload = runStatusNonRecoverableToolRecoveryConsumed(repoRoot);

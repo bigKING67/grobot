@@ -799,6 +799,7 @@ export function applyRuntimeToolRecoveryConsumption(input: {
       consumed: false,
       consumedReason: null,
       consumedAt: null,
+      browserEnvironmentRecovery: input.feedback.browserEnvironmentRecovery ?? null,
     };
   }
   return {
@@ -810,6 +811,7 @@ export function applyRuntimeToolRecoveryConsumption(input: {
     consumed: true,
     consumedReason: consumption.consumedReason,
     consumedAt: consumption.consumedAt,
+    browserEnvironmentRecovery: input.feedback.browserEnvironmentRecovery ?? null,
   };
 }
 

@@ -82,3 +82,40 @@ export function formatBrowserEnvironmentRecoveryPlan(
     `commands=${plan.commands.join("|")}`,
   ].join(" ");
 }
+
+function formatBrowserEnvironmentCommands(plan: BrowserEnvironmentRecoveryPlan): string {
+  return plan.commands.map((command) => `\`${command}\``).join(", then ");
+}
+
+export function browserEnvironmentRecoveryActionInstruction(
+  plan: BrowserEnvironmentRecoveryPlan | null | undefined,
+): string | undefined {
+  if (!plan) {
+    return undefined;
+  }
+  return [
+    `Ask the user to repair the browser environment with ${formatBrowserEnvironmentCommands(plan)};`,
+    "do not retry the browser tool until `grobot browser doctor` confirms the environment is ready.",
+  ].join(" ");
+}
+
+export function browserEnvironmentRecoveryFixInstruction(input: {
+  plan: BrowserEnvironmentRecoveryPlan | null | undefined;
+  toolName: string;
+}): string | undefined {
+  const { plan, toolName } = input;
+  if (!plan) {
+    return undefined;
+  }
+  const commands = formatBrowserEnvironmentCommands(plan);
+  if (plan.errorCode === "NO_EXTENSION") {
+    return `Browser environment fix: Do not retry ${toolName} automatically. Ask the user to run ${commands}; retry only after the browser extension is connected.`;
+  }
+  if (plan.errorCode === "NO_SESSION") {
+    return `Browser environment fix: Do not retry ${toolName} automatically. Ask the user to open or reconnect a browser session, then run ${commands}; retry only after \`grobot browser doctor\` confirms the session is ready.`;
+  }
+  if (plan.errorCode === "TRANSPORT_UNAVAILABLE") {
+    return `Browser environment fix: Do not retry ${toolName} automatically. Ask the user to run ${commands}; retry only after the browser transport is available.`;
+  }
+  return undefined;
+}

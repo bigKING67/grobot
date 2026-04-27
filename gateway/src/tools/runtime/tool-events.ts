@@ -3,6 +3,8 @@ import { dirname, resolve } from "node:path";
 import type { RuntimeEvent } from "../../models/types";
 import {
   buildBrowserEnvironmentRecoveryPlan,
+  browserEnvironmentRecoveryActionInstruction,
+  browserEnvironmentRecoveryFixInstruction,
   type BrowserEnvironmentRecoveryPlan,
 } from "./browser-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
@@ -97,6 +99,7 @@ export interface RuntimeToolRecoveryFeedback {
   consumed?: boolean;
   consumedReason?: string | null;
   consumedAt?: string | null;
+  browserEnvironmentRecovery?: BrowserEnvironmentRecoveryPlan | null;
 }
 
 interface RuntimeToolSurfaceMetricsState {
@@ -686,26 +689,6 @@ function browserEnvironmentRecoveryPlan(recovery: RuntimeToolRecoveryHint): Brow
   });
 }
 
-function browserEnvironmentFixInstruction(input: {
-  recovery: RuntimeToolRecoveryHint;
-  toolName: string;
-}): string | undefined {
-  const plan = browserEnvironmentRecoveryPlan(input.recovery);
-  if (!plan) {
-    return undefined;
-  }
-  if (plan.errorCode === "NO_EXTENSION") {
-    return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to run \`grobot browser setup\`, then \`grobot browser doctor\`; retry only after the browser extension is connected.`;
-  }
-  if (plan.errorCode === "NO_SESSION") {
-    return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to open or reconnect a browser session and run \`grobot browser doctor\`; if the hub is not running, run \`grobot browser hub start\` first.`;
-  }
-  if (plan.errorCode === "TRANSPORT_UNAVAILABLE") {
-    return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to run \`grobot browser hub start\`, then \`grobot browser doctor\`; retry only after the browser transport is available.`;
-  }
-  return undefined;
-}
-
 function applyRepeatedRecoveryEscalation(input: {
   recovery: RuntimeToolRecoveryHint;
   sameToolErrorCount: number;
@@ -1049,9 +1032,19 @@ export function clearRuntimeToolRecoveryRepeatPressure(input: {
   };
 }
 
-function actionInstruction(action: string): string {
-  return isRuntimeToolRecoveryAction(action)
-    ? RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS[action]
+function actionInstruction(input: {
+  action: string;
+  recovery: RuntimeToolRecoveryHint;
+}): string {
+  const browserActionInstruction =
+    input.action === "request_environment_fix"
+      ? browserEnvironmentRecoveryActionInstruction(browserEnvironmentRecoveryPlan(input.recovery))
+      : undefined;
+  if (browserActionInstruction) {
+    return browserActionInstruction;
+  }
+  return isRuntimeToolRecoveryAction(input.action)
+    ? RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS[input.action]
     : RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS.inspect_error_and_switch_strategy;
 }
 
@@ -1098,6 +1091,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       baseRecommendedNextAction: null,
       promptBlock: "",
       observedAt: null,
+      browserEnvironmentRecovery: null,
     };
   }
   const nowMs = input.nowMs ?? Date.now();
@@ -1124,6 +1118,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
+      browserEnvironmentRecovery: browserEnvironmentRecoveryPlan(recovery),
     };
   }
   const ageMs = Math.max(0, nowMs - observedAtMs);
@@ -1148,9 +1143,14 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
+      browserEnvironmentRecovery: browserEnvironmentRecoveryPlan(recovery),
     };
   }
-  const instruction = actionInstruction(recovery.recommendedNextAction);
+  const browserRecoveryPlan = browserEnvironmentRecoveryPlan(recovery);
+  const instruction = actionInstruction({
+    action: recovery.recommendedNextAction,
+    recovery,
+  });
   const toolName = recovery.toolName ?? "unknown_tool";
   const errorClass = recovery.errorClass ?? recovery.reason;
   const errorMessage = recovery.errorMessage ?? null;
@@ -1161,8 +1161,8 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const executionDiscipline = requiresUserIntervention
     ? "Automatic recovery is blocked for this issue. Do not retry the failing tool automatically; ask the user or fix the required configuration, approval, or environment first."
     : "Automatic recovery is allowed only after changing one concrete variable; do not repeat an identical failing tool call unchanged.";
-  const environmentFixInstruction = browserEnvironmentFixInstruction({
-    recovery,
+  const environmentFixInstruction = browserEnvironmentRecoveryFixInstruction({
+    plan: browserRecoveryPlan,
     toolName,
   });
   const promptBlock = [
@@ -1202,5 +1202,6 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
     promptBlock,
     observedAt: recovery.observedAt ?? input.metrics.updatedAt,
+    browserEnvironmentRecovery: browserRecoveryPlan,
   };
 }

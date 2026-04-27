@@ -459,6 +459,21 @@ expect(
   browserStructuredFeedback.promptBlock.includes("diagnostic_hint=\"Browser extension is not connected"),
   "feedback summarizes browser diagnostic hint",
 );
+expectEqual(
+  browserStructuredFeedback.browserEnvironmentRecovery?.errorCode,
+  "NO_EXTENSION",
+  "browser structured feedback exposes browser recovery error code",
+);
+expectEqual(
+  browserStructuredFeedback.browserEnvironmentRecovery?.action,
+  "setup_and_doctor",
+  "browser structured feedback exposes browser recovery action",
+);
+expectEqual(
+  browserStructuredFeedback.browserEnvironmentRecovery?.retryAllowed,
+  false,
+  "browser structured feedback blocks retry",
+);
 
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
@@ -831,9 +846,33 @@ try {
     "browser repeated base action",
   );
   expectEqual(browserSecondFeedback.requiresUserIntervention, true, "browser repeated feedback requires intervention");
+  expectEqual(
+    browserSecondFeedback.browserEnvironmentRecovery?.errorCode,
+    "NO_EXTENSION",
+    "browser repeated feedback exposes browser recovery error code",
+  );
+  expectEqual(
+    browserSecondFeedback.browserEnvironmentRecovery?.action,
+    "setup_and_doctor",
+    "browser repeated feedback exposes browser recovery action",
+  );
   expect(
     browserSecondFeedback.promptBlock.includes("request_environment_fix"),
     "browser repeated feedback requests environment fix",
+  );
+  expect(
+    browserSecondFeedback.promptBlock.includes("Execution rule: Ask the user to repair the browser environment"),
+    "browser repeated feedback uses browser-specific execution rule",
+  );
+  expect(
+    browserSecondFeedback.promptBlock.includes("until `grobot browser doctor` confirms the environment is ready"),
+    "browser repeated feedback waits for doctor confirmation",
+  );
+  expect(
+    !browserSecondFeedback.promptBlock.includes(
+      "Execution rule: Ask the user to fix the environment or configuration before retrying.",
+    ),
+    "browser repeated feedback avoids generic environment instruction",
   );
   expect(
     browserSecondFeedback.promptBlock.includes("Browser environment fix: Do not retry web_scan automatically."),
