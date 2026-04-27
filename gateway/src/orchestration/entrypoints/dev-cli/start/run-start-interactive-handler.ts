@@ -77,7 +77,14 @@ interface CreateRunStartInteractiveHandlerInput {
   ): Promise<string | undefined>;
   runSkillCreator(requirement: string): Promise<void>;
   tryRunUserCommand(userInput: string): Promise<boolean>;
-  executeTurn(userInput: string, interactiveMode: boolean): Promise<number>;
+  executeTurn(
+    userInput: string,
+    interactiveMode: boolean,
+    options?: {
+      promptPrelude?: string;
+      writeStderr?: (message: string) => void;
+    },
+  ): Promise<number>;
   markFailureObserved(): void;
 }
 

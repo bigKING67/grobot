@@ -174,12 +174,14 @@ export interface TerminalAskUserQuestionnairePanelInput {
   queue: readonly AskUserEnvelope[];
   initialState?: AskUserQuestionnaireState;
   terminalColumns?: number;
+  planMode?: boolean;
 }
 
 export type TerminalAskUserQuestionnairePanelResult =
   | {
     kind: "submitted";
     answers: Record<string, string>;
+    notes: Record<string, string>;
     text: string;
   }
   | { kind: "cancelled" };
@@ -2499,6 +2501,7 @@ export type AskUserPanelInputAction =
   | { kind: "left" }
   | { kind: "right" }
   | { kind: "tab" }
+  | { kind: "notes" }
   | { kind: "enter" }
   | { kind: "backspace" }
   | { kind: "cancel" }
@@ -2639,6 +2642,9 @@ export function decodeAskUserPanelInput(
     if (rawInput === "\u007f" || rawInput === "\b") {
       return { kind: "backspace" };
     }
+    if (!textInputMode && rawInput === "n") {
+      return { kind: "notes" };
+    }
     if (textInputMode && isAskUserPanelPrintableInput(rawInput)) {
       return { kind: "text", value: rawInput };
     }
@@ -2735,6 +2741,7 @@ export async function runAskUserQuestionnairePanel(
         terminalColumns: resolveTerminalColumns(input.terminalColumns),
         activeReviewIndex: reviewIndex,
         textInputValue,
+        planMode: input.planMode,
       }).split("\n"),
     );
   };
@@ -2769,10 +2776,12 @@ export async function runAskUserQuestionnairePanel(
       const text = buildAskUserBatchAnswerText({
         queue: input.queue,
         answers: state.answers,
+        notes: state.notes,
       });
       finish({
         kind: "submitted",
         answers: state.answers,
+        notes: state.notes,
         text,
       });
     };
@@ -2846,6 +2855,58 @@ export async function runAskUserQuestionnairePanel(
       const focusedItem = view.optionItems[state.focusedOptionIndex];
       const focusedOther = focusedItem?.kind === "other";
       const otherIndex = view.optionItems.findIndex((item) => item.kind === "other");
+      const notesMode = state.textInputMode === "notes";
+      if (action.kind === "notes") {
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_mode",
+          value: "notes",
+        });
+        render();
+        return;
+      }
+      if (notesMode) {
+        if (action.kind === "cancel" || action.kind === "enter") {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "set_text_input_mode",
+            value: "none",
+          });
+          render();
+          return;
+        }
+        if (action.kind === "backspace") {
+          const note = state.notes[current.askId] ?? "";
+          const graphemes = splitGraphemes(note);
+          state = reduceAskUserQuestionnaire(state, {
+            type: "set_note",
+            askId: current.askId,
+            value: graphemes.slice(0, -1).join(""),
+          });
+          render();
+          return;
+        }
+        if (action.kind === "text") {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "set_note",
+            askId: current.askId,
+            value: `${state.notes[current.askId] ?? ""}${action.value}`,
+          });
+          render();
+          return;
+        }
+        if (action.kind === "submit_text") {
+          state = reduceAskUserQuestionnaire(state, {
+            type: "set_note",
+            askId: current.askId,
+            value: action.value,
+          });
+          state = reduceAskUserQuestionnaire(state, {
+            type: "set_text_input_mode",
+            value: "none",
+          });
+          render();
+          return;
+        }
+      }
       if (action.kind === "cancel") {
         if ((current.optionsDetailed.length <= 0 || focusedOther) && state.textInputValue.length > 0) {
           state = reduceAskUserQuestionnaire(state, {
@@ -2925,6 +2986,10 @@ export async function runAskUserQuestionnairePanel(
           type: "set_text_input_value",
           value: `${state.textInputValue}${action.value}`,
         });
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_mode",
+          value: "other",
+        });
         render();
         return;
       }
@@ -2933,6 +2998,10 @@ export async function runAskUserQuestionnairePanel(
           type: "focus_option",
           index: otherIndex,
           optionCount: view.optionItems.length,
+        });
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_mode",
+          value: "other",
         });
         state = reduceAskUserQuestionnaire(state, {
           type: "set_text_input_value",
@@ -2949,6 +3018,10 @@ export async function runAskUserQuestionnairePanel(
             optionCount: view.optionItems.length,
           });
         }
+        state = reduceAskUserQuestionnaire(state, {
+          type: "set_text_input_mode",
+          value: "other",
+        });
         state = reduceAskUserQuestionnaire(state, {
           type: "set_text_input_value",
           value: action.value,
@@ -3046,7 +3119,9 @@ export async function runAskUserQuestionnairePanel(
       const optionCount = view.kind === "question" ? view.optionItems.length : input.queue.length + 2;
       const textInputMode = view.kind === "question"
         && (
-          view.optionItems.length <= 0
+          state.textInputMode === "notes"
+          || state.textInputMode === "other"
+          || view.optionItems.length <= 0
           || view.optionItems[view.activeOptionIndex]?.kind === "other"
         );
       const action = decodeAskUserPanelInput(

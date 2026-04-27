@@ -12,6 +12,7 @@ import {
   formatAskUserIssuedEvent,
   formatAskUserResolvedEvent,
   normalizeAskUserEnvelopeFromPayload,
+  normalizeAskUserEnvelopesFromPayload,
   reduceAskUserQuestionnaire,
   resolveAskUserAnswerFromSelection,
   type AskUserRuntimeAdapter,
@@ -261,6 +262,16 @@ const batchAnswerText = buildAskUserBatchAnswerText({
     [thirdEnvelope.askId]: "yes",
   },
 });
+const batchAnswerTextWithNotes = buildAskUserBatchAnswerText({
+  queue: [nextEnvelope, thirdEnvelope],
+  answers: {
+    [nextEnvelope.askId]: "all",
+    [thirdEnvelope.askId]: "yes",
+  },
+  notes: {
+    [nextEnvelope.askId]: "limit to gateway TUI",
+  },
+});
 const reviewMenuDescriptor = buildAskUserReviewMenuDescriptor({
   queue: [nextEnvelope, thirdEnvelope],
   answers: {
@@ -308,6 +319,39 @@ const jsonEncodedBatchPromptContext = createAskUserTurnPromptContext({
   userText: `1. ${JSON.stringify("1. draft\n2. confirm")}\n2. ${JSON.stringify("yes")}`,
 });
 const jsonEncodedBatchQueueEmptyAfterResolve = sessionStore.size(sessionKey) === 0;
+runtime.registerPendingAsk(sessionKey, nextEnvelope);
+runtime.registerPendingAsk(sessionKey, thirdEnvelope);
+const notesBatchPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey,
+  userText: batchAnswerTextWithNotes,
+});
+const notesBatchQueueEmptyAfterResolve = sessionStore.size(sessionKey) === 0;
+const normalizedBatchEnvelopes = normalizeAskUserEnvelopesFromPayload({
+  blocking_node_id: "node.multi",
+  question_total: 2,
+  questions: [{
+    id: "ask_multi_scope",
+    header: "Scope",
+    question: "Pick scope",
+    question_index: 1,
+    options: ["gateway", "all"],
+  }, {
+    id: "ask_multi_notes",
+    header: "Notes",
+    question: "Need private notes?",
+    question_index: 2,
+    is_secret: "true",
+    options: [{
+      label: "yes",
+      value: "yes",
+      is_other: false,
+    }],
+  }],
+  default_on_timeout: "gateway",
+  resume_token: "resume_multi",
+  created_at: "2026-04-27T00:00:00.000Z",
+});
 
 const payload = {
   protocol_prefix_removed: promptContext.promptParts.every((part) => part.includes("[AskUser Resolution]")),
@@ -398,6 +442,17 @@ const payload = {
   questionnaire_selection_maps_canonical_value: selectedAnswerFromInteraction === "fast",
   questionnaire_batch_answer_text_is_numbered:
     batchAnswerText === "1. \"all\"\n2. \"yes\"",
+  questionnaire_batch_answer_text_supports_notes:
+    batchAnswerTextWithNotes === "1. {\"answer\":\"all\",\"notes\":\"limit to gateway TUI\"}\n2. \"yes\"",
+  normalize_payload_returns_all_questions:
+    normalizedBatchEnvelopes.length === 2
+    && normalizedBatchEnvelopes[0]?.askId === "ask_multi_scope"
+    && normalizedBatchEnvelopes[1]?.askId === "ask_multi_notes",
+  normalize_payload_preserves_question_metadata:
+    normalizedBatchEnvelopes[0]?.questionIndex === 1
+    && normalizedBatchEnvelopes[0]?.questionTotal === 2
+    && normalizedBatchEnvelopes[1]?.isSecret === true
+    && normalizedBatchEnvelopes[1]?.optionsDetailed[0]?.isOther === false,
   questionnaire_review_menu_has_submit_and_edit:
     reviewMenuDescriptor.items[0]?.id === "__submit"
     && reviewMenuDescriptor.items.some((item) => item.id === "edit:1")
@@ -427,6 +482,16 @@ const payload = {
     && jsonEncodedBatchPromptContext.resolvedAsks[0]?.answer === "1. draft 2. confirm"
     && jsonEncodedBatchPromptContext.resolvedAsks[1]?.answer === "yes"
     && jsonEncodedBatchQueueEmptyAfterResolve,
+  batch_notes_payload_resolves_answers:
+    notesBatchPromptContext.resolvedAsks.length === 2
+    && notesBatchPromptContext.resolvedAsks[0]?.answer === "all"
+    && notesBatchPromptContext.resolvedAsks[1]?.answer === "yes"
+    && notesBatchQueueEmptyAfterResolve,
+  batch_notes_payload_injects_notes_prompt:
+    notesBatchPromptContext.promptParts.some((part) =>
+      part.includes("[AskUser Notes]")
+      && part.includes("ask_1_id=ask_q_002")
+      && part.includes("ask_1_notes=limit to gateway TUI")),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

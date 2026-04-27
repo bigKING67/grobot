@@ -100,6 +100,7 @@ async function main(): Promise<void> {
   let stdout = "";
   let stderr = "";
   const executeInputs: string[] = [];
+  const executePromptPreludes: string[] = [];
 
   const validPlan = [
     "# Contract Plan",
@@ -148,8 +149,9 @@ async function main(): Promise<void> {
       workDir,
       runtimeState,
       persistence,
-      executeTurn: async (userInput) => {
+      executeTurn: async (userInput, _interactiveMode, options) => {
         executeInputs.push(userInput);
+        executePromptPreludes.push(options?.promptPrelude ?? "");
         return 0;
       },
       requestRuntimeInterrupt: () => ({
@@ -170,14 +172,17 @@ async function main(): Promise<void> {
     const enter = await planMode.handleMessageInput("/plan contract cleanup", {
       messageMode: true,
     });
+    const stdoutAfterEnter = stdout;
     const planModeAfterEnter = runtimeState.getPlanMode();
     const planPath = planMode.getActivePlanPath();
     if (!planPath) {
       throw new Error("expected active plan path after /plan <goal>");
     }
+    const refine = await planMode.runPlanTurn("refine contract cleanup");
     writeFileSync(planPath, `${validPlan}\n`, "utf8");
 
     const open = await planMode.handleMessageInput("/plan open");
+    const executeCountBeforeApply = executeInputs.length;
     const execute = await planMode.handleMessageInput("Implement the plan.");
 
     const eventsPath = resolve(
@@ -191,6 +196,18 @@ async function main(): Promise<void> {
       review_passes_for_valid_plan: review.ok && review.blocked === false,
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
       enter_plan_sets_plan_only: planModeAfterEnter === "plan_only",
+      enter_plan_stdout_is_human:
+        stdoutAfterEnter.includes("Enabled plan mode")
+        && !stdoutAfterEnter.includes("session_key=")
+        && !stdoutAfterEnter.includes("plan_id=")
+        && !stdoutAfterEnter.includes("file=")
+        && !stdoutAfterEnter.includes("[plan] entered PLAN_ONLY"),
+      refine_plan_turn_handled: refine === 0,
+      plan_turn_injects_plan_workflow_prompt:
+        executePromptPreludes.some((item) =>
+          item.includes("[Plan Mode Workflow]")
+          && item.includes("Do not modify repo files")
+          && item.includes("<proposed_plan>")),
       active_plan_path_present: typeof planPath === "string" && planPath.length > 0,
       open_plan_surface_handled: open.handled && open.code === 0,
       open_plan_surface_has_status_output: stdout.includes("plan_status_output_mode:"),
@@ -198,9 +215,9 @@ async function main(): Promise<void> {
       open_plan_surface_detects_live_status_source: stdout.includes("active_plan_status_source: live_snapshot"),
       open_plan_surface_suggests_execute: stdout.includes("suggested_action_command: Implement the plan."),
       execute_natural_language_handled: execute.handled && execute.code === 0,
-      execute_triggered_runtime_turn: executeInputs.length === 1,
+      execute_triggered_runtime_turn: executeInputs.length === executeCountBeforeApply + 1,
       execute_payload_is_not_literal_phrase:
-        executeInputs[0]?.trim() !== "Implement the plan.",
+        executeInputs[executeInputs.length - 1]?.trim() !== "Implement the plan.",
       execute_exits_plan_only: runtimeState.getPlanMode() === "normal",
       execute_clears_active_plan_meta: runtimeState.getPlanMeta() === undefined,
       events_has_apply_succeeded: eventsText.includes("\"event\":\"plan_apply_succeeded\""),

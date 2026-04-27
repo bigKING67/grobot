@@ -16,6 +16,9 @@ export interface McpEnvironmentRecoveryPlan {
   server: string | null;
   toolName: string | null;
   sourcePath: string | null;
+  readyReason: string | null;
+  command: string | null;
+  availableServers: string[];
   registryPaths: string[];
 }
 
@@ -27,6 +30,16 @@ const MCP_REGISTRY_PATHS = [
 function stringField(record: Record<string, unknown> | undefined, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function stringListField(record: Record<string, unknown> | undefined, key: string): string[] {
+  const value = record?.[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
 }
 
 function baseMcpEnvironmentPlan(input: {
@@ -42,6 +55,9 @@ function baseMcpEnvironmentPlan(input: {
     server: stringField(input.errorData, "server"),
     toolName: stringField(input.errorData, "tool_name"),
     sourcePath: stringField(input.errorData, "source"),
+    readyReason: stringField(input.errorData, "ready_reason"),
+    command: stringField(input.errorData, "command"),
+    availableServers: stringListField(input.errorData, "available_servers"),
     registryPaths: MCP_REGISTRY_PATHS,
   };
 }
@@ -87,6 +103,9 @@ export function formatMcpEnvironmentRecoveryPlan(
     `server=${plan.server ?? "<none>"}`,
     `tool=${plan.toolName ?? "<none>"}`,
     `source=${plan.sourcePath ?? "<none>"}`,
+    `ready_reason=${plan.readyReason ?? "<none>"}`,
+    `command=${plan.command ?? "<none>"}`,
+    `available_servers=${plan.availableServers.length > 0 ? plan.availableServers.join("|") : "<none>"}`,
     `registry_paths=${plan.registryPaths.join("|")}`,
     `commands=${plan.commands.join("|")}`,
   ].join(" ");
@@ -125,13 +144,18 @@ export function mcpEnvironmentRecoveryFixInstruction(input: {
   const statusCommand = formatMcpEnvironmentCommands(plan);
   const registryPaths = formatMcpRegistryPaths(plan);
   if (plan.errorCode === "SERVER_NOT_FOUND") {
-    return `MCP environment fix: Do not retry ${toolName} automatically. Ask the user to configure ${server} in ${registryPaths}, run ${statusCommand}, and retry only after the server appears in status.`;
+    const availableServers = plan.availableServers.length > 0
+      ? ` Available servers: ${plan.availableServers.join(", ")}.`
+      : "";
+    return `MCP environment fix: Do not retry ${toolName} automatically. Ask the user to configure ${server} in ${registryPaths}, run ${statusCommand}, and retry only after the server appears in status.${availableServers}`;
   }
   if (plan.errorCode === "SERVER_UNREADY") {
-    return `MCP environment fix: Do not retry ${toolName} automatically. Ask the user to fix ${server} readiness in ${registryPaths}, run ${statusCommand}, and retry only after status reports ready=true.`;
+    const readyReason = plan.readyReason ? ` Current ready_reason=${plan.readyReason}.` : "";
+    return `MCP environment fix: Do not retry ${toolName} automatically. Ask the user to fix ${server} readiness in ${registryPaths}, run ${statusCommand}, and retry only after status reports ready=true.${readyReason}`;
   }
   if (plan.errorCode === "SPAWN_FAILED") {
-    return `MCP environment fix: Do not retry ${toolName} automatically. Ask the user to fix ${server} command/env in ${registryPaths}, run ${statusCommand}, and retry only after the server can spawn.`;
+    const command = plan.command ? ` Current command=${plan.command}.` : "";
+    return `MCP environment fix: Do not retry ${toolName} automatically. Ask the user to fix ${server} command/env in ${registryPaths}, run ${statusCommand}, and retry only after the server can spawn.${command}`;
   }
   return undefined;
 }

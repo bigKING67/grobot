@@ -35,7 +35,6 @@ import {
 } from "../ui/screens/activity-feed-screen";
 import {
   type AskUserEnvelope,
-  buildAskUserQueueDisplay,
   createAskUserTurnPromptContext,
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
@@ -183,6 +182,7 @@ export function buildTurnTerminalOutputSegments(input: {
 export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
   attachments?: RuntimeAttachment[];
+  promptPrelude?: string;
   writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
   onTurnRecorded?(input: {
@@ -2113,11 +2113,8 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       if (askUserTurnContext.pendingNextAsk) {
         const activeAskEnvelope = askUserTurnContext.pendingNextAsk;
         const queueDepth = askUserTurnContext.queueSizeAfterResolve;
-        const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
         const askUserDisplay = interactiveMode
-          ? buildAskUserQueueDisplay({
-            queue: queue.length > 0 ? queue : [activeAskEnvelope],
-          })
+          ? "Need your input · Enter opens choices\n\n"
           : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
         const turnStdout = askUserDisplay;
         await recordTurn(
@@ -2465,8 +2462,10 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         projectRoot: input.projectRoot,
         workDir: input.workDir,
       });
+      const promptPrelude = options?.promptPrelude?.trim();
       const promptParts = [
         ...(agentsInstructions.block ? [agentsInstructions.block] : []),
+        ...(promptPrelude ? [promptPrelude] : []),
         ...askUserTurnContext.promptParts,
         ...memoryInject.promptParts,
       ];
@@ -3122,11 +3121,8 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             throw new Error("ask_user interrupt emitted empty question set");
           }
           assistantTextForHistory = `需要确认：${activeAskEnvelope.question}`;
-          const pendingAskQueue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
           turnStdout = interactiveMode
-            ? buildAskUserQueueDisplay({
-              queue: pendingAskQueue.length > 0 ? pendingAskQueue : [activeAskEnvelope],
-            })
+            ? "Need your input · Enter opens choices\n\n"
             : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
           askUserEvent = askUserEnvelopes
             .map((envelope) => formatAskUserIssuedEvent(envelope))

@@ -28,6 +28,7 @@ import { renderStatusIndicatorLine } from "../ui/screens/status-indicator-screen
 import { type RuntimeAttachment } from "../../../../models/types";
 
 export interface RunStartInteractiveTurnOptions {
+  promptPrelude?: string;
   writeStderr?: (message: string) => void;
 }
 
@@ -373,6 +374,7 @@ export interface RunStartInteractiveModeInput {
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      promptPrelude?: string;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -698,7 +700,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       input.tryRunUserCommand(userInput, {
         writeStderr: writeInteractiveStderr,
       }),
-    executeTurn: async (userInput, interactiveMode) => {
+    executeTurn: async (userInput, interactiveMode, options) => {
       const inlineAttachmentResolution = resolveInlineAttachmentsFromInput(userInput);
       if (interactiveMode) {
         activeTurnStartedAtMs = Date.now();
@@ -712,8 +714,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           interactiveMode,
           {
             attachments: inlineAttachmentResolution.attachments,
+            promptPrelude: options?.promptPrelude,
             writeStdout: writeInteractiveStdout,
-            writeStderr: writeInteractiveStderr,
+            writeStderr: options?.writeStderr ?? writeInteractiveStderr,
           },
         );
         if (suppressDiagnosticStderr) {

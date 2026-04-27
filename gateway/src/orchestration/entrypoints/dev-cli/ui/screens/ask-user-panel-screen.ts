@@ -17,6 +17,7 @@ export interface AskUserPanelScreenInput {
   terminalColumns?: number;
   activeReviewIndex?: number;
   textInputValue?: string;
+  planMode?: boolean;
 }
 
 const ASK_USER_PANEL_MIN_WIDTH = 44;
@@ -212,6 +213,25 @@ function renderTextInputLine(input: {
   return `${terminalStyle.pointer(TERMINAL_SYMBOL.pointer)} ${fitPlainLine(rawValue, available)}`;
 }
 
+function renderNotesLine(input: {
+  value?: string;
+  active: boolean;
+  maxWidth: number;
+}): string {
+  const label = terminalStyle.accent("Notes:");
+  const rawValue = sanitizeTerminalDisplayText(input.value ?? "");
+  const displayValue = rawValue.trim().length > 0
+    ? rawValue
+    : "press n to add notes";
+  const available = Math.max(8, input.maxWidth - measureDisplayWidth("Notes:  "));
+  const text = fitPlainLine(displayValue, available);
+  const renderedValue = input.active || rawValue.trim().length > 0
+    ? terminalStyle.accent(text)
+    : terminalStyle.muted(text);
+  const marker = input.active ? `${terminalStyle.pointer(TERMINAL_SYMBOL.pointer)} ` : "  ";
+  return `${marker}${label} ${renderedValue}`;
+}
+
 function renderReviewRows(input: {
   reviewItems: readonly AskUserQuestionnaireReviewItem[];
   activeIndex: number;
@@ -252,6 +272,7 @@ function renderQuestionPanel(input: {
   view: Extract<AskUserQuestionnaireView, { kind: "question" }>;
   surfaceWidth: number;
   textInputValue?: string;
+  planMode?: boolean;
 }): string[] {
   const lines: string[] = [];
   const contentWidth = input.surfaceWidth - 2;
@@ -283,15 +304,28 @@ function renderQuestionPanel(input: {
     }
   }
   lines.push("");
+  lines.push(`  ${renderNotesLine({
+    value: input.view.noteValue,
+    active: input.view.textInputMode === "notes",
+    maxWidth: contentWidth,
+  })}`);
+  lines.push("");
+  lines.push(`  ${terminalStyle.muted("Chat about this")}`);
+  if (input.planMode) {
+    lines.push(`  ${terminalStyle.muted("Skip interview and plan immediately")}`);
+  }
+  lines.push("");
   const standardOptionCount = input.view.optionItems.filter((item) => item.kind === "option").length;
   const maxDirect = Math.min(standardOptionCount, 9);
   const directHint = maxDirect > 0
-    ? ` | ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} 直选 · Other 输入`
+    ? ` · ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} 直选 · Other 输入`
     : "";
-  const hint = input.view.totalCount > 1
-    ? `Enter 提交答案${directHint} | ←/→ 切换问题 | Tab 检查 | Esc 返回输入框`
-    : `Enter 提交答案${directHint} | Esc 返回输入框`;
-  lines.push(`  ${terminalStyle.muted(fitPlainLine(hint, contentWidth))}`);
+  const primaryHint = `Enter to select${directHint} · Esc to cancel`;
+  const secondaryHint = input.view.totalCount > 1
+    ? "↑/↓ to navigate · n to add notes · ←/→ switch"
+    : "↑/↓ to navigate · n to add notes";
+  lines.push(`  ${terminalStyle.muted(fitPlainLine(primaryHint, contentWidth))}`);
+  lines.push(`  ${terminalStyle.muted(fitPlainLine(secondaryHint, contentWidth))}`);
   return lines;
 }
 
@@ -351,6 +385,7 @@ export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string
     view: input.view,
     surfaceWidth,
     textInputValue: input.textInputValue,
+    planMode: input.planMode,
   }));
   return lines.join("\n");
 }

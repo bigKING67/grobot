@@ -82,6 +82,7 @@ const textInputView = buildAskUserQuestionnaireView({
 const initialRendered = renderAskUserPanelScreen({
   view: initialView,
   terminalColumns: 88,
+  planMode: true,
 });
 const reviewRendered = renderAskUserPanelScreen({
   view: reviewView,
@@ -130,10 +131,19 @@ const payload = {
     initialPlain.includes("3. Other")
     && initialPlain.includes("Type something."),
   panel_has_direct_keyboard_hints:
-    initialPlain.includes("Enter 提交答案")
+    initialPlain.includes("Enter to select")
+    && initialPlain.includes("↑/↓ to navigate")
+    && initialPlain.includes("n to add notes")
+    && initialPlain.includes("Esc to cancel")
     && initialPlain.includes("1-2 直选")
-    && initialPlain.includes("Other 输入")
-    && initialPlain.includes("Esc 返回输入框"),
+    && initialPlain.includes("Other 输入"),
+  panel_has_notes_affordance:
+    initialPlain.includes("Notes:")
+    && initialPlain.includes("press n to add notes"),
+  panel_has_chat_about_this_row:
+    initialPlain.includes("Chat about this"),
+  panel_has_plan_skip_affordance:
+    initialPlain.includes("Skip interview and plan immediately"),
   panel_review_has_submit_edit_cancel:
     reviewPlain.includes("提交答案")
     && reviewPlain.includes("修改 1.")

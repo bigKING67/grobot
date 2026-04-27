@@ -60,6 +60,7 @@ interface CreateRunStartPlanModeInput {
     userInput: string,
     interactiveMode: boolean,
     options?: {
+      promptPrelude?: string;
       writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
@@ -113,6 +114,14 @@ interface PlanStablePoint {
   planMode: SessionPlanMode;
   planMeta: SessionPlanMeta | undefined;
 }
+
+const PLAN_MODE_WORKFLOW_PROMPT = [
+  "[Plan Mode Workflow]",
+  "Plan mode is active. Do not modify repo files or run mutating commands; read and explore only unless writing the plan artifact is explicitly handled by the plan-mode system.",
+  "First inspect the real code and reference paths needed for the user's request. Do not ask questions that can be answered from the repo.",
+  "When user preference or product tradeoff is required, call ask_user with 1-3 concrete multiple-choice questions. Options must be meaningful; do not add \"Other\" because the client adds it.",
+  "End with exactly one <proposed_plan>...</proposed_plan> block only when the plan is decision-complete. Do not ask \"should I proceed\" in normal text.",
+].join("\n");
 
 export interface RunStartPlanMode {
   isPlanMode(): boolean;
@@ -854,15 +863,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   const printPlanModeHint = (): void => {
     input.writeStdout(
       [
-        "[plan] commands:",
-        "  /plan",
-        "  (enter plan mode; in plan mode shows current plan status)",
-        "  /plan open",
-        "  (interactive: open active plan file in editor)",
-        "  /plan <goal>",
-        "  (enter plan mode and run first planning turn)",
-        "  (while in PLAN_ONLY, send plain text to refine plan)",
-        `  (to start execution, reply: ${PLAN_EXECUTION_REPLY})`,
+        "Plan mode is read-only. Send requirements to refine the plan.",
+        "Use /plan open to inspect the plan file.",
+        `Reply "${PLAN_EXECUTION_REPLY}" to execute after approval.`,
         "",
       ].join("\n"),
     );
@@ -888,16 +891,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       source: "cli",
       detail: "entered plan_only mode",
     });
-    input.writeStdout(
-      `[plan] entered PLAN_ONLY session_key=${planSessionKey()} plan_id=${created.entry.plan_id} file=${created.planPath}\n\n`,
-    );
-    if (options?.printModeReadyOnly) {
-      input.writeStdout("[plan] mode ready. send requirement directly.\n\n");
-    } else {
-      input.writeStdout(
-        "[plan] mode ready. first requirement will be executed immediately.\n\n",
-      );
-    }
+    void options?.printModeReadyOnly;
+    input.writeStdout("Enabled plan mode\n\n");
     if (options?.printHint !== false) {
       printPlanModeHint();
     }
@@ -911,7 +906,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     const goal = goalRaw.trim();
     if (!goal) {
       return createPlanModeDraft("", {
-        printHint: true,
+        printHint: false,
         printModeReadyOnly: true,
       });
     }
@@ -1753,13 +1748,12 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           source: "cli",
           detail: "message_mode_execution_skipped",
         });
-        input.writeStdout(
-          `[plan] updated file=${appended.planPath ?? "<unknown>"} (execution skipped)\n\n`,
-        );
+        input.writeStdout("Plan note saved.\n\n");
         return 0;
       }
       const historyLengthBeforeExecution = input.runtimeState.getHistoryMessages().length;
       const code = await input.executeTurn(note, true, {
+        promptPrelude: PLAN_MODE_WORKFLOW_PROMPT,
         writeStderr: options?.writeStderr,
       });
       if (code === TURN_INTERRUPTED_EXIT_CODE) {
@@ -1797,9 +1791,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
             detail: `${detailParts.join(" ")} degraded=true`,
           });
           const hint = failureDecision.hint ?? "check semantic index and retrieval configuration.";
-          input.writeStdout(
-            `[plan] semantic context degraded provider=${failureDecision.providerName ?? "unknown"} class=${failureDecision.errorClass ?? "unknown"} diagnostic=${failureDecision.diagnosticCode}; plan draft was kept. ${hint}\n\n`,
-          );
+          input.writeStdout(`Plan context degraded · draft kept. ${hint}\n\n`);
           return 0;
         }
         const detailParts = [
@@ -1826,7 +1818,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return code;
       }
-      let finalPlanPath = appended.planPath;
       const assistantProposedPlan = extractLatestAssistantProposedPlan(
         input.runtimeState.getHistoryMessages(),
         historyLengthBeforeExecution,
@@ -1844,7 +1835,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           },
         );
         if (replaced.updated && replaced.planPath) {
-          finalPlanPath = replaced.planPath;
           if (replaced.replaced) {
             const refreshedActive = resolveActivePlan();
             if (refreshedActive) {
@@ -1860,9 +1850,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
               detail:
                 `history_index=${String(assistantProposedPlan.historyIndex)} chars=${String(assistantProposedPlan.content.length)}`,
             });
-            input.writeStdout(
-              `[plan] imported <proposed_plan> into active plan file=${replaced.planPath}\n`,
-            );
           }
         }
       }
@@ -1881,32 +1868,19 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return 1;
       }
       const planPhase = derivePlanPhaseFromStatus(decisionState.reviewedEntry.status) ?? "drafting";
-      input.writeStdout(`[plan] updated file=${finalPlanPath ?? "<unknown>"}\n`);
-      input.writeStdout(
-        `[plan] phase=${planPhase} status=${decisionState.reviewedEntry.status}\n`,
-      );
       if (!decisionState.review.ok) {
-        const reviewCode = decisionState.review.blocked
-          ? PLAN_REVIEW_BLOCKED_CODE
-          : PLAN_REVIEW_FAILED_CODE;
-        input.writeStdout(
-          `[plan-review] code=${reviewCode} findings=${formatReviewFindings(decisionState.review.findings)}\n`,
-        );
         const topRepairAction = decisionState.repairActions[0];
         input.writeStdout(
-          `[plan] next: ${topRepairAction?.command ?? decisionState.recommendation.action}\n`,
-        );
-        input.writeStdout(
-          `[plan] ${decisionState.recommendation.reason}\n\n`,
+          `Plan needs refinement · ${topRepairAction?.title ?? decisionState.recommendation.reason}\n\n`,
         );
         return 0;
       }
-      input.writeStdout(
-        `[plan] ${decisionState.recommendation.reason}\n`,
-      );
-      input.writeStdout(
-        `[plan] next: ${decisionState.recommendation.action}\n\n`,
-      );
+      if (decisionState.reviewedEntry.status === "ready") {
+        input.writeStdout(`Plan ready · reply "${PLAN_EXECUTION_REPLY}" to execute\n\n`);
+      } else {
+        input.writeStdout(`Plan updated · ${planPhase}\n`);
+        input.writeStdout(`Next · ${decisionState.recommendation.action}\n\n`);
+      }
       return code;
     } finally {
       if (pendingInterruptSource) {

@@ -5046,9 +5046,23 @@ async function runTsRustExecutionSmoke() {
   let statusAttempts = 0;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     statusAttempts = attempt;
-    const statusResult = runContract("start-smoke-contract.mjs", "status-ts-rust", ["--repo-root", repoRoot], {
+    const statusResult = runCommand("node", [
+      resolve(contractsRoot, "start-smoke-contract.mjs"),
+      "status-ts-rust",
+      "--repo-root",
+      repoRoot,
+    ], {
       timeoutMs: 240_000,
     });
+    const isTransientRuntimeDescribeMissing =
+      statusResult.code !== 0
+      && statusResult.stderr.includes("runtime tool schema projection should be sourced from runtime.tools.describe: missing");
+    if (isTransientRuntimeDescribeMissing && attempt < 3) {
+      logRetry("start-smoke-contract status-ts-rust", attempt, 3, "transient runtime.tools.describe bootstrap gap");
+      await sleepMs(500);
+      continue;
+    }
+    assertSuccess("start-smoke-contract.mjs status-ts-rust", statusResult);
     statusPayload = parseJsonOutput("start-smoke-contract status-ts-rust", statusResult.stdout);
     if (statusPayload.exit_code === 0) {
       break;
@@ -6662,6 +6676,9 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_server, "grok-search");
   assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_tool_name, "web_search");
   assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_source_path, ".grobot/mcp.toml");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_ready_reason, "command_not_found");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_command, null);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_available_servers, null);
   assert.equal(
     statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_registry_paths,
     "~/.grobot/mcp/servers.toml|.grobot/mcp.toml",

@@ -13,12 +13,15 @@ const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type something.";
 
 export type AskUserQuestionnaireMode = "question" | "review";
 export type AskUserQuestionnaireOptionKind = "option" | "other";
+export type AskUserQuestionnaireTextInputMode = "none" | "other" | "notes";
 
 export interface AskUserQuestionnaireState {
   currentQuestionIndex: number;
   focusedOptionIndex: number;
   answers: Record<string, string>;
+  notes: Record<string, string>;
   textInputValue: string;
+  textInputMode: AskUserQuestionnaireTextInputMode;
   mode: AskUserQuestionnaireMode;
 }
 
@@ -29,6 +32,7 @@ export type AskUserQuestionnaireAction =
   | { type: "previous_option"; optionCount: number }
   | { type: "next_option"; optionCount: number }
   | { type: "focus_option"; index: number; optionCount: number }
+  | { type: "set_note"; askId: string; value: string }
   | {
     type: "set_answer";
     askId: string;
@@ -37,6 +41,7 @@ export type AskUserQuestionnaireAction =
     shouldAdvance?: boolean;
   }
   | { type: "set_text_input_value"; value: string }
+  | { type: "set_text_input_mode"; value: AskUserQuestionnaireTextInputMode }
   | { type: "go_review" }
   | { type: "reset_focus" };
 
@@ -79,6 +84,8 @@ export type AskUserQuestionnaireView =
     optionItems: AskUserQuestionnaireOptionItem[];
     hint: string;
     queueHint: string;
+    noteValue: string;
+    textInputMode: AskUserQuestionnaireTextInputMode;
     visibleOptionCount: number;
     activeOptionIndex: number;
     currentQuestionIndex: number;
@@ -168,8 +175,10 @@ function normalizeQuestionnaireState(input: AskUserQuestionnaireState): AskUserQ
   return {
     currentQuestionIndex,
     focusedOptionIndex,
-    answers: input.answers,
+    answers: input.answers ?? {},
+    notes: input.notes ?? {},
     textInputValue: input.textInputValue,
+    textInputMode: input.textInputMode ?? "none",
     mode: input.mode,
   };
 }
@@ -339,14 +348,18 @@ export function createAskUserQuestionnaireState(input?: {
   currentQuestionIndex?: number;
   focusedOptionIndex?: number;
   answers?: Record<string, string>;
+  notes?: Record<string, string>;
   textInputValue?: string;
+  textInputMode?: AskUserQuestionnaireTextInputMode;
   mode?: AskUserQuestionnaireMode;
 }): AskUserQuestionnaireState {
   return normalizeQuestionnaireState({
     currentQuestionIndex: input?.currentQuestionIndex ?? 0,
     focusedOptionIndex: input?.focusedOptionIndex ?? 0,
     answers: input?.answers ?? {},
+    notes: input?.notes ?? {},
     textInputValue: input?.textInputValue ?? "",
+    textInputMode: input?.textInputMode ?? "none",
     mode: input?.mode ?? "question",
   });
 }
@@ -361,6 +374,7 @@ export function reduceAskUserQuestionnaire(
       ...normalized,
       currentQuestionIndex: clampIndex(normalized.currentQuestionIndex - 1, action.totalCount),
       focusedOptionIndex: 0,
+      textInputMode: "none",
       mode: "question",
     };
   }
@@ -369,6 +383,7 @@ export function reduceAskUserQuestionnaire(
       ...normalized,
       currentQuestionIndex: clampIndex(normalized.currentQuestionIndex + 1, action.totalCount),
       focusedOptionIndex: 0,
+      textInputMode: "none",
       mode: "question",
     };
   }
@@ -377,6 +392,7 @@ export function reduceAskUserQuestionnaire(
       ...normalized,
       currentQuestionIndex: clampIndex(action.index, action.totalCount),
       focusedOptionIndex: 0,
+      textInputMode: "none",
       mode: "question",
     };
   }
@@ -398,6 +414,15 @@ export function reduceAskUserQuestionnaire(
       focusedOptionIndex: clampIndex(action.index, action.optionCount),
     };
   }
+  if (action.type === "set_note") {
+    return {
+      ...normalized,
+      notes: {
+        ...normalized.notes,
+        [action.askId]: action.value,
+      },
+    };
+  }
   if (action.type === "set_answer") {
     const totalCount = normalizeCount(action.totalCount);
     const shouldAdvance = action.shouldAdvance !== false && normalized.currentQuestionIndex < totalCount - 1;
@@ -411,6 +436,8 @@ export function reduceAskUserQuestionnaire(
         ? clampIndex(normalized.currentQuestionIndex + 1, totalCount)
         : normalized.currentQuestionIndex,
       focusedOptionIndex: 0,
+      textInputValue: shouldAdvance ? "" : normalized.textInputValue,
+      textInputMode: "none",
       mode: shouldAdvance ? "question" : normalized.mode,
     };
   }
@@ -420,15 +447,23 @@ export function reduceAskUserQuestionnaire(
       textInputValue: action.value,
     };
   }
+  if (action.type === "set_text_input_mode") {
+    return {
+      ...normalized,
+      textInputMode: action.value,
+    };
+  }
   if (action.type === "go_review") {
     return {
       ...normalized,
+      textInputMode: "none",
       mode: "review",
     };
   }
   return {
     ...normalized,
     focusedOptionIndex: 0,
+    textInputMode: "none",
   };
 }
 
@@ -504,6 +539,7 @@ export function buildAskUserQuestionnaireView(input: {
     envelope,
     state: normalizedState,
   });
+  const noteValue = normalizedState.notes[resolveAnswerKey(envelope)] ?? "";
   return {
     kind: "question",
     title: buildQuestionnaireTitle({
@@ -521,6 +557,8 @@ export function buildAskUserQuestionnaireView(input: {
       queue: input.queue,
       index: currentIndex,
     }),
+    noteValue,
+    textInputMode: normalizedState.textInputMode,
     visibleOptionCount: Math.min(
       ASK_USER_INTERACTION_VISIBLE_OPTION_LIMIT,
       Math.max(1, optionItems.length),
@@ -571,6 +609,7 @@ export function buildAskUserSelectMenuDescriptor(input: {
 export function buildAskUserBatchAnswerText(input: {
   queue: readonly AskUserEnvelope[];
   answers: Record<string, string>;
+  notes?: Record<string, string>;
 }): string {
   const lines: string[] = [];
   for (let index = 0; index < input.queue.length; index += 1) {
@@ -582,7 +621,14 @@ export function buildAskUserBatchAnswerText(input: {
     if (!answer) {
       continue;
     }
-    lines.push(`${String(index + 1)}. ${JSON.stringify(answer)}`);
+    const note = input.notes?.[resolveAnswerKey(envelope)]?.trim();
+    const payload = note
+      ? {
+        answer,
+        notes: note,
+      }
+      : answer;
+    lines.push(`${String(index + 1)}. ${JSON.stringify(payload)}`);
   }
   return lines.join("\n");
 }

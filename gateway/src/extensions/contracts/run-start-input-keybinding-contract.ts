@@ -297,6 +297,8 @@ async function main(): Promise<void> {
   const askUserPanelOtherIndexSubmit = decodeAskUserPanelInput("3\r", 3, false);
   const askUserPanelOtherPrintable = decodeAskUserPanelInput("补", 3, true);
   const askUserPanelOtherBackspace = decodeAskUserPanelInput("\u007f", 3, true);
+  const askUserPanelNotesShortcut = decodeAskUserPanelInput("n", 3, false);
+  const askUserPanelNotesPrintable = decodeAskUserPanelInput("n", 3, true);
   const coalescedWithBackslash = resolveCoalescedSubmitChunk("\\\r");
   const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
   const submitChunkOnlyLf = resolveSubmitKeyAction({
@@ -667,6 +669,11 @@ async function main(): Promise<void> {
       && askUserPanelOtherPrintable.value === "补",
     ask_user_panel_other_backspace:
       askUserPanelOtherBackspace.kind === "backspace",
+    ask_user_panel_notes_shortcut:
+      askUserPanelNotesShortcut.kind === "notes",
+    ask_user_panel_notes_mode_printable_text:
+      askUserPanelNotesPrintable.kind === "text"
+      && askUserPanelNotesPrintable.value === "n",
     submit_coalesced_backslash_ignored:
       !coalescedWithBackslash.shouldSubmit
       && coalescedWithBackslash.normalizedChunk === "\\\r",

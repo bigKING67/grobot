@@ -93,6 +93,7 @@ interface CreateRunStartInteractiveModeInput {
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      promptPrelude?: string;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -854,6 +855,7 @@ export function createRunStartInteractiveModeInput(
     const result = await withInputPaused(() =>
       runAskUserQuestionnairePanel({
         queue: effectiveQueue,
+        planMode: input.planMode.isPlanMode(),
       }),
     );
     if (result.kind === "cancelled") {

@@ -404,6 +404,11 @@ expectEqual(
   "MCP environment feedback preserves source config path",
 );
 expectEqual(
+  mcpEnvironmentFeedback.mcpEnvironmentRecovery?.readyReason,
+  "command_not_found",
+  "MCP environment feedback preserves readiness reason",
+);
+expectEqual(
   mcpEnvironmentFeedback.mcpEnvironmentRecovery?.retryAllowed,
   false,
   "MCP environment feedback blocks retry",
@@ -430,35 +435,66 @@ const mcpEnvironmentRecoveryCases = [
     errorClass: "mcp_server_not_found",
     errorCode: "SERVER_NOT_FOUND",
     action: "configure_server_and_check_status",
+    errorData: {
+      available_servers: ["browser-structured", "grok-search"],
+      server: "missing-search",
+      tool_name: "web_search",
+      source: ".grobot/mcp.toml",
+    },
   },
   {
     errorClass: "mcp_server_unready",
     errorCode: "SERVER_UNREADY",
     action: "fix_server_readiness_and_check_status",
+    errorData: {
+      ready_reason: "command_not_found",
+      server: "grok-search",
+      tool_name: "web_search",
+      source: ".grobot/mcp.toml",
+    },
   },
   {
     errorClass: "mcp_spawn_failed",
     errorCode: "SPAWN_FAILED",
     action: "fix_server_command_and_check_status",
+    errorData: {
+      command: "npx",
+      server: "grok-search",
+      tool_name: "web_search",
+      source: ".grobot/mcp.toml",
+    },
   },
 ] as const;
 for (const recoveryCase of mcpEnvironmentRecoveryCases) {
   const plan = buildMcpEnvironmentRecoveryPlan({
     errorClass: recoveryCase.errorClass,
-    errorData: {
-      server: "grok-search",
-      tool_name: "web_search",
-      source: ".grobot/mcp.toml",
-    },
+    errorData: recoveryCase.errorData,
   });
   expect(plan !== null, `MCP environment plan exists for ${recoveryCase.errorClass}`);
   expectEqual(plan?.errorCode, recoveryCase.errorCode, `MCP environment plan code ${recoveryCase.errorClass}`);
   expectEqual(plan?.action, recoveryCase.action, `MCP environment plan action ${recoveryCase.errorClass}`);
   expectEqual(plan?.retryAllowed, false, `MCP environment plan retry flag ${recoveryCase.errorClass}`);
   expectEqual(plan?.commands.join("|"), "grobot status --json", `MCP environment plan commands ${recoveryCase.errorClass}`);
-  expectEqual(plan?.server, "grok-search", `MCP environment plan server ${recoveryCase.errorClass}`);
+  expectEqual(plan?.server, recoveryCase.errorData.server, `MCP environment plan server ${recoveryCase.errorClass}`);
   expectEqual(plan?.toolName, "web_search", `MCP environment plan tool ${recoveryCase.errorClass}`);
   expectEqual(plan?.sourcePath, ".grobot/mcp.toml", `MCP environment plan source ${recoveryCase.errorClass}`);
+  if (recoveryCase.errorClass === "mcp_server_not_found") {
+    expectEqual(
+      plan?.availableServers.join("|"),
+      "browser-structured|grok-search",
+      `MCP environment plan available servers ${recoveryCase.errorClass}`,
+    );
+  }
+  if (recoveryCase.errorClass === "mcp_server_unready") {
+    expectEqual(
+      plan?.readyReason,
+      "command_not_found",
+      `MCP environment plan ready reason ${recoveryCase.errorClass}`,
+    );
+  }
+  if (recoveryCase.errorClass === "mcp_spawn_failed") {
+    expectEqual(plan?.command, "npx", `MCP environment plan command ${recoveryCase.errorClass}`);
+  }
   expectEqual(
     plan?.registryPaths.join("|"),
     "~/.grobot/mcp/servers.toml|.grobot/mcp.toml",

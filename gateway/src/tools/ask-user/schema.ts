@@ -2,6 +2,7 @@ export interface AskUserOption {
   label: string;
   description?: string;
   value?: string;
+  isOther?: boolean;
 }
 
 export interface AskUserEnvelope {
@@ -14,6 +15,7 @@ export interface AskUserEnvelope {
   header?: string;
   questionIndex?: number;
   questionTotal?: number;
+  isSecret?: boolean;
   defaultOnTimeout: string;
   resumeToken: string;
   createdAt: string;
@@ -72,6 +74,23 @@ function parseOptionalPositiveInteger(value: unknown): number | undefined {
   return parsed;
 }
 
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
+    return false;
+  }
+  return undefined;
+}
+
 function normalizeAskUserOption(
   value: unknown,
   cleanText: (value: string) => string,
@@ -98,11 +117,19 @@ function normalizeAskUserOption(
   }
   const description = parseOptionalString(record.description, cleanText);
   const canonicalValue = parseOptionalString(record.value, cleanText) ?? label;
-  return {
+  const normalized = {
     label,
     description,
     value: canonicalValue,
   };
+  const isOther = parseOptionalBoolean(record.isOther ?? record.is_other);
+  if (typeof isOther === "boolean") {
+    return {
+      ...normalized,
+      isOther,
+    };
+  }
+  return normalized;
 }
 
 function ensureAskUserOptions(
@@ -174,18 +201,57 @@ export function normalizeAskUserEnvelope(
     header: parseOptionalString(record.header, cleanText),
     questionIndex: parseOptionalPositiveInteger(record.questionIndex),
     questionTotal: parseOptionalPositiveInteger(record.questionTotal),
+    isSecret: parseOptionalBoolean(record.isSecret ?? record.is_secret),
     defaultOnTimeout: parseOptionalString(record.defaultOnTimeout, cleanText) ?? "continue_with_best_effort",
     resumeToken: parseOptionalString(record.resumeToken, cleanText) ?? randomId("resume"),
     createdAt: parseOptionalString(record.createdAt, cleanText) ?? nowIso(),
   };
 }
 
-export function normalizeAskUserEnvelopeFromPayload(
+function normalizeAskUserPayloadQuestion(
+  input: {
+    record: Record<string, unknown>;
+    payload: Record<string, unknown>;
+    index: number;
+    total: number;
+    cleanText: (value: string) => string;
+    nowIso: () => string;
+    randomId: (prefix: string) => string;
+  },
+): AskUserEnvelope | undefined {
+  const askId = parseOptionalString(input.record.id, input.cleanText);
+  const header = parseOptionalString(input.record.header, input.cleanText);
+  const question = parseOptionalString(input.record.question, input.cleanText);
+  if (!askId || !header || !question) {
+    return undefined;
+  }
+  const optionsDetailed = ensureAskUserOptions(input.record.options, 6, input.cleanText);
+  return {
+    askId,
+    blockingNodeId: parseOptionalString(input.payload.blocking_node_id, input.cleanText) ?? "node.unknown",
+    question,
+    options: optionsDetailed.map((option) => option.label),
+    optionsDetailed,
+    questionKey: askId,
+    header,
+    questionIndex: parseOptionalPositiveInteger(input.record.question_index ?? input.record.questionIndex)
+      ?? input.index + 1,
+    questionTotal: parseOptionalPositiveInteger(input.record.question_total ?? input.record.questionTotal)
+      ?? parseOptionalPositiveInteger(input.payload.question_total)
+      ?? input.total,
+    isSecret: parseOptionalBoolean(input.record.isSecret ?? input.record.is_secret),
+    defaultOnTimeout: parseOptionalString(input.payload.default_on_timeout, input.cleanText) ?? "continue_with_best_effort",
+    resumeToken: parseOptionalString(input.payload.resume_token, input.cleanText) ?? input.randomId("resume"),
+    createdAt: parseOptionalString(input.payload.created_at, input.cleanText) ?? input.nowIso(),
+  };
+}
+
+export function normalizeAskUserEnvelopesFromPayload(
   raw: unknown,
   options: AskUserNormalizeOptions = {},
-): AskUserEnvelope | undefined {
+): AskUserEnvelope[] {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return undefined;
+    return [];
   }
   const record = raw as Record<string, unknown>;
   const cleanText = options.cleanText ?? defaultCleanText;
@@ -193,29 +259,22 @@ export function normalizeAskUserEnvelopeFromPayload(
   const randomId = options.randomId
     ?? ((prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
   const questionRecords = normalizeQuestionRecords(record.questions);
-  const firstQuestion = questionRecords[0];
-  if (!firstQuestion) {
-    return undefined;
-  }
-  const askId = parseOptionalString(firstQuestion.id, cleanText);
-  const header = parseOptionalString(firstQuestion.header, cleanText);
-  const question = parseOptionalString(firstQuestion.question, cleanText);
-  if (!askId || !header || !question) {
-    return undefined;
-  }
-  const optionsDetailed = ensureAskUserOptions(firstQuestion.options, 6, cleanText);
-  return {
-    askId,
-    blockingNodeId: parseOptionalString(record.blocking_node_id, cleanText) ?? "node.unknown",
-    question,
-    options: optionsDetailed.map((option) => option.label),
-    optionsDetailed,
-    questionKey: askId,
-    header,
-    questionIndex: parseOptionalPositiveInteger(record.question_index),
-    questionTotal: parseOptionalPositiveInteger(record.question_total) ?? questionRecords.length,
-    defaultOnTimeout: parseOptionalString(record.default_on_timeout, cleanText) ?? "continue_with_best_effort",
-    resumeToken: parseOptionalString(record.resume_token, cleanText) ?? randomId("resume"),
-    createdAt: parseOptionalString(record.created_at, cleanText) ?? nowIso(),
-  };
+  return questionRecords
+    .map((questionRecord, index) => normalizeAskUserPayloadQuestion({
+      record: questionRecord,
+      payload: record,
+      index,
+      total: questionRecords.length,
+      cleanText,
+      nowIso,
+      randomId,
+    }))
+    .filter((envelope): envelope is AskUserEnvelope => Boolean(envelope));
+}
+
+export function normalizeAskUserEnvelopeFromPayload(
+  raw: unknown,
+  options: AskUserNormalizeOptions = {},
+): AskUserEnvelope | undefined {
+  return normalizeAskUserEnvelopesFromPayload(raw, options)[0];
 }

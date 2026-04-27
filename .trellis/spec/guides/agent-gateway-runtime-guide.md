@@ -198,6 +198,9 @@ Gateway status output should include route and cache observability fields:
   - `server`
   - `tool_name`
   - `source_path`
+  - `ready_reason`
+  - `command`
+  - `available_servers`
   - `registry_paths`
 - `runtime_tool_recovery_timeline[*].browser_environment_recovery`
   - `error_code`
@@ -212,6 +215,9 @@ Gateway status output should include route and cache observability fields:
   - `server`
   - `tool_name`
   - `source_path`
+  - `ready_reason`
+  - `command`
+  - `available_servers`
   - `registry_paths`
 - `runtime_tool_recovery_health.attention_browser_environment_recovery`
 - `runtime_tool_recovery_health.attention_mcp_environment_recovery`
@@ -237,8 +243,10 @@ MCP environment recovery follows the same fail-fast discipline for configuration
 `mcp_server_not_found`, `mcp_server_unready`, and repeated `mcp_spawn_failed` must surface an
 operator recovery plan instead of encouraging blind retries. The plan points to
 `~/.grobot/mcp/servers.toml` and `.grobot/mcp.toml`, preserves the runtime-reported `source_path`
-when available, includes `grobot status --json` as the readiness check, and blocks automatic
-`mcp_call` retry until status shows the target server is configured and ready.
+when available, carries actionable diagnostics (`ready_reason`, failed `command`, and
+`available_servers` for missing-server errors), includes `grobot status --json` as the readiness
+check, and blocks automatic `mcp_call` retry until status shows the target server is configured and
+ready.
 
 ---
 

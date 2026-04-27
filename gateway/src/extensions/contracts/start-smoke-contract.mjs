@@ -5259,6 +5259,12 @@ function mcpEnvironmentRecoveryPlanSummary(plan) {
         server: plan.server ?? null,
         tool_name: plan.tool_name ?? null,
         source_path: plan.source_path ?? null,
+        ready_reason: plan.ready_reason ?? null,
+        command: plan.command ?? null,
+        available_servers:
+          Array.isArray(plan.available_servers) && plan.available_servers.length > 0
+            ? plan.available_servers.join("|")
+            : null,
         registry_paths: Array.isArray(plan.registry_paths) ? plan.registry_paths.join("|") : null,
       }
     : {
@@ -5269,6 +5275,9 @@ function mcpEnvironmentRecoveryPlanSummary(plan) {
         server: null,
         tool_name: null,
         source_path: null,
+        ready_reason: null,
+        command: null,
+        available_servers: null,
         registry_paths: null,
       };
 }
@@ -5436,7 +5445,7 @@ function runStatusMcpEnvironmentToolRecovery(repoRoot) {
     recoveryGate?.attention_mcp_environment_recovery,
   );
   const textMcpRecoverySnippet =
-    "mcp_environment_recovery=code=SERVER_UNREADY action=fix_server_readiness_and_check_status retry_allowed=false server=grok-search tool=web_search source=.grobot/mcp.toml registry_paths=~/.grobot/mcp/servers.toml|.grobot/mcp.toml commands=grobot status --json";
+    "mcp_environment_recovery=code=SERVER_UNREADY action=fix_server_readiness_and_check_status retry_allowed=false server=grok-search tool=web_search source=.grobot/mcp.toml ready_reason=command_not_found command=<none> available_servers=<none> registry_paths=~/.grobot/mcp/servers.toml|.grobot/mcp.toml commands=grobot status --json";
   return {
     exit_code: jsonResult.exit_code,
     text_exit_code: textResult.exit_code,
@@ -5454,6 +5463,9 @@ function runStatusMcpEnvironmentToolRecovery(repoRoot) {
     recovery_feedback_mcp_server: feedbackPlan.server,
     recovery_feedback_mcp_tool_name: feedbackPlan.tool_name,
     recovery_feedback_mcp_source_path: feedbackPlan.source_path,
+    recovery_feedback_mcp_ready_reason: feedbackPlan.ready_reason,
+    recovery_feedback_mcp_command: feedbackPlan.command,
+    recovery_feedback_mcp_available_servers: feedbackPlan.available_servers,
     recovery_feedback_mcp_registry_paths: feedbackPlan.registry_paths,
     recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
     recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,

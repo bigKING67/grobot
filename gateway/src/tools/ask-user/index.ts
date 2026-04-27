@@ -8,6 +8,7 @@ export type {
 export {
   normalizeAskUserEnvelope,
   normalizeAskUserEnvelopeFromPayload,
+  normalizeAskUserEnvelopesFromPayload,
 } from "./schema";
 export {
   buildAskUserResolutionPrompt,
@@ -26,6 +27,7 @@ export type {
   AskUserQuestionnaireReviewItem,
   AskUserQuestionnaireState,
   AskUserQuestionnaireTab,
+  AskUserQuestionnaireTextInputMode,
   AskUserQuestionnaireView,
   AskUserReviewActionId,
   AskUserSelectMenuDescriptor,

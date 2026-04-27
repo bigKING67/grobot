@@ -695,6 +695,7 @@ export async function runStart(
     controller: AbortController,
     options?: {
       attachments?: RuntimeAttachment[];
+      promptPrelude?: string;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -712,6 +713,7 @@ export async function runStart(
       const code = await wire.executeTurn(userInput, interactiveMode, {
         signal: controller.signal,
         attachments: options?.attachments,
+        promptPrelude: options?.promptPrelude,
         writeStdout: options?.writeStdout,
         writeStderr,
         onTurnRecorded: (turnRecord) => {
@@ -766,6 +768,7 @@ export async function runStart(
     interactiveMode: boolean,
     options?: {
       attachments?: RuntimeAttachment[];
+      promptPrelude?: string;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },

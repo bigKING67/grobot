@@ -934,6 +934,9 @@ function serializeMcpEnvironmentRecoveryPlan(
     server: plan.server,
     tool_name: plan.toolName,
     source_path: plan.sourcePath,
+    ready_reason: plan.readyReason,
+    command: plan.command,
+    available_servers: plan.availableServers,
     registry_paths: plan.registryPaths,
   };
 }

@@ -19,15 +19,68 @@ export interface AskUserTurnPromptContext {
   promptParts: string[];
 }
 
-function parseNumberedBatchAnswers(userText: string): string[] | undefined {
+interface ParsedAskUserAnswer {
+  answer: string;
+  notes?: string;
+}
+
+function parseAnswerPayload(answerRaw: string): ParsedAskUserAnswer {
+  if (answerRaw.startsWith("\"") || answerRaw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(answerRaw) as unknown;
+      if (typeof parsed === "string") {
+        return { answer: parsed };
+      }
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        if (typeof record.answer === "string" && record.answer.trim().length > 0) {
+          const notes = typeof record.notes === "string" && record.notes.trim().length > 0
+            ? record.notes
+            : undefined;
+          return notes
+            ? { answer: record.answer, notes }
+            : { answer: record.answer };
+        }
+      }
+    } catch {
+      return { answer: answerRaw };
+    }
+  }
+  return { answer: answerRaw };
+}
+
+function compactAskUserNotes(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function buildAskUserNotesPrompt(input: {
+  rows: readonly { resolvedAsk: ResolvedAskUser; notes: string }[];
+}): string {
+  if (input.rows.length <= 0) {
+    return "";
+  }
+  const lines = [
+    "[AskUser Notes]",
+    `note_count=${String(input.rows.length)}`,
+  ];
+  for (let index = 0; index < input.rows.length; index += 1) {
+    const row = input.rows[index];
+    const order = index + 1;
+    lines.push(`ask_${String(order)}_id=${row.resolvedAsk.envelope.askId}`);
+    lines.push(`ask_${String(order)}_notes=${compactAskUserNotes(row.notes)}`);
+  }
+  return lines.join("\n");
+}
+
+function parseNumberedBatchAnswers(userText: string): ParsedAskUserAnswer[] | undefined {
   const lines = userText
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  if (lines.length <= 1) {
+  if (lines.length <= 0) {
     return undefined;
   }
-  const answers: string[] = [];
+  const answers: ParsedAskUserAnswer[] = [];
   let expectedIndex = 1;
   for (const line of lines) {
     const match = /^(\d+|[０-９]+)[.)、:：-]\s*(.+)$/u.exec(line);
@@ -36,29 +89,17 @@ function parseNumberedBatchAnswers(userText: string): string[] | undefined {
     }
     const ordinal = match[1] ?? "";
     const answerRaw = (match[2] ?? "").trim();
-    const answer = (() => {
-      if (answerRaw.startsWith("\"")) {
-        try {
-          const parsed = JSON.parse(answerRaw);
-          if (typeof parsed === "string") {
-            return parsed;
-          }
-        } catch {
-          return answerRaw;
-        }
-      }
-      return answerRaw;
-    })();
+    const parsedAnswer = parseAnswerPayload(answerRaw);
     const normalizedOrdinal = ordinal.replace(/[０-９]/gu, (digit) =>
       String.fromCharCode(digit.charCodeAt(0) - 0xfee0));
     const parsed = Number.parseInt(normalizedOrdinal, 10);
-    if (!Number.isFinite(parsed) || parsed !== expectedIndex || answer.trim().length <= 0) {
+    if (!Number.isFinite(parsed) || parsed !== expectedIndex || parsedAnswer.answer.trim().length <= 0) {
       return undefined;
     }
-    answers.push(answer);
+    answers.push(parsedAnswer);
     expectedIndex += 1;
   }
-  return answers.length > 1 ? answers : undefined;
+  return answers.length > 0 ? answers : undefined;
 }
 
 export function createAskUserTurnPromptContext(input: {
@@ -67,17 +108,25 @@ export function createAskUserTurnPromptContext(input: {
   userText: string;
 }): AskUserTurnPromptContext {
   const promptParts: string[] = [];
-  const answers = parseNumberedBatchAnswers(input.userText) ?? [input.userText];
+  const answers = parseNumberedBatchAnswers(input.userText) ?? [{ answer: input.userText }];
   const resolvedAsks: ResolvedAskUser[] = [];
+  const resolvedNotes: Array<{ resolvedAsk: ResolvedAskUser; notes: string }> = [];
   let pendingNextAsk: AskUserEnvelope | undefined;
   let queueSizeAfterResolve = 0;
   let finalResumePrompt = "";
   for (let index = 0; index < answers.length; index += 1) {
-    const resolved = input.runtime.resolvePendingAsk(input.sessionKey, answers[index] ?? "");
+    const answer = answers[index];
+    const resolved = input.runtime.resolvePendingAsk(input.sessionKey, answer?.answer ?? "");
     if (!resolved) {
       break;
     }
     resolvedAsks.push(resolved.resolvedAsk);
+    if (answer?.notes && answer.notes.trim().length > 0) {
+      resolvedNotes.push({
+        resolvedAsk: resolved.resolvedAsk,
+        notes: answer.notes,
+      });
+    }
     pendingNextAsk = resolved.pendingNextAsk;
     queueSizeAfterResolve = resolved.queueSizeAfterResolve;
     finalResumePrompt = resolved.resumePrompt?.trim() ?? "";
@@ -87,6 +136,10 @@ export function createAskUserTurnPromptContext(input: {
   }
   if (finalResumePrompt) {
     promptParts.push(finalResumePrompt);
+  }
+  const notesPrompt = buildAskUserNotesPrompt({ rows: resolvedNotes });
+  if (notesPrompt) {
+    promptParts.push(notesPrompt);
   }
   const resolvedAsk = resolvedAsks[0];
   return {
