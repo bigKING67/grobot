@@ -46,6 +46,14 @@ projected/full/suppressed argument counts, and estimated schema-token ceilings.
 This keeps browser schema slimming measurable and prevents accidental tool
 surface expansion from silently increasing prompt cost.
 
+The default `browser` profile intentionally exposes only the common browser
+control primitives: page/tab scan, current/session tab selection, bounded output,
+JS/bridge code execution, and timeout control. Low-frequency output/debug
+selectors such as `text_only` and `session_url_pattern` stay available through
+`browser_advanced` and `full_debug`, not the default prompt surface. Hidden args
+are rejected at the runtime execution boundary, so profile slimming cannot create
+silent behavior drift.
+
 The canonical human-intervention primitive is `ask_user`. Older
 `ask_user_question` tool calls are accepted only as a runtime compatibility
 alias at dispatch/interrupt parsing boundaries; new tool manifests and gateway

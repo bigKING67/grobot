@@ -112,8 +112,8 @@ const PROFILE_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   bash: 150,
   mcp_servers: 80,
   mcp_call: 100,
-  web_scan: 210,
-  web_execute_js: 260,
+  web_scan: 160,
+  web_execute_js: 220,
   semantic_search: 190,
   prompt_enhancer: 210,
   ask_user: 160,
@@ -200,8 +200,8 @@ const FULL_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
 };
 
 const SLIM_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
-  web_scan: ["main_only", "max_chars", "session_id", "session_url_pattern", "switch_tab_id", "tabs_only", "text_only"],
-  web_execute_js: ["code", "script", "session_id", "session_url_pattern", "switch_tab_id", "tab_id", "timeout_ms"],
+  web_scan: ["main_only", "max_chars", "session_id", "switch_tab_id", "tabs_only"],
+  web_execute_js: ["code", "script", "session_id", "switch_tab_id", "tab_id", "timeout_ms"],
 };
 
 const ADVANCED_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {

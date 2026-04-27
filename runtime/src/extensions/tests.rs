@@ -136,13 +136,19 @@ mod tests {
                 .is_some_and(|items| items.iter().any(|value| value == "native_fallback_action")),
             "browser schema profile should expose suppressed browser args"
         );
+        assert!(
+            browser_schema_profile["per_tool_suppressed_args"]["web_scan"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|value| value == "text_only")),
+            "browser schema profile should keep advanced scan args suppressed"
+        );
         assert_eq!(
             browser_schema_profile["schema_property_count"].as_u64(),
-            Some(25)
+            Some(22)
         );
         assert_eq!(
             browser_schema_profile["suppressed_schema_property_count"].as_u64(),
-            Some(22)
+            Some(25)
         );
         let full_debug_schema_profile = schema_profiles
             .iter()

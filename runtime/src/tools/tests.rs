@@ -621,7 +621,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
 
         assert_eq!(surface_schema_property_count("minimal", false), 15);
         assert_eq!(surface_schema_property_count("coding", false), 30);
-        assert_eq!(surface_schema_property_count("browser", false), 25);
+        assert_eq!(surface_schema_property_count("browser", false), 22);
         assert_eq!(surface_schema_property_count("browser_advanced", false), 42);
         assert_eq!(surface_schema_property_count("browser", true), 42);
         assert_eq!(surface_schema_property_count("context", false), 20);
@@ -655,12 +655,12 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         let browser = surface_schema_profile("browser");
         assert_eq!(browser["projection_mode"], "slim");
         assert_eq!(browser["advanced_tool_schema"], false);
-        assert_eq!(browser["schema_property_count"].as_u64(), Some(25));
+        assert_eq!(browser["schema_property_count"].as_u64(), Some(22));
         assert_eq!(browser["full_schema_property_count"].as_u64(), Some(47));
-        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(22));
+        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(25));
         assert_eq!(
             browser["per_tool_property_count"][TOOL_WEB_SCAN].as_u64(),
-            Some(7)
+            Some(5)
         );
         assert_eq!(
             browser["per_tool_visible_args"][TOOL_WEB_SCAN]
@@ -673,10 +673,8 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 "main_only",
                 "max_chars",
                 "session_id",
-                "session_url_pattern",
                 "switch_tab_id",
                 "tabs_only",
-                "text_only",
             ]
         );
         assert_eq!(
@@ -696,6 +694,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 "native_fallback_args",
                 "native_fallback_timeout_ms",
                 "no_monitor",
+                "session_url_pattern",
                 "target_url_contains",
                 "tmwd_link_endpoint",
                 "tmwd_mode",
@@ -705,7 +704,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         );
         assert_eq!(
             browser["per_tool_property_count"][TOOL_WEB_EXECUTE_JS].as_u64(),
-            Some(7)
+            Some(6)
         );
 
         let browser_advanced = surface_schema_profile("browser_advanced");
@@ -795,6 +794,8 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 "main_only_fallback_to_full",
                 "main_only_min_chars",
                 "main_only_min_coverage",
+                "session_url_pattern",
+                "text_only",
                 "tmwd_mode",
                 "tmwd_transport",
                 "tmwd_ws_endpoint",
@@ -815,6 +816,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 "tmwd_ws_endpoint",
                 "tmwd_link_endpoint",
                 "cdp_endpoint",
+                "session_url_pattern",
                 "target_url_contains",
                 "native_auto_fallback",
                 "native_auto_fallback_policy",
@@ -948,6 +950,25 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             .expect("hidden_args should be an array")
             .iter()
             .any(|value| value.as_str() == Some("tmwd_mode")));
+
+        let slim_scan_args = json_object_args(json!({
+            "tabs_only": true,
+            "text_only": true,
+            "session_url_pattern": "example.com"
+        }));
+        let error =
+            validate_browser_facade_args_visible(&slim_context, &slim_scan_args, TOOL_WEB_SCAN)
+                .expect_err("slim browser surface should reject advanced scan selection args");
+        let hidden_args = error
+            .data
+            .as_ref()
+            .and_then(|data| data.get("hidden_args"))
+            .and_then(Value::as_array)
+            .expect("hidden_args should be an array");
+        assert!(hidden_args.iter().any(|value| value.as_str() == Some("text_only")));
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("session_url_pattern")));
 
         let advanced_context = browser_test_context("browser_advanced", false);
         let advanced_args = json_object_args(json!({

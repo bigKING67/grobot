@@ -260,6 +260,13 @@ Gateway status output should include route and cache observability fields:
 - `runtime_tool_recovery_gate.blocker_action`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
+Tool surface schema profiles are part of the gateway/runtime contract. The default `browser`
+profile must stay slim enough for normal browser tasks: expose scan/action primitives and common
+tab/session selection, but keep low-frequency selectors such as `text_only` and
+`session_url_pattern` in `browser_advanced`/`full_debug`. Runtime dispatch must reject hidden
+browser args for the active profile instead of silently accepting parameters that the model could
+not see in its schema.
+
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or
 `TRANSPORT_UNAVAILABLE`, the second same-tool recovery escalates to `ask_user` with

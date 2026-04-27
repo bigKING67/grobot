@@ -306,13 +306,13 @@ expectEqual(browser.advancedToolSchema, false, "browser slim schema");
 const browserProjection = projection(browser);
 expectEqual(browserProjection.source, "gateway.fallback", "browser projection source");
 expectEqual(browserProjection.projectionMode, "slim", "browser projection mode");
-expectEqual(browserProjection.schemaPropertyCount, 25, "browser projection schema property count");
+expectEqual(browserProjection.schemaPropertyCount, 22, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
-expectEqual(browserProjection.suppressedSchemaPropertyCount, 22, "browser projection suppressed property count");
+expectEqual(browserProjection.suppressedSchemaPropertyCount, 25, "browser projection suppressed property count");
 expectProjectionWithinBudget(browser, "browser projection budget");
 expectDeepEqual(
   browserProjection.perToolVisibleArgs?.web_scan,
-  ["main_only", "max_chars", "session_id", "session_url_pattern", "switch_tab_id", "tabs_only", "text_only"],
+  ["main_only", "max_chars", "session_id", "switch_tab_id", "tabs_only"],
   "browser projection exposes slim web_scan arg names",
 );
 expectDeepEqual(
@@ -327,6 +327,7 @@ expectDeepEqual(
     "native_fallback_args",
     "native_fallback_timeout_ms",
     "no_monitor",
+    "session_url_pattern",
     "target_url_contains",
     "tmwd_link_endpoint",
     "tmwd_mode",

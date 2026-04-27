@@ -54,10 +54,10 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     profile: "browser",
     projectionMode: "slim",
     visibleToolCountMax: 4,
-    schemaPropertyCountMax: 25,
+    schemaPropertyCountMax: 22,
     fullSchemaPropertyCountMax: 47,
-    suppressedSchemaPropertyCountMax: 22,
-    schemaEstimatedTokensMax: 790,
+    suppressedSchemaPropertyCountMax: 25,
+    schemaEstimatedTokensMax: 700,
   },
   browser_advanced: {
     profile: "browser_advanced",
