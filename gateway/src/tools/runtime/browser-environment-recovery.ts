@@ -2,6 +2,7 @@ import {
   buildEnvironmentRecoveryCore,
   formatEnvironmentCommands,
   formatEnvironmentRecoveryCoreFields,
+  serializeEnvironmentRecoveryCorePlan,
   stringEnumField,
   type EnvironmentRecoveryPlanCore,
 } from "./environment-recovery";
@@ -77,6 +78,12 @@ export function formatBrowserEnvironmentRecoveryPlan(
   plan: BrowserEnvironmentRecoveryPlan | null | undefined,
 ): string {
   return formatEnvironmentRecoveryCoreFields(plan);
+}
+
+export function serializeBrowserEnvironmentRecoveryPlan(
+  plan: BrowserEnvironmentRecoveryPlan | null | undefined,
+): Record<string, unknown> | null {
+  return serializeEnvironmentRecoveryCorePlan(plan);
 }
 
 export function browserEnvironmentRecoveryActionInstruction(

@@ -3,6 +3,7 @@ import {
   formatEnvironmentCommands,
   formatEnvironmentRecoveryCoreFields,
   formatPipeList,
+  serializeEnvironmentRecoveryCorePlan,
   stringField,
   stringListField,
   type EnvironmentRecoveryPlanCore,
@@ -98,6 +99,28 @@ export function formatMcpEnvironmentRecoveryPlan(
     `available_servers=${formatPipeList(plan.availableServers)}`,
     `registry_paths=${formatPipeList(plan.registryPaths)}`,
   ]);
+}
+
+export function serializeMcpEnvironmentRecoveryPlan(
+  plan: McpEnvironmentRecoveryPlan | null | undefined,
+): Record<string, unknown> | null {
+  if (!plan) {
+    return null;
+  }
+  const core = serializeEnvironmentRecoveryCorePlan(plan);
+  if (!core) {
+    return null;
+  }
+  return {
+    ...core,
+    server: plan.server,
+    tool_name: plan.toolName,
+    source_path: plan.sourcePath,
+    ready_reason: plan.readyReason,
+    command: plan.command,
+    available_servers: plan.availableServers,
+    registry_paths: plan.registryPaths,
+  };
 }
 
 function formatMcpRegistryPaths(plan: McpEnvironmentRecoveryPlan): string {

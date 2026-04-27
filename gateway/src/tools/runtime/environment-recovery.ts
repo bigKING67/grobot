@@ -83,3 +83,17 @@ export function formatEnvironmentRecoveryCoreFields(
     `commands=${formatPipeList(plan.commands)}`,
   ].join(" ");
 }
+
+export function serializeEnvironmentRecoveryCorePlan(
+  plan: EnvironmentRecoveryPlanCore | null | undefined,
+): Record<string, unknown> | null {
+  if (!plan) {
+    return null;
+  }
+  return {
+    error_code: plan.errorCode,
+    action: plan.action,
+    retry_allowed: plan.retryAllowed,
+    commands: plan.commands,
+  };
+}

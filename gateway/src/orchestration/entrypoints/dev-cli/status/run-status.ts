@@ -45,11 +45,11 @@ import {
 } from "../../../../tools/runtime/tool-recovery-readiness-gate";
 import {
   formatBrowserEnvironmentRecoveryPlan,
-  type BrowserEnvironmentRecoveryPlan,
+  serializeBrowserEnvironmentRecoveryPlan,
 } from "../../../../tools/runtime/browser-environment-recovery";
 import {
   formatMcpEnvironmentRecoveryPlan,
-  type McpEnvironmentRecoveryPlan,
+  serializeMcpEnvironmentRecoveryPlan,
 } from "../../../../tools/runtime/mcp-environment-recovery";
 import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
@@ -903,41 +903,6 @@ function serializeRuntimeToolRecoveryConsumption(record: RuntimeToolRecoveryCons
     recovery_observed_at: record.recoveryObservedAt,
     consumed_at: record.consumedAt,
     trace_id: record.traceId,
-  };
-}
-
-function serializeBrowserEnvironmentRecoveryPlan(
-  plan: BrowserEnvironmentRecoveryPlan | null,
-): Record<string, unknown> | null {
-  if (!plan) {
-    return null;
-  }
-  return {
-    error_code: plan.errorCode,
-    action: plan.action,
-    retry_allowed: plan.retryAllowed,
-    commands: plan.commands,
-  };
-}
-
-function serializeMcpEnvironmentRecoveryPlan(
-  plan: McpEnvironmentRecoveryPlan | null,
-): Record<string, unknown> | null {
-  if (!plan) {
-    return null;
-  }
-  return {
-    error_code: plan.errorCode,
-    action: plan.action,
-    retry_allowed: plan.retryAllowed,
-    commands: plan.commands,
-    server: plan.server,
-    tool_name: plan.toolName,
-    source_path: plan.sourcePath,
-    ready_reason: plan.readyReason,
-    command: plan.command,
-    available_servers: plan.availableServers,
-    registry_paths: plan.registryPaths,
   };
 }
 

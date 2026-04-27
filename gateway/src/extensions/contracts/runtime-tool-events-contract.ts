@@ -19,10 +19,12 @@ import {
   browserEnvironmentRecoveryFixInstruction,
   buildBrowserEnvironmentRecoveryPlan,
   formatBrowserEnvironmentRecoveryPlan,
+  serializeBrowserEnvironmentRecoveryPlan,
 } from "../../tools/runtime/browser-environment-recovery";
 import {
   buildMcpEnvironmentRecoveryPlan,
   formatMcpEnvironmentRecoveryPlan,
+  serializeMcpEnvironmentRecoveryPlan,
 } from "../../tools/runtime/mcp-environment-recovery";
 
 function expect(condition: boolean, message: string): asserts condition {
@@ -508,8 +510,33 @@ for (const recoveryCase of mcpEnvironmentRecoveryCases) {
     formatMcpEnvironmentRecoveryPlan(plan).includes("commands=grobot status --json"),
     `MCP environment formatter keeps commands ${recoveryCase.errorClass}`,
   );
+  const serialized = serializeMcpEnvironmentRecoveryPlan(plan);
+  expectEqual(
+    serialized?.error_code as string,
+    recoveryCase.errorCode,
+    `MCP environment serializer keeps error code ${recoveryCase.errorClass}`,
+  );
+  expect(
+    Array.isArray(serialized?.commands),
+    `MCP environment serializer commands array ${recoveryCase.errorClass}`,
+  );
+  expectEqual(
+    (serialized?.commands as string[]).join("|"),
+    "grobot status --json",
+    `MCP environment serializer keeps commands ${recoveryCase.errorClass}`,
+  );
+  expect(
+    Array.isArray(serialized?.registry_paths),
+    `MCP environment serializer registry paths array ${recoveryCase.errorClass}`,
+  );
+  expectEqual(
+    (serialized?.registry_paths as string[]).join("|"),
+    "~/.grobot/mcp/servers.toml|.grobot/mcp.toml",
+    `MCP environment serializer keeps registry paths ${recoveryCase.errorClass}`,
+  );
 }
 expectEqual(formatMcpEnvironmentRecoveryPlan(null), "<none>", "MCP environment formatter handles null");
+expectEqual(serializeMcpEnvironmentRecoveryPlan(null), null, "MCP environment serializer handles null");
 expectEqual(
   buildMcpEnvironmentRecoveryPlan({
     errorClass: "mcp_timeout",
@@ -703,6 +730,21 @@ for (const recoveryCase of browserEnvironmentRecoveryCases) {
     formatBrowserEnvironmentRecoveryPlan(plan).includes(`commands=${recoveryCase.commands.join("|")}`),
     `browser environment formatter keeps commands ${recoveryCase.errorCode}`,
   );
+  const serialized = serializeBrowserEnvironmentRecoveryPlan(plan);
+  expectEqual(
+    serialized?.error_code as string,
+    recoveryCase.errorCode,
+    `browser environment serializer keeps error code ${recoveryCase.errorCode}`,
+  );
+  expect(
+    Array.isArray(serialized?.commands),
+    `browser environment serializer commands array ${recoveryCase.errorCode}`,
+  );
+  expectEqual(
+    (serialized?.commands as string[]).join("|"),
+    recoveryCase.commands.join("|"),
+    `browser environment serializer keeps commands ${recoveryCase.errorCode}`,
+  );
   expect(
     actionInstruction?.includes("Ask the user to repair the browser environment") === true,
     `browser environment action instruction asks repair ${recoveryCase.errorCode}`,
@@ -727,6 +769,7 @@ for (const recoveryCase of browserEnvironmentRecoveryCases) {
   }
 }
 expectEqual(formatBrowserEnvironmentRecoveryPlan(null), "<none>", "browser environment formatter handles null");
+expectEqual(serializeBrowserEnvironmentRecoveryPlan(null), null, "browser environment serializer handles null");
 expectEqual(
   buildBrowserEnvironmentRecoveryPlan({
     errorClass: "browser_backend_result_error",
