@@ -1,6 +1,7 @@
 import {
   buildRuntimeToolRecoveryReadinessGate,
   formatRuntimeToolRecoveryGateFields,
+  runtimeToolRecoveryGateAdaptationReason,
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../tools/runtime/tool-recovery-readiness-gate";
 import {
@@ -233,6 +234,11 @@ expectEqual(
   "fix_config_or_switch_provider_and_check_status",
   "blocked gate blocker action",
 );
+expectEqual(
+  runtimeToolRecoveryGateAdaptationReason(blockedOperatorGate),
+  "recovery_gate_runtime_environment_config_missing",
+  "blocked runtime gate adaptation reason",
+);
 
 const blockedBrowserGate = buildRuntimeToolRecoveryReadinessGate({
   readiness: makeReadiness({
@@ -260,6 +266,11 @@ const blockedBrowserGate = buildRuntimeToolRecoveryReadinessGate({
 expectEqual(blockedBrowserGate.blockerKind, "browser_environment", "browser gate blocker kind");
 expectEqual(blockedBrowserGate.blockerCode, "NO_EXTENSION", "browser gate blocker code");
 expectEqual(blockedBrowserGate.blockerAction, "setup_and_doctor", "browser gate blocker action");
+expectEqual(
+  runtimeToolRecoveryGateAdaptationReason(blockedBrowserGate),
+  "recovery_gate_browser_environment_no_extension",
+  "browser gate adaptation reason",
+);
 
 const blockedMcpGate = buildRuntimeToolRecoveryReadinessGate({
   readiness: makeReadiness({
@@ -291,6 +302,11 @@ expectEqual(
   blockedMcpGate.blockerAction,
   "fix_server_readiness_and_check_status",
   "mcp gate blocker action",
+);
+expectEqual(
+  runtimeToolRecoveryGateAdaptationReason(blockedMcpGate),
+  "recovery_gate_mcp_environment_server_unready",
+  "mcp gate adaptation reason",
 );
 
 const degradedAutoDeniedGate = buildRuntimeToolRecoveryReadinessGate({
@@ -450,12 +466,15 @@ process.stdout.write(JSON.stringify({
   blocked_blocker_kind: blockedOperatorGate.blockerKind,
   blocked_blocker_code: blockedOperatorGate.blockerCode,
   blocked_blocker_action: blockedOperatorGate.blockerAction,
+  blocked_adaptation_reason: runtimeToolRecoveryGateAdaptationReason(blockedOperatorGate),
   browser_blocker_kind: blockedBrowserGate.blockerKind,
   browser_blocker_code: blockedBrowserGate.blockerCode,
   browser_blocker_action: blockedBrowserGate.blockerAction,
+  browser_adaptation_reason: runtimeToolRecoveryGateAdaptationReason(blockedBrowserGate),
   mcp_blocker_kind: blockedMcpGate.blockerKind,
   mcp_blocker_code: blockedMcpGate.blockerCode,
   mcp_blocker_action: blockedMcpGate.blockerAction,
+  mcp_adaptation_reason: runtimeToolRecoveryGateAdaptationReason(blockedMcpGate),
   auto_denied_status: degradedAutoDeniedGate.status,
   auto_denied_reason: degradedAutoDeniedGate.reason,
   auto_denied_blocker_kind: degradedAutoDeniedGate.blockerKind,

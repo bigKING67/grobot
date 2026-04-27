@@ -5251,7 +5251,7 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     text_has_auto_adaptation_blocked:
       textResult.stdout.includes("auto_adaptation_blocked=true"),
     text_has_nonrecoverable_reason:
-      textResult.stdout.includes("recovery_gate_blocked_operator_action_required"),
+      textResult.stdout.includes("recovery_gate_runtime_environment_config_missing"),
     text_has_recovery_timeline:
       textResult.stdout.includes("runtime_tool_recovery_timeline: entries=2")
       && textResult.stdout.includes("latest=web_scan/config_missing"),

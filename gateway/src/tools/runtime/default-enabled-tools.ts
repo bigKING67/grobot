@@ -6,7 +6,10 @@ import type {
   ToolSurfaceSource,
 } from "../../models/types";
 import type { RuntimeToolRecoveryFeedback } from "./tool-events";
-import type { RuntimeToolRecoveryReadinessGateDecision } from "./tool-recovery-readiness-gate";
+import {
+  runtimeToolRecoveryGateAdaptationReason,
+  type RuntimeToolRecoveryReadinessGateDecision,
+} from "./tool-recovery-readiness-gate";
 
 export const ALL_RUNTIME_LOCAL_TOOLS = [
   "list",
@@ -995,7 +998,7 @@ export function adaptRuntimeToolContextForRecovery(input: {
       context: input.context,
       adaptation: emptyAdaptation({
         context: input.context,
-        reason: `recovery_gate_${input.recoveryGate.reason}`,
+        reason: runtimeToolRecoveryGateAdaptationReason(input.recoveryGate),
         recoveryFeedback: input.recoveryFeedback,
         recoveryGate: input.recoveryGate,
       }),

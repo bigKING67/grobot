@@ -297,6 +297,10 @@ family (`runtime_environment`, `browser_environment`, or `mcp_environment`), `bl
 the concrete plan error code (`CONFIG_MISSING`, `NO_EXTENSION`, `SERVER_UNREADY`, etc.), and
 `blocker_action` to carry the recovery action. Non-environment gate failures fall back to
 `operator_action`, `automatic_recovery_policy`, or `readiness_state`.
+When a blocker prevents automatic tool-surface adaptation, the adaptation reason should use the
+environment-specific blocker when available (for example
+`recovery_gate_runtime_environment_config_missing`) instead of collapsing all operator fixes into
+`recovery_gate_blocked_operator_action_required`.
 
 `ask_user` questions marked with `is_secret=true` keep the raw answer available only in the current
 turn's `[AskUser Resolution]` prompt so the agent can act on credentials or other sensitive

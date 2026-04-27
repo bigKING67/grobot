@@ -145,6 +145,14 @@ function environmentRecoveryBlocker(input: RuntimeToolRecoveryReadinessSummary):
   return null;
 }
 
+function normalizeGateReasonPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 function gateBlocker(input: {
   readiness: RuntimeToolRecoveryReadinessSummary;
   gate: RuntimeToolRecoveryGateStatusResolution;
@@ -179,6 +187,19 @@ function gateBlocker(input: {
     code: input.gate.reason,
     action: input.readiness.recommendedNextAction,
   };
+}
+
+export function runtimeToolRecoveryGateAdaptationReason(
+  gate: RuntimeToolRecoveryReadinessGateDecision,
+): string {
+  const environmentBlocker =
+    gate.blockerKind === "runtime_environment"
+    || gate.blockerKind === "browser_environment"
+    || gate.blockerKind === "mcp_environment";
+  if (environmentBlocker && gate.blockerCode) {
+    return `recovery_gate_${gate.blockerKind}_${normalizeGateReasonPart(gate.blockerCode)}`;
+  }
+  return `recovery_gate_${gate.reason}`;
 }
 
 export function buildRuntimeToolRecoveryReadinessGate(input: {

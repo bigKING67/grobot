@@ -643,14 +643,26 @@ async function runGatewayContractSmoke() {
     runtimeToolRecoveryReadinessPayload.blocked_blocker_action,
     "fix_config_or_switch_provider_and_check_status",
   );
+  assert.equal(
+    runtimeToolRecoveryReadinessPayload.blocked_adaptation_reason,
+    "recovery_gate_runtime_environment_config_missing",
+  );
   assert.equal(runtimeToolRecoveryReadinessPayload.browser_blocker_kind, "browser_environment");
   assert.equal(runtimeToolRecoveryReadinessPayload.browser_blocker_code, "NO_EXTENSION");
   assert.equal(runtimeToolRecoveryReadinessPayload.browser_blocker_action, "setup_and_doctor");
+  assert.equal(
+    runtimeToolRecoveryReadinessPayload.browser_adaptation_reason,
+    "recovery_gate_browser_environment_no_extension",
+  );
   assert.equal(runtimeToolRecoveryReadinessPayload.mcp_blocker_kind, "mcp_environment");
   assert.equal(runtimeToolRecoveryReadinessPayload.mcp_blocker_code, "SERVER_UNREADY");
   assert.equal(
     runtimeToolRecoveryReadinessPayload.mcp_blocker_action,
     "fix_server_readiness_and_check_status",
+  );
+  assert.equal(
+    runtimeToolRecoveryReadinessPayload.mcp_adaptation_reason,
+    "recovery_gate_mcp_environment_server_unready",
   );
   assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_status, "fail");
   assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_reason, "automatic_recovery_denied");
@@ -6654,7 +6666,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_health_unconsumed_count, 2);
   assert.equal(statusNonRecoverablePayload.recovery_health_has_stuck_nonrecoverable, true);
   assert.equal(statusNonRecoverablePayload.surface_adaptation_active, false);
-  assert.equal(statusNonRecoverablePayload.surface_adaptation_reason, "recovery_gate_blocked_operator_action_required");
+  assert.equal(
+    statusNonRecoverablePayload.surface_adaptation_reason,
+    "recovery_gate_runtime_environment_config_missing",
+  );
   assert.equal(statusNonRecoverablePayload.surface_adaptation_from_profile, "coding");
   assert.equal(statusNonRecoverablePayload.surface_adaptation_applied_profile, "coding");
   assert.equal(statusNonRecoverablePayload.surface_adaptation_auto_adaptation_blocked, true);
