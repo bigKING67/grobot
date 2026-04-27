@@ -1,5 +1,7 @@
 import {
   AskUserSessionStore,
+  ASK_USER_SECRET_DISPLAY_VALUE,
+  ASK_USER_SECRET_PERSISTENCE_VALUE,
   buildAskUserBatchAnswerText,
   buildAskUserQueueDisplay,
   buildAskUserDisplay,
@@ -7,8 +9,10 @@ import {
   buildAskUserSelectMenuDescriptor,
   buildAskUserResolutionPrompt,
   buildAskUserQuestionnaireView,
+  buildAskUserSafeUserText,
   createAskUserQuestionnaireState,
   createAskUserTurnPromptContext,
+  formatAskUserResolvedAnswerForPersistence,
   formatAskUserIssuedEvent,
   formatAskUserResolvedEvent,
   normalizeAskUserEnvelopeFromPayload,
@@ -327,6 +331,58 @@ const notesBatchPromptContext = createAskUserTurnPromptContext({
   userText: batchAnswerTextWithNotes,
 });
 const notesBatchQueueEmptyAfterResolve = sessionStore.size(sessionKey) === 0;
+const secretSessionKey = `${sessionKey}:secret`;
+const secretEnvelope = normalizeAskUserEnvelopeFromPayload({
+  blocking_node_id: "node.secret",
+  questions: [{
+    id: "ask_secret_token",
+    header: "Secret",
+    question: "Paste API token",
+    is_secret: true,
+  }],
+  resume_token: "resume_secret",
+});
+if (!secretEnvelope) {
+  throw new Error("failed to normalize secret ask_user payload");
+}
+const secretState = createAskUserQuestionnaireState({
+  answers: {
+    [secretEnvelope.askId]: "sk-live-secret",
+  },
+  textInputValue: "sk-live-secret",
+});
+const secretReviewView = buildAskUserQuestionnaireView({
+  queue: [secretEnvelope],
+  state: {
+    ...secretState,
+    mode: "review",
+  },
+});
+const secretQuestionView = buildAskUserQuestionnaireView({
+  queue: [secretEnvelope],
+  state: secretState,
+});
+const secretReviewMenuDescriptor = buildAskUserReviewMenuDescriptor({
+  queue: [secretEnvelope],
+  answers: {
+    [secretEnvelope.askId]: "sk-live-secret",
+  },
+});
+const secretBatchAnswerText = buildAskUserBatchAnswerText({
+  queue: [secretEnvelope],
+  answers: {
+    [secretEnvelope.askId]: "sk-live-secret",
+  },
+});
+runtime.registerPendingAsk(secretSessionKey, secretEnvelope);
+const secretPromptContext = createAskUserTurnPromptContext({
+  runtime,
+  sessionKey: secretSessionKey,
+  userText: "sk-live-secret",
+});
+if (!secretPromptContext.resolvedAsk) {
+  throw new Error("expected secret ask_user context");
+}
 const normalizedBatchEnvelopes = normalizeAskUserEnvelopesFromPayload({
   blocking_node_id: "node.multi",
   question_total: 2,
@@ -453,6 +509,33 @@ const payload = {
     && normalizedBatchEnvelopes[0]?.questionTotal === 2
     && normalizedBatchEnvelopes[1]?.isSecret === true
     && normalizedBatchEnvelopes[1]?.optionsDetailed[0]?.isOther === false,
+  secret_question_view_marks_secret:
+    secretQuestionView.kind === "question"
+    && secretQuestionView.isSecret === true,
+  secret_review_view_masks_answer:
+    secretReviewView.kind === "review"
+    && secretReviewView.reviewItems[0]?.answer === ASK_USER_SECRET_DISPLAY_VALUE
+    && !JSON.stringify(secretReviewView).includes("sk-live-secret"),
+  secret_review_menu_masks_answer:
+    secretReviewMenuDescriptor.items.some((item) => item.description === ASK_USER_SECRET_DISPLAY_VALUE)
+    && !JSON.stringify(secretReviewMenuDescriptor).includes("sk-live-secret"),
+  secret_batch_answer_text_keeps_current_prompt_value:
+    secretBatchAnswerText.includes("sk-live-secret"),
+  secret_prompt_context_marks_secret:
+    secretPromptContext.hasSecretAnswers
+    && secretPromptContext.secretAnswerCount === 1
+    && secretPromptContext.promptParts.some((part) =>
+      part.includes("ask_1_is_secret=true")
+      && part.includes("ask_1_answer=sk-live-secret")),
+  secret_safe_user_text_redacts_answer:
+    secretPromptContext.safeUserText.includes(ASK_USER_SECRET_PERSISTENCE_VALUE)
+    && !secretPromptContext.safeUserText.includes("sk-live-secret"),
+  secret_persistence_answer_redacted:
+    formatAskUserResolvedAnswerForPersistence(secretPromptContext.resolvedAsk) === ASK_USER_SECRET_PERSISTENCE_VALUE
+    && buildAskUserSafeUserText({
+      rawUserText: "sk-live-secret",
+      resolvedAsks: secretPromptContext.resolvedAsks,
+    }).includes(ASK_USER_SECRET_PERSISTENCE_VALUE),
   questionnaire_review_menu_has_submit_and_edit:
     reviewMenuDescriptor.items[0]?.id === "__submit"
     && reviewMenuDescriptor.items.some((item) => item.id === "edit:1")

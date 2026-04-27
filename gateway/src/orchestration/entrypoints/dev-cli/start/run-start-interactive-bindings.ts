@@ -94,6 +94,7 @@ interface CreateRunStartInteractiveModeInput {
     options?: {
       attachments?: RuntimeAttachment[];
       promptPrelude?: string;
+      autoOpenAskUserPanel?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -858,7 +859,7 @@ export function createRunStartInteractiveModeInput(
         planMode: input.planMode.isPlanMode(),
       }),
     );
-    if (result.kind === "cancelled") {
+    if (result.kind !== "submitted") {
       return undefined;
     }
     return result.text.trim().length > 0 ? result.text : undefined;

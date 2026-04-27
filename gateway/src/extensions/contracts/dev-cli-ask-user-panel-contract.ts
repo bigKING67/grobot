@@ -1,4 +1,5 @@
 import {
+  ASK_USER_SECRET_DISPLAY_VALUE,
   buildAskUserQuestionnaireView,
   createAskUserQuestionnaireState,
   normalizeAskUserEnvelopeFromPayload,
@@ -50,8 +51,18 @@ const freeTextEnvelope = normalizeAskUserEnvelopeFromPayload({
   }],
   resume_token: "resume_notes",
 });
+const secretTextEnvelope = normalizeAskUserEnvelopeFromPayload({
+  blocking_node_id: "node.confirm.secret",
+  questions: [{
+    id: "ask_q_secret",
+    header: "Secret",
+    question: "Paste API token",
+    is_secret: true,
+  }],
+  resume_token: "resume_secret",
+});
 
-if (!scopeEnvelope || !riskEnvelope || !freeTextEnvelope) {
+if (!scopeEnvelope || !riskEnvelope || !freeTextEnvelope || !secretTextEnvelope) {
   throw new Error("failed to normalize ask-user panel fixtures");
 }
 
@@ -78,6 +89,12 @@ const textInputView = buildAskUserQuestionnaireView({
     textInputValue: "Only touch gateway TUI",
   }),
 });
+const secretTextInputView = buildAskUserQuestionnaireView({
+  queue: [secretTextEnvelope],
+  state: createAskUserQuestionnaireState({
+    textInputValue: "sk-live-secret",
+  }),
+});
 
 const initialRendered = renderAskUserPanelScreen({
   view: initialView,
@@ -94,6 +111,11 @@ const textInputRendered = renderAskUserPanelScreen({
   terminalColumns: 88,
   textInputValue: "Only touch gateway TUI",
 });
+const secretTextInputRendered = renderAskUserPanelScreen({
+  view: secretTextInputView,
+  terminalColumns: 88,
+  textInputValue: "sk-live-secret",
+});
 const narrowRendered = renderAskUserPanelScreen({
   view: initialView,
   terminalColumns: 52,
@@ -108,6 +130,7 @@ function linesWithinColumns(rendered: string, columns: number): boolean {
 const initialPlain = stripAnsi(initialRendered);
 const reviewPlain = stripAnsi(reviewRendered);
 const textInputPlain = stripAnsi(textInputRendered);
+const secretTextInputPlain = stripAnsi(secretTextInputRendered);
 const narrowPlain = stripAnsi(narrowRendered);
 
 const payload = {
@@ -141,9 +164,10 @@ const payload = {
     initialPlain.includes("Notes:")
     && initialPlain.includes("press n to add notes"),
   panel_has_chat_about_this_row:
-    initialPlain.includes("Chat about this"),
+    initialPlain.includes("c  Chat about this"),
   panel_has_plan_skip_affordance:
-    initialPlain.includes("Skip interview and plan immediately"),
+    initialPlain.includes("s  Skip interview and plan immediately")
+    && initialPlain.includes("s skip"),
   panel_review_has_submit_edit_cancel:
     reviewPlain.includes("提交答案")
     && reviewPlain.includes("修改 1.")
@@ -154,6 +178,10 @@ const payload = {
   panel_text_input_renders_value:
     textInputPlain.includes("Add optional constraints")
     && textInputPlain.includes("Only touch gateway TUI"),
+  panel_secret_text_input_masks_value:
+    secretTextInputPlain.includes("Paste API token")
+    && secretTextInputPlain.includes(ASK_USER_SECRET_DISPLAY_VALUE)
+    && !secretTextInputPlain.includes("sk-live-secret"),
   panel_narrow_keeps_lines_within_width: linesWithinColumns(narrowRendered, 52),
   panel_wide_keeps_lines_within_width: linesWithinColumns(initialRendered, 88),
   panel_interactive_uses_warm_brand_color:

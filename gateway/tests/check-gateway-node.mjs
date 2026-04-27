@@ -1374,7 +1374,16 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.enter_plan_sets_plan_only, true);
   assert.equal(runStartPlanModeContractPayload.active_plan_path_present, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_handled, true);
-  assert.equal(runStartPlanModeContractPayload.open_plan_surface_has_status_output, true);
+  assert.equal(
+    runStartPlanModeContractPayload.open_plan_surface_has_status_output === true
+      || runStartPlanModeContractPayload.open_plan_surface_is_human_summary === true,
+    true,
+  );
+  if (runStartPlanModeContractPayload.open_plan_surface_is_human_summary === true) {
+    assert.equal(runStartPlanModeContractPayload.open_plan_surface_hides_machine_fields_by_default, true);
+    assert.equal(runStartPlanModeContractPayload.verbose_plan_surface_handled, true);
+    assert.equal(runStartPlanModeContractPayload.verbose_plan_surface_preserves_machine_fields, true);
+  }
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_detects_live_decision_phase, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_detects_live_status_source, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_suggests_execute, true);
@@ -2411,6 +2420,11 @@ async function runGatewayContractSmoke() {
   assert.equal(interactiveBindingsPayload.ask_status_compact_has_pending_total, true);
   assert.equal(interactiveBindingsPayload.ask_status_compact_hides_followup_rows, true);
   assert.equal(interactiveBindingsPayload.ask_status_compact_hides_status_only_hint, true);
+  assert.equal(interactiveBindingsPayload.auto_ask_handler_returns_continue, true);
+  assert.equal(interactiveBindingsPayload.auto_ask_handler_auto_opens_initial_runtime_ask, true);
+  assert.equal(interactiveBindingsPayload.auto_ask_handler_uses_input_pause, true);
+  assert.equal(interactiveBindingsPayload.auto_ask_handler_feeds_selected_answer, true);
+  assert.equal(interactiveBindingsPayload.auto_ask_handler_keeps_failure_clear, true);
   logStep("run-start-interactive-bindings-contract");
 
   const modelOpsContractResult = runCommand("npx", [

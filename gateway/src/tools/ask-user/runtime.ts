@@ -3,6 +3,10 @@ import {
   type AskUserResolveResult,
   type ResolvedAskUser,
 } from "./schema";
+import {
+  buildAskUserSafeUserText,
+  countAskUserSecretAnswers,
+} from "./privacy";
 
 export interface AskUserRuntimeAdapter {
   buildAskUserDisplay(envelope: AskUserEnvelope): string;
@@ -17,6 +21,9 @@ export interface AskUserTurnPromptContext {
   queueSizeAfterResolve: number;
   resolvedEvent: string;
   promptParts: string[];
+  safeUserText: string;
+  hasSecretAnswers: boolean;
+  secretAnswerCount: number;
 }
 
 interface ParsedAskUserAnswer {
@@ -142,6 +149,7 @@ export function createAskUserTurnPromptContext(input: {
     promptParts.push(notesPrompt);
   }
   const resolvedAsk = resolvedAsks[0];
+  const secretAnswerCount = countAskUserSecretAnswers(resolvedAsks);
   return {
     resolvedAsk,
     resolvedAsks,
@@ -149,6 +157,12 @@ export function createAskUserTurnPromptContext(input: {
     queueSizeAfterResolve,
     resolvedEvent: resolvedAsks.map((item) => formatAskUserResolvedEvent(item)).join(""),
     promptParts,
+    safeUserText: buildAskUserSafeUserText({
+      rawUserText: input.userText,
+      resolvedAsks,
+    }),
+    hasSecretAnswers: secretAnswerCount > 0,
+    secretAnswerCount,
   };
 }
 

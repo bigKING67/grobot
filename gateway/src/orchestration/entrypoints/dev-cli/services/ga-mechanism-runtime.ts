@@ -3,6 +3,7 @@ import {
   AskUserEnvelope,
   AskUserResolveResult,
   buildAskUserDisplay,
+  formatAskUserResolvedAnswerForPersistence,
   normalizeAskUserEnvelope,
 } from "../../../../tools/ask-user";
 
@@ -929,10 +930,11 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
         return undefined;
       }
       const resolvedAsk = resolved.resolvedAsk;
+      const safeAnswer = formatAskUserResolvedAnswerForPersistence(resolvedAsk);
       writeMemory({
         sessionKey,
         memoryLevel: "L2",
-        text: `ask_user resolved ask_id=${resolvedAsk.envelope.askId} answer="${resolvedAsk.answer}" remaining=${String(resolved.queueSizeAfterResolve)}`,
+        text: `ask_user resolved ask_id=${resolvedAsk.envelope.askId} answer="${safeAnswer}" remaining=${String(resolved.queueSizeAfterResolve)}`,
         sourceEventType: "ask_user_resolved",
         executionVerified: true,
         evidenceRef: {

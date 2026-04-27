@@ -375,6 +375,7 @@ export interface RunStartInteractiveModeInput {
     options?: {
       attachments?: RuntimeAttachment[];
       promptPrelude?: string;
+      autoOpenAskUserPanel?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -715,6 +716,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           {
             attachments: inlineAttachmentResolution.attachments,
             promptPrelude: options?.promptPrelude,
+            autoOpenAskUserPanel: options?.autoOpenAskUserPanel,
             writeStdout: writeInteractiveStdout,
             writeStderr: options?.writeStderr ?? writeInteractiveStderr,
           },

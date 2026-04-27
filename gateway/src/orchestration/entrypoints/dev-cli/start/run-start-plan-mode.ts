@@ -584,6 +584,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     };
   };
 
+  // Interactive TUI defaults to human-readable status; non-TTY keeps field output for script compatibility.
   const shouldRenderCompactPlanStatus = (): boolean =>
     Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
 
@@ -600,38 +601,131 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     input.writeStdout(`suggested_action_reason: ${recommendation.reason}\n`);
   };
 
+  const humanizePlanStatus = (status: string | undefined): string => {
+    switch (status) {
+      case "draft":
+        return "drafting";
+      case "ready":
+        return "ready for decision";
+      case "blocked":
+        return "blocked";
+      case "review_failed":
+        return "needs refinement";
+      case "approved":
+        return "approved";
+      case "applying":
+        return "applying";
+      case "applied":
+        return "applied";
+      case "apply_failed":
+        return "apply failed";
+      case "discarded":
+        return "discarded";
+      default:
+        return status && status.trim().length > 0 ? status : "unknown";
+    }
+  };
+
+  const humanizePlanPhase = (phase: string | undefined): string => {
+    switch (phase) {
+      case "drafting":
+        return "drafting";
+      case "awaiting_decision":
+        return "awaiting decision";
+      case "applying":
+        return "applying";
+      case "done":
+        return "done";
+      default:
+        return phase && phase.trim().length > 0
+          ? phase.replace(/_/g, " ")
+          : "not started";
+    }
+  };
+
+  const humanizePlanMode = (mode: SessionPlanMode): string =>
+    mode === "plan_only" ? "plan mode" : "normal chat";
+
+  const formatHumanQualitySummary = (inputValue: {
+    score?: number;
+    grade?: string;
+    guardLevel?: string;
+    guardMode?: string;
+    topHint?: string;
+  }): string => {
+    const score = typeof inputValue.score === "number"
+      ? `score ${String(inputValue.score)}`
+      : "score unavailable";
+    const grade = inputValue.grade ? `grade ${inputValue.grade}` : undefined;
+    const guard = inputValue.guardLevel
+      ? `guard ${inputValue.guardLevel}${inputValue.guardMode ? `/${inputValue.guardMode}` : ""}`
+      : undefined;
+    const focus = inputValue.topHint ? `focus: ${inputValue.topHint}` : undefined;
+    return [score, grade, guard, focus].filter((item): item is string => Boolean(item)).join("; ");
+  };
+
+  const writeHumanPlanFailureSummary = (
+    latestFailure: ReturnType<typeof loadLatestPlanFailureDiagnostic>,
+  ): void => {
+    if (!latestFailure) {
+      input.writeStdout("Latest failure: none\n");
+      return;
+    }
+    const details = [
+      latestFailure.event,
+      latestFailure.diagnosticCode ? `diagnostic ${latestFailure.diagnosticCode}` : undefined,
+      typeof latestFailure.exitCode === "number" ? `exit ${String(latestFailure.exitCode)}` : undefined,
+    ].filter((item): item is string => Boolean(item));
+    input.writeStdout(`Latest failure: ${details.join(" · ")}\n`);
+  };
+
+  const writeHumanPlanVerificationSummary = (
+    latestVerification: ReturnType<typeof loadLatestPlanVerificationDiagnostic>,
+  ): void => {
+    if (!latestVerification) {
+      input.writeStdout("Verification: none recorded\n");
+      return;
+    }
+    input.writeStdout(`Verification: ${latestVerification.status}\n`);
+  };
+
+  const writeHumanBenchmarkSummary = (
+    latestFailure?: ReturnType<typeof loadLatestPlanFailureDiagnostic>,
+  ): void => {
+    const benchmark = resolveBenchmarkStatusSnapshot(latestFailure);
+    if (benchmark.history.totalRuns <= 0) {
+      input.writeStdout(`Benchmark: no recent runs; semantic signal ${benchmark.semantic.level}\n`);
+      return;
+    }
+    const latest = benchmark.history.latestWinnerLabel
+      ? `latest winner ${benchmark.history.latestWinnerLabel}`
+      : "no winner recorded";
+    const score = typeof benchmark.history.latestWinnerScore === "number"
+      ? `score ${String(benchmark.history.latestWinnerScore)}`
+      : undefined;
+    const assertions = benchmark.history.assertCount > 0
+      ? `assertions ${String(benchmark.history.assertPassCount)}/${String(benchmark.history.assertCount)}`
+      : "no assertions";
+    input.writeStdout(
+      `Benchmark: ${String(benchmark.history.totalRuns)} run(s); ${[latest, score, `trend ${benchmark.history.scoreTrend}`, assertions, `semantic ${benchmark.semantic.level}`]
+        .filter((item): item is string => Boolean(item))
+        .join("; ")}\n`,
+    );
+  };
+
+  const writeHumanRecommendation = (recommendation: { action: string; reason: string }): void => {
+    const suggestedCommand = resolvePlanStatusRecommendationCommand(recommendation.action);
+    const suggestedLabel = resolvePlanStatusRecommendationLabel(recommendation.action);
+    input.writeStdout(`Next: ${suggestedCommand} — ${suggestedLabel}. ${recommendation.reason}\n`);
+    input.writeStdout("Diagnostics: set GROBOT_PLAN_STATUS_VERBOSE=1 and rerun /plan for full fields.\n");
+  };
+
   const showPlanStatusCompact = async (): Promise<number> => {
     const mode = input.runtimeState.getPlanMode();
     const meta = input.runtimeState.getPlanMeta();
     const active = resolveActivePlan();
-
-    const writeCompactBenchmarkLines = (
-      latestFailure?: ReturnType<typeof loadLatestPlanFailureDiagnostic>,
-    ): void => {
-      const benchmark = resolveBenchmarkStatusSnapshot(latestFailure);
-      input.writeStdout(`plan_quality_benchmark_total_runs: ${String(benchmark.history.totalRuns)}\n`);
-      if (benchmark.history.latestWinnerLabel) {
-        input.writeStdout(`plan_quality_benchmark_latest_winner: ${benchmark.history.latestWinnerLabel}\n`);
-      }
-      if (typeof benchmark.history.latestWinnerScore === "number") {
-        input.writeStdout(`plan_quality_benchmark_latest_score: ${String(benchmark.history.latestWinnerScore)}\n`);
-      }
-      input.writeStdout(`plan_quality_benchmark_score_trend: ${benchmark.history.scoreTrend}\n`);
-      input.writeStdout(`plan_quality_benchmark_assert_count: ${String(benchmark.history.assertCount)}\n`);
-      input.writeStdout(`plan_quality_benchmark_semantic_correlation: ${benchmark.semantic.level}\n`);
-      input.writeStdout(`plan_quality_benchmark_semantic_reason: ${benchmark.semantic.reason}\n`);
-    };
-
-    const writeCompactRecommendation = (recommendation: { action: string; reason: string }): void => {
-      writePlanRecommendationLines(recommendation);
-      input.writeStdout(
-        "plan_status_detail_hint: set GROBOT_PLAN_STATUS_VERBOSE=1 and rerun /plan for full diagnostics.\n",
-      );
-    };
-
-    input.writeStdout("[plan-status]\n");
-    input.writeStdout(`mode: ${mode}\n`);
-    input.writeStdout("plan_status_output_mode: compact\n");
+    input.writeStdout("Plan status\n");
+    input.writeStdout(`Mode: ${humanizePlanMode(mode)}\n`);
     if (active) {
       const activeMeta = buildPlanMeta(active.entry, active.planPath);
       const previewLines = buildPlanStatusPreviewLines(active.content);
@@ -650,57 +744,41 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         active,
         latestVerificationStatus,
       );
-      input.writeStdout("[plan-current]\n");
-      input.writeStdout(`title: ${activeMeta.active_plan_title ?? "<none>"}\n`);
-      input.writeStdout(`status: ${liveSnapshot.liveStatus}\n`);
-      input.writeStdout(`path: ${activeMeta.active_plan_path ?? "<none>"}\n`);
-      if (activeMeta.active_plan_path) {
-        input.writeStdout("plan_open_hint: /plan open\n");
+      input.writeStdout(`Current plan: ${activeMeta.active_plan_title ?? "untitled plan"}\n`);
+      input.writeStdout(`Status: ${humanizePlanStatus(liveSnapshot.liveStatus)}\n`);
+      input.writeStdout(`Phase: ${humanizePlanPhase(liveSnapshot.livePhase)}\n`);
+      if (liveSnapshot.statusSource === "live_snapshot") {
+        input.writeStdout(
+          `Stored state: ${humanizePlanStatus(liveSnapshot.storedStatus)}${liveSnapshot.storedPhase ? `, ${humanizePlanPhase(liveSnapshot.storedPhase)}` : ""}\n`,
+        );
       }
+      input.writeStdout(`Plan file: ${activeMeta.active_plan_path ?? "not available"}\n`);
       if (previewLines.length > 0) {
+        input.writeStdout("Preview:\n");
         for (let previewIndex = 0; previewIndex < previewLines.length; previewIndex += 1) {
-          input.writeStdout(`preview_${String(previewIndex + 1)}: ${previewLines[previewIndex]}\n`);
+          input.writeStdout(`  ${previewLines[previewIndex]}\n`);
         }
       }
       if (activeNonEmptyLineCount > previewLines.length) {
-        input.writeStdout("preview_more: ...\n");
+        input.writeStdout("  ...\n");
       }
       const topHint = liveSnapshot.repairActions[0]?.title ?? liveSnapshot.quality.rewriteHints[0];
-      input.writeStdout("[plan-summary]\n");
-      input.writeStdout(`active_plan_id: ${activeMeta.active_plan_id ?? "<none>"}\n`);
-      input.writeStdout(`active_plan_status: ${liveSnapshot.liveStatus}\n`);
-      input.writeStdout(`active_plan_phase: ${liveSnapshot.livePhase}\n`);
-      if (liveSnapshot.statusSource === "live_snapshot") {
-        input.writeStdout(`active_plan_stored_status: ${liveSnapshot.storedStatus}\n`);
-        if (liveSnapshot.storedPhase) {
-          input.writeStdout(`active_plan_stored_phase: ${liveSnapshot.storedPhase}\n`);
-        }
-      }
-      input.writeStdout(`active_plan_status_source: ${liveSnapshot.statusSource}\n`);
-      input.writeStdout(`active_plan_decision_ready: ${liveSnapshot.decisionReady ? "yes" : "no"}\n`);
-      input.writeStdout(`active_plan_approval_stale: ${liveSnapshot.approvalStale ? "yes" : "no"}\n`);
-      if (latestFailure) {
-        input.writeStdout(`latest_failure_event: ${latestFailure.event}\n`);
-        if (latestFailure.diagnosticCode) {
-          input.writeStdout(`latest_failure_diagnostic_code: ${latestFailure.diagnosticCode}\n`);
-        }
-      } else {
-        input.writeStdout("latest_failure_event: <none>\n");
-      }
-      if (latestVerification) {
-        input.writeStdout(`latest_verification_status: ${latestVerification.status}\n`);
-      } else {
-        input.writeStdout("latest_verification_status: <none>\n");
-      }
-      input.writeStdout(`plan_quality_score: ${String(liveSnapshot.quality.score)}\n`);
-      input.writeStdout(`plan_quality_grade: ${liveSnapshot.quality.grade}\n`);
-      input.writeStdout(`plan_quality_guard_level: ${liveSnapshot.qualityGuard.level}\n`);
-      input.writeStdout(`plan_quality_guard_mode: ${liveSnapshot.qualityGuardMode}\n`);
-      if (topHint) {
-        input.writeStdout(`plan_quality_focus_hint: ${topHint}\n`);
-      }
-      writeCompactBenchmarkLines(latestFailure);
-      writeCompactRecommendation(liveSnapshot.recommendation);
+      input.writeStdout(
+        `Decision: ${liveSnapshot.decisionReady ? "ready" : "not ready"}${liveSnapshot.approvalStale ? "; approval needs refresh" : ""}\n`,
+      );
+      input.writeStdout(
+        `Quality: ${formatHumanQualitySummary({
+          score: liveSnapshot.quality.score,
+          grade: liveSnapshot.quality.grade,
+          guardLevel: liveSnapshot.qualityGuard.level,
+          guardMode: liveSnapshot.qualityGuardMode,
+          topHint,
+        })}\n`,
+      );
+      writeHumanPlanFailureSummary(latestFailure);
+      writeHumanPlanVerificationSummary(latestVerification);
+      writeHumanBenchmarkSummary(latestFailure);
+      writeHumanRecommendation(liveSnapshot.recommendation);
       input.writeStdout("\n");
       return 0;
     }
@@ -753,47 +831,24 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           qualityScore = undefined;
         }
       }
-      input.writeStdout("[plan-summary]\n");
-      input.writeStdout(`active_plan_id: ${meta.active_plan_id}\n`);
-      input.writeStdout(`active_plan_status: ${meta.active_plan_status ?? "draft"}\n`);
-      if (meta.active_plan_phase) {
-        input.writeStdout(`active_plan_phase: ${meta.active_plan_phase}\n`);
-      }
+      input.writeStdout(`Current plan: ${meta.active_plan_title ?? meta.active_plan_id}\n`);
+      input.writeStdout(`Status: ${humanizePlanStatus(meta.active_plan_status ?? "draft")}\n`);
+      input.writeStdout(`Phase: ${humanizePlanPhase(meta.active_plan_phase)}\n`);
       if (typeof meta.active_plan_path === "string" && meta.active_plan_path.length > 0) {
-        input.writeStdout(`active_plan_path: ${meta.active_plan_path}\n`);
-        input.writeStdout("plan_open_hint: /plan open\n");
+        input.writeStdout(`Plan file: ${meta.active_plan_path}\n`);
       }
-      if (latestFailure) {
-        input.writeStdout(`latest_failure_event: ${latestFailure.event}\n`);
-        if (latestFailure.diagnosticCode) {
-          input.writeStdout(`latest_failure_diagnostic_code: ${latestFailure.diagnosticCode}\n`);
-        }
-      } else {
-        input.writeStdout("latest_failure_event: <none>\n");
-      }
-      if (latestVerification) {
-        input.writeStdout(`latest_verification_status: ${latestVerification.status}\n`);
-      } else {
-        input.writeStdout("latest_verification_status: <none>\n");
-      }
-      if (typeof qualityScore === "number") {
-        input.writeStdout(`plan_quality_score: ${String(qualityScore)}\n`);
-      } else {
-        input.writeStdout("plan_quality_score: <unavailable>\n");
-      }
-      if (qualityGrade) {
-        input.writeStdout(`plan_quality_grade: ${qualityGrade}\n`);
-      }
-      if (qualityGuardLevel) {
-        input.writeStdout(`plan_quality_guard_level: ${qualityGuardLevel}\n`);
-      }
-      if (qualityGuardMode) {
-        input.writeStdout(`plan_quality_guard_mode: ${qualityGuardMode}\n`);
-      }
-      if (qualityTopHint) {
-        input.writeStdout(`plan_quality_focus_hint: ${qualityTopHint}\n`);
-      }
-      writeCompactBenchmarkLines(latestFailure);
+      input.writeStdout(
+        `Quality: ${formatHumanQualitySummary({
+          score: qualityScore,
+          grade: qualityGrade,
+          guardLevel: qualityGuardLevel,
+          guardMode: qualityGuardMode,
+          topHint: qualityTopHint,
+        })}\n`,
+      );
+      writeHumanPlanFailureSummary(latestFailure);
+      writeHumanPlanVerificationSummary(latestVerification);
+      writeHumanBenchmarkSummary(latestFailure);
       const recommendation = resolvePlanStatusRecommendation({
         mode: "plan_only",
         status: meta.active_plan_status,
@@ -804,58 +859,45 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         planQualityGuardReason: qualityGuardReason,
         interactiveMenuFirst: true,
       });
-      writeCompactRecommendation(recommendation);
+      writeHumanRecommendation(recommendation);
       input.writeStdout("\n");
       return 0;
     }
     const latestApplied = resolveLatestPlanEntry(["applied", "apply_failed"]);
-    input.writeStdout("[plan-summary]\n");
     if (latestApplied) {
-      input.writeStdout("active_plan_id: <none>\n");
-      input.writeStdout(`latest_plan_id: ${latestApplied.plan_id}\n`);
-      input.writeStdout(`latest_plan_status: ${latestApplied.status}\n`);
+      input.writeStdout("Current plan: none\n");
+      input.writeStdout(`Latest plan: ${latestApplied.plan_id} (${humanizePlanStatus(latestApplied.status)})\n`);
       const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
         planId: latestApplied.plan_id,
       });
-      if (latestFailure) {
-        input.writeStdout(`latest_failure_event: ${latestFailure.event}\n`);
-        if (latestFailure.diagnosticCode) {
-          input.writeStdout(`latest_failure_diagnostic_code: ${latestFailure.diagnosticCode}\n`);
-        }
-      } else {
-        input.writeStdout("latest_failure_event: <none>\n");
-      }
       const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
         planId: latestApplied.plan_id,
       });
       const latestVerificationStatus = latestVerification?.status;
-      if (latestVerification) {
-        input.writeStdout(`latest_verification_status: ${latestVerification.status}\n`);
-      } else {
-        input.writeStdout("latest_verification_status: <none>\n");
-      }
-      input.writeStdout("plan_quality_score: <n/a>\n");
-      writeCompactBenchmarkLines(latestFailure);
+      input.writeStdout("Quality: not applicable after apply\n");
+      writeHumanPlanFailureSummary(latestFailure);
+      writeHumanPlanVerificationSummary(latestVerification);
+      writeHumanBenchmarkSummary(latestFailure);
       const recommendation = resolvePlanStatusRecommendation({
         mode: "normal",
         status: latestApplied.status,
         latestVerificationStatus,
         interactiveMenuFirst: true,
       });
-      writeCompactRecommendation(recommendation);
+      writeHumanRecommendation(recommendation);
       input.writeStdout("\n");
       return 0;
     }
-    input.writeStdout("active_plan_id: <none>\n");
-    input.writeStdout("latest_failure_event: <none>\n");
-    input.writeStdout("latest_verification_status: <none>\n");
-    input.writeStdout("plan_quality_score: <none>\n");
-    writeCompactBenchmarkLines();
+    input.writeStdout("Current plan: none\n");
+    input.writeStdout("Quality: no plan to evaluate\n");
+    writeHumanPlanFailureSummary(undefined);
+    writeHumanPlanVerificationSummary(undefined);
+    writeHumanBenchmarkSummary();
     const recommendation = resolvePlanStatusRecommendation({
       mode: "normal",
       interactiveMenuFirst: true,
     });
-    writeCompactRecommendation(recommendation);
+    writeHumanRecommendation(recommendation);
     input.writeStdout("\n");
     return 0;
   };

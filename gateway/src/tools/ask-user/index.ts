@@ -15,6 +15,16 @@ export {
   buildAskUserResolutionPromptBatch,
 } from "./protocol";
 export {
+  ASK_USER_SECRET_DISPLAY_VALUE,
+  ASK_USER_SECRET_PERSISTENCE_VALUE,
+  buildAskUserSafeUserText,
+  countAskUserSecretAnswers,
+  formatAskUserAnswerForDisplay,
+  formatAskUserAnswerForPersistence,
+  formatAskUserResolvedAnswerForPersistence,
+  isAskUserSecret,
+} from "./privacy";
+export {
   buildAskUserDisplay,
   buildAskUserOptionDisplayLabel,
   buildAskUserPendingSummary,

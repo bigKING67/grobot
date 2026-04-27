@@ -1,4 +1,5 @@
 import { AskUserEnvelope, ResolvedAskUser } from "./schema";
+import { isAskUserSecret } from "./privacy";
 
 export function buildAskUserResolutionPrompt(input: {
   envelope: AskUserEnvelope;
@@ -9,6 +10,7 @@ export function buildAskUserResolutionPrompt(input: {
     `ask_id=${input.envelope.askId}`,
     `blocking_node_id=${input.envelope.blockingNodeId}`,
     `resume_token=${input.envelope.resumeToken}`,
+    ...(isAskUserSecret(input.envelope) ? ["is_secret=true"] : []),
     `user_answer=${input.answer}`,
   ].join("\n");
 }
@@ -39,6 +41,9 @@ export function buildAskUserResolutionPromptBatch(input: {
     }
     if (row.envelope.header) {
       lines.push(`ask_${String(order)}_header=${row.envelope.header}`);
+    }
+    if (isAskUserSecret(row.envelope)) {
+      lines.push(`ask_${String(order)}_is_secret=true`);
     }
     lines.push(`ask_${String(order)}_answer=${row.answer}`);
   }

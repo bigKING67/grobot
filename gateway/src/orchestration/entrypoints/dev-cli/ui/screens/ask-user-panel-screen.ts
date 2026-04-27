@@ -202,6 +202,7 @@ function renderOptionRows(input: {
 
 function renderTextInputLine(input: {
   value?: string;
+  sensitive?: boolean;
   maxWidth: number;
 }): string {
   const rawValue = sanitizeTerminalDisplayText(input.value ?? "");
@@ -210,7 +211,8 @@ function renderTextInputLine(input: {
     return `${terminalStyle.pointer(TERMINAL_SYMBOL.pointer)} ${terminalStyle.muted(placeholder)}`;
   }
   const available = Math.max(8, input.maxWidth - 2);
-  return `${terminalStyle.pointer(TERMINAL_SYMBOL.pointer)} ${fitPlainLine(rawValue, available)}`;
+  const displayValue = input.sensitive ? "••••••" : rawValue;
+  return `${terminalStyle.pointer(TERMINAL_SYMBOL.pointer)} ${fitPlainLine(displayValue, available)}`;
 }
 
 function renderNotesLine(input: {
@@ -297,6 +299,7 @@ function renderQuestionPanel(input: {
   } else {
     lines.push(`  ${renderTextInputLine({
       value: input.textInputValue,
+      sensitive: input.view.isSecret,
       maxWidth: contentWidth,
     })}`);
     if (input.view.defaultAnswer && input.view.defaultAnswer.trim().length > 0) {
@@ -310,9 +313,9 @@ function renderQuestionPanel(input: {
     maxWidth: contentWidth,
   })}`);
   lines.push("");
-  lines.push(`  ${terminalStyle.muted("Chat about this")}`);
+  lines.push(`  ${terminalStyle.muted("c  Chat about this")}`);
   if (input.planMode) {
-    lines.push(`  ${terminalStyle.muted("Skip interview and plan immediately")}`);
+    lines.push(`  ${terminalStyle.muted("s  Skip interview and plan immediately")}`);
   }
   lines.push("");
   const standardOptionCount = input.view.optionItems.filter((item) => item.kind === "option").length;
@@ -321,9 +324,10 @@ function renderQuestionPanel(input: {
     ? ` · ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} 直选 · Other 输入`
     : "";
   const primaryHint = `Enter to select${directHint} · Esc to cancel`;
+  const actionHint = input.planMode ? " · c chat · s skip" : " · c chat";
   const secondaryHint = input.view.totalCount > 1
-    ? "↑/↓ to navigate · n to add notes · ←/→ switch"
-    : "↑/↓ to navigate · n to add notes";
+    ? `↑/↓ to navigate · n to add notes · ←/→ switch${actionHint}`
+    : `↑/↓ to navigate · n to add notes${actionHint}`;
   lines.push(`  ${terminalStyle.muted(fitPlainLine(primaryHint, contentWidth))}`);
   lines.push(`  ${terminalStyle.muted(fitPlainLine(secondaryHint, contentWidth))}`);
   return lines;

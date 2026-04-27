@@ -696,6 +696,7 @@ export async function runStart(
     options?: {
       attachments?: RuntimeAttachment[];
       promptPrelude?: string;
+      autoOpenAskUserPanel?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -714,6 +715,7 @@ export async function runStart(
         signal: controller.signal,
         attachments: options?.attachments,
         promptPrelude: options?.promptPrelude,
+        autoOpenAskUserPanel: options?.autoOpenAskUserPanel,
         writeStdout: options?.writeStdout,
         writeStderr,
         onTurnRecorded: (turnRecord) => {
@@ -769,6 +771,7 @@ export async function runStart(
     options?: {
       attachments?: RuntimeAttachment[];
       promptPrelude?: string;
+      autoOpenAskUserPanel?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },

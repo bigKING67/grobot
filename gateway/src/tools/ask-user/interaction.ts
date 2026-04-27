@@ -1,5 +1,10 @@
 import { AskUserEnvelope } from "./schema";
 import { buildAskUserOptionDisplayLabel } from "./display";
+import {
+  ASK_USER_SECRET_DISPLAY_VALUE,
+  formatAskUserAnswerForDisplay,
+  isAskUserSecret,
+} from "./privacy";
 
 const ASK_USER_INTERACTION_TITLE_LIMIT = 72;
 const ASK_USER_INTERACTION_QUESTION_LIMIT = 120;
@@ -60,12 +65,14 @@ export interface AskUserQuestionnaireOptionItem {
   kind: AskUserQuestionnaireOptionKind;
   placeholder?: string;
   inputValue?: string;
+  sensitive?: boolean;
 }
 
 export interface AskUserQuestionnaireReviewItem {
   askId: string;
   question: string;
   answer?: string;
+  isSecret?: boolean;
 }
 
 export type AskUserQuestionnaireView =
@@ -86,6 +93,7 @@ export type AskUserQuestionnaireView =
     queueHint: string;
     noteValue: string;
     textInputMode: AskUserQuestionnaireTextInputMode;
+    isSecret: boolean;
     visibleOptionCount: number;
     activeOptionIndex: number;
     currentQuestionIndex: number;
@@ -326,8 +334,12 @@ function buildOptionItems(input: {
   });
   if (input.envelope.optionsDetailed.length > 0) {
     const otherIndex = input.envelope.optionsDetailed.length;
+    const displayInputValue = formatAskUserAnswerForDisplay({
+      envelope: input.envelope,
+      answer: input.state.textInputValue,
+    }) ?? input.state.textInputValue;
     const textInputValue = compactSingleLine(
-      input.state.textInputValue,
+      displayInputValue,
       ASK_USER_INTERACTION_OPTION_DESCRIPTION_LIMIT,
     );
     rows.push({
@@ -337,7 +349,8 @@ function buildOptionItems(input: {
       selected: otherIndex === input.state.focusedOptionIndex,
       kind: "other",
       placeholder: ASK_USER_OTHER_OPTION_PLACEHOLDER,
-      inputValue: input.state.textInputValue,
+      inputValue: displayInputValue,
+      sensitive: isAskUserSecret(input.envelope),
       description: textInputValue.length > 0 ? textInputValue : ASK_USER_OTHER_OPTION_PLACEHOLDER,
     });
   }
@@ -507,13 +520,17 @@ export function buildAskUserQuestionnaireView(input: {
       const baseItem = {
         askId: envelope.askId,
         question: compactSingleLine(envelope.question, ASK_USER_INTERACTION_QUESTION_LIMIT),
+        isSecret: isAskUserSecret(envelope),
       };
       if (typeof answer !== "string") {
         return baseItem;
       }
       return {
         ...baseItem,
-        answer,
+        answer: formatAskUserAnswerForDisplay({
+          envelope,
+          answer,
+        }),
       };
     });
     return {
@@ -559,6 +576,7 @@ export function buildAskUserQuestionnaireView(input: {
     }),
     noteValue,
     textInputMode: normalizedState.textInputMode,
+    isSecret: isAskUserSecret(envelope),
     visibleOptionCount: Math.min(
       ASK_USER_INTERACTION_VISIBLE_OPTION_LIMIT,
       Math.max(1, optionItems.length),
@@ -650,7 +668,13 @@ export function buildAskUserReviewMenuDescriptor(input: {
     if (!envelope) {
       continue;
     }
-    const answer = input.answers[resolveAnswerKey(envelope)]?.trim() || "<未回答>";
+    const answerRaw = input.answers[resolveAnswerKey(envelope)]?.trim();
+    const answer = answerRaw
+      ? formatAskUserAnswerForDisplay({
+        envelope,
+        answer: answerRaw,
+      }) ?? ASK_USER_SECRET_DISPLAY_VALUE
+      : "<未回答>";
     items.push({
       id: `edit:${String(index)}`,
       label: `修改 ${String(index + 1)}. ${resolveEnvelopeHeader(envelope, index)}`,

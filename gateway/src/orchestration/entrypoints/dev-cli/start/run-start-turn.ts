@@ -36,6 +36,7 @@ import {
 import {
   type AskUserEnvelope,
   createAskUserTurnPromptContext,
+  formatAskUserResolvedAnswerForPersistence,
   formatAskUserIssuedEvent,
 } from "../../../../tools/ask-user";
 import {
@@ -183,6 +184,7 @@ export interface RunStartTurnExecuteOptions {
   signal?: AbortSignal;
   attachments?: RuntimeAttachment[];
   promptPrelude?: string;
+  autoOpenAskUserPanel?: boolean;
   writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
   onTurnRecorded?(input: {
@@ -2080,24 +2082,32 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       input.writeStderr(`error: invalid active session key: ${sessionKey}\n`);
       return 1;
     }
+    const askUserTurnContext = createAskUserTurnPromptContext({
+      runtime: input.gaMechanismRuntime,
+      sessionKey,
+      userText,
+    });
+    const turnUserText = askUserTurnContext.safeUserText;
+    if (askUserTurnContext.hasSecretAnswers) {
+      input.writeStderr(
+        `[ask-user] event=secret_answer_redacted count=${String(askUserTurnContext.secretAnswerCount)} surfaces=history,memory,logs\n`,
+      );
+    }
+    baseInput.touchActiveSession(turnUserText);
     const [sessionPlatformRaw, sessionTenant, sessionScopeRaw, sessionSubject] = parsedSession;
       if (consumeInterruptFlag(input.interruptStorePath, sessionKey)) {
         input.writeStdout(renderManagementInterruptNotice(interactiveMode));
         return 0;
       }
-      const askUserTurnContext = createAskUserTurnPromptContext({
-        runtime: input.gaMechanismRuntime,
-        sessionKey,
-        userText,
-      });
       if (askUserTurnContext.resolvedEvent.length > 0) {
         input.writeStderr(askUserTurnContext.resolvedEvent);
         for (const resolvedAsk of askUserTurnContext.resolvedAsks) {
+          const safeAnswer = formatAskUserResolvedAnswerForPersistence(resolvedAsk);
           const ingestResult = input.memoryOrchestrator.ingest({
             eventType: "ask_user_resolved",
             sessionKey,
             text:
-              `[ask-user-resolved] question=${resolvedAsk.envelope.question} answer=${resolvedAsk.answer} blocking_node=${resolvedAsk.envelope.blockingNodeId}`,
+              `[ask-user-resolved] question=${resolvedAsk.envelope.question} answer=${safeAnswer} blocking_node=${resolvedAsk.envelope.blockingNodeId}`,
             executionVerified: true,
             evidenceRef: {
               source: `ask_user:${resolvedAsk.envelope.askId}`,
@@ -2114,11 +2124,13 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         const activeAskEnvelope = askUserTurnContext.pendingNextAsk;
         const queueDepth = askUserTurnContext.queueSizeAfterResolve;
         const askUserDisplay = interactiveMode
-          ? "Need your input · Enter opens choices\n\n"
+          ? options?.autoOpenAskUserPanel
+            ? ""
+            : "Need your input · Enter opens choices\n\n"
           : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
         const turnStdout = askUserDisplay;
         await recordTurn(
-          userText,
+          turnUserText,
           `需要确认：${activeAskEnvelope.question}`,
           input.getStickyProvider(),
           input.getProviderRuntimeStates(),
@@ -2250,7 +2262,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       }
       const graphCacheStatsBefore = readContextGraphCacheStats();
       const promptPreparation = prepareTurnPrompt({
-        userText,
+        userText: turnUserText,
         historyMessages,
         historyTurns: input.historyTurns,
         workDir: input.workDir,
@@ -2445,7 +2457,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       previousTargetTokenLimit = targetTokenLimit;
       const memoryInject = input.memoryOrchestrator.injectContext({
         sessionKey,
-        userText,
+        userText: turnUserText,
         targetTokenLimit,
         tenant: sessionTenant,
         user: sessionSubject,
@@ -2479,12 +2491,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       });
       const runtimeToolRecoveryFeedback = runtimeToolRecoveryDecision.feedback;
       const runtimeToolRecoveryGate = runtimeToolRecoveryDecision.gate;
-      const baseRuntimeToolContextForTurn = buildRuntimeToolContextForMessage(input.runtimeToolContext, userText);
+      const baseRuntimeToolContextForTurn = buildRuntimeToolContextForMessage(input.runtimeToolContext, turnUserText);
       const rawRuntimeToolContextForTurn = adaptRuntimeToolContextForRecovery({
         context: baseRuntimeToolContextForTurn,
         recoveryFeedback: runtimeToolRecoveryFeedback,
         recoveryGate: runtimeToolRecoveryGate,
-        userMessage: userText,
+        userMessage: turnUserText,
       });
       const runtimeToolContextForTurn = applyRuntimeToolSurfaceAdaptationGuard({
         baseContext: baseRuntimeToolContextForTurn,
@@ -2521,21 +2533,24 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         input.writeStderr(event);
       }
       const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
-      const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, userText);
+      const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, turnUserText);
       const providerKind = resolvePrimaryProviderKind(input);
       const kimiMcpFirstRouteEnabled = shouldUseKimiMcpFirstRoute({
         policy: input.kimiSearchRoutingPolicy,
         providerKind,
-        userText,
+        userText: turnUserText,
         mcpServerNames: input.mcpInstructionServerNames,
       });
       const kimiSearchRoutingPrefix = buildKimiSearchRoutingPrefix({
         policy: input.kimiSearchRoutingPolicy,
         providerKind,
-        userText,
+        userText: turnUserText,
         mcpServerNames: input.mcpInstructionServerNames,
       });
-      const askUserClarificationHint = input.gaMechanismRuntime.buildAskUserClarificationHint(sessionKey, userText);
+      const askUserClarificationHint = input.gaMechanismRuntime.buildAskUserClarificationHint(
+        sessionKey,
+        turnUserText,
+      );
       if (askUserClarificationHint.length > 0) {
         promptParts.push(askUserClarificationHint);
         input.writeStderr("[ask-user] event=clarification_hint_injected\n");
@@ -2543,7 +2558,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       const semanticPrefetch = buildSemanticPrefetchBlock({
         enabled: input.contextEngineConfig.semanticPrefetch.enabled,
         workDir: input.workDir,
-        userText,
+        userText: turnUserText,
         timeoutMs: input.contextEngineConfig.semanticPrefetch.timeoutMs,
         maxEvidence: input.contextEngineConfig.semanticPrefetch.maxEvidence,
       });
@@ -2664,7 +2679,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
               prompt: selectedPrepared.prompt,
               targetTokenLimit,
               workDir: input.workDir,
-              userText,
+              userText: turnUserText,
               generativeTimeoutMs: input.contextEngineConfig.semanticPrefetch.timeoutMs,
               generativeMaxEvidence: input.contextEngineConfig.semanticPrefetch.maxEvidence,
             });
@@ -2908,7 +2923,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           for (const provider of orderedProviders) {
             throwIfTurnInterrupted(turnSignal, "aborted_before_provider_attempt");
             const startedAtMs = Date.now();
-            const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, userText);
+            const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, turnUserText);
           if (turnModelConfig.timeoutBoosted) {
             input.writeStderr(
               `[runtime-model] timeout_boost provider=${provider.name} reason=search_intent timeout_ms=${String(turnModelConfig.modelConfig.timeoutMs)}\n`,
@@ -3122,7 +3137,9 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           }
           assistantTextForHistory = `需要确认：${activeAskEnvelope.question}`;
           turnStdout = interactiveMode
-            ? "Need your input · Enter opens choices\n\n"
+            ? options?.autoOpenAskUserPanel
+              ? ""
+              : "Need your input · Enter opens choices\n\n"
             : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
           askUserEvent = askUserEnvelopes
             .map((envelope) => formatAskUserIssuedEvent(envelope))
@@ -3140,7 +3157,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         } else {
           const toolTraceMemory = buildRuntimeToolTraceMemory({
             events: report.events,
-            userText,
+            userText: turnUserText,
           });
           if (toolTraceMemory) {
             const ingestResult = input.memoryOrchestrator.ingest({
@@ -3166,7 +3183,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           const feedback = input.memoryOrchestrator.feedback({
             type: "turn_success",
             sessionKey,
-            userText,
+            userText: turnUserText,
             assistantText: report.assistantMessage,
             traceId: report.traceId,
             requestId: report.requestId,
@@ -3178,7 +3195,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           }
         }
           await recordTurn(
-            userText,
+            turnUserText,
             assistantTextForHistory,
             stickyProvider,
             providerStates,
@@ -3208,7 +3225,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             const feedback = input.memoryOrchestrator.feedback({
               type: "verification_failure",
               sessionKey,
-              userText,
+              userText: turnUserText,
               providerName: provider.name,
               errorMessage: "turn verification failed",
             });
@@ -3266,7 +3283,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           const feedback = input.memoryOrchestrator.feedback({
             type: "turn_failure",
             sessionKey,
-            userText,
+            userText: turnUserText,
             providerName: provider.name,
             errorClass,
             errorMessage: compactMessage,

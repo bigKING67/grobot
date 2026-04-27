@@ -184,6 +184,7 @@ export type TerminalAskUserQuestionnairePanelResult =
     notes: Record<string, string>;
     text: string;
   }
+  | { kind: "chat" }
   | { kind: "cancelled" };
 
 interface InputLineDescriptor {
@@ -2502,6 +2503,8 @@ export type AskUserPanelInputAction =
   | { kind: "right" }
   | { kind: "tab" }
   | { kind: "notes" }
+  | { kind: "chat" }
+  | { kind: "skip" }
   | { kind: "enter" }
   | { kind: "backspace" }
   | { kind: "cancel" }
@@ -2606,6 +2609,7 @@ export function decodeAskUserPanelInput(
   rawInput: string,
   optionCount: number,
   textInputMode: boolean,
+  planMode = false,
 ): AskUserPanelInputAction {
   if (rawInput.length === 0) {
     return { kind: "ignore" };
@@ -2644,6 +2648,12 @@ export function decodeAskUserPanelInput(
     }
     if (!textInputMode && rawInput === "n") {
       return { kind: "notes" };
+    }
+    if (!textInputMode && rawInput === "c") {
+      return { kind: "chat" };
+    }
+    if (planMode && !textInputMode && rawInput === "s") {
+      return { kind: "skip" };
     }
     if (textInputMode && isAskUserPanelPrintableInput(rawInput)) {
       return { kind: "text", value: rawInput };
@@ -2786,6 +2796,42 @@ export async function runAskUserQuestionnairePanel(
       });
     };
 
+    const resolveFallbackAnswer = (envelope: AskUserEnvelope): string => {
+      const answered = state.answers[envelope.askId]?.trim();
+      if (answered) {
+        return answered;
+      }
+      const defaultAnswer = envelope.defaultOnTimeout.trim();
+      if (defaultAnswer && !/^none$/i.test(defaultAnswer)) {
+        return defaultAnswer;
+      }
+      const firstOption = resolveAskUserAnswerFromSelection(envelope, 0)?.trim();
+      if (firstOption) {
+        return firstOption;
+      }
+      return "continue_with_best_effort";
+    };
+
+    const submitWithFallbacks = (): void => {
+      const answers = {
+        ...state.answers,
+      };
+      for (const envelope of input.queue) {
+        answers[envelope.askId] = resolveFallbackAnswer(envelope);
+      }
+      const text = buildAskUserBatchAnswerText({
+        queue: input.queue,
+        answers,
+        notes: state.notes,
+      });
+      finish({
+        kind: "submitted",
+        answers,
+        notes: state.notes,
+        text,
+      });
+    };
+
     const goQuestion = (index: number): void => {
       state = syncAskUserPanelTextInput(
         reduceAskUserQuestionnaire(state, {
@@ -2856,6 +2902,14 @@ export async function runAskUserQuestionnairePanel(
       const focusedOther = focusedItem?.kind === "other";
       const otherIndex = view.optionItems.findIndex((item) => item.kind === "other");
       const notesMode = state.textInputMode === "notes";
+      if (action.kind === "chat") {
+        finish({ kind: "chat" });
+        return;
+      }
+      if (action.kind === "skip" && input.planMode) {
+        submitWithFallbacks();
+        return;
+      }
       if (action.kind === "notes") {
         state = reduceAskUserQuestionnaire(state, {
           type: "set_text_input_mode",
@@ -3128,6 +3182,7 @@ export async function runAskUserQuestionnairePanel(
         String(chunk ?? ""),
         optionCount,
         textInputMode,
+        input.planMode === true,
       );
       if (view.kind === "question") {
         handleQuestionAction(action, view);

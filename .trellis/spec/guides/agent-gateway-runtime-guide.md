@@ -248,6 +248,14 @@ when available, carries actionable diagnostics (`ready_reason`, failed `command`
 check, and blocks automatic `mcp_call` retry until status shows the target server is configured and
 ready.
 
+`ask_user` questions marked with `is_secret=true` keep the raw answer available only in the current
+turn's `[AskUser Resolution]` prompt so the agent can act on credentials or other sensitive
+operator input. Secret answers must be redacted from terminal review surfaces, session previews,
+chat history, memory/experience ingestion, and diagnostic logs with the stable marker
+`<redacted:ask_user_secret>`. When a secret answer is resolved, the turn runner should use the
+redacted safe user text for history, context injection, tool-surface routing, and provider failure
+feedback; the raw answer must not be used as the normal conversation message.
+
 ---
 
 ## 3. Rust Runtime Core Responsibilities

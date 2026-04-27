@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import {
   createRunStartInteractiveModeInput,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
+import { createRunStartInteractiveHandler } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-handler";
 import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
 import {
   createGaMechanismRuntime,
@@ -303,6 +304,89 @@ async function main(): Promise<void> {
     executeTurn: wire.executeTurn,
   });
 
+  const autoAskEvents: string[] = [];
+  let autoAskQueueSize = 0;
+  const autoAskHandler = createRunStartInteractiveHandler({
+    writeStdout: (message) => {
+      autoAskEvents.push(`stdout:${message}`);
+    },
+    writeStderr: (message) => {
+      autoAskEvents.push(`stderr:${message}`);
+    },
+    hasPendingAsk: () => autoAskQueueSize > 0,
+    getPendingAskQueueSize: () => autoAskQueueSize,
+    getPendingAskPromptSummary: () => "Choose profile",
+    showPendingAskQueue: (limit) => {
+      autoAskEvents.push(`showPendingAskQueue:${String(limit ?? "default")}`);
+    },
+    selectPendingAskAnswer: async (withInputPaused) =>
+      withInputPaused(async () => {
+        autoAskEvents.push("selectPendingAskAnswer");
+        autoAskQueueSize = 0;
+        return "auto-answer";
+      }),
+    showHelp: () => {
+      autoAskEvents.push("showHelp");
+    },
+    showHealthStatus: () => undefined,
+    showContextStatus: () => undefined,
+    showMemoryStatus: () => undefined,
+    showSkillsStatus: () => undefined,
+    showMcpStatus: () => undefined,
+    runInitProjectInstructions: async () => undefined,
+    openModelMenu: async () => undefined,
+    showStatusCurrent: () => undefined,
+    setStatusTheme: () => undefined,
+    setStatusLayoutMode: () => undefined,
+    setStatusSegmentEnabled: () => undefined,
+    openStatusMenu: async () => undefined,
+    openSessionMenu: async () => undefined,
+    listSessionSummaries: () => [],
+    getActiveSessionId: () => "auto-ask-session",
+    listRewindCheckpoints: () => [],
+    rewindSession: async () => false,
+    createNewSession: async () => "auto-ask-new-session",
+    switchActiveSession: async () => true,
+    continueFromSession: async () => undefined,
+    writeHandoff: () => undefined,
+    isPlanMode: () => false,
+    showPlanStatus: async () => 0,
+    enterPlan: async () => 0,
+    applyPlan: async () => 0,
+    cancelPlan: async () => 0,
+    requestPlanInterrupt: async () => undefined,
+    requestRuntimeInterrupt: async () => undefined,
+    runPlanTurn: async () => 0,
+    handleUserCommandsCommand: async () => undefined,
+    openCommandsMenu: async () => undefined,
+    openPlanInEditor: async () => undefined,
+    showHistory: async () => undefined,
+    promptSkillCreatorRequirement: async () => undefined,
+    runSkillCreator: async () => undefined,
+    tryRunUserCommand: async () => false,
+    executeTurn: async (userInput, interactiveMode, options) => {
+      autoAskEvents.push(
+        [
+          "execute",
+          userInput,
+          interactiveMode ? "interactive" : "message",
+          options?.autoOpenAskUserPanel === true ? "auto" : "manual",
+        ].join(":"),
+      );
+      autoAskQueueSize = userInput === "needs clarification" ? 1 : 0;
+      return 0;
+    },
+    markFailureObserved: () => {
+      autoAskEvents.push("markFailureObserved");
+    },
+  });
+  const autoAskAction = await autoAskHandler("needs clarification", {
+    withInputPaused: async (operation) => {
+      autoAskEvents.push("withInputPaused");
+      return operation();
+    },
+  });
+
   const validPlan = [
     "# Contract Live Suggestion Plan",
     "",
@@ -532,6 +616,17 @@ async function main(): Promise<void> {
         changedPlanSuggestionState?.activePlanStatusSource === "live_snapshot",
       plan_slash_suggestions_after_file_change_drops_execute_hint:
         !changedPlanSuggestions.some((item) => item.description.includes("Implement the plan.")),
+      auto_ask_handler_returns_continue:
+        autoAskAction === "continue",
+      auto_ask_handler_auto_opens_initial_runtime_ask:
+        autoAskEvents.includes("execute:needs clarification:interactive:auto")
+        && autoAskEvents.includes("selectPendingAskAnswer"),
+      auto_ask_handler_uses_input_pause:
+        autoAskEvents.includes("withInputPaused"),
+      auto_ask_handler_feeds_selected_answer:
+        autoAskEvents.includes("execute:auto-answer:interactive:auto"),
+      auto_ask_handler_keeps_failure_clear:
+        !autoAskEvents.includes("markFailureObserved"),
     };
 
     process.stdout.write(`${JSON.stringify(payload)}\n`);

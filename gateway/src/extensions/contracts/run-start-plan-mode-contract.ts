@@ -101,6 +101,11 @@ async function main(): Promise<void> {
   let stderr = "";
   const executeInputs: string[] = [];
   const executePromptPreludes: string[] = [];
+  const originalStdinIsTTY = process.stdin.isTTY;
+  Object.defineProperty(process.stdin, "isTTY", {
+    configurable: true,
+    value: true,
+  });
 
   const validPlan = [
     "# Contract Plan",
@@ -181,7 +186,19 @@ async function main(): Promise<void> {
     const refine = await planMode.runPlanTurn("refine contract cleanup");
     writeFileSync(planPath, `${validPlan}\n`, "utf8");
 
+    const stdoutBeforeOpen = stdout;
     const open = await planMode.handleMessageInput("/plan open");
+    const openOutput = stdout.slice(stdoutBeforeOpen.length);
+    const stdoutBeforeVerboseOpen = stdout;
+    const originalVerbose = process.env.GROBOT_PLAN_STATUS_VERBOSE;
+    process.env.GROBOT_PLAN_STATUS_VERBOSE = "1";
+    const verboseOpen = await planMode.handleMessageInput("/plan open");
+    const verboseOpenOutput = stdout.slice(stdoutBeforeVerboseOpen.length);
+    if (typeof originalVerbose === "string") {
+      process.env.GROBOT_PLAN_STATUS_VERBOSE = originalVerbose;
+    } else {
+      delete process.env.GROBOT_PLAN_STATUS_VERBOSE;
+    }
     const executeCountBeforeApply = executeInputs.length;
     const execute = await planMode.handleMessageInput("Implement the plan.");
 
@@ -210,10 +227,23 @@ async function main(): Promise<void> {
           && item.includes("<proposed_plan>")),
       active_plan_path_present: typeof planPath === "string" && planPath.length > 0,
       open_plan_surface_handled: open.handled && open.code === 0,
-      open_plan_surface_has_status_output: stdout.includes("plan_status_output_mode:"),
-      open_plan_surface_detects_live_decision_phase: stdout.includes("active_plan_phase: awaiting_decision"),
-      open_plan_surface_detects_live_status_source: stdout.includes("active_plan_status_source: live_snapshot"),
-      open_plan_surface_suggests_execute: stdout.includes("suggested_action_command: Implement the plan."),
+      open_plan_surface_is_human_summary:
+        openOutput.includes("Plan status")
+        && openOutput.includes("Current plan:")
+        && openOutput.includes("Quality:")
+        && openOutput.includes("Benchmark:"),
+      open_plan_surface_hides_machine_fields_by_default:
+        !openOutput.includes("plan_status_output_mode:")
+        && !openOutput.includes("active_plan_phase:")
+        && !openOutput.includes("suggested_action_command:"),
+      open_plan_surface_detects_live_decision_phase: openOutput.includes("Phase: awaiting decision"),
+      open_plan_surface_detects_live_status_source: openOutput.includes("Stored state:"),
+      open_plan_surface_suggests_execute: openOutput.includes("Next: Implement the plan."),
+      verbose_plan_surface_handled: verboseOpen.handled && verboseOpen.code === 0,
+      verbose_plan_surface_preserves_machine_fields:
+        verboseOpenOutput.includes("plan_status_output_mode: full")
+        && verboseOpenOutput.includes("active_plan_phase: awaiting_decision")
+        && verboseOpenOutput.includes("suggested_action_command: Implement the plan."),
       execute_natural_language_handled: execute.handled && execute.code === 0,
       execute_triggered_runtime_turn: executeInputs.length === executeCountBeforeApply + 1,
       execute_payload_is_not_literal_phrase:
@@ -227,6 +257,10 @@ async function main(): Promise<void> {
 
     process.stdout.write(`${JSON.stringify(payload)}\n`);
   } finally {
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: originalStdinIsTTY,
+    });
     rmSync(workDir, { recursive: true, force: true });
   }
 }

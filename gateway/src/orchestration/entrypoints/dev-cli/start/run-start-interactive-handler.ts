@@ -82,6 +82,7 @@ interface CreateRunStartInteractiveHandlerInput {
     interactiveMode: boolean,
     options?: {
       promptPrelude?: string;
+      autoOpenAskUserPanel?: boolean;
       writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
@@ -91,8 +92,30 @@ interface CreateRunStartInteractiveHandlerInput {
 export function createRunStartInteractiveHandler(
   input: CreateRunStartInteractiveHandlerInput,
 ): (userInputRaw: string, controls: SessionInteractiveControls) => Promise<SessionInteractiveAction> {
+  const autoAskPanelDepthLimit = 3;
   const shouldMarkFailure = (code: number): boolean =>
     code !== 0 && code !== TURN_INTERRUPTED_EXIT_CODE;
+  const runTurnWithAutoAsk = async (
+    userInput: string,
+    controls: SessionInteractiveControls,
+    depth = 0,
+  ): Promise<void> => {
+    const code = await input.executeTurn(userInput, true, {
+      autoOpenAskUserPanel: depth < autoAskPanelDepthLimit,
+    });
+    if (shouldMarkFailure(code)) {
+      input.markFailureObserved();
+      return;
+    }
+    if (input.getPendingAskQueueSize() <= 0 || depth >= autoAskPanelDepthLimit) {
+      return;
+    }
+    const selectedAnswer = await input.selectPendingAskAnswer(controls.withInputPaused);
+    if (!selectedAnswer) {
+      return;
+    }
+    await runTurnWithAutoAsk(selectedAnswer, controls, depth + 1);
+  };
 
   return async (
     userInputRaw: string,
@@ -212,10 +235,7 @@ export function createRunStartInteractiveHandler(
       },
       tryRunUserCommand: async (userInput) => input.tryRunUserCommand(userInput),
       runTurn: async (userInput) => {
-        const code = await input.executeTurn(userInput, true);
-        if (shouldMarkFailure(code)) {
-          input.markFailureObserved();
-        }
+        await runTurnWithAutoAsk(userInput, controls);
       },
       onTurnError: (error) => {
         input.markFailureObserved();

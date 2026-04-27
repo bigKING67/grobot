@@ -299,6 +299,9 @@ async function main(): Promise<void> {
   const askUserPanelOtherBackspace = decodeAskUserPanelInput("\u007f", 3, true);
   const askUserPanelNotesShortcut = decodeAskUserPanelInput("n", 3, false);
   const askUserPanelNotesPrintable = decodeAskUserPanelInput("n", 3, true);
+  const askUserPanelChatShortcut = decodeAskUserPanelInput("c", 3, false);
+  const askUserPanelSkipShortcut = decodeAskUserPanelInput("s", 3, false, true);
+  const askUserPanelSkipWithoutPlanTypesOther = decodeAskUserPanelInput("s", 3, false, false);
   const coalescedWithBackslash = resolveCoalescedSubmitChunk("\\\r");
   const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
   const submitChunkOnlyLf = resolveSubmitKeyAction({
@@ -674,6 +677,13 @@ async function main(): Promise<void> {
     ask_user_panel_notes_mode_printable_text:
       askUserPanelNotesPrintable.kind === "text"
       && askUserPanelNotesPrintable.value === "n",
+    ask_user_panel_chat_shortcut:
+      askUserPanelChatShortcut.kind === "chat",
+    ask_user_panel_skip_shortcut_plan_only:
+      askUserPanelSkipShortcut.kind === "skip",
+    ask_user_panel_skip_without_plan_keeps_other_typing:
+      askUserPanelSkipWithoutPlanTypesOther.kind === "text"
+      && askUserPanelSkipWithoutPlanTypesOther.value === "s",
     submit_coalesced_backslash_ignored:
       !coalescedWithBackslash.shouldSubmit
       && coalescedWithBackslash.normalizedChunk === "\\\r",
