@@ -44,6 +44,7 @@ function makeReadiness(
     attentionToolName: null,
     attentionErrorClass: null,
     attentionRequiresUserIntervention: false,
+    attentionBrowserEnvironmentRecovery: null,
     ...overrides,
   };
 }
@@ -60,6 +61,7 @@ function makeHealth(overrides: Partial<RuntimeToolRecoveryHealthSummary>): Runti
     attentionToolName: null,
     attentionErrorClass: null,
     attentionRequiresUserIntervention: false,
+    attentionBrowserEnvironmentRecovery: null,
     attentionAgeMs: null,
     latestRecommendedNextAction: null,
     timelineEntryCount: 0,
@@ -75,6 +77,7 @@ function makeHealth(overrides: Partial<RuntimeToolRecoveryHealthSummary>): Runti
     latestToolName: null,
     latestErrorClass: null,
     latestRequiresUserIntervention: false,
+    latestBrowserEnvironmentRecovery: null,
     latestAgeMs: null,
     components: {
       activeRecoveryPenalty: 0,

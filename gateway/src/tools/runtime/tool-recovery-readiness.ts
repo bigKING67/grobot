@@ -3,6 +3,10 @@ import {
   getRuntimeToolRecoveryPolicySnapshot,
   type RuntimeToolRecoveryPolicySnapshot,
 } from "./tool-recovery-policy";
+import {
+  formatBrowserEnvironmentRecoveryPlan,
+  type BrowserEnvironmentRecoveryPlan,
+} from "./browser-environment-recovery";
 
 export type RuntimeToolRecoveryReadinessStatus = "ready" | "degraded" | "blocked";
 
@@ -24,6 +28,7 @@ export interface RuntimeToolRecoveryReadinessSummary {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
 }
 
 function readinessStatusForHealth(level: RuntimeToolRecoveryHealthSummary["level"]): RuntimeToolRecoveryReadinessStatus {
@@ -81,6 +86,7 @@ export function buildRuntimeToolRecoveryReadinessSummary(input: {
     attentionToolName: input.health.attentionToolName,
     attentionErrorClass: input.health.attentionErrorClass,
     attentionRequiresUserIntervention: input.health.attentionRequiresUserIntervention,
+    attentionBrowserEnvironmentRecovery: input.health.attentionBrowserEnvironmentRecovery,
   };
 }
 
@@ -96,6 +102,7 @@ export function formatRuntimeToolRecoveryReadinessFields(
     `action=${summary.recommendedNextAction ?? "<none>"}`,
     `attention_key=${summary.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${summary.attentionStage ?? "<none>"}`,
+    `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery)}`,
     `policy_version=${summary.policyVersion}`,
     `health=${summary.healthLevel}/${String(summary.healthScore)}`,
     `health_thresholds=${String(summary.watchScoreThreshold)}/${String(summary.riskScoreThreshold)}`,

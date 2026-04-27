@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { RuntimeEvent } from "../../models/types";
+import {
+  buildBrowserEnvironmentRecoveryPlan,
+  type BrowserEnvironmentRecoveryPlan,
+} from "./browser-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
 
 export type RuntimeToolRecoveryStage =
@@ -178,12 +182,6 @@ export function isRuntimeToolRecoveryAction(value: string): value is RuntimeTool
 export function knownRuntimeToolRecoveryActions(): RuntimeToolRecoveryAction[] {
   return Object.keys(RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS) as RuntimeToolRecoveryAction[];
 }
-
-const BROWSER_ENVIRONMENT_ERROR_CODES = new Set([
-  "NO_EXTENSION",
-  "NO_SESSION",
-  "TRANSPORT_UNAVAILABLE",
-]);
 
 function emptySummary(): RuntimeToolEventSummary {
   return {
@@ -681,38 +679,28 @@ function recoveryStageRank(stage: RuntimeToolRecoveryStage): number {
   return 0;
 }
 
-function browserEnvironmentErrorCode(errorData: Record<string, unknown> | undefined): string | undefined {
-  const value = errorData?.error_code;
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function isBrowserEnvironmentRecovery(recovery: RuntimeToolRecoveryHint): boolean {
-  if (recovery.errorClass !== "browser_backend_result_error") {
-    return false;
-  }
-  const errorCode = browserEnvironmentErrorCode(recovery.errorData);
-  return typeof errorCode === "string" && BROWSER_ENVIRONMENT_ERROR_CODES.has(errorCode);
+function browserEnvironmentRecoveryPlan(recovery: RuntimeToolRecoveryHint): BrowserEnvironmentRecoveryPlan | null {
+  return buildBrowserEnvironmentRecoveryPlan({
+    errorClass: recovery.errorClass,
+    errorData: recovery.errorData,
+  });
 }
 
 function browserEnvironmentFixInstruction(input: {
   recovery: RuntimeToolRecoveryHint;
   toolName: string;
 }): string | undefined {
-  if (!isBrowserEnvironmentRecovery(input.recovery)) {
+  const plan = browserEnvironmentRecoveryPlan(input.recovery);
+  if (!plan) {
     return undefined;
   }
-  const errorCode = browserEnvironmentErrorCode(input.recovery.errorData);
-  if (errorCode === "NO_EXTENSION") {
+  if (plan.errorCode === "NO_EXTENSION") {
     return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to run \`grobot browser setup\`, then \`grobot browser doctor\`; retry only after the browser extension is connected.`;
   }
-  if (errorCode === "NO_SESSION") {
+  if (plan.errorCode === "NO_SESSION") {
     return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to open or reconnect a browser session and run \`grobot browser doctor\`; if the hub is not running, run \`grobot browser hub start\` first.`;
   }
-  if (errorCode === "TRANSPORT_UNAVAILABLE") {
+  if (plan.errorCode === "TRANSPORT_UNAVAILABLE") {
     return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to run \`grobot browser hub start\`, then \`grobot browser doctor\`; retry only after the browser transport is available.`;
   }
   return undefined;
@@ -732,7 +720,7 @@ function applyRepeatedRecoveryEscalation(input: {
     requiresUserIntervention: base.requiresUserIntervention ?? (base.recoverable === false),
   };
   if (
-    isBrowserEnvironmentRecovery(base)
+    browserEnvironmentRecoveryPlan(base)
     && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.browserEnvironmentAskUserThreshold
     && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
   ) {

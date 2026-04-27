@@ -4,7 +4,11 @@ import {
   buildRuntimeToolRecoveryTimeline,
 } from "../../tools/runtime/tool-recovery-timeline";
 import { buildRuntimeToolRecoveryDecision } from "../../tools/runtime/tool-recovery-decision";
-import { buildRuntimeToolRecoveryReadinessSummary } from "../../tools/runtime/tool-recovery-readiness";
+import {
+  buildRuntimeToolRecoveryReadinessSummary,
+  formatRuntimeToolRecoveryReadinessFields,
+} from "../../tools/runtime/tool-recovery-readiness";
+import { formatRuntimeToolRecoveryGateFields } from "../../tools/runtime/tool-recovery-readiness-gate";
 import type { RuntimeToolRecoveryFeedback, RuntimeToolSurfaceMetricsSnapshot } from "../../tools/runtime/tool-events";
 import type { RuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
 import type { RuntimeToolSurfaceAdaptationSnapshot } from "../../tools/runtime/tool-surface-adaptation-state";
@@ -277,6 +281,140 @@ expectEqual(activeDecision.health.score, activeHealth.score, "active decision he
 expectEqual(activeDecision.readiness.status, "blocked", "active decision readiness status");
 expectEqual(activeDecision.gate.status, "fail", "active decision gate status");
 expectEqual(activeDecision.gate.reason, "blocked_operator_action_required", "active decision gate reason");
+
+const browserMetrics: RuntimeToolSurfaceMetricsSnapshot = {
+  ...metrics,
+  callsByTool: { web_scan: 1 },
+  failuresByErrorClass: { browser_backend_result_error: 1 },
+  recoveryStages: { ask_user: 1 },
+  recoveryCountsByKey: {
+    "tool_error:web_scan:browser_backend_result_error": 2,
+  },
+  latestRecoveryRepeatKey: "tool_error:web_scan:browser_backend_result_error",
+  latestRecoveryRepeatCount: 2,
+  recentRecoveries: [
+    {
+      stage: "ask_user",
+      reason: "browser_backend_result_error",
+      recommendedNextAction: "request_environment_fix",
+      toolName: "web_scan",
+      errorClass: "browser_backend_result_error",
+      errorData: {
+        diagnostic_kind: "browser_backend_result_error",
+        error_code: "NO_EXTENSION",
+      },
+      recoverable: false,
+      requiresUserIntervention: true,
+      sameToolErrorCount: 2,
+      escalated: true,
+      escalationReason: "browser_environment_error_repeated",
+      escalationPolicyVersion: "v1",
+      baseStage: "strategy_switch",
+      baseRecommendedNextAction: "inspect_error_and_switch_strategy",
+      observedAt: latestObservedAt,
+    },
+  ],
+  latestRecovery: {
+    stage: "ask_user",
+    reason: "browser_backend_result_error",
+    recommendedNextAction: "request_environment_fix",
+    toolName: "web_scan",
+    errorClass: "browser_backend_result_error",
+    errorData: {
+      diagnostic_kind: "browser_backend_result_error",
+      error_code: "NO_EXTENSION",
+    },
+    recoverable: false,
+    requiresUserIntervention: true,
+    sameToolErrorCount: 2,
+    escalated: true,
+    escalationReason: "browser_environment_error_repeated",
+    escalationPolicyVersion: "v1",
+    baseStage: "strategy_switch",
+    baseRecommendedNextAction: "inspect_error_and_switch_strategy",
+    observedAt: latestObservedAt,
+  },
+};
+
+const browserFeedback: RuntimeToolRecoveryFeedback = {
+  active: true,
+  severity: "warning",
+  reason: "repeated_recovery_escalated",
+  stage: "ask_user",
+  toolName: "web_scan",
+  errorClass: "browser_backend_result_error",
+  recommendedNextAction: "request_environment_fix",
+  recoverable: false,
+  requiresUserIntervention: true,
+  sameToolErrorCount: 2,
+  escalated: true,
+  escalationReason: "browser_environment_error_repeated",
+  escalationPolicyVersion: "v1",
+  baseStage: "strategy_switch",
+  baseRecommendedNextAction: "inspect_error_and_switch_strategy",
+  promptBlock: "[Runtime Tool Recovery Hint]",
+  observedAt: latestObservedAt,
+  consumed: false,
+  consumedReason: null,
+  consumedAt: null,
+};
+const browserTimeline = buildRuntimeToolRecoveryTimeline({
+  metrics: browserMetrics,
+  adaptationSnapshot: emptyAdaptationSnapshot,
+  recoveryFeedback: browserFeedback,
+});
+const browserHealth = buildRuntimeToolRecoveryHealthSummary({
+  timeline: browserTimeline,
+  nowMs: Date.parse(latestObservedAt) + 2_000,
+});
+const browserReadiness = buildRuntimeToolRecoveryReadinessSummary({
+  health: browserHealth,
+});
+const browserDecision = buildRuntimeToolRecoveryDecision({
+  metrics: browserMetrics,
+  adaptationSnapshot: emptyAdaptationSnapshot,
+  nowMs: Date.parse(latestObservedAt) + 2_000,
+});
+expectEqual(
+  browserTimeline[0].browserEnvironmentRecovery?.errorCode,
+  "NO_EXTENSION",
+  "browser timeline exposes environment error code",
+);
+expectEqual(
+  browserTimeline[0].browserEnvironmentRecovery?.action,
+  "setup_and_doctor",
+  "browser timeline exposes environment action",
+);
+expectEqual(
+  browserTimeline[0].browserEnvironmentRecovery?.retryAllowed,
+  false,
+  "browser timeline blocks retry",
+);
+expectEqual(
+  browserHealth.attentionBrowserEnvironmentRecovery?.errorCode,
+  "NO_EXTENSION",
+  "browser health exposes environment error code",
+);
+expectEqual(
+  browserReadiness.attentionBrowserEnvironmentRecovery?.action,
+  "setup_and_doctor",
+  "browser readiness exposes environment action",
+);
+expectEqual(
+  browserDecision.gate.attentionBrowserEnvironmentRecovery?.commands.join("|"),
+  "grobot browser setup|grobot browser doctor",
+  "browser gate exposes operator commands",
+);
+expect(
+  formatRuntimeToolRecoveryReadinessFields(browserReadiness)
+    .includes("browser_environment_recovery=code=NO_EXTENSION action=setup_and_doctor retry_allowed=false"),
+  "browser readiness formatter exposes environment recovery",
+);
+expect(
+  formatRuntimeToolRecoveryGateFields(browserDecision.gate)
+    .includes("commands=grobot browser setup|grobot browser doctor"),
+  "browser gate formatter exposes operator commands",
+);
 
 const customPolicyActiveHealth = buildRuntimeToolRecoveryHealthSummary({
   timeline: activeTimeline,

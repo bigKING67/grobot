@@ -184,6 +184,14 @@ Gateway status output should include route and cache observability fields:
   - `same_tool_error_strategy_switch_threshold`
   - `same_tool_error_ask_user_threshold`
   - `browser_environment_ask_user_threshold`
+- `runtime_tool_recovery_timeline[*].browser_environment_recovery`
+  - `error_code`
+  - `action`
+  - `retry_allowed`
+  - `commands`
+- `runtime_tool_recovery_health.attention_browser_environment_recovery`
+- `runtime_tool_recovery_readiness.attention_browser_environment_recovery`
+- `runtime_tool_recovery_gate.attention_browser_environment_recovery`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For

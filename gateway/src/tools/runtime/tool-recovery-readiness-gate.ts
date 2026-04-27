@@ -1,4 +1,8 @@
 import type { RuntimeToolRecoveryReadinessSummary } from "./tool-recovery-readiness";
+import {
+  formatBrowserEnvironmentRecoveryPlan,
+  type BrowserEnvironmentRecoveryPlan,
+} from "./browser-environment-recovery";
 
 export type RuntimeToolRecoveryReadinessGateStatus = "pass" | "warn" | "fail";
 
@@ -36,6 +40,7 @@ export interface RuntimeToolRecoveryReadinessGateDecision {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
 }
 
 function gateStatus(input: RuntimeToolRecoveryReadinessSummary): {
@@ -112,6 +117,7 @@ export function buildRuntimeToolRecoveryReadinessGate(input: {
     attentionToolName: input.readiness.attentionToolName,
     attentionErrorClass: input.readiness.attentionErrorClass,
     attentionRequiresUserIntervention: input.readiness.attentionRequiresUserIntervention,
+    attentionBrowserEnvironmentRecovery: input.readiness.attentionBrowserEnvironmentRecovery,
   };
 }
 
@@ -130,6 +136,7 @@ export function formatRuntimeToolRecoveryGateFields(
     `operator_action_required=${gate.operatorActionRequired ? "true" : "false"}`,
     `attention_key=${gate.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${gate.attentionStage ?? "<none>"}`,
+    `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(gate.attentionBrowserEnvironmentRecovery)}`,
     `policy_version=${gate.policyVersion}`,
     `health=${gate.healthLevel}/${String(gate.healthScore)}`,
     `health_thresholds=${String(gate.watchScoreThreshold)}/${String(gate.riskScoreThreshold)}`,

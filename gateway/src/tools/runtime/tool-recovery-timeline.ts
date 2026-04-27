@@ -8,6 +8,10 @@ import {
   resolveRuntimeToolRecoveryConsumption,
   type RuntimeToolSurfaceAdaptationSnapshot,
 } from "./tool-surface-adaptation-state";
+import {
+  buildBrowserEnvironmentRecoveryPlan,
+  type BrowserEnvironmentRecoveryPlan,
+} from "./browser-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY, type RuntimeToolRecoveryPolicySnapshot } from "./tool-recovery-policy";
 
 export interface RuntimeToolRecoveryIdentityInput {
@@ -33,6 +37,7 @@ export interface RuntimeToolRecoveryTimelineEntry {
   escalationPolicyVersion: string | null;
   baseStage: RuntimeToolRecoveryStage | null;
   baseRecommendedNextAction: string | null;
+  browserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   active: boolean;
   consumed: boolean;
   consumedReason: string | null;
@@ -55,6 +60,7 @@ export interface RuntimeToolRecoveryHealthSummary {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionAgeMs: number | null;
   latestRecommendedNextAction: string | null;
   timelineEntryCount: number;
@@ -70,6 +76,7 @@ export interface RuntimeToolRecoveryHealthSummary {
   latestToolName: string | null;
   latestErrorClass: string | null;
   latestRequiresUserIntervention: boolean;
+  latestBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   latestAgeMs: number | null;
   components: {
     activeRecoveryPenalty: number;
@@ -195,6 +202,10 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         errorClass: recovery.errorClass ?? null,
         observedAt,
       });
+      const browserEnvironmentRecovery = buildBrowserEnvironmentRecoveryPlan({
+        errorClass: recovery.errorClass,
+        errorData: recovery.errorData,
+      });
       return {
         recoveryKey,
         observedAt,
@@ -211,6 +222,7 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         escalationPolicyVersion: recovery.escalationPolicyVersion ?? null,
         baseStage: recovery.baseStage ?? null,
         baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
+        browserEnvironmentRecovery,
         active:
           input.recoveryFeedback.active
           && matchesFeedbackRecovery({
@@ -324,6 +336,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     attentionToolName: attentionEntry?.toolName ?? null,
     attentionErrorClass: attentionEntry?.errorClass ?? null,
     attentionRequiresUserIntervention: attentionEntry?.requiresUserIntervention ?? false,
+    attentionBrowserEnvironmentRecovery: attentionEntry?.browserEnvironmentRecovery ?? null,
     attentionAgeMs,
     latestRecommendedNextAction: latest?.recommendedNextAction ?? null,
     timelineEntryCount: input.timeline.length,
@@ -339,6 +352,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     latestToolName: latest?.toolName ?? null,
     latestErrorClass: latest?.errorClass ?? null,
     latestRequiresUserIntervention: latest?.requiresUserIntervention ?? false,
+    latestBrowserEnvironmentRecovery: latest?.browserEnvironmentRecovery ?? null,
     latestAgeMs,
     components: {
       activeRecoveryPenalty,

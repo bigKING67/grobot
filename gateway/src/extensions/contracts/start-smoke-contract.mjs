@@ -2389,6 +2389,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryHealth?.latest_recovery_key,
     status_runtime_tool_recovery_health_has_stuck_type:
       typeof runtimeToolRecoveryHealth?.has_stuck_nonrecoverable,
+    status_runtime_tool_recovery_health_attention_browser_environment_recovery_type:
+      typeof runtimeToolRecoveryHealth?.attention_browser_environment_recovery,
     status_runtime_tool_recovery_policy_present: Boolean(runtimeToolRecoveryPolicy),
     status_runtime_tool_recovery_policy_version_type:
       typeof runtimeToolRecoveryPolicy?.version,
@@ -2433,6 +2435,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryReadiness?.policy_version,
     status_runtime_tool_recovery_readiness_attention_stage_type:
       typeof runtimeToolRecoveryReadiness?.attention_stage,
+    status_runtime_tool_recovery_readiness_attention_browser_environment_recovery_type:
+      typeof runtimeToolRecoveryReadiness?.attention_browser_environment_recovery,
     status_runtime_tool_recovery_gate_present: Boolean(runtimeToolRecoveryGate),
     status_runtime_tool_recovery_gate_status_type:
       typeof runtimeToolRecoveryGate?.status,
@@ -2452,6 +2456,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryGate?.operator_action_required,
     status_runtime_tool_recovery_gate_attention_stage_type:
       typeof runtimeToolRecoveryGate?.attention_stage,
+    status_runtime_tool_recovery_gate_attention_browser_environment_recovery_type:
+      typeof runtimeToolRecoveryGate?.attention_browser_environment_recovery,
     status_runtime_tool_surface_adaptation_present: Boolean(runtimeToolSurfaceAdaptation),
     status_runtime_tool_surface_adaptation_active_type: typeof runtimeToolSurfaceAdaptation?.active,
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,

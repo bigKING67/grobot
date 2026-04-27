@@ -43,6 +43,7 @@ import {
   formatRuntimeToolRecoveryGateFields,
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../../../tools/runtime/tool-recovery-readiness-gate";
+import type { BrowserEnvironmentRecoveryPlan } from "../../../../tools/runtime/browser-environment-recovery";
 import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
@@ -898,6 +899,20 @@ function serializeRuntimeToolRecoveryConsumption(record: RuntimeToolRecoveryCons
   };
 }
 
+function serializeBrowserEnvironmentRecoveryPlan(
+  plan: BrowserEnvironmentRecoveryPlan | null,
+): Record<string, unknown> | null {
+  if (!plan) {
+    return null;
+  }
+  return {
+    error_code: plan.errorCode,
+    action: plan.action,
+    retry_allowed: plan.retryAllowed,
+    commands: plan.commands,
+  };
+}
+
 function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTimelineEntry): Record<string, unknown> {
   return {
     recovery_key: entry.recoveryKey,
@@ -915,6 +930,7 @@ function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTim
     escalation_policy_version: entry.escalationPolicyVersion,
     base_recovery_stage: entry.baseStage,
     base_recommended_next_action: entry.baseRecommendedNextAction,
+    browser_environment_recovery: serializeBrowserEnvironmentRecoveryPlan(entry.browserEnvironmentRecovery),
     active: entry.active,
     consumed: entry.consumed,
     consumed_reason: entry.consumedReason,
@@ -934,6 +950,8 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
     attention_tool_name: summary.attentionToolName,
     attention_error_class: summary.attentionErrorClass,
     attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
+    attention_browser_environment_recovery:
+      serializeBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery),
     attention_age_ms: summary.attentionAgeMs,
     latest_recommended_next_action: summary.latestRecommendedNextAction,
     timeline_entry_count: summary.timelineEntryCount,
@@ -949,6 +967,8 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
     latest_tool_name: summary.latestToolName,
     latest_error_class: summary.latestErrorClass,
     latest_requires_user_intervention: summary.latestRequiresUserIntervention,
+    latest_browser_environment_recovery:
+      serializeBrowserEnvironmentRecoveryPlan(summary.latestBrowserEnvironmentRecovery),
     latest_age_ms: summary.latestAgeMs,
     components: summary.components,
     error_class_counts: summary.errorClassCounts,
@@ -1007,6 +1027,8 @@ function serializeRuntimeToolRecoveryReadinessSummary(
     attention_tool_name: summary.attentionToolName,
     attention_error_class: summary.attentionErrorClass,
     attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
+    attention_browser_environment_recovery:
+      serializeBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery),
   };
 }
 
@@ -1036,6 +1058,8 @@ function serializeRuntimeToolRecoveryReadinessGate(
     attention_tool_name: gate.attentionToolName,
     attention_error_class: gate.attentionErrorClass,
     attention_requires_user_intervention: gate.attentionRequiresUserIntervention,
+    attention_browser_environment_recovery:
+      serializeBrowserEnvironmentRecoveryPlan(gate.attentionBrowserEnvironmentRecovery),
   };
 }
 

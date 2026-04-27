@@ -5268,6 +5268,12 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_health_watch_threshold, 85);
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_health_risk_threshold, 60);
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_health_attention_browser_environment_recovery_type),
+    ),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_readiness_present, true);
   assert.equal(statusPayload.status_runtime_tool_recovery_readiness_status_type, "string");
   assert.equal(statusPayload.status_runtime_tool_recovery_readiness_ready_type, "boolean");
@@ -5277,6 +5283,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_readiness_policy_version_type, "string");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_readiness_attention_stage_type)),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_readiness_attention_browser_environment_recovery_type),
+    ),
     true,
   );
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_present, true);
@@ -5290,6 +5302,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_operator_action_type, "boolean");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_gate_attention_stage_type)),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_gate_attention_browser_environment_recovery_type),
+    ),
     true,
   );
   assert.equal(statusPayload.status_runtime_tool_surface_adaptation_present, true);

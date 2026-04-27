@@ -807,6 +807,7 @@ const gateBlockedBrowserRecovery = adaptRuntimeToolContextForRecovery({
       attentionToolName: "web_scan",
       attentionErrorClass: "tool_not_visible",
       attentionRequiresUserIntervention: false,
+      attentionBrowserEnvironmentRecovery: null,
     },
   }),
 });
