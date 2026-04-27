@@ -7,6 +7,10 @@ import {
   formatBrowserEnvironmentRecoveryPlan,
   type BrowserEnvironmentRecoveryPlan,
 } from "./browser-environment-recovery";
+import {
+  formatMcpEnvironmentRecoveryPlan,
+  type McpEnvironmentRecoveryPlan,
+} from "./mcp-environment-recovery";
 
 export type RuntimeToolRecoveryReadinessStatus = "ready" | "degraded" | "blocked";
 
@@ -29,6 +33,7 @@ export interface RuntimeToolRecoveryReadinessSummary {
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
+  attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
 }
 
 function readinessStatusForHealth(level: RuntimeToolRecoveryHealthSummary["level"]): RuntimeToolRecoveryReadinessStatus {
@@ -87,6 +92,7 @@ export function buildRuntimeToolRecoveryReadinessSummary(input: {
     attentionErrorClass: input.health.attentionErrorClass,
     attentionRequiresUserIntervention: input.health.attentionRequiresUserIntervention,
     attentionBrowserEnvironmentRecovery: input.health.attentionBrowserEnvironmentRecovery,
+    attentionMcpEnvironmentRecovery: input.health.attentionMcpEnvironmentRecovery,
   };
 }
 
@@ -103,6 +109,7 @@ export function formatRuntimeToolRecoveryReadinessFields(
     `attention_key=${summary.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${summary.attentionStage ?? "<none>"}`,
     `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery)}`,
+    `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery)}`,
     `policy_version=${summary.policyVersion}`,
     `health=${summary.healthLevel}/${String(summary.healthScore)}`,
     `health_thresholds=${String(summary.watchScoreThreshold)}/${String(summary.riskScoreThreshold)}`,

@@ -12,6 +12,7 @@ export interface RuntimeToolRecoveryPolicySnapshot {
   escalation: {
     sameToolErrorStrategySwitchThreshold: number;
     sameToolErrorAskUserThreshold: number;
+    environmentAskUserThreshold: number;
     browserEnvironmentAskUserThreshold: number;
   };
   health: {
@@ -42,6 +43,7 @@ export const RUNTIME_TOOL_RECOVERY_POLICY: RuntimeToolRecoveryPolicySnapshot = {
   escalation: {
     sameToolErrorStrategySwitchThreshold: 2,
     sameToolErrorAskUserThreshold: 3,
+    environmentAskUserThreshold: 2,
     browserEnvironmentAskUserThreshold: 2,
   },
   health: {
@@ -72,6 +74,8 @@ export function getRuntimeToolRecoveryPolicySnapshot(): RuntimeToolRecoveryPolic
       sameToolErrorStrategySwitchThreshold:
         RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorStrategySwitchThreshold,
       sameToolErrorAskUserThreshold: RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorAskUserThreshold,
+      environmentAskUserThreshold:
+        RUNTIME_TOOL_RECOVERY_POLICY.escalation.environmentAskUserThreshold,
       browserEnvironmentAskUserThreshold:
         RUNTIME_TOOL_RECOVERY_POLICY.escalation.browserEnvironmentAskUserThreshold,
     },

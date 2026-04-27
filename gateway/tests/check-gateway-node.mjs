@@ -5165,6 +5165,12 @@ async function runTsRustExecutionSmoke() {
     ),
     true,
   );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_feedback_mcp_environment_recovery_type),
+    ),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_timeline_is_array, true);
   assert.equal(statusPayload.status_runtime_tool_recovery_timeline_count >= 0, true);
   assert.equal(
@@ -5268,6 +5274,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_type, "object");
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_strategy_switch_threshold, 2);
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_ask_user_threshold, 3);
+  assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_environment_ask_user_threshold, 2);
   assert.equal(
     statusPayload.status_runtime_tool_recovery_policy_escalation_browser_environment_ask_user_threshold,
     2,
@@ -5277,6 +5284,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(
     ["object", "undefined"].includes(
       String(statusPayload.status_runtime_tool_recovery_health_attention_browser_environment_recovery_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_health_attention_mcp_environment_recovery_type),
     ),
     true,
   );
@@ -5297,6 +5310,12 @@ async function runTsRustExecutionSmoke() {
     ),
     true,
   );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_readiness_attention_mcp_environment_recovery_type),
+    ),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_present, true);
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_status_type, "string");
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_passed_type, "boolean");
@@ -5313,6 +5332,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(
     ["object", "undefined"].includes(
       String(statusPayload.status_runtime_tool_recovery_gate_attention_browser_environment_recovery_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_gate_attention_mcp_environment_recovery_type),
     ),
     true,
   );
@@ -6477,6 +6502,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_policy_timeline_max_entries, 20);
   assert.equal(statusNonRecoverablePayload.recovery_policy_escalation_strategy_switch_threshold, 2);
   assert.equal(statusNonRecoverablePayload.recovery_policy_escalation_ask_user_threshold, 3);
+  assert.equal(statusNonRecoverablePayload.recovery_policy_escalation_environment_ask_user_threshold, 2);
   assert.equal(statusNonRecoverablePayload.recovery_policy_health_watch_threshold, 85);
   assert.equal(statusNonRecoverablePayload.recovery_policy_health_risk_threshold, 60);
   assert.equal(statusNonRecoverablePayload.recovery_readiness_status, "blocked");
@@ -6603,6 +6629,76 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusBrowserEnvironmentRecoveryPayload.text_has_recovery_gate_browser_environment, true);
   logStep("start-smoke-contract status-browser-environment-tool-recovery");
 
+  const statusMcpEnvironmentRecoveryResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-mcp-environment-tool-recovery",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+    {
+      timeoutMs: 240_000,
+    },
+  );
+  const statusMcpEnvironmentRecoveryPayload = parseJsonOutput(
+    "start-smoke-contract status-mcp-environment-tool-recovery",
+    statusMcpEnvironmentRecoveryResult.stdout,
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.exit_code, 0);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.text_exit_code, 0);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.status_json_parse_ok, true);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_active, true);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_stage, "ask_user");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_action, "request_environment_fix");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_recoverable, false);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_requires_user_intervention, true);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_error_code, "SERVER_UNREADY");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_action,
+    "fix_server_readiness_and_check_status",
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_retry_allowed, false);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_commands, "grobot status --json");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_server, "grok-search");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_tool_name, "web_search");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_source_path, ".grobot/mcp.toml");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_feedback_mcp_registry_paths,
+    "~/.grobot/mcp/servers.toml|.grobot/mcp.toml",
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_timeline_latest_stage, "ask_user");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_timeline_latest_tool_name, "mcp_call");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_timeline_latest_error_class, "mcp_server_unready");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_timeline_latest_mcp_error_code, "SERVER_UNREADY");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_timeline_latest_mcp_action,
+    "fix_server_readiness_and_check_status",
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_timeline_latest_mcp_retry_allowed, false);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_health_attention_mcp_error_code, "SERVER_UNREADY");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_health_attention_mcp_action,
+    "fix_server_readiness_and_check_status",
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_readiness_status, "blocked");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_readiness_operator_action_required, true);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_readiness_attention_mcp_error_code, "SERVER_UNREADY");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_readiness_attention_mcp_action,
+    "fix_server_readiness_and_check_status",
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_status, "fail");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_attention_mcp_error_code, "SERVER_UNREADY");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_gate_attention_mcp_action,
+    "fix_server_readiness_and_check_status",
+  );
+  assert.equal(statusMcpEnvironmentRecoveryPayload.text_has_recovery_feedback_mcp_environment, true);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.text_has_recovery_readiness_mcp_environment, true);
+  assert.equal(statusMcpEnvironmentRecoveryPayload.text_has_recovery_gate_mcp_environment, true);
+  logStep("start-smoke-contract status-mcp-environment-tool-recovery");
+
   const statusNonRecoverableConsumedResult = runContract(
     "start-smoke-contract.mjs",
     "status-nonrecoverable-tool-recovery-consumed",
@@ -6690,6 +6786,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverableConsumedPayload.recovery_policy_timeline_max_entries, 20);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_policy_escalation_strategy_switch_threshold, 2);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_policy_escalation_ask_user_threshold, 3);
+  assert.equal(statusNonRecoverableConsumedPayload.recovery_policy_escalation_environment_ask_user_threshold, 2);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_policy_health_watch_threshold, 85);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_policy_health_risk_threshold, 60);
   assert.equal(statusNonRecoverableConsumedPayload.recovery_readiness_status, "degraded");

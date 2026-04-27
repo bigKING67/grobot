@@ -104,6 +104,7 @@ const EXPECTED_RUNTIME_TOOL_RECOVERY_POLICY_STATUS = {
   escalation: {
     same_tool_error_strategy_switch_threshold: 2,
     same_tool_error_ask_user_threshold: 3,
+    environment_ask_user_threshold: 2,
     browser_environment_ask_user_threshold: 2,
   },
   health: {
@@ -256,6 +257,11 @@ function assertRuntimeToolRecoveryPolicyStatusSurface(input) {
     "runtime recovery policy ask-user threshold",
   );
   assertEqualValue(
+    recoveryPolicy.escalation?.environment_ask_user_threshold,
+    expected.escalation.environment_ask_user_threshold,
+    "runtime recovery policy environment ask-user threshold",
+  );
+  assertEqualValue(
     recoveryPolicy.escalation?.browser_environment_ask_user_threshold,
     expected.escalation.browser_environment_ask_user_threshold,
     "runtime recovery policy browser environment ask-user threshold",
@@ -306,6 +312,7 @@ function assertRuntimeToolRecoveryPolicyStatusSurface(input) {
     `guard_recent_profile_sequence=${String(expected.guard.recent_profile_sequence_size)}`,
     `guard_oscillation_window=${String(expected.guard.oscillation_profile_window_size)}`,
     `escalation_thresholds=${String(expected.escalation.same_tool_error_strategy_switch_threshold)}/${String(expected.escalation.same_tool_error_ask_user_threshold)}`,
+    `environment_ask_user_threshold=${String(expected.escalation.environment_ask_user_threshold)}`,
     `browser_environment_ask_user_threshold=${String(expected.escalation.browser_environment_ask_user_threshold)}`,
     `health_thresholds=${String(expected.health.watch_score_threshold)}/${String(expected.health.risk_score_threshold)}`,
     `health_penalties=${String(expected.health.penalties.active_recovery)}/${String(expected.health.penalties.active_nonrecoverable)}/${String(expected.health.penalties.stuck_nonrecoverable)}/${String(expected.health.penalties.historical_unconsumed)}`,
@@ -2343,6 +2350,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryFeedback?.base_recommended_next_action,
     status_runtime_tool_recovery_feedback_browser_environment_recovery_type:
       typeof runtimeToolRecoveryFeedback?.browser_environment_recovery,
+    status_runtime_tool_recovery_feedback_mcp_environment_recovery_type:
+      typeof runtimeToolRecoveryFeedback?.mcp_environment_recovery,
     status_runtime_tool_recovery_timeline_is_array: Array.isArray(runtimeTools?.recovery_timeline),
     status_runtime_tool_recovery_timeline_count: runtimeToolRecoveryTimeline.length,
     status_runtime_tool_recovery_timeline_latest_recovery_key_type:
@@ -2393,6 +2402,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryHealth?.has_stuck_nonrecoverable,
     status_runtime_tool_recovery_health_attention_browser_environment_recovery_type:
       typeof runtimeToolRecoveryHealth?.attention_browser_environment_recovery,
+    status_runtime_tool_recovery_health_attention_mcp_environment_recovery_type:
+      typeof runtimeToolRecoveryHealth?.attention_mcp_environment_recovery,
     status_runtime_tool_recovery_policy_present: Boolean(runtimeToolRecoveryPolicy),
     status_runtime_tool_recovery_policy_version_type:
       typeof runtimeToolRecoveryPolicy?.version,
@@ -2416,6 +2427,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       runtimeToolRecoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
     status_runtime_tool_recovery_policy_escalation_ask_user_threshold:
       runtimeToolRecoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    status_runtime_tool_recovery_policy_escalation_environment_ask_user_threshold:
+      runtimeToolRecoveryPolicy?.escalation?.environment_ask_user_threshold ?? null,
     status_runtime_tool_recovery_policy_escalation_browser_environment_ask_user_threshold:
       runtimeToolRecoveryPolicy?.escalation?.browser_environment_ask_user_threshold ?? null,
     status_runtime_tool_recovery_policy_health_watch_threshold:
@@ -2439,6 +2452,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryReadiness?.attention_stage,
     status_runtime_tool_recovery_readiness_attention_browser_environment_recovery_type:
       typeof runtimeToolRecoveryReadiness?.attention_browser_environment_recovery,
+    status_runtime_tool_recovery_readiness_attention_mcp_environment_recovery_type:
+      typeof runtimeToolRecoveryReadiness?.attention_mcp_environment_recovery,
     status_runtime_tool_recovery_gate_present: Boolean(runtimeToolRecoveryGate),
     status_runtime_tool_recovery_gate_status_type:
       typeof runtimeToolRecoveryGate?.status,
@@ -2460,6 +2475,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryGate?.attention_stage,
     status_runtime_tool_recovery_gate_attention_browser_environment_recovery_type:
       typeof runtimeToolRecoveryGate?.attention_browser_environment_recovery,
+    status_runtime_tool_recovery_gate_attention_mcp_environment_recovery_type:
+      typeof runtimeToolRecoveryGate?.attention_mcp_environment_recovery,
     status_runtime_tool_surface_adaptation_present: Boolean(runtimeToolSurfaceAdaptation),
     status_runtime_tool_surface_adaptation_active_type: typeof runtimeToolSurfaceAdaptation?.active,
     status_runtime_tool_surface_adaptation_reason_type: typeof runtimeToolSurfaceAdaptation?.reason,
@@ -4852,6 +4869,62 @@ function writeBrowserEnvironmentToolRecoveryMetrics(workDir) {
   );
 }
 
+function writeMcpEnvironmentToolRecoveryMetrics(workDir) {
+  const runtimeDir = `${workDir}/.grobot/runtime`;
+  mkdirSync(runtimeDir, { recursive: true });
+  const observedAt = new Date().toISOString();
+  writeFileSync(
+    `${runtimeDir}/tool-surface-metrics.json`,
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: observedAt,
+      callsTotal: 1,
+      failedTotal: 1,
+      deferredTotal: 0,
+      callsByTool: { mcp_call: 1 },
+      failuresByErrorClass: { mcp_server_unready: 1 },
+      recoveryStages: { ask_user: 1 },
+      recoveryCountsByKey: { "tool_error:mcp_call:mcp_server_unready": 1 },
+      latestRecoveryRepeatKey: "tool_error:mcp_call:mcp_server_unready",
+      latestRecoveryRepeatCount: 1,
+      durationTotalMsByTool: { mcp_call: 12 },
+      durationCountByTool: { mcp_call: 1 },
+      recentRecoveries: [
+        {
+          stage: "ask_user",
+          reason: "mcp_server_unready",
+          recommendedNextAction: "request_environment_fix",
+          toolName: "mcp_call",
+          errorClass: "mcp_server_unready",
+          errorMessage: "MCP server `grok-search` is unready: command_not_found",
+          errorData: {
+            diagnostic_kind: "mcp_server_unready",
+            server: "grok-search",
+            server_key: "grok-search",
+            tool_name: "web_search",
+            operation: "resolve_server",
+            enabled: true,
+            ready: false,
+            ready_reason: "command_not_found",
+            source: ".grobot/mcp.toml",
+            recovery_hint: "fix MCP server command/readiness before retrying",
+          },
+          recoverable: false,
+          requiresUserIntervention: true,
+          sameToolErrorCount: 1,
+          escalated: false,
+          escalationReason: null,
+          escalationPolicyVersion: "v1",
+          baseStage: null,
+          baseRecommendedNextAction: null,
+          observedAt,
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 function writeGateBlockedRecoverableToolRecoveryMetrics(workDir) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });
@@ -5091,6 +5164,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
     recovery_policy_escalation_ask_user_threshold:
       recoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    recovery_policy_escalation_environment_ask_user_threshold:
+      recoveryPolicy?.escalation?.environment_ask_user_threshold ?? null,
     recovery_policy_escalation_browser_environment_ask_user_threshold:
       recoveryPolicy?.escalation?.browser_environment_ask_user_threshold ?? null,
     recovery_policy_health_watch_threshold:
@@ -5142,6 +5217,7 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_policy:")
       && textResult.stdout.includes("timeline_max_entries=20")
       && textResult.stdout.includes("escalation_thresholds=2/3")
+      && textResult.stdout.includes("environment_ask_user_threshold=2")
       && textResult.stdout.includes("browser_environment_ask_user_threshold=2")
       && textResult.stdout.includes("health_thresholds=85/60"),
     text_has_recovery_readiness:
@@ -5170,6 +5246,30 @@ function browserEnvironmentRecoveryPlanSummary(plan) {
         action: null,
         retry_allowed: null,
         commands: null,
+      };
+}
+
+function mcpEnvironmentRecoveryPlanSummary(plan) {
+  return isObject(plan)
+    ? {
+        error_code: plan.error_code ?? null,
+        action: plan.action ?? null,
+        retry_allowed: plan.retry_allowed ?? null,
+        commands: Array.isArray(plan.commands) ? plan.commands.join("|") : null,
+        server: plan.server ?? null,
+        tool_name: plan.tool_name ?? null,
+        source_path: plan.source_path ?? null,
+        registry_paths: Array.isArray(plan.registry_paths) ? plan.registry_paths.join("|") : null,
+      }
+    : {
+        error_code: null,
+        action: null,
+        retry_allowed: null,
+        commands: null,
+        server: null,
+        tool_name: null,
+        source_path: null,
+        registry_paths: null,
       };
 }
 
@@ -5281,6 +5381,105 @@ function runStatusBrowserEnvironmentToolRecovery(repoRoot) {
     text_has_recovery_gate_browser_environment:
       textResult.stdout.includes("runtime_tool_recovery_gate:")
       && textResult.stdout.includes(textBrowserRecoverySnippet),
+  };
+}
+
+function runStatusMcpEnvironmentToolRecovery(repoRoot) {
+  const workDir = createTempDir("grobot-status-mcp-environment-recovery-work");
+  writeExecutionProjectToml(workDir);
+  writeMcpEnvironmentToolRecoveryMetrics(workDir);
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
+  const textResult = runCommand(repoRoot, statusArgs);
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeTools = isObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
+    ? runtimeTools.recovery_feedback
+    : null;
+  const recoveryTimeline = Array.isArray(runtimeTools?.recovery_timeline)
+    ? runtimeTools.recovery_timeline
+    : [];
+  const latestRecoveryTimeline = isObject(recoveryTimeline[0]) ? recoveryTimeline[0] : null;
+  const recoveryHealth = isObject(runtimeTools?.recovery_health)
+    ? runtimeTools.recovery_health
+    : null;
+  const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
+    ? runtimeTools.recovery_readiness
+    : null;
+  const recoveryGate = isObject(runtimeTools?.recovery_gate)
+    ? runtimeTools.recovery_gate
+    : null;
+  const feedbackPlan = mcpEnvironmentRecoveryPlanSummary(
+    recoveryFeedback?.mcp_environment_recovery,
+  );
+  const timelinePlan = mcpEnvironmentRecoveryPlanSummary(
+    latestRecoveryTimeline?.mcp_environment_recovery,
+  );
+  const healthAttentionPlan = mcpEnvironmentRecoveryPlanSummary(
+    recoveryHealth?.attention_mcp_environment_recovery,
+  );
+  const readinessAttentionPlan = mcpEnvironmentRecoveryPlanSummary(
+    recoveryReadiness?.attention_mcp_environment_recovery,
+  );
+  const gateAttentionPlan = mcpEnvironmentRecoveryPlanSummary(
+    recoveryGate?.attention_mcp_environment_recovery,
+  );
+  const textMcpRecoverySnippet =
+    "mcp_environment_recovery=code=SERVER_UNREADY action=fix_server_readiness_and_check_status retry_allowed=false server=grok-search tool=web_search source=.grobot/mcp.toml registry_paths=~/.grobot/mcp/servers.toml|.grobot/mcp.toml commands=grobot status --json";
+  return {
+    exit_code: jsonResult.exit_code,
+    text_exit_code: textResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
+    recovery_feedback_active: recoveryFeedback?.active ?? null,
+    recovery_feedback_stage: recoveryFeedback?.stage ?? null,
+    recovery_feedback_action: recoveryFeedback?.recommended_next_action ?? null,
+    recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
+    recovery_feedback_requires_user_intervention:
+      recoveryFeedback?.requires_user_intervention ?? null,
+    recovery_feedback_mcp_error_code: feedbackPlan.error_code,
+    recovery_feedback_mcp_action: feedbackPlan.action,
+    recovery_feedback_mcp_retry_allowed: feedbackPlan.retry_allowed,
+    recovery_feedback_mcp_commands: feedbackPlan.commands,
+    recovery_feedback_mcp_server: feedbackPlan.server,
+    recovery_feedback_mcp_tool_name: feedbackPlan.tool_name,
+    recovery_feedback_mcp_source_path: feedbackPlan.source_path,
+    recovery_feedback_mcp_registry_paths: feedbackPlan.registry_paths,
+    recovery_timeline_latest_stage: latestRecoveryTimeline?.stage ?? null,
+    recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_latest_error_class: latestRecoveryTimeline?.error_class ?? null,
+    recovery_timeline_latest_mcp_error_code: timelinePlan.error_code,
+    recovery_timeline_latest_mcp_action: timelinePlan.action,
+    recovery_timeline_latest_mcp_retry_allowed: timelinePlan.retry_allowed,
+    recovery_health_attention_mcp_error_code: healthAttentionPlan.error_code,
+    recovery_health_attention_mcp_action: healthAttentionPlan.action,
+    recovery_readiness_status: recoveryReadiness?.status ?? null,
+    recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
+    recovery_readiness_attention_mcp_error_code: readinessAttentionPlan.error_code,
+    recovery_readiness_attention_mcp_action: readinessAttentionPlan.action,
+    recovery_gate_status: recoveryGate?.status ?? null,
+    recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_attention_mcp_error_code: gateAttentionPlan.error_code,
+    recovery_gate_attention_mcp_action: gateAttentionPlan.action,
+    text_has_recovery_feedback_mcp_environment:
+      textResult.stdout.includes("runtime_tool_recovery_feedback:")
+      && textResult.stdout.includes(textMcpRecoverySnippet),
+    text_has_recovery_readiness_mcp_environment:
+      textResult.stdout.includes("runtime_tool_recovery_readiness:")
+      && textResult.stdout.includes(textMcpRecoverySnippet),
+    text_has_recovery_gate_mcp_environment:
+      textResult.stdout.includes("runtime_tool_recovery_gate:")
+      && textResult.stdout.includes(textMcpRecoverySnippet),
   };
 }
 
@@ -5408,6 +5607,8 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
     recovery_policy_escalation_ask_user_threshold:
       recoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    recovery_policy_escalation_environment_ask_user_threshold:
+      recoveryPolicy?.escalation?.environment_ask_user_threshold ?? null,
     recovery_policy_escalation_browser_environment_ask_user_threshold:
       recoveryPolicy?.escalation?.browser_environment_ask_user_threshold ?? null,
     recovery_policy_health_watch_threshold:
@@ -5455,6 +5656,7 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_policy:")
       && textResult.stdout.includes("timeline_max_entries=20")
       && textResult.stdout.includes("escalation_thresholds=2/3")
+      && textResult.stdout.includes("environment_ask_user_threshold=2")
       && textResult.stdout.includes("browser_environment_ask_user_threshold=2")
       && textResult.stdout.includes("health_thresholds=85/60"),
     text_has_recovery_readiness:
@@ -5854,6 +6056,9 @@ function runCli(argv) {
       break;
     case "status-browser-environment-tool-recovery":
       payload = runStatusBrowserEnvironmentToolRecovery(repoRoot);
+      break;
+    case "status-mcp-environment-tool-recovery":
+      payload = runStatusMcpEnvironmentToolRecovery(repoRoot);
       break;
     case "status-nonrecoverable-tool-recovery-consumed":
       payload = runStatusNonRecoverableToolRecoveryConsumed(repoRoot);

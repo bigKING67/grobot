@@ -47,6 +47,10 @@ import {
   formatBrowserEnvironmentRecoveryPlan,
   type BrowserEnvironmentRecoveryPlan,
 } from "../../../../tools/runtime/browser-environment-recovery";
+import {
+  formatMcpEnvironmentRecoveryPlan,
+  type McpEnvironmentRecoveryPlan,
+} from "../../../../tools/runtime/mcp-environment-recovery";
 import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
@@ -916,6 +920,24 @@ function serializeBrowserEnvironmentRecoveryPlan(
   };
 }
 
+function serializeMcpEnvironmentRecoveryPlan(
+  plan: McpEnvironmentRecoveryPlan | null,
+): Record<string, unknown> | null {
+  if (!plan) {
+    return null;
+  }
+  return {
+    error_code: plan.errorCode,
+    action: plan.action,
+    retry_allowed: plan.retryAllowed,
+    commands: plan.commands,
+    server: plan.server,
+    tool_name: plan.toolName,
+    source_path: plan.sourcePath,
+    registry_paths: plan.registryPaths,
+  };
+}
+
 function serializeRuntimeToolRecoveryFeedback(
   feedback: RuntimeToolRecoveryFeedback,
 ): Record<string, unknown> {
@@ -942,6 +964,8 @@ function serializeRuntimeToolRecoveryFeedback(
     observed_at: feedback.observedAt ?? null,
     browser_environment_recovery:
       serializeBrowserEnvironmentRecoveryPlan(feedback.browserEnvironmentRecovery ?? null),
+    mcp_environment_recovery:
+      serializeMcpEnvironmentRecoveryPlan(feedback.mcpEnvironmentRecovery ?? null),
   };
 }
 
@@ -956,6 +980,7 @@ function formatRuntimeToolRecoveryFeedbackFields(feedback: RuntimeToolRecoveryFe
     `stage=${feedback.stage ?? "<none>"}`,
     `action=${feedback.recommendedNextAction ?? "<none>"}`,
     `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(feedback.browserEnvironmentRecovery ?? null)}`,
+    `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(feedback.mcpEnvironmentRecovery ?? null)}`,
     formatRuntimeToolRecoveryEscalationFields(feedback),
   ].join(" ");
 }
@@ -978,6 +1003,7 @@ function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTim
     base_recovery_stage: entry.baseStage,
     base_recommended_next_action: entry.baseRecommendedNextAction,
     browser_environment_recovery: serializeBrowserEnvironmentRecoveryPlan(entry.browserEnvironmentRecovery),
+    mcp_environment_recovery: serializeMcpEnvironmentRecoveryPlan(entry.mcpEnvironmentRecovery),
     active: entry.active,
     consumed: entry.consumed,
     consumed_reason: entry.consumedReason,
@@ -999,6 +1025,8 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
     attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
     attention_browser_environment_recovery:
       serializeBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery),
+    attention_mcp_environment_recovery:
+      serializeMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery),
     attention_age_ms: summary.attentionAgeMs,
     latest_recommended_next_action: summary.latestRecommendedNextAction,
     timeline_entry_count: summary.timelineEntryCount,
@@ -1016,6 +1044,8 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
     latest_requires_user_intervention: summary.latestRequiresUserIntervention,
     latest_browser_environment_recovery:
       serializeBrowserEnvironmentRecoveryPlan(summary.latestBrowserEnvironmentRecovery),
+    latest_mcp_environment_recovery:
+      serializeMcpEnvironmentRecoveryPlan(summary.latestMcpEnvironmentRecovery),
     latest_age_ms: summary.latestAgeMs,
     components: summary.components,
     error_class_counts: summary.errorClassCounts,
@@ -1038,6 +1068,7 @@ function serializeRuntimeToolRecoveryPolicySummary(summary: RuntimeToolRecoveryP
     escalation: {
       same_tool_error_strategy_switch_threshold: summary.escalation.sameToolErrorStrategySwitchThreshold,
       same_tool_error_ask_user_threshold: summary.escalation.sameToolErrorAskUserThreshold,
+      environment_ask_user_threshold: summary.escalation.environmentAskUserThreshold,
       browser_environment_ask_user_threshold: summary.escalation.browserEnvironmentAskUserThreshold,
     },
     health: {
@@ -1076,6 +1107,8 @@ function serializeRuntimeToolRecoveryReadinessSummary(
     attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
     attention_browser_environment_recovery:
       serializeBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery),
+    attention_mcp_environment_recovery:
+      serializeMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery),
   };
 }
 
@@ -1107,6 +1140,8 @@ function serializeRuntimeToolRecoveryReadinessGate(
     attention_requires_user_intervention: gate.attentionRequiresUserIntervention,
     attention_browser_environment_recovery:
       serializeBrowserEnvironmentRecoveryPlan(gate.attentionBrowserEnvironmentRecovery),
+    attention_mcp_environment_recovery:
+      serializeMcpEnvironmentRecoveryPlan(gate.attentionMcpEnvironmentRecovery),
   };
 }
 
@@ -2569,7 +2604,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     `runtime_tool_recovery_health: score=${String(runtimeToolRecoveryHealth.score)} level=${runtimeToolRecoveryHealth.level} reason=${runtimeToolRecoveryHealth.reason} action=${runtimeToolRecoveryHealth.recommendedNextAction ?? "<none>"} attention_source=${runtimeToolRecoveryHealth.attentionSource} attention_key=${runtimeToolRecoveryHealth.attentionRecoveryKey ?? "<none>"} active=${String(runtimeToolRecoveryHealth.activeRecoveryCount)} active_nonrecoverable=${String(runtimeToolRecoveryHealth.activeNonrecoverableCount)} unconsumed=${String(runtimeToolRecoveryHealth.unconsumedCount)} stuck_nonrecoverable=${runtimeToolRecoveryHealth.hasStuckNonrecoverable ? "true" : "false"} latest_key=${runtimeToolRecoveryHealth.latestRecoveryKey ?? "<none>"}\n`,
   );
   process.stdout.write(
-    `runtime_tool_recovery_policy: version=${runtimeToolRecoveryPolicy.version} prompt_max_age_ms=${String(runtimeToolRecoveryPolicy.promptMaxAgeMs)} timeline_max_entries=${String(runtimeToolRecoveryPolicy.timelineMaxEntries)} adaptation_history_max_entries=${String(runtimeToolRecoveryPolicy.adaptationHistoryMaxEntries)} recovery_consumption_history_max_entries=${String(runtimeToolRecoveryPolicy.recoveryConsumptionHistoryMaxEntries)} guard_repeat_failures=${String(runtimeToolRecoveryPolicy.guard.repeatedProfileFailureThreshold)} guard_recent_profile_sequence=${String(runtimeToolRecoveryPolicy.guard.recentProfileSequenceSize)} guard_oscillation_window=${String(runtimeToolRecoveryPolicy.guard.oscillationProfileWindowSize)} escalation_thresholds=${String(runtimeToolRecoveryPolicy.escalation.sameToolErrorStrategySwitchThreshold)}/${String(runtimeToolRecoveryPolicy.escalation.sameToolErrorAskUserThreshold)} browser_environment_ask_user_threshold=${String(runtimeToolRecoveryPolicy.escalation.browserEnvironmentAskUserThreshold)} health_thresholds=${String(runtimeToolRecoveryPolicy.health.watchScoreThreshold)}/${String(runtimeToolRecoveryPolicy.health.riskScoreThreshold)} health_penalties=${String(runtimeToolRecoveryPolicy.health.penalties.activeRecovery)}/${String(runtimeToolRecoveryPolicy.health.penalties.activeNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.stuckNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.historicalUnconsumed)}\n`,
+    `runtime_tool_recovery_policy: version=${runtimeToolRecoveryPolicy.version} prompt_max_age_ms=${String(runtimeToolRecoveryPolicy.promptMaxAgeMs)} timeline_max_entries=${String(runtimeToolRecoveryPolicy.timelineMaxEntries)} adaptation_history_max_entries=${String(runtimeToolRecoveryPolicy.adaptationHistoryMaxEntries)} recovery_consumption_history_max_entries=${String(runtimeToolRecoveryPolicy.recoveryConsumptionHistoryMaxEntries)} guard_repeat_failures=${String(runtimeToolRecoveryPolicy.guard.repeatedProfileFailureThreshold)} guard_recent_profile_sequence=${String(runtimeToolRecoveryPolicy.guard.recentProfileSequenceSize)} guard_oscillation_window=${String(runtimeToolRecoveryPolicy.guard.oscillationProfileWindowSize)} escalation_thresholds=${String(runtimeToolRecoveryPolicy.escalation.sameToolErrorStrategySwitchThreshold)}/${String(runtimeToolRecoveryPolicy.escalation.sameToolErrorAskUserThreshold)} environment_ask_user_threshold=${String(runtimeToolRecoveryPolicy.escalation.environmentAskUserThreshold)} browser_environment_ask_user_threshold=${String(runtimeToolRecoveryPolicy.escalation.browserEnvironmentAskUserThreshold)} health_thresholds=${String(runtimeToolRecoveryPolicy.health.watchScoreThreshold)}/${String(runtimeToolRecoveryPolicy.health.riskScoreThreshold)} health_penalties=${String(runtimeToolRecoveryPolicy.health.penalties.activeRecovery)}/${String(runtimeToolRecoveryPolicy.health.penalties.activeNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.stuckNonrecoverable)}/${String(runtimeToolRecoveryPolicy.health.penalties.historicalUnconsumed)}\n`,
   );
   process.stdout.write(
     `runtime_tool_recovery_readiness: ${formatRuntimeToolRecoveryReadinessFields(runtimeToolRecoveryReadiness)}\n`,

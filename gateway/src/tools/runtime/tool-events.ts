@@ -7,6 +7,12 @@ import {
   browserEnvironmentRecoveryFixInstruction,
   type BrowserEnvironmentRecoveryPlan,
 } from "./browser-environment-recovery";
+import {
+  buildMcpEnvironmentRecoveryPlan,
+  mcpEnvironmentRecoveryActionInstruction,
+  mcpEnvironmentRecoveryFixInstruction,
+  type McpEnvironmentRecoveryPlan,
+} from "./mcp-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
 
 export type RuntimeToolRecoveryStage =
@@ -100,6 +106,7 @@ export interface RuntimeToolRecoveryFeedback {
   consumedReason?: string | null;
   consumedAt?: string | null;
   browserEnvironmentRecovery?: BrowserEnvironmentRecoveryPlan | null;
+  mcpEnvironmentRecovery?: McpEnvironmentRecoveryPlan | null;
 }
 
 interface RuntimeToolSurfaceMetricsState {
@@ -689,6 +696,13 @@ function browserEnvironmentRecoveryPlan(recovery: RuntimeToolRecoveryHint): Brow
   });
 }
 
+function mcpEnvironmentRecoveryPlan(recovery: RuntimeToolRecoveryHint): McpEnvironmentRecoveryPlan | null {
+  return buildMcpEnvironmentRecoveryPlan({
+    errorClass: recovery.errorClass,
+    errorData: recovery.errorData,
+  });
+}
+
 function applyRepeatedRecoveryEscalation(input: {
   recovery: RuntimeToolRecoveryHint;
   sameToolErrorCount: number;
@@ -704,7 +718,7 @@ function applyRepeatedRecoveryEscalation(input: {
   };
   if (
     browserEnvironmentRecoveryPlan(base)
-    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.browserEnvironmentAskUserThreshold
+    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.environmentAskUserThreshold
     && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
   ) {
     return {
@@ -715,6 +729,23 @@ function applyRepeatedRecoveryEscalation(input: {
       requiresUserIntervention: true,
       escalated: true,
       escalationReason: "browser_environment_error_repeated",
+      baseStage,
+      baseRecommendedNextAction,
+    };
+  }
+  if (
+    mcpEnvironmentRecoveryPlan(base)
+    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.environmentAskUserThreshold
+    && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
+  ) {
+    return {
+      ...common,
+      stage: "ask_user",
+      recommendedNextAction: "request_environment_fix",
+      recoverable: false,
+      requiresUserIntervention: true,
+      escalated: true,
+      escalationReason: "mcp_environment_error_repeated",
       baseStage,
       baseRecommendedNextAction,
     };
@@ -1043,6 +1074,13 @@ function actionInstruction(input: {
   if (browserActionInstruction) {
     return browserActionInstruction;
   }
+  const mcpActionInstruction =
+    input.action === "request_environment_fix"
+      ? mcpEnvironmentRecoveryActionInstruction(mcpEnvironmentRecoveryPlan(input.recovery))
+      : undefined;
+  if (mcpActionInstruction) {
+    return mcpActionInstruction;
+  }
   return isRuntimeToolRecoveryAction(input.action)
     ? RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS[input.action]
     : RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS.inspect_error_and_switch_strategy;
@@ -1092,6 +1130,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       promptBlock: "",
       observedAt: null,
       browserEnvironmentRecovery: null,
+      mcpEnvironmentRecovery: null,
     };
   }
   const nowMs = input.nowMs ?? Date.now();
@@ -1119,6 +1158,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
       browserEnvironmentRecovery: browserEnvironmentRecoveryPlan(recovery),
+      mcpEnvironmentRecovery: mcpEnvironmentRecoveryPlan(recovery),
     };
   }
   const ageMs = Math.max(0, nowMs - observedAtMs);
@@ -1144,9 +1184,11 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
       browserEnvironmentRecovery: browserEnvironmentRecoveryPlan(recovery),
+      mcpEnvironmentRecovery: mcpEnvironmentRecoveryPlan(recovery),
     };
   }
   const browserRecoveryPlan = browserEnvironmentRecoveryPlan(recovery);
+  const mcpRecoveryPlan = mcpEnvironmentRecoveryPlan(recovery);
   const instruction = actionInstruction({
     action: recovery.recommendedNextAction,
     recovery,
@@ -1163,6 +1205,9 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     : "Automatic recovery is allowed only after changing one concrete variable; do not repeat an identical failing tool call unchanged.";
   const environmentFixInstruction = browserEnvironmentRecoveryFixInstruction({
     plan: browserRecoveryPlan,
+    toolName,
+  }) ?? mcpEnvironmentRecoveryFixInstruction({
+    plan: mcpRecoveryPlan,
     toolName,
   });
   const promptBlock = [
@@ -1203,5 +1248,6 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     promptBlock,
     observedAt: recovery.observedAt ?? input.metrics.updatedAt,
     browserEnvironmentRecovery: browserRecoveryPlan,
+    mcpEnvironmentRecovery: mcpRecoveryPlan,
   };
 }

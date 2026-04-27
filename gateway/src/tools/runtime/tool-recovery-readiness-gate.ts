@@ -3,6 +3,10 @@ import {
   formatBrowserEnvironmentRecoveryPlan,
   type BrowserEnvironmentRecoveryPlan,
 } from "./browser-environment-recovery";
+import {
+  formatMcpEnvironmentRecoveryPlan,
+  type McpEnvironmentRecoveryPlan,
+} from "./mcp-environment-recovery";
 
 export type RuntimeToolRecoveryReadinessGateStatus = "pass" | "warn" | "fail";
 
@@ -41,6 +45,7 @@ export interface RuntimeToolRecoveryReadinessGateDecision {
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
+  attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
 }
 
 function gateStatus(input: RuntimeToolRecoveryReadinessSummary): {
@@ -118,6 +123,7 @@ export function buildRuntimeToolRecoveryReadinessGate(input: {
     attentionErrorClass: input.readiness.attentionErrorClass,
     attentionRequiresUserIntervention: input.readiness.attentionRequiresUserIntervention,
     attentionBrowserEnvironmentRecovery: input.readiness.attentionBrowserEnvironmentRecovery,
+    attentionMcpEnvironmentRecovery: input.readiness.attentionMcpEnvironmentRecovery,
   };
 }
 
@@ -137,6 +143,7 @@ export function formatRuntimeToolRecoveryGateFields(
     `attention_key=${gate.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${gate.attentionStage ?? "<none>"}`,
     `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(gate.attentionBrowserEnvironmentRecovery)}`,
+    `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(gate.attentionMcpEnvironmentRecovery)}`,
     `policy_version=${gate.policyVersion}`,
     `health=${gate.healthLevel}/${String(gate.healthScore)}`,
     `health_thresholds=${String(gate.watchScoreThreshold)}/${String(gate.riskScoreThreshold)}`,

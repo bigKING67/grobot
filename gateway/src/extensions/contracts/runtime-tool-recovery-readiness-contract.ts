@@ -45,6 +45,7 @@ function makeReadiness(
     attentionErrorClass: null,
     attentionRequiresUserIntervention: false,
     attentionBrowserEnvironmentRecovery: null,
+    attentionMcpEnvironmentRecovery: null,
     ...overrides,
   };
 }
@@ -62,6 +63,7 @@ function makeHealth(overrides: Partial<RuntimeToolRecoveryHealthSummary>): Runti
     attentionErrorClass: null,
     attentionRequiresUserIntervention: false,
     attentionBrowserEnvironmentRecovery: null,
+    attentionMcpEnvironmentRecovery: null,
     attentionAgeMs: null,
     latestRecommendedNextAction: null,
     timelineEntryCount: 0,
@@ -78,6 +80,7 @@ function makeHealth(overrides: Partial<RuntimeToolRecoveryHealthSummary>): Runti
     latestErrorClass: null,
     latestRequiresUserIntervention: false,
     latestBrowserEnvironmentRecovery: null,
+    latestMcpEnvironmentRecovery: null,
     latestAgeMs: null,
     components: {
       activeRecoveryPenalty: 0,
@@ -105,6 +108,7 @@ const customPolicy: RuntimeToolRecoveryPolicySnapshot = {
   escalation: {
     sameToolErrorStrategySwitchThreshold: 10,
     sameToolErrorAskUserThreshold: 11,
+    environmentAskUserThreshold: 12,
     browserEnvironmentAskUserThreshold: 12,
   },
   health: {

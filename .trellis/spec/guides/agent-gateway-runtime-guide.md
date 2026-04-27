@@ -183,20 +183,42 @@ Gateway status output should include route and cache observability fields:
 - `runtime_tool_recovery_policy.escalation`
   - `same_tool_error_strategy_switch_threshold`
   - `same_tool_error_ask_user_threshold`
+  - `environment_ask_user_threshold`
   - `browser_environment_ask_user_threshold`
 - `runtime_tool_recovery_feedback.browser_environment_recovery`
   - `error_code`
   - `action`
   - `retry_allowed`
   - `commands`
+- `runtime_tool_recovery_feedback.mcp_environment_recovery`
+  - `error_code`
+  - `action`
+  - `retry_allowed`
+  - `commands`
+  - `server`
+  - `tool_name`
+  - `source_path`
+  - `registry_paths`
 - `runtime_tool_recovery_timeline[*].browser_environment_recovery`
   - `error_code`
   - `action`
   - `retry_allowed`
   - `commands`
+- `runtime_tool_recovery_timeline[*].mcp_environment_recovery`
+  - `error_code`
+  - `action`
+  - `retry_allowed`
+  - `commands`
+  - `server`
+  - `tool_name`
+  - `source_path`
+  - `registry_paths`
 - `runtime_tool_recovery_health.attention_browser_environment_recovery`
+- `runtime_tool_recovery_health.attention_mcp_environment_recovery`
 - `runtime_tool_recovery_readiness.attention_browser_environment_recovery`
+- `runtime_tool_recovery_readiness.attention_mcp_environment_recovery`
 - `runtime_tool_recovery_gate.attention_browser_environment_recovery`
+- `runtime_tool_recovery_gate.attention_mcp_environment_recovery`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
@@ -210,6 +232,13 @@ browser tool until `grobot browser doctor` confirms the environment is ready. Th
 `Browser environment fix:` line must carry the concrete recovery plan commands
 (`grobot browser setup`, `grobot browser hub start`, `grobot browser doctor`) and the specific
 retry prerequisite for the observed error code.
+
+MCP environment recovery follows the same fail-fast discipline for configuration/readiness issues.
+`mcp_server_not_found`, `mcp_server_unready`, and repeated `mcp_spawn_failed` must surface an
+operator recovery plan instead of encouraging blind retries. The plan points to
+`~/.grobot/mcp/servers.toml` and `.grobot/mcp.toml`, preserves the runtime-reported `source_path`
+when available, includes `grobot status --json` as the readiness check, and blocks automatic
+`mcp_call` retry until status shows the target server is configured and ready.
 
 ---
 

@@ -19,6 +19,7 @@ import {
   browserEnvironmentRecoveryFixInstruction,
   buildBrowserEnvironmentRecoveryPlan,
 } from "../../tools/runtime/browser-environment-recovery";
+import { buildMcpEnvironmentRecoveryPlan } from "../../tools/runtime/mcp-environment-recovery";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -125,9 +126,14 @@ expectEqual(
   "missing action uses cataloged default",
 );
 expectEqual(
+  getRuntimeToolRecoveryPolicySnapshot().escalation.environmentAskUserThreshold,
+  2,
+  "environment recovery escalation threshold is exposed by policy",
+);
+expectEqual(
   getRuntimeToolRecoveryPolicySnapshot().escalation.browserEnvironmentAskUserThreshold,
   2,
-  "browser environment recovery escalation threshold is exposed by policy",
+  "browser environment recovery escalation compatibility threshold is exposed by policy",
 );
 
 const structuredRecoveryObservedAt = "2026-04-25T00:00:30.000Z";
@@ -338,6 +344,136 @@ expect(
 expect(
   mcpObservedResultFeedback.promptBlock.includes("result_preview=\"bad args\""),
   "feedback summarizes MCP tool result preview",
+);
+
+const mcpEnvironmentObservedAt = "2026-04-25T00:00:30.000Z";
+const mcpEnvironmentFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: mcpEnvironmentObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { mcp_call: 1 },
+    failuresByErrorClass: { mcp_server_unready: 1 },
+    recoveryStages: { ask_user: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "ask_user",
+      reason: "mcp_server_unready",
+      recommendedNextAction: "request_environment_fix",
+      toolName: "mcp_call",
+      errorClass: "mcp_server_unready",
+      errorData: {
+        diagnostic_kind: "mcp_server_unready",
+        server: "grok-search",
+        server_key: "grok-search",
+        tool_name: "web_search",
+        operation: "resolve_server",
+        enabled: true,
+        ready: false,
+        ready_reason: "command_not_found",
+        source: "/tmp/.grobot/mcp.toml",
+        recovery_hint: "fix MCP server command/readiness before retrying",
+      },
+      recoverable: false,
+      requiresUserIntervention: true,
+      observedAt: mcpEnvironmentObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-mcp-environment",
+  },
+  nowMs: Date.parse(mcpEnvironmentObservedAt),
+});
+expectEqual(
+  mcpEnvironmentFeedback.mcpEnvironmentRecovery?.errorCode,
+  "SERVER_UNREADY",
+  "MCP environment feedback exposes recovery error code",
+);
+expectEqual(
+  mcpEnvironmentFeedback.mcpEnvironmentRecovery?.action,
+  "fix_server_readiness_and_check_status",
+  "MCP environment feedback exposes recovery action",
+);
+expectEqual(
+  mcpEnvironmentFeedback.mcpEnvironmentRecovery?.sourcePath,
+  "/tmp/.grobot/mcp.toml",
+  "MCP environment feedback preserves source config path",
+);
+expectEqual(
+  mcpEnvironmentFeedback.mcpEnvironmentRecovery?.retryAllowed,
+  false,
+  "MCP environment feedback blocks retry",
+);
+expect(
+  mcpEnvironmentFeedback.promptBlock.includes("Execution rule: Ask the user to repair MCP server configuration"),
+  "MCP environment feedback uses MCP-specific execution rule",
+);
+expect(
+  mcpEnvironmentFeedback.promptBlock.includes("MCP environment fix: Do not retry mcp_call automatically."),
+  "MCP environment feedback includes MCP fix instruction",
+);
+expect(
+  mcpEnvironmentFeedback.promptBlock.includes("status reports ready=true"),
+  "MCP environment feedback waits for ready status",
+);
+expect(
+  mcpEnvironmentFeedback.promptBlock.includes("`~/.grobot/mcp/servers.toml` or `.grobot/mcp.toml`"),
+  "MCP environment feedback points to registry paths",
+);
+
+const mcpEnvironmentRecoveryCases = [
+  {
+    errorClass: "mcp_server_not_found",
+    errorCode: "SERVER_NOT_FOUND",
+    action: "configure_server_and_check_status",
+  },
+  {
+    errorClass: "mcp_server_unready",
+    errorCode: "SERVER_UNREADY",
+    action: "fix_server_readiness_and_check_status",
+  },
+  {
+    errorClass: "mcp_spawn_failed",
+    errorCode: "SPAWN_FAILED",
+    action: "fix_server_command_and_check_status",
+  },
+] as const;
+for (const recoveryCase of mcpEnvironmentRecoveryCases) {
+  const plan = buildMcpEnvironmentRecoveryPlan({
+    errorClass: recoveryCase.errorClass,
+    errorData: {
+      server: "grok-search",
+      tool_name: "web_search",
+      source: ".grobot/mcp.toml",
+    },
+  });
+  expect(plan !== null, `MCP environment plan exists for ${recoveryCase.errorClass}`);
+  expectEqual(plan?.errorCode, recoveryCase.errorCode, `MCP environment plan code ${recoveryCase.errorClass}`);
+  expectEqual(plan?.action, recoveryCase.action, `MCP environment plan action ${recoveryCase.errorClass}`);
+  expectEqual(plan?.retryAllowed, false, `MCP environment plan retry flag ${recoveryCase.errorClass}`);
+  expectEqual(plan?.commands.join("|"), "grobot status --json", `MCP environment plan commands ${recoveryCase.errorClass}`);
+  expectEqual(plan?.server, "grok-search", `MCP environment plan server ${recoveryCase.errorClass}`);
+  expectEqual(plan?.toolName, "web_search", `MCP environment plan tool ${recoveryCase.errorClass}`);
+  expectEqual(plan?.sourcePath, ".grobot/mcp.toml", `MCP environment plan source ${recoveryCase.errorClass}`);
+  expectEqual(
+    plan?.registryPaths.join("|"),
+    "~/.grobot/mcp/servers.toml|.grobot/mcp.toml",
+    `MCP environment plan registry paths ${recoveryCase.errorClass}`,
+  );
+}
+expectEqual(
+  buildMcpEnvironmentRecoveryPlan({
+    errorClass: "mcp_timeout",
+    errorData: {
+      server: "grok-search",
+    },
+  }),
+  null,
+  "MCP timeout is not an environment recovery plan",
 );
 
 const semanticStructuredFeedback = buildRuntimeToolRecoveryFeedback({
@@ -969,6 +1105,96 @@ try {
   );
 } finally {
   rmSync(browserRepeatedWorkDir, { recursive: true, force: true });
+}
+
+const mcpRepeatedWorkDir = join(
+  "/tmp",
+  `grobot-runtime-tool-mcp-repeated-${String(process.pid)}-${String(Date.now())}`,
+);
+mkdirSync(mcpRepeatedWorkDir, { recursive: true });
+try {
+  const mcpRepeatedRecoveryEvents: RuntimeEvent[] = [
+    event("tool_end", {
+      tool_name: "mcp_call",
+      status: "failed",
+      error_class: "mcp_spawn_failed",
+      duration_ms: 9,
+    }),
+    event("tool_recovery", {
+      tool_name: "mcp_call",
+      error_class: "mcp_spawn_failed",
+      error_message: "failed to spawn MCP server `npx`: command not found",
+      error_data: {
+        diagnostic_kind: "mcp_spawn_failed",
+        server: "grok-search",
+        server_key: "grok-search",
+        tool_name: "web_search",
+        operation: "spawn_server",
+        command: "npx",
+        recovery_hint: "fix MCP server command/configuration before retrying",
+      },
+      recovery_stage: "strategy_switch",
+      recovery_reason: "mcp_spawn_failed",
+      recommended_next_action: "retry_with_smaller_scope_or_wait",
+      recoverable: true,
+    }),
+  ];
+
+  const mcpFirst = recordRuntimeToolSurfaceMetrics({
+    workDir: mcpRepeatedWorkDir,
+    events: mcpRepeatedRecoveryEvents,
+  });
+  expectEqual(mcpFirst.latestRecovery?.stage, "strategy_switch", "MCP first recovery stays strategy switch");
+  expectEqual(mcpFirst.latestRecovery?.sameToolErrorCount, 1, "MCP first recovery count");
+  expectEqual(mcpFirst.latestRecovery?.escalated, false, "MCP first recovery not escalated");
+
+  const mcpSecond = recordRuntimeToolSurfaceMetrics({
+    workDir: mcpRepeatedWorkDir,
+    events: mcpRepeatedRecoveryEvents,
+  });
+  const mcpSecondFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: mcpSecond,
+    nowMs: Date.parse(mcpSecond.latestRecovery?.observedAt ?? ""),
+  });
+  expectEqual(mcpSecond.latestRecovery?.stage, "ask_user", "MCP repeated environment recovery asks user");
+  expectEqual(
+    mcpSecond.latestRecovery?.recommendedNextAction,
+    "request_environment_fix",
+    "MCP repeated recovery asks environment fix",
+  );
+  expectEqual(mcpSecond.latestRecovery?.recoverable, false, "MCP repeated recovery blocks automatic retry");
+  expectEqual(mcpSecond.latestRecovery?.requiresUserIntervention, true, "MCP repeated recovery requires intervention");
+  expectEqual(mcpSecond.latestRecovery?.sameToolErrorCount, 2, "MCP repeated recovery count");
+  expectEqual(mcpSecond.latestRecovery?.escalated, true, "MCP repeated recovery escalated flag");
+  expectEqual(
+    mcpSecond.latestRecovery?.escalationReason,
+    "mcp_environment_error_repeated",
+    "MCP repeated recovery reason",
+  );
+  expectEqual(
+    mcpSecondFeedback.mcpEnvironmentRecovery?.errorCode,
+    "SPAWN_FAILED",
+    "MCP repeated feedback exposes recovery error code",
+  );
+  expectEqual(
+    mcpSecondFeedback.mcpEnvironmentRecovery?.action,
+    "fix_server_command_and_check_status",
+    "MCP repeated feedback exposes recovery action",
+  );
+  expect(
+    mcpSecondFeedback.promptBlock.includes("Execution rule: Ask the user to repair MCP server configuration"),
+    "MCP repeated feedback uses MCP-specific execution rule",
+  );
+  expect(
+    mcpSecondFeedback.promptBlock.includes("MCP environment fix: Do not retry mcp_call automatically."),
+    "MCP repeated feedback blocks automatic MCP retry",
+  );
+  expect(
+    mcpSecondFeedback.promptBlock.includes("mcp_environment_error_repeated"),
+    "MCP repeated feedback includes MCP escalation reason",
+  );
+} finally {
+  rmSync(mcpRepeatedWorkDir, { recursive: true, force: true });
 }
 
 const browserTimeoutWorkDir = join(

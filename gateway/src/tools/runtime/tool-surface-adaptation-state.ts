@@ -800,6 +800,7 @@ export function applyRuntimeToolRecoveryConsumption(input: {
       consumedReason: null,
       consumedAt: null,
       browserEnvironmentRecovery: input.feedback.browserEnvironmentRecovery ?? null,
+      mcpEnvironmentRecovery: input.feedback.mcpEnvironmentRecovery ?? null,
     };
   }
   return {
@@ -812,6 +813,7 @@ export function applyRuntimeToolRecoveryConsumption(input: {
     consumedReason: consumption.consumedReason,
     consumedAt: consumption.consumedAt,
     browserEnvironmentRecovery: input.feedback.browserEnvironmentRecovery ?? null,
+    mcpEnvironmentRecovery: input.feedback.mcpEnvironmentRecovery ?? null,
   };
 }
 

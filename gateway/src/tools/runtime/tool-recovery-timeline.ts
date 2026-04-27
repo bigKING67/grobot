@@ -12,6 +12,10 @@ import {
   buildBrowserEnvironmentRecoveryPlan,
   type BrowserEnvironmentRecoveryPlan,
 } from "./browser-environment-recovery";
+import {
+  buildMcpEnvironmentRecoveryPlan,
+  type McpEnvironmentRecoveryPlan,
+} from "./mcp-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY, type RuntimeToolRecoveryPolicySnapshot } from "./tool-recovery-policy";
 
 export interface RuntimeToolRecoveryIdentityInput {
@@ -38,6 +42,7 @@ export interface RuntimeToolRecoveryTimelineEntry {
   baseStage: RuntimeToolRecoveryStage | null;
   baseRecommendedNextAction: string | null;
   browserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
+  mcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   active: boolean;
   consumed: boolean;
   consumedReason: string | null;
@@ -61,6 +66,7 @@ export interface RuntimeToolRecoveryHealthSummary {
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
+  attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   attentionAgeMs: number | null;
   latestRecommendedNextAction: string | null;
   timelineEntryCount: number;
@@ -77,6 +83,7 @@ export interface RuntimeToolRecoveryHealthSummary {
   latestErrorClass: string | null;
   latestRequiresUserIntervention: boolean;
   latestBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
+  latestMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   latestAgeMs: number | null;
   components: {
     activeRecoveryPenalty: number;
@@ -206,6 +213,10 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         errorClass: recovery.errorClass,
         errorData: recovery.errorData,
       });
+      const mcpEnvironmentRecovery = buildMcpEnvironmentRecoveryPlan({
+        errorClass: recovery.errorClass,
+        errorData: recovery.errorData,
+      });
       return {
         recoveryKey,
         observedAt,
@@ -223,6 +234,7 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         baseStage: recovery.baseStage ?? null,
         baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
         browserEnvironmentRecovery,
+        mcpEnvironmentRecovery,
         active:
           input.recoveryFeedback.active
           && matchesFeedbackRecovery({
@@ -337,6 +349,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     attentionErrorClass: attentionEntry?.errorClass ?? null,
     attentionRequiresUserIntervention: attentionEntry?.requiresUserIntervention ?? false,
     attentionBrowserEnvironmentRecovery: attentionEntry?.browserEnvironmentRecovery ?? null,
+    attentionMcpEnvironmentRecovery: attentionEntry?.mcpEnvironmentRecovery ?? null,
     attentionAgeMs,
     latestRecommendedNextAction: latest?.recommendedNextAction ?? null,
     timelineEntryCount: input.timeline.length,
@@ -353,6 +366,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     latestErrorClass: latest?.errorClass ?? null,
     latestRequiresUserIntervention: latest?.requiresUserIntervention ?? false,
     latestBrowserEnvironmentRecovery: latest?.browserEnvironmentRecovery ?? null,
+    latestMcpEnvironmentRecovery: latest?.mcpEnvironmentRecovery ?? null,
     latestAgeMs,
     components: {
       activeRecoveryPenalty,
