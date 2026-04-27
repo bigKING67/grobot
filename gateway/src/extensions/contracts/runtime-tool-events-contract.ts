@@ -18,8 +18,12 @@ import {
   browserEnvironmentRecoveryActionInstruction,
   browserEnvironmentRecoveryFixInstruction,
   buildBrowserEnvironmentRecoveryPlan,
+  formatBrowserEnvironmentRecoveryPlan,
 } from "../../tools/runtime/browser-environment-recovery";
-import { buildMcpEnvironmentRecoveryPlan } from "../../tools/runtime/mcp-environment-recovery";
+import {
+  buildMcpEnvironmentRecoveryPlan,
+  formatMcpEnvironmentRecoveryPlan,
+} from "../../tools/runtime/mcp-environment-recovery";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -500,7 +504,12 @@ for (const recoveryCase of mcpEnvironmentRecoveryCases) {
     "~/.grobot/mcp/servers.toml|.grobot/mcp.toml",
     `MCP environment plan registry paths ${recoveryCase.errorClass}`,
   );
+  expect(
+    formatMcpEnvironmentRecoveryPlan(plan).includes("commands=grobot status --json"),
+    `MCP environment formatter keeps commands ${recoveryCase.errorClass}`,
+  );
 }
+expectEqual(formatMcpEnvironmentRecoveryPlan(null), "<none>", "MCP environment formatter handles null");
 expectEqual(
   buildMcpEnvironmentRecoveryPlan({
     errorClass: "mcp_timeout",
@@ -691,6 +700,10 @@ for (const recoveryCase of browserEnvironmentRecoveryCases) {
   );
   const actionInstruction = browserEnvironmentRecoveryActionInstruction(plan);
   expect(
+    formatBrowserEnvironmentRecoveryPlan(plan).includes(`commands=${recoveryCase.commands.join("|")}`),
+    `browser environment formatter keeps commands ${recoveryCase.errorCode}`,
+  );
+  expect(
     actionInstruction?.includes("Ask the user to repair the browser environment") === true,
     `browser environment action instruction asks repair ${recoveryCase.errorCode}`,
   );
@@ -713,6 +726,7 @@ for (const recoveryCase of browserEnvironmentRecoveryCases) {
     );
   }
 }
+expectEqual(formatBrowserEnvironmentRecoveryPlan(null), "<none>", "browser environment formatter handles null");
 expectEqual(
   buildBrowserEnvironmentRecoveryPlan({
     errorClass: "browser_backend_result_error",

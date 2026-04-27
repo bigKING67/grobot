@@ -1,3 +1,13 @@
+import {
+  buildEnvironmentRecoveryCore,
+  formatEnvironmentCommands,
+  formatEnvironmentRecoveryCoreFields,
+  formatPipeList,
+  stringField,
+  stringListField,
+  type EnvironmentRecoveryPlanCore,
+} from "./environment-recovery";
+
 export type McpEnvironmentRecoveryErrorCode =
   | "SERVER_NOT_FOUND"
   | "SERVER_UNREADY"
@@ -8,11 +18,8 @@ export type McpEnvironmentRecoveryAction =
   | "fix_server_readiness_and_check_status"
   | "fix_server_command_and_check_status";
 
-export interface McpEnvironmentRecoveryPlan {
-  errorCode: McpEnvironmentRecoveryErrorCode;
-  action: McpEnvironmentRecoveryAction;
-  retryAllowed: false;
-  commands: string[];
+export interface McpEnvironmentRecoveryPlan
+  extends EnvironmentRecoveryPlanCore<McpEnvironmentRecoveryErrorCode, McpEnvironmentRecoveryAction> {
   server: string | null;
   toolName: string | null;
   sourcePath: string | null;
@@ -27,31 +34,17 @@ const MCP_REGISTRY_PATHS = [
   ".grobot/mcp.toml",
 ];
 
-function stringField(record: Record<string, unknown> | undefined, key: string): string | null {
-  const value = record?.[key];
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function stringListField(record: Record<string, unknown> | undefined, key: string): string[] {
-  const value = record?.[key];
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    .map((item) => item.trim());
-}
-
 function baseMcpEnvironmentPlan(input: {
   errorData: Record<string, unknown> | undefined;
   errorCode: McpEnvironmentRecoveryErrorCode;
   action: McpEnvironmentRecoveryAction;
 }): McpEnvironmentRecoveryPlan {
   return {
-    errorCode: input.errorCode,
-    action: input.action,
-    retryAllowed: false,
-    commands: ["grobot status --json"],
+    ...buildEnvironmentRecoveryCore({
+      errorCode: input.errorCode,
+      action: input.action,
+      commands: ["grobot status --json"],
+    }),
     server: stringField(input.errorData, "server"),
     toolName: stringField(input.errorData, "tool_name"),
     sourcePath: stringField(input.errorData, "source"),
@@ -96,23 +89,15 @@ export function formatMcpEnvironmentRecoveryPlan(
   if (!plan) {
     return "<none>";
   }
-  return [
-    `code=${plan.errorCode}`,
-    `action=${plan.action}`,
-    `retry_allowed=${plan.retryAllowed ? "true" : "false"}`,
+  return formatEnvironmentRecoveryCoreFields(plan, [
     `server=${plan.server ?? "<none>"}`,
     `tool=${plan.toolName ?? "<none>"}`,
     `source=${plan.sourcePath ?? "<none>"}`,
     `ready_reason=${plan.readyReason ?? "<none>"}`,
     `command=${plan.command ?? "<none>"}`,
-    `available_servers=${plan.availableServers.length > 0 ? plan.availableServers.join("|") : "<none>"}`,
-    `registry_paths=${plan.registryPaths.join("|")}`,
-    `commands=${plan.commands.join("|")}`,
-  ].join(" ");
-}
-
-function formatMcpEnvironmentCommands(plan: McpEnvironmentRecoveryPlan): string {
-  return plan.commands.map((command) => `\`${command}\``).join(", then ");
+    `available_servers=${formatPipeList(plan.availableServers)}`,
+    `registry_paths=${formatPipeList(plan.registryPaths)}`,
+  ]);
 }
 
 function formatMcpRegistryPaths(plan: McpEnvironmentRecoveryPlan): string {
@@ -127,7 +112,7 @@ export function mcpEnvironmentRecoveryActionInstruction(
   }
   return [
     `Ask the user to repair MCP server configuration for ${plan.server ?? "the selected server"};`,
-    `inspect readiness with ${formatMcpEnvironmentCommands(plan)}, update ${formatMcpRegistryPaths(plan)} if needed,`,
+    `inspect readiness with ${formatEnvironmentCommands(plan)}, update ${formatMcpRegistryPaths(plan)} if needed,`,
     "and do not retry the MCP tool until status shows the server is ready.",
   ].join(" ");
 }
@@ -141,7 +126,7 @@ export function mcpEnvironmentRecoveryFixInstruction(input: {
     return undefined;
   }
   const server = plan.server ?? "the selected MCP server";
-  const statusCommand = formatMcpEnvironmentCommands(plan);
+  const statusCommand = formatEnvironmentCommands(plan);
   const registryPaths = formatMcpRegistryPaths(plan);
   if (plan.errorCode === "SERVER_NOT_FOUND") {
     const availableServers = plan.availableServers.length > 0

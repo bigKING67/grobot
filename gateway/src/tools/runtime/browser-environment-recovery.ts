@@ -1,3 +1,11 @@
+import {
+  buildEnvironmentRecoveryCore,
+  formatEnvironmentCommands,
+  formatEnvironmentRecoveryCoreFields,
+  stringEnumField,
+  type EnvironmentRecoveryPlanCore,
+} from "./environment-recovery";
+
 export type BrowserEnvironmentRecoveryErrorCode =
   | "NO_EXTENSION"
   | "NO_SESSION"
@@ -8,12 +16,8 @@ export type BrowserEnvironmentRecoveryAction =
   | "reconnect_session_and_doctor"
   | "start_hub_and_doctor";
 
-export interface BrowserEnvironmentRecoveryPlan {
-  errorCode: BrowserEnvironmentRecoveryErrorCode;
-  action: BrowserEnvironmentRecoveryAction;
-  retryAllowed: false;
-  commands: string[];
-}
+export type BrowserEnvironmentRecoveryPlan =
+  EnvironmentRecoveryPlanCore<BrowserEnvironmentRecoveryErrorCode, BrowserEnvironmentRecoveryAction>;
 
 const BROWSER_ENVIRONMENT_ERROR_CODES = new Set<string>([
   "NO_EXTENSION",
@@ -24,14 +28,11 @@ const BROWSER_ENVIRONMENT_ERROR_CODES = new Set<string>([
 export function browserEnvironmentErrorCode(
   errorData: Record<string, unknown> | undefined,
 ): BrowserEnvironmentRecoveryErrorCode | undefined {
-  const value = errorData?.error_code;
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return BROWSER_ENVIRONMENT_ERROR_CODES.has(trimmed)
-    ? trimmed as BrowserEnvironmentRecoveryErrorCode
-    : undefined;
+  return stringEnumField<BrowserEnvironmentRecoveryErrorCode>(
+    errorData,
+    "error_code",
+    BROWSER_ENVIRONMENT_ERROR_CODES,
+  );
 }
 
 export function buildBrowserEnvironmentRecoveryPlan(input: {
@@ -44,26 +45,29 @@ export function buildBrowserEnvironmentRecoveryPlan(input: {
   const errorCode = browserEnvironmentErrorCode(input.errorData);
   if (errorCode === "NO_EXTENSION") {
     return {
-      errorCode,
-      action: "setup_and_doctor",
-      retryAllowed: false,
-      commands: ["grobot browser setup", "grobot browser doctor"],
+      ...buildEnvironmentRecoveryCore({
+        errorCode,
+        action: "setup_and_doctor",
+        commands: ["grobot browser setup", "grobot browser doctor"],
+      }),
     };
   }
   if (errorCode === "NO_SESSION") {
     return {
-      errorCode,
-      action: "reconnect_session_and_doctor",
-      retryAllowed: false,
-      commands: ["grobot browser hub start", "grobot browser doctor"],
+      ...buildEnvironmentRecoveryCore({
+        errorCode,
+        action: "reconnect_session_and_doctor",
+        commands: ["grobot browser hub start", "grobot browser doctor"],
+      }),
     };
   }
   if (errorCode === "TRANSPORT_UNAVAILABLE") {
     return {
-      errorCode,
-      action: "start_hub_and_doctor",
-      retryAllowed: false,
-      commands: ["grobot browser hub start", "grobot browser doctor"],
+      ...buildEnvironmentRecoveryCore({
+        errorCode,
+        action: "start_hub_and_doctor",
+        commands: ["grobot browser hub start", "grobot browser doctor"],
+      }),
     };
   }
   return null;
@@ -72,19 +76,7 @@ export function buildBrowserEnvironmentRecoveryPlan(input: {
 export function formatBrowserEnvironmentRecoveryPlan(
   plan: BrowserEnvironmentRecoveryPlan | null | undefined,
 ): string {
-  if (!plan) {
-    return "<none>";
-  }
-  return [
-    `code=${plan.errorCode}`,
-    `action=${plan.action}`,
-    `retry_allowed=${plan.retryAllowed ? "true" : "false"}`,
-    `commands=${plan.commands.join("|")}`,
-  ].join(" ");
-}
-
-function formatBrowserEnvironmentCommands(plan: BrowserEnvironmentRecoveryPlan): string {
-  return plan.commands.map((command) => `\`${command}\``).join(", then ");
+  return formatEnvironmentRecoveryCoreFields(plan);
 }
 
 export function browserEnvironmentRecoveryActionInstruction(
@@ -94,7 +86,7 @@ export function browserEnvironmentRecoveryActionInstruction(
     return undefined;
   }
   return [
-    `Ask the user to repair the browser environment with ${formatBrowserEnvironmentCommands(plan)};`,
+    `Ask the user to repair the browser environment with ${formatEnvironmentCommands(plan)};`,
     "do not retry the browser tool until `grobot browser doctor` confirms the environment is ready.",
   ].join(" ");
 }
@@ -107,7 +99,7 @@ export function browserEnvironmentRecoveryFixInstruction(input: {
   if (!plan) {
     return undefined;
   }
-  const commands = formatBrowserEnvironmentCommands(plan);
+  const commands = formatEnvironmentCommands(plan);
   if (plan.errorCode === "NO_EXTENSION") {
     return `Browser environment fix: Do not retry ${toolName} automatically. Ask the user to run ${commands}; retry only after the browser extension is connected.`;
   }
