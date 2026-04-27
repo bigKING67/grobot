@@ -14,7 +14,13 @@ fn acquire_file_mutation_lock(target: &Path) -> Result<Arc<Mutex<()>>, ToolExecu
     let key = target.to_string_lossy().to_string();
     let mut store = file_mutation_queue_store()
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to lock file mutation queue store"))?;
+        .map_err(|_| {
+            runtime_state_unavailable_error(
+                "failed to lock file mutation queue store",
+                "file_mutation_queue",
+                None,
+            )
+        })?;
     if store.locks.len() > FILE_MUTATION_LOCK_MAX_TRACKED {
         store.locks.retain(|_, lock| Arc::strong_count(lock) > 1);
     }

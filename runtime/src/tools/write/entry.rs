@@ -21,7 +21,13 @@ fn run_write(
     let file_lock = acquire_file_mutation_lock(&target)?;
     let _file_guard = file_lock
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to acquire write file lock"))?;
+        .map_err(|_| {
+            runtime_state_unavailable_error(
+                "failed to acquire write file lock",
+                "write_file_lock",
+                Some(context.work_dir.to_string_lossy().as_ref()),
+            )
+        })?;
 
     let existed_before = target.exists();
     let (operation, preserved_permissions) = if existed_before {

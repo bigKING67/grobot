@@ -290,6 +290,9 @@ configuration (`model_config.api_key`, `model_config.base_url`,
 `provider_options.kimi.files_enabled=true`, or `kimi-k2.5`) when available. Tool-context and runtime
 state failures block automatic retry until `grobot status --json` confirms a valid workspace/tool
 context or the current grobot session has been restarted after state remains unavailable.
+Rust runtime environment errors should carry structured `error_data` with `diagnostic_kind`,
+`recovery_hint`, `source`, and `work_dir` when available; gateway recovery plans must prefer these
+fields over parsing free-form error messages.
 
 The readiness gate keeps the high-level `reason` stable for policy compatibility, but must also
 expose a concrete blocker triplet. Environment-plan blockers use `blocker_kind` to identify the

@@ -113,6 +113,54 @@ impl ToolExecutionError {
     }
 }
 
+fn runtime_environment_error_data(
+    diagnostic_kind: &str,
+    recovery_hint: &str,
+    source: &str,
+    work_dir: Option<&str>,
+) -> Value {
+    let mut data = Map::new();
+    data.insert("diagnostic_kind".to_string(), json!(diagnostic_kind));
+    data.insert("recovery_hint".to_string(), json!(recovery_hint));
+    data.insert("source".to_string(), json!(source));
+    if let Some(value) = work_dir.map(str::trim).filter(|value| !value.is_empty()) {
+        data.insert("work_dir".to_string(), json!(value));
+    }
+    Value::Object(data)
+}
+
+fn runtime_environment_error(
+    error_class: &str,
+    message: impl Into<String>,
+    diagnostic_kind: &str,
+    recovery_hint: &str,
+    source: &str,
+    work_dir: Option<&str>,
+) -> ToolExecutionError {
+    ToolExecutionError::new(error_class, message)
+        .with_data(runtime_environment_error_data(
+            diagnostic_kind,
+            recovery_hint,
+            source,
+            work_dir,
+        ))
+}
+
+fn runtime_state_unavailable_error(
+    message: impl Into<String>,
+    source: &str,
+    work_dir: Option<&str>,
+) -> ToolExecutionError {
+    runtime_environment_error(
+        "runtime_state_unavailable",
+        message,
+        "runtime_state_unavailable",
+        "inspect runtime state with grobot status --json; restart the current session if state remains unavailable",
+        source,
+        work_dir,
+    )
+}
+
 fn path_resolution_error_data(
     raw_path: &str,
     candidate: Option<&Path>,
@@ -1112,7 +1160,11 @@ fn lock_runtime_store(
 ) -> Result<std::sync::MutexGuard<'static, McpRuntimeStore>, ToolExecutionError> {
     runtime_store()
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to lock MCP runtime state"))
+        .map_err(|_| runtime_state_unavailable_error(
+            "failed to lock MCP runtime state",
+            "mcp_runtime_store",
+            None,
+        ))
 }
 
 fn current_epoch_secs() -> u64 {
@@ -1786,23 +1838,49 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
     let tool_context = input
         .tool_context
         .as_ref()
-        .ok_or_else(|| ToolExecutionError::new("tool_context_missing", "runtime tool context is required"))?;
+        .ok_or_else(|| {
+            runtime_environment_error(
+                "tool_context_missing",
+                "runtime tool context is required",
+                "tool_context_missing",
+                "fix the runtime tool context/work_dir, then run grobot status --json before retrying",
+                "tool_context",
+                None,
+            )
+        })?;
     let raw_work_dir = tool_context
         .work_dir
         .as_ref()
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| ToolExecutionError::new("tool_context_missing", "tool_context.work_dir is required"))?;
+        .ok_or_else(|| {
+            runtime_environment_error(
+                "tool_context_missing",
+                "tool_context.work_dir is required",
+                "tool_context_missing",
+                "fix the runtime tool context/work_dir, then run grobot status --json before retrying",
+                "tool_context.work_dir",
+                None,
+            )
+        })?;
     let canonical_work_dir = fs::canonicalize(raw_work_dir).map_err(|error| {
-        ToolExecutionError::new(
+        runtime_environment_error(
             "tool_context_invalid",
             format!("failed to resolve work_dir: {error}"),
+            "tool_context_invalid",
+            "choose a valid workspace directory, then run grobot status --json before retrying",
+            "tool_context.work_dir",
+            Some(raw_work_dir),
         )
     })?;
     if !canonical_work_dir.is_dir() {
-        return Err(ToolExecutionError::new(
+        return Err(runtime_environment_error(
             "tool_context_invalid",
             "tool_context.work_dir is not a directory",
+            "tool_context_invalid",
+            "choose a valid workspace directory, then run grobot status --json before retrying",
+            "tool_context.work_dir",
+            Some(raw_work_dir),
         ));
     }
     let enabled_tools = normalize_tool_name_set(tool_context.enabled_tools.as_ref())

@@ -236,7 +236,15 @@ fn should_block_overlap_candidate(
     let turn_key = overlap_turn_key(input);
     let store = overlap_store()
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to lock overlap guard state"))?;
+        .map_err(|_| {
+            runtime_state_unavailable_error(
+                "failed to lock overlap guard state",
+                "overlap_guard",
+                input.tool_context
+                    .as_ref()
+                    .and_then(|context| context.work_dir.as_deref()),
+            )
+        })?;
     let Some(turn) = store.turns.get(turn_key.as_str()) else {
         return Ok(false);
     };
@@ -262,7 +270,15 @@ fn record_overlap_candidate(
     let turn_key = overlap_turn_key(input);
     let mut store = overlap_store()
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to lock overlap guard state"))?;
+        .map_err(|_| {
+            runtime_state_unavailable_error(
+                "failed to lock overlap guard state",
+                "overlap_guard",
+                input.tool_context
+                    .as_ref()
+                    .and_then(|context| context.work_dir.as_deref()),
+            )
+        })?;
     if !store.turns.contains_key(turn_key.as_str()) {
         store.order.push_back(turn_key.clone());
     }

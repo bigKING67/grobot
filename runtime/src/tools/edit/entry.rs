@@ -13,7 +13,13 @@ fn run_edit(
     let file_lock = acquire_file_mutation_lock(&target)?;
     let _file_guard = file_lock
         .lock()
-        .map_err(|_| ToolExecutionError::new("runtime_state_unavailable", "failed to acquire edit file lock"))?;
+        .map_err(|_| {
+            runtime_state_unavailable_error(
+                "failed to acquire edit file lock",
+                "edit_file_lock",
+                Some(context.work_dir.to_string_lossy().as_ref()),
+            )
+        })?;
 
     let metadata = fs::metadata(&target).map_err(|error| {
         ToolExecutionError::new(

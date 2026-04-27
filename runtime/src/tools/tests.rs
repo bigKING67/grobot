@@ -1529,6 +1529,66 @@ audit_redact_secrets = false
     }
 
     #[test]
+    fn dispatcher_reports_structured_missing_tool_context_recovery_data() {
+        let workspace = make_temp_workspace("tool-context-missing");
+        let mut input = make_read_only_input(&workspace);
+        input.tool_context = None;
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("missing tool context should fail before dispatch");
+        assert_eq!(error.error_class, "tool_context_missing");
+        let data = error.data.as_ref().expect("missing tool context should include error_data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("tool_context_missing"));
+        assert_eq!(data["source"].as_str(), Some("tool_context"));
+        assert_eq!(
+            data["recovery_hint"].as_str(),
+            Some("fix the runtime tool context/work_dir, then run grobot status --json before retrying")
+        );
+        assert!(data.get("work_dir").is_none());
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn dispatcher_reports_structured_invalid_work_dir_recovery_data() {
+        let workspace = make_temp_workspace("tool-context-invalid");
+        let missing_work_dir = workspace.join("missing-work-dir");
+        let mut input = make_read_only_input(&workspace);
+        if let Some(context) = input.tool_context.as_mut() {
+            context.work_dir = Some(missing_work_dir.to_string_lossy().to_string());
+        }
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("invalid work_dir should fail before dispatch");
+        assert_eq!(error.error_class, "tool_context_invalid");
+        let data = error.data.as_ref().expect("invalid work_dir should include error_data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("tool_context_invalid"));
+        assert_eq!(data["source"].as_str(), Some("tool_context.work_dir"));
+        assert_eq!(
+            data["work_dir"].as_str(),
+            Some(missing_work_dir.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            data["recovery_hint"].as_str(),
+            Some("choose a valid workspace directory, then run grobot status --json before retrying")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn list_v2_reports_limit_reached_metadata() {
         let workspace = make_temp_workspace("list-v2-limit");
         fs::write(workspace.join("z.txt"), "z").expect("write z");
