@@ -14,6 +14,11 @@ import {
   summarizeRuntimeToolEvents,
 } from "../../tools/runtime/tool-events";
 import { getRuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
+import {
+  browserEnvironmentRecoveryActionInstruction,
+  browserEnvironmentRecoveryFixInstruction,
+  buildBrowserEnvironmentRecoveryPlan,
+} from "../../tools/runtime/browser-environment-recovery";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -473,6 +478,78 @@ expectEqual(
   browserStructuredFeedback.browserEnvironmentRecovery?.retryAllowed,
   false,
   "browser structured feedback blocks retry",
+);
+
+const browserEnvironmentRecoveryCases = [
+  {
+    errorCode: "NO_EXTENSION",
+    action: "setup_and_doctor",
+    commands: ["grobot browser setup", "grobot browser doctor"],
+    fixIncludes: ["browser extension is connected", "grobot browser setup"],
+  },
+  {
+    errorCode: "NO_SESSION",
+    action: "reconnect_session_and_doctor",
+    commands: ["grobot browser hub start", "grobot browser doctor"],
+    fixIncludes: ["open or reconnect a browser session", "grobot browser hub start"],
+  },
+  {
+    errorCode: "TRANSPORT_UNAVAILABLE",
+    action: "start_hub_and_doctor",
+    commands: ["grobot browser hub start", "grobot browser doctor"],
+    fixIncludes: ["browser transport is available", "grobot browser hub start"],
+  },
+] as const;
+
+for (const recoveryCase of browserEnvironmentRecoveryCases) {
+  const plan = buildBrowserEnvironmentRecoveryPlan({
+    errorClass: "browser_backend_result_error",
+    errorData: {
+      error_code: recoveryCase.errorCode,
+    },
+  });
+  expect(plan !== null, `browser environment plan exists for ${recoveryCase.errorCode}`);
+  expectEqual(plan?.errorCode, recoveryCase.errorCode, `browser environment plan code ${recoveryCase.errorCode}`);
+  expectEqual(plan?.action, recoveryCase.action, `browser environment plan action ${recoveryCase.errorCode}`);
+  expectEqual(plan?.retryAllowed, false, `browser environment plan retry flag ${recoveryCase.errorCode}`);
+  expectEqual(
+    plan?.commands.join("|"),
+    recoveryCase.commands.join("|"),
+    `browser environment plan commands ${recoveryCase.errorCode}`,
+  );
+  const actionInstruction = browserEnvironmentRecoveryActionInstruction(plan);
+  expect(
+    actionInstruction?.includes("Ask the user to repair the browser environment") === true,
+    `browser environment action instruction asks repair ${recoveryCase.errorCode}`,
+  );
+  expect(
+    actionInstruction?.includes("`grobot browser doctor` confirms") === true,
+    `browser environment action instruction waits for doctor ${recoveryCase.errorCode}`,
+  );
+  const fixInstruction = browserEnvironmentRecoveryFixInstruction({
+    plan,
+    toolName: "web_scan",
+  });
+  expect(
+    fixInstruction?.includes("Do not retry web_scan automatically.") === true,
+    `browser environment fix blocks retry ${recoveryCase.errorCode}`,
+  );
+  for (const expectedSnippet of recoveryCase.fixIncludes) {
+    expect(
+      fixInstruction?.includes(expectedSnippet) === true,
+      `browser environment fix includes ${expectedSnippet} for ${recoveryCase.errorCode}`,
+    );
+  }
+}
+expectEqual(
+  buildBrowserEnvironmentRecoveryPlan({
+    errorClass: "browser_backend_result_error",
+    errorData: {
+      error_code: "TIMEOUT",
+    },
+  }),
+  null,
+  "timeout is not a browser environment recovery plan",
 );
 
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
