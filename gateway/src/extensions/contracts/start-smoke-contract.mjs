@@ -2348,6 +2348,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryFeedback?.base_recovery_stage,
     status_runtime_tool_recovery_feedback_base_recommended_next_action_type:
       typeof runtimeToolRecoveryFeedback?.base_recommended_next_action,
+    status_runtime_tool_recovery_feedback_runtime_environment_recovery_type:
+      typeof runtimeToolRecoveryFeedback?.runtime_environment_recovery,
     status_runtime_tool_recovery_feedback_browser_environment_recovery_type:
       typeof runtimeToolRecoveryFeedback?.browser_environment_recovery,
     status_runtime_tool_recovery_feedback_mcp_environment_recovery_type:
@@ -2400,6 +2402,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryHealth?.latest_recovery_key,
     status_runtime_tool_recovery_health_has_stuck_type:
       typeof runtimeToolRecoveryHealth?.has_stuck_nonrecoverable,
+    status_runtime_tool_recovery_health_attention_runtime_environment_recovery_type:
+      typeof runtimeToolRecoveryHealth?.attention_runtime_environment_recovery,
     status_runtime_tool_recovery_health_attention_browser_environment_recovery_type:
       typeof runtimeToolRecoveryHealth?.attention_browser_environment_recovery,
     status_runtime_tool_recovery_health_attention_mcp_environment_recovery_type:
@@ -2450,6 +2454,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryReadiness?.policy_version,
     status_runtime_tool_recovery_readiness_attention_stage_type:
       typeof runtimeToolRecoveryReadiness?.attention_stage,
+    status_runtime_tool_recovery_readiness_attention_runtime_environment_recovery_type:
+      typeof runtimeToolRecoveryReadiness?.attention_runtime_environment_recovery,
     status_runtime_tool_recovery_readiness_attention_browser_environment_recovery_type:
       typeof runtimeToolRecoveryReadiness?.attention_browser_environment_recovery,
     status_runtime_tool_recovery_readiness_attention_mcp_environment_recovery_type:
@@ -2473,6 +2479,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryGate?.operator_action_required,
     status_runtime_tool_recovery_gate_attention_stage_type:
       typeof runtimeToolRecoveryGate?.attention_stage,
+    status_runtime_tool_recovery_gate_attention_runtime_environment_recovery_type:
+      typeof runtimeToolRecoveryGate?.attention_runtime_environment_recovery,
     status_runtime_tool_recovery_gate_attention_browser_environment_recovery_type:
       typeof runtimeToolRecoveryGate?.attention_browser_environment_recovery,
     status_runtime_tool_recovery_gate_attention_mcp_environment_recovery_type:
@@ -5099,6 +5107,23 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     textOutput: textResult.stdout,
     expectedLatest: EXPECTED_REPEATED_TOOL_RECOVERY_ESCALATION_STATUS,
   });
+  const feedbackRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryFeedback?.runtime_environment_recovery,
+  );
+  const timelineRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    latestRecoveryTimeline?.runtime_environment_recovery,
+  );
+  const healthAttentionRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryHealth?.attention_runtime_environment_recovery,
+  );
+  const readinessAttentionRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryReadiness?.attention_runtime_environment_recovery,
+  );
+  const gateAttentionRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryGate?.attention_runtime_environment_recovery,
+  );
+  const textRuntimeRecoverySnippet =
+    "runtime_environment_recovery=code=CONFIG_MISSING action=fix_config_or_switch_provider_and_check_status retry_allowed=false";
   return {
     exit_code: jsonResult.exit_code,
     text_exit_code: textResult.exit_code,
@@ -5119,6 +5144,10 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryFeedback?.base_recovery_stage ?? null,
     recovery_feedback_base_recommended_next_action:
       recoveryFeedback?.base_recommended_next_action ?? null,
+    recovery_feedback_runtime_error_code: feedbackRuntimePlan.error_code,
+    recovery_feedback_runtime_action: feedbackRuntimePlan.action,
+    recovery_feedback_runtime_retry_allowed: feedbackRuntimePlan.retry_allowed,
+    recovery_feedback_runtime_commands: feedbackRuntimePlan.commands,
     recovery_timeline_count: recoveryTimeline.length,
     recovery_timeline_latest_recovery_key: latestRecoveryTimeline?.recovery_key ?? null,
     recovery_timeline_latest_active: latestRecoveryTimeline?.active ?? null,
@@ -5137,6 +5166,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       latestRecoveryTimeline?.base_recovery_stage ?? null,
     recovery_timeline_latest_base_recommended_next_action:
       latestRecoveryTimeline?.base_recommended_next_action ?? null,
+    recovery_timeline_latest_runtime_error_code: timelineRuntimePlan.error_code,
+    recovery_timeline_latest_runtime_action: timelineRuntimePlan.action,
     recovery_timeline_previous_recovery_key: previousRecoveryTimeline?.recovery_key ?? null,
     recovery_timeline_previous_tool_name: previousRecoveryTimeline?.tool_name ?? null,
     recovery_health_active_recovery_count: recoveryHealth?.active_recovery_count ?? null,
@@ -5158,6 +5189,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryHealth?.attention_tool_name ?? null,
     recovery_health_attention_requires_user_intervention:
       recoveryHealth?.attention_requires_user_intervention ?? null,
+    recovery_health_attention_runtime_error_code: healthAttentionRuntimePlan.error_code,
+    recovery_health_attention_runtime_action: healthAttentionRuntimePlan.action,
     recovery_policy_version: recoveryPolicy?.version ?? null,
     recovery_policy_timeline_max_entries: recoveryPolicy?.timeline_max_entries ?? null,
     recovery_policy_escalation_strategy_switch_threshold:
@@ -5180,6 +5213,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_readiness_watch_threshold: recoveryReadiness?.watch_score_threshold ?? null,
     recovery_readiness_risk_threshold: recoveryReadiness?.risk_score_threshold ?? null,
     recovery_readiness_attention_stage: recoveryReadiness?.attention_stage ?? null,
+    recovery_readiness_attention_runtime_error_code: readinessAttentionRuntimePlan.error_code,
+    recovery_readiness_attention_runtime_action: readinessAttentionRuntimePlan.action,
     recovery_gate_status: recoveryGate?.status ?? null,
     recovery_gate_passed: recoveryGate?.passed ?? null,
     recovery_gate_blocking: recoveryGate?.blocking ?? null,
@@ -5192,6 +5227,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_gate_watch_threshold: recoveryGate?.watch_score_threshold ?? null,
     recovery_gate_risk_threshold: recoveryGate?.risk_score_threshold ?? null,
     recovery_gate_attention_stage: recoveryGate?.attention_stage ?? null,
+    recovery_gate_attention_runtime_error_code: gateAttentionRuntimePlan.error_code,
+    recovery_gate_attention_runtime_action: gateAttentionRuntimePlan.action,
     surface_adaptation_active: surfaceAdaptation?.active ?? null,
     surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
     surface_adaptation_from_profile: surfaceAdaptation?.from_profile ?? null,
@@ -5209,6 +5246,15 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     text_has_recovery_timeline:
       textResult.stdout.includes("runtime_tool_recovery_timeline: entries=2")
       && textResult.stdout.includes("latest=web_scan/config_missing"),
+    text_has_recovery_feedback_runtime_environment:
+      textResult.stdout.includes(textRuntimeRecoverySnippet)
+      && textResult.stdout.includes("commands=grobot status --json|grobot status --probe --json"),
+    text_has_recovery_readiness_runtime_environment:
+      textResult.stdout.includes("runtime_tool_recovery_readiness:")
+      && textResult.stdout.includes(textRuntimeRecoverySnippet),
+    text_has_recovery_gate_runtime_environment:
+      textResult.stdout.includes("runtime_tool_recovery_gate:")
+      && textResult.stdout.includes(textRuntimeRecoverySnippet),
     text_has_recovery_health:
       textResult.stdout.includes("runtime_tool_recovery_health:")
       && textResult.stdout.includes("active_nonrecoverable=1")
@@ -5231,6 +5277,32 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     ...recoveryEscalationTextSurface,
     ...recoveryReadinessTextSurface,
   };
+}
+
+function runtimeEnvironmentRecoveryPlanSummary(plan) {
+  return isObject(plan)
+    ? {
+        error_code: plan.error_code ?? null,
+        action: plan.action ?? null,
+        retry_allowed: plan.retry_allowed ?? null,
+        commands: Array.isArray(plan.commands) ? plan.commands.join("|") : null,
+        error_class: plan.error_class ?? null,
+        detail: plan.detail ?? null,
+        required_config: plan.required_config ?? null,
+        source_path: plan.source_path ?? null,
+        work_dir: plan.work_dir ?? null,
+      }
+    : {
+        error_code: null,
+        action: null,
+        retry_allowed: null,
+        commands: null,
+        error_class: null,
+        detail: null,
+        required_config: null,
+        source_path: null,
+        work_dir: null,
+      };
 }
 
 function browserEnvironmentRecoveryPlanSummary(plan) {

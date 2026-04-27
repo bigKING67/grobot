@@ -227,6 +227,7 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
     ToolRecoveryCatalogRow::new(
         &[
             "runtime_state_unavailable",
+            "tool_context_missing",
             "tool_context_invalid",
             "mcp_server_not_found",
             "mcp_server_unready",

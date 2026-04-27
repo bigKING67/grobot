@@ -11,6 +11,10 @@ import {
   formatMcpEnvironmentRecoveryPlan,
   type McpEnvironmentRecoveryPlan,
 } from "./mcp-environment-recovery";
+import {
+  formatRuntimeEnvironmentRecoveryPlan,
+  type RuntimeEnvironmentRecoveryPlan,
+} from "./runtime-environment-recovery";
 
 export type RuntimeToolRecoveryReadinessStatus = "ready" | "degraded" | "blocked";
 
@@ -32,6 +36,7 @@ export interface RuntimeToolRecoveryReadinessSummary {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
 }
@@ -91,6 +96,7 @@ export function buildRuntimeToolRecoveryReadinessSummary(input: {
     attentionToolName: input.health.attentionToolName,
     attentionErrorClass: input.health.attentionErrorClass,
     attentionRequiresUserIntervention: input.health.attentionRequiresUserIntervention,
+    attentionRuntimeEnvironmentRecovery: input.health.attentionRuntimeEnvironmentRecovery,
     attentionBrowserEnvironmentRecovery: input.health.attentionBrowserEnvironmentRecovery,
     attentionMcpEnvironmentRecovery: input.health.attentionMcpEnvironmentRecovery,
   };
@@ -108,6 +114,7 @@ export function formatRuntimeToolRecoveryReadinessFields(
     `action=${summary.recommendedNextAction ?? "<none>"}`,
     `attention_key=${summary.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${summary.attentionStage ?? "<none>"}`,
+    `runtime_environment_recovery=${formatRuntimeEnvironmentRecoveryPlan(summary.attentionRuntimeEnvironmentRecovery)}`,
     `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery)}`,
     `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery)}`,
     `policy_version=${summary.policyVersion}`,

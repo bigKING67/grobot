@@ -7,6 +7,10 @@ import {
   formatMcpEnvironmentRecoveryPlan,
   type McpEnvironmentRecoveryPlan,
 } from "./mcp-environment-recovery";
+import {
+  formatRuntimeEnvironmentRecoveryPlan,
+  type RuntimeEnvironmentRecoveryPlan,
+} from "./runtime-environment-recovery";
 
 export type RuntimeToolRecoveryReadinessGateStatus = "pass" | "warn" | "fail";
 
@@ -44,6 +48,7 @@ export interface RuntimeToolRecoveryReadinessGateDecision {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
 }
@@ -122,6 +127,7 @@ export function buildRuntimeToolRecoveryReadinessGate(input: {
     attentionToolName: input.readiness.attentionToolName,
     attentionErrorClass: input.readiness.attentionErrorClass,
     attentionRequiresUserIntervention: input.readiness.attentionRequiresUserIntervention,
+    attentionRuntimeEnvironmentRecovery: input.readiness.attentionRuntimeEnvironmentRecovery,
     attentionBrowserEnvironmentRecovery: input.readiness.attentionBrowserEnvironmentRecovery,
     attentionMcpEnvironmentRecovery: input.readiness.attentionMcpEnvironmentRecovery,
   };
@@ -142,6 +148,7 @@ export function formatRuntimeToolRecoveryGateFields(
     `operator_action_required=${gate.operatorActionRequired ? "true" : "false"}`,
     `attention_key=${gate.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${gate.attentionStage ?? "<none>"}`,
+    `runtime_environment_recovery=${formatRuntimeEnvironmentRecoveryPlan(gate.attentionRuntimeEnvironmentRecovery)}`,
     `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(gate.attentionBrowserEnvironmentRecovery)}`,
     `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(gate.attentionMcpEnvironmentRecovery)}`,
     `policy_version=${gate.policyVersion}`,

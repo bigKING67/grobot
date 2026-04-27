@@ -202,6 +202,16 @@ Gateway status output should include route and cache observability fields:
   - `command`
   - `available_servers`
   - `registry_paths`
+- `runtime_tool_recovery_feedback.runtime_environment_recovery`
+  - `error_code`
+  - `action`
+  - `retry_allowed`
+  - `commands`
+  - `error_class`
+  - `detail`
+  - `source_path`
+  - `required_config`
+  - `work_dir`
 - `runtime_tool_recovery_timeline[*].browser_environment_recovery`
   - `error_code`
   - `action`
@@ -219,12 +229,25 @@ Gateway status output should include route and cache observability fields:
   - `command`
   - `available_servers`
   - `registry_paths`
+- `runtime_tool_recovery_timeline[*].runtime_environment_recovery`
+  - `error_code`
+  - `action`
+  - `retry_allowed`
+  - `commands`
+  - `error_class`
+  - `detail`
+  - `source_path`
+  - `required_config`
+  - `work_dir`
 - `runtime_tool_recovery_health.attention_browser_environment_recovery`
 - `runtime_tool_recovery_health.attention_mcp_environment_recovery`
+- `runtime_tool_recovery_health.attention_runtime_environment_recovery`
 - `runtime_tool_recovery_readiness.attention_browser_environment_recovery`
 - `runtime_tool_recovery_readiness.attention_mcp_environment_recovery`
+- `runtime_tool_recovery_readiness.attention_runtime_environment_recovery`
 - `runtime_tool_recovery_gate.attention_browser_environment_recovery`
 - `runtime_tool_recovery_gate.attention_mcp_environment_recovery`
+- `runtime_tool_recovery_gate.attention_runtime_environment_recovery`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
@@ -247,6 +270,16 @@ when available, carries actionable diagnostics (`ready_reason`, failed `command`
 `available_servers` for missing-server errors), includes `grobot status --json` as the readiness
 check, and blocks automatic `mcp_call` retry until status shows the target server is configured and
 ready.
+
+Runtime environment recovery covers non-browser/non-MCP operator-fix errors surfaced by runtime
+tools. `config_missing`, `tool_context_missing`, `tool_context_invalid`, and
+`runtime_state_unavailable` must expose a structured `runtime_environment_recovery` plan in feedback,
+timeline, health, readiness, and gate status surfaces. Config failures include
+`grobot status --json` and `grobot status --probe --json` checks and preserve inferred missing
+configuration (`model_config.api_key`, `model_config.base_url`,
+`provider_options.kimi.files_enabled=true`, or `kimi-k2.5`) when available. Tool-context and runtime
+state failures block automatic retry until `grobot status --json` confirms a valid workspace/tool
+context or the current grobot session has been restarted after state remains unavailable.
 
 `ask_user` questions marked with `is_secret=true` keep the raw answer available only in the current
 turn's `[AskUser Resolution]` prompt so the agent can act on credentials or other sensitive

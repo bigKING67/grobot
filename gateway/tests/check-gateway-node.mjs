@@ -5189,6 +5189,12 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(
     ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_feedback_runtime_environment_recovery_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
       String(statusPayload.status_runtime_tool_recovery_feedback_browser_environment_recovery_type),
     ),
     true,
@@ -5311,6 +5317,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_health_risk_threshold, 60);
   assert.equal(
     ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_health_attention_runtime_environment_recovery_type),
+    ),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
       String(statusPayload.status_runtime_tool_recovery_health_attention_browser_environment_recovery_type),
     ),
     true,
@@ -5330,6 +5342,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_readiness_policy_version_type, "string");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_readiness_attention_stage_type)),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_readiness_attention_runtime_environment_recovery_type),
+    ),
     true,
   );
   assert.equal(
@@ -5355,6 +5373,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_operator_action_type, "boolean");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_gate_attention_stage_type)),
+    true,
+  );
+  assert.equal(
+    ["object", "undefined"].includes(
+      String(statusPayload.status_runtime_tool_recovery_gate_attention_runtime_environment_recovery_type),
+    ),
     true,
   );
   assert.equal(
@@ -6507,6 +6531,21 @@ async function runTsRustExecutionSmoke() {
     statusNonRecoverablePayload.recovery_timeline_latest_base_recommended_next_action,
     "switch_tool_strategy",
   );
+  assert.equal(statusNonRecoverablePayload.recovery_feedback_runtime_error_code, "CONFIG_MISSING");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_feedback_runtime_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
+  assert.equal(statusNonRecoverablePayload.recovery_feedback_runtime_retry_allowed, false);
+  assert.equal(
+    statusNonRecoverablePayload.recovery_feedback_runtime_commands,
+    "grobot status --json|grobot status --probe --json",
+  );
+  assert.equal(statusNonRecoverablePayload.recovery_timeline_latest_runtime_error_code, "CONFIG_MISSING");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_timeline_latest_runtime_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
   assert.equal(statusNonRecoverablePayload.recovery_timeline_previous_tool_name, "read");
   assert.equal(
     statusNonRecoverablePayload.recovery_health_latest_recovery_key,
@@ -6526,6 +6565,11 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(statusNonRecoverablePayload.recovery_health_attention_tool_name, "web_scan");
   assert.equal(statusNonRecoverablePayload.recovery_health_attention_requires_user_intervention, true);
+  assert.equal(statusNonRecoverablePayload.recovery_health_attention_runtime_error_code, "CONFIG_MISSING");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_health_attention_runtime_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
   assert.equal(statusNonRecoverablePayload.recovery_policy_version, "v1");
   assert.equal(statusNonRecoverablePayload.recovery_policy_timeline_max_entries, 20);
   assert.equal(statusNonRecoverablePayload.recovery_policy_escalation_strategy_switch_threshold, 2);
@@ -6541,6 +6585,11 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_readiness_watch_threshold, 85);
   assert.equal(statusNonRecoverablePayload.recovery_readiness_risk_threshold, 60);
   assert.equal(statusNonRecoverablePayload.recovery_readiness_attention_stage, "ask_user");
+  assert.equal(statusNonRecoverablePayload.recovery_readiness_attention_runtime_error_code, "CONFIG_MISSING");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_readiness_attention_runtime_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
   assert.equal(statusNonRecoverablePayload.recovery_gate_status, "fail");
   assert.equal(statusNonRecoverablePayload.recovery_gate_passed, false);
   assert.equal(statusNonRecoverablePayload.recovery_gate_blocking, true);
@@ -6553,6 +6602,11 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_gate_watch_threshold, 85);
   assert.equal(statusNonRecoverablePayload.recovery_gate_risk_threshold, 60);
   assert.equal(statusNonRecoverablePayload.recovery_gate_attention_stage, "ask_user");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_attention_runtime_error_code, "CONFIG_MISSING");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_gate_attention_runtime_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
   assert.equal(statusNonRecoverablePayload.recovery_health_active_recovery_count, 1);
   assert.equal(statusNonRecoverablePayload.recovery_health_active_nonrecoverable_count, 1);
   assert.equal(statusNonRecoverablePayload.recovery_health_unconsumed_count, 2);
@@ -6567,6 +6621,9 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.text_has_auto_adaptation_blocked, true);
   assert.equal(statusNonRecoverablePayload.text_has_nonrecoverable_reason, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_timeline, true);
+  assert.equal(statusNonRecoverablePayload.text_has_recovery_feedback_runtime_environment, true);
+  assert.equal(statusNonRecoverablePayload.text_has_recovery_readiness_runtime_environment, true);
+  assert.equal(statusNonRecoverablePayload.text_has_recovery_gate_runtime_environment, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_health, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_policy, true);
   assert.equal(statusNonRecoverablePayload.text_has_recovery_readiness, true);

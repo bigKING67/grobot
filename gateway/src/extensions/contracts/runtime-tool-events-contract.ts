@@ -26,6 +26,11 @@ import {
   formatMcpEnvironmentRecoveryPlan,
   serializeMcpEnvironmentRecoveryPlan,
 } from "../../tools/runtime/mcp-environment-recovery";
+import {
+  buildRuntimeEnvironmentRecoveryPlan,
+  formatRuntimeEnvironmentRecoveryPlan,
+  serializeRuntimeEnvironmentRecoveryPlan,
+} from "../../tools/runtime/runtime-environment-recovery";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -560,6 +565,152 @@ expectEqual(
   "MCP timeout is not an environment recovery plan",
 );
 
+const runtimeEnvironmentRecoveryCases = [
+  {
+    errorClass: "config_missing",
+    errorMessage: "model_config.api_key is required for kimi official tools",
+    errorCode: "CONFIG_MISSING",
+    action: "fix_config_or_switch_provider_and_check_status",
+    commands: ["grobot status --json", "grobot status --probe --json"],
+    requiredConfig: "model_config.api_key",
+  },
+  {
+    errorClass: "tool_context_missing",
+    errorMessage: "runtime tool context is required",
+    errorCode: "TOOL_CONTEXT_MISSING",
+    action: "fix_tool_context_and_check_status",
+    commands: ["grobot status --json"],
+    requiredConfig: null,
+  },
+  {
+    errorClass: "tool_context_invalid",
+    errorMessage: "tool_context.work_dir is not a directory",
+    errorCode: "TOOL_CONTEXT_INVALID",
+    action: "fix_tool_context_and_check_status",
+    commands: ["grobot status --json"],
+    requiredConfig: null,
+  },
+  {
+    errorClass: "runtime_state_unavailable",
+    errorMessage: "failed to lock file mutation queue store",
+    errorCode: "RUNTIME_STATE_UNAVAILABLE",
+    action: "restart_or_clear_runtime_state_and_check_status",
+    commands: ["grobot status --json"],
+    requiredConfig: null,
+  },
+] as const;
+for (const recoveryCase of runtimeEnvironmentRecoveryCases) {
+  const plan = buildRuntimeEnvironmentRecoveryPlan({
+    errorClass: recoveryCase.errorClass,
+    errorMessage: recoveryCase.errorMessage,
+    errorData: {
+      source: ".grobot/config.toml",
+      work_dir: "/tmp/grobot-runtime-env-contract",
+    },
+  });
+  expect(plan !== null, `runtime environment plan exists for ${recoveryCase.errorClass}`);
+  expectEqual(
+    plan?.errorCode,
+    recoveryCase.errorCode,
+    `runtime environment plan code ${recoveryCase.errorClass}`,
+  );
+  expectEqual(
+    plan?.action,
+    recoveryCase.action,
+    `runtime environment plan action ${recoveryCase.errorClass}`,
+  );
+  expectEqual(plan?.retryAllowed, false, `runtime environment plan retry flag ${recoveryCase.errorClass}`);
+  expectEqual(
+    plan?.commands.join("|"),
+    recoveryCase.commands.join("|"),
+    `runtime environment plan commands ${recoveryCase.errorClass}`,
+  );
+  expectEqual(
+    plan?.requiredConfig,
+    recoveryCase.requiredConfig,
+    `runtime environment plan required config ${recoveryCase.errorClass}`,
+  );
+  expect(
+    formatRuntimeEnvironmentRecoveryPlan(plan).includes(`commands=${recoveryCase.commands.join("|")}`),
+    `runtime environment formatter keeps commands ${recoveryCase.errorClass}`,
+  );
+  const serialized = serializeRuntimeEnvironmentRecoveryPlan(plan);
+  expectEqual(
+    serialized?.error_code as string,
+    recoveryCase.errorCode,
+    `runtime environment serializer keeps error code ${recoveryCase.errorClass}`,
+  );
+  expect(Array.isArray(serialized?.commands), `runtime environment serializer commands array ${recoveryCase.errorClass}`);
+  expect(
+    serialized?.commands !== plan?.commands,
+    `runtime environment serializer snapshots commands ${recoveryCase.errorClass}`,
+  );
+  expectEqual(
+    (serialized?.commands as string[]).join("|"),
+    recoveryCase.commands.join("|"),
+    `runtime environment serializer keeps commands ${recoveryCase.errorClass}`,
+  );
+}
+expectEqual(formatRuntimeEnvironmentRecoveryPlan(null), "<none>", "runtime environment formatter handles null");
+expectEqual(serializeRuntimeEnvironmentRecoveryPlan(null), null, "runtime environment serializer handles null");
+expectEqual(
+  buildRuntimeEnvironmentRecoveryPlan({
+    errorClass: "path_not_found",
+    errorMessage: "path not found",
+  }),
+  null,
+  "path_not_found is not a runtime environment recovery plan",
+);
+
+const runtimeEnvironmentFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { read: 1 },
+    failuresByErrorClass: { config_missing: 1 },
+    recoveryStages: { ask_user: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "ask_user",
+      reason: "config_missing",
+      recommendedNextAction: "ask_user_for_config_or_switch_provider",
+      toolName: "read",
+      errorClass: "config_missing",
+      errorMessage: "provider_options.kimi.files_enabled=true is required",
+      recoverable: false,
+      requiresUserIntervention: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-runtime-environment",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expectEqual(
+  runtimeEnvironmentFeedback.runtimeEnvironmentRecovery?.errorCode,
+  "CONFIG_MISSING",
+  "runtime environment feedback exposes recovery error code",
+);
+expectEqual(
+  runtimeEnvironmentFeedback.runtimeEnvironmentRecovery?.requiredConfig,
+  "provider_options.kimi.files_enabled=true",
+  "runtime environment feedback infers required config",
+);
+expect(
+  runtimeEnvironmentFeedback.promptBlock.includes("Runtime environment fix: Do not retry read automatically."),
+  "runtime environment feedback blocks automatic retry",
+);
+expect(
+  runtimeEnvironmentFeedback.promptBlock.includes("status/probe confirms the configuration is usable"),
+  "runtime environment feedback uses config-specific execution rule",
+);
+
 const semanticStructuredFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {
     version: 1,
@@ -835,7 +986,7 @@ expect(
   "nonrecoverable feedback recoverability"
 );
 expect(
-  nonRecoverableFeedback.promptBlock.includes("Ask the user for missing configuration"),
+  nonRecoverableFeedback.promptBlock.includes("Ask the user to provide the missing runtime configuration"),
   "nonrecoverable feedback action instruction"
 );
 expect(

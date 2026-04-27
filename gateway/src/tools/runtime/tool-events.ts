@@ -13,6 +13,12 @@ import {
   mcpEnvironmentRecoveryFixInstruction,
   type McpEnvironmentRecoveryPlan,
 } from "./mcp-environment-recovery";
+import {
+  buildRuntimeEnvironmentRecoveryPlan,
+  runtimeEnvironmentRecoveryActionInstruction,
+  runtimeEnvironmentRecoveryFixInstruction,
+  type RuntimeEnvironmentRecoveryPlan,
+} from "./runtime-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY } from "./tool-recovery-policy";
 
 export type RuntimeToolRecoveryStage =
@@ -105,6 +111,7 @@ export interface RuntimeToolRecoveryFeedback {
   consumed?: boolean;
   consumedReason?: string | null;
   consumedAt?: string | null;
+  runtimeEnvironmentRecovery?: RuntimeEnvironmentRecoveryPlan | null;
   browserEnvironmentRecovery?: BrowserEnvironmentRecoveryPlan | null;
   mcpEnvironmentRecovery?: McpEnvironmentRecoveryPlan | null;
 }
@@ -703,6 +710,14 @@ function mcpEnvironmentRecoveryPlan(recovery: RuntimeToolRecoveryHint): McpEnvir
   });
 }
 
+function runtimeEnvironmentRecoveryPlan(recovery: RuntimeToolRecoveryHint): RuntimeEnvironmentRecoveryPlan | null {
+  return buildRuntimeEnvironmentRecoveryPlan({
+    errorClass: recovery.errorClass,
+    errorMessage: recovery.errorMessage,
+    errorData: recovery.errorData,
+  });
+}
+
 function applyRepeatedRecoveryEscalation(input: {
   recovery: RuntimeToolRecoveryHint;
   sameToolErrorCount: number;
@@ -1081,6 +1096,13 @@ function actionInstruction(input: {
   if (mcpActionInstruction) {
     return mcpActionInstruction;
   }
+  const runtimeActionInstruction =
+    input.action === "request_environment_fix" || input.action === "ask_user_for_config_or_switch_provider"
+      ? runtimeEnvironmentRecoveryActionInstruction(runtimeEnvironmentRecoveryPlan(input.recovery))
+      : undefined;
+  if (runtimeActionInstruction) {
+    return runtimeActionInstruction;
+  }
   return isRuntimeToolRecoveryAction(input.action)
     ? RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS[input.action]
     : RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS.inspect_error_and_switch_strategy;
@@ -1129,6 +1151,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       baseRecommendedNextAction: null,
       promptBlock: "",
       observedAt: null,
+      runtimeEnvironmentRecovery: null,
       browserEnvironmentRecovery: null,
       mcpEnvironmentRecovery: null,
     };
@@ -1157,6 +1180,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
+      runtimeEnvironmentRecovery: runtimeEnvironmentRecoveryPlan(recovery),
       browserEnvironmentRecovery: browserEnvironmentRecoveryPlan(recovery),
       mcpEnvironmentRecovery: mcpEnvironmentRecoveryPlan(recovery),
     };
@@ -1183,12 +1207,14 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
       promptBlock: "",
       observedAt: recovery.observedAt ?? input.metrics.updatedAt,
+      runtimeEnvironmentRecovery: runtimeEnvironmentRecoveryPlan(recovery),
       browserEnvironmentRecovery: browserEnvironmentRecoveryPlan(recovery),
       mcpEnvironmentRecovery: mcpEnvironmentRecoveryPlan(recovery),
     };
   }
   const browserRecoveryPlan = browserEnvironmentRecoveryPlan(recovery);
   const mcpRecoveryPlan = mcpEnvironmentRecoveryPlan(recovery);
+  const runtimeRecoveryPlan = runtimeEnvironmentRecoveryPlan(recovery);
   const instruction = actionInstruction({
     action: recovery.recommendedNextAction,
     recovery,
@@ -1208,6 +1234,9 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     toolName,
   }) ?? mcpEnvironmentRecoveryFixInstruction({
     plan: mcpRecoveryPlan,
+    toolName,
+  }) ?? runtimeEnvironmentRecoveryFixInstruction({
+    plan: runtimeRecoveryPlan,
     toolName,
   });
   const promptBlock = [
@@ -1247,6 +1276,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
     promptBlock,
     observedAt: recovery.observedAt ?? input.metrics.updatedAt,
+    runtimeEnvironmentRecovery: runtimeRecoveryPlan,
     browserEnvironmentRecovery: browserRecoveryPlan,
     mcpEnvironmentRecovery: mcpRecoveryPlan,
   };

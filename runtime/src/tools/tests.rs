@@ -2067,6 +2067,14 @@ audit_redact_secrets = false
         );
         assert!(!mcp_server_unready.recoverable);
 
+        let tool_context_missing = classify_tool_recovery("tool_context_missing", "unknown");
+        assert_eq!(tool_context_missing.stage, "ask_user");
+        assert_eq!(
+            tool_context_missing.recommended_next_action,
+            "request_environment_fix"
+        );
+        assert!(!tool_context_missing.recoverable);
+
         let missing_config = classify_tool_recovery("config_missing", "unknown");
         assert_eq!(missing_config.stage, "ask_user");
         assert_eq!(
@@ -2127,6 +2135,23 @@ audit_redact_secrets = false
                 .collect::<Vec<&str>>(),
             vec!["config_missing"]
         );
+
+        let environment_fix = catalog
+            .iter()
+            .find(|row| {
+                row["recommended_next_action"]
+                    .as_str()
+                    .is_some_and(|value| value == "request_environment_fix")
+                    && row["stage"].as_str() == Some("ask_user")
+            })
+            .expect("environment fix recovery row should exist");
+        let environment_error_classes = environment_fix["error_classes"]
+            .as_array()
+            .expect("error_classes array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<&str>>();
+        assert!(environment_error_classes.contains(&"tool_context_missing"));
 
         let unknown_risk = catalog
             .iter()

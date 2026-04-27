@@ -16,6 +16,10 @@ import {
   buildMcpEnvironmentRecoveryPlan,
   type McpEnvironmentRecoveryPlan,
 } from "./mcp-environment-recovery";
+import {
+  buildRuntimeEnvironmentRecoveryPlan,
+  type RuntimeEnvironmentRecoveryPlan,
+} from "./runtime-environment-recovery";
 import { RUNTIME_TOOL_RECOVERY_POLICY, type RuntimeToolRecoveryPolicySnapshot } from "./tool-recovery-policy";
 
 export interface RuntimeToolRecoveryIdentityInput {
@@ -41,6 +45,7 @@ export interface RuntimeToolRecoveryTimelineEntry {
   escalationPolicyVersion: string | null;
   baseStage: RuntimeToolRecoveryStage | null;
   baseRecommendedNextAction: string | null;
+  runtimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   browserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   mcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   active: boolean;
@@ -65,6 +70,7 @@ export interface RuntimeToolRecoveryHealthSummary {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   attentionAgeMs: number | null;
@@ -82,6 +88,7 @@ export interface RuntimeToolRecoveryHealthSummary {
   latestToolName: string | null;
   latestErrorClass: string | null;
   latestRequiresUserIntervention: boolean;
+  latestRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   latestBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   latestMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   latestAgeMs: number | null;
@@ -217,6 +224,11 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         errorClass: recovery.errorClass,
         errorData: recovery.errorData,
       });
+      const runtimeEnvironmentRecovery = buildRuntimeEnvironmentRecoveryPlan({
+        errorClass: recovery.errorClass,
+        errorMessage: recovery.errorMessage,
+        errorData: recovery.errorData,
+      });
       return {
         recoveryKey,
         observedAt,
@@ -233,6 +245,7 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         escalationPolicyVersion: recovery.escalationPolicyVersion ?? null,
         baseStage: recovery.baseStage ?? null,
         baseRecommendedNextAction: recovery.baseRecommendedNextAction ?? null,
+        runtimeEnvironmentRecovery,
         browserEnvironmentRecovery,
         mcpEnvironmentRecovery,
         active:
@@ -348,6 +361,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     attentionToolName: attentionEntry?.toolName ?? null,
     attentionErrorClass: attentionEntry?.errorClass ?? null,
     attentionRequiresUserIntervention: attentionEntry?.requiresUserIntervention ?? false,
+    attentionRuntimeEnvironmentRecovery: attentionEntry?.runtimeEnvironmentRecovery ?? null,
     attentionBrowserEnvironmentRecovery: attentionEntry?.browserEnvironmentRecovery ?? null,
     attentionMcpEnvironmentRecovery: attentionEntry?.mcpEnvironmentRecovery ?? null,
     attentionAgeMs,
@@ -365,6 +379,7 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     latestToolName: latest?.toolName ?? null,
     latestErrorClass: latest?.errorClass ?? null,
     latestRequiresUserIntervention: latest?.requiresUserIntervention ?? false,
+    latestRuntimeEnvironmentRecovery: latest?.runtimeEnvironmentRecovery ?? null,
     latestBrowserEnvironmentRecovery: latest?.browserEnvironmentRecovery ?? null,
     latestMcpEnvironmentRecovery: latest?.mcpEnvironmentRecovery ?? null,
     latestAgeMs,
