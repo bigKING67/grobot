@@ -186,6 +186,13 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
+        &["browser_backend_invalid_response", "browser_backend_result_error"],
+        "*",
+        "strategy_switch",
+        "inspect_error_and_switch_strategy",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
         &[
             "mcp_timeout",
             "mcp_queue_timeout",
@@ -218,7 +225,12 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         false,
     ),
     ToolRecoveryCatalogRow::new(
-        &["runtime_state_unavailable", "tool_context_invalid"],
+        &[
+            "runtime_state_unavailable",
+            "tool_context_invalid",
+            "mcp_server_not_found",
+            "mcp_server_unready",
+        ],
         "*",
         "ask_user",
         "request_environment_fix",

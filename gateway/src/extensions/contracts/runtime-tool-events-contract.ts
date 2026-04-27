@@ -388,6 +388,72 @@ expect(
   "feedback summarizes semantic index config path",
 );
 
+const browserStructuredFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { web_scan: 1 },
+    failuresByErrorClass: { browser_backend_result_error: 1 },
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "browser_backend_result_error",
+      recommendedNextAction: "inspect_error_and_switch_strategy",
+      toolName: "web_scan",
+      errorClass: "browser_backend_result_error",
+      errorData: {
+        diagnostic_kind: "browser_backend_result_error",
+        tool: "web_scan",
+        backend: "browser-structured",
+        backend_server: "browser-structured",
+        mapped_tool: "browser_scan",
+        operation: "backend_result",
+        error_code: "NO_EXTENSION",
+        retryable: true,
+        transport_attempts_count: 1,
+        browser_context_kind: "unknown",
+        diagnostic_hint: "Browser extension is not connected. Run `grobot browser setup`.",
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-browser-structured",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expect(
+  browserStructuredFeedback.promptBlock.includes("diagnostic_kind=browser_backend_result_error"),
+  "feedback summarizes browser diagnostic kind",
+);
+expect(
+  browserStructuredFeedback.promptBlock.includes("backend=browser-structured"),
+  "feedback summarizes browser backend",
+);
+expect(
+  browserStructuredFeedback.promptBlock.includes("mapped_tool=browser_scan"),
+  "feedback summarizes browser mapped tool",
+);
+expect(
+  browserStructuredFeedback.promptBlock.includes("error_code=NO_EXTENSION"),
+  "feedback summarizes browser error code",
+);
+expect(
+  browserStructuredFeedback.promptBlock.includes("transport_attempts_count=1"),
+  "feedback summarizes browser transport attempt count",
+);
+expect(
+  browserStructuredFeedback.promptBlock.includes("diagnostic_hint=\"Browser extension is not connected"),
+  "feedback summarizes browser diagnostic hint",
+);
+
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {

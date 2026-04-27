@@ -991,6 +991,152 @@ fn browser_context_note_for_kind(context_kind: &str) -> &'static str {
     }
 }
 
+fn browser_facade_error_data_map(
+    diagnostic_kind: &str,
+    context: &ToolContextResolved,
+    public_tool_name: &str,
+    browser_tool_name: &str,
+    operation: &str,
+    applied_tmwd_default: Option<bool>,
+) -> Map<String, Value> {
+    let mut data = Map::new();
+    data.insert("diagnostic_kind".to_string(), json!(diagnostic_kind));
+    data.insert("tool".to_string(), json!(public_tool_name));
+    data.insert("backend".to_string(), json!("browser-structured"));
+    data.insert("backend_server".to_string(), json!("browser-structured"));
+    data.insert("mapped_tool".to_string(), json!(browser_tool_name));
+    data.insert("operation".to_string(), json!(operation));
+    data.insert(
+        "tool_surface_profile".to_string(),
+        json!(context.tool_surface_profile.as_str()),
+    );
+    data.insert(
+        "advanced_tool_schema".to_string(),
+        json!(context.advanced_tool_schema),
+    );
+    data.insert(
+        "recovery_hint".to_string(),
+        json!(match diagnostic_kind {
+            "tool_argument_not_visible" => {
+                "remove hidden browser arguments, switch to browser_advanced/full_debug, or enable advanced_tool_schema"
+            }
+            "browser_backend_unavailable" => {
+                "run `grobot browser setup`, start the browser hub, then run `grobot browser doctor`"
+            }
+            "browser_backend_invalid_response" => {
+                "inspect the browser-structured MCP envelope and fix backend response format"
+            }
+            "browser_backend_result_error" => {
+                "inspect error_code, transport_attempts, and retry with a narrower browser target or fix browser setup"
+            }
+            _ => "inspect browser facade diagnostics and change strategy before retrying",
+        }),
+    );
+    if let Some(applied) = applied_tmwd_default {
+        data.insert("facade_default_tmwd_mode_applied".to_string(), json!(applied));
+    }
+    data
+}
+
+fn insert_browser_cause_error_data(data: &mut Map<String, Value>, error: &ToolExecutionError) {
+    data.insert("cause_error_class".to_string(), json!(error.error_class.as_str()));
+    data.insert(
+        "cause_error_message".to_string(),
+        json!(truncate_output(error.message.clone(), 512)),
+    );
+    if let Some(cause_data) = &error.data {
+        data.insert("cause_error_data".to_string(), cause_data.clone());
+        if let Some(server) = cause_data.get("server").and_then(Value::as_str) {
+            data.insert("server".to_string(), json!(server));
+        }
+        if let Some(server_key) = cause_data.get("server_key").and_then(Value::as_str) {
+            data.insert("server_key".to_string(), json!(server_key));
+        }
+        if let Some(available_servers) = cause_data.get("available_servers") {
+            data.insert("available_servers".to_string(), available_servers.clone());
+        }
+        if let Some(available_tools) = cause_data.get("available_tools") {
+            data.insert("available_tools".to_string(), available_tools.clone());
+        }
+        if let Some(ready) = cause_data.get("ready").and_then(Value::as_bool) {
+            data.insert("ready".to_string(), json!(ready));
+        }
+        if let Some(ready_reason) = cause_data.get("ready_reason").and_then(Value::as_str) {
+            data.insert("ready_reason".to_string(), json!(ready_reason));
+        }
+    }
+}
+
+fn insert_browser_backend_result_data(
+    data: &mut Map<String, Value>,
+    backend_payload: &Value,
+    mcp_is_error: bool,
+) {
+    data.insert("is_error".to_string(), json!(mcp_is_error));
+    if let Some(status) = backend_payload.get("status").and_then(Value::as_str) {
+        data.insert("backend_status".to_string(), json!(status));
+    }
+    if let Some(error_code) = backend_payload.get("error_code").and_then(Value::as_str) {
+        data.insert("error_code".to_string(), json!(error_code));
+    }
+    if let Some(retryable) = backend_payload.get("retryable").and_then(Value::as_bool) {
+        data.insert("retryable".to_string(), json!(retryable));
+    }
+    if let Some(transport) = backend_payload.get("transport").and_then(Value::as_str) {
+        data.insert("transport".to_string(), json!(transport));
+    }
+    if let Some(attempts) = backend_payload
+        .get("transport_attempts")
+        .and_then(Value::as_array)
+    {
+        data.insert("transport_attempts_count".to_string(), json!(attempts.len()));
+    }
+    let context_kind = browser_context_kind_from_transport(backend_payload);
+    data.insert("browser_context_kind".to_string(), json!(context_kind));
+    data.insert(
+        "diagnostic_hint".to_string(),
+        json!(browser_tool_diagnostic_hint(backend_payload, mcp_is_error)),
+    );
+    data.insert(
+        "result_preview".to_string(),
+        json!(stringify_value_preview(backend_payload, 512)),
+    );
+}
+
+fn browser_backend_result_error(
+    context: &ToolContextResolved,
+    public_tool_name: &str,
+    browser_tool_name: &str,
+    backend_payload: &Value,
+    mcp_is_error: bool,
+    applied_tmwd_default: bool,
+) -> ToolExecutionError {
+    let mut data = browser_facade_error_data_map(
+        "browser_backend_result_error",
+        context,
+        public_tool_name,
+        browser_tool_name,
+        "backend_result",
+        Some(applied_tmwd_default),
+    );
+    insert_browser_backend_result_data(&mut data, backend_payload, mcp_is_error);
+    let error_code = backend_payload
+        .get("error_code")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+    let diagnostic_hint = data
+        .get("diagnostic_hint")
+        .and_then(Value::as_str)
+        .unwrap_or("inspect browser backend result");
+    ToolExecutionError::new(
+        "browser_backend_result_error",
+        format!("{public_tool_name} backend returned error_code={error_code}: {diagnostic_hint}"),
+    )
+    .with_data(Value::Object(data))
+}
+
 fn browser_facade_args_with_current_browser_default(
     args: &Map<String, Value>,
 ) -> (Map<String, Value>, bool) {
@@ -1043,6 +1189,8 @@ fn validate_browser_facade_args_visible(
         return Ok(());
     }
     hidden_args.sort();
+    let mut visible_args = visible_properties.into_iter().collect::<Vec<String>>();
+    visible_args.sort();
     let hidden_args_text = hidden_args.join(", ");
     Err(ToolExecutionError::new(
         "tool_argument_not_visible",
@@ -1051,7 +1199,20 @@ fn validate_browser_facade_args_visible(
             context.tool_surface_profile,
             context.advanced_tool_schema,
         ),
-    ))
+    )
+    .with_data({
+        let mut data = browser_facade_error_data_map(
+            "tool_argument_not_visible",
+            context,
+            public_tool_name,
+            public_tool_name,
+            "validate_browser_facade_args_visible",
+            None,
+        );
+        data.insert("hidden_args".to_string(), json!(hidden_args));
+        data.insert("visible_args".to_string(), json!(visible_args));
+        Value::Object(data)
+    }))
 }
 
 fn run_browser_structured_tool(
@@ -1074,6 +1235,15 @@ fn run_browser_structured_tool(
     wrapped_args.insert("arguments".to_string(), Value::Object(browser_args));
 
     let output = run_mcp_call(context, &wrapped_args).map_err(|error| {
+        let mut data = browser_facade_error_data_map(
+            "browser_backend_unavailable",
+            context,
+            public_tool_name,
+            browser_tool_name,
+            "mcp_backend_call",
+            Some(applied_tmwd_default),
+        );
+        insert_browser_cause_error_data(&mut data, &error);
         ToolExecutionError::new(
             &error.error_class,
             format!(
@@ -1081,12 +1251,27 @@ fn run_browser_structured_tool(
                 error.message
             ),
         )
+        .with_data(Value::Object(data))
     })?;
     let mcp_payload = serde_json::from_str::<Value>(&output.content).map_err(|error| {
+        let mut data = browser_facade_error_data_map(
+            "browser_backend_invalid_response",
+            context,
+            public_tool_name,
+            browser_tool_name,
+            "parse_mcp_backend_envelope",
+            Some(applied_tmwd_default),
+        );
+        data.insert("parse_error".to_string(), json!(error.to_string()));
+        data.insert(
+            "backend_envelope_preview".to_string(),
+            json!(truncate_output(output.content.clone(), 512)),
+        );
         ToolExecutionError::new(
-            "tool_execution_failed",
+            "browser_backend_invalid_response",
             format!("{public_tool_name} failed to parse browser backend envelope: {error}"),
         )
+        .with_data(Value::Object(data))
     })?;
     let result = mcp_payload.get("result").cloned().unwrap_or_else(|| json!({}));
     let mcp_is_error = result
@@ -1124,7 +1309,19 @@ fn run_browser_structured_tool(
             "structured_content_preview": result.get("structured_content_preview").cloned().unwrap_or(Value::String(String::new()))
         }
     });
-    Ok(ToolCallOutput::from_payload(payload))
+    let output = ToolCallOutput::from_payload(payload);
+    if status == "error" {
+        Ok(output.with_observed_error(browser_backend_result_error(
+            context,
+            public_tool_name,
+            browser_tool_name,
+            &backend_payload,
+            mcp_is_error,
+            applied_tmwd_default,
+        )))
+    } else {
+        Ok(output)
+    }
 }
 
 fn run_web_scan(

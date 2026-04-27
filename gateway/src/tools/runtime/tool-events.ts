@@ -317,6 +317,18 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     : typeof diagnostics.diagnostic_kind === "string" && diagnostics.diagnostic_kind.trim()
       ? diagnostics.diagnostic_kind.trim()
       : undefined;
+  const browserLike =
+    typeof errorData.backend === "string"
+    || typeof errorData.mapped_tool === "string"
+    || typeof errorData.browser_context_kind === "string"
+    || typeof errorData.transport_attempts_count === "number";
+  if (browserLike && diagnosticKind) {
+    parts.push(`diagnostic_kind=${diagnosticKind}`);
+  }
+  const browserTool = typeof errorData.tool === "string" ? compactRecoveryDetail(errorData.tool) : undefined;
+  if (browserLike && browserTool) {
+    parts.push(`tool=${browserTool}`);
+  }
   const server = typeof errorData.server === "string" ? compactRecoveryDetail(errorData.server) : undefined;
   if (server) {
     parts.push(`server=${server}`);
@@ -328,6 +340,20 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   const toolName = typeof errorData.tool_name === "string" ? compactRecoveryDetail(errorData.tool_name) : undefined;
   if (toolName) {
     parts.push(`tool_name=${toolName}`);
+  }
+  const backend = typeof errorData.backend === "string" ? compactRecoveryDetail(errorData.backend) : undefined;
+  if (backend) {
+    parts.push(`backend=${backend}`);
+  }
+  const backendServer =
+    typeof errorData.backend_server === "string" ? compactRecoveryDetail(errorData.backend_server) : undefined;
+  if (backendServer) {
+    parts.push(`backend_server=${backendServer}`);
+  }
+  const mappedTool =
+    typeof errorData.mapped_tool === "string" ? compactRecoveryDetail(errorData.mapped_tool) : undefined;
+  if (mappedTool) {
+    parts.push(`mapped_tool=${mappedTool}`);
   }
   const operation = typeof errorData.operation === "string" ? compactRecoveryDetail(errorData.operation) : undefined;
   if (operation) {
@@ -341,8 +367,15 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     parts.push(`diagnostic_kind=${diagnosticKind}`);
   }
   const tool = typeof errorData.tool === "string" ? compactRecoveryDetail(errorData.tool) : undefined;
-  if (tool) {
+  if (tool && !browserLike) {
     parts.push(`tool=${tool}`);
+  }
+  const toolSurfaceProfile =
+    typeof errorData.tool_surface_profile === "string"
+      ? compactRecoveryDetail(errorData.tool_surface_profile)
+      : undefined;
+  if (toolSurfaceProfile) {
+    parts.push(`tool_surface_profile=${toolSurfaceProfile}`);
   }
   const bridgeCommand =
     typeof errorData.bridge_command === "string" ? compactRecoveryDetail(errorData.bridge_command) : undefined;
@@ -397,6 +430,12 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     parts.push(`source_count=${String(Math.trunc(errorData.source_count))}`);
   }
   if (
+    typeof errorData.transport_attempts_count === "number"
+    && Number.isFinite(errorData.transport_attempts_count)
+  ) {
+    parts.push(`transport_attempts_count=${String(Math.trunc(errorData.transport_attempts_count))}`);
+  }
+  if (
     typeof errorData.max_concurrency_per_server === "number"
     && Number.isFinite(errorData.max_concurrency_per_server)
   ) {
@@ -419,6 +458,15 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   }
   if (typeof errorData.is_error === "boolean") {
     parts.push(`is_error=${String(errorData.is_error)}`);
+  }
+  if (typeof errorData.retryable === "boolean") {
+    parts.push(`retryable=${String(errorData.retryable)}`);
+  }
+  if (typeof errorData.advanced_tool_schema === "boolean") {
+    parts.push(`advanced_tool_schema=${String(errorData.advanced_tool_schema)}`);
+  }
+  if (typeof errorData.facade_default_tmwd_mode_applied === "boolean") {
+    parts.push(`facade_default_tmwd_mode_applied=${String(errorData.facade_default_tmwd_mode_applied)}`);
   }
   const readyReason =
     typeof errorData.ready_reason === "string" ? compactRecoveryDetail(errorData.ready_reason) : undefined;
@@ -468,6 +516,31 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (rpcErrorMessage) {
     parts.push(`rpc_error_message=${quoteRecoveryPreview(rpcErrorMessage)}`);
   }
+  const backendStatus =
+    typeof errorData.backend_status === "string" ? compactRecoveryDetail(errorData.backend_status) : undefined;
+  if (backendStatus) {
+    parts.push(`backend_status=${backendStatus}`);
+  }
+  const errorCode = typeof errorData.error_code === "string" ? compactRecoveryDetail(errorData.error_code) : undefined;
+  if (errorCode) {
+    parts.push(`error_code=${errorCode}`);
+  }
+  const transport = typeof errorData.transport === "string" ? compactRecoveryDetail(errorData.transport) : undefined;
+  if (transport) {
+    parts.push(`transport=${transport}`);
+  }
+  const browserContextKind =
+    typeof errorData.browser_context_kind === "string"
+      ? compactRecoveryDetail(errorData.browser_context_kind)
+      : undefined;
+  if (browserContextKind) {
+    parts.push(`browser_context_kind=${browserContextKind}`);
+  }
+  const diagnosticHint =
+    typeof errorData.diagnostic_hint === "string" ? compactRecoveryDetail(errorData.diagnostic_hint) : undefined;
+  if (diagnosticHint) {
+    parts.push(`diagnostic_hint=${quoteRecoveryPreview(diagnosticHint)}`);
+  }
   const resultPreview =
     typeof errorData.result_preview === "string" ? compactRecoveryDetail(errorData.result_preview) : undefined;
   if (resultPreview) {
@@ -490,6 +563,17 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (bridgeErrorMessage) {
     parts.push(`bridge_error_message=${quoteRecoveryPreview(bridgeErrorMessage)}`);
   }
+  const causeErrorClass =
+    typeof errorData.cause_error_class === "string" ? compactRecoveryDetail(errorData.cause_error_class) : undefined;
+  if (causeErrorClass) {
+    parts.push(`cause_error_class=${causeErrorClass}`);
+  }
+  const causeErrorMessage = typeof errorData.cause_error_message === "string"
+    ? compactRecoveryDetail(errorData.cause_error_message)
+    : undefined;
+  if (causeErrorMessage) {
+    parts.push(`cause_error_message=${quoteRecoveryPreview(causeErrorMessage)}`);
+  }
   const rawMessage =
     typeof errorData.raw_message === "string" ? compactRecoveryDetail(errorData.raw_message) : undefined;
   if (rawMessage) {
@@ -506,7 +590,7 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     parts.push(`stdout_preview=${quoteRecoveryPreview(stdoutPreview)}`);
   }
 
-  if (diagnosticKind && !semanticLike) {
+  if (diagnosticKind && !semanticLike && !browserLike) {
     parts.push(`diagnostic_kind=${diagnosticKind}`);
   }
   const candidates =
@@ -522,6 +606,14 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   const requestedSources = compactRecoveryStringList("requested_sources", errorData.requested_sources);
   if (requestedSources) {
     parts.push(requestedSources);
+  }
+  const hiddenArgs = compactRecoveryStringList("hidden_args", errorData.hidden_args);
+  if (hiddenArgs) {
+    parts.push(hiddenArgs);
+  }
+  const visibleArgs = compactRecoveryStringList("visible_args", errorData.visible_args);
+  if (visibleArgs) {
+    parts.push(visibleArgs);
   }
   const allowTools = compactRecoveryStringList("allow_tools", errorData.allow_tools);
   if (allowTools) {

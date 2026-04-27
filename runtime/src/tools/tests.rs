@@ -878,6 +878,27 @@ mod tests {
         assert_eq!(error.error_class, "tool_argument_not_visible");
         assert!(error.message.contains("tmwd_mode"));
         assert!(error.message.contains("profile=browser"));
+        let data = error
+            .data
+            .as_ref()
+            .expect("hidden browser args should include structured data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("tool_argument_not_visible")
+        );
+        assert_eq!(data["tool"].as_str(), Some(TOOL_WEB_EXECUTE_JS));
+        assert_eq!(data["backend"].as_str(), Some("browser-structured"));
+        assert_eq!(
+            data["operation"].as_str(),
+            Some("validate_browser_facade_args_visible")
+        );
+        assert_eq!(data["tool_surface_profile"].as_str(), Some("browser"));
+        assert_eq!(data["advanced_tool_schema"].as_bool(), Some(false));
+        assert!(data["hidden_args"]
+            .as_array()
+            .expect("hidden_args should be an array")
+            .iter()
+            .any(|value| value.as_str() == Some("tmwd_mode")));
 
         let advanced_context = browser_test_context("browser_advanced", false);
         let advanced_args = json_object_args(json!({
@@ -997,6 +1018,55 @@ mod tests {
         let (kept, applied) = browser_facade_args_with_current_browser_default(&legacy);
         assert!(!applied);
         assert_eq!(kept.get("tmwd_mode").and_then(Value::as_str), Some("cdp"));
+    }
+
+    #[test]
+    fn browser_backend_result_error_reports_structured_data() {
+        let context = browser_test_context("browser", false);
+        let backend_payload = json!({
+            "status": "error",
+            "error_code": "NO_EXTENSION",
+            "retryable": true,
+            "transport_attempts": [
+                {
+                    "transport": "tmwd_ws",
+                    "status": "failed"
+                }
+            ]
+        });
+        let error = browser_backend_result_error(
+            &context,
+            TOOL_WEB_SCAN,
+            "browser_scan",
+            &backend_payload,
+            false,
+            true,
+        );
+        assert_eq!(error.error_class, "browser_backend_result_error");
+        let data = error
+            .data
+            .as_ref()
+            .expect("browser backend result error should include structured data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("browser_backend_result_error")
+        );
+        assert_eq!(data["tool"].as_str(), Some(TOOL_WEB_SCAN));
+        assert_eq!(data["backend"].as_str(), Some("browser-structured"));
+        assert_eq!(data["mapped_tool"].as_str(), Some("browser_scan"));
+        assert_eq!(data["operation"].as_str(), Some("backend_result"));
+        assert_eq!(data["error_code"].as_str(), Some("NO_EXTENSION"));
+        assert_eq!(data["retryable"].as_bool(), Some(true));
+        assert_eq!(data["transport_attempts_count"].as_u64(), Some(1));
+        assert_eq!(data["browser_context_kind"].as_str(), Some("unknown"));
+        assert!(data["diagnostic_hint"]
+            .as_str()
+            .expect("diagnostic hint should be present")
+            .contains("Browser extension"));
+        assert_eq!(
+            data["facade_default_tmwd_mode_applied"].as_bool(),
+            Some(true)
+        );
     }
 
     #[test]
@@ -1789,6 +1859,15 @@ audit_redact_secrets = false
         );
         assert!(mcp_tool_result.recoverable);
 
+        let browser_backend =
+            classify_tool_recovery("browser_backend_result_error", "medium_risk");
+        assert_eq!(browser_backend.stage, "strategy_switch");
+        assert_eq!(
+            browser_backend.recommended_next_action,
+            "inspect_error_and_switch_strategy"
+        );
+        assert!(browser_backend.recoverable);
+
         let semantic_index = classify_tool_recovery("semantic_index_config_invalid", "medium_risk");
         assert_eq!(semantic_index.stage, "strategy_switch");
         assert_eq!(
@@ -1796,6 +1875,14 @@ audit_redact_secrets = false
             "use_search_or_glob_fallback"
         );
         assert!(semantic_index.recoverable);
+
+        let mcp_server_unready = classify_tool_recovery("mcp_server_unready", "unknown");
+        assert_eq!(mcp_server_unready.stage, "ask_user");
+        assert_eq!(
+            mcp_server_unready.recommended_next_action,
+            "request_environment_fix"
+        );
+        assert!(!mcp_server_unready.recoverable);
 
         let missing_config = classify_tool_recovery("config_missing", "unknown");
         assert_eq!(missing_config.stage, "ask_user");
