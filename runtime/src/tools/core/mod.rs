@@ -161,6 +161,27 @@ fn runtime_state_unavailable_error(
     )
 }
 
+fn config_missing_error_data(required_config: &str, recovery_hint: &str, source: &str) -> Value {
+    let mut data = Map::new();
+    data.insert("diagnostic_kind".to_string(), json!("config_missing"));
+    data.insert("required_config".to_string(), json!(required_config));
+    data.insert("recovery_hint".to_string(), json!(recovery_hint));
+    data.insert("source".to_string(), json!(source));
+    Value::Object(data)
+}
+
+fn config_missing_tool_error(
+    message: impl Into<String>,
+    required_config: &str,
+    source: &str,
+) -> ToolExecutionError {
+    ToolExecutionError::new("config_missing", message).with_data(config_missing_error_data(
+        required_config,
+        "provide the missing runtime configuration or switch provider/tool path, then run grobot status --probe --json before retrying",
+        source,
+    ))
+}
+
 fn path_resolution_error_data(
     raw_path: &str,
     candidate: Option<&Path>,

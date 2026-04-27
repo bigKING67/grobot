@@ -6,6 +6,7 @@ mod tests {
         ModelExecutionInterrupt, ModelExecutionOutput, ModelExecutor, ModelTelemetryEvent,
     };
     use crate::tools::tools::{LocalToolExecutor, ToolExecutor};
+    use serde_json::json;
 
     #[derive(Debug, Clone, Copy)]
     struct StubSuccessModel;
@@ -79,6 +80,51 @@ mod tests {
             vec!["turn_start", "model_request", "turn_failed", "turn_end"]
         );
         assert_eq!(failure.error_class, "upstream_http_error");
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct StubStructuredConfigFailModel;
+
+    impl ModelExecutor for StubStructuredConfigFailModel {
+        fn generate_assistant_message(
+            &self,
+            _input: &TurnExecuteInput,
+            _tools: &dyn ToolExecutor,
+        ) -> Result<ModelExecutionOutput, ModelExecutionError> {
+            Err(ModelExecutionError::new(
+                "config_missing",
+                "missing required env: GROBOT_API_KEY",
+            )
+            .with_data(json!({
+                "diagnostic_kind": "config_missing",
+                "required_config": "model_config.api_key",
+                "source": "model_config",
+            })))
+        }
+    }
+
+    #[test]
+    fn failure_path_preserves_structured_error_data() {
+        let orchestrator = TurnOrchestrator::new(StubStructuredConfigFailModel, LocalToolExecutor);
+        let failure = orchestrator
+            .execute_turn(sample_input())
+            .expect_err("expected structured config failure");
+        assert_eq!(
+            failure
+                .error_data
+                .as_ref()
+                .and_then(|data| data.get("required_config"))
+                .and_then(|value| value.as_str()),
+            Some("model_config.api_key")
+        );
+        let turn_failed_payload = failure.events[2]
+            .payload
+            .as_ref()
+            .expect("turn_failed payload should exist");
+        assert_eq!(
+            turn_failed_payload["error_data"]["required_config"].as_str(),
+            Some("model_config.api_key")
+        );
     }
 
     #[derive(Debug, Clone, Copy)]

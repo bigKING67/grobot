@@ -142,9 +142,10 @@ fn resolve_kimi_formula_map(input: &TurnExecuteInput) -> HashMap<String, String>
 
 fn resolve_kimi_connection(input: &TurnExecuteInput) -> Result<(String, String, u64), ToolExecutionError> {
     let model_config = input.model_config.as_ref().ok_or_else(|| {
-        ToolExecutionError::new(
-            "config_missing",
+        config_missing_tool_error(
             "model_config is required for kimi official tools",
+            "model_config",
+            "provider_options.kimi.official_tools",
         )
     })?;
     let base_url = model_config
@@ -153,9 +154,10 @@ fn resolve_kimi_connection(input: &TurnExecuteInput) -> Result<(String, String, 
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            ToolExecutionError::new(
-                "config_missing",
+            config_missing_tool_error(
                 "model_config.base_url is required for kimi official tools",
+                "model_config.base_url",
+                "provider_options.kimi.official_tools",
             )
         })?;
     let api_key = model_config
@@ -164,9 +166,10 @@ fn resolve_kimi_connection(input: &TurnExecuteInput) -> Result<(String, String, 
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            ToolExecutionError::new(
-                "config_missing",
+            config_missing_tool_error(
                 "model_config.api_key is required for kimi official tools",
+                "model_config.api_key",
+                "provider_options.kimi.official_tools",
             )
         })?;
     Ok((

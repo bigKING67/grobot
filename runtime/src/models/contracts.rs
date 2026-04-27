@@ -62,6 +62,7 @@ pub struct ModelExecutionOutput {
 pub struct ModelExecutionError {
     pub error_class: String,
     pub message: String,
+    pub data: Option<Value>,
     pub telemetry_events: Vec<ModelTelemetryEvent>,
 }
 
@@ -70,8 +71,14 @@ impl ModelExecutionError {
         Self {
             error_class: error_class.to_string(),
             message: message.into(),
+            data: None,
             telemetry_events: Vec::new(),
         }
+    }
+
+    pub fn with_data(mut self, data: Value) -> Self {
+        self.data = Some(data);
+        self
     }
 
     pub fn with_telemetry_events(mut self, telemetry_events: Vec<ModelTelemetryEvent>) -> Self {

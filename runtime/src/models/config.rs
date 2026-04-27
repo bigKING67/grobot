@@ -2,14 +2,35 @@ fn trim_trailing_slashes(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()
 }
 
+fn required_env_contract_path(key: &str) -> &str {
+    match key {
+        ENV_BASE_URL => "model_config.base_url",
+        ENV_API_KEY => "model_config.api_key",
+        ENV_MODEL => "model_config.model",
+        _ => key,
+    }
+}
+
+fn model_config_missing_error(key: &str) -> ModelExecutionError {
+    let required_config = required_env_contract_path(key);
+    ModelExecutionError::new(
+        "config_missing",
+        format!("missing required env: {key}"),
+    )
+    .with_data(json!({
+        "diagnostic_kind": "config_missing",
+        "required_config": required_config,
+        "recovery_hint": "provide model_config or the matching runtime env, then run grobot status --probe --json before retrying",
+        "source": "model_config",
+        "env_key": key,
+    }))
+}
+
 fn read_required_env(key: &str) -> Result<String, ModelExecutionError> {
     let value = env::var(key).unwrap_or_default();
     let normalized = value.trim();
     if normalized.is_empty() {
-        return Err(ModelExecutionError::new(
-            "config_missing",
-            format!("missing required env: {key}"),
-        ));
+        return Err(model_config_missing_error(key));
     }
     Ok(normalized.to_string())
 }

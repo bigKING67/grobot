@@ -220,6 +220,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
             Err(error) => {
                 let error_class = error.error_class;
                 let error_message = error.message;
+                let error_data = error.data;
                 Self::append_model_telemetry_events(
                     &mut events,
                     &turn_id,
@@ -242,7 +243,8 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                             "tool_name": tool_name,
                             "status": "failed",
                             "error_class": error_class.clone(),
-                            "error_message": error_message.clone()
+                            "error_message": error_message.clone(),
+                            "error_data": error_data.clone()
                         })),
                     ));
                     events.push(Self::build_event(
@@ -253,6 +255,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                             "risk_class": "unknown",
                             "error_class": error_class.clone(),
                             "error_message": error_message.clone(),
+                            "error_data": error_data.clone(),
                             "recovery_stage": recovery_policy.stage,
                             "recovery_reason": error_class.clone(),
                             "recommended_next_action": recovery_policy.recommended_next_action,
@@ -265,7 +268,8 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     &turn_id,
                     Some(json!({
                         "error_class": error_class.clone(),
-                        "error_message": error_message.clone()
+                        "error_message": error_message.clone(),
+                        "error_data": error_data.clone()
                     })),
                 ));
                 events.push(Self::build_event(
@@ -282,6 +286,7 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     session_key,
                     error_class,
                     error_message,
+                    error_data,
                     events,
                 })
             }

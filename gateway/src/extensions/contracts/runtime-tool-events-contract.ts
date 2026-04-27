@@ -568,7 +568,12 @@ expectEqual(
 const runtimeEnvironmentRecoveryCases = [
   {
     errorClass: "config_missing",
-    errorMessage: "model_config.api_key is required for kimi official tools",
+    errorMessage: "model_config.base_url is required for kimi official tools",
+    errorData: {
+      required_config: "model_config.api_key",
+      source: "provider_options.kimi.official_tools",
+      recovery_hint: "provide model_config.api_key",
+    },
     errorCode: "CONFIG_MISSING",
     action: "fix_config_or_switch_provider_and_check_status",
     commands: ["grobot status --json", "grobot status --probe --json"],
@@ -577,6 +582,7 @@ const runtimeEnvironmentRecoveryCases = [
   {
     errorClass: "tool_context_missing",
     errorMessage: "runtime tool context is required",
+    errorData: {},
     errorCode: "TOOL_CONTEXT_MISSING",
     action: "fix_tool_context_and_check_status",
     commands: ["grobot status --json"],
@@ -585,6 +591,7 @@ const runtimeEnvironmentRecoveryCases = [
   {
     errorClass: "tool_context_invalid",
     errorMessage: "tool_context.work_dir is not a directory",
+    errorData: {},
     errorCode: "TOOL_CONTEXT_INVALID",
     action: "fix_tool_context_and_check_status",
     commands: ["grobot status --json"],
@@ -593,6 +600,7 @@ const runtimeEnvironmentRecoveryCases = [
   {
     errorClass: "runtime_state_unavailable",
     errorMessage: "failed to lock file mutation queue store",
+    errorData: {},
     errorCode: "RUNTIME_STATE_UNAVAILABLE",
     action: "restart_or_clear_runtime_state_and_check_status",
     commands: ["grobot status --json"],
@@ -606,6 +614,7 @@ for (const recoveryCase of runtimeEnvironmentRecoveryCases) {
     errorData: {
       source: ".grobot/config.toml",
       work_dir: "/tmp/grobot-runtime-env-contract",
+      ...recoveryCase.errorData,
     },
   });
   expect(plan !== null, `runtime environment plan exists for ${recoveryCase.errorClass}`);
@@ -651,6 +660,15 @@ for (const recoveryCase of runtimeEnvironmentRecoveryCases) {
     `runtime environment serializer keeps commands ${recoveryCase.errorClass}`,
   );
 }
+const legacyRuntimeConfigPlan = buildRuntimeEnvironmentRecoveryPlan({
+  errorClass: "config_missing",
+  errorMessage: "provider_options.kimi.files_enabled=true is required",
+});
+expectEqual(
+  legacyRuntimeConfigPlan?.requiredConfig,
+  "provider_options.kimi.files_enabled=true",
+  "runtime environment recovery keeps legacy message inference as fallback",
+);
 expectEqual(formatRuntimeEnvironmentRecoveryPlan(null), "<none>", "runtime environment formatter handles null");
 expectEqual(serializeRuntimeEnvironmentRecoveryPlan(null), null, "runtime environment serializer handles null");
 expectEqual(
@@ -683,7 +701,11 @@ const runtimeEnvironmentFeedback = buildRuntimeToolRecoveryFeedback({
       recommendedNextAction: "ask_user_for_config_or_switch_provider",
       toolName: "read",
       errorClass: "config_missing",
-      errorMessage: "provider_options.kimi.files_enabled=true is required",
+      errorMessage: "legacy fallback message without structured required_config",
+      errorData: {
+        required_config: "provider_options.kimi.files_enabled=true",
+        source: "read.media",
+      },
       recoverable: false,
       requiresUserIntervention: true,
       observedAt: structuredRecoveryObservedAt,

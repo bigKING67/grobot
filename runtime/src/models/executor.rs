@@ -2001,9 +2001,15 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                     Some(error.message.as_str()),
                                     error.data.as_ref(),
                                 ));
+                                let mut model_error = ModelExecutionError::new(
+                                    &error.error_class,
+                                    error.message.clone(),
+                                );
+                                if let Some(data) = error.data.clone() {
+                                    model_error = model_error.with_data(data);
+                                }
                                 return Err(
-                                    ModelExecutionError::new(&error.error_class, error.message)
-                                        .with_telemetry_events(telemetry_events),
+                                    model_error.with_telemetry_events(telemetry_events),
                                 );
                             }
                         }

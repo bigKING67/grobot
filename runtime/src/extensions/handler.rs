@@ -148,6 +148,7 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                         "session_key": failure.session_key,
                         "error_class": failure.error_class,
                         "error_message": failure.error_message,
+                        "error_data": failure.error_data,
                         "events": failure.events
                     }),
                 )),

@@ -1518,6 +1518,11 @@ mod tests {
             .expect_err("expected config_missing");
         assert_eq!(error.error_class, "config_missing");
         assert!(error.message.contains(ENV_BASE_URL));
+        let data = error.data.as_ref().expect("config_missing should include error_data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("config_missing"));
+        assert_eq!(data["required_config"].as_str(), Some("model_config.base_url"));
+        assert_eq!(data["source"].as_str(), Some("model_config"));
+        assert_eq!(data["env_key"].as_str(), Some(ENV_BASE_URL));
     }
 
     #[test]

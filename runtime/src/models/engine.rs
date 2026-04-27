@@ -138,5 +138,6 @@ pub struct TurnExecuteFailure {
     pub session_key: String,
     pub error_class: String,
     pub error_message: String,
+    pub error_data: Option<Value>,
     pub events: Vec<RuntimeEventOutput>,
 }

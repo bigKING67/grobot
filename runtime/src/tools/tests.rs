@@ -4146,7 +4146,62 @@ audit_redact_secrets = false
             .expect_err("kimi media read should require kimi-k2.5");
         assert_eq!(error.error_class, "config_missing");
         assert!(error.message.contains("model kimi-k2.5"));
+        let data = error.data.as_ref().expect("kimi model gate should include error_data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("config_missing"));
+        assert_eq!(data["required_config"].as_str(), Some("kimi-k2.5"));
+        assert_eq!(data["source"].as_str(), Some("read.media"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn kimi_official_tool_config_missing_reports_required_config_data() {
+        let input = TurnExecuteInput {
+            request_id: "req-kimi-official-missing-config".to_string(),
+            session_key: "feishu:grobot:dm:tester".to_string(),
+            system_prompt: None,
+            user_message: "search".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some("https://api.moonshot.cn/v1".to_string()),
+                api_key: None,
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(10_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: Some(RuntimeProviderOptionsInput {
+                    kimi: Some(RuntimeKimiOptionsInput {
+                        web_search_mode: Some("official_only".to_string()),
+                        disable_thinking_on_builtin_web_search: None,
+                        official_tools_allowlist: Some(vec!["web_search".to_string()]),
+                        official_tool_formulas: None,
+                        prompt_cache: None,
+                        max_tokens: None,
+                        stream: None,
+                        temperature: None,
+                        top_p: None,
+                        files_enabled: Some(true),
+                        allow_file_admin: None,
+                    }),
+                }),
+            }),
+            tool_context: None,
+            attachments: vec![],
+        };
+        let call = ToolCallInput {
+            id: "kimi-official-missing-api-key".to_string(),
+            name: "web_search".to_string(),
+            arguments: json!({
+                "query": "grobot"
+            }),
+        };
+
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("kimi official tool should require api key before upstream request");
+        assert_eq!(error.error_class, "config_missing");
+        let data = error.data.as_ref().expect("kimi official config error should include error_data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("config_missing"));
+        assert_eq!(data["required_config"].as_str(), Some("model_config.api_key"));
+        assert_eq!(data["source"].as_str(), Some("provider_options.kimi.official_tools"));
     }
 
     #[test]

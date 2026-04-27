@@ -560,6 +560,7 @@ export class StdioRustRuntimeClient implements RuntimeClient {
       const errorData = isRecord(response.error.data) ? response.error.data : undefined;
       const errorClass = asString(errorData?.error_class);
       const errorMessage = asString(errorData?.error_message);
+      const runtimeErrorData = isRecord(errorData?.error_data) ? errorData.error_data : undefined;
       const traceId = asString(errorData?.trace_id);
       const runtimeEvents = toEventObjects(traceId || `trace_${request.requestId}`, request.sessionKey, errorData?.events);
       const detail = [
@@ -573,6 +574,7 @@ export class StdioRustRuntimeClient implements RuntimeClient {
         message: `runtime rpc error ${response.error.code}: ${response.error.message}${detail ? ` (${detail})` : ""}`,
         errorClass,
         errorMessage,
+        errorData: runtimeErrorData,
         traceId,
         runtimeEvents,
       });
