@@ -44,17 +44,9 @@ import {
   type RuntimeToolRecoveryReadinessGateDecision,
 } from "../../../../tools/runtime/tool-recovery-readiness-gate";
 import {
-  formatBrowserEnvironmentRecoveryPlan,
-  serializeBrowserEnvironmentRecoveryPlan,
-} from "../../../../tools/runtime/browser-environment-recovery";
-import {
-  formatMcpEnvironmentRecoveryPlan,
-  serializeMcpEnvironmentRecoveryPlan,
-} from "../../../../tools/runtime/mcp-environment-recovery";
-import {
-  formatRuntimeEnvironmentRecoveryPlan,
-  serializeRuntimeEnvironmentRecoveryPlan,
-} from "../../../../tools/runtime/runtime-environment-recovery";
+  formatRuntimeToolEnvironmentRecoveryFields,
+  serializeRuntimeToolEnvironmentRecoveryFields,
+} from "../../../../tools/runtime/environment-recovery-families";
 import { buildRuntimeToolRecoveryDecision } from "../../../../tools/runtime/tool-recovery-decision";
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
@@ -934,12 +926,11 @@ function serializeRuntimeToolRecoveryFeedback(
     consumed_reason: feedback.consumedReason ?? null,
     consumed_at: feedback.consumedAt ?? null,
     observed_at: feedback.observedAt ?? null,
-    runtime_environment_recovery:
-      serializeRuntimeEnvironmentRecoveryPlan(feedback.runtimeEnvironmentRecovery ?? null),
-    browser_environment_recovery:
-      serializeBrowserEnvironmentRecoveryPlan(feedback.browserEnvironmentRecovery ?? null),
-    mcp_environment_recovery:
-      serializeMcpEnvironmentRecoveryPlan(feedback.mcpEnvironmentRecovery ?? null),
+    ...serializeRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: feedback.runtimeEnvironmentRecovery ?? null,
+      browserEnvironmentRecovery: feedback.browserEnvironmentRecovery ?? null,
+      mcpEnvironmentRecovery: feedback.mcpEnvironmentRecovery ?? null,
+    }),
   };
 }
 
@@ -953,9 +944,11 @@ function formatRuntimeToolRecoveryFeedbackFields(feedback: RuntimeToolRecoveryFe
     `consumed=${feedback.consumed ? "true" : "false"}`,
     `stage=${feedback.stage ?? "<none>"}`,
     `action=${feedback.recommendedNextAction ?? "<none>"}`,
-    `runtime_environment_recovery=${formatRuntimeEnvironmentRecoveryPlan(feedback.runtimeEnvironmentRecovery ?? null)}`,
-    `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(feedback.browserEnvironmentRecovery ?? null)}`,
-    `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(feedback.mcpEnvironmentRecovery ?? null)}`,
+    ...formatRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: feedback.runtimeEnvironmentRecovery ?? null,
+      browserEnvironmentRecovery: feedback.browserEnvironmentRecovery ?? null,
+      mcpEnvironmentRecovery: feedback.mcpEnvironmentRecovery ?? null,
+    }),
     formatRuntimeToolRecoveryEscalationFields(feedback),
   ].join(" ");
 }
@@ -977,9 +970,11 @@ function serializeRuntimeToolRecoveryTimelineEntry(entry: RuntimeToolRecoveryTim
     escalation_policy_version: entry.escalationPolicyVersion,
     base_recovery_stage: entry.baseStage,
     base_recommended_next_action: entry.baseRecommendedNextAction,
-    runtime_environment_recovery: serializeRuntimeEnvironmentRecoveryPlan(entry.runtimeEnvironmentRecovery),
-    browser_environment_recovery: serializeBrowserEnvironmentRecoveryPlan(entry.browserEnvironmentRecovery),
-    mcp_environment_recovery: serializeMcpEnvironmentRecoveryPlan(entry.mcpEnvironmentRecovery),
+    ...serializeRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: entry.runtimeEnvironmentRecovery,
+      browserEnvironmentRecovery: entry.browserEnvironmentRecovery,
+      mcpEnvironmentRecovery: entry.mcpEnvironmentRecovery,
+    }),
     active: entry.active,
     consumed: entry.consumed,
     consumed_reason: entry.consumedReason,
@@ -999,12 +994,11 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
     attention_tool_name: summary.attentionToolName,
     attention_error_class: summary.attentionErrorClass,
     attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
-    attention_runtime_environment_recovery:
-      serializeRuntimeEnvironmentRecoveryPlan(summary.attentionRuntimeEnvironmentRecovery),
-    attention_browser_environment_recovery:
-      serializeBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery),
-    attention_mcp_environment_recovery:
-      serializeMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery),
+    ...serializeRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: summary.attentionRuntimeEnvironmentRecovery,
+      browserEnvironmentRecovery: summary.attentionBrowserEnvironmentRecovery,
+      mcpEnvironmentRecovery: summary.attentionMcpEnvironmentRecovery,
+    }, { fieldPrefix: "attention_" }),
     attention_age_ms: summary.attentionAgeMs,
     latest_recommended_next_action: summary.latestRecommendedNextAction,
     timeline_entry_count: summary.timelineEntryCount,
@@ -1020,12 +1014,11 @@ function serializeRuntimeToolRecoveryHealthSummary(summary: RuntimeToolRecoveryH
     latest_tool_name: summary.latestToolName,
     latest_error_class: summary.latestErrorClass,
     latest_requires_user_intervention: summary.latestRequiresUserIntervention,
-    latest_runtime_environment_recovery:
-      serializeRuntimeEnvironmentRecoveryPlan(summary.latestRuntimeEnvironmentRecovery),
-    latest_browser_environment_recovery:
-      serializeBrowserEnvironmentRecoveryPlan(summary.latestBrowserEnvironmentRecovery),
-    latest_mcp_environment_recovery:
-      serializeMcpEnvironmentRecoveryPlan(summary.latestMcpEnvironmentRecovery),
+    ...serializeRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: summary.latestRuntimeEnvironmentRecovery,
+      browserEnvironmentRecovery: summary.latestBrowserEnvironmentRecovery,
+      mcpEnvironmentRecovery: summary.latestMcpEnvironmentRecovery,
+    }, { fieldPrefix: "latest_" }),
     latest_age_ms: summary.latestAgeMs,
     components: summary.components,
     error_class_counts: summary.errorClassCounts,
@@ -1085,12 +1078,11 @@ function serializeRuntimeToolRecoveryReadinessSummary(
     attention_tool_name: summary.attentionToolName,
     attention_error_class: summary.attentionErrorClass,
     attention_requires_user_intervention: summary.attentionRequiresUserIntervention,
-    attention_runtime_environment_recovery:
-      serializeRuntimeEnvironmentRecoveryPlan(summary.attentionRuntimeEnvironmentRecovery),
-    attention_browser_environment_recovery:
-      serializeBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery),
-    attention_mcp_environment_recovery:
-      serializeMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery),
+    ...serializeRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: summary.attentionRuntimeEnvironmentRecovery,
+      browserEnvironmentRecovery: summary.attentionBrowserEnvironmentRecovery,
+      mcpEnvironmentRecovery: summary.attentionMcpEnvironmentRecovery,
+    }, { fieldPrefix: "attention_" }),
   };
 }
 
@@ -1123,12 +1115,11 @@ function serializeRuntimeToolRecoveryReadinessGate(
     attention_tool_name: gate.attentionToolName,
     attention_error_class: gate.attentionErrorClass,
     attention_requires_user_intervention: gate.attentionRequiresUserIntervention,
-    attention_runtime_environment_recovery:
-      serializeRuntimeEnvironmentRecoveryPlan(gate.attentionRuntimeEnvironmentRecovery),
-    attention_browser_environment_recovery:
-      serializeBrowserEnvironmentRecoveryPlan(gate.attentionBrowserEnvironmentRecovery),
-    attention_mcp_environment_recovery:
-      serializeMcpEnvironmentRecoveryPlan(gate.attentionMcpEnvironmentRecovery),
+    ...serializeRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: gate.attentionRuntimeEnvironmentRecovery,
+      browserEnvironmentRecovery: gate.attentionBrowserEnvironmentRecovery,
+      mcpEnvironmentRecovery: gate.attentionMcpEnvironmentRecovery,
+    }, { fieldPrefix: "attention_" }),
   };
 }
 

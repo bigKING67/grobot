@@ -4,17 +4,11 @@ import {
   type RuntimeToolRecoveryPolicySnapshot,
 } from "./tool-recovery-policy";
 import {
-  formatBrowserEnvironmentRecoveryPlan,
+  formatRuntimeToolEnvironmentRecoveryFields,
   type BrowserEnvironmentRecoveryPlan,
-} from "./browser-environment-recovery";
-import {
-  formatMcpEnvironmentRecoveryPlan,
   type McpEnvironmentRecoveryPlan,
-} from "./mcp-environment-recovery";
-import {
-  formatRuntimeEnvironmentRecoveryPlan,
   type RuntimeEnvironmentRecoveryPlan,
-} from "./runtime-environment-recovery";
+} from "./environment-recovery-families";
 
 export type RuntimeToolRecoveryReadinessStatus = "ready" | "degraded" | "blocked";
 
@@ -114,9 +108,11 @@ export function formatRuntimeToolRecoveryReadinessFields(
     `action=${summary.recommendedNextAction ?? "<none>"}`,
     `attention_key=${summary.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${summary.attentionStage ?? "<none>"}`,
-    `runtime_environment_recovery=${formatRuntimeEnvironmentRecoveryPlan(summary.attentionRuntimeEnvironmentRecovery)}`,
-    `browser_environment_recovery=${formatBrowserEnvironmentRecoveryPlan(summary.attentionBrowserEnvironmentRecovery)}`,
-    `mcp_environment_recovery=${formatMcpEnvironmentRecoveryPlan(summary.attentionMcpEnvironmentRecovery)}`,
+    ...formatRuntimeToolEnvironmentRecoveryFields({
+      runtimeEnvironmentRecovery: summary.attentionRuntimeEnvironmentRecovery,
+      browserEnvironmentRecovery: summary.attentionBrowserEnvironmentRecovery,
+      mcpEnvironmentRecovery: summary.attentionMcpEnvironmentRecovery,
+    }),
     `policy_version=${summary.policyVersion}`,
     `health=${summary.healthLevel}/${String(summary.healthScore)}`,
     `health_thresholds=${String(summary.watchScoreThreshold)}/${String(summary.riskScoreThreshold)}`,

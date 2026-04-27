@@ -301,6 +301,9 @@ When a blocker prevents automatic tool-surface adaptation, the adaptation reason
 environment-specific blocker when available (for example
 `recovery_gate_runtime_environment_config_missing`) instead of collapsing all operator fixes into
 `recovery_gate_blocked_operator_action_required`.
+Gateway status/readiness/gate formatters should route environment recovery fields through the
+runtime environment recovery family helper so runtime/browser/MCP plan fields stay symmetric across
+JSON and text surfaces.
 
 `ask_user` questions marked with `is_secret=true` keep the raw answer available only in the current
 turn's `[AskUser Resolution]` prompt so the agent can act on credentials or other sensitive
