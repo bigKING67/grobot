@@ -139,7 +139,7 @@ expectEqual(
 expectEqual(
   getRuntimeToolRecoveryPolicySnapshot().escalation.browserEnvironmentAskUserThreshold,
   2,
-  "browser environment recovery escalation compatibility threshold is exposed by policy",
+  "browser environment recovery escalation threshold is exposed by policy",
 );
 
 const structuredRecoveryObservedAt = "2026-04-25T00:00:30.000Z";

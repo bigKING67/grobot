@@ -718,7 +718,7 @@ function applyRepeatedRecoveryEscalation(input: {
   };
   if (
     browserEnvironmentRecoveryPlan(base)
-    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.environmentAskUserThreshold
+    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.browserEnvironmentAskUserThreshold
     && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
   ) {
     return {
