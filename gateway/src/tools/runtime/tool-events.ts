@@ -311,6 +311,12 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     return undefined;
   }
   const parts: string[] = [];
+  const diagnostics = normalizeRecord(errorData.diagnostics);
+  const diagnosticKind = typeof errorData.diagnostic_kind === "string" && errorData.diagnostic_kind.trim()
+    ? errorData.diagnostic_kind.trim()
+    : typeof diagnostics.diagnostic_kind === "string" && diagnostics.diagnostic_kind.trim()
+      ? diagnostics.diagnostic_kind.trim()
+      : undefined;
   const server = typeof errorData.server === "string" ? compactRecoveryDetail(errorData.server) : undefined;
   if (server) {
     parts.push(`server=${server}`);
@@ -326,6 +332,26 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   const operation = typeof errorData.operation === "string" ? compactRecoveryDetail(errorData.operation) : undefined;
   if (operation) {
     parts.push(`operation=${operation}`);
+  }
+  const semanticLike =
+    typeof errorData.bridge_command === "string"
+    || typeof errorData.bridge_error_class === "string"
+    || typeof errorData.source_roots_count === "number";
+  if (semanticLike && diagnosticKind) {
+    parts.push(`diagnostic_kind=${diagnosticKind}`);
+  }
+  const tool = typeof errorData.tool === "string" ? compactRecoveryDetail(errorData.tool) : undefined;
+  if (tool) {
+    parts.push(`tool=${tool}`);
+  }
+  const bridgeCommand =
+    typeof errorData.bridge_command === "string" ? compactRecoveryDetail(errorData.bridge_command) : undefined;
+  if (bridgeCommand) {
+    parts.push(`bridge_command=${bridgeCommand}`);
+  }
+  const source = typeof errorData.source === "string" ? compactRecoveryDetail(errorData.source) : undefined;
+  if (source) {
+    parts.push(`source=${source}`);
   }
   const path = typeof errorData.path === "string" ? compactRecoveryDetail(errorData.path) : undefined;
   if (path) {
@@ -357,6 +383,18 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   }
   if (typeof errorData.queue_waiting === "number" && Number.isFinite(errorData.queue_waiting)) {
     parts.push(`queue_waiting=${String(Math.trunc(errorData.queue_waiting))}`);
+  }
+  if (typeof errorData.source_roots_count === "number" && Number.isFinite(errorData.source_roots_count)) {
+    parts.push(`source_roots_count=${String(Math.trunc(errorData.source_roots_count))}`);
+  }
+  if (typeof errorData.bridge_exit_status === "number" && Number.isFinite(errorData.bridge_exit_status)) {
+    parts.push(`bridge_exit_status=${String(Math.trunc(errorData.bridge_exit_status))}`);
+  }
+  if (typeof errorData.matched_files === "number" && Number.isFinite(errorData.matched_files)) {
+    parts.push(`matched_files=${String(Math.trunc(errorData.matched_files))}`);
+  }
+  if (typeof errorData.source_count === "number" && Number.isFinite(errorData.source_count)) {
+    parts.push(`source_count=${String(Math.trunc(errorData.source_count))}`);
   }
   if (
     typeof errorData.max_concurrency_per_server === "number"
@@ -398,6 +436,26 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (typeof errorData.duration_ms === "number" && Number.isFinite(errorData.duration_ms)) {
     parts.push(`duration_ms=${String(Math.trunc(errorData.duration_ms))}`);
   }
+  const nodeBin = typeof errorData.node_bin === "string" ? compactRecoveryDetail(errorData.node_bin) : undefined;
+  if (nodeBin) {
+    parts.push(`node_bin=${nodeBin}`);
+  }
+  const bridgeScript =
+    typeof errorData.bridge_script === "string" ? compactRecoveryDetail(errorData.bridge_script) : undefined;
+  if (bridgeScript) {
+    parts.push(`bridge_script=${quoteRecoveryPreview(bridgeScript)}`);
+  }
+  const bridgeScriptOverride = typeof errorData.bridge_script_override === "string"
+    ? compactRecoveryDetail(errorData.bridge_script_override)
+    : undefined;
+  if (bridgeScriptOverride) {
+    parts.push(`bridge_script_override=${quoteRecoveryPreview(bridgeScriptOverride)}`);
+  }
+  const indexConfigPath =
+    typeof errorData.index_config_path === "string" ? compactRecoveryDetail(errorData.index_config_path) : undefined;
+  if (indexConfigPath) {
+    parts.push(`index_config_path=${quoteRecoveryPreview(indexConfigPath)}`);
+  }
   const rpcErrorCode = errorData.rpc_error_code;
   if (
     (typeof rpcErrorCode === "number" && Number.isFinite(rpcErrorCode))
@@ -421,14 +479,34 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (structuredContentPreview) {
     parts.push(`structured_content_preview=${quoteRecoveryPreview(structuredContentPreview)}`);
   }
+  const bridgeErrorClass =
+    typeof errorData.bridge_error_class === "string" ? compactRecoveryDetail(errorData.bridge_error_class) : undefined;
+  if (bridgeErrorClass) {
+    parts.push(`bridge_error_class=${bridgeErrorClass}`);
+  }
+  const bridgeErrorMessage = typeof errorData.bridge_error_message === "string"
+    ? compactRecoveryDetail(errorData.bridge_error_message)
+    : undefined;
+  if (bridgeErrorMessage) {
+    parts.push(`bridge_error_message=${quoteRecoveryPreview(bridgeErrorMessage)}`);
+  }
+  const rawMessage =
+    typeof errorData.raw_message === "string" ? compactRecoveryDetail(errorData.raw_message) : undefined;
+  if (rawMessage) {
+    parts.push(`raw_message=${quoteRecoveryPreview(rawMessage)}`);
+  }
+  const stderrPreview =
+    typeof errorData.stderr_preview === "string" ? compactRecoveryDetail(errorData.stderr_preview) : undefined;
+  if (stderrPreview) {
+    parts.push(`stderr_preview=${quoteRecoveryPreview(stderrPreview)}`);
+  }
+  const stdoutPreview =
+    typeof errorData.stdout_preview === "string" ? compactRecoveryDetail(errorData.stdout_preview) : undefined;
+  if (stdoutPreview) {
+    parts.push(`stdout_preview=${quoteRecoveryPreview(stdoutPreview)}`);
+  }
 
-  const diagnostics = normalizeRecord(errorData.diagnostics);
-  const diagnosticKind = typeof errorData.diagnostic_kind === "string" && errorData.diagnostic_kind.trim()
-    ? errorData.diagnostic_kind.trim()
-    : typeof diagnostics.diagnostic_kind === "string" && diagnostics.diagnostic_kind.trim()
-      ? diagnostics.diagnostic_kind.trim()
-      : undefined;
-  if (diagnosticKind) {
+  if (diagnosticKind && !semanticLike) {
     parts.push(`diagnostic_kind=${diagnosticKind}`);
   }
   const candidates =
@@ -440,6 +518,10 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   const availableTools = compactRecoveryStringList("available_tools", errorData.available_tools);
   if (availableTools) {
     parts.push(availableTools);
+  }
+  const requestedSources = compactRecoveryStringList("requested_sources", errorData.requested_sources);
+  if (requestedSources) {
+    parts.push(requestedSources);
   }
   const allowTools = compactRecoveryStringList("allow_tools", errorData.allow_tools);
   if (allowTools) {

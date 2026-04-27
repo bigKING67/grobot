@@ -329,6 +329,65 @@ expect(
   "feedback summarizes MCP tool result preview",
 );
 
+const semanticStructuredFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { semantic_search: 1 },
+    failuresByErrorClass: { semantic_index_config_invalid: 1 },
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "semantic_index_config_invalid",
+      recommendedNextAction: "use_search_or_glob_fallback",
+      toolName: "semantic_search",
+      errorClass: "semantic_index_config_invalid",
+      errorData: {
+        diagnostic_kind: "semantic_index_config_invalid",
+        tool: "semantic_search",
+        bridge_command: "semantic-search",
+        operation: "bridge_exit",
+        requested_sources: ["code"],
+        source_roots_count: 1,
+        bridge_exit_status: 1,
+        matched_files: 0,
+        index_config_path: "/tmp/cwconfig.json",
+        bridge_error_class: "semantic_index_config_invalid",
+        bridge_error_message: "ContextWeaver index config matches no files",
+        stderr_preview: "{\"error_class\":\"semantic_index_config_invalid\"}",
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-semantic-structured",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expect(
+  semanticStructuredFeedback.promptBlock.includes("diagnostic_kind=semantic_index_config_invalid"),
+  "feedback summarizes semantic diagnostic kind",
+);
+expect(
+  semanticStructuredFeedback.promptBlock.includes("bridge_command=semantic-search"),
+  "feedback summarizes semantic bridge command",
+);
+expect(
+  semanticStructuredFeedback.promptBlock.includes("matched_files=0"),
+  "feedback summarizes semantic matched files",
+);
+expect(
+  semanticStructuredFeedback.promptBlock.includes("index_config_path=\"/tmp/cwconfig.json\""),
+  "feedback summarizes semantic index config path",
+);
+
 const nonRecoverableObservedAt = "2026-04-25T00:01:00.000Z";
 const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
   metrics: {

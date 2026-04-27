@@ -1371,6 +1371,12 @@ async function runSemanticSearch(payload, timeoutMs) {
     throw createError(
       errorClass,
       warnings.join("; ") || "semantic search failed for all sources",
+      {
+        source_count: sourceStats.length,
+        error_classes: Array.from(new Set(errorClasses)).slice(0, 8),
+        source_stats: sourceStats.slice(0, 8),
+        warnings: warnings.slice(0, 8),
+      },
     );
   }
 
@@ -1594,6 +1600,12 @@ async function runPromptEnhancer(payload, timeoutMs) {
     throw createError(
       errorClass,
       warnings.join("; ") || "prompt enhancer failed for all sources",
+      {
+        source_count: sourceStats.length,
+        error_classes: Array.from(new Set(errorClasses)).slice(0, 8),
+        source_stats: sourceStats.slice(0, 8),
+        warnings: warnings.slice(0, 8),
+      },
     );
   }
 
@@ -1702,6 +1714,9 @@ runMain(process.argv.slice(2)).catch((error) => {
     error_class: errorClass,
     message,
   };
+  if (isRecord(error?.details)) {
+    payload.details = error.details;
+  }
   process.stderr.write(`${JSON.stringify(payload)}\n`);
   process.exitCode = 1;
 });

@@ -162,7 +162,17 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
-        &["semantic_tool_unavailable"],
+        &[
+            "semantic_tool_unavailable",
+            "semantic_no_source_available",
+            "semantic_index_config_invalid",
+            "semantic_index_confirmation_required",
+            "semantic_index_required",
+            "semantic_config_missing",
+            "semantic_invalid_response",
+            "semantic_search_failed",
+            "prompt_enhancer_failed",
+        ],
         "*",
         "strategy_switch",
         "use_search_or_glob_fallback",

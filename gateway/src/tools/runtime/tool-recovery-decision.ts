@@ -42,8 +42,10 @@ export function buildRuntimeToolRecoveryDecision(input: {
   nowMs?: number;
   policy?: RuntimeToolRecoveryPolicySnapshot;
 }): RuntimeToolRecoveryDecision {
+  const policy = input.policy ?? getRuntimeToolRecoveryPolicySnapshot();
   const rawFeedback = buildRuntimeToolRecoveryFeedback({
     metrics: input.metrics,
+    nowMs: input.nowMs,
   });
   const feedback = applyRuntimeToolRecoveryConsumption({
     feedback: rawFeedback,
@@ -54,7 +56,6 @@ export function buildRuntimeToolRecoveryDecision(input: {
     adaptationSnapshot: input.adaptationSnapshot,
     recoveryFeedback: feedback,
   });
-  const policy = input.policy ?? getRuntimeToolRecoveryPolicySnapshot();
   const health = buildRuntimeToolRecoveryHealthSummary({
     timeline,
     nowMs: input.nowMs,
