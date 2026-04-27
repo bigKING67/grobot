@@ -863,6 +863,38 @@ function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRec
   };
 }
 
+function normalizeTurnFailedRuntimeEnvironmentRecovery(
+  payload: Record<string, unknown>,
+): RuntimeToolRecoveryHint | undefined {
+  const errorClass = payloadString(payload, "error_class") || payloadString(payload, "errorClass") || undefined;
+  if (!errorClass) {
+    return undefined;
+  }
+  const errorMessage = payloadString(payload, "error_message") || payloadString(payload, "errorMessage");
+  const errorData = payloadRecord(payload, "error_data") ?? payloadRecord(payload, "errorData");
+  const plan = buildRuntimeEnvironmentRecoveryPlan({
+    errorClass,
+    errorMessage,
+    errorData,
+  });
+  if (!plan) {
+    return undefined;
+  }
+  return {
+    stage: "ask_user",
+    reason: errorClass,
+    recommendedNextAction:
+      plan.errorCode === "CONFIG_MISSING"
+        ? "ask_user_for_config_or_switch_provider"
+        : "request_environment_fix",
+    errorClass,
+    errorMessage: compactRecoveryDetail(errorMessage),
+    errorData,
+    recoverable: false,
+    requiresUserIntervention: true,
+  };
+}
+
 function metricsPathForWorkDir(workDir: string): string {
   return resolve(workDir, ".grobot/runtime/tool-surface-metrics.json");
 }
@@ -965,6 +997,13 @@ export function summarizeRuntimeToolEvents(events: readonly RuntimeEvent[]): Run
     } else if (event.eventType === "tool_recovery") {
       const recovery = normalizeRecoveryHint(payload);
       if (recovery) {
+        increment(summary.recoveryStages, recovery.stage);
+        summary.latestRecovery = recovery;
+      }
+    } else if (event.eventType === "turn_failed" && !summary.latestRecovery) {
+      const recovery = normalizeTurnFailedRuntimeEnvironmentRecovery(payload);
+      if (recovery) {
+        increment(summary.failuresByErrorClass, recovery.errorClass ?? recovery.reason);
         increment(summary.recoveryStages, recovery.stage);
         summary.latestRecovery = recovery;
       }

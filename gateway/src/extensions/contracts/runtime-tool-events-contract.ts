@@ -1020,6 +1020,54 @@ expect(
   "nonrecoverable feedback forbids automatic retry"
 );
 
+const turnFailedRuntimeEnvWorkDir = join(
+  "/tmp",
+  `grobot-runtime-turn-failed-env-${String(process.pid)}-${String(Date.now())}`,
+);
+mkdirSync(turnFailedRuntimeEnvWorkDir, { recursive: true });
+try {
+  const turnFailedRuntimeEnvMetrics = recordRuntimeToolSurfaceMetrics({
+    workDir: turnFailedRuntimeEnvWorkDir,
+    events: [
+      event("turn_failed", {
+        error_class: "config_missing",
+        error_message: "missing required env: GROBOT_API_KEY",
+        error_data: {
+          diagnostic_kind: "config_missing",
+          required_config: "model_config.api_key",
+          source: "model_config",
+        },
+      }),
+    ],
+  });
+  expectEqual(
+    turnFailedRuntimeEnvMetrics.callsTotal,
+    0,
+    "turn_failed runtime environment recovery does not count a tool call",
+  );
+  expectEqual(
+    turnFailedRuntimeEnvMetrics.failuresByErrorClass.config_missing,
+    1,
+    "turn_failed runtime environment recovery records error class",
+  );
+  expectEqual(
+    turnFailedRuntimeEnvMetrics.latestRecovery?.recommendedNextAction,
+    "ask_user_for_config_or_switch_provider",
+    "turn_failed runtime environment recovery uses config action",
+  );
+  const turnFailedRuntimeEnvFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: turnFailedRuntimeEnvMetrics,
+    nowMs: Date.parse(turnFailedRuntimeEnvMetrics.latestRecovery?.observedAt ?? ""),
+  });
+  expectEqual(
+    turnFailedRuntimeEnvFeedback.runtimeEnvironmentRecovery?.requiredConfig,
+    "model_config.api_key",
+    "turn_failed runtime environment feedback keeps required config",
+  );
+} finally {
+  rmSync(turnFailedRuntimeEnvWorkDir, { recursive: true, force: true });
+}
+
 const workDir = join("/tmp", `grobot-runtime-tool-events-${String(process.pid)}-${String(Date.now())}`);
 mkdirSync(workDir, { recursive: true });
 try {
