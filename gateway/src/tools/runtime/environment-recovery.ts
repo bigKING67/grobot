@@ -54,7 +54,7 @@ export function buildEnvironmentRecoveryCore<
     errorCode: input.errorCode,
     action: input.action,
     retryAllowed: false,
-    commands: input.commands,
+    commands: [...input.commands],
   };
 }
 
@@ -94,6 +94,6 @@ export function serializeEnvironmentRecoveryCorePlan(
     error_code: plan.errorCode,
     action: plan.action,
     retry_allowed: plan.retryAllowed,
-    commands: plan.commands,
+    commands: [...plan.commands],
   };
 }

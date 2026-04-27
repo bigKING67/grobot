@@ -520,6 +520,10 @@ for (const recoveryCase of mcpEnvironmentRecoveryCases) {
     Array.isArray(serialized?.commands),
     `MCP environment serializer commands array ${recoveryCase.errorClass}`,
   );
+  expect(
+    serialized?.commands !== plan?.commands,
+    `MCP environment serializer snapshots commands ${recoveryCase.errorClass}`,
+  );
   expectEqual(
     (serialized?.commands as string[]).join("|"),
     "grobot status --json",
@@ -528,6 +532,14 @@ for (const recoveryCase of mcpEnvironmentRecoveryCases) {
   expect(
     Array.isArray(serialized?.registry_paths),
     `MCP environment serializer registry paths array ${recoveryCase.errorClass}`,
+  );
+  expect(
+    serialized?.registry_paths !== plan?.registryPaths,
+    `MCP environment serializer snapshots registry paths ${recoveryCase.errorClass}`,
+  );
+  expect(
+    serialized?.available_servers !== plan?.availableServers,
+    `MCP environment serializer snapshots available servers ${recoveryCase.errorClass}`,
   );
   expectEqual(
     (serialized?.registry_paths as string[]).join("|"),
@@ -739,6 +751,10 @@ for (const recoveryCase of browserEnvironmentRecoveryCases) {
   expect(
     Array.isArray(serialized?.commands),
     `browser environment serializer commands array ${recoveryCase.errorCode}`,
+  );
+  expect(
+    serialized?.commands !== plan?.commands,
+    `browser environment serializer snapshots commands ${recoveryCase.errorCode}`,
   );
   expectEqual(
     (serialized?.commands as string[]).join("|"),

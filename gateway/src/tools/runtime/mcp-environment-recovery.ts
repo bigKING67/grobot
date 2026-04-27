@@ -118,8 +118,8 @@ export function serializeMcpEnvironmentRecoveryPlan(
     source_path: plan.sourcePath,
     ready_reason: plan.readyReason,
     command: plan.command,
-    available_servers: plan.availableServers,
-    registry_paths: plan.registryPaths,
+    available_servers: [...plan.availableServers],
+    registry_paths: [...plan.registryPaths],
   };
 }
 
