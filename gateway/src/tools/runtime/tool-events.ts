@@ -698,6 +698,26 @@ function isBrowserEnvironmentRecovery(recovery: RuntimeToolRecoveryHint): boolea
   return typeof errorCode === "string" && BROWSER_ENVIRONMENT_ERROR_CODES.has(errorCode);
 }
 
+function browserEnvironmentFixInstruction(input: {
+  recovery: RuntimeToolRecoveryHint;
+  toolName: string;
+}): string | undefined {
+  if (!isBrowserEnvironmentRecovery(input.recovery)) {
+    return undefined;
+  }
+  const errorCode = browserEnvironmentErrorCode(input.recovery.errorData);
+  if (errorCode === "NO_EXTENSION") {
+    return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to run \`grobot browser setup\`, then \`grobot browser doctor\`; retry only after the browser extension is connected.`;
+  }
+  if (errorCode === "NO_SESSION") {
+    return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to open or reconnect a browser session and run \`grobot browser doctor\`; if the hub is not running, run \`grobot browser hub start\` first.`;
+  }
+  if (errorCode === "TRANSPORT_UNAVAILABLE") {
+    return `Browser environment fix: Do not retry ${input.toolName} automatically. Ask the user to run \`grobot browser hub start\`, then \`grobot browser doctor\`; retry only after the browser transport is available.`;
+  }
+  return undefined;
+}
+
 function applyRepeatedRecoveryEscalation(input: {
   recovery: RuntimeToolRecoveryHint;
   sameToolErrorCount: number;
@@ -1153,6 +1173,10 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const executionDiscipline = requiresUserIntervention
     ? "Automatic recovery is blocked for this issue. Do not retry the failing tool automatically; ask the user or fix the required configuration, approval, or environment first."
     : "Automatic recovery is allowed only after changing one concrete variable; do not repeat an identical failing tool call unchanged.";
+  const environmentFixInstruction = browserEnvironmentFixInstruction({
+    recovery,
+    toolName,
+  });
   const promptBlock = [
     "[Runtime Tool Recovery Hint]",
     `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
@@ -1167,6 +1191,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     `Recoverability: ${recoverability}`,
     `Required next action: ${recovery.recommendedNextAction}`,
     `Execution rule: ${instruction}`,
+    environmentFixInstruction,
     `Execution discipline: ${executionDiscipline}`,
   ].filter((line): line is string => typeof line === "string").join("\n");
   return {

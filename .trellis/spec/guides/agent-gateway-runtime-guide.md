@@ -190,7 +190,10 @@ Browser facade recovery must treat repeated environment failures as operator-act
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or
 `TRANSPORT_UNAVAILABLE`, the second same-tool recovery escalates to `ask_user` with
 `recommended_next_action=request_environment_fix`. Retryable browser execution failures such as
-`TIMEOUT` keep the generic repeated-error thresholds.
+`TIMEOUT` keep the generic repeated-error thresholds. The recovery prompt must include the
+browser-specific execution block: do not retry the failing browser tool automatically; request the
+relevant setup/hub/doctor action (`grobot browser setup`, `grobot browser hub start`,
+`grobot browser doctor`) and retry only after the browser environment is ready.
 
 ---
 

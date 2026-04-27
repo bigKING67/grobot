@@ -836,6 +836,18 @@ try {
     "browser repeated feedback requests environment fix",
   );
   expect(
+    browserSecondFeedback.promptBlock.includes("Browser environment fix: Do not retry web_scan automatically."),
+    "browser repeated feedback blocks automatic browser retry",
+  );
+  expect(
+    browserSecondFeedback.promptBlock.includes("`grobot browser setup`"),
+    "browser repeated feedback includes setup command",
+  );
+  expect(
+    browserSecondFeedback.promptBlock.includes("`grobot browser doctor`"),
+    "browser repeated feedback includes doctor command",
+  );
+  expect(
     browserSecondFeedback.promptBlock.includes("browser_environment_error_repeated"),
     "browser repeated feedback includes browser escalation reason",
   );
