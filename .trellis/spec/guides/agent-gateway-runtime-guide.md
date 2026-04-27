@@ -248,6 +248,16 @@ Gateway status output should include route and cache observability fields:
 - `runtime_tool_recovery_gate.attention_browser_environment_recovery`
 - `runtime_tool_recovery_gate.attention_mcp_environment_recovery`
 - `runtime_tool_recovery_gate.attention_runtime_environment_recovery`
+- `runtime_tool_recovery_gate.blocker_kind`
+  - `none`
+  - `runtime_environment`
+  - `browser_environment`
+  - `mcp_environment`
+  - `operator_action`
+  - `automatic_recovery_policy`
+  - `readiness_state`
+- `runtime_tool_recovery_gate.blocker_code`
+- `runtime_tool_recovery_gate.blocker_action`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
@@ -280,6 +290,13 @@ configuration (`model_config.api_key`, `model_config.base_url`,
 `provider_options.kimi.files_enabled=true`, or `kimi-k2.5`) when available. Tool-context and runtime
 state failures block automatic retry until `grobot status --json` confirms a valid workspace/tool
 context or the current grobot session has been restarted after state remains unavailable.
+
+The readiness gate keeps the high-level `reason` stable for policy compatibility, but must also
+expose a concrete blocker triplet. Environment-plan blockers use `blocker_kind` to identify the
+family (`runtime_environment`, `browser_environment`, or `mcp_environment`), `blocker_code` to carry
+the concrete plan error code (`CONFIG_MISSING`, `NO_EXTENSION`, `SERVER_UNREADY`, etc.), and
+`blocker_action` to carry the recovery action. Non-environment gate failures fall back to
+`operator_action`, `automatic_recovery_policy`, or `readiness_state`.
 
 `ask_user` questions marked with `is_secret=true` keep the raw answer available only in the current
 turn's `[AskUser Resolution]` prompt so the agent can act on credentials or other sensitive

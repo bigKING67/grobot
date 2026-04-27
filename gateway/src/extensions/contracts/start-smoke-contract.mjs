@@ -2471,6 +2471,12 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolRecoveryGate?.severity,
     status_runtime_tool_recovery_gate_reason_type:
       typeof runtimeToolRecoveryGate?.reason,
+    status_runtime_tool_recovery_gate_blocker_kind_type:
+      typeof runtimeToolRecoveryGate?.blocker_kind,
+    status_runtime_tool_recovery_gate_blocker_code_type:
+      typeof runtimeToolRecoveryGate?.blocker_code,
+    status_runtime_tool_recovery_gate_blocker_action_type:
+      typeof runtimeToolRecoveryGate?.blocker_action,
     status_runtime_tool_recovery_gate_readiness_status_type:
       typeof runtimeToolRecoveryGate?.readiness_status,
     status_runtime_tool_recovery_gate_auto_allowed_type:
@@ -5220,6 +5226,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     recovery_gate_blocking: recoveryGate?.blocking ?? null,
     recovery_gate_severity: recoveryGate?.severity ?? null,
     recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_blocker_kind: recoveryGate?.blocker_kind ?? null,
+    recovery_gate_blocker_code: recoveryGate?.blocker_code ?? null,
+    recovery_gate_blocker_action: recoveryGate?.blocker_action ?? null,
     recovery_gate_readiness_status: recoveryGate?.readiness_status ?? null,
     recovery_gate_auto_allowed: recoveryGate?.automatic_recovery_allowed ?? null,
     recovery_gate_operator_action_required: recoveryGate?.operator_action_required ?? null,
@@ -5273,7 +5282,9 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
     text_has_recovery_gate:
       textResult.stdout.includes("runtime_tool_recovery_gate:")
       && textResult.stdout.includes("status=fail")
-      && textResult.stdout.includes("reason=blocked_operator_action_required"),
+      && textResult.stdout.includes("reason=blocked_operator_action_required")
+      && textResult.stdout.includes("blocker=runtime_environment")
+      && textResult.stdout.includes("blocker_code=CONFIG_MISSING"),
     ...recoveryEscalationTextSurface,
     ...recoveryReadinessTextSurface,
   };
@@ -5449,6 +5460,9 @@ function runStatusBrowserEnvironmentToolRecovery(repoRoot) {
     recovery_readiness_attention_browser_commands: readinessAttentionPlan.commands,
     recovery_gate_status: recoveryGate?.status ?? null,
     recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_blocker_kind: recoveryGate?.blocker_kind ?? null,
+    recovery_gate_blocker_code: recoveryGate?.blocker_code ?? null,
+    recovery_gate_blocker_action: recoveryGate?.blocker_action ?? null,
     recovery_gate_attention_browser_error_code: gateAttentionPlan.error_code,
     recovery_gate_attention_browser_action: gateAttentionPlan.action,
     recovery_gate_attention_browser_retry_allowed: gateAttentionPlan.retry_allowed,
@@ -5553,6 +5567,9 @@ function runStatusMcpEnvironmentToolRecovery(repoRoot) {
     recovery_readiness_attention_mcp_action: readinessAttentionPlan.action,
     recovery_gate_status: recoveryGate?.status ?? null,
     recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_blocker_kind: recoveryGate?.blocker_kind ?? null,
+    recovery_gate_blocker_code: recoveryGate?.blocker_code ?? null,
+    recovery_gate_blocker_action: recoveryGate?.blocker_action ?? null,
     recovery_gate_attention_mcp_error_code: gateAttentionPlan.error_code,
     recovery_gate_attention_mcp_action: gateAttentionPlan.action,
     text_has_recovery_feedback_mcp_environment:

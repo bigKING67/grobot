@@ -10,6 +10,9 @@ import {
 } from "../../tools/runtime/tool-recovery-readiness";
 import type { RuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
 import type { RuntimeToolRecoveryHealthSummary } from "../../tools/runtime/tool-recovery-timeline";
+import { buildBrowserEnvironmentRecoveryPlan } from "../../tools/runtime/browser-environment-recovery";
+import { buildMcpEnvironmentRecoveryPlan } from "../../tools/runtime/mcp-environment-recovery";
+import { buildRuntimeEnvironmentRecoveryPlan } from "../../tools/runtime/runtime-environment-recovery";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -206,6 +209,10 @@ const blockedOperatorGate = buildRuntimeToolRecoveryReadinessGate({
     attentionToolName: "web_scan",
     attentionErrorClass: "config_missing",
     attentionRequiresUserIntervention: true,
+    attentionRuntimeEnvironmentRecovery: buildRuntimeEnvironmentRecoveryPlan({
+      errorClass: "config_missing",
+      errorMessage: "missing provider_options.kimi.files_enabled=true",
+    }),
   }),
 });
 assertGate({
@@ -219,6 +226,72 @@ assertGate({
 });
 expectEqual(blockedOperatorGate.attentionRequiresUserIntervention, true, "blocked gate user intervention");
 expectEqual(blockedOperatorGate.attentionStage, "ask_user", "blocked gate attention stage");
+expectEqual(blockedOperatorGate.blockerKind, "runtime_environment", "blocked gate blocker kind");
+expectEqual(blockedOperatorGate.blockerCode, "CONFIG_MISSING", "blocked gate blocker code");
+expectEqual(
+  blockedOperatorGate.blockerAction,
+  "fix_config_or_switch_provider_and_check_status",
+  "blocked gate blocker action",
+);
+
+const blockedBrowserGate = buildRuntimeToolRecoveryReadinessGate({
+  readiness: makeReadiness({
+    status: "blocked",
+    ready: false,
+    automaticRecoveryAllowed: false,
+    operatorActionRequired: true,
+    reason: "health_risk:active_nonrecoverable_recovery",
+    recommendedNextAction: "request_environment_fix",
+    healthLevel: "risk",
+    healthScore: 32,
+    attentionSource: "latest",
+    attentionStage: "ask_user",
+    attentionToolName: "web_scan",
+    attentionErrorClass: "browser_backend_result_error",
+    attentionRequiresUserIntervention: true,
+    attentionBrowserEnvironmentRecovery: buildBrowserEnvironmentRecoveryPlan({
+      errorClass: "browser_backend_result_error",
+      errorData: {
+        error_code: "NO_EXTENSION",
+      },
+    }),
+  }),
+});
+expectEqual(blockedBrowserGate.blockerKind, "browser_environment", "browser gate blocker kind");
+expectEqual(blockedBrowserGate.blockerCode, "NO_EXTENSION", "browser gate blocker code");
+expectEqual(blockedBrowserGate.blockerAction, "setup_and_doctor", "browser gate blocker action");
+
+const blockedMcpGate = buildRuntimeToolRecoveryReadinessGate({
+  readiness: makeReadiness({
+    status: "blocked",
+    ready: false,
+    automaticRecoveryAllowed: false,
+    operatorActionRequired: true,
+    reason: "health_risk:active_nonrecoverable_recovery",
+    recommendedNextAction: "request_environment_fix",
+    healthLevel: "risk",
+    healthScore: 31,
+    attentionSource: "latest",
+    attentionStage: "ask_user",
+    attentionToolName: "grok-search",
+    attentionErrorClass: "mcp_server_unready",
+    attentionRequiresUserIntervention: true,
+    attentionMcpEnvironmentRecovery: buildMcpEnvironmentRecoveryPlan({
+      errorClass: "mcp_server_unready",
+      errorData: {
+        server: "grok-search",
+        ready_reason: "missing_api_key",
+      },
+    }),
+  }),
+});
+expectEqual(blockedMcpGate.blockerKind, "mcp_environment", "mcp gate blocker kind");
+expectEqual(blockedMcpGate.blockerCode, "SERVER_UNREADY", "mcp gate blocker code");
+expectEqual(
+  blockedMcpGate.blockerAction,
+  "fix_server_readiness_and_check_status",
+  "mcp gate blocker action",
+);
 
 const degradedAutoDeniedGate = buildRuntimeToolRecoveryReadinessGate({
   readiness: makeReadiness({
@@ -345,6 +418,7 @@ const policyForwardedGateFields = formatRuntimeToolRecoveryGateFields(policyForw
 expect(
   policyForwardedGateFields.includes("status=warn")
     && policyForwardedGateFields.includes("reason=degraded_auto_recovery_allowed")
+    && policyForwardedGateFields.includes("blocker=none")
     && policyForwardedGateFields.includes("policy_version=v-test-readiness")
     && policyForwardedGateFields.includes("health_thresholds=77/42"),
   "gate formatter includes reason and policy thresholds",
@@ -373,10 +447,22 @@ process.stdout.write(JSON.stringify({
   blocked_status: blockedOperatorGate.status,
   blocked_passed: blockedOperatorGate.passed,
   blocked_reason: blockedOperatorGate.reason,
+  blocked_blocker_kind: blockedOperatorGate.blockerKind,
+  blocked_blocker_code: blockedOperatorGate.blockerCode,
+  blocked_blocker_action: blockedOperatorGate.blockerAction,
+  browser_blocker_kind: blockedBrowserGate.blockerKind,
+  browser_blocker_code: blockedBrowserGate.blockerCode,
+  browser_blocker_action: blockedBrowserGate.blockerAction,
+  mcp_blocker_kind: blockedMcpGate.blockerKind,
+  mcp_blocker_code: blockedMcpGate.blockerCode,
+  mcp_blocker_action: blockedMcpGate.blockerAction,
   auto_denied_status: degradedAutoDeniedGate.status,
   auto_denied_reason: degradedAutoDeniedGate.reason,
+  auto_denied_blocker_kind: degradedAutoDeniedGate.blockerKind,
   blocked_auto_denied_reason: blockedAutoDeniedGate.reason,
+  blocked_auto_denied_blocker_kind: blockedAutoDeniedGate.blockerKind,
   inconsistent_reason: inconsistentGate.reason,
+  inconsistent_blocker_kind: inconsistentGate.blockerKind,
   policy_forwarded_readiness_status: policyForwardedReadiness.status,
   policy_forwarded_readiness_policy_version: policyForwardedReadiness.policyVersion,
   policy_forwarded_readiness_risk_threshold: policyForwardedReadiness.riskScoreThreshold,

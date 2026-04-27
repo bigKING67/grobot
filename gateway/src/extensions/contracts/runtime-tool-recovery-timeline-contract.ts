@@ -282,6 +282,13 @@ expectEqual(activeDecision.health.score, activeHealth.score, "active decision he
 expectEqual(activeDecision.readiness.status, "blocked", "active decision readiness status");
 expectEqual(activeDecision.gate.status, "fail", "active decision gate status");
 expectEqual(activeDecision.gate.reason, "blocked_operator_action_required", "active decision gate reason");
+expectEqual(activeDecision.gate.blockerKind, "runtime_environment", "active decision gate blocker kind");
+expectEqual(activeDecision.gate.blockerCode, "CONFIG_MISSING", "active decision gate blocker code");
+expectEqual(
+  activeDecision.gate.blockerAction,
+  "fix_config_or_switch_provider_and_check_status",
+  "active decision gate blocker action",
+);
 
 const browserMetrics: RuntimeToolSurfaceMetricsSnapshot = {
   ...metrics,
@@ -687,6 +694,9 @@ process.stdout.write(JSON.stringify({
   active_readiness_status: activeReadiness.status,
   active_readiness_auto_allowed: activeReadiness.automaticRecoveryAllowed,
   active_decision_gate_reason: activeDecision.gate.reason,
+  active_decision_gate_blocker_kind: activeDecision.gate.blockerKind,
+  active_decision_gate_blocker_code: activeDecision.gate.blockerCode,
+  active_decision_gate_blocker_action: activeDecision.gate.blockerAction,
   consumed_latest_recovery_consumed: consumedTimeline[0]?.consumed ?? null,
   consumed_latest_same_tool_error_count: consumedTimeline[0]?.sameToolErrorCount ?? null,
   consumed_latest_escalated: consumedTimeline[0]?.escalated ?? null,

@@ -25,12 +25,24 @@ export type RuntimeToolRecoveryReadinessGateReason =
   | "automatic_recovery_denied"
   | "readiness_state_inconsistent";
 
+export type RuntimeToolRecoveryReadinessGateBlockerKind =
+  | "none"
+  | "runtime_environment"
+  | "browser_environment"
+  | "mcp_environment"
+  | "operator_action"
+  | "automatic_recovery_policy"
+  | "readiness_state";
+
 export interface RuntimeToolRecoveryReadinessGateDecision {
   status: RuntimeToolRecoveryReadinessGateStatus;
   passed: boolean;
   blocking: boolean;
   severity: RuntimeToolRecoveryReadinessGateSeverity;
   reason: RuntimeToolRecoveryReadinessGateReason;
+  blockerKind: RuntimeToolRecoveryReadinessGateBlockerKind;
+  blockerCode: string | null;
+  blockerAction: string | null;
   recommendedNextAction: string | null;
   readinessStatus: RuntimeToolRecoveryReadinessSummary["status"];
   readinessReady: boolean;
@@ -53,11 +65,19 @@ export interface RuntimeToolRecoveryReadinessGateDecision {
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
 }
 
-function gateStatus(input: RuntimeToolRecoveryReadinessSummary): {
+interface RuntimeToolRecoveryGateStatusResolution {
   status: RuntimeToolRecoveryReadinessGateStatus;
   severity: RuntimeToolRecoveryReadinessGateSeverity;
   reason: RuntimeToolRecoveryReadinessGateReason;
-} {
+}
+
+interface RuntimeToolRecoveryGateBlockerResolution {
+  kind: RuntimeToolRecoveryReadinessGateBlockerKind;
+  code: string | null;
+  action: string | null;
+}
+
+function gateStatus(input: RuntimeToolRecoveryReadinessSummary): RuntimeToolRecoveryGateStatusResolution {
   if (input.ready !== (input.status === "ready")) {
     return {
       status: "fail",
@@ -100,16 +120,84 @@ function gateStatus(input: RuntimeToolRecoveryReadinessSummary): {
   };
 }
 
+function environmentRecoveryBlocker(input: RuntimeToolRecoveryReadinessSummary): RuntimeToolRecoveryGateBlockerResolution | null {
+  if (input.attentionRuntimeEnvironmentRecovery) {
+    return {
+      kind: "runtime_environment",
+      code: input.attentionRuntimeEnvironmentRecovery.errorCode,
+      action: input.attentionRuntimeEnvironmentRecovery.action,
+    };
+  }
+  if (input.attentionBrowserEnvironmentRecovery) {
+    return {
+      kind: "browser_environment",
+      code: input.attentionBrowserEnvironmentRecovery.errorCode,
+      action: input.attentionBrowserEnvironmentRecovery.action,
+    };
+  }
+  if (input.attentionMcpEnvironmentRecovery) {
+    return {
+      kind: "mcp_environment",
+      code: input.attentionMcpEnvironmentRecovery.errorCode,
+      action: input.attentionMcpEnvironmentRecovery.action,
+    };
+  }
+  return null;
+}
+
+function gateBlocker(input: {
+  readiness: RuntimeToolRecoveryReadinessSummary;
+  gate: RuntimeToolRecoveryGateStatusResolution;
+}): RuntimeToolRecoveryGateBlockerResolution {
+  if (input.gate.status !== "fail") {
+    return {
+      kind: "none",
+      code: null,
+      action: null,
+    };
+  }
+  const environmentBlocker = environmentRecoveryBlocker(input.readiness);
+  if (environmentBlocker) {
+    return environmentBlocker;
+  }
+  if (input.gate.reason === "readiness_state_inconsistent") {
+    return {
+      kind: "readiness_state",
+      code: input.gate.reason,
+      action: null,
+    };
+  }
+  if (input.readiness.operatorActionRequired) {
+    return {
+      kind: "operator_action",
+      code: input.readiness.attentionErrorClass ?? input.gate.reason,
+      action: input.readiness.recommendedNextAction,
+    };
+  }
+  return {
+    kind: "automatic_recovery_policy",
+    code: input.gate.reason,
+    action: input.readiness.recommendedNextAction,
+  };
+}
+
 export function buildRuntimeToolRecoveryReadinessGate(input: {
   readiness: RuntimeToolRecoveryReadinessSummary;
 }): RuntimeToolRecoveryReadinessGateDecision {
   const gate = gateStatus(input.readiness);
+  const blocker = gateBlocker({
+    readiness: input.readiness,
+    gate,
+  });
   return {
     status: gate.status,
     passed: gate.status !== "fail",
     blocking: gate.status === "fail",
     severity: gate.severity,
     reason: gate.reason,
+    blockerKind: blocker.kind,
+    blockerCode: blocker.code,
+    blockerAction: blocker.action,
     recommendedNextAction: input.readiness.recommendedNextAction,
     readinessStatus: input.readiness.status,
     readinessReady: input.readiness.ready,
@@ -142,6 +230,9 @@ export function formatRuntimeToolRecoveryGateFields(
     `blocking=${gate.blocking ? "true" : "false"}`,
     `severity=${gate.severity}`,
     `reason=${gate.reason}`,
+    `blocker=${gate.blockerKind}`,
+    `blocker_code=${gate.blockerCode ?? "<none>"}`,
+    `blocker_action=${gate.blockerAction ?? "<none>"}`,
     `action=${gate.recommendedNextAction ?? "<none>"}`,
     `readiness=${gate.readinessStatus}`,
     `auto_recovery_allowed=${gate.automaticRecoveryAllowed ? "true" : "false"}`,

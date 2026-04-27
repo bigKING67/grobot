@@ -596,6 +596,12 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolRecoveryTimelinePayload.active_readiness_status, "blocked");
   assert.equal(runtimeToolRecoveryTimelinePayload.active_readiness_auto_allowed, false);
   assert.equal(runtimeToolRecoveryTimelinePayload.active_decision_gate_reason, "blocked_operator_action_required");
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_decision_gate_blocker_kind, "runtime_environment");
+  assert.equal(runtimeToolRecoveryTimelinePayload.active_decision_gate_blocker_code, "CONFIG_MISSING");
+  assert.equal(
+    runtimeToolRecoveryTimelinePayload.active_decision_gate_blocker_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_latest_recovery_consumed, true);
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_health_level, "watch");
   assert.equal(runtimeToolRecoveryTimelinePayload.consumed_health_unconsumed_count, 1);
@@ -631,10 +637,31 @@ async function runGatewayContractSmoke() {
   assert.equal(runtimeToolRecoveryReadinessPayload.blocked_status, "fail");
   assert.equal(runtimeToolRecoveryReadinessPayload.blocked_passed, false);
   assert.equal(runtimeToolRecoveryReadinessPayload.blocked_reason, "blocked_operator_action_required");
+  assert.equal(runtimeToolRecoveryReadinessPayload.blocked_blocker_kind, "runtime_environment");
+  assert.equal(runtimeToolRecoveryReadinessPayload.blocked_blocker_code, "CONFIG_MISSING");
+  assert.equal(
+    runtimeToolRecoveryReadinessPayload.blocked_blocker_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
+  assert.equal(runtimeToolRecoveryReadinessPayload.browser_blocker_kind, "browser_environment");
+  assert.equal(runtimeToolRecoveryReadinessPayload.browser_blocker_code, "NO_EXTENSION");
+  assert.equal(runtimeToolRecoveryReadinessPayload.browser_blocker_action, "setup_and_doctor");
+  assert.equal(runtimeToolRecoveryReadinessPayload.mcp_blocker_kind, "mcp_environment");
+  assert.equal(runtimeToolRecoveryReadinessPayload.mcp_blocker_code, "SERVER_UNREADY");
+  assert.equal(
+    runtimeToolRecoveryReadinessPayload.mcp_blocker_action,
+    "fix_server_readiness_and_check_status",
+  );
   assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_status, "fail");
   assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_reason, "automatic_recovery_denied");
+  assert.equal(runtimeToolRecoveryReadinessPayload.auto_denied_blocker_kind, "automatic_recovery_policy");
   assert.equal(runtimeToolRecoveryReadinessPayload.blocked_auto_denied_reason, "blocked_auto_recovery_denied");
+  assert.equal(
+    runtimeToolRecoveryReadinessPayload.blocked_auto_denied_blocker_kind,
+    "automatic_recovery_policy",
+  );
   assert.equal(runtimeToolRecoveryReadinessPayload.inconsistent_reason, "readiness_state_inconsistent");
+  assert.equal(runtimeToolRecoveryReadinessPayload.inconsistent_blocker_kind, "readiness_state");
   assert.equal(runtimeToolRecoveryReadinessPayload.policy_forwarded_readiness_status, "degraded");
   assert.equal(runtimeToolRecoveryReadinessPayload.policy_forwarded_readiness_policy_version, "v-test-readiness");
   assert.equal(runtimeToolRecoveryReadinessPayload.policy_forwarded_readiness_risk_threshold, 42);
@@ -5368,6 +5395,15 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_blocking_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_severity_type, "string");
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_reason_type, "string");
+  assert.equal(statusPayload.status_runtime_tool_recovery_gate_blocker_kind_type, "string");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_gate_blocker_code_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_recovery_gate_blocker_action_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_readiness_status_type, "string");
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_auto_allowed_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_recovery_gate_operator_action_type, "boolean");
@@ -6595,6 +6631,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusNonRecoverablePayload.recovery_gate_blocking, true);
   assert.equal(statusNonRecoverablePayload.recovery_gate_severity, "error");
   assert.equal(statusNonRecoverablePayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_blocker_kind, "runtime_environment");
+  assert.equal(statusNonRecoverablePayload.recovery_gate_blocker_code, "CONFIG_MISSING");
+  assert.equal(
+    statusNonRecoverablePayload.recovery_gate_blocker_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
   assert.equal(statusNonRecoverablePayload.recovery_gate_readiness_status, "blocked");
   assert.equal(statusNonRecoverablePayload.recovery_gate_auto_allowed, false);
   assert.equal(statusNonRecoverablePayload.recovery_gate_operator_action_required, true);
@@ -6702,6 +6744,9 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_status, "fail");
   assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_blocker_kind, "browser_environment");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_blocker_code, "NO_EXTENSION");
+  assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_blocker_action, "setup_and_doctor");
   assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_error_code, "NO_EXTENSION");
   assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_action, "setup_and_doctor");
   assert.equal(statusBrowserEnvironmentRecoveryPayload.recovery_gate_attention_browser_retry_allowed, false);
@@ -6777,6 +6822,12 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_status, "fail");
   assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_blocker_kind, "mcp_environment");
+  assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_blocker_code, "SERVER_UNREADY");
+  assert.equal(
+    statusMcpEnvironmentRecoveryPayload.recovery_gate_blocker_action,
+    "fix_server_readiness_and_check_status",
+  );
   assert.equal(statusMcpEnvironmentRecoveryPayload.recovery_gate_attention_mcp_error_code, "SERVER_UNREADY");
   assert.equal(
     statusMcpEnvironmentRecoveryPayload.recovery_gate_attention_mcp_action,
