@@ -180,7 +180,17 @@ Gateway status output should include route and cache observability fields:
     - `window` (`hit_total/miss_total/stale_total/write_total`)
   - `prompt_cache` (`enabled_total/hint_attempted_total/hint_applied_total/usage_observed_total/cached_tokens_total`)
     - `window` (`enabled_total/hint_attempted_total/hint_applied_total/usage_observed_total/cached_tokens_total`)
+- `runtime_tool_recovery_policy.escalation`
+  - `same_tool_error_strategy_switch_threshold`
+  - `same_tool_error_ask_user_threshold`
+  - `browser_environment_ask_user_threshold`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
+
+Browser facade recovery must treat repeated environment failures as operator-action signals. For
+`browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or
+`TRANSPORT_UNAVAILABLE`, the second same-tool recovery escalates to `ask_user` with
+`recommended_next_action=request_environment_fix`. Retryable browser execution failures such as
+`TIMEOUT` keep the generic repeated-error thresholds.
 
 ---
 

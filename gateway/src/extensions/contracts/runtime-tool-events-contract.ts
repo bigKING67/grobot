@@ -13,6 +13,7 @@ import {
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
 } from "../../tools/runtime/tool-events";
+import { getRuntimeToolRecoveryPolicySnapshot } from "../../tools/runtime/tool-recovery-policy";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -117,6 +118,11 @@ expectEqual(
   missingActionSummary.latestRecovery?.recommendedNextAction,
   "inspect_error_and_switch_strategy",
   "missing action uses cataloged default",
+);
+expectEqual(
+  getRuntimeToolRecoveryPolicySnapshot().escalation.browserEnvironmentAskUserThreshold,
+  2,
+  "browser environment recovery escalation threshold is exposed by policy",
 );
 
 const structuredRecoveryObservedAt = "2026-04-25T00:00:30.000Z";
@@ -745,6 +751,170 @@ try {
   expectEqual(matchingClear.snapshot.latestRecoveryRepeatCount, 0, "matching clear resets repeat count");
 } finally {
   rmSync(repeatedWorkDir, { recursive: true, force: true });
+}
+
+const browserRepeatedWorkDir = join(
+  "/tmp",
+  `grobot-runtime-tool-browser-repeated-${String(process.pid)}-${String(Date.now())}`,
+);
+mkdirSync(browserRepeatedWorkDir, { recursive: true });
+try {
+  const browserRepeatedRecoveryEvents: RuntimeEvent[] = [
+    event("tool_end", {
+      tool_name: "web_scan",
+      status: "failed",
+      error_class: "browser_backend_result_error",
+      duration_ms: 8,
+    }),
+    event("tool_recovery", {
+      tool_name: "web_scan",
+      error_class: "browser_backend_result_error",
+      error_message: "web_scan backend returned error_code=NO_EXTENSION: Browser extension is not connected.",
+      error_data: {
+        diagnostic_kind: "browser_backend_result_error",
+        tool: "web_scan",
+        backend: "browser-structured",
+        mapped_tool: "browser_scan",
+        operation: "backend_result",
+        error_code: "NO_EXTENSION",
+        retryable: true,
+        transport_attempts_count: 1,
+        browser_context_kind: "unknown",
+        diagnostic_hint: "Browser extension is not connected. Run `grobot browser setup`.",
+      },
+      recovery_stage: "strategy_switch",
+      recovery_reason: "browser_backend_result_error",
+      recommended_next_action: "inspect_error_and_switch_strategy",
+      recoverable: true,
+    }),
+  ];
+
+  const browserFirst = recordRuntimeToolSurfaceMetrics({
+    workDir: browserRepeatedWorkDir,
+    events: browserRepeatedRecoveryEvents,
+  });
+  expectEqual(browserFirst.latestRecovery?.stage, "strategy_switch", "browser first recovery stays strategy switch");
+  expectEqual(browserFirst.latestRecovery?.sameToolErrorCount, 1, "browser first recovery count");
+  expectEqual(browserFirst.latestRecovery?.escalated, false, "browser first recovery not escalated");
+
+  const browserSecond = recordRuntimeToolSurfaceMetrics({
+    workDir: browserRepeatedWorkDir,
+    events: browserRepeatedRecoveryEvents,
+  });
+  const browserSecondFeedback = buildRuntimeToolRecoveryFeedback({
+    metrics: browserSecond,
+    nowMs: Date.parse(browserSecond.latestRecovery?.observedAt ?? ""),
+  });
+  expectEqual(browserSecond.latestRecovery?.stage, "ask_user", "browser repeated environment recovery asks user");
+  expectEqual(
+    browserSecond.latestRecovery?.recommendedNextAction,
+    "request_environment_fix",
+    "browser repeated recovery asks environment fix",
+  );
+  expectEqual(browserSecond.latestRecovery?.recoverable, false, "browser repeated recovery blocks automatic retry");
+  expectEqual(
+    browserSecond.latestRecovery?.requiresUserIntervention,
+    true,
+    "browser repeated recovery requires intervention",
+  );
+  expectEqual(browserSecond.latestRecovery?.sameToolErrorCount, 2, "browser repeated recovery count");
+  expectEqual(browserSecond.latestRecovery?.escalated, true, "browser repeated recovery escalated flag");
+  expectEqual(
+    browserSecond.latestRecovery?.escalationReason,
+    "browser_environment_error_repeated",
+    "browser repeated recovery reason",
+  );
+  expectEqual(browserSecond.latestRecovery?.baseStage, "strategy_switch", "browser repeated base stage");
+  expectEqual(
+    browserSecond.latestRecovery?.baseRecommendedNextAction,
+    "inspect_error_and_switch_strategy",
+    "browser repeated base action",
+  );
+  expectEqual(browserSecondFeedback.requiresUserIntervention, true, "browser repeated feedback requires intervention");
+  expect(
+    browserSecondFeedback.promptBlock.includes("request_environment_fix"),
+    "browser repeated feedback requests environment fix",
+  );
+  expect(
+    browserSecondFeedback.promptBlock.includes("browser_environment_error_repeated"),
+    "browser repeated feedback includes browser escalation reason",
+  );
+} finally {
+  rmSync(browserRepeatedWorkDir, { recursive: true, force: true });
+}
+
+const browserTimeoutWorkDir = join(
+  "/tmp",
+  `grobot-runtime-tool-browser-timeout-${String(process.pid)}-${String(Date.now())}`,
+);
+mkdirSync(browserTimeoutWorkDir, { recursive: true });
+try {
+  const browserTimeoutRecoveryEvents: RuntimeEvent[] = [
+    event("tool_end", {
+      tool_name: "web_execute_js",
+      status: "failed",
+      error_class: "browser_backend_result_error",
+      duration_ms: 20,
+    }),
+    event("tool_recovery", {
+      tool_name: "web_execute_js",
+      error_class: "browser_backend_result_error",
+      error_message: "web_execute_js backend returned error_code=TIMEOUT.",
+      error_data: {
+        diagnostic_kind: "browser_backend_result_error",
+        tool: "web_execute_js",
+        backend: "browser-structured",
+        mapped_tool: "browser_execute_js",
+        operation: "backend_result",
+        error_code: "TIMEOUT",
+        retryable: true,
+      },
+      recovery_stage: "strategy_switch",
+      recovery_reason: "browser_backend_result_error",
+      recommended_next_action: "inspect_error_and_switch_strategy",
+      recoverable: true,
+    }),
+  ];
+
+  const timeoutFirst = recordRuntimeToolSurfaceMetrics({
+    workDir: browserTimeoutWorkDir,
+    events: browserTimeoutRecoveryEvents,
+  });
+  expectEqual(timeoutFirst.latestRecovery?.stage, "strategy_switch", "browser timeout first stays strategy switch");
+  expectEqual(timeoutFirst.latestRecovery?.sameToolErrorCount, 1, "browser timeout first count");
+  expectEqual(timeoutFirst.latestRecovery?.escalated, false, "browser timeout first not escalated");
+
+  const timeoutSecond = recordRuntimeToolSurfaceMetrics({
+    workDir: browserTimeoutWorkDir,
+    events: browserTimeoutRecoveryEvents,
+  });
+  expectEqual(timeoutSecond.latestRecovery?.stage, "strategy_switch", "browser timeout second stays strategy switch");
+  expectEqual(
+    timeoutSecond.latestRecovery?.recommendedNextAction,
+    "inspect_error_and_switch_strategy",
+    "browser timeout second keeps base action",
+  );
+  expectEqual(timeoutSecond.latestRecovery?.recoverable, true, "browser timeout second remains recoverable");
+  expectEqual(timeoutSecond.latestRecovery?.sameToolErrorCount, 2, "browser timeout second count");
+  expectEqual(timeoutSecond.latestRecovery?.escalated, false, "browser timeout second not escalated early");
+
+  const timeoutThird = recordRuntimeToolSurfaceMetrics({
+    workDir: browserTimeoutWorkDir,
+    events: browserTimeoutRecoveryEvents,
+  });
+  expectEqual(timeoutThird.latestRecovery?.stage, "ask_user", "browser timeout third follows generic ask_user");
+  expectEqual(
+    timeoutThird.latestRecovery?.recommendedNextAction,
+    "ask_user_for_config_or_switch_provider",
+    "browser timeout third uses generic user action",
+  );
+  expectEqual(
+    timeoutThird.latestRecovery?.escalationReason,
+    "same_tool_error_exhausted",
+    "browser timeout third uses generic escalation reason",
+  );
+} finally {
+  rmSync(browserTimeoutWorkDir, { recursive: true, force: true });
 }
 
 const runtimeError = new RuntimeRpcError({

@@ -179,6 +179,12 @@ export function knownRuntimeToolRecoveryActions(): RuntimeToolRecoveryAction[] {
   return Object.keys(RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS) as RuntimeToolRecoveryAction[];
 }
 
+const BROWSER_ENVIRONMENT_ERROR_CODES = new Set([
+  "NO_EXTENSION",
+  "NO_SESSION",
+  "TRANSPORT_UNAVAILABLE",
+]);
+
 function emptySummary(): RuntimeToolEventSummary {
   return {
     callsTotal: 0,
@@ -675,6 +681,23 @@ function recoveryStageRank(stage: RuntimeToolRecoveryStage): number {
   return 0;
 }
 
+function browserEnvironmentErrorCode(errorData: Record<string, unknown> | undefined): string | undefined {
+  const value = errorData?.error_code;
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isBrowserEnvironmentRecovery(recovery: RuntimeToolRecoveryHint): boolean {
+  if (recovery.errorClass !== "browser_backend_result_error") {
+    return false;
+  }
+  const errorCode = browserEnvironmentErrorCode(recovery.errorData);
+  return typeof errorCode === "string" && BROWSER_ENVIRONMENT_ERROR_CODES.has(errorCode);
+}
+
 function applyRepeatedRecoveryEscalation(input: {
   recovery: RuntimeToolRecoveryHint;
   sameToolErrorCount: number;
@@ -688,6 +711,23 @@ function applyRepeatedRecoveryEscalation(input: {
     escalationPolicyVersion: RUNTIME_TOOL_RECOVERY_POLICY.version,
     requiresUserIntervention: base.requiresUserIntervention ?? (base.recoverable === false),
   };
+  if (
+    isBrowserEnvironmentRecovery(base)
+    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.browserEnvironmentAskUserThreshold
+    && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
+  ) {
+    return {
+      ...common,
+      stage: "ask_user",
+      recommendedNextAction: "request_environment_fix",
+      recoverable: false,
+      requiresUserIntervention: true,
+      escalated: true,
+      escalationReason: "browser_environment_error_repeated",
+      baseStage,
+      baseRecommendedNextAction,
+    };
+  }
   if (
     input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.sameToolErrorAskUserThreshold
     && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")

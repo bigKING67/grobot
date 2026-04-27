@@ -5262,6 +5262,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_type, "object");
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_strategy_switch_threshold, 2);
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_escalation_ask_user_threshold, 3);
+  assert.equal(
+    statusPayload.status_runtime_tool_recovery_policy_escalation_browser_environment_ask_user_threshold,
+    2,
+  );
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_health_watch_threshold, 85);
   assert.equal(statusPayload.status_runtime_tool_recovery_policy_health_risk_threshold, 60);
   assert.equal(statusPayload.status_runtime_tool_recovery_readiness_present, true);

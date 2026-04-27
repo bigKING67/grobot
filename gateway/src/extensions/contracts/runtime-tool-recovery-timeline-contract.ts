@@ -48,6 +48,7 @@ const customPolicy: RuntimeToolRecoveryPolicySnapshot = {
   escalation: {
     sameToolErrorStrategySwitchThreshold: 2,
     sameToolErrorAskUserThreshold: 3,
+    browserEnvironmentAskUserThreshold: 2,
   },
   health: {
     riskScoreThreshold: 40,

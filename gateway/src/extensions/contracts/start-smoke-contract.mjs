@@ -104,6 +104,7 @@ const EXPECTED_RUNTIME_TOOL_RECOVERY_POLICY_STATUS = {
   escalation: {
     same_tool_error_strategy_switch_threshold: 2,
     same_tool_error_ask_user_threshold: 3,
+    browser_environment_ask_user_threshold: 2,
   },
   health: {
     risk_score_threshold: 60,
@@ -255,6 +256,11 @@ function assertRuntimeToolRecoveryPolicyStatusSurface(input) {
     "runtime recovery policy ask-user threshold",
   );
   assertEqualValue(
+    recoveryPolicy.escalation?.browser_environment_ask_user_threshold,
+    expected.escalation.browser_environment_ask_user_threshold,
+    "runtime recovery policy browser environment ask-user threshold",
+  );
+  assertEqualValue(
     recoveryPolicy.health?.risk_score_threshold,
     expected.health.risk_score_threshold,
     "runtime recovery policy health risk threshold",
@@ -300,6 +306,7 @@ function assertRuntimeToolRecoveryPolicyStatusSurface(input) {
     `guard_recent_profile_sequence=${String(expected.guard.recent_profile_sequence_size)}`,
     `guard_oscillation_window=${String(expected.guard.oscillation_profile_window_size)}`,
     `escalation_thresholds=${String(expected.escalation.same_tool_error_strategy_switch_threshold)}/${String(expected.escalation.same_tool_error_ask_user_threshold)}`,
+    `browser_environment_ask_user_threshold=${String(expected.escalation.browser_environment_ask_user_threshold)}`,
     `health_thresholds=${String(expected.health.watch_score_threshold)}/${String(expected.health.risk_score_threshold)}`,
     `health_penalties=${String(expected.health.penalties.active_recovery)}/${String(expected.health.penalties.active_nonrecoverable)}/${String(expected.health.penalties.stuck_nonrecoverable)}/${String(expected.health.penalties.historical_unconsumed)}`,
   ];
@@ -2405,6 +2412,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       runtimeToolRecoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
     status_runtime_tool_recovery_policy_escalation_ask_user_threshold:
       runtimeToolRecoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    status_runtime_tool_recovery_policy_escalation_browser_environment_ask_user_threshold:
+      runtimeToolRecoveryPolicy?.escalation?.browser_environment_ask_user_threshold ?? null,
     status_runtime_tool_recovery_policy_health_watch_threshold:
       runtimeToolRecoveryPolicy?.health?.watch_score_threshold ?? null,
     status_runtime_tool_recovery_policy_health_risk_threshold:
@@ -5018,6 +5027,8 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       recoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
     recovery_policy_escalation_ask_user_threshold:
       recoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    recovery_policy_escalation_browser_environment_ask_user_threshold:
+      recoveryPolicy?.escalation?.browser_environment_ask_user_threshold ?? null,
     recovery_policy_health_watch_threshold:
       recoveryPolicy?.health?.watch_score_threshold ?? null,
     recovery_policy_health_risk_threshold:
@@ -5067,6 +5078,7 @@ function runStatusNonRecoverableToolRecovery(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_policy:")
       && textResult.stdout.includes("timeline_max_entries=20")
       && textResult.stdout.includes("escalation_thresholds=2/3")
+      && textResult.stdout.includes("browser_environment_ask_user_threshold=2")
       && textResult.stdout.includes("health_thresholds=85/60"),
     text_has_recovery_readiness:
       textResult.stdout.includes("runtime_tool_recovery_readiness:")
@@ -5205,6 +5217,8 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       recoveryPolicy?.escalation?.same_tool_error_strategy_switch_threshold ?? null,
     recovery_policy_escalation_ask_user_threshold:
       recoveryPolicy?.escalation?.same_tool_error_ask_user_threshold ?? null,
+    recovery_policy_escalation_browser_environment_ask_user_threshold:
+      recoveryPolicy?.escalation?.browser_environment_ask_user_threshold ?? null,
     recovery_policy_health_watch_threshold:
       recoveryPolicy?.health?.watch_score_threshold ?? null,
     recovery_policy_health_risk_threshold:
@@ -5250,6 +5264,7 @@ function runStatusNonRecoverableToolRecoveryConsumed(repoRoot) {
       textResult.stdout.includes("runtime_tool_recovery_policy:")
       && textResult.stdout.includes("timeline_max_entries=20")
       && textResult.stdout.includes("escalation_thresholds=2/3")
+      && textResult.stdout.includes("browser_environment_ask_user_threshold=2")
       && textResult.stdout.includes("health_thresholds=85/60"),
     text_has_recovery_readiness:
       textResult.stdout.includes("runtime_tool_recovery_readiness:")
