@@ -1234,8 +1234,19 @@ function serializeRuntimeToolSurfaceProjectionDrift(
 }
 
 type RuntimeToolQualityStatus = "ok" | "warn" | "fail";
+type RuntimeToolQualityActionFamily =
+  | "none"
+  | "runtime_environment"
+  | "runtime_describe"
+  | "schema_projection"
+  | "schema_budget"
+  | "recovery_gate"
+  | "recovery_health";
+
+const RUNTIME_TOOL_QUALITY_SCHEMA_VERSION = 1;
 
 interface RuntimeToolQualitySummary {
+  quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION;
   status: RuntimeToolQualityStatus;
   passed: boolean;
   source: "status.runtime_tools";
@@ -1267,7 +1278,48 @@ interface RuntimeToolQualitySummary {
   latest_blocker_kind: RuntimeToolRecoveryReadinessGateDecision["blockerKind"] | null;
   blocker_code: string | null;
   blocker_action: string | null;
+  action_family: RuntimeToolQualityActionFamily;
+  action_reason: string | null;
   action_required: string | null;
+}
+
+function resolveRuntimeToolQualityAction(input: {
+  failureReasons: readonly string[];
+  warningReasons: readonly string[];
+}): { actionFamily: RuntimeToolQualityActionFamily; actionReason: string | null } {
+  const orderedSignals: readonly {
+    reason: string;
+    family: RuntimeToolQualityActionFamily;
+  }[] = [
+    { reason: "runtime_binary_missing", family: "runtime_environment" },
+    { reason: "runtime_health_failed", family: "runtime_environment" },
+    { reason: "schema_projection_drift_active", family: "schema_projection" },
+    { reason: "schema_budget_violated", family: "schema_budget" },
+    { reason: "recovery_gate_blocking", family: "recovery_gate" },
+    { reason: "runtime_tools_describe_fallback", family: "runtime_describe" },
+    { reason: "schema_projection_drift_not_checked", family: "schema_projection" },
+    { reason: "recovery_gate_warn", family: "recovery_gate" },
+  ];
+  const signalReasons = new Set([...input.failureReasons, ...input.warningReasons]);
+  for (const signal of orderedSignals) {
+    if (signalReasons.has(signal.reason)) {
+      return {
+        actionFamily: signal.family,
+        actionReason: signal.reason,
+      };
+    }
+  }
+  const recoveryHealthReason = input.warningReasons.find((reason) => reason.startsWith("recovery_health_"));
+  if (recoveryHealthReason) {
+    return {
+      actionFamily: "recovery_health",
+      actionReason: recoveryHealthReason,
+    };
+  }
+  return {
+    actionFamily: "none",
+    actionReason: null,
+  };
 }
 
 function buildRuntimeToolQualitySummary(input: {
@@ -1324,8 +1376,13 @@ function buildRuntimeToolQualitySummary(input: {
     ?? (failReasons.includes("runtime_health_failed") ? "check_runtime_health" : null)
     ?? (failReasons.includes("schema_projection_drift_active") ? "run_runtime_tool_contracts" : null)
     ?? (failReasons.includes("schema_budget_violated") ? "trim_runtime_tool_schema_surface" : null);
+  const action = resolveRuntimeToolQualityAction({
+    failureReasons: failReasons,
+    warningReasons: warnReasons,
+  });
 
   return {
+    quality_schema_version: RUNTIME_TOOL_QUALITY_SCHEMA_VERSION,
     status,
     passed: status === "ok",
     source: "status.runtime_tools",
@@ -1357,6 +1414,8 @@ function buildRuntimeToolQualitySummary(input: {
     latest_blocker_kind: input.recoveryGate.blockerKind === "none" ? null : input.recoveryGate.blockerKind,
     blocker_code: input.recoveryGate.blockerCode,
     blocker_action: input.recoveryGate.blockerAction,
+    action_family: action.actionFamily,
+    action_reason: action.actionReason,
     action_required: actionRequired,
   };
 }
@@ -2673,7 +2732,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     );
   }
   process.stdout.write(
-    `runtime_tool_quality: status=${runtimeToolQuality.status} schema_budget_violations=${String(runtimeToolQuality.schema_budget_violations)} runtime_describe=${runtimeToolQuality.runtime_describe_source} schema_drift=${runtimeToolQuality.schema_projection_drift_active ? "active" : "ok"} recovery_gate=${runtimeToolQuality.recovery_gate_status} latest_stage=${runtimeToolQuality.latest_recovery_stage ?? "<none>"} blocker=${runtimeToolQuality.latest_blocker_kind ?? "<none>"} action=${runtimeToolQuality.action_required ?? "<none>"}\n`,
+    `runtime_tool_quality: status=${runtimeToolQuality.status} schema_budget_violations=${String(runtimeToolQuality.schema_budget_violations)} runtime_describe=${runtimeToolQuality.runtime_describe_source} schema_drift=${runtimeToolQuality.schema_projection_drift_active ? "active" : "ok"} recovery_gate=${runtimeToolQuality.recovery_gate_status} latest_stage=${runtimeToolQuality.latest_recovery_stage ?? "<none>"} blocker=${runtimeToolQuality.latest_blocker_kind ?? "<none>"} action_family=${runtimeToolQuality.action_family} action=${runtimeToolQuality.action_required ?? "<none>"}\n`,
   );
   process.stdout.write(
     `runtime_tool_manifest_fingerprint: ${runtimeToolContextPreview.manifestFingerprint}\n`,

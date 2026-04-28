@@ -30,8 +30,10 @@ const startSmokeContract = readRepoFile("gateway/src/extensions/contracts/start-
 const gatewaySmoke = readRepoFile("gateway/tests/check-gateway-node.mjs");
 
 const releaseQualityRequiredFragments = [
+  "const runtimeToolQualitySchemaVersion = 1",
   "function runtimeToolQualitySummary(describeSummary, data)",
   "const status = failureReasons.length > 0 ? \"fail\" : \"ok\"",
+  "quality_schema_version: runtimeToolQualitySchemaVersion",
   "passed: status === \"ok\"",
   "source: \"runtime_tool_describe\"",
   "failure_reasons: failureReasons",
@@ -39,12 +41,17 @@ const releaseQualityRequiredFragments = [
   "schema_budget_status: schemaBudgetStatus",
   "schema_budget_violations: schemaBudgetViolations",
   "runtime_binary_exists: runtimeBinaryExists",
+  "action_family: actionSignal ? actionSignal[1] : \"none\"",
+  "action_reason: actionSignal ? actionSignal[0] : null",
   "actionable_next_step:",
 ] as const;
 
 const statusQualityRequiredFragments = [
+  "const RUNTIME_TOOL_QUALITY_SCHEMA_VERSION = 1",
   "type RuntimeToolQualityStatus = \"ok\" | \"warn\" | \"fail\"",
+  "type RuntimeToolQualityActionFamily",
   "interface RuntimeToolQualitySummary",
+  "quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION",
   "status: RuntimeToolQualityStatus",
   "passed: boolean",
   "source: \"status.runtime_tools\"",
@@ -55,12 +62,18 @@ const statusQualityRequiredFragments = [
   "schema_budget_violations: number",
   "runtime_describe_source: RuntimeToolEnabledToolsSource",
   "recovery_gate_status: RuntimeToolRecoveryReadinessGateDecision[\"status\"]",
+  "action_family: RuntimeToolQualityActionFamily",
+  "action_reason: string | null",
   "action_required: string | null",
+  "function resolveRuntimeToolQualityAction",
   "const status: RuntimeToolQualityStatus = failReasons.length > 0",
   "passed: status === \"ok\"",
+  "quality_schema_version: RUNTIME_TOOL_QUALITY_SCHEMA_VERSION",
   "failure_reasons: failReasons",
   "warning_reasons: warnReasons",
   "schema_budget_status: budgetValidation.ok ? \"passed\" : \"failed\"",
+  "action_family: action.actionFamily",
+  "action_reason: action.actionReason",
 ] as const;
 
 expectAllIncludes(
@@ -106,12 +119,16 @@ expect(
 expect(
   releaseReportTest.includes("runtime_tool_quality.source must be runtime_tool_describe")
     && releaseReportTest.includes("runtime_tool_quality.schema_budget_status must be unknown")
+    && releaseReportTest.includes("runtime_tool_quality.action_family must classify forced failure as runner_contract")
+    && releaseReportTest.includes("runtime_tool_quality.action_reason must preserve the decisive failure reason")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed"),
   "release-report regression must assert runtime_tool_quality source and schema budget status",
 );
 
 expect(
   startSmokeContract.includes("quality_schema_budget_status")
+    && startSmokeContract.includes("quality_action_family")
+    && startSmokeContract.includes("quality_action_reason")
     && gatewaySmoke.includes("status_runtime_tool_quality_schema_budget_status"),
   "status smoke must assert runtime_tools_quality schema budget status",
 );
@@ -120,6 +137,7 @@ process.stdout.write(JSON.stringify({
   ok: true,
   contract: "runtime-tool-quality-schema",
   release_fields: [
+    "quality_schema_version",
     "status",
     "passed",
     "source",
@@ -128,9 +146,12 @@ process.stdout.write(JSON.stringify({
     "schema_budget_status",
     "schema_budget_violations",
     "runtime_binary_exists",
+    "action_family",
+    "action_reason",
     "actionable_next_step",
   ],
   status_fields: [
+    "quality_schema_version",
     "status",
     "passed",
     "source",
@@ -141,6 +162,8 @@ process.stdout.write(JSON.stringify({
     "runtime_binary_exists",
     "runtime_describe_source",
     "recovery_gate_status",
+    "action_family",
+    "action_reason",
     "action_required",
   ],
 }) + "\n");

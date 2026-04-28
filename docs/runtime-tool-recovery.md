@@ -190,9 +190,10 @@ failure must therefore explain why the runtime-tool quality gate failed, not
 only return a boolean.
 The runtime-tool suite owns a dedicated quality-schema contract that keeps
 release `checks.runtime_tool_quality` and daily `runtime_tools_quality`
-aligned on the core machine-readable fields: status, passed, source,
-failure/warning reasons, schema-budget status and violations, runtime binary
-existence, and the actionable next-step field for the surface.
+aligned on the core machine-readable fields: `quality_schema_version`, status,
+passed, source, failure/warning reasons, schema-budget status and violations,
+runtime binary existence, `action_family` / `action_reason`, and the actionable
+next-step field for the surface.
 
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
@@ -689,7 +690,10 @@ existence, gateway-only recovery-action exceptions, and the next actionable
 command when a runtime-tool contract fails. The focused
 `runtime-tool-quality-schema` contract keeps this release surface aligned with
 daily `runtime_tools_quality` status so downstream automation never has to infer
-quality from prose or raw booleans. The default `npm run check` already covers the
+quality from prose or raw booleans. Both surfaces carry
+`quality_schema_version=1` plus stable `action_family` / `action_reason`
+classification, so dashboards and release automation can route failures without
+parsing `actionable_next_step` or `action_required` prose. The default `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs
 `npm run check:gateway:runtime-tools:schema` and

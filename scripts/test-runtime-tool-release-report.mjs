@@ -89,6 +89,9 @@ if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
   if (runtimeToolQuality.status !== "fail") {
     failures.push("runtime_tool_quality.status must be fail for forced contract failure");
   }
+  if (runtimeToolQuality.quality_schema_version !== 1) {
+    failures.push("runtime_tool_quality.quality_schema_version must be 1");
+  }
   if (runtimeToolQuality.passed !== false) {
     failures.push("runtime_tool_quality.passed must be false for forced contract failure");
   }
@@ -117,6 +120,12 @@ if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
   }
   if (runtimeToolQuality.failed_contract !== "runtime-tool-suite-ownership") {
     failures.push("runtime_tool_quality.failed_contract must preserve the failed contract id");
+  }
+  if (runtimeToolQuality.action_family !== "runner_contract") {
+    failures.push("runtime_tool_quality.action_family must classify forced failure as runner_contract");
+  }
+  if (runtimeToolQuality.action_reason !== "runtime_tool_describe_failed") {
+    failures.push("runtime_tool_quality.action_reason must preserve the decisive failure reason");
   }
   if (!String(runtimeToolQuality.actionable_next_step ?? "").includes("runtime-tool-suite-ownership-contract.ts")) {
     failures.push("runtime_tool_quality.actionable_next_step must be actionable");
@@ -200,6 +209,9 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.status !== "ok") {
     successFailures.push("success runtime_tool_quality.status must be ok");
   }
+  if (successQuality.quality_schema_version !== 1) {
+    successFailures.push("success runtime_tool_quality.quality_schema_version must be 1");
+  }
   if (successQuality.passed !== true) {
     successFailures.push("success runtime_tool_quality.passed must be true");
   }
@@ -232,6 +244,12 @@ if (!successQuality || typeof successQuality !== "object") {
   }
   if (!Array.isArray(successQuality.gateway_only_recovery_actions)) {
     successFailures.push("success runtime_tool_quality.gateway_only_recovery_actions must be array");
+  }
+  if (successQuality.action_family !== "none") {
+    successFailures.push("success runtime_tool_quality.action_family must be none");
+  }
+  if (successQuality.action_reason !== null) {
+    successFailures.push("success runtime_tool_quality.action_reason must be null");
   }
 }
 if (successDescribe?.runner_schema_version !== 1) {

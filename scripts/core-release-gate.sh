@@ -78,6 +78,7 @@ const runtimeToolDescribePassed = (process.argv[9] ?? "false") === "true";
 const packPassed = (process.argv[10] ?? "false") === "true";
 const packSkipped = (process.argv[11] ?? "false") === "true";
 const runtimeToolDescribeReportPath = process.argv[12] ?? "";
+const runtimeToolQualitySchemaVersion = 1;
 
 function parseJson(value) {
   try {
@@ -224,7 +225,20 @@ function runtimeToolQualitySummary(describeSummary, data) {
     : schemaBudgetViolations === 0
       ? "passed"
       : "failed";
+  const actionSignals = [
+    ["report_parse_error", "diagnostics"],
+    ["diagnostics_self_test_failed", "diagnostics"],
+    ["runtime_binary_missing", "runtime_environment"],
+    ["runtime_tool_describe_failed", "runner_contract"],
+    ["contract_coverage_incomplete", "runner_contract"],
+    ["runner_contract_coverage_missing", "runner_contract"],
+    ["tmp_fixture_isolation_missing", "contract_harness"],
+    ["schema_budget_unknown", "schema_budget"],
+    ["schema_budget_violated", "schema_budget"],
+  ];
+  const actionSignal = actionSignals.find(([reason]) => failureReasons.includes(reason)) ?? null;
   return {
+    quality_schema_version: runtimeToolQualitySchemaVersion,
     status,
     passed: status === "ok",
     source: "runtime_tool_describe",
@@ -245,6 +259,8 @@ function runtimeToolQualitySummary(describeSummary, data) {
       ? describeSummary.gateway_only_recovery_actions
       : [],
     failed_contract: describeSummary.failed_contract ?? null,
+    action_family: actionSignal ? actionSignal[1] : "none",
+    action_reason: actionSignal ? actionSignal[0] : null,
     actionable_next_step: typeof describeSummary.failed_contract_detail?.suggested_command === "string"
       ? describeSummary.failed_contract_detail.suggested_command
       : typeof diagnosticSummary?.reproduce === "string"

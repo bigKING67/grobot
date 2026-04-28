@@ -4969,6 +4969,7 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_has_runtime_tools, true);
   assert.equal(statusPayload.status_has_runtime_tools_quality, true);
   assert.equal(statusPayload.status_runtime_tool_quality_status, "ok");
+  assert.equal(statusPayload.status_runtime_tool_quality_schema_version, 1);
   assert.equal(statusPayload.status_runtime_tool_quality_passed_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_quality_runtime_binary_exists_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_quality_runtime_health_ok_type, "boolean");
@@ -4983,6 +4984,11 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_action_required_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_runtime_tool_quality_action_family, "none");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_action_reason_type)),
     true,
   );
   assert.equal(statusPayload.status_runtime_tool_quality_failure_reasons_is_array, true);
@@ -8465,10 +8471,13 @@ async function runTsRustExecutionSmoke() {
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_suppressed_args, false);
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_describe_reason, true);
   assert.equal(runtimeDescribeUnavailablePayload.quality_status, "fail");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_schema_version, 1);
   assert.equal(runtimeDescribeUnavailablePayload.quality_runtime_binary_exists, false);
   assert.equal(runtimeDescribeUnavailablePayload.quality_runtime_health_ok, false);
   assert.equal(runtimeDescribeUnavailablePayload.quality_runtime_describe_source, "start-default");
   assert.equal(runtimeDescribeUnavailablePayload.quality_schema_budget_status, "passed");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_action_family, "runtime_environment");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_action_reason, "runtime_binary_missing");
   assert.equal(runtimeDescribeUnavailablePayload.quality_failure_has_runtime_binary_missing, true);
   assert.equal(runtimeDescribeUnavailablePayload.quality_failure_has_runtime_health_failed, true);
   assert.equal(runtimeDescribeUnavailablePayload.quality_warning_has_describe_fallback, true);
@@ -8508,10 +8517,13 @@ async function runTsRustExecutionSmoke() {
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_start_default_source, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_invalid_schema_reason, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_status, "fail");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_schema_version, 1);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_runtime_binary_exists, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_runtime_health_ok, false);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_runtime_describe_source, "start-default");
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_schema_budget_status, "passed");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_action_family, "runtime_environment");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_action_reason, "runtime_health_failed");
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_failure_has_runtime_health_failed, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_warning_has_describe_fallback, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.text_has_quality_fail, true);
