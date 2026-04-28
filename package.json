@@ -52,6 +52,7 @@
     "check:gateway:runtime-tools": "node scripts/check-runtime-tool-contracts.mjs",
     "check:gateway:runtime-tools:json": "node scripts/check-runtime-tool-contracts.mjs --json",
     "check:gateway:runtime-tools:describe": "cargo build --manifest-path runtime/Cargo.toml && node scripts/check-runtime-tool-contracts.mjs --include-runtime-describe",
+    "check:gateway:runtime-tools:release-report": "node scripts/test-runtime-tool-release-report.mjs",
     "check:browser-structured:mcp": "node gateway/src/extensions/contracts/browser-structured-mcp-contract.mjs && node gateway/src/extensions/contracts/browser-structured-mcp-hub-control-contract.mjs",
     "check:browser-doctor:schema": "node gateway/src/extensions/contracts/browser-doctor-json-schema-contract.mjs",
     "check:browser-structured:mcp:hub-control": "node gateway/src/extensions/contracts/browser-structured-mcp-hub-control-contract.mjs",

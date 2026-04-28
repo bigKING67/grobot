@@ -12,6 +12,8 @@ on:
       - "scripts/core-status.sh"
       - "scripts/core-verify-packages.sh"
       - "scripts/core-release-gate.sh"
+      - "scripts/check-runtime-tool-contracts.mjs"
+      - "scripts/test-runtime-tool-release-report.mjs"
       - "scripts/core-release-prepare.sh"
       - "package.json"
       - "grobot"
@@ -30,6 +32,8 @@ on:
       - "scripts/core-status.sh"
       - "scripts/core-verify-packages.sh"
       - "scripts/core-release-gate.sh"
+      - "scripts/check-runtime-tool-contracts.mjs"
+      - "scripts/test-runtime-tool-release-report.mjs"
       - "scripts/core-release-prepare.sh"
       - "package.json"
       - "grobot"
@@ -76,6 +80,9 @@ jobs:
 
       - name: Verify core packages (dev mode allows stubs)
         run: npm run core:verify:packages -- --allow-stub
+
+      - name: Validate runtime tool release failure report
+        run: npm run check:gateway:runtime-tools:release-report
 
       - name: Run core release gate in dev mode
         run: npm run core:gate:release -- --allow-stub --report /tmp/core-release-gate-report.dev.json

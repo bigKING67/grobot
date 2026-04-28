@@ -26,6 +26,7 @@ const checkScript = packageJson.scripts?.check ?? "";
 const gatewaySmoke = readRepoFile("gateway/tests/check-gateway-node.mjs");
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const runtimeToolRunner = readRepoFile("scripts/check-runtime-tool-contracts.mjs");
+const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
 const harnessWorkflow = readRepoFile(".github/workflows/harness-gate.yml");
 const corePackagingWorkflow = readRepoFile(".github/workflows/core-packaging-check.yml");
 const coreReleaseWorkflow = readRepoFile(".github/workflows/core-release-gate.yml");
@@ -37,6 +38,7 @@ const runtimeToolSmokeInvocationCount = (
 const checkSegments = checkScript.split("&&").map((segment) => segment.trim());
 const runtimeToolSuiteIndex = checkSegments.indexOf("npm run check:gateway:runtime-tools");
 const gatewaySmokeIndex = checkSegments.indexOf("npm run check:gateway");
+const releaseReportScript = packageJson.scripts?.["check:gateway:runtime-tools:release-report"] ?? "";
 
 expect(runtimeToolSuiteIndex >= 0, "default check must run runtime-tool suite");
 expect(gatewaySmokeIndex >= 0, "default check must run gateway smoke");
@@ -78,6 +80,33 @@ expect(
   runtimeToolRunner.includes("diagnostics_self_test"),
   "runtime-tool runner JSON must expose diagnostics_self_test status",
 );
+expect(
+  releaseReportScript === "node scripts/test-runtime-tool-release-report.mjs",
+  "package.json must expose runtime-tool release-report regression script",
+);
+expect(
+  runtimeToolRunner.includes("GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID"),
+  "runtime-tool runner must support deterministic contract failure injection for report regression tests",
+);
+expect(
+  releaseReportTest.includes("GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID"),
+  "release-report regression test must inject a runtime-tool contract failure",
+);
+expect(
+  releaseReportTest.includes("failed_contract_detail")
+    && releaseReportTest.includes("runtime_binary")
+    && releaseReportTest.includes("diagnostics_self_test"),
+  "release-report regression test must assert diagnostics, runtime binary, and self-test fields",
+);
+expect(
+  corePackagingWorkflow.includes("check:gateway:runtime-tools:release-report"),
+  "core packaging workflow must run runtime-tool release-report regression test",
+);
+expect(
+  corePackagingWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"')
+    && corePackagingWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"'),
+  "core packaging workflow must trigger on runtime-tool release-report test and runner changes",
+);
 for (const [name, workflow] of [
   ["harness-gate", harnessWorkflow],
   ["core-packaging-check", corePackagingWorkflow],
@@ -90,6 +119,10 @@ expect(
   harnessWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"'),
   "harness gate must trigger on runtime-tool runner changes",
 );
+expect(
+  harnessWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"'),
+  "harness gate must trigger on runtime-tool release-report test changes",
+);
 
 process.stdout.write(JSON.stringify({
   ok: true,
@@ -101,6 +134,8 @@ process.stdout.write(JSON.stringify({
   runner_failure_diagnostics: true,
   runner_runtime_binary_status: true,
   runner_diagnostics_self_test: true,
+  release_report_regression_script: true,
+  release_report_regression_workflow: true,
   workflows_with_rust_toolchain: 3,
   harness_runtime_paths_covered: true,
 }) + "\n");

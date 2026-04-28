@@ -57,6 +57,11 @@ function npxCommand() {
   return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
+function forcedFailureId() {
+  const value = process.env.GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
 function runtimeBinaryPath() {
   const envPath = process.env.GROBOT_RUNTIME_BIN;
   if (typeof envPath === "string" && envPath.trim().length > 0) {
@@ -104,6 +109,31 @@ function suggestedCommand(contract) {
   return contractCommand(contract).join(" ");
 }
 
+function forcedFailureResult(contract, startedMs) {
+  const stderrLines = Array.from(
+    { length: 45 },
+    (_, index) => `forced-failure-stderr-line-${String(index).padStart(2, "0")}`,
+  );
+  return {
+    id: contract.id,
+    path: contract.path,
+    status: 42,
+    signal: null,
+    duration_ms: Date.now() - startedMs,
+    stdout: [
+      "forced runtime-tool contract failure for release-report diagnostics",
+      JSON.stringify({
+        ok: false,
+        marker: "runtime_tool_runner_forced_failure",
+        forced_contract_id: contract.id,
+      }),
+    ].join("\n") + "\n",
+    stderr: `${stderrLines.join("\n")}\n`,
+    error_message: "forced by GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID",
+    suggested_command: suggestedCommand(contract),
+  };
+}
+
 function tailLines(value, maxLines = 40, maxChars = 6000) {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -133,6 +163,9 @@ function parseLastJsonLine(value) {
 
 function runContract(contract) {
   const startedMs = Date.now();
+  if (forcedFailureId() === contract.id) {
+    return forcedFailureResult(contract, startedMs);
+  }
   const command = contractCommand(contract);
   const result = spawnSync(
     command[0],

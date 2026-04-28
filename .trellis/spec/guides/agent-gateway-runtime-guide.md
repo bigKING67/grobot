@@ -329,6 +329,12 @@ drift. The release report must preserve the describe summary under
 `checks.runtime_tool_describe`, including contract counts, failed contract name,
 failure diagnostics, runtime binary status, schema budget violations, and
 gateway-only recovery action exceptions.
+The release-report regression command
+`npm run check:gateway:runtime-tools:release-report` must force a deterministic
+runtime-tool contract failure and assert that failed describe-mode reports still
+preserve `diagnostics_self_test`, `failed_contract_detail`, and
+`runtime_binary`; keep it in the core packaging workflow rather than the
+gateway-only suite because it builds the Rust runtime.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.

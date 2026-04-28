@@ -529,6 +529,7 @@ Focused runtime-tool contract suite:
 ```bash
 npm run check:gateway:runtime-tools
 npm run check:gateway:runtime-tools:json
+npm run check:gateway:runtime-tools:release-report
 ```
 
 The JSON mode always reports `diagnostics_self_test` so the runner fails before
@@ -539,6 +540,13 @@ stdout/stderr tails. When `--include-runtime-describe` is enabled, the report
 also includes `runtime_binary` with the describe binary path, source, size, and
 modification timestamp, so CI artifacts can distinguish a contract regression
 from stale or missing runtime binaries.
+
+`check:gateway:runtime-tools:release-report` runs the core release gate with a
+deterministic synthetic runtime-tool contract failure and asserts that the
+failure report still preserves `diagnostics_self_test`,
+`failed_contract_detail`, and `runtime_binary`. This regression belongs to the
+release/packaging gate rather than the gateway-only suite because it builds the
+Rust runtime before checking describe-mode failure evidence.
 
 The default suite is gateway-only and does not require a freshly built Rust
 runtime binary. It is part of the repository `npm run check` gate, so recovery
@@ -604,6 +612,9 @@ surface. Its JSON report exposes `checks.runtime_tool_describe` with
 and gateway-only recovery action summaries for release evidence. The default
 `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
+The core packaging workflow runs
+`npm run check:gateway:runtime-tools:release-report` so release-report failure
+diagnostics cannot silently drift.
 
 Full gate:
 
