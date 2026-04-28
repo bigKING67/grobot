@@ -532,7 +532,9 @@ npm run check:gateway:runtime-tools:json
 ```
 
 The default suite is gateway-only and does not require a freshly built Rust
-runtime binary. It runs:
+runtime binary. It is part of the repository `npm run check` gate, so recovery
+or tool-surface changes cannot bypass these contracts in the default validation
+path. It runs:
 
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
@@ -577,7 +579,11 @@ The `:describe` script builds the Rust runtime first so
 `runtime/target/debug/grobot-runtime` is not stale. Runtime describe is expected
 to expose the base recovery actions it can emit directly; gateway-only
 contextual refinements such as `fix_mcp_tool_arguments` are verified by the MCP
-recovery eval matrix instead of being forced into the Rust base catalog.
+recovery eval matrix instead of being forced into the Rust base catalog. Keep
+`:describe` as the explicit deep compatibility gate for Rust recovery catalog,
+tool schema budget, or `runtime.tools.describe` surface changes; the default
+`npm run check` already covers the gateway-only suite and then runs the normal
+Rust compile/test gate separately.
 
 Full gate:
 
