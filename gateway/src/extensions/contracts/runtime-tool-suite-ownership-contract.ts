@@ -62,6 +62,10 @@ expect(
   "release gate must run runtime-tool describe suite through the ownership runner",
 );
 expect(
+  releaseGate.includes("runtime_tool_describe_report_invalid"),
+  "release gate must emit an explicit fail_reason when runtime-tool describe report parsing fails",
+);
+expect(
   releaseGate.includes("checks.runtime_tool_describe")
     || releaseGate.includes("runtime_tool_describe: runtimeToolDescribeSummary()"),
   "release gate report must expose runtime_tool_describe evidence",
@@ -198,6 +202,7 @@ process.stdout.write(JSON.stringify({
   release_gate_runtime_binary_status: true,
   release_gate_runner_schema_version: true,
   release_gate_diagnostic_summary: true,
+  release_gate_invalid_report_fail_reason: true,
   runner_failure_diagnostics: true,
   runner_runtime_binary_status: true,
   runner_diagnostics_self_test: true,

@@ -559,7 +559,10 @@ failure report still preserves `diagnostics_self_test`,
 `failed_contract_detail`, `diagnostic_summary`, and `runtime_binary`. This
 regression belongs to the release/packaging gate rather than the gateway-only
 suite because it builds the Rust runtime before checking describe-mode failure
-evidence.
+evidence. If the describe runner exits successfully but the release gate cannot
+parse or summarize its JSON report, the gate must fail through the explicit
+`runtime_tool_describe_report_invalid` reason so `--report` callers still get a
+machine-readable failure.
 
 The default suite is gateway-only and does not require a freshly built Rust
 runtime binary. It is part of the repository `npm run check` gate, so recovery

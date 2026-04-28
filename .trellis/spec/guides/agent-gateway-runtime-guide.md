@@ -340,6 +340,10 @@ runtime-tool contract failure and assert that failed describe-mode reports still
 preserve `diagnostics_self_test`, `failed_contract_detail`, and
 `diagnostic_summary` plus `runtime_binary`; keep it in the core packaging
 workflow rather than the gateway-only suite because it builds the Rust runtime.
+If describe JSON parsing or release summary extraction fails after the runner
+returns, the gate must exit through the explicit
+`runtime_tool_describe_report_invalid` reason instead of letting `set -e`
+terminate without a machine-readable report.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.

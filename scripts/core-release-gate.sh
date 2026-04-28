@@ -250,7 +250,7 @@ if ! node scripts/check-runtime-tool-contracts.mjs --include-runtime-describe --
   fi
   fail_exit 8 "runtime_tool_describe_failed"
 fi
-node - "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" <<'NODE'
+if ! node - "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" <<'NODE'
 const fs = require("node:fs");
 const reportPath = process.argv[2] ?? "";
 const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
@@ -269,6 +269,9 @@ process.stdout.write(
     + ` gateway_only_actions=${JSON.stringify(governancePayload.gateway_only_recovery_actions ?? [])}\n`,
 );
 NODE
+then
+  fail_exit 8 "runtime_tool_describe_report_invalid"
+fi
 RUNTIME_TOOL_DESCRIBE_PASSED=1
 
 if [ "$SKIP_PACK_DRYRUN" -eq 0 ]; then
