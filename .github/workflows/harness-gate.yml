@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - "gateway/**"
+      - "runtime/**"
+      - "scripts/check-runtime-tool-contracts.mjs"
+      - "docs/runtime-tool-recovery.md"
+      - ".trellis/spec/guides/agent-gateway-runtime-guide.md"
       - "package.json"
       - ".github/workflows/harness-gate.yml"
   push:
@@ -11,6 +15,10 @@ on:
       - main
     paths:
       - "gateway/**"
+      - "runtime/**"
+      - "scripts/check-runtime-tool-contracts.mjs"
+      - "docs/runtime-tool-recovery.md"
+      - ".trellis/spec/guides/agent-gateway-runtime-guide.md"
       - "package.json"
       - ".github/workflows/harness-gate.yml"
 
@@ -31,10 +39,14 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Show runtime versions
         run: |
           node --version
           npm --version
+          cargo --version
 
       - name: Run gateway checks
         run: npm run check

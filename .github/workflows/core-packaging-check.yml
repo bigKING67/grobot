@@ -53,10 +53,14 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Show runtime versions
         run: |
           node --version
           npm --version
+          cargo --version
 
       - name: Validate shell scripts syntax
         run: |

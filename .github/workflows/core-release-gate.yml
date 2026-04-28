@@ -23,10 +23,14 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Show runtime versions
         run: |
           node --version
           npm --version
+          cargo --version
 
       - name: Run core release gate
         run: npm run core:gate:release -- --report /tmp/core-release-gate-report.json
