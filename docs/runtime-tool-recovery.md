@@ -188,6 +188,11 @@ Release reports use the same quality-summary shape as daily status surfaces:
 and `warning_reasons` in addition to describe-runner evidence. A release gate
 failure must therefore explain why the runtime-tool quality gate failed, not
 only return a boolean.
+The runtime-tool suite owns a dedicated quality-schema contract that keeps
+release `checks.runtime_tool_quality` and daily `runtime_tools_quality`
+aligned on the core machine-readable fields: status, passed, source,
+failure/warning reasons, schema-budget status and violations, runtime binary
+existence, and the actionable next-step field for the surface.
 
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
@@ -679,9 +684,12 @@ surface. Its JSON report exposes `checks.runtime_tool_describe` with
 gateway-only recovery action summaries for release evidence. It also exposes
 `checks.runtime_tool_quality` as a shallow release-quality summary containing
 the diagnostic summary status, contract coverage, runner coverage, temporary
-fixture isolation, schema-budget violations, runtime binary existence,
-gateway-only recovery-action exceptions, and the next actionable command when a
-runtime-tool contract fails. The default `npm run check` already covers the
+fixture isolation, schema-budget status and violations, runtime binary
+existence, gateway-only recovery-action exceptions, and the next actionable
+command when a runtime-tool contract fails. The focused
+`runtime-tool-quality-schema` contract keeps this release surface aligned with
+daily `runtime_tools_quality` status so downstream automation never has to infer
+quality from prose or raw booleans. The default `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs
 `npm run check:gateway:runtime-tools:schema` and

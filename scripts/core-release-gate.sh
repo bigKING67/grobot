@@ -219,6 +219,11 @@ function runtimeToolQualitySummary(describeSummary, data) {
     failureReasons.push("schema_budget_violated");
   }
   const status = failureReasons.length > 0 ? "fail" : "ok";
+  const schemaBudgetStatus = schemaBudgetViolations === null
+    ? "unknown"
+    : schemaBudgetViolations === 0
+      ? "passed"
+      : "failed";
   return {
     status,
     passed: status === "ok",
@@ -233,6 +238,7 @@ function runtimeToolQualitySummary(describeSummary, data) {
     contract_coverage_complete: contractCoverageComplete,
     runner_contract_coverage: runnerContractCoverage,
     tmp_fixture_isolation: tmpFixtureIsolation,
+    schema_budget_status: schemaBudgetStatus,
     schema_budget_violations: schemaBudgetViolations,
     runtime_binary_exists: runtimeBinaryExists,
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)

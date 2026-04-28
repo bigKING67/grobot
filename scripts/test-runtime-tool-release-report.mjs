@@ -92,6 +92,9 @@ if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
   if (runtimeToolQuality.passed !== false) {
     failures.push("runtime_tool_quality.passed must be false for forced contract failure");
   }
+  if (runtimeToolQuality.source !== "runtime_tool_describe") {
+    failures.push("runtime_tool_quality.source must be runtime_tool_describe");
+  }
   if (!Array.isArray(runtimeToolQuality.failure_reasons)) {
     failures.push("runtime_tool_quality.failure_reasons must be array");
   } else if (!runtimeToolQuality.failure_reasons.includes("runtime_tool_describe_failed")) {
@@ -108,6 +111,9 @@ if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
   }
   if (runtimeToolQuality.runtime_binary_exists !== true) {
     failures.push("runtime_tool_quality.runtime_binary_exists must be true");
+  }
+  if (runtimeToolQuality.schema_budget_status !== "unknown") {
+    failures.push("runtime_tool_quality.schema_budget_status must be unknown for early forced failure");
   }
   if (runtimeToolQuality.failed_contract !== "runtime-tool-suite-ownership") {
     failures.push("runtime_tool_quality.failed_contract must preserve the failed contract id");
@@ -197,6 +203,9 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.passed !== true) {
     successFailures.push("success runtime_tool_quality.passed must be true");
   }
+  if (successQuality.source !== "runtime_tool_describe") {
+    successFailures.push("success runtime_tool_quality.source must be runtime_tool_describe");
+  }
   if (!Array.isArray(successQuality.failure_reasons) || successQuality.failure_reasons.length !== 0) {
     successFailures.push("success runtime_tool_quality.failure_reasons must be empty array");
   }
@@ -214,6 +223,9 @@ if (!successQuality || typeof successQuality !== "object") {
   }
   if (successQuality.schema_budget_violations !== 0) {
     successFailures.push("success runtime_tool_quality.schema_budget_violations must be 0");
+  }
+  if (successQuality.schema_budget_status !== "passed") {
+    successFailures.push("success runtime_tool_quality.schema_budget_status must be passed");
   }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");

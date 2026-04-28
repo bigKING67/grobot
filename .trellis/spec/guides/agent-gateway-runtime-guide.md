@@ -361,8 +361,13 @@ release-gate path and assert that `runtime_tool_quality` passes with complete
 coverage and zero schema-budget violations. Keep it in the core packaging
 workflow rather than the gateway-only suite because it builds the Rust runtime.
 `checks.runtime_tool_quality` must expose `status`, `passed`,
-`failure_reasons`, and `warning_reasons` so release quality summaries keep the
-same machine-readable failure shape as daily `runtime_tools_quality` status.
+`source`, `failure_reasons`, `warning_reasons`, schema-budget status and
+violations, runtime binary existence, and the release actionable next step. The
+focused `runtime-tool-quality-schema` contract keeps this release shape aligned
+with daily `runtime_tools_quality` status (`status`, `passed`, `source`,
+failure/warning reasons, schema-budget fields, runtime binary existence,
+describe source, recovery gate status, and `action_required`) so quality drift is
+blocked before packaging or daily status consumers break.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`
