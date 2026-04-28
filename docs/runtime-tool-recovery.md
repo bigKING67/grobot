@@ -168,6 +168,15 @@ silently increasing dynamic context cost.
 compressed. This preserves direct tool fidelity for operators and tests while
 protecting the next model turn from accidental raw DOM/MCP payload floods.
 
+Tool output density is also contract-owned by the runtime-tool suite. The
+`runtime-tool-output-density` contract locks the structured, model-useful
+metadata that keeps atomic tools high signal: list/glob/search truncation
+flags, read offsets and metadata opt-out, bash persisted-output pointers,
+write/edit change metadata, MCP bounded argument diagnostics, and the
+model-facing budget envelope summary. This prevents a tool from staying
+functionally correct while quietly regressing into low-density raw output or
+opaque failure text.
+
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
 `status` reports `runtime_tool_enabled_tools_source_detail` and the real

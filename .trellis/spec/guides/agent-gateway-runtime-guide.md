@@ -367,6 +367,11 @@ terminate without a machine-readable report.
 Status smokes for missing or invalid runtime describe binaries must assert the
 runtime `runtime_tools_quality` failure status, failure reasons, describe
 fallback warning, and text `runtime_tool_quality:` line.
+The focused runtime-tool suite must include an output-density ownership
+contract for the atomic tools. That contract must protect list/glob/search
+truncation metadata, read offsets and metadata opt-out, bash full-output
+pointers, write/edit change metadata, MCP bounded argument diagnostics, and the
+model-facing budget envelope summary.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.
