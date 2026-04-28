@@ -625,7 +625,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         assert_eq!(surface_schema_property_count("browser_advanced", false), 39);
         assert_eq!(surface_schema_property_count("browser", true), 39);
         assert_eq!(surface_schema_property_count("context", false), 10);
-        assert_eq!(surface_schema_property_count("mcp", false), 6);
+        assert_eq!(surface_schema_property_count("mcp", false), 5);
         assert_eq!(surface_schema_property_count("full_debug", false), 92);
     }
 
@@ -794,6 +794,34 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 .filter_map(Value::as_str)
                 .collect::<Vec<&str>>(),
             vec!["bridge_script", "refresh", "technical_terms", "timeout_ms"]
+        );
+
+        let mcp = surface_schema_profile("mcp");
+        assert_eq!(mcp["projection_mode"], "slim");
+        assert_eq!(mcp["schema_property_count"].as_u64(), Some(5));
+        assert_eq!(mcp["full_schema_property_count"].as_u64(), Some(9));
+        assert_eq!(mcp["suppressed_schema_property_count"].as_u64(), Some(4));
+        assert_eq!(
+            mcp["per_tool_property_count"][TOOL_MCP_SERVERS].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            mcp["per_tool_visible_args"][TOOL_MCP_SERVERS]
+                .as_array()
+                .expect("mcp_servers visible args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec!["ready_only"]
+        );
+        assert_eq!(
+            mcp["per_tool_suppressed_args"][TOOL_MCP_SERVERS]
+                .as_array()
+                .expect("mcp_servers suppressed args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec!["include_disabled"]
         );
 
         let full_debug = surface_schema_profile("full_debug");
@@ -970,6 +998,40 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             &full_debug_props,
             &["blocking_node_id", "default_on_timeout", "resume_token"],
         );
+    }
+
+    #[test]
+    fn mcp_servers_surface_hides_disabled_inventory_except_full_debug() {
+        let mcp_params = surface_parameters("mcp", vec![TOOL_MCP_SERVERS], TOOL_MCP_SERVERS);
+        let mcp_props = schema_property_names(&mcp_params);
+        assert_schema_props_include(&mcp_props, &["ready_only"]);
+        assert_schema_props_omit(&mcp_props, &["include_disabled"]);
+
+        let full_debug_params =
+            surface_parameters("full_debug", vec![TOOL_MCP_SERVERS], TOOL_MCP_SERVERS);
+        let full_debug_props = schema_property_names(&full_debug_params);
+        assert_schema_props_include(&full_debug_props, &["ready_only", "include_disabled"]);
+    }
+
+    #[test]
+    fn mcp_servers_default_disabled_inventory_matches_surface_profile() {
+        let mcp_context = ToolContextResolved {
+            session_key: "mcp-test-session".to_string(),
+            work_dir: env::temp_dir(),
+            enabled_tools: HashSet::from([TOOL_MCP_SERVERS.to_string()]),
+            model_visible_tools: HashSet::from([TOOL_MCP_SERVERS.to_string()]),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        assert!(!should_include_disabled_mcp_servers_by_default(&mcp_context));
+
+        let full_debug_context = ToolContextResolved {
+            tool_surface_profile: "full_debug".to_string(),
+            advanced_tool_schema: true,
+            ..mcp_context
+        };
+        assert!(should_include_disabled_mcp_servers_by_default(&full_debug_context));
     }
 
     #[test]
@@ -1812,6 +1874,44 @@ audit_redact_secrets = false
         assert!(hidden_args
             .iter()
             .any(|value| value.as_str() == Some("resume_token")));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn mcp_servers_slim_surface_rejects_include_disabled() {
+        let workspace = make_temp_workspace("mcp-servers-slim-hidden-args");
+        let mut input = make_read_only_input(&workspace);
+        if let Some(context) = input.tool_context.as_mut() {
+            context.tool_surface_profile = Some("mcp".to_string());
+            context.enabled_tools = Some(vec![TOOL_MCP_SERVERS.to_string()]);
+            context.model_visible_tools = Some(vec![TOOL_MCP_SERVERS.to_string()]);
+        }
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_MCP_SERVERS,
+            json!({
+                "ready_only": true,
+                "include_disabled": true
+            }),
+        )
+        .expect_err("normal mcp_servers surface should reject disabled-server inventory args");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        let data = error
+            .data
+            .as_ref()
+            .expect("mcp_servers hidden args should include data");
+        assert_eq!(
+            data["operation"].as_str(),
+            Some("validate_mcp_servers_args_visible")
+        );
+        let hidden_args = data["hidden_args"]
+            .as_array()
+            .expect("hidden_args should be an array");
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("include_disabled")));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

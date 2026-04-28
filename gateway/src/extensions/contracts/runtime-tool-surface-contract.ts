@@ -697,9 +697,19 @@ expectDecisionProfile(mcp, "mcp", "mcp profile decision");
 expectDeepEqual(mcp.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user"], "mcp visible tools");
 expectDeepEqual(mcp.enabledTools, mcp.modelVisibleTools, "mcp dispatch tools");
 const mcpProjection = projection(mcp);
-expectEqual(mcpProjection.schemaPropertyCount, 6, "mcp projection schema property count");
-expectEqual(mcpProjection.suppressedSchemaPropertyCount, 3, "mcp projection suppressed property count");
+expectEqual(mcpProjection.schemaPropertyCount, 5, "mcp projection schema property count");
+expectEqual(mcpProjection.suppressedSchemaPropertyCount, 4, "mcp projection suppressed property count");
 expectProjectionWithinBudget(mcp, "mcp projection budget");
+expectDeepEqual(
+  mcpProjection.perToolVisibleArgs?.mcp_servers,
+  ["ready_only"],
+  "mcp projection exposes slim mcp_servers arg names",
+);
+expectDeepEqual(
+  mcpProjection.perToolSuppressedArgs?.mcp_servers,
+  ["include_disabled"],
+  "mcp projection suppresses disabled-server inventory arg",
+);
 
 const fullDebug = withEnvProfile("full_debug", () => build("普通 coding task"));
 expectEqual(fullDebug.toolSurfaceProfile, "full_debug", "full_debug profile");

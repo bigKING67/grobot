@@ -116,6 +116,7 @@ const PROFILE_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   edit: 150,
   bash: 150,
   mcp_servers: 80,
+  mcp_servers_slim: 50,
   mcp_call: 100,
   web_scan: 160,
   web_execute_js: 220,
@@ -220,6 +221,7 @@ const SLIM_SEMANTIC_SEARCH_SCHEMA_ARG_NAMES = [
   "sources",
 ] as const;
 const SLIM_ASK_USER_SCHEMA_ARG_NAMES = ["questions"] as const;
+const SLIM_MCP_SERVERS_SCHEMA_ARG_NAMES = ["ready_only"] as const;
 
 const ADVANCED_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
   web_scan: FULL_SCHEMA_ARG_NAMES.web_scan,
@@ -288,6 +290,13 @@ function shouldUseSlimAskUserSchema(
   return toolName === "ask_user" && projectionMode !== "full";
 }
 
+function shouldUseSlimMcpServersSchema(
+  toolName: string,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): boolean {
+  return toolName === "mcp_servers" && projectionMode !== "full";
+}
+
 function schemaPropertyCountForTool(
   toolName: string,
   profile: ToolSurfaceProfile,
@@ -309,6 +318,9 @@ function schemaArgNamesForTool(
   }
   if (shouldUseSlimAskUserSchema(toolName, projectionMode)) {
     return [...SLIM_ASK_USER_SCHEMA_ARG_NAMES];
+  }
+  if (shouldUseSlimMcpServersSchema(toolName, projectionMode)) {
+    return [...SLIM_MCP_SERVERS_SCHEMA_ARG_NAMES];
   }
   if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_ARG_NAMES) {
     return [...ADVANCED_BROWSER_SCHEMA_ARG_NAMES[toolName]];
@@ -1203,6 +1215,9 @@ export function estimateToolSchemaTokens(toolNames: readonly string[], profile: 
     }
     if (toolName === "ask_user") {
       return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.ask_user_slim;
+    }
+    if (toolName === "mcp_servers") {
+      return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.mcp_servers_slim;
     }
     return total + (PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
   }, 0)));

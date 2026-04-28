@@ -156,6 +156,21 @@ mod tests {
             browser_schema_profile["suppressed_schema_property_count"].as_u64(),
             Some(31)
         );
+        let mcp_schema_profile = schema_profiles
+            .iter()
+            .find(|row| row["profile"].as_str() == Some("mcp"))
+            .expect("mcp schema profile should be described");
+        assert_eq!(mcp_schema_profile["projection_mode"], "slim");
+        assert_eq!(
+            mcp_schema_profile["schema_property_count"].as_u64(),
+            Some(5)
+        );
+        assert!(
+            mcp_schema_profile["per_tool_suppressed_args"]["mcp_servers"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|value| value == "include_disabled")),
+            "mcp schema profile should keep disabled-server inventory suppressed"
+        );
         let full_debug_schema_profile = schema_profiles
             .iter()
             .find(|row| row["profile"].as_str() == Some("full_debug"))

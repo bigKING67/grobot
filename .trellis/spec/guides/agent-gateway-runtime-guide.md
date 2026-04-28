@@ -282,6 +282,9 @@ Hidden semantic-search args must fail before the ContextWeaver bridge runs.
 `ask_user` should expose only `questions` outside `full_debug`. Internal blocking/resume/default
 timeout fields are orchestration state, not normal model controls, and must be rejected when hidden
 from the active schema.
+`mcp_servers` should expose only `ready_only` outside `full_debug`. Disabled-server inventory is an
+operator/debug control, not a normal model control, so `include_disabled` must be rejected when
+hidden from the active MCP schema and normal MCP listing should exclude disabled servers by default.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

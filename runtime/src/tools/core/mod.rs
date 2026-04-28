@@ -964,6 +964,9 @@ fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanc
     if name == TOOL_ASK_USER && mode != "full" {
         return project_object_schema_properties(parameters, &["questions"]);
     }
+    if name == TOOL_MCP_SERVERS && mode != "full" {
+        return project_object_schema_properties(parameters, &["ready_only"]);
+    }
     match (name, mode) {
         (TOOL_WEB_SCAN, "slim") => project_object_schema_properties(
             parameters,

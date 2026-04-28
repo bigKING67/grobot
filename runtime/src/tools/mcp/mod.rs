@@ -547,7 +547,8 @@ fn run_mcp_servers(
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
     let ready_only = get_bool_arg(args, "ready_only", false);
-    let include_disabled = get_bool_arg(args, "include_disabled", true);
+    let include_disabled_default = should_include_disabled_mcp_servers_by_default(context);
+    let include_disabled = get_bool_arg(args, "include_disabled", include_disabled_default);
     let policy = load_mcp_call_policy(context);
     let state_snapshots = {
         let mut store = lock_runtime_store()?;
@@ -616,6 +617,10 @@ fn run_mcp_servers(
         "runtime_summary": runtime_summary,
     });
     Ok(ToolCallOutput::from_payload(payload))
+}
+
+fn should_include_disabled_mcp_servers_by_default(context: &ToolContextResolved) -> bool {
+    context.tool_surface_profile == "full_debug"
 }
 
 fn run_mcp_call(

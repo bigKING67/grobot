@@ -84,6 +84,12 @@ Normal `ask_user` schemas expose only `questions`. Internal orchestration fields
 `full_debug` and rejected in slim/advanced surfaces, preventing model-visible
 collaboration prompts from carrying hidden resume-control state.
 
+`mcp_servers` exposes only `ready_only` outside `full_debug`. Disabled-server
+inventory is an operator/debug concern, so `include_disabled` remains available
+only in `full_debug` and is rejected in normal MCP surfaces. Normal MCP listing
+also defaults to excluding disabled servers; full-debug inventory keeps the
+complete list unless the caller explicitly narrows it.
+
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a
 representative user intent to the expected profile, visible tool set, forbidden
