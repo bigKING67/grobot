@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const repoRoot = process.cwd();
@@ -34,6 +34,8 @@ const corePackagingWorkflow = readRepoFile(".github/workflows/core-packaging-che
 const coreReleaseWorkflow = readRepoFile(".github/workflows/core-release-gate.yml");
 
 const runtimeToolContractPathFragment = "gateway/src/extensions/contracts/runtime-tool-";
+const runtimeToolContractFiles = readdirSync(resolve(repoRoot, "gateway/src/extensions/contracts"))
+  .filter((name) => name.startsWith("runtime-tool-") && name.endsWith(".ts"));
 const runtimeToolSmokeInvocationCount = (
   gatewaySmoke.match(new RegExp(runtimeToolContractPathFragment, "g")) ?? []
 ).length;
@@ -127,6 +129,16 @@ expect(
     && !runtimeToolSurfaceContract.includes("workDir: \"/tmp/grobot-runtime-tool-surface-contract\""),
   "runtime-tool surface contract must isolate tmp fixtures per process",
 );
+for (const fileName of runtimeToolContractFiles) {
+  if (fileName === "runtime-tool-suite-ownership-contract.ts") {
+    continue;
+  }
+  const source = readRepoFile(`gateway/src/extensions/contracts/${fileName}`);
+  expect(
+    !source.includes("join(\"/tmp\"") && !source.includes("\"/tmp/grobot"),
+    `${fileName} must not use fixed /tmp grobot fixtures`,
+  );
+}
 expect(
   runtimeToolRunner.includes("GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID"),
   "runtime-tool runner must support deterministic contract failure injection for report regression tests",
@@ -192,6 +204,7 @@ process.stdout.write(JSON.stringify({
   runner_schema_version: true,
   runner_diagnostic_summary: true,
   surface_contract_tmp_isolated: true,
+  all_contract_tmp_fixtures_isolated: true,
   runner_schema_regression_script: true,
   release_report_regression_script: true,
   release_report_regression_workflow: true,

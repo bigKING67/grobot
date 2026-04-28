@@ -27,7 +27,10 @@ function expectIncludes(value: string, expected: string, message: string): void 
 }
 
 const observedAt = "2026-04-28T00:00:00.000Z";
-const matrixPath = "/tmp/grobot-runtime-tool-mcp-recovery-eval";
+const matrixPath = [
+  process.env.TMPDIR ?? "/tmp",
+  `grobot-runtime-tool-mcp-recovery-eval-${String(process.pid)}-${String(Date.now())}`,
+].join("/");
 
 function metricsForRecovery(input: {
   id: string;

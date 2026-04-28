@@ -80,7 +80,10 @@ const inactiveAdaptation: RuntimeToolSurfaceAdaptation = {
   recoveryObservedAt: "2026-04-26T00:00:00.000Z",
 };
 
-const workDir = join("/tmp", `grobot-runtime-tool-recovery-flow-${String(process.pid)}-${String(Date.now())}`);
+const workDir = join(
+  process.env.TMPDIR ?? "/tmp",
+  `grobot-runtime-tool-recovery-flow-${String(process.pid)}-${String(Date.now())}`,
+);
 mkdirSync(workDir, { recursive: true });
 
 try {

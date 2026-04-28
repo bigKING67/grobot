@@ -28,6 +28,10 @@ function expectEqual<T>(actual: T, expected: T, message: string): void {
 const olderObservedAt = "2026-04-26T00:00:00.000Z";
 const latestObservedAt = "2026-04-26T00:05:00.000Z";
 const consumedAt = "2026-04-26T00:06:00.000Z";
+const contractPathPrefix = [
+  process.env.TMPDIR ?? "/tmp",
+  `grobot-runtime-tool-recovery-timeline-contract-${String(process.pid)}-${String(Date.now())}`,
+].join("/");
 
 const expectedEscalation = {
   sameToolErrorCount: 3,
@@ -128,13 +132,13 @@ const metrics: RuntimeToolSurfaceMetricsSnapshot = {
     ...expectedEscalation,
     observedAt: latestObservedAt,
   },
-  path: "/tmp/grobot-runtime-tool-recovery-timeline-contract",
+  path: `${contractPathPrefix}/metrics`,
 };
 
 const emptyAdaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot = {
   version: 1,
   updatedAt: null,
-  path: "/tmp/grobot-runtime-tool-recovery-timeline-contract-adaptation",
+  path: `${contractPathPrefix}/adaptation`,
   recentAdaptations: [],
   latestAdaptation: null,
   profileOutcomes: {},

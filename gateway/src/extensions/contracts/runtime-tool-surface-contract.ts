@@ -962,7 +962,7 @@ const envFullDebugRecovery = adaptRuntimeToolContextForRecovery({
 expectEqual(envFullDebugRecovery.adaptation.active, false, "env profile should not adapt");
 expectEqual(envFullDebugRecovery.context?.toolSurfaceProfile, "full_debug", "env profile remains full_debug");
 
-const adaptationWorkDir = join("/tmp", `grobot-runtime-tool-surface-adaptation-${String(process.pid)}-${String(Date.now())}`);
+const adaptationWorkDir = join(contractWorkDir, "adaptation-state");
 mkdirSync(adaptationWorkDir, { recursive: true });
 try {
   const initialAdaptationState = readRuntimeToolSurfaceAdaptationState(adaptationWorkDir);

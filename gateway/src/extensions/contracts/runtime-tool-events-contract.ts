@@ -55,6 +55,18 @@ function event(eventType: RuntimeEvent["eventType"], payload: Record<string, unk
   };
 }
 
+const contractWorkDir = join(
+  process.env.TMPDIR ?? "/tmp",
+  `grobot-runtime-tool-events-${String(process.pid)}-${String(Date.now())}`,
+);
+process.on("exit", () => {
+  rmSync(contractWorkDir, { recursive: true, force: true });
+});
+
+function contractPath(name: string): string {
+  return join(contractWorkDir, name);
+}
+
 const events: RuntimeEvent[] = [
   event("tool_end", {
     tool_name: "read",
@@ -207,7 +219,7 @@ const structuredFeedback = buildRuntimeToolRecoveryFeedback({
     avgDurationMsByTool: {},
     recentRecoveries: [],
     latestRecovery: structuredRecoverySummary.latestRecovery ?? null,
-    path: "/tmp/grobot-runtime-tool-events-structured",
+    path: contractPath("structured"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -251,7 +263,7 @@ const bashStructuredFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-bash-structured",
+    path: contractPath("bash-structured"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -303,7 +315,7 @@ const mcpStructuredFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-mcp-structured",
+    path: contractPath("mcp-structured"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -388,7 +400,7 @@ const mcpObservedResultFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-mcp-result-structured",
+    path: contractPath("mcp-result-structured"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -468,7 +480,7 @@ const mcpRpcArgumentFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-mcp-rpc-arguments",
+    path: contractPath("mcp-rpc-arguments"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -527,7 +539,7 @@ const mcpNearBudgetFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-mcp-near-budget",
+    path: contractPath("mcp-near-budget"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -584,7 +596,7 @@ const mcpEnvironmentFeedback = buildRuntimeToolRecoveryFeedback({
       requiresUserIntervention: true,
       observedAt: mcpEnvironmentObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-mcp-environment",
+    path: contractPath("mcp-environment"),
   },
   nowMs: Date.parse(mcpEnvironmentObservedAt),
 });
@@ -802,7 +814,7 @@ for (const recoveryCase of runtimeEnvironmentRecoveryCases) {
     errorMessage: recoveryCase.errorMessage,
     errorData: {
       source: ".grobot/config.toml",
-      work_dir: "/tmp/grobot-runtime-env-contract",
+      work_dir: contractPath("runtime-env-contract"),
       ...recoveryCase.errorData,
     },
   });
@@ -899,7 +911,7 @@ const runtimeEnvironmentFeedback = buildRuntimeToolRecoveryFeedback({
       requiresUserIntervention: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-runtime-environment",
+    path: contractPath("runtime-environment"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -960,7 +972,7 @@ const semanticStructuredFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-semantic-structured",
+    path: contractPath("semantic-structured"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -1018,7 +1030,7 @@ const browserStructuredFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: true,
       observedAt: structuredRecoveryObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-browser-structured",
+    path: contractPath("browser-structured"),
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
@@ -1184,7 +1196,7 @@ const nonRecoverableFeedback = buildRuntimeToolRecoveryFeedback({
       recoverable: false,
       observedAt: nonRecoverableObservedAt,
     },
-    path: "/tmp/grobot-runtime-tool-events-nonrecoverable",
+    path: contractPath("nonrecoverable"),
   },
   nowMs: Date.parse(nonRecoverableObservedAt),
 });
@@ -1257,7 +1269,7 @@ try {
   rmSync(turnFailedRuntimeEnvWorkDir, { recursive: true, force: true });
 }
 
-const workDir = join("/tmp", `grobot-runtime-tool-events-${String(process.pid)}-${String(Date.now())}`);
+const workDir = contractPath("metrics-state");
 mkdirSync(workDir, { recursive: true });
 try {
   const initial = readRuntimeToolSurfaceMetrics(workDir);
@@ -1315,7 +1327,7 @@ try {
   rmSync(workDir, { recursive: true, force: true });
 }
 
-const repeatedWorkDir = join("/tmp", `grobot-runtime-tool-repeated-recovery-${String(process.pid)}-${String(Date.now())}`);
+const repeatedWorkDir = contractPath("repeated-recovery");
 mkdirSync(repeatedWorkDir, { recursive: true });
 try {
   const oldStateDir = join(repeatedWorkDir, ".grobot/runtime");
