@@ -107,6 +107,7 @@ const PROFILE_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   glob: 110,
   search: 190,
   read: 160,
+  read_slim: 110,
   write: 90,
   edit: 150,
   bash: 150,
@@ -204,6 +205,8 @@ const SLIM_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
   web_execute_js: ["code", "script", "session_id", "switch_tab_id", "tab_id", "timeout_ms"],
 };
 
+const SLIM_READ_SCHEMA_ARG_NAMES = ["include_metadata", "limit", "offset", "path"] as const;
+
 const ADVANCED_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
   web_scan: FULL_SCHEMA_ARG_NAMES.web_scan,
   web_execute_js: [
@@ -244,11 +247,32 @@ function projectionModeForSurface(
   return advancedToolSchema || profile === "browser_advanced" ? "advanced" : "slim";
 }
 
-function schemaPropertyCountForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): number {
-  return schemaArgNamesForTool(toolName, projectionMode).length;
+function shouldUseSlimReadSchema(
+  toolName: string,
+  profile: ToolSurfaceProfile,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): boolean {
+  return toolName === "read"
+    && projectionMode === "slim"
+    && (profile === "minimal" || profile === "browser" || profile === "context");
 }
 
-function schemaArgNamesForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): string[] {
+function schemaPropertyCountForTool(
+  toolName: string,
+  profile: ToolSurfaceProfile,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): number {
+  return schemaArgNamesForTool(toolName, profile, projectionMode).length;
+}
+
+function schemaArgNamesForTool(
+  toolName: string,
+  profile: ToolSurfaceProfile,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): string[] {
+  if (shouldUseSlimReadSchema(toolName, profile, projectionMode)) {
+    return [...SLIM_READ_SCHEMA_ARG_NAMES];
+  }
   if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_ARG_NAMES) {
     return [...ADVANCED_BROWSER_SCHEMA_ARG_NAMES[toolName]];
   }
@@ -258,13 +282,18 @@ function schemaArgNamesForTool(toolName: string, projectionMode: RuntimeToolSurf
   return [...(FULL_SCHEMA_ARG_NAMES[toolName] ?? [])];
 }
 
-function suppressedSchemaArgNamesForTool(toolName: string, projectionMode: RuntimeToolSurfaceProjectionMode): string[] {
-  const visibleArgNames = new Set(schemaArgNamesForTool(toolName, projectionMode));
+function suppressedSchemaArgNamesForTool(
+  toolName: string,
+  profile: ToolSurfaceProfile,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): string[] {
+  const visibleArgNames = new Set(schemaArgNamesForTool(toolName, profile, projectionMode));
   return (FULL_SCHEMA_ARG_NAMES[toolName] ?? []).filter((argName) => !visibleArgNames.has(argName));
 }
 
 function sumSchemaPropertyCounts(
   toolNames: readonly string[],
+  profile: ToolSurfaceProfile,
   projectionMode: RuntimeToolSurfaceProjectionMode,
 ): {
   total: number;
@@ -273,7 +302,7 @@ function sumSchemaPropertyCounts(
   const perToolPropertyCount: Record<string, number> = {};
   let total = 0;
   for (const toolName of toolNames) {
-    const count = schemaPropertyCountForTool(toolName, projectionMode);
+    const count = schemaPropertyCountForTool(toolName, profile, projectionMode);
     perToolPropertyCount[toolName] = count;
     total += count;
   }
@@ -286,6 +315,7 @@ function sumFullSchemaPropertyCounts(toolNames: readonly string[]): number {
 
 function buildSchemaArgMetadata(
   toolNames: readonly string[],
+  profile: ToolSurfaceProfile,
   projectionMode: RuntimeToolSurfaceProjectionMode,
 ): {
   perToolVisibleArgs: Record<string, string[]>;
@@ -294,8 +324,8 @@ function buildSchemaArgMetadata(
   const perToolVisibleArgs: Record<string, string[]> = {};
   const perToolSuppressedArgs: Record<string, string[]> = {};
   for (const toolName of toolNames) {
-    perToolVisibleArgs[toolName] = schemaArgNamesForTool(toolName, projectionMode);
-    perToolSuppressedArgs[toolName] = suppressedSchemaArgNamesForTool(toolName, projectionMode);
+    perToolVisibleArgs[toolName] = schemaArgNamesForTool(toolName, profile, projectionMode);
+    perToolSuppressedArgs[toolName] = suppressedSchemaArgNamesForTool(toolName, profile, projectionMode);
   }
   return { perToolVisibleArgs, perToolSuppressedArgs };
 }
@@ -306,9 +336,9 @@ export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolCon
   const visibleTools = context.modelVisibleTools ?? toolNamesForSurfaceProfile(profile);
   const dispatchEnabledTools = context.enabledTools ?? visibleTools;
   const projectionMode = projectionModeForSurface(profile, advancedToolSchema);
-  const { total: schemaPropertyCount, perToolPropertyCount } = sumSchemaPropertyCounts(visibleTools, projectionMode);
+  const { total: schemaPropertyCount, perToolPropertyCount } = sumSchemaPropertyCounts(visibleTools, profile, projectionMode);
   const fullSchemaPropertyCount = sumFullSchemaPropertyCounts(visibleTools);
-  const { perToolVisibleArgs, perToolSuppressedArgs } = buildSchemaArgMetadata(visibleTools, projectionMode);
+  const { perToolVisibleArgs, perToolSuppressedArgs } = buildSchemaArgMetadata(visibleTools, profile, projectionMode);
   return {
     source: "gateway.fallback",
     policyVersion: context.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION,
@@ -1117,6 +1147,12 @@ export function estimateToolSchemaTokens(toolNames: readonly string[], profile: 
   return Math.max(1, Math.ceil(toolNames.reduce((total, toolName) => {
     if (profile === "browser_advanced" || profile === "full_debug") {
       return total + (ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE[toolName] ?? PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
+    }
+    if (
+      toolName === "read"
+      && (profile === "minimal" || profile === "browser" || profile === "context")
+    ) {
+      return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.read_slim;
     }
     return total + (PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
   }, 0)));

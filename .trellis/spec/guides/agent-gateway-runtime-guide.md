@@ -266,6 +266,11 @@ tab/session selection, but keep low-frequency selectors such as `text_only` and
 `session_url_pattern` in `browser_advanced`/`full_debug`. Runtime dispatch must reject hidden
 browser args for the active profile instead of silently accepting parameters that the model could
 not see in its schema.
+`read` should also project a slim schema in lightweight profiles (`minimal`, `browser`, and
+`context`): expose `path`, `offset`, `limit`, and `include_metadata`, while keeping legacy
+`line_start`/`line_end` and media `pages` selection in `coding`, `browser_advanced`, and
+`full_debug`. Hidden `read` args must fail before request parsing so schema slimming remains a hard
+execution boundary.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

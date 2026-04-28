@@ -619,12 +619,12 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             .collect::<StdHashSet<String>>();
         assert_eq!(surface_tool_names("full_debug"), full_debug_expected);
 
-        assert_eq!(surface_schema_property_count("minimal", false), 15);
+        assert_eq!(surface_schema_property_count("minimal", false), 12);
         assert_eq!(surface_schema_property_count("coding", false), 30);
-        assert_eq!(surface_schema_property_count("browser", false), 22);
+        assert_eq!(surface_schema_property_count("browser", false), 19);
         assert_eq!(surface_schema_property_count("browser_advanced", false), 42);
         assert_eq!(surface_schema_property_count("browser", true), 42);
-        assert_eq!(surface_schema_property_count("context", false), 20);
+        assert_eq!(surface_schema_property_count("context", false), 17);
         assert_eq!(surface_schema_property_count("mcp", false), 9);
         assert_eq!(surface_schema_property_count("full_debug", false), 92);
     }
@@ -651,13 +651,39 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             coding["per_tool_property_count"][TOOL_SEARCH].as_u64(),
             Some(8)
         );
+        assert_eq!(
+            coding["per_tool_property_count"][TOOL_READ].as_u64(),
+            Some(7)
+        );
 
         let browser = surface_schema_profile("browser");
         assert_eq!(browser["projection_mode"], "slim");
         assert_eq!(browser["advanced_tool_schema"], false);
-        assert_eq!(browser["schema_property_count"].as_u64(), Some(22));
+        assert_eq!(browser["schema_property_count"].as_u64(), Some(19));
         assert_eq!(browser["full_schema_property_count"].as_u64(), Some(47));
-        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(25));
+        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(28));
+        assert_eq!(
+            browser["per_tool_property_count"][TOOL_READ].as_u64(),
+            Some(4)
+        );
+        assert_eq!(
+            browser["per_tool_visible_args"][TOOL_READ]
+                .as_array()
+                .expect("read visible args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec!["include_metadata", "limit", "offset", "path"]
+        );
+        assert_eq!(
+            browser["per_tool_suppressed_args"][TOOL_READ]
+                .as_array()
+                .expect("read suppressed args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec!["line_end", "line_start", "pages"]
+        );
         assert_eq!(
             browser["per_tool_property_count"][TOOL_WEB_SCAN].as_u64(),
             Some(5)
@@ -834,6 +860,34 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 .map(Vec::len),
             Some(2)
         );
+    }
+
+    #[test]
+    fn read_surface_projects_slim_schema_only_for_lightweight_profiles() {
+        let minimal_params = surface_parameters("minimal", vec![TOOL_READ], TOOL_READ);
+        let minimal_props = schema_property_names(&minimal_params);
+        assert_schema_props_include(&minimal_props, &["path", "offset", "limit", "include_metadata"]);
+        assert_schema_props_omit(&minimal_props, &["line_start", "line_end", "pages"]);
+
+        let coding_params = surface_parameters("coding", vec![TOOL_READ], TOOL_READ);
+        let coding_props = schema_property_names(&coding_params);
+        assert_schema_props_include(
+            &coding_props,
+            &[
+                "path",
+                "offset",
+                "limit",
+                "include_metadata",
+                "line_start",
+                "line_end",
+                "pages",
+            ],
+        );
+
+        let advanced_params =
+            surface_parameters("browser_advanced", vec![TOOL_READ], TOOL_READ);
+        let advanced_props = schema_property_names(&advanced_params);
+        assert_schema_props_include(&advanced_props, &["line_start", "line_end", "pages"]);
     }
 
     #[test]
@@ -1546,6 +1600,45 @@ audit_redact_secrets = false
             "surface profile should be present in error: {}",
             error.message
         );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_slim_surface_rejects_hidden_range_and_media_args() {
+        let workspace = make_temp_workspace("read-slim-hidden-args");
+        fs::write(workspace.join("notes.txt"), "line 1\nline 2\n").expect("write notes");
+        let mut input = make_read_only_input(&workspace);
+        if let Some(context) = input.tool_context.as_mut() {
+            context.tool_surface_profile = Some("context".to_string());
+            context.model_visible_tools = Some(vec![TOOL_READ.to_string()]);
+        }
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_READ,
+            json!({
+                "path": "notes.txt",
+                "line_start": 1,
+                "pages": "1-2"
+            }),
+        )
+        .expect_err("slim read surface should reject hidden legacy/media args");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        assert!(error.message.contains("line_start"));
+        assert!(error.message.contains("pages"));
+        let data = error.data.as_ref().expect("read hidden args should include data");
+        assert_eq!(
+            data["operation"].as_str(),
+            Some("validate_read_args_visible")
+        );
+        let hidden_args = data["hidden_args"]
+            .as_array()
+            .expect("hidden_args should be an array");
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("line_start")));
+        assert!(hidden_args.iter().any(|value| value.as_str() == Some("pages")));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

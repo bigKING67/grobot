@@ -54,6 +54,14 @@ selectors such as `text_only` and `session_url_pattern` stay available through
 are rejected at the runtime execution boundary, so profile slimming cannot create
 silent behavior drift.
 
+`read` follows the same split for lightweight profiles. `minimal`, `browser`,
+and `context` expose the normal text-window contract (`path`, `offset`, `limit`,
+`include_metadata`), while legacy line-range compatibility and media page
+selection (`line_start`, `line_end`, `pages`) remain available through `coding`,
+`browser_advanced`, and `full_debug`. The runtime rejects hidden `read` args
+before parsing the request, so a slim profile cannot accidentally use parameters
+that were not shown in the model schema.
+
 The canonical human-intervention primitive is `ask_user`. Older
 `ask_user_question` tool calls are accepted only as a runtime compatibility
 alias at dispatch/interrupt parsing boundaries; new tool manifests and gateway

@@ -293,9 +293,14 @@ expectEqual(minimal.toolSurfaceSource, "env", "minimal source");
 expectDeepEqual(minimal.modelVisibleTools, ["read", "edit", "write", "ask_user"], "minimal visible tools");
 const minimalProjection = projection(minimal);
 expectEqual(minimalProjection.projectionMode, "slim", "minimal projection mode");
-expectEqual(minimalProjection.schemaPropertyCount, 15, "minimal projection schema property count");
-expectEqual(minimalProjection.suppressedSchemaPropertyCount, 0, "minimal suppressed property count");
+expectEqual(minimalProjection.schemaPropertyCount, 12, "minimal projection schema property count");
+expectEqual(minimalProjection.suppressedSchemaPropertyCount, 3, "minimal suppressed property count");
 expectProjectionWithinBudget(minimal, "minimal projection budget");
+expectDeepEqual(
+  minimalProjection.perToolVisibleArgs?.read,
+  ["include_metadata", "limit", "offset", "path"],
+  "minimal projection exposes slim read arg names",
+);
 
 const browser = withEnvProfile(undefined, () => build("打开浏览器页面，扫描 DOM"));
 expectEqual(browser.toolSurfaceProfile, "browser", "browser profile");
@@ -306,10 +311,15 @@ expectEqual(browser.advancedToolSchema, false, "browser slim schema");
 const browserProjection = projection(browser);
 expectEqual(browserProjection.source, "gateway.fallback", "browser projection source");
 expectEqual(browserProjection.projectionMode, "slim", "browser projection mode");
-expectEqual(browserProjection.schemaPropertyCount, 22, "browser projection schema property count");
+expectEqual(browserProjection.schemaPropertyCount, 19, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
-expectEqual(browserProjection.suppressedSchemaPropertyCount, 25, "browser projection suppressed property count");
+expectEqual(browserProjection.suppressedSchemaPropertyCount, 28, "browser projection suppressed property count");
 expectProjectionWithinBudget(browser, "browser projection budget");
+expectDeepEqual(
+  browserProjection.perToolVisibleArgs?.read,
+  ["include_metadata", "limit", "offset", "path"],
+  "browser projection exposes slim read arg names",
+);
 expectDeepEqual(
   browserProjection.perToolVisibleArgs?.web_scan,
   ["main_only", "max_chars", "session_id", "switch_tab_id", "tabs_only"],
@@ -638,6 +648,9 @@ expectEqual(context.toolSurfaceProfile, "context", "context profile");
 expectDecisionProfile(context, "context", "context profile decision");
 expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user"], "context visible tools");
 expectDeepEqual(context.enabledTools, context.modelVisibleTools, "context dispatch tools");
+const contextProjection = projection(context);
+expectEqual(contextProjection.schemaPropertyCount, 17, "context projection schema property count");
+expectEqual(contextProjection.suppressedSchemaPropertyCount, 3, "context projection suppressed property count");
 expectProjectionWithinBudget(context, "context projection budget");
 
 const mcp = withEnvProfile(undefined, () => build("通过 MCP grok-search 查资料"));

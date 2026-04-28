@@ -382,6 +382,15 @@ impl ToolExecutor for LocalToolExecutor {
             ));
         }
         let args = value_object(&call.arguments, &tool_name)?;
+        if tool_name == TOOL_READ {
+            validate_projected_tool_args_visible(
+                &context,
+                args,
+                TOOL_READ,
+                "validate_read_args_visible",
+                "Use path/offset/limit/include_metadata in minimal browser/context read surfaces, or switch to coding, browser_advanced, or full_debug for legacy line ranges and media page selection.",
+            )?;
+        }
         let overlap_candidate = build_overlap_candidate(tool_name.as_str(), args);
         if let Some(candidate) = overlap_candidate.as_ref() {
             if should_block_overlap_candidate(input, candidate)? {

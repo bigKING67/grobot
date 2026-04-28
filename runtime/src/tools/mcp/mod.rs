@@ -1148,32 +1148,6 @@ fn browser_facade_args_with_current_browser_default(
     (browser_args, applied_tmwd_default)
 }
 
-fn projected_tool_property_names_for_context(
-    context: &ToolContextResolved,
-    public_tool_name: &str,
-) -> Result<HashSet<String>, ToolExecutionError> {
-    let tool = local_tool_catalog()
-        .into_iter()
-        .find(|tool| tool.name == public_tool_name)
-        .ok_or_else(|| {
-            ToolExecutionError::new(
-                "tool_dispatch_not_implemented",
-                format!("missing local tool schema for browser facade: {public_tool_name}"),
-            )
-        })?;
-    let projected = project_tool_parameters(
-        tool.name,
-        &tool.parameters,
-        &context.tool_surface_profile,
-        context.advanced_tool_schema,
-    );
-    Ok(projected
-        .get("properties")
-        .and_then(Value::as_object)
-        .map(|properties| properties.keys().cloned().collect::<HashSet<String>>())
-        .unwrap_or_default())
-}
-
 fn validate_browser_facade_args_visible(
     context: &ToolContextResolved,
     args: &Map<String, Value>,

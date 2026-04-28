@@ -142,13 +142,19 @@ mod tests {
                 .is_some_and(|items| items.iter().any(|value| value == "text_only")),
             "browser schema profile should keep advanced scan args suppressed"
         );
+        assert!(
+            browser_schema_profile["per_tool_suppressed_args"]["read"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|value| value == "pages")),
+            "browser schema profile should keep media read args suppressed"
+        );
         assert_eq!(
             browser_schema_profile["schema_property_count"].as_u64(),
-            Some(22)
+            Some(19)
         );
         assert_eq!(
             browser_schema_profile["suppressed_schema_property_count"].as_u64(),
-            Some(25)
+            Some(28)
         );
         let full_debug_schema_profile = schema_profiles
             .iter()

@@ -929,9 +929,22 @@ fn prune_required_schema_array(required: Option<&mut Value>, allowed: &HashSet<&
 }
 
 fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanced_tool_schema: bool) -> Value {
+    let canonical_profile = canonical_tool_surface_profile(Some(profile));
     let mode = schema_projection_mode(profile, advanced_tool_schema);
     if mode == "full" {
         return parameters.clone();
+    }
+    if name == TOOL_READ
+        && !advanced_tool_schema
+        && matches!(
+            canonical_profile,
+            TOOL_SURFACE_MINIMAL | TOOL_SURFACE_BROWSER | TOOL_SURFACE_CONTEXT
+        )
+    {
+        return project_object_schema_properties(
+            parameters,
+            &["path", "offset", "limit", "include_metadata"],
+        );
     }
     match (name, mode) {
         (TOOL_WEB_SCAN, "slim") => project_object_schema_properties(
@@ -998,6 +1011,83 @@ fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanc
         ),
         _ => parameters.clone(),
     }
+}
+
+fn projected_tool_property_names_for_context(
+    context: &ToolContextResolved,
+    tool_name: &str,
+) -> Result<HashSet<String>, ToolExecutionError> {
+    let tool = local_tool_catalog()
+        .into_iter()
+        .find(|tool| tool.name == tool_name)
+        .ok_or_else(|| {
+            ToolExecutionError::new(
+                "tool_dispatch_not_implemented",
+                format!("missing local tool schema for current surface: {tool_name}"),
+            )
+        })?;
+    let projected = project_tool_parameters(
+        tool.name,
+        &tool.parameters,
+        &context.tool_surface_profile,
+        context.advanced_tool_schema,
+    );
+    Ok(projected
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().cloned().collect::<HashSet<String>>())
+        .unwrap_or_default())
+}
+
+fn validate_projected_tool_args_visible(
+    context: &ToolContextResolved,
+    args: &Map<String, Value>,
+    tool_name: &str,
+    operation: &str,
+    recovery_hint: &str,
+) -> Result<(), ToolExecutionError> {
+    let visible_properties = projected_tool_property_names_for_context(context, tool_name)?;
+    let mut hidden_args = args
+        .keys()
+        .filter(|key| !visible_properties.contains(key.as_str()))
+        .cloned()
+        .collect::<Vec<String>>();
+    if hidden_args.is_empty() {
+        return Ok(());
+    }
+    hidden_args.sort();
+    let mut visible_args = visible_properties.into_iter().collect::<Vec<String>>();
+    visible_args.sort();
+    let hidden_args_text = hidden_args.join(", ");
+    Err(ToolExecutionError::new(
+        "tool_argument_not_visible",
+        format!(
+            "{tool_name} argument(s) [{hidden_args_text}] are not visible in current tool surface profile={} advanced_tool_schema={}. {recovery_hint}",
+            context.tool_surface_profile,
+            context.advanced_tool_schema,
+        ),
+    )
+    .with_data({
+        let mut data = Map::new();
+        data.insert(
+            "diagnostic_kind".to_string(),
+            json!("tool_argument_not_visible"),
+        );
+        data.insert("tool".to_string(), json!(tool_name));
+        data.insert("operation".to_string(), json!(operation));
+        data.insert(
+            "tool_surface_profile".to_string(),
+            json!(context.tool_surface_profile),
+        );
+        data.insert(
+            "advanced_tool_schema".to_string(),
+            json!(context.advanced_tool_schema),
+        );
+        data.insert("hidden_args".to_string(), json!(hidden_args));
+        data.insert("visible_args".to_string(), json!(visible_args));
+        data.insert("recovery_hint".to_string(), json!(recovery_hint));
+        Value::Object(data)
+    }))
 }
 
 fn schema_property_names(parameters: &Value) -> Vec<String> {
