@@ -202,7 +202,8 @@ expect(
 expect(
   corePackagingWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"')
     && corePackagingWorkflow.includes('"scripts/test-runtime-tool-contracts-json-schema.mjs"')
-    && corePackagingWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"'),
+    && corePackagingWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"')
+    && corePackagingWorkflow.includes('"shared/contracts/runtime-tool-quality-v1.json"'),
   "core packaging workflow must trigger on runtime-tool release/report/schema test and runner changes",
 );
 for (const [name, workflow] of [
@@ -224,6 +225,10 @@ expect(
 expect(
   harnessWorkflow.includes('"scripts/test-runtime-tool-contracts-json-schema.mjs"'),
   "harness gate must trigger on runtime-tool JSON schema test changes",
+);
+expect(
+  harnessWorkflow.includes('"shared/contracts/runtime-tool-quality-v1.json"'),
+  "harness gate must trigger on runtime-tool quality schema registry changes",
 );
 
 process.stdout.write(JSON.stringify({

@@ -1242,16 +1242,43 @@ type RuntimeToolQualityActionFamily =
   | "schema_budget"
   | "recovery_gate"
   | "recovery_health";
+type RuntimeToolQualityFailureReason =
+  | "runtime_binary_missing"
+  | "runtime_health_failed"
+  | "schema_projection_drift_active"
+  | "schema_budget_violated"
+  | "recovery_gate_blocking";
+type RuntimeToolQualityWarningReason =
+  | "runtime_tools_describe_fallback"
+  | "schema_projection_drift_not_checked"
+  | "recovery_gate_warn"
+  | `recovery_health_${RuntimeToolRecoveryHealthSummary["level"]}`;
+type RuntimeToolQualityReason = RuntimeToolQualityFailureReason | RuntimeToolQualityWarningReason;
 
 const RUNTIME_TOOL_QUALITY_SCHEMA_VERSION = 1;
+const RUNTIME_TOOL_QUALITY_FAILURE_REASONS: readonly RuntimeToolQualityFailureReason[] = [
+  "runtime_binary_missing",
+  "runtime_health_failed",
+  "schema_projection_drift_active",
+  "schema_budget_violated",
+  "recovery_gate_blocking",
+] as const;
+const RUNTIME_TOOL_QUALITY_WARNING_REASONS: readonly RuntimeToolQualityWarningReason[] = [
+  "runtime_tools_describe_fallback",
+  "schema_projection_drift_not_checked",
+  "recovery_gate_warn",
+  "recovery_health_good",
+  "recovery_health_watch",
+  "recovery_health_risk",
+] as const;
 
 interface RuntimeToolQualitySummary {
   quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION;
   status: RuntimeToolQualityStatus;
   passed: boolean;
   source: "status.runtime_tools";
-  failure_reasons: string[];
-  warning_reasons: string[];
+  failure_reasons: RuntimeToolQualityFailureReason[];
+  warning_reasons: RuntimeToolQualityWarningReason[];
   runtime_impl: string;
   runtime_binary_exists: boolean | null;
   runtime_health_ok: boolean | null;
@@ -1279,16 +1306,16 @@ interface RuntimeToolQualitySummary {
   blocker_code: string | null;
   blocker_action: string | null;
   action_family: RuntimeToolQualityActionFamily;
-  action_reason: string | null;
+  action_reason: RuntimeToolQualityReason | null;
   action_required: string | null;
 }
 
 function resolveRuntimeToolQualityAction(input: {
-  failureReasons: readonly string[];
-  warningReasons: readonly string[];
-}): { actionFamily: RuntimeToolQualityActionFamily; actionReason: string | null } {
+  failureReasons: readonly RuntimeToolQualityFailureReason[];
+  warningReasons: readonly RuntimeToolQualityWarningReason[];
+}): { actionFamily: RuntimeToolQualityActionFamily; actionReason: RuntimeToolQualityReason | null } {
   const orderedSignals: readonly {
-    reason: string;
+    reason: RuntimeToolQualityReason;
     family: RuntimeToolQualityActionFamily;
   }[] = [
     { reason: "runtime_binary_missing", family: "runtime_environment" },
@@ -1322,6 +1349,12 @@ function resolveRuntimeToolQualityAction(input: {
   };
 }
 
+function runtimeToolRecoveryHealthWarningReason(
+  level: RuntimeToolRecoveryHealthSummary["level"],
+): RuntimeToolQualityWarningReason {
+  return `recovery_health_${level}` as RuntimeToolQualityWarningReason;
+}
+
 function buildRuntimeToolQualitySummary(input: {
   runtimeImpl: string;
   runtimeBinaryPath?: string;
@@ -1332,8 +1365,8 @@ function buildRuntimeToolQualitySummary(input: {
 }): RuntimeToolQualitySummary {
   const runtimeBinaryExists = input.runtimeBinaryPath ? existsSync(input.runtimeBinaryPath) : null;
   const budgetValidation = validateRuntimeToolSurfaceBudget(input.contextPreview.schemaProjectionSummary);
-  const failReasons: string[] = [];
-  const warnReasons: string[] = [];
+  const failReasons: RuntimeToolQualityFailureReason[] = [];
+  const warnReasons: RuntimeToolQualityWarningReason[] = [];
 
   if (input.runtimeImpl === "rust") {
     if (runtimeBinaryExists !== true) {
@@ -1362,7 +1395,7 @@ function buildRuntimeToolQualitySummary(input: {
     warnReasons.push("recovery_gate_warn");
   }
   if (input.recoveryHealth.level !== "good") {
-    warnReasons.push(`recovery_health_${input.recoveryHealth.level}`);
+    warnReasons.push(runtimeToolRecoveryHealthWarningReason(input.recoveryHealth.level));
   }
 
   const status: RuntimeToolQualityStatus = failReasons.length > 0

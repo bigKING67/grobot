@@ -79,6 +79,32 @@ const packPassed = (process.argv[10] ?? "false") === "true";
 const packSkipped = (process.argv[11] ?? "false") === "true";
 const runtimeToolDescribeReportPath = process.argv[12] ?? "";
 const runtimeToolQualitySchemaVersion = 1;
+const runtimeToolQualityFailureReasonCatalog = Object.freeze([
+  "report_parse_error",
+  "runtime_tool_describe_failed",
+  "diagnostics_self_test_failed",
+  "runtime_binary_missing",
+  "contract_coverage_incomplete",
+  "runner_contract_coverage_missing",
+  "tmp_fixture_isolation_missing",
+  "schema_budget_unknown",
+  "schema_budget_violated",
+]);
+const runtimeToolQualityActionFamilyCatalog = Object.freeze([
+  "none",
+  "diagnostics",
+  "runtime_environment",
+  "runner_contract",
+  "contract_harness",
+  "schema_budget",
+]);
+
+function pushRuntimeToolQualityFailureReason(reasons, reason) {
+  if (!runtimeToolQualityFailureReasonCatalog.includes(reason)) {
+    throw new Error(`unknown runtime_tool_quality failure reason: ${String(reason)}`);
+  }
+  reasons.push(reason);
+}
 
 function parseJson(value) {
   try {
@@ -194,30 +220,30 @@ function runtimeToolQualitySummary(describeSummary, data) {
     : null;
   const failureReasons = [];
   if (describeSummary.report_parse_error) {
-    failureReasons.push("report_parse_error");
+    pushRuntimeToolQualityFailureReason(failureReasons, "report_parse_error");
   }
   if (describeSummary.passed !== true || describeSummary.ok !== true) {
-    failureReasons.push("runtime_tool_describe_failed");
+    pushRuntimeToolQualityFailureReason(failureReasons, "runtime_tool_describe_failed");
   }
   if (describeSummary.diagnostics_self_test !== true) {
-    failureReasons.push("diagnostics_self_test_failed");
+    pushRuntimeToolQualityFailureReason(failureReasons, "diagnostics_self_test_failed");
   }
   if (runtimeBinaryExists !== true) {
-    failureReasons.push("runtime_binary_missing");
+    pushRuntimeToolQualityFailureReason(failureReasons, "runtime_binary_missing");
   }
   if (!contractCoverageComplete) {
-    failureReasons.push("contract_coverage_incomplete");
+    pushRuntimeToolQualityFailureReason(failureReasons, "contract_coverage_incomplete");
   }
   if (runnerContractCoverage !== true) {
-    failureReasons.push("runner_contract_coverage_missing");
+    pushRuntimeToolQualityFailureReason(failureReasons, "runner_contract_coverage_missing");
   }
   if (tmpFixtureIsolation !== true) {
-    failureReasons.push("tmp_fixture_isolation_missing");
+    pushRuntimeToolQualityFailureReason(failureReasons, "tmp_fixture_isolation_missing");
   }
   if (schemaBudgetViolations === null) {
-    failureReasons.push("schema_budget_unknown");
+    pushRuntimeToolQualityFailureReason(failureReasons, "schema_budget_unknown");
   } else if (schemaBudgetViolations !== 0) {
-    failureReasons.push("schema_budget_violated");
+    pushRuntimeToolQualityFailureReason(failureReasons, "schema_budget_violated");
   }
   const status = failureReasons.length > 0 ? "fail" : "ok";
   const schemaBudgetStatus = schemaBudgetViolations === null
@@ -237,6 +263,9 @@ function runtimeToolQualitySummary(describeSummary, data) {
     ["schema_budget_violated", "schema_budget"],
   ];
   const actionSignal = actionSignals.find(([reason]) => failureReasons.includes(reason)) ?? null;
+  if (actionSignal && !runtimeToolQualityActionFamilyCatalog.includes(actionSignal[1])) {
+    throw new Error(`unknown runtime_tool_quality action family: ${String(actionSignal[1])}`);
+  }
   return {
     quality_schema_version: runtimeToolQualitySchemaVersion,
     status,

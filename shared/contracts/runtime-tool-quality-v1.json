@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grobot.dev/contracts/runtime-tool-quality-v1.json",
+  "title": "Grobot Runtime Tool Quality v1",
+  "description": "Canonical registry for runtime-tool quality status, reason, and action classification fields shared by status --json and release reports.",
+  "schema": "runtime_tool_quality",
+  "schema_version": 1,
+  "status": [
+    "ok",
+    "warn",
+    "fail"
+  ],
+  "sources": [
+    "status.runtime_tools",
+    "runtime_tool_describe"
+  ],
+  "schema_budget_status": [
+    "passed",
+    "failed",
+    "unknown"
+  ],
+  "action_families": [
+    {
+      "family": "none",
+      "description": "No operator action is required."
+    },
+    {
+      "family": "runtime_environment",
+      "description": "Runtime binary, health, or environment readiness must be fixed."
+    },
+    {
+      "family": "runtime_describe",
+      "description": "runtime.tools.describe is unavailable or degraded."
+    },
+    {
+      "family": "schema_projection",
+      "description": "Runtime and gateway tool schema projections drifted or could not be compared."
+    },
+    {
+      "family": "schema_budget",
+      "description": "Tool schema budget is unknown or violated."
+    },
+    {
+      "family": "recovery_gate",
+      "description": "Runtime recovery readiness gate blocked or warned."
+    },
+    {
+      "family": "recovery_health",
+      "description": "Recent runtime tool recovery health is degraded."
+    },
+    {
+      "family": "runner_contract",
+      "description": "Runtime-tool contract runner or describe contract coverage failed."
+    },
+    {
+      "family": "contract_harness",
+      "description": "Runtime-tool contract harness invariants failed."
+    },
+    {
+      "family": "diagnostics",
+      "description": "Runtime-tool diagnostics or report parsing failed."
+    }
+  ],
+  "failure_reasons": [
+    {
+      "reason": "runtime_binary_missing",
+      "surfaces": [
+        "status",
+        "release"
+      ],
+      "action_family": "runtime_environment"
+    },
+    {
+      "reason": "runtime_health_failed",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "runtime_environment"
+    },
+    {
+      "reason": "schema_projection_drift_active",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "schema_projection"
+    },
+    {
+      "reason": "schema_budget_violated",
+      "surfaces": [
+        "status",
+        "release"
+      ],
+      "action_family": "schema_budget"
+    },
+    {
+      "reason": "recovery_gate_blocking",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "recovery_gate"
+    },
+    {
+      "reason": "report_parse_error",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "diagnostics"
+    },
+    {
+      "reason": "runtime_tool_describe_failed",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "runner_contract"
+    },
+    {
+      "reason": "diagnostics_self_test_failed",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "diagnostics"
+    },
+    {
+      "reason": "contract_coverage_incomplete",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "runner_contract"
+    },
+    {
+      "reason": "runner_contract_coverage_missing",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "runner_contract"
+    },
+    {
+      "reason": "tmp_fixture_isolation_missing",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "contract_harness"
+    },
+    {
+      "reason": "schema_budget_unknown",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "schema_budget"
+    }
+  ],
+  "warning_reasons": [
+    {
+      "reason": "runtime_tools_describe_fallback",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "runtime_describe"
+    },
+    {
+      "reason": "schema_projection_drift_not_checked",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "schema_projection"
+    },
+    {
+      "reason": "recovery_gate_warn",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "recovery_gate"
+    },
+    {
+      "reason": "recovery_health_good",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "recovery_health"
+    },
+    {
+      "reason": "recovery_health_watch",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "recovery_health"
+    },
+    {
+      "reason": "recovery_health_risk",
+      "surfaces": [
+        "status"
+      ],
+      "action_family": "recovery_health"
+    }
+  ]
+}

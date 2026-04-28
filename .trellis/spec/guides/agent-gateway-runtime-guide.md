@@ -369,7 +369,10 @@ with daily `runtime_tools_quality` status (`quality_schema_version`, `status`,
 `passed`, `source`, failure/warning reasons, schema-budget fields, runtime
 binary existence, describe source, recovery gate status, `action_family`,
 `action_reason`, and `action_required`) so quality drift is blocked before
-packaging or daily status consumers break.
+packaging or daily status consumers break. The canonical enum registry is
+`shared/contracts/runtime-tool-quality-v1.json`; it must stay synchronized with
+status/release implementations for statuses, sources, schema-budget states,
+failure reasons, warning reasons, and action families.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`
