@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolveExecutionPlaneConfig } from "../../../execution-plane";
 import { buildSessionKey } from "../../../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
@@ -23,6 +23,10 @@ import {
   type RuntimeToolSurfaceAdaptation,
   TOOL_SURFACE_POLICY_VERSION,
 } from "../../../../tools/runtime/default-enabled-tools";
+import {
+  RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION,
+  validateRuntimeToolSurfaceBudget,
+} from "../../../../tools/runtime/tool-surface-budget";
 import {
   formatRuntimeToolRecoveryEscalationFields,
   type RuntimeToolRecoveryFeedback,
@@ -1229,6 +1233,134 @@ function serializeRuntimeToolSurfaceProjectionDrift(
   };
 }
 
+type RuntimeToolQualityStatus = "ok" | "warn" | "fail";
+
+interface RuntimeToolQualitySummary {
+  status: RuntimeToolQualityStatus;
+  passed: boolean;
+  source: "status.runtime_tools";
+  failure_reasons: string[];
+  warning_reasons: string[];
+  runtime_impl: string;
+  runtime_binary_exists: boolean | null;
+  runtime_health_ok: boolean | null;
+  runtime_health_detail: string | null;
+  runtime_describe_source: RuntimeToolEnabledToolsSource;
+  runtime_describe_detail: string | null;
+  schema_projection_source: RuntimeToolSurfaceProjectionSummary["source"];
+  schema_projection_drift_checked: boolean;
+  schema_projection_drift_active: boolean;
+  schema_projection_drift_reason: string;
+  schema_budget_policy_version: string;
+  schema_budget_status: "passed" | "failed";
+  schema_budget_violations: number;
+  schema_budget_violation_codes: string[];
+  recovery_health_level: RuntimeToolRecoveryHealthSummary["level"];
+  recovery_health_score: number;
+  recovery_health_reason: string;
+  recovery_gate_status: RuntimeToolRecoveryReadinessGateDecision["status"];
+  recovery_gate_blocking: boolean;
+  recovery_gate_reason: RuntimeToolRecoveryReadinessGateDecision["reason"];
+  latest_recovery_stage: RuntimeToolRecoveryHealthSummary["latestStage"];
+  latest_recovery_tool_name: string | null;
+  latest_recovery_error_class: string | null;
+  latest_blocker_kind: RuntimeToolRecoveryReadinessGateDecision["blockerKind"] | null;
+  blocker_code: string | null;
+  blocker_action: string | null;
+  action_required: string | null;
+}
+
+function buildRuntimeToolQualitySummary(input: {
+  runtimeImpl: string;
+  runtimeBinaryPath?: string;
+  runtimeHealth?: ReturnType<typeof runRuntimeHealthcheck>;
+  contextPreview: ReturnType<typeof resolveRuntimeToolContextPreview>;
+  recoveryHealth: RuntimeToolRecoveryHealthSummary;
+  recoveryGate: RuntimeToolRecoveryReadinessGateDecision;
+}): RuntimeToolQualitySummary {
+  const runtimeBinaryExists = input.runtimeBinaryPath ? existsSync(input.runtimeBinaryPath) : null;
+  const budgetValidation = validateRuntimeToolSurfaceBudget(input.contextPreview.schemaProjectionSummary);
+  const failReasons: string[] = [];
+  const warnReasons: string[] = [];
+
+  if (input.runtimeImpl === "rust") {
+    if (runtimeBinaryExists !== true) {
+      failReasons.push("runtime_binary_missing");
+    }
+    if (input.runtimeHealth?.ok !== true) {
+      failReasons.push("runtime_health_failed");
+    }
+  }
+  if (input.contextPreview.schemaProjectionDrift.active) {
+    failReasons.push("schema_projection_drift_active");
+  }
+  if (!budgetValidation.ok) {
+    failReasons.push("schema_budget_violated");
+  }
+  if (input.recoveryGate.status === "fail") {
+    failReasons.push("recovery_gate_blocking");
+  }
+  if (input.contextPreview.enabledToolsSource !== "runtime.tools.describe") {
+    warnReasons.push("runtime_tools_describe_fallback");
+  }
+  if (!input.contextPreview.schemaProjectionDrift.checked) {
+    warnReasons.push("schema_projection_drift_not_checked");
+  }
+  if (input.recoveryGate.status === "warn") {
+    warnReasons.push("recovery_gate_warn");
+  }
+  if (input.recoveryHealth.level !== "good") {
+    warnReasons.push(`recovery_health_${input.recoveryHealth.level}`);
+  }
+
+  const status: RuntimeToolQualityStatus = failReasons.length > 0
+    ? "fail"
+    : warnReasons.length > 0
+      ? "warn"
+      : "ok";
+  const actionRequired = input.recoveryGate.blockerAction
+    ?? input.recoveryHealth.recommendedNextAction
+    ?? (failReasons.includes("runtime_binary_missing") ? "build_runtime_binary" : null)
+    ?? (failReasons.includes("runtime_health_failed") ? "check_runtime_health" : null)
+    ?? (failReasons.includes("schema_projection_drift_active") ? "run_runtime_tool_contracts" : null)
+    ?? (failReasons.includes("schema_budget_violated") ? "trim_runtime_tool_schema_surface" : null);
+
+  return {
+    status,
+    passed: status === "ok",
+    source: "status.runtime_tools",
+    failure_reasons: failReasons,
+    warning_reasons: warnReasons,
+    runtime_impl: input.runtimeImpl,
+    runtime_binary_exists: runtimeBinaryExists,
+    runtime_health_ok: input.runtimeHealth?.ok ?? null,
+    runtime_health_detail: input.runtimeHealth?.detail ?? null,
+    runtime_describe_source: input.contextPreview.enabledToolsSource,
+    runtime_describe_detail: input.contextPreview.enabledToolsSourceDetail ?? null,
+    schema_projection_source: input.contextPreview.schemaProjectionSummary.source,
+    schema_projection_drift_checked: input.contextPreview.schemaProjectionDrift.checked,
+    schema_projection_drift_active: input.contextPreview.schemaProjectionDrift.active,
+    schema_projection_drift_reason: input.contextPreview.schemaProjectionDrift.reason,
+    schema_budget_policy_version: RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION,
+    schema_budget_status: budgetValidation.ok ? "passed" : "failed",
+    schema_budget_violations: budgetValidation.violations.length,
+    schema_budget_violation_codes: budgetValidation.violations,
+    recovery_health_level: input.recoveryHealth.level,
+    recovery_health_score: input.recoveryHealth.score,
+    recovery_health_reason: input.recoveryHealth.reason,
+    recovery_gate_status: input.recoveryGate.status,
+    recovery_gate_blocking: input.recoveryGate.blocking,
+    recovery_gate_reason: input.recoveryGate.reason,
+    latest_recovery_stage: input.recoveryHealth.latestStage,
+    latest_recovery_tool_name: input.recoveryHealth.latestToolName,
+    latest_recovery_error_class: input.recoveryHealth.latestErrorClass,
+    latest_blocker_kind: input.recoveryGate.blockerKind === "none" ? null : input.recoveryGate.blockerKind,
+    blocker_code: input.recoveryGate.blockerCode,
+    blocker_action: input.recoveryGate.blockerAction,
+    action_required: actionRequired,
+  };
+}
+
 export async function runStatus(options: Record<string, OptionValue>): Promise<number> {
   const outputJson = hasFlag(options, "json");
   const homeDir = resolveHomeDir(options);
@@ -1409,6 +1541,14 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         resetCacheStatsWindow,
       })
       : undefined;
+  const runtimeToolQuality = buildRuntimeToolQualitySummary({
+    runtimeImpl: executionPlane.runtimeImpl,
+    runtimeBinaryPath,
+    runtimeHealth,
+    contextPreview: runtimeToolContextPreview,
+    recoveryHealth: runtimeToolRecoveryHealth,
+    recoveryGate: runtimeToolRecoveryGate,
+  });
   const contextEngineRuntimeModelConfig = resolveContextEngineRuntimeModelConfig({
     providerSnapshot: projectProviderSnapshot,
     baseUrlFromCli,
@@ -1710,6 +1850,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       },
       runtime_tools: {
         context: "enabled",
+        quality: runtimeToolQuality,
         tool_surface_profile: runtimeToolContextPreview.toolSurfaceProfile,
         tool_surface_source: runtimeToolContextPreview.toolSurfaceSource,
         tool_surface_reason: runtimeToolContextPreview.toolSurfaceReason,
@@ -1778,6 +1919,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         no_tool_fallback_mode: runtimeToolContextPreview.noToolFallbackMode,
         max_recovery_rounds: runtimeToolContextPreview.maxRecoveryRounds,
       },
+      runtime_tools_quality: runtimeToolQuality,
       context_graph_cache_stats: {
         symbol_query: symbolQueryGraphCacheStats,
         symbol_declaration: symbolDeclarationGraphCacheStats,
@@ -2530,6 +2672,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       `runtime_tool_enabled_tools_source_detail: ${runtimeToolContextPreview.enabledToolsSourceDetail}\n`,
     );
   }
+  process.stdout.write(
+    `runtime_tool_quality: status=${runtimeToolQuality.status} schema_budget_violations=${String(runtimeToolQuality.schema_budget_violations)} runtime_describe=${runtimeToolQuality.runtime_describe_source} schema_drift=${runtimeToolQuality.schema_projection_drift_active ? "active" : "ok"} recovery_gate=${runtimeToolQuality.recovery_gate_status} latest_stage=${runtimeToolQuality.latest_recovery_stage ?? "<none>"} blocker=${runtimeToolQuality.latest_blocker_kind ?? "<none>"} action=${runtimeToolQuality.action_required ?? "<none>"}\n`,
+  );
   process.stdout.write(
     `runtime_tool_manifest_fingerprint: ${runtimeToolContextPreview.manifestFingerprint}\n`,
   );

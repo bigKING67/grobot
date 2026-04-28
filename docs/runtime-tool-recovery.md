@@ -335,6 +335,19 @@ again.
 `./grobot status --json` exposes the current state under
 `runtime_tools`:
 
+- `runtime_tools.quality` and top-level `runtime_tools_quality`
+  - `status` (`ok` / `warn` / `fail`)
+  - `runtime_binary_exists`
+  - `runtime_health_ok`
+  - `runtime_describe_source`
+  - `schema_projection_drift_active`
+  - `schema_budget_status`
+  - `schema_budget_violations`
+  - `recovery_health_level`
+  - `recovery_gate_status`
+  - `latest_recovery_stage`
+  - `latest_blocker_kind`
+  - `action_required`
 - `metrics.recoveryCountsByKey`
 - `metrics.latestRecoveryRepeatKey`
 - `metrics.latestRecoveryRepeatCount`
@@ -607,6 +620,12 @@ escalation thresholds (`2/3`), health thresholds (`85/60`), and health
 penalties. Readiness/gate contracts additionally assert that custom policy
 thresholds are forwarded into `recovery_readiness`, `recovery_gate`, and their
 text status surfaces.
+The status smoke also locks `runtime_tools_quality` so the shallow quality
+surface stays available during daily operation, not only in release reports.
+This runtime summary is intentionally lightweight: it does not execute the
+release contract runner, but it does combine runtime binary health, describe
+source, schema-projection drift, schema-budget validation, recovery health, and
+recovery-gate blockers into a single `ok` / `warn` / `fail` status.
 
 The timeline contract also covers a full recovery loop: once all historical
 recoveries are consumed, health returns to `good`, readiness returns to

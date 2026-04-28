@@ -29,6 +29,8 @@ const runtimeToolRunner = readRepoFile("scripts/check-runtime-tool-contracts.mjs
 const runnerSchemaTest = readRepoFile("scripts/test-runtime-tool-contracts-json-schema.mjs");
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
 const runtimeToolSurfaceContract = readRepoFile("gateway/src/extensions/contracts/runtime-tool-surface-contract.ts");
+const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
+const startSmokeContract = readRepoFile("gateway/src/extensions/contracts/start-smoke-contract.mjs");
 const harnessWorkflow = readRepoFile(".github/workflows/harness-gate.yml");
 const corePackagingWorkflow = readRepoFile(".github/workflows/core-packaging-check.yml");
 const coreReleaseWorkflow = readRepoFile(".github/workflows/core-release-gate.yml");
@@ -74,6 +76,12 @@ expect(
   releaseGate.includes("runtime_tool_quality")
     && releaseGate.includes("runtimeToolQualitySummary("),
   "release gate report must expose runtime_tool_quality evidence",
+);
+expect(
+  statusCommand.includes("runtime_tools_quality")
+    && statusCommand.includes("buildRuntimeToolQualitySummary(")
+    && statusCommand.includes("runtime_tool_quality: status="),
+  "status --json/text must expose runtime tool quality summary",
 );
 expect(
   releaseGate.includes("failed_contract_detail"),
@@ -171,6 +179,12 @@ expect(
   "release-report regression test must assert diagnostics, runtime binary, quality summary, and self-test fields",
 );
 expect(
+  startSmokeContract.includes("status_has_runtime_tools_quality")
+    && gatewaySmoke.includes("status_has_runtime_tools_quality")
+    && gatewaySmoke.includes("status_runtime_tool_quality_status"),
+  "gateway status smoke must assert runtime tool quality summary",
+);
+expect(
   corePackagingWorkflow.includes("check:gateway:runtime-tools:release-report"),
   "core packaging workflow must run runtime-tool release-report regression test",
 );
@@ -215,6 +229,7 @@ process.stdout.write(JSON.stringify({
   release_gate_runner_schema_version: true,
   release_gate_diagnostic_summary: true,
   release_gate_quality_summary: true,
+  status_quality_summary: true,
   release_gate_invalid_report_fail_reason: true,
   runner_failure_diagnostics: true,
   runner_runtime_binary_status: true,

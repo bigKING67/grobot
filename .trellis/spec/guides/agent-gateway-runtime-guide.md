@@ -258,6 +258,19 @@ Gateway status output should include route and cache observability fields:
   - `readiness_state`
 - `runtime_tool_recovery_gate.blocker_code`
 - `runtime_tool_recovery_gate.blocker_action`
+- `runtime_tools_quality` and `runtime_tools.quality`
+  - `status` (`ok` / `warn` / `fail`)
+  - `runtime_binary_exists`
+  - `runtime_health_ok`
+  - `runtime_describe_source`
+  - `schema_projection_drift_active`
+  - `schema_budget_status`
+  - `schema_budget_violations`
+  - `recovery_health_level`
+  - `recovery_gate_status`
+  - `latest_recovery_stage`
+  - `latest_blocker_kind`
+  - `action_required`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 Tool surface schema profiles are part of the gateway/runtime contract. The default `browser`

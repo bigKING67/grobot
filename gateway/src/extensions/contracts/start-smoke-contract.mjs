@@ -1975,6 +1975,11 @@ function runStatusTsRust(repoRoot, windowSize) {
   const runtimeTools = isObject(parsedStatus?.runtime_tools)
     ? parsedStatus.runtime_tools
     : null;
+  const runtimeToolsQuality = isObject(parsedStatus?.runtime_tools_quality)
+    ? parsedStatus.runtime_tools_quality
+    : isObject(runtimeTools?.quality)
+      ? runtimeTools.quality
+      : null;
   const runtimeToolModelVisibleTools = Array.isArray(runtimeTools?.model_visible_tools)
     ? runtimeTools.model_visible_tools
     : [];
@@ -2301,6 +2306,26 @@ function runStatusTsRust(repoRoot, windowSize) {
     status_has_route_failover: Boolean(routeFailover),
     status_route_observed_source_type: typeof routeObserved?.source,
     status_has_runtime_tools: Boolean(runtimeTools),
+    status_has_runtime_tools_quality: Boolean(runtimeToolsQuality),
+    status_runtime_tool_quality_status: runtimeToolsQuality?.status ?? null,
+    status_runtime_tool_quality_passed_type: typeof runtimeToolsQuality?.passed,
+    status_runtime_tool_quality_runtime_binary_exists_type: typeof runtimeToolsQuality?.runtime_binary_exists,
+    status_runtime_tool_quality_runtime_health_ok_type: typeof runtimeToolsQuality?.runtime_health_ok,
+    status_runtime_tool_quality_runtime_describe_source: runtimeToolsQuality?.runtime_describe_source ?? null,
+    status_runtime_tool_quality_schema_budget_status: runtimeToolsQuality?.schema_budget_status ?? null,
+    status_runtime_tool_quality_schema_budget_violations_type:
+      typeof runtimeToolsQuality?.schema_budget_violations,
+    status_runtime_tool_quality_schema_drift_active_type:
+      typeof runtimeToolsQuality?.schema_projection_drift_active,
+    status_runtime_tool_quality_recovery_gate_status: runtimeToolsQuality?.recovery_gate_status ?? null,
+    status_runtime_tool_quality_latest_stage_type:
+      typeof runtimeToolsQuality?.latest_recovery_stage,
+    status_runtime_tool_quality_action_required_type:
+      typeof runtimeToolsQuality?.action_required,
+    status_runtime_tool_quality_failure_reasons_is_array:
+      Array.isArray(runtimeToolsQuality?.failure_reasons),
+    status_runtime_tool_quality_warning_reasons_is_array:
+      Array.isArray(runtimeToolsQuality?.warning_reasons),
     status_runtime_tool_surface_profile: runtimeTools?.tool_surface_profile ?? null,
     status_runtime_tool_surface_source_type: typeof runtimeTools?.tool_surface_source,
     status_runtime_tool_policy_version: runtimeTools?.tool_policy_version ?? null,

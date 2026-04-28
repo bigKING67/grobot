@@ -4967,6 +4967,26 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_has_route_ordered_providers, true);
   assert.equal(statusPayload.status_has_route_failover, true);
   assert.equal(statusPayload.status_has_runtime_tools, true);
+  assert.equal(statusPayload.status_has_runtime_tools_quality, true);
+  assert.equal(statusPayload.status_runtime_tool_quality_status, "ok");
+  assert.equal(statusPayload.status_runtime_tool_quality_passed_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_quality_runtime_binary_exists_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_quality_runtime_health_ok_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_quality_runtime_describe_source, "runtime.tools.describe");
+  assert.equal(statusPayload.status_runtime_tool_quality_schema_budget_status, "passed");
+  assert.equal(statusPayload.status_runtime_tool_quality_schema_budget_violations_type, "number");
+  assert.equal(statusPayload.status_runtime_tool_quality_schema_drift_active_type, "boolean");
+  assert.equal(statusPayload.status_runtime_tool_quality_recovery_gate_status, "pass");
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_latest_stage_type)),
+    true,
+  );
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_action_required_type)),
+    true,
+  );
+  assert.equal(statusPayload.status_runtime_tool_quality_failure_reasons_is_array, true);
+  assert.equal(statusPayload.status_runtime_tool_quality_warning_reasons_is_array, true);
   assert.equal(statusPayload.status_runtime_tool_surface_profile, "coding");
   assert.equal(statusPayload.status_runtime_tool_surface_source_type, "string");
   assert.equal(statusPayload.status_runtime_tool_policy_version, "v1");
