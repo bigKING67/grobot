@@ -177,6 +177,12 @@ model-facing budget envelope summary. This prevents a tool from staying
 functionally correct while quietly regressing into low-density raw output or
 opaque failure text.
 
+Recovery prompt-flow stderr events must carry the same stable action
+classification as feedback/readiness/gate surfaces: `action_family` and
+`action_reason` are emitted with prompt injection, guarded suppression, and
+non-recoverable intervention events. This keeps operator diagnostics and
+experience-pool consumers from parsing long `recommended_next_action` strings.
+
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
 `status` reports `runtime_tool_enabled_tools_source_detail` and the real

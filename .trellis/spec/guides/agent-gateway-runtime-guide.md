@@ -386,7 +386,8 @@ timeline, health, readiness, and gate surfaces. The family is derived after MCP-
 refinement and uses coarse buckets such as `argument_fix`, `payload_reduce`, `path_fix`,
 `policy_or_permission`, `environment_fix`, and `user_intervention`. Do not force downstream status
 or experience-pool logic to parse long `recommended_next_action` strings when the family field is
-available.
+available. Recovery prompt-flow stderr events must also emit `action_family` and
+`action_reason` for prompt injection, guarded suppression, and non-recoverable intervention events.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

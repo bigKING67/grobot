@@ -32,6 +32,8 @@ function activeNonrecoverableFeedback(observedAt: string): RuntimeToolRecoveryFe
     toolName: "web_scan",
     errorClass: "config_missing",
     recommendedNextAction: "ask_user_for_config_or_switch_provider",
+    actionFamily: "user_intervention",
+    actionReason: "ask_user_for_config_or_switch_provider",
     recoverable: false,
     requiresUserIntervention: true,
     sameToolErrorCount: 3,
@@ -158,6 +160,14 @@ try {
     "first flow stderr events include repeat count",
   );
   expect(
+    firstFlow.stderrEvents.every((line) => line.includes("action_family=user_intervention")),
+    "first flow stderr events include action family",
+  );
+  expect(
+    firstFlow.stderrEvents.every((line) => line.includes("action_reason=ask_user_for_config_or_switch_provider")),
+    "first flow stderr events include action reason",
+  );
+  expect(
     firstFlow.stderrEvents.every((line) => line.includes("escalated=true")),
     "first flow stderr events include escalated flag",
   );
@@ -221,6 +231,7 @@ try {
     first_prompt_injected: firstFlow.promptInjected,
     first_nonrecoverable_consumption_recorded: firstFlow.nonrecoverableConsumptionRecorded,
     repeat_pressure_cleared_after_prompt: repeatedPressureAfterPrompt.latestRecoveryRepeatCount === 0,
+    action_family_in_stderr: firstFlow.stderrEvents.every((line) => line.includes("action_family=user_intervention")),
     second_feedback_consumed: secondFeedback.consumed ?? false,
     second_prompt_reinjected: secondFlow.promptInjected,
   }) + "\n");
