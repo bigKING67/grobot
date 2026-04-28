@@ -9,6 +9,10 @@ const repoRoot = resolve(__dirname, "..");
 
 const gatewayOnlyContracts = [
   {
+    id: "runtime-tool-suite-ownership",
+    path: "gateway/src/extensions/contracts/runtime-tool-suite-ownership-contract.ts",
+  },
+  {
     id: "runtime-tool-events",
     path: "gateway/src/extensions/contracts/runtime-tool-events-contract.ts",
   },

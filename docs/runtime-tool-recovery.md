@@ -536,9 +536,12 @@ runtime binary. It is part of the repository `npm run check` gate, so recovery
 or tool-surface changes cannot bypass these contracts in the default validation
 path. `check:gateway` intentionally does not repeat these focused contracts;
 `check:gateway:runtime-tools` is the single gateway-only owner for runtime-tool
-surface/recovery assertions. It runs:
+surface/recovery assertions. The ownership contract also prevents the suite
+from drifting out of the default check, release gate, or CI workflow coverage.
+It runs:
 
 ```bash
+npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-suite-ownership-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-mcp-recovery-eval-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts

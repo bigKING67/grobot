@@ -312,7 +312,10 @@ gate blocker projection together. The default `npm run check` gate includes the
 gateway-only runtime-tool suite through `npm run check:gateway:runtime-tools`.
 Do not duplicate those focused runtime-tool contracts inside `check:gateway`;
 that monolithic gateway smoke should stay responsible for non-runtime-tool
-gateway coverage. Run the focused suite during runtime-tool iteration; use
+gateway coverage. The runtime-tool suite ownership contract must enforce the
+default check order, no duplicate monolithic smoke execution, release describe
+coverage, and CI trigger/toolchain coverage. Run the focused suite during
+runtime-tool iteration; use
 `npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
 also been built and `runtime.tools.describe` compatibility must be checked,
 especially after Rust recovery catalog, schema budget, or describe-surface
