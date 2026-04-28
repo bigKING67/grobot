@@ -584,8 +584,11 @@ recovery eval matrix instead of being forced into the Rust base catalog. Keep
 tool schema budget, or `runtime.tools.describe` surface changes. The release
 gate (`npm run core:gate:release`) also runs this deep compatibility check so
 release packaging cannot pass with a stale or drifted runtime tool describe
-surface. The default `npm run check` already covers the gateway-only suite and
-then runs the normal Rust compile/test gate separately.
+surface. Its JSON report exposes `checks.runtime_tool_describe` with
+`contract_count`, `completed_count`, `failed_contract`,
+`runtime_schema_budget_violations`, and gateway-only recovery action summaries
+for release evidence. The default `npm run check` already covers the
+gateway-only suite and then runs the normal Rust compile/test gate separately.
 
 Full gate:
 

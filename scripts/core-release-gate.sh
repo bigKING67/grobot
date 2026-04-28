@@ -22,6 +22,8 @@ LAUNCHER_LOOKUP_PASSED=0
 RUNTIME_TOOL_DESCRIBE_PASSED=0
 PACK_DRYRUN_PASSED=0
 PACK_DRYRUN_SKIPPED=0
+RUNTIME_TOOL_DESCRIBE_REPORT_PATH=""
+PACK_LOG=""
 
 EXIT_CODE=0
 FAIL_REASON=""
@@ -33,6 +35,17 @@ json_bool() {
     echo "false"
   fi
 }
+
+cleanup() {
+  if [ -n "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" ]; then
+    rm -f "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH"
+  fi
+  if [ -n "$PACK_LOG" ]; then
+    rm -f "$PACK_LOG"
+  fi
+}
+
+trap cleanup EXIT
 
 emit_report() {
   if [ -z "$REPORT_PATH" ]; then
@@ -49,7 +62,8 @@ emit_report() {
     "$(json_bool "$LAUNCHER_LOOKUP_PASSED")" \
     "$(json_bool "$RUNTIME_TOOL_DESCRIBE_PASSED")" \
     "$(json_bool "$PACK_DRYRUN_PASSED")" \
-    "$(json_bool "$PACK_DRYRUN_SKIPPED")" <<'NODE'
+    "$(json_bool "$PACK_DRYRUN_SKIPPED")" \
+    "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -63,6 +77,56 @@ const launcherPassed = (process.argv[8] ?? "false") === "true";
 const runtimeToolDescribePassed = (process.argv[9] ?? "false") === "true";
 const packPassed = (process.argv[10] ?? "false") === "true";
 const packSkipped = (process.argv[11] ?? "false") === "true";
+const runtimeToolDescribeReportPath = process.argv[12] ?? "";
+
+function parseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function runtimeToolDescribeSummary() {
+  const summary = { passed: runtimeToolDescribePassed };
+  if (!runtimeToolDescribeReportPath || !fs.existsSync(runtimeToolDescribeReportPath)) {
+    return summary;
+  }
+  try {
+    const report = JSON.parse(fs.readFileSync(runtimeToolDescribeReportPath, "utf8"));
+    const governance = Array.isArray(report.results)
+      ? report.results.find((item) => item && item.id === "runtime-tool-governance")
+      : null;
+    const governancePayload = typeof governance?.output === "string"
+      ? parseJson(governance.output)
+      : null;
+    return {
+      ...summary,
+      ok: report.ok === true,
+      contract_count: Number.isFinite(report.contract_count) ? report.contract_count : null,
+      completed_count: Number.isFinite(report.completed_count) ? report.completed_count : null,
+      include_runtime_describe: report.include_runtime_describe === true,
+      failed_contract: typeof report.failed_contract === "string" ? report.failed_contract : null,
+      runtime_recovery_catalog_rows: Number.isFinite(governancePayload?.runtime_recovery_catalog_rows)
+        ? governancePayload.runtime_recovery_catalog_rows
+        : null,
+      runtime_schema_profile_count: Number.isFinite(governancePayload?.runtime_schema_profile_count)
+        ? governancePayload.runtime_schema_profile_count
+        : null,
+      runtime_schema_budget_violations: Number.isFinite(governancePayload?.runtime_schema_budget_violations)
+        ? governancePayload.runtime_schema_budget_violations
+        : null,
+      gateway_only_recovery_actions: Array.isArray(governancePayload?.gateway_only_recovery_actions)
+        ? governancePayload.gateway_only_recovery_actions
+        : [],
+    };
+  } catch (error) {
+    return {
+      ...summary,
+      report_parse_error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 const payload = {
   schema_version: 1,
@@ -77,7 +141,7 @@ const payload = {
   checks: {
     verify_packages: { passed: verifyPassed },
     launcher_lookup_chain: { passed: launcherPassed },
-    runtime_tool_describe: { passed: runtimeToolDescribePassed },
+    runtime_tool_describe: runtimeToolDescribeSummary(),
     pack_dryrun: { passed: packPassed, skipped: packSkipped },
   },
 };
@@ -153,22 +217,50 @@ if ! LC_ALL=C grep -F "core/current/grobot-core" packages/cli/bin/grobot >/dev/n
 fi
 LAUNCHER_LOOKUP_PASSED=1
 
-if ! command -v npm >/dev/null 2>&1; then
-  fail_exit 5 "npm_missing_for_runtime_tool_describe"
+if ! command -v cargo >/dev/null 2>&1; then
+  fail_exit 8 "cargo_missing_for_runtime_tool_describe"
+fi
+if ! command -v node >/dev/null 2>&1; then
+  fail_exit 8 "node_missing_for_runtime_tool_describe"
+fi
+if ! command -v npx >/dev/null 2>&1; then
+  fail_exit 8 "npx_missing_for_runtime_tool_describe"
 fi
 
 echo "[gate] runtime tools describe compatibility"
-if ! npm run check:gateway:runtime-tools:describe; then
+RUNTIME_TOOL_DESCRIBE_REPORT_PATH="$(mktemp)"
+if ! cargo build --manifest-path runtime/Cargo.toml; then
   fail_exit 8 "runtime_tool_describe_failed"
 fi
+if ! node scripts/check-runtime-tool-contracts.mjs --include-runtime-describe --json >"$RUNTIME_TOOL_DESCRIBE_REPORT_PATH"; then
+  if [ -s "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" ]; then
+    cat "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" >&2
+  fi
+  fail_exit 8 "runtime_tool_describe_failed"
+fi
+node - "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH" <<'NODE'
+const fs = require("node:fs");
+const reportPath = process.argv[2] ?? "";
+const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+const governance = Array.isArray(report.results)
+  ? report.results.find((item) => item && item.id === "runtime-tool-governance")
+  : null;
+let governancePayload = {};
+try {
+  governancePayload = typeof governance?.output === "string" ? JSON.parse(governance.output) : {};
+} catch {
+  governancePayload = {};
+}
+process.stdout.write(
+  `[gate] runtime tools describe passed contracts=${report.completed_count}/${report.contract_count}`
+    + ` schema_budget_violations=${governancePayload.runtime_schema_budget_violations ?? "unknown"}`
+    + ` gateway_only_actions=${JSON.stringify(governancePayload.gateway_only_recovery_actions ?? [])}\n`,
+);
+NODE
 RUNTIME_TOOL_DESCRIBE_PASSED=1
 
 if [ "$SKIP_PACK_DRYRUN" -eq 0 ]; then
   PACK_LOG="$(mktemp)"
-  cleanup() {
-    rm -f "$PACK_LOG"
-  }
-  trap cleanup EXIT
 
   echo "[gate] npm pack --dry-run"
   npm pack --dry-run >"$PACK_LOG" 2>&1

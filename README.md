@@ -389,6 +389,7 @@ npm run core:release:prepare -- \
 
 ```bash
 # gate 会写 JSON 报告
+# 报告里的 checks.runtime_tool_describe 会记录 contract_count、schema budget violations 等摘要
 npm run core:gate:release -- \
   --allow-stub \
   --report dist/core-artifacts/core-release-gate-report.json
