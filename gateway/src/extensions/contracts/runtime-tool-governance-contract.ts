@@ -19,6 +19,11 @@ function sorted(items: readonly string[]): string[] {
   return [...items].sort();
 }
 
+function difference(left: readonly string[], right: readonly string[]): string[] {
+  const rightSet = new Set(right);
+  return left.filter((item) => !rightSet.has(item));
+}
+
 const describe = runRuntimeToolsDescribe(resolveRuntimeBinaryPath());
 expectEqual(describe.ok, true, `runtime.tools.describe ok (${describe.detail})`);
 expectEqual(describe.toolRecoveryPolicyVersion, "v1", "runtime recovery policy version");
@@ -33,7 +38,14 @@ expect(!describe.toolRecoveryActions.includes("observe_and_continue"), "legacy r
 
 const gatewayActions = sorted(knownRuntimeToolRecoveryActions());
 const runtimeActions = sorted(describe.toolRecoveryActions);
-expectEqual(JSON.stringify(runtimeActions), JSON.stringify(gatewayActions), "runtime and gateway recovery action catalogs stay aligned");
+const runtimeOnlyActions = difference(runtimeActions, gatewayActions);
+const gatewayOnlyActions = difference(gatewayActions, runtimeActions);
+expectEqual(JSON.stringify(runtimeOnlyActions), "[]", "runtime recovery actions are known by gateway");
+expectEqual(
+  JSON.stringify(gatewayOnlyActions),
+  JSON.stringify(["fix_mcp_tool_arguments"]),
+  "only contextual gateway MCP refinements may be absent from runtime base catalog",
+);
 
 const configMissingRow = describe.toolRecoveryCatalog.find((row) =>
   row.errorClasses.length === 1
@@ -47,6 +59,24 @@ const unknownRiskRow = describe.toolRecoveryCatalog.find((row) =>
   row.riskClass === "unknown" && row.recommendedNextAction === "avoid_unknown_tool");
 expect(Boolean(unknownRiskRow), "unknown risk recovery row exists");
 expectEqual(unknownRiskRow?.recoverable, true, "unknown risk recovery recoverable");
+
+const mcpRpcRow = describe.toolRecoveryCatalog.find((row) =>
+  row.errorClasses.includes("mcp_rpc_error")
+  && row.recommendedNextAction === "inspect_mcp_rpc_error_and_switch_strategy");
+expect(Boolean(mcpRpcRow), "mcp_rpc_error recovery row uses MCP-specific strategy action");
+expectEqual(mcpRpcRow?.recoverable, true, "mcp_rpc_error recovery recoverable");
+
+const mcpPayloadRow = describe.toolRecoveryCatalog.find((row) =>
+  row.errorClasses.includes("mcp_arguments_too_large")
+  && row.recommendedNextAction === "reduce_mcp_argument_payload");
+expect(Boolean(mcpPayloadRow), "MCP oversized payload recovery row exists");
+expectEqual(mcpPayloadRow?.stage, "local_fix", "MCP oversized payload stage");
+
+const mcpPolicyRow = describe.toolRecoveryCatalog.find((row) =>
+  row.errorClasses.includes("mcp_tool_blocked")
+  && row.recommendedNextAction === "use_allowed_mcp_tool_or_request_policy_change");
+expect(Boolean(mcpPolicyRow), "MCP blocked-tool recovery row exists");
+expectEqual(mcpPolicyRow?.recoverable, true, "MCP blocked-tool recovery recoverable");
 
 const budgetViolations = describe.toolSurfaceSchemaProfiles
   .map((profile) => ({
@@ -67,6 +97,7 @@ expectEqual(budgetViolations.length, 0, "runtime schema profiles stay within bud
 process.stdout.write(JSON.stringify({
   ok: true,
   runtime_recovery_action_count: describe.toolRecoveryActions.length,
+  gateway_only_recovery_actions: gatewayOnlyActions,
   runtime_recovery_catalog_rows: describe.toolRecoveryCatalog.length,
   runtime_schema_profile_count: describe.toolSurfaceSchemaProfiles.length,
   runtime_schema_budget_violations: budgetViolations.length,

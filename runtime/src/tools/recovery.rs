@@ -162,6 +162,13 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
+        &["mcp_tool_blocked"],
+        "*",
+        "strategy_switch",
+        "use_allowed_mcp_tool_or_request_policy_change",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
         &[
             "semantic_tool_unavailable",
             "semantic_no_source_available",
@@ -182,7 +189,21 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         &["mcp_tool_result_error"],
         "*",
         "strategy_switch",
-        "inspect_error_and_switch_strategy",
+        "inspect_mcp_tool_result_and_change_arguments",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
+        &["mcp_arguments_too_large"],
+        "*",
+        "local_fix",
+        "reduce_mcp_argument_payload",
+        true,
+    ),
+    ToolRecoveryCatalogRow::new(
+        &["mcp_rpc_error"],
+        "*",
+        "strategy_switch",
+        "inspect_mcp_rpc_error_and_switch_strategy",
         true,
     ),
     ToolRecoveryCatalogRow::new(
@@ -200,7 +221,6 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
             "mcp_circuit_open",
             "mcp_transport_error",
             "mcp_protocol_error",
-            "mcp_rpc_error",
             "mcp_spawn_failed",
             "mcp_server_unavailable",
             "bash_timeout",

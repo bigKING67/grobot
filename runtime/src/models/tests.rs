@@ -1978,7 +1978,7 @@ mod tests {
             .expect("tool_recovery payload");
         assert_eq!(
             recovery_payload["recommended_next_action"].as_str(),
-            Some("inspect_error_and_switch_strategy")
+            Some("inspect_mcp_tool_result_and_change_arguments")
         );
         assert_eq!(
             recovery_payload["error_data"]["diagnostic_kind"].as_str(),

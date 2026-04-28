@@ -524,7 +524,15 @@ policy JSON block.
 
 ## Verification
 
-Focused contracts:
+Focused runtime-tool contract suite:
+
+```bash
+npm run check:gateway:runtime-tools
+npm run check:gateway:runtime-tools:json
+```
+
+The default suite is gateway-only and does not require a freshly built Rust
+runtime binary. It runs:
 
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
@@ -561,8 +569,15 @@ recoveries are consumed, health returns to `good`, readiness returns to
 Runtime/governance contract after building the Rust runtime:
 
 ```bash
+npm run check:gateway:runtime-tools:describe
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-governance-contract.ts
 ```
+
+The `:describe` script builds the Rust runtime first so
+`runtime/target/debug/grobot-runtime` is not stale. Runtime describe is expected
+to expose the base recovery actions it can emit directly; gateway-only
+contextual refinements such as `fix_mcp_tool_arguments` are verified by the MCP
+recovery eval matrix instead of being forced into the Rust base catalog.
 
 Full gate:
 

@@ -308,7 +308,13 @@ must cover policy blocks, invalid params, generic RPC failures, MCP tool-result
 errors, invalid argument shapes, oversized/near-budget payloads, unready
 servers, busy servers, queue timeouts, and circuit pressure. It must assert the
 refined action, action family, recoverability, prompt fragments, readiness, and
-gate blocker projection together.
+gate blocker projection together. Runtime-tool mechanism changes should run the
+dedicated suite through `npm run check:gateway:runtime-tools`; use
+`npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
+also been built and `runtime.tools.describe` compatibility must be checked.
+The describe contract treats Rust-emitted base recovery actions as a subset of
+gateway-known actions; gateway-only contextual refinements such as
+`fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.
 
 Runtime recovery hints are one-shot signals. If a later turn completes a matching tool call with no
 failed/deferred tool events and no new `tool_recovery`, gateway records

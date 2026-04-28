@@ -2487,9 +2487,34 @@ audit_redact_secrets = false
         assert_eq!(mcp_tool_result.stage, "strategy_switch");
         assert_eq!(
             mcp_tool_result.recommended_next_action,
-            "inspect_error_and_switch_strategy"
+            "inspect_mcp_tool_result_and_change_arguments"
         );
         assert!(mcp_tool_result.recoverable);
+
+        let mcp_blocked = classify_tool_recovery("mcp_tool_blocked", "high_risk");
+        assert_eq!(mcp_blocked.stage, "strategy_switch");
+        assert_eq!(
+            mcp_blocked.recommended_next_action,
+            "use_allowed_mcp_tool_or_request_policy_change"
+        );
+        assert!(mcp_blocked.recoverable);
+
+        let mcp_arguments_too_large =
+            classify_tool_recovery("mcp_arguments_too_large", "high_risk");
+        assert_eq!(mcp_arguments_too_large.stage, "local_fix");
+        assert_eq!(
+            mcp_arguments_too_large.recommended_next_action,
+            "reduce_mcp_argument_payload"
+        );
+        assert!(mcp_arguments_too_large.recoverable);
+
+        let mcp_rpc_error = classify_tool_recovery("mcp_rpc_error", "high_risk");
+        assert_eq!(mcp_rpc_error.stage, "strategy_switch");
+        assert_eq!(
+            mcp_rpc_error.recommended_next_action,
+            "inspect_mcp_rpc_error_and_switch_strategy"
+        );
+        assert!(mcp_rpc_error.recoverable);
 
         let browser_backend =
             classify_tool_recovery("browser_backend_result_error", "medium_risk");
@@ -2560,6 +2585,10 @@ audit_redact_secrets = false
         assert!(actions.contains(&"reread_target_then_retry_exact_old_text"));
         assert!(actions.contains(&"use_write_or_normalize_line_endings"));
         assert!(actions.contains(&"inspect_error_and_switch_strategy"));
+        assert!(actions.contains(&"inspect_mcp_tool_result_and_change_arguments"));
+        assert!(actions.contains(&"inspect_mcp_rpc_error_and_switch_strategy"));
+        assert!(actions.contains(&"reduce_mcp_argument_payload"));
+        assert!(actions.contains(&"use_allowed_mcp_tool_or_request_policy_change"));
         assert!(!actions.contains(&"observe_and_continue"));
 
         let fingerprint = tool_recovery_catalog_fingerprint(&catalog);
