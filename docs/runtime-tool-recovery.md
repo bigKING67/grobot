@@ -124,6 +124,15 @@ coarse enough for status, readiness, gates, and experience aggregation:
 MCP-specific refinement, so `mcp_rpc_error:-32602` reports `argument_fix` and
 near-budget MCP payloads report `payload_reduce`.
 
+The MCP recovery eval matrix in
+`gateway/src/extensions/contracts/runtime-tool-mcp-recovery-eval-contract.ts`
+locks the main MCP failure families end to end: policy-blocked tools,
+JSON-RPC invalid params, generic RPC errors, `isError=true` tool results,
+oversized and near-budget payloads, invalid argument shapes, unready servers,
+busy servers, queue timeouts, and open circuits. Each row asserts the refined
+`recommended_next_action`, `recommended_action_family`, recoverability, prompt
+hint fragments, readiness state, and readiness-gate blocker projection.
+
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a
 representative user intent to the expected profile, visible tool set, forbidden
@@ -519,6 +528,7 @@ Focused contracts:
 
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
+npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-mcp-recovery-eval-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-readiness-contract.ts
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-flow-contract.ts

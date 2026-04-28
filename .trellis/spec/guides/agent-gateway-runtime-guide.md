@@ -301,6 +301,15 @@ or MCP argument-shape failures use `fix_mcp_tool_arguments`; oversized or near-b
 `inspect_mcp_tool_result_and_change_arguments`. These refinements apply only while automatic
 recovery is still allowed; repeated/environment MCP failures that have escalated to `ask_user` keep
 their environment-fix action and must not be downgraded back into another automatic `mcp_call`.
+
+The MCP recovery eval matrix contract at
+`gateway/src/extensions/contracts/runtime-tool-mcp-recovery-eval-contract.ts`
+must cover policy blocks, invalid params, generic RPC failures, MCP tool-result
+errors, invalid argument shapes, oversized/near-budget payloads, unready
+servers, busy servers, queue timeouts, and circuit pressure. It must assert the
+refined action, action family, recoverability, prompt fragments, readiness, and
+gate blocker projection together.
+
 Runtime recovery hints are one-shot signals. If a later turn completes a matching tool call with no
 failed/deferred tool events and no new `tool_recovery`, gateway records
 `successful_tool_call_consumed`, clears matching repeat pressure, and suppresses the stale prompt
