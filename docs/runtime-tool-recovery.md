@@ -581,9 +581,11 @@ to expose the base recovery actions it can emit directly; gateway-only
 contextual refinements such as `fix_mcp_tool_arguments` are verified by the MCP
 recovery eval matrix instead of being forced into the Rust base catalog. Keep
 `:describe` as the explicit deep compatibility gate for Rust recovery catalog,
-tool schema budget, or `runtime.tools.describe` surface changes; the default
-`npm run check` already covers the gateway-only suite and then runs the normal
-Rust compile/test gate separately.
+tool schema budget, or `runtime.tools.describe` surface changes. The release
+gate (`npm run core:gate:release`) also runs this deep compatibility check so
+release packaging cannot pass with a stale or drifted runtime tool describe
+surface. The default `npm run check` already covers the gateway-only suite and
+then runs the normal Rust compile/test gate separately.
 
 Full gate:
 

@@ -332,7 +332,7 @@ npm run core:verify:packages
 # 本地开发阶段允许 stub
 npm run core:verify:packages -- --allow-stub
 
-# 发布前 gate（默认不允许 stub；会做 pack dry-run 检查）
+# 发布前 gate（默认不允许 stub；会跑 runtime.tools.describe 兼容检查和 pack dry-run）
 npm run core:gate:release
 
 # 仅本地联调时放宽

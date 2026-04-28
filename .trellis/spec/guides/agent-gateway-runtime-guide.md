@@ -314,7 +314,9 @@ Run that focused suite during runtime-tool iteration; use
 `npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
 also been built and `runtime.tools.describe` compatibility must be checked,
 especially after Rust recovery catalog, schema budget, or describe-surface
-changes.
+changes. The release gate must run the same describe compatibility suite before
+packaging so a release cannot ship with Rust/Gateway runtime-tool contract
+drift.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.

@@ -19,6 +19,7 @@ REPORT_PATH=""
 
 VERIFY_PACKAGES_PASSED=0
 LAUNCHER_LOOKUP_PASSED=0
+RUNTIME_TOOL_DESCRIBE_PASSED=0
 PACK_DRYRUN_PASSED=0
 PACK_DRYRUN_SKIPPED=0
 
@@ -46,6 +47,7 @@ emit_report() {
     "$SKIP_PACK_DRYRUN" \
     "$(json_bool "$VERIFY_PACKAGES_PASSED")" \
     "$(json_bool "$LAUNCHER_LOOKUP_PASSED")" \
+    "$(json_bool "$RUNTIME_TOOL_DESCRIBE_PASSED")" \
     "$(json_bool "$PACK_DRYRUN_PASSED")" \
     "$(json_bool "$PACK_DRYRUN_SKIPPED")" <<'NODE'
 const fs = require("node:fs");
@@ -58,8 +60,9 @@ const allowStub = (process.argv[5] ?? "0") === "1";
 const skipPack = (process.argv[6] ?? "0") === "1";
 const verifyPassed = (process.argv[7] ?? "false") === "true";
 const launcherPassed = (process.argv[8] ?? "false") === "true";
-const packPassed = (process.argv[9] ?? "false") === "true";
-const packSkipped = (process.argv[10] ?? "false") === "true";
+const runtimeToolDescribePassed = (process.argv[9] ?? "false") === "true";
+const packPassed = (process.argv[10] ?? "false") === "true";
+const packSkipped = (process.argv[11] ?? "false") === "true";
 
 const payload = {
   schema_version: 1,
@@ -74,6 +77,7 @@ const payload = {
   checks: {
     verify_packages: { passed: verifyPassed },
     launcher_lookup_chain: { passed: launcherPassed },
+    runtime_tool_describe: { passed: runtimeToolDescribePassed },
     pack_dryrun: { passed: packPassed, skipped: packSkipped },
   },
 };
@@ -149,10 +153,17 @@ if ! LC_ALL=C grep -F "core/current/grobot-core" packages/cli/bin/grobot >/dev/n
 fi
 LAUNCHER_LOOKUP_PASSED=1
 
+if ! command -v npm >/dev/null 2>&1; then
+  fail_exit 5 "npm_missing_for_runtime_tool_describe"
+fi
+
+echo "[gate] runtime tools describe compatibility"
+if ! npm run check:gateway:runtime-tools:describe; then
+  fail_exit 8 "runtime_tool_describe_failed"
+fi
+RUNTIME_TOOL_DESCRIBE_PASSED=1
+
 if [ "$SKIP_PACK_DRYRUN" -eq 0 ]; then
-  if ! command -v npm >/dev/null 2>&1; then
-    fail_exit 5 "npm_missing_for_pack_dryrun"
-  fi
   PACK_LOG="$(mktemp)"
   cleanup() {
     rm -f "$PACK_LOG"
