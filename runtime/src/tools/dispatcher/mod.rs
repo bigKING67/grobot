@@ -391,6 +391,15 @@ impl ToolExecutor for LocalToolExecutor {
                 "Use path/offset/limit/include_metadata in minimal browser/context read surfaces, or switch to coding, browser_advanced, or full_debug for legacy line ranges and media page selection.",
             )?;
         }
+        if tool_name == TOOL_SEMANTIC_SEARCH {
+            validate_projected_tool_args_visible(
+                &context,
+                args,
+                TOOL_SEMANTIC_SEARCH,
+                "validate_semantic_search_args_visible",
+                "Use query/sources/per_source_limit/max_segments/include_org in the context semantic_search surface, or switch to full_debug for bridge/cache/timeout tuning.",
+            )?;
+        }
         let overlap_candidate = build_overlap_candidate(tool_name.as_str(), args);
         if let Some(candidate) = overlap_candidate.as_ref() {
             if should_block_overlap_candidate(input, candidate)? {

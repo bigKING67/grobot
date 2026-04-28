@@ -672,9 +672,19 @@ expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user
 expectDeepEqual(context.enabledTools, context.modelVisibleTools, "context dispatch tools");
 const contextProjection = projection(context);
 expectEqual(context.schemaFingerprint, contextProjection.schemaFingerprint, "context context/projection fingerprint");
-expectEqual(contextProjection.schemaPropertyCount, 17, "context projection schema property count");
-expectEqual(contextProjection.suppressedSchemaPropertyCount, 3, "context projection suppressed property count");
+expectEqual(contextProjection.schemaPropertyCount, 13, "context projection schema property count");
+expectEqual(contextProjection.suppressedSchemaPropertyCount, 7, "context projection suppressed property count");
 expectProjectionWithinBudget(context, "context projection budget");
+expectDeepEqual(
+  contextProjection.perToolVisibleArgs?.semantic_search,
+  ["include_org", "max_segments", "per_source_limit", "query", "sources"],
+  "context projection exposes slim semantic_search arg names",
+);
+expectDeepEqual(
+  contextProjection.perToolSuppressedArgs?.semantic_search,
+  ["bridge_script", "refresh", "technical_terms", "timeout_ms"],
+  "context projection suppresses semantic_search debug/cache args",
+);
 
 const mcp = withEnvProfile(undefined, () => build("通过 MCP grok-search 查资料"));
 expectEqual(mcp.toolSurfaceProfile, "mcp", "mcp profile");

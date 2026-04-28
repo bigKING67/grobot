@@ -946,6 +946,21 @@ fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanc
             &["path", "offset", "limit", "include_metadata"],
         );
     }
+    if name == TOOL_SEMANTIC_SEARCH
+        && !advanced_tool_schema
+        && canonical_profile == TOOL_SURFACE_CONTEXT
+    {
+        return project_object_schema_properties(
+            parameters,
+            &[
+                "query",
+                "sources",
+                "per_source_limit",
+                "max_segments",
+                "include_org",
+            ],
+        );
+    }
     match (name, mode) {
         (TOOL_WEB_SCAN, "slim") => project_object_schema_properties(
             parameters,

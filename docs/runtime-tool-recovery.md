@@ -68,6 +68,13 @@ selection (`line_start`, `line_end`, `pages`) remain available through `coding`,
 before parsing the request, so a slim profile cannot accidentally use parameters
 that were not shown in the model schema.
 
+`semantic_search` is also slimmed in the `context` profile. The normal context
+retrieval surface exposes only `query`, `sources`, `per_source_limit`,
+`max_segments`, and `include_org`; bridge overrides, refresh forcing, timeout
+tuning, and manual `technical_terms` hints remain a `full_debug` concern.
+Runtime dispatch rejects hidden semantic-search args before running the bridge,
+so cache/debug tuning cannot slip through a slim context prompt.
+
 The canonical human-intervention primitive is `ask_user`. Older
 `ask_user_question` tool calls are accepted only as a runtime compatibility
 alias at dispatch/interrupt parsing boundaries; new tool manifests and gateway

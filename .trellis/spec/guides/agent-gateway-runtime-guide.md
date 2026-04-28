@@ -275,6 +275,10 @@ silently share a fingerprint.
 `line_start`/`line_end` and media `pages` selection in `coding`, `browser_advanced`, and
 `full_debug`. Hidden `read` args must fail before request parsing so schema slimming remains a hard
 execution boundary.
+`semantic_search` should project a slim schema in the `context` profile: expose only normal
+retrieval controls (`query`, `sources`, `per_source_limit`, `max_segments`, `include_org`) and keep
+bridge overrides, forced refresh, timeout tuning, and manual technical-term hints in `full_debug`.
+Hidden semantic-search args must fail before the ContextWeaver bridge runs.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

@@ -72,10 +72,10 @@ export const RUNTIME_TOOL_SURFACE_BUDGETS: Record<ToolSurfaceProfile, RuntimeToo
     profile: "context",
     projectionMode: "slim",
     visibleToolCountMax: 3,
-    schemaPropertyCountMax: 17,
+    schemaPropertyCountMax: 13,
     fullSchemaPropertyCountMax: 20,
-    suppressedSchemaPropertyCountMax: 3,
-    schemaEstimatedTokensMax: 460,
+    suppressedSchemaPropertyCountMax: 7,
+    schemaEstimatedTokensMax: 390,
   },
   mcp: {
     profile: "mcp",

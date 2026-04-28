@@ -120,6 +120,7 @@ const PROFILE_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   web_scan: 160,
   web_execute_js: 220,
   semantic_search: 190,
+  semantic_search_slim: 120,
   prompt_enhancer: 210,
   ask_user: 160,
 };
@@ -210,6 +211,13 @@ const SLIM_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
 };
 
 const SLIM_READ_SCHEMA_ARG_NAMES = ["include_metadata", "limit", "offset", "path"] as const;
+const SLIM_SEMANTIC_SEARCH_SCHEMA_ARG_NAMES = [
+  "include_org",
+  "max_segments",
+  "per_source_limit",
+  "query",
+  "sources",
+] as const;
 
 const ADVANCED_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
   web_scan: FULL_SCHEMA_ARG_NAMES.web_scan,
@@ -261,6 +269,16 @@ function shouldUseSlimReadSchema(
     && (profile === "minimal" || profile === "browser" || profile === "context");
 }
 
+function shouldUseSlimSemanticSearchSchema(
+  toolName: string,
+  profile: ToolSurfaceProfile,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): boolean {
+  return toolName === "semantic_search"
+    && projectionMode === "slim"
+    && profile === "context";
+}
+
 function schemaPropertyCountForTool(
   toolName: string,
   profile: ToolSurfaceProfile,
@@ -276,6 +294,9 @@ function schemaArgNamesForTool(
 ): string[] {
   if (shouldUseSlimReadSchema(toolName, profile, projectionMode)) {
     return [...SLIM_READ_SCHEMA_ARG_NAMES];
+  }
+  if (shouldUseSlimSemanticSearchSchema(toolName, profile, projectionMode)) {
+    return [...SLIM_SEMANTIC_SEARCH_SCHEMA_ARG_NAMES];
   }
   if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_ARG_NAMES) {
     return [...ADVANCED_BROWSER_SCHEMA_ARG_NAMES[toolName]];
@@ -1158,6 +1179,9 @@ export function estimateToolSchemaTokens(toolNames: readonly string[], profile: 
       && (profile === "minimal" || profile === "browser" || profile === "context")
     ) {
       return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.read_slim;
+    }
+    if (toolName === "semantic_search" && profile === "context") {
+      return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.semantic_search_slim;
     }
     return total + (PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
   }, 0)));

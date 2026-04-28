@@ -624,7 +624,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         assert_eq!(surface_schema_property_count("browser", false), 19);
         assert_eq!(surface_schema_property_count("browser_advanced", false), 42);
         assert_eq!(surface_schema_property_count("browser", true), 42);
-        assert_eq!(surface_schema_property_count("context", false), 17);
+        assert_eq!(surface_schema_property_count("context", false), 13);
         assert_eq!(surface_schema_property_count("mcp", false), 9);
         assert_eq!(surface_schema_property_count("full_debug", false), 92);
     }
@@ -762,6 +762,40 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             ]
         );
 
+        let context = surface_schema_profile("context");
+        assert_eq!(context["projection_mode"], "slim");
+        assert_eq!(context["schema_property_count"].as_u64(), Some(13));
+        assert_eq!(context["full_schema_property_count"].as_u64(), Some(20));
+        assert_eq!(context["suppressed_schema_property_count"].as_u64(), Some(7));
+        assert_eq!(
+            context["per_tool_property_count"][TOOL_SEMANTIC_SEARCH].as_u64(),
+            Some(5)
+        );
+        assert_eq!(
+            context["per_tool_visible_args"][TOOL_SEMANTIC_SEARCH]
+                .as_array()
+                .expect("semantic_search visible args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec![
+                "include_org",
+                "max_segments",
+                "per_source_limit",
+                "query",
+                "sources",
+            ]
+        );
+        assert_eq!(
+            context["per_tool_suppressed_args"][TOOL_SEMANTIC_SEARCH]
+                .as_array()
+                .expect("semantic_search suppressed args")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<&str>>(),
+            vec!["bridge_script", "refresh", "technical_terms", "timeout_ms"]
+        );
+
         let full_debug = surface_schema_profile("full_debug");
         assert_eq!(full_debug["projection_mode"], "full");
         assert_eq!(full_debug["advanced_tool_schema"], true);
@@ -888,6 +922,35 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             surface_parameters("browser_advanced", vec![TOOL_READ], TOOL_READ);
         let advanced_props = schema_property_names(&advanced_params);
         assert_schema_props_include(&advanced_props, &["line_start", "line_end", "pages"]);
+    }
+
+    #[test]
+    fn context_surface_projects_slim_semantic_search_schema() {
+        let context_params =
+            surface_parameters("context", vec![TOOL_SEMANTIC_SEARCH], TOOL_SEMANTIC_SEARCH);
+        let context_props = schema_property_names(&context_params);
+        assert_schema_props_include(
+            &context_props,
+            &[
+                "query",
+                "sources",
+                "per_source_limit",
+                "max_segments",
+                "include_org",
+            ],
+        );
+        assert_schema_props_omit(
+            &context_props,
+            &["technical_terms", "refresh", "timeout_ms", "bridge_script"],
+        );
+
+        let full_debug_params =
+            surface_parameters("full_debug", vec![TOOL_SEMANTIC_SEARCH], TOOL_SEMANTIC_SEARCH);
+        let full_debug_props = schema_property_names(&full_debug_params);
+        assert_schema_props_include(
+            &full_debug_props,
+            &["technical_terms", "refresh", "timeout_ms", "bridge_script"],
+        );
     }
 
     #[test]
@@ -1639,6 +1702,52 @@ audit_redact_secrets = false
             .iter()
             .any(|value| value.as_str() == Some("line_start")));
         assert!(hidden_args.iter().any(|value| value.as_str() == Some("pages")));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn semantic_search_context_surface_rejects_hidden_debug_args() {
+        let workspace = make_temp_workspace("semantic-search-slim-hidden-args");
+        let mut input = make_read_only_input(&workspace);
+        if let Some(context) = input.tool_context.as_mut() {
+            context.tool_surface_profile = Some("context".to_string());
+            context.enabled_tools = Some(vec![TOOL_SEMANTIC_SEARCH.to_string()]);
+            context.model_visible_tools = Some(vec![TOOL_SEMANTIC_SEARCH.to_string()]);
+        }
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_SEMANTIC_SEARCH,
+            json!({
+                "query": "context engine drift",
+                "technical_terms": ["ContextWeaver"],
+                "refresh": "force",
+                "timeout_ms": 30_000,
+                "bridge_script": "/tmp/custom-contextweaver.mjs"
+            }),
+        )
+        .expect_err("context semantic_search surface should reject hidden debug/cache args");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        assert!(error.message.contains("technical_terms"));
+        assert!(error.message.contains("bridge_script"));
+        let data = error
+            .data
+            .as_ref()
+            .expect("semantic hidden args should include data");
+        assert_eq!(
+            data["operation"].as_str(),
+            Some("validate_semantic_search_args_visible")
+        );
+        let hidden_args = data["hidden_args"]
+            .as_array()
+            .expect("hidden_args should be an array");
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("technical_terms")));
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("bridge_script")));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -5296,11 +5405,11 @@ audit_redact_secrets = false
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec![TOOL_SEMANTIC_SEARCH.to_string()]),
                 model_visible_tools: None,
-                tool_surface_profile: Some("context".to_string()),
+                tool_surface_profile: Some("full_debug".to_string()),
                 tool_surface_source: Some("test".to_string()),
                 tool_surface_reason: Some("test".to_string()),
                 tool_policy_version: Some("v1".to_string()),
-                advanced_tool_schema: Some(false),
+                advanced_tool_schema: Some(true),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
@@ -5422,11 +5531,11 @@ process.exitCode = 1;
                 work_dir: Some(workspace.to_string_lossy().to_string()),
                 enabled_tools: Some(vec![TOOL_SEMANTIC_SEARCH.to_string()]),
                 model_visible_tools: None,
-                tool_surface_profile: Some("context".to_string()),
+                tool_surface_profile: Some("full_debug".to_string()),
                 tool_surface_source: Some("test".to_string()),
                 tool_surface_reason: Some("test".to_string()),
                 tool_policy_version: Some("v1".to_string()),
-                advanced_tool_schema: Some(false),
+                advanced_tool_schema: Some(true),
                 bash_allowlist: None,
                 max_tool_rounds: Some(8),
                 no_tool_fallback_mode: None,
