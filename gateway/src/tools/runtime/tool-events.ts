@@ -178,6 +178,16 @@ export const RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS = {
     "Retry with a smaller scope, wait for queue/cooldown pressure to clear, or choose an alternate tool.",
   use_media_read_or_external_extractor:
     "Use the media-aware read path or an external extractor instead of forcing text read on binary content.",
+  fix_mcp_tool_arguments:
+    "Fix the MCP tool arguments using the server/tool name, argument keys, RPC code, and bounded preview; remove unknown fields and do not resend the same payload unchanged.",
+  reduce_mcp_argument_payload:
+    "Reduce the MCP argument payload before retrying: split the call, pass references instead of large inline data, or narrow query/scope below the reported byte budget.",
+  use_allowed_mcp_tool_or_request_policy_change:
+    "Use one of the allowed MCP tools reported by policy, or ask for a policy/config change before retrying the blocked MCP tool.",
+  inspect_mcp_tool_result_and_change_arguments:
+    "Inspect the MCP tool result preview and structured content, then change arguments, scope, or tool choice before retrying.",
+  inspect_mcp_rpc_error_and_switch_strategy:
+    "Inspect the MCP JSON-RPC code/message and switch strategy, server, tool, or transport assumptions before retrying.",
   request_approval_or_use_safer_tool:
     "Ask the user for approval when required, or choose a safer non-privileged tool path.",
   request_environment_fix:
@@ -660,6 +670,92 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
     parts.push(availableServers);
   }
   return compactRecoveryDetail(parts.join(" "));
+}
+
+function recoveryString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function recoveryFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function mcpDiagnosticKind(recovery: RuntimeToolRecoveryHint): string {
+  const errorData = recovery.errorData ?? {};
+  const diagnostics = normalizeRecord(errorData.diagnostics);
+  return recoveryString(errorData.diagnostic_kind) || recoveryString(diagnostics.diagnostic_kind);
+}
+
+function mcpRpcErrorCode(recovery: RuntimeToolRecoveryHint): string {
+  const value = recovery.errorData?.rpc_error_code;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value));
+  }
+  return recoveryString(value);
+}
+
+function isMcpRecovery(recovery: RuntimeToolRecoveryHint): boolean {
+  const errorData = recovery.errorData ?? {};
+  const diagnosticKind = mcpDiagnosticKind(recovery);
+  const errorClass = recovery.errorClass ?? "";
+  return recovery.toolName === "mcp_call"
+    || errorClass.startsWith("mcp_")
+    || diagnosticKind.startsWith("mcp_")
+    || (
+      typeof errorData.server_key === "string"
+      && typeof errorData.tool_name === "string"
+    );
+}
+
+function mcpArgumentPayloadNearBudget(errorData: Record<string, unknown> | undefined): boolean {
+  if (!errorData) {
+    return false;
+  }
+  const argumentBytes = recoveryFiniteNumber(errorData.argument_bytes);
+  const maxArgumentBytes = recoveryFiniteNumber(errorData.max_argument_bytes);
+  if (argumentBytes === undefined || maxArgumentBytes === undefined || maxArgumentBytes <= 0) {
+    return false;
+  }
+  return argumentBytes >= Math.floor(maxArgumentBytes * 0.8);
+}
+
+function refineMcpRecoveryNextAction(
+  action: string,
+  recovery: RuntimeToolRecoveryHint,
+): string {
+  if (
+    recovery.stage === "ask_user"
+    || recovery.requiresUserIntervention
+    || recovery.recoverable === false
+    || recovery.escalated
+    || !isMcpRecovery(recovery)
+  ) {
+    return action;
+  }
+  const diagnosticKind = mcpDiagnosticKind(recovery);
+  const errorClass = recovery.errorClass ?? "";
+  const errorData = recovery.errorData;
+  if (diagnosticKind === "mcp_tool_blocked" || errorClass === "mcp_tool_blocked") {
+    return "use_allowed_mcp_tool_or_request_policy_change";
+  }
+  if (diagnosticKind === "mcp_arguments_too_large" || errorClass === "mcp_arguments_too_large") {
+    return "reduce_mcp_argument_payload";
+  }
+  if (diagnosticKind === "invalid_tool_arguments" || errorClass === "invalid_tool_arguments") {
+    return "fix_mcp_tool_arguments";
+  }
+  if (diagnosticKind === "mcp_rpc_error" || errorClass === "mcp_rpc_error") {
+    return mcpRpcErrorCode(recovery) === "-32602"
+      ? "fix_mcp_tool_arguments"
+      : "inspect_mcp_rpc_error_and_switch_strategy";
+  }
+  if (mcpArgumentPayloadNearBudget(errorData)) {
+    return "reduce_mcp_argument_payload";
+  }
+  if (diagnosticKind === "mcp_tool_result_error" || errorClass === "mcp_tool_result_error") {
+    return "inspect_mcp_tool_result_and_change_arguments";
+  }
+  return action;
 }
 
 function normalizeRecoveryStage(value: unknown): RuntimeToolRecoveryStage | undefined {
@@ -1269,8 +1365,9 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const browserRecoveryPlan = browserEnvironmentRecoveryPlan(recovery);
   const mcpRecoveryPlan = mcpEnvironmentRecoveryPlan(recovery);
   const runtimeRecoveryPlan = runtimeEnvironmentRecoveryPlan(recovery);
+  const effectiveRecommendedNextAction = refineMcpRecoveryNextAction(recovery.recommendedNextAction, recovery);
   const instruction = actionInstruction({
-    action: recovery.recommendedNextAction,
+    action: effectiveRecommendedNextAction,
     recovery,
   });
   const toolName = recovery.toolName ?? "unknown_tool";
@@ -1305,7 +1402,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       ? `Base recovery was stage=${recovery.baseStage} action=${recovery.baseRecommendedNextAction ?? "<none>"} before gateway escalation.`
       : null,
     `Recoverability: ${recoverability}`,
-    `Required next action: ${recovery.recommendedNextAction}`,
+    `Required next action: ${effectiveRecommendedNextAction}`,
     `Execution rule: ${instruction}`,
     environmentFixInstruction,
     `Execution discipline: ${executionDiscipline}`,
@@ -1319,7 +1416,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     errorClass,
     errorMessage,
     errorData,
-    recommendedNextAction: recovery.recommendedNextAction,
+    recommendedNextAction: effectiveRecommendedNextAction,
     recoverable: recovery.recoverable ?? null,
     requiresUserIntervention,
     sameToolErrorCount: recovery.sameToolErrorCount ?? null,

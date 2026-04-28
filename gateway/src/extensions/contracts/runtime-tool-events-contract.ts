@@ -113,6 +113,12 @@ expectEqual(summary.latestRecovery?.recoverable, true, "summary latest recoverab
 const knownRecoveryActions = knownRuntimeToolRecoveryActions();
 expect(knownRecoveryActions.includes("ask_user_for_config_or_switch_provider"), "catalog includes config action");
 expect(knownRecoveryActions.includes("inspect_error_and_switch_strategy"), "catalog includes default fallback action");
+expect(knownRecoveryActions.includes("fix_mcp_tool_arguments"), "catalog includes MCP argument action");
+expect(knownRecoveryActions.includes("reduce_mcp_argument_payload"), "catalog includes MCP payload action");
+expect(
+  knownRecoveryActions.includes("use_allowed_mcp_tool_or_request_policy_change"),
+  "catalog includes MCP policy action",
+);
 expect(!knownRecoveryActions.includes("observe_and_continue" as never), "catalog rejects legacy observe_and_continue");
 for (const action of knownRecoveryActions) {
   expect(
@@ -301,6 +307,15 @@ const mcpStructuredFeedback = buildRuntimeToolRecoveryFeedback({
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
+expectEqual(
+  mcpStructuredFeedback.recommendedNextAction,
+  "use_allowed_mcp_tool_or_request_policy_change",
+  "MCP blocked tool feedback refines action",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("Required next action: use_allowed_mcp_tool_or_request_policy_change"),
+  "MCP blocked tool prompt uses policy-specific action",
+);
 expect(
   mcpStructuredFeedback.promptBlock.includes("server=grok-search"),
   "feedback summarizes MCP server",
@@ -368,6 +383,15 @@ const mcpObservedResultFeedback = buildRuntimeToolRecoveryFeedback({
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
+expectEqual(
+  mcpObservedResultFeedback.recommendedNextAction,
+  "inspect_mcp_tool_result_and_change_arguments",
+  "MCP tool result error feedback refines action",
+);
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("Required next action: inspect_mcp_tool_result_and_change_arguments"),
+  "MCP tool result prompt uses result-specific action",
+);
 expect(
   mcpObservedResultFeedback.promptBlock.includes("diagnostic_kind=mcp_tool_result_error"),
   "feedback summarizes MCP tool result diagnostic kind",
@@ -391,6 +415,111 @@ expect(
 expect(
   mcpObservedResultFeedback.promptBlock.includes("argument_preview=\"{\\\"query\\\":\\\"bad args\\\",\\\"token\\\":\\\"<redacted>\\\"}\""),
   "feedback summarizes bounded MCP argument preview",
+);
+
+const mcpRpcArgumentFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { mcp_call: 1 },
+    failuresByErrorClass: { mcp_rpc_error: 1 },
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "mcp_rpc_error",
+      recommendedNextAction: "inspect_error_and_switch_strategy",
+      toolName: "mcp_call",
+      errorClass: "mcp_rpc_error",
+      errorData: {
+        diagnostic_kind: "mcp_rpc_error",
+        server: "browser-structured",
+        server_key: "browser-structured",
+        tool_name: "browser_execute_js",
+        operation: "tools/call",
+        rpc_error_code: -32602,
+        rpc_error_message: "Invalid params",
+        argument_keys: ["script"],
+        argument_bytes: 36,
+        max_argument_bytes: 65536,
+        argument_preview: "{\"script\":\"return location.href\"}",
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-mcp-rpc-arguments",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expectEqual(
+  mcpRpcArgumentFeedback.recommendedNextAction,
+  "fix_mcp_tool_arguments",
+  "MCP invalid params RPC feedback refines action",
+);
+expect(
+  mcpRpcArgumentFeedback.promptBlock.includes("Required next action: fix_mcp_tool_arguments"),
+  "MCP invalid params prompt uses argument-specific action",
+);
+expect(
+  mcpRpcArgumentFeedback.promptBlock.includes("rpc_error_code=-32602"),
+  "MCP invalid params prompt includes RPC code",
+);
+
+const mcpNearBudgetFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: structuredRecoveryObservedAt,
+    callsTotal: 1,
+    failedTotal: 1,
+    deferredTotal: 0,
+    callsByTool: { mcp_call: 1 },
+    failuresByErrorClass: { mcp_tool_result_error: 1 },
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: {
+      stage: "strategy_switch",
+      reason: "mcp_tool_result_error",
+      recommendedNextAction: "inspect_error_and_switch_strategy",
+      toolName: "mcp_call",
+      errorClass: "mcp_tool_result_error",
+      errorData: {
+        diagnostic_kind: "mcp_tool_result_error",
+        server: "mock",
+        tool_name: "large_payload_tool",
+        operation: "tools/call",
+        is_error: true,
+        result_preview: "payload too large for downstream service",
+        argument_keys: ["document"],
+        argument_bytes: 62000,
+        max_argument_bytes: 65536,
+        argument_preview: "{\"document\":\"<large>\"}",
+      },
+      recoverable: true,
+      observedAt: structuredRecoveryObservedAt,
+    },
+    path: "/tmp/grobot-runtime-tool-events-mcp-near-budget",
+  },
+  nowMs: Date.parse(structuredRecoveryObservedAt),
+});
+expectEqual(
+  mcpNearBudgetFeedback.recommendedNextAction,
+  "reduce_mcp_argument_payload",
+  "MCP near-budget feedback refines action",
+);
+expect(
+  mcpNearBudgetFeedback.promptBlock.includes("Required next action: reduce_mcp_argument_payload"),
+  "MCP near-budget prompt uses payload reduction action",
 );
 
 const mcpEnvironmentObservedAt = "2026-04-25T00:00:30.000Z";

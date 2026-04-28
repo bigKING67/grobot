@@ -294,6 +294,13 @@ parsing succeeds, configuration/gate failures, JSON-RPC errors, transport/protoc
 `isError=true` tool results include `server`, `tool_name`, `argument_keys`, `argument_bytes`,
 `max_argument_bytes`, and a capped/redacted `argument_preview` so the next turn can change a
 concrete variable without re-probing blindly.
+Gateway feedback must refine MCP next-action instructions from those fields. Policy-blocked calls
+use `use_allowed_mcp_tool_or_request_policy_change`; JSON-RPC invalid-params (`rpc_error_code=-32602`)
+or MCP argument-shape failures use `fix_mcp_tool_arguments`; oversized or near-budget payloads use
+`reduce_mcp_argument_payload`; MCP `isError=true` result failures use
+`inspect_mcp_tool_result_and_change_arguments`. These refinements apply only while automatic
+recovery is still allowed; repeated/environment MCP failures that have escalated to `ask_user` keep
+their environment-fix action and must not be downgraded back into another automatic `mcp_call`.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

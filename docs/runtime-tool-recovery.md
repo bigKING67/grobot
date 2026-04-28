@@ -103,6 +103,17 @@ runtime recovery data must include bounded argument diagnostics:
 the preview is capped and secret-like values are masked before reaching the
 gateway prompt hint.
 
+Gateway recovery feedback then specializes the next action from that structured
+MCP data instead of leaving the model with a generic strategy-switch prompt.
+`mcp_tool_blocked` maps to `use_allowed_mcp_tool_or_request_policy_change`;
+`mcp_rpc_error` with JSON-RPC code `-32602` or MCP-side
+`invalid_tool_arguments` maps to `fix_mcp_tool_arguments`; payloads over the
+hard limit or near the reported `max_argument_bytes` map to
+`reduce_mcp_argument_payload`; and `mcp_tool_result_error` maps to
+`inspect_mcp_tool_result_and_change_arguments`. Repeated or non-recoverable
+MCP environment failures still keep the higher-priority ask-user/environment
+escalation rather than being downgraded to argument-level retries.
+
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a
 representative user intent to the expected profile, visible tool set, forbidden
