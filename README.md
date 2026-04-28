@@ -65,7 +65,7 @@
 - 已新增 TS 侧 Agent Loop v2 骨架：`context -> runtime -> verify -> persist`，支持 `shadow_mode` 对比位。
 - 已新增 Rust 侧 `runtime.v1` stdio JSON-RPC 骨架：`runtime.health` 与 `runtime.turn.execute`。
 - 已新增跨层契约文件：`shared/contracts/runtime-v1.json`，作为 Gateway/Runtime 的版本锚点。
-- `npm run check` 已升级为四段门禁：Python target-scope + repository python boundary audit + Node gateway checks + TypeScript compile + Rust check/test。
+- `npm run check` 已升级为默认质量门禁：Python target-scope + repository python boundary audit + layer contract + runtime-tool contract suite + Node gateway checks + TypeScript compile + Rust check/test。
 
 ## 目录分层（源码 vs 配置）
 
