@@ -106,7 +106,15 @@ function runtimeToolDescribeSummary() {
       contract_count: Number.isFinite(report.contract_count) ? report.contract_count : null,
       completed_count: Number.isFinite(report.completed_count) ? report.completed_count : null,
       include_runtime_describe: report.include_runtime_describe === true,
+      diagnostics_self_test: report.diagnostics_self_test === true,
       failed_contract: typeof report.failed_contract === "string" ? report.failed_contract : null,
+      failed_contract_detail: report.failed_contract_detail
+        && typeof report.failed_contract_detail === "object"
+        ? report.failed_contract_detail
+        : null,
+      runtime_binary: report.runtime_binary && typeof report.runtime_binary === "object"
+        ? report.runtime_binary
+        : null,
       runtime_recovery_catalog_rows: Number.isFinite(governancePayload?.runtime_recovery_catalog_rows)
         ? governancePayload.runtime_recovery_catalog_rows
         : null,

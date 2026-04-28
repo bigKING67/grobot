@@ -315,7 +315,11 @@ that monolithic gateway smoke should stay responsible for non-runtime-tool
 gateway coverage. The runtime-tool suite ownership contract must enforce the
 default check order, no duplicate monolithic smoke execution, release describe
 coverage, and CI trigger/toolchain coverage. Run the focused suite during
-runtime-tool iteration; use
+runtime-tool iteration. Runner JSON output must preserve actionable failure
+diagnostics (`failed_contract_detail.suggested_command`, stdout/stderr tails,
+last parseable JSON output), expose a `diagnostics_self_test` status for that
+extraction path, and include describe-mode runtime binary status so CI
+artifacts are replayable. Use
 `npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
 also been built and `runtime.tools.describe` compatibility must be checked,
 especially after Rust recovery catalog, schema budget, or describe-surface
@@ -323,7 +327,8 @@ changes. The release gate must run the same describe compatibility suite before
 packaging so a release cannot ship with Rust/Gateway runtime-tool contract
 drift. The release report must preserve the describe summary under
 `checks.runtime_tool_describe`, including contract counts, failed contract name,
-schema budget violations, and gateway-only recovery action exceptions.
+failure diagnostics, runtime binary status, schema budget violations, and
+gateway-only recovery action exceptions.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.

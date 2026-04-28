@@ -531,6 +531,15 @@ npm run check:gateway:runtime-tools
 npm run check:gateway:runtime-tools:json
 ```
 
+The JSON mode always reports `diagnostics_self_test` so the runner fails before
+contract execution if its own failure-detail extraction regresses. When a
+contract fails, it reports `failed_contract_detail` with the failed path,
+duration, reproduction command, parseable last JSON output, and capped
+stdout/stderr tails. When `--include-runtime-describe` is enabled, the report
+also includes `runtime_binary` with the describe binary path, source, size, and
+modification timestamp, so CI artifacts can distinguish a contract regression
+from stale or missing runtime binaries.
+
 The default suite is gateway-only and does not require a freshly built Rust
 runtime binary. It is part of the repository `npm run check` gate, so recovery
 or tool-surface changes cannot bypass these contracts in the default validation
@@ -590,9 +599,10 @@ tool schema budget, or `runtime.tools.describe` surface changes. The release
 gate (`npm run core:gate:release`) also runs this deep compatibility check so
 release packaging cannot pass with a stale or drifted runtime tool describe
 surface. Its JSON report exposes `checks.runtime_tool_describe` with
-`contract_count`, `completed_count`, `failed_contract`,
-`runtime_schema_budget_violations`, and gateway-only recovery action summaries
-for release evidence. The default `npm run check` already covers the
+`contract_count`, `completed_count`, `diagnostics_self_test`, `failed_contract`,
+`failed_contract_detail`, `runtime_binary`, `runtime_schema_budget_violations`,
+and gateway-only recovery action summaries for release evidence. The default
+`npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 
 Full gate:
