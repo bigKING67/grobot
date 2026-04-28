@@ -313,10 +313,11 @@ gateway-only runtime-tool suite through `npm run check:gateway:runtime-tools`.
 Do not duplicate those focused runtime-tool contracts inside `check:gateway`;
 that monolithic gateway smoke should stay responsible for non-runtime-tool
 gateway coverage. The runtime-tool suite ownership contract must enforce the
-default check order, no duplicate monolithic smoke execution, release describe
-coverage, CI trigger/toolchain coverage, and per-process temporary fixture
-isolation for runtime-tool contracts. Run the focused suite during runtime-tool
-iteration. Runner JSON output must preserve `schema_version: 1`,
+default check order, no duplicate monolithic smoke execution, complete runner
+coverage for every `runtime-tool-*.ts` contract, release describe coverage, CI
+trigger/toolchain coverage, and per-process temporary fixture isolation for
+runtime-tool contracts. Run the focused suite during runtime-tool iteration.
+Runner JSON output must preserve `schema_version: 1`,
 actionable failure diagnostics (`failed_contract_detail.suggested_command`,
 stdout/stderr tails, last parseable JSON output), expose a
 `diagnostics_self_test` status for that extraction path, and include

@@ -134,10 +134,15 @@ expect(
   "runtime-tool surface contract must isolate tmp fixtures per process",
 );
 for (const fileName of runtimeToolContractFiles) {
+  const contractPath = `gateway/src/extensions/contracts/${fileName}`;
+  expect(
+    runtimeToolRunner.includes(contractPath),
+    `runtime-tool runner must include ${contractPath}`,
+  );
   if (fileName === "runtime-tool-suite-ownership-contract.ts") {
     continue;
   }
-  const source = readRepoFile(`gateway/src/extensions/contracts/${fileName}`);
+  const source = readRepoFile(contractPath);
   expect(
     !source.includes("join(\"/tmp\"") && !source.includes("\"/tmp/grobot"),
     `${fileName} must not use fixed /tmp grobot fixtures`,
@@ -210,6 +215,7 @@ process.stdout.write(JSON.stringify({
   runner_diagnostic_summary: true,
   surface_contract_tmp_isolated: true,
   all_contract_tmp_fixtures_isolated: true,
+  runner_covers_all_runtime_tool_contracts: true,
   runner_schema_regression_script: true,
   release_report_regression_script: true,
   release_report_regression_workflow: true,

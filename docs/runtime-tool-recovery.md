@@ -570,8 +570,9 @@ or tool-surface changes cannot bypass these contracts in the default validation
 path. `check:gateway` intentionally does not repeat these focused contracts;
 `check:gateway:runtime-tools` is the single gateway-only owner for runtime-tool
 surface/recovery assertions. The ownership contract also prevents the suite
-from drifting out of the default check, release gate, CI workflow coverage, or
-per-process temporary fixture isolation.
+from drifting out of the default check, release gate, CI workflow coverage,
+runner coverage for every `runtime-tool-*.ts` contract, or per-process
+temporary fixture isolation.
 It runs:
 
 ```bash
