@@ -29,6 +29,7 @@ import {
   buildRuntimeToolSurfaceAdaptationGuardPrompt,
   readRuntimeToolSurfaceAdaptationState,
   recordRuntimeToolNonRecoverableInterventionPrompt,
+  recordRuntimeToolSuccessfulRecoveryConsumption,
   recordRuntimeToolSurfaceAdaptationOutcome,
   recordRuntimeToolSurfaceRecoveryConsumption,
 } from "../../tools/runtime/tool-surface-adaptation-state";
@@ -1078,6 +1079,61 @@ try {
   expectEqual(consumedRecoveredFeedback.consumed, true, "recovered consumption marks feedback consumed");
   expectEqual(consumedRecoveredFeedback.consumedReason, "recovered_signal_consumed", "recovered feedback consumed reason");
 
+  const successfulConsumptionWorkDir = join(adaptationWorkDir, "successful-tool-consumption");
+  mkdirSync(successfulConsumptionWorkDir, { recursive: true });
+  const successfulRecoveryFeedback = activeRecoveryFeedback({
+    toolName: "read",
+    errorClass: "path_not_found",
+    stage: "local_fix",
+    observedAt: "2026-04-25T00:00:10.000Z",
+  });
+  const successfulConsumption = recordRuntimeToolSuccessfulRecoveryConsumption({
+    workDir: successfulConsumptionWorkDir,
+    recoveryFeedback: successfulRecoveryFeedback,
+    events: [
+      event("tool_end", {
+        tool_name: "read",
+        status: "ok",
+      }),
+    ],
+    verificationPass: true,
+    traceId: "trace_successful_recovery",
+    nowIso: "2026-04-25T00:00:11.000Z",
+  });
+  expectEqual(successfulConsumption.recorded, true, "successful tool call consumption recorded");
+  expectEqual(
+    successfulConsumption.record?.reason,
+    "successful_tool_call_consumed",
+    "successful consumption reason",
+  );
+  const consumedSuccessfulFeedback = applyRuntimeToolRecoveryConsumption({
+    feedback: successfulRecoveryFeedback,
+    snapshot: successfulConsumption.snapshot,
+  });
+  expectEqual(consumedSuccessfulFeedback.active, false, "successful tool call suppresses stale recovery feedback");
+  expectEqual(consumedSuccessfulFeedback.consumed, true, "successful tool call marks feedback consumed");
+  expectEqual(
+    consumedSuccessfulFeedback.consumedReason,
+    "successful_tool_call_consumed",
+    "successful tool call consumed reason",
+  );
+  const failedVerificationConsumption = recordRuntimeToolSuccessfulRecoveryConsumption({
+    workDir: successfulConsumptionWorkDir,
+    recoveryFeedback: {
+      ...successfulRecoveryFeedback,
+      observedAt: "2026-04-25T00:00:12.000Z",
+    },
+    events: [
+      event("tool_end", {
+        tool_name: "read",
+        status: "ok",
+      }),
+    ],
+    verificationPass: false,
+    nowIso: "2026-04-25T00:00:13.000Z",
+  });
+  expectEqual(failedVerificationConsumption.recorded, false, "failed verification does not consume recovery");
+
   const newerRecoveredFeedback = applyRuntimeToolRecoveryConsumption({
     feedback: {
       ...activeRecoveryFeedback({
@@ -1303,6 +1359,7 @@ process.stdout.write(JSON.stringify({
   nonrecoverable_intervention_consumed: true,
   newer_nonrecoverable_intervention_remains_active: true,
   adaptation_guard_recovered_signal_consumed: true,
+  successful_tool_call_consumed: true,
   recovery_feedback_consumed_at_source: true,
   newer_recovery_bypasses_consumed_guard: true,
   adaptation_guard_prompt_suppresses_recovery_hint: true,

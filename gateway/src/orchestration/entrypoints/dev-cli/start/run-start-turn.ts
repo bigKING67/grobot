@@ -94,6 +94,7 @@ import { formatRuntimeToolRecoveryGateFields } from "../../../../tools/runtime/t
 import {
   applyRuntimeToolSurfaceAdaptationGuard,
   readRuntimeToolSurfaceAdaptationState,
+  recordRuntimeToolSuccessfulRecoveryConsumption,
   recordRuntimeToolSurfaceAdaptationOutcome,
 } from "../../../../tools/runtime/tool-surface-adaptation-state";
 import { applyRuntimeToolRecoveryPromptFlow } from "../../../../tools/runtime/recovery-prompt-flow";
@@ -3124,6 +3125,21 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           recoveryObservedAt: runtimeToolRecoveryFeedback.observedAt,
           writeStderr: input.writeStderr,
         });
+        if (!runtimeToolContextForTurn.adaptation.active && !runtimeToolContextForTurn.guard.active) {
+          const successfulRecoveryConsumption = recordRuntimeToolSuccessfulRecoveryConsumption({
+            workDir: input.workDir,
+            recoveryFeedback: runtimeToolRecoveryFeedback,
+            events: report.events,
+            verificationPass: report.verification.pass,
+            traceId: report.traceId,
+            nowIso: nowIso(),
+          });
+          if (successfulRecoveryConsumption.recorded) {
+            input.writeStderr(
+              `[tool-recovery] event=successful_tool_call_consumed action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} consumed_at=${successfulRecoveryConsumption.record?.consumedAt ?? "<none>"}\n`,
+            );
+          }
+        }
         if (runtimeAskUser) {
           const askUserEnvelopes = toAskUserEnvelopes(runtimeAskUser);
           for (const askUserEnvelope of askUserEnvelopes) {

@@ -301,6 +301,11 @@ or MCP argument-shape failures use `fix_mcp_tool_arguments`; oversized or near-b
 `inspect_mcp_tool_result_and_change_arguments`. These refinements apply only while automatic
 recovery is still allowed; repeated/environment MCP failures that have escalated to `ask_user` keep
 their environment-fix action and must not be downgraded back into another automatic `mcp_call`.
+Runtime recovery hints are one-shot signals. If a later turn completes a matching tool call with no
+failed/deferred tool events and no new `tool_recovery`, gateway records
+`successful_tool_call_consumed`, clears matching repeat pressure, and suppresses the stale prompt
+hint. This prevents a fixed argument/path/policy issue from continuing to steer independent later
+turns.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

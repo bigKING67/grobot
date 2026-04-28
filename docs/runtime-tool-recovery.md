@@ -189,6 +189,8 @@ Repeat pressure is also cleared when the matching recovery is consumed:
 
 - a recovery-driven adaptation completes successfully
   (`recovered_signal_consumed`)
+- a later turn successfully completes a matching tool call without new failed,
+  deferred, or recovery events (`successful_tool_call_consumed`)
 - a guard consumes the active recovery hint
   (`repeated_profile_failure` / `profile_oscillation`)
 - a nonrecoverable recovery is shown once for human intervention
@@ -298,6 +300,8 @@ start-turn code.
 Recovery hints are one-shot per observed recovery key:
 
 - `recovered_signal_consumed`: a previous adaptation recovered successfully.
+- `successful_tool_call_consumed`: a later tool batch completed successfully
+  after the hint, so the stale hint must not be injected again.
 - `repeated_profile_failure`: guard blocked a repeated failed adaptation.
 - `profile_oscillation`: guard blocked an A/B/A/B profile loop.
 - `nonrecoverable_intervention_prompted`: a nonrecoverable hint was injected

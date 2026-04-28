@@ -16,6 +16,7 @@ import {
 export type RuntimeToolSurfaceAdaptationOutcome = "recovered" | "failed" | "unknown";
 export type RuntimeToolRecoveryConsumptionReason =
   | "recovered_signal_consumed"
+  | "successful_tool_call_consumed"
   | "repeated_profile_failure"
   | "profile_oscillation"
   | "nonrecoverable_intervention_prompted";
@@ -181,6 +182,7 @@ function normalizeOutcome(value: unknown): RuntimeToolSurfaceAdaptationOutcome {
 
 function normalizeConsumptionReason(value: unknown): RuntimeToolRecoveryConsumptionReason | undefined {
   return value === "recovered_signal_consumed"
+    || value === "successful_tool_call_consumed"
     || value === "repeated_profile_failure"
     || value === "profile_oscillation"
     || value === "nonrecoverable_intervention_prompted"
@@ -389,6 +391,7 @@ function parseIsoMs(value: string | null | undefined): number | undefined {
 
 function toConsumptionReason(reason: string): RuntimeToolRecoveryConsumptionReason | undefined {
   return reason === "recovered_signal_consumed"
+    || reason === "successful_tool_call_consumed"
     || reason === "repeated_profile_failure"
     || reason === "profile_oscillation"
     || reason === "nonrecoverable_intervention_prompted"
@@ -578,6 +581,117 @@ export function recordRuntimeToolNonRecoverableInterventionPrompt(input: {
   const record: RuntimeToolRecoveryConsumptionRecord = {
     id: `tsc_${Date.now().toString(36)}_${state.recentRecoveryConsumptions.length.toString(36)}`,
     reason: "nonrecoverable_intervention_prompted",
+    recoveryStage: input.recoveryFeedback.stage,
+    recoveryToolName: input.recoveryFeedback.toolName,
+    recoveryErrorClass: input.recoveryFeedback.errorClass,
+    recoveryObservedAt: input.recoveryFeedback.observedAt ?? null,
+    consumedAt: nowIso,
+    traceId: input.traceId ?? null,
+  };
+  const recorded = appendRecoveryConsumption(state, record);
+  if (!recorded) {
+    return {
+      recorded: false,
+      record: null,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  state.updatedAt = nowIso;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  clearRuntimeToolRecoveryRepeatPressure({
+    workDir: input.workDir,
+    toolName: input.recoveryFeedback.toolName,
+    errorClass: input.recoveryFeedback.errorClass,
+    nowIso,
+  });
+  return {
+    recorded: true,
+    record,
+    snapshot: toSnapshot(path, state),
+  };
+}
+
+function payloadString(payload: Record<string, unknown>, key: string): string | undefined {
+  return normalizeString(payload[key]);
+}
+
+function successfulToolNames(events: readonly RuntimeEvent[]): string[] {
+  return events
+    .filter((event) => event.eventType === "tool_end")
+    .map((event) => {
+      const status = payloadString(event.payload, "status");
+      if (status !== "ok") {
+        return "";
+      }
+      return payloadString(event.payload, "tool_name") ?? "";
+    })
+    .filter((toolName) => toolName.length > 0);
+}
+
+function shouldConsumeRecoveryAfterSuccessfulTools(input: {
+  recoveryFeedback: RuntimeToolRecoveryFeedback;
+  events: readonly RuntimeEvent[];
+  verificationPass?: boolean;
+}): boolean {
+  if (
+    !input.recoveryFeedback.active
+    || input.recoveryFeedback.consumed
+    || input.recoveryFeedback.requiresUserIntervention
+    || input.recoveryFeedback.recoverable === false
+  ) {
+    return false;
+  }
+  if (typeof parseIsoMs(input.recoveryFeedback.observedAt) !== "number") {
+    return false;
+  }
+  if (input.verificationPass === false) {
+    return false;
+  }
+  const summary = summarizeRuntimeToolEvents(input.events);
+  if (
+    summary.callsTotal === 0
+    || summary.failedTotal > 0
+    || summary.deferredTotal > 0
+    || summary.latestRecovery
+  ) {
+    return false;
+  }
+  const okTools = successfulToolNames(input.events);
+  if (okTools.length === 0) {
+    return false;
+  }
+  const recoveryToolName = input.recoveryFeedback.toolName?.trim() ?? "";
+  if (!recoveryToolName || recoveryToolName === "unknown_tool") {
+    return true;
+  }
+  if (okTools.includes(recoveryToolName)) {
+    return true;
+  }
+  return input.recoveryFeedback.stage === "strategy_switch";
+}
+
+export function recordRuntimeToolSuccessfulRecoveryConsumption(input: {
+  workDir: string;
+  recoveryFeedback: RuntimeToolRecoveryFeedback;
+  events: readonly RuntimeEvent[];
+  verificationPass?: boolean;
+  traceId?: string;
+  nowIso?: string;
+}): RuntimeToolRecoveryConsumptionWrite {
+  const path = adaptationStatePathForWorkDir(input.workDir);
+  const state = readState(path);
+  if (!shouldConsumeRecoveryAfterSuccessfulTools(input)) {
+    return {
+      recorded: false,
+      record: null,
+      snapshot: toSnapshot(path, state),
+    };
+  }
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const record: RuntimeToolRecoveryConsumptionRecord = {
+    id: `tsc_${Date.now().toString(36)}_${state.recentRecoveryConsumptions.length.toString(36)}`,
+    reason: "successful_tool_call_consumed",
     recoveryStage: input.recoveryFeedback.stage,
     recoveryToolName: input.recoveryFeedback.toolName,
     recoveryErrorClass: input.recoveryFeedback.errorClass,
@@ -874,6 +988,8 @@ export function buildRuntimeToolSurfaceAdaptationGuardPrompt(input: {
     switch (input.guard.reason) {
       case "recovered_signal_consumed":
         return "The previous recovery signal already produced a recovered adaptation. Treat that signal as consumed; do not switch tool profiles solely because of it.";
+      case "successful_tool_call_consumed":
+        return "The previous recovery signal already produced a successful tool call. Treat that signal as consumed; do not repeat stale recovery instructions solely because of it.";
       case "repeated_profile_failure":
         return "The same tool-surface adaptation has failed repeatedly. Do not retry the same surface switch unchanged; use the currently visible tools, reduce scope, or ask the user.";
       case "profile_oscillation":
