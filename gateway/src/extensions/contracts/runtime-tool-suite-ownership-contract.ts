@@ -180,9 +180,10 @@ expect(
 );
 expect(
   startSmokeContract.includes("status_has_runtime_tools_quality")
+    && startSmokeContract.includes("quality_failure_has_runtime_health_failed")
     && gatewaySmoke.includes("status_has_runtime_tools_quality")
     && gatewaySmoke.includes("status_runtime_tool_quality_status"),
-  "gateway status smoke must assert runtime tool quality summary",
+  "gateway status smoke must assert runtime tool quality summary and failure states",
 );
 expect(
   corePackagingWorkflow.includes("check:gateway:runtime-tools:release-report"),

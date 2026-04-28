@@ -8457,11 +8457,22 @@ async function runTsRustExecutionSmoke() {
     runtimeDescribeUnavailableResult.stdout,
   );
   assert.equal(runtimeDescribeUnavailablePayload.exit_code, 0);
+  assert.equal(runtimeDescribeUnavailablePayload.json_exit_code, 0);
+  assert.equal(runtimeDescribeUnavailablePayload.status_json_parse_ok, true);
   assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_projection, true);
   assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_suppressed_none, false);
   assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_drift_args_none, true);
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_suppressed_args, false);
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_describe_reason, true);
+  assert.equal(runtimeDescribeUnavailablePayload.quality_status, "fail");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_runtime_binary_exists, false);
+  assert.equal(runtimeDescribeUnavailablePayload.quality_runtime_health_ok, false);
+  assert.equal(runtimeDescribeUnavailablePayload.quality_runtime_describe_source, "start-default");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_schema_budget_status, "passed");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_failure_has_runtime_binary_missing, true);
+  assert.equal(runtimeDescribeUnavailablePayload.quality_failure_has_runtime_health_failed, true);
+  assert.equal(runtimeDescribeUnavailablePayload.quality_warning_has_describe_fallback, true);
+  assert.equal(runtimeDescribeUnavailablePayload.text_has_quality_fail, true);
   logStep("start-smoke-contract status-runtime-describe-unavailable");
 
   const startRuntimeDescribeFallbackDiagnosticResult = runContract(
@@ -8491,9 +8502,19 @@ async function runTsRustExecutionSmoke() {
     runtimeDescribeInvalidSchemaStatusResult.stdout,
   );
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.exit_code, 0);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.json_exit_code, 0);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.status_json_parse_ok, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_gateway_fallback_projection, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_start_default_source, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.has_invalid_schema_reason, true);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_status, "fail");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_runtime_binary_exists, true);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_runtime_health_ok, false);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_runtime_describe_source, "start-default");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_schema_budget_status, "passed");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_failure_has_runtime_health_failed, true);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_warning_has_describe_fallback, true);
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.text_has_quality_fail, true);
   logStep("start-smoke-contract status-runtime-describe-invalid-schema-profiles");
 
   const runtimeDescribeInvalidSchemaStartResult = runContract(

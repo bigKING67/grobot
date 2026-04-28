@@ -626,6 +626,10 @@ This runtime summary is intentionally lightweight: it does not execute the
 release contract runner, but it does combine runtime binary health, describe
 source, schema-projection drift, schema-budget validation, recovery health, and
 recovery-gate blockers into a single `ok` / `warn` / `fail` status.
+The fallback smokes for missing and invalid `runtime.tools.describe` binaries
+must assert `runtime_tools_quality.status=fail`, the concrete failure reasons,
+and the text `runtime_tool_quality:` line so degraded runtime states cannot
+silently appear healthy.
 
 The timeline contract also covers a full recovery loop: once all historical
 recoveries are consumed, health returns to `good`, readiness returns to

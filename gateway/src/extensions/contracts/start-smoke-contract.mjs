@@ -5951,28 +5951,55 @@ function runStatusRuntimeDescribeUnavailable(repoRoot) {
   const workDir = createTempDir("grobot-status-runtime-describe-unavailable-work");
   writeExecutionProjectToml(workDir);
   const missingRuntimePath = "/tmp/grobot-missing-runtime";
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
   const result = runCommand(
     repoRoot,
-    [
-      "./grobot",
-      "status",
-      "--work-dir",
-      workDir,
-      "--gateway-impl",
-      "ts",
-      "--runtime-impl",
-      "rust",
-    ],
+    statusArgs,
     { GROBOT_RUNTIME_BIN: missingRuntimePath },
   );
+  const jsonResult = runCommand(
+    repoRoot,
+    [...statusArgs, "--json"],
+    { GROBOT_RUNTIME_BIN: missingRuntimePath },
+  );
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeToolsQuality = isObject(parsedStatus?.runtime_tools_quality)
+    ? parsedStatus.runtime_tools_quality
+    : null;
+  const failureReasons = Array.isArray(runtimeToolsQuality?.failure_reasons)
+    ? runtimeToolsQuality.failure_reasons
+    : [];
+  const warningReasons = Array.isArray(runtimeToolsQuality?.warning_reasons)
+    ? runtimeToolsQuality.warning_reasons
+    : [];
   return {
     ...result,
+    json_exit_code: jsonResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
     missing_runtime_path: missingRuntimePath,
     has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
     has_gateway_fallback_suppressed_none: result.stdout.includes("runtime_tool_schema_suppressed_args: <none>"),
     has_gateway_fallback_drift_args_none: result.stdout.includes("runtime_tool_schema_projection_drift_args: <none>"),
     has_unavailable_suppressed_args: result.stdout.includes("runtime_tool_schema_suppressed_args: <unavailable"),
     has_unavailable_describe_reason: result.stdout.includes("runtime_tools_describe_unavailable:spawn_failed"),
+    quality_status: runtimeToolsQuality?.status ?? null,
+    quality_runtime_binary_exists: runtimeToolsQuality?.runtime_binary_exists ?? null,
+    quality_runtime_health_ok: runtimeToolsQuality?.runtime_health_ok ?? null,
+    quality_runtime_describe_source: runtimeToolsQuality?.runtime_describe_source ?? null,
+    quality_schema_budget_status: runtimeToolsQuality?.schema_budget_status ?? null,
+    quality_failure_has_runtime_binary_missing: failureReasons.includes("runtime_binary_missing"),
+    quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
+    quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
+    text_has_quality_fail: result.stdout.includes("runtime_tool_quality: status=fail"),
   };
 }
 
@@ -6029,28 +6056,54 @@ function runStatusRuntimeDescribeInvalidSchemaProfiles(repoRoot) {
   const workDir = createTempDir("grobot-status-runtime-describe-invalid-schema-work");
   writeExecutionProjectToml(workDir);
   const fakeRuntimePath = writeFakeRuntimeToolsDescribe(buildInvalidSchemaProfileToolsDescribePayload());
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
   const result = runCommand(
     repoRoot,
-    [
-      "./grobot",
-      "status",
-      "--work-dir",
-      workDir,
-      "--gateway-impl",
-      "ts",
-      "--runtime-impl",
-      "rust",
-    ],
+    statusArgs,
     { GROBOT_RUNTIME_BIN: fakeRuntimePath },
   );
+  const jsonResult = runCommand(
+    repoRoot,
+    [...statusArgs, "--json"],
+    { GROBOT_RUNTIME_BIN: fakeRuntimePath },
+  );
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeToolsQuality = isObject(parsedStatus?.runtime_tools_quality)
+    ? parsedStatus.runtime_tools_quality
+    : null;
+  const failureReasons = Array.isArray(runtimeToolsQuality?.failure_reasons)
+    ? runtimeToolsQuality.failure_reasons
+    : [];
+  const warningReasons = Array.isArray(runtimeToolsQuality?.warning_reasons)
+    ? runtimeToolsQuality.warning_reasons
+    : [];
   return {
     ...result,
+    json_exit_code: jsonResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
     fake_runtime_path: fakeRuntimePath,
     has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
     has_start_default_source: result.stdout.includes("runtime_tool_enabled_tools_source: start-default"),
     has_invalid_schema_reason: result.stdout.includes(
       "runtime_tools_describe_invalid_schema_profiles:schema_profiles_invalid_rows:1",
     ),
+    quality_status: runtimeToolsQuality?.status ?? null,
+    quality_runtime_binary_exists: runtimeToolsQuality?.runtime_binary_exists ?? null,
+    quality_runtime_health_ok: runtimeToolsQuality?.runtime_health_ok ?? null,
+    quality_runtime_describe_source: runtimeToolsQuality?.runtime_describe_source ?? null,
+    quality_schema_budget_status: runtimeToolsQuality?.schema_budget_status ?? null,
+    quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
+    quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
+    text_has_quality_fail: result.stdout.includes("runtime_tool_quality: status=fail"),
   };
 }
 

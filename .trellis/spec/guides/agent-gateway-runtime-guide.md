@@ -364,6 +364,9 @@ If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`
 terminate without a machine-readable report.
+Status smokes for missing or invalid runtime describe binaries must assert the
+runtime `runtime_tools_quality` failure status, failure reasons, describe
+fallback warning, and text `runtime_tool_quality:` line.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.
