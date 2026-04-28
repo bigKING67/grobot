@@ -399,6 +399,7 @@ mod tests {
         grobot_dir: &Path,
         backend_payload: &Value,
         mcp_is_error: bool,
+        mcp_rpc_error: bool,
     ) {
         let server_script = fake_browser_structured_mcp_server_path();
         let backend_json =
@@ -412,11 +413,12 @@ name = \"browser-structured\"
 command = \"node\"
 args = [{}]
 enabled = true
-env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ERROR = {} }}
+env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ERROR = {}, GROBOT_FAKE_BROWSER_MCP_RPC_ERROR = {} }}
 ",
                 toml_basic_string(&server_script.to_string_lossy()),
                 toml_basic_string(&backend_json),
-                toml_basic_string(if mcp_is_error { "1" } else { "0" })
+                toml_basic_string(if mcp_is_error { "1" } else { "0" }),
+                toml_basic_string(if mcp_rpc_error { "1" } else { "0" })
             ),
         )
         .expect("write browser MCP registry");
@@ -1360,7 +1362,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 }
             ]
         });
-        write_fake_browser_mcp_registry(&grobot_dir, &backend_payload, false);
+        write_fake_browser_mcp_registry(&grobot_dir, &backend_payload, false, false);
 
         clear_mcp_runtime_state("browser-structured");
         let mut context = browser_test_context("browser", false);
@@ -1422,7 +1424,7 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             "transport": "tmwd_ws",
             "title": "fixture"
         });
-        write_fake_browser_mcp_registry(&grobot_dir, &backend_payload, true);
+        write_fake_browser_mcp_registry(&grobot_dir, &backend_payload, true, false);
 
         clear_mcp_runtime_state("browser-structured");
         let mut context = browser_test_context("browser", false);
@@ -2794,7 +2796,10 @@ allow_tools = ["allowed_tool"]
         let args = json_object_args(json!({
             "server": "mock-blocked",
             "tool": "blocked_tool",
-            "arguments": {}
+            "arguments": {
+                "query": "blocked",
+                "token": "sk-abcdefgh1234567890"
+            }
         }));
         let error = run_mcp_call(&context, &args).expect_err("blocked MCP tool should fail before spawn");
         assert_eq!(error.error_class, "mcp_tool_blocked");
@@ -2804,9 +2809,150 @@ allow_tools = ["allowed_tool"]
         assert_eq!(data["tool_name"].as_str(), Some("blocked_tool"));
         assert_eq!(data["operation"].as_str(), Some("policy_check"));
         assert_eq!(data["allow_tools"].as_array().map(|items| items.len()), Some(1));
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["query", "token"])
+        );
+        assert!(
+            data["argument_preview"]
+                .as_str()
+                .is_some_and(|preview| preview.contains("<redacted>"))
+        );
 
         let mut store = lock_runtime_store().expect("lock runtime store");
         store.states.remove("mock-blocked");
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn run_mcp_call_missing_server_keeps_argument_metadata() {
+        let workspace = make_temp_workspace("mcp-call-missing-server-arguments");
+        let missing_server = format!("missing-server-{}", process::id());
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": missing_server,
+            "tool": "echo",
+            "arguments": {
+                "payload": "hello"
+            }
+        }));
+        let error = run_mcp_call(&context, &args).expect_err("missing MCP server should fail");
+        assert_eq!(error.error_class, "mcp_server_not_found");
+        let data = error
+            .data
+            .as_ref()
+            .expect("missing server should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_server_not_found"));
+        assert_eq!(data["server"].as_str(), Some(missing_server.as_str()));
+        assert_eq!(data["tool_name"].as_str(), Some("echo"));
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["payload"])
+        );
+        assert!(
+            data["argument_bytes"]
+                .as_u64()
+                .is_some_and(|value| value > 0)
+        );
+        assert!(
+            data["argument_preview"]
+                .as_str()
+                .is_some_and(|preview| preview.contains("hello"))
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn run_mcp_call_server_busy_keeps_argument_metadata() {
+        let root = make_temp_workspace("mcp-call-busy-arguments");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        fs::write(
+            grobot_dir.join("mcp.toml"),
+            r#"
+[[servers]]
+name = "mock-busy"
+command = "sh"
+enabled = true
+"#,
+        )
+        .expect("write mcp registry");
+        fs::write(
+            grobot_dir.join("project.toml"),
+            r#"
+[tools.mcp]
+max_concurrency_per_server = 1
+max_queue_per_server = 0
+"#,
+        )
+        .expect("write mcp policy");
+
+        let server_key = "mock-busy";
+        {
+            let mut store = lock_runtime_store().expect("lock runtime store");
+            store.states.remove(server_key);
+            let state = store.states.entry(server_key.to_string()).or_default();
+            state.in_flight = 1;
+        }
+
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": "mock-busy",
+            "tool": "echo",
+            "arguments": {
+                "payload": "wait"
+            }
+        }));
+        let error = run_mcp_call(&context, &args).expect_err("busy MCP server should fail before spawn");
+        assert_eq!(error.error_class, "mcp_server_busy");
+        let data = error
+            .data
+            .as_ref()
+            .expect("busy server should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_server_busy"));
+        assert_eq!(data["server"].as_str(), Some("mock-busy"));
+        assert_eq!(data["tool_name"].as_str(), Some("echo"));
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["payload"])
+        );
+        assert_eq!(data["max_queue_per_server"].as_u64(), Some(0));
+
+        let mut store = lock_runtime_store().expect("lock runtime store");
+        store.states.remove(server_key);
         fs::remove_dir_all(&root).expect("cleanup temp workspace");
     }
 
@@ -2901,6 +3047,7 @@ allow_tools = ["allowed_tool"]
             &grobot_dir,
             &json!({ "reason": "bad args", "retryable": false }),
             true,
+            false,
         );
 
         clear_mcp_runtime_state("browser-structured");
@@ -2951,6 +3098,72 @@ allow_tools = ["allowed_tool"]
             .as_str()
             .expect("argument preview should be included");
         assert!(argument_preview.contains("return document.title"));
+        assert!(argument_preview.contains("<redacted>"));
+        assert!(
+            !argument_preview.contains("sk-abcdefgh1234567890"),
+            "argument preview must not expose secret-like values, got: {argument_preview}"
+        );
+
+        clear_mcp_runtime_state("browser-structured");
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn run_mcp_call_rpc_error_includes_bounded_argument_metadata() {
+        let _browser_mcp_guard = BROWSER_MCP_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("lock browser MCP fixture");
+        let root = make_temp_workspace("mcp-call-rpc-error-argument-metadata");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        write_fake_browser_mcp_registry(&grobot_dir, &json!({ "status": "ok" }), false, true);
+
+        clear_mcp_runtime_state("browser-structured");
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": "browser-structured",
+            "tool": "browser_execute_js",
+            "arguments": {
+                "script": "return location.href",
+                "token": "sk-abcdefgh1234567890"
+            }
+        }));
+        let error = run_mcp_call(&context, &args).expect_err("MCP RPC error should fail");
+        assert_eq!(error.error_class, "mcp_rpc_error");
+        let data = error
+            .data
+            .as_ref()
+            .expect("rpc error should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_rpc_error"));
+        assert_eq!(data["operation"].as_str(), Some("read_response"));
+        assert_eq!(data["reason"].as_str(), Some("json_rpc_error"));
+        assert_eq!(data["rpc_error_code"].as_i64(), Some(-32602));
+        assert_eq!(data["server"].as_str(), Some("browser-structured"));
+        assert_eq!(data["tool_name"].as_str(), Some("browser_execute_js"));
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["script", "token"])
+        );
+        let argument_preview = data["argument_preview"]
+            .as_str()
+            .expect("argument preview should be included");
+        assert!(argument_preview.contains("return location.href"));
         assert!(argument_preview.contains("<redacted>"));
         assert!(
             !argument_preview.contains("sk-abcdefgh1234567890"),

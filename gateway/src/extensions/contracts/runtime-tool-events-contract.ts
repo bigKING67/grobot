@@ -286,6 +286,10 @@ const mcpStructuredFeedback = buildRuntimeToolRecoveryFeedback({
         tool_name: "web_search",
         operation: "policy_check",
         allow_tools: ["get_sources"],
+        argument_keys: ["query"],
+        argument_bytes: 20,
+        max_argument_bytes: 65536,
+        argument_preview: "{\"query\":\"weather\"}",
         ready: true,
         ready_reason: "ok",
         recovery_hint: "use an allowed MCP tool or request policy change",
@@ -308,6 +312,18 @@ expect(
 expect(
   mcpStructuredFeedback.promptBlock.includes("allow_tools=[\"get_sources\"]"),
   "feedback summarizes MCP allow_tools",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("argument_keys=[\"query\"]"),
+  "feedback summarizes blocked MCP argument keys",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("argument_bytes=20"),
+  "feedback summarizes blocked MCP argument bytes",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("argument_preview=\"{\\\"query\\\":\\\"weather\\\"}\""),
+  "feedback summarizes blocked MCP argument preview",
 );
 
 const mcpObservedResultFeedback = buildRuntimeToolRecoveryFeedback({

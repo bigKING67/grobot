@@ -165,6 +165,51 @@ fn mcp_call_argument_preview(arguments: &Map<String, Value>) -> String {
     redact_tool_preview_secrets(&preview)
 }
 
+fn insert_mcp_call_argument_metadata(
+    data: &mut Map<String, Value>,
+    arguments: &Map<String, Value>,
+) {
+    if !data.contains_key("argument_keys") {
+        data.insert(
+            "argument_keys".to_string(),
+            json!(mcp_call_argument_keys(arguments)),
+        );
+    }
+    if !data.contains_key("argument_bytes") {
+        data.insert(
+            "argument_bytes".to_string(),
+            json!(mcp_call_argument_bytes(arguments)),
+        );
+    }
+    if !data.contains_key("max_argument_bytes") {
+        data.insert(
+            "max_argument_bytes".to_string(),
+            json!(MAX_MCP_CALL_ARGUMENT_BYTES),
+        );
+    }
+    if !data.contains_key("argument_preview") {
+        data.insert(
+            "argument_preview".to_string(),
+            json!(mcp_call_argument_preview(arguments)),
+        );
+    }
+}
+
+fn insert_mcp_unresolved_call_context(
+    data: &mut Map<String, Value>,
+    server_name: &str,
+    tool_name: &str,
+    arguments: &Map<String, Value>,
+) {
+    if !data.contains_key("server") {
+        data.insert("server".to_string(), json!(server_name));
+    }
+    if !data.contains_key("tool_name") {
+        data.insert("tool_name".to_string(), json!(tool_name));
+    }
+    insert_mcp_call_argument_metadata(data, arguments);
+}
+
 fn insert_mcp_call_context(
     data: &mut Map<String, Value>,
     server: &McpServerResolved,
@@ -195,30 +240,7 @@ fn insert_mcp_call_context(
     if !data.contains_key("tool_name") {
         data.insert("tool_name".to_string(), json!(tool_name));
     }
-    if !data.contains_key("argument_keys") {
-        data.insert(
-            "argument_keys".to_string(),
-            json!(mcp_call_argument_keys(arguments)),
-        );
-    }
-    if !data.contains_key("argument_bytes") {
-        data.insert(
-            "argument_bytes".to_string(),
-            json!(mcp_call_argument_bytes(arguments)),
-        );
-    }
-    if !data.contains_key("max_argument_bytes") {
-        data.insert(
-            "max_argument_bytes".to_string(),
-            json!(MAX_MCP_CALL_ARGUMENT_BYTES),
-        );
-    }
-    if !data.contains_key("argument_preview") {
-        data.insert(
-            "argument_preview".to_string(),
-            json!(mcp_call_argument_preview(arguments)),
-        );
-    }
+    insert_mcp_call_argument_metadata(data, arguments);
 }
 
 fn enrich_mcp_call_error_context(
@@ -838,12 +860,19 @@ fn run_mcp_call(
                     "inspect mcp_servers and choose a configured server",
                 );
                 data.insert("server".to_string(), json!(server_name));
+                data.insert("tool_name".to_string(), json!(tool_name.as_str()));
                 data.insert("available_servers".to_string(), json!(available_servers));
+                insert_mcp_unresolved_call_context(
+                    &mut data,
+                    &server_name,
+                    &tool_name,
+                    &call_arguments,
+                );
                 Value::Object(data)
             })
         })?;
     if !server.enabled {
-        return Err(ToolExecutionError::new(
+        let error = ToolExecutionError::new(
             "mcp_server_unready",
             format!("MCP server `{}` is disabled", server.name),
         )
@@ -854,10 +883,16 @@ fn run_mcp_call(
             "resolve_server",
             "server_disabled",
             "enable the MCP server or choose a different configured server/tool",
-        )));
+        ));
+        return Err(enrich_mcp_call_error_context(
+            error,
+            server,
+            &tool_name,
+            &call_arguments,
+        ));
     }
     if !server.ready {
-        return Err(ToolExecutionError::new(
+        let error = ToolExecutionError::new(
             "mcp_server_unready",
             format!(
                 "MCP server `{}` is unready: {}",
@@ -871,7 +906,13 @@ fn run_mcp_call(
             "resolve_server",
             "server_unready",
             "fix MCP server command/readiness before retrying",
-        )));
+        ));
+        return Err(enrich_mcp_call_error_context(
+            error,
+            server,
+            &tool_name,
+            &call_arguments,
+        ));
     }
     let server_key = normalize_server_key(&server.name);
 
@@ -890,15 +931,23 @@ fn run_mcp_call(
         if let Value::Object(ref mut row) = data {
             row.insert("allow_tools".to_string(), json!(policy.allow_tools.clone()));
         }
-        return Err(ToolExecutionError::new(
+        let error = ToolExecutionError::new(
             "mcp_tool_blocked",
             format!("MCP tool \"{tool_name}\" blocked by [tools.mcp].allow_tools"),
         )
-        .with_data(data));
+        .with_data(data);
+        return Err(enrich_mcp_call_error_context(
+            error,
+            server,
+            &tool_name,
+            &call_arguments,
+        ));
     }
 
     let call_started_at = Instant::now();
-    acquire_mcp_server_slot(server, &server_key, &policy)?;
+    acquire_mcp_server_slot(server, &server_key, &policy).map_err(|error| {
+        enrich_mcp_call_error_context(error, server, &tool_name, &call_arguments)
+    })?;
     let mut retry_attempted = false;
     let mut session_reused = false;
     let mut session_recovered = false;

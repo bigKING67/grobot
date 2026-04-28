@@ -2,6 +2,7 @@ const backendPayload = JSON.parse(
   process.env.GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD ?? "{\"status\":\"ok\"}",
 );
 const mcpIsError = /^(1|true|yes)$/i.test(process.env.GROBOT_FAKE_BROWSER_MCP_IS_ERROR ?? "");
+const mcpRpcError = /^(1|true|yes)$/i.test(process.env.GROBOT_FAKE_BROWSER_MCP_RPC_ERROR ?? "");
 
 function writeMessage(payload) {
   const body = JSON.stringify(payload);
@@ -13,8 +14,12 @@ function writeResult(id, result) {
   writeMessage({ jsonrpc: "2.0", id, result });
 }
 
-function writeError(id, code, message) {
-  writeMessage({ jsonrpc: "2.0", id, error: { code, message } });
+function writeError(id, code, message, data) {
+  const error = { code, message };
+  if (data !== undefined) {
+    error.data = data;
+  }
+  writeMessage({ jsonrpc: "2.0", id, error });
 }
 
 function parseFrames(buffer) {
@@ -83,6 +88,13 @@ function handleRequest(request) {
       writeResult(id, {
         isError: true,
         content: [{ type: "text", text: `unknown tool: ${name}` }],
+      });
+      return;
+    }
+    if (mcpRpcError) {
+      writeError(id, -32602, "fake tools/call rpc error", {
+        reason: "bad args",
+        expected: "valid browser arguments",
       });
       return;
     }

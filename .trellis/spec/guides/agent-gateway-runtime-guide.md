@@ -289,10 +289,11 @@ hidden from the active MCP schema and normal MCP listing should exclude disabled
 runtime must treat it as bounded untrusted input: reject non-object payloads with structured
 `invalid_tool_arguments` data and reject oversized argument objects before server lookup/spawn with a
 machine-readable size-limit error.
-MCP execution recovery must preserve call context without dumping the full payload. JSON-RPC errors,
-transport/protocol failures, and MCP `isError=true` tool results include `server`, `tool_name`,
-`argument_keys`, `argument_bytes`, `max_argument_bytes`, and a capped/redacted `argument_preview` so
-the next turn can change a concrete variable without re-probing blindly.
+MCP execution recovery must preserve call context without dumping the full payload. After argument
+parsing succeeds, configuration/gate failures, JSON-RPC errors, transport/protocol failures, and MCP
+`isError=true` tool results include `server`, `tool_name`, `argument_keys`, `argument_bytes`,
+`max_argument_bytes`, and a capped/redacted `argument_preview` so the next turn can change a
+concrete variable without re-probing blindly.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

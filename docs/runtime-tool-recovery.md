@@ -95,7 +95,8 @@ an unbounded transport. Runtime rejects non-object argument payloads with
 structured `invalid_tool_arguments` data, and rejects oversized argument objects
 before server lookup/spawn with `mcp_arguments_too_large`. This preserves MCP
 composability while keeping input-side context and process pressure observable.
-When an MCP call fails at JSON-RPC/transport time or returns `isError=true`, the
+When an MCP call fails after argument parsing, including configuration/gate
+failures, JSON-RPC/transport failures, or `isError=true` tool results, the
 runtime recovery data must include bounded argument diagnostics:
 `argument_keys`, `argument_bytes`, `max_argument_bytes`, and a redacted
 `argument_preview`. The full argument object is never emitted as recovery data;
