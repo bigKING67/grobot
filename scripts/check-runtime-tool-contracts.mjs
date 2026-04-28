@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
+const reportSchemaVersion = 1;
 
 const gatewayOnlyContracts = [
   {
@@ -299,6 +300,7 @@ function emitPayload(args, payload, failed) {
 function buildPayload(args, contracts, results, diagnosticsSelfTest) {
   const failed = results.find((result) => result.status !== 0) ?? null;
   return {
+    schema_version: reportSchemaVersion,
     ok: failed === null && diagnosticsSelfTest.passed,
     contract_count: contracts.length,
     completed_count: results.length,

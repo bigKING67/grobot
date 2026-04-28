@@ -529,17 +529,26 @@ Focused runtime-tool contract suite:
 ```bash
 npm run check:gateway:runtime-tools
 npm run check:gateway:runtime-tools:json
+npm run check:gateway:runtime-tools:schema
 npm run check:gateway:runtime-tools:release-report
 ```
 
-The JSON mode always reports `diagnostics_self_test` so the runner fails before
-contract execution if its own failure-detail extraction regresses. When a
-contract fails, it reports `failed_contract_detail` with the failed path,
-duration, reproduction command, parseable last JSON output, and capped
-stdout/stderr tails. When `--include-runtime-describe` is enabled, the report
-also includes `runtime_binary` with the describe binary path, source, size, and
-modification timestamp, so CI artifacts can distinguish a contract regression
-from stale or missing runtime binaries.
+The JSON mode reports `schema_version: 1` and always includes
+`diagnostics_self_test` so the runner fails before contract execution if its
+own failure-detail extraction regresses. When a contract fails, it reports
+`failed_contract_detail` with the failed path, duration, reproduction command,
+parseable last JSON output, and capped stdout/stderr tails. When
+`--include-runtime-describe` is enabled, the report also includes
+`runtime_binary` with the describe binary path, source, size, and modification
+timestamp, so CI artifacts can distinguish a contract regression from stale or
+missing runtime binaries.
+
+`check:gateway:runtime-tools:schema` validates both successful and forced
+failure runner JSON output. It asserts required field types for
+`schema_version`, counts, `diagnostics_self_test`, `failed_contract_detail`,
+`runtime_binary`, and every compact `results[]` item. It is part of
+`check:gateway:runtime-tools`, so schema drift is blocked by the normal focused
+runtime-tool suite.
 
 `check:gateway:runtime-tools:release-report` runs the core release gate with a
 deterministic synthetic runtime-tool contract failure and asserts that the
@@ -607,14 +616,15 @@ tool schema budget, or `runtime.tools.describe` surface changes. The release
 gate (`npm run core:gate:release`) also runs this deep compatibility check so
 release packaging cannot pass with a stale or drifted runtime tool describe
 surface. Its JSON report exposes `checks.runtime_tool_describe` with
-`contract_count`, `completed_count`, `diagnostics_self_test`, `failed_contract`,
-`failed_contract_detail`, `runtime_binary`, `runtime_schema_budget_violations`,
-and gateway-only recovery action summaries for release evidence. The default
-`npm run check` already covers the
+`runner_schema_version`, `contract_count`, `completed_count`,
+`diagnostics_self_test`, `failed_contract`, `failed_contract_detail`,
+`runtime_binary`, `runtime_schema_budget_violations`, and gateway-only recovery
+action summaries for release evidence. The default `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs
-`npm run check:gateway:runtime-tools:release-report` so release-report failure
-diagnostics cannot silently drift.
+`npm run check:gateway:runtime-tools:schema` and
+`npm run check:gateway:runtime-tools:release-report` so runner JSON and
+release-report failure diagnostics cannot silently drift.
 
 Full gate:
 

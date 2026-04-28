@@ -315,20 +315,22 @@ that monolithic gateway smoke should stay responsible for non-runtime-tool
 gateway coverage. The runtime-tool suite ownership contract must enforce the
 default check order, no duplicate monolithic smoke execution, release describe
 coverage, and CI trigger/toolchain coverage. Run the focused suite during
-runtime-tool iteration. Runner JSON output must preserve actionable failure
-diagnostics (`failed_contract_detail.suggested_command`, stdout/stderr tails,
-last parseable JSON output), expose a `diagnostics_self_test` status for that
-extraction path, and include describe-mode runtime binary status so CI
-artifacts are replayable. Use
+runtime-tool iteration. Runner JSON output must preserve `schema_version: 1`,
+actionable failure diagnostics (`failed_contract_detail.suggested_command`,
+stdout/stderr tails, last parseable JSON output), expose a
+`diagnostics_self_test` status for that extraction path, and include
+describe-mode runtime binary status so CI artifacts are replayable.
+`npm run check:gateway:runtime-tools` must also run the JSON schema regression
+script so successful and forced-failure runner outputs cannot drift. Use
 `npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
 also been built and `runtime.tools.describe` compatibility must be checked,
 especially after Rust recovery catalog, schema budget, or describe-surface
 changes. The release gate must run the same describe compatibility suite before
 packaging so a release cannot ship with Rust/Gateway runtime-tool contract
 drift. The release report must preserve the describe summary under
-`checks.runtime_tool_describe`, including contract counts, failed contract name,
-failure diagnostics, runtime binary status, schema budget violations, and
-gateway-only recovery action exceptions.
+`checks.runtime_tool_describe`, including runner schema version, contract
+counts, failed contract name, failure diagnostics, runtime binary status,
+schema budget violations, and gateway-only recovery action exceptions.
 The release-report regression command
 `npm run check:gateway:runtime-tools:release-report` must force a deterministic
 runtime-tool contract failure and assert that failed describe-mode reports still

@@ -72,6 +72,9 @@ if (report.fail_reason !== "runtime_tool_describe_failed") {
 if (runtimeToolDescribe?.passed !== false) {
   failures.push("runtime_tool_describe.passed must be false");
 }
+if (runtimeToolDescribe?.runner_schema_version !== 1) {
+  failures.push("runner_schema_version must be 1");
+}
 if (runtimeToolDescribe?.diagnostics_self_test !== true) {
   failures.push("diagnostics_self_test must stay true on forced contract failure");
 }
@@ -117,6 +120,7 @@ process.stdout.write(JSON.stringify({
   exit_status: result.status,
   fail_reason: report.fail_reason,
   failed_contract: runtimeToolDescribe.failed_contract,
+  runner_schema_version: runtimeToolDescribe.runner_schema_version,
   diagnostics_self_test: runtimeToolDescribe.diagnostics_self_test,
   runtime_binary_exists: runtimeBinary.exists,
 }) + "\n");

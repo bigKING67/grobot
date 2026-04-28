@@ -103,6 +103,7 @@ function runtimeToolDescribeSummary() {
     return {
       ...summary,
       ok: report.ok === true,
+      runner_schema_version: Number.isFinite(report.schema_version) ? report.schema_version : null,
       contract_count: Number.isFinite(report.contract_count) ? report.contract_count : null,
       completed_count: Number.isFinite(report.completed_count) ? report.completed_count : null,
       include_runtime_describe: report.include_runtime_describe === true,
