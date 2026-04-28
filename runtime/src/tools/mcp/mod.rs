@@ -1,3 +1,5 @@
+const MAX_MCP_CALL_ARGUMENT_BYTES: usize = 65_536;
+
 fn mcp_error_data_map(
     diagnostic_kind: &str,
     operation: &str,
@@ -74,6 +76,76 @@ fn mcp_rpc_error_data(request_id: i64, error: &Value) -> Value {
         );
     }
     Value::Object(data)
+}
+
+fn json_value_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn mcp_call_argument_error_data(
+    diagnostic_kind: &str,
+    operation: &str,
+    reason: &str,
+    recovery_hint: &str,
+    server_name: &str,
+    tool_name: &str,
+) -> Map<String, Value> {
+    let mut data = mcp_error_data_map(diagnostic_kind, operation, reason, recovery_hint);
+    data.insert("server".to_string(), json!(server_name));
+    data.insert("tool_name".to_string(), json!(tool_name));
+    data
+}
+
+fn parse_mcp_call_arguments(
+    raw_arguments: &Value,
+    server_name: &str,
+    tool_name: &str,
+) -> Result<Map<String, Value>, ToolExecutionError> {
+    let argument_bytes = serde_json::to_vec(raw_arguments)
+        .map(|bytes| bytes.len())
+        .unwrap_or(usize::MAX);
+    if argument_bytes > MAX_MCP_CALL_ARGUMENT_BYTES {
+        let mut data = mcp_call_argument_error_data(
+            "mcp_arguments_too_large",
+            "parse_arguments",
+            "arguments_exceed_byte_budget",
+            "reduce MCP tool arguments, use file/context references, or split the request into smaller MCP calls",
+            server_name,
+            tool_name,
+        );
+        data.insert("argument_bytes".to_string(), json!(argument_bytes));
+        data.insert(
+            "max_argument_bytes".to_string(),
+            json!(MAX_MCP_CALL_ARGUMENT_BYTES),
+        );
+        return Err(ToolExecutionError::new(
+            "mcp_arguments_too_large",
+            format!(
+                "mcp_call.arguments is too large: {argument_bytes}>{MAX_MCP_CALL_ARGUMENT_BYTES} bytes"
+            ),
+        )
+        .with_data(Value::Object(data)));
+    }
+    raw_arguments.as_object().cloned().ok_or_else(|| {
+        let mut data = mcp_call_argument_error_data(
+            "invalid_tool_arguments",
+            "parse_arguments",
+            "arguments_not_object",
+            "pass mcp_call.arguments as a JSON object; use an empty object when the MCP tool has no arguments",
+            server_name,
+            tool_name,
+        );
+        data.insert("argument_type".to_string(), json!(json_value_kind(raw_arguments)));
+        ToolExecutionError::new("invalid_tool_arguments", "mcp_call.arguments must be an object")
+            .with_data(Value::Object(data))
+    })
 }
 
 fn mcp_tool_result_error(
@@ -612,6 +684,7 @@ fn run_mcp_servers(
             "latency_sample_limit": policy.latency_sample_limit,
             "call_timeout_ms": policy.call_timeout_ms,
             "session_idle_ttl_secs": policy.session_idle_ttl_secs,
+            "max_argument_bytes": MAX_MCP_CALL_ARGUMENT_BYTES,
             "allow_tools": policy.allow_tools,
         },
         "runtime_summary": runtime_summary,
@@ -632,9 +705,7 @@ fn run_mcp_call(
     let tool_name = get_string_arg(args, "tool")
         .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "mcp_call.tool is required"))?;
     let raw_arguments = args.get("arguments").cloned().unwrap_or_else(|| json!({}));
-    let call_arguments = raw_arguments.as_object().cloned().ok_or_else(|| {
-        ToolExecutionError::new("invalid_tool_arguments", "mcp_call.arguments must be an object")
-    })?;
+    let call_arguments = parse_mcp_call_arguments(&raw_arguments, &server_name, &tool_name)?;
     let policy = load_mcp_call_policy(context);
     let servers = load_mcp_servers(context);
     let server = servers

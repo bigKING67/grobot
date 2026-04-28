@@ -2811,6 +2811,82 @@ allow_tools = ["allowed_tool"]
     }
 
     #[test]
+    fn run_mcp_call_rejects_non_object_arguments_with_structured_data() {
+        let workspace = make_temp_workspace("mcp-call-non-object-arguments");
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": "mock",
+            "tool": "echo",
+            "arguments": ["not", "an", "object"]
+        }));
+        let error = run_mcp_call(&context, &args)
+            .expect_err("mcp_call should reject non-object arguments before server lookup");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        let data = error
+            .data
+            .as_ref()
+            .expect("invalid arguments should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("invalid_tool_arguments"));
+        assert_eq!(data["operation"].as_str(), Some("parse_arguments"));
+        assert_eq!(data["reason"].as_str(), Some("arguments_not_object"));
+        assert_eq!(data["argument_type"].as_str(), Some("array"));
+        assert_eq!(data["server"].as_str(), Some("mock"));
+        assert_eq!(data["tool_name"].as_str(), Some("echo"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn run_mcp_call_rejects_oversized_arguments_before_server_lookup() {
+        let workspace = make_temp_workspace("mcp-call-oversized-arguments");
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": "missing-server",
+            "tool": "echo",
+            "arguments": {
+                "payload": "x".repeat(MAX_MCP_CALL_ARGUMENT_BYTES)
+            }
+        }));
+        let error = run_mcp_call(&context, &args)
+            .expect_err("mcp_call should reject oversized arguments before server lookup");
+        assert_eq!(error.error_class, "mcp_arguments_too_large");
+        let data = error
+            .data
+            .as_ref()
+            .expect("oversized arguments should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_arguments_too_large"));
+        assert_eq!(data["operation"].as_str(), Some("parse_arguments"));
+        assert_eq!(data["reason"].as_str(), Some("arguments_exceed_byte_budget"));
+        assert_eq!(data["server"].as_str(), Some("missing-server"));
+        assert_eq!(data["tool_name"].as_str(), Some("echo"));
+        assert_eq!(
+            data["max_argument_bytes"].as_u64(),
+            Some(MAX_MCP_CALL_ARGUMENT_BYTES as u64)
+        );
+        assert!(
+            data["argument_bytes"]
+                .as_u64()
+                .is_some_and(|value| value > MAX_MCP_CALL_ARGUMENT_BYTES as u64)
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn mcp_tool_result_error_reports_observable_failure_data() {
         let server = McpServerResolved {
             name: "mock".to_string(),

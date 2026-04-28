@@ -90,6 +90,12 @@ only in `full_debug` and is rejected in normal MCP surfaces. Normal MCP listing
 also defaults to excluding disabled servers; full-debug inventory keeps the
 complete list unless the caller explicitly narrows it.
 
+`mcp_call.arguments` keeps its general object-shaped capability, but it is not
+an unbounded transport. Runtime rejects non-object argument payloads with
+structured `invalid_tool_arguments` data, and rejects oversized argument objects
+before server lookup/spawn with `mcp_arguments_too_large`. This preserves MCP
+composability while keeping input-side context and process pressure observable.
+
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a
 representative user intent to the expected profile, visible tool set, forbidden

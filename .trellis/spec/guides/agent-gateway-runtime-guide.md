@@ -285,6 +285,10 @@ from the active schema.
 `mcp_servers` should expose only `ready_only` outside `full_debug`. Disabled-server inventory is an
 operator/debug control, not a normal model control, so `include_disabled` must be rejected when
 hidden from the active MCP schema and normal MCP listing should exclude disabled servers by default.
+`mcp_call.arguments` remains a general JSON object because MCP tool schemas are server-defined, but
+runtime must treat it as bounded untrusted input: reject non-object payloads with structured
+`invalid_tool_arguments` data and reject oversized argument objects before server lookup/spawn with a
+machine-readable size-limit error.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or
