@@ -312,9 +312,18 @@ expectEqual(
   "use_allowed_mcp_tool_or_request_policy_change",
   "MCP blocked tool feedback refines action",
 );
+expectEqual(
+  mcpStructuredFeedback.actionFamily,
+  "policy_or_permission",
+  "MCP blocked tool feedback classifies action family",
+);
 expect(
   mcpStructuredFeedback.promptBlock.includes("Required next action: use_allowed_mcp_tool_or_request_policy_change"),
   "MCP blocked tool prompt uses policy-specific action",
+);
+expect(
+  mcpStructuredFeedback.promptBlock.includes("Action family: policy_or_permission"),
+  "MCP blocked tool prompt includes action family",
 );
 expect(
   mcpStructuredFeedback.promptBlock.includes("server=grok-search"),
@@ -387,6 +396,11 @@ expectEqual(
   mcpObservedResultFeedback.recommendedNextAction,
   "inspect_mcp_tool_result_and_change_arguments",
   "MCP tool result error feedback refines action",
+);
+expectEqual(
+  mcpObservedResultFeedback.actionFamily,
+  "argument_fix",
+  "MCP tool result error feedback classifies action family",
 );
 expect(
   mcpObservedResultFeedback.promptBlock.includes("Required next action: inspect_mcp_tool_result_and_change_arguments"),
@@ -463,6 +477,11 @@ expectEqual(
   "fix_mcp_tool_arguments",
   "MCP invalid params RPC feedback refines action",
 );
+expectEqual(
+  mcpRpcArgumentFeedback.actionFamily,
+  "argument_fix",
+  "MCP invalid params RPC feedback classifies action family",
+);
 expect(
   mcpRpcArgumentFeedback.promptBlock.includes("Required next action: fix_mcp_tool_arguments"),
   "MCP invalid params prompt uses argument-specific action",
@@ -516,6 +535,11 @@ expectEqual(
   mcpNearBudgetFeedback.recommendedNextAction,
   "reduce_mcp_argument_payload",
   "MCP near-budget feedback refines action",
+);
+expectEqual(
+  mcpNearBudgetFeedback.actionFamily,
+  "payload_reduce",
+  "MCP near-budget feedback classifies action family",
 );
 expect(
   mcpNearBudgetFeedback.promptBlock.includes("Required next action: reduce_mcp_argument_payload"),

@@ -1,4 +1,5 @@
 import type { RuntimeToolRecoveryReadinessSummary } from "./tool-recovery-readiness";
+import type { RuntimeToolRecoveryActionFamily } from "./tool-events";
 import {
   formatRuntimeToolEnvironmentRecoveryFields,
   type BrowserEnvironmentRecoveryPlan,
@@ -38,6 +39,8 @@ export interface RuntimeToolRecoveryReadinessGateDecision {
   blockerCode: string | null;
   blockerAction: string | null;
   recommendedNextAction: string | null;
+  recommendedActionFamily?: RuntimeToolRecoveryActionFamily | null;
+  recommendedActionReason?: string | null;
   readinessStatus: RuntimeToolRecoveryReadinessSummary["status"];
   readinessReady: boolean;
   readinessReason: string;
@@ -54,6 +57,8 @@ export interface RuntimeToolRecoveryReadinessGateDecision {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionActionFamily?: RuntimeToolRecoveryActionFamily | null;
+  attentionActionReason?: string | null;
   attentionRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
@@ -214,6 +219,8 @@ export function buildRuntimeToolRecoveryReadinessGate(input: {
     blockerCode: blocker.code,
     blockerAction: blocker.action,
     recommendedNextAction: input.readiness.recommendedNextAction,
+    recommendedActionFamily: input.readiness.recommendedActionFamily ?? null,
+    recommendedActionReason: input.readiness.recommendedActionReason ?? null,
     readinessStatus: input.readiness.status,
     readinessReady: input.readiness.ready,
     readinessReason: input.readiness.reason,
@@ -230,6 +237,8 @@ export function buildRuntimeToolRecoveryReadinessGate(input: {
     attentionToolName: input.readiness.attentionToolName,
     attentionErrorClass: input.readiness.attentionErrorClass,
     attentionRequiresUserIntervention: input.readiness.attentionRequiresUserIntervention,
+    attentionActionFamily: input.readiness.attentionActionFamily ?? null,
+    attentionActionReason: input.readiness.attentionActionReason ?? null,
     attentionRuntimeEnvironmentRecovery: input.readiness.attentionRuntimeEnvironmentRecovery,
     attentionBrowserEnvironmentRecovery: input.readiness.attentionBrowserEnvironmentRecovery,
     attentionMcpEnvironmentRecovery: input.readiness.attentionMcpEnvironmentRecovery,
@@ -249,6 +258,7 @@ export function formatRuntimeToolRecoveryGateFields(
     `blocker_code=${gate.blockerCode ?? "<none>"}`,
     `blocker_action=${gate.blockerAction ?? "<none>"}`,
     `action=${gate.recommendedNextAction ?? "<none>"}`,
+    `action_family=${gate.recommendedActionFamily ?? "<none>"}`,
     `readiness=${gate.readinessStatus}`,
     `auto_recovery_allowed=${gate.automaticRecoveryAllowed ? "true" : "false"}`,
     `operator_action_required=${gate.operatorActionRequired ? "true" : "false"}`,

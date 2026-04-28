@@ -306,6 +306,12 @@ failed/deferred tool events and no new `tool_recovery`, gateway records
 `successful_tool_call_consumed`, clears matching repeat pressure, and suppresses the stale prompt
 hint. This prevents a fixed argument/path/policy issue from continuing to steer independent later
 turns.
+Every effective recovery action must also carry a stable action-family classification in feedback,
+timeline, health, readiness, and gate surfaces. The family is derived after MCP-specific action
+refinement and uses coarse buckets such as `argument_fix`, `payload_reduce`, `path_fix`,
+`policy_or_permission`, `environment_fix`, and `user_intervention`. Do not force downstream status
+or experience-pool logic to parse long `recommended_next_action` strings when the family field is
+available.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

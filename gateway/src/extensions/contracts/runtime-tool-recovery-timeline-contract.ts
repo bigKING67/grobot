@@ -168,6 +168,7 @@ const activeTimeline = buildRuntimeToolRecoveryTimeline({
 expectEqual(activeTimeline.length, 2, "active timeline length");
 expectEqual(activeTimeline[0].toolName, "web_scan", "active timeline latest tool");
 expectEqual(activeTimeline[0].stage, "ask_user", "active timeline latest stage");
+expectEqual(activeTimeline[0].recommendedActionFamily, "user_intervention", "active timeline latest action family");
 expectEqual(activeTimeline[0].active, true, "active timeline latest active");
 expectEqual(activeTimeline[0].consumed, false, "active timeline latest consumed");
 expectEqual(
@@ -225,7 +226,9 @@ expectEqual(
   "ask_user_for_config_or_switch_provider",
   "active health recommended next action",
 );
+expectEqual(activeHealth.recommendedActionFamily, "user_intervention", "active health action family");
 expectEqual(activeHealth.attentionSource, "latest", "active health attention source");
+expectEqual(activeHealth.attentionActionFamily, "user_intervention", "active health attention action family");
 expectEqual(activeHealth.attentionRecoveryKey, expectedLatestRecoveryKey, "active health attention key");
 expectEqual(activeHealth.attentionToolName, "web_scan", "active health attention tool");
 expectEqual(activeHealth.attentionErrorClass, "config_missing", "active health attention error");
@@ -251,9 +254,11 @@ expectEqual(activeReadiness.ready, false, "active readiness ready");
 expectEqual(activeReadiness.automaticRecoveryAllowed, false, "active readiness automatic recovery");
 expectEqual(activeReadiness.operatorActionRequired, true, "active readiness operator action");
 expectEqual(activeReadiness.policyVersion, "v1", "active readiness policy version");
+expectEqual(activeReadiness.recommendedActionFamily, "user_intervention", "active readiness action family");
 expectEqual(activeReadiness.attentionRecoveryKey, expectedLatestRecoveryKey, "active readiness attention key");
 expectEqual(activeReadiness.attentionStage, "ask_user", "active readiness attention stage");
 expectEqual(activeDecision.feedback.active, true, "active decision feedback active");
+expectEqual(activeDecision.feedback.actionFamily, "user_intervention", "active decision feedback action family");
 expectEqual(activeDecision.feedback.consumed, false, "active decision feedback consumed");
 expectEqual(
   activeDecision.feedback.sameToolErrorCount,

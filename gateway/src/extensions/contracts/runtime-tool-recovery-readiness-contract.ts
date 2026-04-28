@@ -168,6 +168,8 @@ const degradedGate = buildRuntimeToolRecoveryReadinessGate({
     ready: false,
     reason: "health_watch:historical_unconsumed_recovery",
     recommendedNextAction: "locate_path_with_glob_before_retry",
+    recommendedActionFamily: "path_fix",
+    recommendedActionReason: "locate_path_with_glob_before_retry",
     healthLevel: "watch",
     healthScore: 96,
     attentionRecoveryKey: "local_fix:read:path_not_found:2026-04-26T00:00:00.000Z",
@@ -191,6 +193,7 @@ expectEqual(
   "locate_path_with_glob_before_retry",
   "degraded gate recommended action",
 );
+expectEqual(degradedGate.recommendedActionFamily, "path_fix", "degraded gate action family");
 expectEqual(degradedGate.attentionStage, "local_fix", "degraded gate attention stage");
 expectEqual(degradedGate.attentionToolName, "read", "degraded gate attention tool");
 
@@ -202,6 +205,8 @@ const blockedOperatorGate = buildRuntimeToolRecoveryReadinessGate({
     operatorActionRequired: true,
     reason: "health_risk:active_nonrecoverable_recovery",
     recommendedNextAction: "ask_user_for_config_or_switch_provider",
+    recommendedActionFamily: "user_intervention",
+    recommendedActionReason: "ask_user_for_config_or_switch_provider",
     healthLevel: "risk",
     healthScore: 36,
     attentionRecoveryKey: "ask_user:web_scan:config_missing:2026-04-26T00:05:00.000Z",
@@ -226,6 +231,7 @@ assertGate({
   reason: "blocked_operator_action_required",
 });
 expectEqual(blockedOperatorGate.attentionRequiresUserIntervention, true, "blocked gate user intervention");
+expectEqual(blockedOperatorGate.recommendedActionFamily, "user_intervention", "blocked gate action family");
 expectEqual(blockedOperatorGate.attentionStage, "ask_user", "blocked gate attention stage");
 expectEqual(blockedOperatorGate.blockerKind, "runtime_environment", "blocked gate blocker kind");
 expectEqual(blockedOperatorGate.blockerCode, "CONFIG_MISSING", "blocked gate blocker code");
@@ -383,6 +389,8 @@ const policyForwardedReadiness = buildRuntimeToolRecoveryReadinessSummary({
     score: 76,
     reason: "historical_unconsumed_recovery",
     recommendedNextAction: "inspect_recovery_timeline",
+    recommendedActionFamily: "unknown",
+    recommendedActionReason: "uncataloged_action",
     attentionSource: "historical_unconsumed",
     attentionRecoveryKey: "recovery:local_fix:read:path_not_found:2026-04-26T00:00:00.000Z",
     attentionStage: "local_fix",
@@ -403,6 +411,7 @@ expectEqual(policyForwardedReadiness.policyVersion, "v-test-readiness", "policy 
 expectEqual(policyForwardedReadiness.riskScoreThreshold, 42, "policy forwarded risk threshold");
 expectEqual(policyForwardedReadiness.watchScoreThreshold, 77, "policy forwarded watch threshold");
 expectEqual(policyForwardedReadiness.healthScore, 76, "policy forwarded health score");
+expectEqual(policyForwardedReadiness.recommendedActionFamily, "unknown", "policy forwarded action family");
 expectEqual(policyForwardedReadiness.attentionStage, "local_fix", "policy forwarded attention stage");
 
 const policyForwardedGate = buildRuntimeToolRecoveryReadinessGate({

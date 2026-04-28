@@ -114,6 +114,16 @@ hard limit or near the reported `max_argument_bytes` map to
 MCP environment failures still keep the higher-priority ask-user/environment
 escalation rather than being downgraded to argument-level retries.
 
+Every effective `recommended_next_action` is also classified into a stable
+`recommended_action_family` / `recommended_action_reason` pair. Families are
+coarse enough for status, readiness, gates, and experience aggregation:
+`argument_fix`, `payload_reduce`, `path_fix`, `content_fix`, `schema_fix`,
+`strategy_switch`, `fallback_tool`, `wait_or_retry`, `policy_or_permission`,
+`environment_fix`, `user_intervention`, `observe`, `media_extract`,
+`unknown_tool`, `unknown`, or `none`. The family is derived after gateway
+MCP-specific refinement, so `mcp_rpc_error:-32602` reports `argument_fix` and
+near-budget MCP payloads report `payload_reduce`.
+
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a
 representative user intent to the expected profile, visible tool set, forbidden
@@ -331,6 +341,8 @@ again.
 - `recovery_feedback.base_recommended_next_action`
 - `recovery_feedback.consumed`
 - `recovery_feedback.consumed_reason`
+- `recovery_feedback.recommended_action_family`
+- `recovery_feedback.recommended_action_reason`
 - `recovery_timeline[]`
 - `recovery_health`
 - `recovery_policy`
@@ -353,6 +365,8 @@ annotated with:
 - `error_class`
 - `stage`
 - `recommended_next_action`
+- `recommended_action_family`
+- `recommended_action_reason`
 - `recoverable`
 - `requires_user_intervention`
 - `same_tool_error_count`
@@ -373,6 +387,8 @@ diagnostics:
 - `level` (`good|watch|risk`)
 - `reason`
 - `recommended_next_action`
+- `recommended_action_family`
+- `recommended_action_reason`
 - `attention_source` (`none|latest|historical_unconsumed`)
 - `attention_recovery_key`
 - `attention_stage`
@@ -415,6 +431,8 @@ The intended contract is:
 - `operator_action_required`
 - `reason`
 - `recommended_next_action`
+- `recommended_action_family`
+- `recommended_action_reason`
 - `policy_version`
 - `health_level`
 - `health_score`
@@ -426,6 +444,8 @@ The intended contract is:
 - `attention_tool_name`
 - `attention_error_class`
 - `attention_requires_user_intervention`
+- `attention_action_family`
+- `attention_action_reason`
 
 The intended readiness contract is:
 
@@ -446,6 +466,8 @@ operators, and orchestration code do not re-implement readiness policy:
 - `severity` (`none|warning|error`)
 - `reason`
 - `recommended_next_action`
+- `recommended_action_family`
+- `recommended_action_reason`
 - `readiness_status`
 - `readiness_ready`
 - `readiness_reason`

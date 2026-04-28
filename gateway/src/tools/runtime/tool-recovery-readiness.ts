@@ -1,4 +1,5 @@
 import type { RuntimeToolRecoveryHealthSummary } from "./tool-recovery-timeline";
+import type { RuntimeToolRecoveryActionFamily } from "./tool-events";
 import {
   getRuntimeToolRecoveryPolicySnapshot,
   type RuntimeToolRecoveryPolicySnapshot,
@@ -19,6 +20,8 @@ export interface RuntimeToolRecoveryReadinessSummary {
   operatorActionRequired: boolean;
   reason: string;
   recommendedNextAction: string | null;
+  recommendedActionFamily?: RuntimeToolRecoveryActionFamily | null;
+  recommendedActionReason?: string | null;
   policyVersion: string;
   healthLevel: RuntimeToolRecoveryHealthSummary["level"];
   healthScore: number;
@@ -30,6 +33,8 @@ export interface RuntimeToolRecoveryReadinessSummary {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionActionFamily?: RuntimeToolRecoveryActionFamily | null;
+  attentionActionReason?: string | null;
   attentionRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
@@ -79,6 +84,8 @@ export function buildRuntimeToolRecoveryReadinessSummary(input: {
       healthReason: input.health.reason,
     }),
     recommendedNextAction: input.health.recommendedNextAction,
+    recommendedActionFamily: input.health.recommendedActionFamily ?? null,
+    recommendedActionReason: input.health.recommendedActionReason ?? null,
     policyVersion: policy.version,
     healthLevel: input.health.level,
     healthScore: input.health.score,
@@ -90,6 +97,8 @@ export function buildRuntimeToolRecoveryReadinessSummary(input: {
     attentionToolName: input.health.attentionToolName,
     attentionErrorClass: input.health.attentionErrorClass,
     attentionRequiresUserIntervention: input.health.attentionRequiresUserIntervention,
+    attentionActionFamily: input.health.attentionActionFamily ?? null,
+    attentionActionReason: input.health.attentionActionReason ?? null,
     attentionRuntimeEnvironmentRecovery: input.health.attentionRuntimeEnvironmentRecovery,
     attentionBrowserEnvironmentRecovery: input.health.attentionBrowserEnvironmentRecovery,
     attentionMcpEnvironmentRecovery: input.health.attentionMcpEnvironmentRecovery,
@@ -106,6 +115,7 @@ export function formatRuntimeToolRecoveryReadinessFields(
     `operator_action_required=${summary.operatorActionRequired ? "true" : "false"}`,
     `reason=${summary.reason}`,
     `action=${summary.recommendedNextAction ?? "<none>"}`,
+    `action_family=${summary.recommendedActionFamily ?? "<none>"}`,
     `attention_key=${summary.attentionRecoveryKey ?? "<none>"}`,
     `attention_stage=${summary.attentionStage ?? "<none>"}`,
     ...formatRuntimeToolEnvironmentRecoveryFields({
