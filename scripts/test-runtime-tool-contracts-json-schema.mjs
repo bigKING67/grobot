@@ -94,6 +94,25 @@ function validateRuntimeBinary(value) {
   }
 }
 
+function validateDiagnosticSummary(value, expectedStatus) {
+  expect(isObject(value), "diagnostic_summary must be object");
+  expect(value.status === expectedStatus, `diagnostic_summary.status must be ${expectedStatus}`);
+  expect(value.failed_id === null || typeof value.failed_id === "string", "diagnostic_summary.failed_id must be null|string");
+  expect(value.reproduce === null || typeof value.reproduce === "string", "diagnostic_summary.reproduce must be null|string");
+  expect(
+    value.runtime_binary_source === null || typeof value.runtime_binary_source === "string",
+    "diagnostic_summary.runtime_binary_source must be null|string",
+  );
+  expect(
+    value.runtime_binary_exists === null || typeof value.runtime_binary_exists === "boolean",
+    "diagnostic_summary.runtime_binary_exists must be null|boolean",
+  );
+  expect(
+    value.schema_budget_violations === null || typeof value.schema_budget_violations === "number",
+    "diagnostic_summary.schema_budget_violations must be null|number",
+  );
+}
+
 function validatePayload(payload, expected) {
   expect(isObject(payload), "payload must be object");
   expect(payload.schema_version === 1, "schema_version must be 1");
@@ -107,6 +126,7 @@ function validatePayload(payload, expected) {
   expect(payload.results.length === payload.completed_count, "results length must match completed_count");
   payload.results.forEach(validateCompactResult);
   validateRuntimeBinary(payload.runtime_binary);
+  validateDiagnosticSummary(payload.diagnostic_summary, expected.ok ? "passed" : "failed");
   if (payload.failed_contract === null) {
     expect(payload.failed_contract_detail === null, "failed_contract_detail must be null when failed_contract is null");
   } else {
@@ -125,6 +145,8 @@ validatePayload(successPayload, {
 });
 expect(successPayload.failed_contract === null, "success payload failed_contract must be null");
 expect(successPayload.runtime_binary === null, "success payload runtime_binary must be null without describe mode");
+expect(successPayload.diagnostic_summary.failed_id === null, "success diagnostic summary failed_id must be null");
+expect(successPayload.diagnostic_summary.reproduce === null, "success diagnostic summary reproduce must be null");
 
 const forcedFailurePayload = runRunner({
   expectedStatus: 1,
@@ -144,6 +166,14 @@ expect(
 expect(
   forcedFailurePayload.failed_contract_detail.last_output_json?.marker === "runtime_tool_runner_forced_failure",
   "forced failure payload must preserve last_output_json marker",
+);
+expect(
+  forcedFailurePayload.diagnostic_summary.failed_id === "runtime-tool-suite-ownership",
+  "forced failure diagnostic summary must preserve failed_id",
+);
+expect(
+  String(forcedFailurePayload.diagnostic_summary.reproduce ?? "").includes("runtime-tool-suite-ownership-contract.ts"),
+  "forced failure diagnostic summary must preserve reproduce command",
 );
 
 process.stdout.write(JSON.stringify({

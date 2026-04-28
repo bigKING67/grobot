@@ -76,6 +76,10 @@ expect(
   "release gate report must preserve runtime-tool runner_schema_version evidence",
 );
 expect(
+  releaseGate.includes("diagnostic_summary"),
+  "release gate report must preserve runtime-tool diagnostic_summary evidence",
+);
+expect(
   runtimeToolRunner.includes("failed_contract_detail"),
   "runtime-tool runner JSON must expose failed_contract_detail",
 );
@@ -92,6 +96,10 @@ expect(
   "runtime-tool runner JSON must expose schema_version",
 );
 expect(
+  runtimeToolRunner.includes("diagnostic_summary") && runtimeToolRunner.includes("diagnosticSummary("),
+  "runtime-tool runner JSON must expose diagnostic_summary",
+);
+expect(
   runtimeToolSuiteScript.includes("scripts/test-runtime-tool-contracts-json-schema.mjs"),
   "check:gateway:runtime-tools must run the runtime-tool JSON schema contract",
 );
@@ -103,6 +111,7 @@ expect(
   runnerSchemaTest.includes("schema_version")
     && runnerSchemaTest.includes("failed_contract_detail")
     && runnerSchemaTest.includes("runtime_binary")
+    && runnerSchemaTest.includes("diagnostic_summary")
     && runnerSchemaTest.includes("diagnostics_self_test"),
   "runtime-tool JSON schema contract must assert schema_version, diagnostics, runtime binary, and self-test fields",
 );
@@ -121,6 +130,7 @@ expect(
 expect(
   releaseReportTest.includes("failed_contract_detail")
     && releaseReportTest.includes("runtime_binary")
+    && releaseReportTest.includes("diagnostic_summary")
     && releaseReportTest.includes("diagnostics_self_test"),
   "release-report regression test must assert diagnostics, runtime binary, and self-test fields",
 );
@@ -167,10 +177,12 @@ process.stdout.write(JSON.stringify({
   release_gate_failure_diagnostics: true,
   release_gate_runtime_binary_status: true,
   release_gate_runner_schema_version: true,
+  release_gate_diagnostic_summary: true,
   runner_failure_diagnostics: true,
   runner_runtime_binary_status: true,
   runner_diagnostics_self_test: true,
   runner_schema_version: true,
+  runner_diagnostic_summary: true,
   runner_schema_regression_script: true,
   release_report_regression_script: true,
   release_report_regression_workflow: true,

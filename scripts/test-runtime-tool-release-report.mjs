@@ -61,6 +61,7 @@ try {
 const runtimeToolDescribe = report?.checks?.runtime_tool_describe;
 const detail = runtimeToolDescribe?.failed_contract_detail;
 const runtimeBinary = runtimeToolDescribe?.runtime_binary;
+const diagnosticSummary = runtimeToolDescribe?.diagnostic_summary;
 const failures = [];
 
 if (report.overall_passed !== false) {
@@ -80,6 +81,22 @@ if (runtimeToolDescribe?.diagnostics_self_test !== true) {
 }
 if (runtimeToolDescribe?.failed_contract !== "runtime-tool-suite-ownership") {
   failures.push("failed_contract must preserve the forced contract id");
+}
+if (!diagnosticSummary || typeof diagnosticSummary !== "object") {
+  failures.push("diagnostic_summary must be present");
+} else {
+  if (diagnosticSummary.status !== "failed") {
+    failures.push("diagnostic_summary.status must be failed");
+  }
+  if (diagnosticSummary.failed_id !== "runtime-tool-suite-ownership") {
+    failures.push("diagnostic_summary.failed_id must preserve the failed contract id");
+  }
+  if (!String(diagnosticSummary.reproduce ?? "").includes("runtime-tool-suite-ownership-contract.ts")) {
+    failures.push("diagnostic_summary.reproduce must be actionable");
+  }
+  if (diagnosticSummary.runtime_binary_exists !== true) {
+    failures.push("diagnostic_summary.runtime_binary_exists must be true");
+  }
 }
 if (!detail || typeof detail !== "object") {
   failures.push("failed_contract_detail must be present");
@@ -121,6 +138,7 @@ process.stdout.write(JSON.stringify({
   fail_reason: report.fail_reason,
   failed_contract: runtimeToolDescribe.failed_contract,
   runner_schema_version: runtimeToolDescribe.runner_schema_version,
+  diagnostic_status: diagnosticSummary.status,
   diagnostics_self_test: runtimeToolDescribe.diagnostics_self_test,
   runtime_binary_exists: runtimeBinary.exists,
 }) + "\n");

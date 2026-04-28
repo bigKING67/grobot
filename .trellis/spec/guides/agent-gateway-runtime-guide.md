@@ -319,7 +319,8 @@ runtime-tool iteration. Runner JSON output must preserve `schema_version: 1`,
 actionable failure diagnostics (`failed_contract_detail.suggested_command`,
 stdout/stderr tails, last parseable JSON output), expose a
 `diagnostics_self_test` status for that extraction path, and include
-describe-mode runtime binary status so CI artifacts are replayable.
+`diagnostic_summary` plus describe-mode runtime binary status so CI artifacts
+are replayable.
 `npm run check:gateway:runtime-tools` must also run the JSON schema regression
 script so successful and forced-failure runner outputs cannot drift. Use
 `npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
@@ -329,14 +330,15 @@ changes. The release gate must run the same describe compatibility suite before
 packaging so a release cannot ship with Rust/Gateway runtime-tool contract
 drift. The release report must preserve the describe summary under
 `checks.runtime_tool_describe`, including runner schema version, contract
-counts, failed contract name, failure diagnostics, runtime binary status,
-schema budget violations, and gateway-only recovery action exceptions.
+counts, failed contract name, failure diagnostics, diagnostic summary, runtime
+binary status, schema budget violations, and gateway-only recovery action
+exceptions.
 The release-report regression command
 `npm run check:gateway:runtime-tools:release-report` must force a deterministic
 runtime-tool contract failure and assert that failed describe-mode reports still
 preserve `diagnostics_self_test`, `failed_contract_detail`, and
-`runtime_binary`; keep it in the core packaging workflow rather than the
-gateway-only suite because it builds the Rust runtime.
+`diagnostic_summary` plus `runtime_binary`; keep it in the core packaging
+workflow rather than the gateway-only suite because it builds the Rust runtime.
 The describe contract treats Rust-emitted base recovery actions as a subset of
 gateway-known actions; gateway-only contextual refinements such as
 `fix_mcp_tool_arguments` must stay covered by the MCP eval matrix.

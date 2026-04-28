@@ -116,6 +116,9 @@ function runtimeToolDescribeSummary() {
       runtime_binary: report.runtime_binary && typeof report.runtime_binary === "object"
         ? report.runtime_binary
         : null,
+      diagnostic_summary: report.diagnostic_summary && typeof report.diagnostic_summary === "object"
+        ? report.diagnostic_summary
+        : null,
       runtime_recovery_catalog_rows: Number.isFinite(governancePayload?.runtime_recovery_catalog_rows)
         ? governancePayload.runtime_recovery_catalog_rows
         : null,

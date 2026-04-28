@@ -242,6 +242,31 @@ function failedContractDetail(result) {
   };
 }
 
+function governancePayloadFromResults(results) {
+  const governance = results.find((result) => result.id === "runtime-tool-governance");
+  if (!governance) {
+    return null;
+  }
+  return parseLastJsonLine(governance.stdout);
+}
+
+function schemaBudgetViolationsFromResults(results) {
+  const governancePayload = governancePayloadFromResults(results);
+  const value = governancePayload?.runtime_schema_budget_violations;
+  return Number.isFinite(value) ? value : null;
+}
+
+function diagnosticSummary(failed, results, runtimeBinary) {
+  return {
+    status: failed ? "failed" : "passed",
+    failed_id: failed ? failed.id : null,
+    reproduce: failed ? failed.suggested_command : null,
+    runtime_binary_source: runtimeBinary ? runtimeBinary.source : null,
+    runtime_binary_exists: runtimeBinary ? runtimeBinary.exists : null,
+    schema_budget_violations: schemaBudgetViolationsFromResults(results),
+  };
+}
+
 function runDiagnosticsSelfTest() {
   const stdoutLines = [
     "setup log before structured output",
@@ -299,6 +324,7 @@ function emitPayload(args, payload, failed) {
 
 function buildPayload(args, contracts, results, diagnosticsSelfTest) {
   const failed = results.find((result) => result.status !== 0) ?? null;
+  const runtimeBinary = runtimeBinaryStatus(args.includeRuntimeDescribe);
   return {
     schema_version: reportSchemaVersion,
     ok: failed === null && diagnosticsSelfTest.passed,
@@ -308,7 +334,8 @@ function buildPayload(args, contracts, results, diagnosticsSelfTest) {
     diagnostics_self_test: diagnosticsSelfTest.passed,
     failed_contract: failed ? failed.id : null,
     failed_contract_detail: failedContractDetail(failed),
-    runtime_binary: runtimeBinaryStatus(args.includeRuntimeDescribe),
+    runtime_binary: runtimeBinary,
+    diagnostic_summary: diagnosticSummary(failed, results, runtimeBinary),
     results: results.map(compactResult),
   };
 }
