@@ -465,6 +465,12 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (typeof errorData.max_queue_per_server === "number" && Number.isFinite(errorData.max_queue_per_server)) {
     parts.push(`max_queue_per_server=${String(Math.trunc(errorData.max_queue_per_server))}`);
   }
+  if (typeof errorData.argument_bytes === "number" && Number.isFinite(errorData.argument_bytes)) {
+    parts.push(`argument_bytes=${String(Math.trunc(errorData.argument_bytes))}`);
+  }
+  if (typeof errorData.max_argument_bytes === "number" && Number.isFinite(errorData.max_argument_bytes)) {
+    parts.push(`max_argument_bytes=${String(Math.trunc(errorData.max_argument_bytes))}`);
+  }
   if (
     typeof errorData.circuit_open_until_epoch_secs === "number"
     && Number.isFinite(errorData.circuit_open_until_epoch_secs)
@@ -573,6 +579,11 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (structuredContentPreview) {
     parts.push(`structured_content_preview=${quoteRecoveryPreview(structuredContentPreview)}`);
   }
+  const argumentPreview =
+    typeof errorData.argument_preview === "string" ? compactRecoveryDetail(errorData.argument_preview) : undefined;
+  if (argumentPreview) {
+    parts.push(`argument_preview=${quoteRecoveryPreview(argumentPreview)}`);
+  }
   const bridgeErrorClass =
     typeof errorData.bridge_error_class === "string" ? compactRecoveryDetail(errorData.bridge_error_class) : undefined;
   if (bridgeErrorClass) {
@@ -623,6 +634,10 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   const availableTools = compactRecoveryStringList("available_tools", errorData.available_tools);
   if (availableTools) {
     parts.push(availableTools);
+  }
+  const argumentKeys = compactRecoveryStringList("argument_keys", errorData.argument_keys);
+  if (argumentKeys) {
+    parts.push(argumentKeys);
   }
   const requestedSources = compactRecoveryStringList("requested_sources", errorData.requested_sources);
   if (requestedSources) {

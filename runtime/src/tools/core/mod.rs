@@ -113,6 +113,50 @@ impl ToolExecutionError {
     }
 }
 
+fn redact_tool_preview_secrets(raw: &str) -> String {
+    static KV_SECRET_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static BEARER_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static KEY_PREFIX_RE: OnceLock<regex::Regex> = OnceLock::new();
+
+    let kv_re = KV_SECRET_RE.get_or_init(|| {
+        RegexBuilder::new(
+            r#"(?ix)
+\b(api[_-]?key|token|secret|password|passwd|authorization)\b
+\s*([:=])\s*
+(?:
+    "(?:[^"\\]|\\.)*" |
+    '(?:[^'\\]|\\.)*' |
+    [^\s"'`]+
+)
+"#,
+        )
+        .build()
+        .expect("compile tool preview kv redaction regex")
+    });
+    let bearer_re = BEARER_RE.get_or_init(|| {
+        RegexBuilder::new(r#"(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}"#)
+            .build()
+            .expect("compile tool preview bearer redaction regex")
+    });
+    let key_prefix_re = KEY_PREFIX_RE.get_or_init(|| {
+        RegexBuilder::new(r#"\b(sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{12,}|xox[baprs]-[A-Za-z0-9\-]{10,})\b"#)
+            .build()
+            .expect("compile tool preview key-prefix redaction regex")
+    });
+
+    let replaced = kv_re
+        .replace_all(raw, |captures: &regex::Captures| {
+            format!("{}{}<redacted>", &captures[1], &captures[2])
+        })
+        .to_string();
+    let replaced = bearer_re
+        .replace_all(replaced.as_str(), "Bearer <redacted>")
+        .to_string();
+    key_prefix_re
+        .replace_all(replaced.as_str(), "<redacted>")
+        .to_string()
+}
+
 fn runtime_environment_error_data(
     diagnostic_kind: &str,
     recovery_hint: &str,

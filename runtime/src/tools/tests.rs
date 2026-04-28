@@ -2887,6 +2887,81 @@ allow_tools = ["allowed_tool"]
     }
 
     #[test]
+    fn run_mcp_call_observed_is_error_includes_bounded_argument_metadata() {
+        let _browser_mcp_guard = BROWSER_MCP_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("lock browser MCP fixture");
+        let root = make_temp_workspace("mcp-call-observed-argument-metadata");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        write_fake_browser_mcp_registry(
+            &grobot_dir,
+            &json!({ "reason": "bad args", "retryable": false }),
+            true,
+        );
+
+        clear_mcp_runtime_state("browser-structured");
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "mcp".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let args = json_object_args(json!({
+            "server": "browser-structured",
+            "tool": "browser_execute_js",
+            "arguments": {
+                "script": "return document.title",
+                "token": "sk-abcdefgh1234567890"
+            }
+        }));
+        let output = run_mcp_call(&context, &args).expect("MCP isError should return observable output");
+        let observed = output
+            .observed_error
+            .as_ref()
+            .expect("MCP isError should produce observed recovery error");
+        assert_eq!(observed.error_class, "mcp_tool_result_error");
+        let data = observed
+            .data
+            .as_ref()
+            .expect("observed error should include structured data");
+        assert_eq!(data["server"].as_str(), Some("browser-structured"));
+        assert_eq!(data["tool_name"].as_str(), Some("browser_execute_js"));
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["script", "token"])
+        );
+        assert!(
+            data["argument_bytes"]
+                .as_u64()
+                .is_some_and(|value| value > 0)
+        );
+        let argument_preview = data["argument_preview"]
+            .as_str()
+            .expect("argument preview should be included");
+        assert!(argument_preview.contains("return document.title"));
+        assert!(argument_preview.contains("<redacted>"));
+        assert!(
+            !argument_preview.contains("sk-abcdefgh1234567890"),
+            "argument preview must not expose secret-like values, got: {argument_preview}"
+        );
+
+        clear_mcp_runtime_state("browser-structured");
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn mcp_tool_result_error_reports_observable_failure_data() {
         let server = McpServerResolved {
             name: "mock".to_string(),
@@ -2905,7 +2980,14 @@ allow_tools = ["allowed_tool"]
             raw_preview: "bad args".to_string(),
             structured_content_preview: "{\"reason\":\"bad args\"}".to_string(),
         };
-        let error = mcp_tool_result_error(&server, "fail", &execution);
+        let arguments = json!({
+            "query": "hello",
+            "token": "sk-abcdefgh1234567890"
+        })
+        .as_object()
+        .cloned()
+        .expect("arguments object");
+        let error = mcp_tool_result_error(&server, "fail", &execution, &arguments);
         assert_eq!(error.error_class, "mcp_tool_result_error");
         assert!(error.message.contains("isError=true"));
         let data = error.data.as_ref().expect("tool result error should include data");
@@ -2916,6 +2998,84 @@ allow_tools = ["allowed_tool"]
         assert_eq!(data["is_error"].as_bool(), Some(true));
         assert_eq!(data["result_preview"].as_str(), Some("bad args"));
         assert_eq!(data["available_tools"].as_array().map(|items| items.len()), Some(2));
+        assert_eq!(
+            data["max_argument_bytes"].as_u64(),
+            Some(MAX_MCP_CALL_ARGUMENT_BYTES as u64)
+        );
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["query", "token"])
+        );
+        assert!(
+            data["argument_bytes"]
+                .as_u64()
+                .is_some_and(|value| value > 0)
+        );
+        let argument_preview = data["argument_preview"]
+            .as_str()
+            .expect("argument_preview should be included");
+        assert!(argument_preview.contains("hello"));
+        assert!(argument_preview.contains("<redacted>"));
+        assert!(
+            !argument_preview.contains("sk-abcdefgh1234567890"),
+            "argument preview must be redacted, got: {argument_preview}"
+        );
+    }
+
+    #[test]
+    fn mcp_call_error_context_enriches_rpc_failures_with_argument_metadata() {
+        let server = McpServerResolved {
+            name: "mock".to_string(),
+            command: "node".to_string(),
+            args: vec![],
+            env: StdHashMap::new(),
+            enabled: true,
+            source: "test".to_string(),
+            ready: true,
+            ready_reason: "ok".to_string(),
+        };
+        let arguments = json!({
+            "limit": 2,
+            "query": "bad args"
+        })
+        .as_object()
+        .cloned()
+        .expect("arguments object");
+        let error = ToolExecutionError::new("mcp_rpc_error", "rpc failed").with_data(json!({
+            "diagnostic_kind": "mcp_rpc_error",
+            "operation": "read_response",
+            "reason": "json_rpc_error",
+            "rpc_error_code": -32602
+        }));
+        let enriched = enrich_mcp_call_error_context(error, &server, "web_search", &arguments);
+        let data = enriched
+            .data
+            .as_ref()
+            .expect("enriched rpc error should include data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("mcp_rpc_error"));
+        assert_eq!(data["operation"].as_str(), Some("read_response"));
+        assert_eq!(data["server"].as_str(), Some("mock"));
+        assert_eq!(data["tool_name"].as_str(), Some("web_search"));
+        assert_eq!(data["rpc_error_code"].as_i64(), Some(-32602));
+        assert_eq!(
+            data["argument_keys"]
+                .as_array()
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<&str>>()),
+            Some(vec!["limit", "query"])
+        );
+        assert!(
+            data["argument_preview"]
+                .as_str()
+                .is_some_and(|preview| preview.contains("bad args"))
+        );
     }
 
     #[test]

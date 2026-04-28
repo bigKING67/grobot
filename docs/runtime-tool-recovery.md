@@ -95,6 +95,12 @@ an unbounded transport. Runtime rejects non-object argument payloads with
 structured `invalid_tool_arguments` data, and rejects oversized argument objects
 before server lookup/spawn with `mcp_arguments_too_large`. This preserves MCP
 composability while keeping input-side context and process pressure observable.
+When an MCP call fails at JSON-RPC/transport time or returns `isError=true`, the
+runtime recovery data must include bounded argument diagnostics:
+`argument_keys`, `argument_bytes`, `max_argument_bytes`, and a redacted
+`argument_preview`. The full argument object is never emitted as recovery data;
+the preview is capped and secret-like values are masked before reaching the
+gateway prompt hint.
 
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a

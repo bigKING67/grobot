@@ -339,6 +339,10 @@ const mcpObservedResultFeedback = buildRuntimeToolRecoveryFeedback({
         is_error: true,
         result_preview: "bad args",
         structured_content_preview: "{\"reason\":\"bad args\"}",
+        argument_keys: ["query", "token"],
+        argument_bytes: 48,
+        max_argument_bytes: 65536,
+        argument_preview: "{\"query\":\"bad args\",\"token\":\"<redacted>\"}",
         available_tools: ["echo", "fail"],
       },
       recoverable: true,
@@ -355,6 +359,22 @@ expect(
 expect(
   mcpObservedResultFeedback.promptBlock.includes("result_preview=\"bad args\""),
   "feedback summarizes MCP tool result preview",
+);
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("argument_keys=[\"query\",\"token\"]"),
+  "feedback summarizes MCP argument keys",
+);
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("argument_bytes=48"),
+  "feedback summarizes MCP argument bytes",
+);
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("max_argument_bytes=65536"),
+  "feedback summarizes MCP argument byte budget",
+);
+expect(
+  mcpObservedResultFeedback.promptBlock.includes("argument_preview=\"{\\\"query\\\":\\\"bad args\\\",\\\"token\\\":\\\"<redacted>\\\"}\""),
+  "feedback summarizes bounded MCP argument preview",
 );
 
 const mcpEnvironmentObservedAt = "2026-04-25T00:00:30.000Z";
