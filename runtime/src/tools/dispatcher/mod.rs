@@ -400,6 +400,15 @@ impl ToolExecutor for LocalToolExecutor {
                 "Use query/sources/per_source_limit/max_segments/include_org in the context semantic_search surface, or switch to full_debug for bridge/cache/timeout tuning.",
             )?;
         }
+        if tool_name == TOOL_ASK_USER {
+            validate_projected_tool_args_visible(
+                &context,
+                args,
+                TOOL_ASK_USER,
+                "validate_ask_user_args_visible",
+                "Use questions in normal ask_user surfaces; full_debug is required for internal blocking/resume/default timeout fields.",
+            )?;
+        }
         let overlap_candidate = build_overlap_candidate(tool_name.as_str(), args);
         if let Some(candidate) = overlap_candidate.as_ref() {
             if should_block_overlap_candidate(input, candidate)? {

@@ -123,6 +123,7 @@ const PROFILE_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
   semantic_search_slim: 120,
   prompt_enhancer: 210,
   ask_user: 160,
+  ask_user_slim: 70,
 };
 
 const ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE: Record<string, number> = {
@@ -218,6 +219,7 @@ const SLIM_SEMANTIC_SEARCH_SCHEMA_ARG_NAMES = [
   "query",
   "sources",
 ] as const;
+const SLIM_ASK_USER_SCHEMA_ARG_NAMES = ["questions"] as const;
 
 const ADVANCED_BROWSER_SCHEMA_ARG_NAMES: Record<string, readonly string[]> = {
   web_scan: FULL_SCHEMA_ARG_NAMES.web_scan,
@@ -279,6 +281,13 @@ function shouldUseSlimSemanticSearchSchema(
     && profile === "context";
 }
 
+function shouldUseSlimAskUserSchema(
+  toolName: string,
+  projectionMode: RuntimeToolSurfaceProjectionMode,
+): boolean {
+  return toolName === "ask_user" && projectionMode !== "full";
+}
+
 function schemaPropertyCountForTool(
   toolName: string,
   profile: ToolSurfaceProfile,
@@ -297,6 +306,9 @@ function schemaArgNamesForTool(
   }
   if (shouldUseSlimSemanticSearchSchema(toolName, profile, projectionMode)) {
     return [...SLIM_SEMANTIC_SEARCH_SCHEMA_ARG_NAMES];
+  }
+  if (shouldUseSlimAskUserSchema(toolName, projectionMode)) {
+    return [...SLIM_ASK_USER_SCHEMA_ARG_NAMES];
   }
   if (projectionMode === "advanced" && toolName in ADVANCED_BROWSER_SCHEMA_ARG_NAMES) {
     return [...ADVANCED_BROWSER_SCHEMA_ARG_NAMES[toolName]];
@@ -1171,7 +1183,13 @@ export function adaptRuntimeToolContextForRecovery(input: {
 
 export function estimateToolSchemaTokens(toolNames: readonly string[], profile: ToolSurfaceProfile): number {
   return Math.max(1, Math.ceil(toolNames.reduce((total, toolName) => {
-    if (profile === "browser_advanced" || profile === "full_debug") {
+    if (profile === "full_debug") {
+      return total + (ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE[toolName] ?? PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
+    }
+    if (profile === "browser_advanced") {
+      if (toolName === "ask_user") {
+        return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.ask_user_slim;
+      }
       return total + (ADVANCED_BROWSER_SCHEMA_TOKEN_ESTIMATE[toolName] ?? PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
     }
     if (
@@ -1182,6 +1200,9 @@ export function estimateToolSchemaTokens(toolNames: readonly string[], profile: 
     }
     if (toolName === "semantic_search" && profile === "context") {
       return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.semantic_search_slim;
+    }
+    if (toolName === "ask_user") {
+      return total + PROFILE_SCHEMA_TOKEN_ESTIMATE.ask_user_slim;
     }
     return total + (PROFILE_SCHEMA_TOKEN_ESTIMATE[toolName] ?? 80);
   }, 0)));

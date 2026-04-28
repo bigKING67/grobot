@@ -279,6 +279,9 @@ execution boundary.
 retrieval controls (`query`, `sources`, `per_source_limit`, `max_segments`, `include_org`) and keep
 bridge overrides, forced refresh, timeout tuning, and manual technical-term hints in `full_debug`.
 Hidden semantic-search args must fail before the ContextWeaver bridge runs.
+`ask_user` should expose only `questions` outside `full_debug`. Internal blocking/resume/default
+timeout fields are orchestration state, not normal model controls, and must be rejected when hidden
+from the active schema.
 
 Browser facade recovery must treat repeated environment failures as operator-action signals. For
 `browser_backend_result_error` with `error_code` in `NO_EXTENSION`, `NO_SESSION`, or

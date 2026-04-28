@@ -619,13 +619,13 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
             .collect::<StdHashSet<String>>();
         assert_eq!(surface_tool_names("full_debug"), full_debug_expected);
 
-        assert_eq!(surface_schema_property_count("minimal", false), 12);
-        assert_eq!(surface_schema_property_count("coding", false), 30);
-        assert_eq!(surface_schema_property_count("browser", false), 19);
-        assert_eq!(surface_schema_property_count("browser_advanced", false), 42);
-        assert_eq!(surface_schema_property_count("browser", true), 42);
-        assert_eq!(surface_schema_property_count("context", false), 13);
-        assert_eq!(surface_schema_property_count("mcp", false), 9);
+        assert_eq!(surface_schema_property_count("minimal", false), 9);
+        assert_eq!(surface_schema_property_count("coding", false), 27);
+        assert_eq!(surface_schema_property_count("browser", false), 16);
+        assert_eq!(surface_schema_property_count("browser_advanced", false), 39);
+        assert_eq!(surface_schema_property_count("browser", true), 39);
+        assert_eq!(surface_schema_property_count("context", false), 10);
+        assert_eq!(surface_schema_property_count("mcp", false), 6);
         assert_eq!(surface_schema_property_count("full_debug", false), 92);
     }
 
@@ -644,9 +644,9 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
                 .is_some_and(|value| value.starts_with("schema:"))
         );
         assert_eq!(coding["visible_tool_count"].as_u64(), Some(7));
-        assert_eq!(coding["schema_property_count"].as_u64(), Some(30));
+        assert_eq!(coding["schema_property_count"].as_u64(), Some(27));
         assert_eq!(coding["full_schema_property_count"].as_u64(), Some(30));
-        assert_eq!(coding["suppressed_schema_property_count"].as_u64(), Some(0));
+        assert_eq!(coding["suppressed_schema_property_count"].as_u64(), Some(3));
         assert_eq!(
             coding["per_tool_property_count"][TOOL_SEARCH].as_u64(),
             Some(8)
@@ -659,9 +659,9 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         let browser = surface_schema_profile("browser");
         assert_eq!(browser["projection_mode"], "slim");
         assert_eq!(browser["advanced_tool_schema"], false);
-        assert_eq!(browser["schema_property_count"].as_u64(), Some(19));
+        assert_eq!(browser["schema_property_count"].as_u64(), Some(16));
         assert_eq!(browser["full_schema_property_count"].as_u64(), Some(47));
-        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(28));
+        assert_eq!(browser["suppressed_schema_property_count"].as_u64(), Some(31));
         assert_eq!(
             browser["per_tool_property_count"][TOOL_READ].as_u64(),
             Some(4)
@@ -736,11 +736,11 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         let browser_advanced = surface_schema_profile("browser_advanced");
         assert_eq!(browser_advanced["projection_mode"], "advanced");
         assert_eq!(browser_advanced["advanced_tool_schema"], true);
-        assert_eq!(browser_advanced["schema_property_count"].as_u64(), Some(42));
+        assert_eq!(browser_advanced["schema_property_count"].as_u64(), Some(39));
         assert_eq!(browser_advanced["full_schema_property_count"].as_u64(), Some(47));
         assert_eq!(
             browser_advanced["suppressed_schema_property_count"].as_u64(),
-            Some(5)
+            Some(8)
         );
         assert_eq!(
             browser_advanced["per_tool_property_count"][TOOL_WEB_EXECUTE_JS].as_u64(),
@@ -764,9 +764,9 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
 
         let context = surface_schema_profile("context");
         assert_eq!(context["projection_mode"], "slim");
-        assert_eq!(context["schema_property_count"].as_u64(), Some(13));
+        assert_eq!(context["schema_property_count"].as_u64(), Some(10));
         assert_eq!(context["full_schema_property_count"].as_u64(), Some(20));
-        assert_eq!(context["suppressed_schema_property_count"].as_u64(), Some(7));
+        assert_eq!(context["suppressed_schema_property_count"].as_u64(), Some(10));
         assert_eq!(
             context["per_tool_property_count"][TOOL_SEMANTIC_SEARCH].as_u64(),
             Some(5)
@@ -950,6 +950,25 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         assert_schema_props_include(
             &full_debug_props,
             &["technical_terms", "refresh", "timeout_ms", "bridge_script"],
+        );
+    }
+
+    #[test]
+    fn ask_user_surface_hides_internal_resume_fields_except_full_debug() {
+        let coding_params = surface_parameters("coding", vec![TOOL_ASK_USER], TOOL_ASK_USER);
+        let coding_props = schema_property_names(&coding_params);
+        assert_schema_props_include(&coding_props, &["questions"]);
+        assert_schema_props_omit(
+            &coding_props,
+            &["blocking_node_id", "default_on_timeout", "resume_token"],
+        );
+
+        let full_debug_params =
+            surface_parameters("full_debug", vec![TOOL_ASK_USER], TOOL_ASK_USER);
+        let full_debug_props = schema_property_names(&full_debug_params);
+        assert_schema_props_include(
+            &full_debug_props,
+            &["blocking_node_id", "default_on_timeout", "resume_token"],
         );
     }
 
@@ -1748,6 +1767,51 @@ audit_redact_secrets = false
         assert!(hidden_args
             .iter()
             .any(|value| value.as_str() == Some("bridge_script")));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn ask_user_slim_surface_rejects_internal_resume_args() {
+        let workspace = make_temp_workspace("ask-user-slim-hidden-args");
+        let mut input = make_read_only_input(&workspace);
+        if let Some(context) = input.tool_context.as_mut() {
+            context.tool_surface_profile = Some("coding".to_string());
+            context.enabled_tools = Some(vec![TOOL_ASK_USER.to_string()]);
+            context.model_visible_tools = Some(vec![TOOL_ASK_USER.to_string()]);
+        }
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_ASK_USER,
+            json!({
+                "questions": [
+                    {
+                        "id": "scope",
+                        "header": "Scope",
+                        "question": "Continue?"
+                    }
+                ],
+                "blocking_node_id": "node-1",
+                "resume_token": "resume-1"
+            }),
+        )
+        .expect_err("normal ask_user surface should reject internal resume args");
+        assert_eq!(error.error_class, "tool_argument_not_visible");
+        let data = error
+            .data
+            .as_ref()
+            .expect("ask_user hidden args should include data");
+        assert_eq!(data["operation"].as_str(), Some("validate_ask_user_args_visible"));
+        let hidden_args = data["hidden_args"]
+            .as_array()
+            .expect("hidden_args should be an array");
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("blocking_node_id")));
+        assert!(hidden_args
+            .iter()
+            .any(|value| value.as_str() == Some("resume_token")));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

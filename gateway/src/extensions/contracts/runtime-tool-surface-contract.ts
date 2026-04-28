@@ -283,10 +283,15 @@ expectEqual(coding.schemaFingerprint, codingProjection.schemaFingerprint, "codin
 expectEqual(codingProjection.projectionMode, "slim", "coding projection mode");
 expectEqual(codingProjection.visibleToolCount, 7, "coding projection visible tool count");
 expectEqual(codingProjection.dispatchEnabledToolCount, 7, "coding projection dispatch tool count");
-expectEqual(codingProjection.schemaPropertyCount, 30, "coding projection schema property count");
+expectEqual(codingProjection.schemaPropertyCount, 27, "coding projection schema property count");
 expectEqual(codingProjection.fullSchemaPropertyCount, 30, "coding projection full property count");
-expectEqual(codingProjection.suppressedSchemaPropertyCount, 0, "coding projection suppressed property count");
+expectEqual(codingProjection.suppressedSchemaPropertyCount, 3, "coding projection suppressed property count");
 expectProjectionWithinBudget(coding, "coding projection budget");
+expectDeepEqual(
+  codingProjection.perToolVisibleArgs?.ask_user,
+  ["questions"],
+  "coding projection exposes slim ask_user arg names",
+);
 
 const minimal = withEnvProfile("minimal", () => build("普通 coding task"));
 expectEqual(minimal.toolSurfaceProfile, "minimal", "minimal profile");
@@ -295,8 +300,8 @@ expectDeepEqual(minimal.modelVisibleTools, ["read", "edit", "write", "ask_user"]
 const minimalProjection = projection(minimal);
 expectEqual(minimal.schemaFingerprint, minimalProjection.schemaFingerprint, "minimal context/projection fingerprint");
 expectEqual(minimalProjection.projectionMode, "slim", "minimal projection mode");
-expectEqual(minimalProjection.schemaPropertyCount, 12, "minimal projection schema property count");
-expectEqual(minimalProjection.suppressedSchemaPropertyCount, 3, "minimal suppressed property count");
+expectEqual(minimalProjection.schemaPropertyCount, 9, "minimal projection schema property count");
+expectEqual(minimalProjection.suppressedSchemaPropertyCount, 6, "minimal suppressed property count");
 expectProjectionWithinBudget(minimal, "minimal projection budget");
 expectDeepEqual(
   minimalProjection.perToolVisibleArgs?.read,
@@ -319,9 +324,9 @@ const browserProjection = projection(browser);
 expectEqual(browserProjection.source, "gateway.fallback", "browser projection source");
 expectEqual(browser.schemaFingerprint, browserProjection.schemaFingerprint, "browser context/projection fingerprint");
 expectEqual(browserProjection.projectionMode, "slim", "browser projection mode");
-expectEqual(browserProjection.schemaPropertyCount, 19, "browser projection schema property count");
+expectEqual(browserProjection.schemaPropertyCount, 16, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
-expectEqual(browserProjection.suppressedSchemaPropertyCount, 28, "browser projection suppressed property count");
+expectEqual(browserProjection.suppressedSchemaPropertyCount, 31, "browser projection suppressed property count");
 expectProjectionWithinBudget(browser, "browser projection budget");
 expectDeepEqual(
   browserProjection.perToolVisibleArgs?.read,
@@ -660,9 +665,9 @@ expect(
   "schema fingerprint changes when only projected args change",
 );
 expectEqual(browserAdvancedProjection.projectionMode, "advanced", "browser advanced projection mode");
-expectEqual(browserAdvancedProjection.schemaPropertyCount, 42, "browser advanced projection schema property count");
+expectEqual(browserAdvancedProjection.schemaPropertyCount, 39, "browser advanced projection schema property count");
 expectEqual(browserAdvancedProjection.fullSchemaPropertyCount, 47, "browser advanced projection full property count");
-expectEqual(browserAdvancedProjection.suppressedSchemaPropertyCount, 5, "browser advanced projection suppressed property count");
+expectEqual(browserAdvancedProjection.suppressedSchemaPropertyCount, 8, "browser advanced projection suppressed property count");
 expectProjectionWithinBudget(browserAdvanced, "browser advanced projection budget");
 
 const context = withEnvProfile(undefined, () => build("用记忆和语义上下文找相关经验"));
@@ -672,8 +677,8 @@ expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user
 expectDeepEqual(context.enabledTools, context.modelVisibleTools, "context dispatch tools");
 const contextProjection = projection(context);
 expectEqual(context.schemaFingerprint, contextProjection.schemaFingerprint, "context context/projection fingerprint");
-expectEqual(contextProjection.schemaPropertyCount, 13, "context projection schema property count");
-expectEqual(contextProjection.suppressedSchemaPropertyCount, 7, "context projection suppressed property count");
+expectEqual(contextProjection.schemaPropertyCount, 10, "context projection schema property count");
+expectEqual(contextProjection.suppressedSchemaPropertyCount, 10, "context projection suppressed property count");
 expectProjectionWithinBudget(context, "context projection budget");
 expectDeepEqual(
   contextProjection.perToolVisibleArgs?.semantic_search,
@@ -691,6 +696,9 @@ expectEqual(mcp.toolSurfaceProfile, "mcp", "mcp profile");
 expectDecisionProfile(mcp, "mcp", "mcp profile decision");
 expectDeepEqual(mcp.modelVisibleTools, ["mcp_servers", "mcp_call", "ask_user"], "mcp visible tools");
 expectDeepEqual(mcp.enabledTools, mcp.modelVisibleTools, "mcp dispatch tools");
+const mcpProjection = projection(mcp);
+expectEqual(mcpProjection.schemaPropertyCount, 6, "mcp projection schema property count");
+expectEqual(mcpProjection.suppressedSchemaPropertyCount, 3, "mcp projection suppressed property count");
 expectProjectionWithinBudget(mcp, "mcp projection budget");
 
 const fullDebug = withEnvProfile("full_debug", () => build("普通 coding task"));

@@ -150,11 +150,11 @@ mod tests {
         );
         assert_eq!(
             browser_schema_profile["schema_property_count"].as_u64(),
-            Some(19)
+            Some(16)
         );
         assert_eq!(
             browser_schema_profile["suppressed_schema_property_count"].as_u64(),
-            Some(28)
+            Some(31)
         );
         let full_debug_schema_profile = schema_profiles
             .iter()

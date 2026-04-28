@@ -79,6 +79,10 @@ The canonical human-intervention primitive is `ask_user`. Older
 `ask_user_question` tool calls are accepted only as a runtime compatibility
 alias at dispatch/interrupt parsing boundaries; new tool manifests and gateway
 fallback surfaces must expose `ask_user`.
+Normal `ask_user` schemas expose only `questions`. Internal orchestration fields
+(`blocking_node_id`, `default_on_timeout`, `resume_token`) are reserved for
+`full_debug` and rejected in slim/advanced surfaces, preventing model-visible
+collaboration prompts from carrying hidden resume-control state.
 
 Tool-surface routing is contract-tested by
 `gateway/src/tools/runtime/tool-surface-routing-evals.ts`. Each eval row maps a

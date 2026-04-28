@@ -961,6 +961,9 @@ fn project_tool_parameters(name: &str, parameters: &Value, profile: &str, advanc
             ],
         );
     }
+    if name == TOOL_ASK_USER && mode != "full" {
+        return project_object_schema_properties(parameters, &["questions"]);
+    }
     match (name, mode) {
         (TOOL_WEB_SCAN, "slim") => project_object_schema_properties(
             parameters,

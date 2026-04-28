@@ -5156,8 +5156,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_schema_projection_per_tool_type, "object");
   assert.equal(statusPayload.status_runtime_tool_schema_projection_visible_args_type, "object");
   assert.equal(statusPayload.status_runtime_tool_schema_projection_suppressed_args_type, "object");
-  assert.equal(statusPayload.status_runtime_tool_schema_projection_visible_args_sum, 30);
-  assert.equal(statusPayload.status_runtime_tool_schema_projection_suppressed_args_sum, 0);
+  assert.equal(statusPayload.status_runtime_tool_schema_projection_visible_args_sum, 27);
+  assert.equal(statusPayload.status_runtime_tool_schema_projection_suppressed_args_sum, 3);
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_present, true);
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_checked_type, "boolean");
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_active_type, "boolean");
@@ -5166,10 +5166,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_gateway_visible_args_type, "object");
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_runtime_suppressed_args_type, "object");
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_gateway_suppressed_args_type, "object");
-  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_runtime_visible_args_sum, 30);
-  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_gateway_visible_args_sum, 30);
-  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_runtime_suppressed_args_sum, 0);
-  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_gateway_suppressed_args_sum, 0);
+  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_runtime_visible_args_sum, 27);
+  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_gateway_visible_args_sum, 27);
+  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_runtime_suppressed_args_sum, 3);
+  assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_gateway_suppressed_args_sum, 3);
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_arg_mismatch_details_is_array, true);
   assert.equal(statusPayload.status_runtime_tool_schema_projection_drift_arg_mismatch_details_count, 0);
   assert.equal(statusPayload.status_runtime_tool_surface_decision_present, true);
@@ -8594,7 +8594,7 @@ async function runTsRustExecutionSmoke() {
   );
   assert.equal(runtimeDescribeUnavailablePayload.exit_code, 0);
   assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_projection, true);
-  assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_suppressed_none, true);
+  assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_suppressed_none, false);
   assert.equal(runtimeDescribeUnavailablePayload.has_gateway_fallback_drift_args_none, true);
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_suppressed_args, false);
   assert.equal(runtimeDescribeUnavailablePayload.has_unavailable_describe_reason, true);
