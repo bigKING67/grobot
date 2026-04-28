@@ -1254,6 +1254,15 @@ type RuntimeToolQualityWarningReason =
   | "recovery_gate_warn"
   | `recovery_health_${RuntimeToolRecoveryHealthSummary["level"]}`;
 type RuntimeToolQualityReason = RuntimeToolQualityFailureReason | RuntimeToolQualityWarningReason;
+type RuntimeToolQualityActionRequired =
+  | "build_runtime_binary"
+  | "check_runtime_health"
+  | "run_runtime_tool_contracts"
+  | "trim_runtime_tool_schema_surface"
+  | "review_runtime_recovery_gate"
+  | "restore_runtime_tool_describe"
+  | "run_runtime_tool_describe_checks"
+  | "review_runtime_recovery_health";
 
 const RUNTIME_TOOL_QUALITY_SCHEMA_VERSION = 1;
 const RUNTIME_TOOL_QUALITY_FAILURE_REASONS: readonly RuntimeToolQualityFailureReason[] = [
@@ -1271,6 +1280,21 @@ const RUNTIME_TOOL_QUALITY_WARNING_REASONS: readonly RuntimeToolQualityWarningRe
   "recovery_health_watch",
   "recovery_health_risk",
 ] as const;
+const RUNTIME_TOOL_QUALITY_ACTION_REQUIRED_BY_REASON: Readonly<
+  Record<RuntimeToolQualityReason, RuntimeToolQualityActionRequired | null>
+> = {
+  runtime_binary_missing: "build_runtime_binary",
+  runtime_health_failed: "check_runtime_health",
+  schema_projection_drift_active: "run_runtime_tool_contracts",
+  schema_budget_violated: "trim_runtime_tool_schema_surface",
+  recovery_gate_blocking: "review_runtime_recovery_gate",
+  runtime_tools_describe_fallback: "restore_runtime_tool_describe",
+  schema_projection_drift_not_checked: "run_runtime_tool_describe_checks",
+  recovery_gate_warn: "review_runtime_recovery_gate",
+  recovery_health_good: null,
+  recovery_health_watch: "review_runtime_recovery_health",
+  recovery_health_risk: "review_runtime_recovery_health",
+} as const;
 
 interface RuntimeToolQualitySummary {
   quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION;
@@ -1307,7 +1331,8 @@ interface RuntimeToolQualitySummary {
   blocker_action: string | null;
   action_family: RuntimeToolQualityActionFamily;
   action_reason: RuntimeToolQualityReason | null;
-  action_required: string | null;
+  action_required: RuntimeToolQualityActionRequired | null;
+  actionable_next_step: string | null;
 }
 
 function resolveRuntimeToolQualityAction(input: {
@@ -1347,6 +1372,64 @@ function resolveRuntimeToolQualityAction(input: {
     actionFamily: "none",
     actionReason: null,
   };
+}
+
+function resolveRuntimeToolQualityActionRequired(
+  actionReason: RuntimeToolQualityReason | null,
+): RuntimeToolQualityActionRequired | null {
+  return actionReason ? RUNTIME_TOOL_QUALITY_ACTION_REQUIRED_BY_REASON[actionReason] ?? null : null;
+}
+
+function resolveRuntimeToolQualityActionableNextStep(input: {
+  actionFamily: RuntimeToolQualityActionFamily;
+  actionReason: RuntimeToolQualityReason | null;
+  actionRequired: RuntimeToolQualityActionRequired | null;
+  runtimeHealthDetail: string | null;
+  runtimeDescribeDetail: string | null;
+  recoveryGateReason: RuntimeToolRecoveryReadinessGateDecision["reason"];
+  recoveryGateBlockerKind: RuntimeToolRecoveryReadinessGateDecision["blockerKind"];
+  recoveryGateBlockerAction: string | null;
+  recoveryHealthRecommendedNextAction: string | null;
+}): string | null {
+  switch (input.actionReason) {
+    case "runtime_binary_missing":
+      return "Build or install the Rust runtime binary, then rerun `grobot status --json`.";
+    case "runtime_health_failed":
+      return input.runtimeHealthDetail
+        ? `Inspect runtime health failure (${input.runtimeHealthDetail}), then rerun \`grobot status --json\`.`
+        : "Inspect runtime health failure, then rerun `grobot status --json`.";
+    case "schema_projection_drift_active":
+      return "Run `npm run check:gateway:runtime-tools:describe` and reconcile runtime.tools.describe with gateway projection.";
+    case "schema_budget_violated":
+      return "Trim the runtime tool schema surface or update the schema budget policy, then rerun runtime-tool contracts.";
+    case "recovery_gate_blocking":
+      return input.recoveryGateBlockerAction
+        ? `Resolve runtime recovery gate blocker (${input.recoveryGateBlockerKind}:${input.recoveryGateBlockerAction}), then rerun \`grobot status --json\`.`
+        : `Resolve runtime recovery gate blocker (${input.recoveryGateReason}), then rerun \`grobot status --json\`.`;
+    case "runtime_tools_describe_fallback":
+      return input.runtimeDescribeDetail
+        ? `Restore runtime.tools.describe availability (${input.runtimeDescribeDetail}), then rerun \`grobot status --json\`.`
+        : "Restore runtime.tools.describe availability so status no longer depends on gateway fallback projection.";
+    case "schema_projection_drift_not_checked":
+      return "Run runtime describe compatibility checks to verify schema projection drift.";
+    case "recovery_gate_warn":
+      return input.recoveryGateBlockerAction
+        ? `Review runtime recovery gate warning (${input.recoveryGateBlockerAction}), then rerun \`grobot status --json\`.`
+        : "Review runtime recovery gate warnings before expanding automated recovery.";
+    case "recovery_health_watch":
+    case "recovery_health_risk":
+      return input.recoveryHealthRecommendedNextAction
+        ? `Review recent runtime tool recovery health (${input.recoveryHealthRecommendedNextAction}), then clear repeated failures.`
+        : "Review recent runtime tool recovery timeline and clear repeated failures before expanding automation.";
+    case "recovery_health_good":
+      return null;
+    default:
+      return input.actionRequired
+        ? `Follow runtime tool quality action: ${input.actionRequired}.`
+        : input.actionFamily === "none"
+          ? null
+          : "Review runtime tool quality diagnostics, then rerun `grobot status --json`.";
+  }
 }
 
 function runtimeToolRecoveryHealthWarningReason(
@@ -1403,15 +1486,21 @@ function buildRuntimeToolQualitySummary(input: {
     : warnReasons.length > 0
       ? "warn"
       : "ok";
-  const actionRequired = input.recoveryGate.blockerAction
-    ?? input.recoveryHealth.recommendedNextAction
-    ?? (failReasons.includes("runtime_binary_missing") ? "build_runtime_binary" : null)
-    ?? (failReasons.includes("runtime_health_failed") ? "check_runtime_health" : null)
-    ?? (failReasons.includes("schema_projection_drift_active") ? "run_runtime_tool_contracts" : null)
-    ?? (failReasons.includes("schema_budget_violated") ? "trim_runtime_tool_schema_surface" : null);
   const action = resolveRuntimeToolQualityAction({
     failureReasons: failReasons,
     warningReasons: warnReasons,
+  });
+  const actionRequired = resolveRuntimeToolQualityActionRequired(action.actionReason);
+  const actionableNextStep = resolveRuntimeToolQualityActionableNextStep({
+    actionFamily: action.actionFamily,
+    actionReason: action.actionReason,
+    actionRequired,
+    runtimeHealthDetail: input.runtimeHealth?.detail ?? null,
+    runtimeDescribeDetail: input.contextPreview.enabledToolsSourceDetail ?? null,
+    recoveryGateReason: input.recoveryGate.reason,
+    recoveryGateBlockerKind: input.recoveryGate.blockerKind,
+    recoveryGateBlockerAction: input.recoveryGate.blockerAction,
+    recoveryHealthRecommendedNextAction: input.recoveryHealth.recommendedNextAction,
   });
 
   return {
@@ -1450,6 +1539,7 @@ function buildRuntimeToolQualitySummary(input: {
     action_family: action.actionFamily,
     action_reason: action.actionReason,
     action_required: actionRequired,
+    actionable_next_step: actionableNextStep,
   };
 }
 

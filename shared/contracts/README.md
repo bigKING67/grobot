@@ -27,5 +27,8 @@ Current contract docs:
 `runtime-tool-quality-v1.json` is the canonical registry for runtime-tool
 quality fields shared by `grobot status --json` and core release reports. It
 owns the allowed statuses, sources, schema-budget states, failure reasons,
-warning reasons, and action families for `runtime_tools_quality` and
-`checks.runtime_tool_quality`.
+warning reasons, action families, and `action_required` ids for
+`runtime_tools_quality` and `checks.runtime_tool_quality`. The two quality
+surfaces should publish both symbolic automation fields (`action_family`,
+`action_reason`, `action_required`) and the human-facing
+`actionable_next_step`.

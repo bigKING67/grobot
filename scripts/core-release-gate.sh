@@ -98,6 +98,17 @@ const runtimeToolQualityActionFamilyCatalog = Object.freeze([
   "contract_harness",
   "schema_budget",
 ]);
+const actionRequiredByReason = Object.freeze({
+  report_parse_error: "fix_runtime_tool_release_report_parse",
+  diagnostics_self_test_failed: "fix_runtime_tool_runner_diagnostics",
+  runtime_binary_missing: "build_runtime_binary",
+  runtime_tool_describe_failed: "run_failed_runtime_tool_contract",
+  contract_coverage_incomplete: "restore_runtime_tool_contract_coverage",
+  runner_contract_coverage_missing: "register_runtime_tool_contract_in_runner",
+  tmp_fixture_isolation_missing: "isolate_runtime_tool_contract_fixtures",
+  schema_budget_unknown: "restore_runtime_tool_schema_budget_evidence",
+  schema_budget_violated: "trim_runtime_tool_schema_surface",
+});
 
 function pushRuntimeToolQualityFailureReason(reasons, reason) {
   if (!runtimeToolQualityFailureReasonCatalog.includes(reason)) {
@@ -194,6 +205,37 @@ function runtimeToolDescribeSummary(data) {
     };
 }
 
+function resolveRuntimeToolQualityActionableNextStep(actionReason, describeSummary, diagnosticSummary) {
+  if (typeof describeSummary.failed_contract_detail?.suggested_command === "string") {
+    return describeSummary.failed_contract_detail.suggested_command;
+  }
+  if (typeof diagnosticSummary?.reproduce === "string") {
+    return diagnosticSummary.reproduce;
+  }
+  switch (actionReason) {
+    case "report_parse_error":
+      return "Fix runtime-tool release report JSON parsing, then rerun `bash scripts/core-release-gate.sh --report <path>`.";
+    case "diagnostics_self_test_failed":
+      return "Fix runtime-tool diagnostics self-test, then rerun `node scripts/check-runtime-tool-contracts.mjs --include-runtime-describe --json`.";
+    case "runtime_binary_missing":
+      return "Build the Rust runtime with `cargo build --manifest-path runtime/Cargo.toml`, then rerun the release gate.";
+    case "runtime_tool_describe_failed":
+      return "Run the failed runtime-tool contract and fix its output before rerunning the release gate.";
+    case "contract_coverage_incomplete":
+      return "Restore runtime-tool contract coverage so every registered contract completes in the release runner.";
+    case "runner_contract_coverage_missing":
+      return "Register missing runtime-tool contracts in `scripts/check-runtime-tool-contracts.mjs`.";
+    case "tmp_fixture_isolation_missing":
+      return "Replace fixed /tmp runtime-tool fixtures with isolated per-process temp paths.";
+    case "schema_budget_unknown":
+      return "Restore runtime schema budget evidence in runtime.tools.describe governance payload.";
+    case "schema_budget_violated":
+      return "Trim the runtime tool schema surface or update the schema budget policy, then rerun runtime-tool contracts.";
+    default:
+      return null;
+  }
+}
+
 function runtimeToolQualitySummary(describeSummary, data) {
   const diagnosticSummary = describeSummary.diagnostic_summary && typeof describeSummary.diagnostic_summary === "object"
     ? describeSummary.diagnostic_summary
@@ -266,6 +308,12 @@ function runtimeToolQualitySummary(describeSummary, data) {
   if (actionSignal && !runtimeToolQualityActionFamilyCatalog.includes(actionSignal[1])) {
     throw new Error(`unknown runtime_tool_quality action family: ${String(actionSignal[1])}`);
   }
+  const actionRequired = actionSignal ? actionRequiredByReason[actionSignal[0]] ?? null : null;
+  const actionableNextStep = resolveRuntimeToolQualityActionableNextStep(
+    actionSignal ? actionSignal[0] : null,
+    describeSummary,
+    diagnosticSummary,
+  );
   return {
     quality_schema_version: runtimeToolQualitySchemaVersion,
     status,
@@ -290,11 +338,8 @@ function runtimeToolQualitySummary(describeSummary, data) {
     failed_contract: describeSummary.failed_contract ?? null,
     action_family: actionSignal ? actionSignal[1] : "none",
     action_reason: actionSignal ? actionSignal[0] : null,
-    actionable_next_step: typeof describeSummary.failed_contract_detail?.suggested_command === "string"
-      ? describeSummary.failed_contract_detail.suggested_command
-      : typeof diagnosticSummary?.reproduce === "string"
-        ? diagnosticSummary.reproduce
-        : null,
+    action_required: actionRequired,
+    actionable_next_step: actionableNextStep,
     report_parse_error: describeSummary.report_parse_error ?? null,
   };
 }

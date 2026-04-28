@@ -193,10 +193,12 @@ release `checks.runtime_tool_quality` and daily `runtime_tools_quality`
 aligned on the core machine-readable fields: `quality_schema_version`, status,
 passed, source, failure/warning reasons, schema-budget status and violations,
 runtime binary existence, `action_family` / `action_reason`, and the actionable
-next-step field for the surface. The canonical enum registry lives in
+action fields for the surface. Both surfaces publish `action_required` as a
+stable symbolic automation action and `actionable_next_step` as the
+human/operator next step. The canonical enum registry lives in
 `shared/contracts/runtime-tool-quality-v1.json` and lists allowed statuses,
-sources, schema-budget states, failure reasons, warning reasons, and action
-families for both surfaces.
+sources, schema-budget states, failure reasons, warning reasons, action
+families, and `action_required` ids for both surfaces.
 
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
@@ -378,6 +380,7 @@ again.
   - `latest_recovery_stage`
   - `latest_blocker_kind`
   - `action_required`
+  - `actionable_next_step`
 - `metrics.recoveryCountsByKey`
 - `metrics.latestRecoveryRepeatKey`
 - `metrics.latestRecoveryRepeatCount`
@@ -690,15 +693,16 @@ gateway-only recovery action summaries for release evidence. It also exposes
 the diagnostic summary status, contract coverage, runner coverage, temporary
 fixture isolation, schema-budget status and violations, runtime binary
 existence, gateway-only recovery-action exceptions, and the next actionable
-command when a runtime-tool contract fails. The focused
+action when a runtime-tool contract fails. The focused
 `runtime-tool-quality-schema` contract keeps this release surface aligned with
 daily `runtime_tools_quality` status so downstream automation never has to infer
 quality from prose or raw booleans. Both surfaces carry
-`quality_schema_version=1` plus stable `action_family` / `action_reason`
-classification, so dashboards and release automation can route failures without
-parsing `actionable_next_step` or `action_required` prose. The enum source of
-truth is `shared/contracts/runtime-tool-quality-v1.json`; the focused contract
-checks that every status/release reason and action family appears in the
+`quality_schema_version=1` plus stable `action_family` / `action_reason` /
+`action_required` classification, while `actionable_next_step` stays
+operator-facing. Dashboards and release automation should route on the symbolic
+fields, not parse prose. The enum source of truth is
+`shared/contracts/runtime-tool-quality-v1.json`; the focused contract checks
+that every status/release reason, action family, and required-action id appears in the
 implementation before the runner passes. The default `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs

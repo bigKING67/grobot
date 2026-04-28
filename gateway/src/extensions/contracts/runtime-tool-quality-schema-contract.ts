@@ -71,6 +71,27 @@ function registryActionFamilies(value: unknown): string[] {
   });
 }
 
+function registryActions(value: unknown): { action: string; reasons: string[] }[] {
+  expect(Array.isArray(value), "action_required must be array");
+  return value.map((item, index) => {
+    expect(isObject(item), `action_required[${String(index)}] must be object`);
+    expect(typeof item.action === "string", `action_required[${String(index)}].action must be string`);
+    expect(Array.isArray(item.reasons), `action_required[${String(index)}].reasons must be array`);
+    const reasons = item.reasons.map((reason, reasonIndex) => {
+      expect(
+        typeof reason === "string",
+        `action_required[${String(index)}].reasons[${String(reasonIndex)}] must be string`,
+      );
+      return reason;
+    });
+    expect(reasons.length > 0, `action_required[${String(index)}].reasons must not be empty`);
+    return {
+      action: item.action,
+      reasons,
+    };
+  });
+}
+
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
@@ -88,11 +109,15 @@ const schemaStatuses = stringArray(qualitySchema.status, "schema.status");
 const schemaSources = stringArray(qualitySchema.sources, "schema.sources");
 const schemaBudgetStatuses = stringArray(qualitySchema.schema_budget_status, "schema.schema_budget_status");
 const schemaActionFamilies = registryActionFamilies(qualitySchema.action_families);
+const schemaActionRequired = registryActions(qualitySchema.action_required);
 const schemaFailureReasons = registryReasons(qualitySchema.failure_reasons, "schema.failure_reasons");
 const schemaWarningReasons = registryReasons(qualitySchema.warning_reasons, "schema.warning_reasons");
 const statusFailureReasons = registryReasonsForSurface(qualitySchema.failure_reasons, "schema.failure_reasons", "status");
 const releaseFailureReasons = registryReasonsForSurface(qualitySchema.failure_reasons, "schema.failure_reasons", "release");
 const statusWarningReasons = registryReasonsForSurface(qualitySchema.warning_reasons, "schema.warning_reasons", "status");
+const schemaActionRequiredIds = schemaActionRequired.map((item) => item.action);
+const schemaActionRequiredReasonSet = new Set(schemaActionRequired.flatMap((item) => item.reasons));
+const schemaReasonSet = new Set([...schemaFailureReasons, ...schemaWarningReasons]);
 
 expect(JSON.stringify(schemaStatuses) === JSON.stringify(["ok", "warn", "fail"]), "schema status enum must be stable");
 expect(
@@ -104,16 +129,32 @@ expect(
   "schema budget status enum must be stable",
 );
 expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "schema action families must be unique");
+expect(new Set(schemaActionRequiredIds).size === schemaActionRequiredIds.length, "schema action_required ids must be unique");
 expect(new Set(schemaFailureReasons).size === schemaFailureReasons.length, "schema failure reasons must be unique");
 expect(new Set(schemaWarningReasons).size === schemaWarningReasons.length, "schema warning reasons must be unique");
+
+for (const action of schemaActionRequired) {
+  for (const reason of action.reasons) {
+    expect(schemaReasonSet.has(reason), `action_required reason must exist in reason catalog: ${reason}`);
+  }
+}
+for (const reason of schemaFailureReasons) {
+  expect(schemaActionRequiredReasonSet.has(reason), `failure reason must map to action_required: ${reason}`);
+}
+for (const reason of schemaWarningReasons.filter((reason) => reason !== "recovery_health_good")) {
+  expect(schemaActionRequiredReasonSet.has(reason), `warning reason must map to action_required: ${reason}`);
+}
 
 const releaseQualityRequiredFragments = [
   "const runtimeToolQualitySchemaVersion = 1",
   "const runtimeToolQualityFailureReasonCatalog = Object.freeze([",
   "const runtimeToolQualityActionFamilyCatalog = Object.freeze([",
+  "const actionRequiredByReason = Object.freeze({",
   "function pushRuntimeToolQualityFailureReason",
+  "function resolveRuntimeToolQualityActionableNextStep",
   "function runtimeToolQualitySummary(describeSummary, data)",
   "const status = failureReasons.length > 0 ? \"fail\" : \"ok\"",
+  "const actionRequired = actionSignal ? actionRequiredByReason[actionSignal[0]] ?? null : null",
   "quality_schema_version: runtimeToolQualitySchemaVersion",
   "passed: status === \"ok\"",
   "source: \"runtime_tool_describe\"",
@@ -124,6 +165,7 @@ const releaseQualityRequiredFragments = [
   "runtime_binary_exists: runtimeBinaryExists",
   "action_family: actionSignal ? actionSignal[1] : \"none\"",
   "action_reason: actionSignal ? actionSignal[0] : null",
+  "action_required: actionRequired",
   "actionable_next_step:",
 ] as const;
 
@@ -134,8 +176,10 @@ const statusQualityRequiredFragments = [
   "type RuntimeToolQualityFailureReason",
   "type RuntimeToolQualityWarningReason",
   "type RuntimeToolQualityReason",
+  "type RuntimeToolQualityActionRequired",
   "const RUNTIME_TOOL_QUALITY_FAILURE_REASONS",
   "const RUNTIME_TOOL_QUALITY_WARNING_REASONS",
+  "const RUNTIME_TOOL_QUALITY_ACTION_REQUIRED_BY_REASON",
   "interface RuntimeToolQualitySummary",
   "quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION",
   "status: RuntimeToolQualityStatus",
@@ -150,8 +194,11 @@ const statusQualityRequiredFragments = [
   "recovery_gate_status: RuntimeToolRecoveryReadinessGateDecision[\"status\"]",
   "action_family: RuntimeToolQualityActionFamily",
   "action_reason: RuntimeToolQualityReason | null",
-  "action_required: string | null",
+  "action_required: RuntimeToolQualityActionRequired | null",
+  "actionable_next_step: string | null",
   "function resolveRuntimeToolQualityAction",
+  "function resolveRuntimeToolQualityActionRequired",
+  "function resolveRuntimeToolQualityActionableNextStep",
   "const status: RuntimeToolQualityStatus = failReasons.length > 0",
   "passed: status === \"ok\"",
   "quality_schema_version: RUNTIME_TOOL_QUALITY_SCHEMA_VERSION",
@@ -160,6 +207,8 @@ const statusQualityRequiredFragments = [
   "schema_budget_status: budgetValidation.ok ? \"passed\" : \"failed\"",
   "action_family: action.actionFamily",
   "action_reason: action.actionReason",
+  "action_required: actionRequired",
+  "actionable_next_step: actionableNextStep",
 ] as const;
 
 expectAllIncludes(
@@ -187,6 +236,12 @@ for (const family of schemaActionFamilies) {
   expect(
     statusCommand.includes(`"${family}"`) || releaseGate.includes(`"${family}"`),
     `action family must appear in status or release implementation: ${family}`,
+  );
+}
+for (const action of schemaActionRequiredIds) {
+  expect(
+    statusCommand.includes(`"${action}"`) || releaseGate.includes(`"${action}"`),
+    `action_required id must appear in status or release implementation: ${action}`,
   );
 }
 
@@ -223,6 +278,7 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality.schema_budget_status must be unknown")
     && releaseReportTest.includes("runtime_tool_quality.action_family must classify forced failure as runner_contract")
     && releaseReportTest.includes("runtime_tool_quality.action_reason must preserve the decisive failure reason")
+    && releaseReportTest.includes("runtime_tool_quality.action_required must point to failed contract action")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed"),
   "release-report regression must assert runtime_tool_quality source and schema budget status",
 );
@@ -231,6 +287,8 @@ expect(
   startSmokeContract.includes("quality_schema_budget_status")
     && startSmokeContract.includes("quality_action_family")
     && startSmokeContract.includes("quality_action_reason")
+    && startSmokeContract.includes("quality_action_required")
+    && startSmokeContract.includes("quality_actionable_next_step_has_runtime_status")
     && gatewaySmoke.includes("status_runtime_tool_quality_schema_budget_status"),
   "status smoke must assert runtime_tools_quality schema budget status",
 );
@@ -242,6 +300,7 @@ process.stdout.write(JSON.stringify({
   failure_reason_count: schemaFailureReasons.length,
   warning_reason_count: schemaWarningReasons.length,
   action_family_count: schemaActionFamilies.length,
+  action_required_count: schemaActionRequiredIds.length,
   release_fields: [
     "quality_schema_version",
     "status",
@@ -254,6 +313,7 @@ process.stdout.write(JSON.stringify({
     "runtime_binary_exists",
     "action_family",
     "action_reason",
+    "action_required",
     "actionable_next_step",
   ],
   status_fields: [
@@ -271,5 +331,6 @@ process.stdout.write(JSON.stringify({
     "action_family",
     "action_reason",
     "action_required",
+    "actionable_next_step",
   ],
 }) + "\n");

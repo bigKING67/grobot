@@ -2323,6 +2323,8 @@ function runStatusTsRust(repoRoot, windowSize) {
       typeof runtimeToolsQuality?.latest_recovery_stage,
     status_runtime_tool_quality_action_required_type:
       typeof runtimeToolsQuality?.action_required,
+    status_runtime_tool_quality_actionable_next_step_type:
+      typeof runtimeToolsQuality?.actionable_next_step,
     status_runtime_tool_quality_action_family: runtimeToolsQuality?.action_family ?? null,
     status_runtime_tool_quality_action_reason_type:
       typeof runtimeToolsQuality?.action_reason,
@@ -6003,6 +6005,9 @@ function runStatusRuntimeDescribeUnavailable(repoRoot) {
     quality_schema_budget_status: runtimeToolsQuality?.schema_budget_status ?? null,
     quality_action_family: runtimeToolsQuality?.action_family ?? null,
     quality_action_reason: runtimeToolsQuality?.action_reason ?? null,
+    quality_action_required: runtimeToolsQuality?.action_required ?? null,
+    quality_actionable_next_step_has_runtime_status:
+      String(runtimeToolsQuality?.actionable_next_step ?? "").includes("grobot status --json"),
     quality_failure_has_runtime_binary_missing: failureReasons.includes("runtime_binary_missing"),
     quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
     quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
@@ -6111,6 +6116,9 @@ function runStatusRuntimeDescribeInvalidSchemaProfiles(repoRoot) {
     quality_schema_budget_status: runtimeToolsQuality?.schema_budget_status ?? null,
     quality_action_family: runtimeToolsQuality?.action_family ?? null,
     quality_action_reason: runtimeToolsQuality?.action_reason ?? null,
+    quality_action_required: runtimeToolsQuality?.action_required ?? null,
+    quality_actionable_next_step_has_runtime_status:
+      String(runtimeToolsQuality?.actionable_next_step ?? "").includes("grobot status --json"),
     quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
     quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
     text_has_quality_fail: result.stdout.includes("runtime_tool_quality: status=fail"),

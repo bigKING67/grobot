@@ -4986,6 +4986,10 @@ async function runTsRustExecutionSmoke() {
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_action_required_type)),
     true,
   );
+  assert.equal(
+    ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_actionable_next_step_type)),
+    true,
+  );
   assert.equal(statusPayload.status_runtime_tool_quality_action_family, "none");
   assert.equal(
     ["string", "object"].includes(String(statusPayload.status_runtime_tool_quality_action_reason_type)),
@@ -8478,6 +8482,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(runtimeDescribeUnavailablePayload.quality_schema_budget_status, "passed");
   assert.equal(runtimeDescribeUnavailablePayload.quality_action_family, "runtime_environment");
   assert.equal(runtimeDescribeUnavailablePayload.quality_action_reason, "runtime_binary_missing");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_action_required, "build_runtime_binary");
+  assert.equal(runtimeDescribeUnavailablePayload.quality_actionable_next_step_has_runtime_status, true);
   assert.equal(runtimeDescribeUnavailablePayload.quality_failure_has_runtime_binary_missing, true);
   assert.equal(runtimeDescribeUnavailablePayload.quality_failure_has_runtime_health_failed, true);
   assert.equal(runtimeDescribeUnavailablePayload.quality_warning_has_describe_fallback, true);
@@ -8524,6 +8530,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_schema_budget_status, "passed");
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_action_family, "runtime_environment");
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_action_reason, "runtime_health_failed");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_action_required, "check_runtime_health");
+  assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_actionable_next_step_has_runtime_status, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_failure_has_runtime_health_failed, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_warning_has_describe_fallback, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.text_has_quality_fail, true);

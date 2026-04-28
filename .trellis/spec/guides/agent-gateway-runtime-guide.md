@@ -271,6 +271,7 @@ Gateway status output should include route and cache observability fields:
   - `latest_recovery_stage`
   - `latest_blocker_kind`
   - `action_required`
+  - `actionable_next_step`
 - `cache_stats_location` (canonical pointer, currently `runtime_health.cache_stats`)
 
 Tool surface schema profiles are part of the gateway/runtime contract. The default `browser`
@@ -363,16 +364,17 @@ workflow rather than the gateway-only suite because it builds the Rust runtime.
 `checks.runtime_tool_quality` must expose `status`, `passed`,
 `quality_schema_version`, `source`, `failure_reasons`, `warning_reasons`,
 schema-budget status and violations, runtime binary existence,
-`action_family`, `action_reason`, and the release actionable next step. The
-focused `runtime-tool-quality-schema` contract keeps this release shape aligned
+`action_family`, `action_reason`, `action_required`, and the release
+`actionable_next_step`. The focused `runtime-tool-quality-schema` contract keeps
+this release shape aligned
 with daily `runtime_tools_quality` status (`quality_schema_version`, `status`,
 `passed`, `source`, failure/warning reasons, schema-budget fields, runtime
 binary existence, describe source, recovery gate status, `action_family`,
-`action_reason`, and `action_required`) so quality drift is blocked before
-packaging or daily status consumers break. The canonical enum registry is
+`action_reason`, `action_required`, and `actionable_next_step`) so quality drift
+is blocked before packaging or daily status consumers break. The canonical enum registry is
 `shared/contracts/runtime-tool-quality-v1.json`; it must stay synchronized with
 status/release implementations for statuses, sources, schema-budget states,
-failure reasons, warning reasons, and action families.
+failure reasons, warning reasons, action families, and action-required ids.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`

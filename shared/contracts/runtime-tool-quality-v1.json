@@ -61,6 +61,115 @@
       "description": "Runtime-tool diagnostics or report parsing failed."
     }
   ],
+  "action_required": [
+    {
+      "action": "build_runtime_binary",
+      "reasons": [
+        "runtime_binary_missing"
+      ],
+      "description": "Build or install the Rust runtime binary before using runtime-backed tools."
+    },
+    {
+      "action": "check_runtime_health",
+      "reasons": [
+        "runtime_health_failed"
+      ],
+      "description": "Inspect runtime healthcheck failure and retry status."
+    },
+    {
+      "action": "run_runtime_tool_contracts",
+      "reasons": [
+        "schema_projection_drift_active"
+      ],
+      "description": "Run runtime-tool contract suite and reconcile schema drift."
+    },
+    {
+      "action": "trim_runtime_tool_schema_surface",
+      "reasons": [
+        "schema_budget_violated"
+      ],
+      "description": "Reduce visible tool schema surface or update budget contract."
+    },
+    {
+      "action": "review_runtime_recovery_gate",
+      "reasons": [
+        "recovery_gate_blocking",
+        "recovery_gate_warn"
+      ],
+      "description": "Review runtime recovery readiness gate blockers or warnings."
+    },
+    {
+      "action": "restore_runtime_tool_describe",
+      "reasons": [
+        "runtime_tools_describe_fallback"
+      ],
+      "description": "Restore runtime.tools.describe availability so status no longer depends on fallback projection."
+    },
+    {
+      "action": "run_runtime_tool_describe_checks",
+      "reasons": [
+        "schema_projection_drift_not_checked"
+      ],
+      "description": "Run runtime describe compatibility checks to verify schema projection drift."
+    },
+    {
+      "action": "review_runtime_recovery_health",
+      "reasons": [
+        "recovery_health_watch",
+        "recovery_health_risk"
+      ],
+      "description": "Review recent runtime tool recovery timeline and clear repeated failures."
+    },
+    {
+      "action": "fix_runtime_tool_release_report_parse",
+      "reasons": [
+        "report_parse_error"
+      ],
+      "description": "Fix release report parsing or runner output JSON."
+    },
+    {
+      "action": "fix_runtime_tool_runner_diagnostics",
+      "reasons": [
+        "diagnostics_self_test_failed"
+      ],
+      "description": "Fix runtime-tool runner diagnostics self-test."
+    },
+    {
+      "action": "run_failed_runtime_tool_contract",
+      "reasons": [
+        "runtime_tool_describe_failed"
+      ],
+      "description": "Run the failed runtime-tool contract from failed_contract_detail.suggested_command."
+    },
+    {
+      "action": "restore_runtime_tool_contract_coverage",
+      "reasons": [
+        "contract_coverage_incomplete"
+      ],
+      "description": "Ensure every runtime-tool contract completes in the release runner."
+    },
+    {
+      "action": "register_runtime_tool_contract_in_runner",
+      "reasons": [
+        "runner_contract_coverage_missing"
+      ],
+      "description": "Register missing runtime-tool contract in scripts/check-runtime-tool-contracts.mjs."
+    },
+    {
+      "action": "isolate_runtime_tool_contract_fixtures",
+      "reasons": [
+        "tmp_fixture_isolation_missing"
+      ],
+      "description": "Replace fixed /tmp fixtures with isolated per-process temp paths."
+    },
+    {
+      "action": "restore_runtime_tool_schema_budget_evidence",
+      "reasons": [
+        "schema_budget_unknown"
+      ],
+      "description": "Restore runtime schema budget evidence in describe/governance payload."
+    }
+  ],
   "failure_reasons": [
     {
       "reason": "runtime_binary_missing",

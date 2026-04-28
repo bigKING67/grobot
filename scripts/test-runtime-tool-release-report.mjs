@@ -127,6 +127,9 @@ if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
   if (runtimeToolQuality.action_reason !== "runtime_tool_describe_failed") {
     failures.push("runtime_tool_quality.action_reason must preserve the decisive failure reason");
   }
+  if (runtimeToolQuality.action_required !== "run_failed_runtime_tool_contract") {
+    failures.push("runtime_tool_quality.action_required must point to failed contract action");
+  }
   if (!String(runtimeToolQuality.actionable_next_step ?? "").includes("runtime-tool-suite-ownership-contract.ts")) {
     failures.push("runtime_tool_quality.actionable_next_step must be actionable");
   }
@@ -250,6 +253,12 @@ if (!successQuality || typeof successQuality !== "object") {
   }
   if (successQuality.action_reason !== null) {
     successFailures.push("success runtime_tool_quality.action_reason must be null");
+  }
+  if (successQuality.action_required !== null) {
+    successFailures.push("success runtime_tool_quality.action_required must be null");
+  }
+  if (successQuality.actionable_next_step !== null) {
+    successFailures.push("success runtime_tool_quality.actionable_next_step must be null");
   }
 }
 if (successDescribe?.runner_schema_version !== 1) {
