@@ -86,8 +86,19 @@ if (runtimeToolDescribe?.runner_schema_version !== 1) {
 if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
   failures.push("runtime_tool_quality must be present");
 } else {
+  if (runtimeToolQuality.status !== "fail") {
+    failures.push("runtime_tool_quality.status must be fail for forced contract failure");
+  }
   if (runtimeToolQuality.passed !== false) {
     failures.push("runtime_tool_quality.passed must be false for forced contract failure");
+  }
+  if (!Array.isArray(runtimeToolQuality.failure_reasons)) {
+    failures.push("runtime_tool_quality.failure_reasons must be array");
+  } else if (!runtimeToolQuality.failure_reasons.includes("runtime_tool_describe_failed")) {
+    failures.push("runtime_tool_quality.failure_reasons must include runtime_tool_describe_failed");
+  }
+  if (!Array.isArray(runtimeToolQuality.warning_reasons)) {
+    failures.push("runtime_tool_quality.warning_reasons must be array");
   }
   if (runtimeToolQuality.runner_schema_version !== 1) {
     failures.push("runtime_tool_quality.runner_schema_version must be 1");
@@ -180,8 +191,17 @@ const successFailures = [];
 if (!successQuality || typeof successQuality !== "object") {
   successFailures.push("success runtime_tool_quality must be present");
 } else {
+  if (successQuality.status !== "ok") {
+    successFailures.push("success runtime_tool_quality.status must be ok");
+  }
   if (successQuality.passed !== true) {
     successFailures.push("success runtime_tool_quality.passed must be true");
+  }
+  if (!Array.isArray(successQuality.failure_reasons) || successQuality.failure_reasons.length !== 0) {
+    successFailures.push("success runtime_tool_quality.failure_reasons must be empty array");
+  }
+  if (!Array.isArray(successQuality.warning_reasons)) {
+    successFailures.push("success runtime_tool_quality.warning_reasons must be array");
   }
   if (successQuality.diagnostic_summary_status !== "passed") {
     successFailures.push("success runtime_tool_quality.diagnostic_summary_status must be passed");
@@ -227,7 +247,9 @@ process.stdout.write(JSON.stringify({
   runner_schema_version: runtimeToolDescribe.runner_schema_version,
   diagnostic_status: diagnosticSummary.status,
   quality_status: runtimeToolQuality.passed,
+  quality_summary_status: runtimeToolQuality.status,
   success_quality_status: successQuality.passed,
+  success_quality_summary_status: successQuality.status,
   diagnostics_self_test: runtimeToolDescribe.diagnostics_self_test,
   runtime_binary_exists: runtimeBinary.exists,
 }) + "\n");

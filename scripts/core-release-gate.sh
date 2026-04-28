@@ -191,16 +191,40 @@ function runtimeToolQualitySummary(describeSummary, data) {
   const runtimeBinaryExists = typeof describeSummary.runtime_binary?.exists === "boolean"
     ? describeSummary.runtime_binary.exists
     : null;
+  const failureReasons = [];
+  if (describeSummary.report_parse_error) {
+    failureReasons.push("report_parse_error");
+  }
+  if (describeSummary.passed !== true || describeSummary.ok !== true) {
+    failureReasons.push("runtime_tool_describe_failed");
+  }
+  if (describeSummary.diagnostics_self_test !== true) {
+    failureReasons.push("diagnostics_self_test_failed");
+  }
+  if (runtimeBinaryExists !== true) {
+    failureReasons.push("runtime_binary_missing");
+  }
+  if (!contractCoverageComplete) {
+    failureReasons.push("contract_coverage_incomplete");
+  }
+  if (runnerContractCoverage !== true) {
+    failureReasons.push("runner_contract_coverage_missing");
+  }
+  if (tmpFixtureIsolation !== true) {
+    failureReasons.push("tmp_fixture_isolation_missing");
+  }
+  if (schemaBudgetViolations === null) {
+    failureReasons.push("schema_budget_unknown");
+  } else if (schemaBudgetViolations !== 0) {
+    failureReasons.push("schema_budget_violated");
+  }
+  const status = failureReasons.length > 0 ? "fail" : "ok";
   return {
-    passed: describeSummary.passed === true
-      && describeSummary.ok === true
-      && describeSummary.diagnostics_self_test === true
-      && runtimeBinaryExists === true
-      && contractCoverageComplete
-      && runnerContractCoverage === true
-      && tmpFixtureIsolation === true
-      && schemaBudgetViolations === 0,
+    status,
+    passed: status === "ok",
     source: "runtime_tool_describe",
+    failure_reasons: failureReasons,
+    warning_reasons: [],
     runner_schema_version: describeSummary.runner_schema_version ?? null,
     diagnostic_summary_status: diagnosticSummary?.status ?? null,
     diagnostics_self_test: describeSummary.diagnostics_self_test === true,

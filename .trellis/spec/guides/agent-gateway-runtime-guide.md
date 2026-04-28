@@ -360,6 +360,9 @@ preserve `diagnostics_self_test`, `failed_contract_detail`, and
 release-gate path and assert that `runtime_tool_quality` passes with complete
 coverage and zero schema-budget violations. Keep it in the core packaging
 workflow rather than the gateway-only suite because it builds the Rust runtime.
+`checks.runtime_tool_quality` must expose `status`, `passed`,
+`failure_reasons`, and `warning_reasons` so release quality summaries keep the
+same machine-readable failure shape as daily `runtime_tools_quality` status.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`

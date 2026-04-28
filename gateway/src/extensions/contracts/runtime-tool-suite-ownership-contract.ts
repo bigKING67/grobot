@@ -78,6 +78,11 @@ expect(
   "release gate report must expose runtime_tool_quality evidence",
 );
 expect(
+  releaseGate.includes("failure_reasons: failureReasons")
+    && releaseGate.includes("warning_reasons: []"),
+  "release gate runtime_tool_quality must expose status reasons",
+);
+expect(
   statusCommand.includes("runtime_tools_quality")
     && statusCommand.includes("buildRuntimeToolQualitySummary(")
     && statusCommand.includes("runtime_tool_quality: status="),
@@ -174,9 +179,10 @@ expect(
     && releaseReportTest.includes("runtime_binary")
     && releaseReportTest.includes("diagnostic_summary")
     && releaseReportTest.includes("runtime_tool_quality")
+    && releaseReportTest.includes("failure_reasons")
     && releaseReportTest.includes("successQuality")
     && releaseReportTest.includes("diagnostics_self_test"),
-  "release-report regression test must assert diagnostics, runtime binary, quality summary, and self-test fields",
+  "release-report regression test must assert diagnostics, runtime binary, quality summary reasons, and self-test fields",
 );
 expect(
   startSmokeContract.includes("status_has_runtime_tools_quality")

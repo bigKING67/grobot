@@ -183,6 +183,12 @@ classification as feedback/readiness/gate surfaces: `action_family` and
 non-recoverable intervention events. This keeps operator diagnostics and
 experience-pool consumers from parsing long `recommended_next_action` strings.
 
+Release reports use the same quality-summary shape as daily status surfaces:
+`checks.runtime_tool_quality` exposes `status`, `passed`, `failure_reasons`,
+and `warning_reasons` in addition to describe-runner evidence. A release gate
+failure must therefore explain why the runtime-tool quality gate failed, not
+only return a boolean.
+
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
 `status` reports `runtime_tool_enabled_tools_source_detail` and the real
