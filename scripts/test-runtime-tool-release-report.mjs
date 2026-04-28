@@ -6,7 +6,8 @@ import { join } from "node:path";
 
 const repoRoot = process.cwd();
 const tmpDir = mkdtempSync(join(tmpdir(), "grobot-runtime-tool-release-report-"));
-const reportPath = join(tmpDir, "core-release-gate-failure-report.json");
+const failureReportPath = join(tmpDir, "core-release-gate-failure-report.json");
+const successReportPath = join(tmpDir, "core-release-gate-success-report.json");
 
 function cleanup() {
   rmSync(tmpDir, { recursive: true, force: true });
@@ -19,24 +20,38 @@ function fail(message, details = {}) {
   throw new Error(`${message}${suffix}`);
 }
 
-const result = spawnSync(
-  "bash",
-  [
+function runReleaseGate(reportPath, env = {}) {
+  return spawnSync("bash", [
     "scripts/core-release-gate.sh",
     "--allow-stub",
     "--skip-pack-dryrun",
     "--report",
     reportPath,
-  ],
-  {
+  ], {
     cwd: repoRoot,
     encoding: "utf8",
     env: {
       ...process.env,
-      GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID: "runtime-tool-suite-ownership",
+      ...env,
     },
-  },
-);
+  });
+}
+
+function readReport(path, result, context) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    fail(`expected ${context} report to be readable JSON`, {
+      error: error instanceof Error ? error.message : String(error),
+      stdout: result.stdout.slice(-1000),
+      stderr: result.stderr.slice(-1000),
+    });
+  }
+}
+
+const result = runReleaseGate(failureReportPath, {
+  GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID: "runtime-tool-suite-ownership",
+});
 
 if (result.status !== 8) {
   fail("expected release gate to fail at runtime_tool_describe", {
@@ -47,18 +62,10 @@ if (result.status !== 8) {
   });
 }
 
-let report;
-try {
-  report = JSON.parse(readFileSync(reportPath, "utf8"));
-} catch (error) {
-  fail("expected release gate failure report to be readable JSON", {
-    error: error instanceof Error ? error.message : String(error),
-    stdout: result.stdout.slice(-1000),
-    stderr: result.stderr.slice(-1000),
-  });
-}
+const report = readReport(failureReportPath, result, "release gate failure");
 
 const runtimeToolDescribe = report?.checks?.runtime_tool_describe;
+const runtimeToolQuality = report?.checks?.runtime_tool_quality;
 const detail = runtimeToolDescribe?.failed_contract_detail;
 const runtimeBinary = runtimeToolDescribe?.runtime_binary;
 const diagnosticSummary = runtimeToolDescribe?.diagnostic_summary;
@@ -75,6 +82,28 @@ if (runtimeToolDescribe?.passed !== false) {
 }
 if (runtimeToolDescribe?.runner_schema_version !== 1) {
   failures.push("runner_schema_version must be 1");
+}
+if (!runtimeToolQuality || typeof runtimeToolQuality !== "object") {
+  failures.push("runtime_tool_quality must be present");
+} else {
+  if (runtimeToolQuality.passed !== false) {
+    failures.push("runtime_tool_quality.passed must be false for forced contract failure");
+  }
+  if (runtimeToolQuality.runner_schema_version !== 1) {
+    failures.push("runtime_tool_quality.runner_schema_version must be 1");
+  }
+  if (runtimeToolQuality.diagnostic_summary_status !== "failed") {
+    failures.push("runtime_tool_quality.diagnostic_summary_status must be failed");
+  }
+  if (runtimeToolQuality.runtime_binary_exists !== true) {
+    failures.push("runtime_tool_quality.runtime_binary_exists must be true");
+  }
+  if (runtimeToolQuality.failed_contract !== "runtime-tool-suite-ownership") {
+    failures.push("runtime_tool_quality.failed_contract must preserve the failed contract id");
+  }
+  if (!String(runtimeToolQuality.actionable_next_step ?? "").includes("runtime-tool-suite-ownership-contract.ts")) {
+    failures.push("runtime_tool_quality.actionable_next_step must be actionable");
+  }
 }
 if (runtimeToolDescribe?.diagnostics_self_test !== true) {
   failures.push("diagnostics_self_test must stay true on forced contract failure");
@@ -127,8 +156,66 @@ if (failures.length > 0) {
   fail("runtime-tool release failure report contract failed", {
     failures,
     report: runtimeToolDescribe,
+    quality: runtimeToolQuality,
     stdout: result.stdout.slice(-1000),
     stderr: result.stderr.slice(-1000),
+  });
+}
+
+const successResult = runReleaseGate(successReportPath);
+if (successResult.status !== 0) {
+  fail("expected release gate success path to pass", {
+    status: successResult.status,
+    signal: successResult.signal,
+    stdout: successResult.stdout.slice(-1000),
+    stderr: successResult.stderr.slice(-1000),
+  });
+}
+
+const successReport = readReport(successReportPath, successResult, "release gate success");
+const successQuality = successReport?.checks?.runtime_tool_quality;
+const successDescribe = successReport?.checks?.runtime_tool_describe;
+const successFailures = [];
+
+if (!successQuality || typeof successQuality !== "object") {
+  successFailures.push("success runtime_tool_quality must be present");
+} else {
+  if (successQuality.passed !== true) {
+    successFailures.push("success runtime_tool_quality.passed must be true");
+  }
+  if (successQuality.diagnostic_summary_status !== "passed") {
+    successFailures.push("success runtime_tool_quality.diagnostic_summary_status must be passed");
+  }
+  if (successQuality.runner_contract_coverage !== true) {
+    successFailures.push("success runtime_tool_quality.runner_contract_coverage must be true");
+  }
+  if (successQuality.tmp_fixture_isolation !== true) {
+    successFailures.push("success runtime_tool_quality.tmp_fixture_isolation must be true");
+  }
+  if (successQuality.schema_budget_violations !== 0) {
+    successFailures.push("success runtime_tool_quality.schema_budget_violations must be 0");
+  }
+  if (successQuality.runtime_binary_exists !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
+  }
+  if (!Array.isArray(successQuality.gateway_only_recovery_actions)) {
+    successFailures.push("success runtime_tool_quality.gateway_only_recovery_actions must be array");
+  }
+}
+if (successDescribe?.runner_schema_version !== 1) {
+  successFailures.push("success runtime_tool_describe.runner_schema_version must be 1");
+}
+if (successDescribe?.runtime_schema_budget_violations !== 0) {
+  successFailures.push("success runtime_tool_describe.runtime_schema_budget_violations must be 0");
+}
+
+if (successFailures.length > 0) {
+  fail("runtime-tool release success quality summary contract failed", {
+    failures: successFailures,
+    quality: successQuality,
+    describe: successDescribe,
+    stdout: successResult.stdout.slice(-1000),
+    stderr: successResult.stderr.slice(-1000),
   });
 }
 
@@ -139,6 +226,8 @@ process.stdout.write(JSON.stringify({
   failed_contract: runtimeToolDescribe.failed_contract,
   runner_schema_version: runtimeToolDescribe.runner_schema_version,
   diagnostic_status: diagnosticSummary.status,
+  quality_status: runtimeToolQuality.passed,
+  success_quality_status: successQuality.passed,
   diagnostics_self_test: runtimeToolDescribe.diagnostics_self_test,
   runtime_binary_exists: runtimeBinary.exists,
 }) + "\n");

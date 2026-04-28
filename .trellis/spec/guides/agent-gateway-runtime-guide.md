@@ -334,12 +334,18 @@ drift. The release report must preserve the describe summary under
 `checks.runtime_tool_describe`, including runner schema version, contract
 counts, failed contract name, failure diagnostics, diagnostic summary, runtime
 binary status, schema budget violations, and gateway-only recovery action
-exceptions.
+exceptions. It must also expose `checks.runtime_tool_quality` as the shallow
+release-quality surface for contract coverage, runner coverage, temporary
+fixture isolation, schema-budget violations, runtime binary existence,
+diagnostic summary status, gateway-only recovery-action exceptions, and the next
+actionable command on failure.
 The release-report regression command
 `npm run check:gateway:runtime-tools:release-report` must force a deterministic
 runtime-tool contract failure and assert that failed describe-mode reports still
 preserve `diagnostics_self_test`, `failed_contract_detail`, and
-`diagnostic_summary` plus `runtime_binary`; keep it in the core packaging
+`diagnostic_summary` plus `runtime_binary`; it must also run a successful
+release-gate path and assert that `runtime_tool_quality` passes with complete
+coverage and zero schema-budget violations. Keep it in the core packaging
 workflow rather than the gateway-only suite because it builds the Rust runtime.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit

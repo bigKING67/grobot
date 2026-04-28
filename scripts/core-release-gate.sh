@@ -87,19 +87,52 @@ function parseJson(value) {
   }
 }
 
-function runtimeToolDescribeSummary() {
-  const summary = { passed: runtimeToolDescribePassed };
+function runtimeToolDescribeData() {
   if (!runtimeToolDescribeReportPath || !fs.existsSync(runtimeToolDescribeReportPath)) {
-    return summary;
+    return {
+      report: null,
+      governance_payload: null,
+      ownership_payload: null,
+      report_parse_error: null,
+    };
   }
   try {
     const report = JSON.parse(fs.readFileSync(runtimeToolDescribeReportPath, "utf8"));
-    const governance = Array.isArray(report.results)
-      ? report.results.find((item) => item && item.id === "runtime-tool-governance")
-      : null;
-    const governancePayload = typeof governance?.output === "string"
-      ? parseJson(governance.output)
-      : null;
+    const resultPayload = (id) => {
+      const item = Array.isArray(report.results)
+        ? report.results.find((row) => row && row.id === id)
+        : null;
+      return typeof item?.output === "string" ? parseJson(item.output) : null;
+    };
+    return {
+      report,
+      governance_payload: resultPayload("runtime-tool-governance"),
+      ownership_payload: resultPayload("runtime-tool-suite-ownership"),
+      report_parse_error: null,
+    };
+  } catch (error) {
+    return {
+      report: null,
+      governance_payload: null,
+      ownership_payload: null,
+      report_parse_error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function runtimeToolDescribeSummary(data) {
+  const summary = { passed: runtimeToolDescribePassed };
+  if (data.report_parse_error) {
+    return {
+      ...summary,
+      report_parse_error: data.report_parse_error,
+    };
+  }
+  if (!data.report) {
+    return summary;
+  }
+  const report = data.report;
+  const governancePayload = data.governance_payload;
     return {
       ...summary,
       ok: report.ok === true,
@@ -132,13 +165,68 @@ function runtimeToolDescribeSummary() {
         ? governancePayload.gateway_only_recovery_actions
         : [],
     };
-  } catch (error) {
-    return {
-      ...summary,
-      report_parse_error: error instanceof Error ? error.message : String(error),
-    };
-  }
 }
+
+function runtimeToolQualitySummary(describeSummary, data) {
+  const diagnosticSummary = describeSummary.diagnostic_summary && typeof describeSummary.diagnostic_summary === "object"
+    ? describeSummary.diagnostic_summary
+    : null;
+  const ownershipPayload = data.ownership_payload && typeof data.ownership_payload === "object"
+    ? data.ownership_payload
+    : null;
+  const schemaBudgetViolations = Number.isFinite(describeSummary.runtime_schema_budget_violations)
+    ? describeSummary.runtime_schema_budget_violations
+    : Number.isFinite(diagnosticSummary?.schema_budget_violations)
+      ? diagnosticSummary.schema_budget_violations
+      : null;
+  const contractCoverageComplete = Number.isFinite(describeSummary.contract_count)
+    && Number.isFinite(describeSummary.completed_count)
+    && describeSummary.contract_count === describeSummary.completed_count;
+  const runnerContractCoverage = typeof ownershipPayload?.runner_covers_all_runtime_tool_contracts === "boolean"
+    ? ownershipPayload.runner_covers_all_runtime_tool_contracts
+    : null;
+  const tmpFixtureIsolation = typeof ownershipPayload?.all_contract_tmp_fixtures_isolated === "boolean"
+    ? ownershipPayload.all_contract_tmp_fixtures_isolated
+    : null;
+  const runtimeBinaryExists = typeof describeSummary.runtime_binary?.exists === "boolean"
+    ? describeSummary.runtime_binary.exists
+    : null;
+  return {
+    passed: describeSummary.passed === true
+      && describeSummary.ok === true
+      && describeSummary.diagnostics_self_test === true
+      && runtimeBinaryExists === true
+      && contractCoverageComplete
+      && runnerContractCoverage === true
+      && tmpFixtureIsolation === true
+      && schemaBudgetViolations === 0,
+    source: "runtime_tool_describe",
+    runner_schema_version: describeSummary.runner_schema_version ?? null,
+    diagnostic_summary_status: diagnosticSummary?.status ?? null,
+    diagnostics_self_test: describeSummary.diagnostics_self_test === true,
+    contract_count: describeSummary.contract_count ?? null,
+    completed_count: describeSummary.completed_count ?? null,
+    contract_coverage_complete: contractCoverageComplete,
+    runner_contract_coverage: runnerContractCoverage,
+    tmp_fixture_isolation: tmpFixtureIsolation,
+    schema_budget_violations: schemaBudgetViolations,
+    runtime_binary_exists: runtimeBinaryExists,
+    gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
+      ? describeSummary.gateway_only_recovery_actions
+      : [],
+    failed_contract: describeSummary.failed_contract ?? null,
+    actionable_next_step: typeof describeSummary.failed_contract_detail?.suggested_command === "string"
+      ? describeSummary.failed_contract_detail.suggested_command
+      : typeof diagnosticSummary?.reproduce === "string"
+        ? diagnosticSummary.reproduce
+        : null,
+    report_parse_error: describeSummary.report_parse_error ?? null,
+  };
+}
+
+const runtimeToolData = runtimeToolDescribeData();
+const runtimeToolDescribe = runtimeToolDescribeSummary(runtimeToolData);
+const runtimeToolQuality = runtimeToolQualitySummary(runtimeToolDescribe, runtimeToolData);
 
 const payload = {
   schema_version: 1,
@@ -153,7 +241,8 @@ const payload = {
   checks: {
     verify_packages: { passed: verifyPassed },
     launcher_lookup_chain: { passed: launcherPassed },
-    runtime_tool_describe: runtimeToolDescribeSummary(),
+    runtime_tool_describe: runtimeToolDescribe,
+    runtime_tool_quality: runtimeToolQuality,
     pack_dryrun: { passed: packPassed, skipped: packSkipped },
   },
 };

@@ -556,11 +556,15 @@ normal focused runtime-tool suite.
 `check:gateway:runtime-tools:release-report` runs the core release gate with a
 deterministic synthetic runtime-tool contract failure and asserts that the
 failure report still preserves `diagnostics_self_test`,
-`failed_contract_detail`, `diagnostic_summary`, and `runtime_binary`. This
-regression belongs to the release/packaging gate rather than the gateway-only
-suite because it builds the Rust runtime before checking describe-mode failure
-evidence. If the describe runner exits successfully but the release gate cannot
-parse or summarize its JSON report, the gate must fail through the explicit
+`failed_contract_detail`, `diagnostic_summary`, `runtime_binary`, and
+`checks.runtime_tool_quality`. It also runs a successful release-gate path and
+asserts that `runtime_tool_quality` reports complete contract coverage,
+temporary fixture isolation, zero schema-budget violations, runtime binary
+presence, and a passed diagnostic summary. This regression belongs to the
+release/packaging gate rather than the gateway-only suite because it builds the
+Rust runtime before checking describe-mode failure evidence. If the describe
+runner exits successfully but the release gate cannot parse or summarize its
+JSON report, the gate must fail through the explicit
 `runtime_tool_describe_report_invalid` reason so `--report` callers still get a
 machine-readable failure.
 
@@ -628,9 +632,13 @@ surface. Its JSON report exposes `checks.runtime_tool_describe` with
 `runner_schema_version`, `contract_count`, `completed_count`,
 `diagnostics_self_test`, `failed_contract`, `failed_contract_detail`,
 `diagnostic_summary`, `runtime_binary`, `runtime_schema_budget_violations`, and
-gateway-only recovery action summaries for release evidence. The default
-`npm run check` already covers the gateway-only suite and then runs the normal
-Rust compile/test gate separately.
+gateway-only recovery action summaries for release evidence. It also exposes
+`checks.runtime_tool_quality` as a shallow release-quality summary containing
+the diagnostic summary status, contract coverage, runner coverage, temporary
+fixture isolation, schema-budget violations, runtime binary existence,
+gateway-only recovery-action exceptions, and the next actionable command when a
+runtime-tool contract fails. The default `npm run check` already covers the
+gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs
 `npm run check:gateway:runtime-tools:schema` and
 `npm run check:gateway:runtime-tools:release-report` so runner JSON and

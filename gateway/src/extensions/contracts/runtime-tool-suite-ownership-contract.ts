@@ -67,8 +67,13 @@ expect(
 );
 expect(
   releaseGate.includes("checks.runtime_tool_describe")
-    || releaseGate.includes("runtime_tool_describe: runtimeToolDescribeSummary()"),
+    || releaseGate.includes("runtime_tool_describe: runtimeToolDescribe"),
   "release gate report must expose runtime_tool_describe evidence",
+);
+expect(
+  releaseGate.includes("runtime_tool_quality")
+    && releaseGate.includes("runtimeToolQualitySummary("),
+  "release gate report must expose runtime_tool_quality evidence",
 );
 expect(
   releaseGate.includes("failed_contract_detail"),
@@ -160,8 +165,10 @@ expect(
   releaseReportTest.includes("failed_contract_detail")
     && releaseReportTest.includes("runtime_binary")
     && releaseReportTest.includes("diagnostic_summary")
+    && releaseReportTest.includes("runtime_tool_quality")
+    && releaseReportTest.includes("successQuality")
     && releaseReportTest.includes("diagnostics_self_test"),
-  "release-report regression test must assert diagnostics, runtime binary, and self-test fields",
+  "release-report regression test must assert diagnostics, runtime binary, quality summary, and self-test fields",
 );
 expect(
   corePackagingWorkflow.includes("check:gateway:runtime-tools:release-report"),
@@ -207,6 +214,7 @@ process.stdout.write(JSON.stringify({
   release_gate_runtime_binary_status: true,
   release_gate_runner_schema_version: true,
   release_gate_diagnostic_summary: true,
+  release_gate_quality_summary: true,
   release_gate_invalid_report_fail_reason: true,
   runner_failure_diagnostics: true,
   runner_runtime_binary_status: true,
