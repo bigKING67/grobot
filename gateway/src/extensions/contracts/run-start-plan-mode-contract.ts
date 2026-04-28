@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     "",
     "## Validation",
     "",
-    "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-plan-mode-contract.ts",
+    "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-plan-mode-contract.ts；预期: exit 0 且所有断言通过。",
     "",
     "## Risk & Rollback",
     "",
@@ -148,6 +148,20 @@ async function main(): Promise<void> {
   ].join("\n");
 
   const review = reviewPlanContent(validPlan);
+  const weakValidationReview = reviewPlanContent(
+    validPlan.replace(
+      "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/run-start-plan-mode-contract.ts；预期: exit 0 且所有断言通过。",
+      "- 看一下是否正常。",
+    ),
+  );
+  const weakRiskReview = reviewPlanContent(
+    validPlan
+      .replace("- 风险: 旧帮助文案或 contract 未同步。", "- 风险: 低")
+      .replace("- 回退: 恢复精简前 surface 并重新整理说明。", "- 回退: 回滚"),
+  );
+  const canonicalProposedPlanReview = reviewPlanContent(
+    `<proposed_plan>\n${validPlan}\n</proposed_plan>`,
+  );
 
   try {
     const planMode = createRunStartPlanMode({
@@ -199,8 +213,22 @@ async function main(): Promise<void> {
     } else {
       delete process.env.GROBOT_PLAN_STATUS_VERBOSE;
     }
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: false,
+    });
+    const stdoutBeforeScriptOpen = stdout;
+    const scriptOpen = await planMode.handleMessageInput("/plan open");
+    const scriptOpenOutput = stdout.slice(stdoutBeforeScriptOpen.length);
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: true,
+    });
     const executeCountBeforeApply = executeInputs.length;
+    const stdoutBeforeApply = stdout;
     const execute = await planMode.handleMessageInput("Implement the plan.");
+    const applyOutput = stdout.slice(stdoutBeforeApply.length);
+    const applyPrompt = executeInputs[executeInputs.length - 1] ?? "";
 
     const eventsPath = resolve(
       workDir,
@@ -209,6 +237,144 @@ async function main(): Promise<void> {
       "events.jsonl",
     );
     const eventsText = readFileSync(eventsPath, "utf8");
+
+    const failureWorkDir = resolve(workDir, "failure");
+    mkdirSync(failureWorkDir, { recursive: true });
+    const failureSessionKey = "feishu:grobot:dm:plan-mode-failure-contract";
+    const failureRuntimeState = createRuntimeState(failureSessionKey);
+    let failureStderr = "";
+    const failurePlanMode = createRunStartPlanMode({
+      workDir: failureWorkDir,
+      runtimeState: failureRuntimeState,
+      persistence,
+      executeTurn: async (_userInput, _interactiveMode, options) => {
+        failureRuntimeState.setProviderRuntimeStates([{
+          provider_name: "mock",
+          consecutive_failures: 1,
+          circuit_open_until_ms: 0,
+          last_error_class: "upstream_connect_failed",
+          last_error_message: "runtime rpc error -32001",
+          last_failed_at: nowIsoUtc(),
+        }]);
+        options?.writeStderr?.(
+          "[runtime-route] failed attempts=1 providers=mock errors=mock:upstream_connect_failed\n",
+        );
+        options?.writeStderr?.(
+          "runtime failed: provider=mock RuntimeRpcError: runtime rpc error -32001\n",
+        );
+        return 1;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        failureRuntimeState.markFailureObserved();
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message) => {
+        failureStderr += message;
+      },
+    });
+    const failureResultCode = await failurePlanMode.enterPlan("provider failure");
+
+    const verboseFailureWorkDir = resolve(workDir, "verbose-failure");
+    mkdirSync(verboseFailureWorkDir, { recursive: true });
+    const verboseFailureSessionKey = "feishu:grobot:dm:plan-mode-verbose-failure-contract";
+    const verboseFailureRuntimeState = createRuntimeState(verboseFailureSessionKey);
+    let verboseFailureStderr = "";
+    const originalFailureVerbose = process.env.GROBOT_PLAN_STATUS_VERBOSE;
+    process.env.GROBOT_PLAN_STATUS_VERBOSE = "1";
+    const verboseFailurePlanMode = createRunStartPlanMode({
+      workDir: verboseFailureWorkDir,
+      runtimeState: verboseFailureRuntimeState,
+      persistence,
+      executeTurn: async (_userInput, _interactiveMode, options) => {
+        verboseFailureRuntimeState.setProviderRuntimeStates([{
+          provider_name: "mock",
+          consecutive_failures: 1,
+          circuit_open_until_ms: 0,
+          last_error_class: "upstream_connect_failed",
+          last_error_message: "runtime rpc error -32001",
+          last_failed_at: nowIsoUtc(),
+        }]);
+        options?.writeStderr?.(
+          "[runtime-route] failed attempts=1 providers=mock errors=mock:upstream_connect_failed\n",
+        );
+        options?.writeStderr?.(
+          "runtime failed: provider=mock RuntimeRpcError: runtime rpc error -32001\n",
+        );
+        return 1;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        verboseFailureRuntimeState.markFailureObserved();
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message) => {
+        verboseFailureStderr += message;
+      },
+    });
+    const verboseFailureResultCode = await verboseFailurePlanMode.enterPlan(
+      "provider verbose failure",
+    );
+    if (typeof originalFailureVerbose === "string") {
+      process.env.GROBOT_PLAN_STATUS_VERBOSE = originalFailureVerbose;
+    } else {
+      delete process.env.GROBOT_PLAN_STATUS_VERBOSE;
+    }
+
+    const applyFailureWorkDir = resolve(workDir, "apply-failure");
+    mkdirSync(applyFailureWorkDir, { recursive: true });
+    const applyFailureSessionKey = "feishu:grobot:dm:plan-mode-apply-failure-contract";
+    const applyFailureRuntimeState = createRuntimeState(applyFailureSessionKey);
+    let applyFailureStderr = "";
+    const applyFailurePlanMode = createRunStartPlanMode({
+      workDir: applyFailureWorkDir,
+      runtimeState: applyFailureRuntimeState,
+      persistence,
+      executeTurn: async (_userInput, _interactiveMode, options) => {
+        applyFailureRuntimeState.setProviderRuntimeStates([{
+          provider_name: "mock",
+          consecutive_failures: 1,
+          circuit_open_until_ms: 0,
+          last_error_class: "upstream_connect_failed",
+          last_error_message: "runtime rpc error -32001",
+          last_failed_at: nowIsoUtc(),
+        }]);
+        options?.writeStderr?.(
+          "[runtime-route] failed attempts=1 providers=mock errors=mock:upstream_connect_failed\n",
+        );
+        options?.writeStderr?.(
+          "runtime failed: provider=mock RuntimeRpcError: runtime rpc error -32001\n",
+        );
+        return 1;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        applyFailureRuntimeState.markFailureObserved();
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message) => {
+        applyFailureStderr += message;
+      },
+    });
+    await applyFailurePlanMode.handleMessageInput("/plan implementation failure", {
+      messageMode: true,
+    });
+    const applyFailurePlanPath = applyFailurePlanMode.getActivePlanPath();
+    if (!applyFailurePlanPath) {
+      throw new Error("expected active plan path for apply failure contract");
+    }
+    writeFileSync(applyFailurePlanPath, `${validPlan}\n`, "utf8");
+    const applyFailureResult = await applyFailurePlanMode.handleMessageInput("Implement the plan.");
+
     const payload = {
       review_passes_for_valid_plan: review.ok && review.blocked === false,
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
@@ -225,6 +391,24 @@ async function main(): Promise<void> {
           item.includes("[Plan Mode Workflow]")
           && item.includes("Do not modify repo files")
           && item.includes("<proposed_plan>")),
+      plan_turn_prompt_requires_strict_plan_sections:
+        executePromptPreludes.some((item) =>
+          item.includes("Validation must include real commands")
+          && item.includes("Risk & Rollback must name concrete failure modes")),
+      review_rejects_validation_without_command:
+        !weakValidationReview.ok
+        && weakValidationReview.findings.some((item) => item.code === "validation_missing_command"),
+      review_rejects_validation_without_expected_result:
+        !weakValidationReview.ok
+        && weakValidationReview.findings.some((item) => item.code === "validation_missing_expected_result"),
+      review_rejects_vague_risk:
+        !weakRiskReview.ok
+        && weakRiskReview.findings.some((item) => item.code === "risk_too_vague"),
+      review_rejects_vague_rollback:
+        !weakRiskReview.ok
+        && weakRiskReview.findings.some((item) => item.code === "rollback_too_vague"),
+      review_accepts_canonical_proposed_plan_block:
+        canonicalProposedPlanReview.ok && canonicalProposedPlanReview.blocked === false,
       active_plan_path_present: typeof planPath === "string" && planPath.length > 0,
       open_plan_surface_handled: open.handled && open.code === 0,
       open_plan_surface_is_human_summary:
@@ -235,23 +419,126 @@ async function main(): Promise<void> {
       open_plan_surface_hides_machine_fields_by_default:
         !openOutput.includes("plan_status_output_mode:")
         && !openOutput.includes("active_plan_phase:")
-        && !openOutput.includes("suggested_action_command:"),
+        && !openOutput.includes("suggested_action_command:")
+        && !openOutput.includes("session_id:")
+        && !openOutput.includes("plan_id:")
+        && !openOutput.includes("seq:")
+        && !openOutput.includes("status:"),
       open_plan_surface_detects_live_decision_phase: openOutput.includes("Phase: awaiting decision"),
-      open_plan_surface_detects_live_status_source: openOutput.includes("Stored state:"),
+      open_plan_surface_hides_old_stored_state_label:
+        !openOutput.includes("Stored state:"),
+      open_plan_surface_splits_quality_lines:
+        openOutput.includes("Quality: score")
+        && openOutput.includes("Guard:")
+        && !openOutput.includes("Quality: score 5;"),
       open_plan_surface_suggests_execute: openOutput.includes("Next: Implement the plan."),
+      open_plan_surface_uses_relative_plan_file:
+        /^Plan file: \.grobot\/plans\//m.test(openOutput),
+      open_plan_surface_hides_absolute_plan_file:
+        !openOutput.includes(`Plan file: ${workDir}`),
       verbose_plan_surface_handled: verboseOpen.handled && verboseOpen.code === 0,
       verbose_plan_surface_preserves_machine_fields:
         verboseOpenOutput.includes("plan_status_output_mode: full")
         && verboseOpenOutput.includes("active_plan_phase: awaiting_decision")
         && verboseOpenOutput.includes("suggested_action_command: Implement the plan."),
+      script_plan_surface_defaults_to_human_summary:
+        scriptOpen.handled
+        && scriptOpen.code === 0
+        && scriptOpenOutput.includes("Plan status")
+        && scriptOpenOutput.includes("Current plan:")
+        && scriptOpenOutput.includes("Next: Implement the plan."),
+      script_plan_surface_hides_machine_fields_by_default:
+        !scriptOpenOutput.includes("plan_status_output_mode:")
+        && !scriptOpenOutput.includes("active_plan_phase:")
+        && !scriptOpenOutput.includes("suggested_action_command:")
+        && !scriptOpenOutput.includes("session_id:")
+        && !scriptOpenOutput.includes("plan_id:")
+        && !scriptOpenOutput.includes("seq:")
+        && !scriptOpenOutput.includes("status:"),
+      script_plan_surface_hides_old_stored_state_label:
+        !scriptOpenOutput.includes("Stored state:"),
+      script_plan_surface_splits_quality_lines:
+        scriptOpenOutput.includes("Quality: score")
+        && scriptOpenOutput.includes("Guard:")
+        && !scriptOpenOutput.includes("Quality: score 5;"),
+      script_plan_surface_uses_relative_plan_file:
+        /^Plan file: \.grobot\/plans\//m.test(scriptOpenOutput),
+      script_plan_surface_hides_absolute_plan_file:
+        !scriptOpenOutput.includes(`Plan file: ${workDir}`),
       execute_natural_language_handled: execute.handled && execute.code === 0,
       execute_triggered_runtime_turn: executeInputs.length === executeCountBeforeApply + 1,
       execute_payload_is_not_literal_phrase:
-        executeInputs[executeInputs.length - 1]?.trim() !== "Implement the plan.",
+        applyPrompt.trim() !== "Implement the plan.",
+      execute_payload_has_approved_plan_contract:
+        applyPrompt.includes("[Approved Plan Execution]")
+        && applyPrompt.includes("Plan approval:")
+        && applyPrompt.includes("Execution contract:")
+        && applyPrompt.includes("Plan to implement:")
+        && applyPrompt.includes("<approved_plan>")
+        && applyPrompt.includes("</approved_plan>"),
+      execute_payload_has_approval_metadata:
+        applyPrompt.includes("- ticket:")
+        && applyPrompt.includes("- sha256:"),
+      execute_payload_has_scope_guardrails:
+        applyPrompt.includes("Do not silently expand scope beyond Scope In")
+        && applyPrompt.includes("stop and return to plan mode with the conflict")
+        && applyPrompt.includes("validation aligned with the plan's Milestones and Validation sections"),
+      execute_payload_contains_approved_plan_snapshot:
+        applyPrompt.includes("# Contract Plan")
+        && applyPrompt.includes("## Validation")
+        && applyPrompt.includes("## Risk & Rollback"),
+      execute_payload_omits_plain_trigger_as_extra:
+        !applyPrompt.includes("Additional user instruction:\nImplement the plan."),
+      apply_surface_shows_approved_plan_start:
+        applyOutput.includes("Plan approved")
+        && applyOutput.includes("Plan to implement")
+        && applyOutput.includes("Starting implementation from approved snapshot"),
+      apply_surface_renders_plan_card:
+        applyOutput.includes("╭─ Plan to implement")
+        && applyOutput.includes("│ Contract Plan")
+        && applyOutput.includes("│ Goal:")
+        && applyOutput.includes("│ Validation:")
+        && applyOutput.includes("╰─ approval"),
+      apply_surface_hides_machine_fields:
+        !applyOutput.includes("plan_id=")
+        && !applyOutput.includes("session_key=")
+        && !applyOutput.includes("approved_snapshot_path"),
+      apply_surface_hides_plan_metadata_preview:
+        !applyOutput.includes("session_id:")
+        && !applyOutput.includes("plan_id:")
+        && !applyOutput.includes("seq:")
+        && !applyOutput.includes("status:"),
+      apply_surface_does_not_echo_literal_trigger:
+        !applyOutput.includes("Implement the plan."),
       execute_exits_plan_only: runtimeState.getPlanMode() === "normal",
       execute_clears_active_plan_meta: runtimeState.getPlanMeta() === undefined,
       events_has_apply_succeeded: eventsText.includes("\"event\":\"plan_apply_succeeded\""),
       events_has_verification_pending: eventsText.includes("\"event\":\"plan_verification_pending\""),
+      compact_plan_turn_failure_code_preserved: failureResultCode === 1,
+      compact_plan_turn_failure_surface_human:
+        failureStderr.includes("Plan update failed")
+        && failureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
+        && failureStderr.includes("Plan draft was kept")
+        && failureStderr.includes("Diagnostics: PLAN_PROVIDER_RUNTIME_FAILURE"),
+      compact_plan_turn_failure_hides_machine_lines:
+        !failureStderr.includes("runtime failed:")
+        && !failureStderr.includes("[runtime-route] failed attempts=")
+        && !failureStderr.includes("plan_id="),
+      verbose_plan_turn_failure_preserves_machine_lines:
+        verboseFailureResultCode === 1
+        && verboseFailureStderr.includes("runtime failed:")
+        && verboseFailureStderr.includes("[plan] turn failed plan_id="),
+      compact_plan_apply_failure_code_preserved:
+        applyFailureResult.handled && applyFailureResult.code === 1,
+      compact_plan_apply_failure_surface_human:
+        applyFailureStderr.includes("Plan implementation failed")
+        && applyFailureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
+        && applyFailureStderr.includes("Plan is still available")
+        && applyFailureStderr.includes("Diagnostics: PLAN_PROVIDER_RUNTIME_FAILURE"),
+      compact_plan_apply_failure_hides_machine_lines:
+        !applyFailureStderr.includes("runtime failed:")
+        && !applyFailureStderr.includes("[runtime-route] failed attempts=")
+        && !applyFailureStderr.includes("plan_id="),
       stderr_empty_on_success_path: stderr.trim().length === 0,
     };
 

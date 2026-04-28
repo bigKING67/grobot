@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
-import { resolvePlanFailureDecision } from "./plan-failure-policy";
+import { relative as relativePath, resolve as resolvePath } from "node:path";
+import {
+  resolvePlanFailureDecision,
+  type PlanFailureDecision,
+  type PlanFailurePhase,
+} from "./plan-failure-policy";
 import { isNaturalPlanExecutionIntent, parsePlanCommand } from "./plan-command";
 import {
   appendPlanEvent,
@@ -39,6 +43,7 @@ import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type ChatHistoryMessage } from "./session-history";
 import {
   derivePlanPhaseFromStatus,
+  PLAN_DIRECT_REFINE_ACTION,
   PLAN_EXECUTION_REPLY,
   resolvePlanStatusRecommendation,
   resolvePlanStatusRecommendationCommand,
@@ -51,6 +56,12 @@ import {
   type SessionPlanMode,
 } from "./session-registry";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
+import {
+  compactSpaces,
+  measureDisplayWidth,
+  padToDisplayWidth,
+  truncateDisplayWidth,
+} from "../ui/interactive/display-width";
 
 interface CreateRunStartPlanModeInput {
   workDir: string;
@@ -94,11 +105,17 @@ const PLAN_INTERRUPT_NOT_RUNNING_CODE = "PLAN_INTERRUPT_NOT_RUNNING";
 const PLAN_INTERRUPT_NOT_PLAN_MODE_CODE = "PLAN_INTERRUPT_NOT_PLAN_MODE";
 const PLAN_STATUS_PREVIEW_MAX_LINES = 3;
 const PLAN_STATUS_PREVIEW_MAX_CHARS = 140;
+const PLAN_APPROVAL_FINGERPRINT_CHARS = 12;
+const PLAN_APPROVAL_CARD_MIN_INNER_WIDTH = 44;
+const PLAN_APPROVAL_CARD_MAX_INNER_WIDTH = 76;
+const PLAN_APPROVAL_CARD_MAX_LINES = 4;
+const PLAN_STATUS_PATH_MAX_CHARS = 96;
 export type PlanInterruptSource = "command" | "cli_esc";
 
 export interface RunStartPlanTurnOptions {
   writeStderr?: (message: string) => void;
   skipExecution?: boolean;
+  diagnosticsMode?: "compact" | "verbose" | "trace";
 }
 
 export interface PlanInterruptResult {
@@ -120,6 +137,9 @@ const PLAN_MODE_WORKFLOW_PROMPT = [
   "Plan mode is active. Do not modify repo files or run mutating commands; read and explore only unless writing the plan artifact is explicitly handled by the plan-mode system.",
   "First inspect the real code and reference paths needed for the user's request. Do not ask questions that can be answered from the repo.",
   "When user preference or product tradeoff is required, call ask_user with 1-3 concrete multiple-choice questions. Options must be meaningful; do not add \"Other\" because the client adds it.",
+  "Only emit <proposed_plan> when every section below is concrete: ## Goal, ## Scope In, ## Scope Out, ## Milestones, ## Validation, ## Risk & Rollback.",
+  "Validation must include real commands or explicit manual verification steps plus expected results. Risk & Rollback must name concrete failure modes and executable recovery actions.",
+  "If any section would contain TODO/TBD/待补充/low-risk filler, keep exploring or ask_user before presenting the plan.",
   "End with exactly one <proposed_plan>...</proposed_plan> block only when the plan is decision-complete. Do not ask \"should I proceed\" in normal text.",
 ].join("\n");
 
@@ -233,6 +253,502 @@ function buildPlanStatusPreviewLines(content: string): string[] {
     .map((line) => compactPlanStatusLine(line))
     .filter((line) => line.length > 0);
   return lines.slice(0, PLAN_STATUS_PREVIEW_MAX_LINES);
+}
+
+function compactPlanApprovalFingerprint(value: string | undefined): string {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) {
+    return "<missing>";
+  }
+  return normalized.slice(0, PLAN_APPROVAL_FINGERPRINT_CHARS);
+}
+
+function extractTopLevelPlanHeading(content: string): string | undefined {
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.trim().match(/^#\s+(.+)$/);
+    if (match?.[1]?.trim()) {
+      return compactSpaces(match[1]);
+    }
+  }
+  return undefined;
+}
+
+function extractPlanSectionBody(content: string, heading: string): string | undefined {
+  const normalizedHeading = heading.trim().toLowerCase();
+  const lines = content.split(/\r?\n/);
+  const bodyLines: string[] = [];
+  let collecting = false;
+  for (const line of lines) {
+    const headingMatch = line.trim().match(/^##\s+(.+)$/);
+    if (headingMatch) {
+      if (collecting) {
+        break;
+      }
+      collecting = headingMatch[1]!.trim().toLowerCase() === normalizedHeading;
+      continue;
+    }
+    if (collecting) {
+      bodyLines.push(line);
+    }
+  }
+  return collecting ? bodyLines.join("\n") : undefined;
+}
+
+function normalizePlanPreviewLine(line: string): string {
+  const withoutMarkdown = line
+    .replace(/^\s*[-*]\s+/, "")
+    .replace(/^\s*\d+\.\s+/, "")
+    .replace(/^\s*\[[ xX]\]\s+/, "")
+    .replace(/^#+\s+/, "")
+    .replace(/\b__REQUIRED__\b\s*[:：]?\s*/gi, "");
+  return compactSpaces(withoutMarkdown);
+}
+
+function isPlanMetadataPreviewLine(line: string): boolean {
+  return /^[-*]\s*(?:session_id|plan_id|seq|status)\s*:/i.test(line.trim());
+}
+
+function firstMeaningfulPlanSectionLine(body: string | undefined): string | undefined {
+  if (!body) {
+    return undefined;
+  }
+  for (const line of body.split(/\r?\n/)) {
+    if (isPlanMetadataPreviewLine(line)) {
+      continue;
+    }
+    const normalized = normalizePlanPreviewLine(line);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function buildHumanPlanPreviewLines(input: {
+  title?: string;
+  planContent: string;
+}): string[] {
+  const lines: string[] = [];
+  const heading = extractTopLevelPlanHeading(input.planContent);
+  const title = heading ?? input.title?.trim();
+  if (title) {
+    lines.push(compactSpaces(title));
+  }
+
+  const goal = firstMeaningfulPlanSectionLine(
+    extractPlanSectionBody(input.planContent, "Goal"),
+  );
+  if (goal) {
+    lines.push(`Goal: ${goal}`);
+  }
+  const scope = firstMeaningfulPlanSectionLine(
+    extractPlanSectionBody(input.planContent, "Scope In"),
+  );
+  if (scope) {
+    lines.push(`Scope: ${scope}`);
+  }
+  const validation = firstMeaningfulPlanSectionLine(
+    extractPlanSectionBody(input.planContent, "Validation"),
+  );
+  if (validation) {
+    lines.push(`Validation: ${validation}`);
+  }
+
+  if (lines.length <= 1) {
+    for (const fallbackLine of buildPlanStatusPreviewLines(input.planContent)) {
+      if (!isPlanMetadataPreviewLine(fallbackLine)) {
+        lines.push(fallbackLine);
+      }
+      if (lines.length >= PLAN_APPROVAL_CARD_MAX_LINES) {
+        break;
+      }
+    }
+  }
+
+  return [...new Set(lines)].slice(0, PLAN_APPROVAL_CARD_MAX_LINES);
+}
+
+function formatHumanPlanFilePath(input: {
+  workDir: string;
+  planPath?: string;
+}): string {
+  const rawPath = input.planPath?.trim();
+  if (!rawPath) {
+    return "not available";
+  }
+  const resolvedPlanPath = resolvePath(rawPath);
+  const relativePlanPath = relativePath(input.workDir, resolvedPlanPath);
+  const displayPath = relativePlanPath
+    && !relativePlanPath.startsWith("..")
+    && !relativePlanPath.startsWith("/")
+    ? relativePlanPath
+    : rawPath;
+  if (measureDisplayWidth(displayPath) <= PLAN_STATUS_PATH_MAX_CHARS) {
+    return displayPath;
+  }
+  const parts = displayPath.split(/[\\/]+/).filter((part) => part.length > 0);
+  if (parts.length >= 4) {
+    const compactPath = [
+      parts[0],
+      parts[1],
+      "...",
+      parts[parts.length - 1],
+    ].join("/");
+    if (measureDisplayWidth(compactPath) <= PLAN_STATUS_PATH_MAX_CHARS) {
+      return compactPath;
+    }
+  }
+  return truncateDisplayWidth(displayPath, PLAN_STATUS_PATH_MAX_CHARS, {
+    compact: true,
+  });
+}
+
+function renderPlanCardBorderLine(input: {
+  left: string;
+  right: string;
+  label: string;
+  innerWidth: number;
+}): string {
+  const safeLabel = truncateDisplayWidth(input.label, Math.max(0, input.innerWidth - 4), {
+    compact: true,
+  });
+  const prefix = `─ ${safeLabel} `;
+  const fillWidth = Math.max(0, input.innerWidth - measureDisplayWidth(prefix));
+  return `${input.left}${prefix}${"─".repeat(fillWidth)}${input.right}`;
+}
+
+function renderPlanCardBodyLine(line: string, innerWidth: number): string {
+  const bodyWidth = Math.max(0, innerWidth - 2);
+  const fitted = padToDisplayWidth(
+    truncateDisplayWidth(line, bodyWidth, { compact: true }),
+    bodyWidth,
+  );
+  return `│ ${fitted} │`;
+}
+
+function renderApprovedPlanCard(input: {
+  title?: string;
+  approvedHash: string;
+  ticketId: string;
+  approvedPlanContent: string;
+}): string[] {
+  const previewLines = buildHumanPlanPreviewLines({
+    title: input.title,
+    planContent: input.approvedPlanContent,
+  });
+  const bodyLines = previewLines.length > 0 ? previewLines : ["approved plan"];
+  const footer = `approval ${compactPlanApprovalFingerprint(input.ticketId)} · sha256 ${compactPlanApprovalFingerprint(input.approvedHash)}`;
+  const innerWidth = Math.min(
+    PLAN_APPROVAL_CARD_MAX_INNER_WIDTH,
+    Math.max(
+      PLAN_APPROVAL_CARD_MIN_INNER_WIDTH,
+      measureDisplayWidth("Plan to implement") + 4,
+      measureDisplayWidth(footer) + 4,
+      ...bodyLines.map((line) => measureDisplayWidth(compactSpaces(line)) + 2),
+    ),
+  );
+  return [
+    renderPlanCardBorderLine({
+      left: "╭",
+      right: "╮",
+      label: "Plan to implement",
+      innerWidth,
+    }),
+    ...bodyLines.map((line) => renderPlanCardBodyLine(line, innerWidth)),
+    renderPlanCardBorderLine({
+      left: "╰",
+      right: "╯",
+      label: footer,
+      innerWidth,
+    }),
+  ];
+}
+
+function buildApprovedPlanExecutionSurface(input: {
+  title?: string;
+  approvedHash: string;
+  ticketId: string;
+  approvedPlanContent: string;
+}): string {
+  return [
+    "Plan approved",
+    ...renderApprovedPlanCard(input),
+    "Starting implementation from approved snapshot...",
+    "",
+  ].join("\n");
+}
+
+interface PlanTurnDiagnosticStderr {
+  writeStderr(message: string): void;
+  flush(): void;
+}
+
+function shouldRenderCompactPlanFailureSurface(
+  diagnosticsMode?: RunStartPlanTurnOptions["diagnosticsMode"],
+): boolean {
+  if (isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE)
+    || isEnvTruthy(process.env.GROBOT_PLAN_FAILURE_VERBOSE)) {
+    return false;
+  }
+  if (diagnosticsMode === "verbose" || diagnosticsMode === "trace") {
+    return false;
+  }
+  return true;
+}
+
+function isCompactPlanFailureMachineLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("[runtime-route] failed attempts=")
+    || trimmed.startsWith("[runtime-route] all provider circuits are OPEN")
+    || trimmed.startsWith("runtime failed:");
+}
+
+function createPlanTurnDiagnosticStderr(input: {
+  writeStderr: (message: string) => void;
+  compactFailureSurface: boolean;
+}): PlanTurnDiagnosticStderr {
+  if (!input.compactFailureSurface) {
+    return {
+      writeStderr: input.writeStderr,
+      flush: () => undefined,
+    };
+  }
+
+  let buffered = "";
+  const forwardLine = (line: string, suffix: string): void => {
+    if (isCompactPlanFailureMachineLine(line)) {
+      return;
+    }
+    input.writeStderr(`${line}${suffix}`);
+  };
+
+  return {
+    writeStderr: (message: string): void => {
+      buffered += message;
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines) {
+        const normalizedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+        forwardLine(normalizedLine, "\n");
+      }
+    },
+    flush: (): void => {
+      if (!buffered) {
+        return;
+      }
+      const line = buffered.endsWith("\r") ? buffered.slice(0, -1) : buffered;
+      buffered = "";
+      forwardLine(line, "");
+    },
+  };
+}
+
+function formatCompactPlanFailureReason(input: {
+  exitCode: number;
+  failureDecision: PlanFailureDecision;
+}): string {
+  const providerName = input.failureDecision.providerName?.trim();
+  const errorClass = input.failureDecision.errorClass?.trim();
+  if (input.failureDecision.reason === "provider_runtime_failure" && providerName) {
+    return `Provider unavailable: ${providerName}${errorClass ? ` (${errorClass})` : ""}.`;
+  }
+  if (providerName) {
+    return `Runtime failed on ${providerName}${errorClass ? ` (${errorClass})` : ""}.`;
+  }
+  return `Runtime exited with code ${String(input.exitCode)} (${input.failureDecision.diagnosticCode}).`;
+}
+
+function buildCompactPlanFailureSurface(input: {
+  phase: PlanFailurePhase;
+  exitCode: number;
+  failureDecision: PlanFailureDecision;
+}): string {
+  const isApplying = input.phase === "applying";
+  const title = isApplying ? "Plan implementation failed" : "Plan update failed";
+  const stateLine = isApplying
+    ? "Plan is still available; fix the runtime issue and retry execution."
+    : "Plan draft was kept; you can keep editing it.";
+  const nextLine = input.failureDecision.reason === "provider_runtime_failure"
+    ? "Next: fix provider config or switch to an available model, then retry."
+    : "Next: inspect the runtime failure, then retry the plan step.";
+  return [
+    title,
+    `Reason: ${formatCompactPlanFailureReason({
+      exitCode: input.exitCode,
+      failureDecision: input.failureDecision,
+    })}`,
+    stateLine,
+    nextLine,
+    `Diagnostics: ${input.failureDecision.diagnosticCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
+    "",
+  ].join("\n");
+}
+
+function formatCompactPlanReviewFinding(finding: {
+  code: string;
+  section?: string;
+}): string {
+  const section = finding.section ? `${finding.section}: ` : "";
+  switch (finding.code) {
+    case "placeholder_detected":
+      return `${section}replace required placeholders with concrete detail.`;
+    case "validation_missing_command":
+      return `${section}add a real command or explicit manual verification step.`;
+    case "validation_missing_expected_result":
+      return `${section}state the expected validation result.`;
+    case "risk_missing_item":
+      return `${section}name a concrete failure mode.`;
+    case "risk_too_vague":
+      return `${section}make the risk concrete instead of generic.`;
+    case "rollback_missing_item":
+      return `${section}add an executable rollback or recovery step.`;
+    case "rollback_too_vague":
+      return `${section}make the rollback action executable.`;
+    case "goal_too_vague":
+      return `${section}make the goal specific enough to verify.`;
+    case "scope_in_missing_items":
+      return `${section}list concrete in-scope files or modules.`;
+    case "scope_out_missing_items":
+      return `${section}list explicit out-of-scope boundaries.`;
+    default:
+      return `${section}${finding.code.replace(/_/g, " ")}.`;
+  }
+}
+
+function compactPlanReviewFindingPriority(code: string): number {
+  switch (code) {
+    case "validation_missing_command":
+      return 0;
+    case "validation_missing_expected_result":
+      return 1;
+    case "risk_missing_item":
+    case "risk_too_vague":
+      return 2;
+    case "rollback_missing_item":
+    case "rollback_too_vague":
+      return 3;
+    case "goal_too_vague":
+      return 4;
+    case "scope_in_missing_items":
+    case "scope_out_missing_items":
+      return 5;
+    case "placeholder_detected":
+      return 6;
+    default:
+      return 9;
+  }
+}
+
+function buildCompactPlanReviewFailureSurface(input: {
+  reviewCode: string;
+  blocked: boolean;
+  findings: readonly { code: string; section?: string; message: string }[];
+}): string {
+  const headline = input.blocked ? "Plan approval blocked" : "Plan is not ready";
+  const orderedFindings = [...input.findings].sort((left, right) =>
+    compactPlanReviewFindingPriority(left.code) - compactPlanReviewFindingPriority(right.code),
+  );
+  const fixes = orderedFindings
+    .slice(0, 4)
+    .map((finding) => `Fix: ${formatCompactPlanReviewFinding(finding)}`);
+  const omitted = input.findings.length > fixes.length
+    ? [`More: ${String(input.findings.length - fixes.length)} additional finding(s) hidden in compact mode.`]
+    : [];
+  return [
+    headline,
+    "Reason: the plan needs concrete scope, validation, and rollback detail before execution.",
+    ...fixes,
+    ...omitted,
+    "Next: refine the plan, then reply \"Implement the plan.\" again.",
+    `Diagnostics: ${input.reviewCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full findings.`,
+    "",
+  ].join("\n");
+}
+
+function writePlanReviewFailureSurface(input: {
+  reviewCode: string;
+  planId: string;
+  compactFailureSurface: boolean;
+  review: {
+    blocked: boolean;
+    findings: readonly { code: string; section?: string; message: string }[];
+  };
+  writeStderr(message: string): void;
+}): void {
+  if (input.compactFailureSurface) {
+    input.writeStderr(
+      buildCompactPlanReviewFailureSurface({
+        reviewCode: input.reviewCode,
+        blocked: input.review.blocked,
+        findings: input.review.findings,
+      }),
+    );
+    return;
+  }
+
+  input.writeStderr(
+    `[plan-review] code=${input.reviewCode} plan_id=${input.planId} findings=${formatReviewFindings(input.review.findings)}\n\n`,
+  );
+  input.writeStderr(
+    `[plan-review-diagnostics] ${JSON.stringify({
+      code: input.reviewCode,
+      blocked: input.review.blocked,
+      findings_count: input.review.findings.length,
+      findings: input.review.findings.map((item) => ({
+        code: item.code,
+        section: item.section ?? "global",
+      })),
+    })}\n`,
+  );
+}
+
+function writePlanQualityGuardBlockedSurface(input: {
+  qualityGuardMode: string;
+  guardLevel: string;
+  guardReason: string;
+  compactFailureSurface: boolean;
+  writeStderr(message: string): void;
+}): void {
+  if (input.compactFailureSurface) {
+    input.writeStderr(
+      [
+        "Plan quality gate blocked execution",
+        `Reason: ${input.guardReason}`,
+        "Next: refine the plan until the quality guard is no longer critical.",
+        `Diagnostics: ${PLAN_QUALITY_GUARD_BLOCKED_CODE}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
+        "",
+      ].join("\n"),
+    );
+    return;
+  }
+  input.writeStderr(
+    `[plan] code=${PLAN_QUALITY_GUARD_BLOCKED_CODE} apply blocked by quality guard (mode=${input.qualityGuardMode}, level=${input.guardLevel}): ${input.guardReason}\n`,
+  );
+}
+
+function writePlanFailureSurface(input: {
+  phase: PlanFailurePhase;
+  planId: string;
+  exitCode: number;
+  compactFailureSurface: boolean;
+  failureDecision: PlanFailureDecision;
+  writeStderr(message: string): void;
+}): void {
+  if (input.compactFailureSurface) {
+    input.writeStderr(
+      buildCompactPlanFailureSurface({
+        phase: input.phase,
+        exitCode: input.exitCode,
+        failureDecision: input.failureDecision,
+      }),
+    );
+    return;
+  }
+
+  const prefix = input.phase === "applying" ? "[plan] apply failed" : "[plan] turn failed";
+  input.writeStderr(
+    `${prefix} plan_id=${input.planId} exit_code=${String(input.exitCode)} policy_reason=${input.failureDecision.reason} diagnostic=${input.failureDecision.diagnosticCode}${input.failureDecision.errorClass ? ` error_class=${input.failureDecision.errorClass}` : ""}\n`,
+  );
 }
 
 interface AssistantProposedPlanCandidate {
@@ -584,9 +1100,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     };
   };
 
-  // Interactive TUI defaults to human-readable status; non-TTY keeps field output for script compatibility.
+  // Default to a human-readable surface everywhere. Machine fields are opt-in via verbose mode.
   const shouldRenderCompactPlanStatus = (): boolean =>
-    Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
+    !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
 
   const shouldRenderCompactPlanBenchmark = (): boolean =>
     Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_PLAN_BENCHMARK_VERBOSE);
@@ -646,22 +1162,38 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   const humanizePlanMode = (mode: SessionPlanMode): string =>
     mode === "plan_only" ? "plan mode" : "normal chat";
 
-  const formatHumanQualitySummary = (inputValue: {
+  const formatHumanPlanState = (inputValue: {
+    status: string | undefined;
+    phase?: string | undefined;
+  }): string => {
+    const status = humanizePlanStatus(inputValue.status);
+    const phase = inputValue.phase ? humanizePlanPhase(inputValue.phase) : undefined;
+    if (!phase || phase === status) {
+      return status;
+    }
+    return `${status} / ${phase}`;
+  };
+
+  const writeHumanQualitySummary = (inputValue: {
     score?: number;
     grade?: string;
     guardLevel?: string;
     guardMode?: string;
     topHint?: string;
-  }): string => {
+  }): void => {
     const score = typeof inputValue.score === "number"
       ? `score ${String(inputValue.score)}`
       : "score unavailable";
     const grade = inputValue.grade ? `grade ${inputValue.grade}` : undefined;
-    const guard = inputValue.guardLevel
-      ? `guard ${inputValue.guardLevel}${inputValue.guardMode ? `/${inputValue.guardMode}` : ""}`
-      : undefined;
-    const focus = inputValue.topHint ? `focus: ${inputValue.topHint}` : undefined;
-    return [score, grade, guard, focus].filter((item): item is string => Boolean(item)).join("; ");
+    input.writeStdout(`Quality: ${[score, grade].filter((item): item is string => Boolean(item)).join(" · ")}\n`);
+    if (inputValue.guardLevel) {
+      input.writeStdout(
+        `Guard: ${inputValue.guardLevel}${inputValue.guardMode ? `/${inputValue.guardMode}` : ""}\n`,
+      );
+    }
+    if (inputValue.topHint) {
+      input.writeStdout(`Focus: ${inputValue.topHint}\n`);
+    }
   };
 
   const writeHumanPlanFailureSummary = (
@@ -713,10 +1245,57 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     );
   };
 
-  const writeHumanRecommendation = (recommendation: { action: string; reason: string }): void => {
+  const writeHumanRecommendation = (
+    recommendation: { action: string; reason: string },
+    options?: {
+      suppressFocus?: boolean;
+      suppressGuard?: boolean;
+    },
+  ): void => {
     const suggestedCommand = resolvePlanStatusRecommendationCommand(recommendation.action);
     const suggestedLabel = resolvePlanStatusRecommendationLabel(recommendation.action);
-    input.writeStdout(`Next: ${suggestedCommand} — ${suggestedLabel}. ${recommendation.reason}\n`);
+    const recommendationSegments = recommendation.reason
+      .split(/[；;]/)
+      .map((segment) => compactSpaces(segment))
+      .filter((segment) => segment.length > 0);
+    let focus: string | undefined;
+    let guard: string | undefined;
+    const reasonSegments: string[] = [];
+    for (const segment of recommendationSegments) {
+      const focusMatch = segment.match(/优先处理[:：]\s*(.+)$/);
+      if (focusMatch?.[1]?.trim()) {
+        focus = compactSpaces(focusMatch[1]);
+        continue;
+      }
+      const guardMatch = segment.match(/quality guard=([a-z]+)/i);
+      if (guardMatch?.[1]?.trim()) {
+        guard = guardMatch[1].toLowerCase();
+        const withoutGuard = compactSpaces(
+          segment.replace(/quality guard=[a-z]+[，,]?\s*/i, ""),
+        );
+        if (withoutGuard) {
+          reasonSegments.push(withoutGuard);
+        }
+        continue;
+      }
+      reasonSegments.push(segment);
+    }
+    const nextAction = suggestedCommand === PLAN_DIRECT_REFINE_ACTION
+      ? "refine the plan"
+      : suggestedCommand;
+    input.writeStdout(`Next: ${nextAction}\n`);
+    if (suggestedLabel && suggestedLabel !== nextAction) {
+      input.writeStdout(`Action: ${suggestedLabel}\n`);
+    }
+    if (focus && !options?.suppressFocus) {
+      input.writeStdout(`Focus: ${focus}\n`);
+    }
+    if (guard && !options?.suppressGuard) {
+      input.writeStdout(`Guard: ${guard}\n`);
+    }
+    if (reasonSegments.length > 0) {
+      input.writeStdout(`Reason: ${reasonSegments.slice(0, 2).join("; ")}\n`);
+    }
     input.writeStdout("Diagnostics: set GROBOT_PLAN_STATUS_VERBOSE=1 and rerun /plan for full fields.\n");
   };
 
@@ -728,7 +1307,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     input.writeStdout(`Mode: ${humanizePlanMode(mode)}\n`);
     if (active) {
       const activeMeta = buildPlanMeta(active.entry, active.planPath);
-      const previewLines = buildPlanStatusPreviewLines(active.content);
+      const previewLines = buildHumanPlanPreviewLines({
+        title: activeMeta.active_plan_title,
+        planContent: active.content,
+      });
       const activeNonEmptyLineCount = active.content
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0)
@@ -748,11 +1330,22 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       input.writeStdout(`Status: ${humanizePlanStatus(liveSnapshot.liveStatus)}\n`);
       input.writeStdout(`Phase: ${humanizePlanPhase(liveSnapshot.livePhase)}\n`);
       if (liveSnapshot.statusSource === "live_snapshot") {
-        input.writeStdout(
-          `Stored state: ${humanizePlanStatus(liveSnapshot.storedStatus)}${liveSnapshot.storedPhase ? `, ${humanizePlanPhase(liveSnapshot.storedPhase)}` : ""}\n`,
-        );
+        const liveState = formatHumanPlanState({
+          status: liveSnapshot.liveStatus,
+          phase: liveSnapshot.livePhase,
+        });
+        const storedState = formatHumanPlanState({
+          status: liveSnapshot.storedStatus,
+          phase: liveSnapshot.storedPhase,
+        });
+        if (storedState !== liveState) {
+          input.writeStdout(`Stored: ${storedState}\n`);
+        }
       }
-      input.writeStdout(`Plan file: ${activeMeta.active_plan_path ?? "not available"}\n`);
+      input.writeStdout(`Plan file: ${formatHumanPlanFilePath({
+        workDir: input.workDir,
+        planPath: activeMeta.active_plan_path,
+      })}\n`);
       if (previewLines.length > 0) {
         input.writeStdout("Preview:\n");
         for (let previewIndex = 0; previewIndex < previewLines.length; previewIndex += 1) {
@@ -766,19 +1359,20 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       input.writeStdout(
         `Decision: ${liveSnapshot.decisionReady ? "ready" : "not ready"}${liveSnapshot.approvalStale ? "; approval needs refresh" : ""}\n`,
       );
-      input.writeStdout(
-        `Quality: ${formatHumanQualitySummary({
-          score: liveSnapshot.quality.score,
-          grade: liveSnapshot.quality.grade,
-          guardLevel: liveSnapshot.qualityGuard.level,
-          guardMode: liveSnapshot.qualityGuardMode,
-          topHint,
-        })}\n`,
-      );
+      writeHumanQualitySummary({
+        score: liveSnapshot.quality.score,
+        grade: liveSnapshot.quality.grade,
+        guardLevel: liveSnapshot.qualityGuard.level,
+        guardMode: liveSnapshot.qualityGuardMode,
+        topHint,
+      });
       writeHumanPlanFailureSummary(latestFailure);
       writeHumanPlanVerificationSummary(latestVerification);
       writeHumanBenchmarkSummary(latestFailure);
-      writeHumanRecommendation(liveSnapshot.recommendation);
+      writeHumanRecommendation(liveSnapshot.recommendation, {
+        suppressFocus: Boolean(topHint),
+        suppressGuard: Boolean(liveSnapshot.qualityGuard.level),
+      });
       input.writeStdout("\n");
       return 0;
     }
@@ -835,17 +1429,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       input.writeStdout(`Status: ${humanizePlanStatus(meta.active_plan_status ?? "draft")}\n`);
       input.writeStdout(`Phase: ${humanizePlanPhase(meta.active_plan_phase)}\n`);
       if (typeof meta.active_plan_path === "string" && meta.active_plan_path.length > 0) {
-        input.writeStdout(`Plan file: ${meta.active_plan_path}\n`);
+        input.writeStdout(`Plan file: ${formatHumanPlanFilePath({
+          workDir: input.workDir,
+          planPath: meta.active_plan_path,
+        })}\n`);
       }
-      input.writeStdout(
-        `Quality: ${formatHumanQualitySummary({
-          score: qualityScore,
-          grade: qualityGrade,
-          guardLevel: qualityGuardLevel,
-          guardMode: qualityGuardMode,
-          topHint: qualityTopHint,
-        })}\n`,
-      );
+      writeHumanQualitySummary({
+        score: qualityScore,
+        grade: qualityGrade,
+        guardLevel: qualityGuardLevel,
+        guardMode: qualityGuardMode,
+        topHint: qualityTopHint,
+      });
       writeHumanPlanFailureSummary(latestFailure);
       writeHumanPlanVerificationSummary(latestVerification);
       writeHumanBenchmarkSummary(latestFailure);
@@ -859,7 +1454,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         planQualityGuardReason: qualityGuardReason,
         interactiveMenuFirst: true,
       });
-      writeHumanRecommendation(recommendation);
+      writeHumanRecommendation(recommendation, {
+        suppressFocus: Boolean(qualityTopHint),
+        suppressGuard: Boolean(qualityGuardLevel),
+      });
       input.writeStdout("\n");
       return 0;
     }
@@ -906,6 +1504,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     input.writeStdout(
       [
         "Plan mode is read-only. Send requirements to refine the plan.",
+        "A ready plan needs concrete scope, milestones, validation commands/expected results, and rollback steps.",
         "Use /plan open to inspect the plan file.",
         `Reply "${PLAN_EXECUTION_REPLY}" to execute after approval.`,
         "",
@@ -1794,10 +2393,22 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return 0;
       }
       const historyLengthBeforeExecution = input.runtimeState.getHistoryMessages().length;
-      const code = await input.executeTurn(note, true, {
-        promptPrelude: PLAN_MODE_WORKFLOW_PROMPT,
-        writeStderr: options?.writeStderr,
+      const compactFailureSurface = shouldRenderCompactPlanFailureSurface(
+        options?.diagnosticsMode,
+      );
+      const planTurnStderr = createPlanTurnDiagnosticStderr({
+        writeStderr: options?.writeStderr ?? input.writeStderr,
+        compactFailureSurface,
       });
+      let code: number;
+      try {
+        code = await input.executeTurn(note, true, {
+          promptPrelude: PLAN_MODE_WORKFLOW_PROMPT,
+          writeStderr: planTurnStderr.writeStderr,
+        });
+      } finally {
+        planTurnStderr.flush();
+      }
       if (code === TURN_INTERRUPTED_EXIT_CODE) {
         appendPlanEvent(input.workDir, planSessionKey(), {
           event: "plan_turn_interrupted",
@@ -1855,9 +2466,14 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           detail: detailParts.join(" "),
         });
         input.markFailureObserved();
-        input.writeStderr(
-          `[plan] turn failed plan_id=${meta.active_plan_id} exit_code=${String(code)} policy_reason=${failureDecision.reason} diagnostic=${failureDecision.diagnosticCode}${failureDecision.errorClass ? ` error_class=${failureDecision.errorClass}` : ""}\n`,
-        );
+        writePlanFailureSurface({
+          phase: "planning",
+          planId: meta.active_plan_id,
+          exitCode: code,
+          compactFailureSurface,
+          failureDecision,
+          writeStderr: input.writeStderr,
+        });
         return code;
       }
       const assistantProposedPlan = extractLatestAssistantProposedPlan(
@@ -2018,6 +2634,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         policy: qualityGuardRuntime.policy,
       });
       const qualityGuardMode = qualityGuardRuntime.guardMode;
+      const compactFailureSurface = shouldRenderCompactPlanFailureSurface(
+        options?.diagnosticsMode,
+      );
       if (qualityGuardMode === "strict" && qualityGuard.level === "critical") {
         appendPlanEvent(input.workDir, planSessionKey(), {
           event: "plan_apply_blocked",
@@ -2032,9 +2651,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
             `guard_reason=${qualityGuard.reason.replace(/\s+/g, "_")}`,
           ].join(" "),
         });
-        input.writeStderr(
-          `[plan] code=${PLAN_QUALITY_GUARD_BLOCKED_CODE} apply blocked by quality guard (mode=${qualityGuardMode}, level=${qualityGuard.level}): ${qualityGuard.reason}\n`,
-        );
+        writePlanQualityGuardBlockedSurface({
+          qualityGuardMode,
+          guardLevel: qualityGuard.level,
+          guardReason: qualityGuard.reason,
+          compactFailureSurface,
+          writeStderr: input.writeStderr,
+        });
         return 2;
       }
       let approvedEntry = active.entry;
@@ -2068,20 +2691,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           const reviewCode = review.blocked
             ? PLAN_REVIEW_BLOCKED_CODE
             : PLAN_REVIEW_FAILED_CODE;
-          input.writeStderr(
-            `[plan-review] code=${reviewCode} plan_id=${active.entry.plan_id} findings=${formatReviewFindings(review.findings)}\n\n`,
-          );
-          input.writeStderr(
-            `[plan-review-diagnostics] ${JSON.stringify({
-              code: reviewCode,
-              blocked: review.blocked,
-              findings_count: review.findings.length,
-              findings: review.findings.map((item) => ({
-                code: item.code,
-                section: item.section ?? "global",
-              })),
-            })}\n`,
-          );
+          writePlanReviewFailureSurface({
+            reviewCode,
+            planId: active.entry.plan_id,
+            compactFailureSurface,
+            review,
+            writeStderr: input.writeStderr,
+          });
           return 2;
         }
 
@@ -2143,15 +2759,33 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         approvedSnapshotPath,
         active.content,
       );
+      input.writeStdout(
+        buildApprovedPlanExecutionSurface({
+          title: approvedEntry.title,
+          approvedHash,
+          ticketId: approvalTicketId,
+          approvedPlanContent,
+        }),
+      );
+      const extraInstruction = isNaturalPlanExecutionIntent(extraRaw) ? "" : extraRaw.trim();
       const prompt = buildPlanApplyPrompt({
         approvedPlanContent,
         approvedHash,
         ticketId: approvalTicketId,
-        extra: extraRaw.trim(),
+        extra: extraInstruction,
       });
-      const code = await input.executeTurn(prompt, true, {
-        writeStderr: options?.writeStderr,
+      const applyStderr = createPlanTurnDiagnosticStderr({
+        writeStderr: options?.writeStderr ?? input.writeStderr,
+        compactFailureSurface,
       });
+      let code: number;
+      try {
+        code = await input.executeTurn(prompt, true, {
+          writeStderr: applyStderr.writeStderr,
+        });
+      } finally {
+        applyStderr.flush();
+      }
       if (code === TURN_INTERRUPTED_EXIT_CODE) {
         const approvedAgain = updatePlanArtifactStatus(
           input.workDir,
@@ -2203,9 +2837,14 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
             .join(" "),
         });
         input.markFailureObserved();
-        input.writeStderr(
-          `[plan] apply failed plan_id=${active.entry.plan_id} exit_code=${String(code)} policy_reason=${failureDecision.reason} diagnostic=${failureDecision.diagnosticCode}${failureDecision.errorClass ? ` error_class=${failureDecision.errorClass}` : ""}\n`,
-        );
+        writePlanFailureSurface({
+          phase: "applying",
+          planId: active.entry.plan_id,
+          exitCode: code,
+          compactFailureSurface,
+          failureDecision,
+          writeStderr: input.writeStderr,
+        });
         return code;
       }
 

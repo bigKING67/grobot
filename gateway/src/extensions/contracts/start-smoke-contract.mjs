@@ -1018,7 +1018,9 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
   return {
     ...payload,
     command_flow: "plan",
-    has_plan_marker: payload.stdout.includes("[plan]"),
+    has_plan_marker:
+      payload.stdout.includes("Plan status")
+      || payload.stdout.includes("[plan]"),
   };
 }
 
@@ -1341,7 +1343,7 @@ function runStartPlanModeFlow(repoRoot) {
   const eventsContent = readTextFileSafe(eventsPath);
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
   const finalStatusMarkerCurrent =
-    "[plan-status]\nplan_status_output_mode: full\nmode: plan_only\n[plan-current]";
+    "Plan status\nMode: plan mode\nCurrent plan:";
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -1358,10 +1360,56 @@ function runStartPlanModeFlow(repoRoot) {
     plan_active_exists: existsSync(activePlanPath),
     review_failed_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_FAILED")
-      || combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED"),
-    review_blocked_marker_seen: combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED"),
+      || combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
+      || combinedOutput.includes("Diagnostics: PLAN_REVIEW_FAILED")
+      || combinedOutput.includes("Diagnostics: PLAN_REVIEW_BLOCKED"),
+    review_failed_recommends_refine:
+      combinedOutput.includes("Next: refine the plan")
+      || combinedOutput.includes("Next: 继续完善当前计划（直接输入补充内容）")
+      || combinedOutput.includes("suggested_action_command: 继续完善当前计划（直接输入补充内容）"),
+    review_failed_avoids_execute_recommendation:
+      !combinedOutput.includes("suggested_action_command: Implement the plan."),
+    review_failed_validation_command_gap_seen:
+      combinedOutput.includes("validation_missing_command")
+      || combinedOutput.includes("Validation: add a real command or explicit manual verification step."),
+    review_blocked_marker_seen:
+      combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
+      || combinedOutput.includes("Diagnostics: PLAN_REVIEW_BLOCKED"),
     plan_cancelled_marker_seen: combinedOutput.includes("[plan] cancelled plan_id="),
     plan_final_status_line_seen: combinedOutput.includes(finalStatusMarkerCurrent),
+    plan_open_script_notice_hidden:
+      !combinedOutput.includes("/plan open is interactive-only")
+      && !combinedOutput.includes("showing current status in script mode"),
+    plan_status_preview_hides_machine_metadata:
+      !commandResult.stdout.includes("session_id:")
+      && !commandResult.stdout.includes("plan_id:")
+      && !commandResult.stdout.includes("seq:")
+      && !commandResult.stdout.includes("status:"),
+    plan_status_preview_hides_required_placeholder:
+      !commandResult.stdout.includes("__REQUIRED__"),
+    plan_status_uses_relative_plan_file:
+      /^Plan file: \.grobot\/plans\//m.test(commandResult.stdout),
+    plan_status_hides_absolute_plan_file:
+      !commandResult.stdout.includes(`Plan file: ${workDir}`),
+    plan_status_has_short_next_line:
+      /^Next: refine the plan$/m.test(commandResult.stdout),
+    plan_status_has_focus_line:
+      /^Focus: /m.test(commandResult.stdout),
+    plan_status_splits_quality_lines:
+      /^Quality: score \d+ · grade /m.test(commandResult.stdout)
+      && /^Guard: /m.test(commandResult.stdout)
+      && !/^Quality: .*; .*guard/m.test(commandResult.stdout)
+      && !/^Quality: .*; .*focus:/m.test(commandResult.stdout),
+    plan_status_hides_redundant_stored_state:
+      !commandResult.stdout.includes("Stored state: drafting, drafting")
+      && !commandResult.stdout.includes("Stored state:"),
+    plan_status_avoids_duplicate_focus:
+      commandResult.stdout.split("\n").filter((line) => line.startsWith("Focus: ")).length === 1,
+    plan_status_avoids_duplicate_guard:
+      commandResult.stdout.split("\n").filter((line) => line.startsWith("Guard: ")).length === 1,
+    plan_status_next_line_avoids_reason_dump:
+      !/^Next: .*quality guard=/m.test(commandResult.stdout)
+      && !/^Next: .*质量分仅/m.test(commandResult.stdout),
     plan_last_status: planEntry && typeof planEntry.status === "string" ? planEntry.status : "",
     plan_last_review_fail_count: reviewFailCount,
     plan_last_blocked_count: blockedCount,

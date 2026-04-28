@@ -1974,10 +1974,86 @@ function hasSectionHeading(markdown: string, matcher: RegExp): boolean {
   return false;
 }
 
+function extractSectionByHeadingMatcher(markdown: string, matcher: RegExp): string | undefined {
+  const lines = markdown.split(/\r?\n/);
+  let collecting = false;
+  const bodyLines: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("##")) {
+      if (collecting) {
+        break;
+      }
+      if (matcher.test(trimmed)) {
+        collecting = true;
+      }
+      continue;
+    }
+    if (collecting) {
+      bodyLines.push(line);
+    }
+  }
+  return collecting ? bodyLines.join("\n") : undefined;
+}
+
+function hasAllRequiredPlanSections(markdown: string): boolean {
+  return REQUIRED_PLAN_SECTIONS.every((sectionName) =>
+    typeof extractSection(markdown, sectionName) === "string"
+  );
+}
+
+function sectionHasListItem(sectionBody: string): boolean {
+  return sectionBody
+    .split(/\r?\n/)
+    .some((line) => /^\s*(?:[-*]|\d+\.)\s+\S/.test(line));
+}
+
+function normalizePlanFieldValue(line: string): string {
+  const cleaned = line
+    .replace(/^[-*]\s+/, "")
+    .replace(/^\d+\.\s+/, "")
+    .trim();
+  const colonIndex = cleaned.search(/[:：]/);
+  if (colonIndex >= 0) {
+    return cleaned.slice(colonIndex + 1).trim();
+  }
+  return cleaned;
+}
+
+function isVaguePlanFieldValue(valueRaw: string): boolean {
+  const value = valueRaw
+    .trim()
+    .replace(/[。.!！]+$/g, "")
+    .trim()
+    .toLowerCase();
+  if (!value || value.length <= 4) {
+    return true;
+  }
+  return /^(none|n\/a|na|low|minor|unknown|tbd|todo|无|暂无|没有|低|较低|低风险|可控|待定|待补充|按需处理|手动处理|回滚|回退|恢复|revert|rollback)$/.test(value);
+}
+
+const VALIDATION_COMMAND_PATTERN =
+  /(`[^`]+`|\b(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|node|npx|tsx|deno|make|bash|sh|curl|script|uv|docker|psql|sqlite3|mysql|kubectl)\b|\.\/|\/[A-Za-z0-9._/-]+|手工验证|人工验证|manual verification|manual test|browser check|浏览器验证|截图对比)/i;
+const VALIDATION_EXPECTED_RESULT_PATTERN =
+  /(预期|expected|expect|通过|passes?|green|成功|should|assert|断言|结果|输出|exit\s*0|exit code\s*0|无报错|不出现)/i;
+
+function hasConcreteValidationSignal(sectionBody: string): boolean {
+  return sectionBody
+    .split(/\r?\n/)
+    .some((line) => VALIDATION_COMMAND_PATTERN.test(line));
+}
+
+function hasValidationExpectedResult(sectionBody: string): boolean {
+  return VALIDATION_EXPECTED_RESULT_PATTERN.test(sectionBody);
+}
+
 function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResult {
   const findings: PlanReviewFinding[] = [];
   const checkedAt = nowIsoUtc();
   const normalized = proposedPlanContent.trim();
+  if (hasAllRequiredPlanSections(normalized)) {
+    return reviewStructuredPlanContent(normalized);
+  }
   if (!normalized) {
     findings.push({
       code: "proposed_plan_empty",
@@ -2040,6 +2116,25 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
       section: "Test Plan",
       message: "缺少 Test Plan/Tests 章节。",
     });
+  } else {
+    const testPlan = extractSectionByHeadingMatcher(
+      normalized,
+      /^##\s*(test plan|tests?|test cases?|验证计划|测试计划|测试用例)\b/i,
+    ) ?? "";
+    if (!hasConcreteValidationSignal(testPlan)) {
+      findings.push({
+        code: "validation_missing_command",
+        section: "Test Plan",
+        message: "Test Plan 缺少可执行命令或明确的手工验证步骤。",
+      });
+    }
+    if (!hasValidationExpectedResult(testPlan)) {
+      findings.push({
+        code: "validation_missing_expected_result",
+        section: "Test Plan",
+        message: "Test Plan 缺少预期结果。",
+      });
+    }
   }
   if (!hasAssumptions) {
     findings.push({
@@ -2058,11 +2153,7 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
   };
 }
 
-export function reviewPlanContent(planContent: string): PlanReviewResult {
-  const proposedPlan = extractLatestProposedPlanBlock(planContent);
-  if (proposedPlan) {
-    return reviewProposedPlanContent(proposedPlan);
-  }
+function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
   const findings: PlanReviewFinding[] = [];
   const checkedAt = nowIsoUtc();
   const sectionMap = new Map<string, string>();
@@ -2100,6 +2191,29 @@ export function reviewPlanContent(planContent: string): PlanReviewResult {
         code: "unresolved_question",
         section: sectionName,
         message: `章节存在未决问题，需先澄清: ${sectionName}`,
+      });
+    }
+  }
+
+  const goal = sectionMap.get("Goal");
+  if (typeof goal === "string") {
+    const goalText = stripMarkdownNoise(goal).join(" ");
+    if (goalText.length > 0 && goalText.length < 16) {
+      findings.push({
+        code: "goal_too_vague",
+        section: "Goal",
+        message: "Goal 过短，缺少可判断的目标行为变化。",
+      });
+    }
+  }
+
+  for (const sectionName of ["Scope In", "Scope Out"] as const) {
+    const sectionBody = sectionMap.get(sectionName);
+    if (typeof sectionBody === "string" && !sectionHasListItem(sectionBody)) {
+      findings.push({
+        code: sectionName === "Scope In" ? "scope_in_missing_items" : "scope_out_missing_items",
+        section: sectionName,
+        message: `${sectionName} 至少需要 1 条明确列表项。`,
       });
     }
   }
@@ -2149,6 +2263,55 @@ export function reviewPlanContent(planContent: string): PlanReviewResult {
         message: "Validation 至少需要 1 条可执行验证项。",
       });
     }
+    if (hasValidationItems && !hasConcreteValidationSignal(validation)) {
+      findings.push({
+        code: "validation_missing_command",
+        section: "Validation",
+        message: "Validation 缺少真实命令或明确的手工验证步骤。",
+      });
+    }
+    if (hasValidationItems && !hasValidationExpectedResult(validation)) {
+      findings.push({
+        code: "validation_missing_expected_result",
+        section: "Validation",
+        message: "Validation 缺少预期结果。",
+      });
+    }
+  }
+
+  const riskRollback = sectionMap.get("Risk & Rollback");
+  if (typeof riskRollback === "string") {
+    const normalizedLines = stripMarkdownNoise(riskRollback);
+    const riskLines = normalizedLines.filter((line) => /^(风险|risk)\s*[:：]/i.test(line));
+    const rollbackLines = normalizedLines.filter((line) =>
+      /^(回退|rollback|roll back|revert|restore)\s*[:：]/i.test(line)
+    );
+    if (riskLines.length === 0) {
+      findings.push({
+        code: "risk_missing_item",
+        section: "Risk & Rollback",
+        message: "Risk & Rollback 缺少明确“风险:”条目。",
+      });
+    } else if (riskLines.some((line) => isVaguePlanFieldValue(normalizePlanFieldValue(line)))) {
+      findings.push({
+        code: "risk_too_vague",
+        section: "Risk & Rollback",
+        message: "风险描述过于空泛，需要写出具体失败面。",
+      });
+    }
+    if (rollbackLines.length === 0) {
+      findings.push({
+        code: "rollback_missing_item",
+        section: "Risk & Rollback",
+        message: "Risk & Rollback 缺少明确“回退:”条目。",
+      });
+    } else if (rollbackLines.some((line) => isVaguePlanFieldValue(normalizePlanFieldValue(line)))) {
+      findings.push({
+        code: "rollback_too_vague",
+        section: "Risk & Rollback",
+        message: "回退描述过于空泛，需要写出可执行恢复动作。",
+      });
+    }
   }
 
   const blocked = findings.some((item) => item.code === "unresolved_question");
@@ -2159,6 +2322,14 @@ export function reviewPlanContent(planContent: string): PlanReviewResult {
     findings,
     checked_at: checkedAt,
   };
+}
+
+export function reviewPlanContent(planContent: string): PlanReviewResult {
+  const proposedPlan = extractLatestProposedPlanBlock(planContent);
+  if (proposedPlan) {
+    return reviewProposedPlanContent(proposedPlan);
+  }
+  return reviewStructuredPlanContent(planContent);
 }
 
 function scorePenaltyForFindingCode(code: string): number {
@@ -2181,7 +2352,17 @@ function scorePenaltyForFindingCode(code: string): number {
     case "milestones_missing_validation":
     case "milestones_missing_rollback":
     case "validation_missing_items":
+    case "validation_missing_command":
+    case "validation_missing_expected_result":
+    case "risk_missing_item":
+    case "rollback_missing_item":
       return 10;
+    case "goal_too_vague":
+    case "scope_in_missing_items":
+    case "scope_out_missing_items":
+    case "risk_too_vague":
+    case "rollback_too_vague":
+      return 8;
     default:
       return 8;
   }
@@ -2220,6 +2401,21 @@ function rewriteHintForFinding(finding: PlanReviewFinding): string | undefined {
       return "每个里程碑增加“回退”预案";
     case "validation_missing_items":
       return "Validation 至少补 1 条可执行命令与预期结果";
+    case "validation_missing_command":
+      return "Validation 补真实命令，或写明手工验证步骤";
+    case "validation_missing_expected_result":
+      return "Validation 补每条验证的预期结果";
+    case "risk_missing_item":
+    case "risk_too_vague":
+      return "Risk & Rollback 写具体风险，而不是“低/无/可控”";
+    case "rollback_missing_item":
+    case "rollback_too_vague":
+      return "Risk & Rollback 写可执行回退动作";
+    case "goal_too_vague":
+      return "Goal 写清楚目标行为变化和完成状态";
+    case "scope_in_missing_items":
+    case "scope_out_missing_items":
+      return `补齐 ${finding.section ?? "Scope"} 的明确列表项`;
     case "proposed_plan_too_short":
       return "补充关键改动、验证计划和风险回退，避免过短计划";
     default:
@@ -2548,6 +2744,15 @@ export function buildPlanQualityRepairActions(args: {
       rationale: "占位文本会触发质量扣分并削弱计划可执行性",
     });
   }
+  if (hasAnyFindingCode(review.findings, ["scope_in_missing_items", "scope_out_missing_items", "goal_too_vague"])) {
+    actions.push({
+      id: "repair_goal_scope",
+      priority: "p1",
+      title: "补清目标与范围边界",
+      command: "直接补充当前计划：把 Goal 写成可判断的行为变化，并为 Scope In/Out 各列具体条目",
+      rationale: "目标与范围不清会让执行阶段自行猜边界",
+    });
+  }
   const milestoneRepairHint = resolveMilestoneRepairHint(review.findings);
   if (milestoneRepairHint.length > 0) {
     actions.push({
@@ -2558,13 +2763,31 @@ export function buildPlanQualityRepairActions(args: {
       rationale: "里程碑缺少完成判据/验证/回退会直接降低执行可靠性",
     });
   }
-  if (hasAnyFindingCode(review.findings, ["validation_missing_items"])) {
+  if (hasAnyFindingCode(review.findings, [
+    "validation_missing_items",
+    "validation_missing_command",
+    "validation_missing_expected_result",
+  ])) {
     actions.push({
       id: "repair_validation",
       priority: "p1",
-      title: "补齐 Validation 可执行命令",
-      command: "直接补充当前计划：增加 `npm run check:gateway:ts` 并写预期结果",
-      rationale: "缺少可执行验证命令时，计划无法形成闭环验收",
+      title: "补齐 Validation 可执行命令与预期结果",
+      command: "直接补充当前计划：增加真实验证命令或手工验证步骤，并写明每条预期结果",
+      rationale: "缺少可执行验证与预期结果时，计划无法形成闭环验收",
+    });
+  }
+  if (hasAnyFindingCode(review.findings, [
+    "risk_missing_item",
+    "risk_too_vague",
+    "rollback_missing_item",
+    "rollback_too_vague",
+  ])) {
+    actions.push({
+      id: "repair_risk_rollback",
+      priority: "p1",
+      title: "补具体风险与回退动作",
+      command: "直接补充当前计划：把 Risk & Rollback 改成“风险: 具体失败面 / 回退: 可执行恢复动作”",
+      rationale: "空泛风险会让审批看起来通过，但 apply 阶段缺少可恢复路径",
     });
   }
   if (hasAnyFindingCode(review.findings, ["proposed_plan_too_short", "proposed_plan_empty"])) {
@@ -3146,7 +3369,7 @@ export function approvePlanArtifact(
     }
     const timestamp = nowIsoUtc();
     const planHash = createHash("sha256").update(content).digest("hex");
-      const ticketId = buildApprovalTicketId();
+    const ticketId = buildApprovalTicketId();
     const snapshotName = `${String(current.seq).padStart(3, "0")}-approved-${current.plan_id}-${ticketId.slice(0, 8)}.md`;
     const snapshotPath = `${sessionPlanDir(workDir, sessionId)}/${snapshotName}`;
     writeFileAtomic(snapshotPath, content);
@@ -3324,14 +3547,24 @@ export function buildPlanApplyPrompt(input: {
   extra?: string;
 }): string {
   const lines = [
-    "Implement the following approved plan exactly.",
+    "[Approved Plan Execution]",
     "",
-    `Approval ticket: ${input.ticketId}`,
-    `Approved hash (sha256): ${input.approvedHash}`,
+    "Plan approval:",
+    `- ticket: ${input.ticketId}`,
+    `- sha256: ${input.approvedHash}`,
     "",
-    "If you discover a conflict with the approved plan, STOP and return to planning mode instead of silently deviating.",
+    "Execution contract:",
+    "- Implement only the approved plan below.",
+    "- Treat the approved snapshot as the source of truth.",
+    "- Do not silently expand scope beyond Scope In or ignore Scope Out.",
+    "- If current files conflict with the approved plan, stop and return to plan mode with the conflict.",
+    "- Keep implementation and validation aligned with the plan's Milestones and Validation sections.",
+    "- After implementation, report changed files, validation commands, results, and unresolved risks.",
     "",
+    "Plan to implement:",
+    "<approved_plan>",
     input.approvedPlanContent.trim(),
+    "</approved_plan>",
   ];
   const extraText = input.extra?.trim();
   if (extraText) {

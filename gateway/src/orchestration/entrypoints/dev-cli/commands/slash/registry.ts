@@ -720,7 +720,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.openPlanInEditor(controls.withInputPaused);
           return "continue";
         }
-        handlers.writeStdout("[plan] /plan open is interactive-only; showing current status in script mode.\n\n");
         await handlers.showPlanStatus();
         return "continue";
       }
@@ -742,7 +741,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.openPlanInEditor(controls.withInputPaused);
           return "continue";
         }
-        handlers.writeStdout("[plan] /plan open is interactive-only; showing current status in script mode.\n\n");
         await handlers.showPlanStatus();
         return "continue";
       }

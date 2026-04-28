@@ -3,6 +3,7 @@ import {
   createRunStartInteractiveModeInput,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
 import { createRunStartInteractiveHandler } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-handler";
+import { shouldSuppressRunStartSubmitTranscript } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-mode";
 import { type ChatHistoryMessage } from "../../orchestration/entrypoints/dev-cli/start/session-history";
 import {
   createGaMechanismRuntime,
@@ -616,6 +617,36 @@ async function main(): Promise<void> {
         changedPlanSuggestionState?.activePlanStatusSource === "live_snapshot",
       plan_slash_suggestions_after_file_change_drops_execute_hint:
         !changedPlanSuggestions.some((item) => item.description.includes("Implement the plan.")),
+      plan_execute_submit_transcript_suppressed:
+        shouldSuppressRunStartSubmitTranscript({
+          value: "Implement the plan.",
+          planMode: true,
+          pendingAskCount: 0,
+        }),
+      plan_refine_submit_transcript_kept:
+        !shouldSuppressRunStartSubmitTranscript({
+          value: "补充一下验证细节",
+          planMode: true,
+          pendingAskCount: 0,
+        }),
+      normal_submit_transcript_kept:
+        !shouldSuppressRunStartSubmitTranscript({
+          value: "Implement the plan.",
+          planMode: false,
+          pendingAskCount: 0,
+        }),
+      pending_ask_empty_submit_transcript_suppressed:
+        shouldSuppressRunStartSubmitTranscript({
+          value: "",
+          planMode: true,
+          pendingAskCount: 1,
+        }),
+      pending_ask_plan_execute_submit_transcript_kept:
+        !shouldSuppressRunStartSubmitTranscript({
+          value: "Implement the plan.",
+          planMode: true,
+          pendingAskCount: 1,
+        }),
       auto_ask_handler_returns_continue:
         autoAskAction === "continue",
       auto_ask_handler_auto_opens_initial_runtime_ask:

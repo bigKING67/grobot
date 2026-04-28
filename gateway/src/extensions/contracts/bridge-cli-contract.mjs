@@ -82,7 +82,7 @@ function buildValidPlanMarkdown() {
     "",
     "## Validation",
     "",
-    "- node gateway/src/extensions/contracts/bridge-cli-contract.mjs",
+    "- node gateway/src/extensions/contracts/bridge-cli-contract.mjs；预期: exit 0 且 recommended_next_action 断言通过。",
     "",
     "## Risk & Rollback",
     "",

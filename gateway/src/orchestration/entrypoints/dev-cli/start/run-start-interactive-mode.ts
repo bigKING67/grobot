@@ -8,6 +8,7 @@ import {
 import { printRunStartBanner } from "./run-start-banner";
 import { createRunStartInteractiveHandler } from "./run-start-interactive-handler";
 import { resolveInlineAttachmentsFromInput, runSessionInputLoop } from "./run-start-io";
+import { isNaturalPlanExecutionIntent } from "./plan-command";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
@@ -30,6 +31,7 @@ import { type RuntimeAttachment } from "../../../../models/types";
 export interface RunStartInteractiveTurnOptions {
   promptPrelude?: string;
   writeStderr?: (message: string) => void;
+  diagnosticsMode?: InteractiveDiagnosticsMode;
 }
 
 export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
@@ -46,6 +48,18 @@ const PENDING_ASK_ALLOWED_SUGGESTION_HEADS = new Set<string>([
 
 const INLINE_ACTIVITY_TICK_MS = 120;
 const INTERACTIVE_SLASH_SUGGESTION_LIMIT = 64;
+
+export function shouldSuppressRunStartSubmitTranscript(input: {
+  value: string;
+  planMode: boolean;
+  pendingAskCount: number;
+}): boolean {
+  if (input.pendingAskCount > 0) {
+    const normalized = input.value.trim();
+    return normalized.length === 0 || normalized === "?";
+  }
+  return input.planMode && isNaturalPlanExecutionIntent(input.value);
+}
 
 function resolveProjectFolder(projectRoot: string, fallbackName: string): string {
   const normalized = projectRoot.replace(/[\\/]+$/, "");
@@ -669,10 +683,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     enterPlan: (goal) =>
       input.enterPlan(goal, {
         writeStderr: writeInteractiveStderr,
+        diagnosticsMode: interactiveDiagnosticsMode,
       }),
     applyPlan: (extra) =>
       input.applyPlan(extra, {
         writeStderr: writeInteractiveStderr,
+        diagnosticsMode: interactiveDiagnosticsMode,
       }),
     cancelPlan: input.cancelPlan,
     requestPlanInterrupt: input.requestPlanInterrupt,
@@ -680,6 +696,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     runPlanTurn: (userInput) =>
       input.runPlanTurn(userInput, {
         writeStderr: writeInteractiveStderr,
+        diagnosticsMode: interactiveDiagnosticsMode,
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
@@ -896,11 +913,11 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       getSlashSuggestions,
       getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
       shouldSuppressSubmitTranscript: (value) => {
-        if (input.getPendingAskQueueSize() <= 0) {
-          return false;
-        }
-        const normalized = value.trim();
-        return normalized.length === 0 || normalized === "?";
+        return shouldSuppressRunStartSubmitTranscript({
+          value,
+          planMode: input.isPlanMode(),
+          pendingAskCount: input.getPendingAskQueueSize(),
+        });
       },
       openHistorySearch: (historyInput) =>
         input.openHistorySearch({
