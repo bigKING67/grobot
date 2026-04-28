@@ -279,6 +279,7 @@ expectEqual(
 );
 const codingProjection = projection(coding);
 expectEqual(codingProjection.source, "gateway.fallback", "coding projection source");
+expectEqual(coding.schemaFingerprint, codingProjection.schemaFingerprint, "coding context/projection fingerprint");
 expectEqual(codingProjection.projectionMode, "slim", "coding projection mode");
 expectEqual(codingProjection.visibleToolCount, 7, "coding projection visible tool count");
 expectEqual(codingProjection.dispatchEnabledToolCount, 7, "coding projection dispatch tool count");
@@ -292,6 +293,7 @@ expectEqual(minimal.toolSurfaceProfile, "minimal", "minimal profile");
 expectEqual(minimal.toolSurfaceSource, "env", "minimal source");
 expectDeepEqual(minimal.modelVisibleTools, ["read", "edit", "write", "ask_user"], "minimal visible tools");
 const minimalProjection = projection(minimal);
+expectEqual(minimal.schemaFingerprint, minimalProjection.schemaFingerprint, "minimal context/projection fingerprint");
 expectEqual(minimalProjection.projectionMode, "slim", "minimal projection mode");
 expectEqual(minimalProjection.schemaPropertyCount, 12, "minimal projection schema property count");
 expectEqual(minimalProjection.suppressedSchemaPropertyCount, 3, "minimal suppressed property count");
@@ -300,6 +302,11 @@ expectDeepEqual(
   minimalProjection.perToolVisibleArgs?.read,
   ["include_metadata", "limit", "offset", "path"],
   "minimal projection exposes slim read arg names",
+);
+expect(
+  buildToolSurfaceFingerprint("minimal", ["read"], { advancedToolSchema: false })
+    !== buildToolSurfaceFingerprint("minimal", ["read"], { advancedToolSchema: true }),
+  "schema fingerprint changes when only read projected args change",
 );
 
 const browser = withEnvProfile(undefined, () => build("打开浏览器页面，扫描 DOM"));
@@ -310,6 +317,7 @@ expectDeepEqual(browser.enabledTools, browser.modelVisibleTools, "browser dispat
 expectEqual(browser.advancedToolSchema, false, "browser slim schema");
 const browserProjection = projection(browser);
 expectEqual(browserProjection.source, "gateway.fallback", "browser projection source");
+expectEqual(browser.schemaFingerprint, browserProjection.schemaFingerprint, "browser context/projection fingerprint");
 expectEqual(browserProjection.projectionMode, "slim", "browser projection mode");
 expectEqual(browserProjection.schemaPropertyCount, 19, "browser projection schema property count");
 expectEqual(browserProjection.fullSchemaPropertyCount, 47, "browser projection full property count");
@@ -637,6 +645,20 @@ expectDeepEqual(browserAdvanced.modelVisibleTools, ["web_scan", "web_execute_js"
 expectEqual(browserAdvanced.advancedToolSchema, true, "browser advanced schema");
 const browserAdvancedProjection = projection(browserAdvanced);
 expectEqual(browserAdvancedProjection.source, "gateway.fallback", "browser advanced projection source");
+expectEqual(
+  browserAdvanced.schemaFingerprint,
+  browserAdvancedProjection.schemaFingerprint,
+  "browser advanced context/projection fingerprint",
+);
+expect(
+  browserProjection.schemaFingerprint !== browserAdvancedProjection.schemaFingerprint,
+  "schema fingerprint distinguishes slim and advanced browser projections with the same visible tools",
+);
+expect(
+  buildToolSurfaceFingerprint("browser", browser.modelVisibleTools ?? [], { advancedToolSchema: false })
+    !== buildToolSurfaceFingerprint("browser", browser.modelVisibleTools ?? [], { advancedToolSchema: true }),
+  "schema fingerprint changes when only projected args change",
+);
 expectEqual(browserAdvancedProjection.projectionMode, "advanced", "browser advanced projection mode");
 expectEqual(browserAdvancedProjection.schemaPropertyCount, 42, "browser advanced projection schema property count");
 expectEqual(browserAdvancedProjection.fullSchemaPropertyCount, 47, "browser advanced projection full property count");
@@ -649,6 +671,7 @@ expectDecisionProfile(context, "context", "context profile decision");
 expectDeepEqual(context.modelVisibleTools, ["semantic_search", "read", "ask_user"], "context visible tools");
 expectDeepEqual(context.enabledTools, context.modelVisibleTools, "context dispatch tools");
 const contextProjection = projection(context);
+expectEqual(context.schemaFingerprint, contextProjection.schemaFingerprint, "context context/projection fingerprint");
 expectEqual(contextProjection.schemaPropertyCount, 17, "context projection schema property count");
 expectEqual(contextProjection.suppressedSchemaPropertyCount, 3, "context projection suppressed property count");
 expectProjectionWithinBudget(context, "context projection budget");

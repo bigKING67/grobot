@@ -815,14 +815,14 @@ function resolveRuntimeToolContextPreview(
   const toolSurfaceProfile = effectiveContext?.toolSurfaceProfile ?? "coding";
   const modelVisibleTools = effectiveContext?.modelVisibleTools ?? enabledTools;
   const dispatchEnabledTools = effectiveContext?.enabledTools ?? enabledTools;
+  const advancedToolSchema = effectiveContext?.advancedToolSchema ?? false;
   const schemaFingerprint = effectiveContext?.schemaFingerprint
-    ?? buildToolSurfaceFingerprint(toolSurfaceProfile, modelVisibleTools);
+    ?? buildToolSurfaceFingerprint(toolSurfaceProfile, modelVisibleTools, { advancedToolSchema });
   const schemaEstimatedTokens = effectiveContext?.schemaEstimatedTokens
     ?? estimateToolSchemaTokens(modelVisibleTools, toolSurfaceProfile);
   const toolSurfaceSource = effectiveContext?.toolSurfaceSource ?? "fallback";
   const toolSurfaceReason = effectiveContext?.toolSurfaceReason ?? "status fallback";
   const toolPolicyVersion = effectiveContext?.toolPolicyVersion ?? TOOL_SURFACE_POLICY_VERSION;
-  const advancedToolSchema = effectiveContext?.advancedToolSchema ?? false;
   const runtimeSchemaProfile = runtimeToolDescribeDecision.runtimeDescribeOk
     ? findRuntimeToolSurfaceSchemaProfile({
         profiles: runtimeToolDescribeDecision.schemaProfiles,

@@ -266,6 +266,10 @@ tab/session selection, but keep low-frequency selectors such as `text_only` and
 `session_url_pattern` in `browser_advanced`/`full_debug`. Runtime dispatch must reject hidden
 browser args for the active profile instead of silently accepting parameters that the model could
 not see in its schema.
+Gateway fallback `schema_fingerprint` must be projection-aware. It should include the projection
+mode, advanced-schema flag, schema property counts, and per-tool visible/suppressed args, not only
+the visible tool list; otherwise profiles with the same tools but different argument surfaces can
+silently share a fingerprint.
 `read` should also project a slim schema in lightweight profiles (`minimal`, `browser`, and
 `context`): expose `path`, `offset`, `limit`, and `include_metadata`, while keeping legacy
 `line_start`/`line_end` and media `pages` selection in `coding`, `browser_advanced`, and

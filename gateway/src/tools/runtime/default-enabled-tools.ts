@@ -92,6 +92,10 @@ export interface RuntimeToolSurfaceProjectionSummary {
   perToolSuppressedArgs?: Record<string, string[]>;
 }
 
+interface ToolSurfaceFingerprintInput {
+  advancedToolSchema?: boolean;
+}
+
 const PROFILE_VISIBLE_TOOLS: Record<ToolSurfaceProfile, readonly string[]> = {
   minimal: ["read", "edit", "write", "ask_user"],
   coding: DEFAULT_RUNTIME_ENABLED_TOOLS,
@@ -351,7 +355,7 @@ export function buildRuntimeToolSurfaceProjectionSummary(context: RuntimeToolCon
     fullSchemaPropertyCount,
     suppressedSchemaPropertyCount: Math.max(0, fullSchemaPropertyCount - schemaPropertyCount),
     schemaEstimatedTokens: context.schemaEstimatedTokens ?? estimateToolSchemaTokens(visibleTools, profile),
-    schemaFingerprint: context.schemaFingerprint ?? buildToolSurfaceFingerprint(profile, visibleTools),
+    schemaFingerprint: buildToolSurfaceFingerprint(profile, visibleTools, { advancedToolSchema }),
     perToolPropertyCount,
     perToolVisibleArgs,
     perToolSuppressedArgs,
@@ -910,6 +914,7 @@ function buildRuntimeToolContextForProfile(input: {
   const enabledTools = input.profile === "full_debug"
     ? dedupeKnownToolNames(ALL_RUNTIME_LOCAL_TOOLS, input.availableTools)
     : visibleTools;
+  const advancedToolSchema = input.profile === "browser_advanced" || input.profile === "full_debug";
   return {
     ...input.baseContext,
     enabledTools,
@@ -919,9 +924,9 @@ function buildRuntimeToolContextForProfile(input: {
     toolSurfaceReason: input.reason,
     toolSurfaceDecision: input.decision ?? input.baseContext.toolSurfaceDecision,
     toolPolicyVersion: TOOL_SURFACE_POLICY_VERSION,
-    advancedToolSchema: input.profile === "browser_advanced" || input.profile === "full_debug",
+    advancedToolSchema,
     schemaEstimatedTokens: estimateToolSchemaTokens(visibleTools, input.profile),
-    schemaFingerprint: buildToolSurfaceFingerprint(input.profile, visibleTools),
+    schemaFingerprint: buildToolSurfaceFingerprint(input.profile, visibleTools, { advancedToolSchema }),
   };
 }
 
@@ -1158,18 +1163,48 @@ export function estimateToolSchemaTokens(toolNames: readonly string[], profile: 
   }, 0)));
 }
 
-export function buildToolSurfaceFingerprint(profile: ToolSurfaceProfile, toolNames: readonly string[]): string {
-  const payload = JSON.stringify({
-    policy: TOOL_SURFACE_POLICY_VERSION,
-    profile,
-    tools: [...toolNames].sort(),
-  });
+function fingerprintPayloadHash(prefix: string, payload: unknown): string {
+  const text = JSON.stringify(payload);
   let hash = 0x811c9dc5;
-  for (let index = 0; index < payload.length; index += 1) {
-    hash ^= payload.charCodeAt(index);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return `surface:${hash.toString(16).padStart(8, "0")}`;
+  return `${prefix}:${hash.toString(16).padStart(8, "0")}`;
+}
+
+export function buildToolSurfaceFingerprint(
+  profile: ToolSurfaceProfile,
+  toolNames: readonly string[],
+  input: ToolSurfaceFingerprintInput = {},
+): string {
+  const advancedToolSchema = input.advancedToolSchema ?? (profile === "browser_advanced" || profile === "full_debug");
+  const projectionMode = projectionModeForSurface(profile, advancedToolSchema);
+  const stableToolNames = [...new Set(toolNames.map((toolName) => toolName.trim()).filter(Boolean))].sort();
+  const { total: schemaPropertyCount, perToolPropertyCount } = sumSchemaPropertyCounts(
+    stableToolNames,
+    profile,
+    projectionMode,
+  );
+  const fullSchemaPropertyCount = sumFullSchemaPropertyCounts(stableToolNames);
+  const { perToolVisibleArgs, perToolSuppressedArgs } = buildSchemaArgMetadata(
+    stableToolNames,
+    profile,
+    projectionMode,
+  );
+  return fingerprintPayloadHash("surface", {
+    policy: TOOL_SURFACE_POLICY_VERSION,
+    profile,
+    projection_mode: projectionMode,
+    advanced_tool_schema: advancedToolSchema,
+    tools: stableToolNames,
+    schema_property_count: schemaPropertyCount,
+    full_schema_property_count: fullSchemaPropertyCount,
+    suppressed_schema_property_count: Math.max(0, fullSchemaPropertyCount - schemaPropertyCount),
+    per_tool_property_count: perToolPropertyCount,
+    per_tool_visible_args: perToolVisibleArgs,
+    per_tool_suppressed_args: perToolSuppressedArgs,
+  });
 }
 
 export function buildRuntimeToolContextForMessage(

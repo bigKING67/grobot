@@ -45,6 +45,12 @@ projections and runtime-reported schema profiles are both checked against
 projected/full/suppressed argument counts, and estimated schema-token ceilings.
 This keeps browser schema slimming measurable and prevents accidental tool
 surface expansion from silently increasing prompt cost.
+Gateway fallback `schema_fingerprint` must hash the actual projected schema
+shape, not just the visible tool names. The fingerprint payload includes
+projection mode, advanced-schema flag, projected/full/suppressed argument
+counts, and visible/suppressed args per tool. Profiles with the same visible
+tools, such as `browser` and `browser_advanced`, therefore get different
+fingerprints when their argument surfaces differ.
 
 The default `browser` profile intentionally exposes only the common browser
 control primitives: page/tab scan, current/session tab selection, bounded output,
