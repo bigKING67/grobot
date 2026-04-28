@@ -310,7 +310,9 @@ servers, busy servers, queue timeouts, and circuit pressure. It must assert the
 refined action, action family, recoverability, prompt fragments, readiness, and
 gate blocker projection together. The default `npm run check` gate includes the
 gateway-only runtime-tool suite through `npm run check:gateway:runtime-tools`.
-Run that focused suite during runtime-tool iteration; use
+Do not duplicate those focused runtime-tool contracts inside `check:gateway`;
+that monolithic gateway smoke should stay responsible for non-runtime-tool
+gateway coverage. Run the focused suite during runtime-tool iteration; use
 `npm run check:gateway:runtime-tools:describe` when the Rust runtime binary has
 also been built and `runtime.tools.describe` compatibility must be checked,
 especially after Rust recovery catalog, schema budget, or describe-surface

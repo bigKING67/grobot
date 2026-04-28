@@ -534,7 +534,9 @@ npm run check:gateway:runtime-tools:json
 The default suite is gateway-only and does not require a freshly built Rust
 runtime binary. It is part of the repository `npm run check` gate, so recovery
 or tool-surface changes cannot bypass these contracts in the default validation
-path. It runs:
+path. `check:gateway` intentionally does not repeat these focused contracts;
+`check:gateway:runtime-tools` is the single gateway-only owner for runtime-tool
+surface/recovery assertions. It runs:
 
 ```bash
 npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts
