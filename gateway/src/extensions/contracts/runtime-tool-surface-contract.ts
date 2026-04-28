@@ -46,8 +46,16 @@ import {
 } from "../../orchestration/entrypoints/dev-cli/services/runtime-tool-describe-decision";
 import { buildRuntimeToolRecoveryReadinessGate } from "../../tools/runtime/tool-recovery-readiness-gate";
 
+const contractWorkDir = join(
+  process.env.TMPDIR ?? "/tmp",
+  `grobot-runtime-tool-surface-contract-${String(process.pid)}-${String(Date.now())}`,
+);
+process.on("exit", () => {
+  rmSync(contractWorkDir, { recursive: true, force: true });
+});
+
 const baseContext = {
-  workDir: "/tmp/grobot-runtime-tool-surface-contract",
+  workDir: contractWorkDir,
   enabledTools: ["glob", "search", "read", "write", "edit", "bash", "ask_user"],
   maxToolRounds: 8,
 };

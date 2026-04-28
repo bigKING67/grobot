@@ -28,6 +28,7 @@ const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const runtimeToolRunner = readRepoFile("scripts/check-runtime-tool-contracts.mjs");
 const runnerSchemaTest = readRepoFile("scripts/test-runtime-tool-contracts-json-schema.mjs");
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
+const runtimeToolSurfaceContract = readRepoFile("gateway/src/extensions/contracts/runtime-tool-surface-contract.ts");
 const harnessWorkflow = readRepoFile(".github/workflows/harness-gate.yml");
 const corePackagingWorkflow = readRepoFile(".github/workflows/core-packaging-check.yml");
 const coreReleaseWorkflow = readRepoFile(".github/workflows/core-release-gate.yml");
@@ -120,6 +121,13 @@ expect(
   "package.json must expose runtime-tool release-report regression script",
 );
 expect(
+  runtimeToolSurfaceContract.includes("process.env.TMPDIR ?? \"/tmp\"")
+    && runtimeToolSurfaceContract.includes("process.pid")
+    && runtimeToolSurfaceContract.includes("Date.now()")
+    && !runtimeToolSurfaceContract.includes("workDir: \"/tmp/grobot-runtime-tool-surface-contract\""),
+  "runtime-tool surface contract must isolate tmp fixtures per process",
+);
+expect(
   runtimeToolRunner.includes("GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID"),
   "runtime-tool runner must support deterministic contract failure injection for report regression tests",
 );
@@ -183,6 +191,7 @@ process.stdout.write(JSON.stringify({
   runner_diagnostics_self_test: true,
   runner_schema_version: true,
   runner_diagnostic_summary: true,
+  surface_contract_tmp_isolated: true,
   runner_schema_regression_script: true,
   release_report_regression_script: true,
   release_report_regression_workflow: true,
