@@ -1484,6 +1484,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   const executionDiscipline = requiresUserIntervention
     ? "Automatic recovery is blocked for this issue. Do not retry the failing tool automatically; ask the user or fix the required configuration, approval, or environment first."
     : "Automatic recovery is allowed only after changing one concrete variable; do not repeat an identical failing tool call unchanged.";
+  const recoverableValue = recovery.recoverable === undefined ? "<unknown>" : String(recovery.recoverable);
   const environmentFixInstruction = browserEnvironmentRecoveryFixInstruction({
     plan: browserRecoveryPlan,
     toolName,
@@ -1496,6 +1497,12 @@ export function buildRuntimeToolRecoveryFeedback(input: {
   });
   const promptBlock = [
     "[Runtime Tool Recovery Hint]",
+    "Action-first contract: treat structured recommended_next_action as authoritative; use recovery_stage and recoverable to choose execution discipline; use recovery_hint/error prose only as supporting evidence.",
+    `Structured recovery fields: recommended_next_action=${effectiveRecommendedNextAction} recovery_stage=${recovery.stage} recoverable=${recoverableValue} requires_user_intervention=${requiresUserIntervention ? "true" : "false"}`,
+    `Required next action: ${effectiveRecommendedNextAction}`,
+    `Action family: ${actionClassification.family} reason=${actionClassification.reason}`,
+    `Execution rule: ${instruction}`,
+    `Recoverability: ${recoverability}`,
     `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
     errorMessage ? `Error detail: ${errorMessage}` : null,
     errorDataSummary ? `Structured error data: ${errorDataSummary}` : null,
@@ -1505,10 +1512,6 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     recovery.escalated && recovery.baseStage
       ? `Base recovery was stage=${recovery.baseStage} action=${recovery.baseRecommendedNextAction ?? "<none>"} before gateway escalation.`
       : null,
-    `Recoverability: ${recoverability}`,
-    `Required next action: ${effectiveRecommendedNextAction}`,
-    `Action family: ${actionClassification.family} reason=${actionClassification.reason}`,
-    `Execution rule: ${instruction}`,
     environmentFixInstruction,
     `Execution discipline: ${executionDiscipline}`,
   ].filter((line): line is string => typeof line === "string").join("\n");

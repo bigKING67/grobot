@@ -44,6 +44,14 @@ function expectEqual<T>(actual: T, expected: T, message: string): void {
   }
 }
 
+function expectBefore(text: string, left: string, right: string, message: string): void {
+  const leftIndex = text.indexOf(left);
+  const rightIndex = text.indexOf(right);
+  expect(leftIndex >= 0, `${message}: missing left fragment ${left}`);
+  expect(rightIndex >= 0, `${message}: missing right fragment ${right}`);
+  expect(leftIndex < rightIndex, `${message}: expected ${left} before ${right}`);
+}
+
 function event(eventType: RuntimeEvent["eventType"], payload: Record<string, unknown>): RuntimeEvent {
   return {
     traceId: "trace_runtime_tool_events_contract",
@@ -229,6 +237,20 @@ expect(
   "feedback summarizes structured error data",
 );
 expect(
+  structuredFeedback.promptBlock.includes("Action-first contract: treat structured recommended_next_action as authoritative"),
+  "feedback declares action-first recovery contract",
+);
+expect(
+  structuredFeedback.promptBlock.includes("Structured recovery fields: recommended_next_action=reread_target_then_retry_exact_old_text recovery_stage=local_fix recoverable=true requires_user_intervention=false"),
+  "feedback surfaces structured recovery fields before prose details",
+);
+expectBefore(
+  structuredFeedback.promptBlock,
+  "Structured recovery fields:",
+  "Structured error data:",
+  "feedback prioritizes structured action fields before error prose",
+);
+expect(
   structuredFeedback.promptBlock.includes("closest_lines=line 1 \"alpha_count = 1;\""),
   "feedback summarizes structured closest lines",
 );
@@ -332,6 +354,12 @@ expectEqual(
 expect(
   mcpStructuredFeedback.promptBlock.includes("Required next action: use_allowed_mcp_tool_or_request_policy_change"),
   "MCP blocked tool prompt uses policy-specific action",
+);
+expectBefore(
+  mcpStructuredFeedback.promptBlock,
+  "Required next action: use_allowed_mcp_tool_or_request_policy_change",
+  "Structured error data:",
+  "MCP blocked tool prompt prioritizes action before structured error prose",
 );
 expect(
   mcpStructuredFeedback.promptBlock.includes("Action family: policy_or_permission"),
@@ -1821,6 +1849,7 @@ process.stdout.write(JSON.stringify({
   latest_recovery_stage: summary.latestRecovery?.stage,
   runtime_error_events: extractRuntimeErrorEvents(runtimeError).length,
   feedback_active: true,
+  feedback_prompt_action_first: structuredFeedback.promptBlock.includes("Action-first contract:"),
   latest_recovery_recoverable: summary.latestRecovery?.recoverable,
   nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
   repeated_recovery_escalation: true,
