@@ -124,6 +124,10 @@ const baseDescribeSummary = {
   contract_count: 2,
   completed_count: 2,
   runtime_binary: { exists: true },
+  runtime_tool_count: 14,
+  runtime_default_enabled_count: 7,
+  runtime_tool_manifest_fingerprint: "fnv1a32:runtime",
+  gateway_tool_manifest_fingerprint: "fnv1a32:gateway",
   diagnostic_summary: {
     status: "passed",
     schema_budget_violations: 0,
@@ -208,6 +212,10 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
       id: "runtime-tool-governance",
       output: JSON.stringify({
         runtime_recovery_catalog_rows: 3,
+        runtime_tool_count: 14,
+        runtime_default_enabled_count: 7,
+        runtime_tool_manifest_fingerprint: "fnv1a32:runtime",
+        gateway_tool_manifest_fingerprint: "fnv1a32:gateway",
         runtime_schema_profile_count: 4,
         runtime_schema_budget_violations: 0,
         gateway_only_recovery_actions: ["recover_runtime_health"],
@@ -225,6 +233,11 @@ expectEqual(
   describeSummary.runtime_schema_budget_violations,
   0,
   "governance payload schema budget evidence must override diagnostic fallback",
+);
+expectEqual(
+  describeSummary.runtime_tool_manifest_fingerprint,
+  "fnv1a32:runtime",
+  "governance payload runtime tool manifest fingerprint must be preserved",
 );
 expectEqual(describeSummary.gateway_only_recovery_actions.length, 1, "governance recovery actions must be preserved");
 
@@ -246,6 +259,16 @@ expectEqual(
   0,
   "buildCoreReleaseReport must preserve normalized schema budget evidence",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_describe.runtime_tool_manifest_fingerprint,
+  "fnv1a32:runtime",
+  "buildCoreReleaseReport must preserve runtime tool manifest fingerprint",
+);
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.gateway_tool_manifest_fingerprint,
+  "fnv1a32:gateway",
+  "runtime_tool_quality must expose gateway tool manifest fingerprint",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -262,6 +285,7 @@ process.stdout.write(JSON.stringify({
   priority_action: prioritySignal.reason,
   parse_error_action: invalidQuality.action_reason,
   schema_budget_cases: ["passed", "unknown", "failed"],
+  manifest_evidence: ["runtime_tool_count", "runtime_tool_manifest_fingerprint"],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,
 }) + "\n");

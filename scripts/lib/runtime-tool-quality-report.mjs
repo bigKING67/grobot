@@ -199,6 +199,20 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
     runtime_recovery_catalog_rows: Number.isFinite(governancePayload?.runtime_recovery_catalog_rows)
       ? governancePayload.runtime_recovery_catalog_rows
       : null,
+    runtime_tool_count: Number.isFinite(governancePayload?.runtime_tool_count)
+      ? governancePayload.runtime_tool_count
+      : null,
+    runtime_default_enabled_count: Number.isFinite(governancePayload?.runtime_default_enabled_count)
+      ? governancePayload.runtime_default_enabled_count
+      : null,
+    runtime_tool_manifest_fingerprint:
+      typeof governancePayload?.runtime_tool_manifest_fingerprint === "string"
+        ? governancePayload.runtime_tool_manifest_fingerprint
+        : null,
+    gateway_tool_manifest_fingerprint:
+      typeof governancePayload?.gateway_tool_manifest_fingerprint === "string"
+        ? governancePayload.gateway_tool_manifest_fingerprint
+        : null,
     runtime_schema_profile_count: Number.isFinite(governancePayload?.runtime_schema_profile_count)
       ? governancePayload.runtime_schema_profile_count
       : null,
@@ -304,6 +318,20 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
     schema_budget_status: schemaBudgetStatus,
     schema_budget_violations: schemaBudgetViolations,
     runtime_binary_exists: runtimeBinaryExists,
+    runtime_tool_count: Number.isFinite(describeSummary.runtime_tool_count)
+      ? describeSummary.runtime_tool_count
+      : null,
+    runtime_default_enabled_count: Number.isFinite(describeSummary.runtime_default_enabled_count)
+      ? describeSummary.runtime_default_enabled_count
+      : null,
+    runtime_tool_manifest_fingerprint:
+      typeof describeSummary.runtime_tool_manifest_fingerprint === "string"
+        ? describeSummary.runtime_tool_manifest_fingerprint
+        : null,
+    gateway_tool_manifest_fingerprint:
+      typeof describeSummary.gateway_tool_manifest_fingerprint === "string"
+        ? describeSummary.gateway_tool_manifest_fingerprint
+        : null,
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions
       : [],

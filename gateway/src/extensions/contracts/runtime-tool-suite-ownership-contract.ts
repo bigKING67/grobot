@@ -239,6 +239,8 @@ expect(
   releaseReportTest.includes("failed_contract_detail")
     && releaseReportTest.includes("runtime_binary")
     && releaseReportTest.includes("diagnostic_summary")
+    && releaseReportTest.includes("runtime_tool_manifest_fingerprint")
+    && releaseReportTest.includes("tool_count=14")
     && releaseReportTest.includes("runtime_tool_quality")
     && releaseReportTest.includes("failure_reasons")
     && releaseReportTest.includes("successQuality")

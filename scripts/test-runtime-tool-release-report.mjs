@@ -243,6 +243,16 @@ if (successResult.status !== 0) {
     stderr: successResult.stderr.slice(-1000),
   });
 }
+if (
+  !successResult.stdout.includes("tool_count=14")
+  || !successResult.stdout.includes("default_enabled=7")
+  || !successResult.stdout.includes("manifest=fnv1a32:")
+) {
+  fail("release gate stdout must expose runtime tool manifest evidence", {
+    stdout: successResult.stdout.slice(-1000),
+    stderr: successResult.stderr.slice(-1000),
+  });
+}
 
 const successReport = readReport(successReportPath, successResult, "release gate success");
 const successQuality = successReport?.checks?.runtime_tool_quality;
@@ -288,6 +298,18 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
   }
+  if (successQuality.runtime_tool_count !== 14) {
+    successFailures.push("success runtime_tool_quality.runtime_tool_count must be 14");
+  }
+  if (successQuality.runtime_default_enabled_count !== 7) {
+    successFailures.push("success runtime_tool_quality.runtime_default_enabled_count must be 7");
+  }
+  if (typeof successQuality.runtime_tool_manifest_fingerprint !== "string" || !successQuality.runtime_tool_manifest_fingerprint.startsWith("fnv1a32:")) {
+    successFailures.push("success runtime_tool_quality.runtime_tool_manifest_fingerprint must be present");
+  }
+  if (typeof successQuality.gateway_tool_manifest_fingerprint !== "string" || !successQuality.gateway_tool_manifest_fingerprint.startsWith("fnv1a32:")) {
+    successFailures.push("success runtime_tool_quality.gateway_tool_manifest_fingerprint must be present");
+  }
   if (!Array.isArray(successQuality.gateway_only_recovery_actions)) {
     successFailures.push("success runtime_tool_quality.gateway_only_recovery_actions must be array");
   }
@@ -309,6 +331,15 @@ if (successDescribe?.runner_schema_version !== 1) {
 }
 if (successDescribe?.runtime_schema_budget_violations !== 0) {
   successFailures.push("success runtime_tool_describe.runtime_schema_budget_violations must be 0");
+}
+if (successDescribe?.runtime_tool_count !== 14) {
+  successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");
+}
+if (successDescribe?.runtime_default_enabled_count !== 7) {
+  successFailures.push("success runtime_tool_describe.runtime_default_enabled_count must be 7");
+}
+if (typeof successDescribe?.runtime_tool_manifest_fingerprint !== "string" || !successDescribe.runtime_tool_manifest_fingerprint.startsWith("fnv1a32:")) {
+  successFailures.push("success runtime_tool_describe.runtime_tool_manifest_fingerprint must be present");
 }
 
 if (successFailures.length > 0) {

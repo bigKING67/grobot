@@ -1,4 +1,8 @@
-import { resolveRuntimeBinaryPath, runRuntimeToolsDescribe } from "../../orchestration/entrypoints/dev-cli/runtime-health";
+import {
+  buildToolsManifestFingerprint,
+  resolveRuntimeBinaryPath,
+  runRuntimeToolsDescribe,
+} from "../../orchestration/entrypoints/dev-cli/runtime-health";
 import {
   buildAllRuntimeLocalTools,
   buildDefaultRuntimeEnabledTools,
@@ -29,6 +33,10 @@ function difference(left: readonly string[], right: readonly string[]): string[]
 }
 
 const describe = runRuntimeToolsDescribe(resolveRuntimeBinaryPath());
+const gatewayToolManifestFingerprint = buildToolsManifestFingerprint(
+  buildAllRuntimeLocalTools(),
+  buildDefaultRuntimeEnabledTools(),
+);
 expectEqual(describe.ok, true, `runtime.tools.describe ok (${describe.detail})`);
 expectEqual(
   JSON.stringify(describe.toolNames),
@@ -112,6 +120,8 @@ process.stdout.write(JSON.stringify({
   ok: true,
   runtime_tool_count: describe.toolNames.length,
   runtime_default_enabled_count: describe.defaultEnabledTools.length,
+  runtime_tool_manifest_fingerprint: describe.manifestFingerprint,
+  gateway_tool_manifest_fingerprint: gatewayToolManifestFingerprint,
   runtime_recovery_action_count: describe.toolRecoveryActions.length,
   gateway_only_recovery_actions: gatewayOnlyActions,
   runtime_recovery_catalog_rows: describe.toolRecoveryCatalog.length,

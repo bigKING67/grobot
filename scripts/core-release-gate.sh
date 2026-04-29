@@ -167,6 +167,9 @@ try {
 }
 process.stdout.write(
   `[gate] runtime tools describe passed contracts=${report.completed_count}/${report.contract_count}`
+    + ` tool_count=${governancePayload.runtime_tool_count ?? "unknown"}`
+    + ` default_enabled=${governancePayload.runtime_default_enabled_count ?? "unknown"}`
+    + ` manifest=${governancePayload.runtime_tool_manifest_fingerprint ?? "unknown"}`
     + ` schema_budget_violations=${governancePayload.runtime_schema_budget_violations ?? "unknown"}`
     + ` gateway_only_actions=${JSON.stringify(governancePayload.gateway_only_recovery_actions ?? [])}\n`,
 );
