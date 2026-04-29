@@ -507,6 +507,7 @@ const releaseQualityModuleRequiredFragments = [
   "runtime_default_order_mismatch:",
   "runtime_schema_profile_summary: recordArray(",
   "runtime_schema_budget_violation_details: recordArray(",
+  "surface_execution_smoke_failed",
   "runtime_surface_execution_smoke_passed:",
   "runtime_surface_execution_profiles_smoked:",
   "runtime_surface_execution_schema_projection_checks:",
@@ -674,6 +675,8 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality.action_family must classify forced failure as runner_contract")
     && releaseReportTest.includes("runtime_tool_quality.action_reason must preserve the decisive failure reason")
     && releaseReportTest.includes("runtime_tool_quality.action_required must point to failed contract action")
+    && releaseReportTest.includes("surface execution smoke failures with a focused action")
+    && releaseReportTest.includes("surface_smoke=true")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_profile_summary must describe 7 profiles")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_budget_violation_details must be empty array")

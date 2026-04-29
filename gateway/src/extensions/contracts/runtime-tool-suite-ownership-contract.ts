@@ -111,8 +111,15 @@ expect(
 expect(
   releaseQualityModule.includes("surface_execution_payload")
     && releaseQualityModule.includes("runtime_surface_execution_smoke_passed")
+    && releaseQualityModule.includes("surface_execution_smoke_failed")
     && releaseQualityModule.includes("runtime_surface_execution_schema_projection_checks"),
-  "release gate runtime_tool_quality must expose real surface execution smoke evidence",
+  "release gate runtime_tool_quality must expose real surface execution smoke evidence and focused failure reason",
+);
+expect(
+  releaseGate.includes("surface_smoke=")
+    && releaseGate.includes("surface_profiles=")
+    && releaseGate.includes("surface_hidden_args="),
+  "release gate stdout must summarize surface execution smoke evidence",
 );
 expect(
   statusCommand.includes("runtime_tools_quality")
@@ -254,12 +261,14 @@ expect(
     && releaseReportTest.includes("diagnostic_summary")
     && releaseReportTest.includes("runtime_tool_manifest_fingerprint")
     && releaseReportTest.includes("tool_count=14")
+    && releaseReportTest.includes("surface_smoke=true")
     && releaseReportTest.includes("runtime_tool_quality")
     && releaseReportTest.includes("failure_reasons")
+    && releaseReportTest.includes("surface_execution_smoke_failed")
     && releaseReportTest.includes("successQuality")
     && releaseReportTest.includes("runtime_surface_execution_smoke_passed")
     && releaseReportTest.includes("diagnostics_self_test"),
-  "release-report regression test must assert diagnostics, runtime binary, surface execution evidence, quality summary reasons, and self-test fields",
+  "release-report regression test must assert diagnostics, runtime binary, surface execution evidence, focused quality summary reasons, and self-test fields",
 );
 expect(
   startSmokeContract.includes("status_has_runtime_tools_quality")

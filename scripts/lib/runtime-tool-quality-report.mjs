@@ -335,6 +335,12 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
   if (describeSummary.report_parse_error) {
     pushRuntimeToolQualityFailureReason(failureReasons, "report_parse_error", registry);
   }
+  if (
+    describeSummary.failed_contract === "runtime-tool-surface-execution"
+    || describeSummary.runtime_surface_execution_smoke_passed === false
+  ) {
+    pushRuntimeToolQualityFailureReason(failureReasons, "surface_execution_smoke_failed", registry);
+  }
   if (describeSummary.passed !== true || describeSummary.ok !== true) {
     pushRuntimeToolQualityFailureReason(failureReasons, "runtime_tool_describe_failed", registry);
   }

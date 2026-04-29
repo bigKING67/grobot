@@ -516,6 +516,45 @@ const surfaceCases: SurfaceCase[] = [
     ],
   },
   {
+    id: "browser_advanced_rejects_full_native_action_args",
+    profile: "browser_advanced",
+    advancedToolSchema: true,
+    enabledTools: ["web_scan", "web_execute_js", "read", "ask_user"],
+    modelVisibleTools: ["web_scan", "web_execute_js", "read", "ask_user"],
+    toolCall: {
+      name: "web_execute_js",
+      arguments: {
+        script: "return document.title",
+        tmwd_ws_endpoint: "ws://127.0.0.1:9222/devtools/browser/mock",
+        native_fallback_action: "click",
+        native_fallback_args: { x: 1, y: 2 },
+      },
+    },
+    expectedOutcome: "error",
+    expectedErrorClass: "tool_argument_not_visible",
+    schemaExpectations: [
+      {
+        tool: "web_execute_js",
+        includes: [
+          "script",
+          "timeout_ms",
+          "tmwd_ws_endpoint",
+          "target_url_contains",
+          "native_auto_fallback",
+          "native_auto_fallback_policy",
+          "native_fallback_timeout_ms",
+        ],
+        excludes: [
+          "native_auto_execute",
+          "native_execute_action_scope",
+          "native_fallback_action",
+          "native_fallback_args",
+        ],
+      },
+      { tool: "read", includes: ["path", "line_start", "line_end", "pages"] },
+    ],
+  },
+  {
     id: "context_rejects_hidden_semantic_debug_args",
     profile: "context",
     advancedToolSchema: false,
@@ -698,7 +737,7 @@ async function main(): Promise<void> {
   const profilesSmoked = sortedUnique(results.map((result) => result.profile));
   expectSameStringSet(
     profilesSmoked,
-    ["minimal", "coding", "browser", "context", "mcp", "full_debug"],
+    ["minimal", "coding", "browser", "browser_advanced", "context", "mcp", "full_debug"],
     "surface execution smoke must cover all decisive surface families",
   );
   const allowedWorkflowSuccesses = results.filter((result) => result.outcome === "success").length;

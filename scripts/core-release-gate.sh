@@ -159,18 +159,34 @@ const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
 const governance = Array.isArray(report.results)
   ? report.results.find((item) => item && item.id === "runtime-tool-governance")
   : null;
+const surfaceExecution = Array.isArray(report.results)
+  ? report.results.find((item) => item && item.id === "runtime-tool-surface-execution")
+  : null;
 let governancePayload = {};
 try {
   governancePayload = typeof governance?.output === "string" ? JSON.parse(governance.output) : {};
 } catch {
   governancePayload = {};
 }
+let surfaceExecutionPayload = {};
+try {
+  surfaceExecutionPayload = typeof surfaceExecution?.output === "string" ? JSON.parse(surfaceExecution.output) : {};
+} catch {
+  surfaceExecutionPayload = {};
+}
+const surfaceProfiles = Array.isArray(surfaceExecutionPayload.profiles_smoked)
+  ? surfaceExecutionPayload.profiles_smoked.length
+  : "unknown";
 process.stdout.write(
   `[gate] runtime tools describe passed contracts=${report.completed_count}/${report.contract_count}`
     + ` tool_count=${governancePayload.runtime_tool_count ?? "unknown"}`
     + ` default_enabled=${governancePayload.runtime_default_enabled_count ?? "unknown"}`
     + ` manifest=${governancePayload.runtime_tool_manifest_fingerprint ?? "unknown"}`
     + ` schema_budget_violations=${governancePayload.runtime_schema_budget_violations ?? "unknown"}`
+    + ` surface_smoke=${surfaceExecutionPayload.ok ?? "unknown"}`
+    + ` surface_profiles=${surfaceProfiles}`
+    + ` surface_hidden_args=${surfaceExecutionPayload.hidden_arg_rejections ?? "unknown"}`
+    + ` surface_hidden_tools=${surfaceExecutionPayload.hidden_tool_rejections ?? "unknown"}`
     + ` gateway_only_actions=${JSON.stringify(governancePayload.gateway_only_recovery_actions ?? [])}\n`,
 );
 NODE

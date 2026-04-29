@@ -200,6 +200,31 @@ expectEqual(
   "failed_contract_detail.suggested_command must override generic next step",
 );
 
+const surfaceExecutionFailureQuality = runtimeToolQualitySummary({
+  ...baseDescribeSummary,
+  passed: false,
+  ok: false,
+  failed_contract: "runtime-tool-surface-execution",
+  runtime_surface_execution_smoke_passed: false,
+  failed_contract_detail: {
+    suggested_command: "npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-execution-contract.ts",
+  },
+}, baseData, registry);
+expect(
+  surfaceExecutionFailureQuality.failure_reasons.includes("surface_execution_smoke_failed"),
+  "surface execution smoke failures must expose a precise failure reason",
+);
+expectEqual(
+  surfaceExecutionFailureQuality.action_reason,
+  "surface_execution_smoke_failed",
+  "surface execution smoke failure must outrank generic runtime_tool_describe_failed",
+);
+expectEqual(
+  surfaceExecutionFailureQuality.action_required,
+  "run_surface_execution_smoke_and_fix_runtime_boundary",
+  "surface execution smoke failure must map to the focused runtime-boundary action",
+);
+
 const diagnosticReproduceQuality = runtimeToolQualitySummary({
   ...baseDescribeSummary,
   passed: false,
@@ -281,11 +306,11 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
       id: "runtime-tool-surface-execution",
       output: JSON.stringify({
         ok: true,
-        profiles_smoked: ["browser", "coding", "context", "full_debug", "mcp", "minimal"],
+        profiles_smoked: ["browser", "browser_advanced", "coding", "context", "full_debug", "mcp", "minimal"],
         allowed_workflow_successes: 2,
         hidden_tool_rejections: 1,
-        hidden_arg_rejections: 3,
-        schema_projection_checks: 24,
+        hidden_arg_rejections: 4,
+        schema_projection_checks: 55,
       }),
     },
   ],
@@ -325,12 +350,12 @@ expectEqual(
 );
 expectEqual(
   describeSummary.runtime_surface_execution_profiles_smoked.length,
-  6,
+  7,
   "surface execution smoke must preserve smoked profile count",
 );
 expectEqual(
   describeSummary.runtime_surface_execution_hidden_arg_rejections,
-  3,
+  4,
   "surface execution smoke hidden-arg rejection count must be preserved",
 );
 
@@ -384,7 +409,7 @@ expectEqual(
 );
 expectEqual(
   releaseReport.checks.runtime_tool_quality.runtime_surface_execution_schema_projection_checks,
-  24,
+  55,
   "runtime_tool_quality must expose surface execution schema check count",
 );
 
@@ -403,6 +428,7 @@ process.stdout.write(JSON.stringify({
   priority_action: prioritySignal.reason,
   parse_error_action: invalidQuality.action_reason,
   schema_budget_cases: ["passed", "unknown", "failed"],
+  surface_execution_failure_action: surfaceExecutionFailureQuality.action_reason,
   manifest_evidence: [
     "runtime_tool_count",
     "runtime_tool_manifest_fingerprint",

@@ -67,6 +67,10 @@
       "description": "Tool schema budget is unknown or violated."
     },
     {
+      "family": "surface_execution",
+      "description": "Runtime tool model-visible schema and dispatcher execution boundaries failed smoke verification."
+    },
+    {
       "family": "recovery_gate",
       "description": "Runtime recovery readiness gate blocked or warned."
     },
@@ -203,6 +207,16 @@
       }
     },
     {
+      "action": "run_surface_execution_smoke_and_fix_runtime_boundary",
+      "reasons": [
+        "surface_execution_smoke_failed"
+      ],
+      "description": "Run the runtime tool surface execution smoke and fix schema projection or dispatch visibility drift.",
+      "default_next_step": {
+        "release": "Build the Rust runtime, run `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-execution-contract.ts`, then fix schema projection or dispatch visibility drift."
+      }
+    },
+    {
       "action": "restore_runtime_tool_contract_coverage",
       "reasons": [
         "contract_coverage_incomplete"
@@ -316,6 +330,16 @@
       "action_family": "runner_contract",
       "priority_by_surface": {
         "release": 40
+      }
+    },
+    {
+      "reason": "surface_execution_smoke_failed",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "surface_execution",
+      "priority_by_surface": {
+        "release": 35
       }
     },
     {

@@ -91,6 +91,33 @@ if (
     quality: fixtureQuality,
   });
 }
+const surfaceExecutionFixtureQuality = runtimeToolQualitySummary({
+  passed: false,
+  ok: false,
+  diagnostics_self_test: true,
+  failed_contract: "runtime-tool-surface-execution",
+  contract_count: 12,
+  completed_count: 11,
+  runtime_binary: { exists: true },
+  runtime_surface_execution_smoke_passed: false,
+  diagnostic_summary: {
+    status: "failed",
+    schema_budget_violations: 0,
+  },
+}, {
+  ownership_payload: {
+    runner_covers_all_runtime_tool_contracts: true,
+    all_contract_tmp_fixtures_isolated: true,
+  },
+}, qualityRegistry);
+if (
+  surfaceExecutionFixtureQuality.action_reason !== "surface_execution_smoke_failed"
+  || surfaceExecutionFixtureQuality.action_required !== "run_surface_execution_smoke_and_fix_runtime_boundary"
+) {
+  fail("release quality module must classify surface execution smoke failures with a focused action", {
+    quality: surfaceExecutionFixtureQuality,
+  });
+}
 
 const result = runReleaseGate(failureReportPath, {
   GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID: "runtime-tool-suite-ownership",
@@ -247,8 +274,11 @@ if (
   !successResult.stdout.includes("tool_count=14")
   || !successResult.stdout.includes("default_enabled=7")
   || !successResult.stdout.includes("manifest=fnv1a32:")
+  || !successResult.stdout.includes("surface_smoke=true")
+  || !successResult.stdout.includes("surface_profiles=7")
+  || !successResult.stdout.includes("surface_hidden_args=4")
 ) {
-  fail("release gate stdout must expose runtime tool manifest evidence", {
+  fail("release gate stdout must expose runtime tool manifest and surface execution smoke evidence", {
     stdout: successResult.stdout.slice(-1000),
     stderr: successResult.stderr.slice(-1000),
   });
@@ -309,8 +339,8 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.runtime_surface_execution_smoke_passed !== true) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_smoke_passed must be true");
   }
-  if (!Array.isArray(successQuality.runtime_surface_execution_profiles_smoked) || successQuality.runtime_surface_execution_profiles_smoked.length !== 6) {
-    successFailures.push("success runtime_tool_quality.runtime_surface_execution_profiles_smoked must cover 6 profiles");
+  if (!Array.isArray(successQuality.runtime_surface_execution_profiles_smoked) || successQuality.runtime_surface_execution_profiles_smoked.length !== 7) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_profiles_smoked must cover 7 profiles");
   }
   if (successQuality.runtime_surface_execution_allowed_workflow_successes !== 2) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_allowed_workflow_successes must be 2");
@@ -318,8 +348,8 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.runtime_surface_execution_hidden_tool_rejections !== 1) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_hidden_tool_rejections must be 1");
   }
-  if (successQuality.runtime_surface_execution_hidden_arg_rejections !== 3) {
-    successFailures.push("success runtime_tool_quality.runtime_surface_execution_hidden_arg_rejections must be 3");
+  if (successQuality.runtime_surface_execution_hidden_arg_rejections !== 4) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_hidden_arg_rejections must be 4");
   }
   if (!Number.isFinite(successQuality.runtime_surface_execution_schema_projection_checks) || successQuality.runtime_surface_execution_schema_projection_checks < 20) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_schema_projection_checks must be >= 20");
@@ -400,8 +430,8 @@ if (!Array.isArray(successDescribe?.runtime_schema_budget_violation_details) || 
 if (successDescribe?.runtime_surface_execution_smoke_passed !== true) {
   successFailures.push("success runtime_tool_describe.runtime_surface_execution_smoke_passed must be true");
 }
-if (!Array.isArray(successDescribe?.runtime_surface_execution_profiles_smoked) || successDescribe.runtime_surface_execution_profiles_smoked.length !== 6) {
-  successFailures.push("success runtime_tool_describe.runtime_surface_execution_profiles_smoked must cover 6 profiles");
+if (!Array.isArray(successDescribe?.runtime_surface_execution_profiles_smoked) || successDescribe.runtime_surface_execution_profiles_smoked.length !== 7) {
+  successFailures.push("success runtime_tool_describe.runtime_surface_execution_profiles_smoked must cover 7 profiles");
 }
 if (successDescribe?.runtime_tool_count !== 14) {
   successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");
@@ -449,4 +479,5 @@ process.stdout.write(JSON.stringify({
   diagnostics_self_test: runtimeToolDescribe.diagnostics_self_test,
   runtime_binary_exists: runtimeBinary.exists,
   module_priority_fixture_action: fixtureSignal.reason,
+  surface_execution_fixture_action: surfaceExecutionFixtureQuality.action_reason,
 }) + "\n");
