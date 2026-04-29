@@ -128,6 +128,17 @@ const baseDescribeSummary = {
   runtime_default_enabled_count: 7,
   runtime_tool_manifest_fingerprint: "fnv1a32:runtime",
   gateway_tool_manifest_fingerprint: "fnv1a32:gateway",
+  runtime_tool_manifest_match: true,
+  runtime_tool_manifest_order_match: true,
+  runtime_default_manifest_match: true,
+  runtime_default_manifest_order_match: true,
+  runtime_only_tools: [],
+  gateway_only_tools: [],
+  runtime_default_only_tools: [],
+  gateway_default_only_tools: [],
+  runtime_tool_order_mismatch: null,
+  runtime_default_order_mismatch: null,
+  runtime_schema_budget_violation_profiles: [],
   diagnostic_summary: {
     status: "passed",
     schema_budget_violations: 0,
@@ -216,6 +227,17 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
         runtime_default_enabled_count: 7,
         runtime_tool_manifest_fingerprint: "fnv1a32:runtime",
         gateway_tool_manifest_fingerprint: "fnv1a32:gateway",
+        runtime_tool_manifest_match: true,
+        runtime_tool_manifest_order_match: true,
+        runtime_default_manifest_match: true,
+        runtime_default_manifest_order_match: true,
+        runtime_only_tools: [],
+        gateway_only_tools: [],
+        runtime_default_only_tools: ["legacy_edit"],
+        gateway_default_only_tools: [],
+        runtime_tool_order_mismatch: null,
+        runtime_default_order_mismatch: { index: 2, runtime: "legacy_edit", gateway: "edit" },
+        runtime_schema_budget_violation_profiles: [],
         runtime_schema_profile_count: 4,
         runtime_schema_budget_violations: 0,
         gateway_only_recovery_actions: ["recover_runtime_health"],
@@ -238,6 +260,16 @@ expectEqual(
   describeSummary.runtime_tool_manifest_fingerprint,
   "fnv1a32:runtime",
   "governance payload runtime tool manifest fingerprint must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_default_only_tools[0],
+  "legacy_edit",
+  "governance payload default-only diff must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_default_order_mismatch.index,
+  2,
+  "governance payload default order mismatch must be preserved",
 );
 expectEqual(describeSummary.gateway_only_recovery_actions.length, 1, "governance recovery actions must be preserved");
 
@@ -269,6 +301,16 @@ expectEqual(
   "fnv1a32:gateway",
   "runtime_tool_quality must expose gateway tool manifest fingerprint",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_default_only_tools[0],
+  "legacy_edit",
+  "runtime_tool_quality must expose default-enabled manifest diff evidence",
+);
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_default_order_mismatch.index,
+  2,
+  "runtime_tool_quality must expose default-enabled order mismatch evidence",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -285,7 +327,12 @@ process.stdout.write(JSON.stringify({
   priority_action: prioritySignal.reason,
   parse_error_action: invalidQuality.action_reason,
   schema_budget_cases: ["passed", "unknown", "failed"],
-  manifest_evidence: ["runtime_tool_count", "runtime_tool_manifest_fingerprint"],
+  manifest_evidence: [
+    "runtime_tool_count",
+    "runtime_tool_manifest_fingerprint",
+    "runtime_only_tools",
+    "runtime_tool_order_mismatch",
+  ],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,
 }) + "\n");

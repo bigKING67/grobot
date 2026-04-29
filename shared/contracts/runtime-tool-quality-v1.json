@@ -19,6 +19,24 @@
     "failed",
     "unknown"
   ],
+  "release_diagnostic_fields": [
+    "runtime_tool_count",
+    "runtime_default_enabled_count",
+    "runtime_tool_manifest_fingerprint",
+    "gateway_tool_manifest_fingerprint",
+    "runtime_tool_manifest_match",
+    "runtime_tool_manifest_order_match",
+    "runtime_default_manifest_match",
+    "runtime_default_manifest_order_match",
+    "runtime_only_tools",
+    "gateway_only_tools",
+    "runtime_default_only_tools",
+    "gateway_default_only_tools",
+    "runtime_tool_order_mismatch",
+    "runtime_default_order_mismatch",
+    "runtime_schema_budget_violation_profiles",
+    "gateway_only_recovery_actions"
+  ],
   "action_families": [
     {
       "family": "none",

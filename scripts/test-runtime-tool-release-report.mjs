@@ -310,6 +310,36 @@ if (!successQuality || typeof successQuality !== "object") {
   if (typeof successQuality.gateway_tool_manifest_fingerprint !== "string" || !successQuality.gateway_tool_manifest_fingerprint.startsWith("fnv1a32:")) {
     successFailures.push("success runtime_tool_quality.gateway_tool_manifest_fingerprint must be present");
   }
+  if (successQuality.runtime_tool_manifest_match !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_tool_manifest_match must be true");
+  }
+  if (successQuality.runtime_tool_manifest_order_match !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_tool_manifest_order_match must be true");
+  }
+  if (successQuality.runtime_default_manifest_match !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_default_manifest_match must be true");
+  }
+  if (successQuality.runtime_default_manifest_order_match !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_default_manifest_order_match must be true");
+  }
+  if (!Array.isArray(successQuality.runtime_only_tools) || successQuality.runtime_only_tools.length !== 0) {
+    successFailures.push("success runtime_tool_quality.runtime_only_tools must be empty array");
+  }
+  if (!Array.isArray(successQuality.gateway_only_tools) || successQuality.gateway_only_tools.length !== 0) {
+    successFailures.push("success runtime_tool_quality.gateway_only_tools must be empty array");
+  }
+  if (!Array.isArray(successQuality.runtime_default_only_tools) || successQuality.runtime_default_only_tools.length !== 0) {
+    successFailures.push("success runtime_tool_quality.runtime_default_only_tools must be empty array");
+  }
+  if (!Array.isArray(successQuality.gateway_default_only_tools) || successQuality.gateway_default_only_tools.length !== 0) {
+    successFailures.push("success runtime_tool_quality.gateway_default_only_tools must be empty array");
+  }
+  if (successQuality.runtime_tool_order_mismatch !== null) {
+    successFailures.push("success runtime_tool_quality.runtime_tool_order_mismatch must be null");
+  }
+  if (successQuality.runtime_default_order_mismatch !== null) {
+    successFailures.push("success runtime_tool_quality.runtime_default_order_mismatch must be null");
+  }
   if (!Array.isArray(successQuality.gateway_only_recovery_actions)) {
     successFailures.push("success runtime_tool_quality.gateway_only_recovery_actions must be array");
   }
@@ -340,6 +370,18 @@ if (successDescribe?.runtime_default_enabled_count !== 7) {
 }
 if (typeof successDescribe?.runtime_tool_manifest_fingerprint !== "string" || !successDescribe.runtime_tool_manifest_fingerprint.startsWith("fnv1a32:")) {
   successFailures.push("success runtime_tool_describe.runtime_tool_manifest_fingerprint must be present");
+}
+if (successDescribe?.runtime_tool_manifest_match !== true) {
+  successFailures.push("success runtime_tool_describe.runtime_tool_manifest_match must be true");
+}
+if (successDescribe?.runtime_tool_manifest_order_match !== true) {
+  successFailures.push("success runtime_tool_describe.runtime_tool_manifest_order_match must be true");
+}
+if (!Array.isArray(successDescribe?.runtime_only_tools) || successDescribe.runtime_only_tools.length !== 0) {
+  successFailures.push("success runtime_tool_describe.runtime_only_tools must be empty array");
+}
+if (successDescribe?.runtime_tool_order_mismatch !== null) {
+  successFailures.push("success runtime_tool_describe.runtime_tool_order_mismatch must be null");
 }
 
 if (successFailures.length > 0) {

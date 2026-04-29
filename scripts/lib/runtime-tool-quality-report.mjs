@@ -9,6 +9,13 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function stringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => typeof item === "string");
+}
+
 function parseBoolean(value) {
   return value === true || value === "true" || value === "1";
 }
@@ -219,9 +226,36 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
     runtime_schema_budget_violations: Number.isFinite(governancePayload?.runtime_schema_budget_violations)
       ? governancePayload.runtime_schema_budget_violations
       : null,
-    gateway_only_recovery_actions: Array.isArray(governancePayload?.gateway_only_recovery_actions)
-      ? governancePayload.gateway_only_recovery_actions
-      : [],
+    runtime_tool_manifest_match:
+      typeof governancePayload?.runtime_tool_manifest_match === "boolean"
+        ? governancePayload.runtime_tool_manifest_match
+        : null,
+    runtime_tool_manifest_order_match:
+      typeof governancePayload?.runtime_tool_manifest_order_match === "boolean"
+        ? governancePayload.runtime_tool_manifest_order_match
+        : null,
+    runtime_default_manifest_match:
+      typeof governancePayload?.runtime_default_manifest_match === "boolean"
+        ? governancePayload.runtime_default_manifest_match
+        : null,
+    runtime_default_manifest_order_match:
+      typeof governancePayload?.runtime_default_manifest_order_match === "boolean"
+        ? governancePayload.runtime_default_manifest_order_match
+        : null,
+    runtime_only_tools: stringArray(governancePayload?.runtime_only_tools),
+    gateway_only_tools: stringArray(governancePayload?.gateway_only_tools),
+    runtime_default_only_tools: stringArray(governancePayload?.runtime_default_only_tools),
+    gateway_default_only_tools: stringArray(governancePayload?.gateway_default_only_tools),
+    runtime_tool_order_mismatch: isRecord(governancePayload?.runtime_tool_order_mismatch)
+      ? governancePayload.runtime_tool_order_mismatch
+      : null,
+    runtime_default_order_mismatch: isRecord(governancePayload?.runtime_default_order_mismatch)
+      ? governancePayload.runtime_default_order_mismatch
+      : null,
+    runtime_schema_budget_violation_profiles: stringArray(
+      governancePayload?.runtime_schema_budget_violation_profiles,
+    ),
+    gateway_only_recovery_actions: stringArray(governancePayload?.gateway_only_recovery_actions),
   };
 }
 
@@ -332,6 +366,35 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
       typeof describeSummary.gateway_tool_manifest_fingerprint === "string"
         ? describeSummary.gateway_tool_manifest_fingerprint
         : null,
+    runtime_tool_manifest_match:
+      typeof describeSummary.runtime_tool_manifest_match === "boolean"
+        ? describeSummary.runtime_tool_manifest_match
+        : null,
+    runtime_tool_manifest_order_match:
+      typeof describeSummary.runtime_tool_manifest_order_match === "boolean"
+        ? describeSummary.runtime_tool_manifest_order_match
+        : null,
+    runtime_default_manifest_match:
+      typeof describeSummary.runtime_default_manifest_match === "boolean"
+        ? describeSummary.runtime_default_manifest_match
+        : null,
+    runtime_default_manifest_order_match:
+      typeof describeSummary.runtime_default_manifest_order_match === "boolean"
+        ? describeSummary.runtime_default_manifest_order_match
+        : null,
+    runtime_only_tools: stringArray(describeSummary.runtime_only_tools),
+    gateway_only_tools: stringArray(describeSummary.gateway_only_tools),
+    runtime_default_only_tools: stringArray(describeSummary.runtime_default_only_tools),
+    gateway_default_only_tools: stringArray(describeSummary.gateway_default_only_tools),
+    runtime_tool_order_mismatch: isRecord(describeSummary.runtime_tool_order_mismatch)
+      ? describeSummary.runtime_tool_order_mismatch
+      : null,
+    runtime_default_order_mismatch: isRecord(describeSummary.runtime_default_order_mismatch)
+      ? describeSummary.runtime_default_order_mismatch
+      : null,
+    runtime_schema_budget_violation_profiles: stringArray(
+      describeSummary.runtime_schema_budget_violation_profiles,
+    ),
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions
       : [],

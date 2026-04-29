@@ -288,6 +288,10 @@ expect(sharedContractsReadme.includes("runtime-tool-quality-v1.json"), "shared c
 const schemaStatuses = stringArray(qualitySchema.status, "schema.status");
 const schemaSources = stringArray(qualitySchema.sources, "schema.sources");
 const schemaBudgetStatuses = stringArray(qualitySchema.schema_budget_status, "schema.schema_budget_status");
+const schemaReleaseDiagnosticFields = stringArray(
+  qualitySchema.release_diagnostic_fields,
+  "schema.release_diagnostic_fields",
+);
 const schemaActionFamilies = registryActionFamilies(qualitySchema.action_families);
 const schemaActionRequired = registryActions(qualitySchema.action_required);
 const schemaFailureReasonEntries = registryReasonEntries(qualitySchema.failure_reasons, "schema.failure_reasons");
@@ -317,6 +321,12 @@ expect(
 expect(
   JSON.stringify(schemaBudgetStatuses) === JSON.stringify(["passed", "failed", "unknown"]),
   "schema budget status enum must be stable",
+);
+expect(
+  schemaReleaseDiagnosticFields.includes("runtime_only_tools")
+    && schemaReleaseDiagnosticFields.includes("runtime_tool_order_mismatch")
+    && schemaReleaseDiagnosticFields.includes("runtime_default_order_mismatch"),
+  "schema release diagnostic fields must include manifest diff evidence",
 );
 expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "schema action families must be unique");
 expect(new Set(schemaActionRequiredIds).size === schemaActionRequiredIds.length, "schema action_required ids must be unique");
@@ -481,6 +491,16 @@ const releaseQualityModuleRequiredFragments = [
   "schema_budget_status: schemaBudgetStatus",
   "schema_budget_violations: schemaBudgetViolations",
   "runtime_binary_exists: runtimeBinaryExists",
+  "runtime_tool_manifest_match:",
+  "runtime_tool_manifest_order_match:",
+  "runtime_default_manifest_match:",
+  "runtime_default_manifest_order_match:",
+  "runtime_only_tools: stringArray(",
+  "gateway_only_tools: stringArray(",
+  "runtime_default_only_tools: stringArray(",
+  "gateway_default_only_tools: stringArray(",
+  "runtime_tool_order_mismatch:",
+  "runtime_default_order_mismatch:",
   "action_family: actionSignal?.actionFamily ?? \"none\"",
   "action_reason: actionSignal?.reason ?? null",
   "action_required: actionSignal?.actionRequired ?? null",
@@ -645,7 +665,9 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality.action_family must classify forced failure as runner_contract")
     && releaseReportTest.includes("runtime_tool_quality.action_reason must preserve the decisive failure reason")
     && releaseReportTest.includes("runtime_tool_quality.action_required must point to failed contract action")
-    && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed"),
+    && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed")
+    && releaseReportTest.includes("success runtime_tool_quality.runtime_only_tools must be empty array")
+    && releaseReportTest.includes("success runtime_tool_describe.runtime_tool_order_mismatch must be null"),
   "release-report regression must assert runtime_tool_quality source and schema budget status",
 );
 
@@ -667,6 +689,7 @@ process.stdout.write(JSON.stringify({
   warning_reason_count: schemaWarningReasons.length,
   action_family_count: schemaActionFamilies.length,
   action_required_count: schemaActionRequiredIds.length,
+  release_diagnostic_field_count: schemaReleaseDiagnosticFields.length,
   priority_fixture_status_action: statusPriorityFixture.actionReason,
   priority_fixture_release_action: releasePriorityFixture.actionReason,
   release_fields: [
@@ -683,6 +706,16 @@ process.stdout.write(JSON.stringify({
     "runtime_default_enabled_count",
     "runtime_tool_manifest_fingerprint",
     "gateway_tool_manifest_fingerprint",
+    "runtime_tool_manifest_match",
+    "runtime_tool_manifest_order_match",
+    "runtime_default_manifest_match",
+    "runtime_default_manifest_order_match",
+    "runtime_only_tools",
+    "gateway_only_tools",
+    "runtime_default_only_tools",
+    "gateway_default_only_tools",
+    "runtime_tool_order_mismatch",
+    "runtime_default_order_mismatch",
     "action_family",
     "action_reason",
     "action_required",
