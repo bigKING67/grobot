@@ -3,6 +3,11 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  readRuntimeToolQualityRegistry,
+  resolveRuntimeToolQualitySignal,
+  runtimeToolQualitySummary,
+} from "./lib/runtime-tool-quality-report.mjs";
 
 const repoRoot = process.cwd();
 const tmpDir = mkdtempSync(join(tmpdir(), "grobot-runtime-tool-release-report-"));
@@ -47,6 +52,44 @@ function readReport(path, result, context) {
       stderr: result.stderr.slice(-1000),
     });
   }
+}
+
+const qualityRegistry = readRuntimeToolQualityRegistry();
+const fixtureSignal = resolveRuntimeToolQualitySignal([
+  "schema_budget_violated",
+  "runner_contract_coverage_missing",
+  "runtime_binary_missing",
+  "diagnostics_self_test_failed",
+], "release", qualityRegistry);
+if (fixtureSignal?.reason !== "diagnostics_self_test_failed") {
+  fail("release quality module must choose lowest priority_by_surface.release signal", {
+    signal: fixtureSignal,
+  });
+}
+const fixtureQuality = runtimeToolQualitySummary({
+  passed: false,
+  ok: false,
+  diagnostics_self_test: false,
+  contract_count: 2,
+  completed_count: 2,
+  runtime_binary: { exists: true },
+  diagnostic_summary: {
+    status: "failed",
+    schema_budget_violations: 0,
+  },
+}, {
+  ownership_payload: {
+    runner_covers_all_runtime_tool_contracts: true,
+    all_contract_tmp_fixtures_isolated: true,
+  },
+}, qualityRegistry);
+if (
+  fixtureQuality.action_reason !== "diagnostics_self_test_failed"
+  || fixtureQuality.action_required !== "fix_runtime_tool_runner_diagnostics"
+) {
+  fail("release quality module must derive decisive action from registry priority", {
+    quality: fixtureQuality,
+  });
 }
 
 const result = runReleaseGate(failureReportPath, {
@@ -291,4 +334,5 @@ process.stdout.write(JSON.stringify({
   success_quality_summary_status: successQuality.status,
   diagnostics_self_test: runtimeToolDescribe.diagnostics_self_test,
   runtime_binary_exists: runtimeBinary.exists,
+  module_priority_fixture_action: fixtureSignal.reason,
 }) + "\n");

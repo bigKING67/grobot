@@ -269,6 +269,7 @@ function expectProductionSignalMatchesFixture(input: {
 }
 
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
+const releaseQualityModule = readRepoFile("scripts/lib/runtime-tool-quality-report.mjs");
 const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
 const statusQualityRegistry = readRepoFile(
   "gateway/src/orchestration/entrypoints/dev-cli/status/runtime-tool-quality-registry.ts",
@@ -451,19 +452,26 @@ expectThrowsIncludes(
   "production resolver must fail fast for wrong-surface action reasons",
 );
 
-const releaseQualityRequiredFragments = [
-  "const runtimeToolQualitySchemaVersion = 1",
-  "function readRuntimeToolQualityRegistry()",
-  "const runtimeToolQualityRegistry = readRuntimeToolQualityRegistry();",
+const releaseGateQualityRequiredFragments = [
+  "node scripts/lib/runtime-tool-quality-report.mjs",
+  "\"$REPORT_PATH\"",
+  "\"$RUNTIME_TOOL_DESCRIBE_REPORT_PATH\"",
+] as const;
+
+const releaseQualityModuleRequiredFragments = [
+  "runtimeToolQualitySchemaVersion = 1",
+  "export function readRuntimeToolQualityRegistry(",
   "priorityBySurface",
   "actionByReason",
   "reasonByReason",
-  "function pushRuntimeToolQualityFailureReason",
-  "function resolveRuntimeToolQualitySignal(reasons, surface)",
-  "function resolveRuntimeToolQualityActionableNextStep",
-  "function runtimeToolQualitySummary(describeSummary, data)",
+  "export function pushRuntimeToolQualityFailureReason",
+  "export function resolveRuntimeToolQualitySignal(reasons, surface",
+  "export function resolveRuntimeToolQualityActionableNextStep",
+  "export function runtimeToolQualitySummary(describeSummary, data",
+  "export function buildCoreReleaseReport(",
+  "export function writeCoreReleaseReport(",
   "const status = failureReasons.length > 0 ? \"fail\" : \"ok\"",
-  "const actionSignal = resolveRuntimeToolQualitySignal(failureReasons, \"release\")",
+  "const actionSignal = resolveRuntimeToolQualitySignal(failureReasons, \"release\", registry)",
   "actionSignal?.defaultNextStep ?? null",
   "quality_schema_version: runtimeToolQualitySchemaVersion",
   "passed: status === \"ok\"",
@@ -523,7 +531,13 @@ const statusQualityRequiredFragments = [
 
 expectAllIncludes(
   releaseGate,
-  releaseQualityRequiredFragments,
+  releaseGateQualityRequiredFragments,
+  "release gate runtime_tool_quality module delegation",
+);
+
+expectAllIncludes(
+  releaseQualityModule,
+  releaseQualityModuleRequiredFragments,
   "release checks.runtime_tool_quality schema",
 );
 
@@ -558,7 +572,7 @@ for (const reason of statusWarningReasons) {
   expectIncludes(statusCommand, `"${reason}"`, `status warning reason registry ${reason}`);
 }
 for (const reason of releaseFailureReasons) {
-  expectIncludes(releaseGate, `"${reason}"`, `release failure reason registry ${reason}`);
+  expectIncludes(releaseQualityModule, `"${reason}"`, `release failure reason registry ${reason}`);
 }
 expect(
   !statusCommand.includes("runtime_binary_missing: \"build_runtime_binary\"")
@@ -579,6 +593,12 @@ expect(
     && !releaseGate.includes("Build the Rust runtime with `cargo build --manifest-path runtime/Cargo.toml`"),
   "status/release must derive default actionable_next_step text from shared registry instead of inline switch prose",
 );
+expect(
+  !releaseGate.includes("function readRuntimeToolQualityRegistry()")
+    && !releaseGate.includes("function runtimeToolQualitySummary(")
+    && !releaseGate.includes("const runtimeToolQualityRegistry = readRuntimeToolQualityRegistry();"),
+  "release gate must delegate runtime_tool_quality report construction to scripts/lib instead of inline heredoc logic",
+);
 
 expect(
   sharedContractsReadme.includes("default_next_step")
@@ -592,10 +612,10 @@ expect(
 );
 
 expect(
-  releaseGate.includes("schemaBudgetViolations === null")
-    && releaseGate.includes("? \"unknown\"")
-    && releaseGate.includes("? \"passed\"")
-    && releaseGate.includes(": \"failed\""),
+  releaseQualityModule.includes("schemaBudgetViolations === null")
+    && releaseQualityModule.includes("? \"unknown\"")
+    && releaseQualityModule.includes("? \"passed\"")
+    && releaseQualityModule.includes(": \"failed\""),
   "release runtime_tool_quality must expose explicit schema_budget_status including unknown",
 );
 
@@ -607,8 +627,8 @@ expect(
 );
 
 expect(
-  releaseGate.includes("checks: {")
-    && releaseGate.includes("runtime_tool_quality: runtimeToolQuality"),
+  releaseQualityModule.includes("checks: {")
+    && releaseQualityModule.includes("runtime_tool_quality: runtimeToolQuality"),
   "release report must publish runtime_tool_quality under checks",
 );
 

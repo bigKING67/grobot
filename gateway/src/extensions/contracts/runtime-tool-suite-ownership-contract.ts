@@ -25,6 +25,7 @@ const packageJson = JSON.parse(readRepoFile("package.json")) as {
 const checkScript = packageJson.scripts?.check ?? "";
 const gatewaySmoke = readRepoFile("gateway/tests/check-gateway-node.mjs");
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
+const releaseQualityModule = readRepoFile("scripts/lib/runtime-tool-quality-report.mjs");
 const runtimeToolRunner = readRepoFile("scripts/check-runtime-tool-contracts.mjs");
 const runnerSchemaTest = readRepoFile("scripts/test-runtime-tool-contracts-json-schema.mjs");
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
@@ -68,18 +69,19 @@ expect(
   "release gate must emit an explicit fail_reason when runtime-tool describe report parsing fails",
 );
 expect(
-  releaseGate.includes("checks.runtime_tool_describe")
-    || releaseGate.includes("runtime_tool_describe: runtimeToolDescribe"),
+  releaseGate.includes("scripts/lib/runtime-tool-quality-report.mjs")
+    && releaseQualityModule.includes("runtime_tool_describe: runtimeToolDescribe"),
   "release gate report must expose runtime_tool_describe evidence",
 );
 expect(
-  releaseGate.includes("runtime_tool_quality")
-    && releaseGate.includes("runtimeToolQualitySummary("),
+  releaseGate.includes("scripts/lib/runtime-tool-quality-report.mjs")
+    && releaseQualityModule.includes("runtime_tool_quality: runtimeToolQuality")
+    && releaseQualityModule.includes("runtimeToolQualitySummary("),
   "release gate report must expose runtime_tool_quality evidence",
 );
 expect(
-  releaseGate.includes("failure_reasons: failureReasons")
-    && releaseGate.includes("warning_reasons: []"),
+  releaseQualityModule.includes("failure_reasons: failureReasons")
+    && releaseQualityModule.includes("warning_reasons: []"),
   "release gate runtime_tool_quality must expose status reasons",
 );
 expect(
@@ -89,19 +91,19 @@ expect(
   "status --json/text must expose runtime tool quality summary",
 );
 expect(
-  releaseGate.includes("failed_contract_detail"),
+  releaseQualityModule.includes("failed_contract_detail"),
   "release gate report must preserve runtime-tool failed_contract_detail evidence",
 );
 expect(
-  releaseGate.includes("runtime_binary"),
+  releaseQualityModule.includes("runtime_binary"),
   "release gate report must preserve runtime-tool runtime_binary evidence",
 );
 expect(
-  releaseGate.includes("runner_schema_version"),
+  releaseQualityModule.includes("runner_schema_version"),
   "release gate report must preserve runtime-tool runner_schema_version evidence",
 );
 expect(
-  releaseGate.includes("diagnostic_summary"),
+  releaseQualityModule.includes("diagnostic_summary"),
   "release gate report must preserve runtime-tool diagnostic_summary evidence",
 );
 expect(
@@ -203,6 +205,7 @@ expect(
   corePackagingWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"')
     && corePackagingWorkflow.includes('"scripts/test-runtime-tool-contracts-json-schema.mjs"')
     && corePackagingWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"')
+    && corePackagingWorkflow.includes('"scripts/lib/**"')
     && corePackagingWorkflow.includes('"shared/contracts/runtime-tool-quality-v1.json"'),
   "core packaging workflow must trigger on runtime-tool release/report/schema test and runner changes",
 );
@@ -217,6 +220,10 @@ expect(harnessWorkflow.includes('"runtime/**"'), "harness gate must trigger on r
 expect(
   harnessWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"'),
   "harness gate must trigger on runtime-tool runner changes",
+);
+expect(
+  harnessWorkflow.includes('"scripts/lib/**"'),
+  "harness gate must trigger on runtime-tool script library changes",
 );
 expect(
   harnessWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"'),
