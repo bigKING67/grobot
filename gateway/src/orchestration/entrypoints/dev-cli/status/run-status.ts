@@ -116,7 +116,7 @@ import {
   resolveRuntimeToolDescribeDecision,
   type RuntimeToolEnabledToolsSource,
 } from "../services/runtime-tool-describe-decision";
-import { resolveRuntimeToolQualityActionRequiredFromRegistry } from "./runtime-tool-quality-registry";
+import { resolveRuntimeToolQualityActionFromRegistry } from "./runtime-tool-quality-registry";
 
 function stripInlineComment(rawLine: string): string {
   const hashIndex = rawLine.indexOf("#");
@@ -1351,61 +1351,41 @@ function resolveRuntimeToolQualityAction(input: {
   };
 }
 
-function resolveRuntimeToolQualityActionRequired(
-  actionReason: RuntimeToolQualityReason | null,
-): RuntimeToolQualityActionRequired | null {
-  return resolveRuntimeToolQualityActionRequiredFromRegistry(actionReason);
-}
-
 function resolveRuntimeToolQualityActionableNextStep(input: {
-  actionFamily: RuntimeToolQualityActionFamily;
   actionReason: RuntimeToolQualityReason | null;
-  actionRequired: RuntimeToolQualityActionRequired | null;
+  defaultNextStep: string | null;
   runtimeHealthDetail: string | null;
   runtimeDescribeDetail: string | null;
-  recoveryGateReason: RuntimeToolRecoveryReadinessGateDecision["reason"];
   recoveryGateBlockerKind: RuntimeToolRecoveryReadinessGateDecision["blockerKind"];
   recoveryGateBlockerAction: string | null;
   recoveryHealthRecommendedNextAction: string | null;
 }): string | null {
   switch (input.actionReason) {
-    case "runtime_binary_missing":
-      return "Build or install the Rust runtime binary, then rerun `grobot status --json`.";
     case "runtime_health_failed":
       return input.runtimeHealthDetail
         ? `Inspect runtime health failure (${input.runtimeHealthDetail}), then rerun \`grobot status --json\`.`
-        : "Inspect runtime health failure, then rerun `grobot status --json`.";
-    case "schema_projection_drift_active":
-      return "Run `npm run check:gateway:runtime-tools:describe` and reconcile runtime.tools.describe with gateway projection.";
-    case "schema_budget_violated":
-      return "Trim the runtime tool schema surface or update the schema budget policy, then rerun runtime-tool contracts.";
+        : input.defaultNextStep;
     case "recovery_gate_blocking":
       return input.recoveryGateBlockerAction
         ? `Resolve runtime recovery gate blocker (${input.recoveryGateBlockerKind}:${input.recoveryGateBlockerAction}), then rerun \`grobot status --json\`.`
-        : `Resolve runtime recovery gate blocker (${input.recoveryGateReason}), then rerun \`grobot status --json\`.`;
+        : input.defaultNextStep;
     case "runtime_tools_describe_fallback":
       return input.runtimeDescribeDetail
         ? `Restore runtime.tools.describe availability (${input.runtimeDescribeDetail}), then rerun \`grobot status --json\`.`
-        : "Restore runtime.tools.describe availability so status no longer depends on gateway fallback projection.";
-    case "schema_projection_drift_not_checked":
-      return "Run runtime describe compatibility checks to verify schema projection drift.";
+        : input.defaultNextStep;
     case "recovery_gate_warn":
       return input.recoveryGateBlockerAction
         ? `Review runtime recovery gate warning (${input.recoveryGateBlockerAction}), then rerun \`grobot status --json\`.`
-        : "Review runtime recovery gate warnings before expanding automated recovery.";
+        : input.defaultNextStep;
     case "recovery_health_watch":
     case "recovery_health_risk":
       return input.recoveryHealthRecommendedNextAction
         ? `Review recent runtime tool recovery health (${input.recoveryHealthRecommendedNextAction}), then clear repeated failures.`
-        : "Review recent runtime tool recovery timeline and clear repeated failures before expanding automation.";
+        : input.defaultNextStep;
     case "recovery_health_good":
       return null;
     default:
-      return input.actionRequired
-        ? `Follow runtime tool quality action: ${input.actionRequired}.`
-        : input.actionFamily === "none"
-          ? null
-          : "Review runtime tool quality diagnostics, then rerun `grobot status --json`.";
+      return input.defaultNextStep;
   }
 }
 
@@ -1467,14 +1447,16 @@ function buildRuntimeToolQualitySummary(input: {
     failureReasons: failReasons,
     warningReasons: warnReasons,
   });
-  const actionRequired = resolveRuntimeToolQualityActionRequired(action.actionReason);
-  const actionableNextStep = resolveRuntimeToolQualityActionableNextStep({
-    actionFamily: action.actionFamily,
+  const actionRegistry = resolveRuntimeToolQualityActionFromRegistry({
     actionReason: action.actionReason,
-    actionRequired,
+    surface: "status",
+  });
+  const actionRequired = actionRegistry?.actionRequired ?? null;
+  const actionableNextStep = resolveRuntimeToolQualityActionableNextStep({
+    actionReason: action.actionReason,
+    defaultNextStep: actionRegistry?.defaultNextStep ?? null,
     runtimeHealthDetail: input.runtimeHealth?.detail ?? null,
     runtimeDescribeDetail: input.contextPreview.enabledToolsSourceDetail ?? null,
-    recoveryGateReason: input.recoveryGate.reason,
     recoveryGateBlockerKind: input.recoveryGate.blockerKind,
     recoveryGateBlockerAction: input.recoveryGate.blockerAction,
     recoveryHealthRecommendedNextAction: input.recoveryHealth.recommendedNextAction,

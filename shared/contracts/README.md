@@ -32,4 +32,8 @@ warning reasons, action families, and `action_required` ids for
 surfaces should publish both symbolic automation fields (`action_family`,
 `action_reason`, `action_required`) and the human-facing
 `actionable_next_step`. Implementations should derive `action_required` from
-this registry rather than keeping separate reason-to-action maps.
+this registry rather than keeping separate reason-to-action maps. The same
+registry owns `default_next_step` guidance by surface; status/release code may
+only override the default `actionable_next_step` with runtime-specific details
+such as a healthcheck error, fallback reason, recovery blocker, or
+failed-contract reproduction command.

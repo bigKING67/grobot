@@ -199,8 +199,12 @@ human/operator next step. The canonical enum registry lives in
 `shared/contracts/runtime-tool-quality-v1.json` and lists allowed statuses,
 sources, schema-budget states, failure reasons, warning reasons, action
 families, and `action_required` ids for both surfaces. Status and release
-report implementations derive `action_required` from this registry instead of
-maintaining inline reason-to-action maps.
+report implementations derive `action_required` and the surface-specific
+default `actionable_next_step` from this registry instead of maintaining inline
+reason-to-action or default next-step maps. Surface implementations may still
+override the default next step with live details such as healthcheck output,
+runtime describe fallback reasons, recovery gate blockers, or a failed contract
+`suggested_command`.
 
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
@@ -705,7 +709,10 @@ operator-facing. Dashboards and release automation should route on the symbolic
 fields, not parse prose. The enum source of truth is
 `shared/contracts/runtime-tool-quality-v1.json`; the focused contract checks
 that every status/release reason maps to a registry action and that both
-implementations read the registry before the runner passes. The default
+implementations read the registry before the runner passes. The same registry
+also owns per-surface `default_next_step` text; release/status code only layers
+runtime-specific detail or failed-contract reproduction commands on top of that
+registry default. The default
 `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs

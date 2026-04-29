@@ -67,28 +67,42 @@
       "reasons": [
         "runtime_binary_missing"
       ],
-      "description": "Build or install the Rust runtime binary before using runtime-backed tools."
+      "description": "Build or install the Rust runtime binary before using runtime-backed tools.",
+      "default_next_step": {
+        "status": "Build or install the Rust runtime binary, then rerun `grobot status --json`.",
+        "release": "Build the Rust runtime with `cargo build --manifest-path runtime/Cargo.toml`, then rerun the release gate."
+      }
     },
     {
       "action": "check_runtime_health",
       "reasons": [
         "runtime_health_failed"
       ],
-      "description": "Inspect runtime healthcheck failure and retry status."
+      "description": "Inspect runtime healthcheck failure and retry status.",
+      "default_next_step": {
+        "status": "Inspect runtime health failure, then rerun `grobot status --json`."
+      }
     },
     {
       "action": "run_runtime_tool_contracts",
       "reasons": [
         "schema_projection_drift_active"
       ],
-      "description": "Run runtime-tool contract suite and reconcile schema drift."
+      "description": "Run runtime-tool contract suite and reconcile schema drift.",
+      "default_next_step": {
+        "status": "Run `npm run check:gateway:runtime-tools:describe` and reconcile runtime.tools.describe with gateway projection."
+      }
     },
     {
       "action": "trim_runtime_tool_schema_surface",
       "reasons": [
         "schema_budget_violated"
       ],
-      "description": "Reduce visible tool schema surface or update budget contract."
+      "description": "Reduce visible tool schema surface or update budget contract.",
+      "default_next_step": {
+        "status": "Trim the runtime tool schema surface or update the schema budget policy, then rerun runtime-tool contracts.",
+        "release": "Trim the runtime tool schema surface or update the schema budget policy, then rerun runtime-tool contracts."
+      }
     },
     {
       "action": "review_runtime_recovery_gate",
@@ -96,21 +110,30 @@
         "recovery_gate_blocking",
         "recovery_gate_warn"
       ],
-      "description": "Review runtime recovery readiness gate blockers or warnings."
+      "description": "Review runtime recovery readiness gate blockers or warnings.",
+      "default_next_step": {
+        "status": "Review runtime recovery gate blockers or warnings before expanding automated recovery."
+      }
     },
     {
       "action": "restore_runtime_tool_describe",
       "reasons": [
         "runtime_tools_describe_fallback"
       ],
-      "description": "Restore runtime.tools.describe availability so status no longer depends on fallback projection."
+      "description": "Restore runtime.tools.describe availability so status no longer depends on fallback projection.",
+      "default_next_step": {
+        "status": "Restore runtime.tools.describe availability so status no longer depends on gateway fallback projection."
+      }
     },
     {
       "action": "run_runtime_tool_describe_checks",
       "reasons": [
         "schema_projection_drift_not_checked"
       ],
-      "description": "Run runtime describe compatibility checks to verify schema projection drift."
+      "description": "Run runtime describe compatibility checks to verify schema projection drift.",
+      "default_next_step": {
+        "status": "Run runtime describe compatibility checks to verify schema projection drift."
+      }
     },
     {
       "action": "review_runtime_recovery_health",
@@ -118,56 +141,80 @@
         "recovery_health_watch",
         "recovery_health_risk"
       ],
-      "description": "Review recent runtime tool recovery timeline and clear repeated failures."
+      "description": "Review recent runtime tool recovery timeline and clear repeated failures.",
+      "default_next_step": {
+        "status": "Review recent runtime tool recovery timeline and clear repeated failures before expanding automation."
+      }
     },
     {
       "action": "fix_runtime_tool_release_report_parse",
       "reasons": [
         "report_parse_error"
       ],
-      "description": "Fix release report parsing or runner output JSON."
+      "description": "Fix release report parsing or runner output JSON.",
+      "default_next_step": {
+        "release": "Fix runtime-tool release report JSON parsing, then rerun `bash scripts/core-release-gate.sh --report <path>`."
+      }
     },
     {
       "action": "fix_runtime_tool_runner_diagnostics",
       "reasons": [
         "diagnostics_self_test_failed"
       ],
-      "description": "Fix runtime-tool runner diagnostics self-test."
+      "description": "Fix runtime-tool runner diagnostics self-test.",
+      "default_next_step": {
+        "release": "Fix runtime-tool diagnostics self-test, then rerun `node scripts/check-runtime-tool-contracts.mjs --include-runtime-describe --json`."
+      }
     },
     {
       "action": "run_failed_runtime_tool_contract",
       "reasons": [
         "runtime_tool_describe_failed"
       ],
-      "description": "Run the failed runtime-tool contract from failed_contract_detail.suggested_command."
+      "description": "Run the failed runtime-tool contract from failed_contract_detail.suggested_command.",
+      "default_next_step": {
+        "release": "Run the failed runtime-tool contract and fix its output before rerunning the release gate."
+      }
     },
     {
       "action": "restore_runtime_tool_contract_coverage",
       "reasons": [
         "contract_coverage_incomplete"
       ],
-      "description": "Ensure every runtime-tool contract completes in the release runner."
+      "description": "Ensure every runtime-tool contract completes in the release runner.",
+      "default_next_step": {
+        "release": "Restore runtime-tool contract coverage so every registered contract completes in the release runner."
+      }
     },
     {
       "action": "register_runtime_tool_contract_in_runner",
       "reasons": [
         "runner_contract_coverage_missing"
       ],
-      "description": "Register missing runtime-tool contract in scripts/check-runtime-tool-contracts.mjs."
+      "description": "Register missing runtime-tool contract in scripts/check-runtime-tool-contracts.mjs.",
+      "default_next_step": {
+        "release": "Register missing runtime-tool contracts in `scripts/check-runtime-tool-contracts.mjs`."
+      }
     },
     {
       "action": "isolate_runtime_tool_contract_fixtures",
       "reasons": [
         "tmp_fixture_isolation_missing"
       ],
-      "description": "Replace fixed /tmp fixtures with isolated per-process temp paths."
+      "description": "Replace fixed /tmp fixtures with isolated per-process temp paths.",
+      "default_next_step": {
+        "release": "Replace fixed /tmp runtime-tool fixtures with isolated per-process temp paths."
+      }
     },
     {
       "action": "restore_runtime_tool_schema_budget_evidence",
       "reasons": [
         "schema_budget_unknown"
       ],
-      "description": "Restore runtime schema budget evidence in describe/governance payload."
+      "description": "Restore runtime schema budget evidence in describe/governance payload.",
+      "default_next_step": {
+        "release": "Restore runtime schema budget evidence in runtime.tools.describe governance payload."
+      }
     }
   ],
   "failure_reasons": [

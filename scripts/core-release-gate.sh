@@ -99,7 +99,7 @@ const runtimeToolQualityActionFamilyCatalog = Object.freeze([
   "schema_budget",
 ]);
 
-function readRuntimeToolQualityActionRequiredByReason() {
+function readRuntimeToolQualityActionRegistryByReason() {
   const registryPath = path.resolve(process.cwd(), "shared/contracts/runtime-tool-quality-v1.json");
   let registry = null;
   try {
@@ -117,6 +117,14 @@ function readRuntimeToolQualityActionRequiredByReason() {
     if (!row || typeof row !== "object" || typeof row.action !== "string" || !Array.isArray(row.reasons)) {
       throw new Error(`runtime_tool_quality_registry_action_required_invalid:${String(index)}`);
     }
+    if (!row.default_next_step || typeof row.default_next_step !== "object" || Array.isArray(row.default_next_step)) {
+      throw new Error(`runtime_tool_quality_registry_default_next_step_missing:${String(index)}`);
+    }
+    for (const surface of ["status", "release"]) {
+      if (row.default_next_step[surface] !== undefined && typeof row.default_next_step[surface] !== "string") {
+        throw new Error(`runtime_tool_quality_registry_default_next_step_invalid:${String(index)}:${surface}`);
+      }
+    }
     row.reasons.forEach((reason) => {
       if (typeof reason !== "string" || reason.trim().length === 0) {
         throw new Error(`runtime_tool_quality_registry_action_reason_invalid:${String(index)}`);
@@ -124,12 +132,15 @@ function readRuntimeToolQualityActionRequiredByReason() {
       if (byReason.has(reason)) {
         throw new Error(`runtime_tool_quality_registry_action_reason_duplicate:${reason}`);
       }
-      byReason.set(reason, row.action);
+      byReason.set(reason, {
+        actionRequired: row.action,
+        defaultNextStepBySurface: row.default_next_step,
+      });
     });
   });
   return byReason;
 }
-const actionRequiredByReason = readRuntimeToolQualityActionRequiredByReason();
+const actionRegistryByReason = readRuntimeToolQualityActionRegistryByReason();
 
 function pushRuntimeToolQualityFailureReason(reasons, reason) {
   if (!runtimeToolQualityFailureReasonCatalog.includes(reason)) {
@@ -226,35 +237,16 @@ function runtimeToolDescribeSummary(data) {
     };
 }
 
-function resolveRuntimeToolQualityActionableNextStep(actionReason, describeSummary, diagnosticSummary) {
+function resolveRuntimeToolQualityActionableNextStep(describeSummary, diagnosticSummary, defaultNextStep) {
   if (typeof describeSummary.failed_contract_detail?.suggested_command === "string") {
     return describeSummary.failed_contract_detail.suggested_command;
   }
   if (typeof diagnosticSummary?.reproduce === "string") {
     return diagnosticSummary.reproduce;
   }
-  switch (actionReason) {
-    case "report_parse_error":
-      return "Fix runtime-tool release report JSON parsing, then rerun `bash scripts/core-release-gate.sh --report <path>`.";
-    case "diagnostics_self_test_failed":
-      return "Fix runtime-tool diagnostics self-test, then rerun `node scripts/check-runtime-tool-contracts.mjs --include-runtime-describe --json`.";
-    case "runtime_binary_missing":
-      return "Build the Rust runtime with `cargo build --manifest-path runtime/Cargo.toml`, then rerun the release gate.";
-    case "runtime_tool_describe_failed":
-      return "Run the failed runtime-tool contract and fix its output before rerunning the release gate.";
-    case "contract_coverage_incomplete":
-      return "Restore runtime-tool contract coverage so every registered contract completes in the release runner.";
-    case "runner_contract_coverage_missing":
-      return "Register missing runtime-tool contracts in `scripts/check-runtime-tool-contracts.mjs`.";
-    case "tmp_fixture_isolation_missing":
-      return "Replace fixed /tmp runtime-tool fixtures with isolated per-process temp paths.";
-    case "schema_budget_unknown":
-      return "Restore runtime schema budget evidence in runtime.tools.describe governance payload.";
-    case "schema_budget_violated":
-      return "Trim the runtime tool schema surface or update the schema budget policy, then rerun runtime-tool contracts.";
-    default:
-      return null;
-  }
+  return typeof defaultNextStep === "string" && defaultNextStep.trim().length > 0
+    ? defaultNextStep
+    : null;
 }
 
 function runtimeToolQualitySummary(describeSummary, data) {
@@ -329,11 +321,15 @@ function runtimeToolQualitySummary(describeSummary, data) {
   if (actionSignal && !runtimeToolQualityActionFamilyCatalog.includes(actionSignal[1])) {
     throw new Error(`unknown runtime_tool_quality action family: ${String(actionSignal[1])}`);
   }
-  const actionRequired = actionSignal ? actionRequiredByReason.get(actionSignal[0]) ?? null : null;
+  const actionRegistry = actionSignal ? actionRegistryByReason.get(actionSignal[0]) ?? null : null;
+  if (actionSignal && !actionRegistry) {
+    throw new Error(`runtime_tool_quality_registry_action_required_unmapped:${actionSignal[0]}`);
+  }
+  const actionRequired = actionRegistry?.actionRequired ?? null;
   const actionableNextStep = resolveRuntimeToolQualityActionableNextStep(
-    actionSignal ? actionSignal[0] : null,
     describeSummary,
     diagnosticSummary,
+    actionRegistry?.defaultNextStepBySurface?.release ?? null,
   );
   return {
     quality_schema_version: runtimeToolQualitySchemaVersion,
