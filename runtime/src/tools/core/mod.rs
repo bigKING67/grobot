@@ -1150,6 +1150,19 @@ fn validate_projected_tool_args_visible(
         );
         data.insert("hidden_args".to_string(), json!(hidden_args));
         data.insert("visible_args".to_string(), json!(visible_args));
+        data.insert(
+            "recovery_stage".to_string(),
+            json!(TOOL_RECOVERY_STAGE_STRATEGY_SWITCH),
+        );
+        data.insert(
+            "recommended_next_action".to_string(),
+            json!(TOOL_RECOVERY_ACTION_INSPECT_VISIBLE_TOOL_SCHEMA_THEN_RETRY),
+        );
+        data.insert("recoverable".to_string(), json!(true));
+        data.insert(
+            "recovery_policy_version".to_string(),
+            json!(tool_recovery_policy_version()),
+        );
         data.insert("recovery_hint".to_string(), json!(recovery_hint));
         Value::Object(data)
     }))

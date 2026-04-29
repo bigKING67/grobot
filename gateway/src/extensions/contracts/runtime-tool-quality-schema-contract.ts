@@ -679,7 +679,7 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality.action_required must point to failed contract action")
     && releaseReportTest.includes("surface execution smoke failures with a focused action")
     && releaseReportTest.includes("surface_smoke=true")
-    && releaseReportTest.includes("surface_error_data=200")
+    && releaseReportTest.includes("surface_error_data=275")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_profile_summary must describe 7 profiles")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_budget_violation_details must be empty array")

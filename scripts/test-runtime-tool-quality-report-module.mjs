@@ -311,7 +311,7 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
         hidden_tool_rejections: 1,
         hidden_arg_rejections: 4,
         schema_projection_checks: 55,
-        structured_error_data_checks: 200,
+        structured_error_data_checks: 275,
       }),
     },
   ],
@@ -361,7 +361,7 @@ expectEqual(
 );
 expectEqual(
   describeSummary.runtime_surface_execution_structured_error_data_checks,
-  200,
+  275,
   "surface execution smoke structured error data check count must be preserved",
 );
 
@@ -420,7 +420,7 @@ expectEqual(
 );
 expectEqual(
   releaseReport.checks.runtime_tool_quality.runtime_surface_execution_structured_error_data_checks,
-  200,
+  275,
   "runtime_tool_quality must expose surface execution structured error data check count",
 );
 

@@ -1274,6 +1274,21 @@ fn browser_facade_error_data_map(
             _ => "inspect browser facade diagnostics and change strategy before retrying",
         }),
     );
+    if diagnostic_kind == "tool_argument_not_visible" {
+        data.insert(
+            "recovery_stage".to_string(),
+            json!(TOOL_RECOVERY_STAGE_STRATEGY_SWITCH),
+        );
+        data.insert(
+            "recommended_next_action".to_string(),
+            json!(TOOL_RECOVERY_ACTION_INSPECT_VISIBLE_TOOL_SCHEMA_THEN_RETRY),
+        );
+        data.insert("recoverable".to_string(), json!(true));
+        data.insert(
+            "recovery_policy_version".to_string(),
+            json!(tool_recovery_policy_version()),
+        );
+    }
     if let Some(applied) = applied_tmwd_default {
         data.insert("facade_default_tmwd_mode_applied".to_string(), json!(applied));
     }

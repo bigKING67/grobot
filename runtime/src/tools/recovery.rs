@@ -47,6 +47,10 @@ impl ToolRecoveryCatalogRow {
 }
 
 const TOOL_RECOVERY_POLICY_VERSION: &str = "v1";
+pub(crate) const TOOL_RECOVERY_STAGE_STRATEGY_SWITCH: &str = "strategy_switch";
+pub(crate) const TOOL_RECOVERY_ACTION_INSPECT_VISIBLE_TOOL_SCHEMA_THEN_RETRY: &str =
+    "inspect_visible_tool_schema_then_retry";
+pub(crate) const TOOL_RECOVERY_ACTION_SWITCH_TOOL_STRATEGY: &str = "switch_tool_strategy";
 
 const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
     ToolRecoveryCatalogRow::new(
@@ -136,8 +140,8 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
     ToolRecoveryCatalogRow::new(
         &["tool_argument_not_visible"],
         "*",
-        "strategy_switch",
-        "inspect_visible_tool_schema_then_retry",
+        TOOL_RECOVERY_STAGE_STRATEGY_SWITCH,
+        TOOL_RECOVERY_ACTION_INSPECT_VISIBLE_TOOL_SCHEMA_THEN_RETRY,
         true,
     ),
     ToolRecoveryCatalogRow::new(
@@ -150,8 +154,8 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
             "mcp_tool_not_found",
         ],
         "*",
-        "strategy_switch",
-        "switch_tool_strategy",
+        TOOL_RECOVERY_STAGE_STRATEGY_SWITCH,
+        TOOL_RECOVERY_ACTION_SWITCH_TOOL_STRATEGY,
         true,
     ),
     ToolRecoveryCatalogRow::new(

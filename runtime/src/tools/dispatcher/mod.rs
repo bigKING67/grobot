@@ -388,6 +388,10 @@ impl ToolExecutor for LocalToolExecutor {
                 "advanced_tool_schema": context.advanced_tool_schema,
                 "visible_tools": visible_tools,
                 "enabled_tools": enabled_tools,
+                "recovery_stage": TOOL_RECOVERY_STAGE_STRATEGY_SWITCH,
+                "recommended_next_action": TOOL_RECOVERY_ACTION_SWITCH_TOOL_STRATEGY,
+                "recoverable": true,
+                "recovery_policy_version": tool_recovery_policy_version(),
                 "recovery_hint": "Use only model-visible tools for the current surface, switch to a profile that exposes this tool, or ask the user before changing scope."
             })));
         }

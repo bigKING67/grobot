@@ -23,6 +23,10 @@ type ErrorDataExpectation = {
   operation: string;
   profile: string;
   advancedToolSchema: boolean;
+  recoveryStage: string;
+  recommendedNextAction: string;
+  recoverable: boolean;
+  recoveryPolicyVersion: string;
   backend?: string;
   mappedTool?: string;
   hiddenArgs?: string[];
@@ -550,6 +554,10 @@ function assertErrorDataExpectation(
   checks += expectStringField(data, "operation", expectation.operation, label);
   checks += expectStringField(data, "tool_surface_profile", expectation.profile, label);
   checks += expectBooleanField(data, "advanced_tool_schema", expectation.advancedToolSchema, label);
+  checks += expectStringField(data, "recovery_stage", expectation.recoveryStage, label);
+  checks += expectStringField(data, "recommended_next_action", expectation.recommendedNextAction, label);
+  checks += expectBooleanField(data, "recoverable", expectation.recoverable, label);
+  checks += expectStringField(data, "recovery_policy_version", expectation.recoveryPolicyVersion, label);
   if (typeof expectation.backend === "string") {
     checks += expectStringField(data, "backend", expectation.backend, label);
   }
@@ -615,6 +623,24 @@ function assertStructuredErrorData(
     toolRecoveryPayload.error_class,
     surfaceCase.expectedErrorClass,
     `${surfaceCase.id}: tool_recovery error class`,
+  );
+  checks += 1;
+  expectEqual(
+    toolRecoveryPayload.recovery_stage,
+    surfaceCase.expectedErrorData.recoveryStage,
+    `${surfaceCase.id}: tool_recovery recovery_stage`,
+  );
+  checks += 1;
+  expectEqual(
+    toolRecoveryPayload.recommended_next_action,
+    surfaceCase.expectedErrorData.recommendedNextAction,
+    `${surfaceCase.id}: tool_recovery recommended_next_action`,
+  );
+  checks += 1;
+  expectEqual(
+    toolRecoveryPayload.recoverable,
+    surfaceCase.expectedErrorData.recoverable,
+    `${surfaceCase.id}: tool_recovery recoverable`,
   );
   checks += 1;
   checks += assertErrorDataExpectation(
@@ -686,6 +712,10 @@ const surfaceCases: SurfaceCase[] = [
       operation: "validate_tool_visible",
       profile: "coding",
       advancedToolSchema: false,
+      recoveryStage: "strategy_switch",
+      recommendedNextAction: "switch_tool_strategy",
+      recoverable: true,
+      recoveryPolicyVersion: "v1",
       visibleToolsIncludes: ["read", "bash"],
       visibleToolsExcludes: ["web_scan"],
       enabledToolsIncludes: ["read", "bash"],
@@ -717,6 +747,10 @@ const surfaceCases: SurfaceCase[] = [
       operation: "validate_browser_facade_args_visible",
       profile: "browser",
       advancedToolSchema: false,
+      recoveryStage: "strategy_switch",
+      recommendedNextAction: "inspect_visible_tool_schema_then_retry",
+      recoverable: true,
+      recoveryPolicyVersion: "v1",
       backend: "browser-structured",
       mappedTool: "web_execute_js",
       hiddenArgs: ["tmwd_ws_endpoint"],
@@ -756,6 +790,10 @@ const surfaceCases: SurfaceCase[] = [
       operation: "validate_browser_facade_args_visible",
       profile: "browser_advanced",
       advancedToolSchema: true,
+      recoveryStage: "strategy_switch",
+      recommendedNextAction: "inspect_visible_tool_schema_then_retry",
+      recoverable: true,
+      recoveryPolicyVersion: "v1",
       backend: "browser-structured",
       mappedTool: "web_execute_js",
       hiddenArgs: ["native_fallback_action", "native_fallback_args"],
@@ -807,6 +845,10 @@ const surfaceCases: SurfaceCase[] = [
       operation: "validate_semantic_search_args_visible",
       profile: "context",
       advancedToolSchema: false,
+      recoveryStage: "strategy_switch",
+      recommendedNextAction: "inspect_visible_tool_schema_then_retry",
+      recoverable: true,
+      recoveryPolicyVersion: "v1",
       hiddenArgs: ["bridge_script", "technical_terms"],
       visibleArgsIncludes: ["query", "sources", "include_org"],
       visibleArgsExcludes: ["bridge_script", "technical_terms", "timeout_ms"],
@@ -841,6 +883,10 @@ const surfaceCases: SurfaceCase[] = [
       operation: "validate_mcp_servers_args_visible",
       profile: "mcp",
       advancedToolSchema: false,
+      recoveryStage: "strategy_switch",
+      recommendedNextAction: "inspect_visible_tool_schema_then_retry",
+      recoverable: true,
+      recoveryPolicyVersion: "v1",
       hiddenArgs: ["include_disabled"],
       visibleArgsIncludes: ["ready_only"],
       visibleArgsExcludes: ["include_disabled"],

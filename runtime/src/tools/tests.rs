@@ -1145,6 +1145,19 @@ env = {{ GROBOT_FAKE_BROWSER_BACKEND_PAYLOAD = {}, GROBOT_FAKE_BROWSER_MCP_IS_ER
         );
         assert_eq!(data["tool_surface_profile"].as_str(), Some("browser"));
         assert_eq!(data["advanced_tool_schema"].as_bool(), Some(false));
+        assert_eq!(
+            data["recovery_stage"].as_str(),
+            Some(TOOL_RECOVERY_STAGE_STRATEGY_SWITCH)
+        );
+        assert_eq!(
+            data["recommended_next_action"].as_str(),
+            Some(TOOL_RECOVERY_ACTION_INSPECT_VISIBLE_TOOL_SCHEMA_THEN_RETRY)
+        );
+        assert_eq!(data["recoverable"].as_bool(), Some(true));
+        assert_eq!(
+            data["recovery_policy_version"].as_str(),
+            Some(tool_recovery_policy_version())
+        );
         assert!(data["hidden_args"]
             .as_array()
             .expect("hidden_args should be an array")
@@ -1755,6 +1768,19 @@ audit_redact_secrets = false
         assert_eq!(data["operation"].as_str(), Some("validate_tool_visible"));
         assert_eq!(data["tool_surface_profile"].as_str(), Some("coding"));
         assert_eq!(data["advanced_tool_schema"].as_bool(), Some(false));
+        assert_eq!(
+            data["recovery_stage"].as_str(),
+            Some(TOOL_RECOVERY_STAGE_STRATEGY_SWITCH)
+        );
+        assert_eq!(
+            data["recommended_next_action"].as_str(),
+            Some(TOOL_RECOVERY_ACTION_SWITCH_TOOL_STRATEGY)
+        );
+        assert_eq!(data["recoverable"].as_bool(), Some(true));
+        assert_eq!(
+            data["recovery_policy_version"].as_str(),
+            Some(tool_recovery_policy_version())
+        );
         assert!(data["visible_tools"]
             .as_array()
             .expect("visible_tools array")

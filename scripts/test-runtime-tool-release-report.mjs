@@ -277,7 +277,7 @@ if (
   || !successResult.stdout.includes("surface_smoke=true")
   || !successResult.stdout.includes("surface_profiles=7")
   || !successResult.stdout.includes("surface_hidden_args=4")
-  || !successResult.stdout.includes("surface_error_data=200")
+  || !successResult.stdout.includes("surface_error_data=275")
 ) {
   fail("release gate stdout must expose runtime tool manifest and surface execution smoke evidence", {
     stdout: successResult.stdout.slice(-1000),
@@ -355,8 +355,8 @@ if (!successQuality || typeof successQuality !== "object") {
   if (!Number.isFinite(successQuality.runtime_surface_execution_schema_projection_checks) || successQuality.runtime_surface_execution_schema_projection_checks < 20) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_schema_projection_checks must be >= 20");
   }
-  if (successQuality.runtime_surface_execution_structured_error_data_checks !== 200) {
-    successFailures.push("success runtime_tool_quality.runtime_surface_execution_structured_error_data_checks must be 200");
+  if (successQuality.runtime_surface_execution_structured_error_data_checks !== 275) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_structured_error_data_checks must be 275");
   }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
@@ -437,8 +437,8 @@ if (successDescribe?.runtime_surface_execution_smoke_passed !== true) {
 if (!Array.isArray(successDescribe?.runtime_surface_execution_profiles_smoked) || successDescribe.runtime_surface_execution_profiles_smoked.length !== 7) {
   successFailures.push("success runtime_tool_describe.runtime_surface_execution_profiles_smoked must cover 7 profiles");
 }
-if (successDescribe?.runtime_surface_execution_structured_error_data_checks !== 200) {
-  successFailures.push("success runtime_tool_describe.runtime_surface_execution_structured_error_data_checks must be 200");
+if (successDescribe?.runtime_surface_execution_structured_error_data_checks !== 275) {
+  successFailures.push("success runtime_tool_describe.runtime_surface_execution_structured_error_data_checks must be 275");
 }
 if (successDescribe?.runtime_tool_count !== 14) {
   successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");

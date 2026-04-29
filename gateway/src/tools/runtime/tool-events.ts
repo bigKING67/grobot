@@ -441,6 +441,18 @@ function compactRecoveryErrorData(errorData: Record<string, unknown> | undefined
   if (browserLike && diagnosticKind) {
     parts.push(`diagnostic_kind=${diagnosticKind}`);
   }
+  const recoveryStage = typeof errorData.recovery_stage === "string"
+    ? compactRecoveryDetail(errorData.recovery_stage)
+    : undefined;
+  if (recoveryStage) {
+    parts.push(`recovery_stage=${recoveryStage}`);
+  }
+  const recommendedNextAction = typeof errorData.recommended_next_action === "string"
+    ? compactRecoveryDetail(errorData.recommended_next_action)
+    : undefined;
+  if (recommendedNextAction) {
+    parts.push(`recommended_next_action=${recommendedNextAction}`);
+  }
   const browserTool = typeof errorData.tool === "string" ? compactRecoveryDetail(errorData.tool) : undefined;
   if (browserLike && browserTool) {
     parts.push(`tool=${browserTool}`);

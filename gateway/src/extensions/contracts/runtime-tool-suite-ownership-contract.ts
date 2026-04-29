@@ -264,7 +264,7 @@ expect(
     && releaseReportTest.includes("runtime_tool_manifest_fingerprint")
     && releaseReportTest.includes("tool_count=14")
     && releaseReportTest.includes("surface_smoke=true")
-    && releaseReportTest.includes("surface_error_data=200")
+    && releaseReportTest.includes("surface_error_data=275")
     && releaseReportTest.includes("runtime_tool_quality")
     && releaseReportTest.includes("failure_reasons")
     && releaseReportTest.includes("surface_execution_smoke_failed")
