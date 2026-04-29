@@ -167,6 +167,8 @@ const RUNTIME_TOOL_RECOVERY_STAGES: readonly RuntimeToolRecoveryStage[] = [
   "ask_user",
 ];
 
+export const RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS = 1800;
+
 export const RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS = {
   observe_prior_tool_result:
     "Observe the previous tool result before issuing another high-risk or state-mutating tool call.",
@@ -383,6 +385,56 @@ function compactRecoveryDetail(value: string): string | undefined {
     return compact;
   }
   return `${compact.slice(0, maxChars)}...`;
+}
+
+function joinRecoveryPromptLines(lines: readonly string[]): string {
+  return lines.join("\n");
+}
+
+function compactRuntimeToolRecoveryPrompt(input: {
+  requiredLines: readonly (string | null | undefined)[];
+  detailLines: readonly (string | null | undefined)[];
+}): string {
+  const requiredLines = input.requiredLines.filter((line): line is string => typeof line === "string");
+  const detailLines = input.detailLines.filter((line): line is string => typeof line === "string");
+  const fullPrompt = joinRecoveryPromptLines([...requiredLines, ...detailLines]);
+  if (fullPrompt.length <= RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS) {
+    return fullPrompt;
+  }
+
+  const output = [...requiredLines];
+  let omittedCount = 0;
+  for (const line of detailLines) {
+    const candidate = joinRecoveryPromptLines([...output, line]);
+    if (candidate.length <= RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS) {
+      output.push(line);
+    } else {
+      omittedCount += 1;
+    }
+  }
+
+  if (omittedCount > 0) {
+    let marker =
+      `Details truncated: omitted ${String(omittedCount)} low-priority recovery detail line(s) to stay within prompt budget=${String(RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS)} chars.`;
+    while (
+      output.length > requiredLines.length
+      && joinRecoveryPromptLines([...output, marker]).length > RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS
+    ) {
+      output.pop();
+      omittedCount += 1;
+      marker =
+        `Details truncated: omitted ${String(omittedCount)} low-priority recovery detail line(s) to stay within prompt budget=${String(RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS)} chars.`;
+    }
+    if (joinRecoveryPromptLines([...output, marker]).length <= RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS) {
+      output.push(marker);
+    } else {
+      const compactMarker = `Details truncated: omitted ${String(omittedCount)} detail line(s).`;
+      if (joinRecoveryPromptLines([...output, compactMarker]).length <= RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS) {
+        output.push(compactMarker);
+      }
+    }
+  }
+  return joinRecoveryPromptLines(output);
 }
 
 function quoteRecoveryPreview(value: string): string {
@@ -1506,26 +1558,30 @@ export function buildRuntimeToolRecoveryFeedback(input: {
     plan: runtimeRecoveryPlan,
     toolName,
   });
-  const promptBlock = [
-    "[Runtime Tool Recovery Hint]",
-    "Action-first contract: treat structured recommended_next_action as authoritative; use recovery_stage and recoverable to choose execution discipline; use recovery_hint/error prose only as supporting evidence.",
-    `Structured recovery fields: recommended_next_action=${effectiveRecommendedNextAction} recovery_stage=${recovery.stage} recoverable=${recoverableValue} requires_user_intervention=${requiresUserIntervention ? "true" : "false"}`,
-    `Required next action: ${effectiveRecommendedNextAction}`,
-    `Action family: ${actionClassification.family} reason=${actionClassification.reason}`,
-    `Execution rule: ${instruction}`,
-    `Recoverability: ${recoverability}`,
-    `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
-    errorMessage ? `Error detail: ${errorMessage}` : null,
-    errorDataSummary ? `Structured error data: ${errorDataSummary}` : null,
-    recovery.sameToolErrorCount
-      ? `Repeated failure pressure: same_tool_error_count=${String(recovery.sameToolErrorCount)} escalated=${recovery.escalated ? "true" : "false"} reason=${recovery.escalationReason ?? "<none>"}`
-      : null,
-    recovery.escalated && recovery.baseStage
-      ? `Base recovery was stage=${recovery.baseStage} action=${recovery.baseRecommendedNextAction ?? "<none>"} before gateway escalation.`
-      : null,
-    environmentFixInstruction,
-    `Execution discipline: ${executionDiscipline}`,
-  ].filter((line): line is string => typeof line === "string").join("\n");
+  const promptBlock = compactRuntimeToolRecoveryPrompt({
+    requiredLines: [
+      "[Runtime Tool Recovery Hint]",
+      "Action-first contract: treat structured recommended_next_action as authoritative; use recovery_stage and recoverable to choose execution discipline; use recovery_hint/error prose only as supporting evidence.",
+      `Structured recovery fields: recommended_next_action=${effectiveRecommendedNextAction} recovery_stage=${recovery.stage} recoverable=${recoverableValue} requires_user_intervention=${requiresUserIntervention ? "true" : "false"}`,
+      `Required next action: ${effectiveRecommendedNextAction}`,
+      `Action family: ${actionClassification.family} reason=${actionClassification.reason}`,
+      `Execution rule: ${instruction}`,
+      `Recoverability: ${recoverability}`,
+      `Recent tool issue: stage=${recovery.stage} tool=${toolName} error_class=${errorClass}`,
+      `Execution discipline: ${executionDiscipline}`,
+    ],
+    detailLines: [
+      environmentFixInstruction,
+      recovery.sameToolErrorCount
+        ? `Repeated failure pressure: same_tool_error_count=${String(recovery.sameToolErrorCount)} escalated=${recovery.escalated ? "true" : "false"} reason=${recovery.escalationReason ?? "<none>"}`
+        : null,
+      recovery.escalated && recovery.baseStage
+        ? `Base recovery was stage=${recovery.baseStage} action=${recovery.baseRecommendedNextAction ?? "<none>"} before gateway escalation.`
+        : null,
+      errorMessage ? `Error detail: ${errorMessage}` : null,
+      errorDataSummary ? `Structured error data: ${errorDataSummary}` : null,
+    ],
+  });
   return {
     active: true,
     severity: severityForRecovery(recovery.stage),

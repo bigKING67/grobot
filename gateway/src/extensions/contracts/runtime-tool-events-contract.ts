@@ -9,6 +9,7 @@ import {
   isRuntimeToolRecoveryAction,
   knownRuntimeToolRecoveryActions,
   normalizeRuntimeToolRecoveryAction,
+  RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS,
   RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS,
   readRuntimeToolSurfaceMetrics,
   recordRuntimeToolSurfaceMetrics,
@@ -324,6 +325,79 @@ expectBefore(
 expect(
   structuredFeedback.promptBlock.includes("closest_lines=line 1 \"alpha_count = 1;\""),
   "feedback summarizes structured closest lines",
+);
+
+const oversizedRecoveryObservedAt = "2026-04-25T00:00:40.000Z";
+const oversizedRecoverySummary = summarizeRuntimeToolEvents([
+  event("tool_recovery", {
+    tool_name: "mcp_call",
+    error_class: "mcp_tool_result_error",
+    error_message: `oversized failure ${"detail ".repeat(300)}`,
+    error_data: {
+      diagnostic_kind: "mcp_tool_result_error",
+      server_key: "grok-search",
+      tool_name: "web_search",
+      argument_keys: ["query", "token", "extra", "large", "debug", "unused"],
+      argument_bytes: 65_000,
+      max_argument_bytes: 65_536,
+      result_preview: "bad args ".repeat(300),
+      argument_preview: "{\"query\":\"" + "weather ".repeat(300) + "\",\"token\":\"secret\"}",
+      raw_message: "raw ".repeat(300),
+      stderr_preview: "stderr ".repeat(300),
+      stdout_preview: "stdout ".repeat(300),
+    },
+    recovery_stage: "local_fix",
+    recovery_reason: "mcp_tool_result_error",
+    recommended_next_action: "inspect_mcp_tool_result_and_change_arguments",
+    recoverable: true,
+    same_tool_error_count: 4,
+    escalated: true,
+    escalation_reason: `same_tool_error_repeated_${"reason_".repeat(220)}`,
+    escalation_policy_version: "v-test",
+    base_recovery_stage: "local_fix",
+    base_recommended_next_action: "fix_mcp_tool_arguments",
+    observed_at: oversizedRecoveryObservedAt,
+  }),
+]);
+const oversizedFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: oversizedRecoveryObservedAt,
+    callsTotal: 0,
+    failedTotal: 0,
+    deferredTotal: 0,
+    callsByTool: {},
+    failuresByErrorClass: {},
+    recoveryStages: { local_fix: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: oversizedRecoverySummary.latestRecovery ?? null,
+    path: contractPath("oversized"),
+  },
+  nowMs: Date.parse(oversizedRecoveryObservedAt),
+});
+expect(
+  oversizedFeedback.promptBlock.length <= RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS,
+  "oversized feedback stays within prompt character budget",
+);
+expect(
+  oversizedFeedback.promptBlock.includes("Structured recovery fields:"),
+  "oversized feedback keeps structured recovery fields",
+);
+expect(
+  oversizedFeedback.promptBlock.includes("Required next action: inspect_mcp_tool_result_and_change_arguments"),
+  "oversized feedback keeps required action",
+);
+expect(
+  oversizedFeedback.promptBlock.includes("Execution discipline:"),
+  "oversized feedback keeps execution discipline",
+);
+expect(
+  oversizedFeedback.promptBlock.includes("Details truncated: omitted"),
+  "oversized feedback marks low-priority detail truncation",
 );
 
 const bashStructuredFeedback = buildRuntimeToolRecoveryFeedback({
