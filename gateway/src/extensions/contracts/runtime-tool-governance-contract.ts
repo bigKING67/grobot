@@ -9,7 +9,11 @@ import {
   estimateToolSchemaTokens,
 } from "../../tools/runtime/default-enabled-tools";
 import { knownRuntimeToolRecoveryActions } from "../../tools/runtime/tool-events";
-import { validateRuntimeToolSurfaceBudget } from "../../tools/runtime/tool-surface-budget";
+import {
+  RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION,
+  RUNTIME_TOOL_SURFACE_BUDGETS,
+  validateRuntimeToolSurfaceBudget,
+} from "../../tools/runtime/tool-surface-budget";
 
 function expect(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -75,6 +79,8 @@ const gatewayOnlyActions = difference(gatewayActions, runtimeActions);
 
 let runtimeSchemaBudgetViolationCount: number | null = null;
 let runtimeSchemaBudgetViolationProfiles: string[] = [];
+let runtimeSchemaProfileSummary: Record<string, unknown>[] = [];
+let runtimeSchemaBudgetViolationDetails: Record<string, unknown>[] = [];
 
 function governancePayload(ok: boolean, failure: string | null): Record<string, unknown> {
   return {
@@ -102,8 +108,10 @@ function governancePayload(ok: boolean, failure: string | null): Record<string, 
     gateway_only_recovery_actions: gatewayOnlyActions,
     runtime_recovery_catalog_rows: describe.toolRecoveryCatalog.length,
     runtime_schema_profile_count: describe.toolSurfaceSchemaProfiles.length,
+    runtime_schema_profile_summary: runtimeSchemaProfileSummary,
     runtime_schema_budget_violations: runtimeSchemaBudgetViolationCount,
     runtime_schema_budget_violation_profiles: runtimeSchemaBudgetViolationProfiles,
+    runtime_schema_budget_violation_details: runtimeSchemaBudgetViolationDetails,
   };
 }
 
@@ -167,20 +175,69 @@ try {
   expect(Boolean(mcpPolicyRow), "MCP blocked-tool recovery row exists");
   expectEqual(mcpPolicyRow?.recoverable, true, "MCP blocked-tool recovery recoverable");
 
-  const budgetViolations = describe.toolSurfaceSchemaProfiles
-    .map((profile) => ({
-      profile: profile.profile,
-      validation: validateRuntimeToolSurfaceBudget({
+  const budgetRows = describe.toolSurfaceSchemaProfiles
+    .map((profile) => {
+      const schemaEstimatedTokens = estimateToolSchemaTokens(profile.toolNames, profile.profile);
+      const budget = RUNTIME_TOOL_SURFACE_BUDGETS[profile.profile];
+      const validation = validateRuntimeToolSurfaceBudget({
         profile: profile.profile,
         projectionMode: profile.projectionMode,
         visibleToolCount: profile.visibleToolCount,
         schemaPropertyCount: profile.schemaPropertyCount,
         fullSchemaPropertyCount: profile.fullSchemaPropertyCount,
         suppressedSchemaPropertyCount: profile.suppressedSchemaPropertyCount,
-        schemaEstimatedTokens: estimateToolSchemaTokens(profile.toolNames, profile.profile),
-      }),
-    }))
-    .filter((row) => !row.validation.ok);
+        schemaEstimatedTokens,
+      });
+      return {
+        profile: profile.profile,
+        projection_mode: profile.projectionMode,
+        advanced_tool_schema: profile.advancedToolSchema,
+        visible_tool_count: profile.visibleToolCount,
+        schema_property_count: profile.schemaPropertyCount,
+        full_schema_property_count: profile.fullSchemaPropertyCount,
+        suppressed_schema_property_count: profile.suppressedSchemaPropertyCount,
+        schema_estimated_tokens: schemaEstimatedTokens,
+        schema_fingerprint: profile.schemaFingerprint,
+        budget_policy_version: RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION,
+        budget_visible_tool_count_max: budget.visibleToolCountMax,
+        budget_schema_property_count_max: budget.schemaPropertyCountMax,
+        budget_full_schema_property_count_max: budget.fullSchemaPropertyCountMax,
+        budget_suppressed_schema_property_count_max: budget.suppressedSchemaPropertyCountMax,
+        budget_schema_estimated_tokens_max: budget.schemaEstimatedTokensMax,
+        budget_ok: validation.ok,
+        budget_violations: validation.violations,
+        budget_violation_details: validation.violationDetails,
+      };
+    });
+  runtimeSchemaProfileSummary = budgetRows.map((row) => ({
+    profile: row.profile,
+    projection_mode: row.projection_mode,
+    advanced_tool_schema: row.advanced_tool_schema,
+    visible_tool_count: row.visible_tool_count,
+    schema_property_count: row.schema_property_count,
+    full_schema_property_count: row.full_schema_property_count,
+    suppressed_schema_property_count: row.suppressed_schema_property_count,
+    schema_estimated_tokens: row.schema_estimated_tokens,
+    schema_fingerprint: row.schema_fingerprint,
+    budget_policy_version: row.budget_policy_version,
+    budget_visible_tool_count_max: row.budget_visible_tool_count_max,
+    budget_schema_property_count_max: row.budget_schema_property_count_max,
+    budget_full_schema_property_count_max: row.budget_full_schema_property_count_max,
+    budget_suppressed_schema_property_count_max: row.budget_suppressed_schema_property_count_max,
+    budget_schema_estimated_tokens_max: row.budget_schema_estimated_tokens_max,
+    budget_ok: row.budget_ok,
+    budget_violations: row.budget_violations,
+  }));
+  const budgetViolations = budgetRows.filter((row) => !row.budget_ok);
+  runtimeSchemaBudgetViolationDetails = budgetViolations.flatMap((row) =>
+    row.budget_violation_details.map((detail) => ({
+      profile: row.profile,
+      projection_mode: row.projection_mode,
+      metric: detail.metric,
+      actual: detail.actual,
+      ...(detail.expected === undefined ? {} : { expected: detail.expected }),
+      ...(detail.max === undefined ? {} : { max: detail.max }),
+    })));
   runtimeSchemaBudgetViolationCount = budgetViolations.length;
   runtimeSchemaBudgetViolationProfiles = budgetViolations.map((row) => row.profile);
   expectEqual(runtimeSchemaBudgetViolationCount, 0, "runtime schema profiles stay within budget policy");

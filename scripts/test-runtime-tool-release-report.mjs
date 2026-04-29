@@ -295,6 +295,17 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.schema_budget_status !== "passed") {
     successFailures.push("success runtime_tool_quality.schema_budget_status must be passed");
   }
+  if (!Array.isArray(successQuality.runtime_schema_profile_summary) || successQuality.runtime_schema_profile_summary.length !== 7) {
+    successFailures.push("success runtime_tool_quality.runtime_schema_profile_summary must describe 7 profiles");
+  } else if (
+    typeof successQuality.runtime_schema_profile_summary[0].schema_estimated_tokens !== "number"
+    || successQuality.runtime_schema_profile_summary.some((profile) => profile.budget_ok !== true)
+  ) {
+    successFailures.push("success runtime_tool_quality.runtime_schema_profile_summary must include per-profile budget values");
+  }
+  if (!Array.isArray(successQuality.runtime_schema_budget_violation_details) || successQuality.runtime_schema_budget_violation_details.length !== 0) {
+    successFailures.push("success runtime_tool_quality.runtime_schema_budget_violation_details must be empty array");
+  }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
   }
@@ -361,6 +372,12 @@ if (successDescribe?.runner_schema_version !== 1) {
 }
 if (successDescribe?.runtime_schema_budget_violations !== 0) {
   successFailures.push("success runtime_tool_describe.runtime_schema_budget_violations must be 0");
+}
+if (!Array.isArray(successDescribe?.runtime_schema_profile_summary) || successDescribe.runtime_schema_profile_summary.length !== 7) {
+  successFailures.push("success runtime_tool_describe.runtime_schema_profile_summary must describe 7 profiles");
+}
+if (!Array.isArray(successDescribe?.runtime_schema_budget_violation_details) || successDescribe.runtime_schema_budget_violation_details.length !== 0) {
+  successFailures.push("success runtime_tool_describe.runtime_schema_budget_violation_details must be empty array");
 }
 if (successDescribe?.runtime_tool_count !== 14) {
   successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");

@@ -325,7 +325,9 @@ expect(
 expect(
   schemaReleaseDiagnosticFields.includes("runtime_only_tools")
     && schemaReleaseDiagnosticFields.includes("runtime_tool_order_mismatch")
-    && schemaReleaseDiagnosticFields.includes("runtime_default_order_mismatch"),
+    && schemaReleaseDiagnosticFields.includes("runtime_default_order_mismatch")
+    && schemaReleaseDiagnosticFields.includes("runtime_schema_profile_summary")
+    && schemaReleaseDiagnosticFields.includes("runtime_schema_budget_violation_details"),
   "schema release diagnostic fields must include manifest diff evidence",
 );
 expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "schema action families must be unique");
@@ -501,6 +503,8 @@ const releaseQualityModuleRequiredFragments = [
   "gateway_default_only_tools: stringArray(",
   "runtime_tool_order_mismatch:",
   "runtime_default_order_mismatch:",
+  "runtime_schema_profile_summary: recordArray(",
+  "runtime_schema_budget_violation_details: recordArray(",
   "action_family: actionSignal?.actionFamily ?? \"none\"",
   "action_reason: actionSignal?.reason ?? null",
   "action_required: actionSignal?.actionRequired ?? null",
@@ -666,6 +670,8 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality.action_reason must preserve the decisive failure reason")
     && releaseReportTest.includes("runtime_tool_quality.action_required must point to failed contract action")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed")
+    && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_profile_summary must describe 7 profiles")
+    && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_budget_violation_details must be empty array")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_only_tools must be empty array")
     && releaseReportTest.includes("success runtime_tool_describe.runtime_tool_order_mismatch must be null"),
   "release-report regression must assert runtime_tool_quality source and schema budget status",
@@ -716,6 +722,9 @@ process.stdout.write(JSON.stringify({
     "gateway_default_only_tools",
     "runtime_tool_order_mismatch",
     "runtime_default_order_mismatch",
+    "runtime_schema_profile_summary",
+    "runtime_schema_budget_violation_profiles",
+    "runtime_schema_budget_violation_details",
     "action_family",
     "action_reason",
     "action_required",

@@ -138,7 +138,15 @@ const baseDescribeSummary = {
   gateway_default_only_tools: [],
   runtime_tool_order_mismatch: null,
   runtime_default_order_mismatch: null,
+  runtime_schema_profile_summary: [{
+    profile: "coding",
+    projection_mode: "slim",
+    schema_estimated_tokens: 900,
+    budget_schema_estimated_tokens_max: 920,
+    budget_ok: true,
+  }],
   runtime_schema_budget_violation_profiles: [],
+  runtime_schema_budget_violation_details: [],
   diagnostic_summary: {
     status: "passed",
     schema_budget_violations: 0,
@@ -160,9 +168,22 @@ expectEqual(unknownBudgetQuality.action_reason, "schema_budget_unknown", "unknow
 const violatedBudgetQuality = runtimeToolQualitySummary({
   ...baseDescribeSummary,
   diagnostic_summary: { status: "failed", schema_budget_violations: 2 },
+  runtime_schema_budget_violation_profiles: ["browser"],
+  runtime_schema_budget_violation_details: [{
+    profile: "browser",
+    projection_mode: "slim",
+    metric: "schema_estimated_tokens",
+    actual: 561,
+    max: 560,
+  }],
 }, baseData, registry);
 expectEqual(violatedBudgetQuality.schema_budget_status, "failed", "non-zero schema budget violations must be failed");
 expectEqual(violatedBudgetQuality.action_reason, "schema_budget_violated", "violated schema budget must be actionable");
+expectEqual(
+  violatedBudgetQuality.runtime_schema_budget_violation_details[0].metric,
+  "schema_estimated_tokens",
+  "violated schema budget details must preserve decisive metric",
+);
 
 const failedContractQuality = runtimeToolQualitySummary({
   ...baseDescribeSummary,
@@ -237,7 +258,16 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
         gateway_default_only_tools: [],
         runtime_tool_order_mismatch: null,
         runtime_default_order_mismatch: { index: 2, runtime: "legacy_edit", gateway: "edit" },
+        runtime_schema_profile_summary: [{
+          profile: "coding",
+          projection_mode: "slim",
+          schema_estimated_tokens: 900,
+          budget_schema_estimated_tokens_max: 920,
+          budget_ok: true,
+          budget_violations: [],
+        }],
         runtime_schema_budget_violation_profiles: [],
+        runtime_schema_budget_violation_details: [],
         runtime_schema_profile_count: 4,
         runtime_schema_budget_violations: 0,
         gateway_only_recovery_actions: ["recover_runtime_health"],
@@ -270,6 +300,11 @@ expectEqual(
   describeSummary.runtime_default_order_mismatch.index,
   2,
   "governance payload default order mismatch must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_schema_profile_summary[0].schema_estimated_tokens,
+  900,
+  "governance payload schema profile summary must be preserved",
 );
 expectEqual(describeSummary.gateway_only_recovery_actions.length, 1, "governance recovery actions must be preserved");
 
@@ -311,6 +346,11 @@ expectEqual(
   2,
   "runtime_tool_quality must expose default-enabled order mismatch evidence",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_schema_profile_summary[0].budget_ok,
+  true,
+  "runtime_tool_quality must expose per-profile schema budget summary",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -332,6 +372,8 @@ process.stdout.write(JSON.stringify({
     "runtime_tool_manifest_fingerprint",
     "runtime_only_tools",
     "runtime_tool_order_mismatch",
+    "runtime_schema_profile_summary",
+    "runtime_schema_budget_violation_details",
   ],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,

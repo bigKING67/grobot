@@ -13,11 +13,27 @@ export interface RuntimeToolSurfaceBudgetPolicy {
   schemaEstimatedTokensMax: number;
 }
 
+export type RuntimeToolSurfaceBudgetMetric =
+  | "projection_mode"
+  | "visible_tool_count"
+  | "schema_property_count"
+  | "full_schema_property_count"
+  | "suppressed_schema_property_count"
+  | "schema_estimated_tokens";
+
+export interface RuntimeToolSurfaceBudgetViolationDetail {
+  metric: RuntimeToolSurfaceBudgetMetric;
+  actual: string | number;
+  expected?: string;
+  max?: number;
+}
+
 export interface RuntimeToolSurfaceBudgetValidation {
   ok: boolean;
   profile: ToolSurfaceProfile;
   projectionMode: RuntimeToolSurfaceProjectionMode;
   violations: string[];
+  violationDetails: RuntimeToolSurfaceBudgetViolationDetail[];
 }
 
 type RuntimeToolSurfaceBudgetLike = Pick<
@@ -102,40 +118,72 @@ export function validateRuntimeToolSurfaceBudget(
 ): RuntimeToolSurfaceBudgetValidation {
   const budget = RUNTIME_TOOL_SURFACE_BUDGETS[input.profile];
   const violations: string[] = [];
+  const violationDetails: RuntimeToolSurfaceBudgetViolationDetail[] = [];
   if (input.projectionMode !== budget.projectionMode) {
     violations.push(
       `projection_mode:${input.projectionMode}>expected:${budget.projectionMode}`,
     );
+    violationDetails.push({
+      metric: "projection_mode",
+      actual: input.projectionMode,
+      expected: budget.projectionMode,
+    });
   }
   if (input.visibleToolCount > budget.visibleToolCountMax) {
     violations.push(
       `visible_tool_count:${String(input.visibleToolCount)}>${String(budget.visibleToolCountMax)}`,
     );
+    violationDetails.push({
+      metric: "visible_tool_count",
+      actual: input.visibleToolCount,
+      max: budget.visibleToolCountMax,
+    });
   }
   if (input.schemaPropertyCount > budget.schemaPropertyCountMax) {
     violations.push(
       `schema_property_count:${String(input.schemaPropertyCount)}>${String(budget.schemaPropertyCountMax)}`,
     );
+    violationDetails.push({
+      metric: "schema_property_count",
+      actual: input.schemaPropertyCount,
+      max: budget.schemaPropertyCountMax,
+    });
   }
   if (input.fullSchemaPropertyCount > budget.fullSchemaPropertyCountMax) {
     violations.push(
       `full_schema_property_count:${String(input.fullSchemaPropertyCount)}>${String(budget.fullSchemaPropertyCountMax)}`,
     );
+    violationDetails.push({
+      metric: "full_schema_property_count",
+      actual: input.fullSchemaPropertyCount,
+      max: budget.fullSchemaPropertyCountMax,
+    });
   }
   if (input.suppressedSchemaPropertyCount > budget.suppressedSchemaPropertyCountMax) {
     violations.push(
       `suppressed_schema_property_count:${String(input.suppressedSchemaPropertyCount)}>${String(budget.suppressedSchemaPropertyCountMax)}`,
     );
+    violationDetails.push({
+      metric: "suppressed_schema_property_count",
+      actual: input.suppressedSchemaPropertyCount,
+      max: budget.suppressedSchemaPropertyCountMax,
+    });
   }
   if (input.schemaEstimatedTokens > budget.schemaEstimatedTokensMax) {
     violations.push(
       `schema_estimated_tokens:${String(input.schemaEstimatedTokens)}>${String(budget.schemaEstimatedTokensMax)}`,
     );
+    violationDetails.push({
+      metric: "schema_estimated_tokens",
+      actual: input.schemaEstimatedTokens,
+      max: budget.schemaEstimatedTokensMax,
+    });
   }
   return {
     ok: violations.length === 0,
     profile: input.profile,
     projectionMode: input.projectionMode,
     violations,
+    violationDetails,
   };
 }

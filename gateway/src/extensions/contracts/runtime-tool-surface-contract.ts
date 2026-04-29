@@ -145,6 +145,10 @@ function expectProjectionWithinBudget(
     validation.ok,
     `${message}: schema budget violations=${validation.violations.join(",")}`,
   );
+  expect(
+    validation.violationDetails.length === validation.violations.length,
+    `${message}: schema budget violation details must stay aligned`,
+  );
 }
 
 function activeRecoveryFeedback(input: {
@@ -186,6 +190,21 @@ const inactiveRecoveryFeedback: RuntimeToolRecoveryFeedback = {
 
 expectEqual(RUNTIME_TOOL_SURFACE_BUDGET_POLICY_VERSION, "v1", "runtime tool surface budget policy version");
 expectEqual(RUNTIME_TOOL_OUTPUT_BUDGET_POLICY_VERSION, "v1", "runtime tool output budget policy version");
+const syntheticBudgetViolation = validateRuntimeToolSurfaceBudget({
+  profile: "browser",
+  projectionMode: "slim",
+  visibleToolCount: 5,
+  schemaPropertyCount: 17,
+  fullSchemaPropertyCount: 48,
+  suppressedSchemaPropertyCount: 32,
+  schemaEstimatedTokens: 561,
+});
+expect(!syntheticBudgetViolation.ok, "synthetic budget violation should fail");
+expect(
+  syntheticBudgetViolation.violationDetails.some((detail) =>
+    detail.metric === "schema_estimated_tokens" && detail.actual === 561 && detail.max === 560),
+  "synthetic budget violation should expose structured token limit detail",
+);
 expectDeepEqual(
   Object.keys(RUNTIME_TOOL_SURFACE_BUDGETS).sort(),
   [...TOOL_SURFACE_PROFILES].sort(),

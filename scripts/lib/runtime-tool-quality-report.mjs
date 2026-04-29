@@ -16,6 +16,13 @@ function stringArray(value) {
   return value.filter((item) => typeof item === "string");
 }
 
+function recordArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => isRecord(item));
+}
+
 function parseBoolean(value) {
   return value === true || value === "true" || value === "1";
 }
@@ -255,6 +262,10 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
     runtime_schema_budget_violation_profiles: stringArray(
       governancePayload?.runtime_schema_budget_violation_profiles,
     ),
+    runtime_schema_profile_summary: recordArray(governancePayload?.runtime_schema_profile_summary),
+    runtime_schema_budget_violation_details: recordArray(
+      governancePayload?.runtime_schema_budget_violation_details,
+    ),
     gateway_only_recovery_actions: stringArray(governancePayload?.gateway_only_recovery_actions),
   };
 }
@@ -394,6 +405,10 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
       : null,
     runtime_schema_budget_violation_profiles: stringArray(
       describeSummary.runtime_schema_budget_violation_profiles,
+    ),
+    runtime_schema_profile_summary: recordArray(describeSummary.runtime_schema_profile_summary),
+    runtime_schema_budget_violation_details: recordArray(
+      describeSummary.runtime_schema_budget_violation_details,
     ),
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions

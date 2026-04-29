@@ -34,7 +34,9 @@
     "gateway_default_only_tools",
     "runtime_tool_order_mismatch",
     "runtime_default_order_mismatch",
+    "runtime_schema_profile_summary",
     "runtime_schema_budget_violation_profiles",
+    "runtime_schema_budget_violation_details",
     "gateway_only_recovery_actions"
   ],
   "action_families": [
