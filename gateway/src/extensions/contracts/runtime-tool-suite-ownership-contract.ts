@@ -275,8 +275,9 @@ expect(
     && corePackagingWorkflow.includes('"scripts/test-runtime-tool-quality-registry-parity.mjs"')
     && corePackagingWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"')
     && corePackagingWorkflow.includes('"scripts/lib/**"')
+    && corePackagingWorkflow.includes('"gateway/src/extensions/contracts/runtime-tool-*.ts"')
     && corePackagingWorkflow.includes('"shared/contracts/runtime-tool-quality-v1.json"'),
-  "core packaging workflow must trigger on runtime-tool release/report/schema test and runner changes",
+  "core packaging workflow must trigger on runtime-tool contract, release/report/schema test, and runner changes",
 );
 for (const [name, workflow] of [
   ["harness-gate", harnessWorkflow],
@@ -342,6 +343,7 @@ process.stdout.write(JSON.stringify({
   quality_registry_parity_regression_script: true,
   release_report_regression_script: true,
   release_report_regression_workflow: true,
+  core_packaging_runtime_tool_contract_paths_covered: true,
   workflows_with_rust_toolchain: 3,
   harness_runtime_paths_covered: true,
 }) + "\n");
