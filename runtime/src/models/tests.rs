@@ -23,7 +23,7 @@ mod tests {
     use std::ffi::OsString;
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
-    use std::sync::{Arc, Mutex, OnceLock};
+    use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
     use std::thread;
     use std::time::{Duration, Instant};
 
@@ -45,6 +45,14 @@ mod tests {
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn lock_env() -> MutexGuard<'static, ()> {
+        match env_lock().lock() {
+            Ok(guard) => guard,
+            // Keep one failed env-mutating test from cascading into unrelated PoisonError failures.
+            Err(poisoned) => poisoned.into_inner(),
+        }
     }
 
     struct EnvRestoreGuard {
@@ -219,6 +227,16 @@ mod tests {
         start_mock_http_server_sequence(&[(status_line, response_body)])
     }
 
+    fn write_http_response(stream: &mut TcpStream, status: &str, response_payload: &str) {
+        let response = format!(
+            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+            response_payload.as_bytes().len(),
+            response_payload
+        );
+        let _ = stream.write_all(response.as_bytes());
+        let _ = stream.flush();
+    }
+
     fn start_mock_http_server_sequence(responses: &[(&str, &str)]) -> MockHttpServer {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test mock http server");
         let addr = listener.local_addr().expect("read local addr");
@@ -238,30 +256,47 @@ mod tests {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
                             stream
+                                .set_nonblocking(false)
+                                .expect("set blocking stream");
+                            stream
                                 .set_read_timeout(Some(Duration::from_secs(2)))
                                 .expect("set read timeout");
                             let request_raw = read_http_request(&mut stream);
-                            if let Some(request) = parse_recorded_request(&request_raw) {
-                                if let Ok(mut guard) = requests_for_thread.lock() {
-                                    guard.push(request);
+                            let Some(request) = parse_recorded_request(&request_raw) else {
+                                if !request_raw.is_empty() {
+                                    write_http_response(&mut stream, &status, &response_payload);
+                                    break;
                                 }
+                                if Instant::now() >= deadline {
+                                    break;
+                                }
+                                continue;
+                            };
+                            if let Ok(mut guard) = requests_for_thread.lock() {
+                                guard.push(request);
                             }
-                            let response = format!(
-                                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-                                response_payload.as_bytes().len(),
-                                response_payload
-                            );
-                            let _ = stream.write_all(response.as_bytes());
-                            let _ = stream.flush();
+                            write_http_response(&mut stream, &status, &response_payload);
                             break;
                         }
-                        Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                ErrorKind::WouldBlock
+                                    | ErrorKind::Interrupted
+                                    | ErrorKind::ConnectionAborted
+                            ) =>
+                        {
                             if Instant::now() >= deadline {
                                 break;
                             }
                             thread::sleep(Duration::from_millis(10));
                         }
-                        Err(_) => break,
+                        Err(_) => {
+                            if Instant::now() >= deadline {
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(10));
+                        }
                     }
                 }
             }
@@ -582,7 +617,7 @@ mod tests {
 
     #[test]
     fn executor_emits_prompt_cache_telemetry_for_anthropic_compatible_requests() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server(
             "200 OK",
             r#"{"id":"mock","usage":{"cache_read_input_tokens":9},"choices":[{"message":{"content":"PROMPT_CACHE_OK"}}]}"#,
@@ -675,7 +710,7 @@ mod tests {
 
     #[test]
     fn executor_skips_prompt_cache_hints_without_explicit_capability() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server(
             "200 OK",
             r#"{"id":"mock","choices":[{"message":{"content":"PROMPT_CACHE_CAP_OFF"}}]}"#,
@@ -762,7 +797,7 @@ mod tests {
 
     #[test]
     fn executor_retries_without_prompt_cache_hint_when_upstream_rejects_cache_control() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "400 Bad Request",
@@ -836,7 +871,7 @@ mod tests {
         );
 
         let calls = server.finish();
-        assert_eq!(calls.len(), 2);
+        assert_eq!(calls.len(), 2, "recorded requests: {calls:?}");
         let first_body: Value =
             serde_json::from_str(&calls[0].body).expect("first request body should be json");
         let second_body: Value =
@@ -870,7 +905,7 @@ mod tests {
 
     #[test]
     fn executor_roundtrip_with_mock_http_server() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server(
             "200 OK",
             r#"{"id":"mock","choices":[{"message":{"content":"MOCK_RUNTIME_OK"}}]}"#,
@@ -928,7 +963,7 @@ mod tests {
 
     #[test]
     fn executor_maps_non_success_status_to_upstream_http_error() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server("503 Service Unavailable", r#"{"error":"unavailable"}"#);
         let _restore = apply_env(&[
             (ENV_BASE_URL, None),
@@ -967,7 +1002,7 @@ mod tests {
 
     #[test]
     fn executor_retries_kimi_overload_and_succeeds() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "429 Too Many Requests",
@@ -1010,7 +1045,7 @@ mod tests {
         assert_eq!(output.telemetry_events.len(), 0);
 
         let calls = server.finish();
-        assert_eq!(calls.len(), 2);
+        assert_eq!(calls.len(), 2, "recorded requests: {calls:?}");
         assert_eq!(calls[0].path, "/v1/chat/completions");
         assert_eq!(calls[1].path, "/v1/chat/completions");
         let first_payload: serde_json::Value =
@@ -1023,7 +1058,7 @@ mod tests {
 
     #[test]
     fn executor_retries_kimi_reasoning_context_error_with_thinking_disabled() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "400 Bad Request",
@@ -1066,7 +1101,7 @@ mod tests {
         assert_eq!(output.telemetry_events.len(), 0);
 
         let calls = server.finish();
-        assert_eq!(calls.len(), 2);
+        assert_eq!(calls.len(), 2, "recorded requests: {calls:?}");
         let first_payload: serde_json::Value =
             serde_json::from_str(&calls[0].body).expect("first request body json");
         let second_payload: serde_json::Value =
@@ -1077,7 +1112,7 @@ mod tests {
 
     #[test]
     fn executor_retries_kimi_invalid_temperature_without_sampling_controls() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "400 Bad Request",
@@ -1151,7 +1186,7 @@ mod tests {
 
     #[test]
     fn executor_injects_reasoning_content_for_kimi_tool_call_message() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "200 OK",
@@ -1226,7 +1261,7 @@ mod tests {
 
     #[test]
     fn executor_defers_followup_tools_after_high_risk_tool_in_same_batch() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "200 OK",
@@ -1367,7 +1402,7 @@ mod tests {
 
     #[test]
     fn executor_budgets_large_tool_output_before_next_model_request() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "200 OK",
@@ -1495,7 +1530,7 @@ mod tests {
 
     #[test]
     fn executor_reports_missing_config_when_required_env_absent() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let _restore = apply_env(&[
             (ENV_BASE_URL, None),
             (ENV_API_KEY, None),
@@ -1527,7 +1562,7 @@ mod tests {
 
     #[test]
     fn executor_no_tool_fallback_recovers_from_empty_content_when_safe_mode_enabled() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "200 OK",
@@ -1614,7 +1649,7 @@ mod tests {
 
     #[test]
     fn executor_no_tool_fallback_off_keeps_original_invalid_response_error() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server(
             "200 OK",
             r#"{"id":"mock","choices":[{"message":{"content":"   "}}]}"#,
@@ -1668,7 +1703,7 @@ mod tests {
 
     #[test]
     fn executor_no_tool_fallback_emits_exhausted_telemetry_after_recovery_budget_spent() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "200 OK",
@@ -1740,7 +1775,7 @@ mod tests {
 
     #[test]
     fn executor_rejects_tool_calls_with_explicit_error_class() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server(
             "200 OK",
             r#"{"id":"mock","choices":[{"message":{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}}]}"#,
@@ -1782,7 +1817,7 @@ mod tests {
 
     #[test]
     fn executor_emits_structured_tool_error_data_in_tool_events() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server(
             "200 OK",
             r#"{"id":"mock","choices":[{"message":{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"edit","arguments":"{\"path\":\"sample.txt\",\"edits\":[{\"old_text\":\"alpha\",\"new_text\":\"beta\"}]}"} }]}}]}"#,
@@ -1879,7 +1914,7 @@ mod tests {
 
     #[test]
     fn executor_emits_recovery_for_observed_tool_result_error_without_aborting_turn() {
-        let _env_guard = env_lock().lock().expect("lock env");
+        let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[
             (
                 "200 OK",
