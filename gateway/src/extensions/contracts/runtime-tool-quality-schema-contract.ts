@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolveRuntimeToolQualitySignalFromRegistry } from "../../orchestration/entrypoints/dev-cli/status/runtime-tool-quality-registry";
 
 const repoRoot = process.cwd();
 
@@ -21,6 +22,17 @@ function expectAllIncludes(source: string, fragments: readonly string[], message
   for (const fragment of fragments) {
     expectIncludes(source, fragment, message);
   }
+}
+
+function expectThrowsIncludes(run: () => void, fragment: string, message: string): void {
+  try {
+    run();
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    expect(errorMessage.includes(fragment), `${message}: expected ${fragment}, got ${errorMessage}`);
+    return;
+  }
+  throw new Error(`${message}: expected throw containing ${fragment}`);
 }
 
 function parseJsonFile(path: string): unknown {
@@ -217,6 +229,45 @@ function resolveFixtureSignal(input: {
   ))[0] ?? null;
 }
 
+function expectProductionSignalMatchesFixture(input: {
+  expected: {
+    actionReason: string;
+    actionFamily: string;
+    actionRequired: string;
+    defaultNextStep: string | null;
+    priority: number;
+  };
+  reasons: readonly string[];
+  surface: RuntimeToolQualitySurface;
+  label: string;
+}): void {
+  const actual = resolveRuntimeToolQualitySignalFromRegistry({
+    actionReasons: input.reasons,
+    surface: input.surface,
+  });
+  expect(actual !== null, `${input.label} production resolver must resolve a decisive signal`);
+  expect(
+    actual.actionReason === input.expected.actionReason,
+    `${input.label} production resolver actionReason must match registry fixture`,
+  );
+  expect(
+    actual.actionFamily === input.expected.actionFamily,
+    `${input.label} production resolver actionFamily must match registry fixture`,
+  );
+  expect(
+    actual.actionRequired === input.expected.actionRequired,
+    `${input.label} production resolver actionRequired must match registry fixture`,
+  );
+  expect(
+    actual.defaultNextStep === input.expected.defaultNextStep,
+    `${input.label} production resolver defaultNextStep must match registry fixture`,
+  );
+  expect(
+    actual.priority === input.expected.priority,
+    `${input.label} production resolver priority must match registry fixture`,
+  );
+}
+
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
 const statusQualityRegistry = readRepoFile(
@@ -306,13 +357,14 @@ for (const reason of schemaWarningReasons.filter((reason) => reason !== "recover
   expect(schemaActionRequiredReasonSet.has(reason), `warning reason must map to action_required: ${reason}`);
 }
 
+const statusPriorityFixtureReasons = [
+  "schema_projection_drift_not_checked",
+  "recovery_health_risk",
+  "runtime_health_failed",
+  "runtime_tools_describe_fallback",
+] as const;
 const statusPriorityFixture = resolveFixtureSignal({
-  reasons: [
-    "schema_projection_drift_not_checked",
-    "recovery_health_risk",
-    "runtime_health_failed",
-    "runtime_tools_describe_fallback",
-  ],
+  reasons: statusPriorityFixtureReasons,
   surface: "status",
   actionByReason: schemaActionByReason,
   reasonByReason: schemaReasonPriorityByReason,
@@ -335,14 +387,21 @@ expect(
   "status priority fixture must derive default_next_step.status from decisive action",
 );
 expect(statusPriorityFixture.priority === 20, "status priority fixture must expose decisive priority");
+expectProductionSignalMatchesFixture({
+  expected: statusPriorityFixture,
+  reasons: statusPriorityFixtureReasons,
+  surface: "status",
+  label: "status priority fixture",
+});
 
+const releasePriorityFixtureReasons = [
+  "schema_budget_violated",
+  "runner_contract_coverage_missing",
+  "runtime_binary_missing",
+  "diagnostics_self_test_failed",
+] as const;
 const releasePriorityFixture = resolveFixtureSignal({
-  reasons: [
-    "schema_budget_violated",
-    "runner_contract_coverage_missing",
-    "runtime_binary_missing",
-    "diagnostics_self_test_failed",
-  ],
+  reasons: releasePriorityFixtureReasons,
   surface: "release",
   actionByReason: schemaActionByReason,
   reasonByReason: schemaReasonPriorityByReason,
@@ -365,6 +424,32 @@ expect(
   "release priority fixture must derive default_next_step.release from decisive action",
 );
 expect(releasePriorityFixture.priority === 20, "release priority fixture must expose decisive priority");
+expectProductionSignalMatchesFixture({
+  expected: releasePriorityFixture,
+  reasons: releasePriorityFixtureReasons,
+  surface: "release",
+  label: "release priority fixture",
+});
+expectThrowsIncludes(
+  () => {
+    resolveRuntimeToolQualitySignalFromRegistry({
+      actionReasons: ["unknown_runtime_tool_quality_reason"],
+      surface: "status",
+    });
+  },
+  "runtime_tool_quality_registry_reason_unmapped:unknown_runtime_tool_quality_reason",
+  "production resolver must fail fast for unknown action reasons",
+);
+expectThrowsIncludes(
+  () => {
+    resolveRuntimeToolQualitySignalFromRegistry({
+      actionReasons: ["runtime_health_failed"],
+      surface: "release",
+    });
+  },
+  "runtime_tool_quality_registry_reason_surface_unmapped:runtime_health_failed:release",
+  "production resolver must fail fast for wrong-surface action reasons",
+);
 
 const releaseQualityRequiredFragments = [
   "const runtimeToolQualitySchemaVersion = 1",
