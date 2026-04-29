@@ -57,6 +57,10 @@ const runtimeDescribeContracts = [
     id: "runtime-tool-governance",
     path: "gateway/src/extensions/contracts/runtime-tool-governance-contract.ts",
   },
+  {
+    id: "runtime-tool-surface-execution",
+    path: "gateway/src/extensions/contracts/runtime-tool-surface-execution-contract.ts",
+  },
 ];
 
 function parseArgs(argv) {

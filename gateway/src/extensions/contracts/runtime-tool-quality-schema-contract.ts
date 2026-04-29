@@ -327,8 +327,10 @@ expect(
     && schemaReleaseDiagnosticFields.includes("runtime_tool_order_mismatch")
     && schemaReleaseDiagnosticFields.includes("runtime_default_order_mismatch")
     && schemaReleaseDiagnosticFields.includes("runtime_schema_profile_summary")
-    && schemaReleaseDiagnosticFields.includes("runtime_schema_budget_violation_details"),
-  "schema release diagnostic fields must include manifest diff evidence",
+    && schemaReleaseDiagnosticFields.includes("runtime_schema_budget_violation_details")
+    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_smoke_passed")
+    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_schema_projection_checks"),
+  "schema release diagnostic fields must include manifest diff, schema budget, and surface execution evidence",
 );
 expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "schema action families must be unique");
 expect(new Set(schemaActionRequiredIds).size === schemaActionRequiredIds.length, "schema action_required ids must be unique");
@@ -505,6 +507,9 @@ const releaseQualityModuleRequiredFragments = [
   "runtime_default_order_mismatch:",
   "runtime_schema_profile_summary: recordArray(",
   "runtime_schema_budget_violation_details: recordArray(",
+  "runtime_surface_execution_smoke_passed:",
+  "runtime_surface_execution_profiles_smoked:",
+  "runtime_surface_execution_schema_projection_checks:",
   "action_family: actionSignal?.actionFamily ?? \"none\"",
   "action_reason: actionSignal?.reason ?? null",
   "action_required: actionSignal?.actionRequired ?? null",
@@ -725,6 +730,12 @@ process.stdout.write(JSON.stringify({
     "runtime_schema_profile_summary",
     "runtime_schema_budget_violation_profiles",
     "runtime_schema_budget_violation_details",
+    "runtime_surface_execution_smoke_passed",
+    "runtime_surface_execution_profiles_smoked",
+    "runtime_surface_execution_allowed_workflow_successes",
+    "runtime_surface_execution_hidden_tool_rejections",
+    "runtime_surface_execution_hidden_arg_rejections",
+    "runtime_surface_execution_schema_projection_checks",
     "action_family",
     "action_reason",
     "action_required",

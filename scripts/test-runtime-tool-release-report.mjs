@@ -306,6 +306,24 @@ if (!successQuality || typeof successQuality !== "object") {
   if (!Array.isArray(successQuality.runtime_schema_budget_violation_details) || successQuality.runtime_schema_budget_violation_details.length !== 0) {
     successFailures.push("success runtime_tool_quality.runtime_schema_budget_violation_details must be empty array");
   }
+  if (successQuality.runtime_surface_execution_smoke_passed !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_smoke_passed must be true");
+  }
+  if (!Array.isArray(successQuality.runtime_surface_execution_profiles_smoked) || successQuality.runtime_surface_execution_profiles_smoked.length !== 6) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_profiles_smoked must cover 6 profiles");
+  }
+  if (successQuality.runtime_surface_execution_allowed_workflow_successes !== 2) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_allowed_workflow_successes must be 2");
+  }
+  if (successQuality.runtime_surface_execution_hidden_tool_rejections !== 1) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_hidden_tool_rejections must be 1");
+  }
+  if (successQuality.runtime_surface_execution_hidden_arg_rejections !== 3) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_hidden_arg_rejections must be 3");
+  }
+  if (!Number.isFinite(successQuality.runtime_surface_execution_schema_projection_checks) || successQuality.runtime_surface_execution_schema_projection_checks < 20) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_schema_projection_checks must be >= 20");
+  }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
   }
@@ -378,6 +396,12 @@ if (!Array.isArray(successDescribe?.runtime_schema_profile_summary) || successDe
 }
 if (!Array.isArray(successDescribe?.runtime_schema_budget_violation_details) || successDescribe.runtime_schema_budget_violation_details.length !== 0) {
   successFailures.push("success runtime_tool_describe.runtime_schema_budget_violation_details must be empty array");
+}
+if (successDescribe?.runtime_surface_execution_smoke_passed !== true) {
+  successFailures.push("success runtime_tool_describe.runtime_surface_execution_smoke_passed must be true");
+}
+if (!Array.isArray(successDescribe?.runtime_surface_execution_profiles_smoked) || successDescribe.runtime_surface_execution_profiles_smoked.length !== 6) {
+  successFailures.push("success runtime_tool_describe.runtime_surface_execution_profiles_smoked must cover 6 profiles");
 }
 if (successDescribe?.runtime_tool_count !== 14) {
   successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");

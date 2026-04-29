@@ -158,6 +158,7 @@ export function readRuntimeToolDescribeData(runtimeToolDescribeReportPath) {
       report: null,
       governance_payload: null,
       ownership_payload: null,
+      surface_execution_payload: null,
       report_parse_error: null,
     };
   }
@@ -173,6 +174,7 @@ export function readRuntimeToolDescribeData(runtimeToolDescribeReportPath) {
       report,
       governance_payload: resultPayload("runtime-tool-governance"),
       ownership_payload: resultPayload("runtime-tool-suite-ownership"),
+      surface_execution_payload: resultPayload("runtime-tool-surface-execution"),
       report_parse_error: null,
     };
   } catch (error) {
@@ -180,6 +182,7 @@ export function readRuntimeToolDescribeData(runtimeToolDescribeReportPath) {
       report: null,
       governance_payload: null,
       ownership_payload: null,
+      surface_execution_payload: null,
       report_parse_error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -198,6 +201,7 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
   }
   const report = data.report;
   const governancePayload = data.governance_payload;
+  const surfaceExecutionPayload = data.surface_execution_payload;
   return {
     ...summary,
     ok: report.ok === true,
@@ -266,6 +270,27 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
     runtime_schema_budget_violation_details: recordArray(
       governancePayload?.runtime_schema_budget_violation_details,
     ),
+    runtime_surface_execution_smoke_passed:
+      typeof surfaceExecutionPayload?.ok === "boolean" ? surfaceExecutionPayload.ok : null,
+    runtime_surface_execution_profiles_smoked: stringArray(
+      surfaceExecutionPayload?.profiles_smoked,
+    ),
+    runtime_surface_execution_allowed_workflow_successes:
+      Number.isFinite(surfaceExecutionPayload?.allowed_workflow_successes)
+        ? surfaceExecutionPayload.allowed_workflow_successes
+        : null,
+    runtime_surface_execution_hidden_tool_rejections:
+      Number.isFinite(surfaceExecutionPayload?.hidden_tool_rejections)
+        ? surfaceExecutionPayload.hidden_tool_rejections
+        : null,
+    runtime_surface_execution_hidden_arg_rejections:
+      Number.isFinite(surfaceExecutionPayload?.hidden_arg_rejections)
+        ? surfaceExecutionPayload.hidden_arg_rejections
+        : null,
+    runtime_surface_execution_schema_projection_checks:
+      Number.isFinite(surfaceExecutionPayload?.schema_projection_checks)
+        ? surfaceExecutionPayload.schema_projection_checks
+        : null,
     gateway_only_recovery_actions: stringArray(governancePayload?.gateway_only_recovery_actions),
   };
 }
@@ -410,6 +435,29 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
     runtime_schema_budget_violation_details: recordArray(
       describeSummary.runtime_schema_budget_violation_details,
     ),
+    runtime_surface_execution_smoke_passed:
+      typeof describeSummary.runtime_surface_execution_smoke_passed === "boolean"
+        ? describeSummary.runtime_surface_execution_smoke_passed
+        : null,
+    runtime_surface_execution_profiles_smoked: stringArray(
+      describeSummary.runtime_surface_execution_profiles_smoked,
+    ),
+    runtime_surface_execution_allowed_workflow_successes:
+      Number.isFinite(describeSummary.runtime_surface_execution_allowed_workflow_successes)
+        ? describeSummary.runtime_surface_execution_allowed_workflow_successes
+        : null,
+    runtime_surface_execution_hidden_tool_rejections:
+      Number.isFinite(describeSummary.runtime_surface_execution_hidden_tool_rejections)
+        ? describeSummary.runtime_surface_execution_hidden_tool_rejections
+        : null,
+    runtime_surface_execution_hidden_arg_rejections:
+      Number.isFinite(describeSummary.runtime_surface_execution_hidden_arg_rejections)
+        ? describeSummary.runtime_surface_execution_hidden_arg_rejections
+        : null,
+    runtime_surface_execution_schema_projection_checks:
+      Number.isFinite(describeSummary.runtime_surface_execution_schema_projection_checks)
+        ? describeSummary.runtime_surface_execution_schema_projection_checks
+        : null,
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions
       : [],

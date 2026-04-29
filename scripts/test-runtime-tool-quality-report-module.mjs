@@ -277,6 +277,17 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
       id: "runtime-tool-suite-ownership",
       output: JSON.stringify(ownershipPayload),
     },
+    {
+      id: "runtime-tool-surface-execution",
+      output: JSON.stringify({
+        ok: true,
+        profiles_smoked: ["browser", "coding", "context", "full_debug", "mcp", "minimal"],
+        allowed_workflow_successes: 2,
+        hidden_tool_rejections: 1,
+        hidden_arg_rejections: 3,
+        schema_projection_checks: 24,
+      }),
+    },
   ],
 });
 const describeData = readRuntimeToolDescribeData(describeReportPath);
@@ -307,6 +318,21 @@ expectEqual(
   "governance payload schema profile summary must be preserved",
 );
 expectEqual(describeSummary.gateway_only_recovery_actions.length, 1, "governance recovery actions must be preserved");
+expectEqual(
+  describeSummary.runtime_surface_execution_smoke_passed,
+  true,
+  "surface execution smoke pass flag must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_surface_execution_profiles_smoked.length,
+  6,
+  "surface execution smoke must preserve smoked profile count",
+);
+expectEqual(
+  describeSummary.runtime_surface_execution_hidden_arg_rejections,
+  3,
+  "surface execution smoke hidden-arg rejection count must be preserved",
+);
 
 const releaseReport = buildCoreReleaseReport({
   exitCode: 0,
@@ -351,6 +377,16 @@ expectEqual(
   true,
   "runtime_tool_quality must expose per-profile schema budget summary",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_surface_execution_smoke_passed,
+  true,
+  "runtime_tool_quality must expose surface execution smoke status",
+);
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_surface_execution_schema_projection_checks,
+  24,
+  "runtime_tool_quality must expose surface execution schema check count",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -374,6 +410,7 @@ process.stdout.write(JSON.stringify({
     "runtime_tool_order_mismatch",
     "runtime_schema_profile_summary",
     "runtime_schema_budget_violation_details",
+    "runtime_surface_execution_smoke_passed",
   ],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,

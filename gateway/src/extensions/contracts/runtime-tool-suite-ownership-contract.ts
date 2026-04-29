@@ -109,6 +109,12 @@ expect(
   "release gate runtime_tool_quality must expose status reasons",
 );
 expect(
+  releaseQualityModule.includes("surface_execution_payload")
+    && releaseQualityModule.includes("runtime_surface_execution_smoke_passed")
+    && releaseQualityModule.includes("runtime_surface_execution_schema_projection_checks"),
+  "release gate runtime_tool_quality must expose real surface execution smoke evidence",
+);
+expect(
   statusCommand.includes("runtime_tools_quality")
     && statusCommand.includes("buildRuntimeToolQualitySummary(")
     && statusCommand.includes("runtime_tool_quality: status="),
@@ -151,6 +157,12 @@ expect(
   "runtime-tool runner JSON must expose diagnostic_summary",
 );
 expect(
+  runtimeToolRunner.includes("runtime-tool-surface-execution")
+    && runtimeToolRunner.includes("runtime-tool-surface-execution-contract.ts")
+    && runtimeToolRunner.includes("runtimeDescribeContracts"),
+  "runtime-tool runner must execute the real surface execution smoke in describe/release mode",
+);
+expect(
   runtimeToolSuiteScript.includes("scripts/test-runtime-tool-contracts-json-schema.mjs"),
   "check:gateway:runtime-tools must run the runtime-tool JSON schema contract",
 );
@@ -188,8 +200,9 @@ expect(
     && qualityReportModuleTest.includes("runtime_tool_quality_registry_invalid_json")
     && qualityReportModuleTest.includes("runtime_tool_quality_registry_reason_surface_unmapped")
     && qualityReportModuleTest.includes("schema_budget_cases")
+    && qualityReportModuleTest.includes("runtime_surface_execution_smoke_passed")
     && qualityReportModuleTest.includes("next_step_precedence"),
-  "runtime-tool quality report module test must directly cover registry guards, signal priority, schema budget matrix, and next-step precedence",
+  "runtime-tool quality report module test must directly cover registry guards, signal priority, schema budget matrix, surface execution evidence, and next-step precedence",
 );
 expect(
   qualityRegistryParityTest.includes("resolveRuntimeToolQualitySignalFromRegistry")
@@ -244,8 +257,9 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality")
     && releaseReportTest.includes("failure_reasons")
     && releaseReportTest.includes("successQuality")
+    && releaseReportTest.includes("runtime_surface_execution_smoke_passed")
     && releaseReportTest.includes("diagnostics_self_test"),
-  "release-report regression test must assert diagnostics, runtime binary, quality summary reasons, and self-test fields",
+  "release-report regression test must assert diagnostics, runtime binary, surface execution evidence, quality summary reasons, and self-test fields",
 );
 expect(
   startSmokeContract.includes("status_has_runtime_tools_quality")
@@ -330,6 +344,7 @@ process.stdout.write(JSON.stringify({
   release_gate_runner_schema_version: true,
   release_gate_diagnostic_summary: true,
   release_gate_quality_summary: true,
+  release_gate_surface_execution_smoke_summary: true,
   status_quality_summary: true,
   release_gate_invalid_report_fail_reason: true,
   runner_failure_diagnostics: true,
@@ -337,6 +352,7 @@ process.stdout.write(JSON.stringify({
   runner_diagnostics_self_test: true,
   runner_schema_version: true,
   runner_diagnostic_summary: true,
+  runner_surface_execution_describe_contract: true,
   surface_contract_tmp_isolated: true,
   all_contract_tmp_fixtures_isolated: true,
   runner_covers_all_runtime_tool_contracts: true,

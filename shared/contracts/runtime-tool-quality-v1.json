@@ -37,6 +37,12 @@
     "runtime_schema_profile_summary",
     "runtime_schema_budget_violation_profiles",
     "runtime_schema_budget_violation_details",
+    "runtime_surface_execution_smoke_passed",
+    "runtime_surface_execution_profiles_smoked",
+    "runtime_surface_execution_allowed_workflow_successes",
+    "runtime_surface_execution_hidden_tool_rejections",
+    "runtime_surface_execution_hidden_arg_rejections",
+    "runtime_surface_execution_schema_projection_checks",
     "gateway_only_recovery_actions"
   ],
   "action_families": [
