@@ -144,6 +144,79 @@ function registryActions(value: unknown): {
   });
 }
 
+function actionRegistryByReason(
+  actions: readonly {
+    action: string;
+    reasons: readonly string[];
+    defaultNextStep: Partial<Record<RuntimeToolQualitySurface, string>>;
+  }[],
+): ReadonlyMap<string, {
+  action: string;
+  defaultNextStep: Partial<Record<RuntimeToolQualitySurface, string>>;
+}> {
+  const byReason = new Map<string, {
+    action: string;
+    defaultNextStep: Partial<Record<RuntimeToolQualitySurface, string>>;
+  }>();
+  for (const action of actions) {
+    for (const reason of action.reasons) {
+      byReason.set(reason, {
+        action: action.action,
+        defaultNextStep: action.defaultNextStep,
+      });
+    }
+  }
+  return byReason;
+}
+
+function resolveFixtureSignal(input: {
+  reasons: readonly string[];
+  surface: RuntimeToolQualitySurface;
+  actionByReason: ReadonlyMap<string, {
+    action: string;
+    defaultNextStep: Partial<Record<RuntimeToolQualitySurface, string>>;
+  }>;
+  reasonByReason: ReadonlyMap<string, {
+    actionFamily: string;
+    priorityBySurface: Record<RuntimeToolQualitySurface, number>;
+  }>;
+}): {
+  actionReason: string;
+  actionFamily: string;
+  actionRequired: string;
+  defaultNextStep: string | null;
+  priority: number;
+} | null {
+  const candidates: {
+    actionReason: string;
+    actionFamily: string;
+    actionRequired: string;
+    defaultNextStep: string | null;
+    priority: number;
+  }[] = [];
+  for (const reason of input.reasons) {
+    const reasonEntry = input.reasonByReason.get(reason);
+    expect(reasonEntry !== undefined, `priority fixture reason must exist: ${reason}`);
+    const priority = reasonEntry.priorityBySurface[input.surface];
+    expect(
+      typeof priority === "number" && Number.isInteger(priority) && priority > 0,
+      `priority fixture reason must define priority_by_surface.${input.surface}: ${reason}`,
+    );
+    const actionEntry = input.actionByReason.get(reason);
+    expect(actionEntry !== undefined, `priority fixture reason must map to action_required: ${reason}`);
+    candidates.push({
+      actionReason: reason,
+      actionFamily: reasonEntry.actionFamily,
+      actionRequired: actionEntry.action,
+      defaultNextStep: actionEntry.defaultNextStep[input.surface] ?? null,
+      priority,
+    });
+  }
+  return candidates.sort((left, right) => (
+    left.priority - right.priority || left.actionReason.localeCompare(right.actionReason)
+  ))[0] ?? null;
+}
+
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
 const statusQualityRegistry = readRepoFile(
@@ -179,6 +252,10 @@ const schemaReasonSurfaceByReason = new Map<string, RuntimeToolQualitySurface[]>
   [...schemaFailureReasonEntries, ...schemaWarningReasonEntries].map((entry) => [entry.reason, entry.surfaces]),
 );
 const schemaReasonPriorityEntries = [...schemaFailureReasonEntries, ...schemaWarningReasonEntries];
+const schemaActionByReason = actionRegistryByReason(schemaActionRequired);
+const schemaReasonPriorityByReason = new Map(
+  schemaReasonPriorityEntries.map((entry) => [entry.reason, entry]),
+);
 
 expect(JSON.stringify(schemaStatuses) === JSON.stringify(["ok", "warn", "fail"]), "schema status enum must be stable");
 expect(
@@ -228,6 +305,66 @@ for (const reason of schemaFailureReasons) {
 for (const reason of schemaWarningReasons.filter((reason) => reason !== "recovery_health_good")) {
   expect(schemaActionRequiredReasonSet.has(reason), `warning reason must map to action_required: ${reason}`);
 }
+
+const statusPriorityFixture = resolveFixtureSignal({
+  reasons: [
+    "schema_projection_drift_not_checked",
+    "recovery_health_risk",
+    "runtime_health_failed",
+    "runtime_tools_describe_fallback",
+  ],
+  surface: "status",
+  actionByReason: schemaActionByReason,
+  reasonByReason: schemaReasonPriorityByReason,
+});
+expect(statusPriorityFixture !== null, "status priority fixture must resolve a decisive signal");
+expect(
+  statusPriorityFixture.actionReason === "runtime_health_failed",
+  "status priority fixture must choose lowest priority_by_surface.status reason",
+);
+expect(
+  statusPriorityFixture.actionFamily === "runtime_environment",
+  "status priority fixture must preserve action_family from decisive reason",
+);
+expect(
+  statusPriorityFixture.actionRequired === "check_runtime_health",
+  "status priority fixture must derive action_required from decisive reason",
+);
+expect(
+  String(statusPriorityFixture.defaultNextStep ?? "").includes("Inspect runtime health failure"),
+  "status priority fixture must derive default_next_step.status from decisive action",
+);
+expect(statusPriorityFixture.priority === 20, "status priority fixture must expose decisive priority");
+
+const releasePriorityFixture = resolveFixtureSignal({
+  reasons: [
+    "schema_budget_violated",
+    "runner_contract_coverage_missing",
+    "runtime_binary_missing",
+    "diagnostics_self_test_failed",
+  ],
+  surface: "release",
+  actionByReason: schemaActionByReason,
+  reasonByReason: schemaReasonPriorityByReason,
+});
+expect(releasePriorityFixture !== null, "release priority fixture must resolve a decisive signal");
+expect(
+  releasePriorityFixture.actionReason === "diagnostics_self_test_failed",
+  "release priority fixture must choose lowest priority_by_surface.release reason",
+);
+expect(
+  releasePriorityFixture.actionFamily === "diagnostics",
+  "release priority fixture must preserve action_family from decisive reason",
+);
+expect(
+  releasePriorityFixture.actionRequired === "fix_runtime_tool_runner_diagnostics",
+  "release priority fixture must derive action_required from decisive reason",
+);
+expect(
+  String(releasePriorityFixture.defaultNextStep ?? "").includes("Fix runtime-tool diagnostics self-test"),
+  "release priority fixture must derive default_next_step.release from decisive action",
+);
+expect(releasePriorityFixture.priority === 20, "release priority fixture must expose decisive priority");
 
 const releaseQualityRequiredFragments = [
   "const runtimeToolQualitySchemaVersion = 1",
@@ -425,6 +562,8 @@ process.stdout.write(JSON.stringify({
   warning_reason_count: schemaWarningReasons.length,
   action_family_count: schemaActionFamilies.length,
   action_required_count: schemaActionRequiredIds.length,
+  priority_fixture_status_action: statusPriorityFixture.actionReason,
+  priority_fixture_release_action: releasePriorityFixture.actionReason,
   release_fields: [
     "quality_schema_version",
     "status",
