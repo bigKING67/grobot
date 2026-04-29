@@ -230,6 +230,39 @@ const askUserMenuInput: TerminalSelectMenuInput = {
   ],
 };
 
+const planApprovalMenuInput: TerminalSelectMenuInput = {
+  title: "Ready to code?",
+  hint: "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
+  variant: "plan_approval",
+  planApprovalMeta: {
+    agentName: "Grobot",
+    editorName: "vim",
+    planPath: ".grobot/plans/demo/001-contract-plan.md",
+    planContent: [
+      "# Contract Plan",
+      "",
+      "## Goal",
+      "",
+      "把 plan mode approval surface 对齐参考实现。",
+      "",
+      "## Validation",
+      "",
+      "- npm run check:gateway:ts；预期通过。",
+    ].join("\n"),
+  },
+  items: [
+    {
+      id: "approve",
+      label: "Yes, Implement the plan.",
+    },
+    {
+      id: "keep_planning",
+      label: "No, keep planning",
+      description: "Tell Grobot what to change before coding.",
+    },
+  ],
+};
+
 const longModelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
@@ -408,6 +441,9 @@ const modelPickerInteractive = interactiveRenderer.renderSelectMenu(modelPickerI
 const modelPickerPlain = plainRenderer.renderSelectMenu(modelPickerInput, 0);
 const askUserMenuInteractive = interactiveRenderer.renderSelectMenu(askUserMenuInput, 0);
 const askUserMenuPlain = plainRenderer.renderSelectMenu(askUserMenuInput, 0);
+const planApprovalMenuInteractive = interactiveRenderer.renderSelectMenu(planApprovalMenuInput, 0);
+const planApprovalMenuPlain = plainRenderer.renderSelectMenu(planApprovalMenuInput, 0);
+const planApprovalKeepPlanningPlain = plainRenderer.renderSelectMenu(planApprovalMenuInput, 1);
 const viewportMenuPlain = plainRenderer.renderSelectMenu(viewportMenuInput, 1);
 const directLargeMenuPlain = plainRenderer.renderSelectMenu(directLargeMenuInput, 0);
 const directLargeModelPickerPlain = plainRenderer.renderSelectMenu(directLargeModelPickerInput, 0);
@@ -521,6 +557,25 @@ const payload = {
     stripAnsi(askUserMenuPlain).includes("Run checks before continuing"),
   ask_user_menu_uses_claude_pointer:
     stripAnsi(askUserMenuPlain).includes("❯"),
+  plan_approval_menu_has_ready_title:
+    stripAnsi(planApprovalMenuPlain).includes("Ready to code?"),
+  plan_approval_menu_embeds_plan_markdown:
+    stripAnsi(planApprovalMenuPlain).includes("# Contract Plan")
+    && stripAnsi(planApprovalMenuPlain).includes("## Validation"),
+  plan_approval_menu_has_reference_prompt:
+    stripAnsi(planApprovalMenuPlain).includes("Grobot has written up a plan and is ready to execute. Would you like to proceed?"),
+  plan_approval_menu_has_yes_no_options:
+    stripAnsi(planApprovalMenuPlain).includes("❯ Yes, Implement the plan.")
+    && stripAnsi(planApprovalMenuPlain).includes("No, keep planning"),
+  plan_approval_menu_has_ctrl_g_edit_hint:
+    stripAnsi(planApprovalMenuPlain).includes("ctrl-g to edit in vim")
+    && stripAnsi(planApprovalMenuPlain).includes(".grobot/plans/demo/001-contract-plan.md"),
+  plan_approval_menu_shows_keep_planning_feedback_hint:
+    stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change before coding."),
+  plan_approval_menu_uses_plan_mode_color:
+    planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
+  plan_approval_menu_has_no_default_thin_pointer:
+    !stripAnsi(planApprovalMenuPlain).includes("›"),
   model_picker_direct_render_uses_model_visible_count:
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),

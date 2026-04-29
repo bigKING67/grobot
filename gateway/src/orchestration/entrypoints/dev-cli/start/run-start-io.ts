@@ -162,6 +162,7 @@ export type MenuInputAction =
   | { kind: "page_up" }
   | { kind: "page_down" }
   | { kind: "enter" }
+  | { kind: "edit_plan" }
   | { kind: "cancel" }
   | { kind: "ignore" }
   | { kind: "select_index"; index: number };
@@ -175,6 +176,7 @@ export interface TerminalAskUserQuestionnairePanelInput {
   initialState?: AskUserQuestionnaireState;
   terminalColumns?: number;
   planMode?: boolean;
+  planFilePath?: string;
 }
 
 export type TerminalAskUserQuestionnairePanelResult =
@@ -2306,6 +2308,8 @@ function normalizeMenuVisibleOptionCount(input: {
     ? MODEL_PICKER_VISIBLE_OPTION_COUNT
     : input.variant === "ask_user"
       ? 6
+      : input.variant === "plan_approval"
+        ? 2
       : DEFAULT_SELECT_VISIBLE_OPTION_COUNT;
   const requested =
     typeof input.visibleOptionCount === "number" && Number.isFinite(input.visibleOptionCount)
@@ -2464,6 +2468,9 @@ export function decodeMenuInput(rawInput: string, itemsLength: number): MenuInpu
     }
     if (firstChar === "\r" || firstChar === "\n" || firstChar === " ") {
       return { kind: "enter" };
+    }
+    if (firstChar === "\u0007") {
+      return { kind: "edit_plan" };
     }
     if (firstChar === "k" || firstChar === "\u0010") {
       return { kind: "up" };
@@ -2783,6 +2790,7 @@ export async function runAskUserQuestionnairePanel(
         activeReviewIndex: reviewIndex,
         textInputValue,
         planMode: input.planMode,
+        planFilePath: input.planFilePath,
       }).split("\n"),
     );
   };
@@ -3681,6 +3689,16 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
           return;
         }
         selectAndFinish(activeIndex);
+        return;
+      }
+      if (action.kind === "edit_plan") {
+        if (input.variant === "plan_approval") {
+          const sourceIndex = resolveActiveSourceIndex() ?? 0;
+          const item = input.items[sourceIndex] ?? input.items[0];
+          if (item) {
+            finish({ kind: "edit_plan", item, index: sourceIndex });
+          }
+        }
         return;
       }
       if (action.kind === "cancel") {

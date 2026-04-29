@@ -73,12 +73,18 @@ export interface SessionInteractiveHandlers {
   writeHandoff(): void;
   isPlanMode(): boolean;
   showPlanStatus(): Promise<void>;
-  enterPlan(goal: string): Promise<void>;
+  enterPlan(
+    goal: string,
+    withInputPaused?: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
   applyPlan(extra: string): Promise<void>;
   cancelPlan(): Promise<void>;
   requestPlanInterrupt(source: "command"): Promise<void>;
   requestRuntimeInterrupt(source: "command"): Promise<void>;
-  runPlanTurn(userInput: string): Promise<void>;
+  runPlanTurn(
+    userInput: string,
+    withInputPaused?: SessionInteractiveControls["withInputPaused"],
+  ): Promise<void>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openPlanInEditor(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -230,7 +236,7 @@ export async function dispatchSessionInteractiveInput(
     if (isNaturalPlanExecutionIntent(userInput)) {
       await handlers.applyPlan(userInput);
     } else {
-      await handlers.runPlanTurn(userInput);
+      await handlers.runPlanTurn(userInput, controls.withInputPaused);
     }
     return "continue";
   }

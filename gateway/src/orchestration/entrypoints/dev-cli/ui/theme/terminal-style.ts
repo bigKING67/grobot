@@ -5,6 +5,7 @@ export const TERMINAL_ANSI = {
   accent: "\x1b[38;2;202;124;94m",
   info: "\x1b[38;2;176;150;134m",
   remember: "\x1b[38;2;174;141;123m",
+  planMode: "\x1b[38;2;72;150;140m",
   muted: "\x1b[90m",
 } as const;
 
@@ -38,6 +39,9 @@ export const terminalStyle = {
   },
   remember(value: string): string {
     return wrap(TERMINAL_ANSI.remember, value);
+  },
+  planMode(value: string): string {
+    return wrap(TERMINAL_ANSI.planMode, value);
   },
   muted(value: string): string {
     return wrap(TERMINAL_ANSI.muted, value);

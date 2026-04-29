@@ -1,7 +1,14 @@
 import { type CliRenderMode } from "../kernel/render-mode";
 import { terminalStyle } from "./terminal-style";
 
-export type CliThemeToken = "accent" | "brand" | "muted" | "info" | "remember" | "title";
+export type CliThemeToken =
+  | "accent"
+  | "brand"
+  | "muted"
+  | "info"
+  | "remember"
+  | "planMode"
+  | "title";
 
 export interface CliTheme {
   bold(value: string): string;
@@ -31,6 +38,9 @@ const ansiTheme: CliTheme = {
     }
     if (token === "remember") {
       return terminalStyle.remember(value);
+    }
+    if (token === "planMode") {
+      return terminalStyle.planMode(value);
     }
     if (token === "muted") {
       return terminalStyle.muted(value);

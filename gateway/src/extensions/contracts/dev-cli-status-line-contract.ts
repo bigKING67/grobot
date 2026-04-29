@@ -166,10 +166,10 @@ const payload = {
   tokens_segment_toggle_effective:
     segmentToggleStatusLine.includes("5K window") === false
     && segmentToggleStatusLine.includes("5k window") === false,
-  plan_mode_badge_visible: planModeStatusLine.includes("Plan mode"),
-  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("Plan mode"),
+  plan_mode_badge_visible: planModeStatusLine.includes("plan mode on"),
+  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("plan mode on"),
   plan_mode_badge_kept_when_status_disabled:
-    disabledStatusPlanModePrompt.includes("Plan mode"),
+    disabledStatusPlanModePrompt.includes("plan mode on"),
   plan_mode_narrow_line_within_width:
     measureDisplayWidth(narrowPlanModeLine) <= 48,
 };

@@ -40,7 +40,8 @@ const ANSI_CCLINE_PROJECT = "\u001B[92m";
 const ANSI_CCLINE_CONTEXT = "\u001B[95m";
 const ANSI_CCLINE_TOKENS = "\u001B[93m";
 const ANSI_CCLINE_SESSION = "\u001B[94m";
-const ANSI_PLAN_MODE = "\u001B[95m";
+const ANSI_PLAN_MODE = "\u001B[38;2;72;150;140m";
+const PLAN_MODE_SYMBOL = "⏸";
 export type StatusLineLayoutMode = "adaptive" | "full" | "compact";
 export type StatusLineTheme = "plain" | "nerd_font" | "ccline";
 export type StatusLineSegmentId =
@@ -710,11 +711,11 @@ function resolvePlanModeBadge(input: {
   if (!input.prompt.planMode) {
     return undefined;
   }
-  const label = compactSpaces(input.prompt.planModeLabel ?? "Plan mode");
+  const label = compactSpaces(input.prompt.planModeLabel ?? "plan mode on");
   if (!label) {
     return undefined;
   }
-  return `${ANSI_PLAN_MODE}${label}${ANSI_RESET}`;
+  return `${ANSI_PLAN_MODE}${PLAN_MODE_SYMBOL} ${label}${ANSI_RESET}`;
 }
 
 function appendPlanModeBadge(input: {

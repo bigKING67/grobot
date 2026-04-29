@@ -159,6 +159,9 @@ function joinFooterSummary(input: {
 }
 
 function shouldRenderSecondaryStatus(input: BottomPanePromptInput): boolean {
+  if (input.planMode) {
+    return true;
+  }
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   return terminalColumns <= 0 || terminalColumns >= FOOTER_SECONDARY_STATUS_MIN_COLUMNS;
 }
@@ -327,6 +330,9 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
     pushLine(pendingAskLine);
     pushLine(parts.warningLine);
   } else if (mode === "pending") {
+    if (renderSecondaryStatus) {
+      pushLine(BOTTOM_PANE_STYLE.dimLine(parts.statusLine));
+    }
     pushLine(pendingAskLine ? BOTTOM_PANE_STYLE.dimLine(pendingAskLine) : undefined);
     pushLine(parts.warningLine);
   } else {

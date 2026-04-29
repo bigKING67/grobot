@@ -1,6 +1,7 @@
 import { type SessionStoreRuntime } from "../services/session-store";
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { relative as relativePath, resolve as resolvePath } from "node:path";
 import {
   type InteractiveDiagnosticsMode,
   type RunStartInteractiveModeInput,
@@ -137,6 +138,19 @@ function normalizeStatusSegmentId(raw: string): StatusLineSegmentId | undefined 
     return normalized;
   }
   return undefined;
+}
+
+function formatPlanPathForPanel(workDir: string, planPath: string | undefined): string | undefined {
+  const rawPath = planPath?.trim();
+  if (!rawPath) {
+    return undefined;
+  }
+  const resolvedPlanPath = resolvePath(rawPath);
+  const relativePlanPath = relativePath(workDir, resolvedPlanPath);
+  if (relativePlanPath && !relativePlanPath.startsWith("..") && !relativePlanPath.startsWith("/")) {
+    return relativePlanPath;
+  }
+  return rawPath;
 }
 
 function formatStatusLineCurrentSnapshot(config: StatusLineConfig): string {
@@ -427,21 +441,26 @@ export function createRunStartInteractiveModeInput(
 
   const openPlanInEditor = async (
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
+    options?: { suppressOpenPlanEditorNotice?: boolean },
   ): Promise<void> => {
     const planPath = input.planMode.getActivePlanPath();
     if (!planPath) {
-      input.output.writeStdout("[plan] no active plan file. use /plan <goal> first.\n\n");
+      input.output.writeStdout("No active plan file. Use /plan <goal> first.\n\n");
       return;
     }
+    const displayPath = formatPlanPathForPanel(input.workDir, planPath) ?? planPath;
     const openOperation = async (): Promise<void> => {
       const launched = launchPlanFileInEditor(planPath);
       if (!launched.ok) {
         input.output.writeStdout(
-          `[plan] failed to open active plan file: ${compactSingleLine(launched.detail, 200)}\n\n`,
+          `Failed to open plan in editor: ${compactSingleLine(launched.detail, 200)}\n\n`,
         );
         return;
       }
-      input.output.writeStdout(`[plan] opened active plan file: ${planPath}\n\n`);
+      if (options?.suppressOpenPlanEditorNotice) {
+        return;
+      }
+      input.output.writeStdout(`Opened plan in editor: ${displayPath}\n\n`);
     };
     if (!process.stdin.isTTY) {
       await openOperation();
@@ -857,6 +876,7 @@ export function createRunStartInteractiveModeInput(
       runAskUserQuestionnairePanel({
         queue: effectiveQueue,
         planMode: input.planMode.isPlanMode(),
+        planFilePath: formatPlanPathForPanel(input.workDir, input.planMode.getActivePlanPath()),
       }),
     );
     if (result.kind !== "submitted") {

@@ -100,6 +100,7 @@ const initialRendered = renderAskUserPanelScreen({
   view: initialView,
   terminalColumns: 88,
   planMode: true,
+  planFilePath: ".grobot/plans/session/ACTIVE.md",
 });
 const reviewRendered = renderAskUserPanelScreen({
   view: reviewView,
@@ -140,6 +141,8 @@ const payload = {
   panel_has_codex_like_progress:
     initialPlain.includes("Question 1/2")
     && initialPlain.includes("(2 unanswered)"),
+  panel_plan_mode_shows_planning_path:
+    initialPlain.includes("Planning: .grobot/plans/session/ACTIVE.md"),
   panel_has_claude_like_question_tabs:
     initialPlain.includes("[□ Scope]")
     && initialPlain.includes("□ Risk Review")

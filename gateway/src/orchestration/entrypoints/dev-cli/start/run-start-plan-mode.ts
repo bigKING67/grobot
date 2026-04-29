@@ -43,7 +43,6 @@ import { type RunStartRuntimeState } from "./run-start-runtime-state";
 import { type ChatHistoryMessage } from "./session-history";
 import {
   derivePlanPhaseFromStatus,
-  PLAN_DIRECT_REFINE_ACTION,
   PLAN_EXECUTION_REPLY,
   resolvePlanStatusRecommendation,
   resolvePlanStatusRecommendationCommand,
@@ -96,6 +95,31 @@ function isPlanSlashCommand(message: string): boolean {
   return /^\/plan(?:\s|$)/.test(message);
 }
 
+function normalizePlanReadyApprovalDecision(
+  decision: PlanReadyApprovalDecision | undefined,
+): NormalizedPlanReadyApprovalDecision {
+  if (!decision) {
+    return { action: "unavailable" };
+  }
+  if (typeof decision === "string") {
+    return { action: decision };
+  }
+  if (decision.action === "approve") {
+    return {
+      action: "approve",
+      planContent: decision.planContent,
+    };
+  }
+  if (decision.action === "keep_planning") {
+    return {
+      action: "keep_planning",
+      feedback: decision.feedback,
+      planContent: decision.planContent,
+    };
+  }
+  return { action: "unavailable" };
+}
+
 const PLAN_REVIEW_FAILED_CODE = "PLAN_REVIEW_FAILED";
 const PLAN_REVIEW_BLOCKED_CODE = "PLAN_REVIEW_BLOCKED";
 const PLAN_QUALITY_GUARD_BLOCKED_CODE = "PLAN_QUALITY_GUARD_BLOCKED";
@@ -110,8 +134,39 @@ const PLAN_APPROVAL_FINGERPRINT_CHARS = 12;
 const PLAN_APPROVAL_CARD_MIN_INNER_WIDTH = 44;
 const PLAN_APPROVAL_CARD_MAX_INNER_WIDTH = 76;
 const PLAN_APPROVAL_CARD_MAX_LINES = 4;
+const PLAN_APPROVAL_DIALOG_MIN_WIDTH = 48;
+const PLAN_APPROVAL_DIALOG_MAX_WIDTH = 88;
 const PLAN_STATUS_PATH_MAX_CHARS = 96;
 export type PlanInterruptSource = "command" | "cli_esc";
+
+export interface PlanReadyApprovalRequest {
+  workDir: string;
+  planPath: string;
+  planContent: string;
+}
+
+export type PlanReadyApprovalDecision =
+  | "approve"
+  | "keep_planning"
+  | "unavailable"
+  | {
+    action: "approve";
+    planContent?: string;
+  }
+  | {
+    action: "keep_planning";
+    feedback?: string;
+    planContent?: string;
+  }
+  | {
+    action: "unavailable";
+  };
+
+interface NormalizedPlanReadyApprovalDecision {
+  action: "approve" | "keep_planning" | "unavailable";
+  feedback?: string;
+  planContent?: string;
+}
 
 export interface RunStartPlanTurnOptions {
   writeStdout?: (message: string) => void;
@@ -119,6 +174,10 @@ export interface RunStartPlanTurnOptions {
   skipExecution?: boolean;
   diagnosticsMode?: "compact" | "verbose" | "trace";
   showWorkingNotice?: boolean;
+  suppressOpenPlanEditorNotice?: boolean;
+  requestReadyPlanApproval?: (
+    request: PlanReadyApprovalRequest,
+  ) => Promise<PlanReadyApprovalDecision>;
 }
 
 export interface PlanInterruptResult {
@@ -135,16 +194,47 @@ interface PlanStablePoint {
   planMeta: SessionPlanMeta | undefined;
 }
 
-const PLAN_MODE_WORKFLOW_PROMPT = [
-  "[Plan Mode Workflow]",
-  "Plan mode is active. Do not modify repo files or run mutating commands; read and explore only unless writing the plan artifact is explicitly handled by the plan-mode system.",
-  "First inspect the real code and reference paths needed for the user's request. Do not ask questions that can be answered from the repo.",
-  "When user preference or product tradeoff is required, call ask_user with 1-3 concrete multiple-choice questions. Options must be meaningful; do not add \"Other\" because the client adds it.",
-  "Only emit <proposed_plan> when every section below is concrete: ## Goal, ## Scope In, ## Scope Out, ## Milestones, ## Validation, ## Risk & Rollback.",
-  "Validation must include real commands or explicit manual verification steps plus expected results. Risk & Rollback must name concrete failure modes and executable recovery actions.",
-  "If any section would contain TODO/TBD/待补充/low-risk filler, keep exploring or ask_user before presenting the plan.",
-  "End with exactly one <proposed_plan>...</proposed_plan> block only when the plan is decision-complete. Do not ask \"should I proceed\" in normal text.",
-].join("\n");
+function buildPlanModeWorkflowPrompt(inputValue: {
+  planFilePath?: string;
+}): string {
+  const planFileInfo = inputValue.planFilePath
+    ? `A plan artifact already exists at ${inputValue.planFilePath}. You can read it and make incremental updates by emitting a full <proposed_plan> block; the plan-mode system persists that block to the artifact.`
+    : "No plan artifact is visible yet. The plan-mode system will create one before writing any proposed plan.";
+
+  return [
+    "[Plan Mode Workflow]",
+    "Plan mode is active. The user indicated that they do not want you to execute yet. You MUST NOT make any edits (with the exception of the plan artifact mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.",
+    "",
+    "## Plan File Info:",
+    planFileInfo,
+    "Build the plan incrementally. The plan artifact is the ONLY writable surface during plan mode; everything else must be read-only exploration.",
+    "",
+    "## Iterative Planning Workflow",
+    "You are pair-planning with the user. Explore the code to build context, ask the user questions when you hit decisions you cannot make alone, and write findings into the plan artifact as you go. The plan starts rough and gradually becomes the final implementation plan.",
+    "",
+    "### The Loop",
+    "Repeat this cycle until the plan is complete:",
+    "1. Explore - read real files, routes, contracts, tests, logs, and existing patterns. Actively search for existing functions, utilities, and patterns to reuse. Never ask what you could find out by reading code.",
+    "2. Update the plan artifact - after each important discovery, capture what you learned. When you have a concrete plan, emit exactly one <proposed_plan>...</proposed_plan> block containing the full markdown plan. Do not emit partial plan fragments outside that block.",
+    "3. Ask the user - when requirements, preferences, product tradeoffs, or edge-case priorities are unclear, call ask_user with 1-3 concrete questions. Options must be meaningful; do not add an Other option because the client adds one.",
+    "",
+    "### First Turn",
+    "Start by quickly scanning the key files needed to understand the task scope. Then write a skeleton plan with rough notes and ask the first useful round of questions if user-only decisions remain. Do not explore exhaustively before engaging the user when preferences are required.",
+    "",
+    "### Plan File Structure",
+    "The plan must include concrete sections: ## Goal, ## Scope In, ## Scope Out, ## Milestones, ## Validation, ## Risk & Rollback.",
+    "Include the paths of critical files to modify, existing functions/utilities to reuse with file paths, and only your recommended approach. Keep it concise enough to scan but detailed enough to execute.",
+    "",
+    "### When to Converge",
+    "Only emit <proposed_plan> when it is decision-complete and covers: what to change, which files to modify, which existing code to reuse with file paths, how to verify end-to-end, and how to roll back if needed.",
+    "Validation must include real commands or explicit manual verification steps plus expected results. Risk & Rollback must name concrete failure modes and executable recovery actions.",
+    "If any section would contain TODO/TBD/待补充/low-risk filler, keep exploring or call ask_user before presenting the plan.",
+    "",
+    "### Ending Your Turn",
+    "Your turn should only end by either calling ask_user to gather more information or emitting exactly one final <proposed_plan> block when the plan is ready for approval.",
+    "Important: do NOT ask about plan approval via normal text or ask_user. Do not write phrases like \"Is this plan okay?\", \"Should I proceed?\", \"How does this plan look?\", or \"Any changes before we start?\". The proposed plan block itself requests approval in the UI.",
+  ].join("\n");
+}
 
 export interface RunStartPlanMode {
   isPlanMode(): boolean;
@@ -369,6 +459,106 @@ function buildHumanPlanPreviewLines(input: {
   }
 
   return [...new Set(lines)].slice(0, PLAN_APPROVAL_CARD_MAX_LINES);
+}
+
+function isInternalPlanMetadataLine(line: string): boolean {
+  return /^[-*]\s*(?:session_id|plan_id|seq|status|created_at|updated_at)\s*:/i.test(line.trim());
+}
+
+function stripInternalPlanMetadata(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const kept: string[] = [];
+  let beforeFirstSection = true;
+  let previousWasDropped = false;
+  for (const line of lines) {
+    if (/^##\s+/.test(line.trim())) {
+      beforeFirstSection = false;
+    }
+    if (beforeFirstSection && isInternalPlanMetadataLine(line)) {
+      previousWasDropped = true;
+      continue;
+    }
+    if (previousWasDropped && beforeFirstSection && line.trim().length === 0) {
+      previousWasDropped = false;
+      continue;
+    }
+    previousWasDropped = false;
+    kept.push(line);
+  }
+  return kept.join("\n").trim();
+}
+
+function isUnwrittenPlanSkeleton(content: string): boolean {
+  const normalized = content.trim();
+  return normalized.length === 0 || normalized.includes("__REQUIRED__");
+}
+
+function buildCurrentPlanDisplay(input: {
+  workDir: string;
+  planPath: string;
+  planContent: string;
+}): string {
+  const displayPath = formatHumanPlanFilePath({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
+  const planContent = stripInternalPlanMetadata(input.planContent);
+  if (isUnwrittenPlanSkeleton(input.planContent)) {
+    return [
+      "Already in plan mode. No plan written yet.",
+      displayPath,
+      "",
+    ].join("\n");
+  }
+  return [
+    "Current Plan",
+    displayPath,
+    "",
+    planContent,
+    "",
+    "\"/plan open\" to edit this plan",
+    "",
+  ].join("\n");
+}
+
+function buildPlanApprovalDivider(planContent: string): string {
+  const maxPlanLineWidth = planContent
+    .split(/\r?\n/)
+    .map((line) => measureDisplayWidth(line.trimEnd()))
+    .reduce((max, width) => Math.max(max, width), 0);
+  const width = Math.min(
+    PLAN_APPROVAL_DIALOG_MAX_WIDTH,
+    Math.max(PLAN_APPROVAL_DIALOG_MIN_WIDTH, maxPlanLineWidth),
+  );
+  return "─".repeat(width);
+}
+
+function buildReadyToCodeSurface(input: {
+  workDir: string;
+  planPath: string;
+  planContent: string;
+}): string {
+  const displayPath = formatHumanPlanFilePath({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
+  const planContent = stripInternalPlanMetadata(input.planContent);
+  const divider = buildPlanApprovalDivider(planContent);
+  return [
+    "Ready to code?",
+    "Here is Grobot's plan:",
+    "",
+    divider,
+    planContent,
+    divider,
+    "",
+    "Grobot has written up a plan and is ready to execute. Would you like to proceed?",
+    `❯ Yes, ${PLAN_EXECUTION_REPLY}`,
+    "  No, keep planning",
+    "",
+    `Edit: /plan open · ${displayPath}`,
+    "",
+  ].join("\n");
 }
 
 function formatHumanPlanFilePath(input: {
@@ -1087,22 +1277,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     };
   };
 
-  const resolveBenchmarkStatusSnapshot = (
-    latestFailure?: ReturnType<typeof loadLatestPlanFailureDiagnostic>,
-  ) => {
-    const history = loadPlanQualityBenchmarkHistory(input.workDir, planSessionKey(), {
-      limit: 3,
-    });
-    const semantic = evaluatePlanQualityBenchmarkSemanticCorrelation({
-      latestFailure,
-      history,
-    });
-    return {
-      history,
-      semantic,
-    };
-  };
-
   // Default to a human-readable surface everywhere. Machine fields are opt-in via verbose mode.
   const shouldRenderCompactPlanStatus = (): boolean =>
     !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
@@ -1145,361 +1319,43 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     }
   };
 
-  const humanizePlanPhase = (phase: string | undefined): string => {
-    switch (phase) {
-      case "drafting":
-        return "drafting";
-      case "awaiting_decision":
-        return "awaiting decision";
-      case "applying":
-        return "applying";
-      case "done":
-        return "done";
-      default:
-        return phase && phase.trim().length > 0
-          ? phase.replace(/_/g, " ")
-          : "not started";
-    }
-  };
-
-  const humanizePlanMode = (mode: SessionPlanMode): string =>
-    mode === "plan_only" ? "plan mode" : "normal chat";
-
-  const formatHumanPlanState = (inputValue: {
-    status: string | undefined;
-    phase?: string | undefined;
-  }): string => {
-    const status = humanizePlanStatus(inputValue.status);
-    const phase = inputValue.phase ? humanizePlanPhase(inputValue.phase) : undefined;
-    if (!phase || phase === status) {
-      return status;
-    }
-    return `${status} / ${phase}`;
-  };
-
-  const writeHumanQualitySummary = (inputValue: {
-    score?: number;
-    grade?: string;
-    guardLevel?: string;
-    guardMode?: string;
-    topHint?: string;
-  }): void => {
-    const score = typeof inputValue.score === "number"
-      ? `score ${String(inputValue.score)}`
-      : "score unavailable";
-    const grade = inputValue.grade ? `grade ${inputValue.grade}` : undefined;
-    input.writeStdout(`Quality: ${[score, grade].filter((item): item is string => Boolean(item)).join(" · ")}\n`);
-    if (inputValue.guardLevel) {
-      input.writeStdout(
-        `Guard: ${inputValue.guardLevel}${inputValue.guardMode ? `/${inputValue.guardMode}` : ""}\n`,
-      );
-    }
-    if (inputValue.topHint) {
-      input.writeStdout(`Focus: ${inputValue.topHint}\n`);
-    }
-  };
-
-  const writeHumanPlanFailureSummary = (
-    latestFailure: ReturnType<typeof loadLatestPlanFailureDiagnostic>,
-  ): void => {
-    if (!latestFailure) {
-      input.writeStdout("Latest failure: none\n");
-      return;
-    }
-    const details = [
-      latestFailure.event,
-      latestFailure.diagnosticCode ? `diagnostic ${latestFailure.diagnosticCode}` : undefined,
-      typeof latestFailure.exitCode === "number" ? `exit ${String(latestFailure.exitCode)}` : undefined,
-    ].filter((item): item is string => Boolean(item));
-    input.writeStdout(`Latest failure: ${details.join(" · ")}\n`);
-  };
-
-  const writeHumanPlanVerificationSummary = (
-    latestVerification: ReturnType<typeof loadLatestPlanVerificationDiagnostic>,
-  ): void => {
-    if (!latestVerification) {
-      input.writeStdout("Verification: none recorded\n");
-      return;
-    }
-    input.writeStdout(`Verification: ${latestVerification.status}\n`);
-  };
-
-  const writeHumanBenchmarkSummary = (
-    latestFailure?: ReturnType<typeof loadLatestPlanFailureDiagnostic>,
-  ): void => {
-    const benchmark = resolveBenchmarkStatusSnapshot(latestFailure);
-    if (benchmark.history.totalRuns <= 0) {
-      input.writeStdout(`Benchmark: no recent runs; semantic signal ${benchmark.semantic.level}\n`);
-      return;
-    }
-    const latest = benchmark.history.latestWinnerLabel
-      ? `latest winner ${benchmark.history.latestWinnerLabel}`
-      : "no winner recorded";
-    const score = typeof benchmark.history.latestWinnerScore === "number"
-      ? `score ${String(benchmark.history.latestWinnerScore)}`
-      : undefined;
-    const assertions = benchmark.history.assertCount > 0
-      ? `assertions ${String(benchmark.history.assertPassCount)}/${String(benchmark.history.assertCount)}`
-      : "no assertions";
-    input.writeStdout(
-      `Benchmark: ${String(benchmark.history.totalRuns)} run(s); ${[latest, score, `trend ${benchmark.history.scoreTrend}`, assertions, `semantic ${benchmark.semantic.level}`]
-        .filter((item): item is string => Boolean(item))
-        .join("; ")}\n`,
-    );
-  };
-
-  const writeHumanRecommendation = (
-    recommendation: { action: string; reason: string },
-    options?: {
-      suppressFocus?: boolean;
-      suppressGuard?: boolean;
-    },
-  ): void => {
-    const suggestedCommand = resolvePlanStatusRecommendationCommand(recommendation.action);
-    const suggestedLabel = resolvePlanStatusRecommendationLabel(recommendation.action);
-    const recommendationSegments = recommendation.reason
-      .split(/[；;]/)
-      .map((segment) => compactSpaces(segment))
-      .filter((segment) => segment.length > 0);
-    let focus: string | undefined;
-    let guard: string | undefined;
-    const reasonSegments: string[] = [];
-    for (const segment of recommendationSegments) {
-      const focusMatch = segment.match(/优先处理[:：]\s*(.+)$/);
-      if (focusMatch?.[1]?.trim()) {
-        focus = compactSpaces(focusMatch[1]);
-        continue;
-      }
-      const guardMatch = segment.match(/quality guard=([a-z]+)/i);
-      if (guardMatch?.[1]?.trim()) {
-        guard = guardMatch[1].toLowerCase();
-        const withoutGuard = compactSpaces(
-          segment.replace(/quality guard=[a-z]+[，,]?\s*/i, ""),
-        );
-        if (withoutGuard) {
-          reasonSegments.push(withoutGuard);
-        }
-        continue;
-      }
-      reasonSegments.push(segment);
-    }
-    const nextAction = suggestedCommand === PLAN_DIRECT_REFINE_ACTION
-      ? "refine the plan"
-      : suggestedCommand;
-    input.writeStdout(`Next: ${nextAction}\n`);
-    if (suggestedLabel && suggestedLabel !== nextAction) {
-      input.writeStdout(`Action: ${suggestedLabel}\n`);
-    }
-    if (focus && !options?.suppressFocus) {
-      input.writeStdout(`Focus: ${focus}\n`);
-    }
-    if (guard && !options?.suppressGuard) {
-      input.writeStdout(`Guard: ${guard}\n`);
-    }
-    if (reasonSegments.length > 0) {
-      input.writeStdout(`Reason: ${reasonSegments.slice(0, 2).join("; ")}\n`);
-    }
-    input.writeStdout("Diagnostics: set GROBOT_PLAN_STATUS_VERBOSE=1 and rerun /plan for full fields.\n");
-  };
-
   const showPlanStatusCompact = async (): Promise<number> => {
     const mode = input.runtimeState.getPlanMode();
     const meta = input.runtimeState.getPlanMeta();
     const active = resolveActivePlan();
-    input.writeStdout("Plan status\n");
-    input.writeStdout(`Mode: ${humanizePlanMode(mode)}\n`);
     if (active) {
-      const activeMeta = buildPlanMeta(active.entry, active.planPath);
-      const previewLines = buildHumanPlanPreviewLines({
-        title: activeMeta.active_plan_title,
-        planContent: active.content,
-      });
-      const activeNonEmptyLineCount = active.content
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .length;
-      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
-        planId: activeMeta.active_plan_id,
-      });
-      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
-        planId: activeMeta.active_plan_id,
-      });
-      const latestVerificationStatus = latestVerification?.status;
-      const { liveSnapshot } = evaluateActivePlanLiveSnapshot(
-        active,
-        latestVerificationStatus,
-      );
-      input.writeStdout(`Current plan: ${activeMeta.active_plan_title ?? "untitled plan"}\n`);
-      input.writeStdout(`Status: ${humanizePlanStatus(liveSnapshot.liveStatus)}\n`);
-      input.writeStdout(`Phase: ${humanizePlanPhase(liveSnapshot.livePhase)}\n`);
-      if (liveSnapshot.statusSource === "live_snapshot") {
-        const liveState = formatHumanPlanState({
-          status: liveSnapshot.liveStatus,
-          phase: liveSnapshot.livePhase,
-        });
-        const storedState = formatHumanPlanState({
-          status: liveSnapshot.storedStatus,
-          phase: liveSnapshot.storedPhase,
-        });
-        if (storedState !== liveState) {
-          input.writeStdout(`Stored: ${storedState}\n`);
-        }
-      }
-      input.writeStdout(`Plan file: ${formatHumanPlanFilePath({
+      input.writeStdout(buildCurrentPlanDisplay({
         workDir: input.workDir,
-        planPath: activeMeta.active_plan_path,
-      })}\n`);
-      if (previewLines.length > 0) {
-        input.writeStdout("Preview:\n");
-        for (let previewIndex = 0; previewIndex < previewLines.length; previewIndex += 1) {
-          input.writeStdout(`  ${previewLines[previewIndex]}\n`);
-        }
-      }
-      if (activeNonEmptyLineCount > previewLines.length) {
-        input.writeStdout("  ...\n");
-      }
-      const topHint = liveSnapshot.repairActions[0]?.title ?? liveSnapshot.quality.rewriteHints[0];
-      input.writeStdout(
-        `Decision: ${liveSnapshot.decisionReady ? "ready" : "not ready"}${liveSnapshot.approvalStale ? "; approval needs refresh" : ""}\n`,
-      );
-      writeHumanQualitySummary({
-        score: liveSnapshot.quality.score,
-        grade: liveSnapshot.quality.grade,
-        guardLevel: liveSnapshot.qualityGuard.level,
-        guardMode: liveSnapshot.qualityGuardMode,
-        topHint,
-      });
-      writeHumanPlanFailureSummary(latestFailure);
-      writeHumanPlanVerificationSummary(latestVerification);
-      writeHumanBenchmarkSummary(latestFailure);
-      writeHumanRecommendation(liveSnapshot.recommendation, {
-        suppressFocus: Boolean(topHint),
-        suppressGuard: Boolean(liveSnapshot.qualityGuard.level),
-      });
-      input.writeStdout("\n");
+        planPath: active.planPath,
+        planContent: active.content,
+      }));
       return 0;
     }
     if (mode === "plan_only" && meta?.active_plan_id) {
-      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
-        planId: meta.active_plan_id,
-      });
-      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
-        planId: meta.active_plan_id,
-      });
-      const latestVerificationStatus = latestVerification?.status;
-      let qualityScore: number | undefined;
-      let qualityGrade: string | undefined;
-      let qualityGuardLevel: "healthy" | "watch" | "critical" | undefined;
-      let qualityGuardReason: string | undefined;
-      let qualityGuardMode: string | undefined;
-      let qualityTopHint: string | undefined;
-      if (typeof meta.active_plan_path === "string" && meta.active_plan_path.length > 0) {
-        try {
-          const fallbackContent = readFileSync(meta.active_plan_path, "utf8");
-          const quality = evaluatePlanQuality(fallbackContent);
-          const qualityTrend = evaluatePlanQualityTrend({
-            workDir: input.workDir,
-            sessionId: planSessionKey(),
-            currentPlanId: meta.active_plan_id,
-            currentScore: quality.score,
-          });
-          const qualityGuardRuntime = resolveQualityGuardRuntime();
-          const qualityGuard = evaluatePlanQualityGuard({
-            workDir: input.workDir,
-            sessionId: planSessionKey(),
-            currentPlanId: meta.active_plan_id,
-            quality,
-            trend: qualityTrend,
-            policy: qualityGuardRuntime.policy,
-          });
-          const repairActions = buildPlanQualityRepairActions({
-            planContent: fallbackContent,
-            quality,
-            trend: qualityTrend,
-            guard: qualityGuard,
-          });
-          qualityScore = quality.score;
-          qualityGrade = quality.grade;
-          qualityGuardLevel = qualityGuard.level;
-          qualityGuardReason = qualityGuard.reason;
-          qualityGuardMode = qualityGuardRuntime.guardMode;
-          qualityTopHint = repairActions[0]?.title ?? quality.rewriteHints[0];
-        } catch {
-          qualityScore = undefined;
-        }
-      }
-      input.writeStdout(`Current plan: ${meta.active_plan_title ?? meta.active_plan_id}\n`);
-      input.writeStdout(`Status: ${humanizePlanStatus(meta.active_plan_status ?? "draft")}\n`);
-      input.writeStdout(`Phase: ${humanizePlanPhase(meta.active_plan_phase)}\n`);
-      if (typeof meta.active_plan_path === "string" && meta.active_plan_path.length > 0) {
-        input.writeStdout(`Plan file: ${formatHumanPlanFilePath({
+      const planPath = typeof meta.active_plan_path === "string" && meta.active_plan_path.length > 0
+        ? meta.active_plan_path
+        : undefined;
+      input.writeStdout("Already in plan mode. No plan written yet.\n");
+      if (planPath) {
+        input.writeStdout(`${formatHumanPlanFilePath({
           workDir: input.workDir,
-          planPath: meta.active_plan_path,
+          planPath,
         })}\n`);
       }
-      writeHumanQualitySummary({
-        score: qualityScore,
-        grade: qualityGrade,
-        guardLevel: qualityGuardLevel,
-        guardMode: qualityGuardMode,
-        topHint: qualityTopHint,
-      });
-      writeHumanPlanFailureSummary(latestFailure);
-      writeHumanPlanVerificationSummary(latestVerification);
-      writeHumanBenchmarkSummary(latestFailure);
-      const recommendation = resolvePlanStatusRecommendation({
-        mode: "plan_only",
-        status: meta.active_plan_status,
-        latestVerificationStatus,
-        planQualityScore: qualityScore,
-        planQualityTopHint: qualityTopHint,
-        planQualityGuardLevel: qualityGuardLevel,
-        planQualityGuardReason: qualityGuardReason,
-        interactiveMenuFirst: true,
-      });
-      writeHumanRecommendation(recommendation, {
-        suppressFocus: Boolean(qualityTopHint),
-        suppressGuard: Boolean(qualityGuardLevel),
-      });
       input.writeStdout("\n");
       return 0;
     }
     const latestApplied = resolveLatestPlanEntry(["applied", "apply_failed"]);
     if (latestApplied) {
-      input.writeStdout("Current plan: none\n");
+      input.writeStdout("Current Plan\n");
+      input.writeStdout("No active plan.\n");
       input.writeStdout(`Latest plan: ${latestApplied.plan_id} (${humanizePlanStatus(latestApplied.status)})\n`);
-      const latestFailure = loadLatestPlanFailureDiagnostic(input.workDir, planSessionKey(), {
-        planId: latestApplied.plan_id,
-      });
-      const latestVerification = loadLatestPlanVerificationDiagnostic(input.workDir, planSessionKey(), {
-        planId: latestApplied.plan_id,
-      });
-      const latestVerificationStatus = latestVerification?.status;
-      input.writeStdout("Quality: not applicable after apply\n");
-      writeHumanPlanFailureSummary(latestFailure);
-      writeHumanPlanVerificationSummary(latestVerification);
-      writeHumanBenchmarkSummary(latestFailure);
-      const recommendation = resolvePlanStatusRecommendation({
-        mode: "normal",
-        status: latestApplied.status,
-        latestVerificationStatus,
-        interactiveMenuFirst: true,
-      });
-      writeHumanRecommendation(recommendation);
-      input.writeStdout("\n");
+      input.writeStdout("\"/plan <goal>\" to start a new plan\n\n");
       return 0;
     }
-    input.writeStdout("Current plan: none\n");
-    input.writeStdout("Quality: no plan to evaluate\n");
-    writeHumanPlanFailureSummary(undefined);
-    writeHumanPlanVerificationSummary(undefined);
-    writeHumanBenchmarkSummary();
-    const recommendation = resolvePlanStatusRecommendation({
-      mode: "normal",
-      interactiveMenuFirst: true,
-    });
-    writeHumanRecommendation(recommendation);
-    input.writeStdout("\n");
+    input.writeStdout("Current Plan\n");
+    input.writeStdout("No plan written yet.\n");
+    input.writeStdout("\"/plan <goal>\" to start planning\n\n");
     return 0;
   };
 
@@ -2410,12 +2266,20 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         compactFailureSurface,
       });
       if (options?.showWorkingNotice) {
-        writeStdout("Working on the plan...\n");
+        writeStdout("Planning...\n");
       }
       let code: number;
+      const activeForPrompt = resolveActivePlan();
       try {
         code = await input.executeTurn(note, true, {
-          promptPrelude: PLAN_MODE_WORKFLOW_PROMPT,
+          promptPrelude: buildPlanModeWorkflowPrompt({
+            planFilePath: activeForPrompt?.planPath
+              ? formatHumanPlanFilePath({
+                workDir: input.workDir,
+                planPath: activeForPrompt.planPath,
+              })
+              : undefined,
+          }),
           writeStdout,
           writeStderr: planTurnStderr.writeStderr,
         });
@@ -2547,7 +2411,27 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return 0;
       }
       if (decisionState.reviewedEntry.status === "ready") {
-        writeStdout(`Plan ready · reply "${PLAN_EXECUTION_REPLY}" to execute\n\n`);
+        const readyApprovalRequest = {
+          workDir: input.workDir,
+          planPath: reviewedActive.planPath,
+          planContent: reviewedActive.content,
+        };
+        const approvalDecision = normalizePlanReadyApprovalDecision(
+          await options?.requestReadyPlanApproval?.(readyApprovalRequest),
+        );
+        if (approvalDecision.action === "approve") {
+          return applyPlan(PLAN_EXECUTION_REPLY, options);
+        }
+        if (approvalDecision.action === "keep_planning") {
+          const feedback = approvalDecision.feedback?.trim();
+          if (feedback) {
+            writeStdout("Plan feedback added. Continuing plan mode...\n\n");
+            return runPlanTurn(feedback, options);
+          }
+          writeStdout("Plan kept in plan mode. Send edits or use /plan open to revise.\n\n");
+          return code;
+        }
+        writeStdout(buildReadyToCodeSurface(readyApprovalRequest));
       } else {
         writeStdout(`Plan updated · ${planPhase}\n`);
         writeStdout(`Next · ${decisionState.recommendation.action}\n\n`);
@@ -2915,6 +2799,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return { handled: true, code: 0 };
       }
       if (parsed.kind === "enter") {
+        if (input.runtimeState.getPlanMode() === "plan_only") {
+          return { handled: true, code: await showPlanStatus() };
+        }
         if (options?.messageMode) {
           return {
             handled: true,
@@ -2942,6 +2829,18 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return { handled: true, code: await enterPlan("") };
       }
       if (parsed.kind === "open") {
+        if (input.runtimeState.getPlanMode() !== "plan_only") {
+          if (options?.messageMode) {
+            return {
+              handled: true,
+              code: await createPlanModeDraft("", {
+                printHint: false,
+                printModeReadyOnly: true,
+              }),
+            };
+          }
+          return { handled: true, code: await enterPlan("") };
+        }
         return { handled: true, code: await showPlanStatus() };
       }
       return { handled: true, code: 0 };

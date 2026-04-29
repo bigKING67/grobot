@@ -18,6 +18,7 @@ export interface AskUserPanelScreenInput {
   activeReviewIndex?: number;
   textInputValue?: string;
   planMode?: boolean;
+  planFilePath?: string;
 }
 
 const ASK_USER_PANEL_MIN_WIDTH = 44;
@@ -275,11 +276,15 @@ function renderQuestionPanel(input: {
   surfaceWidth: number;
   textInputValue?: string;
   planMode?: boolean;
+  planFilePath?: string;
 }): string[] {
   const lines: string[] = [];
   const contentWidth = input.surfaceWidth - 2;
   const progress = buildProgressText(input.view);
   lines.push(`  ${terminalStyle.muted(fitPlainLine(progress, contentWidth))}`);
+  if (input.planMode && input.planFilePath?.trim()) {
+    lines.push(`  ${terminalStyle.muted(fitPlainLine(`Planning: ${input.planFilePath}`, contentWidth))}`);
+  }
   const navigationLine = renderNavigationLine({
     tabs: input.view.tabs,
     maxWidth: contentWidth,
@@ -390,6 +395,7 @@ export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string
     surfaceWidth,
     textInputValue: input.textInputValue,
     planMode: input.planMode,
+    planFilePath: input.planFilePath,
   }));
   return lines.join("\n");
 }

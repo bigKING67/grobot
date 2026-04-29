@@ -335,11 +335,16 @@ export function listRunStartSlashSuggestions(
     if (normalizedQuery === "/plan") {
       if (planMode) {
         appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[0]);
+        appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[2]);
+      } else {
+        appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
+        appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[2]);
       }
-      appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[1]);
-      appendSuggestion(PLAN_PRIMARY_PRIORITY_SUGGESTIONS[2]);
     } else {
-      for (const entry of PLAN_PRIMARY_PRIORITY_SUGGESTIONS) {
+      const planEntries = planMode
+        ? [PLAN_PRIMARY_PRIORITY_SUGGESTIONS[0], PLAN_PRIMARY_PRIORITY_SUGGESTIONS[2]]
+        : PLAN_PRIMARY_PRIORITY_SUGGESTIONS;
+      for (const entry of planEntries) {
         appendSuggestion(entry);
       }
     }

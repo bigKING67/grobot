@@ -26,6 +26,14 @@ export interface TerminalSelectMenuModelPickerMeta {
   sessionSummary?: string;
 }
 
+export interface TerminalSelectMenuPlanApprovalMeta {
+  planContent: string;
+  planPath?: string;
+  agentName?: string;
+  editorName?: string;
+  planEdited?: boolean;
+}
+
 export interface TerminalSelectMenuViewport {
   startIndex: number;
   visibleCount: number;
@@ -40,12 +48,14 @@ export interface TerminalSelectMenuInput {
   initialIndex?: number;
   visibleOptionCount?: number;
   viewport?: TerminalSelectMenuViewport;
-  variant?: "default" | "model_picker" | "ask_user";
+  variant?: "default" | "model_picker" | "ask_user" | "plan_approval";
   modelPickerMeta?: TerminalSelectMenuModelPickerMeta;
+  planApprovalMeta?: TerminalSelectMenuPlanApprovalMeta;
 }
 
 export type TerminalSelectMenuResult =
   | { kind: "selected"; item: TerminalSelectMenuItem; index: number }
+  | { kind: "edit_plan"; item: TerminalSelectMenuItem; index: number }
   | { kind: "cancelled" };
 
 interface RenderTerminalSelectMenuInput {
@@ -71,6 +81,10 @@ const MODEL_PICKER_RENDER_VISIBLE_OPTION_COUNT = 10;
 const MODEL_PICKER_DIVIDER_MAX_WIDTH = 120;
 const ASK_USER_RENDER_VISIBLE_OPTION_COUNT = 6;
 const ASK_USER_DIVIDER_MAX_WIDTH = 96;
+const PLAN_APPROVAL_RENDER_VISIBLE_OPTION_COUNT = 2;
+const PLAN_APPROVAL_DIVIDER_MAX_WIDTH = 120;
+const PLAN_APPROVAL_SURFACE_MAX_WIDTH = 96;
+const PLAN_APPROVAL_PLAN_DIVIDER = "┄";
 
 interface RenderMenuRow {
   leftPlain: string;
@@ -168,6 +182,9 @@ function resolveRenderVisibleOptionCount(menu: TerminalSelectMenuInput): number 
     }
     if (menu.variant === "ask_user") {
       return ASK_USER_RENDER_VISIBLE_OPTION_COUNT;
+    }
+    if (menu.variant === "plan_approval") {
+      return PLAN_APPROVAL_RENDER_VISIBLE_OPTION_COUNT;
     }
     return DEFAULT_RENDER_VISIBLE_OPTION_COUNT;
   })();
@@ -565,6 +582,82 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
   return lines.join("\n");
 }
 
+function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
+  const mode = resolveCliRenderMode({
+    stdinIsTTY: input.stdinIsTTY,
+    stdoutIsTTY: input.stdoutIsTTY,
+    env: input.env,
+  });
+  const theme = createCliTheme(mode);
+  const columns = resolveMenuColumns();
+  const surfaceWidth = Math.max(48, Math.min(PLAN_APPROVAL_SURFACE_MAX_WIDTH, columns - 4));
+  const dividerWidth = Math.max(48, Math.min(PLAN_APPROVAL_DIVIDER_MAX_WIDTH, columns));
+  const viewport = resolveRenderViewport(input.menu);
+  const title = sanitizeMenuText(input.menu.title, "Ready to code?");
+  const agentName = sanitizeMenuText(input.menu.planApprovalMeta?.agentName, "Grobot");
+  const editorName = sanitizeMenuText(input.menu.planApprovalMeta?.editorName, "editor");
+  const planContent = input.menu.planApprovalMeta?.planContent ?? "";
+  const planPath = sanitizeTerminalDisplayText(input.menu.planApprovalMeta?.planPath ?? "").trim();
+  const hintBase = sanitizeMenuText(input.menu.hint, "↑/↓ 选择 · Enter 确认 · Esc 返回输入框");
+  const editHint = planPath.length > 0
+    ? `ctrl-g to edit in ${editorName} · ${planPath}`
+    : `ctrl-g to edit in ${editorName}`;
+  const editHintWithSaveState = input.menu.planApprovalMeta?.planEdited
+    ? `${editHint} · Plan saved!`
+    : editHint;
+  const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["No plan found."];
+  const optionLabelBudget = Math.max(12, surfaceWidth - 4);
+  const lines: string[] = [];
+
+  lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
+  lines.push(`  ${theme.color("planMode", theme.bold(title))}`);
+  lines.push("");
+  lines.push(`  Here is ${agentName}'s plan:`);
+  lines.push("");
+  lines.push(theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth)));
+  for (const rawLine of planLines) {
+    const sanitizedLine = sanitizeTerminalDisplayText(rawLine).trimEnd();
+    const renderedLine = sanitizedLine.length > 0
+      ? truncateDisplayWidth(sanitizedLine, surfaceWidth - 2)
+      : "";
+    lines.push(`  ${renderedLine}`);
+  }
+  lines.push(theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth)));
+  lines.push("");
+  lines.push(
+    theme.color("muted", `  ${
+        truncateDisplayWidth(
+          `${agentName} has written up a plan and is ready to execute. Would you like to proceed?`,
+          surfaceWidth,
+        )
+      }`),
+  );
+  lines.push("");
+
+  for (let index = 0; index < input.menu.items.length; index += 1) {
+    const item = input.menu.items[index];
+    const isActive = index === input.activeIndex;
+    const marker = isActive
+      ? theme.color("planMode", "❯")
+      : " ";
+    const label = truncateDisplayWidth(sanitizeMenuText(item.label, item.id), optionLabelBudget);
+    const renderedLabel = isActive ? theme.color("planMode", label) : label;
+    lines.push(`  ${marker} ${renderedLabel}`);
+    const description = sanitizeMenuText(item.description);
+    if (isActive && description.length > 0) {
+      lines.push(theme.color("muted", `    ${truncateDisplayWidth(description, optionLabelBudget)}`));
+    }
+  }
+
+  if (viewport.totalCount > input.menu.items.length) {
+    lines.push(theme.color("muted", `  ${String(viewport.startIndex + 1)}-${String(viewport.startIndex + input.menu.items.length)} / ${String(viewport.totalCount)}`));
+  }
+  lines.push("");
+  lines.push(theme.color("muted", `  ${truncateDisplayWidth(hintBase, surfaceWidth)}`));
+  lines.push(theme.color("muted", `  ${truncateDisplayWidth(editHintWithSaveState, surfaceWidth)}`));
+  return lines.join("\n");
+}
+
 export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): string {
   const prepared = prepareStandaloneRenderMenu(input);
   const preparedInput = {
@@ -577,6 +670,9 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
   }
   if (preparedInput.menu.variant === "ask_user") {
     return renderAskUserMenu(preparedInput);
+  }
+  if (preparedInput.menu.variant === "plan_approval") {
+    return renderPlanApprovalMenu(preparedInput);
   }
   const mode = resolveCliRenderMode({
     stdinIsTTY: preparedInput.stdinIsTTY,

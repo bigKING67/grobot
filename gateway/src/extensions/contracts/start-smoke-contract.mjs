@@ -842,6 +842,8 @@ function runStartInteractiveSessionFlow(repoRoot) {
       homeDir,
       "--config",
       config.configPath,
+      "--session-backend",
+      "file",
       "--gateway-impl",
       "ts",
       "--runtime-impl",
@@ -910,6 +912,8 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
       homeDir,
       "--config",
       config.configPath,
+      "--session-backend",
+      "file",
       "--gateway-impl",
       "ts",
       "--runtime-impl",
@@ -964,6 +968,8 @@ function runStartInteractiveDiagnosticsFlow(repoRoot, mode, scriptedInput, subje
     homeDir,
     "--config",
     config.configPath,
+    "--session-backend",
+    "file",
     "--gateway-impl",
     "ts",
     "--runtime-impl",
@@ -1019,7 +1025,9 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
     ...payload,
     command_flow: "plan",
     has_plan_marker:
-      payload.stdout.includes("Plan status")
+      payload.stdout.includes("Current Plan")
+      || payload.stdout.includes("Enabled plan mode")
+      || payload.stdout.includes("Already in plan mode")
       || payload.stdout.includes("[plan]"),
   };
 }
@@ -1108,6 +1116,8 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
       homeDir,
       "--config",
       config.configPath,
+      "--session-backend",
+      "file",
       "--gateway-impl",
       "ts",
       "--runtime-impl",
@@ -1285,6 +1295,8 @@ function runStartPlanModeFlow(repoRoot) {
       homeDir,
       "--config",
       config.configPath,
+      "--session-backend",
+      "file",
       "--gateway-impl",
       "ts",
       "--runtime-impl",
@@ -1343,7 +1355,7 @@ function runStartPlanModeFlow(repoRoot) {
   const eventsContent = readTextFileSafe(eventsPath);
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
   const finalStatusMarkerCurrent =
-    "Plan status\nMode: plan mode\nCurrent plan:";
+    "Already in plan mode. No plan written yet.";
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -1387,26 +1399,31 @@ function runStartPlanModeFlow(repoRoot) {
       && !commandResult.stdout.includes("status:"),
     plan_status_preview_hides_required_placeholder:
       !commandResult.stdout.includes("__REQUIRED__"),
+    plan_current_display_seen:
+      commandResult.stdout.includes("Current Plan")
+      || commandResult.stdout.includes("Already in plan mode. No plan written yet."),
+    plan_current_display_has_plan_open_hint:
+      commandResult.stdout.includes("\"/plan open\" to edit this plan")
+      || commandResult.stdout.includes("Already in plan mode. No plan written yet."),
     plan_status_uses_relative_plan_file:
-      /^Plan file: \.grobot\/plans\//m.test(commandResult.stdout),
+      /^\.grobot\/plans\//m.test(commandResult.stdout),
     plan_status_hides_absolute_plan_file:
-      !commandResult.stdout.includes(`Plan file: ${workDir}`),
-    plan_status_has_short_next_line:
-      /^Next: refine the plan$/m.test(commandResult.stdout),
-    plan_status_has_focus_line:
-      /^Focus: /m.test(commandResult.stdout),
-    plan_status_splits_quality_lines:
-      /^Quality: score \d+ · grade /m.test(commandResult.stdout)
-      && /^Guard: /m.test(commandResult.stdout)
-      && !/^Quality: .*; .*guard/m.test(commandResult.stdout)
-      && !/^Quality: .*; .*focus:/m.test(commandResult.stdout),
+      !commandResult.stdout.includes(`${workDir}/.grobot/plans`)
+      && !commandResult.stdout.includes(activePlanPath),
+    plan_status_omits_legacy_next_line:
+      !/^Next: /m.test(commandResult.stdout),
+    plan_status_omits_legacy_focus_line:
+      !/^Focus: /m.test(commandResult.stdout),
+    plan_status_omits_quality_noise:
+      !/^Quality: /m.test(commandResult.stdout)
+      && !/^Guard: /m.test(commandResult.stdout),
     plan_status_hides_redundant_stored_state:
       !commandResult.stdout.includes("Stored state: drafting, drafting")
       && !commandResult.stdout.includes("Stored state:"),
     plan_status_avoids_duplicate_focus:
-      commandResult.stdout.split("\n").filter((line) => line.startsWith("Focus: ")).length === 1,
+      commandResult.stdout.split("\n").filter((line) => line.startsWith("Focus: ")).length === 0,
     plan_status_avoids_duplicate_guard:
-      commandResult.stdout.split("\n").filter((line) => line.startsWith("Guard: ")).length === 1,
+      commandResult.stdout.split("\n").filter((line) => line.startsWith("Guard: ")).length === 0,
     plan_status_next_line_avoids_reason_dump:
       !/^Next: .*quality guard=/m.test(commandResult.stdout)
       && !/^Next: .*质量分仅/m.test(commandResult.stdout),
@@ -1442,6 +1459,8 @@ function runStartPlanConcurrencyFlow(repoRoot) {
       homeDir,
       "--config",
       config.configPath,
+      "--session-backend",
+      "file",
       "--gateway-impl",
       "ts",
       "--runtime-impl",

@@ -712,10 +712,14 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.showPlanStatus();
           return "continue";
         }
-        await handlers.enterPlan("");
+        await handlers.enterPlan("", controls.withInputPaused);
         return "continue";
       }
       if (/^\/plan\s+open$/i.test(normalizedInput)) {
+        if (!handlers.isPlanMode()) {
+          await handlers.enterPlan("", controls.withInputPaused);
+          return "continue";
+        }
         if (isInteractiveTerminal()) {
           await handlers.openPlanInEditor(controls.withInputPaused);
           return "continue";
@@ -725,7 +729,11 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parsePlanCommand(userInput);
       if (parsed.kind === "enter") {
-        await handlers.enterPlan(parsed.goal);
+        if (handlers.isPlanMode()) {
+          await handlers.showPlanStatus();
+          return "continue";
+        }
+        await handlers.enterPlan(parsed.goal, controls.withInputPaused);
         return "continue";
       }
       if (parsed.kind === "enter_mode") {
@@ -733,10 +741,14 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           await handlers.showPlanStatus();
           return "continue";
         }
-        await handlers.enterPlan("");
+        await handlers.enterPlan("", controls.withInputPaused);
         return "continue";
       }
       if (parsed.kind === "open") {
+        if (!handlers.isPlanMode()) {
+          await handlers.enterPlan("", controls.withInputPaused);
+          return "continue";
+        }
         if (isInteractiveTerminal()) {
           await handlers.openPlanInEditor(controls.withInputPaused);
           return "continue";

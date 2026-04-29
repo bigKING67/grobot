@@ -223,8 +223,11 @@ async function runDispatchCase(
     showPlanStatus: async () => {
       events.push("showPlanStatus");
     },
-    enterPlan: async (goal) => {
+    enterPlan: async (goal, withInputPaused) => {
       events.push(`enterPlan:${goal}`);
+      if (typeof withInputPaused === "function") {
+        events.push("enterPlan:hasInputPause");
+      }
     },
     applyPlan: async () => {
       events.push("applyPlan");
@@ -238,8 +241,11 @@ async function runDispatchCase(
     requestRuntimeInterrupt: async () => {
       events.push("requestRuntimeInterrupt");
     },
-    runPlanTurn: async () => {
+    runPlanTurn: async (_userInput, withInputPaused) => {
       events.push("runPlanTurn");
+      if (typeof withInputPaused === "function") {
+        events.push("runPlanTurn:hasInputPause");
+      }
     },
     handleUserCommandsCommand: async () => {
       events.push("handleUserCommandsCommand");
@@ -527,9 +533,22 @@ async function main(): Promise<void> {
   const modelLegacyReset = await runDispatchCase("/model reset");
   const planMenu = await runDispatchCase("/plan", { stdinIsTty: true });
   const planOpenAliasTty = await runDispatchCase("/plan open", { stdinIsTty: true });
+  const planOpenAliasTtyInPlan = await runDispatchCase("/plan open", {
+    stdinIsTty: true,
+    planMode: true,
+  });
   const planOpenAlias = await runDispatchCase("/plan open", { stdinIsTty: false });
+  const planOpenAliasInPlan = await runDispatchCase("/plan open", {
+    stdinIsTty: false,
+    planMode: true,
+  });
   const planGoal = await runDispatchCase("/plan 我要一份抖音直播间规划", { stdinIsTty: true });
+  const planGoalInPlan = await runDispatchCase("/plan 我要一份抖音直播间规划", {
+    stdinIsTty: true,
+    planMode: true,
+  });
   const planNaturalExecute = await runDispatchCase("Implement the plan.", { planMode: true });
+  const planRefineInPlan = await runDispatchCase("继续补一轮验证细节", { planMode: true });
   const statusCurrent = await runDispatchCase("/status");
   const statusCurrentTty = await runDispatchCase("/status", { stdinIsTty: true });
   const statusTheme = await runDispatchCase("/status theme nerd");
@@ -951,20 +970,36 @@ async function main(): Promise<void> {
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
     plan_root_tty_enters_plan_directly:
       includesEvent(planMenu.events, "enterPlan:"),
-    plan_open_alias_tty_opened_editor:
-      includesEvent(planOpenAliasTty.events, "openPlanInEditor"),
-    plan_open_alias_tty_skips_plan_entry:
-      !planOpenAliasTty.events.some((event) => event.startsWith("enterPlan:")),
+    plan_open_alias_tty_enters_plan_when_outside:
+      includesEvent(planOpenAliasTty.events, "enterPlan:"),
+    plan_open_alias_tty_skips_editor_when_outside:
+      !includesEvent(planOpenAliasTty.events, "openPlanInEditor"),
+    plan_open_alias_tty_in_plan_opened_editor:
+      includesEvent(planOpenAliasTtyInPlan.events, "openPlanInEditor"),
+    plan_open_alias_tty_in_plan_skips_plan_entry:
+      !planOpenAliasTtyInPlan.events.some((event) => event.startsWith("enterPlan:")),
     plan_open_alias_non_tty_warned:
       includesEvent(planOpenAlias.events, "writeStdout"),
-    plan_open_alias_non_tty_dispatched_status:
-      includesEvent(planOpenAlias.events, "showPlanStatus"),
+    plan_open_alias_non_tty_enters_plan_when_outside:
+      includesEvent(planOpenAlias.events, "enterPlan:"),
+    plan_open_alias_non_tty_in_plan_dispatched_status:
+      includesEvent(planOpenAliasInPlan.events, "showPlanStatus"),
     plan_goal_tty_enters_plan_directly:
       includesEvent(planGoal.events, "enterPlan:我要一份抖音直播间规划"),
+    plan_goal_tty_in_plan_shows_current_plan:
+      includesEvent(planGoalInPlan.events, "showPlanStatus"),
+    plan_goal_tty_in_plan_skips_new_plan:
+      !planGoalInPlan.events.some((event) => event.startsWith("enterPlan:")),
     plan_natural_execute_in_plan_mode_dispatches_apply:
       includesEvent(planNaturalExecute.events, "applyPlan"),
     plan_natural_execute_in_plan_mode_skips_plan_turn:
       !includesEvent(planNaturalExecute.events, "runPlanTurn"),
+    plan_refine_in_plan_mode_dispatches_plan_turn:
+      includesEvent(planRefineInPlan.events, "runPlanTurn"),
+    plan_refine_in_plan_mode_passes_input_pause:
+      includesEvent(planRefineInPlan.events, "runPlanTurn:hasInputPause"),
+    plan_goal_tty_passes_input_pause:
+      includesEvent(planGoal.events, "enterPlan:hasInputPause"),
     status_current_dispatched: includesEvent(statusCurrent.events, "showStatusCurrent"),
     status_current_tty_opened_menu: includesEvent(statusCurrentTty.events, "openStatusMenu"),
     status_current_tty_dispatched_directly: includesEvent(statusCurrentTty.events, "showStatusCurrent"),

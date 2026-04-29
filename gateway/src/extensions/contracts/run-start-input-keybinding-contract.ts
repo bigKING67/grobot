@@ -48,6 +48,7 @@ async function main(): Promise<void> {
   const spaceAction = decodeMenuInput(" ", menuItemsLength);
   const ctrlPAction = decodeMenuInput("\u0010", menuItemsLength);
   const ctrlNAction = decodeMenuInput("\u000e", menuItemsLength);
+  const ctrlGAction = decodeMenuInput("\u0007", menuItemsLength);
   const escapeAction = decodeMenuInput("\u001b", menuItemsLength);
   const arrowUpAction = decodeMenuInput("\u001b[A", menuItemsLength);
   const arrowDownAction = decodeMenuInput("\u001b[B", menuItemsLength);
@@ -569,6 +570,7 @@ async function main(): Promise<void> {
     menu_space_is_confirm: spaceAction.kind === "enter",
     menu_ctrl_p_is_up: ctrlPAction.kind === "up",
     menu_ctrl_n_is_down: ctrlNAction.kind === "down",
+    menu_ctrl_g_is_edit_plan: ctrlGAction.kind === "edit_plan",
     menu_escape_is_cancel: escapeAction.kind === "cancel",
     menu_arrow_up_is_up: arrowUpAction.kind === "up",
     menu_arrow_down_is_down: arrowDownAction.kind === "down",

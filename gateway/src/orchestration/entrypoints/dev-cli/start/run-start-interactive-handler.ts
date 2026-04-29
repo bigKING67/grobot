@@ -62,12 +62,18 @@ interface CreateRunStartInteractiveHandlerInput {
   writeHandoff(): void;
   isPlanMode(): boolean;
   showPlanStatus(): Promise<number>;
-  enterPlan(goal: string): Promise<number>;
+  enterPlan(
+    goal: string,
+    withInputPaused?: SessionInteractiveControls["withInputPaused"],
+  ): Promise<number>;
   applyPlan(extra: string): Promise<number>;
   cancelPlan(): Promise<number>;
   requestPlanInterrupt(source: PlanInterruptSource): Promise<void>;
   requestRuntimeInterrupt(source: PlanInterruptSource): Promise<void>;
-  runPlanTurn(userInput: string): Promise<number>;
+  runPlanTurn(
+    userInput: string,
+    withInputPaused?: SessionInteractiveControls["withInputPaused"],
+  ): Promise<number>;
   handleUserCommandsCommand(userInput: string): Promise<void>;
   openCommandsMenu(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
   openPlanInEditor(withInputPaused: SessionInteractiveControls["withInputPaused"]): Promise<void>;
@@ -183,8 +189,8 @@ export function createRunStartInteractiveHandler(
       showPlanStatus: async () => {
         await input.showPlanStatus();
       },
-      enterPlan: async (goal) => {
-        const code = await input.enterPlan(goal);
+      enterPlan: async (goal, withInputPaused) => {
+        const code = await input.enterPlan(goal, withInputPaused);
         if (shouldMarkFailure(code)) {
           input.markFailureObserved();
         }
@@ -207,8 +213,8 @@ export function createRunStartInteractiveHandler(
       requestRuntimeInterrupt: async (source) => {
         await input.requestRuntimeInterrupt(source);
       },
-      runPlanTurn: async (userInput) => {
-        const code = await input.runPlanTurn(userInput);
+      runPlanTurn: async (userInput, withInputPaused) => {
+        const code = await input.runPlanTurn(userInput, withInputPaused);
         if (shouldMarkFailure(code)) {
           input.markFailureObserved();
         }

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { relative as relativePath, resolve as resolvePath } from "node:path";
 import { SessionStoreRuntime } from "../services/session-store";
 import {
   SessionInteractiveControls,
@@ -12,10 +14,16 @@ import {
   resolveInlineAttachmentsFromInput,
   resolveInteractiveInputBodyWidth,
   runSessionInputLoop,
+  runTerminalLinePrompt,
+  runTerminalSelectMenu,
 } from "./run-start-io";
 import { isNaturalPlanExecutionIntent } from "./plan-command";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
-import { type PlanInterruptSource } from "./run-start-plan-mode";
+import {
+  type PlanInterruptSource,
+  type PlanReadyApprovalDecision,
+  type PlanReadyApprovalRequest,
+} from "./run-start-plan-mode";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
 import { listRunStartSlashSuggestions } from "./run-start-slash-suggestions";
 import { type RunStartPlanSuggestionState } from "./plan-suggestion-state";
@@ -40,6 +48,10 @@ export interface RunStartInteractiveTurnOptions {
   writeStderr?: (message: string) => void;
   diagnosticsMode?: InteractiveDiagnosticsMode;
   showWorkingNotice?: boolean;
+  suppressOpenPlanEditorNotice?: boolean;
+  requestReadyPlanApproval?: (
+    request: PlanReadyApprovalRequest,
+  ) => Promise<PlanReadyApprovalDecision>;
 }
 
 export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
@@ -76,6 +88,42 @@ function resolveProjectFolder(projectRoot: string, fallbackName: string): string
     return normalized.slice(slashIndex + 1);
   }
   return fallbackName;
+}
+
+function resolveDisplayPlanPath(input: {
+  workDir: string;
+  planPath: string;
+}): string {
+  const resolvedWorkDir = resolvePath(input.workDir);
+  const resolvedPlanPath = resolvePath(input.planPath);
+  const relativePlanPath = relativePath(resolvedWorkDir, resolvedPlanPath);
+  if (
+    relativePlanPath
+    && !relativePlanPath.startsWith("..")
+    && !relativePlanPath.startsWith("/")
+  ) {
+    return relativePlanPath;
+  }
+  return input.planPath;
+}
+
+function resolveExternalEditorDisplayName(): string {
+  const rawEditor = String(process.env.VISUAL ?? process.env.EDITOR ?? "").trim();
+  if (rawEditor.length === 0) {
+    return "editor";
+  }
+  const command = rawEditor.split(/\s+/)[0] ?? rawEditor;
+  const parts = command.split(/[\\/]+/).filter((part) => part.length > 0);
+  return parts[parts.length - 1] ?? command;
+}
+
+function readPlanContentAfterExternalEdit(planPath: string, fallback: string): string {
+  try {
+    const content = readFileSync(planPath, "utf8");
+    return content.length > 0 ? content : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function resolveTerminalColumns(): number | undefined {
@@ -545,7 +593,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       inlineActivityTick += 1;
       return;
     }
-    const defaultActivityText = input.isPlanMode() ? "Working on plan" : "正在执行";
+    const defaultActivityText = input.isPlanMode() ? "Planning" : "正在执行";
     const activityText = compactSummaryText(activityTracker.readPromptActivity() ?? defaultActivityText);
     writeProgressLine(renderStatusIndicatorLine({
       message: activityText,
@@ -663,6 +711,92 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     }
     renderPendingInputFrameAfterStdout();
   };
+  const requestReadyPlanApproval = (
+    withInputPaused: SessionInteractiveControls["withInputPaused"] | undefined,
+  ) =>
+    async (request: PlanReadyApprovalRequest): Promise<PlanReadyApprovalDecision> => {
+      if (!process.stdin.isTTY || typeof withInputPaused !== "function") {
+        return "unavailable";
+      }
+      const displayPath = resolveDisplayPlanPath({
+        workDir: request.workDir,
+        planPath: request.planPath,
+      });
+      let currentPlanContent = request.planContent;
+      let planEdited = false;
+      while (true) {
+        const result = await withInputPaused(() =>
+          runTerminalSelectMenu({
+            title: "Ready to code?",
+            hint: "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
+            variant: "plan_approval",
+            visibleOptionCount: 2,
+            planApprovalMeta: {
+              agentName: "Grobot",
+              editorName: resolveExternalEditorDisplayName(),
+              planContent: currentPlanContent,
+              planPath: displayPath,
+              planEdited,
+            },
+            items: [
+              {
+                id: "approve",
+                label: "Yes, Implement the plan.",
+                description: "Exit plan mode and start coding from this plan.",
+              },
+              {
+                id: "keep_planning",
+                label: "No, keep planning",
+                description: "Tell Grobot what to change before coding.",
+              },
+            ],
+          }),
+        );
+        if (result.kind === "edit_plan") {
+          await input.openPlanInEditor(withInputPaused, {
+            writeStdout: writeInteractiveStdout,
+            writeStderr: writeInteractiveStderr,
+            suppressOpenPlanEditorNotice: true,
+          });
+          currentPlanContent = readPlanContentAfterExternalEdit(
+            request.planPath,
+            currentPlanContent,
+          );
+          planEdited = currentPlanContent !== request.planContent;
+          continue;
+        }
+        if (result.kind === "selected" && result.item.id === "approve") {
+          return {
+            action: "approve",
+            planContent: currentPlanContent,
+          };
+        }
+        if (result.kind === "selected" && result.item.id === "keep_planning") {
+          const feedbackResult = await withInputPaused(() =>
+            runTerminalLinePrompt({
+              prompt: "Tell Grobot what to change > ",
+            }),
+          );
+          const feedback = feedbackResult.kind === "submitted"
+            ? feedbackResult.value.trim()
+            : "";
+          return feedback.length > 0
+            ? {
+              action: "keep_planning",
+              feedback,
+              planContent: currentPlanContent,
+            }
+            : {
+              action: "keep_planning",
+              planContent: currentPlanContent,
+            };
+        }
+        return {
+          action: "keep_planning",
+          planContent: currentPlanContent,
+        };
+      }
+    };
 
   const handleInteractiveInput = createRunStartInteractiveHandler({
     writeStdout: writeInteractiveStdout,
@@ -711,12 +845,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     writeHandoff: input.writeManualHandoff,
     isPlanMode: input.isPlanMode,
     showPlanStatus: input.showPlanStatus,
-    enterPlan: (goal) =>
+    enterPlan: (goal, withInputPaused) =>
       input.enterPlan(goal, {
         writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
-        showWorkingNotice: true,
+        requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
       }),
     applyPlan: (extra) =>
       input.applyPlan(extra, {
@@ -727,12 +861,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     cancelPlan: input.cancelPlan,
     requestPlanInterrupt: input.requestPlanInterrupt,
     requestRuntimeInterrupt: input.requestRuntimeInterrupt,
-    runPlanTurn: (userInput) =>
+    runPlanTurn: (userInput, withInputPaused) =>
       input.runPlanTurn(userInput, {
         writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
-        showWorkingNotice: true,
+        requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
