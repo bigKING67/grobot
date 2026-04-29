@@ -1,5 +1,9 @@
 import { resolveRuntimeBinaryPath, runRuntimeToolsDescribe } from "../../orchestration/entrypoints/dev-cli/runtime-health";
-import { estimateToolSchemaTokens } from "../../tools/runtime/default-enabled-tools";
+import {
+  buildAllRuntimeLocalTools,
+  buildDefaultRuntimeEnabledTools,
+  estimateToolSchemaTokens,
+} from "../../tools/runtime/default-enabled-tools";
 import { knownRuntimeToolRecoveryActions } from "../../tools/runtime/tool-events";
 import { validateRuntimeToolSurfaceBudget } from "../../tools/runtime/tool-surface-budget";
 
@@ -26,6 +30,16 @@ function difference(left: readonly string[], right: readonly string[]): string[]
 
 const describe = runRuntimeToolsDescribe(resolveRuntimeBinaryPath());
 expectEqual(describe.ok, true, `runtime.tools.describe ok (${describe.detail})`);
+expectEqual(
+  JSON.stringify(sorted(describe.toolNames)),
+  JSON.stringify(sorted(buildAllRuntimeLocalTools())),
+  "runtime.tools.describe tools must match gateway local tool manifest",
+);
+expectEqual(
+  JSON.stringify(sorted(describe.defaultEnabledTools)),
+  JSON.stringify(sorted(buildDefaultRuntimeEnabledTools())),
+  "runtime.tools.describe default_enabled_tools must match gateway default manifest",
+);
 expectEqual(describe.toolRecoveryPolicyVersion, "v1", "runtime recovery policy version");
 expect(
   typeof describe.toolRecoveryCatalogFingerprint === "string"
@@ -96,6 +110,8 @@ expectEqual(budgetViolations.length, 0, "runtime schema profiles stay within bud
 
 process.stdout.write(JSON.stringify({
   ok: true,
+  runtime_tool_count: describe.toolNames.length,
+  runtime_default_enabled_count: describe.defaultEnabledTools.length,
   runtime_recovery_action_count: describe.toolRecoveryActions.length,
   gateway_only_recovery_actions: gatewayOnlyActions,
   runtime_recovery_catalog_rows: describe.toolRecoveryCatalog.length,
