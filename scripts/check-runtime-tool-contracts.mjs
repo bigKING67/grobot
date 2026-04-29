@@ -31,6 +31,10 @@ const gatewayOnlyContracts = [
     path: "gateway/src/extensions/contracts/runtime-tool-quality-schema-contract.ts",
   },
   {
+    id: "runtime-tool-registry-parity",
+    path: "gateway/src/extensions/contracts/runtime-tool-registry-parity-contract.ts",
+  },
+  {
     id: "runtime-tool-recovery-timeline",
     path: "gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts",
   },
