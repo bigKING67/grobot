@@ -31,14 +31,14 @@ function difference(left: readonly string[], right: readonly string[]): string[]
 const describe = runRuntimeToolsDescribe(resolveRuntimeBinaryPath());
 expectEqual(describe.ok, true, `runtime.tools.describe ok (${describe.detail})`);
 expectEqual(
-  JSON.stringify(sorted(describe.toolNames)),
-  JSON.stringify(sorted(buildAllRuntimeLocalTools())),
-  "runtime.tools.describe tools must match gateway local tool manifest",
+  JSON.stringify(describe.toolNames),
+  JSON.stringify(buildAllRuntimeLocalTools()),
+  "runtime.tools.describe tools must match gateway local tool manifest order",
 );
 expectEqual(
-  JSON.stringify(sorted(describe.defaultEnabledTools)),
-  JSON.stringify(sorted(buildDefaultRuntimeEnabledTools())),
-  "runtime.tools.describe default_enabled_tools must match gateway default manifest",
+  JSON.stringify(describe.defaultEnabledTools),
+  JSON.stringify(buildDefaultRuntimeEnabledTools()),
+  "runtime.tools.describe default_enabled_tools must match gateway default manifest order",
 );
 expectEqual(describe.toolRecoveryPolicyVersion, "v1", "runtime recovery policy version");
 expect(

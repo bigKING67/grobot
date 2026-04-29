@@ -4,6 +4,7 @@ import {
   buildAllRuntimeLocalTools,
   buildDefaultRuntimeEnabledTools,
   toolNamesForSurfaceProfile,
+  TOOL_SURFACE_POLICY_VERSION,
   TOOL_SURFACE_PROFILES,
 } from "../../tools/runtime/default-enabled-tools";
 import type { ToolSurfaceProfile } from "../../models/types";
@@ -134,14 +135,29 @@ const gatewayDefaultEnabledTools = buildDefaultRuntimeEnabledTools();
 
 expect(rustCatalogEntries.length > 0, "runtime local tool catalog must not be empty");
 expectDeepEqual(
+  gatewayAllLocalTools,
+  rustCatalogNames,
+  "gateway ALL_RUNTIME_LOCAL_TOOLS order must match Rust local_tool_catalog",
+);
+expectDeepEqual(
   sorted(gatewayAllLocalTools),
   sorted(rustCatalogNames),
   "gateway ALL_RUNTIME_LOCAL_TOOLS must match Rust local_tool_catalog",
 );
 expectDeepEqual(
+  gatewayDefaultEnabledTools,
+  rustDefaultEnabledNames,
+  "gateway DEFAULT_RUNTIME_ENABLED_TOOLS order must match Rust default_enabled_local_tool_names",
+);
+expectDeepEqual(
   sorted(gatewayDefaultEnabledTools),
   sorted(rustDefaultEnabledNames),
   "gateway DEFAULT_RUNTIME_ENABLED_TOOLS must match Rust default_enabled_local_tool_names",
+);
+expectDeepEqual(
+  TOOL_SURFACE_POLICY_VERSION,
+  resolveRustToken("TOOL_SURFACE_POLICY_VERSION"),
+  "gateway TOOL_SURFACE_POLICY_VERSION must match Rust surface policy version",
 );
 expectDeepEqual(
   sorted(rustDispatchSupportedNames.filter((name) => name !== "ask_user_question")),
