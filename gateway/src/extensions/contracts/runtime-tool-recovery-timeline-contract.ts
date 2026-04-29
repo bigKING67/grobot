@@ -172,6 +172,21 @@ const activeTimeline = buildRuntimeToolRecoveryTimeline({
 expectEqual(activeTimeline.length, 2, "active timeline length");
 expectEqual(activeTimeline[0].toolName, "web_scan", "active timeline latest tool");
 expectEqual(activeTimeline[0].stage, "ask_user", "active timeline latest stage");
+expectEqual(
+  activeTimeline[0].rawRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active timeline latest raw action",
+);
+expectEqual(
+  activeTimeline[0].effectiveRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active timeline latest effective action",
+);
+expectEqual(
+  activeTimeline[0].recommendedNextAction,
+  activeTimeline[0].effectiveRecommendedNextAction,
+  "active timeline public action uses effective action",
+);
 expectEqual(activeTimeline[0].recommendedActionFamily, "user_intervention", "active timeline latest action family");
 expectEqual(activeTimeline[0].active, true, "active timeline latest active");
 expectEqual(activeTimeline[0].consumed, false, "active timeline latest consumed");
@@ -230,8 +245,28 @@ expectEqual(
   "ask_user_for_config_or_switch_provider",
   "active health recommended next action",
 );
+expectEqual(
+  activeHealth.rawRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active health raw recommended next action",
+);
+expectEqual(
+  activeHealth.effectiveRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active health effective recommended next action",
+);
 expectEqual(activeHealth.recommendedActionFamily, "user_intervention", "active health action family");
 expectEqual(activeHealth.attentionSource, "latest", "active health attention source");
+expectEqual(
+  activeHealth.attentionRawRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active health attention raw action",
+);
+expectEqual(
+  activeHealth.attentionEffectiveRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active health attention effective action",
+);
 expectEqual(activeHealth.attentionActionFamily, "user_intervention", "active health attention action family");
 expectEqual(activeHealth.attentionRecoveryKey, expectedLatestRecoveryKey, "active health attention key");
 expectEqual(activeHealth.attentionToolName, "web_scan", "active health attention tool");
@@ -250,6 +285,16 @@ expectEqual(activeHealth.nonrecoverableCount, 1, "active health nonrecoverable c
 expectEqual(activeHealth.stuckNonrecoverableCount, 1, "active health stuck nonrecoverable count");
 expectEqual(activeHealth.hasStuckNonrecoverable, true, "active health stuck flag");
 expectEqual(activeHealth.latestRecoveryKey, expectedLatestRecoveryKey, "active health latest key");
+expectEqual(
+  activeHealth.latestRawRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active health latest raw action",
+);
+expectEqual(
+  activeHealth.latestEffectiveRecommendedNextAction,
+  "ask_user_for_config_or_switch_provider",
+  "active health latest effective action",
+);
 expectEqual(activeHealth.latestAgeMs, 2_000, "active health latest age");
 expectEqual(activeHealth.errorClassCounts.config_missing, 1, "active health config_missing count");
 expectEqual(activeHealth.toolNameCounts.web_scan, 1, "active health web_scan count");
@@ -297,6 +342,93 @@ expectEqual(
   activeDecision.gate.blockerAction,
   "fix_config_or_switch_provider_and_check_status",
   "active decision gate blocker action",
+);
+
+const legacyActionMetrics: RuntimeToolSurfaceMetricsSnapshot = {
+  ...metrics,
+  updatedAt: latestObservedAt,
+  callsByTool: { read: 1 },
+  failuresByErrorClass: { legacy_runtime_error: 1 },
+  recoveryStages: { strategy_switch: 1 },
+  recoveryCountsByKey: {
+    "tool_error:read:legacy_runtime_error": 1,
+  },
+  latestRecoveryRepeatKey: "tool_error:read:legacy_runtime_error",
+  latestRecoveryRepeatCount: 1,
+  recentRecoveries: [
+    {
+      stage: "strategy_switch",
+      reason: "legacy_runtime_error",
+      recommendedNextAction: "observe_and_continue",
+      toolName: "read",
+      errorClass: "legacy_runtime_error",
+      recoverable: true,
+      observedAt: latestObservedAt,
+    },
+  ],
+  latestRecovery: {
+    stage: "strategy_switch",
+    reason: "legacy_runtime_error",
+    recommendedNextAction: "observe_and_continue",
+    toolName: "read",
+    errorClass: "legacy_runtime_error",
+    recoverable: true,
+    observedAt: latestObservedAt,
+  },
+};
+const legacyActionTimeline = buildRuntimeToolRecoveryTimeline({
+  metrics: legacyActionMetrics,
+  adaptationSnapshot: emptyAdaptationSnapshot,
+  recoveryFeedback: activeFeedback,
+});
+expectEqual(
+  legacyActionTimeline[0].rawRecommendedNextAction,
+  "observe_and_continue",
+  "legacy timeline preserves raw action for evidence",
+);
+expectEqual(
+  legacyActionTimeline[0].effectiveRecommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "legacy timeline normalizes effective action",
+);
+expectEqual(
+  legacyActionTimeline[0].recommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "legacy timeline public action uses cataloged effective action",
+);
+expectEqual(
+  legacyActionTimeline[0].recommendedActionFamily,
+  "strategy_switch",
+  "legacy timeline classifies effective action",
+);
+const legacyActionHealth = buildRuntimeToolRecoveryHealthSummary({
+  timeline: legacyActionTimeline,
+  nowMs: Date.parse(latestObservedAt) + 1_000,
+});
+expectEqual(
+  legacyActionHealth.rawRecommendedNextAction,
+  "observe_and_continue",
+  "legacy health preserves raw attention action",
+);
+expectEqual(
+  legacyActionHealth.effectiveRecommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "legacy health exposes effective attention action",
+);
+expectEqual(
+  legacyActionHealth.recommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "legacy health recommended action stays cataloged",
+);
+expectEqual(
+  legacyActionHealth.latestRawRecommendedNextAction,
+  "observe_and_continue",
+  "legacy health preserves raw latest action",
+);
+expectEqual(
+  legacyActionHealth.latestEffectiveRecommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "legacy health exposes effective latest action",
 );
 
 const browserMetrics: RuntimeToolSurfaceMetricsSnapshot = {
@@ -696,6 +828,8 @@ process.stdout.write(JSON.stringify({
   active_latest_same_tool_error_count: activeTimeline[0]?.sameToolErrorCount ?? null,
   active_latest_escalated: activeTimeline[0]?.escalated ?? null,
   active_latest_escalation_reason: activeTimeline[0]?.escalationReason ?? null,
+  legacy_raw_action: legacyActionTimeline[0]?.rawRecommendedNextAction ?? null,
+  legacy_effective_action: legacyActionTimeline[0]?.effectiveRecommendedNextAction ?? null,
   active_health_level: activeHealth.level,
   active_health_score: activeHealth.score,
   active_health_stuck_nonrecoverable: activeHealth.hasStuckNonrecoverable,

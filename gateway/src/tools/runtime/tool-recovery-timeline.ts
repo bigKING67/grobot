@@ -41,6 +41,8 @@ export interface RuntimeToolRecoveryTimelineEntry {
   errorClass: string | null;
   stage: RuntimeToolRecoveryStage | null;
   reason: string;
+  rawRecommendedNextAction: string | null;
+  effectiveRecommendedNextAction: string | null;
   recommendedNextAction: string | null;
   recommendedActionFamily?: RuntimeToolRecoveryActionFamily | null;
   recommendedActionReason?: string | null;
@@ -70,6 +72,8 @@ export interface RuntimeToolRecoveryHealthSummary {
   score: number;
   level: "good" | "watch" | "risk";
   reason: string;
+  rawRecommendedNextAction: string | null;
+  effectiveRecommendedNextAction: string | null;
   recommendedNextAction: string | null;
   recommendedActionFamily?: RuntimeToolRecoveryActionFamily | null;
   recommendedActionReason?: string | null;
@@ -79,12 +83,16 @@ export interface RuntimeToolRecoveryHealthSummary {
   attentionToolName: string | null;
   attentionErrorClass: string | null;
   attentionRequiresUserIntervention: boolean;
+  attentionRawRecommendedNextAction: string | null;
+  attentionEffectiveRecommendedNextAction: string | null;
   attentionActionFamily?: RuntimeToolRecoveryActionFamily | null;
   attentionActionReason?: string | null;
   attentionRuntimeEnvironmentRecovery: RuntimeEnvironmentRecoveryPlan | null;
   attentionBrowserEnvironmentRecovery: BrowserEnvironmentRecoveryPlan | null;
   attentionMcpEnvironmentRecovery: McpEnvironmentRecoveryPlan | null;
   attentionAgeMs: number | null;
+  latestRawRecommendedNextAction: string | null;
+  latestEffectiveRecommendedNextAction: string | null;
   latestRecommendedNextAction: string | null;
   latestActionFamily?: RuntimeToolRecoveryActionFamily | null;
   latestActionReason?: string | null;
@@ -242,8 +250,9 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         errorMessage: recovery.errorMessage,
         errorData: recovery.errorData,
       });
-      const recommendedNextAction = resolveRuntimeToolRecoveryRecommendedNextAction(recovery);
-      const actionClassification = classifyRuntimeToolRecoveryAction(recommendedNextAction);
+      const rawRecommendedNextAction = recovery.recommendedNextAction ?? null;
+      const effectiveRecommendedNextAction = resolveRuntimeToolRecoveryRecommendedNextAction(recovery);
+      const actionClassification = classifyRuntimeToolRecoveryAction(effectiveRecommendedNextAction);
       return {
         recoveryKey,
         observedAt,
@@ -251,7 +260,9 @@ export function buildRuntimeToolRecoveryTimeline(input: {
         errorClass: recovery.errorClass ?? null,
         stage: recovery.stage,
         reason: recovery.reason,
-        recommendedNextAction,
+        rawRecommendedNextAction,
+        effectiveRecommendedNextAction,
+        recommendedNextAction: effectiveRecommendedNextAction,
         recommendedActionFamily: actionClassification.family,
         recommendedActionReason: actionClassification.reason,
         recoverable: recovery.recoverable ?? null,
@@ -373,6 +384,8 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     score,
     level,
     reason,
+    rawRecommendedNextAction: attentionEntry?.rawRecommendedNextAction ?? null,
+    effectiveRecommendedNextAction: attentionEntry?.effectiveRecommendedNextAction ?? null,
     recommendedNextAction: attentionEntry?.recommendedNextAction ?? null,
     recommendedActionFamily: attentionEntry ? attentionActionClassification.family : null,
     recommendedActionReason: attentionEntry ? attentionActionClassification.reason : null,
@@ -382,12 +395,16 @@ export function buildRuntimeToolRecoveryHealthSummary(input: {
     attentionToolName: attentionEntry?.toolName ?? null,
     attentionErrorClass: attentionEntry?.errorClass ?? null,
     attentionRequiresUserIntervention: attentionEntry?.requiresUserIntervention ?? false,
+    attentionRawRecommendedNextAction: attentionEntry?.rawRecommendedNextAction ?? null,
+    attentionEffectiveRecommendedNextAction: attentionEntry?.effectiveRecommendedNextAction ?? null,
     attentionActionFamily: attentionEntry ? attentionActionClassification.family : null,
     attentionActionReason: attentionEntry ? attentionActionClassification.reason : null,
     attentionRuntimeEnvironmentRecovery: attentionEntry?.runtimeEnvironmentRecovery ?? null,
     attentionBrowserEnvironmentRecovery: attentionEntry?.browserEnvironmentRecovery ?? null,
     attentionMcpEnvironmentRecovery: attentionEntry?.mcpEnvironmentRecovery ?? null,
     attentionAgeMs,
+    latestRawRecommendedNextAction: latest?.rawRecommendedNextAction ?? null,
+    latestEffectiveRecommendedNextAction: latest?.effectiveRecommendedNextAction ?? null,
     latestRecommendedNextAction: latest?.recommendedNextAction ?? null,
     latestActionFamily: latest ? latestActionClassification.family : null,
     latestActionReason: latest ? latestActionClassification.reason : null,
