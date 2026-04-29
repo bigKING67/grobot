@@ -72,6 +72,7 @@ interface CreateRunStartPlanModeInput {
     interactiveMode: boolean,
     options?: {
       promptPrelude?: string;
+      writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
   ): Promise<number>;
@@ -113,6 +114,7 @@ const PLAN_STATUS_PATH_MAX_CHARS = 96;
 export type PlanInterruptSource = "command" | "cli_esc";
 
 export interface RunStartPlanTurnOptions {
+  writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
   skipExecution?: boolean;
   diagnosticsMode?: "compact" | "verbose" | "trace";
@@ -1501,8 +1503,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     return 0;
   };
 
-  const printPlanModeHint = (): void => {
-    input.writeStdout(
+  const printPlanModeHint = (writeStdout: (message: string) => void = input.writeStdout): void => {
+    writeStdout(
       [
         "Plan mode is read-only. Send requirements to refine the plan.",
         "A ready plan needs concrete scope, milestones, validation commands/expected results, and rollback steps.",
@@ -1518,8 +1520,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     options?: {
       printHint?: boolean;
       printModeReadyOnly?: boolean;
+      writeStdout?: (message: string) => void;
     },
   ): Promise<number> => {
+    const writeStdout = options?.writeStdout ?? input.writeStdout;
     const compactGoal = goalForTitleRaw.trim();
     const draftTitle = compactGoal.length > 0 ? compactGoal : "plan session";
     const created = createPlanArtifact(input.workDir, planSessionKey(), draftTitle);
@@ -1534,9 +1538,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       detail: "entered plan_only mode",
     });
     void options?.printModeReadyOnly;
-    input.writeStdout("Enabled plan mode\n\n");
+    writeStdout("Enabled plan mode\n\n");
     if (options?.printHint !== false) {
-      printPlanModeHint();
+      printPlanModeHint(writeStdout);
     }
     return 0;
   };
@@ -1550,11 +1554,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       return createPlanModeDraft("", {
         printHint: false,
         printModeReadyOnly: true,
+        writeStdout: options?.writeStdout,
       });
     }
     const entered = await createPlanModeDraft(goal, {
       printHint: false,
       printModeReadyOnly: false,
+      writeStdout: options?.writeStdout,
     });
     if (entered !== 0) {
       return entered;
@@ -2329,6 +2335,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     noteRaw: string,
     options?: RunStartPlanTurnOptions,
   ): Promise<number> => {
+    const writeStdout = options?.writeStdout ?? input.writeStdout;
     const note = noteRaw.trim();
     if (!note) {
       return 0;
@@ -2347,6 +2354,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         const entered = await createPlanModeDraft(note, {
           printHint: false,
           printModeReadyOnly: false,
+          writeStdout,
         });
         if (entered !== 0) {
           return entered;
@@ -2390,7 +2398,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           source: "cli",
           detail: "message_mode_execution_skipped",
         });
-        input.writeStdout("Plan note saved.\n\n");
+        writeStdout("Plan note saved.\n\n");
         return 0;
       }
       const historyLengthBeforeExecution = input.runtimeState.getHistoryMessages().length;
@@ -2402,12 +2410,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         compactFailureSurface,
       });
       if (options?.showWorkingNotice) {
-        input.writeStdout("Working on the plan...\n");
+        writeStdout("Working on the plan...\n");
       }
       let code: number;
       try {
         code = await input.executeTurn(note, true, {
           promptPrelude: PLAN_MODE_WORKFLOW_PROMPT,
+          writeStdout,
           writeStderr: planTurnStderr.writeStderr,
         });
       } finally {
@@ -2448,7 +2457,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
             detail: `${detailParts.join(" ")} degraded=true`,
           });
           const hint = failureDecision.hint ?? "check semantic index and retrieval configuration.";
-          input.writeStdout(`Plan context degraded · draft kept. ${hint}\n\n`);
+          writeStdout(`Plan context degraded · draft kept. ${hint}\n\n`);
           return 0;
         }
         const detailParts = [
@@ -2532,16 +2541,16 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const planPhase = derivePlanPhaseFromStatus(decisionState.reviewedEntry.status) ?? "drafting";
       if (!decisionState.review.ok) {
         const topRepairAction = decisionState.repairActions[0];
-        input.writeStdout(
+        writeStdout(
           `Plan needs refinement · ${topRepairAction?.title ?? decisionState.recommendation.reason}\n\n`,
         );
         return 0;
       }
       if (decisionState.reviewedEntry.status === "ready") {
-        input.writeStdout(`Plan ready · reply "${PLAN_EXECUTION_REPLY}" to execute\n\n`);
+        writeStdout(`Plan ready · reply "${PLAN_EXECUTION_REPLY}" to execute\n\n`);
       } else {
-        input.writeStdout(`Plan updated · ${planPhase}\n`);
-        input.writeStdout(`Next · ${decisionState.recommendation.action}\n\n`);
+        writeStdout(`Plan updated · ${planPhase}\n`);
+        writeStdout(`Next · ${decisionState.recommendation.action}\n\n`);
       }
       return code;
     } finally {
@@ -2589,6 +2598,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     extraRaw: string,
     options?: RunStartPlanTurnOptions,
   ): Promise<number> => {
+    const writeStdout = options?.writeStdout ?? input.writeStdout;
     const previousPhase = activeTurnPhase;
     activeTurnPhase = "applying";
     const stablePoint = capturePlanStablePoint();
@@ -2605,12 +2615,12 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return 1;
       }
       if (recovered.recovered) {
-        input.writeStdout(
+        writeStdout(
           `[plan] recovered stale apply lock plan_id=${active.entry.plan_id} stale_ms=${String(recovered.stale_ms ?? 0)}\n`,
         );
       }
       if (active.entry.status === "applying") {
-        input.writeStdout(
+        writeStdout(
           `[plan] apply already in progress plan_id=${active.entry.plan_id}\n\n`,
         );
         return 0;
@@ -2763,7 +2773,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         approvedSnapshotPath,
         active.content,
       );
-      input.writeStdout(
+      writeStdout(
         buildApprovedPlanExecutionSurface({
           title: approvedEntry.title,
           approvedHash,
@@ -2785,6 +2795,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       let code: number;
       try {
         code = await input.executeTurn(prompt, true, {
+          writeStdout,
           writeStderr: applyStderr.writeStderr,
         });
       } finally {

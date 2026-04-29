@@ -36,6 +36,7 @@ import { type RuntimeAttachment } from "../../../../models/types";
 
 export interface RunStartInteractiveTurnOptions {
   promptPrelude?: string;
+  writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
   diagnosticsMode?: InteractiveDiagnosticsMode;
   showWorkingNotice?: boolean;
@@ -712,12 +713,14 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     showPlanStatus: input.showPlanStatus,
     enterPlan: (goal) =>
       input.enterPlan(goal, {
+        writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
         showWorkingNotice: true,
       }),
     applyPlan: (extra) =>
       input.applyPlan(extra, {
+        writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
       }),
@@ -726,6 +729,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     requestRuntimeInterrupt: input.requestRuntimeInterrupt,
     runPlanTurn: (userInput) =>
       input.runPlanTurn(userInput, {
+        writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
         showWorkingNotice: true,

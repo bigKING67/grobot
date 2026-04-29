@@ -278,6 +278,39 @@ async function main(): Promise<void> {
     });
     const failureResultCode = await failurePlanMode.enterPlan("provider failure");
 
+    const overrideWorkDir = resolve(workDir, "stdout-override");
+    mkdirSync(overrideWorkDir, { recursive: true });
+    const overrideSessionKey = "feishu:grobot:dm:plan-mode-stdout-override-contract";
+    const overrideRuntimeState = createRuntimeState(overrideSessionKey);
+    let fallbackStdout = "";
+    let overrideStdout = "";
+    const stdoutOverridePlanMode = createRunStartPlanMode({
+      workDir: overrideWorkDir,
+      runtimeState: overrideRuntimeState,
+      persistence,
+      executeTurn: async (_userInput, _interactiveMode, options) => {
+        options?.writeStdout?.("runtime output through override\n");
+        return 0;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        overrideRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        fallbackStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    const stdoutOverrideResult = await stdoutOverridePlanMode.enterPlan("stdout override", {
+      writeStdout: (message) => {
+        overrideStdout += message;
+      },
+      showWorkingNotice: true,
+    });
+
     const verboseFailureWorkDir = resolve(workDir, "verbose-failure");
     mkdirSync(verboseFailureWorkDir, { recursive: true });
     const verboseFailureSessionKey = "feishu:grobot:dm:plan-mode-verbose-failure-contract";
@@ -515,6 +548,13 @@ async function main(): Promise<void> {
       events_has_apply_succeeded: eventsText.includes("\"event\":\"plan_apply_succeeded\""),
       events_has_verification_pending: eventsText.includes("\"event\":\"plan_verification_pending\""),
       compact_plan_turn_failure_code_preserved: failureResultCode === 1,
+      plan_turn_stdout_override_captures_plan_scaffolding:
+        stdoutOverrideResult === 0
+        && overrideStdout.includes("Enabled plan mode")
+        && overrideStdout.includes("Working on the plan")
+        && overrideStdout.includes("runtime output through override")
+        && overrideStdout.includes("Plan needs refinement"),
+      plan_turn_stdout_override_skips_fallback_writer: fallbackStdout.length === 0,
       compact_plan_turn_failure_surface_human:
         failureStderr.includes("Plan update failed")
         && failureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
