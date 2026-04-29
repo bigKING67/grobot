@@ -94,6 +94,9 @@ function registryActions(value: unknown): { action: string; reasons: string[] }[
 
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
+const statusQualityRegistry = readRepoFile(
+  "gateway/src/orchestration/entrypoints/dev-cli/status/runtime-tool-quality-registry.ts",
+);
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
 const startSmokeContract = readRepoFile("gateway/src/extensions/contracts/start-smoke-contract.mjs");
 const gatewaySmoke = readRepoFile("gateway/tests/check-gateway-node.mjs");
@@ -149,12 +152,13 @@ const releaseQualityRequiredFragments = [
   "const runtimeToolQualitySchemaVersion = 1",
   "const runtimeToolQualityFailureReasonCatalog = Object.freeze([",
   "const runtimeToolQualityActionFamilyCatalog = Object.freeze([",
-  "const actionRequiredByReason = Object.freeze({",
+  "function readRuntimeToolQualityActionRequiredByReason()",
+  "const actionRequiredByReason = readRuntimeToolQualityActionRequiredByReason();",
   "function pushRuntimeToolQualityFailureReason",
   "function resolveRuntimeToolQualityActionableNextStep",
   "function runtimeToolQualitySummary(describeSummary, data)",
   "const status = failureReasons.length > 0 ? \"fail\" : \"ok\"",
-  "const actionRequired = actionSignal ? actionRequiredByReason[actionSignal[0]] ?? null : null",
+  "const actionRequired = actionSignal ? actionRequiredByReason.get(actionSignal[0]) ?? null : null",
   "quality_schema_version: runtimeToolQualitySchemaVersion",
   "passed: status === \"ok\"",
   "source: \"runtime_tool_describe\"",
@@ -179,7 +183,6 @@ const statusQualityRequiredFragments = [
   "type RuntimeToolQualityActionRequired",
   "const RUNTIME_TOOL_QUALITY_FAILURE_REASONS",
   "const RUNTIME_TOOL_QUALITY_WARNING_REASONS",
-  "const RUNTIME_TOOL_QUALITY_ACTION_REQUIRED_BY_REASON",
   "interface RuntimeToolQualitySummary",
   "quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION",
   "status: RuntimeToolQualityStatus",
@@ -198,6 +201,7 @@ const statusQualityRequiredFragments = [
   "actionable_next_step: string | null",
   "function resolveRuntimeToolQualityAction",
   "function resolveRuntimeToolQualityActionRequired",
+  "resolveRuntimeToolQualityActionRequiredFromRegistry(actionReason)",
   "function resolveRuntimeToolQualityActionableNextStep",
   "const status: RuntimeToolQualityStatus = failReasons.length > 0",
   "passed: status === \"ok\"",
@@ -223,6 +227,17 @@ expectAllIncludes(
   "status runtime_tools_quality schema",
 );
 
+expectAllIncludes(
+  statusQualityRegistry,
+  [
+    "RUNTIME_TOOL_QUALITY_REGISTRY_RELATIVE_PATH = \"shared/contracts/runtime-tool-quality-v1.json\"",
+    "function readRuntimeToolQualityActionRequiredByReason()",
+    "export function resolveRuntimeToolQualityActionRequiredFromRegistry",
+    "runtime_tool_quality_registry_action_required_unmapped",
+  ],
+  "status runtime-tool quality registry reader",
+);
+
 for (const reason of statusFailureReasons) {
   expectIncludes(statusCommand, `"${reason}"`, `status failure reason registry ${reason}`);
 }
@@ -238,12 +253,11 @@ for (const family of schemaActionFamilies) {
     `action family must appear in status or release implementation: ${family}`,
   );
 }
-for (const action of schemaActionRequiredIds) {
-  expect(
-    statusCommand.includes(`"${action}"`) || releaseGate.includes(`"${action}"`),
-    `action_required id must appear in status or release implementation: ${action}`,
-  );
-}
+expect(
+  !statusCommand.includes("runtime_binary_missing: \"build_runtime_binary\"")
+    && !releaseGate.includes("runtime_binary_missing: \"build_runtime_binary\""),
+  "status/release must derive action_required mapping from shared registry instead of inline reason maps",
+);
 
 expect(
   releaseGate.includes("schemaBudgetViolations === null")

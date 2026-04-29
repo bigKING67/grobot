@@ -375,6 +375,8 @@ is blocked before packaging or daily status consumers break. The canonical enum 
 `shared/contracts/runtime-tool-quality-v1.json`; it must stay synchronized with
 status/release implementations for statuses, sources, schema-budget states,
 failure reasons, warning reasons, action families, and action-required ids.
+Status/release code must derive `action_required` from this registry instead of
+copying reason-to-action maps into each surface.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`

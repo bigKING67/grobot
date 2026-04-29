@@ -116,6 +116,7 @@ import {
   resolveRuntimeToolDescribeDecision,
   type RuntimeToolEnabledToolsSource,
 } from "../services/runtime-tool-describe-decision";
+import { resolveRuntimeToolQualityActionRequiredFromRegistry } from "./runtime-tool-quality-registry";
 
 function stripInlineComment(rawLine: string): string {
   const hashIndex = rawLine.indexOf("#");
@@ -1254,15 +1255,7 @@ type RuntimeToolQualityWarningReason =
   | "recovery_gate_warn"
   | `recovery_health_${RuntimeToolRecoveryHealthSummary["level"]}`;
 type RuntimeToolQualityReason = RuntimeToolQualityFailureReason | RuntimeToolQualityWarningReason;
-type RuntimeToolQualityActionRequired =
-  | "build_runtime_binary"
-  | "check_runtime_health"
-  | "run_runtime_tool_contracts"
-  | "trim_runtime_tool_schema_surface"
-  | "review_runtime_recovery_gate"
-  | "restore_runtime_tool_describe"
-  | "run_runtime_tool_describe_checks"
-  | "review_runtime_recovery_health";
+type RuntimeToolQualityActionRequired = string;
 
 const RUNTIME_TOOL_QUALITY_SCHEMA_VERSION = 1;
 const RUNTIME_TOOL_QUALITY_FAILURE_REASONS: readonly RuntimeToolQualityFailureReason[] = [
@@ -1280,22 +1273,6 @@ const RUNTIME_TOOL_QUALITY_WARNING_REASONS: readonly RuntimeToolQualityWarningRe
   "recovery_health_watch",
   "recovery_health_risk",
 ] as const;
-const RUNTIME_TOOL_QUALITY_ACTION_REQUIRED_BY_REASON: Readonly<
-  Record<RuntimeToolQualityReason, RuntimeToolQualityActionRequired | null>
-> = {
-  runtime_binary_missing: "build_runtime_binary",
-  runtime_health_failed: "check_runtime_health",
-  schema_projection_drift_active: "run_runtime_tool_contracts",
-  schema_budget_violated: "trim_runtime_tool_schema_surface",
-  recovery_gate_blocking: "review_runtime_recovery_gate",
-  runtime_tools_describe_fallback: "restore_runtime_tool_describe",
-  schema_projection_drift_not_checked: "run_runtime_tool_describe_checks",
-  recovery_gate_warn: "review_runtime_recovery_gate",
-  recovery_health_good: null,
-  recovery_health_watch: "review_runtime_recovery_health",
-  recovery_health_risk: "review_runtime_recovery_health",
-} as const;
-
 interface RuntimeToolQualitySummary {
   quality_schema_version: typeof RUNTIME_TOOL_QUALITY_SCHEMA_VERSION;
   status: RuntimeToolQualityStatus;
@@ -1377,7 +1354,7 @@ function resolveRuntimeToolQualityAction(input: {
 function resolveRuntimeToolQualityActionRequired(
   actionReason: RuntimeToolQualityReason | null,
 ): RuntimeToolQualityActionRequired | null {
-  return actionReason ? RUNTIME_TOOL_QUALITY_ACTION_REQUIRED_BY_REASON[actionReason] ?? null : null;
+  return resolveRuntimeToolQualityActionRequiredFromRegistry(actionReason);
 }
 
 function resolveRuntimeToolQualityActionableNextStep(input: {

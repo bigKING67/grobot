@@ -31,4 +31,5 @@ warning reasons, action families, and `action_required` ids for
 `runtime_tools_quality` and `checks.runtime_tool_quality`. The two quality
 surfaces should publish both symbolic automation fields (`action_family`,
 `action_reason`, `action_required`) and the human-facing
-`actionable_next_step`.
+`actionable_next_step`. Implementations should derive `action_required` from
+this registry rather than keeping separate reason-to-action maps.

@@ -98,17 +98,38 @@ const runtimeToolQualityActionFamilyCatalog = Object.freeze([
   "contract_harness",
   "schema_budget",
 ]);
-const actionRequiredByReason = Object.freeze({
-  report_parse_error: "fix_runtime_tool_release_report_parse",
-  diagnostics_self_test_failed: "fix_runtime_tool_runner_diagnostics",
-  runtime_binary_missing: "build_runtime_binary",
-  runtime_tool_describe_failed: "run_failed_runtime_tool_contract",
-  contract_coverage_incomplete: "restore_runtime_tool_contract_coverage",
-  runner_contract_coverage_missing: "register_runtime_tool_contract_in_runner",
-  tmp_fixture_isolation_missing: "isolate_runtime_tool_contract_fixtures",
-  schema_budget_unknown: "restore_runtime_tool_schema_budget_evidence",
-  schema_budget_violated: "trim_runtime_tool_schema_surface",
-});
+
+function readRuntimeToolQualityActionRequiredByReason() {
+  const registryPath = path.resolve(process.cwd(), "shared/contracts/runtime-tool-quality-v1.json");
+  let registry = null;
+  try {
+    registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `runtime_tool_quality_registry_invalid_json:${registryPath}:${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!registry || typeof registry !== "object" || !Array.isArray(registry.action_required)) {
+    throw new Error("runtime_tool_quality_registry_action_required_missing");
+  }
+  const byReason = new Map();
+  registry.action_required.forEach((row, index) => {
+    if (!row || typeof row !== "object" || typeof row.action !== "string" || !Array.isArray(row.reasons)) {
+      throw new Error(`runtime_tool_quality_registry_action_required_invalid:${String(index)}`);
+    }
+    row.reasons.forEach((reason) => {
+      if (typeof reason !== "string" || reason.trim().length === 0) {
+        throw new Error(`runtime_tool_quality_registry_action_reason_invalid:${String(index)}`);
+      }
+      if (byReason.has(reason)) {
+        throw new Error(`runtime_tool_quality_registry_action_reason_duplicate:${reason}`);
+      }
+      byReason.set(reason, row.action);
+    });
+  });
+  return byReason;
+}
+const actionRequiredByReason = readRuntimeToolQualityActionRequiredByReason();
 
 function pushRuntimeToolQualityFailureReason(reasons, reason) {
   if (!runtimeToolQualityFailureReasonCatalog.includes(reason)) {
@@ -308,7 +329,7 @@ function runtimeToolQualitySummary(describeSummary, data) {
   if (actionSignal && !runtimeToolQualityActionFamilyCatalog.includes(actionSignal[1])) {
     throw new Error(`unknown runtime_tool_quality action family: ${String(actionSignal[1])}`);
   }
-  const actionRequired = actionSignal ? actionRequiredByReason[actionSignal[0]] ?? null : null;
+  const actionRequired = actionSignal ? actionRequiredByReason.get(actionSignal[0]) ?? null : null;
   const actionableNextStep = resolveRuntimeToolQualityActionableNextStep(
     actionSignal ? actionSignal[0] : null,
     describeSummary,

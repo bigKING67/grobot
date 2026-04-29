@@ -198,7 +198,9 @@ stable symbolic automation action and `actionable_next_step` as the
 human/operator next step. The canonical enum registry lives in
 `shared/contracts/runtime-tool-quality-v1.json` and lists allowed statuses,
 sources, schema-budget states, failure reasons, warning reasons, action
-families, and `action_required` ids for both surfaces.
+families, and `action_required` ids for both surfaces. Status and release
+report implementations derive `action_required` from this registry instead of
+maintaining inline reason-to-action maps.
 
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
@@ -702,8 +704,9 @@ quality from prose or raw booleans. Both surfaces carry
 operator-facing. Dashboards and release automation should route on the symbolic
 fields, not parse prose. The enum source of truth is
 `shared/contracts/runtime-tool-quality-v1.json`; the focused contract checks
-that every status/release reason, action family, and required-action id appears in the
-implementation before the runner passes. The default `npm run check` already covers the
+that every status/release reason maps to a registry action and that both
+implementations read the registry before the runner passes. The default
+`npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs
 `npm run check:gateway:runtime-tools:schema` and
