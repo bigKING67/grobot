@@ -28,6 +28,7 @@ const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const releaseQualityModule = readRepoFile("scripts/lib/runtime-tool-quality-report.mjs");
 const runtimeToolRunner = readRepoFile("scripts/check-runtime-tool-contracts.mjs");
 const runnerSchemaTest = readRepoFile("scripts/test-runtime-tool-contracts-json-schema.mjs");
+const qualityReportModuleTest = readRepoFile("scripts/test-runtime-tool-quality-report-module.mjs");
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
 const runtimeToolSurfaceContract = readRepoFile("gateway/src/extensions/contracts/runtime-tool-surface-contract.ts");
 const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
@@ -47,6 +48,7 @@ const runtimeToolSuiteIndex = checkSegments.indexOf("npm run check:gateway:runti
 const gatewaySmokeIndex = checkSegments.indexOf("npm run check:gateway");
 const runtimeToolSuiteScript = packageJson.scripts?.["check:gateway:runtime-tools"] ?? "";
 const runtimeToolSchemaScript = packageJson.scripts?.["check:gateway:runtime-tools:schema"] ?? "";
+const qualityReportScript = packageJson.scripts?.["check:gateway:runtime-tools:quality-report"] ?? "";
 const releaseReportScript = packageJson.scripts?.["check:gateway:runtime-tools:release-report"] ?? "";
 
 expect(runtimeToolSuiteIndex >= 0, "default check must run runtime-tool suite");
@@ -131,8 +133,16 @@ expect(
   "check:gateway:runtime-tools must run the runtime-tool JSON schema contract",
 );
 expect(
+  runtimeToolSuiteScript.includes("scripts/test-runtime-tool-quality-report-module.mjs"),
+  "check:gateway:runtime-tools must run the runtime-tool quality report module contract",
+);
+expect(
   runtimeToolSchemaScript === "node scripts/test-runtime-tool-contracts-json-schema.mjs",
   "package.json must expose runtime-tool JSON schema regression script",
+);
+expect(
+  qualityReportScript === "node scripts/test-runtime-tool-quality-report-module.mjs",
+  "package.json must expose runtime-tool quality report module regression script",
 );
 expect(
   runnerSchemaTest.includes("schema_version")
@@ -141,6 +151,15 @@ expect(
     && runnerSchemaTest.includes("diagnostic_summary")
     && runnerSchemaTest.includes("diagnostics_self_test"),
   "runtime-tool JSON schema contract must assert schema_version, diagnostics, runtime binary, and self-test fields",
+);
+expect(
+  qualityReportModuleTest.includes("readRuntimeToolQualityRegistry")
+    && qualityReportModuleTest.includes("resolveRuntimeToolQualitySignal")
+    && qualityReportModuleTest.includes("runtime_tool_quality_registry_invalid_json")
+    && qualityReportModuleTest.includes("runtime_tool_quality_registry_reason_surface_unmapped")
+    && qualityReportModuleTest.includes("schema_budget_cases")
+    && qualityReportModuleTest.includes("next_step_precedence"),
+  "runtime-tool quality report module test must directly cover registry guards, signal priority, schema budget matrix, and next-step precedence",
 );
 expect(
   releaseReportScript === "node scripts/test-runtime-tool-release-report.mjs",
@@ -198,12 +217,17 @@ expect(
   "core packaging workflow must run runtime-tool release-report regression test",
 );
 expect(
+  corePackagingWorkflow.includes("check:gateway:runtime-tools:quality-report"),
+  "core packaging workflow must run runtime-tool quality report module regression test",
+);
+expect(
   corePackagingWorkflow.includes("check:gateway:runtime-tools:schema"),
   "core packaging workflow must run runtime-tool JSON schema regression test",
 );
 expect(
   corePackagingWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"')
     && corePackagingWorkflow.includes('"scripts/test-runtime-tool-contracts-json-schema.mjs"')
+    && corePackagingWorkflow.includes('"scripts/test-runtime-tool-quality-report-module.mjs"')
     && corePackagingWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"')
     && corePackagingWorkflow.includes('"scripts/lib/**"')
     && corePackagingWorkflow.includes('"shared/contracts/runtime-tool-quality-v1.json"'),
@@ -228,6 +252,10 @@ expect(
 expect(
   harnessWorkflow.includes('"scripts/test-runtime-tool-release-report.mjs"'),
   "harness gate must trigger on runtime-tool release-report test changes",
+);
+expect(
+  harnessWorkflow.includes('"scripts/test-runtime-tool-quality-report-module.mjs"'),
+  "harness gate must trigger on runtime-tool quality report module test changes",
 );
 expect(
   harnessWorkflow.includes('"scripts/test-runtime-tool-contracts-json-schema.mjs"'),
@@ -259,6 +287,7 @@ process.stdout.write(JSON.stringify({
   all_contract_tmp_fixtures_isolated: true,
   runner_covers_all_runtime_tool_contracts: true,
   runner_schema_regression_script: true,
+  quality_report_module_regression_script: true,
   release_report_regression_script: true,
   release_report_regression_workflow: true,
   workflows_with_rust_toolchain: 3,
