@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptPath = resolve(__filename, "..");
+const repoRoot = resolve(scriptPath, "..");
 const checkScriptPath = resolve(scriptPath, "layer-contract-check.mjs");
 
 function makeTempRepo() {
@@ -20,10 +21,14 @@ function write(relativePath, content, root) {
   writeFileSync(target, content);
 }
 
-function runCheck({ root, specPath }) {
+function runCheck({ root, specPath, strict = true }) {
+  const args = [checkScriptPath, "--repo-root", root, "--spec", specPath, "--json"];
+  if (strict) {
+    args.push("--strict");
+  }
   const result = spawnSync(
     process.execPath,
-    [checkScriptPath, "--repo-root", root, "--spec", specPath, "--strict", "--json"],
+    args,
     { encoding: "utf8" }
   );
   const stdout = (result.stdout || "").trim();
@@ -32,6 +37,16 @@ function runCheck({ root, specPath }) {
     code: result.status ?? 1,
     payload,
   };
+}
+
+function testPackageScriptsUseStrictDefault() {
+  const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
+  const scripts = packageJson.scripts ?? {};
+  assert.equal(scripts["check:layer-contract"], "node scripts/layer-contract-check.mjs --strict");
+  assert.equal(scripts["check:layer-contract:strict"], "node scripts/layer-contract-check.mjs --strict");
+  assert.equal(scripts["check:layer-contract:warn"], "node scripts/layer-contract-check.mjs");
+  assert.match(scripts.check ?? "", /npm run check:layer-contract( |$|&&)/);
+  assert.doesNotMatch(scripts.check ?? "", /check:layer-contract:warn/);
 }
 
 function baseSpec() {
@@ -137,10 +152,35 @@ function testForbiddenTsImportTriggersWarning() {
   }
 }
 
+function testWarnModeAllowsWarningsForDiagnostics() {
+  const root = makeTempRepo();
+  try {
+    write("runtime/src/models/sample.rs", "pub fn sample() {}\n", root);
+    const spec = baseSpec();
+    spec.layers[0].requiredDirs = ["providers"];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath, strict: false });
+    assert.equal(result.code, 0);
+    assert.equal(result.payload.pass, true);
+    assert.ok(Array.isArray(result.payload.warnings));
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("missing required directory")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 function main() {
+  testPackageScriptsUseStrictDefault();
   testForbiddenImportTriggersWarning();
   testAllowlistSuppressesWarning();
   testForbiddenTsImportTriggersWarning();
+  testWarnModeAllowsWarningsForDiagnostics();
   process.stdout.write("layer-contract-check tests passed.\n");
 }
 

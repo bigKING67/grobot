@@ -47,6 +47,9 @@ const runtimeToolSmokeInvocationCount = (
 const checkSegments = checkScript.split("&&").map((segment) => segment.trim());
 const runtimeToolSuiteIndex = checkSegments.indexOf("npm run check:gateway:runtime-tools");
 const gatewaySmokeIndex = checkSegments.indexOf("npm run check:gateway");
+const layerContractScript = packageJson.scripts?.["check:layer-contract"] ?? "";
+const layerContractStrictScript = packageJson.scripts?.["check:layer-contract:strict"] ?? "";
+const layerContractWarnScript = packageJson.scripts?.["check:layer-contract:warn"] ?? "";
 const runtimeToolSuiteScript = packageJson.scripts?.["check:gateway:runtime-tools"] ?? "";
 const runtimeToolSchemaScript = packageJson.scripts?.["check:gateway:runtime-tools:schema"] ?? "";
 const qualityReportScript = packageJson.scripts?.["check:gateway:runtime-tools:quality-report"] ?? "";
@@ -56,8 +59,25 @@ const releaseReportScript = packageJson.scripts?.["check:gateway:runtime-tools:r
 expect(runtimeToolSuiteIndex >= 0, "default check must run runtime-tool suite");
 expect(gatewaySmokeIndex >= 0, "default check must run gateway smoke");
 expect(
+  checkSegments.includes("npm run check:layer-contract"),
+  "default check must run the strict layer-contract gate",
+);
+expect(
+  !checkSegments.includes("npm run check:layer-contract:warn"),
+  "default check must not use warn-only layer-contract diagnostics",
+);
+expect(
   runtimeToolSuiteIndex < gatewaySmokeIndex,
   "runtime-tool suite must run before monolithic gateway smoke",
+);
+expect(
+  layerContractScript === "node scripts/layer-contract-check.mjs --strict"
+    && layerContractStrictScript === layerContractScript,
+  "default layer-contract check must be strict so warnings fail local full checks",
+);
+expect(
+  layerContractWarnScript === "node scripts/layer-contract-check.mjs",
+  "package.json must expose an explicit warn-only layer-contract diagnostics script",
 );
 expectEqual(
   runtimeToolSmokeInvocationCount,
@@ -298,6 +318,8 @@ expect(
 process.stdout.write(JSON.stringify({
   ok: true,
   check_order: checkSegments,
+  layer_contract_default_strict: true,
+  layer_contract_warn_diagnostics: true,
   runtime_tool_smoke_invocation_count: runtimeToolSmokeInvocationCount,
   release_gate_describe_json: true,
   release_gate_failure_diagnostics: true,
