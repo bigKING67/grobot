@@ -188,6 +188,7 @@ process.stdout.write(
     + ` surface_hidden_args=${surfaceExecutionPayload.hidden_arg_rejections ?? "unknown"}`
     + ` surface_hidden_tools=${surfaceExecutionPayload.hidden_tool_rejections ?? "unknown"}`
     + ` surface_error_data=${surfaceExecutionPayload.structured_error_data_checks ?? "unknown"}`
+    + ` surface_action_catalog=${surfaceExecutionPayload.recovery_action_catalog_checks ?? "unknown"}`
     + ` gateway_only_actions=${JSON.stringify(governancePayload.gateway_only_recovery_actions ?? [])}\n`,
 );
 NODE

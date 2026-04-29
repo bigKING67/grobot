@@ -330,7 +330,8 @@ expect(
     && schemaReleaseDiagnosticFields.includes("runtime_schema_budget_violation_details")
     && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_smoke_passed")
     && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_schema_projection_checks")
-    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_structured_error_data_checks"),
+    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_structured_error_data_checks")
+    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_recovery_action_catalog_checks"),
   "schema release diagnostic fields must include manifest diff, schema budget, and surface execution evidence",
 );
 expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "schema action families must be unique");
@@ -513,6 +514,7 @@ const releaseQualityModuleRequiredFragments = [
   "runtime_surface_execution_profiles_smoked:",
   "runtime_surface_execution_schema_projection_checks:",
   "runtime_surface_execution_structured_error_data_checks:",
+  "runtime_surface_execution_recovery_action_catalog_checks:",
   "action_family: actionSignal?.actionFamily ?? \"none\"",
   "action_reason: actionSignal?.reason ?? null",
   "action_required: actionSignal?.actionRequired ?? null",
@@ -680,6 +682,7 @@ expect(
     && releaseReportTest.includes("surface execution smoke failures with a focused action")
     && releaseReportTest.includes("surface_smoke=true")
     && releaseReportTest.includes("surface_error_data=275")
+    && releaseReportTest.includes("surface_action_catalog=20")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_profile_summary must describe 7 profiles")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_budget_violation_details must be empty array")
@@ -743,6 +746,7 @@ process.stdout.write(JSON.stringify({
     "runtime_surface_execution_hidden_arg_rejections",
     "runtime_surface_execution_schema_projection_checks",
     "runtime_surface_execution_structured_error_data_checks",
+    "runtime_surface_execution_recovery_action_catalog_checks",
     "action_family",
     "action_reason",
     "action_required",

@@ -295,6 +295,10 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
       Number.isFinite(surfaceExecutionPayload?.structured_error_data_checks)
         ? surfaceExecutionPayload.structured_error_data_checks
         : null,
+    runtime_surface_execution_recovery_action_catalog_checks:
+      Number.isFinite(surfaceExecutionPayload?.recovery_action_catalog_checks)
+        ? surfaceExecutionPayload.recovery_action_catalog_checks
+        : null,
     gateway_only_recovery_actions: stringArray(governancePayload?.gateway_only_recovery_actions),
   };
 }
@@ -471,6 +475,10 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
     runtime_surface_execution_structured_error_data_checks:
       Number.isFinite(describeSummary.runtime_surface_execution_structured_error_data_checks)
         ? describeSummary.runtime_surface_execution_structured_error_data_checks
+        : null,
+    runtime_surface_execution_recovery_action_catalog_checks:
+      Number.isFinite(describeSummary.runtime_surface_execution_recovery_action_catalog_checks)
+        ? describeSummary.runtime_surface_execution_recovery_action_catalog_checks
         : null,
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions

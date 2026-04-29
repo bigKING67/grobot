@@ -45,6 +45,11 @@ type RuntimeRpcResult = {
   stderr: string;
 };
 
+type StructuredErrorDataCheckResult = {
+  structuredChecks: number;
+  recoveryActionCatalogChecks: number;
+};
+
 type SurfaceCase = {
   id: string;
   profile: string;
@@ -73,6 +78,7 @@ type SurfaceCaseResult = {
   tool_end_error_class: string | null;
   schema_projection_checks: number;
   structured_error_data_checks: number;
+  recovery_action_catalog_checks: number;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -274,7 +280,7 @@ function runtimeBinaryPath(repoRoot: string): string {
   return resolve(repoRoot, "runtime/target/debug", "grobot-runtime");
 }
 
-function runRuntimeTurn(
+function runRuntimeRequest(
   repoRoot: string,
   request: JsonRecord,
   envOverrides: Record<string, string | undefined>,
@@ -367,6 +373,31 @@ function runRuntimeTurn(
     });
     child.stdin.end();
   });
+}
+
+async function loadRuntimeRecoveryActions(repoRoot: string): Promise<string[]> {
+  const runtimeResult = await runRuntimeRequest(
+    repoRoot,
+    {
+      jsonrpc: "2.0",
+      id: "surface-recovery-actions",
+      method: "runtime.tools.describe",
+      params: {},
+    },
+    { ...process.env },
+  );
+  expectEqual(runtimeResult.exitCode, 0, "runtime.tools.describe process exit");
+  const payload = parseFirstJsonLine("runtime.tools.describe", runtimeResult.stdout);
+  expect(
+    isRecord(payload) && isRecord(payload.result) && Array.isArray(payload.result.tool_recovery_actions),
+    "runtime.tools.describe must expose tool_recovery_actions",
+  );
+  const actions = payload.result.tool_recovery_actions
+    .map((item) => (typeof item === "string" ? item : ""))
+    .filter((item) => item.length > 0);
+  expect(actions.length > 0, "runtime.tools.describe tool_recovery_actions must be non-empty");
+  expectSameStringSet(actions, actions, "runtime.tools.describe tool_recovery_actions must be unique");
+  return actions;
 }
 
 function parseFirstJsonLine(name: string, stdout: string): unknown {
@@ -585,16 +616,32 @@ function assertErrorDataExpectation(
   return checks;
 }
 
+function assertRecoveryActionInCatalog(
+  value: unknown,
+  recoveryActions: readonly string[],
+  caseId: string,
+  source: string,
+): number {
+  expect(typeof value === "string" && value.length > 0, `${caseId}: ${source} recommended_next_action missing`);
+  expect(
+    recoveryActions.includes(value),
+    `${caseId}: ${source} recommended_next_action not in runtime recovery catalog: ${value}`,
+  );
+  return 1;
+}
+
 function assertStructuredErrorData(
   surfaceCase: SurfaceCase,
   rpcPayload: unknown,
   toolEndPayload: JsonRecord,
   toolRecoveryEvent: JsonRecord | null,
-): number {
+  recoveryActions: readonly string[],
+): StructuredErrorDataCheckResult {
   if (!surfaceCase.expectedErrorData) {
-    return 0;
+    return { structuredChecks: 0, recoveryActionCatalogChecks: 0 };
   }
   let checks = 0;
+  let actionCatalogChecks = 0;
   const toolEndErrorData = isRecord(toolEndPayload.error_data) ? toolEndPayload.error_data : null;
   expect(toolEndErrorData !== null, `${surfaceCase.id}: tool_end must expose structured error_data`);
   checks += assertErrorDataExpectation(
@@ -602,6 +649,12 @@ function assertStructuredErrorData(
     surfaceCase.expectedErrorData,
     surfaceCase.id,
     "tool_end",
+  );
+  actionCatalogChecks += assertRecoveryActionInCatalog(
+    toolEndErrorData.recommended_next_action,
+    recoveryActions,
+    surfaceCase.id,
+    "tool_end error_data",
   );
 
   const rpcData = rpcErrorData(rpcPayload);
@@ -611,6 +664,12 @@ function assertStructuredErrorData(
     surfaceCase.expectedErrorData,
     surfaceCase.id,
     "rpc_error",
+  );
+  actionCatalogChecks += assertRecoveryActionInCatalog(
+    rpcData.recommended_next_action,
+    recoveryActions,
+    surfaceCase.id,
+    "rpc_error error_data",
   );
 
   expect(toolRecoveryEvent !== null, `${surfaceCase.id}: tool_recovery event missing`);
@@ -637,6 +696,12 @@ function assertStructuredErrorData(
     `${surfaceCase.id}: tool_recovery recommended_next_action`,
   );
   checks += 1;
+  actionCatalogChecks += assertRecoveryActionInCatalog(
+    toolRecoveryPayload.recommended_next_action,
+    recoveryActions,
+    surfaceCase.id,
+    "tool_recovery payload",
+  );
   expectEqual(
     toolRecoveryPayload.recoverable,
     surfaceCase.expectedErrorData.recoverable,
@@ -649,7 +714,13 @@ function assertStructuredErrorData(
     surfaceCase.id,
     "tool_recovery",
   );
-  return checks;
+  actionCatalogChecks += assertRecoveryActionInCatalog(
+    toolRecoveryErrorData.recommended_next_action,
+    recoveryActions,
+    surfaceCase.id,
+    "tool_recovery error_data",
+  );
+  return { structuredChecks: checks, recoveryActionCatalogChecks: actionCatalogChecks };
 }
 
 const fullDebugTools = [
@@ -920,7 +991,11 @@ const surfaceCases: SurfaceCase[] = [
   },
 ];
 
-async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promise<SurfaceCaseResult> {
+async function runSurfaceCase(
+  repoRoot: string,
+  surfaceCase: SurfaceCase,
+  recoveryActions: readonly string[],
+): Promise<SurfaceCaseResult> {
   const tmpRoot = process.env.TMPDIR ?? "/tmp";
   const uniqueSuffix = `${String(process.pid)}-${String(Date.now())}-${surfaceCase.id}`;
   const workDir = join(tmpRoot, `grobot-surface-exec-work-${uniqueSuffix}`);
@@ -957,7 +1032,7 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
         },
       },
     };
-    const runtimeResult = await runRuntimeTurn(repoRoot, request, {
+    const runtimeResult = await runRuntimeRequest(repoRoot, request, {
       ...process.env,
       HOME: homeDir,
       GROBOT_BASE_URL: model.baseUrl,
@@ -1005,6 +1080,7 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
         tool_end_error_class: toolEndErrorClass,
         schema_projection_checks: schemaProjectionChecks,
         structured_error_data_checks: 0,
+        recovery_action_catalog_checks: 0,
       };
     }
 
@@ -1016,6 +1092,7 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
       rpcPayload,
       toolEndPayload,
       toolRecoveryEvent,
+      recoveryActions,
     );
     expectEqual(calls.length, 1, `${surfaceCase.id}: failed tool call must fail fast before second model call`);
     return {
@@ -1027,7 +1104,8 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
       tool_end_status: toolEndStatus,
       tool_end_error_class: toolEndErrorClass,
       schema_projection_checks: schemaProjectionChecks,
-      structured_error_data_checks: structuredErrorDataChecks,
+      structured_error_data_checks: structuredErrorDataChecks.structuredChecks,
+      recovery_action_catalog_checks: structuredErrorDataChecks.recoveryActionCatalogChecks,
     };
   } finally {
     await model.close();
@@ -1038,9 +1116,10 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
 
 async function main(): Promise<void> {
   const repoRoot = process.cwd();
+  const recoveryActions = await loadRuntimeRecoveryActions(repoRoot);
   const results: SurfaceCaseResult[] = [];
   for (const surfaceCase of surfaceCases) {
-    results.push(await runSurfaceCase(repoRoot, surfaceCase));
+    results.push(await runSurfaceCase(repoRoot, surfaceCase, recoveryActions));
   }
   const profilesSmoked = sortedUnique(results.map((result) => result.profile));
   expectSameStringSet(
@@ -1061,6 +1140,11 @@ async function main(): Promise<void> {
     (total, result) => total + result.structured_error_data_checks,
     0,
   );
+  const recoveryActionCatalogChecks = results.reduce(
+    (total, result) => total + result.recovery_action_catalog_checks,
+    0,
+  );
+  expect(recoveryActionCatalogChecks >= 20, "surface recovery actions must be checked against runtime catalog");
   process.stdout.write(`${JSON.stringify({
     ok: true,
     contract: "runtime-tool-surface-execution",
@@ -1071,6 +1155,7 @@ async function main(): Promise<void> {
     hidden_arg_rejections: hiddenArgRejections,
     schema_projection_checks: schemaProjectionChecks,
     structured_error_data_checks: structuredErrorDataChecks,
+    recovery_action_catalog_checks: recoveryActionCatalogChecks,
     cases: results,
   })}\n`);
 }

@@ -278,6 +278,7 @@ if (
   || !successResult.stdout.includes("surface_profiles=7")
   || !successResult.stdout.includes("surface_hidden_args=4")
   || !successResult.stdout.includes("surface_error_data=275")
+  || !successResult.stdout.includes("surface_action_catalog=20")
 ) {
   fail("release gate stdout must expose runtime tool manifest and surface execution smoke evidence", {
     stdout: successResult.stdout.slice(-1000),
@@ -357,6 +358,9 @@ if (!successQuality || typeof successQuality !== "object") {
   }
   if (successQuality.runtime_surface_execution_structured_error_data_checks !== 275) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_structured_error_data_checks must be 275");
+  }
+  if (successQuality.runtime_surface_execution_recovery_action_catalog_checks !== 20) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_recovery_action_catalog_checks must be 20");
   }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
@@ -439,6 +443,9 @@ if (!Array.isArray(successDescribe?.runtime_surface_execution_profiles_smoked) |
 }
 if (successDescribe?.runtime_surface_execution_structured_error_data_checks !== 275) {
   successFailures.push("success runtime_tool_describe.runtime_surface_execution_structured_error_data_checks must be 275");
+}
+if (successDescribe?.runtime_surface_execution_recovery_action_catalog_checks !== 20) {
+  successFailures.push("success runtime_tool_describe.runtime_surface_execution_recovery_action_catalog_checks must be 20");
 }
 if (successDescribe?.runtime_tool_count !== 14) {
   successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");

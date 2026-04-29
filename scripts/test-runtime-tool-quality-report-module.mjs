@@ -312,6 +312,7 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
         hidden_arg_rejections: 4,
         schema_projection_checks: 55,
         structured_error_data_checks: 275,
+        recovery_action_catalog_checks: 20,
       }),
     },
   ],
@@ -363,6 +364,11 @@ expectEqual(
   describeSummary.runtime_surface_execution_structured_error_data_checks,
   275,
   "surface execution smoke structured error data check count must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_surface_execution_recovery_action_catalog_checks,
+  20,
+  "surface execution smoke recovery action catalog check count must be preserved",
 );
 
 const releaseReport = buildCoreReleaseReport({
@@ -423,6 +429,11 @@ expectEqual(
   275,
   "runtime_tool_quality must expose surface execution structured error data check count",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_surface_execution_recovery_action_catalog_checks,
+  20,
+  "runtime_tool_quality must expose surface execution recovery action catalog check count",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -449,6 +460,7 @@ process.stdout.write(JSON.stringify({
     "runtime_schema_budget_violation_details",
     "runtime_surface_execution_smoke_passed",
     "runtime_surface_execution_structured_error_data_checks",
+    "runtime_surface_execution_recovery_action_catalog_checks",
   ],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,

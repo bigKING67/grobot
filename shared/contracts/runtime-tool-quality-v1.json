@@ -44,6 +44,7 @@
     "runtime_surface_execution_hidden_arg_rejections",
     "runtime_surface_execution_schema_projection_checks",
     "runtime_surface_execution_structured_error_data_checks",
+    "runtime_surface_execution_recovery_action_catalog_checks",
     "gateway_only_recovery_actions"
   ],
   "action_families": [
