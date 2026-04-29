@@ -16,6 +16,7 @@ on:
       - "scripts/check-runtime-tool-contracts.mjs"
       - "scripts/test-runtime-tool-contracts-json-schema.mjs"
       - "scripts/test-runtime-tool-quality-report-module.mjs"
+      - "scripts/test-runtime-tool-quality-registry-parity.mjs"
       - "scripts/test-runtime-tool-release-report.mjs"
       - "shared/contracts/runtime-tool-quality-v1.json"
       - "scripts/core-release-prepare.sh"
@@ -40,6 +41,7 @@ on:
       - "scripts/check-runtime-tool-contracts.mjs"
       - "scripts/test-runtime-tool-contracts-json-schema.mjs"
       - "scripts/test-runtime-tool-quality-report-module.mjs"
+      - "scripts/test-runtime-tool-quality-registry-parity.mjs"
       - "scripts/test-runtime-tool-release-report.mjs"
       - "shared/contracts/runtime-tool-quality-v1.json"
       - "scripts/core-release-prepare.sh"
@@ -94,6 +96,9 @@ jobs:
 
       - name: Validate runtime tool quality report module
         run: npm run check:gateway:runtime-tools:quality-report
+
+      - name: Validate runtime tool quality resolver parity
+        run: npm run check:gateway:runtime-tools:quality-parity
 
       - name: Validate runtime tool release failure report
         run: npm run check:gateway:runtime-tools:release-report
