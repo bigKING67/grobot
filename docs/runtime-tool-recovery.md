@@ -204,7 +204,10 @@ default `actionable_next_step` from this registry instead of maintaining inline
 reason-to-action or default next-step maps. Surface implementations may still
 override the default next step with live details such as healthcheck output,
 runtime describe fallback reasons, recovery gate blockers, or a failed contract
-`suggested_command`.
+`suggested_command`. The same reason catalog owns `priority_by_surface`; when
+multiple failure/warning reasons are present, status and release select the
+decisive `action_reason` and `action_family` by that registry priority instead
+of local ordered switch lists.
 
 If `runtime.tools.describe` is unavailable or invalid, the gateway falls back to
 the gateway start-default tool set, but the degradation must stay observable:
@@ -712,7 +715,9 @@ that every status/release reason maps to a registry action and that both
 implementations read the registry before the runner passes. The same registry
 also owns per-surface `default_next_step` text; release/status code only layers
 runtime-specific detail or failed-contract reproduction commands on top of that
-registry default. The default
+registry default. It also owns per-surface reason priority, so the decisive
+`action_reason` / `action_family` stays consistent across daily status,
+release reports, and dashboard automation. The default
 `npm run check` already covers the
 gateway-only suite and then runs the normal Rust compile/test gate separately.
 The core packaging workflow runs

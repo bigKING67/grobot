@@ -224,21 +224,31 @@
         "status",
         "release"
       ],
-      "action_family": "runtime_environment"
+      "action_family": "runtime_environment",
+      "priority_by_surface": {
+        "status": 10,
+        "release": 30
+      }
     },
     {
       "reason": "runtime_health_failed",
       "surfaces": [
         "status"
       ],
-      "action_family": "runtime_environment"
+      "action_family": "runtime_environment",
+      "priority_by_surface": {
+        "status": 20
+      }
     },
     {
       "reason": "schema_projection_drift_active",
       "surfaces": [
         "status"
       ],
-      "action_family": "schema_projection"
+      "action_family": "schema_projection",
+      "priority_by_surface": {
+        "status": 30
+      }
     },
     {
       "reason": "schema_budget_violated",
@@ -246,63 +256,91 @@
         "status",
         "release"
       ],
-      "action_family": "schema_budget"
+      "action_family": "schema_budget",
+      "priority_by_surface": {
+        "status": 40,
+        "release": 90
+      }
     },
     {
       "reason": "recovery_gate_blocking",
       "surfaces": [
         "status"
       ],
-      "action_family": "recovery_gate"
+      "action_family": "recovery_gate",
+      "priority_by_surface": {
+        "status": 50
+      }
     },
     {
       "reason": "report_parse_error",
       "surfaces": [
         "release"
       ],
-      "action_family": "diagnostics"
+      "action_family": "diagnostics",
+      "priority_by_surface": {
+        "release": 10
+      }
     },
     {
       "reason": "runtime_tool_describe_failed",
       "surfaces": [
         "release"
       ],
-      "action_family": "runner_contract"
+      "action_family": "runner_contract",
+      "priority_by_surface": {
+        "release": 40
+      }
     },
     {
       "reason": "diagnostics_self_test_failed",
       "surfaces": [
         "release"
       ],
-      "action_family": "diagnostics"
+      "action_family": "diagnostics",
+      "priority_by_surface": {
+        "release": 20
+      }
     },
     {
       "reason": "contract_coverage_incomplete",
       "surfaces": [
         "release"
       ],
-      "action_family": "runner_contract"
+      "action_family": "runner_contract",
+      "priority_by_surface": {
+        "release": 50
+      }
     },
     {
       "reason": "runner_contract_coverage_missing",
       "surfaces": [
         "release"
       ],
-      "action_family": "runner_contract"
+      "action_family": "runner_contract",
+      "priority_by_surface": {
+        "release": 60
+      }
     },
     {
       "reason": "tmp_fixture_isolation_missing",
       "surfaces": [
         "release"
       ],
-      "action_family": "contract_harness"
+      "action_family": "contract_harness",
+      "priority_by_surface": {
+        "release": 70
+      }
     },
     {
       "reason": "schema_budget_unknown",
       "surfaces": [
         "release"
       ],
-      "action_family": "schema_budget"
+      "action_family": "schema_budget",
+      "priority_by_surface": {
+        "release": 80
+      }
     }
   ],
   "warning_reasons": [
@@ -311,42 +349,60 @@
       "surfaces": [
         "status"
       ],
-      "action_family": "runtime_describe"
+      "action_family": "runtime_describe",
+      "priority_by_surface": {
+        "status": 60
+      }
     },
     {
       "reason": "schema_projection_drift_not_checked",
       "surfaces": [
         "status"
       ],
-      "action_family": "schema_projection"
+      "action_family": "schema_projection",
+      "priority_by_surface": {
+        "status": 70
+      }
     },
     {
       "reason": "recovery_gate_warn",
       "surfaces": [
         "status"
       ],
-      "action_family": "recovery_gate"
+      "action_family": "recovery_gate",
+      "priority_by_surface": {
+        "status": 80
+      }
     },
     {
       "reason": "recovery_health_good",
       "surfaces": [
         "status"
       ],
-      "action_family": "recovery_health"
+      "action_family": "recovery_health",
+      "priority_by_surface": {
+        "status": 100
+      }
     },
     {
       "reason": "recovery_health_watch",
       "surfaces": [
         "status"
       ],
-      "action_family": "recovery_health"
+      "action_family": "recovery_health",
+      "priority_by_surface": {
+        "status": 91
+      }
     },
     {
       "reason": "recovery_health_risk",
       "surfaces": [
         "status"
       ],
-      "action_family": "recovery_health"
+      "action_family": "recovery_health",
+      "priority_by_surface": {
+        "status": 90
+      }
     }
   ]
 }

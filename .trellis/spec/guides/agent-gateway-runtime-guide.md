@@ -380,7 +380,10 @@ default `actionable_next_step` from this registry instead of copying
 reason-to-action or default next-step maps into each surface. Implementations
 may only override the registry default with live diagnostic detail, such as a
 runtime health failure detail, runtime describe fallback reason, recovery gate
-blocker, or failed contract reproduction command.
+blocker, or failed contract reproduction command. Reason rows also carry
+`priority_by_surface`; status/release implementations must use that priority to
+select the decisive `action_reason` and `action_family` instead of local ordered
+signal arrays.
 If describe JSON parsing or release summary extraction fails after the runner
 returns, the gate must exit through the explicit
 `runtime_tool_describe_report_invalid` reason instead of letting `set -e`

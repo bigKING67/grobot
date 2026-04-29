@@ -79,27 +79,8 @@ const packPassed = (process.argv[10] ?? "false") === "true";
 const packSkipped = (process.argv[11] ?? "false") === "true";
 const runtimeToolDescribeReportPath = process.argv[12] ?? "";
 const runtimeToolQualitySchemaVersion = 1;
-const runtimeToolQualityFailureReasonCatalog = Object.freeze([
-  "report_parse_error",
-  "runtime_tool_describe_failed",
-  "diagnostics_self_test_failed",
-  "runtime_binary_missing",
-  "contract_coverage_incomplete",
-  "runner_contract_coverage_missing",
-  "tmp_fixture_isolation_missing",
-  "schema_budget_unknown",
-  "schema_budget_violated",
-]);
-const runtimeToolQualityActionFamilyCatalog = Object.freeze([
-  "none",
-  "diagnostics",
-  "runtime_environment",
-  "runner_contract",
-  "contract_harness",
-  "schema_budget",
-]);
 
-function readRuntimeToolQualityActionRegistryByReason() {
+function readRuntimeToolQualityRegistry() {
   const registryPath = path.resolve(process.cwd(), "shared/contracts/runtime-tool-quality-v1.json");
   let registry = null;
   try {
@@ -112,7 +93,42 @@ function readRuntimeToolQualityActionRegistryByReason() {
   if (!registry || typeof registry !== "object" || !Array.isArray(registry.action_required)) {
     throw new Error("runtime_tool_quality_registry_action_required_missing");
   }
-  const byReason = new Map();
+  if (!Array.isArray(registry.failure_reasons) || !Array.isArray(registry.warning_reasons)) {
+    throw new Error("runtime_tool_quality_registry_reason_catalog_missing");
+  }
+  const reasonByReason = new Map();
+  for (const [catalogName, rows] of [
+    ["failure_reason", registry.failure_reasons],
+    ["warning_reason", registry.warning_reasons],
+  ]) {
+    rows.forEach((row, index) => {
+      if (!row || typeof row !== "object" || typeof row.reason !== "string" || typeof row.action_family !== "string") {
+        throw new Error(`runtime_tool_quality_registry_${catalogName}_invalid:${String(index)}`);
+      }
+      if (!Array.isArray(row.surfaces) || !row.priority_by_surface || typeof row.priority_by_surface !== "object") {
+        throw new Error(`runtime_tool_quality_registry_${catalogName}_priority_missing:${String(index)}`);
+      }
+      const priorityBySurface = {};
+      for (const surface of row.surfaces) {
+        if (surface !== "status" && surface !== "release") {
+          throw new Error(`runtime_tool_quality_registry_${catalogName}_surface_invalid:${String(index)}:${String(surface)}`);
+        }
+        const priority = row.priority_by_surface[surface];
+        if (!Number.isInteger(priority) || priority <= 0) {
+          throw new Error(`runtime_tool_quality_registry_${catalogName}_priority_invalid:${String(index)}:${surface}`);
+        }
+        priorityBySurface[surface] = priority;
+      }
+      if (reasonByReason.has(row.reason)) {
+        throw new Error(`runtime_tool_quality_registry_reason_duplicate:${row.reason}`);
+      }
+      reasonByReason.set(row.reason, {
+        actionFamily: row.action_family,
+        priorityBySurface,
+      });
+    });
+  }
+  const actionByReason = new Map();
   registry.action_required.forEach((row, index) => {
     if (!row || typeof row !== "object" || typeof row.action !== "string" || !Array.isArray(row.reasons)) {
       throw new Error(`runtime_tool_quality_registry_action_required_invalid:${String(index)}`);
@@ -129,24 +145,56 @@ function readRuntimeToolQualityActionRegistryByReason() {
       if (typeof reason !== "string" || reason.trim().length === 0) {
         throw new Error(`runtime_tool_quality_registry_action_reason_invalid:${String(index)}`);
       }
-      if (byReason.has(reason)) {
+      if (!reasonByReason.has(reason)) {
+        throw new Error(`runtime_tool_quality_registry_action_reason_unknown:${reason}`);
+      }
+      if (actionByReason.has(reason)) {
         throw new Error(`runtime_tool_quality_registry_action_reason_duplicate:${reason}`);
       }
-      byReason.set(reason, {
+      actionByReason.set(reason, {
         actionRequired: row.action,
         defaultNextStepBySurface: row.default_next_step,
       });
     });
   });
-  return byReason;
+  return {
+    actionByReason,
+    reasonByReason,
+  };
 }
-const actionRegistryByReason = readRuntimeToolQualityActionRegistryByReason();
+const runtimeToolQualityRegistry = readRuntimeToolQualityRegistry();
 
 function pushRuntimeToolQualityFailureReason(reasons, reason) {
-  if (!runtimeToolQualityFailureReasonCatalog.includes(reason)) {
+  const reasonRegistry = runtimeToolQualityRegistry.reasonByReason.get(reason);
+  if (!reasonRegistry || reasonRegistry.priorityBySurface.release === undefined) {
     throw new Error(`unknown runtime_tool_quality failure reason: ${String(reason)}`);
   }
   reasons.push(reason);
+}
+
+function resolveRuntimeToolQualitySignal(reasons, surface) {
+  const candidates = [];
+  for (const reason of reasons) {
+    const reasonRegistry = runtimeToolQualityRegistry.reasonByReason.get(reason);
+    if (!reasonRegistry) {
+      throw new Error(`runtime_tool_quality_registry_reason_unmapped:${reason}`);
+    }
+    const priority = reasonRegistry.priorityBySurface[surface];
+    if (!Number.isInteger(priority)) {
+      throw new Error(`runtime_tool_quality_registry_reason_surface_unmapped:${reason}:${surface}`);
+    }
+    const actionRegistry = runtimeToolQualityRegistry.actionByReason.get(reason) ?? null;
+    candidates.push({
+      reason,
+      actionFamily: reasonRegistry.actionFamily,
+      actionRequired: actionRegistry?.actionRequired ?? null,
+      defaultNextStep: actionRegistry?.defaultNextStepBySurface?.[surface] ?? null,
+      priority,
+    });
+  }
+  return candidates.sort((left, right) => (
+    left.priority - right.priority || left.reason.localeCompare(right.reason)
+  ))[0] ?? null;
 }
 
 function parseJson(value) {
@@ -306,30 +354,11 @@ function runtimeToolQualitySummary(describeSummary, data) {
     : schemaBudgetViolations === 0
       ? "passed"
       : "failed";
-  const actionSignals = [
-    ["report_parse_error", "diagnostics"],
-    ["diagnostics_self_test_failed", "diagnostics"],
-    ["runtime_binary_missing", "runtime_environment"],
-    ["runtime_tool_describe_failed", "runner_contract"],
-    ["contract_coverage_incomplete", "runner_contract"],
-    ["runner_contract_coverage_missing", "runner_contract"],
-    ["tmp_fixture_isolation_missing", "contract_harness"],
-    ["schema_budget_unknown", "schema_budget"],
-    ["schema_budget_violated", "schema_budget"],
-  ];
-  const actionSignal = actionSignals.find(([reason]) => failureReasons.includes(reason)) ?? null;
-  if (actionSignal && !runtimeToolQualityActionFamilyCatalog.includes(actionSignal[1])) {
-    throw new Error(`unknown runtime_tool_quality action family: ${String(actionSignal[1])}`);
-  }
-  const actionRegistry = actionSignal ? actionRegistryByReason.get(actionSignal[0]) ?? null : null;
-  if (actionSignal && !actionRegistry) {
-    throw new Error(`runtime_tool_quality_registry_action_required_unmapped:${actionSignal[0]}`);
-  }
-  const actionRequired = actionRegistry?.actionRequired ?? null;
+  const actionSignal = resolveRuntimeToolQualitySignal(failureReasons, "release");
   const actionableNextStep = resolveRuntimeToolQualityActionableNextStep(
     describeSummary,
     diagnosticSummary,
-    actionRegistry?.defaultNextStepBySurface?.release ?? null,
+    actionSignal?.defaultNextStep ?? null,
   );
   return {
     quality_schema_version: runtimeToolQualitySchemaVersion,
@@ -353,9 +382,9 @@ function runtimeToolQualitySummary(describeSummary, data) {
       ? describeSummary.gateway_only_recovery_actions
       : [],
     failed_contract: describeSummary.failed_contract ?? null,
-    action_family: actionSignal ? actionSignal[1] : "none",
-    action_reason: actionSignal ? actionSignal[0] : null,
-    action_required: actionRequired,
+    action_family: actionSignal?.actionFamily ?? "none",
+    action_reason: actionSignal?.reason ?? null,
+    action_required: actionSignal?.actionRequired ?? null,
     actionable_next_step: actionableNextStep,
     report_parse_error: describeSummary.report_parse_error ?? null,
   };

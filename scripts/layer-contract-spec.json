@@ -9,7 +9,20 @@
     {
       "name": "runtime-tools",
       "path": "runtime/src/tools",
-      "requiredDirs": ["core", "fs", "shell", "mcp", "semantic", "providers", "dispatcher"]
+      "requiredDirs": [
+        "core",
+        "dispatcher",
+        "list",
+        "glob",
+        "search",
+        "read",
+        "write",
+        "edit",
+        "bash",
+        "mcp",
+        "semantic",
+        "providers"
+      ]
     },
     {
       "name": "runtime-extensions",

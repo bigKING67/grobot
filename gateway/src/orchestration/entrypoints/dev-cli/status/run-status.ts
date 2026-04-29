@@ -116,7 +116,7 @@ import {
   resolveRuntimeToolDescribeDecision,
   type RuntimeToolEnabledToolsSource,
 } from "../services/runtime-tool-describe-decision";
-import { resolveRuntimeToolQualityActionFromRegistry } from "./runtime-tool-quality-registry";
+import { resolveRuntimeToolQualitySignalFromRegistry } from "./runtime-tool-quality-registry";
 
 function stripInlineComment(rawLine: string): string {
   const hashIndex = rawLine.indexOf("#");
@@ -1315,39 +1315,29 @@ interface RuntimeToolQualitySummary {
 function resolveRuntimeToolQualityAction(input: {
   failureReasons: readonly RuntimeToolQualityFailureReason[];
   warningReasons: readonly RuntimeToolQualityWarningReason[];
-}): { actionFamily: RuntimeToolQualityActionFamily; actionReason: RuntimeToolQualityReason | null } {
-  const orderedSignals: readonly {
-    reason: RuntimeToolQualityReason;
-    family: RuntimeToolQualityActionFamily;
-  }[] = [
-    { reason: "runtime_binary_missing", family: "runtime_environment" },
-    { reason: "runtime_health_failed", family: "runtime_environment" },
-    { reason: "schema_projection_drift_active", family: "schema_projection" },
-    { reason: "schema_budget_violated", family: "schema_budget" },
-    { reason: "recovery_gate_blocking", family: "recovery_gate" },
-    { reason: "runtime_tools_describe_fallback", family: "runtime_describe" },
-    { reason: "schema_projection_drift_not_checked", family: "schema_projection" },
-    { reason: "recovery_gate_warn", family: "recovery_gate" },
-  ];
-  const signalReasons = new Set([...input.failureReasons, ...input.warningReasons]);
-  for (const signal of orderedSignals) {
-    if (signalReasons.has(signal.reason)) {
-      return {
-        actionFamily: signal.family,
-        actionReason: signal.reason,
-      };
-    }
-  }
-  const recoveryHealthReason = input.warningReasons.find((reason) => reason.startsWith("recovery_health_"));
-  if (recoveryHealthReason) {
+}): {
+  actionFamily: RuntimeToolQualityActionFamily;
+  actionReason: RuntimeToolQualityReason | null;
+  actionRequired: RuntimeToolQualityActionRequired | null;
+  defaultNextStep: string | null;
+} {
+  const signal = resolveRuntimeToolQualitySignalFromRegistry({
+    actionReasons: [...input.failureReasons, ...input.warningReasons],
+    surface: "status",
+  });
+  if (signal) {
     return {
-      actionFamily: "recovery_health",
-      actionReason: recoveryHealthReason,
+      actionFamily: signal.actionFamily as RuntimeToolQualityActionFamily,
+      actionReason: signal.actionReason as RuntimeToolQualityReason,
+      actionRequired: signal.actionRequired,
+      defaultNextStep: signal.defaultNextStep,
     };
   }
   return {
     actionFamily: "none",
     actionReason: null,
+    actionRequired: null,
+    defaultNextStep: null,
   };
 }
 
@@ -1447,14 +1437,9 @@ function buildRuntimeToolQualitySummary(input: {
     failureReasons: failReasons,
     warningReasons: warnReasons,
   });
-  const actionRegistry = resolveRuntimeToolQualityActionFromRegistry({
-    actionReason: action.actionReason,
-    surface: "status",
-  });
-  const actionRequired = actionRegistry?.actionRequired ?? null;
   const actionableNextStep = resolveRuntimeToolQualityActionableNextStep({
     actionReason: action.actionReason,
-    defaultNextStep: actionRegistry?.defaultNextStep ?? null,
+    defaultNextStep: action.defaultNextStep,
     runtimeHealthDetail: input.runtimeHealth?.detail ?? null,
     runtimeDescribeDetail: input.contextPreview.enabledToolsSourceDetail ?? null,
     recoveryGateBlockerKind: input.recoveryGate.blockerKind,
@@ -1497,7 +1482,7 @@ function buildRuntimeToolQualitySummary(input: {
     blocker_action: input.recoveryGate.blockerAction,
     action_family: action.actionFamily,
     action_reason: action.actionReason,
-    action_required: actionRequired,
+    action_required: action.actionRequired,
     actionable_next_step: actionableNextStep,
   };
 }

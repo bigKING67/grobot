@@ -46,13 +46,14 @@ function registryReasonEntries(value: unknown, label: string): {
   reason: string;
   surfaces: RuntimeToolQualitySurface[];
   actionFamily: string;
+  priorityBySurface: Record<RuntimeToolQualitySurface, number>;
 }[] {
   expect(Array.isArray(value), `${label} must be array`);
   return value.map((item, index) => {
     expect(isObject(item), `${label}[${String(index)}] must be object`);
     expect(typeof item.reason === "string", `${label}[${String(index)}].reason must be string`);
     expect(Array.isArray(item.surfaces), `${label}[${String(index)}].surfaces must be array`);
-    const surfaces = item.surfaces.map((surface, surfaceIndex) => {
+    const surfaces: RuntimeToolQualitySurface[] = item.surfaces.map((surface, surfaceIndex): RuntimeToolQualitySurface => {
       expect(
         surface === "status" || surface === "release",
         `${label}[${String(index)}].surfaces[${String(surfaceIndex)}] must be status or release`,
@@ -60,10 +61,21 @@ function registryReasonEntries(value: unknown, label: string): {
       return surface;
     });
     expect(typeof item.action_family === "string", `${label}[${String(index)}].action_family must be string`);
+    expect(isObject(item.priority_by_surface), `${label}[${String(index)}].priority_by_surface must be object`);
+    const priorityBySurface = {} as Record<RuntimeToolQualitySurface, number>;
+    for (const surface of surfaces) {
+      const priority = item.priority_by_surface[surface];
+      expect(
+        typeof priority === "number" && Number.isInteger(priority) && priority > 0,
+        `${label}[${String(index)}].priority_by_surface.${surface} must be positive integer`,
+      );
+      priorityBySurface[surface] = priority;
+    }
     return {
       reason: item.reason,
       surfaces,
       actionFamily: item.action_family,
+      priorityBySurface,
     };
   });
 }
@@ -166,6 +178,7 @@ const schemaReasonSet = new Set([...schemaFailureReasons, ...schemaWarningReason
 const schemaReasonSurfaceByReason = new Map<string, RuntimeToolQualitySurface[]>(
   [...schemaFailureReasonEntries, ...schemaWarningReasonEntries].map((entry) => [entry.reason, entry.surfaces]),
 );
+const schemaReasonPriorityEntries = [...schemaFailureReasonEntries, ...schemaWarningReasonEntries];
 
 expect(JSON.stringify(schemaStatuses) === JSON.stringify(["ok", "warn", "fail"]), "schema status enum must be stable");
 expect(
@@ -180,6 +193,22 @@ expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "sche
 expect(new Set(schemaActionRequiredIds).size === schemaActionRequiredIds.length, "schema action_required ids must be unique");
 expect(new Set(schemaFailureReasons).size === schemaFailureReasons.length, "schema failure reasons must be unique");
 expect(new Set(schemaWarningReasons).size === schemaWarningReasons.length, "schema warning reasons must be unique");
+const schemaActionFamilySet = new Set(schemaActionFamilies);
+for (const entry of schemaReasonPriorityEntries) {
+  expect(
+    schemaActionFamilySet.has(entry.actionFamily),
+    `reason action_family must exist in action_families: ${entry.reason}`,
+  );
+}
+for (const surface of ["status", "release"] as const) {
+  const priorities = schemaReasonPriorityEntries
+    .filter((entry) => entry.surfaces.includes(surface))
+    .map((entry) => entry.priorityBySurface[surface]);
+  expect(
+    new Set(priorities).size === priorities.length,
+    `schema reason priority_by_surface.${surface} values must be unique`,
+  );
+}
 
 for (const action of schemaActionRequired) {
   for (const reason of action.reasons) {
@@ -202,18 +231,18 @@ for (const reason of schemaWarningReasons.filter((reason) => reason !== "recover
 
 const releaseQualityRequiredFragments = [
   "const runtimeToolQualitySchemaVersion = 1",
-  "const runtimeToolQualityFailureReasonCatalog = Object.freeze([",
-  "const runtimeToolQualityActionFamilyCatalog = Object.freeze([",
-  "function readRuntimeToolQualityActionRegistryByReason()",
-  "defaultNextStepBySurface",
-  "const actionRegistryByReason = readRuntimeToolQualityActionRegistryByReason();",
+  "function readRuntimeToolQualityRegistry()",
+  "const runtimeToolQualityRegistry = readRuntimeToolQualityRegistry();",
+  "priorityBySurface",
+  "actionByReason",
+  "reasonByReason",
   "function pushRuntimeToolQualityFailureReason",
+  "function resolveRuntimeToolQualitySignal(reasons, surface)",
   "function resolveRuntimeToolQualityActionableNextStep",
   "function runtimeToolQualitySummary(describeSummary, data)",
   "const status = failureReasons.length > 0 ? \"fail\" : \"ok\"",
-  "const actionRegistry = actionSignal ? actionRegistryByReason.get(actionSignal[0]) ?? null : null",
-  "const actionRequired = actionRegistry?.actionRequired ?? null",
-  "actionRegistry?.defaultNextStepBySurface?.release ?? null",
+  "const actionSignal = resolveRuntimeToolQualitySignal(failureReasons, \"release\")",
+  "actionSignal?.defaultNextStep ?? null",
   "quality_schema_version: runtimeToolQualitySchemaVersion",
   "passed: status === \"ok\"",
   "source: \"runtime_tool_describe\"",
@@ -222,9 +251,9 @@ const releaseQualityRequiredFragments = [
   "schema_budget_status: schemaBudgetStatus",
   "schema_budget_violations: schemaBudgetViolations",
   "runtime_binary_exists: runtimeBinaryExists",
-  "action_family: actionSignal ? actionSignal[1] : \"none\"",
-  "action_reason: actionSignal ? actionSignal[0] : null",
-  "action_required: actionRequired",
+  "action_family: actionSignal?.actionFamily ?? \"none\"",
+  "action_reason: actionSignal?.reason ?? null",
+  "action_required: actionSignal?.actionRequired ?? null",
   "actionable_next_step:",
 ] as const;
 
@@ -255,8 +284,8 @@ const statusQualityRequiredFragments = [
   "action_required: RuntimeToolQualityActionRequired | null",
   "actionable_next_step: string | null",
   "function resolveRuntimeToolQualityAction",
-  "resolveRuntimeToolQualityActionFromRegistry({",
-  "defaultNextStep: actionRegistry?.defaultNextStep ?? null",
+  "resolveRuntimeToolQualitySignalFromRegistry({",
+  "defaultNextStep: signal.defaultNextStep",
   "function resolveRuntimeToolQualityActionableNextStep",
   "const status: RuntimeToolQualityStatus = failReasons.length > 0",
   "passed: status === \"ok\"",
@@ -266,7 +295,7 @@ const statusQualityRequiredFragments = [
   "schema_budget_status: budgetValidation.ok ? \"passed\" : \"failed\"",
   "action_family: action.actionFamily",
   "action_reason: action.actionReason",
-  "action_required: actionRequired",
+  "action_required: action.actionRequired",
   "actionable_next_step: actionableNextStep",
 ] as const;
 
@@ -286,12 +315,15 @@ expectAllIncludes(
   statusQualityRegistry,
   [
     "RUNTIME_TOOL_QUALITY_REGISTRY_RELATIVE_PATH = \"shared/contracts/runtime-tool-quality-v1.json\"",
+    "function readRuntimeToolQualityRegistry()",
     "function readRuntimeToolQualityActionRegistryByReason()",
     "defaultNextStepBySurface",
+    "priorityBySurface",
     "function readRuntimeToolQualityActionRequiredByReason()",
     "export function resolveRuntimeToolQualityActionRequiredFromRegistry",
     "export function resolveRuntimeToolQualityActionFromRegistry",
     "export function resolveRuntimeToolQualityDefaultNextStepFromRegistry",
+    "export function resolveRuntimeToolQualitySignalFromRegistry",
     "runtime_tool_quality_registry_action_required_unmapped",
   ],
   "status runtime-tool quality registry reader",
@@ -306,16 +338,17 @@ for (const reason of statusWarningReasons) {
 for (const reason of releaseFailureReasons) {
   expectIncludes(releaseGate, `"${reason}"`, `release failure reason registry ${reason}`);
 }
-for (const family of schemaActionFamilies) {
-  expect(
-    statusCommand.includes(`"${family}"`) || releaseGate.includes(`"${family}"`),
-    `action family must appear in status or release implementation: ${family}`,
-  );
-}
 expect(
   !statusCommand.includes("runtime_binary_missing: \"build_runtime_binary\"")
     && !releaseGate.includes("runtime_binary_missing: \"build_runtime_binary\""),
   "status/release must derive action_required mapping from shared registry instead of inline reason maps",
+);
+expect(
+  !statusCommand.includes("orderedSignals")
+    && !releaseGate.includes("actionSignals")
+    && !releaseGate.includes("runtimeToolQualityActionFamilyCatalog")
+    && !releaseGate.includes("runtimeToolQualityFailureReasonCatalog"),
+  "status/release must derive action_family/action_reason decisive signal priority from shared registry",
 );
 expect(
   !statusCommand.includes("Build or install the Rust runtime binary, then rerun")
@@ -329,6 +362,11 @@ expect(
   sharedContractsReadme.includes("default_next_step")
     && sharedContractsReadme.includes("default `actionable_next_step`"),
   "shared contract README must document registry-owned default next steps",
+);
+expect(
+  sharedContractsReadme.includes("priority_by_surface")
+    && sharedContractsReadme.includes("decisive `action_reason`"),
+  "shared contract README must document registry-owned action signal priority",
 );
 
 expect(

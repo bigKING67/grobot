@@ -36,4 +36,6 @@ this registry rather than keeping separate reason-to-action maps. The same
 registry owns `default_next_step` guidance by surface; status/release code may
 only override the default `actionable_next_step` with runtime-specific details
 such as a healthcheck error, fallback reason, recovery blocker, or
-failed-contract reproduction command.
+failed-contract reproduction command. Reason rows also own
+`priority_by_surface`, which selects the decisive `action_reason` and
+corresponding `action_family` when multiple quality reasons are present.
