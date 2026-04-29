@@ -147,6 +147,14 @@ const baseDescribeSummary = {
   }],
   runtime_schema_budget_violation_profiles: [],
   runtime_schema_budget_violation_details: [],
+  runtime_surface_execution_smoke_passed: true,
+  runtime_surface_execution_profiles_smoked: ["browser", "browser_advanced", "coding", "context", "full_debug", "mcp", "minimal"],
+  runtime_surface_execution_allowed_workflow_successes: 2,
+  runtime_surface_execution_hidden_tool_rejections: 1,
+  runtime_surface_execution_hidden_arg_rejections: 4,
+  runtime_surface_execution_schema_projection_checks: 55,
+  runtime_surface_execution_structured_error_data_checks: 275,
+  runtime_surface_execution_recovery_action_catalog_checks: 20,
   diagnostic_summary: {
     status: "passed",
     schema_budget_violations: 0,
@@ -157,6 +165,11 @@ const goodQuality = runtimeToolQualitySummary(baseDescribeSummary, baseData, reg
 expectEqual(goodQuality.status, "ok", "healthy describe evidence must produce ok quality");
 expectEqual(goodQuality.schema_budget_status, "passed", "zero schema budget violations must be passed");
 expectEqual(goodQuality.failure_reasons.length, 0, "healthy describe evidence must not create failure reasons");
+expectEqual(
+  goodQuality.runtime_surface_execution_threshold_status,
+  "passed",
+  "healthy describe evidence must pass surface execution thresholds",
+);
 
 const unknownBudgetQuality = runtimeToolQualitySummary({
   ...baseDescribeSummary,
@@ -223,6 +236,35 @@ expectEqual(
   surfaceExecutionFailureQuality.action_required,
   "run_surface_execution_smoke_and_fix_runtime_boundary",
   "surface execution smoke failure must map to the focused runtime-boundary action",
+);
+
+const surfaceThresholdFailureQuality = runtimeToolQualitySummary({
+  ...baseDescribeSummary,
+  runtime_surface_execution_recovery_action_catalog_checks: 19,
+}, baseData, registry);
+expect(
+  surfaceThresholdFailureQuality.failure_reasons.includes("surface_execution_evidence_below_threshold"),
+  "surface execution threshold failures must expose a precise failure reason",
+);
+expectEqual(
+  surfaceThresholdFailureQuality.runtime_surface_execution_threshold_status,
+  "failed",
+  "surface execution threshold failures must mark threshold status failed",
+);
+expectEqual(
+  surfaceThresholdFailureQuality.action_reason,
+  "surface_execution_evidence_below_threshold",
+  "surface execution threshold failure must outrank generic runtime quality reasons",
+);
+expectEqual(
+  surfaceThresholdFailureQuality.action_required,
+  "run_surface_execution_smoke_and_fix_runtime_boundary",
+  "surface execution threshold failure must map to focused runtime-boundary action",
+);
+expectEqual(
+  surfaceThresholdFailureQuality.runtime_surface_execution_threshold_failures[0].field,
+  "runtime_surface_execution_recovery_action_catalog_checks",
+  "surface threshold failure must preserve the failing metric",
 );
 
 const diagnosticReproduceQuality = runtimeToolQualitySummary({
@@ -434,6 +476,11 @@ expectEqual(
   20,
   "runtime_tool_quality must expose surface execution recovery action catalog check count",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_surface_execution_threshold_status,
+  "passed",
+  "runtime_tool_quality must expose surface execution threshold status",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -451,6 +498,7 @@ process.stdout.write(JSON.stringify({
   parse_error_action: invalidQuality.action_reason,
   schema_budget_cases: ["passed", "unknown", "failed"],
   surface_execution_failure_action: surfaceExecutionFailureQuality.action_reason,
+  surface_execution_threshold_action: surfaceThresholdFailureQuality.action_reason,
   manifest_evidence: [
     "runtime_tool_count",
     "runtime_tool_manifest_fingerprint",
@@ -461,6 +509,8 @@ process.stdout.write(JSON.stringify({
     "runtime_surface_execution_smoke_passed",
     "runtime_surface_execution_structured_error_data_checks",
     "runtime_surface_execution_recovery_action_catalog_checks",
+    "runtime_surface_execution_threshold_status",
+    "runtime_surface_execution_thresholds",
   ],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,

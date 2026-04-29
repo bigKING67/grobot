@@ -118,6 +118,39 @@ if (
     quality: surfaceExecutionFixtureQuality,
   });
 }
+const surfaceExecutionThresholdFixtureQuality = runtimeToolQualitySummary({
+  passed: true,
+  ok: true,
+  diagnostics_self_test: true,
+  contract_count: 12,
+  completed_count: 12,
+  runtime_binary: { exists: true },
+  runtime_surface_execution_smoke_passed: true,
+  runtime_surface_execution_profiles_smoked: ["browser", "browser_advanced", "coding", "context", "full_debug", "mcp", "minimal"],
+  runtime_surface_execution_allowed_workflow_successes: 2,
+  runtime_surface_execution_hidden_tool_rejections: 1,
+  runtime_surface_execution_hidden_arg_rejections: 4,
+  runtime_surface_execution_schema_projection_checks: 55,
+  runtime_surface_execution_structured_error_data_checks: 275,
+  runtime_surface_execution_recovery_action_catalog_checks: 19,
+  diagnostic_summary: {
+    status: "passed",
+    schema_budget_violations: 0,
+  },
+}, {
+  ownership_payload: {
+    runner_covers_all_runtime_tool_contracts: true,
+    all_contract_tmp_fixtures_isolated: true,
+  },
+}, qualityRegistry);
+if (
+  surfaceExecutionThresholdFixtureQuality.action_reason !== "surface_execution_evidence_below_threshold"
+  || surfaceExecutionThresholdFixtureQuality.action_required !== "run_surface_execution_smoke_and_fix_runtime_boundary"
+) {
+  fail("release quality module must classify surface execution threshold failures with a focused action", {
+    quality: surfaceExecutionThresholdFixtureQuality,
+  });
+}
 
 const result = runReleaseGate(failureReportPath, {
   GROBOT_RUNTIME_TOOL_CONTRACTS_TEST_FAIL_ID: "runtime-tool-suite-ownership",
@@ -362,6 +395,12 @@ if (!successQuality || typeof successQuality !== "object") {
   if (successQuality.runtime_surface_execution_recovery_action_catalog_checks !== 20) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_recovery_action_catalog_checks must be 20");
   }
+  if (successQuality.runtime_surface_execution_threshold_status !== "passed") {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_threshold_status must be passed");
+  }
+  if (!Array.isArray(successQuality.runtime_surface_execution_threshold_failures) || successQuality.runtime_surface_execution_threshold_failures.length !== 0) {
+    successFailures.push("success runtime_tool_quality.runtime_surface_execution_threshold_failures must be empty array");
+  }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
   }
@@ -494,4 +533,5 @@ process.stdout.write(JSON.stringify({
   runtime_binary_exists: runtimeBinary.exists,
   module_priority_fixture_action: fixtureSignal.reason,
   surface_execution_fixture_action: surfaceExecutionFixtureQuality.action_reason,
+  surface_execution_threshold_fixture_action: surfaceExecutionThresholdFixtureQuality.action_reason,
 }) + "\n");

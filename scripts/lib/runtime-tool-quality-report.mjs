@@ -5,6 +5,24 @@ import { fileURLToPath } from "node:url";
 
 export const runtimeToolQualitySchemaVersion = 1;
 
+export const runtimeSurfaceExecutionQualityThresholds = Object.freeze({
+  required_profiles_smoked: Object.freeze([
+    "browser",
+    "browser_advanced",
+    "coding",
+    "context",
+    "full_debug",
+    "mcp",
+    "minimal",
+  ]),
+  allowed_workflow_successes_min: 2,
+  hidden_tool_rejections_min: 1,
+  hidden_arg_rejections_min: 4,
+  schema_projection_checks_min: 55,
+  structured_error_data_checks_min: 275,
+  recovery_action_catalog_checks_min: 20,
+});
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -315,6 +333,72 @@ export function resolveRuntimeToolQualityActionableNextStep(describeSummary, dia
     : null;
 }
 
+function numericThresholdFailure(field, actual, expectedMin) {
+  return Number.isFinite(actual) && actual >= expectedMin
+    ? null
+    : {
+      field,
+      actual: Number.isFinite(actual) ? actual : null,
+      expected_min: expectedMin,
+    };
+}
+
+export function runtimeSurfaceExecutionQualityFailures(
+  describeSummary,
+  thresholds = runtimeSurfaceExecutionQualityThresholds,
+) {
+  const failures = [];
+  const profilesSmoked = stringArray(describeSummary.runtime_surface_execution_profiles_smoked);
+  const missingProfiles = thresholds.required_profiles_smoked.filter(
+    (profile) => !profilesSmoked.includes(profile),
+  );
+  if (missingProfiles.length > 0) {
+    failures.push({
+      field: "runtime_surface_execution_profiles_smoked",
+      actual: profilesSmoked,
+      expected_contains: thresholds.required_profiles_smoked,
+      missing: missingProfiles,
+    });
+  }
+  for (const failure of [
+    numericThresholdFailure(
+      "runtime_surface_execution_allowed_workflow_successes",
+      describeSummary.runtime_surface_execution_allowed_workflow_successes,
+      thresholds.allowed_workflow_successes_min,
+    ),
+    numericThresholdFailure(
+      "runtime_surface_execution_hidden_tool_rejections",
+      describeSummary.runtime_surface_execution_hidden_tool_rejections,
+      thresholds.hidden_tool_rejections_min,
+    ),
+    numericThresholdFailure(
+      "runtime_surface_execution_hidden_arg_rejections",
+      describeSummary.runtime_surface_execution_hidden_arg_rejections,
+      thresholds.hidden_arg_rejections_min,
+    ),
+    numericThresholdFailure(
+      "runtime_surface_execution_schema_projection_checks",
+      describeSummary.runtime_surface_execution_schema_projection_checks,
+      thresholds.schema_projection_checks_min,
+    ),
+    numericThresholdFailure(
+      "runtime_surface_execution_structured_error_data_checks",
+      describeSummary.runtime_surface_execution_structured_error_data_checks,
+      thresholds.structured_error_data_checks_min,
+    ),
+    numericThresholdFailure(
+      "runtime_surface_execution_recovery_action_catalog_checks",
+      describeSummary.runtime_surface_execution_recovery_action_catalog_checks,
+      thresholds.recovery_action_catalog_checks_min,
+    ),
+  ]) {
+    if (failure) {
+      failures.push(failure);
+    }
+  }
+  return failures;
+}
+
 export function runtimeToolQualitySummary(describeSummary, data, registry = readRuntimeToolQualityRegistry()) {
   const diagnosticSummary = isRecord(describeSummary.diagnostic_summary)
     ? describeSummary.diagnostic_summary
@@ -339,6 +423,10 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
   const runtimeBinaryExists = typeof describeSummary.runtime_binary?.exists === "boolean"
     ? describeSummary.runtime_binary.exists
     : null;
+  const shouldEvaluateSurfaceExecutionThresholds = describeSummary.passed === true && describeSummary.ok === true;
+  const surfaceExecutionThresholdFailures = shouldEvaluateSurfaceExecutionThresholds
+    ? runtimeSurfaceExecutionQualityFailures(describeSummary)
+    : [];
   const failureReasons = [];
   if (describeSummary.report_parse_error) {
     pushRuntimeToolQualityFailureReason(failureReasons, "report_parse_error", registry);
@@ -348,6 +436,13 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
     || describeSummary.runtime_surface_execution_smoke_passed === false
   ) {
     pushRuntimeToolQualityFailureReason(failureReasons, "surface_execution_smoke_failed", registry);
+  }
+  if (surfaceExecutionThresholdFailures.length > 0) {
+    pushRuntimeToolQualityFailureReason(
+      failureReasons,
+      "surface_execution_evidence_below_threshold",
+      registry,
+    );
   }
   if (describeSummary.passed !== true || describeSummary.ok !== true) {
     pushRuntimeToolQualityFailureReason(failureReasons, "runtime_tool_describe_failed", registry);
@@ -480,6 +575,12 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
       Number.isFinite(describeSummary.runtime_surface_execution_recovery_action_catalog_checks)
         ? describeSummary.runtime_surface_execution_recovery_action_catalog_checks
         : null,
+    runtime_surface_execution_threshold_status:
+      shouldEvaluateSurfaceExecutionThresholds
+        ? surfaceExecutionThresholdFailures.length === 0 ? "passed" : "failed"
+        : null,
+    runtime_surface_execution_thresholds: runtimeSurfaceExecutionQualityThresholds,
+    runtime_surface_execution_threshold_failures: surfaceExecutionThresholdFailures,
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions
       : [],
@@ -521,6 +622,29 @@ export function writeCoreReleaseReport(reportPath, report) {
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 }
 
+export function checkRuntimeToolDescribeQuality(runtimeToolDescribeReportPath) {
+  const runtimeToolData = readRuntimeToolDescribeData(runtimeToolDescribeReportPath);
+  const runtimeToolDescribe = runtimeToolDescribeSummary(runtimeToolData, true);
+  const runtimeToolQuality = runtimeToolQualitySummary(runtimeToolDescribe, runtimeToolData);
+  if (!runtimeToolQuality.passed) {
+    process.stderr.write(`${JSON.stringify({
+      marker: "runtime_tool_quality_failed",
+      action_reason: runtimeToolQuality.action_reason,
+      action_required: runtimeToolQuality.action_required,
+      failure_reasons: runtimeToolQuality.failure_reasons,
+      runtime_surface_execution_threshold_failures:
+        runtimeToolQuality.runtime_surface_execution_threshold_failures,
+    })}\n`);
+    return false;
+  }
+  process.stdout.write(`${JSON.stringify({
+    marker: "runtime_tool_quality_passed",
+    runtime_surface_execution_threshold_status:
+      runtimeToolQuality.runtime_surface_execution_threshold_status,
+  })}\n`);
+  return true;
+}
+
 function parseCliArgs(argv) {
   return {
     reportPath: argv[0] ?? "",
@@ -538,7 +662,15 @@ function parseCliArgs(argv) {
 }
 
 function main() {
-  const input = parseCliArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv[0] === "--check-describe-quality") {
+    const reportPath = argv[1] ?? "";
+    if (!reportPath || !checkRuntimeToolDescribeQuality(reportPath)) {
+      process.exit(1);
+    }
+    return;
+  }
+  const input = parseCliArgs(argv);
   const report = buildCoreReleaseReport(input);
   writeCoreReleaseReport(input.reportPath, report);
 }

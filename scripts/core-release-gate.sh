@@ -196,6 +196,9 @@ then
   fail_exit 8 "runtime_tool_describe_report_invalid"
 fi
 RUNTIME_TOOL_DESCRIBE_PASSED=1
+if ! node scripts/lib/runtime-tool-quality-report.mjs --check-describe-quality "$RUNTIME_TOOL_DESCRIBE_REPORT_PATH"; then
+  fail_exit 8 "runtime_tool_quality_failed"
+fi
 
 if [ "$SKIP_PACK_DRYRUN" -eq 0 ]; then
   PACK_LOG="$(mktemp)"

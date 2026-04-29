@@ -100,7 +100,9 @@ expect(
 expect(
   releaseGate.includes("scripts/lib/runtime-tool-quality-report.mjs")
     && releaseQualityModule.includes("runtime_tool_quality: runtimeToolQuality")
-    && releaseQualityModule.includes("runtimeToolQualitySummary("),
+    && releaseQualityModule.includes("runtimeToolQualitySummary(")
+    && releaseGate.includes("--check-describe-quality")
+    && releaseGate.includes("runtime_tool_quality_failed"),
   "release gate report must expose runtime_tool_quality evidence",
 );
 expect(
@@ -112,9 +114,13 @@ expect(
   releaseQualityModule.includes("surface_execution_payload")
     && releaseQualityModule.includes("runtime_surface_execution_smoke_passed")
     && releaseQualityModule.includes("surface_execution_smoke_failed")
+    && releaseQualityModule.includes("surface_execution_evidence_below_threshold")
     && releaseQualityModule.includes("runtime_surface_execution_schema_projection_checks")
     && releaseQualityModule.includes("runtime_surface_execution_structured_error_data_checks")
-    && releaseQualityModule.includes("runtime_surface_execution_recovery_action_catalog_checks"),
+    && releaseQualityModule.includes("runtime_surface_execution_recovery_action_catalog_checks")
+    && releaseQualityModule.includes("runtime_surface_execution_threshold_status")
+    && releaseQualityModule.includes("runtime_surface_execution_thresholds")
+    && releaseQualityModule.includes("runtime_surface_execution_threshold_failures"),
   "release gate runtime_tool_quality must expose real surface execution smoke evidence and focused failure reason",
 );
 expect(
@@ -271,8 +277,10 @@ expect(
     && releaseReportTest.includes("runtime_tool_quality")
     && releaseReportTest.includes("failure_reasons")
     && releaseReportTest.includes("surface_execution_smoke_failed")
+    && releaseReportTest.includes("surface_execution_evidence_below_threshold")
     && releaseReportTest.includes("successQuality")
     && releaseReportTest.includes("runtime_surface_execution_smoke_passed")
+    && releaseReportTest.includes("runtime_surface_execution_threshold_status")
     && releaseReportTest.includes("diagnostics_self_test"),
   "release-report regression test must assert diagnostics, runtime binary, surface execution evidence, focused quality summary reasons, and self-test fields",
 );

@@ -45,6 +45,9 @@
     "runtime_surface_execution_schema_projection_checks",
     "runtime_surface_execution_structured_error_data_checks",
     "runtime_surface_execution_recovery_action_catalog_checks",
+    "runtime_surface_execution_threshold_status",
+    "runtime_surface_execution_thresholds",
+    "runtime_surface_execution_threshold_failures",
     "gateway_only_recovery_actions"
   ],
   "action_families": [
@@ -211,11 +214,12 @@
     {
       "action": "run_surface_execution_smoke_and_fix_runtime_boundary",
       "reasons": [
-        "surface_execution_smoke_failed"
+        "surface_execution_smoke_failed",
+        "surface_execution_evidence_below_threshold"
       ],
-      "description": "Run the runtime tool surface execution smoke and fix schema projection or dispatch visibility drift.",
+      "description": "Run the runtime tool surface execution smoke and fix schema projection, dispatch visibility, or evidence-threshold drift.",
       "default_next_step": {
-        "release": "Build the Rust runtime, run `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-execution-contract.ts`, then fix schema projection or dispatch visibility drift."
+        "release": "Build the Rust runtime, run `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-surface-execution-contract.ts`, then fix schema projection, dispatch visibility, or evidence-threshold drift."
       }
     },
     {
@@ -342,6 +346,16 @@
       "action_family": "surface_execution",
       "priority_by_surface": {
         "release": 35
+      }
+    },
+    {
+      "reason": "surface_execution_evidence_below_threshold",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "surface_execution",
+      "priority_by_surface": {
+        "release": 34
       }
     },
     {
