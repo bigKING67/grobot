@@ -361,13 +361,35 @@ impl ToolExecutor for LocalToolExecutor {
         let tool_name = normalize_tool_name(&call.name);
         let context = parse_tool_context(input)?;
         if !context.model_visible_tools.contains(&tool_name) {
+            let mut visible_tools = context
+                .model_visible_tools
+                .iter()
+                .cloned()
+                .collect::<Vec<String>>();
+            visible_tools.sort();
+            let mut enabled_tools = context
+                .enabled_tools
+                .iter()
+                .cloned()
+                .collect::<Vec<String>>();
+            enabled_tools.sort();
             return Err(ToolExecutionError::new(
                 "tool_not_visible",
                 format!(
                     "tool is not visible in current tool surface profile: {tool_name} profile={}",
                     context.tool_surface_profile
                 ),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "tool_not_visible",
+                "tool": tool_name,
+                "operation": "validate_tool_visible",
+                "tool_surface_profile": context.tool_surface_profile,
+                "advanced_tool_schema": context.advanced_tool_schema,
+                "visible_tools": visible_tools,
+                "enabled_tools": enabled_tools,
+                "recovery_hint": "Use only model-visible tools for the current surface, switch to a profile that exposes this tool, or ask the user before changing scope."
+            })));
         }
         if !context.enabled_tools.contains(&tool_name) {
             return Err(ToolExecutionError::new(

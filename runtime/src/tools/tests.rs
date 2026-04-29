@@ -1746,6 +1746,30 @@ audit_redact_secrets = false
             "surface profile should be present in error: {}",
             error.message
         );
+        let data = error
+            .data
+            .as_ref()
+            .expect("tool_not_visible should include structured data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("tool_not_visible"));
+        assert_eq!(data["tool"].as_str(), Some(TOOL_READ));
+        assert_eq!(data["operation"].as_str(), Some("validate_tool_visible"));
+        assert_eq!(data["tool_surface_profile"].as_str(), Some("coding"));
+        assert_eq!(data["advanced_tool_schema"].as_bool(), Some(false));
+        assert!(data["visible_tools"]
+            .as_array()
+            .expect("visible_tools array")
+            .iter()
+            .any(|value| value.as_str() == Some("glob")));
+        assert!(!data["visible_tools"]
+            .as_array()
+            .expect("visible_tools array")
+            .iter()
+            .any(|value| value.as_str() == Some(TOOL_READ)));
+        assert!(data["enabled_tools"]
+            .as_array()
+            .expect("enabled_tools array")
+            .iter()
+            .any(|value| value.as_str() == Some(TOOL_READ)));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 

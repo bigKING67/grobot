@@ -17,6 +17,24 @@ type ToolCallSpec = {
   arguments: JsonRecord;
 };
 
+type ErrorDataExpectation = {
+  diagnosticKind: string;
+  tool: string;
+  operation: string;
+  profile: string;
+  advancedToolSchema: boolean;
+  backend?: string;
+  mappedTool?: string;
+  hiddenArgs?: string[];
+  visibleArgsIncludes?: string[];
+  visibleArgsExcludes?: string[];
+  visibleToolsIncludes?: string[];
+  visibleToolsExcludes?: string[];
+  enabledToolsIncludes?: string[];
+  enabledToolsExcludes?: string[];
+  recoveryHintIncludes?: string[];
+};
+
 type RuntimeRpcResult = {
   exitCode: number;
   stdout: string;
@@ -33,6 +51,7 @@ type SurfaceCase = {
   expectedOutcome: "success" | "error";
   expectedAssistantMessage?: string;
   expectedErrorClass?: string;
+  expectedErrorData?: ErrorDataExpectation;
   schemaExpectations: Array<{
     tool: string;
     includes?: string[];
@@ -49,6 +68,7 @@ type SurfaceCaseResult = {
   tool_end_status: string;
   tool_end_error_class: string | null;
   schema_projection_checks: number;
+  structured_error_data_checks: number;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -393,6 +413,15 @@ function rpcErrorClass(payload: unknown): string {
     : "";
 }
 
+function rpcErrorData(payload: unknown): JsonRecord | null {
+  return isRecord(payload)
+    && isRecord(payload.error)
+    && isRecord(payload.error.data)
+    && isRecord(payload.error.data.error_data)
+    ? payload.error.data.error_data
+    : null;
+}
+
 function eventPayload(event: JsonRecord): JsonRecord {
   return isRecord(event.payload) ? event.payload : {};
 }
@@ -400,6 +429,16 @@ function eventPayload(event: JsonRecord): JsonRecord {
 function findToolEndEvent(events: JsonRecord[], toolName: string): JsonRecord | null {
   return events.find((event) => {
     if (event.event_type !== "tool_end") {
+      return false;
+    }
+    const payload = eventPayload(event);
+    return payload.tool_name === toolName;
+  }) ?? null;
+}
+
+function findToolRecoveryEvent(events: JsonRecord[], toolName: string): JsonRecord | null {
+  return events.find((event) => {
+    if (event.event_type !== "tool_recovery") {
       return false;
     }
     const payload = eventPayload(event);
@@ -430,6 +469,160 @@ function assertSchemaExpectations(
       );
     }
   }
+  return checks;
+}
+
+function stringArrayField(data: JsonRecord, field: string, label: string): string[] {
+  const value = data[field];
+  expect(Array.isArray(value), `${label}: expected ${field} to be an array`);
+  return value.map((item, index) => {
+    expect(typeof item === "string", `${label}: expected ${field}[${String(index)}] to be string`);
+    return item;
+  });
+}
+
+function expectStringField(
+  data: JsonRecord,
+  field: string,
+  expected: string,
+  label: string,
+): number {
+  expectEqual(data[field], expected, `${label}: ${field}`);
+  return 1;
+}
+
+function expectBooleanField(
+  data: JsonRecord,
+  field: string,
+  expected: boolean,
+  label: string,
+): number {
+  expectEqual(data[field], expected, `${label}: ${field}`);
+  return 1;
+}
+
+function assertArrayIncludes(
+  data: JsonRecord,
+  field: string,
+  expected: readonly string[] | undefined,
+  label: string,
+): number {
+  let checks = 0;
+  if (!expected || expected.length === 0) {
+    return checks;
+  }
+  const values = stringArrayField(data, field, label);
+  for (const item of expected) {
+    checks += 1;
+    expect(values.includes(item), `${label}: expected ${field} to include ${item}; values=${JSON.stringify(values)}`);
+  }
+  return checks;
+}
+
+function assertArrayExcludes(
+  data: JsonRecord,
+  field: string,
+  expected: readonly string[] | undefined,
+  label: string,
+): number {
+  let checks = 0;
+  if (!expected || expected.length === 0) {
+    return checks;
+  }
+  const values = stringArrayField(data, field, label);
+  for (const item of expected) {
+    checks += 1;
+    expect(!values.includes(item), `${label}: expected ${field} to exclude ${item}; values=${JSON.stringify(values)}`);
+  }
+  return checks;
+}
+
+function assertErrorDataExpectation(
+  data: JsonRecord,
+  expectation: ErrorDataExpectation,
+  caseId: string,
+  source: string,
+): number {
+  const label = `${caseId}: ${source} error_data`;
+  let checks = 0;
+  checks += expectStringField(data, "diagnostic_kind", expectation.diagnosticKind, label);
+  checks += expectStringField(data, "tool", expectation.tool, label);
+  checks += expectStringField(data, "operation", expectation.operation, label);
+  checks += expectStringField(data, "tool_surface_profile", expectation.profile, label);
+  checks += expectBooleanField(data, "advanced_tool_schema", expectation.advancedToolSchema, label);
+  if (typeof expectation.backend === "string") {
+    checks += expectStringField(data, "backend", expectation.backend, label);
+  }
+  if (typeof expectation.mappedTool === "string") {
+    checks += expectStringField(data, "mapped_tool", expectation.mappedTool, label);
+  }
+  if (expectation.hiddenArgs) {
+    expectSameStringSet(stringArrayField(data, "hidden_args", label), expectation.hiddenArgs, `${label}: hidden_args`);
+    checks += 1;
+  }
+  checks += assertArrayIncludes(data, "visible_args", expectation.visibleArgsIncludes, label);
+  checks += assertArrayExcludes(data, "visible_args", expectation.visibleArgsExcludes, label);
+  checks += assertArrayIncludes(data, "visible_tools", expectation.visibleToolsIncludes, label);
+  checks += assertArrayExcludes(data, "visible_tools", expectation.visibleToolsExcludes, label);
+  checks += assertArrayIncludes(data, "enabled_tools", expectation.enabledToolsIncludes, label);
+  checks += assertArrayExcludes(data, "enabled_tools", expectation.enabledToolsExcludes, label);
+  if (expectation.recoveryHintIncludes && expectation.recoveryHintIncludes.length > 0) {
+    const recoveryHint = data.recovery_hint;
+    expect(typeof recoveryHint === "string", `${label}: recovery_hint must be string`);
+    for (const fragment of expectation.recoveryHintIncludes) {
+      checks += 1;
+      expect(recoveryHint.includes(fragment), `${label}: recovery_hint must include ${fragment}; value=${recoveryHint}`);
+    }
+  }
+  return checks;
+}
+
+function assertStructuredErrorData(
+  surfaceCase: SurfaceCase,
+  rpcPayload: unknown,
+  toolEndPayload: JsonRecord,
+  toolRecoveryEvent: JsonRecord | null,
+): number {
+  if (!surfaceCase.expectedErrorData) {
+    return 0;
+  }
+  let checks = 0;
+  const toolEndErrorData = isRecord(toolEndPayload.error_data) ? toolEndPayload.error_data : null;
+  expect(toolEndErrorData !== null, `${surfaceCase.id}: tool_end must expose structured error_data`);
+  checks += assertErrorDataExpectation(
+    toolEndErrorData,
+    surfaceCase.expectedErrorData,
+    surfaceCase.id,
+    "tool_end",
+  );
+
+  const rpcData = rpcErrorData(rpcPayload);
+  expect(rpcData !== null, `${surfaceCase.id}: RPC error must expose structured error_data`);
+  checks += assertErrorDataExpectation(
+    rpcData,
+    surfaceCase.expectedErrorData,
+    surfaceCase.id,
+    "rpc_error",
+  );
+
+  expect(toolRecoveryEvent !== null, `${surfaceCase.id}: tool_recovery event missing`);
+  const toolRecoveryPayload = eventPayload(toolRecoveryEvent);
+  const toolRecoveryErrorData = isRecord(toolRecoveryPayload.error_data)
+    ? toolRecoveryPayload.error_data
+    : null;
+  expect(toolRecoveryErrorData !== null, `${surfaceCase.id}: tool_recovery must expose structured error_data`);
+  expectEqual(
+    toolRecoveryPayload.error_class,
+    surfaceCase.expectedErrorClass,
+    `${surfaceCase.id}: tool_recovery error class`,
+  );
+  checks += 1;
+  checks += assertErrorDataExpectation(
+    toolRecoveryErrorData,
+    surfaceCase.expectedErrorData,
+    surfaceCase.id,
+    "tool_recovery",
+  );
   return checks;
 }
 
@@ -487,6 +680,18 @@ const surfaceCases: SurfaceCase[] = [
     },
     expectedOutcome: "error",
     expectedErrorClass: "tool_not_visible",
+    expectedErrorData: {
+      diagnosticKind: "tool_not_visible",
+      tool: "web_scan",
+      operation: "validate_tool_visible",
+      profile: "coding",
+      advancedToolSchema: false,
+      visibleToolsIncludes: ["read", "bash"],
+      visibleToolsExcludes: ["web_scan"],
+      enabledToolsIncludes: ["read", "bash"],
+      enabledToolsExcludes: ["web_scan"],
+      recoveryHintIncludes: ["model-visible", "current surface"],
+    },
     schemaExpectations: [
       { tool: "read", includes: ["path", "line_start", "pages"] },
     ],
@@ -506,6 +711,19 @@ const surfaceCases: SurfaceCase[] = [
     },
     expectedOutcome: "error",
     expectedErrorClass: "tool_argument_not_visible",
+    expectedErrorData: {
+      diagnosticKind: "tool_argument_not_visible",
+      tool: "web_execute_js",
+      operation: "validate_browser_facade_args_visible",
+      profile: "browser",
+      advancedToolSchema: false,
+      backend: "browser-structured",
+      mappedTool: "web_execute_js",
+      hiddenArgs: ["tmwd_ws_endpoint"],
+      visibleArgsIncludes: ["script", "timeout_ms"],
+      visibleArgsExcludes: ["tmwd_ws_endpoint", "native_fallback_action"],
+      recoveryHintIncludes: ["browser_advanced", "full_debug"],
+    },
     schemaExpectations: [
       {
         tool: "web_execute_js",
@@ -532,6 +750,19 @@ const surfaceCases: SurfaceCase[] = [
     },
     expectedOutcome: "error",
     expectedErrorClass: "tool_argument_not_visible",
+    expectedErrorData: {
+      diagnosticKind: "tool_argument_not_visible",
+      tool: "web_execute_js",
+      operation: "validate_browser_facade_args_visible",
+      profile: "browser_advanced",
+      advancedToolSchema: true,
+      backend: "browser-structured",
+      mappedTool: "web_execute_js",
+      hiddenArgs: ["native_fallback_action", "native_fallback_args"],
+      visibleArgsIncludes: ["tmwd_ws_endpoint", "native_auto_fallback", "native_fallback_timeout_ms"],
+      visibleArgsExcludes: ["native_fallback_action", "native_fallback_args", "native_auto_execute"],
+      recoveryHintIncludes: ["browser_advanced", "full_debug"],
+    },
     schemaExpectations: [
       {
         tool: "web_execute_js",
@@ -570,6 +801,17 @@ const surfaceCases: SurfaceCase[] = [
     },
     expectedOutcome: "error",
     expectedErrorClass: "tool_argument_not_visible",
+    expectedErrorData: {
+      diagnosticKind: "tool_argument_not_visible",
+      tool: "semantic_search",
+      operation: "validate_semantic_search_args_visible",
+      profile: "context",
+      advancedToolSchema: false,
+      hiddenArgs: ["bridge_script", "technical_terms"],
+      visibleArgsIncludes: ["query", "sources", "include_org"],
+      visibleArgsExcludes: ["bridge_script", "technical_terms", "timeout_ms"],
+      recoveryHintIncludes: ["full_debug"],
+    },
     schemaExpectations: [
       {
         tool: "semantic_search",
@@ -593,6 +835,17 @@ const surfaceCases: SurfaceCase[] = [
     },
     expectedOutcome: "error",
     expectedErrorClass: "tool_argument_not_visible",
+    expectedErrorData: {
+      diagnosticKind: "tool_argument_not_visible",
+      tool: "mcp_servers",
+      operation: "validate_mcp_servers_args_visible",
+      profile: "mcp",
+      advancedToolSchema: false,
+      hiddenArgs: ["include_disabled"],
+      visibleArgsIncludes: ["ready_only"],
+      visibleArgsExcludes: ["include_disabled"],
+      recoveryHintIncludes: ["full_debug"],
+    },
     schemaExpectations: [
       { tool: "mcp_servers", includes: ["ready_only"], excludes: ["include_disabled"] },
       { tool: "ask_user", includes: ["questions"], excludes: ["blocking_node_id"] },
@@ -684,6 +937,7 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
     );
     const events = eventRowsFromRpcPayload(rpcPayload);
     const toolEndEvent = findToolEndEvent(events, surfaceCase.toolCall.name);
+    const toolRecoveryEvent = findToolRecoveryEvent(events, surfaceCase.toolCall.name);
     expect(toolEndEvent !== null, `${surfaceCase.id}: tool_end event missing`);
     const toolEndPayload = eventPayload(toolEndEvent);
     const toolEndStatus = typeof toolEndPayload.status === "string" ? toolEndPayload.status : "";
@@ -704,12 +958,19 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
         tool_end_status: toolEndStatus,
         tool_end_error_class: toolEndErrorClass,
         schema_projection_checks: schemaProjectionChecks,
+        structured_error_data_checks: 0,
       };
     }
 
     expectEqual(rpcErrorClass(rpcPayload), surfaceCase.expectedErrorClass, `${surfaceCase.id}: rpc error class`);
     expectEqual(toolEndStatus, "failed", `${surfaceCase.id}: tool_end status`);
     expectEqual(toolEndErrorClass, surfaceCase.expectedErrorClass, `${surfaceCase.id}: tool_end error class`);
+    const structuredErrorDataChecks = assertStructuredErrorData(
+      surfaceCase,
+      rpcPayload,
+      toolEndPayload,
+      toolRecoveryEvent,
+    );
     expectEqual(calls.length, 1, `${surfaceCase.id}: failed tool call must fail fast before second model call`);
     return {
       id: surfaceCase.id,
@@ -720,6 +981,7 @@ async function runSurfaceCase(repoRoot: string, surfaceCase: SurfaceCase): Promi
       tool_end_status: toolEndStatus,
       tool_end_error_class: toolEndErrorClass,
       schema_projection_checks: schemaProjectionChecks,
+      structured_error_data_checks: structuredErrorDataChecks,
     };
   } finally {
     await model.close();
@@ -749,6 +1011,10 @@ async function main(): Promise<void> {
     (total, result) => total + result.schema_projection_checks,
     0,
   );
+  const structuredErrorDataChecks = results.reduce(
+    (total, result) => total + result.structured_error_data_checks,
+    0,
+  );
   process.stdout.write(`${JSON.stringify({
     ok: true,
     contract: "runtime-tool-surface-execution",
@@ -758,6 +1024,7 @@ async function main(): Promise<void> {
     hidden_tool_rejections: hiddenToolRejections,
     hidden_arg_rejections: hiddenArgRejections,
     schema_projection_checks: schemaProjectionChecks,
+    structured_error_data_checks: structuredErrorDataChecks,
     cases: results,
   })}\n`);
 }

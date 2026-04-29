@@ -112,13 +112,15 @@ expect(
   releaseQualityModule.includes("surface_execution_payload")
     && releaseQualityModule.includes("runtime_surface_execution_smoke_passed")
     && releaseQualityModule.includes("surface_execution_smoke_failed")
-    && releaseQualityModule.includes("runtime_surface_execution_schema_projection_checks"),
+    && releaseQualityModule.includes("runtime_surface_execution_schema_projection_checks")
+    && releaseQualityModule.includes("runtime_surface_execution_structured_error_data_checks"),
   "release gate runtime_tool_quality must expose real surface execution smoke evidence and focused failure reason",
 );
 expect(
   releaseGate.includes("surface_smoke=")
     && releaseGate.includes("surface_profiles=")
-    && releaseGate.includes("surface_hidden_args="),
+    && releaseGate.includes("surface_hidden_args=")
+    && releaseGate.includes("surface_error_data="),
   "release gate stdout must summarize surface execution smoke evidence",
 );
 expect(
@@ -262,6 +264,7 @@ expect(
     && releaseReportTest.includes("runtime_tool_manifest_fingerprint")
     && releaseReportTest.includes("tool_count=14")
     && releaseReportTest.includes("surface_smoke=true")
+    && releaseReportTest.includes("surface_error_data=200")
     && releaseReportTest.includes("runtime_tool_quality")
     && releaseReportTest.includes("failure_reasons")
     && releaseReportTest.includes("surface_execution_smoke_failed")
