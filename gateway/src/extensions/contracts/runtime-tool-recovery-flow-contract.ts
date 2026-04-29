@@ -66,6 +66,14 @@ const inactiveGuard: RuntimeToolSurfaceAdaptationGuard = {
   recentProfileSequence: [],
 };
 
+const activeGuard: RuntimeToolSurfaceAdaptationGuard = {
+  active: true,
+  reason: "repeated_profile_failure",
+  blockedProfile: "browser",
+  matchingFailureCount: 2,
+  recentProfileSequence: ["coding", "browser", "coding"],
+};
+
 const inactiveAdaptation: RuntimeToolSurfaceAdaptation = {
   enabled: true,
   active: false,
@@ -131,6 +139,64 @@ try {
 
   const rawFeedback = activeNonrecoverableFeedback("2026-04-26T00:00:00.000Z");
 
+  const guardedNonrecoverableWorkDir = join(workDir, "guarded-nonrecoverable");
+  mkdirSync(guardedNonrecoverableWorkDir, { recursive: true });
+  const guardedNonrecoverableFlow = applyRuntimeToolRecoveryPromptFlow({
+    workDir: guardedNonrecoverableWorkDir,
+    recoveryFeedback: rawFeedback,
+    guard: activeGuard,
+    adaptation: inactiveAdaptation,
+    nowIso: "2026-04-26T00:00:00.500Z",
+  });
+  expectEqual(
+    guardedNonrecoverableFlow.promptInjected,
+    true,
+    "guarded nonrecoverable flow still injects recovery prompt",
+  );
+  expectEqual(
+    guardedNonrecoverableFlow.guardPromptInjected,
+    false,
+    "guarded nonrecoverable flow bypasses guard prompt",
+  );
+  expectEqual(
+    guardedNonrecoverableFlow.automaticRecoveryDenied,
+    true,
+    "guarded nonrecoverable flow denies automatic recovery",
+  );
+  expectEqual(
+    guardedNonrecoverableFlow.guardBypassedForUserIntervention,
+    true,
+    "guarded nonrecoverable flow marks guard bypass",
+  );
+  expectEqual(
+    guardedNonrecoverableFlow.guardConsumptionRecorded,
+    false,
+    "guarded nonrecoverable flow does not record guard consumption",
+  );
+  expectEqual(
+    guardedNonrecoverableFlow.nonrecoverableConsumptionRecorded,
+    true,
+    "guarded nonrecoverable flow records intervention consumption",
+  );
+  expect(
+    guardedNonrecoverableFlow.promptBlocks.some((part) => part.includes("[Runtime Tool Recovery Hint]")),
+    "guarded nonrecoverable flow keeps recovery prompt block",
+  );
+  expect(
+    guardedNonrecoverableFlow.stderrEvents.some((line) => line.includes("event=automatic_recovery_denied")),
+    "guarded nonrecoverable flow emits automatic recovery denied event",
+  );
+  expect(
+    guardedNonrecoverableFlow.stderrEvents.some((line) =>
+      line.includes("event=surface_guard_bypassed_for_user_intervention")
+    ),
+    "guarded nonrecoverable flow emits guard bypass event",
+  );
+  expect(
+    guardedNonrecoverableFlow.stderrEvents.every((line) => !line.includes("event=prompt_hint_guarded")),
+    "guarded nonrecoverable flow avoids stale guard prompt event",
+  );
+
   const firstFeedback = applyRuntimeToolRecoveryConsumption({
     feedback: rawFeedback,
     snapshot: readRuntimeToolSurfaceAdaptationState(workDir),
@@ -146,6 +212,8 @@ try {
   });
   expectEqual(firstFlow.promptInjected, true, "first flow injects prompt");
   expectEqual(firstFlow.guardPromptInjected, false, "first flow does not inject guard prompt");
+  expectEqual(firstFlow.automaticRecoveryDenied, true, "first flow denies automatic recovery");
+  expectEqual(firstFlow.guardBypassedForUserIntervention, false, "first flow has no guard bypass");
   expectEqual(firstFlow.nonrecoverableConsumptionRecorded, true, "first flow records nonrecoverable consumption");
   expect(
     firstFlow.promptBlocks.some((part) => part.includes("[Runtime Tool Recovery Hint]")),
@@ -154,6 +222,14 @@ try {
   expect(
     firstFlow.stderrEvents.some((line) => line.includes("event=requires_user_intervention")),
     "first flow emits requires_user_intervention event",
+  );
+  expect(
+    firstFlow.stderrEvents.some((line) => line.includes("event=automatic_recovery_denied")),
+    "first flow emits automatic_recovery_denied event",
+  );
+  expect(
+    firstFlow.stderrEvents.some((line) => line.includes("auto_retry_allowed=false")),
+    "first flow explicitly denies automatic retry",
   );
   expect(
     firstFlow.stderrEvents.every((line) => line.includes("same_tool_error_count=3")),
@@ -222,6 +298,8 @@ try {
   });
   expectEqual(secondFlow.promptInjected, false, "second flow does not reinject prompt");
   expectEqual(secondFlow.guardPromptInjected, false, "second flow does not inject guard prompt");
+  expectEqual(secondFlow.automaticRecoveryDenied, false, "consumed second flow has no active automatic denial");
+  expectEqual(secondFlow.guardBypassedForUserIntervention, false, "consumed second flow has no guard bypass");
   expectEqual(secondFlow.nonrecoverableConsumptionRecorded, false, "second flow does not re-record consumption");
   expectEqual(secondFlow.promptBlocks.length, 0, "second flow has no prompt blocks");
   expectEqual(secondFlow.stderrEvents.length, 0, "second flow emits no recovery events");
@@ -229,6 +307,8 @@ try {
   process.stdout.write(JSON.stringify({
     ok: true,
     first_prompt_injected: firstFlow.promptInjected,
+    first_automatic_recovery_denied: firstFlow.automaticRecoveryDenied,
+    guarded_nonrecoverable_bypasses_guard: guardedNonrecoverableFlow.guardBypassedForUserIntervention,
     first_nonrecoverable_consumption_recorded: firstFlow.nonrecoverableConsumptionRecorded,
     repeat_pressure_cleared_after_prompt: repeatedPressureAfterPrompt.latestRecoveryRepeatCount === 0,
     action_family_in_stderr: firstFlow.stderrEvents.every((line) => line.includes("action_family=user_intervention")),
