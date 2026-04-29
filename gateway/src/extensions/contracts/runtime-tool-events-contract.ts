@@ -8,6 +8,7 @@ import {
   formatRuntimeToolRecoveryEscalationFields,
   isRuntimeToolRecoveryAction,
   knownRuntimeToolRecoveryActions,
+  normalizeRuntimeToolRecoveryAction,
   RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS,
   readRuntimeToolSurfaceMetrics,
   recordRuntimeToolSurfaceMetrics,
@@ -50,6 +51,14 @@ function expectBefore(text: string, left: string, right: string, message: string
   expect(leftIndex >= 0, `${message}: missing left fragment ${left}`);
   expect(rightIndex >= 0, `${message}: missing right fragment ${right}`);
   expect(leftIndex < rightIndex, `${message}: expected ${left} before ${right}`);
+}
+
+function expectFeedbackActionInCatalog(
+  action: string | null,
+  message: string,
+): void {
+  expect(typeof action === "string" && action.length > 0, `${message}: action missing`);
+  expect(isRuntimeToolRecoveryAction(action), `${message}: action not cataloged: ${action}`);
 }
 
 function event(eventType: RuntimeEvent["eventType"], payload: Record<string, unknown>): RuntimeEvent {
@@ -148,6 +157,16 @@ for (const action of knownRecoveryActions) {
   expect(isRuntimeToolRecoveryAction(action), `catalog action is recognized: ${action}`);
 }
 expect(!isRuntimeToolRecoveryAction("observe_and_continue"), "legacy observe_and_continue is not recognized");
+expectEqual(
+  normalizeRuntimeToolRecoveryAction(" observe_prior_tool_result "),
+  "observe_prior_tool_result",
+  "action normalizer trims and preserves cataloged action",
+);
+expectEqual(
+  normalizeRuntimeToolRecoveryAction("observe_and_continue"),
+  "inspect_error_and_switch_strategy",
+  "action normalizer rejects legacy free-form action",
+);
 
 const missingActionSummary = summarizeRuntimeToolEvents([
   event("tool_recovery", {
@@ -161,6 +180,57 @@ expectEqual(
   missingActionSummary.latestRecovery?.recommendedNextAction,
   "inspect_error_and_switch_strategy",
   "missing action uses cataloged default",
+);
+
+const legacyActionObservedAt = "2026-04-25T00:00:15.000Z";
+const legacyActionSummary = summarizeRuntimeToolEvents([
+  event("tool_recovery", {
+    tool_name: "read",
+    error_class: "legacy_runtime_error",
+    recovery_stage: "strategy_switch",
+    recovery_reason: "legacy_runtime_error",
+    recommended_next_action: "observe_and_continue",
+    recoverable: true,
+    observed_at: legacyActionObservedAt,
+  }),
+]);
+expectEqual(
+  legacyActionSummary.latestRecovery?.recommendedNextAction,
+  "observe_and_continue",
+  "summary preserves raw legacy action before prompt normalization",
+);
+const legacyActionFeedback = buildRuntimeToolRecoveryFeedback({
+  metrics: {
+    version: 1,
+    updatedAt: legacyActionObservedAt,
+    callsTotal: 0,
+    failedTotal: 0,
+    deferredTotal: 0,
+    callsByTool: {},
+    failuresByErrorClass: {},
+    recoveryStages: { strategy_switch: 1 },
+    recoveryCountsByKey: {},
+    latestRecoveryRepeatKey: null,
+    latestRecoveryRepeatCount: 0,
+    avgDurationMsByTool: {},
+    recentRecoveries: [],
+    latestRecovery: legacyActionSummary.latestRecovery ?? null,
+    path: contractPath("legacy-action"),
+  },
+  nowMs: Date.parse(legacyActionObservedAt),
+});
+expectEqual(
+  legacyActionFeedback.recommendedNextAction,
+  "inspect_error_and_switch_strategy",
+  "feedback normalizes legacy action to cataloged fallback",
+);
+expectFeedbackActionInCatalog(
+  legacyActionFeedback.recommendedNextAction,
+  "legacy action feedback",
+);
+expect(
+  !legacyActionFeedback.promptBlock.includes("observe_and_continue"),
+  "feedback prompt never surfaces legacy free-form action",
 );
 expectEqual(
   getRuntimeToolRecoveryPolicySnapshot().escalation.environmentAskUserThreshold,
@@ -231,6 +301,7 @@ const structuredFeedback = buildRuntimeToolRecoveryFeedback({
   },
   nowMs: Date.parse(structuredRecoveryObservedAt),
 });
+expectFeedbackActionInCatalog(structuredFeedback.recommendedNextAction, "structured feedback");
 expectEqual(structuredFeedback.errorData?.path, "sample.txt", "feedback preserves structured error data path");
 expect(
   structuredFeedback.promptBlock.includes("Structured error data: path=sample.txt edit_index=0"),
@@ -1850,6 +1921,8 @@ process.stdout.write(JSON.stringify({
   runtime_error_events: extractRuntimeErrorEvents(runtimeError).length,
   feedback_active: true,
   feedback_prompt_action_first: structuredFeedback.promptBlock.includes("Action-first contract:"),
+  feedback_prompt_action_in_catalog: isRuntimeToolRecoveryAction(structuredFeedback.recommendedNextAction ?? ""),
+  legacy_action_prompt_fallback: legacyActionFeedback.recommendedNextAction,
   latest_recovery_recoverable: summary.latestRecovery?.recoverable,
   nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
   repeated_recovery_escalation: true,

@@ -121,7 +121,7 @@ export interface RuntimeToolRecoveryFeedback {
   errorClass: string | null;
   errorMessage?: string | null;
   errorData?: Record<string, unknown> | null;
-  recommendedNextAction: string | null;
+  recommendedNextAction: RuntimeToolRecoveryAction | null;
   actionFamily?: RuntimeToolRecoveryActionFamily | null;
   actionReason?: string | null;
   recoverable: boolean | null;
@@ -230,6 +230,15 @@ export type RuntimeToolRecoveryAction = keyof typeof RUNTIME_TOOL_RECOVERY_ACTIO
 
 export function isRuntimeToolRecoveryAction(value: string): value is RuntimeToolRecoveryAction {
   return Object.prototype.hasOwnProperty.call(RUNTIME_TOOL_RECOVERY_ACTION_INSTRUCTIONS, value);
+}
+
+export function normalizeRuntimeToolRecoveryAction(
+  value: string | null | undefined,
+): RuntimeToolRecoveryAction {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return isRuntimeToolRecoveryAction(normalized)
+    ? normalized
+    : "inspect_error_and_switch_strategy";
 }
 
 export function knownRuntimeToolRecoveryActions(): RuntimeToolRecoveryAction[] {
@@ -857,8 +866,10 @@ function refineMcpRecoveryNextAction(
 
 export function resolveRuntimeToolRecoveryRecommendedNextAction(
   recovery: RuntimeToolRecoveryHint,
-): string {
-  return refineMcpRecoveryNextAction(recovery.recommendedNextAction, recovery);
+): RuntimeToolRecoveryAction {
+  return normalizeRuntimeToolRecoveryAction(
+    refineMcpRecoveryNextAction(recovery.recommendedNextAction, recovery),
+  );
 }
 
 function normalizeRecoveryStage(value: unknown): RuntimeToolRecoveryStage | undefined {
@@ -1422,7 +1433,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: recovery.errorClass ?? null,
       errorMessage: recovery.errorMessage ?? null,
       errorData: recovery.errorData ?? null,
-      recommendedNextAction: recovery.recommendedNextAction,
+      recommendedNextAction: resolveRuntimeToolRecoveryRecommendedNextAction(recovery),
       recoverable: recovery.recoverable ?? null,
       requiresUserIntervention: false,
       sameToolErrorCount: recovery.sameToolErrorCount ?? null,
@@ -1449,7 +1460,7 @@ export function buildRuntimeToolRecoveryFeedback(input: {
       errorClass: recovery.errorClass ?? null,
       errorMessage: recovery.errorMessage ?? null,
       errorData: recovery.errorData ?? null,
-      recommendedNextAction: recovery.recommendedNextAction,
+      recommendedNextAction: resolveRuntimeToolRecoveryRecommendedNextAction(recovery),
       recoverable: recovery.recoverable ?? null,
       requiresUserIntervention: false,
       sameToolErrorCount: recovery.sameToolErrorCount ?? null,
