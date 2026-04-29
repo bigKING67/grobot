@@ -106,6 +106,19 @@ const narrowIdleFooter = renderBottomPaneFooter({
   promptLabel: "› ",
 });
 
+const shortPlanModeIdleFooter = renderBottomPaneFooter({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.42,
+  estimatedTokens: 2200,
+  targetTokenLimit: 5120,
+  sessionId: "019d8b75-8bdf-78e2-a056-1f98a38774bd",
+  sessionTopic: "bottom pane contract",
+  terminalColumns: 48,
+  promptLabel: "› ",
+  planMode: true,
+});
+
 const narrowRunningFooter = renderBottomPaneFooter({
   model: "kimi/kimi-k2-2026-04",
   projectFolder: "grobot",
@@ -157,6 +170,10 @@ const payload = {
     narrowIdleFooter.includes("ctx") && !narrowIdleFooter.includes("? for shortcuts"),
   idle_narrow_lines_within_width:
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
+  plan_mode_idle_keeps_badge_when_short:
+    shortPlanModeIdleFooter.includes("Plan mode"),
+  plan_mode_idle_short_within_width:
+    shortPlanModeIdleFooter.split("\n").every((line) => measureDisplayWidth(line) <= 48),
   pending_has_no_divider: !/^─+$/.test(pendingLines[0] ?? ""),
   pending_prioritizes_ask: (pendingLines[0] ?? "").includes("需要确认 2 项"),
   pending_narrow_keeps_ask_first: (narrowPendingLines[0] ?? "").includes("需要确认 2 项"),

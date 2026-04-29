@@ -489,6 +489,15 @@ function hasSlashCommandArguments(activeLineInputRaw: string | undefined): boole
   return activeLineInput.slice(firstSpace + 1).trim().length > 0;
 }
 
+function resolveSlashCommandInputToken(activeLineInputRaw: string | undefined): string | undefined {
+  const activeLineInput = (activeLineInputRaw ?? "").trim();
+  const inputToken = activeLineInput.split(/\s+/, 1)[0] ?? "";
+  if (!inputToken.startsWith("/")) {
+    return undefined;
+  }
+  return inputToken;
+}
+
 export function resolveSlashSuggestionKeyAction(input: {
   key: SlashSuggestionKey;
   hasActiveSuggestions: boolean;
@@ -1012,9 +1021,8 @@ export function shouldHighlightSlashInputToken(input: {
   activeLineInput: string;
   suggestions: readonly SessionSlashSuggestion[];
 }): boolean {
-  const normalizedInput = input.activeLineInput.trim();
-  const inputToken = normalizedInput.split(/\s+/, 1)[0] ?? "";
-  if (!inputToken.startsWith("/")) {
+  const inputToken = resolveSlashCommandInputToken(input.activeLineInput);
+  if (!inputToken) {
     return false;
   }
   return input.suggestions.some((suggestion) => {
@@ -1024,6 +1032,24 @@ export function shouldHighlightSlashInputToken(input: {
     }
     return suggestionToken === inputToken;
   });
+}
+
+export function resolveSlashInputHighlightSuggestions(input: {
+  activeLineInput: string;
+  suggestions: readonly SessionSlashSuggestion[];
+  getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
+}): readonly SessionSlashSuggestion[] {
+  if (input.suggestions.length > 0) {
+    return input.suggestions;
+  }
+  if (!hasSlashCommandArguments(input.activeLineInput)) {
+    return input.suggestions;
+  }
+  const inputToken = resolveSlashCommandInputToken(input.activeLineInput);
+  if (!inputToken || typeof input.getSlashSuggestions !== "function") {
+    return input.suggestions;
+  }
+  return input.getSlashSuggestions(inputToken);
 }
 
 function stripBracketedPasteMarkers(value: string): string {
@@ -1544,9 +1570,14 @@ export async function runSessionInputLoop(
       if (shortcutOverlayVisible && slash.panelLines.length > 0) {
         shortcutOverlayVisible = false;
       }
-      const exactSlashMatch = shouldHighlightSlashInputToken({
+      const highlightSuggestions = resolveSlashInputHighlightSuggestions({
         activeLineInput,
         suggestions: slash.suggestions,
+        getSlashSuggestions: options.getSlashSuggestions,
+      });
+      const exactSlashMatch = shouldHighlightSlashInputToken({
+        activeLineInput,
+        suggestions: highlightSuggestions,
       });
       const shortcutOverlayLines = shortcutOverlayVisible
         ? renderShortcutOverlayFooter({ terminalColumns }).split("\n")

@@ -2,6 +2,7 @@ import {
   compactSpaces,
   measureDisplayWidth as measureDisplayWidthInternal,
   splitGraphemes,
+  stripAnsi,
   truncateDisplayWidth,
 } from "../interactive/display-width";
 import { sanitizeTerminalDisplayText } from "../interactive/terminal-text-sanitizer";
@@ -730,13 +731,29 @@ function appendPlanModeBadge(input: {
   const separator = input.config.theme === "ccline"
     ? `${ANSI_DIM}${input.config.separator}${ANSI_RESET}`
     : input.config.separator;
+  if (measureDisplayWidth(input.statusLine) <= 0) {
+    return badge;
+  }
   const withBadge = `${input.statusLine}${separator}${badge}`;
   const terminalColumns =
     typeof input.prompt.terminalColumns === "number" && Number.isFinite(input.prompt.terminalColumns)
       ? Math.floor(input.prompt.terminalColumns)
       : 0;
   if (terminalColumns > 0 && measureDisplayWidth(withBadge) > terminalColumns) {
-    return input.statusLine;
+    const reservedWidth = measureDisplayWidth(separator) + measureDisplayWidth(badge);
+    const statusWidth = terminalColumns - reservedWidth;
+    if (statusWidth <= 0) {
+      return measureDisplayWidth(badge) <= terminalColumns
+        ? badge
+        : truncateDisplayWidth(stripAnsi(badge), terminalColumns);
+    }
+    const compactStatusLine = truncateDisplayWidth(stripAnsi(input.statusLine), statusWidth);
+    if (!compactStatusLine) {
+      return measureDisplayWidth(badge) <= terminalColumns
+        ? badge
+        : truncateDisplayWidth(stripAnsi(badge), terminalColumns);
+    }
+    return `${ANSI_DIM}${compactStatusLine}${ANSI_RESET}${separator}${badge}`;
   }
   return withBadge;
 }
@@ -747,7 +764,7 @@ export function resolveStatusLinePromptParts(
   const config = normalizeStatusLineConfig(input.config);
   if (!config.enabled) {
     return {
-      statusLine: "",
+      statusLine: resolvePlanModeBadge({ prompt: input }) ?? "",
     };
   }
   const statusLine = fitStatusLine({

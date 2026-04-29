@@ -7,7 +7,12 @@ import {
 } from "./session-interactive";
 import { printRunStartBanner } from "./run-start-banner";
 import { createRunStartInteractiveHandler } from "./run-start-interactive-handler";
-import { resolveInlineAttachmentsFromInput, runSessionInputLoop } from "./run-start-io";
+import {
+  renderInteractiveInputChromeLines,
+  resolveInlineAttachmentsFromInput,
+  resolveInteractiveInputBodyWidth,
+  runSessionInputLoop,
+} from "./run-start-io";
 import { isNaturalPlanExecutionIntent } from "./plan-command";
 import { type RunStartModelSnapshot } from "./run-start-model-ops";
 import { type PlanInterruptSource } from "./run-start-plan-mode";
@@ -22,6 +27,7 @@ import {
   clearTerminalWindowTitle,
   setTerminalWindowTitle,
 } from "../ui/interactive/terminal-text-sanitizer";
+import { measureDisplayWidth } from "../ui/interactive/display-width";
 import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderBottomPaneFooter } from "../ui/screens/bottom-pane-screen";
 import { type StatusLineConfig } from "../ui/screens/status-line-screen";
@@ -32,6 +38,7 @@ export interface RunStartInteractiveTurnOptions {
   promptPrelude?: string;
   writeStderr?: (message: string) => void;
   diagnosticsMode?: InteractiveDiagnosticsMode;
+  showWorkingNotice?: boolean;
 }
 
 export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
@@ -490,6 +497,9 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   let inlineActivityTicker: ReturnType<typeof setInterval> | undefined;
   let inlineActivityTick = 0;
   let stdoutNeedsLineBreak = false;
+  let pendingInputFrameEnabled = false;
+  let pendingInputFrameLineCount = 0;
+  let pendingInputFrameCursorLineIndex = 0;
   const ensureInteractiveStdoutLineBoundary = (): void => {
     if (!stdoutNeedsLineBreak) {
       return;
@@ -513,6 +523,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       process.stdout.write(line);
       return;
     }
+    if (pendingInputFrameEnabled) {
+      rerenderPendingInputFrame();
+      return;
+    }
     const rendered = line.replace(/\r?\n$/, "");
     if (!rendered || rendered === inlineProgressText) {
       return;
@@ -525,7 +539,13 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     if (!inlineProgressSupported || typeof activeTurnStartedAtMs !== "number") {
       return;
     }
-    const activityText = compactSummaryText(activityTracker.readPromptActivity() ?? "正在执行");
+    if (pendingInputFrameEnabled) {
+      rerenderPendingInputFrame();
+      inlineActivityTick += 1;
+      return;
+    }
+    const defaultActivityText = input.isPlanMode() ? "Working on plan" : "正在执行";
+    const activityText = compactSummaryText(activityTracker.readPromptActivity() ?? defaultActivityText);
     writeProgressLine(renderStatusIndicatorLine({
       message: activityText,
       startedAtMs: activeTurnStartedAtMs,
@@ -591,9 +611,11 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     if (inputSummary.activitySnapshot && shouldShowStage) {
       parts.push(`s="${compactSummaryText(inputSummary.activitySnapshot.text).replace(/"/g, "'")}"`);
     }
+    clearPendingInputFrame();
     ensureInteractiveStdoutLineBoundary();
     stopInlineActivityTicker(false);
     process.stdout.write(`${parts.join(" ")}\n`);
+    renderPendingInputFrame();
   };
   const activityTracker = createInteractiveActivityTracker(
     progressDiagnosticsEnabled
@@ -613,24 +635,32 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     if (!suppressDiagnosticStderr) {
       activityTracker.observeStderrChunk(message);
       stopInlineActivityTicker(true);
+      clearPendingInputFrame();
+      ensureInteractiveStdoutLineBoundary();
       process.stderr.write(message);
+      renderPendingInputFrameAfterStderr(message);
       return;
     }
     const forwarded = activityTracker.consumeStderrChunk(message);
     if (forwarded.length > 0) {
       stopInlineActivityTicker(true);
+      clearPendingInputFrame();
+      ensureInteractiveStdoutLineBoundary();
       process.stderr.write(forwarded);
-      if (typeof activeTurnStartedAtMs === "number") {
+      if (typeof activeTurnStartedAtMs === "number" && !pendingInputFrameEnabled) {
         renderInlineActivityTicker();
       }
+      renderPendingInputFrameAfterStderr(forwarded);
     }
   };
   const writeInteractiveStdout = (message: string): void => {
     stopInlineActivityTicker(true);
+    clearPendingInputFrame();
     process.stdout.write(message);
     if (message.length > 0) {
       stdoutNeedsLineBreak = !message.endsWith("\n");
     }
+    renderPendingInputFrameAfterStdout();
   };
 
   const handleInteractiveInput = createRunStartInteractiveHandler({
@@ -684,6 +714,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       input.enterPlan(goal, {
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
+        showWorkingNotice: true,
       }),
     applyPlan: (extra) =>
       input.applyPlan(extra, {
@@ -697,6 +728,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       input.runPlanTurn(userInput, {
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
+        showWorkingNotice: true,
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,
@@ -742,7 +774,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
             stopInlineActivityTicker(true);
+            clearPendingInputFrame();
+            ensureInteractiveStdoutLineBoundary();
             process.stderr.write(buffered);
+            renderPendingInputFrameAfterStderr(buffered);
           }
         }
         if (interactiveMode) {
@@ -790,7 +825,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           const buffered = activityTracker.flushBufferedStderr();
           if (buffered.length > 0) {
             stopInlineActivityTicker(true);
+            clearPendingInputFrame();
+            ensureInteractiveStdoutLineBoundary();
             process.stderr.write(buffered);
+            renderPendingInputFrameAfterStderr(buffered);
           }
         }
         if (interactiveMode) {
@@ -881,10 +919,116 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         running: typeof activeTurnStartedAtMs === "number",
         hasStatusLine: renderedPrompt.trim().length > 0,
         terminalRows: resolveTerminalRows(),
-        fullscreen: true,
+        fullscreen: input.isPlanMode() ? false : true,
       },
     });
   };
+
+  function buildPendingInputFrame(): {
+    lines: string[];
+    cursorLineIndex: number;
+    cursorColumn: number;
+  } {
+    const resolvedPrompt = dynamicPrompt();
+    const terminalColumns = Math.max(32, resolveTerminalColumns() ?? 96);
+    const promptLabel = resolvedPrompt.inlinePrompt.length > 0
+      ? resolvedPrompt.inlinePrompt
+      : "❯ ";
+    const promptLabelWidth = Math.max(1, measureDisplayWidth(promptLabel));
+    const inputBodyWidth = resolveInteractiveInputBodyWidth({
+      terminalColumns,
+      promptLabelWidth,
+    });
+    const footerLines = (resolvedPrompt.suffix ?? "")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .filter((line) => line.length > 0);
+    return {
+      lines: [
+        ...renderInteractiveInputChromeLines({
+          bodyLines: [`${promptLabel}`],
+          inputBodyWidth,
+        }),
+        ...footerLines,
+      ],
+      cursorLineIndex: 1,
+      cursorColumn: promptLabelWidth,
+    };
+  }
+
+  function clearPendingInputFrame(): void {
+    if (!pendingInputFrameEnabled || pendingInputFrameLineCount <= 0) {
+      return;
+    }
+    process.stdout.write("\r");
+    if (pendingInputFrameCursorLineIndex > 0) {
+      process.stdout.write(`\x1b[${String(pendingInputFrameCursorLineIndex)}A`);
+    }
+    process.stdout.write("\x1b[J");
+    pendingInputFrameLineCount = 0;
+    pendingInputFrameCursorLineIndex = 0;
+  }
+
+  function renderPendingInputFrame(): void {
+    if (!pendingInputFrameEnabled || !inlineProgressSupported || pendingInputFrameLineCount > 0) {
+      return;
+    }
+    const frame = buildPendingInputFrame();
+    if (frame.lines.length <= 0) {
+      return;
+    }
+    process.stdout.write(frame.lines.join("\n"));
+    pendingInputFrameLineCount = frame.lines.length;
+    pendingInputFrameCursorLineIndex = frame.cursorLineIndex;
+    const linesDown = Math.max(0, frame.lines.length - 1 - frame.cursorLineIndex);
+    if (linesDown > 0) {
+      process.stdout.write(`\x1b[${String(linesDown)}A`);
+    }
+    process.stdout.write("\r");
+    if (frame.cursorColumn > 0) {
+      process.stdout.write(`\x1b[${String(frame.cursorColumn)}C`);
+    }
+  }
+
+  function renderPendingInputFrameAfterStdout(): void {
+    if (pendingInputFrameEnabled) {
+      ensureInteractiveStdoutLineBoundary();
+    }
+    renderPendingInputFrame();
+  }
+
+  function renderPendingInputFrameAfterStderr(message: string): void {
+    if (
+      pendingInputFrameEnabled
+      && message.length > 0
+      && !message.endsWith("\n")
+    ) {
+      process.stderr.write("\n");
+    }
+    renderPendingInputFrame();
+  }
+
+  function rerenderPendingInputFrame(): void {
+    if (!pendingInputFrameEnabled) {
+      return;
+    }
+    clearPendingInputFrame();
+    renderPendingInputFrame();
+  }
+
+  const handleInteractiveInputWithPendingFrame = async (
+    userInputRaw: string,
+    controls: SessionInteractiveControls,
+  ): Promise<"continue" | "break"> => {
+    pendingInputFrameEnabled = true;
+    try {
+      return await handleInteractiveInput(userInputRaw, controls);
+    } finally {
+      clearPendingInputFrame();
+      pendingInputFrameEnabled = false;
+    }
+  };
+
   const getSlashSuggestions = (lineInput: string) => {
     const pendingAskCount = input.getPendingAskQueueSize();
     const normalizedLineInput = lineInput.trimStart().toLowerCase();
@@ -909,7 +1053,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
   };
 
   try {
-    await runSessionInputLoop(handleInteractiveInput, dynamicPrompt, {
+    await runSessionInputLoop(handleInteractiveInputWithPendingFrame, dynamicPrompt, {
       getSlashSuggestions,
       getInlineImageHighlightTheme: () => input.getStatusLineConfig().theme,
       shouldSuppressSubmitTranscript: (value) => {

@@ -16,6 +16,7 @@ import {
   resolveMenuSearchMatchedIndices,
   resolveMenuIndexFromDigits,
   resolveSlashSuggestionApplyResult,
+  resolveSlashInputHighlightSuggestions,
   resolveSlashSuggestionKeyAction,
   resolveShortcutOverlayKeyAction,
   resolveTerminalSelectMenuViewport,
@@ -217,6 +218,30 @@ async function main(): Promise<void> {
   const slashInputWithArgsHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
     suggestions: [{ command: "/plan", description: "Enter plan mode" }],
+  });
+  const slashInputWithArgsFallbackSuggestions = resolveSlashInputHighlightSuggestions({
+    activeLineInput: "/plan 帮我写一份抖音直播规划",
+    suggestions: [],
+    getSlashSuggestions: (input) =>
+      input === "/plan"
+        ? [{ command: "/plan", description: "Enter plan mode" }]
+        : [],
+  });
+  const slashInputWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
+    activeLineInput: "/plan 帮我写一份抖音直播规划",
+    suggestions: slashInputWithArgsFallbackSuggestions,
+  });
+  const slashInputPartialWithArgsFallbackSuggestions = resolveSlashInputHighlightSuggestions({
+    activeLineInput: "/pl 帮我写一份抖音直播规划",
+    suggestions: [],
+    getSlashSuggestions: (input) =>
+      input === "/pl"
+        ? [{ command: "/plan", description: "Enter plan mode" }]
+        : [],
+  });
+  const slashInputPartialWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
+    activeLineInput: "/pl 帮我写一份抖音直播规划",
+    suggestions: slashInputPartialWithArgsFallbackSuggestions,
   });
 
   const enterMenuAction = resolveSlashSuggestionKeyAction({
@@ -635,6 +660,10 @@ async function main(): Promise<void> {
       slashInputExactHighlight,
     slash_input_with_args_highlighted:
       slashInputWithArgsHighlight,
+    slash_input_with_args_fallback_highlighted:
+      slashInputWithArgsFallbackHighlight,
+    slash_input_partial_with_args_fallback_not_highlighted:
+      !slashInputPartialWithArgsFallbackHighlight,
     submit_return_detected: submitReturn === "submit",
     submit_enter_detected: submitEnter === "submit",
     submit_legacy_sequence_detected: submitLegacySequence === "submit",

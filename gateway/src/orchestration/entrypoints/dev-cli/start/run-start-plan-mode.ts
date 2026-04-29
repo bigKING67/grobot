@@ -116,6 +116,7 @@ export interface RunStartPlanTurnOptions {
   writeStderr?: (message: string) => void;
   skipExecution?: boolean;
   diagnosticsMode?: "compact" | "verbose" | "trace";
+  showWorkingNotice?: boolean;
 }
 
 export interface PlanInterruptResult {
@@ -2400,6 +2401,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         writeStderr: options?.writeStderr ?? input.writeStderr,
         compactFailureSurface,
       });
+      if (options?.showWorkingNotice) {
+        input.writeStdout("Working on the plan...\n");
+      }
       let code: number;
       try {
         code = await input.executeTurn(note, true, {

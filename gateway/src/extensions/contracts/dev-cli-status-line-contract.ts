@@ -96,6 +96,34 @@ const planModePrompt = renderStatusLinePrompt({
   promptLabel: "› ",
 });
 
+const narrowPlanModePrompt = renderStatusLinePrompt({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.643,
+  estimatedTokens: 3214,
+  targetTokenLimit: 5120,
+  sessionId,
+  sessionTopic: "login regression follow-up",
+  planMode: true,
+  terminalColumns: 48,
+  promptLabel: "› ",
+});
+
+const disabledStatusPlanModePrompt = renderStatusLinePrompt({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.643,
+  estimatedTokens: 3214,
+  targetTokenLimit: 5120,
+  sessionId,
+  planMode: true,
+  terminalColumns: 48,
+  promptLabel: "› ",
+  config: {
+    enabled: false,
+  },
+});
+
 const wideLines = wide.split("\n");
 const narrowLines = narrow.split("\n");
 const cjkLines = cjkNarrow.split("\n");
@@ -111,6 +139,7 @@ const warningStatusLine = warningLines[0] ?? "";
 const warningLine = warningLines[1] ?? "";
 const segmentToggleStatusLine = segmentToggleLines[0] ?? "";
 const planModeStatusLine = planModeLines[0] ?? "";
+const narrowPlanModeLine = narrowPlanModePrompt.split("\n")[0] ?? "";
 
 const payload = {
   wide_has_model: wideStatusLine.includes("kimi/kimi-k2-2026-04"),
@@ -138,6 +167,11 @@ const payload = {
     segmentToggleStatusLine.includes("5K window") === false
     && segmentToggleStatusLine.includes("5k window") === false,
   plan_mode_badge_visible: planModeStatusLine.includes("Plan mode"),
+  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("Plan mode"),
+  plan_mode_badge_kept_when_status_disabled:
+    disabledStatusPlanModePrompt.includes("Plan mode"),
+  plan_mode_narrow_line_within_width:
+    measureDisplayWidth(narrowPlanModeLine) <= 48,
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);
