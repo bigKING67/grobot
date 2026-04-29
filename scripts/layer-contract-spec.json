@@ -22,6 +22,14 @@
         "mcp",
         "semantic",
         "providers"
+      ],
+      "entrypointIncludeChecks": [
+        {
+          "path": "runtime/src/tools/tools.rs",
+          "includeRequiredDirs": true,
+          "allowedExtraIncludeDirs": ["file_snapshot", "file_mutation"],
+          "allowedExtraIncludeFiles": ["recovery.rs", "text_format.rs", "tests.rs"]
+        }
       ]
     },
     {

@@ -47,7 +47,7 @@
 | 层 | 职责 | 目录规范（必须） | 新增模块流程（必须） | 评审检查点（必须） |
 | --- | --- | --- | --- | --- |
 | 模型层（Model Layer） | 模型配置、请求构建、响应解析、工具回合控制 | 放在 `models/*`（如 `providers/<vendor>`）；`models/model.rs` 只保留薄入口/聚合 | 先建能力文件，再接入入口聚合 | 入口文件是否保持轻量；模型/工具接口是否保持兼容 |
-| 工具层（Tool Layer） | 本地工具、MCP、执行策略与审计状态 | 放在 `tools/<capability>/*`；`tools/tools.rs` 只保留聚合与分发入口 | 新工具先入对应能力目录（如 `fs`/`mcp`），禁止直接堆到聚合文件 | 是否按能力目录落位；是否复用公共校验与错误分类 |
+| 工具层（Tool Layer） | 本地工具、MCP、执行策略与审计状态 | 放在 `tools/<capability>/*`；`tools/tools.rs` 只保留聚合与分发入口 | 新工具先入对应能力目录（如 `read`/`write`/`edit`/`bash`/`mcp`），禁止直接堆到聚合文件 | 是否按能力目录落位；是否复用公共校验与错误分类 |
 | 扩展层（Extension Layer） | 协议边界、跨进程/跨语言扩展桥接 | 放在 `extensions/*`；入口文件只做协议装配 | 新增扩展先建能力文件，再挂载到协议处理入口 | 协议字段/错误码是否统一；是否避免把业务逻辑混入协议层 |
 | 编排层（Orchestration Layer） | `before -> model -> after -> events` 运行编排 | 放在 `orchestration/*`；`orchestrator.rs` 只保留组装/入口 | 先拆分 pipeline 能力，再在入口组合 | 编排事件是否完整；失败路径是否可观测 |
 | 治理平面（Governance Plane） | 评估、测试、回归门禁、自动优化迭代 | 放在 `governance/**` 与 `gateway/evals/**` 的能力域目录 | 新治理能力先补 policy/脚本，再接 CI 或离线流程 | 是否与在线热路径解耦；是否可审计、可回放、可阻断 |
@@ -56,7 +56,7 @@
 - 文档真相源：`README.md`、`runtime/README.md`、`gateway/README.md`、`gateway/evals/README.md`。
 - 门禁回归测试：`npm run check:layer-contract:test`（验证门禁脚本本身行为）。
 - 默认门禁命令：`npm run check:layer-contract`（strict，warning 会失败）；诊断模式：`npm run check:layer-contract:warn`（warn-only）。
-- 契约真相源：`scripts/layer-contract-spec.json`（目录、文档标记、单体文件阈值）。
+- 契约真相源：`scripts/layer-contract-spec.json`（目录、入口 include、文档标记、单体文件阈值）。
 - CI 严格门禁：`.github/workflows/layer-contract-gate.yml`（对结构相关改动执行 strict gate）。
 - 跨层依赖白名单：`importPolicyAllowlist`（仅用于明确例外，默认应为空）。
 

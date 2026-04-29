@@ -39,7 +39,8 @@ Governance plane is for runtime quality/safety guardrails and lifecycle control,
    - 每层入口文件仅负责聚合/装配，不承载大段业务实现。
 2. 目录规范
    - 各层新增实现默认放在当前层的能力目录（例如 `tools/read`、`models/providers`）。
-   - 工具层必须按能力域拆分（如 `core/list/glob/search/read/write/edit/bash/mcp/semantic`），禁止继续堆叠到 `tools.rs`。
+   - 工具层必须按能力域拆分（如 `core/list/glob/search/read/write/edit/bash/mcp/semantic/providers`），禁止继续堆叠到 `tools.rs`。
+   - `scripts/layer-contract-spec.json` 会校验 `tools/tools.rs` 的 `include!("...")` 是否覆盖这些能力域，避免历史目录名或入口聚合漂移。
 3. 新增模块流程
    - 第一步：在对应层下创建能力文件或能力子目录。
    - 第二步：在层入口文件接入 include/mod 聚合。

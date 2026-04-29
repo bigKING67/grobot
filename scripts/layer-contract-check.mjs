@@ -109,6 +109,35 @@ function walkFiles(path, output) {
   }
 }
 
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function collectRustIncludePaths(filePath) {
+  const text = readFileSync(filePath, "utf8");
+  const includes = [];
+  const pattern = /\binclude!\(\s*"([^"]+)"\s*\)/g;
+  for (const match of text.matchAll(pattern)) {
+    const includePath = String(match[1] || "").trim();
+    if (includePath) {
+      includes.push(includePath);
+    }
+  }
+  return includes;
+}
+
+function includeCapabilityKey(includePath) {
+  const normalized = includePath.replaceAll("\\", "/");
+  const [firstSegment] = normalized.split("/");
+  return firstSegment || normalized;
+}
+
 function collectForbiddenCratePrefixes(filePath, forbiddenPrefixes) {
   const text = readFileSync(filePath, "utf8");
   const seen = new Set();
@@ -189,6 +218,53 @@ for (const layer of spec.layers ?? []) {
     }
     if (countDirectoryEntries(requiredPath) === 0) {
       warnings.push(`[layer:${layer.name}] empty required directory: ${repoRel(requiredPath)}`);
+    }
+  }
+
+  for (const includeCheck of layer.entrypointIncludeChecks ?? []) {
+    const includeCheckPath =
+      typeof includeCheck.path === "string" ? includeCheck.path.trim() : "";
+    if (!includeCheckPath) {
+      warnings.push(`[layer:${layer.name}] entrypoint include check missing path`);
+      continue;
+    }
+    const entrypointPath = resolve(repoRoot, includeCheckPath);
+    if (!existsSync(entrypointPath)) {
+      failures.push(`[layer:${layer.name}] missing entrypoint include file: ${includeCheckPath}`);
+      continue;
+    }
+    const includePaths = collectRustIncludePaths(entrypointPath);
+    const includedCapabilities = new Set(includePaths.map(includeCapabilityKey));
+    if (includeCheck.includeRequiredDirs !== false) {
+      for (const requiredDir of requiredDirs) {
+        if (!includedCapabilities.has(requiredDir)) {
+          warnings.push(
+            `[layer:${layer.name}] ${includeCheckPath} does not include required directory: ${requiredDir}`
+          );
+        }
+      }
+    }
+    const allowedExtraDirs = new Set(normalizeStringList(includeCheck.allowedExtraIncludeDirs));
+    const allowedExtraFiles = new Set(normalizeStringList(includeCheck.allowedExtraIncludeFiles));
+    const requiredDirSet = new Set(requiredDirs);
+    const entrypointDir = resolve(entrypointPath, "..");
+    for (const includePath of includePaths) {
+      const includeKey = includeCapabilityKey(includePath);
+      const includeTarget = resolve(entrypointDir, includePath);
+      if (!existsSync(includeTarget)) {
+        warnings.push(
+          `[layer:${layer.name}] ${includeCheckPath} includes missing file: ${includePath}`
+        );
+      }
+      if (
+        !requiredDirSet.has(includeKey)
+        && !allowedExtraDirs.has(includeKey)
+        && !allowedExtraFiles.has(includePath)
+      ) {
+        warnings.push(
+          `[layer:${layer.name}] ${includeCheckPath} includes unexpected capability: ${includePath}`
+        );
+      }
     }
   }
 }

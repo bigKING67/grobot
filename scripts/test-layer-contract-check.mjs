@@ -152,6 +152,117 @@ function testForbiddenTsImportTriggersWarning() {
   }
 }
 
+function testEntrypointIncludeMissingRequiredDirTriggersWarning() {
+  const root = makeTempRepo();
+  try {
+    write("runtime/src/tools/tools.rs", 'include!("core/mod.rs");\n', root);
+    write("runtime/src/tools/core/mod.rs", "pub fn core() {}\n", root);
+    write("runtime/src/tools/bash/mod.rs", "pub fn bash() {}\n", root);
+    const spec = baseSpec();
+    spec.layers = [
+      {
+        name: "runtime-tools",
+        path: "runtime/src/tools",
+        requiredDirs: ["core", "bash"],
+        entrypointIncludeChecks: [
+          {
+            path: "runtime/src/tools/tools.rs",
+          },
+        ],
+      },
+    ];
+    spec.importPolicyWarnings = [];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("does not include required directory: bash")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testEntrypointIncludeUnexpectedCapabilityTriggersWarning() {
+  const root = makeTempRepo();
+  try {
+    write("runtime/src/tools/tools.rs", 'include!("core/mod.rs");\ninclude!("shell/mod.rs");\n', root);
+    write("runtime/src/tools/core/mod.rs", "pub fn core() {}\n", root);
+    write("runtime/src/tools/shell/mod.rs", "pub fn shell() {}\n", root);
+    const spec = baseSpec();
+    spec.layers = [
+      {
+        name: "runtime-tools",
+        path: "runtime/src/tools",
+        requiredDirs: ["core"],
+        entrypointIncludeChecks: [
+          {
+            path: "runtime/src/tools/tools.rs",
+          },
+        ],
+      },
+    ];
+    spec.importPolicyWarnings = [];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("includes unexpected capability: shell/mod.rs")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testEntrypointIncludeAllowsSupportFiles() {
+  const root = makeTempRepo();
+  try {
+    write(
+      "runtime/src/tools/tools.rs",
+      'include!("core/mod.rs");\ninclude!("file_snapshot/mod.rs");\ninclude!("recovery.rs");\n',
+      root
+    );
+    write("runtime/src/tools/core/mod.rs", "pub fn core() {}\n", root);
+    write("runtime/src/tools/file_snapshot/mod.rs", "pub fn snapshot() {}\n", root);
+    write("runtime/src/tools/recovery.rs", "pub fn recovery() {}\n", root);
+    const spec = baseSpec();
+    spec.layers = [
+      {
+        name: "runtime-tools",
+        path: "runtime/src/tools",
+        requiredDirs: ["core"],
+        entrypointIncludeChecks: [
+          {
+            path: "runtime/src/tools/tools.rs",
+            allowedExtraIncludeDirs: ["file_snapshot"],
+            allowedExtraIncludeFiles: ["recovery.rs"],
+          },
+        ],
+      },
+    ];
+    spec.importPolicyWarnings = [];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 0);
+    assert.equal(result.payload.pass, true);
+    assert.equal(result.payload.warnings.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 function testWarnModeAllowsWarningsForDiagnostics() {
   const root = makeTempRepo();
   try {
@@ -180,6 +291,9 @@ function main() {
   testForbiddenImportTriggersWarning();
   testAllowlistSuppressesWarning();
   testForbiddenTsImportTriggersWarning();
+  testEntrypointIncludeMissingRequiredDirTriggersWarning();
+  testEntrypointIncludeUnexpectedCapabilityTriggersWarning();
+  testEntrypointIncludeAllowsSupportFiles();
   testWarnModeAllowsWarningsForDiagnostics();
   process.stdout.write("layer-contract-check tests passed.\n");
 }
