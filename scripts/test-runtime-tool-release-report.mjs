@@ -133,6 +133,16 @@ const surfaceExecutionThresholdFixtureQuality = runtimeToolQualitySummary({
   runtime_surface_execution_schema_projection_checks: 55,
   runtime_surface_execution_structured_error_data_checks: 275,
   runtime_surface_execution_recovery_action_catalog_checks: 19,
+  runtime_recovery_feedback_prompt_action_first: true,
+  runtime_recovery_feedback_prompt_action_in_catalog: true,
+  runtime_recovery_legacy_action_prompt_fallback: "inspect_error_and_switch_strategy",
+  runtime_recovery_feedback_prompt_budget_max_chars: 1800,
+  runtime_recovery_feedback_prompt_budget_within_limit: true,
+  runtime_recovery_feedback_prompt_budget_truncated_details: true,
+  runtime_recovery_flow_automatic_recovery_denied: true,
+  runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard: true,
+  runtime_recovery_timeline_legacy_raw_action: "observe_and_continue",
+  runtime_recovery_timeline_legacy_effective_action: "inspect_error_and_switch_strategy",
   diagnostic_summary: {
     status: "passed",
     schema_budget_violations: 0,
@@ -149,6 +159,49 @@ if (
 ) {
   fail("release quality module must classify surface execution threshold failures with a focused action", {
     quality: surfaceExecutionThresholdFixtureQuality,
+  });
+}
+const recoveryPromptFixtureQuality = runtimeToolQualitySummary({
+  passed: true,
+  ok: true,
+  diagnostics_self_test: true,
+  contract_count: 12,
+  completed_count: 12,
+  runtime_binary: { exists: true },
+  runtime_surface_execution_smoke_passed: true,
+  runtime_surface_execution_profiles_smoked: ["browser", "browser_advanced", "coding", "context", "full_debug", "mcp", "minimal"],
+  runtime_surface_execution_allowed_workflow_successes: 2,
+  runtime_surface_execution_hidden_tool_rejections: 1,
+  runtime_surface_execution_hidden_arg_rejections: 4,
+  runtime_surface_execution_schema_projection_checks: 55,
+  runtime_surface_execution_structured_error_data_checks: 275,
+  runtime_surface_execution_recovery_action_catalog_checks: 20,
+  runtime_recovery_feedback_prompt_action_first: false,
+  runtime_recovery_feedback_prompt_action_in_catalog: true,
+  runtime_recovery_legacy_action_prompt_fallback: "inspect_error_and_switch_strategy",
+  runtime_recovery_feedback_prompt_budget_max_chars: 1800,
+  runtime_recovery_feedback_prompt_budget_within_limit: true,
+  runtime_recovery_feedback_prompt_budget_truncated_details: true,
+  runtime_recovery_flow_automatic_recovery_denied: true,
+  runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard: true,
+  runtime_recovery_timeline_legacy_raw_action: "observe_and_continue",
+  runtime_recovery_timeline_legacy_effective_action: "inspect_error_and_switch_strategy",
+  diagnostic_summary: {
+    status: "passed",
+    schema_budget_violations: 0,
+  },
+}, {
+  ownership_payload: {
+    runner_covers_all_runtime_tool_contracts: true,
+    all_contract_tmp_fixtures_isolated: true,
+  },
+}, qualityRegistry);
+if (
+  recoveryPromptFixtureQuality.action_reason !== "recovery_prompt_quality_failed"
+  || recoveryPromptFixtureQuality.action_required !== "fix_runtime_tool_recovery_prompt_quality"
+) {
+  fail("release quality module must classify recovery prompt quality failures with a focused action", {
+    quality: recoveryPromptFixtureQuality,
   });
 }
 
@@ -312,8 +365,12 @@ if (
   || !successResult.stdout.includes("surface_hidden_args=4")
   || !successResult.stdout.includes("surface_error_data=275")
   || !successResult.stdout.includes("surface_action_catalog=20")
+  || !successResult.stdout.includes("recovery_prompt=passed")
+  || !successResult.stdout.includes("recovery_budget=1800")
+  || !successResult.stdout.includes("recovery_auto_denied=true")
+  || !successResult.stdout.includes("recovery_effective_action=inspect_error_and_switch_strategy")
 ) {
-  fail("release gate stdout must expose runtime tool manifest and surface execution smoke evidence", {
+  fail("release gate stdout must expose runtime tool manifest, surface execution, and recovery prompt evidence", {
     stdout: successResult.stdout.slice(-1000),
     stderr: successResult.stderr.slice(-1000),
   });
@@ -401,6 +458,42 @@ if (!successQuality || typeof successQuality !== "object") {
   if (!Array.isArray(successQuality.runtime_surface_execution_threshold_failures) || successQuality.runtime_surface_execution_threshold_failures.length !== 0) {
     successFailures.push("success runtime_tool_quality.runtime_surface_execution_threshold_failures must be empty array");
   }
+  if (successQuality.runtime_recovery_prompt_quality_status !== "passed") {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_prompt_quality_status must be passed");
+  }
+  if (!Array.isArray(successQuality.runtime_recovery_prompt_quality_failures) || successQuality.runtime_recovery_prompt_quality_failures.length !== 0) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_prompt_quality_failures must be empty array");
+  }
+  if (successQuality.runtime_recovery_feedback_prompt_action_first !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_feedback_prompt_action_first must be true");
+  }
+  if (successQuality.runtime_recovery_feedback_prompt_action_in_catalog !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_feedback_prompt_action_in_catalog must be true");
+  }
+  if (successQuality.runtime_recovery_legacy_action_prompt_fallback !== "inspect_error_and_switch_strategy") {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_legacy_action_prompt_fallback must be inspect_error_and_switch_strategy");
+  }
+  if (successQuality.runtime_recovery_feedback_prompt_budget_max_chars !== 1800) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_feedback_prompt_budget_max_chars must be 1800");
+  }
+  if (successQuality.runtime_recovery_feedback_prompt_budget_within_limit !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_feedback_prompt_budget_within_limit must be true");
+  }
+  if (successQuality.runtime_recovery_feedback_prompt_budget_truncated_details !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_feedback_prompt_budget_truncated_details must be true");
+  }
+  if (successQuality.runtime_recovery_flow_automatic_recovery_denied !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_flow_automatic_recovery_denied must be true");
+  }
+  if (successQuality.runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard !== true) {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard must be true");
+  }
+  if (successQuality.runtime_recovery_timeline_legacy_raw_action !== "observe_and_continue") {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_timeline_legacy_raw_action must preserve raw legacy action");
+  }
+  if (successQuality.runtime_recovery_timeline_legacy_effective_action !== "inspect_error_and_switch_strategy") {
+    successFailures.push("success runtime_tool_quality.runtime_recovery_timeline_legacy_effective_action must preserve effective catalog action");
+  }
   if (successQuality.runtime_binary_exists !== true) {
     successFailures.push("success runtime_tool_quality.runtime_binary_exists must be true");
   }
@@ -486,6 +579,18 @@ if (successDescribe?.runtime_surface_execution_structured_error_data_checks !== 
 if (successDescribe?.runtime_surface_execution_recovery_action_catalog_checks !== 20) {
   successFailures.push("success runtime_tool_describe.runtime_surface_execution_recovery_action_catalog_checks must be 20");
 }
+if (successDescribe?.runtime_recovery_feedback_prompt_action_first !== true) {
+  successFailures.push("success runtime_tool_describe.runtime_recovery_feedback_prompt_action_first must be true");
+}
+if (successDescribe?.runtime_recovery_feedback_prompt_budget_max_chars !== 1800) {
+  successFailures.push("success runtime_tool_describe.runtime_recovery_feedback_prompt_budget_max_chars must be 1800");
+}
+if (successDescribe?.runtime_recovery_flow_automatic_recovery_denied !== true) {
+  successFailures.push("success runtime_tool_describe.runtime_recovery_flow_automatic_recovery_denied must be true");
+}
+if (successDescribe?.runtime_recovery_timeline_legacy_effective_action !== "inspect_error_and_switch_strategy") {
+  successFailures.push("success runtime_tool_describe.runtime_recovery_timeline_legacy_effective_action must preserve effective catalog action");
+}
 if (successDescribe?.runtime_tool_count !== 14) {
   successFailures.push("success runtime_tool_describe.runtime_tool_count must be 14");
 }
@@ -534,4 +639,5 @@ process.stdout.write(JSON.stringify({
   module_priority_fixture_action: fixtureSignal.reason,
   surface_execution_fixture_action: surfaceExecutionFixtureQuality.action_reason,
   surface_execution_threshold_fixture_action: surfaceExecutionThresholdFixtureQuality.action_reason,
+  recovery_prompt_fixture_action: recoveryPromptFixtureQuality.action_reason,
 }) + "\n");

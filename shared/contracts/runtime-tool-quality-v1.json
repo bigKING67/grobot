@@ -48,6 +48,19 @@
     "runtime_surface_execution_threshold_status",
     "runtime_surface_execution_thresholds",
     "runtime_surface_execution_threshold_failures",
+    "runtime_recovery_prompt_quality_status",
+    "runtime_recovery_prompt_quality_expectations",
+    "runtime_recovery_prompt_quality_failures",
+    "runtime_recovery_feedback_prompt_action_first",
+    "runtime_recovery_feedback_prompt_action_in_catalog",
+    "runtime_recovery_legacy_action_prompt_fallback",
+    "runtime_recovery_feedback_prompt_budget_max_chars",
+    "runtime_recovery_feedback_prompt_budget_within_limit",
+    "runtime_recovery_feedback_prompt_budget_truncated_details",
+    "runtime_recovery_flow_automatic_recovery_denied",
+    "runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard",
+    "runtime_recovery_timeline_legacy_raw_action",
+    "runtime_recovery_timeline_legacy_effective_action",
     "gateway_only_recovery_actions"
   ],
   "action_families": [
@@ -74,6 +87,10 @@
     {
       "family": "surface_execution",
       "description": "Runtime tool model-visible schema and dispatcher execution boundaries failed smoke verification."
+    },
+    {
+      "family": "tool_recovery",
+      "description": "Runtime tool recovery prompt, action normalization, or intervention-discipline quality failed."
     },
     {
       "family": "recovery_gate",
@@ -223,6 +240,16 @@
       }
     },
     {
+      "action": "fix_runtime_tool_recovery_prompt_quality",
+      "reasons": [
+        "recovery_prompt_quality_failed"
+      ],
+      "description": "Fix runtime tool recovery prompt budget, action normalization, or non-recoverable intervention evidence.",
+      "default_next_step": {
+        "release": "Run `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-events-contract.ts`, `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-flow-contract.ts`, and `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/runtime-tool-recovery-timeline-contract.ts`, then rerun the release gate."
+      }
+    },
+    {
       "action": "restore_runtime_tool_contract_coverage",
       "reasons": [
         "contract_coverage_incomplete"
@@ -356,6 +383,16 @@
       "action_family": "surface_execution",
       "priority_by_surface": {
         "release": 34
+      }
+    },
+    {
+      "reason": "recovery_prompt_quality_failed",
+      "surfaces": [
+        "release"
+      ],
+      "action_family": "tool_recovery",
+      "priority_by_surface": {
+        "release": 33
       }
     },
     {

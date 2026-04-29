@@ -23,6 +23,19 @@ export const runtimeSurfaceExecutionQualityThresholds = Object.freeze({
   recovery_action_catalog_checks_min: 20,
 });
 
+export const runtimeRecoveryPromptQualityExpectations = Object.freeze({
+  feedback_prompt_action_first: true,
+  feedback_prompt_action_in_catalog: true,
+  legacy_action_prompt_fallback: "inspect_error_and_switch_strategy",
+  feedback_prompt_budget_max_chars: 1800,
+  feedback_prompt_budget_within_limit: true,
+  feedback_prompt_budget_truncated_details: true,
+  flow_automatic_recovery_denied: true,
+  flow_guarded_nonrecoverable_bypasses_guard: true,
+  timeline_legacy_raw_action: "observe_and_continue",
+  timeline_legacy_effective_action: "inspect_error_and_switch_strategy",
+});
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -176,6 +189,9 @@ export function readRuntimeToolDescribeData(runtimeToolDescribeReportPath) {
       report: null,
       governance_payload: null,
       ownership_payload: null,
+      events_payload: null,
+      recovery_flow_payload: null,
+      recovery_timeline_payload: null,
       surface_execution_payload: null,
       report_parse_error: null,
     };
@@ -192,6 +208,9 @@ export function readRuntimeToolDescribeData(runtimeToolDescribeReportPath) {
       report,
       governance_payload: resultPayload("runtime-tool-governance"),
       ownership_payload: resultPayload("runtime-tool-suite-ownership"),
+      events_payload: resultPayload("runtime-tool-events"),
+      recovery_flow_payload: resultPayload("runtime-tool-recovery-flow"),
+      recovery_timeline_payload: resultPayload("runtime-tool-recovery-timeline"),
       surface_execution_payload: resultPayload("runtime-tool-surface-execution"),
       report_parse_error: null,
     };
@@ -200,6 +219,9 @@ export function readRuntimeToolDescribeData(runtimeToolDescribeReportPath) {
       report: null,
       governance_payload: null,
       ownership_payload: null,
+      events_payload: null,
+      recovery_flow_payload: null,
+      recovery_timeline_payload: null,
       surface_execution_payload: null,
       report_parse_error: error instanceof Error ? error.message : String(error),
     };
@@ -219,6 +241,9 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
   }
   const report = data.report;
   const governancePayload = data.governance_payload;
+  const eventsPayload = data.events_payload;
+  const recoveryFlowPayload = data.recovery_flow_payload;
+  const recoveryTimelinePayload = data.recovery_timeline_payload;
   const surfaceExecutionPayload = data.surface_execution_payload;
   return {
     ...summary,
@@ -317,6 +342,46 @@ export function runtimeToolDescribeSummary(data, runtimeToolDescribePassed) {
       Number.isFinite(surfaceExecutionPayload?.recovery_action_catalog_checks)
         ? surfaceExecutionPayload.recovery_action_catalog_checks
         : null,
+    runtime_recovery_feedback_prompt_action_first:
+      typeof eventsPayload?.feedback_prompt_action_first === "boolean"
+        ? eventsPayload.feedback_prompt_action_first
+        : null,
+    runtime_recovery_feedback_prompt_action_in_catalog:
+      typeof eventsPayload?.feedback_prompt_action_in_catalog === "boolean"
+        ? eventsPayload.feedback_prompt_action_in_catalog
+        : null,
+    runtime_recovery_legacy_action_prompt_fallback:
+      typeof eventsPayload?.legacy_action_prompt_fallback === "string"
+        ? eventsPayload.legacy_action_prompt_fallback
+        : null,
+    runtime_recovery_feedback_prompt_budget_max_chars:
+      Number.isFinite(eventsPayload?.feedback_prompt_budget_max_chars)
+        ? eventsPayload.feedback_prompt_budget_max_chars
+        : null,
+    runtime_recovery_feedback_prompt_budget_within_limit:
+      typeof eventsPayload?.feedback_prompt_budget_within_limit === "boolean"
+        ? eventsPayload.feedback_prompt_budget_within_limit
+        : null,
+    runtime_recovery_feedback_prompt_budget_truncated_details:
+      typeof eventsPayload?.feedback_prompt_budget_truncated_details === "boolean"
+        ? eventsPayload.feedback_prompt_budget_truncated_details
+        : null,
+    runtime_recovery_flow_automatic_recovery_denied:
+      typeof recoveryFlowPayload?.first_automatic_recovery_denied === "boolean"
+        ? recoveryFlowPayload.first_automatic_recovery_denied
+        : null,
+    runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard:
+      typeof recoveryFlowPayload?.guarded_nonrecoverable_bypasses_guard === "boolean"
+        ? recoveryFlowPayload.guarded_nonrecoverable_bypasses_guard
+        : null,
+    runtime_recovery_timeline_legacy_raw_action:
+      typeof recoveryTimelinePayload?.legacy_raw_action === "string"
+        ? recoveryTimelinePayload.legacy_raw_action
+        : null,
+    runtime_recovery_timeline_legacy_effective_action:
+      typeof recoveryTimelinePayload?.legacy_effective_action === "string"
+        ? recoveryTimelinePayload.legacy_effective_action
+        : null,
     gateway_only_recovery_actions: stringArray(governancePayload?.gateway_only_recovery_actions),
   };
 }
@@ -399,6 +464,69 @@ export function runtimeSurfaceExecutionQualityFailures(
   return failures;
 }
 
+export function runtimeRecoveryPromptQualityFailures(
+  describeSummary,
+  expectations = runtimeRecoveryPromptQualityExpectations,
+) {
+  const failures = [];
+  const expectField = (field, actual, expected) => {
+    if (actual !== expected) {
+      failures.push({ field, actual: actual ?? null, expected });
+    }
+  };
+  expectField(
+    "runtime_recovery_feedback_prompt_action_first",
+    describeSummary.runtime_recovery_feedback_prompt_action_first,
+    expectations.feedback_prompt_action_first,
+  );
+  expectField(
+    "runtime_recovery_feedback_prompt_action_in_catalog",
+    describeSummary.runtime_recovery_feedback_prompt_action_in_catalog,
+    expectations.feedback_prompt_action_in_catalog,
+  );
+  expectField(
+    "runtime_recovery_legacy_action_prompt_fallback",
+    describeSummary.runtime_recovery_legacy_action_prompt_fallback,
+    expectations.legacy_action_prompt_fallback,
+  );
+  expectField(
+    "runtime_recovery_feedback_prompt_budget_max_chars",
+    describeSummary.runtime_recovery_feedback_prompt_budget_max_chars,
+    expectations.feedback_prompt_budget_max_chars,
+  );
+  expectField(
+    "runtime_recovery_feedback_prompt_budget_within_limit",
+    describeSummary.runtime_recovery_feedback_prompt_budget_within_limit,
+    expectations.feedback_prompt_budget_within_limit,
+  );
+  expectField(
+    "runtime_recovery_feedback_prompt_budget_truncated_details",
+    describeSummary.runtime_recovery_feedback_prompt_budget_truncated_details,
+    expectations.feedback_prompt_budget_truncated_details,
+  );
+  expectField(
+    "runtime_recovery_flow_automatic_recovery_denied",
+    describeSummary.runtime_recovery_flow_automatic_recovery_denied,
+    expectations.flow_automatic_recovery_denied,
+  );
+  expectField(
+    "runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard",
+    describeSummary.runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard,
+    expectations.flow_guarded_nonrecoverable_bypasses_guard,
+  );
+  expectField(
+    "runtime_recovery_timeline_legacy_raw_action",
+    describeSummary.runtime_recovery_timeline_legacy_raw_action,
+    expectations.timeline_legacy_raw_action,
+  );
+  expectField(
+    "runtime_recovery_timeline_legacy_effective_action",
+    describeSummary.runtime_recovery_timeline_legacy_effective_action,
+    expectations.timeline_legacy_effective_action,
+  );
+  return failures;
+}
+
 export function runtimeToolQualitySummary(describeSummary, data, registry = readRuntimeToolQualityRegistry()) {
   const diagnosticSummary = isRecord(describeSummary.diagnostic_summary)
     ? describeSummary.diagnostic_summary
@@ -427,6 +555,10 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
   const surfaceExecutionThresholdFailures = shouldEvaluateSurfaceExecutionThresholds
     ? runtimeSurfaceExecutionQualityFailures(describeSummary)
     : [];
+  const shouldEvaluateRecoveryPromptQuality = describeSummary.passed === true && describeSummary.ok === true;
+  const recoveryPromptQualityFailures = shouldEvaluateRecoveryPromptQuality
+    ? runtimeRecoveryPromptQualityFailures(describeSummary)
+    : [];
   const failureReasons = [];
   if (describeSummary.report_parse_error) {
     pushRuntimeToolQualityFailureReason(failureReasons, "report_parse_error", registry);
@@ -441,6 +573,13 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
     pushRuntimeToolQualityFailureReason(
       failureReasons,
       "surface_execution_evidence_below_threshold",
+      registry,
+    );
+  }
+  if (recoveryPromptQualityFailures.length > 0) {
+    pushRuntimeToolQualityFailureReason(
+      failureReasons,
+      "recovery_prompt_quality_failed",
       registry,
     );
   }
@@ -581,6 +720,52 @@ export function runtimeToolQualitySummary(describeSummary, data, registry = read
         : null,
     runtime_surface_execution_thresholds: runtimeSurfaceExecutionQualityThresholds,
     runtime_surface_execution_threshold_failures: surfaceExecutionThresholdFailures,
+    runtime_recovery_prompt_quality_status:
+      shouldEvaluateRecoveryPromptQuality
+        ? recoveryPromptQualityFailures.length === 0 ? "passed" : "failed"
+        : null,
+    runtime_recovery_prompt_quality_expectations: runtimeRecoveryPromptQualityExpectations,
+    runtime_recovery_prompt_quality_failures: recoveryPromptQualityFailures,
+    runtime_recovery_feedback_prompt_action_first:
+      typeof describeSummary.runtime_recovery_feedback_prompt_action_first === "boolean"
+        ? describeSummary.runtime_recovery_feedback_prompt_action_first
+        : null,
+    runtime_recovery_feedback_prompt_action_in_catalog:
+      typeof describeSummary.runtime_recovery_feedback_prompt_action_in_catalog === "boolean"
+        ? describeSummary.runtime_recovery_feedback_prompt_action_in_catalog
+        : null,
+    runtime_recovery_legacy_action_prompt_fallback:
+      typeof describeSummary.runtime_recovery_legacy_action_prompt_fallback === "string"
+        ? describeSummary.runtime_recovery_legacy_action_prompt_fallback
+        : null,
+    runtime_recovery_feedback_prompt_budget_max_chars:
+      Number.isFinite(describeSummary.runtime_recovery_feedback_prompt_budget_max_chars)
+        ? describeSummary.runtime_recovery_feedback_prompt_budget_max_chars
+        : null,
+    runtime_recovery_feedback_prompt_budget_within_limit:
+      typeof describeSummary.runtime_recovery_feedback_prompt_budget_within_limit === "boolean"
+        ? describeSummary.runtime_recovery_feedback_prompt_budget_within_limit
+        : null,
+    runtime_recovery_feedback_prompt_budget_truncated_details:
+      typeof describeSummary.runtime_recovery_feedback_prompt_budget_truncated_details === "boolean"
+        ? describeSummary.runtime_recovery_feedback_prompt_budget_truncated_details
+        : null,
+    runtime_recovery_flow_automatic_recovery_denied:
+      typeof describeSummary.runtime_recovery_flow_automatic_recovery_denied === "boolean"
+        ? describeSummary.runtime_recovery_flow_automatic_recovery_denied
+        : null,
+    runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard:
+      typeof describeSummary.runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard === "boolean"
+        ? describeSummary.runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard
+        : null,
+    runtime_recovery_timeline_legacy_raw_action:
+      typeof describeSummary.runtime_recovery_timeline_legacy_raw_action === "string"
+        ? describeSummary.runtime_recovery_timeline_legacy_raw_action
+        : null,
+    runtime_recovery_timeline_legacy_effective_action:
+      typeof describeSummary.runtime_recovery_timeline_legacy_effective_action === "string"
+        ? describeSummary.runtime_recovery_timeline_legacy_effective_action
+        : null,
     gateway_only_recovery_actions: Array.isArray(describeSummary.gateway_only_recovery_actions)
       ? describeSummary.gateway_only_recovery_actions
       : [],
@@ -634,6 +819,8 @@ export function checkRuntimeToolDescribeQuality(runtimeToolDescribeReportPath) {
       failure_reasons: runtimeToolQuality.failure_reasons,
       runtime_surface_execution_threshold_failures:
         runtimeToolQuality.runtime_surface_execution_threshold_failures,
+      runtime_recovery_prompt_quality_failures:
+        runtimeToolQuality.runtime_recovery_prompt_quality_failures,
     })}\n`);
     return false;
   }
@@ -641,6 +828,8 @@ export function checkRuntimeToolDescribeQuality(runtimeToolDescribeReportPath) {
     marker: "runtime_tool_quality_passed",
     runtime_surface_execution_threshold_status:
       runtimeToolQuality.runtime_surface_execution_threshold_status,
+    runtime_recovery_prompt_quality_status:
+      runtimeToolQuality.runtime_recovery_prompt_quality_status,
   })}\n`);
   return true;
 }

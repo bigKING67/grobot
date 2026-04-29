@@ -333,8 +333,13 @@ expect(
     && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_structured_error_data_checks")
     && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_recovery_action_catalog_checks")
     && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_threshold_status")
-    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_threshold_failures"),
-  "schema release diagnostic fields must include manifest diff, schema budget, and surface execution evidence",
+    && schemaReleaseDiagnosticFields.includes("runtime_surface_execution_threshold_failures")
+    && schemaReleaseDiagnosticFields.includes("runtime_recovery_prompt_quality_status")
+    && schemaReleaseDiagnosticFields.includes("runtime_recovery_feedback_prompt_action_first")
+    && schemaReleaseDiagnosticFields.includes("runtime_recovery_feedback_prompt_budget_max_chars")
+    && schemaReleaseDiagnosticFields.includes("runtime_recovery_flow_automatic_recovery_denied")
+    && schemaReleaseDiagnosticFields.includes("runtime_recovery_timeline_legacy_effective_action"),
+  "schema release diagnostic fields must include manifest diff, schema budget, surface execution, and recovery prompt evidence",
 );
 expect(new Set(schemaActionFamilies).size === schemaActionFamilies.length, "schema action families must be unique");
 expect(new Set(schemaActionRequiredIds).size === schemaActionRequiredIds.length, "schema action_required ids must be unique");
@@ -519,6 +524,21 @@ const releaseQualityModuleRequiredFragments = [
   "runtime_surface_execution_threshold_status:",
   "runtime_surface_execution_thresholds:",
   "runtime_surface_execution_threshold_failures:",
+  "recovery_prompt_quality_failed",
+  "export function runtimeRecoveryPromptQualityFailures(",
+  "runtime_recovery_prompt_quality_status:",
+  "runtime_recovery_prompt_quality_expectations:",
+  "runtime_recovery_prompt_quality_failures:",
+  "runtime_recovery_feedback_prompt_action_first:",
+  "runtime_recovery_feedback_prompt_action_in_catalog:",
+  "runtime_recovery_legacy_action_prompt_fallback:",
+  "runtime_recovery_feedback_prompt_budget_max_chars:",
+  "runtime_recovery_feedback_prompt_budget_within_limit:",
+  "runtime_recovery_feedback_prompt_budget_truncated_details:",
+  "runtime_recovery_flow_automatic_recovery_denied:",
+  "runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard:",
+  "runtime_recovery_timeline_legacy_raw_action:",
+  "runtime_recovery_timeline_legacy_effective_action:",
   "runtime_surface_execution_smoke_passed:",
   "runtime_surface_execution_profiles_smoked:",
   "runtime_surface_execution_schema_projection_checks:",
@@ -693,6 +713,10 @@ expect(
     && releaseReportTest.includes("surface_error_data=275")
     && releaseReportTest.includes("surface_action_catalog=20")
     && releaseReportTest.includes("surface execution threshold failures with a focused action")
+    && releaseReportTest.includes("recovery_prompt=passed")
+    && releaseReportTest.includes("recovery_prompt_quality_failed")
+    && releaseReportTest.includes("recovery prompt quality failures with a focused action")
+    && releaseReportTest.includes("success runtime_tool_quality.runtime_recovery_prompt_quality_status must be passed")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_surface_execution_threshold_status must be passed")
     && releaseReportTest.includes("success runtime_tool_quality.schema_budget_status must be passed")
     && releaseReportTest.includes("success runtime_tool_quality.runtime_schema_profile_summary must describe 7 profiles")
@@ -761,6 +785,19 @@ process.stdout.write(JSON.stringify({
     "runtime_surface_execution_threshold_status",
     "runtime_surface_execution_thresholds",
     "runtime_surface_execution_threshold_failures",
+    "runtime_recovery_prompt_quality_status",
+    "runtime_recovery_prompt_quality_expectations",
+    "runtime_recovery_prompt_quality_failures",
+    "runtime_recovery_feedback_prompt_action_first",
+    "runtime_recovery_feedback_prompt_action_in_catalog",
+    "runtime_recovery_legacy_action_prompt_fallback",
+    "runtime_recovery_feedback_prompt_budget_max_chars",
+    "runtime_recovery_feedback_prompt_budget_within_limit",
+    "runtime_recovery_feedback_prompt_budget_truncated_details",
+    "runtime_recovery_flow_automatic_recovery_denied",
+    "runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard",
+    "runtime_recovery_timeline_legacy_raw_action",
+    "runtime_recovery_timeline_legacy_effective_action",
     "action_family",
     "action_reason",
     "action_required",

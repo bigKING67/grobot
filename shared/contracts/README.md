@@ -39,3 +39,7 @@ such as a healthcheck error, fallback reason, recovery blocker, or
 failed-contract reproduction command. Reason rows also own
 `priority_by_surface`, which selects the decisive `action_reason` and
 corresponding `action_family` when multiple quality reasons are present.
+Release diagnostic fields additionally include runtime-tool recovery prompt
+quality evidence (`runtime_recovery_*`) so release automation can gate on
+action-first hints, cataloged effective actions, prompt budget enforcement, and
+non-recoverable recovery-denial behavior without parsing contract stdout.

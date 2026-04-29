@@ -162,21 +162,35 @@ const governance = Array.isArray(report.results)
 const surfaceExecution = Array.isArray(report.results)
   ? report.results.find((item) => item && item.id === "runtime-tool-surface-execution")
   : null;
-let governancePayload = {};
-try {
-  governancePayload = typeof governance?.output === "string" ? JSON.parse(governance.output) : {};
-} catch {
-  governancePayload = {};
+function parseResultPayload(result) {
+  try {
+    return typeof result?.output === "string" ? JSON.parse(result.output) : {};
+  } catch {
+    return {};
+  }
 }
-let surfaceExecutionPayload = {};
-try {
-  surfaceExecutionPayload = typeof surfaceExecution?.output === "string" ? JSON.parse(surfaceExecution.output) : {};
-} catch {
-  surfaceExecutionPayload = {};
+function resultById(id) {
+  return Array.isArray(report.results)
+    ? report.results.find((item) => item && item.id === id)
+    : null;
 }
+const governancePayload = parseResultPayload(governance);
+const surfaceExecutionPayload = parseResultPayload(surfaceExecution);
+const eventsPayload = parseResultPayload(resultById("runtime-tool-events"));
+const recoveryFlowPayload = parseResultPayload(resultById("runtime-tool-recovery-flow"));
+const recoveryTimelinePayload = parseResultPayload(resultById("runtime-tool-recovery-timeline"));
 const surfaceProfiles = Array.isArray(surfaceExecutionPayload.profiles_smoked)
   ? surfaceExecutionPayload.profiles_smoked.length
   : "unknown";
+const recoveryPromptPassed = eventsPayload.feedback_prompt_action_first === true
+  && eventsPayload.feedback_prompt_action_in_catalog === true
+  && eventsPayload.legacy_action_prompt_fallback === "inspect_error_and_switch_strategy"
+  && eventsPayload.feedback_prompt_budget_within_limit === true
+  && eventsPayload.feedback_prompt_budget_truncated_details === true
+  && recoveryFlowPayload.first_automatic_recovery_denied === true
+  && recoveryFlowPayload.guarded_nonrecoverable_bypasses_guard === true
+  && recoveryTimelinePayload.legacy_raw_action === "observe_and_continue"
+  && recoveryTimelinePayload.legacy_effective_action === "inspect_error_and_switch_strategy";
 process.stdout.write(
   `[gate] runtime tools describe passed contracts=${report.completed_count}/${report.contract_count}`
     + ` tool_count=${governancePayload.runtime_tool_count ?? "unknown"}`
@@ -189,6 +203,10 @@ process.stdout.write(
     + ` surface_hidden_tools=${surfaceExecutionPayload.hidden_tool_rejections ?? "unknown"}`
     + ` surface_error_data=${surfaceExecutionPayload.structured_error_data_checks ?? "unknown"}`
     + ` surface_action_catalog=${surfaceExecutionPayload.recovery_action_catalog_checks ?? "unknown"}`
+    + ` recovery_prompt=${recoveryPromptPassed ? "passed" : "failed"}`
+    + ` recovery_budget=${eventsPayload.feedback_prompt_budget_max_chars ?? "unknown"}`
+    + ` recovery_auto_denied=${recoveryFlowPayload.first_automatic_recovery_denied ?? "unknown"}`
+    + ` recovery_effective_action=${recoveryTimelinePayload.legacy_effective_action ?? "unknown"}`
     + ` gateway_only_actions=${JSON.stringify(governancePayload.gateway_only_recovery_actions ?? [])}\n`,
 );
 NODE

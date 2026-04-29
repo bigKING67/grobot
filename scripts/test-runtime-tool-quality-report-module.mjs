@@ -155,6 +155,16 @@ const baseDescribeSummary = {
   runtime_surface_execution_schema_projection_checks: 55,
   runtime_surface_execution_structured_error_data_checks: 275,
   runtime_surface_execution_recovery_action_catalog_checks: 20,
+  runtime_recovery_feedback_prompt_action_first: true,
+  runtime_recovery_feedback_prompt_action_in_catalog: true,
+  runtime_recovery_legacy_action_prompt_fallback: "inspect_error_and_switch_strategy",
+  runtime_recovery_feedback_prompt_budget_max_chars: 1800,
+  runtime_recovery_feedback_prompt_budget_within_limit: true,
+  runtime_recovery_feedback_prompt_budget_truncated_details: true,
+  runtime_recovery_flow_automatic_recovery_denied: true,
+  runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard: true,
+  runtime_recovery_timeline_legacy_raw_action: "observe_and_continue",
+  runtime_recovery_timeline_legacy_effective_action: "inspect_error_and_switch_strategy",
   diagnostic_summary: {
     status: "passed",
     schema_budget_violations: 0,
@@ -267,6 +277,35 @@ expectEqual(
   "surface threshold failure must preserve the failing metric",
 );
 
+const recoveryPromptFailureQuality = runtimeToolQualitySummary({
+  ...baseDescribeSummary,
+  runtime_recovery_feedback_prompt_action_first: false,
+}, baseData, registry);
+expect(
+  recoveryPromptFailureQuality.failure_reasons.includes("recovery_prompt_quality_failed"),
+  "recovery prompt quality failures must expose a precise failure reason",
+);
+expectEqual(
+  recoveryPromptFailureQuality.runtime_recovery_prompt_quality_status,
+  "failed",
+  "recovery prompt quality failures must mark prompt quality failed",
+);
+expectEqual(
+  recoveryPromptFailureQuality.action_reason,
+  "recovery_prompt_quality_failed",
+  "recovery prompt quality failure must outrank surface execution threshold drift",
+);
+expectEqual(
+  recoveryPromptFailureQuality.action_required,
+  "fix_runtime_tool_recovery_prompt_quality",
+  "recovery prompt quality failure must map to focused prompt/action repair",
+);
+expectEqual(
+  recoveryPromptFailureQuality.runtime_recovery_prompt_quality_failures[0].field,
+  "runtime_recovery_feedback_prompt_action_first",
+  "recovery prompt quality failure must preserve failing field",
+);
+
 const diagnosticReproduceQuality = runtimeToolQualitySummary({
   ...baseDescribeSummary,
   passed: false,
@@ -345,6 +384,31 @@ const describeReportPath = writeFixture("valid-describe-report.json", {
       output: JSON.stringify(ownershipPayload),
     },
     {
+      id: "runtime-tool-events",
+      output: JSON.stringify({
+        feedback_prompt_action_first: true,
+        feedback_prompt_action_in_catalog: true,
+        legacy_action_prompt_fallback: "inspect_error_and_switch_strategy",
+        feedback_prompt_budget_max_chars: 1800,
+        feedback_prompt_budget_within_limit: true,
+        feedback_prompt_budget_truncated_details: true,
+      }),
+    },
+    {
+      id: "runtime-tool-recovery-flow",
+      output: JSON.stringify({
+        first_automatic_recovery_denied: true,
+        guarded_nonrecoverable_bypasses_guard: true,
+      }),
+    },
+    {
+      id: "runtime-tool-recovery-timeline",
+      output: JSON.stringify({
+        legacy_raw_action: "observe_and_continue",
+        legacy_effective_action: "inspect_error_and_switch_strategy",
+      }),
+    },
+    {
       id: "runtime-tool-surface-execution",
       output: JSON.stringify({
         ok: true,
@@ -411,6 +475,26 @@ expectEqual(
   describeSummary.runtime_surface_execution_recovery_action_catalog_checks,
   20,
   "surface execution smoke recovery action catalog check count must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_recovery_feedback_prompt_action_first,
+  true,
+  "events contract recovery prompt action-first flag must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_recovery_feedback_prompt_budget_max_chars,
+  1800,
+  "events contract recovery prompt budget must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_recovery_flow_automatic_recovery_denied,
+  true,
+  "recovery flow automatic denial evidence must be preserved",
+);
+expectEqual(
+  describeSummary.runtime_recovery_timeline_legacy_effective_action,
+  "inspect_error_and_switch_strategy",
+  "recovery timeline effective legacy action evidence must be preserved",
 );
 
 const releaseReport = buildCoreReleaseReport({
@@ -481,6 +565,21 @@ expectEqual(
   "passed",
   "runtime_tool_quality must expose surface execution threshold status",
 );
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_recovery_prompt_quality_status,
+  "passed",
+  "runtime_tool_quality must expose recovery prompt quality status",
+);
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_recovery_feedback_prompt_action_in_catalog,
+  true,
+  "runtime_tool_quality must expose recovery prompt action catalog evidence",
+);
+expectEqual(
+  releaseReport.checks.runtime_tool_quality.runtime_recovery_flow_guarded_nonrecoverable_bypasses_guard,
+  true,
+  "runtime_tool_quality must expose nonrecoverable guard bypass evidence",
+);
 
 const writtenReportPath = join(tmpDir, "nested", "core-release-report.json");
 writeCoreReleaseReport(writtenReportPath, releaseReport);
@@ -499,6 +598,7 @@ process.stdout.write(JSON.stringify({
   schema_budget_cases: ["passed", "unknown", "failed"],
   surface_execution_failure_action: surfaceExecutionFailureQuality.action_reason,
   surface_execution_threshold_action: surfaceThresholdFailureQuality.action_reason,
+  recovery_prompt_quality_action: recoveryPromptFailureQuality.action_reason,
   manifest_evidence: [
     "runtime_tool_count",
     "runtime_tool_manifest_fingerprint",
@@ -511,6 +611,10 @@ process.stdout.write(JSON.stringify({
     "runtime_surface_execution_recovery_action_catalog_checks",
     "runtime_surface_execution_threshold_status",
     "runtime_surface_execution_thresholds",
+    "runtime_recovery_prompt_quality_status",
+    "runtime_recovery_feedback_prompt_action_first",
+    "runtime_recovery_flow_automatic_recovery_denied",
+    "runtime_recovery_timeline_legacy_effective_action",
   ],
   next_step_precedence: ["failed_contract_detail", "diagnostic_summary", "default"],
   release_quality_status: releaseReport.checks.runtime_tool_quality.status,

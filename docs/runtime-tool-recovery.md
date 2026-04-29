@@ -188,6 +188,16 @@ Release reports use the same quality-summary shape as daily status surfaces:
 and `warning_reasons` in addition to describe-runner evidence. A release gate
 failure must therefore explain why the runtime-tool quality gate failed, not
 only return a boolean.
+Release quality also gates recovery-prompt execution discipline. A successful
+describe run must now prove that recovery hints are action-first, recommended
+actions are normalized into the catalog, oversized recovery prompts stay within
+the configured budget while keeping required action fields, non-recoverable
+flows deny automatic retry/adaptation, and legacy raw actions remain
+observable while the effective action is catalog-safe. These fields are exposed
+as `runtime_recovery_*` diagnostics plus
+`runtime_recovery_prompt_quality_status` and
+`runtime_recovery_prompt_quality_failures` under
+`checks.runtime_tool_quality`.
 The runtime-tool suite owns a dedicated quality-schema contract that keeps
 release `checks.runtime_tool_quality` and daily `runtime_tools_quality`
 aligned on the core machine-readable fields: `quality_schema_version`, status,
@@ -702,7 +712,11 @@ gateway-only recovery action summaries for release evidence. It also exposes
 the diagnostic summary status, contract coverage, runner coverage, temporary
 fixture isolation, schema-budget status and violations, runtime binary
 existence, gateway-only recovery-action exceptions, and the next actionable
-action when a runtime-tool contract fails. The focused
+action when a runtime-tool contract fails. It also exposes recovery prompt
+quality evidence from the gateway-only recovery contracts, including
+action-first prompt ordering, cataloged effective actions, prompt budget
+enforcement, non-recoverable automatic-recovery denial, and raw-vs-effective
+legacy action preservation. The focused
 `runtime-tool-quality-schema` contract keeps this release surface aligned with
 daily `runtime_tools_quality` status so downstream automation never has to infer
 quality from prose or raw booleans. Both surfaces carry
