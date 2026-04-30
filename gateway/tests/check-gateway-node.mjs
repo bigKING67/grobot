@@ -1952,6 +1952,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliBottomPanePayload.pending_plan_mode_narrow_lines_within_width, true);
   assert.equal(devCliBottomPanePayload.running_has_activity, true);
   assert.equal(devCliBottomPanePayload.running_fallback_is_localized, true);
+  assert.equal(devCliBottomPanePayload.running_plan_mode_fallback_is_planning, true);
   assert.equal(devCliBottomPanePayload.running_activity_has_visual_weight, true);
   assert.equal(devCliBottomPanePayload.running_narrow_keeps_activity_first, true);
   assert.equal(devCliBottomPanePayload.running_narrow_hides_secondary_status, true);

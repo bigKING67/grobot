@@ -139,6 +139,20 @@ const runningFallbackFooter = renderBottomPaneFooter({
   running: true,
 });
 
+const runningPlanModeFallbackFooter = renderBottomPaneFooter({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.42,
+  estimatedTokens: 2200,
+  targetTokenLimit: 5120,
+  sessionId: "019d8b75-8bdf-78e2-a056-1f98a38774bd",
+  sessionTopic: "running plan turn",
+  terminalColumns: 72,
+  promptLabel: "› ",
+  planMode: true,
+  running: true,
+});
+
 const narrowIdleFooter = renderBottomPaneFooter({
   model: "kimi/kimi-k2-2026-04",
   projectFolder: "grobot",
@@ -292,6 +306,9 @@ const payload = {
   running_fallback_is_localized:
     stripAnsi(runningFallbackFooter).includes("~ 正在处理")
     && !stripAnsi(runningFallbackFooter).includes("~ running"),
+  running_plan_mode_fallback_is_planning:
+    stripAnsi(runningPlanModeFallbackFooter).includes("~ 正在规划")
+    && !stripAnsi(runningPlanModeFallbackFooter).includes("~ 正在处理"),
   running_activity_has_visual_weight: /\u001B\[38;2;202;124;94m~/.test(runningFooter),
   running_narrow_keeps_activity_first:
     (narrowRunningLines[0] ?? "").includes("正在构建上下文"),

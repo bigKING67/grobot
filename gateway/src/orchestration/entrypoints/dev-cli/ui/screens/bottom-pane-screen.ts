@@ -329,7 +329,7 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
 
   if (mode === "running") {
     pushLine(BOTTOM_PANE_STYLE.activityLine(fitFooterLine({
-      line: parts.activityLine ?? "~ 正在处理",
+      line: parts.activityLine ?? (input.planMode ? "~ 正在规划" : "~ 正在处理"),
       terminalColumns: input.terminalColumns,
     })));
     if (renderSecondaryStatus) {
