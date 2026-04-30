@@ -1311,6 +1311,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.events_has_apply_succeeded, true);
   assert.equal(runStartPlanModeContractPayload.events_has_verification_pending, true);
   assert.equal(runStartPlanModeContractPayload.compact_plan_turn_failure_code_preserved, true);
+  assert.equal(runStartPlanModeContractPayload.plan_turn_stdout_override_captures_plan_scaffolding, true);
+  assert.equal(runStartPlanModeContractPayload.plan_turn_working_notice_has_plan_bullet, true);
   assert.equal(runStartPlanModeContractPayload.compact_plan_turn_failure_surface_human, true);
   assert.equal(runStartPlanModeContractPayload.compact_plan_turn_failure_hides_machine_lines, true);
   assert.equal(runStartPlanModeContractPayload.verbose_plan_turn_failure_preserves_machine_lines, true);

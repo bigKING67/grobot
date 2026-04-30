@@ -26,6 +26,10 @@ function nowIsoUtc(): string {
   return new Date().toISOString();
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 function createRuntimeState(sessionKey: string): RunStartRuntimeState {
   const now = nowIsoUtc();
   const sessionRegistry: SessionRegistryPayload = {
@@ -897,6 +901,8 @@ async function main(): Promise<void> {
         && overrideStdout.includes("Planning...")
         && overrideStdout.includes("runtime output through override")
         && overrideStdout.includes("Plan needs refinement"),
+      plan_turn_working_notice_has_plan_bullet:
+        stripAnsi(overrideStdout).includes("● Planning..."),
       plan_turn_stdout_override_skips_fallback_writer: fallbackStdout.length === 0,
       compact_plan_turn_failure_surface_human:
         failureStderr.includes("Plan update failed")

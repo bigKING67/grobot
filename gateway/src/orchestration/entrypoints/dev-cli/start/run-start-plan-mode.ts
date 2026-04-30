@@ -2484,7 +2484,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         compactFailureSurface,
       });
       if (options?.showWorkingNotice) {
-        writeStdout("Planning...\n");
+        writeStdout(`${terminalStyle.planMode("●")} Planning...\n`);
       }
       writePlanActivityDiagnostic(options, "model_planning", "phase=planning");
       let code: number;
