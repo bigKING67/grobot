@@ -197,6 +197,9 @@ async function main(): Promise<void> {
     if (!planPath) {
       throw new Error("expected active plan path after /plan <goal>");
     }
+    const stdoutBeforeDraftOpen = stdout;
+    const draftOpen = await planMode.handleMessageInput("/plan open");
+    const draftOpenOutput = stdout.slice(stdoutBeforeDraftOpen.length);
     const refine = await planMode.runPlanTurn("refine contract cleanup");
     writeFileSync(planPath, `${validPlan}\n`, "utf8");
     const stdoutBeforeReady = stdout;
@@ -537,6 +540,21 @@ async function main(): Promise<void> {
         stdoutAfterEnter.indexOf("Entered plan mode") >= 0
         && stdoutAfterEnter.indexOf("Planning:") > stdoutAfterEnter.indexOf("Entered plan mode")
         && stdoutAfterEnter.indexOf("Goal:") > stdoutAfterEnter.indexOf("Planning:"),
+      draft_plan_surface_handled: draftOpen.handled && draftOpen.code === 0,
+      draft_plan_surface_uses_status_title:
+        draftOpenOutput.includes("Plan Draft"),
+      draft_plan_surface_uses_relative_plan_file:
+        /^\.grobot\/plans\//m.test(draftOpenOutput),
+      draft_plan_surface_has_read_only_boundary:
+        draftOpenOutput.includes("Plan mode is read-only until you approve the final plan."),
+      draft_plan_surface_has_refine_hint:
+        draftOpenOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+      draft_plan_surface_hides_absolute_path:
+        !draftOpenOutput.includes(workDir),
+      draft_plan_surface_hides_required_placeholders:
+        !draftOpenOutput.includes("__REQUIRED__"),
+      draft_plan_surface_avoids_legacy_empty_message:
+        !draftOpenOutput.includes("Already in plan mode. No plan written yet."),
       refine_plan_turn_handled: refine === 0,
       ready_plan_turn_handled: ready === 0,
       ready_surface_matches_reference_shape:

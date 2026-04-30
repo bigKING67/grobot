@@ -494,6 +494,32 @@ function isUnwrittenPlanSkeleton(content: string): boolean {
   return normalized.length === 0 || normalized.includes("__REQUIRED__");
 }
 
+function buildPlanDraftStatusDisplay(input: {
+  workDir: string;
+  planPath?: string;
+}): string {
+  const displayPath = input.planPath
+    ? formatHumanPlanFilePath({
+      workDir: input.workDir,
+      planPath: input.planPath,
+    })
+    : undefined;
+  const lines = [
+    "Plan Draft",
+  ];
+  if (displayPath) {
+    lines.push(displayPath);
+  }
+  lines.push(
+    "",
+    "Grobot is preparing this implementation plan.",
+    "Plan mode is read-only until you approve the final plan.",
+    'Reply with more detail to refine, or use "/plan open" to edit the draft.',
+    "",
+  );
+  return lines.join("\n");
+}
+
 function buildCurrentPlanDisplay(input: {
   workDir: string;
   planPath: string;
@@ -505,11 +531,10 @@ function buildCurrentPlanDisplay(input: {
   });
   const planContent = stripInternalPlanMetadata(input.planContent);
   if (isUnwrittenPlanSkeleton(input.planContent)) {
-    return [
-      "Already in plan mode. No plan written yet.",
-      displayPath,
-      "",
-    ].join("\n");
+    return buildPlanDraftStatusDisplay({
+      workDir: input.workDir,
+      planPath: input.planPath,
+    });
   }
   return [
     "Current Plan",
@@ -1366,14 +1391,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const planPath = typeof meta.active_plan_path === "string" && meta.active_plan_path.length > 0
         ? meta.active_plan_path
         : undefined;
-      input.writeStdout("Already in plan mode. No plan written yet.\n");
-      if (planPath) {
-        input.writeStdout(`${formatHumanPlanFilePath({
-          workDir: input.workDir,
-          planPath,
-        })}\n`);
-      }
-      input.writeStdout("\n");
+      input.writeStdout(buildPlanDraftStatusDisplay({
+        workDir: input.workDir,
+        planPath,
+      }));
       return 0;
     }
     const latestApplied = resolveLatestPlanEntry(["applied", "apply_failed"]);

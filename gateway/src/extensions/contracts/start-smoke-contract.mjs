@@ -1028,6 +1028,7 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
       payload.stdout.includes("Current Plan")
       || payload.stdout.includes("Enabled plan mode")
       || payload.stdout.includes("Already in plan mode")
+      || payload.stdout.includes("Plan Draft")
       || payload.stdout.includes("Entered plan mode")
       || payload.stdout.includes("[plan]"),
     has_entered_plan_mode_surface: payload.stdout.includes("Entered plan mode"),
@@ -1036,6 +1037,11 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
     has_plan_entry_read_only_line:
       payload.stdout.includes("Plan mode is read-only until you approve the plan."),
     has_plan_entry_working_notice: payload.stdout.includes("Planning..."),
+    has_plan_draft_surface: payload.stdout.includes("Plan Draft"),
+    has_plan_draft_refine_hint:
+      payload.stdout.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+    plan_draft_avoids_legacy_empty_message:
+      !payload.stdout.includes("Already in plan mode. No plan written yet."),
   };
 }
 
@@ -1361,8 +1367,7 @@ function runStartPlanModeFlow(repoRoot) {
       : 0;
   const eventsContent = readTextFileSafe(eventsPath);
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
-  const finalStatusMarkerCurrent =
-    "Already in plan mode. No plan written yet.";
+  const finalStatusMarkerCurrent = "Plan Draft";
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -1404,6 +1409,16 @@ function runStartPlanModeFlow(repoRoot) {
       && !commandResult.stdout.includes("plan_id:")
       && !commandResult.stdout.includes("seq:")
       && !commandResult.stdout.includes("status:"),
+    plan_draft_status_seen:
+      commandResult.stdout.includes("Plan Draft"),
+    plan_draft_status_has_path:
+      commandResult.stdout.includes(".grobot/plans/"),
+    plan_draft_status_has_read_only_boundary:
+      commandResult.stdout.includes("Plan mode is read-only until you approve the final plan."),
+    plan_draft_status_has_refine_hint:
+      commandResult.stdout.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+    plan_draft_status_avoids_legacy_empty_message:
+      !commandResult.stdout.includes("Already in plan mode. No plan written yet."),
     plan_enter_surface_seen: commandResult.stdout.includes("Entered plan mode"),
     plan_enter_surface_has_path:
       commandResult.stdout.includes("Planning: .grobot/plans/"),
@@ -1420,10 +1435,10 @@ function runStartPlanModeFlow(repoRoot) {
       !commandResult.stdout.includes("__REQUIRED__"),
     plan_current_display_seen:
       commandResult.stdout.includes("Current Plan")
-      || commandResult.stdout.includes("Already in plan mode. No plan written yet."),
+      || commandResult.stdout.includes("Plan Draft"),
     plan_current_display_has_plan_open_hint:
       commandResult.stdout.includes("\"/plan open\" to edit this plan")
-      || commandResult.stdout.includes("Already in plan mode. No plan written yet."),
+      || commandResult.stdout.includes('"/plan open" to edit the draft'),
     plan_status_uses_relative_plan_file:
       /^\.grobot\/plans\//m.test(commandResult.stdout),
     plan_status_hides_absolute_plan_file:
