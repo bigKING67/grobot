@@ -525,6 +525,18 @@ async function main(): Promise<void> {
         && !stdoutAfterEnter.includes("plan_id=")
         && !stdoutAfterEnter.includes("file=")
         && !stdoutAfterEnter.includes("[plan] entered PLAN_ONLY"),
+      enter_plan_surface_has_relative_planning_path:
+        stdoutAfterEnter.includes("Planning: .grobot/plans/"),
+      enter_plan_surface_has_goal:
+        stdoutAfterEnter.includes("Goal: contract cleanup"),
+      enter_plan_surface_has_read_only_boundary:
+        stdoutAfterEnter.includes("Plan mode is read-only until you approve the plan."),
+      enter_plan_surface_hides_absolute_plan_path:
+        !stdoutAfterEnter.includes(workDir),
+      enter_plan_surface_order_is_stable:
+        stdoutAfterEnter.indexOf("Entered plan mode") >= 0
+        && stdoutAfterEnter.indexOf("Planning:") > stdoutAfterEnter.indexOf("Entered plan mode")
+        && stdoutAfterEnter.indexOf("Goal:") > stdoutAfterEnter.indexOf("Planning:"),
       refine_plan_turn_handled: refine === 0,
       ready_plan_turn_handled: ready === 0,
       ready_surface_matches_reference_shape:

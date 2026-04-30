@@ -1240,6 +1240,11 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.review_accepts_canonical_proposed_plan_block, true);
   assert.equal(runStartPlanModeContractPayload.enter_plan_message_mode_handled, true);
   assert.equal(runStartPlanModeContractPayload.enter_plan_sets_plan_only, true);
+  assert.equal(runStartPlanModeContractPayload.enter_plan_surface_has_relative_planning_path, true);
+  assert.equal(runStartPlanModeContractPayload.enter_plan_surface_has_goal, true);
+  assert.equal(runStartPlanModeContractPayload.enter_plan_surface_has_read_only_boundary, true);
+  assert.equal(runStartPlanModeContractPayload.enter_plan_surface_hides_absolute_plan_path, true);
+  assert.equal(runStartPlanModeContractPayload.enter_plan_surface_order_is_stable, true);
   assert.equal(runStartPlanModeContractPayload.ready_plan_turn_handled, true);
   assert.equal(runStartPlanModeContractPayload.ready_surface_matches_reference_shape, true);
   assert.equal(runStartPlanModeContractPayload.ready_surface_has_plan_separators, true);
@@ -7176,6 +7181,12 @@ async function runTsRustExecutionSmoke() {
   assert.equal(planModeFlowPayload.plan_final_status_line_seen, true);
   assert.equal(planModeFlowPayload.plan_open_script_notice_hidden, true);
   assert.equal(planModeFlowPayload.plan_status_preview_hides_machine_metadata, true);
+  assert.equal(planModeFlowPayload.plan_enter_surface_seen, true);
+  assert.equal(planModeFlowPayload.plan_enter_surface_has_path, true);
+  assert.equal(planModeFlowPayload.plan_enter_surface_has_goal, true);
+  assert.equal(planModeFlowPayload.plan_enter_surface_read_only_seen, true);
+  assert.equal(planModeFlowPayload.plan_enter_surface_working_notice_seen, true);
+  assert.equal(planModeFlowPayload.plan_enter_surface_hides_absolute_path, true);
   assert.equal(planModeFlowPayload.plan_status_preview_hides_required_placeholder, true);
   assert.equal(planModeFlowPayload.plan_current_display_seen, true);
   assert.equal(planModeFlowPayload.plan_current_display_has_plan_open_hint, true);
@@ -7335,6 +7346,13 @@ async function runTsRustExecutionSmoke() {
       assert.equal(diagnosticsFlowPayload.has_short_process_summary_code, true);
     }
     assert.equal(Boolean(diagnosticsFlowPayload[flow.markerKey]), true);
+    if (flow.command_flow === "plan" || flow.contract.includes("diagnostics-plan")) {
+      assert.equal(diagnosticsFlowPayload.has_entered_plan_mode_surface, true);
+      assert.equal(diagnosticsFlowPayload.has_plan_entry_path_line, true);
+      assert.equal(diagnosticsFlowPayload.has_plan_entry_goal_line, true);
+      assert.equal(diagnosticsFlowPayload.has_plan_entry_read_only_line, true);
+      assert.equal(diagnosticsFlowPayload.has_plan_entry_working_notice, true);
+    }
     if (flow.mode === "compact") {
       assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, false);
     } else {

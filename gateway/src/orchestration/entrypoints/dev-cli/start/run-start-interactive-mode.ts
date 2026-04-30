@@ -853,6 +853,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
+        showWorkingNotice: true,
         requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
       }),
     applyPlan: (extra) =>
@@ -869,6 +870,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         writeStdout: writeInteractiveStdout,
         writeStderr: writeInteractiveStderr,
         diagnosticsMode: interactiveDiagnosticsMode,
+        showWorkingNotice: true,
         requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,

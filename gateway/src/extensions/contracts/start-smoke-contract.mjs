@@ -1028,7 +1028,14 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
       payload.stdout.includes("Current Plan")
       || payload.stdout.includes("Enabled plan mode")
       || payload.stdout.includes("Already in plan mode")
+      || payload.stdout.includes("Entered plan mode")
       || payload.stdout.includes("[plan]"),
+    has_entered_plan_mode_surface: payload.stdout.includes("Entered plan mode"),
+    has_plan_entry_path_line: payload.stdout.includes("Planning: .grobot/plans/"),
+    has_plan_entry_goal_line: payload.stdout.includes("Goal: diagnostics integration flow"),
+    has_plan_entry_read_only_line:
+      payload.stdout.includes("Plan mode is read-only until you approve the plan."),
+    has_plan_entry_working_notice: payload.stdout.includes("Planning..."),
   };
 }
 
@@ -1397,6 +1404,18 @@ function runStartPlanModeFlow(repoRoot) {
       && !commandResult.stdout.includes("plan_id:")
       && !commandResult.stdout.includes("seq:")
       && !commandResult.stdout.includes("status:"),
+    plan_enter_surface_seen: commandResult.stdout.includes("Entered plan mode"),
+    plan_enter_surface_has_path:
+      commandResult.stdout.includes("Planning: .grobot/plans/"),
+    plan_enter_surface_has_goal:
+      commandResult.stdout.includes("Goal: implement plan-mode skeleton"),
+    plan_enter_surface_read_only_seen:
+      commandResult.stdout.includes("Plan mode is read-only until you approve the plan."),
+    plan_enter_surface_working_notice_seen:
+      commandResult.stdout.includes("Planning..."),
+    plan_enter_surface_hides_absolute_path:
+      !commandResult.stdout.includes(`${workDir}/.grobot/plans`)
+      && !commandResult.stdout.includes(activePlanPath),
     plan_status_preview_hides_required_placeholder:
       !commandResult.stdout.includes("__REQUIRED__"),
     plan_current_display_seen:

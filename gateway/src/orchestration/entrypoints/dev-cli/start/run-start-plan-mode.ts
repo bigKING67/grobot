@@ -920,13 +920,34 @@ function writePlanQualityGuardBlockedSurface(input: {
   );
 }
 
-function buildPlanModeEnteredSurface(): string {
-  return [
+function buildPlanModeEnteredSurface(input?: {
+  workDir?: string;
+  planPath?: string;
+  goal?: string;
+}): string {
+  const displayPath = input?.planPath
+    ? formatHumanPlanFilePath({
+      workDir: input.workDir ?? "",
+      planPath: input.planPath,
+    })
+    : undefined;
+  const compactGoal = compactSpaces(input?.goal ?? "");
+  const lines = [
     `${terminalStyle.planMode("●")} Entered plan mode`,
+  ];
+  if (displayPath) {
+    lines.push(`  ${terminalStyle.muted(`Planning: ${displayPath}`)}`);
+  }
+  if (compactGoal) {
+    lines.push(`  ${terminalStyle.muted(`Goal: ${truncateDisplayWidth(compactGoal, 88)}`)}`);
+  }
+  lines.push(
     `  ${terminalStyle.muted("Grobot is now exploring and designing an implementation approach.")}`,
+    `  ${terminalStyle.muted("Plan mode is read-only until you approve the plan.")}`,
     "",
     "",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function writePlanFailureSurface(input: {
@@ -1404,7 +1425,11 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       detail: "entered plan_only mode",
     });
     void options?.printModeReadyOnly;
-    writeStdout(buildPlanModeEnteredSurface());
+    writeStdout(buildPlanModeEnteredSurface({
+      workDir: input.workDir,
+      planPath: created.planPath,
+      goal: compactGoal,
+    }));
     if (options?.printHint !== false) {
       printPlanModeHint(writeStdout);
     }
