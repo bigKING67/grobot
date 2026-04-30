@@ -29,7 +29,10 @@ import { type RunStartPlanSuggestionState } from "./plan-suggestion-state";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
 import { inferModelApiContextWindowTokens } from "./run-start-model-context";
 import { readPromptQualityWindowSummary } from "../../../../tools/context";
-import { createInteractiveActivityTracker } from "../ui/interactive/activity-state";
+import {
+  createInteractiveActivityTracker,
+  type InteractiveActivityTracker,
+} from "../ui/interactive/activity-state";
 import {
   clearTerminalWindowTitle,
   setTerminalWindowTitle,
@@ -709,6 +712,10 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         renderInlineActivityTicker();
       }
       renderPendingInputFrameAfterStderr(forwarded);
+      return;
+    }
+    if (typeof activeTurnStartedAtMs === "number" && !pendingInputFrameEnabled) {
+      startInlineActivityTicker();
     }
   };
   const writeInteractiveStdout = (message: string): void => {
@@ -719,6 +726,107 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       stdoutNeedsLineBreak = !message.endsWith("\n");
     }
     renderPendingInputFrameAfterStdout();
+  };
+  const runInteractiveActivityScope = async (
+    inputScope: {
+      traceEvent: string;
+      startActivity?: Parameters<InteractiveActivityTracker["markTurnStart"]>[0];
+      operation: () => Promise<number>;
+    },
+  ): Promise<number> => {
+    if (typeof activeTurnStartedAtMs === "number") {
+      return inputScope.operation();
+    }
+    activeTurnStartedAtMs = Date.now();
+    activityTracker.markTurnStart(inputScope.startActivity);
+    startInlineActivityTicker();
+    writeInteractiveTrace(`event=turn_start mode=${interactiveDiagnosticsMode} source=${inputScope.traceEvent}`);
+    try {
+      const code = await inputScope.operation();
+      if (suppressDiagnosticStderr) {
+        const buffered = activityTracker.flushBufferedStderr();
+        if (buffered.length > 0) {
+          stopInlineActivityTicker(true);
+          clearPendingInputFrame();
+          ensureInteractiveStdoutLineBoundary();
+          process.stderr.write(buffered);
+          renderPendingInputFrameAfterStderr(buffered);
+        }
+      }
+      stopInlineActivityTicker(false);
+      const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
+      const activitySnapshot = activityTracker.readPromptActivitySnapshot();
+      activityTracker.markTurnFinished(
+        code === TURN_INTERRUPTED_EXIT_CODE
+          ? "interrupted"
+          : code === 0
+            ? "ok"
+            : "error",
+      );
+      ensureInteractiveStdoutLineBoundary();
+      writeTurnSummaryLine({
+        result: code === TURN_INTERRUPTED_EXIT_CODE
+          ? "interrupted"
+          : code === 0
+            ? "ok"
+            : "error",
+        elapsedMs,
+        exitCode: code === 0 || code === TURN_INTERRUPTED_EXIT_CODE ? undefined : code,
+        pendingAskCount: input.getPendingAskQueueSize(),
+        activitySnapshot: activitySnapshot
+          ? {
+            stageId: activitySnapshot.stageId,
+            text: activitySnapshot.text,
+          }
+          : undefined,
+      });
+      writeInteractiveTrace(
+        `event=turn_finish mode=${interactiveDiagnosticsMode} source=${inputScope.traceEvent} result=${
+          code === TURN_INTERRUPTED_EXIT_CODE
+            ? "interrupted"
+            : code === 0
+              ? "ok"
+              : "error"
+        } exit_code=${String(code)} duration_ms=${String(elapsedMs)}`,
+      );
+      activeTurnStartedAtMs = undefined;
+      return code;
+    } catch (error) {
+      if (suppressDiagnosticStderr) {
+        const buffered = activityTracker.flushBufferedStderr();
+        if (buffered.length > 0) {
+          stopInlineActivityTicker(true);
+          clearPendingInputFrame();
+          ensureInteractiveStdoutLineBoundary();
+          process.stderr.write(buffered);
+          renderPendingInputFrameAfterStderr(buffered);
+        }
+      }
+      stopInlineActivityTicker(false);
+      const elapsedMs = Math.max(0, Date.now() - (activeTurnStartedAtMs ?? Date.now()));
+      const activitySnapshot = activityTracker.readPromptActivitySnapshot();
+      activityTracker.markTurnFinished("error");
+      ensureInteractiveStdoutLineBoundary();
+      writeTurnSummaryLine({
+        result: "error",
+        elapsedMs,
+        exitCode: "<exception>",
+        pendingAskCount: input.getPendingAskQueueSize(),
+        activitySnapshot: activitySnapshot
+          ? {
+            stageId: activitySnapshot.stageId,
+            text: activitySnapshot.text,
+          }
+          : undefined,
+      });
+      writeInteractiveTrace(
+        `event=turn_finish mode=${interactiveDiagnosticsMode} source=${inputScope.traceEvent} result=error exit_code=<exception> duration_ms=${String(
+          elapsedMs,
+        )}`,
+      );
+      activeTurnStartedAtMs = undefined;
+      throw error;
+    }
   };
   const requestReadyPlanApproval = (
     withInputPaused: SessionInteractiveControls["withInputPaused"] | undefined,
@@ -894,29 +1002,57 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     isPlanMode: input.isPlanMode,
     showPlanStatus: input.showPlanStatus,
     enterPlan: (goal, withInputPaused) =>
-      input.enterPlan(goal, {
-        writeStdout: writeInteractiveStdout,
-        writeStderr: writeInteractiveStderr,
-        diagnosticsMode: interactiveDiagnosticsMode,
-        showWorkingNotice: true,
-        requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
+      runInteractiveActivityScope({
+        traceEvent: "plan_enter",
+        startActivity: {
+          stageId: "plan_turn_start",
+          text: "正在进入计划模式并准备计划上下文",
+          planMode: true,
+        },
+        operation: () =>
+          input.enterPlan(goal, {
+            writeStdout: writeInteractiveStdout,
+            writeStderr: writeInteractiveStderr,
+            diagnosticsMode: interactiveDiagnosticsMode,
+            showWorkingNotice: true,
+            requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
+          }),
       }),
     applyPlan: (extra) =>
-      input.applyPlan(extra, {
-        writeStdout: writeInteractiveStdout,
-        writeStderr: writeInteractiveStderr,
-        diagnosticsMode: interactiveDiagnosticsMode,
+      runInteractiveActivityScope({
+        traceEvent: "plan_apply",
+        startActivity: {
+          stageId: "plan_apply_start",
+          text: "正在准备执行已批准计划",
+          planMode: true,
+        },
+        operation: () =>
+          input.applyPlan(extra, {
+            writeStdout: writeInteractiveStdout,
+            writeStderr: writeInteractiveStderr,
+            diagnosticsMode: interactiveDiagnosticsMode,
+            showWorkingNotice: true,
+          }),
       }),
     cancelPlan: input.cancelPlan,
     requestPlanInterrupt: input.requestPlanInterrupt,
     requestRuntimeInterrupt: input.requestRuntimeInterrupt,
     runPlanTurn: (userInput, withInputPaused) =>
-      input.runPlanTurn(userInput, {
-        writeStdout: writeInteractiveStdout,
-        writeStderr: writeInteractiveStderr,
-        diagnosticsMode: interactiveDiagnosticsMode,
-        showWorkingNotice: true,
-        requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
+      runInteractiveActivityScope({
+        traceEvent: "plan_turn",
+        startActivity: {
+          stageId: "plan_turn_start",
+          text: "正在读取目标并准备计划上下文",
+          planMode: true,
+        },
+        operation: () =>
+          input.runPlanTurn(userInput, {
+            writeStdout: writeInteractiveStdout,
+            writeStderr: writeInteractiveStderr,
+            diagnosticsMode: interactiveDiagnosticsMode,
+            showWorkingNotice: true,
+            requestReadyPlanApproval: requestReadyPlanApproval(withInputPaused),
+          }),
       }),
     handleUserCommandsCommand: input.handleUserCommandsCommand,
     openCommandsMenu: input.openCommandsMenu,

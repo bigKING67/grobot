@@ -8,6 +8,7 @@ interface ActivityUpdate {
 export type ActivityKind =
   | "context"
   | "runtime"
+  | "plan"
   | "route"
   | "ask-user"
   | "tool"
@@ -25,7 +26,12 @@ export interface ActivitySnapshot extends ActivityUpdate {
 }
 
 export interface InteractiveActivityTracker {
-  markTurnStart(): void;
+  markTurnStart(input?: {
+    stageId?: string;
+    text?: string;
+    detail?: string;
+    planMode?: boolean;
+  }): void;
   markTurnFinished(status: "ok" | "error" | "interrupted"): void;
   consumeStderrChunk(chunk: string): string;
   observeStderrChunk(chunk: string): void;
@@ -56,6 +62,7 @@ const DIAGNOSTIC_TAGS = new Set<string>([
   "governance:search-route",
   "interrupt",
   "memory-orchestrator",
+  "plan-mode",
   "reflection",
   "runtime-model",
   "runtime-route",
@@ -67,6 +74,9 @@ function resolveActivityKind(stageId: string): ActivityKind {
   }
   if (stageId.startsWith("runtime_route")) {
     return "route";
+  }
+  if (stageId.startsWith("plan_")) {
+    return "plan";
   }
   if (stageId.startsWith("runtime_") || stageId.startsWith("execution") || stageId.startsWith("turn_")) {
     return "runtime";
@@ -326,6 +336,96 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       text: "正在处理用户确认流程",
     };
   }
+  if (tag === "plan-mode") {
+    if (event === "enter_started") {
+      return {
+        stageId: "plan_enter_started",
+        text: "正在进入计划模式",
+      };
+    }
+    if (event === "draft_created") {
+      return {
+        stageId: "plan_draft_created",
+        text: "计划草稿已创建，正在补充目标上下文",
+      };
+    }
+    if (event === "progress_saved") {
+      return {
+        stageId: "plan_progress_saved",
+        text: "正在记录你的补充要求",
+      };
+    }
+    if (event === "model_planning") {
+      return {
+        stageId: "plan_model_planning",
+        text: "Grobot 正在规划实现方案",
+        detail: fieldDetail("phase", extractField(body, "phase")),
+      };
+    }
+    if (event === "model_returned") {
+      return {
+        stageId: "plan_model_returned",
+        text: "计划草稿已返回，正在保存",
+      };
+    }
+    if (event === "proposed_plan_ingested") {
+      return {
+        stageId: "plan_file_updated",
+        text: "正在更新计划文件",
+      };
+    }
+    if (event === "review_started") {
+      return {
+        stageId: "plan_review_started",
+        text: "正在检查计划是否可执行",
+      };
+    }
+    if (event === "review_needs_refinement") {
+      return {
+        stageId: "plan_review_refinement",
+        text: "计划需要补充细节",
+        status: "warning",
+      };
+    }
+    if (event === "plan_updated") {
+      return {
+        stageId: "plan_updated",
+        text: "计划已更新，等待继续细化",
+        status: "done",
+      };
+    }
+    if (event === "approval_waiting") {
+      return {
+        stageId: "plan_approval_waiting",
+        text: "等待你确认计划",
+        detail: "approve or keep planning",
+      };
+    }
+    if (event === "apply_review_started") {
+      return {
+        stageId: "plan_apply_review_started",
+        text: "正在复核已批准计划",
+      };
+    }
+    if (event === "apply_model_running") {
+      return {
+        stageId: "plan_apply_model_running",
+        text: "正在执行已批准计划",
+      };
+    }
+    if (event === "apply_finished") {
+      return {
+        stageId: "plan_apply_finished",
+        text: "已按计划完成执行，正在收尾",
+        status: "done",
+      };
+    }
+    return {
+      stageId: "plan_mode",
+      text: "正在处理计划模式流程",
+      detail: fieldDetail("event", event),
+    };
+  }
   if (tag === "experience" && event === "publish_skipped") {
     return {
       stageId: "experience_skip",
@@ -440,10 +540,14 @@ export function createInteractiveActivityTracker(
   };
 
   return {
-    markTurnStart: (): void => {
+    markTurnStart: (inputStart): void => {
       setActivity({
-        stageId: "turn_start",
-        text: "正在读取任务并准备上下文",
+        stageId: inputStart?.stageId ?? (inputStart?.planMode ? "plan_turn_start" : "turn_start"),
+        text: inputStart?.text
+          ?? (inputStart?.planMode
+            ? "正在读取目标并准备计划上下文"
+            : "正在读取任务并准备上下文"),
+        detail: inputStart?.detail,
       });
     },
     markTurnFinished: (status): void => {

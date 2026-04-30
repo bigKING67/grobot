@@ -857,6 +857,22 @@ function createPlanTurnDiagnosticStderr(input: {
   };
 }
 
+function writePlanActivityDiagnostic(
+  options: RunStartPlanTurnOptions | undefined,
+  event: string,
+  detail?: string,
+): void {
+  if (!options?.showWorkingNotice || !options.writeStderr) {
+    return;
+  }
+  const compactDetail = compactSpaces(detail ?? "");
+  options.writeStderr(
+    compactDetail
+      ? `[plan-mode] event=${event} ${compactDetail}\n`
+      : `[plan-mode] event=${event}\n`,
+  );
+}
+
 function formatCompactPlanFailureReason(input: {
   exitCode: number;
   failureDecision: PlanFailureDecision;
@@ -1603,18 +1619,22 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     options?: RunStartPlanTurnOptions,
   ): Promise<number> => {
     const goal = goalRaw.trim();
+    writePlanActivityDiagnostic(options, "enter_started");
     if (!goal) {
-      return createPlanModeDraft("", {
+      const created = await createPlanModeDraft("", {
         printHint: false,
         printModeReadyOnly: true,
         writeStdout: options?.writeStdout,
       });
+      writePlanActivityDiagnostic(options, "draft_created");
+      return created;
     }
     const entered = await createPlanModeDraft(goal, {
       printHint: false,
       printModeReadyOnly: false,
       writeStdout: options?.writeStdout,
     });
+    writePlanActivityDiagnostic(options, "draft_created");
     if (entered !== 0) {
       return entered;
     }
@@ -2431,6 +2451,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         input.writeStderr("[plan] failed to update active plan progress.\n");
         return 1;
       }
+      writePlanActivityDiagnostic(options, "progress_saved");
       if (await consumePendingInterrupt(stablePoint, "after_plan_progress_append")) {
         return 0;
       }
@@ -2465,6 +2486,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (options?.showWorkingNotice) {
         writeStdout("Planning...\n");
       }
+      writePlanActivityDiagnostic(options, "model_planning", "phase=planning");
       let code: number;
       const activeForPrompt = resolveActivePlan();
       try {
@@ -2552,6 +2574,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         });
         return code;
       }
+      writePlanActivityDiagnostic(options, "model_returned");
       const assistantProposedPlan = extractLatestAssistantProposedPlan(
         input.runtimeState.getHistoryMessages(),
         historyLengthBeforeExecution,
@@ -2584,6 +2607,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
               detail:
                 `history_index=${String(assistantProposedPlan.historyIndex)} chars=${String(assistantProposedPlan.content.length)}`,
             });
+            writePlanActivityDiagnostic(options, "proposed_plan_ingested");
           }
         }
       }
@@ -2594,6 +2618,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return 1;
       }
+      writePlanActivityDiagnostic(options, "review_started");
       const decisionState = await reviewActivePlanDecisionState(reviewedActive);
       if (!decisionState) {
         input.writeStderr(
@@ -2603,6 +2628,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       }
       const planPhase = derivePlanPhaseFromStatus(decisionState.reviewedEntry.status) ?? "drafting";
       if (!decisionState.review.ok) {
+        writePlanActivityDiagnostic(options, "review_needs_refinement");
         const topRepairAction = decisionState.repairActions[0];
         writeStdout(
           buildPlanNeedsRefinementSurface(
@@ -2617,6 +2643,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           planPath: reviewedActive.planPath,
           planContent: reviewedActive.content,
         };
+        writePlanActivityDiagnostic(options, "approval_waiting");
         const approvalDecision = normalizePlanReadyApprovalDecision(
           await options?.requestReadyPlanApproval?.(readyApprovalRequest),
         );
@@ -2647,6 +2674,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         writeStdout(buildReadyToCodeSurface(readyApprovalRequest));
       } else {
+        writePlanActivityDiagnostic(options, "plan_updated");
         writeStdout(buildPlanUpdatedSurface({
           phase: planPhase,
           nextAction: decisionState.recommendation.action,
@@ -2699,6 +2727,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     options?: RunStartPlanTurnOptions,
   ): Promise<number> => {
     const writeStdout = options?.writeStdout ?? input.writeStdout;
+    writePlanActivityDiagnostic(options, "apply_review_started");
     const previousPhase = activeTurnPhase;
     activeTurnPhase = "applying";
     const stablePoint = capturePlanStablePoint();
@@ -2894,6 +2923,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         writeStderr: options?.writeStderr ?? input.writeStderr,
         compactFailureSurface,
       });
+      writePlanActivityDiagnostic(options, "apply_model_running");
       let code: number;
       try {
         code = await input.executeTurn(prompt, true, {
@@ -2967,6 +2997,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         return code;
       }
 
+      writePlanActivityDiagnostic(options, "apply_finished");
       const applied = updatePlanArtifactStatus(
         input.workDir,
         planSessionKey(),

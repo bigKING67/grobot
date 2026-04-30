@@ -1772,6 +1772,9 @@ async function runGatewayContractSmoke() {
   );
   assert.equal(devCliActivityStatePayload.start_snapshot_visible, true);
   assert.equal(devCliActivityStatePayload.route_diagnostic_visible, true);
+  assert.equal(devCliActivityStatePayload.plan_diagnostic_visible, true);
+  assert.equal(devCliActivityStatePayload.plan_approval_waiting_has_detail, true);
+  assert.equal(devCliActivityStatePayload.plan_mode_start_uses_plan_context, true);
   assert.equal(devCliActivityStatePayload.ok_finish_clears_prompt_activity, true);
   assert.equal(devCliActivityStatePayload.error_finish_remains_visible, true);
   assert.equal(devCliActivityStatePayload.no_done_footer_noise, true);

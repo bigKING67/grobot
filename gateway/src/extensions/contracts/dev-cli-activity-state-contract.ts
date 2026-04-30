@@ -20,8 +20,16 @@ tracker.consumeStderrChunk("[context-engine] event=prompt_prepared stage=normal 
 const contextFullSnapshot = tracker.readActivitySnapshot();
 tracker.consumeStderrChunk("[ask-user] event=interrupt_received\n");
 const askUserFullSnapshot = tracker.readActivitySnapshot();
+tracker.consumeStderrChunk("[plan-mode] event=model_planning phase=planning\n");
+const planFullSnapshot = tracker.readActivitySnapshot();
+tracker.consumeStderrChunk("[plan-mode] event=approval_waiting\n");
+const planApprovalSnapshot = tracker.readActivitySnapshot();
 tracker.markTurnFinished("ok");
 const okSnapshot = tracker.readPromptActivitySnapshot();
+
+tracker.markTurnStart({ planMode: true });
+const planStartSnapshot = tracker.readActivitySnapshot();
+tracker.markTurnFinished("ok");
 
 tracker.markTurnStart();
 tracker.markTurnFinished("error");
@@ -41,6 +49,17 @@ const payload = {
   ask_user_waiting_has_reply_detail:
     askUserFullSnapshot?.kind === "ask-user"
     && askUserFullSnapshot.detail === "reply in prompt",
+  plan_diagnostic_visible:
+    planFullSnapshot?.kind === "plan"
+    && planFullSnapshot.text === "Grobot 正在规划实现方案"
+    && planFullSnapshot.detail === "phase=planning",
+  plan_approval_waiting_has_detail:
+    planApprovalSnapshot?.kind === "plan"
+    && planApprovalSnapshot.text === "等待你确认计划"
+    && planApprovalSnapshot.detail === "approve or keep planning",
+  plan_mode_start_uses_plan_context:
+    planStartSnapshot?.kind === "plan"
+    && planStartSnapshot.text === "正在读取目标并准备计划上下文",
   ok_finish_clears_prompt_activity:
     typeof okSnapshot === "undefined"
     && !emittedLines.some((line) => line.includes("执行完成，等待下一条输入")),
