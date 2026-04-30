@@ -75,6 +75,7 @@ const ENTER_KEYPRESS_DEDUP_WINDOW_MS = 80;
 const DEFAULT_SELECT_VISIBLE_OPTION_COUNT = 5;
 const MODEL_PICKER_VISIBLE_OPTION_COUNT = 10;
 const INPUT_CHROME_BODY_LEFT_PADDING = 0;
+const SHORTCUT_HINT_TEXT = "? for shortcuts";
 
 const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
 let nextInlineImageId = 1;
@@ -662,12 +663,11 @@ export function resolveDraftAwareFooterLines(input: {
   }
   return input.footerLines
     .map((line) => {
-      const shortcutHint = "? for shortcuts";
       const plainLine = stripAnsi(line);
-      if (plainLine === shortcutHint) {
+      if (plainLine === SHORTCUT_HINT_TEXT) {
         return "";
       }
-      const shortcutPrefix = `${shortcutHint} · `;
+      const shortcutPrefix = `${SHORTCUT_HINT_TEXT} · `;
       if (plainLine.startsWith(shortcutPrefix)) {
         return plainLine.slice(shortcutPrefix.length).trimStart();
       }
@@ -681,6 +681,30 @@ function shouldRenderResolvedFooterLines(slotState: PromptSlotState): boolean {
     || slotState.bottomSlot.kind === "idle_hint"
     || slotState.bottomSlot.kind === "pending_ask"
     || slotState.bottomSlot.kind === "running_activity";
+}
+
+function renderShortcutHintFooterLine(): string {
+  return `${ANSI_DIM}${SHORTCUT_HINT_TEXT}${ANSI_RESET}`;
+}
+
+function resolveFooterLinesForPromptSlot(input: {
+  footerLines: readonly string[];
+  promptSlotState: PromptSlotState;
+  inputGraphemeLength: number;
+}): string[] {
+  if (input.promptSlotState.bottomSlot.kind === "idle_hint") {
+    if (input.inputGraphemeLength > 0) {
+      return [];
+    }
+    const existingHintLine = input.footerLines.find((line) =>
+      stripAnsi(line).trim() === SHORTCUT_HINT_TEXT
+    );
+    return [existingHintLine ?? renderShortcutHintFooterLine()];
+  }
+  return resolveDraftAwareFooterLines({
+    footerLines: input.footerLines,
+    inputGraphemeLength: input.inputGraphemeLength,
+  });
 }
 
 export function resolveSessionInputFooterLines(input: {
@@ -715,8 +739,9 @@ export function resolveSessionInputFooterLines(input: {
   }
   return {
     promptSlotState,
-    footerLines: resolveDraftAwareFooterLines({
+    footerLines: resolveFooterLinesForPromptSlot({
       footerLines: input.footerLines,
+      promptSlotState,
       inputGraphemeLength: input.inputGraphemeLength,
     }),
   };

@@ -633,6 +633,24 @@ async function main(): Promise<void> {
       hasStatusLine: false,
     },
   });
+  const runtimeFooterShortFullscreen = resolveSessionInputFooterLines({
+    footerLines: ["status line"],
+    inputGraphemeLength: 0,
+    promptSlot: {
+      hasStatusLine: true,
+      terminalRows: 18,
+      fullscreen: true,
+    },
+  });
+  const runtimeFooterShortFullscreenDraft = resolveSessionInputFooterLines({
+    footerLines: ["status line"],
+    inputGraphemeLength: 2,
+    promptSlot: {
+      hasStatusLine: true,
+      terminalRows: 18,
+      fullscreen: true,
+    },
+  });
 
   const payload = {
     menu_enter_is_confirm: enterAction.kind === "enter",
@@ -960,6 +978,13 @@ async function main(): Promise<void> {
     prompt_slot_runtime_draft_without_status_hides_footer:
       runtimeFooterDraftNoStatus.promptSlotState.bottomSlot.kind === "none"
       && runtimeFooterDraftNoStatus.footerLines.length === 0,
+    prompt_slot_runtime_short_fullscreen_replaces_status_with_hint:
+      runtimeFooterShortFullscreen.promptSlotState.bottomSlot.kind === "idle_hint"
+      && runtimeFooterShortFullscreen.footerLines.length === 1
+      && stripAnsi(runtimeFooterShortFullscreen.footerLines[0] ?? "") === "? for shortcuts",
+    prompt_slot_runtime_short_fullscreen_draft_hides_footer:
+      runtimeFooterShortFullscreenDraft.promptSlotState.bottomSlot.kind === "none"
+      && runtimeFooterShortFullscreenDraft.footerLines.length === 0,
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

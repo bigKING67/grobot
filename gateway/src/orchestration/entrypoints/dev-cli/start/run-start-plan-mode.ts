@@ -61,6 +61,7 @@ import {
   padToDisplayWidth,
   truncateDisplayWidth,
 } from "../ui/interactive/display-width";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 interface CreateRunStartPlanModeInput {
   workDir: string;
@@ -919,6 +920,15 @@ function writePlanQualityGuardBlockedSurface(input: {
   );
 }
 
+function buildPlanModeEnteredSurface(): string {
+  return [
+    `${terminalStyle.planMode("●")} Entered plan mode`,
+    `  ${terminalStyle.muted("Grobot is now exploring and designing an implementation approach.")}`,
+    "",
+    "",
+  ].join("\n");
+}
+
 function writePlanFailureSurface(input: {
   phase: PlanFailurePhase;
   planId: string;
@@ -1394,7 +1404,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       detail: "entered plan_only mode",
     });
     void options?.printModeReadyOnly;
-    writeStdout("Enabled plan mode\n\n");
+    writeStdout(buildPlanModeEnteredSurface());
     if (options?.printHint !== false) {
       printPlanModeHint(writeStdout);
     }

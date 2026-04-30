@@ -519,7 +519,8 @@ async function main(): Promise<void> {
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
       enter_plan_sets_plan_only: planModeAfterEnter === "plan_only",
       enter_plan_stdout_is_human:
-        stdoutAfterEnter.includes("Enabled plan mode")
+        stdoutAfterEnter.includes("Entered plan mode")
+        && stdoutAfterEnter.includes("Grobot is now exploring")
         && !stdoutAfterEnter.includes("session_key=")
         && !stdoutAfterEnter.includes("plan_id=")
         && !stdoutAfterEnter.includes("file=")
@@ -683,7 +684,7 @@ async function main(): Promise<void> {
       compact_plan_turn_failure_code_preserved: failureResultCode === 1,
       plan_turn_stdout_override_captures_plan_scaffolding:
         stdoutOverrideResult === 0
-        && overrideStdout.includes("Enabled plan mode")
+        && overrideStdout.includes("Entered plan mode")
         && overrideStdout.includes("Planning...")
         && overrideStdout.includes("runtime output through override")
         && overrideStdout.includes("Plan needs refinement"),
