@@ -363,7 +363,11 @@ function fitLine(line: string, terminalColumns: number): string {
 }
 
 function styleTitle(row: ActivityFeedRow, line: string): string {
-  const bullet = row.severity === "ok" ? terminalStyle.brand("•") : terminalStyle.info("•");
+  const bullet = row.severity === "ok"
+    ? terminalStyle.brand("•")
+    : row.severity === "warning"
+      ? terminalStyle.remember("•")
+      : terminalStyle.info("•");
   return `${bullet} ${line}`;
 }
 
@@ -384,7 +388,7 @@ export function renderRuntimeActivityFeed(input: RuntimeActivityFeedInput): stri
     output.push(styleTitle(row, fitLine(row.title, Math.max(1, terminalColumns - 2))));
     if (detailMode === "full") {
       for (const detail of row.detailLines) {
-        const plain = `  └ ${detail}`;
+        const plain = `  ⎿  ${detail}`;
         output.push(terminalStyle.muted(fitLine(plain, terminalColumns)));
       }
     }

@@ -592,14 +592,19 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       inlineActivityTick += 1;
       return;
     }
-    const defaultActivityText = input.isPlanMode() ? "Planning" : "正在执行";
-    const activityText = compactSummaryText(activityTracker.readPromptActivity() ?? defaultActivityText);
+    const defaultActivityText = input.isPlanMode() ? "正在设计实现方案" : "正在执行";
+    const activitySnapshot = activityTracker.readActivitySnapshot();
+    const activityText = compactSummaryText(
+      activitySnapshot?.title ?? activityTracker.readPromptActivity() ?? defaultActivityText,
+    );
+    const activityDetail = compactSummaryText(activitySnapshot?.detail ?? "");
     writeProgressLine(renderStatusIndicatorLine({
       message: activityText,
       startedAtMs: activeTurnStartedAtMs,
       nowMs: Date.now(),
       tick: inlineActivityTick,
       terminalColumns: resolveTerminalColumns(),
+      thinkingText: activityDetail || undefined,
     }));
     inlineActivityTick += 1;
   };
@@ -1027,7 +1032,15 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       terminalColumns,
       activityText:
         pendingAskCount <= 0
-          ? (activityTracker.readActivitySnapshot()?.title ?? activityTracker.readPromptActivity())
+          ? (() => {
+            const activitySnapshot = activityTracker.readActivitySnapshot();
+            if (!activitySnapshot) {
+              return activityTracker.readPromptActivity();
+            }
+            return activitySnapshot.detail
+              ? `${activitySnapshot.title} · ${activitySnapshot.detail}`
+              : activitySnapshot.title;
+          })()
           : undefined,
       promptLabel: "❯ ",
       pendingAskCount,

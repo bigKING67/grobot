@@ -177,6 +177,9 @@ const payload = {
   renders_edit_with_diff_stats:
     fullPlain.includes("Edited gateway/src/orchestration/entrypoints/dev-cli/ui/screens/bottom-pane-screen.ts (+2 -1)")
     && fullPlain.includes("@@ -42,1 +42,2 @@"),
+  full_detail_uses_reference_status_glyph:
+    fullPlain.includes("  ⎿  matches=12 engine=rg")
+    && !fullPlain.includes("  └ matches=12 engine=rg"),
   renders_failed_bash:
     plain.includes("Failed bash") && fullPlain.includes("error_class=bash_command_failed"),
   renders_recovery_row:

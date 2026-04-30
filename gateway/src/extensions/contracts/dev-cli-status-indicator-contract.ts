@@ -58,6 +58,14 @@ const richLineWide = renderStatusIndicatorLine({
   tokenText: "812 tokens",
   thinkingText: "thinking high",
 });
+const activityDetailLine = renderStatusIndicatorLine({
+  message: "正在选择模型路由",
+  startedAtMs,
+  nowMs: startedAtMs + 7_140,
+  tick: 4,
+  terminalColumns: 80,
+  thinkingText: "selected=alpha",
+});
 const richPartsNarrow = resolveStatusIndicatorParts({
   spinner: "⠼",
   message: "正在整理上下文窗口并准备工具调用",
@@ -141,6 +149,9 @@ const payload = {
     && richPartsWide.showInterruptHint
     && stripAnsi(richLineWide).includes("thinking high · 812 tokens · 31s • esc to interrupt"),
   rich_wide_width_within_columns: measureDisplayWidth(richLineWide) <= 96,
+  activity_detail_renders_before_elapsed:
+    stripAnsi(activityDetailLine).includes("selected=alpha · 7s • esc to interrupt"),
+  activity_detail_width_within_columns: measureDisplayWidth(activityDetailLine) <= 80,
   rich_narrow_preserves_interrupt_over_optional_parts:
     richPartsNarrow.showInterruptHint
     && richPartsNarrow.showElapsed

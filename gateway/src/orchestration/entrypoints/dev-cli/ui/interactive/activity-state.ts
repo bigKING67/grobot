@@ -1,6 +1,7 @@
 interface ActivityUpdate {
   stageId: string;
   text: string;
+  detail?: string;
   status?: ActivityStatus;
 }
 
@@ -123,40 +124,99 @@ function extractField(line: string, key: string): string | undefined {
   return matched[1];
 }
 
+function detailFromParts(parts: string[]): string | undefined {
+  const detail = parts
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && part !== "<none>")
+    .join(" · ");
+  return detail || undefined;
+}
+
+function fieldDetail(label: string, value: string | undefined): string {
+  if (!value || value === "<none>") {
+    return "";
+  }
+  return `${label}=${value}`;
+}
+
+function promptBudgetDetail(body: string): string | undefined {
+  const stage = extractField(body, "stage");
+  const estimatedTokens = extractField(body, "estimated_tokens");
+  const targetLimit = extractField(body, "target_limit");
+  const selectedUtilization = extractField(body, "selected_utilization");
+  const utilization = selectedUtilization ?? extractField(body, "utilization");
+  return detailFromParts([
+    fieldDetail("stage", stage),
+    estimatedTokens && targetLimit ? `tokens=${estimatedTokens}/${targetLimit}` : "",
+    fieldDetail("util", utilization),
+  ]);
+}
+
 function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityUpdate | undefined {
   const event = extractField(body, "event");
   if (tag === "runtime-model") {
+    const provider = extractField(body, "provider");
+    const timeoutMs = extractField(body, "timeout_ms");
     return {
       stageId: "runtime_model",
       text: "正在准备模型请求参数",
+      detail: detailFromParts([
+        fieldDetail("provider", provider),
+        fieldDetail("timeout", timeoutMs ? `${timeoutMs}ms` : undefined),
+      ]),
     };
   }
   if (tag === "execution") {
     return {
       stageId: "execution_done",
       text: "模型响应已返回，正在整理输出",
+      detail: "formatting final answer",
     };
   }
   if (tag === "governance" || tag.startsWith("governance:")) {
     return {
       stageId: "governance",
       text: "正在执行治理与路由策略检查",
+      detail: tag.includes(":") ? tag.slice(tag.indexOf(":") + 1) : undefined,
     };
   }
   if (tag === "runtime-route") {
+    if (body.includes("all provider circuits are OPEN")) {
+      return {
+        stageId: "runtime_route_open_circuit",
+        text: "所有模型通道暂不可用",
+        status: "warning",
+      };
+    }
     if (body.includes("provider_retry")) {
       const backoffMs = extractField(body, "backoff_ms");
+      const provider = extractField(body, "provider");
+      const reason = extractField(body, "reason");
+      const retry = extractField(body, "retry");
       return {
         stageId: "runtime_retry",
         text: backoffMs
           ? `上游限流，${backoffMs}ms 后重试`
           : "上游限流，正在重试请求",
+        detail: detailFromParts([
+          fieldDetail("provider", provider),
+          fieldDetail("reason", reason),
+          fieldDetail("retry", retry),
+        ]),
       };
     }
     if (event === "decision") {
+      const selected = extractField(body, "selected");
+      const strategy = extractField(body, "strategy");
+      const stickyHit = extractField(body, "sticky_hit");
       return {
         stageId: "runtime_route_decision",
-        text: "正在选择可用路由",
+        text: "正在选择模型路由",
+        detail: detailFromParts([
+          fieldDetail("selected", selected),
+          stickyHit === "true" ? "sticky=hit" : "",
+          fieldDetail("strategy", strategy),
+        ]),
       };
     }
     return {
@@ -171,12 +231,15 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
         return {
           stageId: "context_prefetch_applied",
           text: "正在补充语义证据",
+          detail: fieldDetail("status", status),
         };
       }
       if (status === "warning" || status === "degraded") {
         return {
           stageId: "context_prefetch_degraded",
           text: "语义证据部分可用，继续执行",
+          detail: fieldDetail("status", status),
+          status: "warning",
         };
       }
       return {
@@ -184,16 +247,42 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
         text: "正在尝试语义证据预取",
       };
     }
+    if (event === "prompt_quality") {
+      return {
+        stageId: "context_quality",
+        text: "正在评估提示词质量",
+        detail: detailFromParts([
+          fieldDetail("overall", extractField(body, "overall")),
+          fieldDetail("coverage", extractField(body, "coverage")),
+        ]),
+      };
+    }
+    if (event === "graph_cache_stats") {
+      return {
+        stageId: "context_graph_cache",
+        text: "正在校准上下文证据",
+        detail: detailFromParts([
+          fieldDetail("symbol", extractField(body, "quality_symbol_rows")),
+          fieldDetail("deps", extractField(body, "quality_dependency_rows")),
+        ]),
+      };
+    }
     if (event === "prompt_prepared" || event === "quality_guard_precompact" || event === "downshift_precompact") {
       return {
         stageId: "context_prepare",
         text: "正在整理上下文窗口",
+        detail: promptBudgetDetail(body),
       };
     }
     if (event?.startsWith("pre_send_")) {
       return {
         stageId: "context_pre_send",
         text: "正在压缩上下文以适配预算",
+        detail: detailFromParts([
+          fieldDetail("stage", extractField(body, "stage")),
+          fieldDetail("strategy", extractField(body, "strategy")),
+          fieldDetail("retry", extractField(body, "retry")),
+        ]),
       };
     }
     if (
@@ -205,6 +294,11 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       return {
         stageId: "context_recovery",
         text: "正在执行上下文恢复策略",
+        detail: detailFromParts([
+          fieldDetail("provider", extractField(body, "provider")),
+          fieldDetail("reason", extractField(body, "reason")),
+          fieldDetail("retry", extractField(body, "retry")),
+        ]),
       };
     }
     return {
@@ -217,12 +311,14 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       return {
         stageId: "ask_user_waiting",
         text: "等待你确认后继续执行",
+        detail: "reply in prompt",
       };
     }
     if (event === "clarification_hint_injected") {
       return {
         stageId: "ask_user_clarify",
         text: "正在补充澄清提示",
+        detail: "clarification context",
       };
     }
     return {
@@ -234,24 +330,28 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     return {
       stageId: "experience_skip",
       text: "当前轮触发人工确认，跳过经验沉淀",
+      detail: "ask-user pending",
     };
   }
   if (tag === "experience-pool" || tag === "experience-scheduler") {
     return {
       stageId: "experience_maintenance",
       text: "正在维护经验池与调度任务",
+      detail: fieldDetail("event", event),
     };
   }
   if (tag === "memory-orchestrator") {
     return {
       stageId: "memory_maintenance",
       text: "正在维护记忆策略与质量窗口",
+      detail: fieldDetail("event", event),
     };
   }
   if (tag === "interrupt") {
     return {
       stageId: "interrupt",
       text: "正在处理中断请求",
+      detail: fieldDetail("event", event),
     };
   }
   if (tag === "reflection") {
@@ -303,7 +403,7 @@ export function createInteractiveActivityTracker(
 
   const setActivity = (next: ActivityUpdate): void => {
     const now = Date.now();
-    const nextSignature = `${next.stageId}:${next.text}`;
+    const nextSignature = `${next.stageId}:${next.text}:${next.detail ?? ""}`;
     snapshot = toActivitySnapshot(next, now);
     if (!writeProgressLine) {
       return;
@@ -314,7 +414,10 @@ export function createInteractiveActivityTracker(
     if (nextSignature === lastEmittedSignature) {
       return;
     }
-    writeProgressLine(`[process] ${next.text}\n`);
+    const renderedProgress = next.detail
+      ? `${next.text} · ${next.detail}`
+      : next.text;
+    writeProgressLine(`[process] ${renderedProgress}\n`);
     lastEmittedSignature = nextSignature;
     lastEmittedAtMs = now;
   };
@@ -340,7 +443,7 @@ export function createInteractiveActivityTracker(
     markTurnStart: (): void => {
       setActivity({
         stageId: "turn_start",
-        text: "已接收任务，正在执行",
+        text: "正在读取任务并准备上下文",
       });
     },
     markTurnFinished: (status): void => {
