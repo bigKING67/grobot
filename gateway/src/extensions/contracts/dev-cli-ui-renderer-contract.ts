@@ -616,7 +616,8 @@ const payload = {
   menu_interactive_has_ansi: hasAnsi(menuInteractive),
   menu_plain_has_ansi: hasAnsi(menuPlain),
   menu_non_tty_has_ansi: hasAnsi(menuNonTty),
-  menu_plain_has_pointer: menuPlain.includes("›"),
+  menu_plain_has_pointer: menuPlain.includes("❯"),
+  menu_plain_has_no_thin_pointer: !menuPlain.includes("›"),
   menu_interactive_has_current_check: menuInteractive.includes("✓"),
   menu_plain_has_secondary_description: menuPlain.includes("Current active model"),
   menu_hint_is_compact: menuPlain.includes("·"),
@@ -764,11 +765,11 @@ const payload = {
     !/\b1\.\s+Apply\b/.test(stripAnsi(hideIndexInlineMenuPlain))
     && !/\b2\.\s+Cancel\b/.test(stripAnsi(hideIndexInlineMenuPlain)),
   menu_hide_indexes_keeps_pointer:
-    stripAnsi(hideIndexInlineMenuPlain).includes("› Apply Run the selected action"),
+    stripAnsi(hideIndexInlineMenuPlain).includes("❯ Apply Run the selected action"),
   menu_inline_descriptions_render_same_row:
     stripAnsi(hideIndexInlineMenuPlain).includes("Apply Run the selected action"),
   menu_compact_vertical_renders_description_below_label:
-    stripAnsi(compactVerticalMenuPlain).includes("› 1. Apply changes\n     Review the plan"),
+    stripAnsi(compactVerticalMenuPlain).includes("❯ 1. Apply changes\n     Review the plan"),
   menu_expanded_adds_blank_line_between_options:
     stripAnsi(expandedMenuPlain).includes("Run all verification before applying.\n\n  Fast path"),
 };

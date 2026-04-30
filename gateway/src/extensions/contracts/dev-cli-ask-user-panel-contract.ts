@@ -154,7 +154,7 @@ const payload = {
     initialRendered.includes("\x1b[1mChoose execution mode")
     && initialPlain.includes("Choose execution mode\n  Question 1/2")
     && initialPlain.includes("Question 1/2 (2 unanswered)\n\n")
-    && initialPlain.includes("› 1. safe"),
+    && initialPlain.includes("❯ 1. safe"),
   panel_title_is_prominent_and_not_repeated:
     initialRendered.includes("\x1b[1mChoose execution mode")
     && (initialPlain.match(/Choose execution mode/g) ?? []).length === 1,

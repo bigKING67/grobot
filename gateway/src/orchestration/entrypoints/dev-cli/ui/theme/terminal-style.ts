@@ -10,7 +10,7 @@ export const TERMINAL_ANSI = {
 } as const;
 
 export const TERMINAL_SYMBOL = {
-  pointer: "›",
+  pointer: "❯",
   scrollUp: "↑",
   scrollDown: "↓",
 } as const;

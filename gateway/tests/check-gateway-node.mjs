@@ -1645,6 +1645,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_ansi, false);
   assert.equal(devCliUiRendererContractPayload.menu_non_tty_has_ansi, false);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_pointer, true);
+  assert.equal(devCliUiRendererContractPayload.menu_plain_has_no_thin_pointer, true);
   assert.equal(devCliUiRendererContractPayload.menu_interactive_has_current_check, true);
   assert.equal(devCliUiRendererContractPayload.menu_plain_has_secondary_description, true);
   assert.equal(devCliUiRendererContractPayload.menu_hint_is_compact, true);

@@ -740,7 +740,7 @@ async function main(): Promise<void> {
     slash_overlay_scroll_window_uses_restraint_not_bold:
       !slashOverlayScrolledModelLine.includes("\u001B[1m\u001B[38;2;202;124;94m/model"),
     slash_overlay_selected_has_pointer:
-      stripAnsi(slashOverlayScrolledModelLine).startsWith("› /model"),
+      stripAnsi(slashOverlayScrolledModelLine).startsWith("❯ /model"),
     slash_overlay_scroll_window_does_not_wrap_to_first:
       slashOverlayScrolledSessionsLine.length === 0,
     slash_overlay_scroll_window_has_no_row_up_marker:
