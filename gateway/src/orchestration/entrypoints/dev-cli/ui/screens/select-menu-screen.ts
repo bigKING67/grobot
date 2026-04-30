@@ -50,6 +50,8 @@ export interface TerminalSelectMenuViewport {
   totalCount: number;
 }
 
+export type TerminalSelectMenuLayout = "compact" | "expanded" | "compact-vertical";
+
 export interface TerminalSelectMenuInput {
   title: string;
   subtitle?: string;
@@ -57,6 +59,9 @@ export interface TerminalSelectMenuInput {
   items: TerminalSelectMenuItem[];
   initialIndex?: number;
   visibleOptionCount?: number;
+  hideIndexes?: boolean;
+  layout?: TerminalSelectMenuLayout;
+  inlineDescriptions?: boolean;
   viewport?: TerminalSelectMenuViewport;
   variant?: "default" | "model_picker" | "ask_user" | "plan_approval";
   modelPickerMeta?: TerminalSelectMenuModelPickerMeta;
@@ -101,6 +106,7 @@ interface RenderMenuRow {
   leftPlain: string;
   leftRendered: string;
   description: string;
+  descriptionIndentWidth: number;
 }
 
 interface TruncatedMenuLabel {
@@ -138,6 +144,17 @@ function buildCompactMenuHint(hintRaw?: string): string {
 function sanitizeMenuText(value: string | undefined, fallback = ""): string {
   const sanitized = compactSpaces(sanitizeTerminalDisplayText(value ?? fallback));
   return sanitized.length > 0 ? sanitized : fallback;
+}
+
+function resolveMenuLayout(menu: TerminalSelectMenuInput): TerminalSelectMenuLayout {
+  if (
+    menu.layout === "compact"
+    || menu.layout === "expanded"
+    || menu.layout === "compact-vertical"
+  ) {
+    return menu.layout;
+  }
+  return "compact";
 }
 
 function resolveInputOptionDisplayText(input: {
@@ -340,8 +357,11 @@ function resolveMenuLabelBudget(input: {
   surfaceWidth: number;
   ordinalWidth: number;
   hasDescriptionColumn: boolean;
+  hideIndexes?: boolean;
 }): number {
-  const prefixWidth = 1 + 1 + input.ordinalWidth + 1;
+  const prefixWidth = input.hideIndexes === true
+    ? 1 + 1
+    : 1 + 1 + input.ordinalWidth + 1;
   const leftBudget = input.hasDescriptionColumn
     ? Math.max(prefixWidth + MENU_MIN_LABEL_WIDTH, input.surfaceWidth - MENU_DESCRIPTION_MIN_WIDTH)
     : input.surfaceWidth;
@@ -427,6 +447,29 @@ function renderTwoColumnRows(input: {
   return lines;
 }
 
+function renderVerticalRows(input: {
+  rows: readonly RenderMenuRow[];
+  maxWidth: number;
+  theme: ReturnType<typeof createCliTheme>;
+  expanded?: boolean;
+}): string[] {
+  const lines: string[] = [];
+  for (let index = 0; index < input.rows.length; index += 1) {
+    const row = input.rows[index];
+    lines.push(row.leftRendered);
+    const description = sanitizeMenuText(row.description);
+    if (description.length > 0) {
+      const indent = padToDisplayWidth("", Math.max(2, row.descriptionIndentWidth));
+      const descriptionWidth = Math.max(8, input.maxWidth - measureDisplayWidth(indent));
+      lines.push(`${indent}${input.theme.color("muted", truncateDisplayWidth(description, descriptionWidth))}`);
+    }
+    if (input.expanded === true && index < input.rows.length - 1) {
+      lines.push("");
+    }
+  }
+  return lines;
+}
+
 function isModelPickerCurrent(input: {
   item: TerminalSelectMenuItem;
   meta?: TerminalSelectMenuModelPickerMeta;
@@ -491,12 +534,14 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   const meta = input.menu.modelPickerMeta;
   const visibleItems = input.menu.items;
   const viewport = resolveRenderViewport(input.menu);
-  const ordinalWidth = `${String(Math.max(1, viewport.totalCount))}.`.length;
+  const hideIndexes = input.menu.hideIndexes === true;
+  const ordinalWidth = hideIndexes ? 0 : `${String(Math.max(1, viewport.totalCount))}.`.length;
   const hasDescriptionColumn = shouldRenderMenuDescriptions(surfaceWidth);
   const labelBudget = resolveMenuLabelBudget({
     surfaceWidth,
     ordinalWidth,
     hasDescriptionColumn,
+    hideIndexes,
   });
   const hint = sanitizeMenuText(input.menu.hint, MODEL_PICKER_DEFAULT_HINT);
   const title = sanitizeMenuText(input.menu.title, "Select");
@@ -523,9 +568,11 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
     });
     const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`
       .padEnd(ordinalWidth);
-    const ordinal = isActive
-      ? theme.color("accent", ordinalPlain)
-      : theme.color("muted", ordinalPlain);
+    const ordinal = hideIndexes
+      ? ""
+      : isActive
+        ? theme.color("accent", ordinalPlain)
+        : theme.color("muted", ordinalPlain);
     const isCurrent = isModelPickerCurrent({ item, meta });
     const statusSuffix = resolveModelStatusSuffix({ item, meta });
     const labelBase = sanitizeMenuText(item.label, item.id);
@@ -540,10 +587,17 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
       labelParts,
       theme,
     });
+    const prefixPlain = hideIndexes
+      ? `${marker.plain} `
+      : `${marker.plain} ${ordinalPlain} `;
+    const prefixRendered = hideIndexes
+      ? `${marker.rendered} `
+      : `${marker.rendered} ${ordinal} `;
     rows.push({
-      leftPlain: `${marker.plain} ${ordinalPlain} ${labelParts.plain}`,
-      leftRendered: `${marker.rendered} ${ordinal} ${renderedLabel}`,
+      leftPlain: `${prefixPlain}${labelParts.plain}`,
+      leftRendered: `${prefixRendered}${renderedLabel}`,
       description: hasDescriptionColumn ? sanitizeMenuText(item.description) : "",
+      descriptionIndentWidth: measureDisplayWidth(prefixPlain),
     });
   }
   lines.push(...renderTwoColumnRows({
@@ -568,12 +622,14 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
   const surfaceWidth = Math.max(44, Math.min(88, columns - 4));
   const dividerWidth = Math.max(44, Math.min(ASK_USER_DIVIDER_MAX_WIDTH, columns));
   const viewport = resolveRenderViewport(input.menu);
-  const ordinalWidth = `${String(Math.max(1, viewport.totalCount))}.`.length;
+  const hideIndexes = input.menu.hideIndexes === true;
+  const ordinalWidth = hideIndexes ? 0 : `${String(Math.max(1, viewport.totalCount))}.`.length;
   const hasDescriptionColumn = shouldRenderMenuDescriptions(surfaceWidth);
   const labelBudget = resolveMenuLabelBudget({
     surfaceWidth,
     ordinalWidth,
     hasDescriptionColumn,
+    hideIndexes,
   });
   const title = sanitizeMenuText(input.menu.title, "需要确认");
   const subtitle = sanitizeMenuText(input.menu.subtitle);
@@ -600,9 +656,11 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
     });
     const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`
       .padEnd(ordinalWidth);
-    const ordinal = isActive
-      ? theme.color("accent", ordinalPlain)
-      : theme.color("muted", ordinalPlain);
+    const ordinal = hideIndexes
+      ? ""
+      : isActive
+        ? theme.color("accent", ordinalPlain)
+        : theme.color("muted", ordinalPlain);
     const labelPlain = resolveInputOptionDisplayText({
       item,
       isActive,
@@ -616,10 +674,17 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
     const renderedLabel = isActive
       ? theme.color("accent", labelParts.plain)
       : `${labelParts.label}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+    const prefixPlain = hideIndexes
+      ? `${marker.plain} `
+      : `${marker.plain} ${ordinalPlain} `;
+    const prefixRendered = hideIndexes
+      ? `${marker.rendered} `
+      : `${marker.rendered} ${ordinal} `;
     rows.push({
-      leftPlain: `${marker.plain} ${ordinalPlain} ${labelParts.plain}`,
-      leftRendered: `${marker.rendered} ${ordinal} ${renderedLabel}`,
+      leftPlain: `${prefixPlain}${labelParts.plain}`,
+      leftRendered: `${prefixRendered}${renderedLabel}`,
       description: hasDescriptionColumn ? sanitizeMenuText(item.description) : "",
+      descriptionIndentWidth: measureDisplayWidth(prefixPlain),
     });
   }
   lines.push(...renderTwoColumnRows({
@@ -740,12 +805,21 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
   const columns = resolveMenuColumns();
   const surfaceWidth = Math.max(44, Math.min(86, columns - 4));
   const viewport = resolveRenderViewport(preparedInput.menu);
-  const ordinalWidth = `${String(Math.max(1, viewport.totalCount))}.`.length;
-  const hasDescriptionColumn = shouldRenderMenuDescriptions(surfaceWidth);
+  const hideIndexes = preparedInput.menu.hideIndexes === true;
+  const menuLayout = resolveMenuLayout(preparedInput.menu);
+  const verticalLayout = menuLayout === "expanded" || menuLayout === "compact-vertical";
+  const renderIndexes = !hideIndexes && menuLayout !== "expanded";
+  const ordinalWidth = renderIndexes ? `${String(Math.max(1, viewport.totalCount))}.`.length : 0;
+  const indexDigitsWidth = renderIndexes ? Math.max(1, ordinalWidth - 1) : 0;
+  const hasDescriptionColumn =
+    !verticalLayout
+    && preparedInput.menu.inlineDescriptions !== true
+    && shouldRenderMenuDescriptions(surfaceWidth);
   const labelBudget = resolveMenuLabelBudget({
     surfaceWidth,
     ordinalWidth,
     hasDescriptionColumn,
+    hideIndexes: !renderIndexes,
   });
   const lines: string[] = [];
   lines.push(`  ${theme.bold(preparedInput.menu.title)}`);
@@ -766,13 +840,20 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
     });
     const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`
       .padEnd(ordinalWidth);
-    const number = isActive
-      ? theme.color("accent", ordinalPlain)
-      : theme.color("muted", ordinalPlain);
-    const labelPlain = resolveInputOptionDisplayText({
+    const number = !renderIndexes
+      ? ""
+      : isActive
+        ? theme.color("accent", ordinalPlain)
+        : theme.color("muted", ordinalPlain);
+    const labelBase = resolveInputOptionDisplayText({
       item,
       isActive,
     });
+    const descriptionPlain = sanitizeMenuText(item.description);
+    const inlineDescription =
+      preparedInput.menu.inlineDescriptions === true
+      && descriptionPlain.length > 0;
+    const labelPlain = inlineDescription ? `${labelBase} ${descriptionPlain}` : labelBase;
     const currentSuffix = item.current ? " ✓" : "";
     const labelParts = truncateMenuLabelWithSuffix({
       label: labelPlain,
@@ -782,17 +863,40 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
     const label = isActive
       ? theme.color("accent", labelParts.plain)
       : `${labelParts.label}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+    const prefixPlain = !renderIndexes
+      ? `${marker.plain} `
+      : `${marker.plain} ${ordinalPlain} `;
+    const prefixRendered = !renderIndexes
+      ? `${marker.rendered} `
+      : `${marker.rendered} ${number} `;
+    const verticalDescriptionIndentWidth = (() => {
+      if (menuLayout === "expanded") {
+        return 2;
+      }
+      if (menuLayout === "compact-vertical") {
+        return hideIndexes ? 4 : indexDigitsWidth + 4;
+      }
+      return measureDisplayWidth(prefixPlain);
+    })();
     rows.push({
-      leftPlain: `${marker.plain} ${ordinalPlain} ${labelParts.plain}`,
-      leftRendered: `${marker.rendered} ${number} ${label}`,
-      description: hasDescriptionColumn ? sanitizeMenuText(item.description) : "",
+      leftPlain: `${prefixPlain}${labelParts.plain}`,
+      leftRendered: `${prefixRendered}${label}`,
+      description: inlineDescription ? "" : verticalLayout || hasDescriptionColumn ? descriptionPlain : "",
+      descriptionIndentWidth: verticalDescriptionIndentWidth,
     });
   }
-  lines.push(...renderTwoColumnRows({
-    rows,
-    maxWidth: surfaceWidth,
-    theme,
-  }));
+  lines.push(...(verticalLayout
+    ? renderVerticalRows({
+      rows,
+      maxWidth: surfaceWidth,
+      theme,
+      expanded: menuLayout === "expanded",
+    })
+    : renderTwoColumnRows({
+      rows,
+      maxWidth: surfaceWidth,
+      theme,
+    })));
   lines.push("");
   lines.push(theme.color("muted", `  ${buildCompactMenuHint(preparedInput.menu.hint)}`));
   return lines.join("\n");

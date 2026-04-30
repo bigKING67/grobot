@@ -313,6 +313,64 @@ const longMenuInput: TerminalSelectMenuInput = {
   ],
 };
 
+const hideIndexInlineMenuInput: TerminalSelectMenuInput = {
+  title: "Select action",
+  subtitle: "CustomSelect parity",
+  hint: "Use arrows",
+  hideIndexes: true,
+  inlineDescriptions: true,
+  items: [
+    {
+      id: "apply",
+      label: "Apply",
+      description: "Run the selected action",
+    },
+    {
+      id: "cancel",
+      label: "Cancel",
+      description: "Return to input",
+    },
+  ],
+};
+
+const compactVerticalMenuInput: TerminalSelectMenuInput = {
+  title: "Select action",
+  subtitle: "Compact vertical layout",
+  hint: "Use arrows",
+  layout: "compact-vertical",
+  items: [
+    {
+      id: "apply",
+      label: "Apply changes",
+      description: "Review the plan, then run the implementation path.",
+    },
+    {
+      id: "revise",
+      label: "Revise first",
+      description: "Keep planning and collect more feedback.",
+    },
+  ],
+};
+
+const expandedMenuInput: TerminalSelectMenuInput = {
+  title: "Select action",
+  subtitle: "Expanded layout",
+  hint: "Use arrows",
+  layout: "expanded",
+  items: [
+    {
+      id: "safe",
+      label: "Safe path",
+      description: "Run all verification before applying.",
+    },
+    {
+      id: "fast",
+      label: "Fast path",
+      description: "Skip optional verification.",
+    },
+  ],
+};
+
 const viewportMenuInput: TerminalSelectMenuInput = {
   title: "Select command",
   subtitle: "Viewport contract",
@@ -456,6 +514,9 @@ const directLargeModelPickerPlain = plainRenderer.renderSelectMenu(directLargeMo
 const longModelPickerPlain = renderSelectAtColumns(plainRenderer, longModelPickerInput, 0, 72);
 const narrowModelPickerPlain = renderSelectAtColumns(plainRenderer, longModelPickerInput, 0, 52);
 const longMenuPlain = renderSelectAtColumns(plainRenderer, longMenuInput, 0, 72);
+const hideIndexInlineMenuPlain = plainRenderer.renderSelectMenu(hideIndexInlineMenuInput, 0);
+const compactVerticalMenuPlain = plainRenderer.renderSelectMenu(compactVerticalMenuInput, 0);
+const expandedMenuPlain = plainRenderer.renderSelectMenu(expandedMenuInput, 0);
 
 const payload = {
   interactive_mode: interactiveRenderer.mode,
@@ -612,6 +673,17 @@ const payload = {
     renderedLinesWithinColumns(longMenuPlain, 72),
   menu_long_current_suffix_preserved:
     stripAnsi(longMenuPlain).includes("✓"),
+  menu_hide_indexes_omits_numeric_indexes:
+    !/\b1\.\s+Apply\b/.test(stripAnsi(hideIndexInlineMenuPlain))
+    && !/\b2\.\s+Cancel\b/.test(stripAnsi(hideIndexInlineMenuPlain)),
+  menu_hide_indexes_keeps_pointer:
+    stripAnsi(hideIndexInlineMenuPlain).includes("› Apply Run the selected action"),
+  menu_inline_descriptions_render_same_row:
+    stripAnsi(hideIndexInlineMenuPlain).includes("Apply Run the selected action"),
+  menu_compact_vertical_renders_description_below_label:
+    stripAnsi(compactVerticalMenuPlain).includes("› 1. Apply changes\n     Review the plan"),
+  menu_expanded_adds_blank_line_between_options:
+    stripAnsi(expandedMenuPlain).includes("Run all verification before applying.\n\n  Fast path"),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

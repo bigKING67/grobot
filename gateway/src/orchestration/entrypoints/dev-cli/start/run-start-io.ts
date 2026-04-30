@@ -2447,6 +2447,12 @@ export function reduceTerminalSelectMenuInlineInput(input: {
   return { kind: "ignored" };
 }
 
+export function shouldEnableTerminalSelectMenuNumericSelection(input: {
+  hideIndexes?: boolean;
+}): boolean {
+  return input.hideIndexes !== true;
+}
+
 function trimMenuSearchQuery(rawQuery: string): string {
   const graphemes = splitGraphemes(rawQuery);
   if (graphemes.length <= MENU_SEARCH_QUERY_LIMIT) {
@@ -3760,6 +3766,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
 
     const onData = (chunk: string): void => {
       const rawInput = String(chunk ?? "");
+      const numericSelectionEnabled = shouldEnableTerminalSelectMenuNumericSelection(input);
       if (rawInput === "\u0007" && input.variant === "plan_approval") {
         const sourceIndex = resolveActiveSourceIndex() ?? 0;
         const item = input.items[sourceIndex] ?? input.items[0];
@@ -3797,14 +3804,14 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
           return;
         }
       }
-      if (/^[0-9]$/.test(rawInput)) {
+      if (numericSelectionEnabled && /^[0-9]$/.test(rawInput)) {
         if (handleSingleDigitSelection(rawInput)) {
           return;
         }
       } else {
         clearNumericSelectionBuffer();
       }
-      if (/^[0-9]{2,}$/.test(rawInput.trim())) {
+      if (numericSelectionEnabled && /^[0-9]{2,}$/.test(rawInput.trim())) {
         const bufferedIndex = resolveMenuIndexFromDigits(
           rawInput.trim(),
           visibleItemIndices.length,
@@ -3832,6 +3839,9 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return;
       }
       if (action.kind === "select_index") {
+        if (!numericSelectionEnabled) {
+          return;
+        }
         selectAndFinish(action.index);
         return;
       }

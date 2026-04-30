@@ -21,6 +21,7 @@ import {
   resolveSlashSuggestionKeyAction,
   resolveShortcutOverlayKeyAction,
   resolveTerminalSelectMenuViewport,
+  shouldEnableTerminalSelectMenuNumericSelection,
   shouldHighlightSlashInputToken,
   resolveSubmitKeyAction,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
@@ -395,6 +396,10 @@ async function main(): Promise<void> {
     currentValue: "abc",
     inputMode: true,
     variant: "plan_approval",
+  });
+  const numericSelectionDefaultEnabled = shouldEnableTerminalSelectMenuNumericSelection({});
+  const numericSelectionHiddenIndexDisabled = shouldEnableTerminalSelectMenuNumericSelection({
+    hideIndexes: true,
   });
   const submitChunkOnlyLf = resolveSubmitKeyAction({
     chunk: "\n",
@@ -810,6 +815,8 @@ async function main(): Promise<void> {
     menu_inline_input_ctrl_g_keeps_plan_editor:
       inlineInputCtrlGEditPlan.kind === "edit_plan"
       && inlineInputCtrlGEditPlan.value === "abc",
+    menu_numeric_selection_default_enabled: numericSelectionDefaultEnabled,
+    menu_numeric_selection_hidden_indexes_disabled: !numericSelectionHiddenIndexDisabled,
     submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",
     interactive_plain_enter_defers_to_keypress:
       interactivePlainEnterDefersToKeypress === "defer_to_keypress",

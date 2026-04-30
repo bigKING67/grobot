@@ -111,8 +111,14 @@ function resolvePendingAskActionHint(summary: string): string {
   return summary;
 }
 
-function buildInputHintLine(): string | undefined {
-  return undefined;
+function buildInputHintLine(input: {
+  statusLine?: string;
+}): string | undefined {
+  const statusLine = compactSpaces(input.statusLine ?? "");
+  if (statusLine.length > 0) {
+    return undefined;
+  }
+  return "? for shortcuts";
 }
 
 function fitFooterLine(input: {
@@ -309,7 +315,9 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
   const parts = resolveStatusLinePromptParts(input);
   const mode = resolveBottomPaneFooterMode(input);
   const pendingAskLine = buildPendingAskLine(input);
-  const inputHintLine = buildInputHintLine();
+  const inputHintLine = buildInputHintLine({
+    statusLine: parts.statusLine,
+  });
   const renderSecondaryStatus = shouldRenderSecondaryStatus(input);
   const lines: string[] = [];
   const pushLine = (line: string | undefined): void => {

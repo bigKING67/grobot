@@ -26,6 +26,21 @@ const idleFooter = renderBottomPaneFooter({
   promptLabel: "› ",
 });
 
+const idleNoStatusFooter = renderBottomPaneFooter({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.42,
+  estimatedTokens: 2200,
+  targetTokenLimit: 5120,
+  sessionId: "019d8b75-8bdf-78e2-a056-1f98a38774bd",
+  sessionTopic: "bottom pane contract",
+  terminalColumns: 96,
+  promptLabel: "› ",
+  config: {
+    enabled: false,
+  },
+});
+
 const pendingFooter = renderBottomPaneFooter({
   model: "kimi/kimi-k2-2026-04",
   projectFolder: "grobot",
@@ -211,6 +226,10 @@ const payload = {
     !collapseSpaces(idleFooter).includes("? for shortcuts")
     && collapseSpaces(idleFooter).includes("grobot")
     && collapseSpaces(idleFooter).includes("ctx"),
+  idle_without_status_shows_shortcut_hint:
+    collapseSpaces(idleNoStatusFooter) === "? for shortcuts",
+  idle_without_status_hint_is_muted:
+    /\u001B\[90m/.test(idleNoStatusFooter),
   idle_narrow_status_dimmed:
     !narrowIdleFooter.includes("? for shortcuts") && /\u001B\[90m/.test(narrowIdleFooter),
   idle_narrow_hides_shortcut_hint: !narrowIdleFooter.includes("? for shortcuts"),
