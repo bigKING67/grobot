@@ -53,6 +53,24 @@ function fitPlainLine(value: string, maxWidth: number): string {
   });
 }
 
+function renderMutedRule(width: number): string {
+  return terminalStyle.muted("─".repeat(Math.max(1, width)));
+}
+
+function renderPanelTitle(value: string, maxWidth: number): string {
+  return terminalStyle.bold(fitPlainLine(value, maxWidth));
+}
+
+function renderFooterAction(shortcut: string, label: string, maxWidth: number): string {
+  const key = `${shortcut}.`;
+  const plain = `${key} ${label}`;
+  const fitted = fitPlainLine(plain, maxWidth);
+  if (!fitted.startsWith(key)) {
+    return terminalStyle.muted(fitted);
+  }
+  return `${terminalStyle.muted(key)} ${terminalStyle.muted(fitted.slice(key.length + 1))}`;
+}
+
 function buildProgressText(view: Extract<AskUserQuestionnaireView, { kind: "question" }>): string {
   const unanswered = Math.max(0, view.totalCount - view.answeredCount);
   const base = `Question ${String(view.currentQuestionNumber)}/${String(view.totalCount)}`;
@@ -281,9 +299,9 @@ function renderQuestionPanel(input: {
   const lines: string[] = [];
   const contentWidth = input.surfaceWidth - 2;
   const progress = buildProgressText(input.view);
-  lines.push(`  ${terminalStyle.muted(fitPlainLine(progress, contentWidth))}`);
   if (input.planMode && input.planFilePath?.trim()) {
     lines.push(`  ${terminalStyle.muted(fitPlainLine(`Planning: ${input.planFilePath}`, contentWidth))}`);
+    lines.push(`  ${renderMutedRule(contentWidth)}`);
   }
   const navigationLine = renderNavigationLine({
     tabs: input.view.tabs,
@@ -292,8 +310,8 @@ function renderQuestionPanel(input: {
   if (navigationLine) {
     lines.push(`  ${navigationLine}`);
   }
-  lines.push("");
-  lines.push(`  ${terminalStyle.accent(fitPlainLine(input.view.question, contentWidth))}`);
+  lines.push(`  ${renderPanelTitle(input.view.question, contentWidth)}`);
+  lines.push(`  ${terminalStyle.muted(fitPlainLine(progress, contentWidth))}`);
   lines.push("");
   if (input.view.optionItems.length > 0) {
     lines.push(...renderOptionRows({
@@ -318,9 +336,10 @@ function renderQuestionPanel(input: {
     maxWidth: contentWidth,
   })}`);
   lines.push("");
-  lines.push(`  ${terminalStyle.muted("c  Chat about this")}`);
+  lines.push(`  ${renderMutedRule(contentWidth)}`);
+  lines.push(`  ${renderFooterAction("c", "Chat about this", contentWidth)}`);
   if (input.planMode) {
-    lines.push(`  ${terminalStyle.muted("s  Skip interview and plan immediately")}`);
+    lines.push(`  ${renderFooterAction("s", "Skip interview and plan immediately", contentWidth)}`);
   }
   lines.push("");
   const standardOptionCount = input.view.optionItems.filter((item) => item.kind === "option").length;
@@ -345,6 +364,7 @@ function renderReviewPanel(input: {
 }): string[] {
   const lines: string[] = [];
   const contentWidth = input.surfaceWidth - 2;
+  lines.push(`  ${renderPanelTitle(input.view.title, contentWidth)}`);
   lines.push(`  ${terminalStyle.muted(`Question review (${String(input.view.unansweredCount)} unanswered)`)}`);
   const navigationLine = renderNavigationLine({
     tabs: [],
@@ -357,17 +377,17 @@ function renderReviewPanel(input: {
     lines.push(`  ${navigationLine}`);
   }
   lines.push("");
-  lines.push(`  ${terminalStyle.accent(fitPlainLine(input.view.title, contentWidth))}`);
   if (input.view.unansweredCount > 0) {
     lines.push(`  ${terminalStyle.muted(`还有 ${String(input.view.unansweredCount)} 项未回答；提交前会回到第一项未答。`)}`);
+    lines.push("");
   }
-  lines.push("");
   lines.push(...renderReviewRows({
     reviewItems: input.view.reviewItems,
     activeIndex: input.activeReviewIndex ?? 0,
     maxWidth: contentWidth,
   }).map((line) => `  ${line}`));
   lines.push("");
+  lines.push(`  ${renderMutedRule(contentWidth)}`);
   lines.push(`  ${terminalStyle.muted("↑/↓ 选择 | Enter 确认 | ←/→ 切换问题 | Esc 返回输入框")}`);
   return lines;
 }
@@ -377,7 +397,7 @@ export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string
   const lines: string[] = [];
   lines.push(terminalStyle.brand("─".repeat(surfaceWidth)));
   if (input.view.kind === "empty") {
-    lines.push(`  ${terminalStyle.accent(fitPlainLine(input.view.title, surfaceWidth - 2))}`);
+    lines.push(`  ${renderPanelTitle(input.view.title, surfaceWidth - 2)}`);
     lines.push("");
     lines.push(`  ${terminalStyle.muted(fitPlainLine(input.view.hint, surfaceWidth - 2))}`);
     return lines.join("\n");

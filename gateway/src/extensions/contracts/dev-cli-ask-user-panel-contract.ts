@@ -143,13 +143,21 @@ const payload = {
     && initialPlain.includes("(2 unanswered)"),
   panel_plan_mode_shows_planning_path:
     initialPlain.includes("Planning: .grobot/plans/session/ACTIVE.md"),
+  panel_planning_context_near_top:
+    initialPlain.indexOf("Planning: .grobot/plans/session/ACTIVE.md") > 0
+    && initialPlain.indexOf("Planning: .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
   panel_has_claude_like_question_tabs:
     initialPlain.includes("[□ Scope]")
     && initialPlain.includes("□ Risk Review")
     && initialPlain.includes("✓ 提交"),
   panel_question_separate_from_options:
-    initialPlain.includes("Choose execution mode\n\n")
+    initialRendered.includes("\x1b[1mChoose execution mode")
+    && initialPlain.includes("Choose execution mode\n  Question 1/2")
+    && initialPlain.includes("Question 1/2 (2 unanswered)\n\n")
     && initialPlain.includes("› 1. safe"),
+  panel_title_is_prominent_and_not_repeated:
+    initialRendered.includes("\x1b[1mChoose execution mode")
+    && (initialPlain.match(/Choose execution mode/g) ?? []).length === 1,
   panel_preserves_option_descriptions:
     initialPlain.includes("Run checks before continuing")
     && initialPlain.includes("Skip optional checks"),
@@ -167,14 +175,22 @@ const payload = {
     initialPlain.includes("Notes:")
     && initialPlain.includes("press n to add notes"),
   panel_has_chat_about_this_row:
-    initialPlain.includes("c  Chat about this"),
+    initialPlain.includes("c. Chat about this"),
   panel_has_plan_skip_affordance:
-    initialPlain.includes("s  Skip interview and plan immediately")
+    initialPlain.includes("s. Skip interview and plan immediately")
     && initialPlain.includes("s skip"),
+  panel_footer_actions_separated:
+    initialPlain.includes("press n to add notes\n\n  ─")
+    && initialPlain.includes("─\n  c. Chat about this"),
+  panel_hints_are_muted:
+    initialRendered.includes("\x1b[90mEnter to select")
+    && initialRendered.includes("\x1b[90m↑/↓ to navigate"),
   panel_review_has_submit_edit_cancel:
     reviewPlain.includes("提交答案")
     && reviewPlain.includes("修改 1.")
     && reviewPlain.includes("取消"),
+  panel_review_title_is_prominent:
+    reviewRendered.includes("\x1b[1m检查答案"),
   panel_review_has_answer_summary:
     reviewPlain.includes("已回答 2/2")
     && reviewPlain.includes("safe"),
