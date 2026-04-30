@@ -125,6 +125,11 @@ function readPlanContentAfterExternalEdit(planPath: string, fallback: string): s
   }
 }
 
+function isEmptyPlanApprovalContent(content: string): boolean {
+  const normalized = content.trim();
+  return normalized.length === 0 || normalized.includes("__REQUIRED__");
+}
+
 function resolveTerminalColumns(): number | undefined {
   const stdout = process.stdout as unknown as {
     isTTY?: boolean;
@@ -728,11 +733,15 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       });
       let currentPlanContent = request.planContent;
       let planEdited = false;
+      let draftFeedback = "";
       while (true) {
+        const isEmptyPlan = isEmptyPlanApprovalContent(currentPlanContent);
         const result = await withInputPaused(() =>
           runTerminalSelectMenu({
-            title: "Ready to code?",
-            hint: "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
+            title: isEmptyPlan ? "Exit plan mode?" : "Ready to code?",
+            hint: isEmptyPlan
+              ? "Enter 确认 · Esc 返回输入框"
+              : "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
             variant: "plan_approval",
             visibleOptionCount: 2,
             planApprovalMeta: {
@@ -741,28 +750,42 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
               planContent: currentPlanContent,
               planPath: displayPath,
               planEdited,
+              emptyPlan: isEmptyPlan,
             },
-            items: [
-              {
-                id: "approve",
-                label: "Yes, Implement the plan.",
-                description: "Exit plan mode and start coding from this plan.",
-              },
-              {
-                id: "keep_planning",
-                label: "No, keep planning",
-                description: "Tell Grobot what to change before coding.",
-                input: {
-                  placeholder: "Tell Grobot what to change",
-                  showLabelWithValue: true,
-                  labelValueSeparator: ": ",
-                  resetCursorOnUpdate: true,
+            items: isEmptyPlan
+              ? [
+                {
+                  id: "approve",
+                  label: "Yes",
                 },
-              },
-            ],
+                {
+                  id: "keep_planning",
+                  label: "No",
+                },
+              ]
+              : [
+                {
+                  id: "approve",
+                  label: "Yes, Implement the plan.",
+                  description: "Start implementation from this approved plan.",
+                },
+                {
+                  id: "keep_planning",
+                  label: "No, keep planning",
+                  description: "shift+tab to approve with this feedback",
+                  input: {
+                    placeholder: "Tell Grobot what to change",
+                    initialValue: draftFeedback,
+                    showLabelWithValue: true,
+                    labelValueSeparator: ": ",
+                    resetCursorOnUpdate: true,
+                  },
+                },
+              ],
           }),
         );
         if (result.kind === "edit_plan") {
+          draftFeedback = result.inputValue ?? draftFeedback;
           await input.openPlanInEditor(withInputPaused, {
             writeStdout: writeInteractiveStdout,
             writeStderr: writeInteractiveStderr,
@@ -776,23 +799,45 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           continue;
         }
         if (result.kind === "selected" && result.item.id === "approve") {
+          if (isEmptyPlan) {
+            return {
+              action: "exit_plan_mode",
+              planContent: currentPlanContent,
+              silent: true,
+            };
+          }
+          const feedback = result.inputValue?.trim();
           return {
             action: "approve",
+            ...(feedback && feedback.length > 0 ? { feedback } : {}),
             planContent: currentPlanContent,
           };
         }
         if (result.kind === "selected" && result.item.id === "keep_planning") {
-          const feedback = result.inputValue?.trim() ?? "";
-          return feedback.length > 0
-            ? {
-              action: "keep_planning",
-              feedback,
-              planContent: currentPlanContent,
-            }
-            : {
+          if (isEmptyPlan) {
+            return {
               action: "keep_planning",
               planContent: currentPlanContent,
+              silent: true,
             };
+          }
+          draftFeedback = result.inputValue ?? draftFeedback;
+          const feedback = draftFeedback.trim();
+          if (feedback.length <= 0) {
+            continue;
+          }
+          return {
+            action: "keep_planning",
+            feedback,
+            planContent: currentPlanContent,
+          };
+        }
+        if (result.kind === "cancelled") {
+          return {
+            action: "keep_planning",
+            planContent: currentPlanContent,
+            silent: true,
+          };
         }
         return {
           action: "keep_planning",

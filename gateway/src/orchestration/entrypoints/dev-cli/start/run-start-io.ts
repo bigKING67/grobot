@@ -180,6 +180,14 @@ export type TerminalSelectMenuInlineInputReduction =
   | { kind: "submit"; value: string }
   | { kind: "edit_plan"; value: string };
 
+export function isPlanApprovalInlineFeedbackApproveShortcut(rawInput: string): boolean {
+  return String(rawInput ?? "") === "\u001b[Z";
+}
+
+function isPlanApprovalExternalEditEnabled(input: TerminalSelectMenuInput): boolean {
+  return input.variant === "plan_approval" && input.planApprovalMeta?.emptyPlan !== true;
+}
+
 export interface TerminalAskUserQuestionnairePanelInput {
   queue: readonly AskUserEnvelope[];
   initialState?: AskUserQuestionnaireState;
@@ -3668,11 +3676,17 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       activeIndex = resolvedVisibleIndex;
       const inputValue = menuInlineInputValues.get(item.id)
         ?? resolveTerminalSelectMenuItemInputValue(item);
+      const planApprovalFeedback = input.variant === "plan_approval" && item.id === "approve"
+        ? readPlanApprovalFeedbackValue()
+        : undefined;
+      const resultInputValue = planApprovalFeedback ?? inputValue;
       finish({
         kind: "selected",
-        item: item.input ? { ...item, inputValue } : item,
+        item: item.input ? { ...item, inputValue: resultInputValue } : item,
         index: sourceIndex,
-        inputValue,
+        ...(resultInputValue.length > 0 || item.input
+          ? { inputValue: resultInputValue }
+          : {}),
       });
     };
 
@@ -3749,6 +3763,63 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     const readInlineInputValue = (item: TerminalSelectMenuItem): string =>
       menuInlineInputValues.get(item.id) ?? resolveTerminalSelectMenuItemInputValue(item);
 
+    const readPlanApprovalFeedbackValue = (): string | undefined => {
+      if (input.variant !== "plan_approval") {
+        return undefined;
+      }
+      const feedbackItem = input.items.find((item) => item.input);
+      if (!feedbackItem) {
+        return undefined;
+      }
+      return readInlineInputValue(feedbackItem);
+    };
+
+    const finishEditPlan = (
+      item: TerminalSelectMenuItem,
+      sourceIndex: number,
+      inputValue?: string,
+    ): void => {
+      const resolvedInputValue = inputValue ?? readPlanApprovalFeedbackValue();
+      if (!item.input && typeof resolvedInputValue !== "string") {
+        finish({ kind: "edit_plan", item, index: sourceIndex });
+        return;
+      }
+      finish({
+        kind: "edit_plan",
+        item: item.input ? { ...item, inputValue: resolvedInputValue ?? "" } : item,
+        index: sourceIndex,
+        ...(typeof resolvedInputValue === "string" ? { inputValue: resolvedInputValue } : {}),
+      });
+    };
+
+    const finishPlanApprovalWithInlineFeedback = (): boolean => {
+      if (input.variant !== "plan_approval") {
+        return false;
+      }
+      const inputItem = resolveActiveInputItem();
+      if (!inputItem) {
+        return false;
+      }
+      const feedback = readInlineInputValue(inputItem);
+      if (feedback.trim().length <= 0) {
+        render();
+        return true;
+      }
+      const approveSourceIndex = input.items.findIndex((item) => item.id === "approve");
+      const sourceIndex = approveSourceIndex >= 0 ? approveSourceIndex : 0;
+      const approveItem = input.items[sourceIndex];
+      if (!approveItem) {
+        return false;
+      }
+      finish({
+        kind: "selected",
+        item: approveItem,
+        index: sourceIndex,
+        inputValue: feedback,
+      });
+      return true;
+    };
+
     const applyInlineInputReduction = (
       item: TerminalSelectMenuItem,
       reduction: TerminalSelectMenuInlineInputReduction,
@@ -3758,7 +3829,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       }
       if (reduction.kind === "edit_plan") {
         const sourceIndex = resolveActiveSourceIndex() ?? 0;
-        finish({ kind: "edit_plan", item, index: sourceIndex });
+        finishEditPlan(item, sourceIndex, reduction.value);
         return true;
       }
       if (reduction.kind === "submit") {
@@ -3792,11 +3863,17 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     const onData = (chunk: string): void => {
       const rawInput = String(chunk ?? "");
       const numericSelectionEnabled = shouldEnableTerminalSelectMenuNumericSelection(input);
-      if (rawInput === "\u0007" && input.variant === "plan_approval") {
+      if (
+        isPlanApprovalInlineFeedbackApproveShortcut(rawInput)
+        && finishPlanApprovalWithInlineFeedback()
+      ) {
+        return;
+      }
+      if (rawInput === "\u0007" && isPlanApprovalExternalEditEnabled(input)) {
         const sourceIndex = resolveActiveSourceIndex() ?? 0;
         const item = input.items[sourceIndex] ?? input.items[0];
         if (item) {
-          finish({ kind: "edit_plan", item, index: sourceIndex });
+          finishEditPlan(item, sourceIndex);
         }
         return;
       }
@@ -3883,11 +3960,11 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return;
       }
       if (action.kind === "edit_plan") {
-        if (input.variant === "plan_approval") {
+        if (isPlanApprovalExternalEditEnabled(input)) {
           const sourceIndex = resolveActiveSourceIndex() ?? 0;
           const item = input.items[sourceIndex] ?? input.items[0];
           if (item) {
-            finish({ kind: "edit_plan", item, index: sourceIndex });
+            finishEditPlan(item, sourceIndex);
           }
         }
         return;

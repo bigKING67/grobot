@@ -105,9 +105,17 @@ function normalizePlanReadyApprovalDecision(
   if (typeof decision === "string") {
     return { action: decision };
   }
+  if (decision.action === "exit_plan_mode") {
+    return {
+      action: "exit_plan_mode",
+      planContent: decision.planContent,
+      silent: decision.silent,
+    };
+  }
   if (decision.action === "approve") {
     return {
       action: "approve",
+      feedback: decision.feedback,
       planContent: decision.planContent,
     };
   }
@@ -116,6 +124,7 @@ function normalizePlanReadyApprovalDecision(
       action: "keep_planning",
       feedback: decision.feedback,
       planContent: decision.planContent,
+      silent: decision.silent,
     };
   }
   return { action: "unavailable" };
@@ -149,24 +158,33 @@ export interface PlanReadyApprovalRequest {
 export type PlanReadyApprovalDecision =
   | "approve"
   | "keep_planning"
+  | "exit_plan_mode"
   | "unavailable"
   | {
+    action: "exit_plan_mode";
+    planContent?: string;
+    silent?: boolean;
+  }
+  | {
     action: "approve";
+    feedback?: string;
     planContent?: string;
   }
   | {
     action: "keep_planning";
     feedback?: string;
     planContent?: string;
+    silent?: boolean;
   }
   | {
     action: "unavailable";
   };
 
 interface NormalizedPlanReadyApprovalDecision {
-  action: "approve" | "keep_planning" | "unavailable";
+  action: "approve" | "keep_planning" | "exit_plan_mode" | "unavailable";
   feedback?: string;
   planContent?: string;
+  silent?: boolean;
 }
 
 export interface RunStartPlanTurnOptions {
@@ -505,7 +523,7 @@ function buildPlanDraftStatusDisplay(input: {
     })
     : undefined;
   const lines = [
-    "Plan Draft",
+    `${terminalStyle.planMode("●")} Plan Draft`,
   ];
   if (displayPath) {
     lines.push(displayPath);
@@ -537,7 +555,7 @@ function buildCurrentPlanDisplay(input: {
     });
   }
   return [
-    "Current Plan",
+    `${terminalStyle.planMode("●")} Current Plan`,
     displayPath,
     "",
     planContent,
@@ -556,7 +574,20 @@ function buildPlanApprovalDivider(planContent: string): string {
     PLAN_APPROVAL_DIALOG_MAX_WIDTH,
     Math.max(PLAN_APPROVAL_DIALOG_MIN_WIDTH, maxPlanLineWidth),
   );
-  return "─".repeat(width);
+  return "┄".repeat(width);
+}
+
+function buildPlanSavedToHint(input: {
+  workDir: string;
+  planPath?: string;
+}): string | undefined {
+  if (!input.planPath) {
+    return undefined;
+  }
+  return `Plan saved to: ${formatHumanPlanFilePath({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  })} · /plan open to edit`;
 }
 
 function buildReadyToCodeSurface(input: {
@@ -569,18 +600,51 @@ function buildReadyToCodeSurface(input: {
     planPath: input.planPath,
   });
   const planContent = stripInternalPlanMetadata(input.planContent);
+  if (isUnwrittenPlanSkeleton(input.planContent) || planContent.trim().length === 0) {
+    return buildExitPlanModeSurface({
+      workDir: input.workDir,
+      planPath: input.planPath,
+    });
+  }
   const divider = buildPlanApprovalDivider(planContent);
   return [
-    "Ready to code?",
-    "Here is Grobot's plan:",
+    `${terminalStyle.planMode("●")} Ready to code?`,
+    `  ${terminalStyle.muted(`Planning: ${displayPath}`)}`,
+    `  ${terminalStyle.muted("Review the plan before execution.")}`,
     "",
     divider,
+    "Here is Grobot's plan:",
+    "",
     planContent,
     divider,
     "",
-    "Grobot has written up a plan and is ready to execute. Would you like to proceed?",
+    "─".repeat(Math.max(24, measureDisplayWidth(divider))),
+    "Would you like to proceed?",
+    "",
     `❯ Yes, ${PLAN_EXECUTION_REPLY}`,
     "  No, keep planning",
+    "",
+    `Edit: /plan open · ${displayPath}`,
+    "",
+  ].join("\n");
+}
+
+function buildExitPlanModeSurface(input: {
+  workDir: string;
+  planPath: string;
+}): string {
+  const displayPath = formatHumanPlanFilePath({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
+  return [
+    `${terminalStyle.planMode("●")} Exit plan mode?`,
+    `  ${terminalStyle.muted(`Planning: ${displayPath}`)}`,
+    "",
+    "Grobot wants to exit plan mode",
+    "",
+    "❯ Yes",
+    "  No",
     "",
     `Edit: /plan open · ${displayPath}`,
     "",
@@ -684,13 +748,22 @@ function renderApprovedPlanCard(input: {
 }
 
 function buildApprovedPlanExecutionSurface(input: {
+  workDir: string;
+  planPath?: string;
   title?: string;
   approvedHash: string;
   ticketId: string;
   approvedPlanContent: string;
 }): string {
+  const savedToHint = buildPlanSavedToHint({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
   return [
-    "Plan approved",
+    `${terminalStyle.planMode("●")} User approved Grobot's plan`,
+    savedToHint
+      ? `  ${terminalStyle.muted(`Plan approved · ${savedToHint}`)}`
+      : `  ${terminalStyle.muted("Plan approved")}`,
     ...renderApprovedPlanCard(input),
     "Starting implementation from approved snapshot...",
     "",
@@ -779,28 +852,40 @@ function formatCompactPlanFailureReason(input: {
 
 function buildCompactPlanFailureSurface(input: {
   phase: PlanFailurePhase;
+  workDir: string;
+  planPath?: string;
   exitCode: number;
   failureDecision: PlanFailureDecision;
 }): string {
   const isApplying = input.phase === "applying";
   const title = isApplying ? "Plan implementation failed" : "Plan update failed";
+  const savedToHint = buildPlanSavedToHint({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
   const stateLine = isApplying
-    ? "Plan is still available; fix the runtime issue and retry execution."
-    : "Plan draft was kept; you can keep editing it.";
+    ? `Plan is still available. Fix the issue, then reply "${PLAN_EXECUTION_REPLY}" again.`
+    : 'Plan draft was kept. Plan mode is still active. Reply with more detail to refine, or use "/plan open" to edit the draft.';
   const nextLine = input.failureDecision.reason === "provider_runtime_failure"
     ? "Next: fix provider config or switch to an available model, then retry."
     : "Next: inspect the runtime failure, then retry the plan step.";
-  return [
-    title,
-    `Reason: ${formatCompactPlanFailureReason({
+  const lines = [
+    `${terminalStyle.planMode("●")} ${title}`,
+  ];
+  if (savedToHint) {
+    lines.push(`  ${terminalStyle.muted(savedToHint)}`);
+  }
+  lines.push(
+    `  Reason: ${formatCompactPlanFailureReason({
       exitCode: input.exitCode,
       failureDecision: input.failureDecision,
     })}`,
-    stateLine,
-    nextLine,
-    `Diagnostics: ${input.failureDecision.diagnosticCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
+    `  ${stateLine}`,
+    `  ${nextLine}`,
+    `  Diagnostics: ${input.failureDecision.diagnosticCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
     "",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function formatCompactPlanReviewFinding(finding: {
@@ -874,12 +959,12 @@ function buildCompactPlanReviewFailureSurface(input: {
     ? [`More: ${String(input.findings.length - fixes.length)} additional finding(s) hidden in compact mode.`]
     : [];
   return [
-    headline,
-    "Reason: the plan needs concrete scope, validation, and rollback detail before execution.",
-    ...fixes,
-    ...omitted,
-    "Next: refine the plan, then reply \"Implement the plan.\" again.",
-    `Diagnostics: ${input.reviewCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full findings.`,
+    `${terminalStyle.planMode("●")} ${headline}`,
+    "  Reason: the plan needs concrete scope, validation, and rollback detail before execution.",
+    ...fixes.map((line) => `  ${line}`),
+    ...omitted.map((line) => `  ${line}`),
+    `  Next: refine the plan, then reply "${PLAN_EXECUTION_REPLY}" again.`,
+    `  Diagnostics: ${input.reviewCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full findings.`,
     "",
   ].join("\n");
 }
@@ -931,10 +1016,10 @@ function writePlanQualityGuardBlockedSurface(input: {
   if (input.compactFailureSurface) {
     input.writeStderr(
       [
-        "Plan quality gate blocked execution",
-        `Reason: ${input.guardReason}`,
-        "Next: refine the plan until the quality guard is no longer critical.",
-        `Diagnostics: ${PLAN_QUALITY_GUARD_BLOCKED_CODE}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
+        `${terminalStyle.planMode("●")} Plan quality gate blocked execution`,
+        `  Reason: ${input.guardReason}`,
+        "  Next: refine the plan until the quality guard is no longer critical.",
+        `  Diagnostics: ${PLAN_QUALITY_GUARD_BLOCKED_CODE}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
         "",
       ].join("\n"),
     );
@@ -975,9 +1060,19 @@ function buildPlanModeEnteredSurface(input?: {
   return lines.join("\n");
 }
 
+function buildPlanKeptInPlanningSurface(): string {
+  return [
+    `${terminalStyle.planMode("●")} Plan kept in plan mode`,
+    `  ${terminalStyle.muted('Reply with more detail to refine, or use "/plan open" to edit the draft.')}`,
+    "",
+  ].join("\n");
+}
+
 function writePlanFailureSurface(input: {
   phase: PlanFailurePhase;
   planId: string;
+  workDir: string;
+  planPath?: string;
   exitCode: number;
   compactFailureSurface: boolean;
   failureDecision: PlanFailureDecision;
@@ -987,6 +1082,8 @@ function writePlanFailureSurface(input: {
     input.writeStderr(
       buildCompactPlanFailureSurface({
         phase: input.phase,
+        workDir: input.workDir,
+        planPath: input.planPath,
         exitCode: input.exitCode,
         failureDecision: input.failureDecision,
       }),
@@ -2402,6 +2499,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         writePlanFailureSurface({
           phase: "planning",
           planId: meta.active_plan_id,
+          workDir: input.workDir,
+          planPath: meta.active_plan_path,
           exitCode: code,
           compactFailureSurface,
           failureDecision,
@@ -2476,7 +2575,15 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           await options?.requestReadyPlanApproval?.(readyApprovalRequest),
         );
         if (approvalDecision.action === "approve") {
-          return applyPlan(PLAN_EXECUTION_REPLY, options);
+          const feedback = approvalDecision.feedback?.trim();
+          return applyPlan(
+            feedback && feedback.length > 0 ? feedback : PLAN_EXECUTION_REPLY,
+            options,
+          );
+        }
+        if (approvalDecision.action === "exit_plan_mode") {
+          await persistPlanState("normal", undefined);
+          return code;
         }
         if (approvalDecision.action === "keep_planning") {
           const feedback = approvalDecision.feedback?.trim();
@@ -2484,7 +2591,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
             writeStdout("Plan feedback added. Continuing plan mode...\n\n");
             return runPlanTurn(feedback, options);
           }
-          writeStdout("Plan kept in plan mode. Send edits or use /plan open to revise.\n\n");
+          if (approvalDecision.silent !== true) {
+            writeStdout(buildPlanKeptInPlanningSurface());
+          }
           return code;
         }
         writeStdout(buildReadyToCodeSurface(readyApprovalRequest));
@@ -2715,6 +2824,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       writeStdout(
         buildApprovedPlanExecutionSurface({
+          workDir: input.workDir,
+          planPath: active.planPath,
           title: approvedEntry.title,
           approvedHash,
           ticketId: approvalTicketId,
@@ -2795,6 +2906,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         writePlanFailureSurface({
           phase: "applying",
           planId: active.entry.plan_id,
+          workDir: input.workDir,
+          planPath: active.planPath,
           exitCode: code,
           compactFailureSurface,
           failureDecision,

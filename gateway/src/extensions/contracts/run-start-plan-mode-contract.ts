@@ -469,6 +469,137 @@ async function main(): Promise<void> {
       requestReadyPlanApproval: async () => "approve",
     });
 
+    const cancelApprovalWorkDir = resolve(workDir, "interactive-approval-cancel");
+    mkdirSync(cancelApprovalWorkDir, { recursive: true });
+    const cancelApprovalSessionKey = "feishu:grobot:dm:plan-mode-approval-cancel-contract";
+    const cancelApprovalRuntimeState = createRuntimeState(cancelApprovalSessionKey);
+    let cancelApprovalStdout = "";
+    const cancelApprovalPlanMode = createRunStartPlanMode({
+      workDir: cancelApprovalWorkDir,
+      runtimeState: cancelApprovalRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        cancelApprovalRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        cancelApprovalStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    await cancelApprovalPlanMode.handleMessageInput("/plan approval cancel", {
+      messageMode: true,
+    });
+    const cancelApprovalPlanPath = cancelApprovalPlanMode.getActivePlanPath();
+    if (!cancelApprovalPlanPath) {
+      throw new Error("expected active plan path for approval cancel contract");
+    }
+    writeFileSync(cancelApprovalPlanPath, `${validPlan}\n`, "utf8");
+    const cancelApprovalStdoutBeforeReady = cancelApprovalStdout;
+    const cancelApprovalRunResult = await cancelApprovalPlanMode.runPlanTurn(
+      "ready approval menu cancelled",
+      {
+        requestReadyPlanApproval: async () => ({
+          action: "keep_planning",
+          silent: true,
+        }),
+      },
+    );
+    const cancelApprovalOutput =
+      cancelApprovalStdout.slice(cancelApprovalStdoutBeforeReady.length);
+
+    const exitApprovalWorkDir = resolve(workDir, "interactive-approval-empty-exit");
+    mkdirSync(exitApprovalWorkDir, { recursive: true });
+    const exitApprovalSessionKey = "feishu:grobot:dm:plan-mode-approval-empty-exit-contract";
+    const exitApprovalRuntimeState = createRuntimeState(exitApprovalSessionKey);
+    const exitApprovalExecuteInputs: string[] = [];
+    let exitApprovalStdout = "";
+    const exitApprovalPlanMode = createRunStartPlanMode({
+      workDir: exitApprovalWorkDir,
+      runtimeState: exitApprovalRuntimeState,
+      persistence,
+      executeTurn: async (userInput) => {
+        exitApprovalExecuteInputs.push(userInput);
+        return 0;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        exitApprovalRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        exitApprovalStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    await exitApprovalPlanMode.handleMessageInput("/plan empty exit", {
+      messageMode: true,
+    });
+    const exitApprovalPlanPath = exitApprovalPlanMode.getActivePlanPath();
+    if (!exitApprovalPlanPath) {
+      throw new Error("expected active plan path for approval empty exit contract");
+    }
+    writeFileSync(exitApprovalPlanPath, `${validPlan}\n`, "utf8");
+    const exitApprovalStdoutBeforeReady = exitApprovalStdout;
+    const exitApprovalRunResult = await exitApprovalPlanMode.runPlanTurn(
+      "ready approval exits without implementation",
+      {
+        requestReadyPlanApproval: async () => ({
+          action: "exit_plan_mode",
+          silent: true,
+        }),
+      },
+    );
+    const exitApprovalOutput =
+      exitApprovalStdout.slice(exitApprovalStdoutBeforeReady.length);
+
+    const approvalFeedbackWorkDir = resolve(workDir, "interactive-approval-with-feedback");
+    mkdirSync(approvalFeedbackWorkDir, { recursive: true });
+    const approvalFeedbackSessionKey = "feishu:grobot:dm:plan-mode-approval-feedback-contract";
+    const approvalFeedbackRuntimeState = createRuntimeState(approvalFeedbackSessionKey);
+    const approvalFeedbackExecuteInputs: string[] = [];
+    const approvalFeedbackPlanMode = createRunStartPlanMode({
+      workDir: approvalFeedbackWorkDir,
+      runtimeState: approvalFeedbackRuntimeState,
+      persistence,
+      executeTurn: async (userInput) => {
+        approvalFeedbackExecuteInputs.push(userInput);
+        return 0;
+      },
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        approvalFeedbackRuntimeState.markFailureObserved();
+      },
+      writeStdout: () => undefined,
+      writeStderr: () => undefined,
+    });
+    await approvalFeedbackPlanMode.handleMessageInput("/plan approval with feedback", {
+      messageMode: true,
+    });
+    const approvalFeedbackPlanPath = approvalFeedbackPlanMode.getActivePlanPath();
+    if (!approvalFeedbackPlanPath) {
+      throw new Error("expected active plan path for approval-with-feedback contract");
+    }
+    writeFileSync(approvalFeedbackPlanPath, `${validPlan}\n`, "utf8");
+    const approvalFeedbackRunResult = await approvalFeedbackPlanMode.runPlanTurn(
+      "ready approval menu accepted with feedback",
+      {
+        requestReadyPlanApproval: async () => ({
+          action: "approve",
+          feedback: "also tighten validation docs",
+        }),
+      },
+    );
+
     const feedbackWorkDir = resolve(workDir, "interactive-approval-feedback");
     mkdirSync(feedbackWorkDir, { recursive: true });
     const feedbackSessionKey = "feishu:grobot:dm:plan-mode-feedback-contract";
@@ -560,12 +691,14 @@ async function main(): Promise<void> {
       ready_surface_matches_reference_shape:
         readyOutput.includes("Ready to code?")
         && readyOutput.includes("Here is Grobot's plan:")
-        && readyOutput.includes("Grobot has written up a plan and is ready to execute. Would you like to proceed?")
+        && readyOutput.includes("Review the plan before execution.")
+        && readyOutput.includes("Would you like to proceed?")
         && readyOutput.includes("❯ Yes, Implement the plan.")
         && readyOutput.includes("  No, keep planning")
         && readyOutput.includes("Edit: /plan open"),
       ready_surface_has_plan_separators:
-        readyOutput.split("\n").some((line) => /^─{24,}$/.test(line)),
+        readyOutput.split("\n").some((line) => /^┄{24,}$/.test(line))
+        && readyOutput.split("\n").some((line) => /^─{24,}$/.test(line)),
       ready_approval_callback_receives_current_plan:
         keepPlanning === 0
         && readyApprovalRequests.length === 1
@@ -574,6 +707,23 @@ async function main(): Promise<void> {
       ready_approval_keep_planning_skips_fallback_surface:
         keepPlanningOutput.includes("Plan kept in plan mode")
         && !keepPlanningOutput.includes("Ready to code?"),
+      ready_approval_keep_planning_matches_reference_shape:
+        keepPlanningOutput.includes("●")
+        && keepPlanningOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+      ready_approval_cancel_returns_input_without_status_surface:
+        cancelApprovalRunResult === 0
+        && cancelApprovalRuntimeState.getPlanMode() === "plan_only"
+        && !cancelApprovalOutput.includes("Plan kept in plan mode")
+        && !cancelApprovalOutput.includes("Ready to code?"),
+      ready_approval_empty_exit_leaves_plan_mode:
+        exitApprovalRunResult === 0
+        && exitApprovalRuntimeState.getPlanMode() === "normal",
+      ready_approval_empty_exit_does_not_apply:
+        exitApprovalExecuteInputs.every((item) => !item.includes("[Approved Plan Execution]")),
+      ready_approval_empty_exit_is_quiet:
+        !exitApprovalOutput.includes("Ready to code?")
+        && !exitApprovalOutput.includes("Plan approved")
+        && !exitApprovalOutput.includes("Plan kept in plan mode"),
       ready_approval_yes_executes_plan:
         approvalRunResult === 0
         && approvalExecuteInputs.length === 2
@@ -581,8 +731,19 @@ async function main(): Promise<void> {
       ready_approval_yes_skips_text_fallback:
         approvalStdout.includes("Plan approved")
         && !approvalStdout.includes("Ready to code?"),
+      ready_approval_yes_matches_exit_plan_reference:
+        approvalStdout.includes("User approved Grobot's plan")
+        && approvalStdout.includes("Plan approved · Plan saved to: .grobot/plans/")
+        && approvalStdout.includes("/plan open to edit"),
       ready_approval_yes_exits_plan_mode:
         approvalRuntimeState.getPlanMode() === "normal",
+      ready_approval_yes_with_feedback_adds_instruction:
+        approvalFeedbackRunResult === 0
+        && approvalFeedbackExecuteInputs.length === 2
+        && approvalFeedbackExecuteInputs[1]?.includes("Additional user instruction:")
+        && approvalFeedbackExecuteInputs[1]?.includes("also tighten validation docs"),
+      ready_approval_yes_with_feedback_exits_plan_mode:
+        approvalFeedbackRuntimeState.getPlanMode() === "normal",
       ready_approval_feedback_runs_followup_plan_turn:
         feedbackRunResult === 0
         && feedbackApprovalCalls === 2
@@ -687,9 +848,13 @@ async function main(): Promise<void> {
       execute_payload_omits_plain_trigger_as_extra:
         !applyPrompt.includes("Additional user instruction:\nImplement the plan."),
       apply_surface_shows_approved_plan_start:
-        applyOutput.includes("Plan approved")
+        applyOutput.includes("User approved Grobot's plan")
+        && applyOutput.includes("Plan approved")
         && applyOutput.includes("Plan to implement")
         && applyOutput.includes("Starting implementation from approved snapshot"),
+      apply_surface_has_saved_plan_hint:
+        applyOutput.includes("Plan approved · Plan saved to: .grobot/plans/")
+        && applyOutput.includes("/plan open to edit"),
       apply_surface_renders_plan_card:
         applyOutput.includes("╭─ Plan to implement")
         && applyOutput.includes("│ Contract Plan")
@@ -722,7 +887,9 @@ async function main(): Promise<void> {
       compact_plan_turn_failure_surface_human:
         failureStderr.includes("Plan update failed")
         && failureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
+        && failureStderr.includes("Plan saved to: .grobot/plans/")
         && failureStderr.includes("Plan draft was kept")
+        && failureStderr.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.')
         && failureStderr.includes("Diagnostics: PLAN_PROVIDER_RUNTIME_FAILURE"),
       compact_plan_turn_failure_hides_machine_lines:
         !failureStderr.includes("runtime failed:")
@@ -737,7 +904,9 @@ async function main(): Promise<void> {
       compact_plan_apply_failure_surface_human:
         applyFailureStderr.includes("Plan implementation failed")
         && applyFailureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
+        && applyFailureStderr.includes("Plan saved to: .grobot/plans/")
         && applyFailureStderr.includes("Plan is still available")
+        && applyFailureStderr.includes('reply "Implement the plan." again')
         && applyFailureStderr.includes("Diagnostics: PLAN_PROVIDER_RUNTIME_FAILURE"),
       compact_plan_apply_failure_hides_machine_lines:
         !applyFailureStderr.includes("runtime failed:")

@@ -2,6 +2,7 @@ import {
   decodeMenuInput,
   decodeAskUserPanelInput,
   hasMenuDigitsContinuation,
+  isPlanApprovalInlineFeedbackApproveShortcut,
   isHistorySearchShortcut,
   resolveCoalescedSubmitChunk,
   resolveDraftAwareFooterLines,
@@ -397,6 +398,8 @@ async function main(): Promise<void> {
     inputMode: true,
     variant: "plan_approval",
   });
+  const inlineInputShiftTabApproveFeedback =
+    isPlanApprovalInlineFeedbackApproveShortcut("\u001b[Z");
   const numericSelectionDefaultEnabled = shouldEnableTerminalSelectMenuNumericSelection({});
   const numericSelectionHiddenIndexDisabled = shouldEnableTerminalSelectMenuNumericSelection({
     hideIndexes: true,
@@ -833,6 +836,8 @@ async function main(): Promise<void> {
     menu_inline_input_ctrl_g_keeps_plan_editor:
       inlineInputCtrlGEditPlan.kind === "edit_plan"
       && inlineInputCtrlGEditPlan.value === "abc",
+    menu_inline_input_shift_tab_approves_feedback:
+      inlineInputShiftTabApproveFeedback,
     menu_numeric_selection_default_enabled: numericSelectionDefaultEnabled,
     menu_numeric_selection_hidden_indexes_disabled: !numericSelectionHiddenIndexDisabled,
     submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",

@@ -258,13 +258,37 @@ const planApprovalMenuInput: TerminalSelectMenuInput = {
     {
       id: "keep_planning",
       label: "No, keep planning",
-      description: "Tell Grobot what to change before coding.",
+      description: "shift+tab to approve with this feedback",
       input: {
         placeholder: "Tell Grobot what to change",
         showLabelWithValue: true,
         labelValueSeparator: ": ",
         resetCursorOnUpdate: true,
       },
+    },
+  ],
+};
+
+const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
+  title: "Exit plan mode?",
+  hint: "Enter 确认 · Esc 返回输入框",
+  variant: "plan_approval",
+  visibleOptionCount: 2,
+  planApprovalMeta: {
+    agentName: "Grobot",
+    editorName: "vim",
+    planPath: ".grobot/plans/demo/empty.md",
+    planContent: "",
+    emptyPlan: true,
+  },
+  items: [
+    {
+      id: "approve",
+      label: "Yes",
+    },
+    {
+      id: "keep_planning",
+      label: "No",
     },
   ],
 };
@@ -508,6 +532,31 @@ const askUserMenuPlain = plainRenderer.renderSelectMenu(askUserMenuInput, 0);
 const planApprovalMenuInteractive = interactiveRenderer.renderSelectMenu(planApprovalMenuInput, 0);
 const planApprovalMenuPlain = plainRenderer.renderSelectMenu(planApprovalMenuInput, 0);
 const planApprovalKeepPlanningPlain = plainRenderer.renderSelectMenu(planApprovalMenuInput, 1);
+const emptyPlanApprovalPlain = plainRenderer.renderSelectMenu(emptyPlanApprovalMenuInput, 0);
+const emptyPlanApprovalPlainText = stripAnsi(emptyPlanApprovalPlain);
+const planApprovalDraftFeedbackPlain = plainRenderer.renderSelectMenu({
+  ...planApprovalMenuInput,
+  items: planApprovalMenuInput.items.map((item) =>
+    item.id === "keep_planning"
+      ? {
+        ...item,
+        input: {
+          ...(item.input ?? {}),
+          initialValue: "tighten validation",
+        },
+      }
+      : item
+  ),
+}, 1);
+const planApprovalEditedPlain = plainRenderer.renderSelectMenu({
+  ...planApprovalMenuInput,
+  planApprovalMeta: {
+    ...(planApprovalMenuInput.planApprovalMeta ?? {
+      planContent: "",
+    }),
+    planEdited: true,
+  },
+}, 0);
 const planApprovalMenuPlainText = stripAnsi(planApprovalMenuPlain);
 const planApprovalMenuPlainLines = planApprovalMenuPlainText.split("\n");
 const planApprovalDividerRows = planApprovalMenuPlainLines.filter((line) =>
@@ -643,25 +692,48 @@ const payload = {
     planApprovalMenuPlainText.includes("# Contract Plan")
     && planApprovalMenuPlainText.includes("## Validation"),
   plan_approval_menu_separates_plan_actions_and_footer:
-    planApprovalDividerRows.length >= 3,
+    planApprovalDividerRows.length >= 2,
   plan_approval_menu_has_reference_prompt:
-    planApprovalMenuPlainText.includes("Grobot has written up a plan and is ready to execute. Would you like to proceed?"),
+    planApprovalMenuPlainText.includes("Would you like to proceed?"),
+  plan_approval_menu_uses_sticky_footer_order:
+    planApprovalMenuPlainText.indexOf("Would you like to proceed?")
+      > planApprovalMenuPlainText.indexOf("## Validation")
+    && planApprovalMenuPlainText.indexOf("ctrl-g to edit in vim")
+      > planApprovalMenuPlainText.indexOf("No, keep planning"),
   plan_approval_menu_has_yes_no_options:
     planApprovalMenuPlainText.includes("❯ Yes, Implement the plan.")
     && planApprovalMenuPlainText.includes("No, keep planning"),
   plan_approval_menu_has_ctrl_g_edit_hint:
     planApprovalMenuPlainText.includes("ctrl-g to edit in vim")
     && planApprovalMenuPlainText.includes(".grobot/plans/demo/001-contract-plan.md"),
+  plan_approval_menu_shows_saved_after_external_edit:
+    stripAnsi(planApprovalEditedPlain).includes("✓Plan saved!"),
   plan_approval_menu_shows_keep_planning_feedback_hint:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change before coding."),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("shift+tab to approve with this feedback"),
   plan_approval_menu_shows_inline_feedback_input:
     stripAnsi(planApprovalKeepPlanningPlain).includes("No, keep planning: Tell Grobot what to change"),
   plan_approval_menu_shows_inline_feedback_cursor:
     stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change▌"),
+  plan_approval_menu_preserves_feedback_after_reopen:
+    stripAnsi(planApprovalDraftFeedbackPlain).includes("No, keep planning: tighten validation▌"),
   plan_approval_menu_uses_plan_mode_color:
     planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
   plan_approval_menu_has_no_default_thin_pointer:
     !planApprovalMenuPlainText.includes("›"),
+  plan_approval_empty_uses_exit_title:
+    emptyPlanApprovalPlainText.includes("Exit plan mode?"),
+  plan_approval_empty_uses_reference_copy:
+    emptyPlanApprovalPlainText.includes("Grobot wants to exit plan mode"),
+  plan_approval_empty_has_yes_no_only:
+    emptyPlanApprovalPlainText.includes("❯ Yes")
+    && emptyPlanApprovalPlainText.includes("  No")
+    && !emptyPlanApprovalPlainText.includes("Implement the plan")
+    && !emptyPlanApprovalPlainText.includes("No, keep planning"),
+  plan_approval_empty_omits_plan_markdown:
+    !emptyPlanApprovalPlainText.includes("Here is Grobot's plan:")
+    && !emptyPlanApprovalPlainText.includes("No plan found.")
+    && !emptyPlanApprovalPlainText.includes("Would you like to proceed?")
+    && !emptyPlanApprovalPlainText.includes("ctrl-g to edit"),
   model_picker_direct_render_uses_model_visible_count:
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),

@@ -42,6 +42,7 @@ export interface TerminalSelectMenuPlanApprovalMeta {
   agentName?: string;
   editorName?: string;
   planEdited?: boolean;
+  emptyPlan?: boolean;
 }
 
 export interface TerminalSelectMenuViewport {
@@ -70,7 +71,7 @@ export interface TerminalSelectMenuInput {
 
 export type TerminalSelectMenuResult =
   | { kind: "selected"; item: TerminalSelectMenuItem; index: number; inputValue?: string }
-  | { kind: "edit_plan"; item: TerminalSelectMenuItem; index: number }
+  | { kind: "edit_plan"; item: TerminalSelectMenuItem; index: number; inputValue?: string }
   | { kind: "cancelled" };
 
 interface RenderTerminalSelectMenuInput {
@@ -715,12 +716,44 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   const planContent = input.menu.planApprovalMeta?.planContent ?? "";
   const planPath = sanitizeTerminalDisplayText(input.menu.planApprovalMeta?.planPath ?? "").trim();
   const hintBase = sanitizeMenuText(input.menu.hint, "↑/↓ 选择 · Enter 确认 · Esc 返回输入框");
+  const isEmptyPlanApproval =
+    input.menu.planApprovalMeta?.emptyPlan === true || planContent.trim().length === 0;
+  if (isEmptyPlanApproval) {
+    const emptyTitle = input.menu.planApprovalMeta?.emptyPlan === true
+      ? "Exit plan mode?"
+      : sanitizeMenuText(input.menu.title, "Exit plan mode?");
+    const lines: string[] = [];
+    const optionLabelBudget = Math.max(12, surfaceWidth - 4);
+    lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
+    lines.push(`  ${theme.bold(truncateDisplayWidth(emptyTitle, surfaceWidth))}`);
+    lines.push(`  ${truncateDisplayWidth(`${agentName} wants to exit plan mode`, surfaceWidth)}`);
+    lines.push("");
+    for (let index = 0; index < input.menu.items.length; index += 1) {
+      const item = input.menu.items[index];
+      const isActive = index === input.activeIndex;
+      const marker = isActive
+        ? theme.color("planMode", "❯")
+        : " ";
+      const label = truncateDisplayWidth(
+        sanitizeMenuText(item.label, item.id),
+        optionLabelBudget,
+      );
+      const renderedLabel = isActive ? theme.color("planMode", label) : label;
+      lines.push(`  ${marker} ${renderedLabel}`);
+    }
+    if (viewport.totalCount > input.menu.items.length) {
+      lines.push(theme.color("muted", `  ${String(viewport.startIndex + 1)}-${String(viewport.startIndex + input.menu.items.length)} / ${String(viewport.totalCount)}`));
+    }
+    lines.push("");
+    lines.push(theme.color("muted", `  ${truncateDisplayWidth(hintBase, surfaceWidth)}`));
+    return lines.join("\n");
+  }
   const subtitle = sanitizeMenuText(input.menu.subtitle, "Review the plan before execution.");
   const editHint = planPath.length > 0
     ? `ctrl-g to edit in ${editorName} · ${planPath}`
     : `ctrl-g to edit in ${editorName}`;
   const editHintWithSaveState = input.menu.planApprovalMeta?.planEdited
-    ? `${editHint} · Plan saved!`
+    ? `${editHint} · ✓Plan saved!`
     : editHint;
   const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["No plan found."];
   const optionLabelBudget = Math.max(12, surfaceWidth - 4);
@@ -745,14 +778,9 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   }
   lines.push(sectionDivider);
   lines.push("");
-  lines.push(
-    theme.color("muted", `  ${
-        truncateDisplayWidth(
-          `${agentName} has written up a plan and is ready to execute. Would you like to proceed?`,
-          surfaceWidth,
-        )
-      }`),
-  );
+
+  lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
+  lines.push(theme.color("muted", "  Would you like to proceed?"));
   lines.push("");
 
   for (let index = 0; index < input.menu.items.length; index += 1) {
@@ -780,9 +808,8 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     lines.push(theme.color("muted", `  ${String(viewport.startIndex + 1)}-${String(viewport.startIndex + input.menu.items.length)} / ${String(viewport.totalCount)}`));
   }
   lines.push("");
-  lines.push(sectionDivider);
-  lines.push(theme.color("muted", `  ${truncateDisplayWidth(hintBase, surfaceWidth)}`));
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(editHintWithSaveState, surfaceWidth)}`));
+  lines.push(theme.color("muted", `  ${truncateDisplayWidth(hintBase, surfaceWidth)}`));
   return lines.join("\n");
 }
 
