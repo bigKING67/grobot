@@ -492,9 +492,23 @@ async function main(): Promise<void> {
     terminalColumns: 96,
     theme: "ccline",
   });
+  const submittedPlanTranscriptLines = renderSubmittedInputTranscriptLines({
+    value: "/plan 帮我规划 plan mode 交互",
+    promptLabel: "❯ ",
+    terminalColumns: 96,
+    theme: "ccline",
+    getSlashSuggestions: (input) =>
+      input === "/plan"
+        ? [{ command: "/plan", description: "Enter plan mode" }]
+        : [],
+  });
   const submittedTranscriptPlain = submittedTranscriptLines
     .map(stripAnsi)
     .join("\n");
+  const submittedPlanTranscriptPlain = submittedPlanTranscriptLines
+    .map(stripAnsi)
+    .join("\n");
+  const submittedPlanTranscriptRaw = submittedPlanTranscriptLines.join("\n");
   const inputChromeTopLinePlain = stripAnsi(inputChromeLines[0] ?? "");
   const inputChromeBodyLine = inputChromeLines[1] ?? "";
   const inputChromeBodyLinePlain = stripAnsi(inputChromeBodyLine);
@@ -909,6 +923,9 @@ async function main(): Promise<void> {
       && submittedTranscriptPlain.split("\n").filter((line) => /^─+$/.test(line)).length === 2,
     submitted_transcript_lines_within_width:
       submittedTranscriptLines.every((line) => measureDisplayWidth(line) <= 96),
+    submitted_slash_transcript_preserves_command_highlight:
+      submittedPlanTranscriptPlain.includes("❯ /plan 帮我规划 plan mode 交互")
+      && submittedPlanTranscriptRaw.includes("\u001B[1m\u001B[38;2;202;124;94m/plan\u001B[0m"),
     menu_viewport_keeps_active_visible:
       initialMenuViewport.startIndex > 0
       && initialMenuViewport.endIndex === 9

@@ -85,6 +85,33 @@ const feedEvents = [
   event({
     eventType: "tool_end",
     payload: {
+      tool_name: "write",
+      status: "ok",
+      output_summary: {
+        tool: "write",
+        file_path: ".grobot/plans/feishu-grobot-dm-ui/001-plan.md",
+        operation: "create",
+        bytes_written: 640,
+      },
+    },
+  }),
+  event({
+    eventType: "tool_end",
+    payload: {
+      tool_name: "edit",
+      status: "ok",
+      output_summary: {
+        tool: "edit",
+        path: "/tmp/grobot/.grobot/plans/feishu-grobot-dm-ui/001-plan.md",
+        replacements: 1,
+        first_changed_line: 3,
+        diff_preview: "@@ -3,1 +3,2 @@\n-old plan\n+new plan\n+verify",
+      },
+    },
+  }),
+  event({
+    eventType: "tool_end",
+    payload: {
       tool_name: "bash",
       status: "failed",
       duration_ms: 1200,
@@ -185,6 +212,18 @@ const payload = {
   renders_recovery_row:
     plain.includes("Recovery bash") && fullPlain.includes("stage=strategy_switch"),
   nested_payload_supported: fullPlain.includes("matches=12 engine=rg"),
+  plan_file_write_uses_reference_label:
+    plain.includes("Updated plan")
+    && !plain.includes("Wrote .grobot/plans")
+    && !plain.includes("feishu-grobot-dm-ui/001-plan.md"),
+  plan_file_edit_hides_path_and_diff_stats:
+    fullPlain.includes("Updated plan")
+    && !fullPlain.includes("Edited /tmp/grobot/.grobot/plans")
+    && !fullPlain.includes("old plan")
+    && !fullPlain.includes("new plan")
+    && !fullPlain.includes("Updated plan (+"),
+  plan_file_full_detail_shows_preview_hint:
+    fullPlain.includes("  ⎿  /plan to preview"),
   none_mode_suppresses_feed: noneRendered === "",
   env_default_suppresses_feed: resolveRuntimeActivityFeedDetailMode(undefined) === "none",
   env_compact_enables_feed:

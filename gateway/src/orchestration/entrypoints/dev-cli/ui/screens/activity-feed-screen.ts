@@ -166,6 +166,15 @@ function compactPath(path: string): string {
   return normalized.replace(/^\.?\//, "");
 }
 
+function isPlanArtifactPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/");
+  return normalized.startsWith(".grobot/plans/") || normalized.includes("/.grobot/plans/");
+}
+
+function isPlanFileTool(toolName: string, path: string): boolean {
+  return (toolName === "edit" || toolName === "write") && isPlanArtifactPath(path);
+}
+
 function compactDiffLines(diff: string, maxLines: number): string[] {
   if (!diff.trim()) {
     return [];
@@ -197,13 +206,33 @@ function buildToolEndRow(
     payloadString(payload, "error_class"),
     payloadString(summary, "error_class"),
   );
-  const path = compactPath(firstString(payloadString(summary, "path"), payloadString(payload, "path")));
+  const path = compactPath(firstString(
+    payloadString(summary, "path"),
+    payloadString(payload, "path"),
+    payloadString(summary, "file_path"),
+    payloadString(payload, "file_path"),
+  ));
   const duration = formatDurationMs(firstNumber(
     payloadNumber(payload, "duration_ms"),
     payloadNumber(summary, "duration_ms"),
   ));
   const label = humanToolLabel(toolName);
   const severity = status === "failed" ? "error" : status === "deferred" ? "warning" : "ok";
+  if (isPlanFileTool(toolName, path)) {
+    const detailLines = status === "failed" ? [] : ["/plan to preview"];
+    if (errorClass) {
+      detailLines.push(`error_class=${errorClass}`);
+    }
+    return {
+      title: status === "failed"
+        ? "Failed plan update"
+        : status === "deferred"
+          ? "Deferred plan update"
+          : "Updated plan",
+      detailLines,
+      severity,
+    };
+  }
   const titlePrefix = status === "failed"
     ? `Failed ${toolName}`
     : status === "deferred"

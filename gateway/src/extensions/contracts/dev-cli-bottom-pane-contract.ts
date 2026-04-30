@@ -239,6 +239,8 @@ const payload = {
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
   plan_mode_idle_keeps_badge_when_short:
     shortPlanModeIdleFooter.includes("plan mode on"),
+  plan_mode_idle_badge_leads_status:
+    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ plan mode on"),
   plan_mode_idle_short_within_width:
     shortPlanModeIdleFooter.split("\n").every((line) => measureDisplayWidth(line) <= 48),
   pending_has_no_divider: !/^─+$/.test(pendingLines[0] ?? ""),

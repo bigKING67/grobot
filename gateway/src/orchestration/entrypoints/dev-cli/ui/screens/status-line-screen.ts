@@ -718,7 +718,7 @@ function resolvePlanModeBadge(input: {
   return `${ANSI_PLAN_MODE}${PLAN_MODE_SYMBOL} ${label}${ANSI_RESET}`;
 }
 
-function appendPlanModeBadge(input: {
+function applyPlanModeBadge(input: {
   statusLine: string;
   prompt: StatusLinePromptInput;
   config: StatusLineConfig;
@@ -735,7 +735,9 @@ function appendPlanModeBadge(input: {
   if (measureDisplayWidth(input.statusLine) <= 0) {
     return badge;
   }
-  const withBadge = `${input.statusLine}${separator}${badge}`;
+  // Match the reference TUI footer: active modes are a left-side mode pill,
+  // not a low-visibility suffix after the model/context status.
+  const withBadge = `${badge}${separator}${input.statusLine}`;
   const terminalColumns =
     typeof input.prompt.terminalColumns === "number" && Number.isFinite(input.prompt.terminalColumns)
       ? Math.floor(input.prompt.terminalColumns)
@@ -754,7 +756,7 @@ function appendPlanModeBadge(input: {
         ? badge
         : truncateDisplayWidth(stripAnsi(badge), terminalColumns);
     }
-    return `${ANSI_DIM}${compactStatusLine}${ANSI_RESET}${separator}${badge}`;
+    return `${badge}${separator}${ANSI_DIM}${compactStatusLine}${ANSI_RESET}`;
   }
   return withBadge;
 }
@@ -772,7 +774,7 @@ export function resolveStatusLinePromptParts(
     prompt: input,
     config,
   });
-  const statusLineWithPlanMode = appendPlanModeBadge({
+  const statusLineWithPlanMode = applyPlanModeBadge({
     statusLine,
     prompt: input,
     config,

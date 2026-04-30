@@ -423,6 +423,7 @@ export function renderSubmittedInputTranscriptLines(input: {
   promptLabel?: string;
   terminalColumns?: number;
   theme?: "plain" | "nerd_font" | "ccline";
+  getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
 }): string[] {
   const promptLabel = input.promptLabel && input.promptLabel.length > 0
     ? input.promptLabel
@@ -446,10 +447,24 @@ export function renderSubmittedInputTranscriptLines(input: {
   const continuationPrefix = " ".repeat(promptLabelWidth);
   const bodyLines = descriptors.map((descriptor, index) => {
     const prefix = index === 0 ? promptLabel : continuationPrefix;
-    return `${prefix}${renderInlineImageTokensForDisplay({
+    const renderedText = renderInlineImageTokensForDisplay({
       text: descriptor.text,
       theme: input.theme,
-    })}`;
+    });
+    const highlightSuggestions = typeof input.getSlashSuggestions === "function"
+      ? resolveSlashInputHighlightSuggestions({
+        activeLineInput: descriptor.text,
+        suggestions: [],
+        getSlashSuggestions: input.getSlashSuggestions,
+      })
+      : [];
+    const highlightedText = shouldHighlightSlashInputToken({
+      activeLineInput: descriptor.text,
+      suggestions: highlightSuggestions,
+    })
+      ? renderSlashCommandTokenHighlight(renderedText)
+      : renderedText;
+    return `${prefix}${highlightedText}`;
   });
   return renderInteractiveInputChromeLines({
     bodyLines,
@@ -1418,6 +1433,7 @@ export async function runSessionInputLoop(
         promptLabel,
         terminalColumns: resolveTerminalColumns(),
         theme: getTheme(),
+        getSlashSuggestions: options.getSlashSuggestions,
       });
       process.stdout.write(lines.join("\n"));
       process.stdout.write("\n");

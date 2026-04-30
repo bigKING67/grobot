@@ -1137,6 +1137,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartInputKeybindingContractPayload.input_chrome_border_tracks_body_width, true);
   assert.equal(runStartInputKeybindingContractPayload.input_chrome_cursor_column_matches_open_rails, true);
   assert.equal(runStartInputKeybindingContractPayload.input_chrome_cursor_uses_left_padding, true);
+  assert.equal(runStartInputKeybindingContractPayload.submitted_slash_transcript_preserves_command_highlight, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_viewport_keeps_active_visible, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_viewport_scrolls_one_row_down, true);
   assert.equal(runStartInputKeybindingContractPayload.menu_viewport_scrolls_one_row_up, true);
@@ -1740,6 +1741,9 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliActivityFeedPayload.renders_failed_bash, true);
   assert.equal(devCliActivityFeedPayload.renders_recovery_row, true);
   assert.equal(devCliActivityFeedPayload.nested_payload_supported, true);
+  assert.equal(devCliActivityFeedPayload.plan_file_write_uses_reference_label, true);
+  assert.equal(devCliActivityFeedPayload.plan_file_edit_hides_path_and_diff_stats, true);
+  assert.equal(devCliActivityFeedPayload.plan_file_full_detail_shows_preview_hint, true);
   assert.equal(devCliActivityFeedPayload.none_mode_suppresses_feed, true);
   assert.equal(devCliActivityFeedPayload.env_default_suppresses_feed, true);
   assert.equal(devCliActivityFeedPayload.env_compact_enables_feed, true);
@@ -1806,6 +1810,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliStatusLineContractPayload.warning_status_line_unchanged, true);
   assert.equal(devCliStatusLineContractPayload.tokens_segment_toggle_effective, true);
   assert.equal(devCliStatusLineContractPayload.plan_mode_badge_visible, true);
+  assert.equal(devCliStatusLineContractPayload.plan_mode_badge_leads_status, true);
   logStep("dev-cli-status-line-contract");
 
   const terminalTextSanitizerContractResult = runCommand("npx", [
@@ -1927,6 +1932,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliBottomPanePayload.idle_narrow_hides_shortcut_hint, true);
   assert.equal(devCliBottomPanePayload.idle_narrow_keeps_status, true);
   assert.equal(devCliBottomPanePayload.idle_narrow_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.plan_mode_idle_badge_leads_status, true);
   assert.equal(devCliBottomPanePayload.pending_has_no_divider, true);
   assert.equal(devCliBottomPanePayload.pending_keeps_status_above_ask, true);
   assert.equal(devCliBottomPanePayload.pending_status_secondary, true);

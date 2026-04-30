@@ -3,6 +3,10 @@ import {
   renderStatusLinePrompt,
 } from "../../orchestration/entrypoints/dev-cli/ui/screens/status-line-screen";
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 const sessionId = "019d8b75-8bdf-78e2-a056-1f98a38774bd";
 const sessionShortId = "019d8b75";
 
@@ -167,6 +171,8 @@ const payload = {
     segmentToggleStatusLine.includes("5K window") === false
     && segmentToggleStatusLine.includes("5k window") === false,
   plan_mode_badge_visible: planModeStatusLine.includes("plan mode on"),
+  plan_mode_badge_leads_status:
+    stripAnsi(planModeStatusLine).startsWith("⏸ plan mode on"),
   plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("plan mode on"),
   plan_mode_badge_kept_when_status_disabled:
     disabledStatusPlanModePrompt.includes("plan mode on"),
