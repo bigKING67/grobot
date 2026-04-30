@@ -542,6 +542,7 @@ function buildCurrentPlanDisplay(input: {
   workDir: string;
   planPath: string;
   planContent: string;
+  editorName?: string;
 }): string {
   const displayPath = formatHumanPlanFilePath({
     workDir: input.workDir,
@@ -554,13 +555,17 @@ function buildCurrentPlanDisplay(input: {
       planPath: input.planPath,
     });
   }
+  const editorName = compactSpaces(input.editorName ?? "");
+  const editHint = editorName.length > 0
+    ? `"/plan open" to edit this plan in ${editorName}`
+    : "\"/plan open\" to edit this plan";
   return [
     `${terminalStyle.planMode("●")} Current Plan`,
     displayPath,
     "",
     planContent,
     "",
-    "\"/plan open\" to edit this plan",
+    editHint,
     "",
   ].join("\n");
 }
@@ -649,6 +654,23 @@ function buildExitPlanModeSurface(input: {
     `Edit: /plan open · ${displayPath}`,
     "",
   ].join("\n");
+}
+
+function buildExitedPlanModeSurface(): string {
+  return [
+    `${terminalStyle.planMode("●")} Exited plan mode`,
+    "",
+  ].join("\n");
+}
+
+function resolvePlanEditorDisplayName(): string | undefined {
+  const rawEditor = String(process.env.VISUAL ?? process.env.EDITOR ?? "").trim();
+  if (rawEditor.length === 0) {
+    return undefined;
+  }
+  const command = rawEditor.split(/\s+/)[0] ?? rawEditor;
+  const parts = command.split(/[\\/]+/).filter((part) => part.length > 0);
+  return parts[parts.length - 1] ?? command;
 }
 
 function formatHumanPlanFilePath(input: {
@@ -1068,6 +1090,27 @@ function buildPlanKeptInPlanningSurface(): string {
   ].join("\n");
 }
 
+function buildPlanNeedsRefinementSurface(detail: string): string {
+  return [
+    `${terminalStyle.planMode("●")} Plan needs refinement`,
+    `  ${terminalStyle.muted(detail)}`,
+    `  ${terminalStyle.muted('Reply with more detail to refine, or use "/plan open" to edit the draft.')}`,
+    "",
+  ].join("\n");
+}
+
+function buildPlanUpdatedSurface(input: {
+  phase: string;
+  nextAction: string;
+}): string {
+  return [
+    `${terminalStyle.planMode("●")} Plan updated`,
+    `  ${terminalStyle.muted(`Status: ${input.phase}`)}`,
+    `  ${terminalStyle.muted(`Next: ${input.nextAction}`)}`,
+    "",
+  ].join("\n");
+}
+
 function writePlanFailureSurface(input: {
   phase: PlanFailurePhase;
   planId: string;
@@ -1481,6 +1524,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         workDir: input.workDir,
         planPath: active.planPath,
         planContent: active.content,
+        editorName: resolvePlanEditorDisplayName(),
       }));
       return 0;
     }
@@ -2561,7 +2605,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (!decisionState.review.ok) {
         const topRepairAction = decisionState.repairActions[0];
         writeStdout(
-          `Plan needs refinement · ${topRepairAction?.title ?? decisionState.recommendation.reason}\n\n`,
+          buildPlanNeedsRefinementSurface(
+            topRepairAction?.title ?? decisionState.recommendation.reason,
+          ),
         );
         return 0;
       }
@@ -2583,6 +2629,9 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         if (approvalDecision.action === "exit_plan_mode") {
           await persistPlanState("normal", undefined);
+          if (approvalDecision.silent !== true) {
+            writeStdout(buildExitedPlanModeSurface());
+          }
           return code;
         }
         if (approvalDecision.action === "keep_planning") {
@@ -2598,8 +2647,10 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         writeStdout(buildReadyToCodeSurface(readyApprovalRequest));
       } else {
-        writeStdout(`Plan updated · ${planPhase}\n`);
-        writeStdout(`Next · ${decisionState.recommendation.action}\n\n`);
+        writeStdout(buildPlanUpdatedSurface({
+          phase: planPhase,
+          nextAction: decisionState.recommendation.action,
+        }));
       }
       return code;
     } finally {

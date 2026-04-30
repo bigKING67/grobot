@@ -1253,6 +1253,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.draft_plan_surface_hides_absolute_path, true);
   assert.equal(runStartPlanModeContractPayload.draft_plan_surface_hides_required_placeholders, true);
   assert.equal(runStartPlanModeContractPayload.draft_plan_surface_avoids_legacy_empty_message, true);
+  assert.equal(runStartPlanModeContractPayload.refine_plan_turn_handled, true);
+  assert.equal(runStartPlanModeContractPayload.refine_plan_turn_surface_matches_reference_shape, true);
   assert.equal(runStartPlanModeContractPayload.ready_plan_turn_handled, true);
   assert.equal(runStartPlanModeContractPayload.ready_surface_matches_reference_shape, true);
   assert.equal(runStartPlanModeContractPayload.ready_surface_has_plan_separators, true);
@@ -1276,12 +1278,14 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.active_plan_path_present, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_handled, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_is_current_plan_display, true);
+  assert.equal(runStartPlanModeContractPayload.open_plan_surface_has_editor_hint, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_hides_machine_fields_by_default, true);
   assert.equal(runStartPlanModeContractPayload.verbose_plan_surface_handled, true);
   assert.equal(runStartPlanModeContractPayload.verbose_plan_surface_preserves_machine_fields, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_uses_relative_plan_file, true);
   assert.equal(runStartPlanModeContractPayload.open_plan_surface_hides_absolute_plan_file, true);
   assert.equal(runStartPlanModeContractPayload.script_plan_surface_defaults_to_human_summary, true);
+  assert.equal(runStartPlanModeContractPayload.script_plan_surface_has_editor_hint, true);
   assert.equal(runStartPlanModeContractPayload.script_plan_surface_hides_machine_fields_by_default, true);
   assert.equal(runStartPlanModeContractPayload.script_plan_surface_uses_relative_plan_file, true);
   assert.equal(runStartPlanModeContractPayload.script_plan_surface_hides_absolute_plan_file, true);

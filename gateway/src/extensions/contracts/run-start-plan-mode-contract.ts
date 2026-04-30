@@ -102,6 +102,10 @@ async function main(): Promise<void> {
   const executeInputs: string[] = [];
   const executePromptPreludes: string[] = [];
   const originalStdinIsTTY = process.stdin.isTTY;
+  const originalEditor = process.env.EDITOR;
+  const originalVisual = process.env.VISUAL;
+  process.env.EDITOR = "vim";
+  delete process.env.VISUAL;
   Object.defineProperty(process.stdin, "isTTY", {
     configurable: true,
     value: true,
@@ -200,7 +204,9 @@ async function main(): Promise<void> {
     const stdoutBeforeDraftOpen = stdout;
     const draftOpen = await planMode.handleMessageInput("/plan open");
     const draftOpenOutput = stdout.slice(stdoutBeforeDraftOpen.length);
+    const stdoutBeforeRefine = stdout;
     const refine = await planMode.runPlanTurn("refine contract cleanup");
+    const refineOutput = stdout.slice(stdoutBeforeRefine.length);
     writeFileSync(planPath, `${validPlan}\n`, "utf8");
     const stdoutBeforeReady = stdout;
     const ready = await planMode.runPlanTurn("ready for approval");
@@ -687,6 +693,10 @@ async function main(): Promise<void> {
       draft_plan_surface_avoids_legacy_empty_message:
         !draftOpenOutput.includes("Already in plan mode. No plan written yet."),
       refine_plan_turn_handled: refine === 0,
+      refine_plan_turn_surface_matches_reference_shape:
+        refineOutput.includes("●")
+        && refineOutput.includes("Plan needs refinement")
+        && refineOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
       ready_plan_turn_handled: ready === 0,
       ready_surface_matches_reference_shape:
         readyOutput.includes("Ready to code?")
@@ -781,6 +791,8 @@ async function main(): Promise<void> {
         openOutput.includes("Current Plan")
         && openOutput.includes("# Contract Plan")
         && openOutput.includes("\"/plan open\" to edit this plan"),
+      open_plan_surface_has_editor_hint:
+        openOutput.includes("\"/plan open\" to edit this plan in vim"),
       open_plan_surface_hides_machine_fields_by_default:
         !openOutput.includes("plan_status_output_mode:")
         && !openOutput.includes("active_plan_phase:")
@@ -804,6 +816,8 @@ async function main(): Promise<void> {
         && scriptOpenOutput.includes("Current Plan")
         && scriptOpenOutput.includes("# Contract Plan")
         && scriptOpenOutput.includes("\"/plan open\" to edit this plan"),
+      script_plan_surface_has_editor_hint:
+        scriptOpenOutput.includes("\"/plan open\" to edit this plan in vim"),
       script_plan_surface_hides_machine_fields_by_default:
         !scriptOpenOutput.includes("plan_status_output_mode:")
         && !scriptOpenOutput.includes("active_plan_phase:")
@@ -921,6 +935,16 @@ async function main(): Promise<void> {
       configurable: true,
       value: originalStdinIsTTY,
     });
+    if (typeof originalEditor === "string") {
+      process.env.EDITOR = originalEditor;
+    } else {
+      delete process.env.EDITOR;
+    }
+    if (typeof originalVisual === "string") {
+      process.env.VISUAL = originalVisual;
+    } else {
+      delete process.env.VISUAL;
+    }
     rmSync(workDir, { recursive: true, force: true });
   }
 }
