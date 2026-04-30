@@ -715,6 +715,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   const planContent = input.menu.planApprovalMeta?.planContent ?? "";
   const planPath = sanitizeTerminalDisplayText(input.menu.planApprovalMeta?.planPath ?? "").trim();
   const hintBase = sanitizeMenuText(input.menu.hint, "↑/↓ 选择 · Enter 确认 · Esc 返回输入框");
+  const subtitle = sanitizeMenuText(input.menu.subtitle, "Review the plan before execution.");
   const editHint = planPath.length > 0
     ? `ctrl-g to edit in ${editorName} · ${planPath}`
     : `ctrl-g to edit in ${editorName}`;
@@ -724,13 +725,17 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["No plan found."];
   const optionLabelBudget = Math.max(12, surfaceWidth - 4);
   const lines: string[] = [];
+  const sectionDivider = theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth));
 
   lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
-  lines.push(`  ${theme.color("planMode", theme.bold(title))}`);
-  lines.push("");
+  if (planPath.length > 0) {
+    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`Planning: ${planPath}`, surfaceWidth)}`));
+  }
+  lines.push(`  ${theme.bold(truncateDisplayWidth(title, surfaceWidth))}`);
+  lines.push(theme.color("muted", `  ${truncateDisplayWidth(subtitle, surfaceWidth)}`));
+  lines.push(sectionDivider);
   lines.push(`  Here is ${agentName}'s plan:`);
   lines.push("");
-  lines.push(theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth)));
   for (const rawLine of planLines) {
     const sanitizedLine = sanitizeTerminalDisplayText(rawLine).trimEnd();
     const renderedLine = sanitizedLine.length > 0
@@ -738,7 +743,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
       : "";
     lines.push(`  ${renderedLine}`);
   }
-  lines.push(theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth)));
+  lines.push(sectionDivider);
   lines.push("");
   lines.push(
     theme.color("muted", `  ${
@@ -775,6 +780,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     lines.push(theme.color("muted", `  ${String(viewport.startIndex + 1)}-${String(viewport.startIndex + input.menu.items.length)} / ${String(viewport.totalCount)}`));
   }
   lines.push("");
+  lines.push(sectionDivider);
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(hintBase, surfaceWidth)}`));
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(editHintWithSaveState, surfaceWidth)}`));
   return lines.join("\n");

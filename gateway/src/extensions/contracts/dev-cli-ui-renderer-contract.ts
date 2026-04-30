@@ -508,6 +508,11 @@ const askUserMenuPlain = plainRenderer.renderSelectMenu(askUserMenuInput, 0);
 const planApprovalMenuInteractive = interactiveRenderer.renderSelectMenu(planApprovalMenuInput, 0);
 const planApprovalMenuPlain = plainRenderer.renderSelectMenu(planApprovalMenuInput, 0);
 const planApprovalKeepPlanningPlain = plainRenderer.renderSelectMenu(planApprovalMenuInput, 1);
+const planApprovalMenuPlainText = stripAnsi(planApprovalMenuPlain);
+const planApprovalMenuPlainLines = planApprovalMenuPlainText.split("\n");
+const planApprovalDividerRows = planApprovalMenuPlainLines.filter((line) =>
+  /^┄+$/.test(line.trim())
+);
 const viewportMenuPlain = plainRenderer.renderSelectMenu(viewportMenuInput, 1);
 const directLargeMenuPlain = plainRenderer.renderSelectMenu(directLargeMenuInput, 0);
 const directLargeModelPickerPlain = plainRenderer.renderSelectMenu(directLargeModelPickerInput, 0);
@@ -625,18 +630,28 @@ const payload = {
   ask_user_menu_uses_claude_pointer:
     stripAnsi(askUserMenuPlain).includes("❯"),
   plan_approval_menu_has_ready_title:
-    stripAnsi(planApprovalMenuPlain).includes("Ready to code?"),
+    planApprovalMenuPlainText.includes("Ready to code?"),
+  plan_approval_menu_has_planning_path_header:
+    planApprovalMenuPlainText.includes("Planning: .grobot/plans/demo/001-contract-plan.md")
+    && planApprovalMenuPlainText.indexOf("Planning: .grobot/plans/demo/001-contract-plan.md")
+      < planApprovalMenuPlainText.indexOf("Ready to code?"),
+  plan_approval_menu_title_is_not_plan_color_flooded:
+    !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1mReady to code?"),
+  plan_approval_menu_has_subtitle:
+    planApprovalMenuPlainText.includes("Review the plan before execution."),
   plan_approval_menu_embeds_plan_markdown:
-    stripAnsi(planApprovalMenuPlain).includes("# Contract Plan")
-    && stripAnsi(planApprovalMenuPlain).includes("## Validation"),
+    planApprovalMenuPlainText.includes("# Contract Plan")
+    && planApprovalMenuPlainText.includes("## Validation"),
+  plan_approval_menu_separates_plan_actions_and_footer:
+    planApprovalDividerRows.length >= 3,
   plan_approval_menu_has_reference_prompt:
-    stripAnsi(planApprovalMenuPlain).includes("Grobot has written up a plan and is ready to execute. Would you like to proceed?"),
+    planApprovalMenuPlainText.includes("Grobot has written up a plan and is ready to execute. Would you like to proceed?"),
   plan_approval_menu_has_yes_no_options:
-    stripAnsi(planApprovalMenuPlain).includes("❯ Yes, Implement the plan.")
-    && stripAnsi(planApprovalMenuPlain).includes("No, keep planning"),
+    planApprovalMenuPlainText.includes("❯ Yes, Implement the plan.")
+    && planApprovalMenuPlainText.includes("No, keep planning"),
   plan_approval_menu_has_ctrl_g_edit_hint:
-    stripAnsi(planApprovalMenuPlain).includes("ctrl-g to edit in vim")
-    && stripAnsi(planApprovalMenuPlain).includes(".grobot/plans/demo/001-contract-plan.md"),
+    planApprovalMenuPlainText.includes("ctrl-g to edit in vim")
+    && planApprovalMenuPlainText.includes(".grobot/plans/demo/001-contract-plan.md"),
   plan_approval_menu_shows_keep_planning_feedback_hint:
     stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change before coding."),
   plan_approval_menu_shows_inline_feedback_input:
@@ -646,7 +661,7 @@ const payload = {
   plan_approval_menu_uses_plan_mode_color:
     planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
   plan_approval_menu_has_no_default_thin_pointer:
-    !stripAnsi(planApprovalMenuPlain).includes("›"),
+    !planApprovalMenuPlainText.includes("›"),
   model_picker_direct_render_uses_model_visible_count:
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),
