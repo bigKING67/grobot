@@ -41,7 +41,10 @@ import { measureDisplayWidth } from "../ui/interactive/display-width";
 import { type SessionPromptLayout } from "../ui/interactive/interactive-frame";
 import { renderBottomPaneFooter } from "../ui/screens/bottom-pane-screen";
 import { type StatusLineConfig } from "../ui/screens/status-line-screen";
-import { renderStatusIndicatorLine } from "../ui/screens/status-indicator-screen";
+import {
+  renderStatusIndicatorLine,
+  type StatusIndicatorMode,
+} from "../ui/screens/status-indicator-screen";
 import { type RuntimeAttachment } from "../../../../models/types";
 
 export interface RunStartInteractiveTurnOptions {
@@ -275,6 +278,33 @@ function formatTurnElapsedCompact(elapsedMs: number): string {
 
 function compactSummaryText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function resolveInlineStatusIndicatorMode(input: {
+  planMode: boolean;
+  activityKind?: string;
+  stageId?: string;
+}): StatusIndicatorMode {
+  const stageId = input.stageId ?? "";
+  if (
+    stageId.startsWith("runtime_model")
+    || stageId.startsWith("runtime_route")
+    || stageId.startsWith("runtime_retry")
+  ) {
+    return "requesting";
+  }
+  if (input.activityKind === "ask-user") {
+    return "tool-input";
+  }
+  if (
+    input.activityKind === "context"
+    || input.activityKind === "governance"
+    || input.activityKind === "memory"
+    || input.activityKind === "plan"
+  ) {
+    return "thinking";
+  }
+  return input.planMode ? "thinking" : "responding";
 }
 
 type ProcessFailureCategory = "runtime" | "context" | "ask-user" | "interrupt";
@@ -606,13 +636,22 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       activitySnapshot?.title ?? activityTracker.readPromptActivity() ?? defaultActivityText,
     );
     const activityDetail = compactSummaryText(activitySnapshot?.detail ?? "");
+    const statusMode = resolveInlineStatusIndicatorMode({
+      planMode: input.isPlanMode(),
+      activityKind: activitySnapshot?.kind,
+      stageId: activitySnapshot?.stageId,
+    });
     writeProgressLine(renderStatusIndicatorLine({
       message: activityText,
       startedAtMs: activeTurnStartedAtMs,
       nowMs: Date.now(),
       tick: inlineActivityTick,
       terminalColumns: resolveTerminalColumns(),
+      mode: statusMode,
       thinkingText: activityDetail || undefined,
+      thinkingStatus: statusMode === "thinking" && activityDetail.length === 0
+        ? "thinking"
+        : undefined,
     }));
     inlineActivityTick += 1;
   };

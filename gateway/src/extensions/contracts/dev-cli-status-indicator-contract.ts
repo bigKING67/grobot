@@ -1,6 +1,9 @@
 import {
   formatStatusIndicatorElapsed,
+  formatStatusIndicatorThinkingText,
+  formatStatusIndicatorTokenText,
   renderStatusIndicatorLine,
+  resolveStatusIndicatorModeGlyph,
   resolveStatusIndicatorParts,
   resolveStatusIndicatorStallState,
 } from "../../orchestration/entrypoints/dev-cli/ui/screens/status-indicator-screen";
@@ -55,8 +58,55 @@ const richLineWide = renderStatusIndicatorLine({
   nowMs: startedAtMs + 31_000,
   tick: 7,
   terminalColumns: 96,
+  mode: "responding",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
+});
+const tokenGateHiddenLine = renderStatusIndicatorLine({
+  message: "正在读取任务并准备上下文",
+  startedAtMs,
+  nowMs: startedAtMs + 12_000,
+  tick: 2,
+  terminalColumns: 96,
+  mode: "responding",
+  tokenCount: 812,
+});
+const tokenGateVisibleLine = renderStatusIndicatorLine({
+  message: "正在读取任务并准备上下文",
+  startedAtMs,
+  nowMs: startedAtMs + 31_000,
+  tick: 2,
+  terminalColumns: 96,
+  mode: "responding",
+  tokenCount: 812,
+});
+const requestingTokenGateLine = renderStatusIndicatorLine({
+  message: "正在发送模型请求",
+  startedAtMs,
+  nowMs: startedAtMs + 31_000,
+  tick: 2,
+  terminalColumns: 96,
+  mode: "requesting",
+  tokenCount: 812,
+});
+const thinkingStatusLine = renderStatusIndicatorLine({
+  message: "正在设计实现方案",
+  startedAtMs,
+  nowMs: startedAtMs + 4_200,
+  tick: 2,
+  terminalColumns: 80,
+  mode: "thinking",
+  thinkingStatus: "thinking",
+  effortSuffix: "high",
+});
+const thoughtStatusLine = renderStatusIndicatorLine({
+  message: "正在保存计划草稿",
+  startedAtMs,
+  nowMs: startedAtMs + 8_500,
+  tick: 2,
+  terminalColumns: 80,
+  mode: "thinking",
+  thinkingStatus: 2_400,
 });
 const activityDetailLine = renderStatusIndicatorLine({
   message: "正在选择模型路由",
@@ -142,13 +192,43 @@ const payload = {
     !line.includes("undefined") && !line.includes("NaN") && !line.includes("null"),
   elapsed_formats_minutes: formatStatusIndicatorElapsed(67_500) === "1m 07s",
   elapsed_formats_hours: formatStatusIndicatorElapsed(3_605_000) === "1h 00m 05s",
+  mode_glyph_requesting_is_up:
+    resolveStatusIndicatorModeGlyph("requesting") === "↑",
+  mode_glyph_responding_is_down:
+    resolveStatusIndicatorModeGlyph("responding") === "↓",
+  thinking_status_formats_active:
+    formatStatusIndicatorThinkingText({ status: "thinking", effortSuffix: "high" }) === "thinking high",
+  thinking_status_formats_completed_duration:
+    formatStatusIndicatorThinkingText({ status: 2_400 }) === "thought for 2s",
+  token_count_formats_after_gate:
+    formatStatusIndicatorTokenText({
+      tokenCount: 1_234,
+      elapsedMs: 31_000,
+      mode: "responding",
+    }) === "↓ 1,234 tokens",
+  token_count_hidden_before_gate:
+    formatStatusIndicatorTokenText({
+      tokenCount: 812,
+      elapsedMs: 12_000,
+      mode: "responding",
+    }) === "",
   rich_wide_shows_thinking_tokens_elapsed_interrupt:
     richPartsWide.showThinking
     && richPartsWide.showTokens
     && richPartsWide.showElapsed
     && richPartsWide.showInterruptHint
-    && stripAnsi(richLineWide).includes("thinking high · 812 tokens · 31s • esc to interrupt"),
+    && stripAnsi(richLineWide).includes("thinking high · ↓ 812 tokens · 31s • esc to interrupt"),
   rich_wide_width_within_columns: measureDisplayWidth(richLineWide) <= 96,
+  token_gate_hides_tokens_before_30s:
+    !stripAnsi(tokenGateHiddenLine).includes("812 tokens"),
+  token_gate_shows_down_tokens_after_30s:
+    stripAnsi(tokenGateVisibleLine).includes("↓ 812 tokens"),
+  requesting_mode_shows_up_token_glyph:
+    stripAnsi(requestingTokenGateLine).includes("↑ 812 tokens"),
+  thinking_status_line_shows_effort:
+    stripAnsi(thinkingStatusLine).includes("thinking high"),
+  thought_status_line_shows_duration:
+    stripAnsi(thoughtStatusLine).includes("thought for 2s"),
   activity_detail_renders_before_elapsed:
     stripAnsi(activityDetailLine).includes("selected=alpha · 7s • esc to interrupt"),
   activity_detail_width_within_columns: measureDisplayWidth(activityDetailLine) <= 80,

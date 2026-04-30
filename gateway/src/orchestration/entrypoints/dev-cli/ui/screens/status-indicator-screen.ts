@@ -5,7 +5,14 @@ import {
   splitGraphemes,
   truncateDisplayWidth,
 } from "../interactive/display-width";
-import { TERMINAL_ANSI, terminalStyle } from "../theme/terminal-style";
+import { TERMINAL_ANSI, TERMINAL_SYMBOL, terminalStyle } from "../theme/terminal-style";
+
+export type StatusIndicatorMode =
+  | "requesting"
+  | "responding"
+  | "tool-input"
+  | "tool-use"
+  | "thinking";
 
 export interface StatusIndicatorInput {
   message?: string;
@@ -16,7 +23,13 @@ export interface StatusIndicatorInput {
   reducedMotion?: boolean;
   spinnerFrames?: readonly string[];
   interruptHint?: string;
+  mode?: StatusIndicatorMode;
+  tokenCount?: number;
   tokenText?: string;
+  verbose?: boolean;
+  showTokensAfterMs?: number;
+  thinkingStatus?: "thinking" | number | null;
+  effortSuffix?: string;
   thinkingText?: string;
 }
 
@@ -75,6 +88,7 @@ const DEFAULT_STATUS_SPINNER_FRAMES = [
 ] as const;
 const GLIMMER_PADDING_WIDTH = 20;
 const GLIMMER_HOTSPOT_RADIUS = 1;
+export const STATUS_INDICATOR_SHOW_TOKENS_AFTER_MS = 30_000;
 const STALLED_AFTER_MS = 3_000;
 const STALLED_FADE_MS = 2_000;
 const STALLED_SMOOTH_STEP_MS = 50;
@@ -113,6 +127,92 @@ export function formatStatusIndicatorElapsed(elapsedMs: number): string {
     return `${String(minutes)}m ${String(seconds).padStart(2, "0")}s`;
   }
   return `${String(seconds)}s`;
+}
+
+function normalizeTokenCount(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.max(1, Math.round(value));
+}
+
+function formatStatusTokenCount(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function normalizeEffortSuffix(value: string | undefined): string {
+  const suffix = compactSpaces(value ?? "");
+  if (!suffix) {
+    return "";
+  }
+  return suffix.startsWith(" ") ? suffix : ` ${suffix}`;
+}
+
+export function resolveStatusIndicatorModeGlyph(
+  mode: StatusIndicatorMode | undefined,
+): string {
+  switch (mode) {
+    case "requesting":
+      return TERMINAL_SYMBOL.scrollUp;
+    case "responding":
+    case "tool-input":
+    case "tool-use":
+    case "thinking":
+      return TERMINAL_SYMBOL.scrollDown;
+    default:
+      return "";
+  }
+}
+
+export function formatStatusIndicatorThinkingText(input: {
+  status?: "thinking" | number | null;
+  effortSuffix?: string;
+}): string {
+  if (input.status === "thinking") {
+    return `thinking${normalizeEffortSuffix(input.effortSuffix)}`;
+  }
+  if (typeof input.status === "number" && Number.isFinite(input.status)) {
+    const seconds = Math.max(1, Math.round(input.status / 1000));
+    return `thought for ${String(seconds)}s`;
+  }
+  return "";
+}
+
+export function formatStatusIndicatorTokenText(input: {
+  tokenText?: string;
+  tokenCount?: number;
+  elapsedMs?: number;
+  verbose?: boolean;
+  showTokensAfterMs?: number;
+  mode?: StatusIndicatorMode;
+}): string {
+  const explicitTokenText = compactSpaces(input.tokenText ?? "");
+  const glyph = resolveStatusIndicatorModeGlyph(input.mode);
+  if (explicitTokenText) {
+    if (!glyph || /^[↑↓]/u.test(explicitTokenText)) {
+      return explicitTokenText;
+    }
+    return `${glyph} ${explicitTokenText}`;
+  }
+
+  const tokenCount = normalizeTokenCount(input.tokenCount);
+  if (!tokenCount) {
+    return "";
+  }
+  const showTokensAfterMs =
+    typeof input.showTokensAfterMs === "number" && Number.isFinite(input.showTokensAfterMs)
+      ? Math.max(0, Math.floor(input.showTokensAfterMs))
+      : STATUS_INDICATOR_SHOW_TOKENS_AFTER_MS;
+  const elapsedMs =
+    typeof input.elapsedMs === "number" && Number.isFinite(input.elapsedMs)
+      ? Math.max(0, Math.floor(input.elapsedMs))
+      : 0;
+  if (!input.verbose && elapsedMs < showTokensAfterMs) {
+    return "";
+  }
+
+  const tokenText = `${formatStatusTokenCount(tokenCount)} tokens`;
+  return glyph ? `${glyph} ${tokenText}` : tokenText;
 }
 
 export function resolveStatusIndicatorStallState(
@@ -339,6 +439,7 @@ export function renderStatusIndicatorMessage(input: {
   message: string;
   tick?: number;
   reducedMotion?: boolean;
+  mode?: StatusIndicatorMode;
 }): string {
   const message = input.message;
   if (!message) {
@@ -352,7 +453,10 @@ export function renderStatusIndicatorMessage(input: {
   const tick = typeof input.tick === "number" && Number.isFinite(input.tick)
     ? Math.max(0, Math.floor(input.tick))
     : 0;
-  const glimmerIndex = (tick % cycleLength) - Math.floor(GLIMMER_PADDING_WIDTH / 2);
+  const cyclePosition = tick % cycleLength;
+  const glimmerIndex = input.mode === "requesting"
+    ? cyclePosition - Math.floor(GLIMMER_PADDING_WIDTH / 2)
+    : messageWidth + Math.floor(GLIMMER_PADDING_WIDTH / 2) - cyclePosition;
   let currentWidth = 0;
   let output = "";
   for (const grapheme of splitGraphemes(message)) {
@@ -374,19 +478,34 @@ export function renderStatusIndicatorLine(input: StatusIndicatorInput): string {
   const nowMs = typeof input.nowMs === "number" && Number.isFinite(input.nowMs)
     ? input.nowMs
     : Date.now();
-  const elapsed = formatStatusIndicatorElapsed(nowMs - input.startedAtMs);
+  const elapsedMs = Math.max(0, nowMs - input.startedAtMs);
+  const elapsed = formatStatusIndicatorElapsed(elapsedMs);
   const interruptHint = compactSpaces(input.interruptHint ?? "esc to interrupt");
   const rawMessage = compactSpaces(input.message ?? "正在执行");
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   const spinner = resolveSpinnerFrame(input);
+  const tokenText = formatStatusIndicatorTokenText({
+    tokenText: input.tokenText,
+    tokenCount: input.tokenCount,
+    elapsedMs,
+    verbose: input.verbose,
+    showTokensAfterMs: input.showTokensAfterMs,
+    mode: input.mode,
+  });
+  const thinkingText = normalizeOptionalPart(input.thinkingText).length > 0
+    ? normalizeOptionalPart(input.thinkingText)
+    : formatStatusIndicatorThinkingText({
+      status: input.thinkingStatus,
+      effortSuffix: input.effortSuffix,
+    });
   const statusParts = resolveStatusIndicatorParts({
     terminalColumns: input.terminalColumns,
     spinner,
     message: rawMessage,
     elapsedText: elapsed,
     interruptHint,
-    tokenText: input.tokenText,
-    thinkingText: input.thinkingText,
+    tokenText,
+    thinkingText,
   });
   const message = terminalColumns > 0
     ? truncateDisplayWidth(rawMessage, statusParts.messageWidth, { compact: true })
@@ -395,6 +514,7 @@ export function renderStatusIndicatorLine(input: StatusIndicatorInput): string {
     message,
     tick: input.tick,
     reducedMotion: input.reducedMotion,
+    mode: input.mode,
   });
   const line = `${terminalStyle.brand(spinner)} ${styledMessage}${terminalStyle.muted(statusParts.suffix)}`;
   if (terminalColumns <= 0 || measureDisplayWidth(line) <= terminalColumns) {
