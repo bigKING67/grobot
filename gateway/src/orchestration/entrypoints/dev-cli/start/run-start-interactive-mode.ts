@@ -14,7 +14,6 @@ import {
   resolveInlineAttachmentsFromInput,
   resolveInteractiveInputBodyWidth,
   runSessionInputLoop,
-  runTerminalLinePrompt,
   runTerminalSelectMenu,
 } from "./run-start-io";
 import { isNaturalPlanExecutionIntent } from "./plan-command";
@@ -748,6 +747,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
                 id: "keep_planning",
                 label: "No, keep planning",
                 description: "Tell Grobot what to change before coding.",
+                input: {
+                  placeholder: "Tell Grobot what to change",
+                  showLabelWithValue: true,
+                  labelValueSeparator: ": ",
+                  resetCursorOnUpdate: true,
+                },
               },
             ],
           }),
@@ -772,14 +777,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           };
         }
         if (result.kind === "selected" && result.item.id === "keep_planning") {
-          const feedbackResult = await withInputPaused(() =>
-            runTerminalLinePrompt({
-              prompt: "Tell Grobot what to change > ",
-            }),
-          );
-          const feedback = feedbackResult.kind === "submitted"
-            ? feedbackResult.value.trim()
-            : "";
+          const feedback = result.inputValue?.trim() ?? "";
           return feedback.length > 0
             ? {
               action: "keep_planning",

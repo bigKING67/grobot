@@ -14,6 +14,16 @@ export interface TerminalSelectMenuItem {
   label: string;
   description?: string;
   current?: boolean;
+  input?: {
+    placeholder?: string;
+    initialValue?: string;
+    allowEmptySubmitToCancel?: boolean;
+    showLabelWithValue?: boolean;
+    labelValueSeparator?: string;
+    resetCursorOnUpdate?: boolean;
+  };
+  inputValue?: string;
+  inputActive?: boolean;
 }
 
 export interface TerminalSelectMenuModelPickerMeta {
@@ -54,7 +64,7 @@ export interface TerminalSelectMenuInput {
 }
 
 export type TerminalSelectMenuResult =
-  | { kind: "selected"; item: TerminalSelectMenuItem; index: number }
+  | { kind: "selected"; item: TerminalSelectMenuItem; index: number; inputValue?: string }
   | { kind: "edit_plan"; item: TerminalSelectMenuItem; index: number }
   | { kind: "cancelled" };
 
@@ -85,6 +95,7 @@ const PLAN_APPROVAL_RENDER_VISIBLE_OPTION_COUNT = 2;
 const PLAN_APPROVAL_DIVIDER_MAX_WIDTH = 120;
 const PLAN_APPROVAL_SURFACE_MAX_WIDTH = 96;
 const PLAN_APPROVAL_PLAN_DIVIDER = "┄";
+const MENU_INPUT_CURSOR = "▌";
 
 interface RenderMenuRow {
   leftPlain: string;
@@ -127,6 +138,43 @@ function buildCompactMenuHint(hintRaw?: string): string {
 function sanitizeMenuText(value: string | undefined, fallback = ""): string {
   const sanitized = compactSpaces(sanitizeTerminalDisplayText(value ?? fallback));
   return sanitized.length > 0 ? sanitized : fallback;
+}
+
+function resolveInputOptionDisplayText(input: {
+  item: TerminalSelectMenuItem;
+  isActive?: boolean;
+  fallbackPlaceholder?: string;
+  fallbackSeparator?: string;
+}): string {
+  const item = input.item;
+  const baseLabel = sanitizeMenuText(item.label, item.id);
+  if (!item.input) {
+    return baseLabel;
+  }
+  const inputValue = sanitizeMenuText(
+    item.inputValue ?? item.input.initialValue,
+    "",
+  );
+  const activeInput = item.inputActive === true || input.isActive === true;
+  const placeholder = sanitizeMenuText(
+    item.input.placeholder,
+    input.fallbackPlaceholder ?? baseLabel,
+  );
+  const cursor = activeInput ? MENU_INPUT_CURSOR : "";
+  const showLabel =
+    item.input.showLabelWithValue === true
+    || item.input.labelValueSeparator !== undefined;
+  if (showLabel) {
+    if (!activeInput && inputValue.length <= 0) {
+      return baseLabel;
+    }
+    const separator = item.input.labelValueSeparator ?? input.fallbackSeparator ?? ", ";
+    return `${baseLabel}${separator}${inputValue.length > 0 ? inputValue : placeholder}${cursor}`;
+  }
+  if (activeInput) {
+    return `${inputValue.length > 0 ? inputValue : placeholder}${cursor}`;
+  }
+  return inputValue.length > 0 ? inputValue : placeholder;
 }
 
 function normalizeViewportBound(value: number | undefined, fallback: number): number {
@@ -555,7 +603,10 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
     const ordinal = isActive
       ? theme.color("accent", ordinalPlain)
       : theme.color("muted", ordinalPlain);
-    const labelPlain = sanitizeMenuText(item.label, item.id);
+    const labelPlain = resolveInputOptionDisplayText({
+      item,
+      isActive,
+    });
     const currentSuffix = item.current ? " ✓" : "";
     const labelParts = truncateMenuLabelWithSuffix({
       label: labelPlain,
@@ -640,7 +691,13 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     const marker = isActive
       ? theme.color("planMode", "❯")
       : " ";
-    const label = truncateDisplayWidth(sanitizeMenuText(item.label, item.id), optionLabelBudget);
+    const labelRaw = resolveInputOptionDisplayText({
+      item,
+      isActive,
+      fallbackPlaceholder: "Type feedback",
+      fallbackSeparator: ": ",
+    });
+    const label = truncateDisplayWidth(labelRaw, optionLabelBudget);
     const renderedLabel = isActive ? theme.color("planMode", label) : label;
     lines.push(`  ${marker} ${renderedLabel}`);
     const description = sanitizeMenuText(item.description);
@@ -712,7 +769,10 @@ export function renderTerminalSelectMenu(input: RenderTerminalSelectMenuInput): 
     const number = isActive
       ? theme.color("accent", ordinalPlain)
       : theme.color("muted", ordinalPlain);
-    const labelPlain = sanitizeMenuText(item.label, item.id);
+    const labelPlain = resolveInputOptionDisplayText({
+      item,
+      isActive,
+    });
     const currentSuffix = item.current ? " ✓" : "";
     const labelParts = truncateMenuLabelWithSuffix({
       label: labelPlain,

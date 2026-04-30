@@ -11,6 +11,7 @@ import {
   resolveInteractiveInputBodyWidth,
   renderInteractiveInputChromeLines,
   renderSubmittedInputTranscriptLines,
+  reduceTerminalSelectMenuInlineInput,
   resolveInteractiveEnterDataAction,
   resolveInteractiveInputCursorColumn,
   resolveMenuSearchMatchedIndices,
@@ -330,6 +331,71 @@ async function main(): Promise<void> {
   const askUserPanelSkipWithoutPlanTypesOther = decodeAskUserPanelInput("s", 3, false, false);
   const coalescedWithBackslash = resolveCoalescedSubmitChunk("\\\r");
   const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
+  const inlineInputOption = {
+    id: "keep_planning",
+    label: "No, keep planning",
+    input: {
+      placeholder: "Tell Grobot what to change",
+      showLabelWithValue: true,
+      labelValueSeparator: ": ",
+    },
+  };
+  const inlineInputEmptyEnter = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\r",
+    item: inlineInputOption,
+    currentValue: "",
+    inputMode: false,
+    variant: "plan_approval",
+  });
+  const inlineInputPrintable = reduceTerminalSelectMenuInlineInput({
+    rawInput: "补",
+    item: inlineInputOption,
+    currentValue: "",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputBackspace = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\u007f",
+    item: inlineInputOption,
+    currentValue: "abc",
+    inputMode: false,
+    variant: "plan_approval",
+  });
+  const inlineInputClear = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\u0015",
+    item: inlineInputOption,
+    currentValue: "abc",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputCoalescedSubmit = reduceTerminalSelectMenuInlineInput({
+    rawInput: "please revise\r\n",
+    item: inlineInputOption,
+    currentValue: "",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputEscExitsInput = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\u001b",
+    item: inlineInputOption,
+    currentValue: "abc",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputEscWithoutInputIgnored = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\u001b",
+    item: inlineInputOption,
+    currentValue: "abc",
+    inputMode: false,
+    variant: "plan_approval",
+  });
+  const inlineInputCtrlGEditPlan = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\u0007",
+    item: inlineInputOption,
+    currentValue: "abc",
+    inputMode: true,
+    variant: "plan_approval",
+  });
   const submitChunkOnlyLf = resolveSubmitKeyAction({
     chunk: "\n",
     key: {},
@@ -721,6 +787,29 @@ async function main(): Promise<void> {
     submit_coalesced_escape_ignored:
       !coalescedEscapeSequence.shouldSubmit
       && coalescedEscapeSequence.normalizedChunk === "\u001b\r",
+    menu_inline_input_empty_enter_activates:
+      inlineInputEmptyEnter.kind === "activate"
+      && inlineInputEmptyEnter.value === "",
+    menu_inline_input_printable_updates:
+      inlineInputPrintable.kind === "update"
+      && inlineInputPrintable.value === "补",
+    menu_inline_input_backspace_updates_even_before_mode:
+      inlineInputBackspace.kind === "update"
+      && inlineInputBackspace.value === "ab",
+    menu_inline_input_ctrl_u_clears:
+      inlineInputClear.kind === "update"
+      && inlineInputClear.value === "",
+    menu_inline_input_coalesced_submit:
+      inlineInputCoalescedSubmit.kind === "submit"
+      && inlineInputCoalescedSubmit.value === "please revise",
+    menu_inline_input_esc_exits_input_first:
+      inlineInputEscExitsInput.kind === "exit_input"
+      && inlineInputEscExitsInput.value === "abc",
+    menu_inline_input_esc_without_input_falls_through:
+      inlineInputEscWithoutInputIgnored.kind === "ignored",
+    menu_inline_input_ctrl_g_keeps_plan_editor:
+      inlineInputCtrlGEditPlan.kind === "edit_plan"
+      && inlineInputCtrlGEditPlan.value === "abc",
     submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",
     interactive_plain_enter_defers_to_keypress:
       interactivePlainEnterDefersToKeypress === "defer_to_keypress",

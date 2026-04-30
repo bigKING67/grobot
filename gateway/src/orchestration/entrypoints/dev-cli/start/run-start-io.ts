@@ -171,6 +171,14 @@ export type TerminalLinePromptResult =
   | { kind: "submitted"; value: string }
   | { kind: "cancelled" };
 
+export type TerminalSelectMenuInlineInputReduction =
+  | { kind: "ignored" }
+  | { kind: "activate"; value: string }
+  | { kind: "update"; value: string }
+  | { kind: "exit_input"; value: string }
+  | { kind: "submit"; value: string }
+  | { kind: "edit_plan"; value: string };
+
 export interface TerminalAskUserQuestionnairePanelInput {
   queue: readonly AskUserEnvelope[];
   initialState?: AskUserQuestionnaireState;
@@ -2385,6 +2393,60 @@ function isMenuSearchPrintableInput(rawInput: string): boolean {
   return !/[\u0000-\u001f\u007f]/.test(rawInput);
 }
 
+function resolveTerminalSelectMenuItemInputValue(item: TerminalSelectMenuItem): string {
+  return item.inputValue ?? item.input?.initialValue ?? "";
+}
+
+export function reduceTerminalSelectMenuInlineInput(input: {
+  rawInput: string;
+  item: TerminalSelectMenuItem;
+  currentValue?: string;
+  inputMode?: boolean;
+  variant?: TerminalSelectMenuInput["variant"];
+}): TerminalSelectMenuInlineInputReduction {
+  if (!input.item.input) {
+    return { kind: "ignored" };
+  }
+  const rawInput = String(input.rawInput ?? "");
+  const currentValue = input.currentValue ?? resolveTerminalSelectMenuItemInputValue(input.item);
+  if (rawInput === "\u0007" && input.variant === "plan_approval") {
+    return { kind: "edit_plan", value: currentValue };
+  }
+  const submitChunk = resolveCoalescedSubmitChunk(rawInput);
+  if (submitChunk.shouldSubmit) {
+    const payload = submitChunk.normalizedChunk;
+    const nextValue = payload.length > 0 && isMenuSearchPrintableInput(payload)
+      ? `${currentValue}${payload}`
+      : currentValue;
+    if (nextValue.trim().length > 0 || input.item.input.allowEmptySubmitToCancel === true) {
+      return { kind: "submit", value: nextValue };
+    }
+    return { kind: "activate", value: nextValue };
+  }
+  if (rawInput === "\r" || rawInput === "\n") {
+    if (currentValue.trim().length > 0 || input.item.input.allowEmptySubmitToCancel === true) {
+      return { kind: "submit", value: currentValue };
+    }
+    return { kind: "activate", value: currentValue };
+  }
+  if (rawInput === "\u001b") {
+    return input.inputMode === true
+      ? { kind: "exit_input", value: currentValue }
+      : { kind: "ignored" };
+  }
+  if (rawInput === "\u007f" || rawInput === "\b") {
+    const graphemes = splitGraphemes(currentValue);
+    return { kind: "update", value: graphemes.slice(0, -1).join("") };
+  }
+  if (rawInput === MENU_SEARCH_CLEAR_CONTROL) {
+    return { kind: "update", value: "" };
+  }
+  if (isMenuSearchPrintableInput(rawInput)) {
+    return { kind: "update", value: `${currentValue}${rawInput}` };
+  }
+  return { kind: "ignored" };
+}
+
 function trimMenuSearchQuery(rawQuery: string): string {
   const graphemes = splitGraphemes(rawQuery);
   if (graphemes.length <= MENU_SEARCH_QUERY_LIMIT) {
@@ -3293,6 +3355,8 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   let viewportStartIndex = 0;
   let menuSearchMode = false;
   let menuSearchQuery = "";
+  let menuInlineInputMode = false;
+  const menuInlineInputValues = new Map<string, string>();
   let resolved = false;
   let openTransitionStageOneTimer: ReturnType<typeof setTimeout> | undefined;
   let openTransitionStageTwoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -3342,17 +3406,42 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
 
   const resolveVisibleItems = (
     viewport: ReturnType<typeof resolveTerminalSelectMenuViewport>,
-  ): TerminalSelectMenuItem[] =>
-    visibleItemIndices
+  ): TerminalSelectMenuItem[] => {
+    const activeSourceIndex = resolveActiveSourceIndex();
+    return visibleItemIndices
       .slice(viewport.startIndex, viewport.endIndex)
-      .map((index) => input.items[index])
+      .map((index) => {
+        const item = input.items[index];
+        if (!item) {
+          return undefined;
+        }
+        if (!item.input) {
+          return item;
+        }
+        return {
+          ...item,
+          inputValue: menuInlineInputValues.get(item.id)
+            ?? resolveTerminalSelectMenuItemInputValue(item),
+          inputActive: menuInlineInputMode && index === activeSourceIndex,
+        };
+      })
       .filter((item): item is TerminalSelectMenuItem => typeof item !== "undefined");
+  };
 
   const resolveActiveSourceIndex = (): number | undefined => {
     if (activeIndex < 0 || activeIndex >= visibleItemIndices.length) {
       return undefined;
     }
     return visibleItemIndices[activeIndex];
+  };
+
+  const resolveActiveInputItem = (): TerminalSelectMenuItem | undefined => {
+    const sourceIndex = resolveActiveSourceIndex();
+    if (typeof sourceIndex !== "number") {
+      return undefined;
+    }
+    const item = input.items[sourceIndex];
+    return item?.input ? item : undefined;
   };
 
   const buildRenderableMenu = (): TerminalSelectMenuInput => {
@@ -3541,11 +3630,18 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       if (typeof sourceIndex !== "number" || sourceIndex < 0 || sourceIndex >= input.items.length) {
         return;
       }
+      const item = input.items[sourceIndex];
+      if (!item) {
+        return;
+      }
       activeIndex = resolvedVisibleIndex;
+      const inputValue = menuInlineInputValues.get(item.id)
+        ?? resolveTerminalSelectMenuItemInputValue(item);
       finish({
         kind: "selected",
-        item: input.items[sourceIndex],
+        item: item.input ? { ...item, inputValue } : item,
         index: sourceIndex,
+        inputValue,
       });
     };
 
@@ -3597,6 +3693,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     };
 
     const applyNavigationAction = (action: SelectNavigationAction): void => {
+      menuInlineInputMode = false;
       if (visibleItemIndices.length === 0) {
         render();
         return;
@@ -3618,8 +3715,63 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       render();
     };
 
+    const readInlineInputValue = (item: TerminalSelectMenuItem): string =>
+      menuInlineInputValues.get(item.id) ?? resolveTerminalSelectMenuItemInputValue(item);
+
+    const applyInlineInputReduction = (
+      item: TerminalSelectMenuItem,
+      reduction: TerminalSelectMenuInlineInputReduction,
+    ): boolean => {
+      if (reduction.kind === "ignored") {
+        return false;
+      }
+      if (reduction.kind === "edit_plan") {
+        const sourceIndex = resolveActiveSourceIndex() ?? 0;
+        finish({ kind: "edit_plan", item, index: sourceIndex });
+        return true;
+      }
+      if (reduction.kind === "submit") {
+        menuInlineInputValues.set(item.id, reduction.value);
+        selectAndFinish(activeIndex);
+        return true;
+      }
+      if (reduction.kind === "exit_input") {
+        menuInlineInputMode = false;
+        render();
+        return true;
+      }
+      menuInlineInputValues.set(item.id, reduction.value);
+      menuInlineInputMode = true;
+      render();
+      return true;
+    };
+
+    const handleInlineInputData = (rawInput: string, item: TerminalSelectMenuItem): boolean =>
+      applyInlineInputReduction(
+        item,
+        reduceTerminalSelectMenuInlineInput({
+          rawInput,
+          item,
+          currentValue: readInlineInputValue(item),
+          inputMode: menuInlineInputMode,
+          variant: input.variant,
+        }),
+      );
+
     const onData = (chunk: string): void => {
       const rawInput = String(chunk ?? "");
+      if (rawInput === "\u0007" && input.variant === "plan_approval") {
+        const sourceIndex = resolveActiveSourceIndex() ?? 0;
+        const item = input.items[sourceIndex] ?? input.items[0];
+        if (item) {
+          finish({ kind: "edit_plan", item, index: sourceIndex });
+        }
+        return;
+      }
+      const activeInputItem = resolveActiveInputItem();
+      if (!menuSearchMode && activeInputItem && handleInlineInputData(rawInput, activeInputItem)) {
+        return;
+      }
       if (rawInput === MENU_SEARCH_TOGGLE_CONTROL || (!menuSearchMode && rawInput === "/")) {
         menuSearchMode = !menuSearchMode || rawInput === "/";
         render();
@@ -3686,6 +3838,10 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       if (action.kind === "enter") {
         if (visibleItemIndices.length === 0) {
           render();
+          return;
+        }
+        const item = resolveActiveInputItem();
+        if (item && handleInlineInputData(rawInput, item)) {
           return;
         }
         selectAndFinish(activeIndex);

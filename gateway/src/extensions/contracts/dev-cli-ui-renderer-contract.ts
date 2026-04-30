@@ -259,6 +259,12 @@ const planApprovalMenuInput: TerminalSelectMenuInput = {
       id: "keep_planning",
       label: "No, keep planning",
       description: "Tell Grobot what to change before coding.",
+      input: {
+        placeholder: "Tell Grobot what to change",
+        showLabelWithValue: true,
+        labelValueSeparator: ": ",
+        resetCursorOnUpdate: true,
+      },
     },
   ],
 };
@@ -572,6 +578,10 @@ const payload = {
     && stripAnsi(planApprovalMenuPlain).includes(".grobot/plans/demo/001-contract-plan.md"),
   plan_approval_menu_shows_keep_planning_feedback_hint:
     stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change before coding."),
+  plan_approval_menu_shows_inline_feedback_input:
+    stripAnsi(planApprovalKeepPlanningPlain).includes("No, keep planning: Tell Grobot what to change"),
+  plan_approval_menu_shows_inline_feedback_cursor:
+    stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change▌"),
   plan_approval_menu_uses_plan_mode_color:
     planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
   plan_approval_menu_has_no_default_thin_pointer:
