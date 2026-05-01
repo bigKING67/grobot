@@ -261,6 +261,9 @@ function formatQuickPickBlock(
   if (quickPickHints.length <= 0) {
     return "";
   }
+  if (tag === "[rewind]") {
+    return `\n快速选择:\n${quickPickHints.join("\n")}`;
+  }
   return `\n${tag} 快速选择:\n${quickPickHints.join("\n")}`;
 }
 
@@ -294,7 +297,15 @@ function buildRewindNoMatchMessage(
   command: "/rewind" | "/checkpoint",
   activeSessionId: string,
 ): string {
-  return `[rewind] 会话 "${activeSessionId}" 中没有匹配 "${query}" 的检查点。使用 ${command} 打开菜单。\n[rewind] 提示：可匹配检查点 ID、创建时间、用户文本或助手回复；紧凑查询会忽略空格、"_" 和 "-"。\n\n`;
+  return buildSlashNotice(
+    "没有匹配的检查点",
+    [
+      `会话: ${activeSessionId}`,
+      `查询: ${query}`,
+      `使用 ${command} 打开菜单。`,
+      '提示：可匹配检查点 ID、创建时间、用户文本或助手回复；紧凑查询会忽略空格、"_" 和 "-"。',
+    ],
+  );
 }
 
 function parseRewindCommand(
@@ -411,7 +422,10 @@ async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `${parsed.reason ?? `${command} 命令无效`}\n\n`,
+      buildSlashNotice(
+        `${command} 命令不可用`,
+        [parsed.reason ?? `${command} 命令无效`],
+      ),
     );
   }
   if (parsed.kind === "menu") {
@@ -423,14 +437,20 @@ async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `[rewind] 当前会话 id 不可用。使用 ${command} 打开菜单。\n\n`,
+      buildSlashNotice(
+        "当前会话不可用于回退",
+        [`使用 ${command} 打开菜单。`],
+      ),
     );
   }
   if (!input.handlers.rewindSession) {
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `[rewind] 快速命令路径不可用。使用 ${command} 打开菜单。\n\n`,
+      buildSlashNotice(
+        "回退快速路径不可用",
+        [`使用 ${command} 打开菜单。`],
+      ),
     );
   }
   if (parsed.kind === "summarize") {
@@ -474,9 +494,15 @@ async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `[rewind] 在会话 "${activeSessionId}" 中找到 ${String(matches.length)} 个匹配 "${query}" 的检查点。\n${rows.join(
-        "\n",
-      )}${disambiguationBlock}\n[rewind] 使用 ${command} 明确选择一个。\n\n`,
+      [
+        `${terminalStyle.accent("●")} 找到多个匹配的检查点`,
+        `  ${terminalStyle.muted(`会话: ${activeSessionId}`)}`,
+        `  ${terminalStyle.muted(`查询: ${query}`)}`,
+        rows.join("\n"),
+        `${disambiguationBlock}`,
+        `${terminalStyle.muted(`使用 ${command} 明确选择一个。`)}`,
+        "",
+      ].join("\n"),
     );
   }
   const target = matches[0];

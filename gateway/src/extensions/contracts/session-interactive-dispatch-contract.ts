@@ -604,6 +604,18 @@ async function main(): Promise<void> {
     pendingAskCount: 3,
     nowMs: 1_003_000,
   });
+  const rewindWarningStdout = [
+    rewindQueryNoActiveSessionTty.stdout,
+    rewindQueryNoQuickPathTty.stdout,
+    rewindSearchMissingTty.stdout,
+    rewindQueryMultipleTty.stdout,
+    rewindQueryMultipleOverflowTty.stdout,
+    rewindSearchSeparatorOnlyTty.stdout,
+    rewindFindModeKeywordQueryTty.stdout,
+    rewindFindEmptyTty.stdout,
+    rewindModeOnlyTty.stdout,
+    rewindWithArgs.stdout,
+  ].join("\n");
 
   const payload = {
     switch_prefix_miss_hits_run_turn: includesEvent(switchPrefixMiss.events, "runTurn:/switcher"),
@@ -783,6 +795,9 @@ async function main(): Promise<void> {
       rewindQueryNoActiveSessionTty.events,
       "openSessionMenu:rewind",
     ),
+    rewind_query_no_active_session_surface_is_human:
+      stripAnsi(rewindQueryNoActiveSessionTty.stdout).includes("当前会话不可用于回退")
+      && stripAnsi(rewindQueryNoActiveSessionTty.stdout).includes("使用 /rewind 打开菜单。"),
     rewind_query_no_quick_path_tty_warned: includesEvent(
       rewindQueryNoQuickPathTty.events,
       "writeStdout",
@@ -795,6 +810,9 @@ async function main(): Promise<void> {
       rewindQueryNoQuickPathTty.events,
       "openSessionMenu:rewind",
     ),
+    rewind_query_no_quick_path_surface_is_human:
+      stripAnsi(rewindQueryNoQuickPathTty.stdout).includes("回退快速路径不可用")
+      && stripAnsi(rewindQueryNoQuickPathTty.stdout).includes("使用 /rewind 打开菜单。"),
     rewind_search_missing_tty_warned: includesEvent(rewindSearchMissingTty.events, "writeStdout"),
     rewind_search_missing_tty_dispatched: includesEvent(
       rewindSearchMissingTty.events,
@@ -807,6 +825,9 @@ async function main(): Promise<void> {
     rewind_search_missing_tty_no_match_has_tip: rewindSearchMissingTty.stdout.includes(
       "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
+    rewind_search_missing_surface_is_human:
+      stripAnsi(rewindSearchMissingTty.stdout).includes("没有匹配的检查点")
+      && stripAnsi(rewindSearchMissingTty.stdout).includes("查询: missing"),
     rewind_query_multiple_tty_warned: includesEvent(rewindQueryMultipleTty.events, "writeStdout"),
     rewind_query_multiple_tty_dispatched: includesEvent(
       rewindQueryMultipleTty.events,
@@ -818,12 +839,16 @@ async function main(): Promise<void> {
     rewind_query_multiple_tty_includes_assistant_preview: rewindQueryMultipleTty.stdout.includes(
       "| 助手=",
     ),
+    rewind_query_multiple_surface_is_human:
+      stripAnsi(rewindQueryMultipleTty.stdout).includes("找到多个匹配的检查点")
+      && stripAnsi(rewindQueryMultipleTty.stdout).includes("使用 /rewind 明确选择一个。"),
     rewind_query_multiple_overflow_tty_includes_overflow_line: rewindQueryMultipleOverflowTty.stdout.includes(
       "... 还有 1 项",
     ),
     rewind_query_multiple_overflow_tty_includes_quick_pick_header: rewindQueryMultipleOverflowTty.stdout.includes(
-      "[rewind] 快速选择:",
+      "快速选择:",
     ),
+    rewind_warning_surfaces_avoid_legacy_marker: !rewindWarningStdout.includes("[rewind]"),
     rewind_query_multiple_tty_opened_menu: includesEvent(
       rewindQueryMultipleTty.events,
       "openSessionMenu:rewind",
@@ -885,8 +910,8 @@ async function main(): Promise<void> {
       "openSessionMenu:rewind",
     ),
     rewind_search_separator_only_tty_no_match_message: rewindSearchSeparatorOnlyTty.stdout.includes(
-      '没有匹配 "___" 的检查点',
-    ),
+      "没有匹配的检查点",
+    ) && stripAnsi(rewindSearchSeparatorOnlyTty.stdout).includes("查询: ___"),
     rewind_search_separator_only_tty_no_match_has_tip: rewindSearchSeparatorOnlyTty.stdout.includes(
       "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
@@ -899,8 +924,8 @@ async function main(): Promise<void> {
       "rewindSession",
     ),
     rewind_find_mode_keyword_query_no_match_message: rewindFindModeKeywordQueryTty.stdout.includes(
-      '没有匹配 "code" 的检查点',
-    ),
+      "没有匹配的检查点",
+    ) && stripAnsi(rewindFindModeKeywordQueryTty.stdout).includes("查询: code"),
     rewind_find_mode_keyword_query_no_match_has_tip: rewindFindModeKeywordQueryTty.stdout.includes(
       "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
