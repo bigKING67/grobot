@@ -290,7 +290,10 @@ function buildPlanInterruptSurface(input: {
       }
       break;
   }
-  lines.push(`  ${terminalStyle.muted(`诊断: ${input.code}`)}`, "");
+  if (isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE)) {
+    lines.push(`  ${terminalStyle.muted(`诊断: ${input.code}`)}`);
+  }
+  lines.push("");
   return lines.join("\n");
 }
 

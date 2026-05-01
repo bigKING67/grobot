@@ -999,7 +999,8 @@ async function main(): Promise<void> {
         && normalInterruptHandled.code === 0
         && stripAnsi(normalInterruptStdout).includes("当前不在 plan mode")
         && stripAnsi(normalInterruptStdout).includes("没有可中断的计划回合。")
-        && stripAnsi(normalInterruptStdout).includes("诊断: PLAN_INTERRUPT_NOT_PLAN_MODE")
+        && !stripAnsi(normalInterruptStdout).includes("PLAN_INTERRUPT_NOT_PLAN_MODE")
+        && !stripAnsi(normalInterruptStdout).includes("诊断:")
         && !normalInterruptStdout.includes("[plan-interrupt]"),
       plan_interrupt_idle_plan_mode_is_human:
         idleInterruptResult.code === "PLAN_INTERRUPT_NOT_RUNNING"
@@ -1007,7 +1008,8 @@ async function main(): Promise<void> {
         && idleInterruptResult.phase === "idle"
         && stripAnsi(idleInterruptStdout).includes("当前没有运行中的 plan 回合")
         && stripAnsi(idleInterruptStdout).includes("如果想退出 plan mode，可按 Esc 或使用 /exit。")
-        && stripAnsi(idleInterruptStdout).includes("诊断: PLAN_INTERRUPT_NOT_RUNNING")
+        && !stripAnsi(idleInterruptStdout).includes("PLAN_INTERRUPT_NOT_RUNNING")
+        && !stripAnsi(idleInterruptStdout).includes("诊断:")
         && !idleInterruptStdout.includes("[plan-interrupt]"),
       plan_cancel_empty_surface_is_human:
         emptyCancelResult === 0
