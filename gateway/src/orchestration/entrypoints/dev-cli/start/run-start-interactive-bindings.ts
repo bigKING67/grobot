@@ -175,7 +175,7 @@ function formatStatusLineCurrentSnapshot(config: StatusLineConfig): string {
   ].join("\n");
 }
 
-function buildStatusNotice(
+function buildCompactNotice(
   title: string,
   lines: ReadonlyArray<string> = [],
 ): string {
@@ -341,8 +341,16 @@ function readSkillDirectoryStatus(path: string): SkillDirectoryStatus {
   };
 }
 
-function formatSkillDirectoryStatus(label: string, status: SkillDirectoryStatus): string {
-  return `${label}: 路径=${status.path} 存在=${status.exists ? "是" : "否"} 技能=${String(status.skillCount)} 无效目录=${String(status.invalidDirectoryCount)}`;
+function formatSkillDirectoryStatusLines(
+  label: string,
+  status: SkillDirectoryStatus,
+): string[] {
+  return [
+    `${label}: ${status.exists ? "可用" : "未找到"}`,
+    `  目录: ${status.path}`,
+    `  Skills: ${String(status.skillCount)}`,
+    `  无效目录: ${String(status.invalidDirectoryCount)}`,
+  ];
 }
 
 function detectPlatformFromEnv(): "darwin" | "win32" | "other" {
@@ -593,7 +601,7 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ theme });
-      input.output.writeStdout(buildStatusNotice("已更新状态栏主题", [
+      input.output.writeStdout(buildCompactNotice("已更新状态栏主题", [
         `主题: ${theme}`,
       ]));
       return;
@@ -636,7 +644,7 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ layoutMode });
-      input.output.writeStdout(buildStatusNotice("已更新状态栏布局", [
+      input.output.writeStdout(buildCompactNotice("已更新状态栏布局", [
         `布局: ${layoutMode}`,
       ]));
       return;
@@ -696,7 +704,7 @@ export function createRunStartInteractiveModeInput(
       },
     });
     input.output.writeStdout(
-      buildStatusNotice("已更新状态栏状态段", [
+      buildCompactNotice("已更新状态栏状态段", [
         `状态段: ${segmentId}`,
         `状态: ${enabled ? "已开启" : "已关闭"}`,
       ]),
@@ -707,7 +715,9 @@ export function createRunStartInteractiveModeInput(
     const query = (queryRaw ?? "").trim().toLowerCase();
     const allRows = input.runtimeState.getHistoryMessages();
     if (allRows.length === 0) {
-      input.output.writeStdout("[history] 暂无对话历史。\n\n");
+      input.output.writeStdout(buildCompactNotice("对话历史", [
+        "暂无对话历史。",
+      ]));
       return;
     }
     const filteredRows = query.length > 0
@@ -716,14 +726,14 @@ export function createRunStartInteractiveModeInput(
     const windowSize = 20;
     const renderRows = filteredRows.slice(-windowSize);
     const lines: string[] = [
-      "[history]",
-      `总数: ${String(allRows.length)}`,
-      `匹配: ${String(filteredRows.length)}`,
-      `查询: ${query.length > 0 ? query : "<none>"}`,
-      `显示最近: ${String(renderRows.length)}`,
+      "● 对话历史",
+      `  总数: ${String(allRows.length)}`,
+      `  匹配: ${String(filteredRows.length)}`,
+      `  查询: ${query.length > 0 ? query : "无"}`,
+      `  显示最近: ${String(renderRows.length)}`,
     ];
     if (renderRows.length === 0) {
-      lines.push("- 没有匹配记录");
+      lines.push("  没有匹配记录。");
       lines.push("");
       input.output.writeStdout(`${lines.join("\n")}\n`);
       return;
@@ -748,15 +758,15 @@ export function createRunStartInteractiveModeInput(
       : input.contextEngineConfig.contextWindowTokens;
     input.output.writeStdout(
       [
-        "[context]",
-        "定义: 本轮发送前组装的有界上下文窗口",
-        "系统提示: SYSTEM.md 内置",
-        `上下文引擎: ${input.contextEngineConfig.enabled ? "开启" : "关闭"} · profile=${input.contextEngineConfig.profile}`,
-        `上下文窗口 tokens: ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "未知"}`,
-        `自动压缩阈值: ${typeof input.contextEngineConfig.autoCompactTokenLimit === "number" ? String(input.contextEngineConfig.autoCompactTokenLimit) : "auto"}`,
-        `历史消息: ${String(input.runtimeState.getHistoryMessages().length)}`,
-        `项目指令来源: ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "无"}`,
-        "关系: memory 是可检索素材，不等同于当前上下文窗口",
+        "● 上下文",
+        "  定义: 本轮发送前组装的有界上下文窗口",
+        "  系统提示: SYSTEM.md 内置",
+        `  上下文引擎: ${input.contextEngineConfig.enabled ? "开启" : "关闭"} · profile ${input.contextEngineConfig.profile}`,
+        `  上下文窗口 tokens: ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "未知"}`,
+        `  自动压缩阈值: ${typeof input.contextEngineConfig.autoCompactTokenLimit === "number" ? String(input.contextEngineConfig.autoCompactTokenLimit) : "auto"}`,
+        `  历史消息: ${String(input.runtimeState.getHistoryMessages().length)}`,
+        `  项目指令来源: ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "无"}`,
+        "  关系: memory 是可检索素材，不等同于当前上下文窗口",
         "",
       ].join("\n"),
     );
@@ -768,12 +778,12 @@ export function createRunStartInteractiveModeInput(
     const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
     input.output.writeStdout(
       [
-        "[memory]",
-        "定义: 跨回合/会话/项目的持久记忆层",
-        `记忆编排: ${policy.enabled ? "开启" : "关闭"} · version=${policy.version} · 预算比例=${policy.injectBudgetRatio.toFixed(2)} · 单段上限=${String(policy.maxSectionTokens)} · GA 行=${String(policy.maxGaMemoryRows)} · 团队行=${String(policy.maxTeamExperienceRows)} · 团队最低分=${policy.minTeamExperienceScore.toFixed(2)}`,
-        `衰减: ${policy.decayEnabled ? "开启" : "关闭"} · 最大行=${String(policy.decayMaxRowsPerSession)} · 最小保留=${String(policy.decayMinRowsToKeep)}`,
-        `GA 状态: 记忆行=${String(gaState?.memory.length ?? 0)} · skill 卡=${String(gaState?.skillCards.length ?? 0)} · 反思=${String(gaState?.reflectionQueue.length ?? 0)} · 待处理询问=${String(gaState?.pendingAskQueue?.length ?? 0)}`,
-        "关系: memory 是持久素材，只有被选中的片段会进入当前上下文窗口",
+        "● 记忆",
+        "  定义: 跨回合/会话/项目的持久记忆层",
+        `  记忆编排: ${policy.enabled ? "开启" : "关闭"} · version ${policy.version} · 预算比例 ${policy.injectBudgetRatio.toFixed(2)} · 单段上限 ${String(policy.maxSectionTokens)} · GA 行 ${String(policy.maxGaMemoryRows)} · 团队行 ${String(policy.maxTeamExperienceRows)} · 团队最低分 ${policy.minTeamExperienceScore.toFixed(2)}`,
+        `  衰减: ${policy.decayEnabled ? "开启" : "关闭"} · 最大行 ${String(policy.decayMaxRowsPerSession)} · 最小保留 ${String(policy.decayMinRowsToKeep)}`,
+        `  GA 状态: 记忆行 ${String(gaState?.memory.length ?? 0)} · skill 卡 ${String(gaState?.skillCards.length ?? 0)} · 反思 ${String(gaState?.reflectionQueue.length ?? 0)} · 待处理询问 ${String(gaState?.pendingAskQueue?.length ?? 0)}`,
+        "  关系: memory 是持久素材，只有被选中的片段会进入当前上下文窗口",
         "",
       ].join("\n"),
     );
@@ -786,11 +796,11 @@ export function createRunStartInteractiveModeInput(
     const globalStatus = readSkillDirectoryStatus(globalSkillsDir);
     input.output.writeStdout(
       [
-        "[skills]",
-        formatSkillDirectoryStatus("项目", projectStatus),
-        formatSkillDirectoryStatus("全局", globalStatus),
-        "提示: 使用 /skill-creator <需求> 创建或更新 skill",
-        "提示: 使用 /commands 管理可复用本地命令模板",
+        "● Skills",
+        ...formatSkillDirectoryStatusLines("项目", projectStatus).map((line) => `  ${line}`),
+        ...formatSkillDirectoryStatusLines("全局", globalStatus).map((line) => `  ${line}`),
+        "  提示: 使用 /skill-creator <需求> 创建或更新 skill",
+        "  提示: 使用 /commands 管理可复用本地命令模板",
         "",
       ].join("\n"),
     );
@@ -800,15 +810,15 @@ export function createRunStartInteractiveModeInput(
     const hasInstructionPack = (input.mcpInstructionPromptPrefix?.trim() ?? "").length > 0;
     const serverNames = input.mcpInstructionServerNames.length > 0
       ? input.mcpInstructionServerNames.join(",")
-      : "<none>";
+      : "无";
     input.output.writeStdout(
       [
-        "[mcp]",
-        `服务: ${serverNames}`,
-        `指令包: ${hasInstructionPack ? "已加载" : "无"}`,
-        `严格失败: ${input.mcpInstructionStrictFailure ?? "无"}`,
-        "显式调用: mcp_call(server=..., tool=...)",
-        "路由提示: /health 查看 provider failover；启动诊断会显示 MCP 指令注入",
+        "● MCP",
+        `  服务: ${serverNames}`,
+        `  指令包: ${hasInstructionPack ? "已加载" : "无"}`,
+        `  严格失败: ${input.mcpInstructionStrictFailure ?? "无"}`,
+        "  显式调用: mcp_call(server, tool)",
+        "  路由提示: /health 查看 provider failover；启动诊断会显示 MCP 指令注入",
         "",
       ].join("\n"),
     );
@@ -823,7 +833,9 @@ export function createRunStartInteractiveModeInput(
     const rows = input.runtimeState.getHistoryMessages();
     const candidates = buildHistorySearchCandidates(rows);
     if (candidates.length === 0) {
-      input.output.writeStdout("[history] 暂无对话历史。\n\n");
+      input.output.writeStdout(buildCompactNotice("对话历史", [
+        "暂无对话历史。",
+      ]));
       return undefined;
     }
     const query = compactSingleLine(historyInput.currentInput, 120).trim();
@@ -1192,7 +1204,7 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ theme });
-      input.output.writeStdout(buildStatusNotice("已更新状态栏主题", [
+      input.output.writeStdout(buildCompactNotice("已更新状态栏主题", [
         `主题: ${theme}`,
       ]));
     },
@@ -1205,7 +1217,7 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ layoutMode });
-      input.output.writeStdout(buildStatusNotice("已更新状态栏布局", [
+      input.output.writeStdout(buildCompactNotice("已更新状态栏布局", [
         `布局: ${layoutMode}`,
       ]));
     },
@@ -1223,7 +1235,7 @@ export function createRunStartInteractiveModeInput(
         },
       });
       input.output.writeStdout(
-        buildStatusNotice("已更新状态栏状态段", [
+        buildCompactNotice("已更新状态栏状态段", [
           `状态段: ${segmentId}`,
           `状态: ${enabled ? "已开启" : "已关闭"}`,
         ]),

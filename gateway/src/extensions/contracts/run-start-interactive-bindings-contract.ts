@@ -545,12 +545,18 @@ async function main(): Promise<void> {
       health_has_header: outputText.includes("[provider-health]"),
       health_has_sticky_provider: outputText.includes("固定供应商: alpha"),
       health_has_provider_row: outputText.includes("- alpha 状态=正常(CLOSED)"),
-      context_status_has_header: outputText.includes("[context]"),
+      context_status_has_header: outputText.includes("● 上下文"),
       context_status_has_system_prompt_name: outputText.includes("系统提示: SYSTEM.md 内置"),
       context_status_keeps_memory_separate: outputText.includes("不等同于当前上下文窗口"),
-      memory_status_has_header: outputText.includes("[memory]"),
-      skills_status_counts_project_skill: outputText.includes(`项目: 路径=${tempProjectRoot}/.grobot/skills 存在=是 技能=1`),
-      skills_status_counts_global_skill: outputText.includes(`全局: 路径=${tempHomeDir}/skills 存在=是 技能=1`),
+      memory_status_has_header: outputText.includes("● 记忆"),
+      skills_status_counts_project_skill:
+        outputText.includes("项目: 可用")
+        && outputText.includes(`目录: ${tempProjectRoot}/.grobot/skills`)
+        && outputText.includes("Skills: 1"),
+      skills_status_counts_global_skill:
+        outputText.includes("全局: 可用")
+        && outputText.includes(`目录: ${tempHomeDir}/skills`)
+        && outputText.includes("Skills: 1"),
       mcp_status_has_server: outputText.includes("服务: grok-search"),
       mcp_status_instruction_pack_loaded: outputText.includes("指令包: 已加载"),
       init_prompt_targets_agents: turnInputs.some((item) =>
@@ -584,6 +590,14 @@ async function main(): Promise<void> {
       status_snapshot_has_header: outputText.includes("● 状态栏"),
       status_surface_hides_machine_fields:
         !outputText.includes("[status]")
+        && !outputText.includes("[context]")
+        && !outputText.includes("[memory]")
+        && !outputText.includes("[skills]")
+        && !outputText.includes("[mcp]")
+        && !outputText.includes("[history]")
+        && !outputText.includes("路径=")
+        && !outputText.includes("存在=")
+        && !outputText.includes("技能=")
         && !outputText.includes("layout_mode")
         && !outputText.includes("theme:")
         && !outputText.includes("tokens=off"),
