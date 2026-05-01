@@ -1278,6 +1278,9 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.plan_interrupt_idle_plan_mode_is_human, true);
   assert.equal(runStartPlanModeContractPayload.plan_cancel_empty_surface_is_human, true);
   assert.equal(runStartPlanModeContractPayload.plan_cancel_active_surface_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.plan_apply_no_active_surface_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.plan_apply_already_applying_surface_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.plan_apply_invalid_status_surface_is_human, true);
   assert.equal(runStartPlanModeContractPayload.plan_turn_injects_plan_workflow_prompt, true);
   assert.equal(runStartPlanModeContractPayload.plan_turn_prompt_requires_strict_plan_sections, true);
   assert.equal(runStartPlanModeContractPayload.active_plan_path_present, true);

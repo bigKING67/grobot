@@ -782,6 +782,66 @@ function buildPlanCancelSurface(input: {
   return lines.join("\n");
 }
 
+function buildPlanApplyStateSurface(input: {
+  kind:
+    | "no_active"
+    | "lock_recovered"
+    | "already_applying"
+    | "invalid_status"
+    | "internal_failure";
+  workDir?: string;
+  planPath?: string;
+  statusLabel?: string;
+  staleMs?: number;
+  detail?: string;
+  diagnostic?: string;
+}): string {
+  const lines: string[] = [];
+  switch (input.kind) {
+    case "no_active":
+      lines.push(`${terminalStyle.planMode("●")} 当前没有可执行的计划`);
+      break;
+    case "lock_recovered":
+      lines.push(`${terminalStyle.planMode("●")} 已恢复计划执行锁`);
+      break;
+    case "already_applying":
+      lines.push(`${terminalStyle.planMode("●")} 计划正在执行中`);
+      break;
+    case "invalid_status":
+      lines.push(`${terminalStyle.planMode("●")} 当前计划不能执行`);
+      break;
+    case "internal_failure":
+      lines.push(`${terminalStyle.planMode("●")} 计划执行准备失败`);
+      break;
+  }
+  if (input.workDir && input.planPath) {
+    lines.push(
+      `  ${terminalStyle.muted(`计划文件: ${formatHumanPlanFilePath({
+        workDir: input.workDir,
+        planPath: input.planPath,
+      })}`)}`,
+    );
+  }
+  if (input.kind === "no_active") {
+    lines.push(`  ${terminalStyle.muted('请先使用 "/plan <goal>" 写出计划。')}`);
+  } else if (input.kind === "lock_recovered") {
+    const staleText = Number.isFinite(input.staleMs) ? ` · stale ${String(input.staleMs)}ms` : "";
+    lines.push(`  ${terminalStyle.muted(`上次执行锁已过期，已安全恢复${staleText}。`)}`);
+  } else if (input.kind === "already_applying") {
+    lines.push(`  ${terminalStyle.muted("请等待当前执行完成；需要停止时按 Esc。")}`);
+  } else if (input.kind === "invalid_status") {
+    lines.push(`  ${terminalStyle.muted(`状态: ${input.statusLabel ?? "未知"}`)}`);
+    lines.push(`  ${terminalStyle.muted('如需重新规划，请使用 "/plan <goal>" 开始新计划。')}`);
+  } else {
+    lines.push(`  ${terminalStyle.muted(input.detail ?? "计划状态未更新。")}`);
+  }
+  if (input.diagnostic) {
+    lines.push(`  ${terminalStyle.muted(`诊断: ${input.diagnostic}`)}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function resolvePlanEditorDisplayName(): string | undefined {
   const rawEditor = String(process.env.VISUAL ?? process.env.EDITOR ?? "").trim();
   if (rawEditor.length === 0) {
@@ -2771,7 +2831,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const reviewedActive = resolveActivePlan();
       if (!reviewedActive) {
         input.writeStderr(
-          `[plan] 计划评审失败：更新后活动计划消失 plan_id=${meta.active_plan_id}\n`,
+          buildPlanApplyStateSurface({
+            kind: "internal_failure",
+            workDir: input.workDir,
+            planPath: meta.active_plan_path,
+            detail: "计划更新后活动计划消失，无法继续评审。",
+            diagnostic: "PLAN_REVIEW_ACTIVE_PLAN_MISSING",
+          }),
         );
         return 1;
       }
@@ -2779,7 +2845,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const decisionState = await reviewActivePlanDecisionState(reviewedActive);
       if (!decisionState) {
         input.writeStderr(
-          `[plan] 计划评审失败：未找到计划 plan_id=${meta.active_plan_id}\n`,
+          buildPlanApplyStateSurface({
+            kind: "internal_failure",
+            workDir: input.workDir,
+            planPath: meta.active_plan_path,
+            detail: "未找到计划记录，无法完成评审。",
+            diagnostic: "PLAN_REVIEW_ENTRY_MISSING",
+          }),
         );
         return 1;
       }
@@ -2906,23 +2978,43 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       });
       const active = resolveActivePlan();
       if (!active) {
-        input.writeStderr("[plan] 没有可执行的活动计划。请先使用 /plan <目标>。\n\n");
+        input.writeStderr(
+          buildPlanApplyStateSurface({
+            kind: "no_active",
+            diagnostic: "PLAN_APPLY_NO_ACTIVE_PLAN",
+          }),
+        );
         return 1;
       }
       if (recovered.recovered) {
         writeStdout(
-          `[plan] 已恢复过期执行锁 plan_id=${active.entry.plan_id} stale_ms=${String(recovered.stale_ms ?? 0)}\n`,
+          buildPlanApplyStateSurface({
+            kind: "lock_recovered",
+            workDir: input.workDir,
+            planPath: active.planPath,
+            staleMs: recovered.stale_ms,
+          }),
         );
       }
       if (active.entry.status === "applying") {
         writeStdout(
-          `[plan] 计划正在执行中 plan_id=${active.entry.plan_id}\n\n`,
+          buildPlanApplyStateSurface({
+            kind: "already_applying",
+            workDir: input.workDir,
+            planPath: active.planPath,
+          }),
         );
         return 0;
       }
       if (active.entry.status === "applied" || active.entry.status === "discarded") {
         input.writeStderr(
-          `[plan] 当前状态不允许执行 status=${active.entry.status} plan_id=${active.entry.plan_id}\n`,
+          buildPlanApplyStateSurface({
+            kind: "invalid_status",
+            workDir: input.workDir,
+            planPath: active.planPath,
+            statusLabel: humanizePlanStatus(active.entry.status),
+            diagnostic: "PLAN_APPLY_INVALID_STATUS",
+          }),
         );
         return 1;
       }
@@ -2988,7 +3080,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         if (!reviewedEntry) {
           input.writeStderr(
-            `[plan] 计划评审失败：未找到计划 plan_id=${active.entry.plan_id}\n`,
+            buildPlanApplyStateSurface({
+              kind: "internal_failure",
+              workDir: input.workDir,
+              planPath: active.planPath,
+              detail: "计划评审记录更新失败。",
+              diagnostic: "PLAN_REVIEW_ENTRY_MISSING",
+            }),
           );
           return 1;
         }
@@ -3021,7 +3119,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         if (!approval.approved || !approval.entry || !approval.planHash || !approval.ticketId) {
           input.writeStderr(
-            `[plan] 计划确认失败 plan_id=${active.entry.plan_id}\n`,
+            buildPlanApplyStateSurface({
+              kind: "internal_failure",
+              workDir: input.workDir,
+              planPath: active.planPath,
+              detail: "计划确认元数据写入失败。",
+              diagnostic: "PLAN_APPROVAL_FAILED",
+            }),
           );
           return 1;
         }
@@ -3049,7 +3153,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       if (!applying) {
         input.writeStderr(
-          `[plan] 设置执行中状态失败 plan_id=${active.entry.plan_id}\n`,
+          buildPlanApplyStateSurface({
+            kind: "internal_failure",
+            workDir: input.workDir,
+            planPath: active.planPath,
+            detail: "无法把计划状态切换为执行中。",
+            diagnostic: "PLAN_APPLY_STATUS_UPDATE_FAILED",
+          }),
         );
         return 1;
       }
@@ -3059,7 +3169,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       if (!approvedHash || !approvalTicketId) {
         input.writeStderr(
-          `[plan] 缺少确认元数据，无法执行 plan_id=${active.entry.plan_id}\n`,
+          buildPlanApplyStateSurface({
+            kind: "internal_failure",
+            workDir: input.workDir,
+            planPath: active.planPath,
+            detail: "缺少确认票据或计划快照，无法执行。",
+            diagnostic: "PLAN_APPLY_APPROVAL_METADATA_MISSING",
+          }),
         );
         return 1;
       }

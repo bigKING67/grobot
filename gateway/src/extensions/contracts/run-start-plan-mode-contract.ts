@@ -1,6 +1,9 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { reviewPlanContent } from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
+import {
+  reviewPlanContent,
+  updatePlanArtifactStatus,
+} from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
 import { createRunStartPlanMode } from "../../orchestration/entrypoints/dev-cli/start/run-start-plan-mode";
 import { type RunStartPersistence } from "../../orchestration/entrypoints/dev-cli/start/run-start-persistence";
 import { type RunStartRuntimeState } from "../../orchestration/entrypoints/dev-cli/start/run-start-runtime-state";
@@ -765,6 +768,118 @@ async function main(): Promise<void> {
     const activeCancelResult = await activeCancelPlanMode.cancelPlan();
     const activeCancelOutput = activeCancelStdout.slice(activeCancelStdoutBeforeCancel.length);
 
+    const noActiveApplyWorkDir = resolve(workDir, "apply-no-active");
+    mkdirSync(noActiveApplyWorkDir, { recursive: true });
+    const noActiveApplyRuntimeState = createRuntimeState(
+      "feishu:grobot:dm:plan-mode-apply-no-active-contract",
+    );
+    let noActiveApplyStderr = "";
+    const noActiveApplyPlanMode = createRunStartPlanMode({
+      workDir: noActiveApplyWorkDir,
+      runtimeState: noActiveApplyRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        noActiveApplyRuntimeState.markFailureObserved();
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message) => {
+        noActiveApplyStderr += message;
+      },
+    });
+    const noActiveApplyResult = await noActiveApplyPlanMode.applyPlan("Implement the plan.");
+
+    const applyingApplyWorkDir = resolve(workDir, "apply-already-applying");
+    mkdirSync(applyingApplyWorkDir, { recursive: true });
+    const applyingApplySessionKey = "feishu:grobot:dm:plan-mode-apply-applying-contract";
+    const applyingApplyRuntimeState = createRuntimeState(applyingApplySessionKey);
+    let applyingApplyStdout = "";
+    const applyingApplyPlanMode = createRunStartPlanMode({
+      workDir: applyingApplyWorkDir,
+      runtimeState: applyingApplyRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        applyingApplyRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        applyingApplyStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    await applyingApplyPlanMode.handleMessageInput("/plan already applying surface", {
+      messageMode: true,
+    });
+    const applyingPlanId = applyingApplyRuntimeState.getPlanMeta()?.active_plan_id;
+    if (!applyingPlanId) {
+      throw new Error("expected active plan id for applying surface contract");
+    }
+    updatePlanArtifactStatus(
+      applyingApplyWorkDir,
+      applyingApplySessionKey,
+      applyingPlanId,
+      "applying",
+    );
+    const applyingApplyStdoutBeforeApply = applyingApplyStdout;
+    const applyingApplyResult = await applyingApplyPlanMode.applyPlan("Implement the plan.");
+    const applyingApplyOutput = applyingApplyStdout.slice(applyingApplyStdoutBeforeApply.length);
+
+    const discardedApplyWorkDir = resolve(workDir, "apply-discarded");
+    mkdirSync(discardedApplyWorkDir, { recursive: true });
+    const discardedApplySessionKey = "feishu:grobot:dm:plan-mode-apply-discarded-contract";
+    const discardedApplyRuntimeState = createRuntimeState(discardedApplySessionKey);
+    let discardedApplyStderr = "";
+    const discardedApplyPlanMode = createRunStartPlanMode({
+      workDir: discardedApplyWorkDir,
+      runtimeState: discardedApplyRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        discardedApplyRuntimeState.markFailureObserved();
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message) => {
+        discardedApplyStderr += message;
+      },
+    });
+    await discardedApplyPlanMode.handleMessageInput("/plan discarded apply surface", {
+      messageMode: true,
+    });
+    const discardedPlanId = discardedApplyRuntimeState.getPlanMeta()?.active_plan_id;
+    if (!discardedPlanId) {
+      throw new Error("expected active plan id for discarded apply contract");
+    }
+    updatePlanArtifactStatus(
+      discardedApplyWorkDir,
+      discardedApplySessionKey,
+      discardedPlanId,
+      "discarded",
+    );
+    const discardedIndexPath = resolve(
+      discardedApplyWorkDir,
+      ".grobot/plans",
+      sanitizePlanSessionSegment(discardedApplySessionKey),
+      "index.json",
+    );
+    const discardedIndexPayload = JSON.parse(
+      readFileSync(discardedIndexPath, "utf8"),
+    ) as { active_plan_id?: string };
+    discardedIndexPayload.active_plan_id = discardedPlanId;
+    writeFileSync(discardedIndexPath, JSON.stringify(discardedIndexPayload, null, 2), "utf8");
+    const discardedApplyResult = await discardedApplyPlanMode.applyPlan("Implement the plan.");
+
     const payload = {
       review_passes_for_valid_plan: review.ok && review.blocked === false,
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
@@ -900,6 +1015,26 @@ async function main(): Promise<void> {
         && stripAnsi(activeCancelOutput).includes("已取消计划")
         && !activeCancelOutput.includes("[plan]")
         && !activeCancelOutput.includes("plan_id="),
+      plan_apply_no_active_surface_is_human:
+        noActiveApplyResult === 1
+        && stripAnsi(noActiveApplyStderr).includes("当前没有可执行的计划")
+        && stripAnsi(noActiveApplyStderr).includes('请先使用 "/plan <goal>" 写出计划。')
+        && stripAnsi(noActiveApplyStderr).includes("诊断: PLAN_APPLY_NO_ACTIVE_PLAN")
+        && !noActiveApplyStderr.includes("[plan]")
+        && !noActiveApplyStderr.includes("plan_id="),
+      plan_apply_already_applying_surface_is_human:
+        applyingApplyResult === 0
+        && stripAnsi(applyingApplyOutput).includes("计划正在执行中")
+        && stripAnsi(applyingApplyOutput).includes("请等待当前执行完成；需要停止时按 Esc。")
+        && !applyingApplyOutput.includes("[plan]")
+        && !applyingApplyOutput.includes("plan_id="),
+      plan_apply_invalid_status_surface_is_human:
+        discardedApplyResult === 1
+        && stripAnsi(discardedApplyStderr).includes("当前计划不能执行")
+        && stripAnsi(discardedApplyStderr).includes("状态: 已取消")
+        && stripAnsi(discardedApplyStderr).includes("诊断: PLAN_APPLY_INVALID_STATUS")
+        && !discardedApplyStderr.includes("[plan]")
+        && !discardedApplyStderr.includes("plan_id="),
       plan_turn_injects_plan_workflow_prompt:
         executePromptPreludes.some((item) =>
           item.includes("[Plan Mode Workflow]")
