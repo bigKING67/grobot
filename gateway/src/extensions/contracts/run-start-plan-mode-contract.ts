@@ -709,6 +709,62 @@ async function main(): Promise<void> {
     });
     const idleInterruptResult = await idleInterruptPlanMode.requestPlanInterrupt("command");
 
+    const emptyCancelWorkDir = resolve(workDir, "cancel-empty");
+    mkdirSync(emptyCancelWorkDir, { recursive: true });
+    const emptyCancelRuntimeState = createRuntimeState(
+      "feishu:grobot:dm:plan-mode-cancel-empty-contract",
+    );
+    emptyCancelRuntimeState.setPlanMode("plan_only");
+    let emptyCancelStdout = "";
+    const emptyCancelPlanMode = createRunStartPlanMode({
+      workDir: emptyCancelWorkDir,
+      runtimeState: emptyCancelRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        emptyCancelRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        emptyCancelStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    const emptyCancelResult = await emptyCancelPlanMode.cancelPlan();
+
+    const activeCancelWorkDir = resolve(workDir, "cancel-active");
+    mkdirSync(activeCancelWorkDir, { recursive: true });
+    const activeCancelRuntimeState = createRuntimeState(
+      "feishu:grobot:dm:plan-mode-cancel-active-contract",
+    );
+    let activeCancelStdout = "";
+    const activeCancelPlanMode = createRunStartPlanMode({
+      workDir: activeCancelWorkDir,
+      runtimeState: activeCancelRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        activeCancelRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        activeCancelStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    await activeCancelPlanMode.handleMessageInput("/plan active cancel surface", {
+      messageMode: true,
+    });
+    const activeCancelStdoutBeforeCancel = activeCancelStdout;
+    const activeCancelResult = await activeCancelPlanMode.cancelPlan();
+    const activeCancelOutput = activeCancelStdout.slice(activeCancelStdoutBeforeCancel.length);
+
     const payload = {
       review_passes_for_valid_plan: review.ok && review.blocked === false,
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
@@ -831,6 +887,19 @@ async function main(): Promise<void> {
         && stripAnsi(idleInterruptStdout).includes("如果想退出 plan mode，可按 Esc 或使用 /exit。")
         && stripAnsi(idleInterruptStdout).includes("诊断: PLAN_INTERRUPT_NOT_RUNNING")
         && !idleInterruptStdout.includes("[plan-interrupt]"),
+      plan_cancel_empty_surface_is_human:
+        emptyCancelResult === 0
+        && emptyCancelRuntimeState.getPlanMode() === "normal"
+        && stripAnsi(emptyCancelStdout).includes("当前没有可取消的计划")
+        && stripAnsi(emptyCancelStdout).includes('使用 "/plan <goal>" 开始新计划')
+        && !emptyCancelStdout.includes("[plan]")
+        && !emptyCancelStdout.includes("plan_id="),
+      plan_cancel_active_surface_is_human:
+        activeCancelResult === 0
+        && activeCancelRuntimeState.getPlanMode() === "normal"
+        && stripAnsi(activeCancelOutput).includes("已取消计划")
+        && !activeCancelOutput.includes("[plan]")
+        && !activeCancelOutput.includes("plan_id="),
       plan_turn_injects_plan_workflow_prompt:
         executePromptPreludes.some((item) =>
           item.includes("[Plan Mode Workflow]")

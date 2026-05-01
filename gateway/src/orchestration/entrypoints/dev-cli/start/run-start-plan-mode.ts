@@ -749,6 +749,39 @@ function buildExitedPlanModeSurface(): string {
   ].join("\n");
 }
 
+function buildPlanCancelSurface(input: {
+  kind: "cancelled" | "empty" | "failed";
+  workDir?: string;
+  planPath?: string;
+  detail?: string;
+}): string {
+  const lines: string[] = [];
+  if (input.kind === "cancelled") {
+    lines.push(`${terminalStyle.planMode("●")} 已取消计划`);
+  } else if (input.kind === "empty") {
+    lines.push(`${terminalStyle.planMode("●")} 当前没有可取消的计划`);
+  } else {
+    lines.push(`${terminalStyle.planMode("●")} 取消计划失败`);
+  }
+  if (input.workDir && input.planPath) {
+    lines.push(
+      `  ${terminalStyle.muted(`计划文件: ${formatHumanPlanFilePath({
+        workDir: input.workDir,
+        planPath: input.planPath,
+      })}`)}`,
+    );
+  }
+  if (input.kind === "cancelled") {
+    lines.push(`  ${terminalStyle.muted("计划已丢弃，plan mode 已退出。")}`);
+  } else if (input.kind === "empty") {
+    lines.push(`  ${terminalStyle.muted('plan mode 已退出；使用 "/plan <goal>" 开始新计划。')}`);
+  } else {
+    lines.push(`  ${terminalStyle.muted(input.detail ?? "计划状态未更新。")}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function resolvePlanEditorDisplayName(): string | undefined {
   const rawEditor = String(process.env.VISUAL ?? process.env.EDITOR ?? "").trim();
   if (rawEditor.length === 0) {
@@ -2819,7 +2852,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   const cancelPlan = async (): Promise<number> => {
     const active = resolveActivePlan();
     if (!active) {
-      input.writeStdout("[plan] 没有可取消的活动计划。\n\n");
+      input.writeStdout(buildPlanCancelSurface({ kind: "empty" }));
       await persistPlanState("normal", undefined);
       return 0;
     }
@@ -2831,7 +2864,12 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     );
     if (!discarded) {
       input.writeStderr(
-        `[plan] 取消失败：未找到计划 plan_id=${active.entry.plan_id}\n`,
+        buildPlanCancelSurface({
+          kind: "failed",
+          workDir: input.workDir,
+          planPath: active.planPath,
+          detail: "未找到计划记录，无法更新为已取消。",
+        }),
       );
       return 1;
     }
@@ -2842,7 +2880,11 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       source: "cli",
       detail: "cancel command moved plan to discarded",
     });
-    input.writeStdout(`[plan] 已取消计划 plan_id=${active.entry.plan_id}\n\n`);
+    input.writeStdout(buildPlanCancelSurface({
+      kind: "cancelled",
+      workDir: input.workDir,
+      planPath: active.planPath,
+    }));
     return 0;
   };
 

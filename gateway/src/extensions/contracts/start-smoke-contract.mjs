@@ -1399,7 +1399,10 @@ function runStartPlanModeFlow(repoRoot) {
     review_blocked_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
       || combinedOutput.includes("诊断: PLAN_REVIEW_BLOCKED"),
-    plan_cancelled_marker_seen: combinedOutput.includes("[plan] 已取消计划 plan_id="),
+    plan_cancelled_marker_seen:
+      combinedOutput.includes("已取消计划")
+      && combinedOutput.includes("计划已丢弃，plan mode 已退出。")
+      && !commandResult.stdout.includes("[plan] 已取消计划 plan_id="),
     plan_final_status_line_seen: combinedOutput.includes(finalStatusMarkerCurrent),
     plan_open_script_notice_hidden:
       !combinedOutput.includes("/plan open is interactive-only")

@@ -1274,6 +1274,10 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.ready_approval_yes_with_feedback_exits_plan_mode, true);
   assert.equal(runStartPlanModeContractPayload.ready_approval_feedback_runs_followup_plan_turn, true);
   assert.equal(runStartPlanModeContractPayload.ready_approval_feedback_keeps_plan_mode, true);
+  assert.equal(runStartPlanModeContractPayload.plan_interrupt_command_normal_mode_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.plan_interrupt_idle_plan_mode_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.plan_cancel_empty_surface_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.plan_cancel_active_surface_is_human, true);
   assert.equal(runStartPlanModeContractPayload.plan_turn_injects_plan_workflow_prompt, true);
   assert.equal(runStartPlanModeContractPayload.plan_turn_prompt_requires_strict_plan_sections, true);
   assert.equal(runStartPlanModeContractPayload.active_plan_path_present, true);
