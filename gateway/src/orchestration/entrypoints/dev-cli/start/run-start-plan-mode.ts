@@ -2651,7 +2651,13 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         meta = input.runtimeState.getPlanMeta();
         if (!meta?.active_plan_id) {
-          input.writeStderr("[plan] 进入 plan mode 后未找到活动计划。\n");
+          input.writeStderr(
+            buildPlanApplyStateSurface({
+              kind: "internal_failure",
+              detail: "进入 plan mode 后没有生成活动计划。",
+              diagnostic: "PLAN_ENTER_ACTIVE_PLAN_MISSING",
+            }),
+          );
           return 1;
         }
       }
@@ -2665,7 +2671,15 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         note,
       );
       if (!appended.updated) {
-        input.writeStderr("[plan] 更新活动计划进度失败。\n");
+        input.writeStderr(
+          buildPlanApplyStateSurface({
+            kind: "internal_failure",
+            workDir: input.workDir,
+            planPath: meta.active_plan_path,
+            detail: "无法写入计划进度备注。",
+            diagnostic: "PLAN_PROGRESS_APPEND_FAILED",
+          }),
+        );
         return 1;
       }
       writePlanActivityDiagnostic(options, "progress_saved");
