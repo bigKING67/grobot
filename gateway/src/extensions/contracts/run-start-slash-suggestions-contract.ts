@@ -153,7 +153,9 @@ async function main(): Promise<void> {
       plan_filter_surface_is_current_only: planOnly.every((item) =>
         item.command === "/plan" || item.command === "/plan <goal>" || item.command === "/plan open"),
       plan_filter_surface_size_ok: planOnly.length >= 2 && planOnly.length <= 3,
-      plan_filter_has_recommendation_text: planOnly.some((item) => item.description.includes("Recommended now: ")),
+      plan_filter_has_recommendation_text: planOnly.some((item) => item.description.includes("建议: ")),
+      plan_filter_hides_machine_recommendation_label:
+        planOnly.every((item) => !item.description.includes("Recommended now: ")),
       plan_mode_filter_hides_plan_root: !planOnlyPlanMode.some((item) => item.command === "/plan"),
       plan_mode_filter_hides_goal: !planOnlyPlanMode.some((item) => item.command === "/plan <goal>"),
       plan_mode_filter_keeps_open: planOnlyPlanMode.some((item) => item.command === "/plan open"),
@@ -162,9 +164,15 @@ async function main(): Promise<void> {
       plan_open_filter_only_open: planOpenOnly.every((item) => item.command === "/plan open"),
       plan_open_filter_has_open_first: planOpenOnly[0]?.command === "/plan open",
       plan_applied_pending_has_state_tag: planAppliedPending.some((item) =>
-        item.description.includes("latest=applied; verification=pending")),
+        item.description.includes("最近计划: 已执行 · 验证待记录")),
+      plan_applied_pending_hides_machine_state_tag: planAppliedPending.every((item) =>
+        !item.description.includes("latest=")
+        && !item.description.includes("status=")
+        && !item.description.includes("verification=")),
       plan_ready_execute_attaches_direct_reply_hint: planReadyExecute.some((item) =>
         item.description.includes("开始实现计划")),
+      plan_ready_execute_hides_machine_recommendation_label: planReadyExecute.every((item) =>
+        !item.description.includes("Recommended now: ")),
       plan_ready_execute_keeps_minimal_surface: planReadyExecute.every((item) =>
         item.command === "/plan open"),
       ship_filter_has_user_command: shipOnly.some((item) => item.command === "/shipit" && item.source === "user"),

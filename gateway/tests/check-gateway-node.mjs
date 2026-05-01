@@ -1443,6 +1443,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_surface_is_current_only, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_surface_size_ok, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_has_recommendation_text, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_filter_hides_machine_recommendation_label, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_hides_plan_root, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_hides_goal, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_mode_filter_keeps_open, true);
@@ -1450,6 +1451,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.plan_open_filter_only_open, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_open_filter_has_open_first, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_applied_pending_has_state_tag, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_applied_pending_hides_machine_state_tag, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_ready_execute_hides_machine_recommendation_label, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_has_user_command, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plain_input_returns_empty, true);
   logStep("run-start-slash-suggestions-contract");

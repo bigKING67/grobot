@@ -115,17 +115,40 @@ function resolvePlanSuggestionStateTag(state: RunStartPlanSuggestionState | unde
   const activeStatus = resolved.activeStatus;
   const latestStatus = resolved.latestStatus;
   const effectiveStatus = resolved.effectiveStatus;
-  const verificationLabel = resolved.verificationPending ? "pending" : "recorded";
+  const verificationLabel = resolved.verificationPending ? "验证待记录" : "验证已记录";
   if (!activeStatus && (latestStatus === "applied" || latestStatus === "apply_failed")) {
-    return `latest=${latestStatus}; verification=${verificationLabel}`;
+    return `最近计划: ${humanizePlanSuggestionStatus(latestStatus)} · ${verificationLabel}`;
   }
   if (effectiveStatus === "applied" || effectiveStatus === "apply_failed") {
-    return `status=${effectiveStatus}; verification=${verificationLabel}`;
+    return `状态: ${humanizePlanSuggestionStatus(effectiveStatus)} · ${verificationLabel}`;
   }
   if (effectiveStatus) {
-    return `status=${effectiveStatus}`;
+    return `状态: ${humanizePlanSuggestionStatus(effectiveStatus)}`;
   }
   return undefined;
+}
+
+function humanizePlanSuggestionStatus(status: RunStartPlanSuggestionStatus): string {
+  switch (status) {
+    case "draft":
+      return "草稿";
+    case "blocked":
+      return "已阻止";
+    case "review_failed":
+      return "需完善";
+    case "ready":
+      return "待确认";
+    case "approved":
+      return "已确认";
+    case "applying":
+      return "执行中";
+    case "apply_failed":
+      return "执行失败";
+    case "applied":
+      return "已执行";
+    case "discarded":
+      return "已取消";
+  }
 }
 
 function trimPlanRecommendationReason(reasonRaw: string): string {
@@ -398,7 +421,7 @@ export function listRunStartSlashSuggestions(
           || (!hasExplicitRecommendationTarget && index === 0)
         )
       ) {
-        suffixParts.push(`Recommended now: ${planRecommendation.reason}`);
+        suffixParts.push(`建议: ${planRecommendation.reason}`);
       }
       if (suffixParts.length <= 0) {
         return item;
