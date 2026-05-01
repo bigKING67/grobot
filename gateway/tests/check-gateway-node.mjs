@@ -1777,6 +1777,7 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartTuiSurfaceContractPayload.mcp_strict_failure_has_fix_hint, true);
   assert.equal(runStartTuiSurfaceContractPayload.scheduler_tick_error_is_human_surface, true);
   assert.equal(runStartTuiSurfaceContractPayload.scheduler_task_failed_is_human_surface, true);
+  assert.equal(runStartTuiSurfaceContractPayload.rewind_capture_failed_is_human_surface, true);
   assert.equal(runStartTuiSurfaceContractPayload.surfaces_avoid_legacy_machine_markers, true);
   assert.equal(runStartTuiSurfaceContractPayload.surfaces_end_with_newline, true);
   logStep("run-start-tui-surface-contract");

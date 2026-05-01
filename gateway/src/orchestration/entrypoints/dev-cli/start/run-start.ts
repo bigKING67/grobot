@@ -176,6 +176,16 @@ export function buildExperienceSchedulerTaskFailedSurface(input: {
   return lines.join("\n");
 }
 
+export function buildRewindCaptureFailedSurface(error: string | undefined): string {
+  const lines = [`${terminalStyle.accent("●")} 检查点保存失败`];
+  lines.push(`  ${terminalStyle.muted("本轮对话已继续，但这一步无法用于 /rewind 回退。")}`);
+  if (error && error.trim().length > 0) {
+    lines.push(`  ${terminalStyle.muted(`原因: ${formatDiagnosticToken(error)}`)}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function normalizePositiveInt(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -837,7 +847,8 @@ export async function runStart(
             historyAfter,
           });
         } catch (error) {
-          writeStderr(`[rewind] event=capture_failed detail=${String(error)}\n`);
+          writeStartupDiagnostics(`[rewind] event=capture_failed detail=${String(error)}\n`);
+          writeStderr(buildRewindCaptureFailedSurface(String(error)));
         }
       }
       if (pendingRuntimeInterruptSource && code === TURN_INTERRUPTED_EXIT_CODE) {

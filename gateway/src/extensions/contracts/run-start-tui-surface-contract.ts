@@ -2,6 +2,7 @@ import {
   buildExperienceSchedulerTaskFailedSurface,
   buildExperienceSchedulerTickErrorSurface,
   buildMcpInstructionStrictFailureSurface,
+  buildRewindCaptureFailedSurface,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start";
 
 function stripAnsi(value: string): string {
@@ -18,6 +19,9 @@ const schedulerTaskFailedSurface = buildExperienceSchedulerTaskFailedSurface({
   taskId: "weekly-summary",
   error: "Error: model route unavailable",
 });
+const rewindCaptureFailedSurface = buildRewindCaptureFailedSurface(
+  "Error: checkpoint store unavailable",
+);
 
 const mcpPlain = stripAnsi(mcpStrictFailureSurface);
 const schedulerTickPlain = stripAnsi(schedulerTickSurface);
@@ -26,6 +30,7 @@ const combined = [
   mcpStrictFailureSurface,
   schedulerTickSurface,
   schedulerTaskFailedSurface,
+  rewindCaptureFailedSurface,
 ].join("\n");
 
 const payload = {
@@ -45,9 +50,14 @@ const payload = {
     && schedulerTaskPlain.includes("任务: weekly-summary")
     && schedulerTaskPlain.includes("本轮调度已记录失败，不影响继续输入。")
     && schedulerTaskPlain.includes("原因: Error:_model_route_unavailable"),
+  rewind_capture_failed_is_human_surface:
+    stripAnsi(rewindCaptureFailedSurface).includes("● 检查点保存失败")
+    && stripAnsi(rewindCaptureFailedSurface).includes("本轮对话已继续，但这一步无法用于 /rewind 回退。")
+    && stripAnsi(rewindCaptureFailedSurface).includes("原因: Error:_checkpoint_store_unavailable"),
   surfaces_avoid_legacy_machine_markers:
     !combined.includes("[governance:mcp-instruction]")
     && !combined.includes("[experience-scheduler]")
+    && !combined.includes("[rewind]")
     && !combined.includes("event=")
     && !combined.includes("detail=")
     && !combined.includes("task=")
@@ -55,7 +65,8 @@ const payload = {
   surfaces_end_with_newline:
     mcpStrictFailureSurface.endsWith("\n")
     && schedulerTickSurface.endsWith("\n")
-    && schedulerTaskFailedSurface.endsWith("\n"),
+    && schedulerTaskFailedSurface.endsWith("\n")
+    && rewindCaptureFailedSurface.endsWith("\n"),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);
