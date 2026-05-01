@@ -35,13 +35,25 @@ function providerHealthStatus(
   return "CLOSED";
 }
 
+function formatProviderHealthStatusLabel(status: "CLOSED" | "OPEN" | "HALF_OPEN"): string {
+  switch (status) {
+    case "OPEN":
+      return "熔断中(OPEN)";
+    case "HALF_OPEN":
+      return "半开(HALF_OPEN)";
+    case "CLOSED":
+    default:
+      return "正常(CLOSED)";
+  }
+}
+
 export function renderProviderHealthScreen(input: ProviderHealthSnapshotInput): string {
   const lines: string[] = [];
   lines.push("[provider-health]");
-  lines.push(`session: ${input.sessionKey}`);
-  lines.push(`sticky_provider: ${input.stickyProvider ?? "<none>"}`);
+  lines.push(`会话: ${input.sessionKey}`);
+  lines.push(`固定供应商: ${input.stickyProvider ?? "无"}`);
   lines.push(
-    `circuit: failures=${String(input.failureThreshold)} cooldown_secs=${String(input.cooldownSecs)}`,
+    `熔断: 失败阈值=${String(input.failureThreshold)} 冷却秒=${String(input.cooldownSecs)}`,
   );
   const stateByName = new Map<string, SessionProviderRuntimeState>();
   const providerByName = new Map<
@@ -64,7 +76,7 @@ export function renderProviderHealthScreen(input: ProviderHealthSnapshotInput): 
       ? input.providers.map((item) => item.name)
       : Array.from(stateByName.keys());
   if (names.length === 0) {
-    lines.push("- <none>");
+    lines.push("- 无供应商");
     return `${lines.join("\n")}\n\n`;
   }
   for (const name of names) {
@@ -77,21 +89,21 @@ export function renderProviderHealthScreen(input: ProviderHealthSnapshotInput): 
     const openUntil =
       state && state.circuit_open_until_ms > 0
         ? new Date(state.circuit_open_until_ms).toISOString()
-        : "n/a";
+        : "无";
     const errorClass = state?.last_error_class ?? "-";
     const ewmaLatencyMs =
       typeof state?.ewma_latency_ms === "number"
         ? state.ewma_latency_ms.toFixed(1)
-        : "n/a";
+        : "无";
     const ewmaErrorRate =
       typeof state?.ewma_error_rate === "number"
         ? state.ewma_error_rate.toFixed(3)
-        : "n/a";
-    const maxInFlight = provider?.maxInFlight ?? "n/a";
-    const requestsPerMinute = provider?.requestsPerMinute ?? "n/a";
-    const burst = provider?.burst ?? "n/a";
+        : "无";
+    const maxInFlight = provider?.maxInFlight ?? "无";
+    const requestsPerMinute = provider?.requestsPerMinute ?? "无";
+    const burst = provider?.burst ?? "无";
     lines.push(
-      `- ${name} status=${status} failures=${String(state?.consecutive_failures ?? 0)} open_until=${openUntil} last_error=${errorClass} ewma_latency_ms=${ewmaLatencyMs} ewma_error_rate=${ewmaErrorRate} max_inflight=${String(maxInFlight)} rpm=${String(requestsPerMinute)} burst=${String(burst)}`,
+      `- ${name} 状态=${formatProviderHealthStatusLabel(status)} 失败=${String(state?.consecutive_failures ?? 0)} 打开到=${openUntil} 最后错误=${errorClass} 延迟EWMA_ms=${ewmaLatencyMs} 错误率EWMA=${ewmaErrorRate} 最大并发=${String(maxInFlight)} rpm=${String(requestsPerMinute)} burst=${String(burst)}`,
     );
   }
   return `${lines.join("\n")}\n\n`;

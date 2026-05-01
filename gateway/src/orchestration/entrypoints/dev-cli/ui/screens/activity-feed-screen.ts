@@ -115,18 +115,18 @@ function humanToolLabel(toolName: string): string {
   switch (toolName) {
     case "search":
     case "semantic_search":
-      return "Searched";
+      return "搜索";
     case "read":
-      return "Read";
+      return "读取";
     case "glob":
     case "list":
-      return "Explored";
+      return "探索";
     case "edit":
-      return "Edited";
+      return "编辑";
     case "write":
-      return "Wrote";
+      return "写入";
     case "bash":
-      return "Ran";
+      return "运行";
     default:
       return toolName
         .split(/[_-]+/g)
@@ -259,8 +259,19 @@ function detailFromParts(parts: string[]): string | undefined {
   return detail || undefined;
 }
 
-function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return count === 1 ? singular : plural;
+function formatOperationLabel(operation: string): string {
+  switch (operation) {
+    case "create":
+      return "创建";
+    case "update":
+      return "更新";
+    case "overwrite":
+      return "覆盖";
+    case "delete":
+      return "删除";
+    default:
+      return operation;
+  }
 }
 
 function buildToolEndRow(
@@ -288,24 +299,24 @@ function buildToolEndRow(
   const label = humanToolLabel(toolName);
   const severity = status === "failed" ? "error" : status === "deferred" ? "warning" : "ok";
   if (isPlanFileTool(toolName, path)) {
-    const detailLines = status === "failed" ? [] : ["/plan to preview"];
+    const detailLines = status === "failed" ? [] : ["/plan 预览"];
     if (errorClass) {
-      detailLines.push(`error_class=${errorClass}`);
+      detailLines.push(`错误 ${errorClass}`);
     }
     return {
       title: status === "failed"
-        ? "Failed plan update"
+        ? "计划更新失败"
         : status === "deferred"
-          ? "Deferred plan update"
-          : "Updated plan",
+          ? "计划更新已延后"
+          : "计划已更新",
       detailLines,
       severity,
     };
   }
   const titlePrefix = status === "failed"
-    ? `Failed ${toolName}`
+    ? `失败 ${label}`
     : status === "deferred"
-      ? `Deferred ${toolName}`
+      ? `延后 ${label}`
       : label;
   const diff = firstRawString(payloadString(summary, "diff"), payloadString(summary, "diff_preview"));
   const stats = diffStats(diff);
@@ -323,10 +334,10 @@ function buildToolEndRow(
     const engine = firstString(payloadString(summary, "engine"));
     const limitReached = payloadBoolean(summary, "limit_reached");
     const detail = detailFromParts([
-      typeof matches === "number" ? `matches=${String(matches)}` : "",
-      engine ? `engine=${engine}` : "",
-      limitReached === true ? "limit=reached" : "",
-      duration ? `duration=${duration}` : "",
+      typeof matches === "number" ? `${String(matches)} 个匹配` : "",
+      engine,
+      limitReached === true ? "已到结果上限" : "",
+      duration ?? "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -338,11 +349,11 @@ function buildToolEndRow(
     const kind = firstString(payloadString(summary, "kind"), payloadString(summary, "type"));
     const detail = detailFromParts([
       typeof lineStart === "number" && typeof lineEnd === "number"
-        ? `lines ${String(lineStart)}-${String(lineEnd)}`
+        ? `行 ${String(lineStart)}-${String(lineEnd)}`
         : "",
-      kind && kind !== "text" ? `kind=${kind}` : "",
-      hasMore === true ? "has_more=true" : "",
-      duration ? `duration=${duration}` : "",
+      kind && kind !== "text" ? kind : "",
+      hasMore === true ? "还有更多" : "",
+      duration ?? "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -355,9 +366,9 @@ function buildToolEndRow(
     );
     const engine = firstString(payloadString(summary, "engine"));
     const detail = detailFromParts([
-      typeof count === "number" ? `items=${String(count)}` : "",
-      engine ? `engine=${engine}` : "",
-      payloadBoolean(summary, "limit_reached") === true ? "limit=reached" : "",
+      typeof count === "number" ? `${String(count)} 项` : "",
+      engine,
+      payloadBoolean(summary, "limit_reached") === true ? "已到结果上限" : "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -365,13 +376,13 @@ function buildToolEndRow(
   } else if (toolName === "edit") {
     const replacements = firstNumber(payloadNumber(summary, "replacements"));
     const firstChangedLine = firstNumber(payloadNumber(summary, "first_changed_line"));
-    const editLocation = typeof firstChangedLine === "number" ? `line ${String(firstChangedLine)}` : "";
+    const editLocation = typeof firstChangedLine === "number" ? `行 ${String(firstChangedLine)}` : "";
     const replacementDetail = typeof replacements === "number"
-      ? `${String(replacements)} ${pluralize(replacements, "replacement")}${editLocation ? ` at ${editLocation}` : ""}`
+      ? `${String(replacements)} 处替换${editLocation ? `，${editLocation}` : ""}`
       : editLocation;
     const detail = detailFromParts([
       replacementDetail,
-      payloadBoolean(summary, "fuzzy_fallback_used") === true ? "fuzzy match" : "",
+      payloadBoolean(summary, "fuzzy_fallback_used") === true ? "模糊匹配" : "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -382,19 +393,19 @@ function buildToolEndRow(
     const bytesWritten = firstNumber(payloadNumber(summary, "bytes_written"));
     const preview = compactWriteContentPreview(summary);
     if (status !== "failed" && status !== "deferred" && typeof preview.lineCount === "number") {
-      title = compactSpaces(`Wrote ${String(preview.lineCount)} lines${path ? ` to ${path}` : ""}`);
+      title = compactSpaces(`写入 ${String(preview.lineCount)} 行${path ? ` 到 ${path}` : ""}`);
     }
     if (preview.lines.length > 0) {
       detailLines.push(...preview.lines);
       if (preview.hiddenLineCount > 0) {
         detailLines.push(
-          `… +${String(preview.hiddenLineCount)} ${preview.hiddenLineCount === 1 ? "line" : "lines"} Ctrl-O to expand`,
+          `… 还有 ${String(preview.hiddenLineCount)} 行，Ctrl+O 展开`,
         );
       }
     }
     const detail = detailFromParts([
-      operation,
-      typeof bytesWritten === "number" ? `${String(bytesWritten)} bytes` : "",
+      operation ? formatOperationLabel(operation) : "",
+      typeof bytesWritten === "number" ? `${String(bytesWritten)} 字节` : "",
     ]);
     if (detail && preview.lines.length === 0) {
       detailLines.push(detail);
@@ -406,9 +417,9 @@ function buildToolEndRow(
     );
     const exitCode = firstNumber(payloadNumber(summary, "exit_code"));
     const detail = detailFromParts([
-      commandPreview ? `command="${commandPreview.replace(/"/g, "'")}"` : "",
-      typeof exitCode === "number" ? `exit=${String(exitCode)}` : "",
-      duration ? `duration=${duration}` : "",
+      commandPreview ? `命令 ${commandPreview.replace(/"/g, "'")}` : "",
+      typeof exitCode === "number" ? `退出码 ${String(exitCode)}` : "",
+      duration ?? "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -416,7 +427,7 @@ function buildToolEndRow(
   }
 
   if (errorClass) {
-    detailLines.push(`error_class=${errorClass}`);
+    detailLines.push(`错误 ${errorClass}`);
   }
   return {
     title,
@@ -435,12 +446,12 @@ function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
   const action = firstString(payloadString(payload, "recommended_next_action"));
   const errorClass = firstString(payloadString(payload, "error_class"));
   return {
-    title: `Recovery ${toolName}`,
+    title: `恢复 ${toolName}`,
     detailLines: [
       detailFromParts([
-        `stage=${stage}`,
-        action ? `action=${action}` : "",
-        errorClass ? `error_class=${errorClass}` : "",
+        `阶段 ${stage}`,
+        action ? `建议 ${action}` : "",
+        errorClass ? `错误 ${errorClass}` : "",
       ]) ?? "",
     ].filter(Boolean),
     severity: "warning",

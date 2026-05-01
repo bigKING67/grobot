@@ -706,10 +706,10 @@ async function main(): Promise<void> {
       "openSessionMenu:resume",
     ),
     resume_search_separator_only_tty_no_match_message: resumeSearchSeparatorOnlyTty.stdout.includes(
-      'No sessions matching "---"',
+      '没有匹配 "---" 的会话',
     ),
     resume_search_separator_only_tty_no_match_has_tip: resumeSearchSeparatorOnlyTty.stdout.includes(
-      "compact query ignores spaces, \"_\" and \"-\".",
+      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
     resume_find_active_tty_warned: includesEvent(resumeFindActiveTty.events, "writeStdout"),
     resume_find_active_tty_direct_switch: includesEvent(resumeFindActiveTty.events, "switchSession"),
@@ -718,10 +718,10 @@ async function main(): Promise<void> {
       "openSessionMenu:resume",
     ),
     resume_find_active_tty_message_has_prefix: resumeFindActiveTty.stdout.includes(
-      '[session] Session "main" is already active.',
+      '[session] 会话 "main" 已是当前会话。',
     ),
     resume_find_active_tty_message_has_menu_hint: resumeFindActiveTty.stdout.includes(
-      "Use /resume to open menu.",
+      "使用 /resume 打开菜单。",
     ),
     resume_find_missing_tty_warned: includesEvent(resumeFindMissingTty.events, "writeStdout"),
     resume_find_missing_tty_direct_switch: includesEvent(resumeFindMissingTty.events, "switchSession"),
@@ -730,7 +730,7 @@ async function main(): Promise<void> {
       "openSessionMenu:resume",
     ),
     resume_find_missing_tty_no_match_has_tip: resumeFindMissingTty.stdout.includes(
-      "compact query ignores spaces, \"_\" and \"-\".",
+      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
     resume_find_multiple_tty_warned: includesEvent(resumeFindMultipleTty.events, "writeStdout"),
     resume_find_multiple_tty_direct_switch: includesEvent(resumeFindMultipleTty.events, "switchSession"),
@@ -738,16 +738,16 @@ async function main(): Promise<void> {
       "/resume session-legacy",
     ),
     resume_find_multiple_tty_includes_title_preview: resumeFindMultipleTty.stdout.includes(
-      "| title=",
+      "| 标题=",
     ),
     resume_find_multiple_tty_includes_summary_preview: resumeFindMultipleTty.stdout.includes(
-      "| summary=",
+      "| 摘要=",
     ),
     resume_find_multiple_overflow_tty_includes_overflow_line: resumeFindMultipleOverflowTty.stdout.includes(
-      "... and 1 more",
+      "... 还有 1 项",
     ),
     resume_find_multiple_overflow_tty_includes_quick_pick_header: resumeFindMultipleOverflowTty.stdout.includes(
-      "[session] Quick pick:",
+      "[session] 快速选择:",
     ),
     resume_find_multiple_tty_opened_menu: includesEvent(
       resumeFindMultipleTty.events,
@@ -759,7 +759,7 @@ async function main(): Promise<void> {
       "openSessionMenu:resume",
     ),
     resume_find_empty_tty_usage_has_updated_at: resumeFindEmptyTty.stdout.includes(
-      "usage: /resume find <id|title|summary|updated-at>",
+      "用法: /resume find <id|title|summary|updated-at>",
     ),
     rewind_query_tty_dispatched: includesEvent(rewindQueryTty.events, "rewindSession"),
     rewind_query_tty_exact_checkpoint: includesEvent(
@@ -801,7 +801,7 @@ async function main(): Promise<void> {
       "openSessionMenu:rewind",
     ),
     rewind_search_missing_tty_no_match_has_tip: rewindSearchMissingTty.stdout.includes(
-      "compact query ignores spaces, \"_\" and \"-\".",
+      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
     rewind_query_multiple_tty_warned: includesEvent(rewindQueryMultipleTty.events, "writeStdout"),
     rewind_query_multiple_tty_dispatched: includesEvent(
@@ -812,13 +812,13 @@ async function main(): Promise<void> {
       `${"/rewind"} legacy-a`,
     ),
     rewind_query_multiple_tty_includes_assistant_preview: rewindQueryMultipleTty.stdout.includes(
-      "| assistant=",
+      "| 助手=",
     ),
     rewind_query_multiple_overflow_tty_includes_overflow_line: rewindQueryMultipleOverflowTty.stdout.includes(
-      "... and 1 more",
+      "... 还有 1 项",
     ),
     rewind_query_multiple_overflow_tty_includes_quick_pick_header: rewindQueryMultipleOverflowTty.stdout.includes(
-      "[rewind] Quick pick:",
+      "[rewind] 快速选择:",
     ),
     rewind_query_multiple_tty_opened_menu: includesEvent(
       rewindQueryMultipleTty.events,
@@ -881,10 +881,10 @@ async function main(): Promise<void> {
       "openSessionMenu:rewind",
     ),
     rewind_search_separator_only_tty_no_match_message: rewindSearchSeparatorOnlyTty.stdout.includes(
-      'No checkpoints matching "___"',
+      '没有匹配 "___" 的检查点',
     ),
     rewind_search_separator_only_tty_no_match_has_tip: rewindSearchSeparatorOnlyTty.stdout.includes(
-      "compact query ignores spaces, \"_\" and \"-\".",
+      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
     rewind_find_mode_keyword_query_warned: includesEvent(
       rewindFindModeKeywordQueryTty.events,
@@ -895,10 +895,10 @@ async function main(): Promise<void> {
       "rewindSession",
     ),
     rewind_find_mode_keyword_query_no_match_message: rewindFindModeKeywordQueryTty.stdout.includes(
-      'No checkpoints matching "code"',
+      '没有匹配 "code" 的检查点',
     ),
     rewind_find_mode_keyword_query_no_match_has_tip: rewindFindModeKeywordQueryTty.stdout.includes(
-      "compact query ignores spaces, \"_\" and \"-\".",
+      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
     ),
     rewind_find_mode_keyword_query_opened_menu: includesEvent(
       rewindFindModeKeywordQueryTty.events,

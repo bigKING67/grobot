@@ -82,7 +82,7 @@ export function createRunStartSessionMenuOps(
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<void> => {
     if (sessions.length === 0) {
-      input.writeStdout("[rewind] no sessions available.\n\n");
+      input.writeStdout("[rewind] 暂无可用会话。\n\n");
       return;
     }
     const pickedSession = await runSessionMenuPicker({
@@ -98,29 +98,29 @@ export function createRunStartSessionMenuOps(
     const sessionId = pickedSession.sessionId;
     const modePick = await withInputPaused(() =>
       runSelectMenu({
-        title: "Rewind Mode",
-        subtitle: `Session: ${sessionId}`,
+        title: "回退模式",
+        subtitle: `会话: ${sessionId}`,
         hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "summarize",
-            label: "Summarize checkpoints",
-            description: "Show latest checkpoints and stop.",
+            label: "汇总检查点",
+            description: "只显示最近检查点，不执行恢复。",
           },
           {
             id: "both",
-            label: "Restore both conversation + code",
-            description: "Recover checkpoint history and tracked file snapshots together.",
+            label: "同时恢复对话 + 代码",
+            description: "同时恢复检查点历史消息和已跟踪文件快照。",
           },
           {
             id: "conversation",
-            label: "Restore conversation only",
-            description: "Recover history messages only.",
+            label: "仅恢复对话",
+            description: "只恢复历史消息。",
           },
           {
             id: "code",
-            label: "Restore code only",
-            description: "Recover tracked file snapshots only.",
+            label: "仅恢复代码",
+            description: "只恢复已跟踪文件快照。",
           },
         ],
       }),
@@ -130,7 +130,7 @@ export function createRunStartSessionMenuOps(
     }
     const mode = resolveModeFromMenuId(modePick.item.id);
     if (!mode) {
-      input.writeStdout("[rewind] invalid mode selection.\n\n");
+      input.writeStdout("[rewind] 无效回退模式。\n\n");
       return;
     }
     if (mode === "summarize") {
@@ -143,25 +143,25 @@ export function createRunStartSessionMenuOps(
     }
     const checkpoints = input.listRewindCheckpoints(sessionId, 32);
     if (checkpoints.length === 0) {
-      input.writeStdout("[rewind] no checkpoints available.\n\n");
+      input.writeStdout("[rewind] 暂无可用检查点。\n\n");
       return;
     }
     const pickedCheckpoint = await withInputPaused(() =>
       runSelectMenu({
-        title: "Rewind Checkpoint",
-        subtitle: `Session: ${sessionId}`,
+        title: "回退检查点",
+        subtitle: `会话: ${sessionId}`,
         hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "__latest__",
-            label: "Latest checkpoint",
-            description: "Use most recent checkpoint in selected session.",
+            label: "最新检查点",
+            description: "使用选中会话的最近检查点。",
           },
           ...checkpoints.map((checkpoint) => ({
             id: checkpoint.checkpointId,
             label: checkpoint.checkpointId,
             description:
-              `${checkpoint.createdAt} | files=${String(checkpoint.changedFilesCount)} | history=${String(checkpoint.historyBeforeCount)}->${String(checkpoint.historyAfterCount)} | user=${checkpoint.userText}`,
+              `${checkpoint.createdAt} | 文件=${String(checkpoint.changedFilesCount)} | 消息=${String(checkpoint.historyBeforeCount)}->${String(checkpoint.historyAfterCount)} | 用户=${checkpoint.userText}`,
           })),
         ],
       }),
@@ -176,7 +176,7 @@ export function createRunStartSessionMenuOps(
     if (mode === "code") {
       const fileFilterInput = await withInputPaused(() =>
         runLinePrompt({
-          prompt: "[rewind] files filter (optional, comma-separated)> ",
+          prompt: "[rewind] 文件过滤（可选，逗号分隔）> ",
         }),
       );
       if (fileFilterInput.kind === "cancelled") {
@@ -199,39 +199,39 @@ export function createRunStartSessionMenuOps(
   ): Promise<void> => {
     const picked = await withInputPaused(() =>
       runSelectMenu({
-        title: "Session Actions",
-        subtitle: `Namespace: ${input.sessionNamespaceKey}`,
+        title: "会话操作",
+        subtitle: `命名空间: ${input.sessionNamespaceKey}`,
         hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "create",
-            label: "Create and switch to new session",
-            description: "Start a fresh isolated session context.",
+            label: "新建并切换到新会话",
+            description: "创建全新的独立会话上下文。",
           },
           {
             id: "switch",
-            label: "Switch active session",
-            description: "Open session picker and switch active session.",
+            label: "切换当前会话",
+            description: "打开会话选择器并切换当前会话。",
           },
           {
             id: "resume",
-            label: "Resume session",
-            description: "Open full-restore picker and switch to selected session.",
+            label: "恢复会话",
+            description: "打开完整恢复选择器并切换到选中会话。",
           },
           {
             id: "rewind",
-            label: "Rewind session",
-            description: "Choose session + checkpoint to rewind conversation/code.",
+            label: "回退会话",
+            description: "选择会话和检查点，回退对话/代码。",
           },
           {
             id: "continue",
-            label: "Continue from previous session",
-            description: "Open summary-bridge picker and continue from selected session.",
+            label: "继续上次会话",
+            description: "打开摘要桥接选择器，从选中会话继续。",
           },
           {
             id: "overview",
-            label: "Show session overview",
-            description: "Print current namespace session list and metadata.",
+            label: "查看会话概览",
+            description: "输出当前命名空间下的会话列表和元数据。",
           },
         ],
       }),
@@ -252,7 +252,7 @@ export function createRunStartSessionMenuOps(
       return;
     }
     if (sessions.length === 0) {
-      input.writeStdout("[session] no sessions available.\n\n");
+      input.writeStdout("[session] 暂无可用会话。\n\n");
       return;
     }
     if (picked.item.id === "rewind") {
@@ -306,24 +306,24 @@ export function createRunStartSessionMenuOps(
   ): Promise<void> => {
     const sessions = input.listSessions();
     if (mode !== "sessions" && sessions.length === 0) {
-      input.writeStdout("[session] no sessions available.\n\n");
+      input.writeStdout("[session] 暂无可用会话。\n\n");
       return;
     }
     if (!process.stdin.isTTY) {
       input.printSessionOverview();
       if (mode === "switch") {
-        input.writeStdout("Usage: /switch\n\n");
+        input.writeStdout("用法: /switch\n\n");
       } else if (mode === "continue") {
-        input.writeStdout("Usage: /continue\n\n");
+        input.writeStdout("用法: /continue\n\n");
       } else if (mode === "resume") {
-        input.writeStdout("Usage: /resume\n\n");
+        input.writeStdout("用法: /resume\n\n");
       } else if (mode === "rewind") {
         await input.rewindSession({
           sessionId: input.getActiveSessionId(),
           mode: "summarize",
           reason: "menu:rewind:non_tty",
         });
-        input.writeStdout("Usage: /rewind\n\n");
+        input.writeStdout("用法: /rewind\n\n");
       }
       return;
     }

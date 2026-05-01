@@ -132,7 +132,7 @@ function run(): void {
     ),
     check(
       "rewind_multiple_query_notice_contains_tip",
-      (rewindMultipleMatches.notice ?? "").includes("deterministic startup rewind"),
+      (rewindMultipleMatches.notice ?? "").includes("可确定回退目标"),
     ),
     check(
       "rewind_multiple_query_notice_no_autoselect_literal",
@@ -141,17 +141,17 @@ function run(): void {
     check("rewind_no_match_fallback_targets_latest", rewindNoMatchFallback.targetCheckpointId === "latest"),
     check(
       "rewind_no_match_fallback_has_notice",
-      (rewindNoMatchFallback.notice ?? "").includes("fallback to latest checkpoint"),
+      (rewindNoMatchFallback.notice ?? "").includes("已回退到最近检查点"),
     ),
     check(
       "rewind_no_match_without_fallback_has_notice",
-      (rewindNoMatchNoFallback.notice ?? "").includes("no checkpoints found"),
+      (rewindNoMatchNoFallback.notice ?? "").includes("没有匹配，也没有可用检查点"),
     ),
     check("rewind_strict_exact_targeted", rewindStrictExact.targetCheckpointId === "legacy-a"),
     check("rewind_strict_no_match_skips_target", typeof rewindStrictNoMatch.targetCheckpointId === "undefined"),
     check(
       "rewind_strict_no_match_has_skip_notice",
-      (rewindStrictNoMatch.notice ?? "").includes("skipping rewind"),
+      (rewindStrictNoMatch.notice ?? "").includes("已跳过回退"),
     ),
     check("rewind_requested_accepts_false_literal_as_query", rewindRequestedWithFalseLiteral === true),
     check("rewind_selector_keeps_false_literal", rewindSelectorWithFalseLiteral === "false"),

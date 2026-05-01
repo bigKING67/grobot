@@ -39,14 +39,14 @@ function formatStartupRewindHints(
   const rows = matches
     .slice(0, STARTUP_REWIND_HINT_LIMIT)
     .map((checkpoint) =>
-      `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | files=${String(
+      `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | 文件=${String(
         checkpoint.changedFilesCount,
-      )} | user=${formatStartupRewindPreview(checkpoint.userText)} | assistant=${
+      )} | 用户=${formatStartupRewindPreview(checkpoint.userText)} | 助手=${
         formatStartupRewindPreview(checkpoint.assistantText)
       }`
     );
   if (matches.length > STARTUP_REWIND_HINT_LIMIT) {
-    rows.push(`- ... and ${String(matches.length - STARTUP_REWIND_HINT_LIMIT)} more`);
+    rows.push(`- ... 还有 ${String(matches.length - STARTUP_REWIND_HINT_LIMIT)} 项`);
   }
   return rows.join("\n");
 }
@@ -76,8 +76,8 @@ export function resolveStartupRewindTarget(
       }
       return {
         notice:
-          `[rewind] startup checkpoint "${queryRaw}" not found; skipping rewind.\n`
-          + "[rewind] Tip: use --rewind <query> for fuzzy checkpoint selection.\n\n",
+          `[rewind] 启动检查点 "${queryRaw}" 未找到；已跳过回退。\n`
+          + "[rewind] 提示：使用 --rewind <query> 可模糊选择检查点。\n\n",
       };
     }
     const matches = resolveRewindQueryMatches(queryRaw, input.checkpoints);
@@ -94,21 +94,21 @@ export function resolveStartupRewindTarget(
         requiresDisambiguation: true,
         disambiguationCandidates: matches,
         notice:
-          `[rewind] --rewind query "${queryRaw}" matched ${String(matches.length)} checkpoints.\n`
+          `[rewind] --rewind 查询 "${queryRaw}" 匹配到 ${String(matches.length)} 个检查点。\n`
           + `${hints}\n`
-          + "[rewind] Tip: use --rewind <checkpoint-id> for deterministic startup rewind.\n",
+          + "[rewind] 提示：使用 --rewind <检查点 ID> 可确定回退目标。\n",
       };
     }
     if (fallbackTargetCheckpointId) {
       return {
         targetCheckpointId: fallbackTargetCheckpointId,
         notice:
-          `[rewind] --rewind query "${queryRaw}" has no match; fallback to latest checkpoint "${fallbackTargetCheckpointId}".\n\n`,
+          `[rewind] --rewind 查询 "${queryRaw}" 没有匹配；已回退到最近检查点 "${fallbackTargetCheckpointId}"。\n\n`,
       };
     }
     return {
       notice:
-        `[rewind] --rewind query "${queryRaw}" has no match and no checkpoints found.\n\n`,
+        `[rewind] --rewind 查询 "${queryRaw}" 没有匹配，也没有可用检查点。\n\n`,
     };
   }
 
@@ -118,6 +118,6 @@ export function resolveStartupRewindTarget(
     };
   }
   return {
-    notice: "[rewind] startup rewind requested but no checkpoints found.\n\n",
+    notice: "[rewind] 已请求启动回退，但没有可用检查点。\n\n",
   };
 }

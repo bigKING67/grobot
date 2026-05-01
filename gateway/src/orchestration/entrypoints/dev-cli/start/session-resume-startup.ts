@@ -39,7 +39,7 @@ function formatStartupResumeHints(matches: readonly StartupResumeSessionSummary[
     .slice(0, STARTUP_RESUME_HINT_LIMIT)
     .map((session) => `- ${session.id} | ${session.updatedAt} | ${formatStartupResumePreview(session.title)} | ${formatStartupResumePreview(session.summary)}`);
   if (matches.length > STARTUP_RESUME_HINT_LIMIT) {
-    rows.push(`- ... and ${String(matches.length - STARTUP_RESUME_HINT_LIMIT)} more`);
+    rows.push(`- ... 还有 ${String(matches.length - STARTUP_RESUME_HINT_LIMIT)} 项`);
   }
   return rows.join("\n");
 }
@@ -84,21 +84,21 @@ export function resolveStartupResumeTarget(
         requiresDisambiguation: true,
         disambiguationCandidates: matches,
         notice:
-          `[session] --resume query "${queryRaw}" matched ${String(matches.length)} sessions.\n`
+          `[session] --resume 查询 "${queryRaw}" 匹配到 ${String(matches.length)} 个会话。\n`
           + `${hints}\n`
-          + "[session] Tip: use --resume <session-id> for deterministic startup resume.\n",
+          + "[session] 提示：使用 --resume <session-id> 可确定恢复目标。\n",
       };
     }
     if (fallbackTargetSessionId) {
       return {
         targetSessionId: fallbackTargetSessionId,
         notice:
-          `[session] --resume query "${queryRaw}" has no match; fallback to latest resumable session "${fallbackTargetSessionId}".\n\n`,
+          `[session] --resume 查询 "${queryRaw}" 没有匹配；已回退到最近可恢复会话 "${fallbackTargetSessionId}"。\n\n`,
       };
     }
     return {
       notice:
-        `[session] --resume query "${queryRaw}" has no match and no resumable session found.\n\n`,
+        `[session] --resume 查询 "${queryRaw}" 没有匹配，也没有可恢复会话。\n\n`,
     };
   }
 
@@ -108,6 +108,6 @@ export function resolveStartupResumeTarget(
     };
   }
   return {
-    notice: "[session] --resume requested but no resumable session found.\n\n",
+    notice: "[session] 已请求启动恢复，但没有可恢复会话。\n\n",
   };
 }

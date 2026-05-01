@@ -137,7 +137,7 @@ async function main(): Promise<void> {
       root_has_builtin_memory: topLevel.some((item) => item.command === "/memory" && item.source === "builtin"),
       root_has_user_shipit: topLevel.some((item) => item.command === "/shipit" && item.source === "user"),
       root_disabled_marked: topLevel.some(
-        (item) => item.command === "/pause_release" && item.description.includes("disabled"),
+        (item) => item.command === "/pause_release" && item.description.includes("已停用"),
       ),
       root_hides_status_subcommands: !topLevel.some((item) => item.command.startsWith("/status ")),
       root_hides_plan_subcommands: !topLevel.some((item) => item.command.startsWith("/plan ")),

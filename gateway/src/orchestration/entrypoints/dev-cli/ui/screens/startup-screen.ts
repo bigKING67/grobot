@@ -147,7 +147,7 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
   const lines: StartScreenLine[] = [];
   const centerHeroLayout = (viewModel.hero?.infoLines.length ?? -1) === 0;
   if (viewModel.hero) {
-    lines.push(createTextLine("Welcome back!", "title", "center"));
+    lines.push(createTextLine("欢迎回来", "title", "center"));
     lines.push(createTextLine(""));
     if (centerHeroLayout) {
       lines.push(createTextLine(""));
@@ -181,7 +181,7 @@ function buildLeftPanelLines(viewModel: StartScreenViewModel): StartScreenLine[]
   }
 
   if (lines.length === 0) {
-    lines.push(createTextLine("Welcome to Grobot."));
+    lines.push(createTextLine("欢迎使用 Grobot。"));
   }
   return lines;
 }

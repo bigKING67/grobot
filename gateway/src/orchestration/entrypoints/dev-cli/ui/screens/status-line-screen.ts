@@ -378,9 +378,9 @@ function formatContextLeft(input: {
 }): string {
   const leftPercent = resolveContextLeftPercent(input);
   if (typeof leftPercent !== "number") {
-    return "n/a left";
+    return "n/a 剩余";
   }
-  return `${String(leftPercent)}% left`;
+  return `剩余 ${String(leftPercent)}%`;
 }
 
 function formatWindowUsage(input: {
@@ -486,7 +486,7 @@ function resolveStatusSegmentLabel(
   const plainFull: Record<StatusLineSegmentId, string> = {
     model: "",
     project: "",
-    context: "Context",
+    context: "上下文",
     tokens: "",
     session: "",
   };

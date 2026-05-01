@@ -13,7 +13,14 @@ function parseModelField(
     | "session_title"
     | "session_summary",
 ): string {
-  const marker = `${key}: `;
+  const localizedKey = {
+    model: "模型",
+    source: "来源",
+    session_id: "会话",
+    session_title: "标题",
+    session_summary: "摘要",
+  }[key];
+  const marker = `${localizedKey}: `;
   const index = snapshot.indexOf(marker);
   if (index < 0) {
     return "";

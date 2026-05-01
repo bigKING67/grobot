@@ -96,19 +96,19 @@ const startupViewModel: StartScreenViewModel = {
   },
   feeds: [
     {
-      title: "Tips for getting started",
+      title: "开始使用",
       lines: [
-        "Run /init to create an AGENTS.md file with instructions",
+        "运行 /init 创建 AGENTS.md 指令文件",
       ],
       footer: "Use /help to list all commands",
     },
     {
-      title: "Recent activity",
+      title: "最近活动",
       lines: [
         "2h ago  Session planning update",
       ],
-      emptyMessage: "No recent activity",
-      footer: "/sessions for more",
+      emptyMessage: "暂无最近活动",
+      footer: "/sessions 查看更多",
     },
   ],
   rows: [
@@ -144,18 +144,18 @@ const startupBrandSymbolViewModel: StartScreenViewModel = {
   },
   feeds: [
     {
-      title: "Tips for getting started",
+      title: "开始使用",
       lines: [
-        "Run /init to create an AGENTS.md file with instructions",
+        "运行 /init 创建 AGENTS.md 指令文件",
       ],
     },
     {
-      title: "Recent activity",
+      title: "最近活动",
       lines: [
         "[store] history migrated from legacy path (/tmp/demo.history.json)",
       ],
-      emptyMessage: "No recent activity",
-      footer: "/sessions for more",
+      emptyMessage: "暂无最近活动",
+      footer: "/sessions 查看更多",
     },
   ],
   rows: [
@@ -308,7 +308,7 @@ const longModelPickerInput: TerminalSelectMenuInput = {
       id: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
       label: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
       current: true,
-      description: "Available from provider with a long context description and routing metadata",
+      description: "Provider 可用，包含较长上下文说明和路由元数据",
     },
     {
       id: "fallback-provider/kimi-k2-2026-04-experimental-context-window",
@@ -396,7 +396,7 @@ const expandedMenuInput: TerminalSelectMenuInput = {
 };
 
 const viewportMenuInput: TerminalSelectMenuInput = {
-  title: "Select command",
+  title: "选择命令",
   subtitle: "Viewport contract",
   hint: "Use arrows",
   viewport: {
@@ -408,17 +408,17 @@ const viewportMenuInput: TerminalSelectMenuInput = {
     {
       id: "cmd-8",
       label: "/context",
-      description: "Inspect context",
+      description: "查看上下文",
     },
     {
       id: "cmd-9",
       label: "/model",
-      description: "Switch model",
+      description: "切换模型",
     },
     {
       id: "cmd-10",
       label: "/status",
-      description: "Open status",
+      description: "打开状态",
     },
     {
       id: "cmd-11",
@@ -515,7 +515,7 @@ const startupBrandSymbolBodyLengthConsistent = startupBrandSymbolBodies.every((l
   if (lines.length === 0) {
     return false;
   }
-  const lengths = lines.map((line) => line.length);
+  const lengths = lines.map((line) => measureDisplayWidth(line));
   return new Set(lengths).size === 1;
 });
 const startupBrandSymbolHasClaudeLikeHeight = startupBrandSymbolBodies.every((lines) =>
@@ -585,10 +585,10 @@ const payload = {
     !startupInteractive.includes("Enter message")
     && !startupInteractive.includes("/ for commands")
     && !startupInteractive.includes("? for shortcuts"),
-  startup_has_tips_title: startupInteractive.includes("Tips for getting started"),
-  startup_has_recent_activity_title: startupInteractive.includes("Recent activity"),
+  startup_has_tips_title: startupInteractive.includes("开始使用"),
+  startup_has_recent_activity_title: startupInteractive.includes("最近活动"),
   startup_has_recent_activity_empty_or_items:
-    startupInteractive.includes("No recent activity")
+    startupInteractive.includes("暂无最近活动")
     || startupInteractive.includes("2h ago  Session planning update"),
   startup_has_developed_by_67:
     stripAnsi(startupBrandSymbolInteractive).includes("Grobot 0.10.0 developed by 67"),
@@ -599,13 +599,13 @@ const payload = {
   startup_interactive_title_has_muted_version_color:
     startupBrandSymbolInteractive.includes("\x1b[90m 0.10.0 developed by 67\x1b[0m"),
   startup_feed_title_uses_brand_color:
-    startupBrandSymbolInteractive.includes("\x1b[38;2;202;124;94mTips for getting started"),
+    startupBrandSymbolInteractive.includes("\x1b[38;2;202;124;94m开始使用"),
   startup_feed_title_avoids_accent_color:
-    !startupBrandSymbolInteractive.includes("\x1b[92mTips for getting started"),
+    !startupBrandSymbolInteractive.includes("\x1b[92m开始使用"),
   startup_feed_footer_uses_muted_color:
-    startupBrandSymbolInteractive.includes("\x1b[90m/sessions for more"),
+    startupBrandSymbolInteractive.includes("\x1b[90m/sessions 查看更多"),
   startup_feed_footer_avoids_info_color:
-    !startupBrandSymbolInteractive.includes("\x1b[96m/sessions for more"),
+    !startupBrandSymbolInteractive.includes("\x1b[96m/sessions 查看更多"),
   startup_has_no_join_artifact: startupNoJoinArtifact,
   startup_has_no_tee_glyph: startupNoTeeGlyph,
   startup_body_width_consistent: startupBodyWidthConsistent,
@@ -758,7 +758,7 @@ const payload = {
   model_picker_narrow_rows_within_width:
     renderedLinesWithinColumns(narrowModelPickerPlain, 52),
   model_picker_narrow_hides_description:
-    !stripAnsi(narrowModelPickerPlain).includes("Available from provider"),
+    !stripAnsi(narrowModelPickerPlain).includes("Provider 可用"),
   menu_long_rows_within_width:
     renderedLinesWithinColumns(longMenuPlain, 72),
   menu_long_current_suffix_preserved:

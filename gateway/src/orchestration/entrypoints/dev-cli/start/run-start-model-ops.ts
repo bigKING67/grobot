@@ -116,14 +116,14 @@ export interface RunStartModelOps {
 }
 
 const MODEL_MENU_DESCRIPTIONS: Record<string, string> = {
-  "gpt-5.5": "Frontier model for complex coding, research, and real-world work.",
-  "gpt-5.4": "Strong model for everyday coding.",
-  "gpt-5.4-mini": "Small, fast, and cost-efficient model for simpler coding tasks.",
-  "gpt-5.3-codex": "Coding-optimized model.",
-  "gpt-5.2": "Optimized for professional work and long-running agents.",
-  "gpt-5.1-codex": "Optimized for Codex. Balance of reasoning quality and coding ability.",
-  "gpt-5.1-codex-mini": "Optimized for Codex. Cheaper, faster, but less capable.",
-  "gpt-4.1-codex": "Legacy model. Use when compatibility with older automations matters.",
+  "gpt-5.5": "复杂编码、研究与长任务",
+  "gpt-5.4": "日常编码与通用任务",
+  "gpt-5.4-mini": "小型快速模型，适合简单任务",
+  "gpt-5.3-codex": "Codex 优化模型",
+  "gpt-5.2": "专业工作与长时 agent 任务",
+  "gpt-5.1-codex": "Codex 优化，兼顾推理和编码",
+  "gpt-5.1-codex-mini": "Codex 轻量模型，更快更省",
+  "gpt-4.1-codex": "旧版兼容模型，适合老自动化",
 };
 
 function normalizeModelIds(raw: readonly string[]): string[] {
@@ -152,12 +152,12 @@ function formatTokenWindow(tokens: number | undefined): string | undefined {
   }
   if (tokens >= 1_000_000) {
     const value = tokens / 1_000_000;
-    return `${Number.isInteger(value) ? String(value) : value.toFixed(1)}M context window`;
+    return `${Number.isInteger(value) ? String(value) : value.toFixed(1)}M 上下文`;
   }
   if (tokens >= 1_000) {
-    return `${String(Math.round(tokens / 1_000))}K context window`;
+    return `${String(Math.round(tokens / 1_000))}K 上下文`;
   }
-  return `${String(Math.floor(tokens))} token context window`;
+  return `${String(Math.floor(tokens))} token 上下文`;
 }
 
 function resolveModelMenuDescription(input: {
@@ -173,7 +173,7 @@ function resolveModelMenuDescription(input: {
   if (contextWindow) {
     return contextWindow;
   }
-  return "Available from provider.";
+  return "Provider 可用";
 }
 
 function buildModelMenuItems(input: {
@@ -277,7 +277,7 @@ export function createRunStartModelOps(
       if (!connection.baseUrl || !connection.apiKey) {
         return {
           ok: false,
-          message: "missing base_url/api_key for current provider",
+          message: "当前供应商缺少 base_url/api_key",
         };
       }
       const listed = await listProviderModelsByConnection(
@@ -336,14 +336,14 @@ export function createRunStartModelOps(
     if (!requestedModel) {
       return {
         ok: false,
-        message: "model switch failed: target model is empty",
+        message: "目标模型为空",
       };
     }
     const target = resolvePrimaryModelTarget();
     if (!target.modelConfig) {
       return {
         ok: false,
-        message: "model switch failed: runtime provider model config is unavailable",
+        message: "运行时供应商模型配置不可用",
       };
     }
     const persisted = await persistModelToConfig({
@@ -364,31 +364,31 @@ export function createRunStartModelOps(
   ): Promise<void> => {
     const modelId = requestedModelId.trim();
     if (!modelId) {
-      input.writeStdout("[model] switch failed: target model is empty.\n\n");
+      input.writeStdout("[model] 切换失败：目标模型为空。\n\n");
       return;
     }
     const available = availableInput ?? await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] switch failed: ${available.message}\n\n`);
+      input.writeStdout(`[model] 切换失败：${available.message}\n\n`);
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(modelId)) {
       input.writeStdout(
-        `[model] switch failed: "${modelId}" not found for provider=${available.providerName}\n`,
+        `[model] 切换失败："${modelId}" 不在供应商 ${available.providerName} 的模型列表中。\n`,
       );
       input.writeStdout(
-        `[model] available: ${available.modelIds.join(", ")}\n\n`,
+        `[model] 可用模型: ${available.modelIds.join(", ")}\n\n`,
       );
       return;
     }
     const persisted = await applyModelSelection(modelId);
     if (!persisted.ok) {
-      input.writeStdout(`[model] switch failed: ${persisted.message}\n\n`);
+      input.writeStdout(`[model] 切换失败：${persisted.message}\n\n`);
       return;
     }
     input.writeStdout(
-      `[model] switched provider=${available.providerName} model=${modelId} source=${persisted.source}${persisted.path ? ` path=${persisted.path}` : ""}\n\n`,
+      `[model] 已切换：供应商=${available.providerName} 模型=${modelId} 来源=${persisted.source}${persisted.path ? ` 路径=${persisted.path}` : ""}\n\n`,
     );
   };
 
@@ -414,25 +414,25 @@ export function createRunStartModelOps(
       "<none>",
     );
     input.writeStdout(
-      `[model]\nprovider: ${snapshot.providerName}\nmodel: ${snapshot.model}\nsource: ${snapshot.source}\nsession_id: ${activeSessionId}\nsession_title: ${sessionTitle}\nsession_summary: ${sessionSummary}\n\n`,
+      `[model]\n供应商: ${snapshot.providerName}\n模型: ${snapshot.model}\n来源: ${snapshot.source}\n会话: ${activeSessionId}\n标题: ${sessionTitle}\n摘要: ${sessionSummary}\n\n`,
     );
   };
 
   const listModels = async (): Promise<void> => {
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] list failed: ${available.message}\n\n`);
+      input.writeStdout(`[model] 列表获取失败：${available.message}\n\n`);
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
       input.writeStdout(
-        `[model] provider=${available.providerName} returned no models.\n\n`,
+        `[model] 供应商 ${available.providerName} 未返回模型。\n\n`,
       );
       return;
     }
     input.writeStdout(
-      `[model-list] provider=${available.providerName} count=${String(available.modelIds.length)} current=${available.currentModel ?? "<unset>"}\n`,
+      `[model-list] 供应商=${available.providerName} 数量=${String(available.modelIds.length)} 当前=${available.currentModel ?? "<unset>"}\n`,
     );
     for (const modelId of available.modelIds) {
       const marker = modelId === available.currentModel ? "*" : " ";
@@ -444,7 +444,7 @@ export function createRunStartModelOps(
   const useModel = async (modelIdRaw: string): Promise<void> => {
     const requestedModelId = modelIdRaw.trim();
     if (!requestedModelId) {
-      input.writeStdout("[model] switch failed: target model is empty.\n\n");
+      input.writeStdout("[model] 切换失败：目标模型为空。\n\n");
       return;
     }
     await switchModel(requestedModelId);
@@ -452,31 +452,31 @@ export function createRunStartModelOps(
 
   const resetModel = async (): Promise<void> => {
     if (!startupPrimaryModel || startupPrimaryModel.length === 0) {
-      input.writeStdout("[model] reset failed: startup model is unavailable.\n\n");
+      input.writeStdout("[model] 恢复启动模型失败：启动模型不可用。\n\n");
       return;
     }
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] reset failed: ${available.message}\n\n`);
+      input.writeStdout(`[model] 恢复启动模型失败：${available.message}\n\n`);
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(startupPrimaryModel)) {
       input.writeStdout(
-        `[model] reset failed: startup model "${startupPrimaryModel}" is not available for provider=${available.providerName}\n`,
+        `[model] 恢复启动模型失败：启动模型 "${startupPrimaryModel}" 不在供应商 ${available.providerName} 的模型列表中。\n`,
       );
       input.writeStdout(
-        `[model] available: ${available.modelIds.join(", ")}\n\n`,
+        `[model] 可用模型: ${available.modelIds.join(", ")}\n\n`,
       );
       return;
     }
     const persisted = await applyModelSelection(startupPrimaryModel);
     if (!persisted.ok) {
-      input.writeStdout(`[model] reset failed: ${persisted.message}\n\n`);
+      input.writeStdout(`[model] 恢复启动模型失败：${persisted.message}\n\n`);
       return;
     }
     input.writeStdout(
-      `[model] reset provider=${available.providerName} model=${startupPrimaryModel} source=${persisted.source}${persisted.path ? ` path=${persisted.path}` : ""}\n\n`,
+      `[model] 已恢复启动模型：供应商=${available.providerName} 模型=${startupPrimaryModel} 来源=${persisted.source}${persisted.path ? ` 路径=${persisted.path}` : ""}\n\n`,
     );
   };
 
@@ -485,13 +485,13 @@ export function createRunStartModelOps(
   ): Promise<void> => {
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] picker unavailable: ${available.message}\n\n`);
+      input.writeStdout(`[model] 模型选择器不可用：${available.message}\n\n`);
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
       input.writeStdout(
-        `[model] provider=${available.providerName} returned no models.\n\n`,
+        `[model] 供应商 ${available.providerName} 未返回模型。\n\n`,
       );
       return;
     }

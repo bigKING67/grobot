@@ -554,7 +554,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
     hideIndexes,
   });
   const hint = sanitizeMenuText(input.menu.hint, MODEL_PICKER_DEFAULT_HINT);
-  const title = sanitizeMenuText(input.menu.title, "Select");
+  const title = sanitizeMenuText(input.menu.title, "选择");
   const subtitle = sanitizeMenuText(input.menu.subtitle, MODEL_PICKER_DEFAULT_SUBTITLE);
   const dividerWidth = Math.max(44, Math.min(MODEL_PICKER_DIVIDER_MAX_WIDTH, columns));
 
@@ -806,7 +806,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     const labelRaw = resolveInputOptionDisplayText({
       item,
       isActive,
-      fallbackPlaceholder: "Type feedback",
+      fallbackPlaceholder: "输入反馈",
       fallbackSeparator: ": ",
     });
     const label = truncateDisplayWidth(labelRaw, optionLabelBudget);

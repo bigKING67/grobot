@@ -156,7 +156,7 @@ function run(): void {
     ),
     check(
       "resume_multiple_query_notice_contains_tip",
-      (resumeMultipleMatches.notice ?? "").includes("deterministic startup resume"),
+      (resumeMultipleMatches.notice ?? "").includes("可确定恢复目标"),
     ),
     check(
       "resume_multiple_query_notice_no_autoselect_literal",
@@ -168,11 +168,11 @@ function run(): void {
     ),
     check(
       "resume_no_match_fallback_has_notice",
-      (resumeNoMatchFallback.notice ?? "").includes("fallback to latest resumable session"),
+      (resumeNoMatchFallback.notice ?? "").includes("已回退到最近可恢复会话"),
     ),
     check(
       "resume_no_match_without_fallback_has_notice",
-      (resumeNoMatchNoFallback.notice ?? "").includes("no resumable session found"),
+      (resumeNoMatchNoFallback.notice ?? "").includes("没有匹配，也没有可恢复会话"),
     ),
     check(
       "resume_all_can_match_active_title",

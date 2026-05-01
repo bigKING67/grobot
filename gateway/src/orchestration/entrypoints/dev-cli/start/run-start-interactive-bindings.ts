@@ -160,16 +160,16 @@ function formatStatusLineCurrentSnapshot(config: StatusLineConfig): string {
     .join(", ");
   return [
     "[status]",
-    `enabled: ${config.enabled ? "on" : "off"}`,
-    `layout_mode: ${config.layoutMode}`,
-    `theme: ${config.theme}`,
-    `separator: ${JSON.stringify(config.separator)}`,
-    `segments: ${segmentText}`,
-    `warning_threshold: ${String(Math.round(config.warningThresholdRatio * 100))}%`,
-    `critical_threshold: ${String(Math.round(config.criticalThresholdRatio * 100))}%`,
-    `budget_snapshot_cache_ttl_ms: ${String(config.budgetSnapshotCacheTtlMs)}`,
-    `session_topic_cache_ttl_ms: ${String(config.sessionTopicCacheTtlMs)}`,
-    `session_topic_max_width: ${String(config.sessionTopicMaxWidth)}`,
+    `状态: ${config.enabled ? "开启" : "关闭"} (enabled: ${config.enabled ? "on" : "off"})`,
+    `布局: ${config.layoutMode} (layout_mode: ${config.layoutMode})`,
+    `主题: ${config.theme} (theme: ${config.theme})`,
+    `分隔符: ${JSON.stringify(config.separator)} (separator)`,
+    `状态段: ${segmentText} (segments)`,
+    `提醒阈值: ${String(Math.round(config.warningThresholdRatio * 100))}% (warning_threshold)`,
+    `危险阈值: ${String(Math.round(config.criticalThresholdRatio * 100))}% (critical_threshold)`,
+    `预算快照缓存: ${String(config.budgetSnapshotCacheTtlMs)}ms (budget_snapshot_cache_ttl_ms)`,
+    `会话主题缓存: ${String(config.sessionTopicCacheTtlMs)}ms (session_topic_cache_ttl_ms)`,
+    `会话主题宽度: ${String(config.sessionTopicMaxWidth)} (session_topic_max_width)`,
     "",
   ].join("\n");
 }
@@ -314,7 +314,7 @@ function readSkillDirectoryStatus(path: string): SkillDirectoryStatus {
 }
 
 function formatSkillDirectoryStatus(label: string, status: SkillDirectoryStatus): string {
-  return `${label}: path=${status.path} exists=${status.exists ? "yes" : "no"} skills=${String(status.skillCount)} invalid_dirs=${String(status.invalidDirectoryCount)}`;
+  return `${label}: 路径=${status.path} 存在=${status.exists ? "是" : "否"} 技能=${String(status.skillCount)} 无效目录=${String(status.invalidDirectoryCount)}`;
 }
 
 function detectPlatformFromEnv(): "darwin" | "win32" | "other" {
@@ -481,11 +481,11 @@ export function createRunStartInteractiveModeInput(
     if (!process.stdin.isTTY) {
       input.output.writeStdout(
         [
-          "[status] action menu",
-          "- /status current                       Show current status line config",
-          "- /status theme <plain|nerd|ccline>     Set status line theme",
-          "- /status layout <adaptive|full|compact> Set status line layout mode",
-          "- /status segment <id> <on|off>         Toggle segment (model/project/context/tokens/session)",
+          "[status] 操作菜单",
+          "- /status current                       查看当前状态栏配置",
+          "- /status theme <plain|nerd|ccline>     设置状态栏主题",
+          "- /status layout <adaptive|full|compact> 设置状态栏布局模式",
+          "- /status segment <id> <on|off>         开关状态段 (model/project/context/tokens/session)",
           "",
         ].join("\n"),
       );
@@ -493,29 +493,29 @@ export function createRunStartInteractiveModeInput(
     }
     const actionMenu = await withInputPaused(() =>
       runSelectMenu({
-        title: "Status Line",
-        subtitle: `Session: ${input.runtimeState.getSessionKey()}`,
+        title: "状态栏",
+        subtitle: `会话: ${input.runtimeState.getSessionKey()}`,
         hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "current",
-            label: "Show current status snapshot",
-            description: "Print current status line configuration.",
+            label: "查看当前状态快照",
+            description: "输出当前状态栏配置。",
           },
           {
             id: "theme",
-            label: "Set status theme",
-            description: "Choose theme: plain / ccline / nerd_font.",
+            label: "设置状态主题",
+            description: "选择主题: plain / ccline / nerd_font。",
           },
           {
             id: "layout",
-            label: "Set status layout",
-            description: "Choose layout mode: adaptive / full / compact.",
+            label: "设置状态布局",
+            description: "选择布局模式: adaptive / full / compact。",
           },
           {
             id: "segment",
-            label: "Toggle status segment",
-            description: "Enable or disable segment: model/project/context/tokens/session.",
+            label: "开关状态 segment",
+            description: "启用或关闭 segment: model/project/context/tokens/session。",
           },
         ],
       }),
@@ -531,26 +531,26 @@ export function createRunStartInteractiveModeInput(
       const current = getStatusLineConfig().theme;
       const pickedTheme = await withInputPaused(() =>
         runSelectMenu({
-          title: "Status Theme",
-          subtitle: `Current: ${current}`,
+          title: "状态主题",
+          subtitle: `当前: ${current}`,
           hint: "↑/↓ 选择 · Enter 应用 · Esc 返回",
           items: [
             {
               id: "plain",
               label: "plain",
-              description: "Minimal ANSI style.",
+              description: "极简 ANSI 样式。",
               current: current === "plain",
             },
             {
               id: "ccline",
               label: "ccline",
-              description: "Cometix-style status line theme.",
+              description: "Cometix 风格状态栏主题。",
               current: current === "ccline",
             },
             {
               id: "nerd_font",
               label: "nerd_font",
-              description: "Nerd-font glyph enhanced theme.",
+              description: "Nerd-font 字形增强主题。",
               current: current === "nerd_font",
             },
           ],
@@ -561,37 +561,37 @@ export function createRunStartInteractiveModeInput(
       }
       const theme = resolveStatusTheme(pickedTheme.item.id);
       if (!theme) {
-        input.output.writeStdout("invalid status theme; usage: /status theme <plain|nerd|ccline>\n\n");
+        input.output.writeStdout("无效状态主题；用法: /status theme <plain|nerd|ccline>\n\n");
         return;
       }
       updateStatusLineConfig({ theme });
-      input.output.writeStdout(`[status] theme set to ${theme}\n\n`);
+      input.output.writeStdout(`[status] 主题已设为 ${theme}\n\n`);
       return;
     }
     if (actionMenu.item.id === "layout") {
       const current = getStatusLineConfig().layoutMode;
       const pickedLayout = await withInputPaused(() =>
         runSelectMenu({
-          title: "Status Layout",
-          subtitle: `Current: ${current}`,
+          title: "状态布局",
+          subtitle: `当前: ${current}`,
           hint: "↑/↓ 选择 · Enter 应用 · Esc 返回",
           items: [
             {
               id: "adaptive",
               label: "adaptive",
-              description: "Auto-choose based on terminal width.",
+              description: "根据终端宽度自动选择。",
               current: current === "adaptive",
             },
             {
               id: "full",
               label: "full",
-              description: "Always render full status detail.",
+              description: "始终显示完整状态细节。",
               current: current === "full",
             },
             {
               id: "compact",
               label: "compact",
-              description: "Use compact status line layout.",
+              description: "使用紧凑状态栏布局。",
               current: current === "compact",
             },
           ],
@@ -602,23 +602,23 @@ export function createRunStartInteractiveModeInput(
       }
       const layoutMode = resolveStatusLayoutMode(pickedLayout.item.id);
       if (!layoutMode) {
-        input.output.writeStdout("invalid status layout; usage: /status layout <adaptive|full|compact>\n\n");
+        input.output.writeStdout("无效状态布局；用法: /status layout <adaptive|full|compact>\n\n");
         return;
       }
       updateStatusLineConfig({ layoutMode });
-      input.output.writeStdout(`[status] layout_mode set to ${layoutMode}\n\n`);
+      input.output.writeStdout(`[status] 布局已设为 ${layoutMode} (layout_mode 已设为 ${layoutMode})\n\n`);
       return;
     }
     const config = getStatusLineConfig();
     const pickedSegment = await withInputPaused(() =>
       runSelectMenu({
-        title: "Status Segment",
-        subtitle: "Select segment to change",
+        title: "状态段",
+        subtitle: "选择要调整的状态段",
         hint: "↑/↓ 选择 · Enter 继续 · Esc 返回",
         items: config.segmentOrder.map((segmentId) => ({
           id: segmentId,
           label: segmentId,
-          description: `Current: ${config.segments[segmentId] ? "on" : "off"}`,
+          description: `当前: ${config.segments[segmentId] ? "开启" : "关闭"}`,
         })),
       }),
     );
@@ -628,27 +628,27 @@ export function createRunStartInteractiveModeInput(
     const segmentId = normalizeStatusSegmentId(pickedSegment.item.id);
     if (!segmentId) {
       input.output.writeStdout(
-        "invalid status segment; usage: /status segment <model|project|context|tokens|session> <on|off>\n\n",
+        "无效状态段；用法: /status segment <model|project|context|tokens|session> <on|off>\n\n",
       );
       return;
     }
     const currentEnabled = getStatusLineConfig().segments[segmentId];
     const pickedState = await withInputPaused(() =>
       runSelectMenu({
-        title: `Status Segment: ${segmentId}`,
-        subtitle: `Current: ${currentEnabled ? "on" : "off"}`,
+        title: `状态段: ${segmentId}`,
+        subtitle: `当前: ${currentEnabled ? "开启" : "关闭"}`,
         hint: "↑/↓ 选择 · Enter 应用 · Esc 返回",
         items: [
           {
             id: "on",
-            label: "on",
-            description: "Enable segment in status line.",
+            label: "开启",
+            description: "在状态栏中启用该段。",
             current: currentEnabled,
           },
           {
             id: "off",
-            label: "off",
-            description: "Disable segment in status line.",
+            label: "关闭",
+            description: "在状态栏中关闭该段。",
             current: !currentEnabled,
           },
         ],
@@ -664,7 +664,7 @@ export function createRunStartInteractiveModeInput(
       },
     });
     input.output.writeStdout(
-      `[status] segment ${segmentId} ${enabled ? "on" : "off"}\n\n`,
+      `[status] 状态段 ${segmentId} ${enabled ? "已开启" : "已关闭"}\n\n`,
     );
   };
 
@@ -672,7 +672,7 @@ export function createRunStartInteractiveModeInput(
     const query = (queryRaw ?? "").trim().toLowerCase();
     const allRows = input.runtimeState.getHistoryMessages();
     if (allRows.length === 0) {
-      input.output.writeStdout("[history] no conversation history yet.\n\n");
+      input.output.writeStdout("[history] 暂无对话历史。\n\n");
       return;
     }
     const filteredRows = query.length > 0
@@ -682,19 +682,19 @@ export function createRunStartInteractiveModeInput(
     const renderRows = filteredRows.slice(-windowSize);
     const lines: string[] = [
       "[history]",
-      `total: ${String(allRows.length)}`,
-      `matched: ${String(filteredRows.length)}`,
-      `query: ${query.length > 0 ? query : "<none>"}`,
-      `showing_last: ${String(renderRows.length)}`,
+      `总数: ${String(allRows.length)}`,
+      `匹配: ${String(filteredRows.length)}`,
+      `查询: ${query.length > 0 ? query : "<none>"}`,
+      `显示最近: ${String(renderRows.length)}`,
     ];
     if (renderRows.length === 0) {
-      lines.push("- no matched rows");
+      lines.push("- 没有匹配记录");
       lines.push("");
       input.output.writeStdout(`${lines.join("\n")}\n`);
       return;
     }
     for (const row of renderRows) {
-      const role = row.role === "assistant" ? "assistant" : "user";
+      const role = row.role === "assistant" ? "助手" : "用户";
       lines.push(`- ${role}: ${compactSingleLine(row.content, 220)}`);
     }
     lines.push("");
@@ -714,14 +714,14 @@ export function createRunStartInteractiveModeInput(
     input.output.writeStdout(
       [
         "[context]",
-        "definition: current bounded prompt window assembled for this turn",
-        "system_prompt: SYSTEM.md built-in",
-        `context_engine: ${input.contextEngineConfig.enabled ? "on" : "off"} profile=${input.contextEngineConfig.profile}`,
-        `context_window_tokens: ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "unknown"}`,
-        `auto_compact_limit: ${typeof input.contextEngineConfig.autoCompactTokenLimit === "number" ? String(input.contextEngineConfig.autoCompactTokenLimit) : "auto"}`,
-        `history_messages: ${String(input.runtimeState.getHistoryMessages().length)}`,
-        `project_instruction_sources: ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "<none>"}`,
-        "memory_relation: memory may be retrieved and injected into context; it is not the same layer",
+        "定义: 本轮发送前组装的有界上下文窗口",
+        "系统提示: SYSTEM.md 内置",
+        `上下文引擎: ${input.contextEngineConfig.enabled ? "开启" : "关闭"} · profile=${input.contextEngineConfig.profile}`,
+        `上下文窗口 tokens: ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "未知"}`,
+        `自动压缩阈值: ${typeof input.contextEngineConfig.autoCompactTokenLimit === "number" ? String(input.contextEngineConfig.autoCompactTokenLimit) : "auto"}`,
+        `历史消息: ${String(input.runtimeState.getHistoryMessages().length)}`,
+        `项目指令来源: ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "无"}`,
+        "关系: memory 是可检索素材，不等同于当前上下文窗口",
         "",
       ].join("\n"),
     );
@@ -734,11 +734,11 @@ export function createRunStartInteractiveModeInput(
     input.output.writeStdout(
       [
         "[memory]",
-        "definition: durable cross-turn/session/project recall layer",
-        `memory_orchestrator: ${policy.enabled ? "on" : "off"} version=${policy.version} budget_ratio=${policy.injectBudgetRatio.toFixed(2)} section_max=${String(policy.maxSectionTokens)} ga_rows=${String(policy.maxGaMemoryRows)} team_rows=${String(policy.maxTeamExperienceRows)} team_score_min=${policy.minTeamExperienceScore.toFixed(2)}`,
-        `decay: ${policy.decayEnabled ? "on" : "off"} max_rows=${String(policy.decayMaxRowsPerSession)} min_keep=${String(policy.decayMinRowsToKeep)}`,
-        `ga_state: memory_rows=${String(gaState?.memory.length ?? 0)} skill_cards=${String(gaState?.skillCards.length ?? 0)} reflections=${String(gaState?.reflectionQueue.length ?? 0)} pending_ask=${String(gaState?.pendingAskQueue?.length ?? 0)}`,
-        "context_relation: memory is durable source material; only selected memory snippets enter the current context window",
+        "定义: 跨回合/会话/项目的持久记忆层",
+        `记忆编排: ${policy.enabled ? "开启" : "关闭"} · version=${policy.version} · 预算比例=${policy.injectBudgetRatio.toFixed(2)} · 单段上限=${String(policy.maxSectionTokens)} · GA 行=${String(policy.maxGaMemoryRows)} · 团队行=${String(policy.maxTeamExperienceRows)} · 团队最低分=${policy.minTeamExperienceScore.toFixed(2)}`,
+        `衰减: ${policy.decayEnabled ? "开启" : "关闭"} · 最大行=${String(policy.decayMaxRowsPerSession)} · 最小保留=${String(policy.decayMinRowsToKeep)}`,
+        `GA 状态: 记忆行=${String(gaState?.memory.length ?? 0)} · skill 卡=${String(gaState?.skillCards.length ?? 0)} · 反思=${String(gaState?.reflectionQueue.length ?? 0)} · 待处理询问=${String(gaState?.pendingAskQueue?.length ?? 0)}`,
+        "关系: memory 是持久素材，只有被选中的片段会进入当前上下文窗口",
         "",
       ].join("\n"),
     );
@@ -752,10 +752,10 @@ export function createRunStartInteractiveModeInput(
     input.output.writeStdout(
       [
         "[skills]",
-        formatSkillDirectoryStatus("project", projectStatus),
-        formatSkillDirectoryStatus("global", globalStatus),
-        "tip: run /skill-creator <requirement> to create or update skills",
-        "tip: use /commands to manage reusable local command templates",
+        formatSkillDirectoryStatus("项目", projectStatus),
+        formatSkillDirectoryStatus("全局", globalStatus),
+        "提示: 使用 /skill-creator <需求> 创建或更新 skill",
+        "提示: 使用 /commands 管理可复用本地命令模板",
         "",
       ].join("\n"),
     );
@@ -769,11 +769,11 @@ export function createRunStartInteractiveModeInput(
     input.output.writeStdout(
       [
         "[mcp]",
-        `servers: ${serverNames}`,
-        `instruction_pack: ${hasInstructionPack ? "loaded" : "none"}`,
-        `strict_failure: ${input.mcpInstructionStrictFailure ?? "<none>"}`,
-        "explicit_call_hint: mcp_call(server=..., tool=...)",
-        "route_hint: /health shows provider failover; startup diagnostics show MCP instruction injection",
+        `服务: ${serverNames}`,
+        `指令包: ${hasInstructionPack ? "已加载" : "无"}`,
+        `严格失败: ${input.mcpInstructionStrictFailure ?? "无"}`,
+        "显式调用: mcp_call(server=..., tool=...)",
+        "路由提示: /health 查看 provider failover；启动诊断会显示 MCP 指令注入",
         "",
       ].join("\n"),
     );
@@ -788,26 +788,26 @@ export function createRunStartInteractiveModeInput(
     const rows = input.runtimeState.getHistoryMessages();
     const candidates = buildHistorySearchCandidates(rows);
     if (candidates.length === 0) {
-      input.output.writeStdout("[history] no conversation history yet.\n\n");
+      input.output.writeStdout("[history] 暂无对话历史。\n\n");
       return undefined;
     }
     const query = compactSingleLine(historyInput.currentInput, 120).trim();
     const filtered = filterHistorySearchCandidates(candidates, query);
     const effectiveCandidates = filtered.length > 0 ? filtered : candidates;
     const picked = await runSelectMenu({
-      title: "History Search (Ctrl+R)",
+      title: "历史搜索 (Ctrl+R)",
       subtitle: query.length >= 2
         ? filtered.length > 0
-          ? `query: ${compactSingleLine(query, 60)} · matched: ${String(filtered.length)}`
-          : `query: ${compactSingleLine(query, 60)} · no exact match, showing recent history`
-        : "Recent prompts and replies",
+          ? `查询: ${compactSingleLine(query, 60)} · 匹配: ${String(filtered.length)}`
+          : `查询: ${compactSingleLine(query, 60)} · 无精确匹配，显示最近历史`
+        : "最近的 prompts 和回复",
       hint: "↑/↓ 选择 · Enter 填入 · Esc 返回",
       items: effectiveCandidates
         .slice(0, 30)
         .map((candidate) => ({
           id: candidate.id,
           label: compactSingleLine(candidate.content, 120),
-          description: `${candidate.role === "user" ? "user" : "assistant"} · ${compactSingleLine(candidate.content, 240)}`,
+          description: `${candidate.role === "user" ? "用户" : "助手"} · ${compactSingleLine(candidate.content, 240)}`,
         })),
       initialIndex: 0,
     });
@@ -1070,7 +1070,7 @@ export function createRunStartInteractiveModeInput(
     ) => {
       const normalizedRequirement = requirement.trim();
       if (!normalizedRequirement) {
-        input.output.writeStdout("usage: /skill-creator [需求]\n\n");
+        input.output.writeStdout("用法: /skill-creator [需求]\n\n");
         return;
       }
       input.output.writeStdout(
@@ -1130,29 +1130,29 @@ export function createRunStartInteractiveModeInput(
       const theme = resolveStatusTheme(rawTheme);
       if (!theme) {
         input.output.writeStdout(
-          "invalid status theme; usage: /status theme <plain|nerd|ccline>\n\n",
+          "无效状态主题；用法: /status theme <plain|nerd|ccline>\n\n",
         );
         return;
       }
       updateStatusLineConfig({ theme });
-      input.output.writeStdout(`[status] theme set to ${theme}\n\n`);
+      input.output.writeStdout(`[status] 主题已设为 ${theme}\n\n`);
     },
     setStatusLayoutMode: (rawLayoutMode) => {
       const layoutMode = resolveStatusLayoutMode(rawLayoutMode);
       if (!layoutMode) {
         input.output.writeStdout(
-          "invalid status layout; usage: /status layout <adaptive|full|compact>\n\n",
+          "无效状态布局；用法: /status layout <adaptive|full|compact>\n\n",
         );
         return;
       }
       updateStatusLineConfig({ layoutMode });
-      input.output.writeStdout(`[status] layout_mode set to ${layoutMode}\n\n`);
+      input.output.writeStdout(`[status] 布局已设为 ${layoutMode} (layout_mode 已设为 ${layoutMode})\n\n`);
     },
     setStatusSegmentEnabled: (rawSegmentId, enabled) => {
       const segmentId = normalizeStatusSegmentId(rawSegmentId);
       if (!segmentId) {
         input.output.writeStdout(
-          "invalid status segment; usage: /status segment <model|project|context|tokens|session> <on|off>\n\n",
+          "无效状态段；用法: /status segment <model|project|context|tokens|session> <on|off>\n\n",
         );
         return;
       }
@@ -1162,7 +1162,7 @@ export function createRunStartInteractiveModeInput(
         },
       });
       input.output.writeStdout(
-        `[status] segment ${segmentId} ${enabled ? "on" : "off"}\n\n`,
+        `[status] 状态段 ${segmentId} ${enabled ? "已开启" : "已关闭"}\n\n`,
       );
     },
     openStatusMenu,

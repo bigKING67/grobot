@@ -7502,11 +7502,11 @@ async function runTsRustExecutionSmoke() {
     sessionMenuViewModelResult.stdout,
   );
   assert.equal(sessionMenuViewModelPayload.exit_code, 0);
-  assert.equal(sessionMenuViewModelPayload.sessions_title, "Session Manager");
-  assert.equal(sessionMenuViewModelPayload.switch_title, "Switch Session");
-  assert.equal(sessionMenuViewModelPayload.continue_title, "Continue From Session");
-  assert.equal(sessionMenuViewModelPayload.resume_title, "Resume Session");
-  assert.equal(sessionMenuViewModelPayload.rewind_title, "Rewind Session");
+  assert.equal(sessionMenuViewModelPayload.sessions_title, "会话管理");
+  assert.equal(sessionMenuViewModelPayload.switch_title, "切换会话");
+  assert.equal(sessionMenuViewModelPayload.continue_title, "从会话继续");
+  assert.equal(sessionMenuViewModelPayload.resume_title, "恢复会话");
+  assert.equal(sessionMenuViewModelPayload.rewind_title, "回退会话");
   assert.equal(sessionMenuViewModelPayload.sessions_has_create_item, true);
   assert.equal(sessionMenuViewModelPayload.continue_has_create_item, false);
   assert.equal(sessionMenuViewModelPayload.resume_has_create_item, false);

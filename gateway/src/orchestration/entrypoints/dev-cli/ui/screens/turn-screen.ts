@@ -11,16 +11,16 @@ interface RuntimeFailureSummaryInput {
 
 export function renderManagementInterruptNotice(interactiveMode: boolean): string {
   if (interactiveMode) {
-    return "Session interrupted by management API. Current input skipped.\n\n";
+    return "会话被 management API 中断。当前输入已跳过。\n\n";
   }
-  return "Session interrupted by management API. Current request skipped.\n";
+  return "会话被 management API 中断。当前请求已跳过。\n";
 }
 
 export function renderTurnInterruptedNotice(interactiveMode: boolean): string {
   if (interactiveMode) {
-    return "[interrupt] turn interrupted. You can send a new instruction.\n\n";
+    return "[interrupt] 回合已中断。可以继续输入新指令。\n\n";
   }
-  return "[interrupt] turn interrupted.\n";
+  return "[interrupt] 回合已中断。\n";
 }
 
 export function renderRuntimeFailureSummary(input: RuntimeFailureSummaryInput): string {

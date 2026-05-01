@@ -87,9 +87,9 @@ function resolveSessionTitle(input: {
     return trimSessionText(input.preview, 44);
   }
   if (input.id === SESSION_REGISTRY_MAIN_ID) {
-    return "Main Session";
+    return "主会话";
   }
-  return "Untitled Session";
+  return "未命名会话";
 }
 
 export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
@@ -127,7 +127,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const record = findSessionRecord(sessionRegistry, targetSessionId);
     if (!record) {
-      input.writeStdout(`Session "${targetSessionId}" not found. Use /sessions to inspect ids.\n\n`);
+      input.writeStdout(`未找到会话 "${targetSessionId}"。使用 /sessions 查看 id。\n\n`);
       return false;
     }
     input.setActiveSessionId(record.id);
@@ -144,7 +144,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     touchSessionRecord(sessionRegistry, record.id);
     await input.persistSessionRegistryState();
     input.writeStdout(
-      `Switched to session "${record.id}" (reason=${reason}, restored=${String(historyLoad.messages.length / 2)} turns from ${historyLoad.source}).\n\n`,
+      `已切换到会话 "${record.id}"（原因=${reason}，从 ${historyLoad.source} 恢复 ${String(historyLoad.messages.length / 2)} 轮）。\n\n`,
     );
     return true;
   };
@@ -166,17 +166,17 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
   const printSessionOverview = (): void => {
     const sessions = listSessions();
     if (!sessions.length) {
-      input.writeStdout("No sessions available.\n\n");
+      input.writeStdout("暂无可用会话。\n\n");
       return;
     }
-    input.writeStdout(`Session namespace: ${input.sessionNamespaceKey}\n`);
+    input.writeStdout(`会话命名空间: ${input.sessionNamespaceKey}\n`);
     for (const record of sessions) {
       const marker = record.active ? "*" : " ";
       input.writeStdout(
         `${marker} ${record.id} | ${record.title} (${record.updatedAt})\n`,
       );
       if (record.summary.length > 0) {
-        input.writeStdout(`    summary: ${record.summary}\n`);
+        input.writeStdout(`    摘要: ${record.summary}\n`);
       }
     }
     input.writeStdout("\n");
@@ -186,12 +186,12 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const activeSessionId = input.getActiveSessionId();
     if (sourceId === activeSessionId) {
-      input.writeStdout("Skip: source session is current active session.\n\n");
+      input.writeStdout("已跳过：来源会话就是当前会话。\n\n");
       return;
     }
     const sourceRecord = findSessionRecord(sessionRegistry, sourceId);
     if (!sourceRecord) {
-      input.writeStdout(`Session "${sourceId}" not found. Use /sessions to inspect ids.\n\n`);
+      input.writeStdout(`未找到会话 "${sourceId}"。使用 /sessions 查看 id。\n\n`);
       return;
     }
     const sourceHistoryState = await input.sessionStore.loadHistoryMessagesState(sourceRecord.session_key);
@@ -204,7 +204,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     );
     if (!bridge) {
       input.writeStdout(
-        `Cannot bridge from "${sourceId}" because source session has no recoverable summary (restored=${sourceHistoryState.source}).\n\n`,
+        `无法从 "${sourceId}" 桥接：来源会话没有可恢复摘要（来源=${sourceHistoryState.source}）。\n\n`,
       );
       return;
     }
@@ -218,13 +218,13 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     touchSessionRecord(sessionRegistry, activeSessionId, `continue from ${sourceId}`);
     await input.persistSessionRegistryState();
     input.writeStdout(
-      `Bridge injected from "${sourceId}" into current session "${activeSessionId}" (summary only, no full history import).\n\n`,
+      `已把 "${sourceId}" 的摘要桥接到当前会话 "${activeSessionId}"（仅摘要，不导入完整历史）。\n\n`,
     );
   };
 
   const resumeFromSession = async (sourceId: string, reason = "resume"): Promise<boolean> => {
     if (sourceId === input.getActiveSessionId()) {
-      input.writeStdout(`Session "${sourceId}" is already active.\n\n`);
+      input.writeStdout(`会话 "${sourceId}" 已是当前会话。\n\n`);
       return true;
     }
     return switchActiveSession(sourceId, reason);
@@ -237,7 +237,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const sourceRecord = findSessionRecord(sessionRegistry, sourceId);
     if (!sourceRecord) {
-      input.writeStdout(`Session "${sourceId}" not found. Use /sessions to inspect ids.\n\n`);
+      input.writeStdout(`未找到会话 "${sourceId}"。使用 /sessions 查看 id。\n\n`);
       return false;
     }
     const sourceHistoryState = await input.sessionStore.loadHistoryMessagesState(sourceRecord.session_key);
@@ -269,15 +269,15 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
         });
         if (rewindClone.copiedCheckpoints > 0 || rewindClone.failedBackupFiles > 0) {
           const failedHint = rewindClone.failedBackupFiles > 0
-            ? `, rewind_backup_failed=${String(rewindClone.failedBackupFiles)}`
+            ? `，备份失败=${String(rewindClone.failedBackupFiles)}`
             : "";
           rewindCloneSummary =
-            ` rewind_checkpoints=${String(rewindClone.copiedCheckpoints)}` +
-            ` rewind_backups=${String(rewindClone.copiedBackupFiles)}` +
+            `，检查点=${String(rewindClone.copiedCheckpoints)}` +
+            `，备份=${String(rewindClone.copiedBackupFiles)}` +
             failedHint;
         }
       } catch (error) {
-        input.writeStdout(`[rewind] fork checkpoint clone failed: ${String(error)}\n`);
+        input.writeStdout(`[rewind] fork 检查点克隆失败: ${String(error)}\n`);
       }
     }
     input.setStickyProvider(sourceRecord.sticky_provider);
@@ -285,7 +285,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     touchSessionRecord(sessionRegistry, forkSessionId, `fork from ${sourceId}`);
     await input.persistSessionRegistryState();
     input.writeStdout(
-      `[session] forked "${sourceId}" -> "${forkSessionId}" (restored=${String(nextHistory.length / 2)} turns${rewindCloneSummary}).\n\n`,
+      `[session] 已 fork "${sourceId}" -> "${forkSessionId}"（恢复 ${String(nextHistory.length / 2)} 轮${rewindCloneSummary}）。\n\n`,
     );
     return true;
   };
@@ -306,7 +306,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const record = findSessionRecord(sessionRegistry, args.sessionId);
     if (!record) {
-      input.writeStdout(`Session "${args.sessionId}" not found. Use /sessions to inspect ids.\n\n`);
+      input.writeStdout(`未找到会话 "${args.sessionId}"。使用 /sessions 查看 id。\n\n`);
       return false;
     }
     if (args.mode === "summarize") {
@@ -327,7 +327,7 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const activeSessionId = input.getActiveSessionId();
     const activeRecord = findSessionRecord(sessionRegistry, activeSessionId);
     if (!activeRecord) {
-      input.writeStdout(`[rewind] active session "${activeSessionId}" not found.\n\n`);
+      input.writeStdout(`[rewind] 未找到当前会话 "${activeSessionId}"。\n\n`);
       return false;
     }
     try {
@@ -346,17 +346,17 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
       );
       await input.persistSessionRegistryState();
       const restoredFilesPreview = restored.restoredFiles.length > 0
-        ? ` files=${String(restored.restoredFiles.length)}`
+        ? ` 文件=${String(restored.restoredFiles.length)}`
         : "";
       const skippedFilesPreview = restored.skippedFiles.length > 0
-        ? ` skipped=${String(restored.skippedFiles.length)}`
+        ? ` 跳过=${String(restored.skippedFiles.length)}`
         : "";
       input.writeStdout(
-        `[rewind] restored checkpoint=${restored.checkpointId} mode=${restored.mode} conversation=${restored.restoredConversation ? "yes" : "no"} code=${restored.restoredCode ? "yes" : "no"}${restoredFilesPreview}${skippedFilesPreview}\n\n`,
+        `[rewind] 已恢复检查点 ${restored.checkpointId} · 模式=${restored.mode} · 对话=${restored.restoredConversation ? "是" : "否"} · 代码=${restored.restoredCode ? "是" : "否"}${restoredFilesPreview}${skippedFilesPreview}\n\n`,
       );
       return true;
     } catch (error) {
-      input.writeStdout(`[rewind] failed: ${String(error)}\n\n`);
+      input.writeStdout(`[rewind] 恢复失败: ${String(error)}\n\n`);
       return false;
     }
   };

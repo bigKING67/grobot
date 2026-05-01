@@ -335,14 +335,14 @@ export async function persistRunStartModelToConfig(
   if (!configTomlPath) {
     return {
       ok: false,
-      message: "model sync failed: config_toml path is unavailable",
+      message: "模型同步失败：config_toml 路径不可用",
     };
   }
   const modelId = input.modelId.trim();
   if (!modelId) {
     return {
       ok: false,
-      message: "model sync failed: target model is empty",
+      message: "模型同步失败：目标模型为空",
     };
   }
 
@@ -352,14 +352,14 @@ export async function persistRunStartModelToConfig(
   } catch {
     return {
       ok: false,
-      message: `model sync failed: unable to read config_toml (${configTomlPath})`,
+      message: `模型同步失败：无法读取 config_toml (${configTomlPath})`,
     };
   }
   const { lines, projects } = parseProjectBlocks(rawToml);
   if (projects.length === 0) {
     return {
       ok: false,
-      message: "model sync failed: no [[projects]] entries found in config_toml",
+      message: "模型同步失败：config_toml 中没有 [[projects]] 条目",
     };
   }
   const project = resolveTargetProject({
@@ -371,7 +371,7 @@ export async function persistRunStartModelToConfig(
   if (!project) {
     return {
       ok: false,
-      message: "model sync failed: project block could not be resolved",
+      message: "模型同步失败：无法解析项目配置块",
     };
   }
   const provider = resolveTargetProvider({
@@ -381,7 +381,7 @@ export async function persistRunStartModelToConfig(
   if (!provider) {
     return {
       ok: false,
-      message: "model sync failed: no [[projects.agent.providers]] block available for target project",
+      message: "模型同步失败：目标项目没有可用的 [[projects.agent.providers]] 配置块",
     };
   }
 
@@ -417,7 +417,7 @@ export async function persistRunStartModelToConfig(
   } catch {
     return {
       ok: false,
-      message: `model sync failed: unable to write config_toml (${configTomlPath})`,
+      message: `模型同步失败：无法写入 config_toml (${configTomlPath})`,
     };
   }
 

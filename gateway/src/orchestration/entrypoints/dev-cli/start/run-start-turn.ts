@@ -2127,7 +2127,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         const askUserDisplay = interactiveMode
           ? options?.autoOpenAskUserPanel
             ? ""
-            : "Need your input · Enter opens choices\n\n"
+            : "需要你的输入 · Enter 打开选择\n\n"
           : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
         const turnStdout = askUserDisplay;
         await recordTurn(
@@ -3155,7 +3155,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           turnStdout = interactiveMode
             ? options?.autoOpenAskUserPanel
               ? ""
-              : "Need your input · Enter opens choices\n\n"
+              : "需要你的输入 · Enter 打开选择\n\n"
             : input.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
           askUserEvent = askUserEnvelopes
             .map((envelope) => formatAskUserIssuedEvent(envelope))

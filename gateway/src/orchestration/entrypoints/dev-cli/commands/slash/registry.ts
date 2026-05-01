@@ -81,7 +81,7 @@ function isInteractiveTerminal(): boolean {
 function parseModelCommand(inputRaw: string): ParsedModelCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/model")) {
-    return { kind: "invalid", reason: "command must start with /model" };
+    return { kind: "invalid", reason: "命令必须以 /model 开头" };
   }
   const rest = input.slice("/model".length).trim();
   if (!rest) {
@@ -91,19 +91,19 @@ function parseModelCommand(inputRaw: string): ParsedModelCommand {
   if (legacyMatch) {
     return {
       kind: "legacy_subcommand",
-      reason: "[model] legacy subcommands removed. Use /model to open picker (Enter 确认).",
+      reason: "[model] 旧子命令已移除。使用 /model 打开选择器（Enter 确认）。",
     };
   }
   return {
     kind: "invalid",
-    reason: "usage: /model",
+    reason: "用法: /model",
   };
 }
 
 function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/status")) {
-    return { kind: "invalid", reason: "command must start with /status" };
+    return { kind: "invalid", reason: "命令必须以 /status 开头" };
   }
   const rest = input.slice("/status".length).trim();
   if (!rest || rest.toLowerCase() === "current") {
@@ -120,13 +120,13 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   const tail = (firstSpace >= 0 ? rest.slice(firstSpace + 1) : "").trim();
   if (head === "layout") {
     if (!tail) {
-      return { kind: "invalid", reason: "usage: /status layout <adaptive|full|compact>" };
+      return { kind: "invalid", reason: "用法: /status layout <adaptive|full|compact>" };
     }
     return { kind: "layout", layoutMode: tail };
   }
   if (head === "theme") {
     if (!tail) {
-      return { kind: "invalid", reason: "usage: /status theme <plain|nerd|ccline>" };
+      return { kind: "invalid", reason: "用法: /status theme <plain|nerd|ccline>" };
     }
     return { kind: "theme", theme: tail };
   }
@@ -135,7 +135,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
     if (segmentTokens.length !== 2) {
       return {
         kind: "invalid",
-        reason: "usage: /status segment <model|project|context|tokens|session> <on|off>",
+        reason: "用法: /status segment <model|project|context|tokens|session> <on|off>",
       };
     }
     const segmentId = segmentTokens[0];
@@ -143,7 +143,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
     if (state !== "on" && state !== "off") {
       return {
         kind: "invalid",
-        reason: "usage: /status segment <model|project|context|tokens|session> <on|off>",
+        reason: "用法: /status segment <model|project|context|tokens|session> <on|off>",
       };
     }
     return {
@@ -155,7 +155,7 @@ function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   return {
     kind: "invalid",
     reason:
-      "usage: /status | /status current | /status layout <adaptive|full|compact> | /status theme <plain|nerd|ccline> | /status segment <model|project|context|tokens|session> <on|off>",
+      "用法: /status | /status current | /status layout <adaptive|full|compact> | /status theme <plain|nerd|ccline> | /status segment <model|project|context|tokens|session> <on|off>",
   };
 }
 
@@ -165,7 +165,7 @@ function parseSessionMenuCommand(
 ): ParsedSessionMenuCommand {
   const input = inputRaw.trim();
   if (!input.startsWith(command)) {
-    return { kind: "invalid", reason: `command must start with ${command}` };
+    return { kind: "invalid", reason: `命令必须以 ${command} 开头` };
   }
   const rest = input.slice(command.length).trim();
   if (!rest) {
@@ -188,7 +188,7 @@ function parseSessionMenuCommand(
 function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/resume")) {
-    return { kind: "invalid", reason: "command must start with /resume" };
+    return { kind: "invalid", reason: "命令必须以 /resume 开头" };
   }
   const rest = input.slice("/resume".length).trim();
   if (!rest) {
@@ -204,7 +204,7 @@ function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
       if (!query) {
         return {
           kind: "invalid",
-          reason: "usage: /resume find <id|title|summary|updated-at>",
+          reason: "用法: /resume find <id|title|summary|updated-at>",
         };
       }
       return {
@@ -241,7 +241,7 @@ function formatMatchOverflow(totalCount: number, listedCount: number): string {
   if (totalCount <= listedCount) {
     return "";
   }
-  return `\n- ... and ${String(totalCount - listedCount)} more`;
+  return `\n- ... 还有 ${String(totalCount - listedCount)} 项`;
 }
 
 function formatQuickPickBlock(
@@ -251,7 +251,7 @@ function formatQuickPickBlock(
   if (quickPickHints.length <= 0) {
     return "";
   }
-  return `\n${tag} Quick pick:\n${quickPickHints.join("\n")}`;
+  return `\n${tag} 快速选择:\n${quickPickHints.join("\n")}`;
 }
 
 function formatDisambiguationBlock(
@@ -276,7 +276,7 @@ async function writeMenuHintAndMaybeOpen(
 }
 
 function buildResumeNoMatchMessage(query: string): string {
-  return `[session] No sessions matching "${query}". Use /resume to open menu.\n[session] Tip: match id/title/summary/updated-at; compact query ignores spaces, "_" and "-".\n\n`;
+  return `[session] 没有匹配 "${query}" 的会话。使用 /resume 打开菜单。\n[session] 提示：可匹配 ID、标题、摘要或更新时间；紧凑查询会忽略空格、"_" 和 "-"。\n\n`;
 }
 
 function buildRewindNoMatchMessage(
@@ -284,7 +284,7 @@ function buildRewindNoMatchMessage(
   command: "/rewind" | "/checkpoint",
   activeSessionId: string,
 ): string {
-  return `[rewind] No checkpoints matching "${query}" in session "${activeSessionId}". Use ${command} to open menu.\n[rewind] Tip: match checkpoint-id/created-at/user/assistant; compact query ignores spaces, "_" and "-".\n\n`;
+  return `[rewind] 会话 "${activeSessionId}" 中没有匹配 "${query}" 的检查点。使用 ${command} 打开菜单。\n[rewind] 提示：可匹配检查点 ID、创建时间、用户文本或助手回复；紧凑查询会忽略空格、"_" 和 "-"。\n\n`;
 }
 
 function parseRewindCommand(
@@ -293,7 +293,7 @@ function parseRewindCommand(
 ): ParsedRewindCommand {
   const input = inputRaw.trim();
   if (!input.startsWith(command)) {
-    return { kind: "invalid", reason: `command must start with ${command}` };
+    return { kind: "invalid", reason: `命令必须以 ${command} 开头` };
   }
   const rest = input.slice(command.length).trim();
   if (!rest) {
@@ -308,7 +308,7 @@ function parseRewindCommand(
     if (trailing.length > 0) {
       return {
         kind: "invalid",
-        reason: `usage: ${command} summarize`,
+        reason: `用法: ${command} summarize`,
       };
     }
     return { kind: "summarize" };
@@ -316,7 +316,7 @@ function parseRewindCommand(
   if (!isInteractiveTerminal()) {
     return {
       kind: "invalid",
-      reason: `usage: ${command} | ${command} summarize`,
+      reason: `用法: ${command} | ${command} summarize`,
     };
   }
   const queryMatch = rest.match(/^(?:find|search)\s*([\s\S]*)$/i);
@@ -325,7 +325,7 @@ function parseRewindCommand(
   if (!querySource) {
     return {
       kind: "invalid",
-      reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
+      reason: `用法: ${command} [find|search] <检查点 ID|文本> [both|conversation|code]`,
     };
   }
   const queryTokens = querySource.split(/\s+/).filter((token) => token.length > 0);
@@ -345,14 +345,14 @@ function parseRewindCommand(
     ) {
       return {
         kind: "invalid",
-        reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
+        reason: `用法: ${command} [find|search] <检查点 ID|文本> [both|conversation|code]`,
       };
     }
   }
   if (!query) {
     return {
       kind: "invalid",
-      reason: `usage: ${command} [find|search] <checkpoint-id|text> [both|conversation|code]`,
+      reason: `用法: ${command} [find|search] <检查点 ID|文本> [both|conversation|code]`,
     };
   }
   return {
@@ -365,7 +365,7 @@ function parseRewindCommand(
 function parseSkillCreatorCommand(inputRaw: string): ParsedSkillCreatorCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/skill-creator")) {
-    return { kind: "invalid", reason: "command must start with /skill-creator" };
+    return { kind: "invalid", reason: "命令必须以 /skill-creator 开头" };
   }
   const rest = input.slice("/skill-creator".length).trim();
   if (!rest) {
@@ -380,7 +380,7 @@ function parseSkillCreatorCommand(inputRaw: string): ParsedSkillCreatorCommand {
 function parseHistoryCommand(inputRaw: string): ParsedHistoryCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/history")) {
-    return { kind: "invalid", reason: "command must start with /history" };
+    return { kind: "invalid", reason: "命令必须以 /history 开头" };
   }
   const rest = input.slice("/history".length).trim();
   if (!rest) {
@@ -401,7 +401,7 @@ async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `${parsed.reason ?? `invalid ${command} command`}\n\n`,
+      `${parsed.reason ?? `${command} 命令无效`}\n\n`,
     );
   }
   if (parsed.kind === "menu") {
@@ -413,14 +413,14 @@ async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `[rewind] Active session id is unavailable. Use ${command} to open menu.\n\n`,
+      `[rewind] 当前会话 id 不可用。使用 ${command} 打开菜单。\n\n`,
     );
   }
   if (!input.handlers.rewindSession) {
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `[rewind] quick command path unavailable. Use ${command} to open menu.\n\n`,
+      `[rewind] 快速命令路径不可用。使用 ${command} 打开菜单。\n\n`,
     );
   }
   if (parsed.kind === "summarize") {
@@ -445,9 +445,9 @@ async function executeRewindSlashCommand(
     const rows = matches
       .slice(0, MATCH_LIST_LIMIT)
       .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | files=${String(
+        `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | 文件=${String(
           checkpoint.changedFilesCount,
-        )} | user=${formatSingleLinePreview(checkpoint.userText, 44)} | assistant=${formatSingleLinePreview(checkpoint.assistantText, 44)}`);
+        )} | 用户=${formatSingleLinePreview(checkpoint.userText, 44)} | 助手=${formatSingleLinePreview(checkpoint.assistantText, 44)}`);
     const quickPickSuffix = parsed.mode && parsed.mode !== "both"
       ? ` ${parsed.mode}`
       : "";
@@ -464,9 +464,9 @@ async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      `[rewind] Found ${String(matches.length)} checkpoints matching "${query}" in session "${activeSessionId}".\n${rows.join(
+      `[rewind] 在会话 "${activeSessionId}" 中找到 ${String(matches.length)} 个匹配 "${query}" 的检查点。\n${rows.join(
         "\n",
-      )}${disambiguationBlock}\n[rewind] Use ${command} to pick one explicitly.\n\n`,
+      )}${disambiguationBlock}\n[rewind] 使用 ${command} 明确选择一个。\n\n`,
     );
   }
   const target = matches[0];
@@ -500,7 +500,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /help                Show interactive help",
+      "  /help                显示交互帮助",
     ],
   },
   {
@@ -511,7 +511,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /sessions            Open session actions menu (create/switch/resume/rewind/continue)",
+      "  /sessions            打开会话操作菜单（新建/切换/恢复/回退/继续）",
     ],
   },
   {
@@ -533,7 +533,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /commands            Open user-command manager (only ~/.grobot/commands)",
+      "  /commands            打开用户命令管理器（仅 ~/.grobot/commands）",
     ],
   },
   {
@@ -542,7 +542,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, controls, handlers }) => {
       const parsed = parseSkillCreatorCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid skill-creator command"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "无效 skill-creator 命令"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "run") {
@@ -550,7 +550,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (!isInteractiveTerminal()) {
-        handlers.writeStdout("usage: /skill-creator [需求]\n\n");
+        handlers.writeStdout("用法: /skill-creator [需求]\n\n");
         return "continue";
       }
       const requirement = await handlers.promptSkillCreatorRequirement(
@@ -563,7 +563,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /skill-creator       Create a skill from requirement (no-menu: ask in TTY when empty)",
+      "  /skill-creator       根据需求创建 skill（空输入时在 TTY 中询问）",
     ],
   },
   {
@@ -574,7 +574,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /health              Show provider failover and circuit status",
+      "  /health              查看 provider failover 与 circuit 状态",
     ],
   },
   {
@@ -585,7 +585,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /init                Create AGENTS.md with project instructions",
+      "  /init                创建带项目指令的 AGENTS.md",
     ],
   },
   {
@@ -596,7 +596,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /context             Show current-turn context assembly status",
+      "  /context             查看当前回合上下文组装状态",
     ],
   },
   {
@@ -607,7 +607,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /memory              Show durable memory layer status",
+      "  /memory              查看持久 memory 层状态",
     ],
   },
   {
@@ -618,7 +618,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /skills              Show configured skill directories and counts",
+      "  /skills              查看已配置 skill 目录和数量",
     ],
   },
   {
@@ -629,7 +629,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /mcp                 Show MCP instruction and server status",
+      "  /mcp                 查看 MCP 指令和 server 状态",
     ],
   },
   {
@@ -642,7 +642,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "legacy_subcommand" || parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid model command"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "无效 model 命令"}\n\n`);
         return "continue";
       }
       return "continue";
@@ -664,7 +664,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseStatusCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid status command"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "无效 status 命令"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "current") {
@@ -683,7 +683,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /status              Show and tune status line (theme/layout/segment)",
+      "  /status              查看/调整状态栏（theme/layout/segment）",
     ],
   },
   {
@@ -692,14 +692,14 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, handlers }) => {
       const parsed = parseHistoryCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid history command"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "无效 history 命令"}\n\n`);
         return "continue";
       }
       await handlers.showHistory(parsed.query);
       return "continue";
     },
     helpLines: [
-      "  /history [keyword]   Show recent conversation history (optional keyword filter)",
+      "  /history [keyword]   查看最近对话历史（可选关键词过滤）",
     ],
   },
   {
@@ -764,7 +764,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     },
     helpLines: [
       "  /plan                进入 plan mode；已在计划中时显示当前计划状态",
-      "  /plan open           Open active plan file in editor (interactive)",
+      "  /plan open           在编辑器中打开当前计划文件（交互模式）",
       "  /plan <goal>         带目标进入 plan mode 并运行首轮规划",
     ],
   },
@@ -796,7 +796,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /new                 Create and switch to a new session",
+      "  /new                 新建并切换到新会话",
     ],
   },
   {
@@ -810,7 +810,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseSessionMenuCommand(userInput, "/switch");
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid switch command"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "无效 switch 命令"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -820,7 +820,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /switch              Open switch-session picker",
+      "  /switch              打开会话切换器",
     ],
   },
   {
@@ -833,7 +833,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return writeMenuHintAndMaybeOpen(
           input,
           "resume",
-          `${parsed.reason ?? "invalid resume command"}\n\n`,
+          `${parsed.reason ?? "无效 resume 命令"}\n\n`,
         );
       }
       if (parsed.kind === "query") {
@@ -853,7 +853,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           const rows = matches
             .slice(0, MATCH_LIST_LIMIT)
             .map((session) =>
-              `- ${session.id}${session.active ? " (active)" : ""} | ${session.updatedAt} | title=${formatSingleLinePreview(session.title, 40)} | summary=${formatSingleLinePreview(session.summary, 40)}`);
+              `- ${session.id}${session.active ? "（当前）" : ""} | ${session.updatedAt} | 标题=${formatSingleLinePreview(session.title, 40)} | 摘要=${formatSingleLinePreview(session.summary, 40)}`);
           const quickPickHints = matches
             .slice(0, QUICK_PICK_HINT_LIMIT)
             .map((session) => `- /resume ${session.id}`);
@@ -866,7 +866,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           return writeMenuHintAndMaybeOpen(
             input,
             "resume",
-            `[session] Found ${String(matches.length)} sessions matching "${query}".\n${rows.join("\n")}${disambiguationBlock}\n[session] Use /resume to pick one explicitly.\n\n`,
+            `[session] 找到 ${String(matches.length)} 个匹配 "${query}" 的会话。\n${rows.join("\n")}${disambiguationBlock}\n[session] 使用 /resume 明确选择一个。\n\n`,
           );
         }
         const target = matches[0];
@@ -874,7 +874,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           return writeMenuHintAndMaybeOpen(
             input,
             "resume",
-            `[session] Session "${target.id}" is already active. Use /resume to open menu.\n\n`,
+            `[session] 会话 "${target.id}" 已是当前会话。使用 /resume 打开菜单。\n\n`,
           );
         }
         await handlers.switchSession(target.id);
@@ -891,7 +891,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /resume [query]      Open full-restore picker (quick query: /resume <query> or /resume find <id|title|summary|updated-at>)",
+      "  /resume [query]      打开完整恢复选择器（快速查询: /resume <query> 或 /resume find <id|title|summary|updated-at>）",
     ],
   },
   {
@@ -899,7 +899,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/rewind"),
     execute: async (input) => executeRewindSlashCommand(input, "/rewind"),
     helpLines: [
-      "  /rewind [query]      Rewind active session by checkpoint query, or open menu",
+      "  /rewind [query]      按检查点查询回退当前会话，或打开回退菜单",
     ],
   },
   {
@@ -907,7 +907,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/checkpoint"),
     execute: async (input) => executeRewindSlashCommand(input, "/checkpoint"),
     helpLines: [
-      "  /checkpoint [query]  Alias of /rewind (supports query and menu)",
+      "  /checkpoint [query]  /rewind 的别名（支持查询和菜单）",
     ],
   },
   {
@@ -921,7 +921,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseSessionMenuCommand(userInput, "/continue");
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "invalid continue command"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "无效 continue 命令"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -931,7 +931,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /continue            Open summary-bridge picker",
+      "  /continue            打开 summary-bridge 选择器",
     ],
   },
   {
@@ -943,7 +943,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /handoff             Write HANDOFF.md",
+      "  /handoff             写入 HANDOFF.md",
     ],
   },
 ];
@@ -1000,17 +1000,17 @@ const UTILITY_HELP_ORDER: readonly string[] = [
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/sessions", description: "打开会话菜单（新建/切换/恢复/回退/继续）" },
   { command: "/resume", description: "恢复并完整还原历史会话" },
-  { command: "/rewind", description: "打开当前或选中会话的 checkpoint 回退菜单" },
-  { command: "/checkpoint", description: "/rewind 的别名（打开 checkpoint 回退菜单）" },
-  { command: "/commands", description: "管理用户自定义 slash commands" },
+  { command: "/rewind", description: "打开当前或选中会话的检查点回退菜单" },
+  { command: "/checkpoint", description: "/rewind 的别名（打开检查点回退菜单）" },
+  { command: "/commands", description: "管理用户自定义 / 命令" },
   { command: "/skill-creator", description: "创建 skill（可直接追加需求文本）" },
   { command: "/history [keyword]", description: "按可选关键词查看最近历史" },
   { command: "/init", description: "创建带项目指令的 AGENTS.md" },
   { command: "/context", description: "查看当前回合上下文组装状态" },
-  { command: "/memory", description: "查看持久 memory 层状态" },
-  { command: "/health", description: "查看 provider failover 与 circuit 状态" },
+  { command: "/memory", description: "查看持久记忆层状态" },
+  { command: "/health", description: "查看供应商 failover 与熔断状态" },
   { command: "/skills", description: "查看已配置 skill 目录和数量" },
-  { command: "/mcp", description: "查看 MCP 指令和 server 状态" },
+  { command: "/mcp", description: "查看 MCP 指令和服务状态" },
   { command: "/model", description: "打开模型选择器" },
   { command: "/status", description: "查看当前状态栏配置快照" },
   { command: "/plan", description: "进入 plan mode；已在计划中时显示计划状态" },
@@ -1065,11 +1065,11 @@ export function listUtilitySlashCommandHelpLines(): string[] {
 
 export function listSlashCommandCompatibilityNotes(): string[] {
   return [
-    "  - /switch /continue remain compatibility shortcuts; prefer /sessions + /resume + /rewind.",
-    "  - /checkpoint is an alias of /rewind.",
-    "  - Interactive mode is menu-first for /sessions and /status.",
-    "  - /plan only supports: /plan, /plan <goal>, /plan open.",
-    "  - Non-interactive scripts keep compatibility shortcuts where applicable.",
+    "  - /switch /continue 保留为兼容快捷入口；优先使用 /sessions + /resume + /rewind。",
+    "  - /checkpoint 是 /rewind 的别名。",
+    "  - 交互模式优先使用 /sessions 和 /status 菜单。",
+    "  - /plan 仅支持: /plan、/plan <goal>、/plan open。",
+    "  - 非交互脚本按需保留兼容快捷入口。",
   ];
 }
 
@@ -1098,7 +1098,7 @@ export async function dispatchSlashCommand(
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
       handlers.writeStdout(
-        `[plan] ${commandName} is unavailable while PLAN_ONLY is active. Use /plan, /plan open, /interrupt, or /exit.\n\n`,
+        `[plan] plan mode 中暂不可用 ${commandName}。可使用 /plan、/plan open、/interrupt 或 /exit。\n\n`,
       );
       return "continue";
     }

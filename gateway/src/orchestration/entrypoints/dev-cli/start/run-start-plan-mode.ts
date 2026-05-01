@@ -2473,7 +2473,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           source: "cli",
           detail: "message_mode_execution_skipped",
         });
-        writeStdout("Plan note saved.\n\n");
+        writeStdout("计划备注已保存。\n\n");
         return 0;
       }
       const historyLengthBeforeExecution = input.runtimeState.getHistoryMessages().length;

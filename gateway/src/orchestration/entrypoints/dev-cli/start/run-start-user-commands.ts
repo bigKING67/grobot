@@ -187,14 +187,14 @@ function parseUserCommandPayload(
 function formatCommandList(records: readonly UserCommandRecord[], commandsDir: string): string {
   const rows: string[] = [];
   rows.push("[commands] 用户自定义命令（主入口）");
-  rows.push(`- directory: ${commandsDir}`);
-  rows.push(`- total: ${String(records.length)}`);
+  rows.push(`- 目录: ${commandsDir}`);
+  rows.push(`- 总数: ${String(records.length)}`);
   if (records.length === 0) {
-    rows.push("- empty: 尚未创建用户命令");
+    rows.push("- 状态: 尚未创建用户命令");
   } else {
     for (const record of records) {
       const summary = record.description.length > 0 ? record.description : "(无描述)";
-      rows.push(`- /${record.name} [${record.enabled ? "enabled" : "disabled"}] ${summary}`);
+      rows.push(`- /${record.name} [${record.enabled ? "启用" : "停用"}] ${summary}`);
     }
   }
   rows.push("");
@@ -327,7 +327,7 @@ export function listRunStartUserCommandSuggestions(homeDir: string): RunStartUse
   for (const record of records) {
     suggestions.push({
       command: `/${record.name}`,
-      description: record.description.trim() || "User-defined command",
+      description: record.description.trim() || "用户自定义命令",
       enabled: record.enabled,
     });
   }
@@ -428,8 +428,8 @@ export function createRunStartUserCommandsRuntime(
     });
     input.writeStdout(
       `[commands] 已创建 \`/${name}\`。\n`
-      + `- file: ${commandFilePath(name)}\n`
-      + `- next: /commands set ${name} <prompt> 或直接编辑该文件\n\n`,
+      + `- 文件: ${commandFilePath(name)}\n`
+      + `- 下一步: /commands set ${name} <prompt> 或直接编辑该文件\n\n`,
     );
   };
 
@@ -486,9 +486,9 @@ export function createRunStartUserCommandsRuntime(
     }
     const rows = [
       `[commands] /${record.name}`,
-      `- enabled: ${record.enabled ? "true" : "false"}`,
-      `- file: ${record.path}`,
-      `- description: ${record.description || "(无描述)"}`,
+      `- 状态: ${record.enabled ? "启用" : "停用"}`,
+      `- 文件: ${record.path}`,
+      `- 描述: ${record.description || "(无描述)"}`,
       "- prompt:",
       record.prompt,
       "",
@@ -523,7 +523,7 @@ export function createRunStartUserCommandsRuntime(
     }
     const value = result.value.trim();
     if (!options?.optional && value.length === 0) {
-      input.writeStdout("[commands] input is empty, operation cancelled.\n\n");
+      input.writeStdout("[commands] 输入为空，已取消操作。\n\n");
       return undefined;
     }
     return value;
@@ -538,44 +538,44 @@ export function createRunStartUserCommandsRuntime(
     }
     const menu = await withInputPaused(() =>
       runSelectMenu({
-        title: "Commands Manager",
-        subtitle: "Manage ~/.grobot/commands",
+        title: "命令管理",
+        subtitle: "管理 ~/.grobot/commands",
         hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "list",
-            label: "List commands",
-            description: "Show all user-defined commands and usage.",
+            label: "列出命令",
+            description: "显示所有用户自定义命令和用法。",
           },
           {
             id: "new",
-            label: "Create command",
-            description: "Create /<name> with optional prompt template.",
+            label: "创建命令",
+            description: "创建 /<name>，可附带 prompt 模板。",
           },
           {
             id: "set",
-            label: "Update prompt",
-            description: "Update an existing command prompt.",
+            label: "更新 prompt",
+            description: "更新已有命令的 prompt。",
           },
           {
             id: "show",
-            label: "Show details",
-            description: "Print command metadata and prompt content.",
+            label: "查看详情",
+            description: "输出命令元数据和 prompt 内容。",
           },
           {
             id: "enable",
-            label: "Enable command",
-            description: "Allow command invocation in slash input.",
+            label: "启用命令",
+            description: "允许在 slash 输入中调用该命令。",
           },
           {
             id: "disable",
-            label: "Disable command",
-            description: "Keep command file but block invocation.",
+            label: "停用命令",
+            description: "保留命令文件，但阻止调用。",
           },
           {
             id: "delete",
-            label: "Delete command",
-            description: "Remove command json file.",
+            label: "删除命令",
+            description: "删除命令 json 文件。",
           },
         ],
       }),
@@ -590,14 +590,14 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "new") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] name> ",
+        "[commands] 名称> ",
       );
       if (!name) {
         return;
       }
       const prompt = await readMenuTextInput(
         withInputPaused,
-        "[commands] prompt (optional)> ",
+        "[commands] prompt（可选）> ",
         { optional: true },
       );
       if (typeof prompt === "undefined") {
@@ -609,14 +609,14 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "set") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] target name> ",
+        "[commands] 目标名称> ",
       );
       if (!name) {
         return;
       }
       const prompt = await readMenuTextInput(
         withInputPaused,
-        "[commands] new prompt> ",
+        "[commands] 新 prompt> ",
       );
       if (!prompt) {
         return;
@@ -627,7 +627,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "show") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] target name> ",
+        "[commands] 目标名称> ",
       );
       if (!name) {
         return;
@@ -638,7 +638,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "enable") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] target name> ",
+        "[commands] 目标名称> ",
       );
       if (!name) {
         return;
@@ -649,7 +649,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "disable") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] target name> ",
+        "[commands] 目标名称> ",
       );
       if (!name) {
         return;
@@ -660,7 +660,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "delete") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] target name> ",
+        "[commands] 目标名称> ",
       );
       if (!name) {
         return;
@@ -674,7 +674,7 @@ export function createRunStartUserCommandsRuntime(
     handleManagementCommand: async (userInput: string): Promise<void> => {
       const normalizedInput = normalizeCommandsAliasInput(userInput);
       if (!normalizedInput) {
-        input.writeStdout("[commands] invalid command entry.\n\n");
+        input.writeStdout("[commands] 无效命令入口。\n\n");
         return;
       }
       const rest = normalizedInput.replace(/^\/commands/i, "").trim();
@@ -687,7 +687,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "new") {
         const parts = splitFirstToken(tail);
         if (!parts.head) {
-          input.writeStdout("[commands] usage: /commands new <name> [prompt]\n\n");
+          input.writeStdout("[commands] 用法: /commands new <name> [prompt]\n\n");
           return;
         }
         createCommand(parts.head, parts.tail);
@@ -696,7 +696,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "set") {
         const parts = splitFirstToken(tail);
         if (!parts.head || !parts.tail) {
-          input.writeStdout("[commands] usage: /commands set <name> <prompt>\n\n");
+          input.writeStdout("[commands] 用法: /commands set <name> <prompt>\n\n");
           return;
         }
         setCommandPrompt(parts.head, parts.tail);
@@ -705,7 +705,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "show") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] usage: /commands show <name>\n\n");
+          input.writeStdout("[commands] 用法: /commands show <name>\n\n");
           return;
         }
         showCommand(name);
@@ -714,7 +714,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "delete") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] usage: /commands delete <name>\n\n");
+          input.writeStdout("[commands] 用法: /commands delete <name>\n\n");
           return;
         }
         deleteCommand(name);
@@ -723,7 +723,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "enable") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] usage: /commands enable <name>\n\n");
+          input.writeStdout("[commands] 用法: /commands enable <name>\n\n");
           return;
         }
         toggleCommandEnabled(name, true);
@@ -732,13 +732,13 @@ export function createRunStartUserCommandsRuntime(
       if (action === "disable") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] usage: /commands disable <name>\n\n");
+          input.writeStdout("[commands] 用法: /commands disable <name>\n\n");
           return;
         }
         toggleCommandEnabled(name, false);
         return;
       }
-      input.writeStdout(`[commands] unsupported action: ${action}\n\n`);
+      input.writeStdout(`[commands] 不支持的动作: ${action}\n\n`);
     },
     openManagementMenu,
     tryRunUserCommand: async (

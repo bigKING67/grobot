@@ -45,12 +45,12 @@ const text = formatProviderHealthSnapshot({
 
 const payload = {
   has_header: text.includes("[provider-health]"),
-  has_session: text.includes("session: feishu:grobot:dm:provider-health-contract"),
-  has_sticky: text.includes("sticky_provider: alpha"),
-  has_alpha_closed: text.includes("- alpha status=CLOSED"),
-  has_beta_open: text.includes("- beta status=OPEN"),
-  has_latency_field: text.includes("ewma_latency_ms="),
-  has_error_rate_field: text.includes("ewma_error_rate="),
+  has_session: text.includes("会话: feishu:grobot:dm:provider-health-contract"),
+  has_sticky: text.includes("固定供应商: alpha"),
+  has_alpha_closed: text.includes("- alpha 状态=正常(CLOSED)"),
+  has_beta_open: text.includes("- beta 状态=熔断中(OPEN)"),
+  has_latency_field: text.includes("延迟EWMA_ms="),
+  has_error_rate_field: text.includes("错误率EWMA="),
   has_rpm_field: text.includes("rpm="),
 };
 

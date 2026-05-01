@@ -29,42 +29,42 @@ function formatSessionMenuDescription(input: {
 }): string {
   const parts: string[] = [];
   parts.push(`id=${input.sessionId}`);
-  parts.push(`updated ${input.updatedAt}`);
+  parts.push(`更新 ${input.updatedAt}`);
   if (input.mode !== "sessions") {
     parts.push(input.sessionKey);
   }
   if (input.active) {
     if (input.mode === "continue") {
-      parts.push("current session (selecting will skip)");
+      parts.push("当前会话（选择后将跳过）");
     } else if (input.mode === "resume") {
-      parts.push("current session (already resumed)");
+      parts.push("当前会话（已恢复）");
     } else if (input.mode === "rewind") {
-      parts.push("current session");
+      parts.push("当前会话");
     } else {
-      parts.push("current session");
+      parts.push("当前会话");
     }
   }
   const summary = input.summary.trim();
   if (summary.length > 0) {
-    parts.push(`summary: ${summary}`);
+    parts.push(`摘要: ${summary}`);
   }
   return parts.join(" | ");
 }
 
 function resolveSessionMenuTitle(mode: SessionMenuMode): string {
   if (mode === "continue") {
-    return "Continue From Session";
+    return "从会话继续";
   }
   if (mode === "resume") {
-    return "Resume Session";
+    return "恢复会话";
   }
   if (mode === "rewind") {
-    return "Rewind Session";
+    return "回退会话";
   }
   if (mode === "sessions") {
-    return "Session Manager";
+    return "会话管理";
   }
-  return "Switch Session";
+  return "切换会话";
 }
 
 function resolveSessionMenuHint(mode: SessionMenuMode): string {
@@ -91,8 +91,8 @@ function buildSessionMenuItems(input: {
   if (input.mode === "sessions" || input.mode === "switch") {
     items.push({
       id: SESSION_MENU_NEW_ID,
-      label: "+ Create and switch to new session",
-      description: "Create a fresh isolated session context.",
+      label: "+ 新建并切换到新会话",
+      description: "创建全新的独立会话上下文。",
     });
   }
   for (const session of input.sessions) {
@@ -129,7 +129,7 @@ export function buildSessionMenuViewModel(input: {
   });
   return {
     title: resolveSessionMenuTitle(input.mode),
-    subtitle: `Namespace: ${input.sessionNamespaceKey}`,
+    subtitle: `命名空间: ${input.sessionNamespaceKey}`,
     hint: resolveSessionMenuHint(input.mode),
     items,
     initialIndex: resolveSessionMenuInitialIndex(items),

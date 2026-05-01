@@ -258,7 +258,7 @@ function toBuiltinSuggestion(item: SlashCommandSuggestion): RunStartSlashSuggest
 function toUserSuggestion(item: RunStartUserCommandSuggestion): RunStartSlashSuggestion {
   return {
     command: item.command,
-    description: item.enabled ? item.description : `${item.description} (disabled)`,
+    description: item.enabled ? item.description : `${item.description}（已停用）`,
     source: "user",
   };
 }

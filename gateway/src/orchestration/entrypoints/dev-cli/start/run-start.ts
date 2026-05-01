@@ -910,16 +910,16 @@ export async function runStart(
           stdinIsTTY: Boolean(process.stdin.isTTY),
           pickCheckpoint: async (candidates) => {
             const picked = await runTerminalSelectMenu({
-              title: "Startup Rewind Checkpoint",
-              subtitle: `Session: ${runtimeState.getActiveSessionId()}`,
+              title: "启动回退 Checkpoint",
+              subtitle: `会话: ${runtimeState.getActiveSessionId()}`,
               hint: "↑/↓ 选择 · Enter 确认 · Esc 跳过",
               items: candidates.map((checkpoint) => ({
                 id: checkpoint.checkpointId,
                 label: checkpoint.checkpointId,
                 description:
-                  `${checkpoint.createdAt} | files=${String(checkpoint.changedFilesCount)} | user=${
+                  `${checkpoint.createdAt} | 文件=${String(checkpoint.changedFilesCount)} | 用户=${
                     formatStartupPickerPreview(checkpoint.userText)
-                  } | assistant=${formatStartupPickerPreview(checkpoint.assistantText)}`,
+                  } | 助手=${formatStartupPickerPreview(checkpoint.assistantText)}`,
               })),
             });
             if (picked.kind === "cancelled") {

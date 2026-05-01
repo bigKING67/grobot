@@ -48,7 +48,7 @@ export async function resolveStartupResumeDisambiguation(
     && !input.stdinIsTTY
   ) {
     messages.push(
-      `[session] non-tty startup auto-selected "${targetSessionId}" from multiple matches.\n\n`,
+      `[session] 非交互启动已从多个会话匹配中自动选择 "${targetSessionId}"。\n\n`,
     );
   }
   return {

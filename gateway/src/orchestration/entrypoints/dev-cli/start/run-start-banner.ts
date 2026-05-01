@@ -202,16 +202,16 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     },
     feeds: [
       {
-        title: "Tips for getting started",
+        title: "开始使用",
         lines: [
-          "Run /init to create an AGENTS.md file with instructions",
+          "运行 /init 创建 AGENTS.md 指令文件",
         ],
       },
       {
-        title: "Recent activity",
+        title: "最近活动",
         lines: recentActivityLines,
-        emptyMessage: "No recent activity",
-        footer: "/sessions for more",
+        emptyMessage: "暂无最近活动",
+        footer: "/sessions 查看更多",
       },
     ],
     rows,

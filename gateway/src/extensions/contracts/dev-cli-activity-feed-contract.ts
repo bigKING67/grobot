@@ -223,7 +223,7 @@ const fullPlain = stripAnsi(fullRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const payload = {
-  renders_real_tool_rows: plain.includes("Searched") && plain.includes("Read gateway/src"),
+  renders_real_tool_rows: plain.includes("搜索") && plain.includes("读取 gateway/src"),
   compact_hides_key_value_details:
     !plain.includes("matches=")
     && !plain.includes("engine=")
@@ -232,38 +232,38 @@ const payload = {
     && !plain.includes("error_class=")
     && !plain.includes("@@ -42"),
   renders_edit_with_diff_stats:
-    fullPlain.includes("Edited gateway/src/orchestration/entrypoints/dev-cli/ui/screens/bottom-pane-screen.ts (+2 -1)")
+    fullPlain.includes("编辑 gateway/src/orchestration/entrypoints/dev-cli/ui/screens/bottom-pane-screen.ts (+2 -1)")
     && fullPlain.includes("@@ -42,1 +42,2 @@"),
   edit_detail_uses_human_copy:
-    fullPlain.includes("  ⎿  1 replacement at line 42")
+    fullPlain.includes("  ⎿  1 处替换，行 42")
     && !fullPlain.includes("replacements=1 line=42"),
   renders_write_create_with_reference_preview:
-    plain.includes("Wrote 12 lines to gateway/src/generated-file.ts")
+    plain.includes("写入 12 行 到 gateway/src/generated-file.ts")
     && fullPlain.includes("  ⎿  line-01")
     && fullPlain.includes("  ⎿  line-10")
-    && fullPlain.includes("  ⎿  … +2 lines Ctrl-O to expand"),
+    && fullPlain.includes("  ⎿  … 还有 2 行，Ctrl+O 展开"),
   compact_write_preview_hides_content:
-    !plain.includes("line-01") && !plain.includes("Ctrl-O to expand"),
+    !plain.includes("line-01") && !plain.includes("Ctrl+O 展开"),
   full_detail_uses_reference_status_glyph:
-    fullPlain.includes("  ⎿  matches=12 engine=rg")
-    && !fullPlain.includes("  └ matches=12 engine=rg"),
+    fullPlain.includes("  ⎿  12 个匹配 rg 15ms")
+    && !fullPlain.includes("  └ 12 个匹配 rg"),
   renders_failed_bash:
-    plain.includes("Failed bash") && fullPlain.includes("error_class=bash_command_failed"),
+    plain.includes("失败 运行") && fullPlain.includes("错误 bash_command_failed"),
   renders_recovery_row:
-    plain.includes("Recovery bash") && fullPlain.includes("stage=strategy_switch"),
-  nested_payload_supported: fullPlain.includes("matches=12 engine=rg"),
+    plain.includes("恢复 bash") && fullPlain.includes("阶段 strategy_switch"),
+  nested_payload_supported: fullPlain.includes("12 个匹配 rg"),
   plan_file_write_uses_reference_label:
-    plain.includes("Updated plan")
+    plain.includes("计划已更新")
     && !plain.includes("Wrote .grobot/plans")
     && !plain.includes("feishu-grobot-dm-ui/001-plan.md"),
   plan_file_edit_hides_path_and_diff_stats:
-    fullPlain.includes("Updated plan")
+    fullPlain.includes("计划已更新")
     && !fullPlain.includes("Edited /tmp/grobot/.grobot/plans")
     && !fullPlain.includes("old plan")
     && !fullPlain.includes("new plan")
-    && !fullPlain.includes("Updated plan (+"),
+    && !fullPlain.includes("计划已更新 (+"),
   plan_file_full_detail_shows_preview_hint:
-    fullPlain.includes("  ⎿  /plan to preview"),
+    fullPlain.includes("  ⎿  /plan 预览"),
   none_mode_suppresses_feed: noneRendered === "",
   env_default_suppresses_feed: resolveRuntimeActivityFeedDetailMode(undefined) === "none",
   env_compact_enables_feed:
@@ -276,9 +276,9 @@ const payload = {
     turnOutputDefault.activityFeed === ""
     && turnOutputDefault.assistantOutput === "final answer\n\n",
   transcript_env_enables_separate_turn_feed_chunk:
-    turnTranscriptPlain.includes("Searched")
+    turnTranscriptPlain.includes("搜索")
     && turnOutputTranscript.assistantOutput === "final answer\n\n"
-    && !stripAnsi(turnOutputTranscript.assistantOutput).includes("Searched"),
+    && !stripAnsi(turnOutputTranscript.assistantOutput).includes("搜索"),
   transcript_ask_user_suppresses_turn_feed:
     turnOutputAskUser.activityFeed === "",
   transcript_non_interactive_suppresses_turn_feed:

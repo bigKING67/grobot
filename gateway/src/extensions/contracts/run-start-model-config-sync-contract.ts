@@ -150,13 +150,13 @@ async function main(): Promise<void> {
         fallbackRaw.includes('model = "other-old"'),
       missing_config_path_failed:
         !missingPathResult.ok
-        && missingPathResult.message.includes("config_toml path is unavailable"),
+        && missingPathResult.message.includes("config_toml 路径不可用"),
       empty_model_failed:
         !emptyModelResult.ok
-        && emptyModelResult.message.includes("target model is empty"),
+        && emptyModelResult.message.includes("目标模型为空"),
       missing_file_failed:
         !missingFileResult.ok
-        && missingFileResult.message.includes("unable to read config_toml"),
+        && missingFileResult.message.includes("无法读取 config_toml"),
     };
 
     process.stdout.write(`${JSON.stringify(payload)}\n`);

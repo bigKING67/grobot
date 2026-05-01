@@ -121,15 +121,15 @@ async function main(): Promise<void> {
   const slashOverlayScrolled = formatSlashSuggestionPanel(
     [
       { command: "/sessions", description: "打开会话选择器" },
-      { command: "/resume", description: "Resume a previous session" },
-      { command: "/rewind", description: "Rewind to a checkpoint" },
-      { command: "/commands", description: "Browse command menu" },
-      { command: "/skill-creator", description: "Create a skill" },
-      { command: "/init", description: "Initialize project instructions" },
-      { command: "/context", description: "Inspect context state" },
-      { command: "/memory", description: "Open memory tools" },
-      { command: "/model", description: "Switch model" },
-      { command: "/help", description: "Show help" },
+      { command: "/resume", description: "恢复历史会话" },
+      { command: "/rewind", description: "回退到检查点" },
+      { command: "/commands", description: "浏览命令菜单" },
+      { command: "/skill-creator", description: "创建 skill" },
+      { command: "/init", description: "初始化项目指令" },
+      { command: "/context", description: "查看上下文状态" },
+      { command: "/memory", description: "打开 memory 工具" },
+      { command: "/model", description: "切换模型" },
+      { command: "/help", description: "显示帮助" },
     ],
     "/",
     8,
@@ -168,7 +168,7 @@ async function main(): Promise<void> {
   const slashOverlayNarrow = formatSlashSuggestionPanel(
     [
       { command: "/model", description: "打开模型选择器" },
-      { command: "/commands", description: "管理用户自定义 slash commands" },
+      { command: "/commands", description: "管理用户自定义 slash 命令" },
     ],
     "/",
     0,
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
   const promptSuggestionTaggedPlain = stripAnsi(promptSuggestionTagged);
   const promptSuggestionPointer = formatPromptSuggestionPanel({
     suggestions: [
-      { id: "command-model", displayText: "/model", description: "Switch model", type: "command" },
+      { id: "command-model", displayText: "/model", description: "切换模型", type: "command" },
       { id: "command-plan", displayText: "/plan", description: "进入 plan mode", type: "command" },
     ],
     selectedIndex: 1,

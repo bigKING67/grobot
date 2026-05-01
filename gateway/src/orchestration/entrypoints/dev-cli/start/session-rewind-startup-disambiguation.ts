@@ -51,7 +51,7 @@ export async function resolveStartupRewindDisambiguation(
     && !input.stdinIsTTY
   ) {
     messages.push(
-      `[rewind] non-tty startup auto-selected "${targetCheckpointId}" from multiple checkpoint matches.\n\n`,
+      `[rewind] 非交互启动已从多个检查点匹配中自动选择 "${targetCheckpointId}"。\n\n`,
     );
   }
   return {
