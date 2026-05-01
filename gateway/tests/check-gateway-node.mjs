@@ -1758,6 +1758,26 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliTurnScreenContractPayload.failure_summary_ends_with_newline, true);
   logStep("dev-cli-turn-screen-contract");
 
+  const runStartTuiSurfaceContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/run-start-tui-surface-contract.ts",
+  ]);
+  assertSuccess("run-start-tui-surface-contract", runStartTuiSurfaceContractResult);
+  const runStartTuiSurfaceContractPayload = parseJsonOutput(
+    "run-start-tui-surface-contract",
+    runStartTuiSurfaceContractResult.stdout,
+  );
+  assert.equal(runStartTuiSurfaceContractPayload.mcp_strict_failure_is_human_surface, true);
+  assert.equal(runStartTuiSurfaceContractPayload.mcp_strict_failure_has_fix_hint, true);
+  assert.equal(runStartTuiSurfaceContractPayload.scheduler_tick_error_is_human_surface, true);
+  assert.equal(runStartTuiSurfaceContractPayload.scheduler_task_failed_is_human_surface, true);
+  assert.equal(runStartTuiSurfaceContractPayload.surfaces_avoid_legacy_machine_markers, true);
+  assert.equal(runStartTuiSurfaceContractPayload.surfaces_end_with_newline, true);
+  logStep("run-start-tui-surface-contract");
+
   const devCliActivityFeedContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -7937,6 +7957,9 @@ async function runTsRustExecutionSmoke() {
   assert.equal(mcpInstructionFlowPayload.missing_pack_event, true);
   assert.equal(mcpInstructionFlowPayload.missing_prompt_injected, false);
   assert.equal(mcpInstructionFlowPayload.strict_failure_seen, false);
+  assert.equal(mcpInstructionFlowPayload.strict_failure_exit_code, 1);
+  assert.equal(mcpInstructionFlowPayload.strict_failure_human_surface, true);
+  assert.equal(mcpInstructionFlowPayload.strict_failure_avoids_machine_surface, true);
   logStep("start-smoke-contract start-mcp-instruction-events-flow");
 
   const preSendHeadTrimResult = runContract("start-smoke-contract.mjs", "start-context-pre-send-head-trim-flow", [

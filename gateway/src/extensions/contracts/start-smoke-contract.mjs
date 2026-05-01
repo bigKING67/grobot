@@ -1611,7 +1611,8 @@ function runStartPlanConcurrencyFlow(repoRoot) {
   };
 }
 
-function writeMcpInstructionProjectToml(workDir) {
+function writeMcpInstructionProjectToml(workDir, options = {}) {
+  const strict = options.strict === true;
   const grobotDir = `${workDir}/.grobot`;
   mkdirSync(grobotDir, { recursive: true });
   writeFileSync(
@@ -1623,7 +1624,7 @@ function writeMcpInstructionProjectToml(workDir) {
       "[mcp.instructions]",
       "enabled = true",
       'scope = "project_first"',
-      "strict = false",
+      `strict = ${strict ? "true" : "false"}`,
       "",
     ].join("\n"),
     "utf8",
@@ -1713,10 +1714,17 @@ function runStartMcpInstructionEventsFlow(repoRoot) {
     },
   );
 
+  writeMcpInstructionProjectToml(workDir, { strict: true });
+  const strictFailureResult = runCommand(
+    repoRoot,
+    [...baseArgs, "--message", "mcp instruction strict failure smoke"],
+  );
+
   return {
     project_exit_code: projectResult.exit_code,
     fallback_exit_code: fallbackResult.exit_code,
     missing_exit_code: missingResult.exit_code,
+    strict_failure_exit_code: strictFailureResult.exit_code,
     project_pack_loaded_project: projectResult.stderr.includes(
       "event=pack_loaded server=grok-search source=project",
     ),
@@ -1737,6 +1745,14 @@ function runStartMcpInstructionEventsFlow(repoRoot) {
     ),
     missing_prompt_injected: missingResult.stderr.includes("event=prompt_injected"),
     strict_failure_seen: missingResult.stderr.includes("event=strict_failure"),
+    strict_failure_human_surface:
+      strictFailureResult.stderr.includes("MCP 指令加载失败")
+      && strictFailureResult.stderr.includes("strict 模式要求所有启用的 MCP 都有指令包。")
+      && strictFailureResult.stderr.includes("mcp.instructions.strict"),
+    strict_failure_avoids_machine_surface:
+      !strictFailureResult.stderr.includes("[governance:mcp-instruction]")
+      && !strictFailureResult.stderr.includes("event=strict_failure")
+      && !strictFailureResult.stderr.includes("reason="),
   };
 }
 

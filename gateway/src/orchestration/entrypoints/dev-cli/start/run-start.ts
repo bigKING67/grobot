@@ -140,6 +140,42 @@ function buildRuntimeToolsFallbackSurface(input: {
   return lines.join("\n");
 }
 
+export function buildMcpInstructionStrictFailureSurface(reason: string | undefined): string {
+  const lines = [`${terminalStyle.accent("●")} MCP 指令加载失败`];
+  lines.push(`  ${terminalStyle.muted("strict 模式要求所有启用的 MCP 都有指令包。")}`);
+  if (reason && reason.trim().length > 0) {
+    lines.push(`  ${terminalStyle.muted(`原因: ${formatDiagnosticToken(reason)}`)}`);
+  }
+  lines.push(`  ${terminalStyle.muted("请补齐 .grobot/rules/mcp/<server>.md，或关闭 mcp.instructions.strict。")}`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function buildExperienceSchedulerTickErrorSurface(error: string | undefined): string {
+  const lines = [`${terminalStyle.accent("●")} 经验任务调度失败`];
+  lines.push(`  ${terminalStyle.muted("后台任务本轮已跳过，不影响当前输入。")}`);
+  if (error && error.trim().length > 0) {
+    lines.push(`  ${terminalStyle.muted(`原因: ${formatDiagnosticToken(error)}`)}`);
+  }
+  lines.push(`  ${terminalStyle.muted("如需完整诊断，可设置 GROBOT_STARTUP_DIAGNOSTICS=1 后重试。")}`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function buildExperienceSchedulerTaskFailedSurface(input: {
+  taskId: string;
+  error: string | undefined;
+}): string {
+  const lines = [`${terminalStyle.accent("●")} 经验任务执行失败`];
+  lines.push(`  ${terminalStyle.muted(`任务: ${input.taskId || "未知任务"}`)}`);
+  lines.push(`  ${terminalStyle.muted("本轮调度已记录失败，不影响继续输入。")}`);
+  if (input.error && input.error.trim().length > 0) {
+    lines.push(`  ${terminalStyle.muted(`原因: ${formatDiagnosticToken(input.error)}`)}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function normalizePositiveInt(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -349,9 +385,10 @@ export async function runStart(
     writeStartupDiagnostics(`[governance:mcp-instruction] ${event}\n`);
   }
   if (mcpInstructionStrictFailure) {
-    output.writeStderr(
+    writeStartupDiagnostics(
       `[governance:mcp-instruction] event=strict_failure reason=${mcpInstructionStrictFailure}\n`,
     );
+    output.writeStderr(buildMcpInstructionStrictFailureSurface(mcpInstructionStrictFailure));
     return 1;
   }
   const experiencePoolRuntime = createExperiencePoolRuntime({
@@ -1069,7 +1106,8 @@ export async function runStart(
     try {
       const tickResult = schedulerRuntime.tick();
       for (const error of tickResult.errors) {
-        output.writeStderr(`[experience-scheduler] event=tick_error detail=${error}\n`);
+        writeStartupDiagnostics(`[experience-scheduler] event=tick_error detail=${error}\n`);
+        output.writeStderr(buildExperienceSchedulerTickErrorSurface(error));
       }
       for (const trigger of tickResult.triggered) {
         const pendingAskDepth = gaMechanismRuntime.getPendingAskQueueSize(
@@ -1110,8 +1148,14 @@ export async function runStart(
             reason: String(error),
           });
           runtimeState.markFailureObserved();
-          output.writeStderr(
+          writeStartupDiagnostics(
             `[experience-scheduler] event=task_failed task=${trigger.taskId} detail=${String(error)}\n`,
+          );
+          output.writeStderr(
+            buildExperienceSchedulerTaskFailedSurface({
+              taskId: trigger.taskId,
+              error: String(error),
+            }),
           );
         }
       }
