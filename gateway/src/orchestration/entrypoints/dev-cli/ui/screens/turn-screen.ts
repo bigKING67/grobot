@@ -32,16 +32,21 @@ export function renderTurnInterruptedNotice(interactiveMode: boolean): string {
 
 export function renderRuntimeFailureSummary(input: RuntimeFailureSummaryInput): string {
   const failureSummary = input.failures
-    .map((item) => `${item.providerName}:${item.errorClass}`)
+    .map((item) => `${item.providerName} · ${item.errorClass}`)
     .join(", ");
   const attemptedProviders = input.orderedProviders.map((item) => item.name).join(" -> ");
   const lines: string[] = [];
+  lines.push(`${terminalStyle.accent("●")} 回合执行失败`);
   lines.push(
-    `[runtime-route] failed attempts=${String(input.failures.length)} providers=${attemptedProviders || "<none>"} errors=${failureSummary || "<none>"}`,
+    `  ${terminalStyle.muted(`已尝试: ${attemptedProviders || "无可用运行方"}`)}`,
+  );
+  lines.push(
+    `  ${terminalStyle.muted(`失败: ${failureSummary || "无错误明细"}`)}`,
   );
   if (input.failures.length > 0) {
     const last = input.failures[input.failures.length - 1];
-    lines.push(`runtime failed: provider=${last.providerName} ${last.errorMessage}`);
+    lines.push(`  ${terminalStyle.muted(`最后错误: ${last.providerName} · ${last.errorClass}`)}`);
+    lines.push(`  ${terminalStyle.muted(last.errorMessage)}`);
   }
   return `${lines.join("\n")}\n`;
 }
