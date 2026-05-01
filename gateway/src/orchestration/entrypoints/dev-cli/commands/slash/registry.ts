@@ -264,26 +264,19 @@ function formatMatchOverflow(totalCount: number, listedCount: number): string {
   return `\n- ... 还有 ${String(totalCount - listedCount)} 项`;
 }
 
-function formatQuickPickBlock(
-  tag: "[session]" | "[rewind]",
-  quickPickHints: readonly string[],
-): string {
+function formatQuickPickBlock(quickPickHints: readonly string[]): string {
   if (quickPickHints.length <= 0) {
     return "";
-  }
-  if (tag === "[rewind]") {
-    return `\n快速选择:\n${quickPickHints.join("\n")}`;
   }
   return `\n快速选择:\n${quickPickHints.join("\n")}`;
 }
 
 function formatDisambiguationBlock(
-  tag: "[session]" | "[rewind]",
   totalCount: number,
   listedCount: number,
   quickPickHints: readonly string[],
 ): string {
-  return `${formatMatchOverflow(totalCount, listedCount)}${formatQuickPickBlock(tag, quickPickHints)}`;
+  return `${formatMatchOverflow(totalCount, listedCount)}${formatQuickPickBlock(quickPickHints)}`;
 }
 
 async function writeMenuHintAndMaybeOpen(
@@ -500,7 +493,6 @@ async function executeRewindSlashCommand(
       .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
         `- ${command} ${checkpoint.checkpointId}${quickPickSuffix}`);
     const disambiguationBlock = formatDisambiguationBlock(
-      "[rewind]",
       matches.length,
       rows.length,
       quickPickHints,
@@ -926,7 +918,6 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
             .slice(0, QUICK_PICK_HINT_LIMIT)
             .map((session) => `- /resume ${session.id}`);
           const disambiguationBlock = formatDisambiguationBlock(
-            "[session]",
             matches.length,
             rows.length,
             quickPickHints,
