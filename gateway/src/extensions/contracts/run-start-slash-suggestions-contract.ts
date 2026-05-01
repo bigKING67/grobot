@@ -106,6 +106,18 @@ async function main(): Promise<void> {
       },
       maxItems: 80,
     });
+    const planCriticalGuard = listRunStartSlashSuggestions({
+      homeDir,
+      userInput: "/plan ",
+      planMode: true,
+      planSuggestionState: {
+        activePlanStatus: "blocked",
+        activePlanPhase: "drafting",
+        activePlanQualityGuardLevel: "critical",
+        activePlanQualityGuardReason: "质量分仅 42，低于安全阈值 55",
+      },
+      maxItems: 80,
+    });
     const shipOnly = listRunStartSlashSuggestions({
       homeDir,
       userInput: "/ship",
@@ -175,6 +187,10 @@ async function main(): Promise<void> {
         !item.description.includes("Recommended now: ")),
       plan_ready_execute_keeps_minimal_surface: planReadyExecute.every((item) =>
         item.command === "/plan open"),
+      plan_critical_guard_reason_is_human: planCriticalGuard.some((item) =>
+        item.description.includes("计划质量门禁已阻止执行")),
+      plan_critical_guard_hides_machine_reason: planCriticalGuard.every((item) =>
+        !item.description.includes("quality guard=critical")),
       ship_filter_has_user_command: shipOnly.some((item) => item.command === "/shipit" && item.source === "user"),
       plain_input_returns_empty: plainInput.length === 0,
     };

@@ -45,14 +45,14 @@ export function resolvePlanStatusRecommendation(input: {
   const planPhase = derivePlanPhaseFromStatus(input.status);
   if (input.planQualityGuardLevel === "critical") {
     const guardReason = typeof input.planQualityGuardReason === "string" && input.planQualityGuardReason.trim().length > 0
-      ? `；${input.planQualityGuardReason.trim()}`
+      ? `；原因：${input.planQualityGuardReason.trim()}`
       : "";
     const topHint = typeof input.planQualityTopHint === "string" && input.planQualityTopHint.trim().length > 0
       ? `；优先处理：${input.planQualityTopHint.trim()}`
       : "";
     return {
       action: PLAN_DIRECT_REFINE_ACTION,
-      reason: `quality guard=critical，先补齐计划再进入执行${guardReason}${topHint}`,
+      reason: `计划质量门禁已阻止执行，先补齐计划细节${guardReason}${topHint}`,
     };
   }
   if (typeof input.planQualityScore === "number" && input.planQualityScore < 70) {
@@ -61,7 +61,7 @@ export function resolvePlanStatusRecommendation(input: {
       : "";
     return {
       action: PLAN_DIRECT_REFINE_ACTION,
-      reason: `plan 质量分仅 ${String(input.planQualityScore)}，建议先补齐计划细节${topHint}`,
+      reason: `计划质量分仅 ${String(input.planQualityScore)}，建议先补齐计划细节${topHint}`,
     };
   }
   if (input.mode === "plan_only") {

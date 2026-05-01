@@ -1453,6 +1453,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartSlashSuggestionsContractPayload.plan_applied_pending_has_state_tag, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_applied_pending_hides_machine_state_tag, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plan_ready_execute_hides_machine_recommendation_label, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_critical_guard_reason_is_human, true);
+  assert.equal(runStartSlashSuggestionsContractPayload.plan_critical_guard_hides_machine_reason, true);
   assert.equal(runStartSlashSuggestionsContractPayload.ship_filter_has_user_command, true);
   assert.equal(runStartSlashSuggestionsContractPayload.plain_input_returns_empty, true);
   logStep("run-start-slash-suggestions-contract");

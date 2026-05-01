@@ -198,6 +198,7 @@ function resolvePlanSuggestionRecommendation(input: {
     latestVerificationStatus: input.state?.latestVerificationStatus,
     planQualityScore: input.state?.activePlanQualityScore,
     planQualityGuardLevel: input.state?.activePlanQualityGuardLevel,
+    planQualityGuardReason: input.state?.activePlanQualityGuardReason,
   });
   return {
     command: resolvePlanStatusRecommendationCommand(recommendation.action),

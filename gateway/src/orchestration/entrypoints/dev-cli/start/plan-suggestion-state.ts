@@ -25,6 +25,7 @@ export interface RunStartPlanSuggestionState {
   activePlanApprovalStale?: boolean;
   activePlanQualityScore?: number;
   activePlanQualityGuardLevel?: PlanQualityGuardSummary["level"];
+  activePlanQualityGuardReason?: string;
   activePlanRecommendationCommand?: string;
   activePlanRecommendationReason?: string;
   latestPlanStatus?: PlanArtifactStatus;
@@ -130,6 +131,7 @@ export function resolveRunStartPlanSuggestionState(args: {
       activePlanApprovalStale: liveSnapshot.approvalStale,
       activePlanQualityScore: liveSnapshot.quality.score,
       activePlanQualityGuardLevel: liveSnapshot.qualityGuard.level,
+      activePlanQualityGuardReason: liveSnapshot.qualityGuard.reason,
       activePlanRecommendationCommand: resolvePlanStatusRecommendationCommand(
         liveSnapshot.recommendation.action,
       ),
