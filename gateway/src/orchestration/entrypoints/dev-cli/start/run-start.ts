@@ -120,6 +120,17 @@ function buildRuntimeInterruptSurface(input: {
   return lines.join("\n");
 }
 
+export function buildRuntimeInterruptIgnoredSurface(input: {
+  source: "command" | "cli_esc";
+}): string {
+  const sourceLabel = humanizeInterruptSource(input.source);
+  return [
+    `${terminalStyle.accent("●")} 中断请求未生效`,
+    `  ${terminalStyle.muted(`${sourceLabel} 请求发出时，当前回合已完成或已过安全中断点。`)}`,
+    "",
+  ].join("\n");
+}
+
 function buildRuntimeToolsFallbackSurface(input: {
   reason: string | undefined;
   source: string;
@@ -172,6 +183,21 @@ export function buildExperienceSchedulerTaskFailedSurface(input: {
   if (input.error && input.error.trim().length > 0) {
     lines.push(`  ${terminalStyle.muted(`原因: ${formatDiagnosticToken(input.error)}`)}`);
   }
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function buildMemoryMaintenanceFailedSurface(input: {
+  reason: string;
+  error: string | undefined;
+}): string {
+  const lines = [`${terminalStyle.accent("●")} 记忆维护失败`];
+  lines.push(`  ${terminalStyle.muted(`阶段: ${input.reason || "unknown"}`)}`);
+  lines.push(`  ${terminalStyle.muted("本轮对话会继续，后台记忆清理将在后续回合重试。")}`);
+  if (input.error && input.error.trim().length > 0) {
+    lines.push(`  ${terminalStyle.muted(`原因: ${formatDiagnosticToken(input.error)}`)}`);
+  }
+  lines.push(`  ${terminalStyle.muted("如需完整诊断，可设置 GROBOT_STARTUP_DIAGNOSTICS=1 后重试。")}`);
   lines.push("");
   return lines.join("\n");
 }
@@ -747,8 +773,14 @@ export async function runStart(
         `[memory-orchestrator] event=maintenance reason=${reason} sessions_scanned=${String(sessionsScanned)} sessions_updated=${String(sessionsUpdated)} deduplicated_rows=${String(deduplicatedRows)} total_rows=${String(totalRowsBefore)}->${String(totalRowsAfter)} decay_sessions_pruned=${String(decaySessionsPruned)} decay_dropped_rows=${String(decayDroppedRows)} decay_action=${decayAction} decay_reason=${decayReason} quality_low_rate=${formatQualityValue(qualitySnapshot.lowQualityRate)} quality_pressure=${formatQualityValue(qualitySnapshot.averagePreSendPressureScore)} quality_hard_budget_rate=${formatQualityValue(qualitySnapshot.hardBudgetRate)} quality_first_improved_rate=${formatQualityValue(qualitySnapshot.qualityFirstImprovedRate)} quality_followup_delta=${formatQualityValue(qualitySnapshot.hardBudgetFollowupOverallDelta)}/${formatQualityValue(qualitySnapshot.qualityFirstFollowupOverallDelta)} pressure_utilization=${formatQualityValue(qualitySnapshot.averageUtilizationRatio)} pressure_auto_limit_rate=${formatQualityValue(qualitySnapshot.autoLimitTriggeredRate)} pressure_semantic_rate=${formatQualityValue(qualitySnapshot.snapshotSemanticCompressRate)} pressure_delta=${formatQualityValue(qualitySnapshot.deltaAverageUtilizationRatio)}/${formatQualityValue(qualitySnapshot.deltaAutoLimitTriggeredRate)}/${formatQualityValue(qualitySnapshot.deltaSnapshotSemanticCompressRate)} decay_autotune_updated=${decayAutotuneUpdated ? "true" : "false"} decay_autotune_reason=${decayAutotuneResult.reason} strategy_autotune_updated=${strategyAutotuneUpdated ? "true" : "false"} strategy_autotune_reason=${strategyAutotuneResult.reason} strategy_profile=${memoryStrategyAutotuneState.profile} strategy_budget_ratio=${policyAfterAutotune.injectBudgetRatio.toFixed(3)} strategy_section_max=${String(policyAfterAutotune.maxSectionTokens)} strategy_ga_rows=${String(policyAfterAutotune.maxGaMemoryRows)} strategy_team_rows=${String(policyAfterAutotune.maxTeamExperienceRows)} strategy_team_score_min=${String(policyAfterAutotune.minTeamExperienceScore)} strategy_action=${memoryStrategyAutotuneState.lastActionDirection} strategy_cooldown=${String(memoryStrategyAutotuneState.cooldownTurnsRemaining)} strategy_streak=${String(memoryStrategyAutotuneState.tightenSignalStreak)}/${String(memoryStrategyAutotuneState.relaxSignalStreak)} strategy_scale=${memoryStrategyAutotuneState.adaptiveActionScale.toFixed(3)} strategy_outcome=${memoryStrategyAutotuneState.lastOutcomeGain.toFixed(3)}/${memoryStrategyAutotuneState.outcomeConfidenceEma.toFixed(3)}/${String(memoryStrategyAutotuneState.outcomeRollbackCount)}/${String(memoryStrategyAutotuneState.outcomeNegativeStreak)}\n`,
       );
     } catch (error) {
-      output.writeStderr(
+      writeStartupDiagnostics(
         `[memory-orchestrator] event=maintenance_failed reason=${reason} detail=${String(error)}\n`,
+      );
+      output.writeStderr(
+        buildMemoryMaintenanceFailedSurface({
+          reason,
+          error: String(error),
+        }),
       );
     } finally {
       memoryMaintenanceRunning = false;
@@ -854,7 +886,7 @@ export async function runStart(
         }
       }
       if (pendingRuntimeInterruptSource && code === TURN_INTERRUPTED_EXIT_CODE) {
-        writeStderr(
+        writeStartupDiagnostics(
           `[interrupt] event=applied source=${pendingRuntimeInterruptSource} interactive=${interactiveMode ? "true" : "false"}\n`,
         );
         pendingRuntimeInterruptSource = undefined;
@@ -863,9 +895,12 @@ export async function runStart(
         controller.signal.aborted &&
         code !== TURN_INTERRUPTED_EXIT_CODE
       ) {
-        writeStderr(
+        writeStartupDiagnostics(
           `[interrupt] event=ignored source=${pendingRuntimeInterruptSource} reason=turn_completed_before_abort interactive=${interactiveMode ? "true" : "false"}\n`,
         );
+        writeStderr(buildRuntimeInterruptIgnoredSurface({
+          source: pendingRuntimeInterruptSource,
+        }));
         pendingRuntimeInterruptSource = undefined;
       }
       await runMemoryMaintenance("post_turn");

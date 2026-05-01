@@ -1266,8 +1266,11 @@ function runStartInteractiveInterruptFlow(
     interrupt_requested_avoids_legacy_event: !combinedOutput.includes(
       "[interrupt] event=requested source=command",
     ),
-    interrupt_event_applied_seen: combinedOutput.includes(
+    interrupt_applied_avoids_legacy_event: !combinedOutput.includes(
       "[interrupt] event=applied source=command",
+    ),
+    interrupt_ignored_avoids_legacy_event: !combinedOutput.includes(
+      "[interrupt] event=ignored source=command",
     ),
     interrupt_notice_seen:
       combinedOutput.includes("回合已中断")

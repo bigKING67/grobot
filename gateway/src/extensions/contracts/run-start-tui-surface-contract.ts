@@ -1,8 +1,10 @@
 import {
   buildExperienceSchedulerTaskFailedSurface,
   buildExperienceSchedulerTickErrorSurface,
+  buildMemoryMaintenanceFailedSurface,
   buildMcpInstructionStrictFailureSurface,
   buildRewindCaptureFailedSurface,
+  buildRuntimeInterruptIgnoredSurface,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start";
 import { runStartMessageMode } from "../../orchestration/entrypoints/dev-cli/start/run-start-message-mode";
 
@@ -20,6 +22,13 @@ const schedulerTaskFailedSurface = buildExperienceSchedulerTaskFailedSurface({
   taskId: "weekly-summary",
   error: "Error: model route unavailable",
 });
+const memoryMaintenanceFailedSurface = buildMemoryMaintenanceFailedSurface({
+  reason: "post_turn",
+  error: "Error: decay index locked",
+});
+const runtimeInterruptIgnoredSurface = buildRuntimeInterruptIgnoredSurface({
+  source: "command",
+});
 const rewindCaptureFailedSurface = buildRewindCaptureFailedSurface(
   "Error: checkpoint store unavailable",
 );
@@ -27,10 +36,14 @@ const rewindCaptureFailedSurface = buildRewindCaptureFailedSurface(
 const mcpPlain = stripAnsi(mcpStrictFailureSurface);
 const schedulerTickPlain = stripAnsi(schedulerTickSurface);
 const schedulerTaskPlain = stripAnsi(schedulerTaskFailedSurface);
+const memoryMaintenancePlain = stripAnsi(memoryMaintenanceFailedSurface);
+const runtimeInterruptIgnoredPlain = stripAnsi(runtimeInterruptIgnoredSurface);
 const combined = [
   mcpStrictFailureSurface,
   schedulerTickSurface,
   schedulerTaskFailedSurface,
+  memoryMaintenanceFailedSurface,
+  runtimeInterruptIgnoredSurface,
   rewindCaptureFailedSurface,
 ].join("\n");
 
@@ -89,6 +102,14 @@ async function main(): Promise<void> {
       && schedulerTaskPlain.includes("任务: weekly-summary")
       && schedulerTaskPlain.includes("本轮调度已记录失败，不影响继续输入。")
       && schedulerTaskPlain.includes("原因: Error:_model_route_unavailable"),
+    memory_maintenance_failed_is_human_surface:
+      memoryMaintenancePlain.includes("● 记忆维护失败")
+      && memoryMaintenancePlain.includes("阶段: post_turn")
+      && memoryMaintenancePlain.includes("后台记忆清理将在后续回合重试。")
+      && memoryMaintenancePlain.includes("原因: Error:_decay_index_locked"),
+    runtime_interrupt_ignored_is_human_surface:
+      runtimeInterruptIgnoredPlain.includes("● 中断请求未生效")
+      && runtimeInterruptIgnoredPlain.includes("/interrupt 请求发出时，当前回合已完成或已过安全中断点。"),
     rewind_capture_failed_is_human_surface:
       stripAnsi(rewindCaptureFailedSurface).includes("● 检查点保存失败")
       && stripAnsi(rewindCaptureFailedSurface).includes("本轮对话已继续，但这一步无法用于 /rewind 回退。")
@@ -105,6 +126,8 @@ async function main(): Promise<void> {
       mcpStrictFailureSurface.endsWith("\n")
       && schedulerTickSurface.endsWith("\n")
       && schedulerTaskFailedSurface.endsWith("\n")
+      && memoryMaintenanceFailedSurface.endsWith("\n")
+      && runtimeInterruptIgnoredSurface.endsWith("\n")
       && rewindCaptureFailedSurface.endsWith("\n"),
     message_mode_compact_disables_turn_diagnostics: messageModeDiagnosticPayload.compact === false,
     message_mode_verbose_keeps_turn_diagnostics: messageModeDiagnosticPayload.verbose === true,
