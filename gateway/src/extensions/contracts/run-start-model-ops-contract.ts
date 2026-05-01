@@ -33,6 +33,18 @@ function parseModelField(
   return snapshot.slice(start, end).trim();
 }
 
+function hidesModelMachineSurface(snapshot: string): boolean {
+  const forbidden = [
+    "[model]",
+    "[model-list]",
+    "供应商=",
+    "模型=",
+    "来源=",
+    "路径=",
+  ];
+  return forbidden.every((token) => !snapshot.includes(token));
+}
+
 async function main(): Promise<void> {
   let activeSessionId = "session-main";
   let listCalls = 0;
@@ -129,13 +141,13 @@ async function main(): Promise<void> {
     await ops.showModelCurrent();
   });
 
-  await captureOutput(async () => {
+  const switchModelOutput = await captureOutput(async () => {
     await ops.useModel("model-variant");
   });
   const mainSessionSnapshot = await captureOutput(async () => {
     await ops.showModelCurrent();
   });
-  await captureOutput(async () => {
+  const resetModelOutput = await captureOutput(async () => {
     await ops.resetModel();
   });
   const mainSessionAfterResetSnapshot = await captureOutput(async () => {
@@ -169,6 +181,17 @@ async function main(): Promise<void> {
     initial_source: parseModelField(initialSnapshot, "source"),
     initial_session_title: parseModelField(initialSnapshot, "session_title"),
     initial_session_summary: parseModelField(initialSnapshot, "session_summary"),
+    model_current_surface_is_human:
+      initialSnapshot.includes("● 当前模型")
+      && hidesModelMachineSurface(initialSnapshot),
+    model_switch_surface_is_human:
+      switchModelOutput.includes("● 已切换模型")
+      && switchModelOutput.includes("配置: /tmp/grobot-contract.config.toml")
+      && hidesModelMachineSurface(switchModelOutput),
+    model_reset_surface_is_human:
+      resetModelOutput.includes("● 已恢复启动模型")
+      && resetModelOutput.includes("配置: /tmp/grobot-contract.config.toml")
+      && hidesModelMachineSurface(resetModelOutput),
     main_model_after_use: parseModelField(mainSessionSnapshot, "model"),
     main_source_after_use: parseModelField(mainSessionSnapshot, "source"),
     main_session_id_after_use: parseModelField(mainSessionSnapshot, "session_id"),
@@ -197,6 +220,11 @@ async function main(): Promise<void> {
     persist_call_count: persistCalls.length,
     persist_first_call: persistCalls[0] ?? "",
     persist_second_call: persistCalls[1] ?? "",
+    list_surface_is_human:
+      listedSnapshot.includes("● 可用模型")
+      && listedSnapshot.includes("供应商: provider-main")
+      && listedSnapshot.includes("当前: model-default")
+      && hidesModelMachineSurface(listedSnapshot),
     list_output_has_current_marker: listedSnapshot.includes("* model-default"),
     list_output_has_variant: listedSnapshot.includes(" model-variant"),
     model_menu_pause_calls: pauseCalls,

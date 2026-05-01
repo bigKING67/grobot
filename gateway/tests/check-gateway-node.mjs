@@ -2505,6 +2505,9 @@ async function runGatewayContractSmoke() {
     modelOpsContractPayload.initial_session_summary,
     "Trace model override and reset contract",
   );
+  assert.equal(modelOpsContractPayload.model_current_surface_is_human, true);
+  assert.equal(modelOpsContractPayload.model_switch_surface_is_human, true);
+  assert.equal(modelOpsContractPayload.model_reset_surface_is_human, true);
   assert.equal(modelOpsContractPayload.main_model_after_use, "model-variant");
   assert.equal(modelOpsContractPayload.main_source_after_use, "config_toml:provider.model");
   assert.equal(modelOpsContractPayload.main_session_id_after_use, "session-main");
@@ -2539,6 +2542,7 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(modelOpsContractPayload.persist_call_count), 2);
   assert.equal(modelOpsContractPayload.persist_first_call, "provider-main:model-variant");
   assert.equal(modelOpsContractPayload.persist_second_call, "provider-main:model-default");
+  assert.equal(modelOpsContractPayload.list_surface_is_human, true);
   assert.equal(modelOpsContractPayload.list_output_has_current_marker, true);
   assert.equal(modelOpsContractPayload.list_output_has_variant, true);
   assert.equal(Number(modelOpsContractPayload.model_menu_pause_calls), 1);

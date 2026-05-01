@@ -210,6 +210,35 @@ function resolveModelMenuInitialIndex(input: {
   );
 }
 
+function buildModelNotice(
+  title: string,
+  lines: ReadonlyArray<string> = [],
+): string {
+  return [
+    `● ${title}`,
+    ...lines
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => `  ${line}`),
+    "",
+    "",
+  ].join("\n");
+}
+
+function buildPersistedModelLines(input: {
+  providerName: string;
+  modelId: string;
+  source: string;
+  path?: string;
+}): string[] {
+  return [
+    `供应商: ${input.providerName}`,
+    `模型: ${input.modelId}`,
+    `来源: ${input.source}`,
+    ...(input.path ? [`配置: ${input.path}`] : []),
+  ];
+}
+
 function toPersistModelResult(
   input: PersistRunStartModelToConfigResult,
 ): PersistModelToConfigResult {
@@ -364,31 +393,40 @@ export function createRunStartModelOps(
   ): Promise<void> => {
     const modelId = requestedModelId.trim();
     if (!modelId) {
-      input.writeStdout("[model] 切换失败：目标模型为空。\n\n");
+      input.writeStdout(buildModelNotice("切换模型失败", [
+        "目标模型为空。",
+      ]));
       return;
     }
     const available = availableInput ?? await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] 切换失败：${available.message}\n\n`);
+      input.writeStdout(buildModelNotice("切换模型失败", [
+        `${available.message}。`,
+      ]));
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(modelId)) {
-      input.writeStdout(
-        `[model] 切换失败："${modelId}" 不在供应商 ${available.providerName} 的模型列表中。\n`,
-      );
-      input.writeStdout(
-        `[model] 可用模型: ${available.modelIds.join(", ")}\n\n`,
-      );
+      input.writeStdout(buildModelNotice("切换模型失败", [
+        `"${modelId}" 不在供应商 ${available.providerName} 的模型列表中。`,
+        `可用模型: ${available.modelIds.join(", ")}`,
+      ]));
       return;
     }
     const persisted = await applyModelSelection(modelId);
     if (!persisted.ok) {
-      input.writeStdout(`[model] 切换失败：${persisted.message}\n\n`);
+      input.writeStdout(buildModelNotice("切换模型失败", [
+        `${persisted.message}。`,
+      ]));
       return;
     }
     input.writeStdout(
-      `[model] 已切换：供应商=${available.providerName} 模型=${modelId} 来源=${persisted.source}${persisted.path ? ` 路径=${persisted.path}` : ""}\n\n`,
+      buildModelNotice("已切换模型", buildPersistedModelLines({
+        providerName: available.providerName,
+        modelId,
+        source: persisted.source,
+        path: persisted.path,
+      })),
     );
   };
 
@@ -414,26 +452,39 @@ export function createRunStartModelOps(
       "<none>",
     );
     input.writeStdout(
-      `[model]\n供应商: ${snapshot.providerName}\n模型: ${snapshot.model}\n来源: ${snapshot.source}\n会话: ${activeSessionId}\n标题: ${sessionTitle}\n摘要: ${sessionSummary}\n\n`,
+      buildModelNotice("当前模型", [
+        `供应商: ${snapshot.providerName}`,
+        `模型: ${snapshot.model}`,
+        `来源: ${snapshot.source}`,
+        `会话: ${activeSessionId}`,
+        `标题: ${sessionTitle}`,
+        `摘要: ${sessionSummary}`,
+      ]),
     );
   };
 
   const listModels = async (): Promise<void> => {
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] 列表获取失败：${available.message}\n\n`);
+      input.writeStdout(buildModelNotice("模型列表不可用", [
+        `${available.message}。`,
+      ]));
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
-      input.writeStdout(
-        `[model] 供应商 ${available.providerName} 未返回模型。\n\n`,
-      );
+      input.writeStdout(buildModelNotice("没有可用模型", [
+        `供应商: ${available.providerName}`,
+      ]));
       return;
     }
-    input.writeStdout(
-      `[model-list] 供应商=${available.providerName} 数量=${String(available.modelIds.length)} 当前=${available.currentModel ?? "<unset>"}\n`,
-    );
+    input.writeStdout([
+      "● 可用模型",
+      `  供应商: ${available.providerName}`,
+      `  当前: ${available.currentModel ?? "<unset>"}`,
+      `  数量: ${String(available.modelIds.length)}`,
+      "",
+    ].join("\n"));
     for (const modelId of available.modelIds) {
       const marker = modelId === available.currentModel ? "*" : " ";
       input.writeStdout(`${marker} ${modelId}\n`);
@@ -444,7 +495,9 @@ export function createRunStartModelOps(
   const useModel = async (modelIdRaw: string): Promise<void> => {
     const requestedModelId = modelIdRaw.trim();
     if (!requestedModelId) {
-      input.writeStdout("[model] 切换失败：目标模型为空。\n\n");
+      input.writeStdout(buildModelNotice("切换模型失败", [
+        "目标模型为空。",
+      ]));
       return;
     }
     await switchModel(requestedModelId);
@@ -452,31 +505,40 @@ export function createRunStartModelOps(
 
   const resetModel = async (): Promise<void> => {
     if (!startupPrimaryModel || startupPrimaryModel.length === 0) {
-      input.writeStdout("[model] 恢复启动模型失败：启动模型不可用。\n\n");
+      input.writeStdout(buildModelNotice("恢复启动模型失败", [
+        "启动模型不可用。",
+      ]));
       return;
     }
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] 恢复启动模型失败：${available.message}\n\n`);
+      input.writeStdout(buildModelNotice("恢复启动模型失败", [
+        `${available.message}。`,
+      ]));
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(startupPrimaryModel)) {
-      input.writeStdout(
-        `[model] 恢复启动模型失败：启动模型 "${startupPrimaryModel}" 不在供应商 ${available.providerName} 的模型列表中。\n`,
-      );
-      input.writeStdout(
-        `[model] 可用模型: ${available.modelIds.join(", ")}\n\n`,
-      );
+      input.writeStdout(buildModelNotice("恢复启动模型失败", [
+        `启动模型 "${startupPrimaryModel}" 不在供应商 ${available.providerName} 的模型列表中。`,
+        `可用模型: ${available.modelIds.join(", ")}`,
+      ]));
       return;
     }
     const persisted = await applyModelSelection(startupPrimaryModel);
     if (!persisted.ok) {
-      input.writeStdout(`[model] 恢复启动模型失败：${persisted.message}\n\n`);
+      input.writeStdout(buildModelNotice("恢复启动模型失败", [
+        `${persisted.message}。`,
+      ]));
       return;
     }
     input.writeStdout(
-      `[model] 已恢复启动模型：供应商=${available.providerName} 模型=${startupPrimaryModel} 来源=${persisted.source}${persisted.path ? ` 路径=${persisted.path}` : ""}\n\n`,
+      buildModelNotice("已恢复启动模型", buildPersistedModelLines({
+        providerName: available.providerName,
+        modelId: startupPrimaryModel,
+        source: persisted.source,
+        path: persisted.path,
+      })),
     );
   };
 
@@ -485,14 +547,16 @@ export function createRunStartModelOps(
   ): Promise<void> => {
     const available = await fetchAvailableModels();
     if (!available.ok) {
-      input.writeStdout(`[model] 模型选择器不可用：${available.message}\n\n`);
+      input.writeStdout(buildModelNotice("模型选择器不可用", [
+        `${available.message}。`,
+      ]));
       return;
     }
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
-      input.writeStdout(
-        `[model] 供应商 ${available.providerName} 未返回模型。\n\n`,
-      );
+      input.writeStdout(buildModelNotice("没有可用模型", [
+        `供应商: ${available.providerName}`,
+      ]));
       return;
     }
     const items = buildModelMenuItems({
