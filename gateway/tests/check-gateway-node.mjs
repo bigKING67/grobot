@@ -2379,6 +2379,7 @@ async function runGatewayContractSmoke() {
   assert.equal(interactiveBindingsPayload.init_prompt_blocks_trellis, true);
   assert.equal(interactiveBindingsPayload.init_prompt_blocks_system_prompt_file, true);
   assert.equal(interactiveBindingsPayload.init_existing_agents_skips, true);
+  assert.equal(interactiveBindingsPayload.init_generation_surface_is_human, true);
   assert.equal(interactiveBindingsPayload.manual_handoff_reason, "manual-command");
   assert.equal(interactiveBindingsPayload.manual_handoff_to_stderr, false);
   assert.equal(interactiveBindingsPayload.auto_exit_to_stderr, false);

@@ -34,6 +34,7 @@ import {
   type StatusLineSegmentId,
   type StatusLineTheme,
 } from "../ui/screens/status-line-screen";
+import { terminalStyle } from "../ui/theme/terminal-style";
 import { createRunStartUserCommandsRuntime } from "./run-start-user-commands";
 import {
   runAskUserQuestionnairePanel,
@@ -1092,11 +1093,23 @@ export function createRunStartInteractiveModeInput(
       const targetPath = `${trimTrailingSlashes(input.projectRoot)}/AGENTS.md`;
       if (existsSync(targetPath)) {
         input.output.writeStdout(
-          `[init] AGENTS.md already exists at ${targetPath}. Skipping /init to avoid overwriting it.\n\n`,
+          [
+            `${terminalStyle.accent("●")} AGENTS.md 已存在`,
+            `  ${terminalStyle.muted(`已跳过 /init，避免覆盖: ${targetPath}`)}`,
+            "",
+            "",
+          ].join("\n"),
         );
         return;
       }
-      input.output.writeStdout(`[init] generating project instructions: ${targetPath}\n\n`);
+      input.output.writeStdout(
+        [
+          `${terminalStyle.accent("●")} 正在生成项目指令`,
+          `  ${terminalStyle.muted(targetPath)}`,
+          "",
+          "",
+        ].join("\n"),
+      );
       const prompt = buildAgentsInitPrompt({
         targetPath,
         projectRoot: input.projectRoot,

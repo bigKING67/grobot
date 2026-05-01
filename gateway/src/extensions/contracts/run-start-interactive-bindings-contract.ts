@@ -562,7 +562,13 @@ async function main(): Promise<void> {
       init_prompt_blocks_system_prompt_file: turnInputs.some((item) =>
         item.includes("不要创建或修改 `SYSTEM.md`"),
       ),
-      init_existing_agents_skips: outputText.includes("AGENTS.md already exists"),
+      init_existing_agents_skips:
+        outputText.includes("AGENTS.md 已存在")
+        && outputText.includes("已跳过 /init，避免覆盖:")
+        && !outputText.includes("AGENTS.md already exists"),
+      init_generation_surface_is_human:
+        outputText.includes("正在生成项目指令")
+        && !outputText.includes("[init] generating project instructions"),
       manual_handoff_reason: handoffReason,
       manual_handoff_to_stderr: handoffToStderr,
       auto_exit_to_stderr: autoExitToStderr,
