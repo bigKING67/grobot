@@ -3,6 +3,7 @@ import {
   resolveResumeQueryMatches,
 } from "./session-resume-search";
 import { type RunStartSessionSummary } from "./run-start-session-ops";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 export type StartupResumeSessionSummary = RunStartSessionSummary;
 
@@ -44,6 +45,18 @@ function formatStartupResumeHints(matches: readonly StartupResumeSessionSummary[
   return rows.join("\n");
 }
 
+function buildStartupResumeNotice(
+  title: string,
+  details: readonly string[],
+): string {
+  const lines = [`${terminalStyle.accent("●")} ${title}`];
+  for (const detail of details) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
 export function resolveStartupResumeTarget(
   input: ResolveStartupResumeTargetInput,
 ): ResolveStartupResumeTargetResult {
@@ -83,22 +96,36 @@ export function resolveStartupResumeTarget(
         targetSessionId: picked?.id,
         requiresDisambiguation: true,
         disambiguationCandidates: matches,
-        notice:
-          `[session] --resume 查询 "${queryRaw}" 匹配到 ${String(matches.length)} 个会话。\n`
-          + `${hints}\n`
-          + "[session] 提示：使用 --resume <session-id> 可确定恢复目标。\n",
+        notice: [
+          `${terminalStyle.accent("●")} 找到多个可恢复会话`,
+          `  ${terminalStyle.muted(`查询: ${queryRaw}`)}`,
+          `  ${terminalStyle.muted(`匹配: ${String(matches.length)} 个会话`)}`,
+          hints,
+          `  ${terminalStyle.muted("提示：使用 --resume <session-id> 可确定恢复目标。")}`,
+          "",
+        ].join("\n"),
       };
     }
     if (fallbackTargetSessionId) {
       return {
         targetSessionId: fallbackTargetSessionId,
-        notice:
-          `[session] --resume 查询 "${queryRaw}" 没有匹配；已回退到最近可恢复会话 "${fallbackTargetSessionId}"。\n\n`,
+        notice: buildStartupResumeNotice(
+          "未匹配到可恢复会话",
+          [
+            `查询: ${queryRaw}`,
+            `已回退到最近可恢复会话: ${fallbackTargetSessionId}`,
+          ],
+        ),
       };
     }
     return {
-      notice:
-        `[session] --resume 查询 "${queryRaw}" 没有匹配，也没有可恢复会话。\n\n`,
+      notice: buildStartupResumeNotice(
+        "未匹配到可恢复会话",
+        [
+          `查询: ${queryRaw}`,
+          "没有可恢复会话。",
+        ],
+      ),
     };
   }
 
@@ -108,6 +135,9 @@ export function resolveStartupResumeTarget(
     };
   }
   return {
-    notice: "[session] 已请求启动恢复，但没有可恢复会话。\n\n",
+    notice: buildStartupResumeNotice(
+      "启动恢复不可用",
+      ["已请求启动恢复，但没有可恢复会话。"],
+    ),
   };
 }

@@ -3,6 +3,7 @@ import {
   type ResolveStartupResumeTargetResult,
   type StartupResumeSessionSummary,
 } from "./session-resume-startup";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 export interface ResolveStartupResumeDisambiguationInput {
   resumeTarget: ResolveStartupResumeTargetResult;
@@ -48,7 +49,12 @@ export async function resolveStartupResumeDisambiguation(
     && !input.stdinIsTTY
   ) {
     messages.push(
-      `[session] 非交互启动已从多个会话匹配中自动选择 "${targetSessionId}"。\n\n`,
+      [
+        `${terminalStyle.accent("●")} 已自动选择启动会话`,
+        `  ${terminalStyle.muted(`会话: ${targetSessionId}`)}`,
+        `  ${terminalStyle.muted("非交互启动无法打开选择器，已使用首个匹配项。")}`,
+        "",
+      ].join("\n"),
     );
   }
   return {

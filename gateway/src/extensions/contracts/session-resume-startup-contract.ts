@@ -7,6 +7,10 @@ import {
   resolveResumeSelector,
 } from "../../orchestration/entrypoints/dev-cli/start/session-options";
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 const SESSION_FIXTURE: readonly StartupResumeSessionSummary[] = [
   {
     id: "main",
@@ -140,6 +144,12 @@ function run(): void {
   const resumeSelectorWithFalseLiteral = resolveResumeSelector({
     resume: "false",
   });
+  const startupResumeNoticeText = [
+    resumeMultipleMatches.notice ?? "",
+    resumeNoMatchFallback.notice ?? "",
+    resumeNoMatchNoFallback.notice ?? "",
+  ].join("\n");
+  const startupResumeNoticePlain = stripAnsi(startupResumeNoticeText);
 
   assertAll([
     check("no_intent_skips_resume_target", typeof noIntent.targetSessionId === "undefined"),
@@ -159,6 +169,11 @@ function run(): void {
       (resumeMultipleMatches.notice ?? "").includes("可确定恢复目标"),
     ),
     check(
+      "resume_multiple_query_notice_surface_is_human",
+      startupResumeNoticePlain.includes("找到多个可恢复会话")
+      && startupResumeNoticePlain.includes("查询: session"),
+    ),
+    check(
       "resume_multiple_query_notice_no_autoselect_literal",
       !(resumeMultipleMatches.notice ?? "").includes("auto-selecting"),
     ),
@@ -172,7 +187,11 @@ function run(): void {
     ),
     check(
       "resume_no_match_without_fallback_has_notice",
-      (resumeNoMatchNoFallback.notice ?? "").includes("没有匹配，也没有可恢复会话"),
+      (resumeNoMatchNoFallback.notice ?? "").includes("没有可恢复会话"),
+    ),
+    check(
+      "resume_startup_notices_avoid_legacy_marker",
+      !startupResumeNoticeText.includes("[session]"),
     ),
     check(
       "resume_all_can_match_active_title",
