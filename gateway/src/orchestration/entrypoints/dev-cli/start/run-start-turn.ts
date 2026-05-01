@@ -22,6 +22,7 @@ import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime"
 import {
   renderManagementInterruptNotice,
   renderRuntimeFailureSummary,
+  renderRuntimeOpenCircuitNotice,
   renderTurnInterruptedNotice,
 } from "../ui/screens/turn-screen";
 import {
@@ -2916,7 +2917,11 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         input.setGaState(gaState);
         input.updateActiveSessionGaState(gaState);
         await input.persistSessionRegistryState();
-        input.writeStderr("[runtime-route] all provider circuits are OPEN; no attempt executed\n");
+        if (interactiveMode) {
+          input.writeStderr("[runtime-route] all provider circuits are OPEN; no attempt executed\n");
+        } else {
+          input.writeStderr(renderRuntimeOpenCircuitNotice(false));
+        }
         return 1;
       }
 

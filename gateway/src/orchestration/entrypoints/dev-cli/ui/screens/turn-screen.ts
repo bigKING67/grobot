@@ -30,6 +30,19 @@ export function renderTurnInterruptedNotice(interactiveMode: boolean): string {
   return `${terminalStyle.accent("●")} 回合已中断\n`;
 }
 
+export function renderRuntimeOpenCircuitNotice(interactiveMode: boolean): string {
+  const lines = [
+    `${terminalStyle.accent("●")} 所有模型通道暂不可用`,
+    `  ${terminalStyle.muted("当前没有可尝试的模型通道。")}`,
+  ];
+  if (interactiveMode) {
+    lines.push(`  ${terminalStyle.muted("可以稍后重试，或使用 /model 切换模型。")}`, "", "");
+  } else {
+    lines.push(`  ${terminalStyle.muted("可以稍后重试，或切换模型后再执行。")}`, "");
+  }
+  return lines.join("\n");
+}
+
 export function renderRuntimeFailureSummary(input: RuntimeFailureSummaryInput): string {
   const failureSummary = input.failures
     .map((item) => `${item.providerName} · ${item.errorClass}`)

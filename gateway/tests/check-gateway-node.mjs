@@ -1752,6 +1752,9 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliTurnScreenContractPayload.turn_interrupted_interactive_matches, true);
   assert.equal(devCliTurnScreenContractPayload.turn_interrupted_non_interactive_matches, true);
   assert.equal(devCliTurnScreenContractPayload.turn_interrupted_avoids_machine_prefix, true);
+  assert.equal(devCliTurnScreenContractPayload.open_circuit_interactive_is_human_surface, true);
+  assert.equal(devCliTurnScreenContractPayload.open_circuit_non_interactive_is_human_surface, true);
+  assert.equal(devCliTurnScreenContractPayload.open_circuit_avoids_machine_prefix, true);
   assert.equal(devCliTurnScreenContractPayload.failure_summary_is_human_surface, true);
   assert.equal(devCliTurnScreenContractPayload.failure_summary_has_last_error_detail, true);
   assert.equal(devCliTurnScreenContractPayload.failure_summary_avoids_machine_prefix, true);

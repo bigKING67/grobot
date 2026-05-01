@@ -1,6 +1,7 @@
 import {
   renderManagementInterruptNotice,
   renderRuntimeFailureSummary,
+  renderRuntimeOpenCircuitNotice,
   renderTurnInterruptedNotice,
 } from "../../orchestration/entrypoints/dev-cli/ui/screens/turn-screen";
 
@@ -12,6 +13,8 @@ const managementInteractive = renderManagementInterruptNotice(true);
 const managementNonInteractive = renderManagementInterruptNotice(false);
 const turnInterruptedInteractive = renderTurnInterruptedNotice(true);
 const turnInterruptedNonInteractive = renderTurnInterruptedNotice(false);
+const openCircuitInteractive = renderRuntimeOpenCircuitNotice(true);
+const openCircuitNonInteractive = renderRuntimeOpenCircuitNotice(false);
 const failureSummary = renderRuntimeFailureSummary({
   failures: [
     {
@@ -42,6 +45,15 @@ const payload = {
   turn_interrupted_avoids_machine_prefix:
     !turnInterruptedInteractive.includes("[interrupt]")
     && !turnInterruptedNonInteractive.includes("[interrupt]"),
+  open_circuit_interactive_is_human_surface:
+    stripAnsi(openCircuitInteractive) === "● 所有模型通道暂不可用\n  当前没有可尝试的模型通道。\n  可以稍后重试，或使用 /model 切换模型。\n\n",
+  open_circuit_non_interactive_is_human_surface:
+    stripAnsi(openCircuitNonInteractive) === "● 所有模型通道暂不可用\n  当前没有可尝试的模型通道。\n  可以稍后重试，或切换模型后再执行。\n",
+  open_circuit_avoids_machine_prefix:
+    !openCircuitInteractive.includes("[runtime-route]")
+    && !openCircuitNonInteractive.includes("[runtime-route]")
+    && !openCircuitInteractive.includes("provider=")
+    && !openCircuitNonInteractive.includes("provider="),
   failure_summary_is_human_surface:
     stripAnsi(failureSummary).includes("● 回合执行失败")
     && stripAnsi(failureSummary).includes("已尝试: alpha -> beta -> gamma")
