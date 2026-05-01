@@ -827,6 +827,8 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.plan_goal_tty_enters_plan_directly, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_goal_tty_in_plan_shows_current_plan, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_goal_tty_in_plan_skips_new_plan, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_removed_subcommand_surface_is_human, true);
+  assert.equal(sessionInteractiveDispatchPayload.plan_removed_subcommand_hides_machine_output, true);
   assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_surface_is_human, true);
   assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_avoids_legacy_marker, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_natural_execute_in_plan_mode_dispatches_apply, true);
@@ -1316,6 +1318,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.script_plan_surface_hides_absolute_plan_file, true);
   assert.equal(runStartPlanModeContractPayload.plan_goal_in_plan_mode_shows_current_plan, true);
   assert.equal(runStartPlanModeContractPayload.plan_goal_in_plan_mode_skips_new_query, true);
+  assert.equal(runStartPlanModeContractPayload.removed_plan_benchmark_surface_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.removed_plan_benchmark_hides_machine_output, true);
   assert.equal(runStartPlanModeContractPayload.execute_natural_language_handled, true);
   assert.equal(runStartPlanModeContractPayload.execute_triggered_runtime_turn, true);
   assert.equal(runStartPlanModeContractPayload.execute_payload_is_not_literal_phrase, true);

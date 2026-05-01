@@ -260,6 +260,9 @@ async function main(): Promise<void> {
     const planGoalInPlan = await planMode.handleMessageInput("/plan second contract goal");
     const planGoalInPlanOutput = stdout.slice(stdoutBeforePlanGoalInPlan.length);
     const executeCountAfterPlanGoalInPlan = executeInputs.length;
+    const stdoutBeforeRemovedBenchmark = stdout;
+    const removedBenchmark = await planMode.handleMessageInput("/plan benchmark");
+    const removedBenchmarkOutput = stdout.slice(stdoutBeforeRemovedBenchmark.length);
     const activePlanIdBeforeApply = runtimeState.getPlanMeta()?.active_plan_id;
     const executeCountBeforeApply = executeInputs.length;
     const stdoutBeforeApply = stdout;
@@ -1121,6 +1124,18 @@ async function main(): Promise<void> {
         && planGoalInPlanOutput.includes("# Contract Plan"),
       plan_goal_in_plan_mode_skips_new_query:
         executeCountAfterPlanGoalInPlan === executeCountBeforePlanGoalInPlan,
+      removed_plan_benchmark_surface_is_human:
+        removedBenchmark.handled
+        && removedBenchmark.code === 0
+        && stripAnsi(removedBenchmarkOutput).includes("● Plan")
+        && stripAnsi(removedBenchmarkOutput).includes("不支持该 /plan 子命令")
+        && stripAnsi(removedBenchmarkOutput).includes("/plan、/plan <目标> 或 /plan open"),
+      removed_plan_benchmark_hides_machine_output:
+        !removedBenchmarkOutput.includes("[plan-benchmark]")
+        && !removedBenchmarkOutput.includes("[plan-benchmark-check]")
+        && !removedBenchmarkOutput.includes("plan_quality_benchmark_")
+        && !removedBenchmarkOutput.includes("suggested_action_")
+        && !removedBenchmarkOutput.includes("recommended_next_action:"),
       execute_natural_language_handled: execute.handled && execute.code === 0,
       execute_triggered_runtime_turn: executeInputs.length === executeCountBeforeApply + 1,
       execute_payload_is_not_literal_phrase:

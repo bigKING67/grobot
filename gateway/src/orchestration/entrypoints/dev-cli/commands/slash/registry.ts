@@ -821,7 +821,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason}\n\n`);
+        handlers.writeStdout(buildSlashNotice("Plan", [parsed.reason]));
         return "continue";
       }
       return "continue";

@@ -551,6 +551,7 @@ async function main(): Promise<void> {
     stdinIsTty: true,
     planMode: true,
   });
+  const planRemovedBenchmark = await runDispatchCase("/plan benchmark", { stdinIsTty: true });
   const blockedResumeInPlan = await runDispatchCase("/resume", {
     stdinIsTty: true,
     planMode: true,
@@ -1041,6 +1042,15 @@ async function main(): Promise<void> {
       includesEvent(planGoalInPlan.events, "showPlanStatus"),
     plan_goal_tty_in_plan_skips_new_plan:
       !planGoalInPlan.events.some((event) => event.startsWith("enterPlan:")),
+    plan_removed_subcommand_surface_is_human:
+      stripAnsi(planRemovedBenchmark.stdout).includes("● Plan")
+      && stripAnsi(planRemovedBenchmark.stdout).includes("不支持该 /plan 子命令")
+      && stripAnsi(planRemovedBenchmark.stdout).includes("/plan、/plan <目标> 或 /plan open"),
+    plan_removed_subcommand_hides_machine_output:
+      !planRemovedBenchmark.stdout.includes("[plan-benchmark]")
+      && !planRemovedBenchmark.stdout.includes("plan_quality_benchmark_")
+      && !planRemovedBenchmark.stdout.includes("suggested_action_")
+      && !planRemovedBenchmark.stdout.includes("recommended_next_action:"),
     blocked_plan_mode_command_surface_is_human:
       stripAnsi(blockedResumeInPlan.stdout).includes("plan mode 中暂不可用")
       && stripAnsi(blockedResumeInPlan.stdout).includes("命令: /resume")

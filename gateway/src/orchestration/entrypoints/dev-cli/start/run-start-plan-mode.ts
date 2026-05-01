@@ -10,11 +10,9 @@ import {
   appendPlanEvent,
   appendPlanProgressNote,
   approvePlanArtifact,
-  buildPlanQualityBenchmarkEventDetail,
   buildPlanQualityRepairActions,
   buildPlanApplyPrompt,
   createPlanArtifact,
-  evaluatePlanQualityBenchmark,
   evaluatePlanQualityBenchmarkHealth,
   evaluatePlanQualityBenchmarkSemanticCorrelation,
   evaluatePlanQualityGuard,
@@ -26,7 +24,6 @@ import {
   loadLatestPlanVerificationDiagnostic,
   loadPlanArtifactIndex,
   loadActivePlanArtifact,
-  resolvePlanQualityBenchmarkPreset,
   resolvePlanQualityGuardPolicy,
   resolvePlanQualityGuardMode,
   resolvePlanQualityBenchmarkRecommendation,
@@ -133,8 +130,6 @@ function normalizePlanReadyApprovalDecision(
 const PLAN_REVIEW_FAILED_CODE = "PLAN_REVIEW_FAILED";
 const PLAN_REVIEW_BLOCKED_CODE = "PLAN_REVIEW_BLOCKED";
 const PLAN_QUALITY_GUARD_BLOCKED_CODE = "PLAN_QUALITY_GUARD_BLOCKED";
-const PLAN_BENCHMARK_ASSERT_BEST_FAILED_CODE = "PLAN_BENCHMARK_ASSERT_BEST_FAILED";
-const PLAN_BENCHMARK_CHECK_FAILED_CODE = "PLAN_BENCHMARK_CHECK_FAILED";
 const PLAN_INTERRUPT_OK_CODE = "PLAN_INTERRUPT_OK";
 const PLAN_INTERRUPT_NOT_RUNNING_CODE = "PLAN_INTERRUPT_NOT_RUNNING";
 const PLAN_INTERRUPT_NOT_PLAN_MODE_CODE = "PLAN_INTERRUPT_NOT_PLAN_MODE";
@@ -395,17 +390,6 @@ function parseApprovedContent(snapshotPath: string | undefined, fallback: string
     // keep fallback content when snapshot file is unavailable.
   }
   return fallback;
-}
-
-function resolveBenchmarkPath(workDir: string, rawPath: string): string {
-  const trimmed = rawPath.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("/")) {
-    return resolvePath(trimmed);
-  }
-  return resolvePath(workDir, trimmed);
 }
 
 function formatReviewFindings(findings: readonly { code: string; section?: string; message: string }[]): string {
@@ -1307,6 +1291,14 @@ function buildPlanUpdatedSurface(input: {
   ].join("\n");
 }
 
+function buildPlanCommandErrorSurface(reason: string): string {
+  return [
+    `${terminalStyle.planMode("●")} Plan`,
+    `  ${terminalStyle.muted(reason)}`,
+    "",
+  ].join("\n");
+}
+
 function writePlanFailureSurface(input: {
   phase: PlanFailurePhase;
   planId: string;
@@ -1696,9 +1688,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   // Default to a human-readable surface everywhere. Machine fields are opt-in via verbose mode.
   const shouldRenderCompactPlanStatus = (): boolean =>
     !isEnvTruthy(process.env.GROBOT_PLAN_STATUS_VERBOSE);
-
-  const shouldRenderCompactPlanBenchmark = (): boolean =>
-    Boolean(process.stdin.isTTY) && !isEnvTruthy(process.env.GROBOT_PLAN_BENCHMARK_VERBOSE);
 
   const writePlanRecommendationLines = (recommendation: { action: string; reason: string }): void => {
     const suggestedCommand = resolvePlanStatusRecommendationCommand(recommendation.action);
@@ -2213,351 +2202,6 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         });
         writePlanRecommendationLines(recommendation);
       }
-    }
-    input.writeStdout("\n");
-    return 0;
-  };
-
-  const benchmarkPlan = async (
-    candidatesRaw: Array<{ label: string; path: string }>,
-    options?: {
-      preset?: string;
-      assertBest?: string;
-      checkOnly?: boolean;
-    },
-  ): Promise<number> => {
-    const sessionId = planSessionKey();
-    const checkOnly = options?.checkOnly === true;
-    const benchmarkCandidates: Array<{
-      label: string;
-      content: string;
-      sourcePath?: string;
-    }> = [];
-    const seenLabels = new Set<string>();
-    const pushCandidate = (
-      labelRaw: string,
-      content: string,
-      sourcePath?: string,
-    ): { ok: true } | { ok: false; reason: string } => {
-      const label = labelRaw.trim();
-      if (!label) {
-        return {
-          ok: false,
-          reason: "benchmark 候选标签不能为空",
-        };
-      }
-      const labelKey = label.toLowerCase();
-      if (seenLabels.has(labelKey)) {
-        return {
-          ok: false,
-          reason: `benchmark 候选标签重复: ${label}`,
-        };
-      }
-      seenLabels.add(labelKey);
-      benchmarkCandidates.push({
-        label,
-        content,
-        sourcePath,
-      });
-      return { ok: true };
-    };
-
-    const active = resolveActivePlan();
-    if (active) {
-      const pushed = pushCandidate("active", active.content, active.planPath);
-      if (!pushed.ok) {
-        input.writeStderr(`[plan-benchmark] ${pushed.reason}\n\n`);
-        return 1;
-      }
-    }
-
-    const preset = options?.preset?.trim();
-    let presetMissingLabels: string[] = [];
-    let presetPolicySource: string | undefined;
-    let presetPolicyPath: string | undefined;
-    let presetPolicyWarning: string | undefined;
-    if (preset) {
-      const presetResolved = resolvePlanQualityBenchmarkPreset({
-        workDir: input.workDir,
-        presetRaw: preset,
-      });
-      if (!presetResolved) {
-        input.writeStderr(
-          `[plan-benchmark] 未知 preset: ${preset}（支持: generic, core）。可尝试 preset=core 并设置 assert-best=active\n\n`,
-        );
-        return 1;
-      }
-      presetMissingLabels = [...presetResolved.missingLabels];
-      presetPolicySource = presetResolved.policySource;
-      presetPolicyPath = presetResolved.policyPath;
-      presetPolicyWarning = presetResolved.policyWarning;
-      for (const item of presetResolved.candidates) {
-        let content = "";
-        try {
-          content = readFileSync(item.path, "utf8");
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          input.writeStderr(`[plan-benchmark] 读取 preset 候选失败 label=${item.label} path=${item.path}: ${detail}\n\n`);
-          return 1;
-        }
-        const pushed = pushCandidate(item.label, content, item.path);
-        if (!pushed.ok) {
-          input.writeStderr(`[plan-benchmark] ${pushed.reason}\n\n`);
-          return 1;
-        }
-      }
-      if (presetPolicyWarning) {
-        input.writeStderr(`[plan-benchmark] preset policy 警告: ${presetPolicyWarning}\n`);
-      }
-      if (presetMissingLabels.length > 0) {
-        input.writeStdout(`[plan-benchmark] preset=${presetResolved.preset} missing=${presetMissingLabels.join(",")}\n`);
-        input.writeStdout(
-          "[plan-benchmark] 提示: 设置 GROBOT_PLAN_BENCHMARK_*_PATH 或 GROBOT_PLAN_BENCHMARK_PRESET_POLICY_PATH 来提供缺失基线\n",
-        );
-      }
-      if (checkOnly && presetMissingLabels.length > 0) {
-        input.writeStderr(
-          `[plan-benchmark] code=${PLAN_BENCHMARK_CHECK_FAILED_CODE} preset_missing=${presetMissingLabels.join(",")}\n\n`,
-        );
-        return 2;
-      }
-    }
-
-    for (const item of candidatesRaw) {
-      const resolvedPath = resolveBenchmarkPath(input.workDir, item.path);
-      let content = "";
-      try {
-        content = readFileSync(resolvedPath, "utf8");
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        input.writeStderr(`[plan-benchmark] 读取候选失败 label=${item.label} path=${resolvedPath}: ${detail}\n\n`);
-        return 1;
-      }
-      const pushed = pushCandidate(item.label, content, resolvedPath);
-      if (!pushed.ok) {
-        input.writeStderr(`[plan-benchmark] ${pushed.reason}\n\n`);
-        return 1;
-      }
-    }
-
-    if (benchmarkCandidates.length === 0) {
-      if (preset) {
-        if (checkOnly) {
-          input.writeStderr(
-            `[plan-benchmark] code=${PLAN_BENCHMARK_CHECK_FAILED_CODE} no_readable_candidates_after_preset_resolution\n\n`,
-          );
-          return 2;
-        }
-        input.writeStderr(
-          "[plan-benchmark] preset 解析后没有可比较候选。请检查 preset 路径，或手动提供 label=path。\n\n",
-        );
-        return 1;
-      }
-      if (checkOnly) {
-        input.writeStderr(
-          `[plan-benchmark] code=${PLAN_BENCHMARK_CHECK_FAILED_CODE} no_candidates_to_validate\n\n`,
-        );
-        return 2;
-      }
-      input.writeStderr("[plan-benchmark] 没有可比较候选。请用 <label=path> 提供候选，或先创建一个活动计划。\n\n");
-      return 1;
-    }
-
-    const qualityGuardRuntime = resolveQualityGuardRuntime();
-    if (checkOnly) {
-      const labels = benchmarkCandidates.map((item) => item.label);
-      const benchmarkHistory = loadPlanQualityBenchmarkHistory(input.workDir, sessionId, {
-        limit: 3,
-      });
-      const latestPlanEntry = resolveLatestPlanEntry([
-        "applied",
-        "apply_failed",
-        "discarded",
-      ]);
-      const latestFailure = latestPlanEntry
-        ? loadLatestPlanFailureDiagnostic(input.workDir, sessionId, {
-          planId: latestPlanEntry.plan_id,
-        })
-        : undefined;
-      const benchmarkSemantic = evaluatePlanQualityBenchmarkSemanticCorrelation({
-        latestFailure,
-        history: benchmarkHistory,
-      });
-      const benchmarkHealth = evaluatePlanQualityBenchmarkHealth({
-        history: benchmarkHistory,
-        semanticCorrelation: benchmarkSemantic.level,
-      });
-      const benchmarkRecommendation = resolvePlanQualityBenchmarkRecommendation({
-        history: benchmarkHistory,
-        semanticCorrelation: benchmarkSemantic.level,
-        health: benchmarkHealth,
-      });
-      const renderCompactOutput = shouldRenderCompactPlanBenchmark();
-      input.writeStdout("[plan-benchmark-check]\n");
-      input.writeStdout(
-        `plan_quality_benchmark_check_output_mode: ${renderCompactOutput ? "compact" : "full"}\n`,
-      );
-      input.writeStdout("plan_quality_benchmark_check_only: yes\n");
-      input.writeStdout(`plan_quality_benchmark_check_candidate_count: ${String(labels.length)}\n`);
-      input.writeStdout(`plan_quality_benchmark_check_labels: ${labels.join(",")}\n`);
-      if (preset) {
-        input.writeStdout(`plan_quality_benchmark_preset: ${preset}\n`);
-      }
-      input.writeStdout(`plan_quality_benchmark_guard_mode: ${qualityGuardRuntime.guardMode}\n`);
-      input.writeStdout(`plan_quality_benchmark_guard_profile: ${qualityGuardRuntime.policy.profile}\n`);
-      input.writeStdout(`plan_quality_benchmark_guard_source: ${qualityGuardRuntime.source}\n`);
-      if (qualityGuardRuntime.policyPath) {
-        input.writeStdout(`plan_quality_benchmark_guard_policy_path: ${qualityGuardRuntime.policyPath}\n`);
-      }
-      if (qualityGuardRuntime.warning) {
-        input.writeStdout(`plan_quality_benchmark_guard_policy_warning: ${qualityGuardRuntime.warning}\n`);
-      }
-      input.writeStdout(
-        `plan_quality_benchmark_check_semantic_correlation: ${benchmarkSemantic.level}\n`,
-      );
-      input.writeStdout(
-        `plan_quality_benchmark_check_health_level: ${benchmarkHealth.level}\n`,
-      );
-      input.writeStdout(
-        `plan_quality_benchmark_check_recommended_next_action: ${benchmarkRecommendation.action}\n`,
-      );
-      if (renderCompactOutput) {
-        input.writeStdout(
-          "plan_quality_benchmark_check_detail_hint: 设置 GROBOT_PLAN_BENCHMARK_VERBOSE=1 并重新运行此 benchmark check 可查看完整诊断。\n",
-        );
-      } else {
-        input.writeStdout(
-          `plan_quality_benchmark_check_semantic_reason: ${benchmarkSemantic.reason}\n`,
-        );
-        input.writeStdout(
-          `plan_quality_benchmark_check_health_score: ${String(benchmarkHealth.score)}\n`,
-        );
-        input.writeStdout(
-          `plan_quality_benchmark_check_health_reason: ${benchmarkHealth.reason}\n`,
-        );
-        input.writeStdout(
-          `plan_quality_benchmark_check_recommendation_reason: ${benchmarkRecommendation.reason}\n`,
-        );
-      }
-      input.writeStdout("plan_quality_benchmark_check_status: ok\n\n");
-      return 0;
-    }
-
-    let benchmark: ReturnType<typeof evaluatePlanQualityBenchmark>;
-    try {
-      benchmark = evaluatePlanQualityBenchmark({
-        workDir: input.workDir,
-        sessionId,
-        candidates: benchmarkCandidates,
-        policy: qualityGuardRuntime.policy,
-      });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      input.writeStderr(`[plan-benchmark] 评估失败: ${detail}\n\n`);
-      return 1;
-    }
-
-    const runnerUp = benchmark.rows[1];
-    const winnerLeadScore = typeof runnerUp?.score === "number"
-      ? benchmark.winner.score - runnerUp.score
-      : undefined;
-    const rowsPayload = benchmark.rows.map((row) => ({
-      rank: row.rank,
-      label: row.label,
-      path: row.sourcePath ?? "",
-      score: row.score,
-      grade: row.grade,
-      finding_count: row.findingCount,
-      blocked: row.blocked,
-      guard_level: row.guardLevel,
-      guard_reason: row.guardReason,
-      repair_action_count: row.repairActionCount,
-      top_hint: row.topHint,
-      top_repair_action: row.topRepairAction,
-    }));
-    const renderCompactOutput = shouldRenderCompactPlanBenchmark();
-    input.writeStdout("[plan-benchmark]\n");
-    input.writeStdout(`plan_quality_benchmark_output_mode: ${renderCompactOutput ? "compact" : "full"}\n`);
-    input.writeStdout(`plan_quality_benchmark_compared: ${String(benchmark.rows.length)}\n`);
-    input.writeStdout(`plan_quality_benchmark_guard_mode: ${qualityGuardRuntime.guardMode}\n`);
-    input.writeStdout(`plan_quality_benchmark_guard_profile: ${qualityGuardRuntime.policy.profile}\n`);
-    input.writeStdout(`plan_quality_benchmark_guard_source: ${qualityGuardRuntime.source}\n`);
-    if (preset) {
-      input.writeStdout(`plan_quality_benchmark_preset: ${preset}\n`);
-      if (presetMissingLabels.length > 0) {
-        input.writeStdout(`plan_quality_benchmark_preset_missing: ${presetMissingLabels.join(",")}\n`);
-      }
-      if (presetPolicySource) {
-        input.writeStdout(`plan_quality_benchmark_preset_policy_source: ${presetPolicySource}\n`);
-      }
-      if (presetPolicyPath) {
-        input.writeStdout(`plan_quality_benchmark_preset_policy_path: ${presetPolicyPath}\n`);
-      }
-      if (presetPolicyWarning) {
-        input.writeStdout(`plan_quality_benchmark_preset_policy_warning: ${presetPolicyWarning}\n`);
-      }
-    }
-    if (qualityGuardRuntime.policyPath) {
-      input.writeStdout(`plan_quality_benchmark_guard_policy_path: ${qualityGuardRuntime.policyPath}\n`);
-    }
-    if (qualityGuardRuntime.warning) {
-      input.writeStdout(`plan_quality_benchmark_guard_policy_warning: ${qualityGuardRuntime.warning}\n`);
-    }
-    input.writeStdout(`plan_quality_benchmark_winner: ${benchmark.winner.label}\n`);
-    input.writeStdout(`plan_quality_benchmark_winner_score: ${String(benchmark.winner.score)}\n`);
-    input.writeStdout(`plan_quality_benchmark_winner_grade: ${benchmark.winner.grade}\n`);
-    input.writeStdout(`plan_quality_benchmark_winner_top_hint: ${benchmark.winner.topHint}\n`);
-    input.writeStdout(`plan_quality_benchmark_winner_top_repair_action: ${benchmark.winner.topRepairAction}\n`);
-    if (runnerUp) {
-      input.writeStdout(`plan_quality_benchmark_runner_up_label: ${runnerUp.label}\n`);
-      input.writeStdout(`plan_quality_benchmark_runner_up_score: ${String(runnerUp.score)}\n`);
-    }
-    if (typeof winnerLeadScore === "number") {
-      input.writeStdout(`plan_quality_benchmark_winner_lead_score: ${String(winnerLeadScore)}\n`);
-    }
-    if (renderCompactOutput) {
-      input.writeStdout(`plan_quality_benchmark_rows_count: ${String(rowsPayload.length)}\n`);
-      input.writeStdout(
-        "plan_quality_benchmark_detail_hint: 设置 GROBOT_PLAN_BENCHMARK_VERBOSE=1 并重新运行 benchmark 可查看完整行数据。\n",
-      );
-    } else {
-      input.writeStdout(`plan_quality_benchmark_rows: ${JSON.stringify(rowsPayload)}\n`);
-    }
-
-    const expectedBest = options?.assertBest?.trim();
-    const assertMatched = expectedBest ? benchmark.winner.label === expectedBest : undefined;
-    try {
-      appendPlanEvent(input.workDir, sessionId, {
-        event: "plan_benchmark_run",
-        plan_id: active?.entry.plan_id,
-        source: "cli",
-        detail: buildPlanQualityBenchmarkEventDetail({
-          comparedCount: benchmark.rows.length,
-          winnerLabel: benchmark.winner.label,
-          winnerScore: benchmark.winner.score,
-          winnerGrade: benchmark.winner.grade,
-          winnerTopHint: benchmark.winner.topHint,
-          winnerTopRepairAction: benchmark.winner.topRepairAction,
-          runnerUpLabel: runnerUp?.label,
-          runnerUpScore: runnerUp?.score,
-          winnerLeadScore,
-          preset,
-          guardMode: qualityGuardRuntime.guardMode,
-          guardPolicyProfile: qualityGuardRuntime.policy.profile,
-          assertBest: expectedBest,
-          assertPassed: assertMatched,
-          assertActual: expectedBest ? benchmark.winner.label : undefined,
-        }),
-      });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      input.writeStderr(`[plan-benchmark] 警告: benchmark 事件持久化失败: ${detail}\n`);
-    }
-    if (expectedBest && benchmark.winner.label !== expectedBest) {
-      input.writeStderr(
-        `[plan-benchmark] code=${PLAN_BENCHMARK_ASSERT_BEST_FAILED_CODE} expected=${expectedBest} actual=${benchmark.winner.label}\n\n`,
-      );
-      return 2;
     }
     input.writeStdout("\n");
     return 0;
@@ -3346,7 +2990,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     if (isPlanSlashCommand(message)) {
       const parsed = parsePlanCommand(message);
       if (parsed.kind === "invalid") {
-        input.writeStdout(`${parsed.reason}\n\n`);
+        input.writeStdout(buildPlanCommandErrorSurface(parsed.reason));
         return { handled: true, code: 0 };
       }
       if (parsed.kind === "enter") {
