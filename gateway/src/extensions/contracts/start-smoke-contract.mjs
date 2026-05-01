@@ -1263,7 +1263,7 @@ function runStartInteractiveInterruptFlow(
       combinedOutput.includes("已请求中断当前回合")
       && combinedOutput.includes("诊断: TURN_INTERRUPT_OK")
       && !commandResult.stdout.includes("[interrupt] code=TURN_INTERRUPT_OK"),
-    interrupt_event_requested_seen: combinedOutput.includes(
+    interrupt_requested_avoids_legacy_event: !combinedOutput.includes(
       "[interrupt] event=requested source=command",
     ),
     interrupt_event_applied_seen: combinedOutput.includes(

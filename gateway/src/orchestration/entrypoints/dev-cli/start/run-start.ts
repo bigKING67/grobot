@@ -762,7 +762,7 @@ export async function runStart(
           source,
         }),
       );
-      output.writeStderr(
+      writeStartupDiagnostics(
         `[interrupt] event=rejected reason=no_active_turn source=${source}\n`,
       );
       return {
@@ -779,7 +779,7 @@ export async function runStart(
         source,
       }),
     );
-    output.writeStderr(
+    writeStartupDiagnostics(
       `[interrupt] event=requested source=${source}\n`,
     );
     return {
