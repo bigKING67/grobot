@@ -2074,6 +2074,19 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
     const turnSignal = options?.signal;
     const runtimeAttachments = options?.attachments;
     const emitTerminalDiagnostics = interactiveMode || options?.emitDiagnostics === true;
+    const writeTurnDiagnostic = (message: string): void => {
+      if (emitTerminalDiagnostics) {
+        input.writeStderr(message);
+      }
+    };
+    const writeTurnDiagnosticEvents = (events: readonly string[]): void => {
+      if (!emitTerminalDiagnostics) {
+        return;
+      }
+      for (const event of events) {
+        input.writeStderr(event);
+      }
+    };
     throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
     const sessionKey = input.getSessionKey();
     input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
@@ -2093,7 +2106,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
     });
     const turnUserText = askUserTurnContext.safeUserText;
     if (askUserTurnContext.hasSecretAnswers) {
-      input.writeStderr(
+      writeTurnDiagnostic(
         `[ask-user] event=secret_answer_redacted count=${String(askUserTurnContext.secretAnswerCount)} surfaces=history,memory,logs\n`,
       );
     }
@@ -2104,7 +2117,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         return 0;
       }
       if (askUserTurnContext.resolvedEvent.length > 0) {
-        input.writeStderr(askUserTurnContext.resolvedEvent);
+        writeTurnDiagnostic(askUserTurnContext.resolvedEvent);
         for (const resolvedAsk of askUserTurnContext.resolvedAsks) {
           const safeAnswer = formatAskUserResolvedAnswerForPersistence(resolvedAsk);
           const ingestResult = input.memoryOrchestrator.ingest({
@@ -2119,9 +2132,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             tags: ["ask_user", "clarification"],
             confidence: 0.82,
           });
-          for (const event of ingestResult.stderrEvents) {
-            input.writeStderr(event);
-          }
+          writeTurnDiagnosticEvents(ingestResult.stderrEvents);
         }
       }
       if (askUserTurnContext.pendingNextAsk) {
@@ -2141,10 +2152,10 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           options?.onTurnRecorded,
         );
         input.writeStdout(turnStdout);
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[ask-user] event=awaiting_more_answers remaining=${String(queueDepth)} active_ask_id=${activeAskEnvelope.askId}\n`,
         );
-        input.writeStderr("[experience] event=publish_skipped reason=ask_user_pending_followup\n");
+        writeTurnDiagnostic("[experience] event=publish_skipped reason=ask_user_pending_followup\n");
         return 0;
       }
 
@@ -2471,9 +2482,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         lineageCacheTtlMs: input.contextEngineConfig.lineage.cacheTtlMs,
         workDir: input.workDir,
       });
-      for (const event of memoryInject.stderrEvents) {
-        input.writeStderr(event);
-      }
+      writeTurnDiagnosticEvents(memoryInject.stderrEvents);
       const agentsInstructions = resolveAgentsInstructionBlock({
         projectRoot: input.projectRoot,
         workDir: input.workDir,
@@ -2557,7 +2566,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       );
       if (askUserClarificationHint.length > 0) {
         promptParts.push(askUserClarificationHint);
-        input.writeStderr("[ask-user] event=clarification_hint_injected\n");
+        writeTurnDiagnostic("[ask-user] event=clarification_hint_injected\n");
       }
       const semanticPrefetch = buildSemanticPrefetchBlock({
         enabled: input.contextEngineConfig.semanticPrefetch.enabled,
@@ -3120,7 +3129,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           workDir: input.workDir,
           events: report.events,
           source: "runtime_turn",
-          writeStderr: input.writeStderr,
+          writeStderr: writeTurnDiagnostic,
         });
         writeRuntimeToolSurfaceAdaptationOutcome({
           workDir: input.workDir,
@@ -3130,7 +3139,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           traceId: report.traceId,
           startedAtIso: runtimeToolSurfaceAdaptationStartedAtIso,
           recoveryObservedAt: runtimeToolRecoveryFeedback.observedAt,
-          writeStderr: input.writeStderr,
+          writeStderr: writeTurnDiagnostic,
         });
         if (!runtimeToolContextForTurn.adaptation.active && !runtimeToolContextForTurn.guard.active) {
           const successfulRecoveryConsumption = recordRuntimeToolSuccessfulRecoveryConsumption({
@@ -3142,7 +3151,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             nowIso: nowIso(),
           });
           if (successfulRecoveryConsumption.recorded) {
-            input.writeStderr(
+            writeTurnDiagnostic(
               `[tool-recovery] event=successful_tool_call_consumed action=${runtimeToolRecoveryFeedback.recommendedNextAction ?? "<none>"} tool=${runtimeToolRecoveryFeedback.toolName ?? "<none>"} error_class=${runtimeToolRecoveryFeedback.errorClass ?? "<none>"} consumed_at=${successfulRecoveryConsumption.record?.consumedAt ?? "<none>"}\n`,
             );
           }
@@ -3168,15 +3177,15 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             .map((envelope) => formatAskUserIssuedEvent(envelope))
             .join("");
           const latestAskEnvelope = askUserEnvelopes[askUserEnvelopes.length - 1] ?? activeAskEnvelope;
-          input.writeStderr(
+          writeTurnDiagnostic(
             `[ask-user] event=interrupt_received ask_id=${activeAskEnvelope.askId} blocking_node_id=${activeAskEnvelope.blockingNodeId} ask_total=${String(askUserEnvelopes.length)}\n`,
           );
           if (queueDepth > 1) {
-            input.writeStderr(
+            writeTurnDiagnostic(
               `[ask-user] event=queued depth=${String(queueDepth)} active_ask_id=${activeAskEnvelope.askId} latest_ask_id=${latestAskEnvelope.askId}\n`,
             );
           }
-          input.writeStderr("[experience] event=publish_skipped reason=ask_user_interrupt\n");
+          writeTurnDiagnostic("[experience] event=publish_skipped reason=ask_user_interrupt\n");
         } else {
           const toolTraceMemory = buildRuntimeToolTraceMemory({
             events: report.events,
@@ -3199,9 +3208,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
               ],
               confidence: toolTraceMemory.deferredCount > 0 ? 0.68 : 0.76,
             });
-            for (const event of ingestResult.stderrEvents) {
-              input.writeStderr(event);
-            }
+            writeTurnDiagnosticEvents(ingestResult.stderrEvents);
           }
           const feedback = input.memoryOrchestrator.feedback({
             type: "turn_success",
@@ -3213,9 +3220,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             providerName: provider.name,
             verificationPass: report.verification.pass,
           });
-          for (const event of feedback.stderrEvents) {
-            input.writeStderr(event);
-          }
+          writeTurnDiagnosticEvents(feedback.stderrEvents);
         }
           await recordTurn(
             turnUserText,
@@ -3254,9 +3259,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
               providerName: provider.name,
               errorMessage: "turn verification failed",
             });
-            for (const event of feedback.stderrEvents) {
-              input.writeStderr(event);
-            }
+            writeTurnDiagnosticEvents(feedback.stderrEvents);
           }
           const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
           if (emitTerminalDiagnostics) {
@@ -3276,7 +3279,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             workDir: input.workDir,
             events: runtimeErrorEvents,
             source: "runtime_failure",
-            writeStderr: input.writeStderr,
+            writeStderr: writeTurnDiagnostic,
           });
           writeRuntimeToolSurfaceAdaptationOutcome({
             workDir: input.workDir,
@@ -3285,7 +3288,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             verificationPass: false,
             startedAtIso: runtimeToolSurfaceAdaptationStartedAtIso,
             recoveryObservedAt: runtimeToolRecoveryFeedback.observedAt,
-            writeStderr: input.writeStderr,
+            writeStderr: writeTurnDiagnostic,
           });
             if (errorClass === TURN_INTERRUPTED_ERROR_CLASS) {
               const providerStates = Array.from(providerStateMap.values());
@@ -3317,9 +3320,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             failureStage: deriveFailureStageFromError(errorClass, compactMessage),
             toolContext: `provider=${provider.name}`,
           });
-          for (const event of feedback.stderrEvents) {
-            input.writeStderr(event);
-          }
+          writeTurnDiagnosticEvents(feedback.stderrEvents);
           const state = providerStateMap.get(provider.name) ?? createDefaultProviderState(provider.name);
           updateProviderEwmaState({
             state,
