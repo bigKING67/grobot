@@ -1,3 +1,5 @@
+import { terminalStyle } from "../theme/terminal-style";
+
 interface RuntimeFailureEntry {
   providerName: string;
   errorClass: string;
@@ -18,9 +20,14 @@ export function renderManagementInterruptNotice(interactiveMode: boolean): strin
 
 export function renderTurnInterruptedNotice(interactiveMode: boolean): string {
   if (interactiveMode) {
-    return "[interrupt] 回合已中断。可以继续输入新指令。\n\n";
+    return [
+      `${terminalStyle.accent("●")} 回合已中断`,
+      `  ${terminalStyle.muted("可以继续输入新指令。")}`,
+      "",
+      "",
+    ].join("\n");
   }
-  return "[interrupt] 回合已中断。\n";
+  return `${terminalStyle.accent("●")} 回合已中断\n`;
 }
 
 export function renderRuntimeFailureSummary(input: RuntimeFailureSummaryInput): string {

@@ -19,6 +19,7 @@ import { createRunStartWire } from "./run-start-wire";
 import { createRunStartPlanMode } from "./run-start-plan-mode";
 import { createRunStartRewindStore } from "./run-start-rewind-store";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
+import { terminalStyle } from "../ui/theme/terminal-style";
 import { setSessionGaState } from "./session-registry";
 import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
@@ -91,6 +92,32 @@ function resolveMemoryStrategyProfile(input: {
     return "docs";
   }
   return "general";
+}
+
+function humanizeInterruptSource(source: "command" | "cli_esc"): string {
+  return source === "cli_esc" ? "Esc" : "/interrupt";
+}
+
+function buildRuntimeInterruptSurface(input: {
+  code: string;
+  kind: "requested" | "not_running";
+  source: "command" | "cli_esc";
+}): string {
+  const sourceLabel = humanizeInterruptSource(input.source);
+  const lines: string[] = [];
+  if (input.kind === "requested") {
+    lines.push(
+      `${terminalStyle.accent("●")} 已请求中断当前回合`,
+      `  ${terminalStyle.muted(`来源: ${sourceLabel} · 正在尝试安全停止。`)}`,
+    );
+  } else {
+    lines.push(
+      `${terminalStyle.accent("●")} 当前没有运行中的回合`,
+      `  ${terminalStyle.muted(`${sourceLabel} 只会中断正在运行的回合。`)}`,
+    );
+  }
+  lines.push(`  ${terminalStyle.muted(`诊断: ${input.code}`)}`, "");
+  return lines.join("\n");
 }
 
 function normalizePositiveInt(value: number | undefined): number | undefined {
@@ -666,7 +693,11 @@ export async function runStart(
     const controller = activeTurnAbortController;
     if (!controller || controller.signal.aborted) {
       output.writeStdout(
-        `[interrupt] code=${TURN_INTERRUPT_NOT_RUNNING_CODE} detail=no_active_turn source=${source}\n\n`,
+        buildRuntimeInterruptSurface({
+          code: TURN_INTERRUPT_NOT_RUNNING_CODE,
+          kind: "not_running",
+          source,
+        }),
       );
       output.writeStderr(
         `[interrupt] event=rejected reason=no_active_turn source=${source}\n`,
@@ -679,7 +710,11 @@ export async function runStart(
     controller.abort(`source=${source}`);
     pendingRuntimeInterruptSource = source;
     output.writeStdout(
-      `[interrupt] code=${TURN_INTERRUPT_OK_CODE} detail=requested source=${source}\n\n`,
+      buildRuntimeInterruptSurface({
+        code: TURN_INTERRUPT_OK_CODE,
+        kind: "requested",
+        source,
+      }),
     );
     output.writeStderr(
       `[interrupt] event=requested source=${source}\n`,

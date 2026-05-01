@@ -1730,6 +1730,7 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliTurnScreenContractPayload.management_non_interactive_matches, true);
   assert.equal(devCliTurnScreenContractPayload.turn_interrupted_interactive_matches, true);
   assert.equal(devCliTurnScreenContractPayload.turn_interrupted_non_interactive_matches, true);
+  assert.equal(devCliTurnScreenContractPayload.turn_interrupted_avoids_machine_prefix, true);
   assert.equal(devCliTurnScreenContractPayload.failure_summary_has_route_line, true);
   assert.equal(devCliTurnScreenContractPayload.failure_summary_has_last_error_line, true);
   assert.equal(devCliTurnScreenContractPayload.failure_summary_ends_with_newline, true);

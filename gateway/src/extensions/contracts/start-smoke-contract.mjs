@@ -1247,16 +1247,19 @@ function runStartInteractiveInterruptFlow(
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
   return {
     ...commandResult,
-    interrupt_requested_seen: combinedOutput.includes(
-      "[interrupt] code=TURN_INTERRUPT_OK detail=requested source=command",
-    ),
+    interrupt_requested_seen:
+      combinedOutput.includes("已请求中断当前回合")
+      && combinedOutput.includes("诊断: TURN_INTERRUPT_OK")
+      && !commandResult.stdout.includes("[interrupt] code=TURN_INTERRUPT_OK"),
     interrupt_event_requested_seen: combinedOutput.includes(
       "[interrupt] event=requested source=command",
     ),
     interrupt_event_applied_seen: combinedOutput.includes(
       "[interrupt] event=applied source=command",
     ),
-    interrupt_notice_seen: combinedOutput.includes("[interrupt] 回合已中断"),
+    interrupt_notice_seen:
+      combinedOutput.includes("回合已中断")
+      && !commandResult.stdout.includes("[interrupt] 回合已中断"),
     interrupt_continue_hint_seen: combinedOutput.includes("可以继续输入新指令。"),
   };
 }
