@@ -47,7 +47,7 @@ const richPartsWide = resolveStatusIndicatorParts({
   spinner: "⠼",
   message: "正在整理上下文窗口并准备工具调用",
   elapsedText: "31s",
-  interruptHint: "esc to interrupt",
+  interruptHint: "Esc 中断",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
   terminalColumns: 96,
@@ -120,7 +120,7 @@ const richPartsNarrow = resolveStatusIndicatorParts({
   spinner: "⠼",
   message: "正在整理上下文窗口并准备工具调用",
   elapsedText: "31s",
-  interruptHint: "esc to interrupt",
+  interruptHint: "Esc 中断",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
   terminalColumns: 34,
@@ -138,7 +138,7 @@ const richPartsTiny = resolveStatusIndicatorParts({
   spinner: "⠼",
   message: "正在整理上下文窗口并准备工具调用",
   elapsedText: "31s",
-  interruptHint: "esc to interrupt",
+  interruptHint: "Esc 中断",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
   terminalColumns: 22,
@@ -178,12 +178,12 @@ const stallSmoothed = resolveStatusIndicatorStallState({
 });
 
 const payload = {
-  line_contains_elapsed: stripAnsi(line).includes("(7s • esc to interrupt)"),
+  line_contains_elapsed: stripAnsi(line).includes("(7s • Esc 中断)"),
   line_uses_braille_spinner: /^⠼ /.test(stripAnsi(line)),
   line_has_brand_shimmer: /\u001B\[38;2;202;124;94m/.test(line),
   line_has_muted_base: /\u001B\[90m/.test(line),
   deterministic_for_same_tick: line === repeated,
-  narrow_keeps_interrupt_hint: stripAnsi(narrowLine).includes("esc to interrupt"),
+  narrow_keeps_interrupt_hint: stripAnsi(narrowLine).includes("Esc 中断"),
   narrow_width_within_columns: measureDisplayWidth(narrowLine) <= 36,
   wide_width_within_columns: measureDisplayWidth(line) <= 72,
   reduced_motion_no_brand_sweep:
@@ -217,7 +217,7 @@ const payload = {
     && richPartsWide.showTokens
     && richPartsWide.showElapsed
     && richPartsWide.showInterruptHint
-    && stripAnsi(richLineWide).includes("thinking high · ↓ 812 tokens · 31s • esc to interrupt"),
+    && stripAnsi(richLineWide).includes("thinking high · ↓ 812 tokens · 31s • Esc 中断"),
   rich_wide_width_within_columns: measureDisplayWidth(richLineWide) <= 96,
   token_gate_hides_tokens_before_30s:
     !stripAnsi(tokenGateHiddenLine).includes("812 tokens"),
@@ -230,19 +230,19 @@ const payload = {
   thought_status_line_shows_duration:
     stripAnsi(thoughtStatusLine).includes("thought for 2s"),
   activity_detail_renders_before_elapsed:
-    stripAnsi(activityDetailLine).includes("selected=alpha · 7s • esc to interrupt"),
+    stripAnsi(activityDetailLine).includes("selected=alpha · 7s • Esc 中断"),
   activity_detail_width_within_columns: measureDisplayWidth(activityDetailLine) <= 80,
   rich_narrow_preserves_interrupt_over_optional_parts:
     richPartsNarrow.showInterruptHint
     && richPartsNarrow.showElapsed
     && !richPartsNarrow.showTokens
     && !richPartsNarrow.showThinking
-    && stripAnsi(richLineNarrow).includes("31s • esc to interrupt"),
+    && stripAnsi(richLineNarrow).includes("31s • Esc 中断"),
   rich_narrow_width_within_columns: measureDisplayWidth(richLineNarrow) <= 34,
   rich_tiny_keeps_interrupt_before_elapsed:
     richPartsTiny.showInterruptHint
-    && !richPartsTiny.showElapsed
-    && richPartsTiny.suffix.includes("esc to interrupt"),
+    && richPartsTiny.showElapsed
+    && richPartsTiny.suffix.includes("Esc 中断"),
   stall_detects_no_token_progress:
     stallAfterPause.isStalled
     && stallAfterPause.stalledIntensity > 0,

@@ -480,7 +480,7 @@ export function renderStatusIndicatorLine(input: StatusIndicatorInput): string {
     : Date.now();
   const elapsedMs = Math.max(0, nowMs - input.startedAtMs);
   const elapsed = formatStatusIndicatorElapsed(elapsedMs);
-  const interruptHint = compactSpaces(input.interruptHint ?? "esc to interrupt");
+  const interruptHint = compactSpaces(input.interruptHint ?? "Esc 中断");
   const rawMessage = compactSpaces(input.message ?? "正在执行");
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   const spinner = resolveSpinnerFrame(input);

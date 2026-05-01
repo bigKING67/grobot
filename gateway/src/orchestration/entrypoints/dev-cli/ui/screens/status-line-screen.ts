@@ -711,7 +711,7 @@ function resolvePlanModeBadge(input: {
   if (!input.prompt.planMode) {
     return undefined;
   }
-  const label = compactSpaces(input.prompt.planModeLabel ?? "plan mode on");
+  const label = compactSpaces(input.prompt.planModeLabel ?? "plan mode");
   if (!label) {
     return undefined;
   }

@@ -256,9 +256,9 @@ const payload = {
   idle_narrow_lines_within_width:
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
   plan_mode_idle_keeps_badge_when_short:
-    shortPlanModeIdleFooter.includes("plan mode on"),
+    shortPlanModeIdleFooter.includes("plan mode"),
   plan_mode_idle_badge_leads_status:
-    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ plan mode on"),
+    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ plan mode"),
   plan_mode_idle_short_within_width:
     shortPlanModeIdleFooter.split("\n").every((line) => measureDisplayWidth(line) <= 48),
   pending_has_no_divider: !/^─+$/.test(pendingLines[0] ?? ""),
@@ -274,16 +274,16 @@ const payload = {
     pendingWithoutSummaryFooter.includes("需要确认 1 项 · Enter 打开选择")
     && !pendingWithoutSummaryFooter.includes("直接回复继续"),
   pending_plan_mode_keeps_badge:
-    pendingPlanModeFooter.includes("plan mode on")
+    pendingPlanModeFooter.includes("plan mode")
     && pendingPlanModeFooter.includes("需要确认 3 项"),
   pending_plan_mode_keeps_status_above_ask:
-    (pendingPlanModeLines[0] ?? "").includes("plan mode on")
+    (pendingPlanModeLines[0] ?? "").includes("plan mode")
     && (pendingPlanModeLines[1] ?? "").includes("需要确认 3 项"),
   pending_plan_mode_narrow_keeps_badge:
-    narrowPendingPlanModeFooter.includes("plan mode on")
+    narrowPendingPlanModeFooter.includes("plan mode")
     && narrowPendingPlanModeFooter.includes("需要确认 3 项"),
   pending_plan_mode_narrow_keeps_status_above_ask:
-    (narrowPendingPlanModeLines[0] ?? "").includes("plan mode on")
+    (narrowPendingPlanModeLines[0] ?? "").includes("plan mode")
     && (narrowPendingPlanModeLines[1] ?? "").includes("需要确认 3 项"),
   pending_uses_action_hint_not_question:
     pendingFooter.includes("Enter 打开选择")
@@ -319,7 +319,7 @@ const payload = {
   running_narrow_hides_secondary_status:
     !narrowRunningFooter.includes("kimi/") && !narrowRunningFooter.includes("019d8b75"),
   running_plan_mode_narrow_keeps_badge:
-    narrowRunningPlanModeFooter.includes("plan mode on"),
+    narrowRunningPlanModeFooter.includes("plan mode"),
   running_plan_mode_narrow_keeps_activity_first:
     (narrowRunningPlanModeLines[0] ?? "").includes("正在构建上下文"),
   running_omits_shift_enter_hint: !runningFooter.includes("shift + enter for newline"),
