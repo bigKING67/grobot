@@ -234,25 +234,25 @@ const payload = {
   idle_keeps_passive_status:
     (idleLines[0] ?? "").includes("grobot")
     && (idleLines[0] ?? "").includes("ctx"),
-  idle_hides_shortcut_hint: !idleFooter.includes("? for shortcuts"),
+  idle_hides_shortcut_hint: !idleFooter.includes("? 快捷键"),
   idle_omits_permanent_shift_enter_hint: !idleFooter.includes("shift + enter for newline"),
   idle_footer_has_visual_weight:
     !/\u001B\[96m/.test(idleFooter) && /\u001B\[90m/.test(idleFooter),
   idle_footer_uses_muted_not_high_saturation:
     /\u001B\[90m/.test(idleFooter) && !/\u001B\[92m/.test(idleFooter),
   idle_footer_style_keeps_plain_text:
-    !collapseSpaces(idleFooter).includes("? for shortcuts")
+    !collapseSpaces(idleFooter).includes("? 快捷键")
     && collapseSpaces(idleFooter).includes("grobot")
     && collapseSpaces(idleFooter).includes("ctx"),
   idle_without_status_shows_shortcut_hint:
-    collapseSpaces(idleNoStatusFooter) === "? for shortcuts",
+    collapseSpaces(idleNoStatusFooter) === "? 快捷键",
   idle_without_status_hint_is_muted:
     /\u001B\[90m/.test(idleNoStatusFooter),
   idle_narrow_status_dimmed:
-    !narrowIdleFooter.includes("? for shortcuts") && /\u001B\[90m/.test(narrowIdleFooter),
-  idle_narrow_hides_shortcut_hint: !narrowIdleFooter.includes("? for shortcuts"),
+    !narrowIdleFooter.includes("? 快捷键") && /\u001B\[90m/.test(narrowIdleFooter),
+  idle_narrow_hides_shortcut_hint: !narrowIdleFooter.includes("? 快捷键"),
   idle_narrow_keeps_status:
-    narrowIdleFooter.includes("ctx") && !narrowIdleFooter.includes("? for shortcuts"),
+    narrowIdleFooter.includes("ctx") && !narrowIdleFooter.includes("? 快捷键"),
   idle_narrow_lines_within_width:
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
   plan_mode_idle_keeps_badge_when_short:
@@ -331,23 +331,23 @@ const payload = {
     narrowRunningLines.every((line) => measureDisplayWidth(line) <= 48),
   running_plan_mode_narrow_lines_within_width:
     narrowRunningPlanModeLines.every((line) => measureDisplayWidth(line) <= 48),
-  shortcut_overlay_has_commands: collapseSpaces(shortcutOverlayFooter).includes("/ for commands"),
+  shortcut_overlay_has_commands: collapseSpaces(shortcutOverlayFooter).includes("/ 命令"),
   shortcut_overlay_has_shift_enter:
-    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter for newline"),
-  shortcut_overlay_has_history: collapseSpaces(shortcutOverlayFooter).includes("Ctrl+R history"),
-  shortcut_overlay_has_hide_hint: collapseSpaces(shortcutOverlayFooter).includes("? hide"),
+    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter 换行"),
+  shortcut_overlay_has_history: collapseSpaces(shortcutOverlayFooter).includes("Ctrl+R 历史"),
+  shortcut_overlay_has_hide_hint: collapseSpaces(shortcutOverlayFooter).includes("? 隐藏"),
   shortcut_overlay_aligns_key_column:
     stripAnsi(narrowShortcutOverlayLines[0] ?? "").startsWith("/ ")
     && stripAnsi(narrowShortcutOverlayLines[1] ?? "").startsWith("Shift+Enter ")
     && measureDisplayWidth(
       stripAnsi(narrowShortcutOverlayLines[0] ?? "").slice(
         0,
-        stripAnsi(narrowShortcutOverlayLines[0] ?? "").indexOf("commands"),
+        stripAnsi(narrowShortcutOverlayLines[0] ?? "").indexOf("命令"),
       ),
     ) === measureDisplayWidth(
       stripAnsi(narrowShortcutOverlayLines[1] ?? "").slice(
         0,
-        stripAnsi(narrowShortcutOverlayLines[1] ?? "").indexOf("newline"),
+        stripAnsi(narrowShortcutOverlayLines[1] ?? "").indexOf("换行"),
       ),
     ),
   shortcut_overlay_has_visual_weight:
@@ -357,35 +357,35 @@ const payload = {
       /\u001B\[38;2;202;124;94m/.test(line) && /\u001B\[90m/.test(line)
     ),
   shortcut_overlay_style_keeps_plain_text:
-    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter for newline")
-    && collapseSpaces(shortcutOverlayFooter).includes("Ctrl+V paste image"),
+    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter 换行")
+    && collapseSpaces(shortcutOverlayFooter).includes("Ctrl+V 粘贴图片"),
   shortcut_overlay_medium_uses_two_columns:
     shortcutOverlayLines.length === 5
     && shortcutOverlayLines.some((line) =>
-      collapseSpaces(line).includes("/ for commands")
-      && collapseSpaces(line).includes("Shift+Enter for newline"),
+      collapseSpaces(line).includes("/ 命令")
+      && collapseSpaces(line).includes("Shift+Enter 换行"),
     ),
   shortcut_overlay_wide_uses_three_columns:
     wideShortcutOverlayLines.length === 5
-    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("/ for commands")
-    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Shift+Enter for newline")
-    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Enter submit")
-    && collapseSpaces(wideShortcutOverlayFooter).includes("/status status panel")
-    && collapseSpaces(wideShortcutOverlayFooter).includes("Left/Right move cursor"),
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("/ 命令")
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Shift+Enter 换行")
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Enter 发送")
+    && collapseSpaces(wideShortcutOverlayFooter).includes("/status 状态")
+    && collapseSpaces(wideShortcutOverlayFooter).includes("Left/Right 移动光标"),
   shortcut_overlay_prioritizes_navigation:
-    collapseSpaces(shortcutOverlayLines[1] ?? "").includes("/model model picker")
-    && collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Esc back / clear")
-    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("/plan plan mode")
-    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("Tab apply suggestion"),
+    collapseSpaces(shortcutOverlayLines[1] ?? "").includes("/model 模型")
+    && collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Esc 返回/清空")
+    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("/plan 计划")
+    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("Tab 应用建议"),
   shortcut_overlay_narrow_uses_single_column:
     narrowShortcutOverlayLines.length === 7
-    && collapseSpaces(narrowShortcutOverlayLines[0] ?? "") === "/ for commands"
-    && collapseSpaces(narrowShortcutOverlayLines[1] ?? "") === "Shift+Enter for newline"
-    && collapseSpaces(narrowShortcutOverlayLines[2] ?? "") === "Esc back"
-    && collapseSpaces(narrowShortcutOverlayLines[3] ?? "") === "Tab apply"
-    && collapseSpaces(narrowShortcutOverlayLines[4] ?? "") === "Ctrl+R history"
-    && collapseSpaces(narrowShortcutOverlayLines[5] ?? "") === "Ctrl+C exit"
-    && !collapseSpaces(narrowShortcutOverlayFooter).includes("Ctrl+V paste image"),
+    && collapseSpaces(narrowShortcutOverlayLines[0] ?? "") === "/ 命令"
+    && collapseSpaces(narrowShortcutOverlayLines[1] ?? "") === "Shift+Enter 换行"
+    && collapseSpaces(narrowShortcutOverlayLines[2] ?? "") === "Esc 返回"
+    && collapseSpaces(narrowShortcutOverlayLines[3] ?? "") === "Tab 应用"
+    && collapseSpaces(narrowShortcutOverlayLines[4] ?? "") === "Ctrl+R 历史"
+    && collapseSpaces(narrowShortcutOverlayLines[5] ?? "") === "Ctrl+C 退出"
+    && !collapseSpaces(narrowShortcutOverlayFooter).includes("Ctrl+V 粘贴图片"),
   shortcut_overlay_lines_within_width:
     shortcutOverlayLines.every((line) => measureDisplayWidth(line) <= 72),
   shortcut_overlay_wide_lines_within_width:

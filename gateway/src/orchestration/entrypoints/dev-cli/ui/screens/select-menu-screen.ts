@@ -767,16 +767,16 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     ? `Ctrl-G 编辑计划 · ${editorName} · ${planPath}`
     : `Ctrl-G 编辑计划 · ${editorName}`;
   const editHintWithSaveState = input.menu.planApprovalMeta?.planEdited
-    ? `${editHint} · ✓ Plan saved`
+    ? `${editHint} · ✓ 计划已保存`
     : editHint;
-  const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["No plan found."];
+  const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["未找到计划。"];
   const optionLabelBudget = Math.max(12, surfaceWidth - 4);
   const lines: string[] = [];
   const sectionDivider = theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth));
 
   lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
   if (planPath.length > 0) {
-    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`Planning: ${planPath}`, surfaceWidth)}`));
+    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`计划文件: ${planPath}`, surfaceWidth)}`));
   }
   lines.push(`  ${theme.bold(truncateDisplayWidth(title, surfaceWidth))}`);
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(subtitle, surfaceWidth)}`));

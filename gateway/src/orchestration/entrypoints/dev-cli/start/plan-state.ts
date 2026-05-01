@@ -151,19 +151,19 @@ export function resolvePlanStatusRecommendationActionId(actionRaw: string): Plan
 export function resolvePlanStatusRecommendationLabel(actionRaw: string): string {
   const actionId = resolvePlanStatusRecommendationActionId(actionRaw);
   if (actionId === "view_status") {
-    return "Status summary";
+    return "查看计划状态";
   }
   if (actionId === "open_file") {
-    return "Open plan file";
+    return "打开计划文件";
   }
   if (actionId === "execute") {
-    return "Start implementation";
+    return "开始实现";
   }
   if (actionId === "refine") {
-    return "Refine current plan";
+    return "继续完善计划";
   }
   if (actionId === "enter") {
-    return "Create / refine plan";
+    return "创建/完善计划";
   }
-  return "Plan action";
+  return "计划操作";
 }

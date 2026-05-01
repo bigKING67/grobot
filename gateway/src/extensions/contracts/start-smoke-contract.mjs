@@ -1025,21 +1025,21 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
     ...payload,
     command_flow: "plan",
     has_plan_marker:
-      payload.stdout.includes("Current Plan")
+      payload.stdout.includes("当前计划")
       || payload.stdout.includes("Enabled plan mode")
       || payload.stdout.includes("Already in plan mode")
-      || payload.stdout.includes("Plan Draft")
-      || payload.stdout.includes("Entered plan mode")
+      || payload.stdout.includes("计划草稿")
+      || payload.stdout.includes("已进入 plan mode")
       || payload.stdout.includes("[plan]"),
-    has_entered_plan_mode_surface: payload.stdout.includes("Entered plan mode"),
-    has_plan_entry_path_line: payload.stdout.includes("Planning: .grobot/plans/"),
-    has_plan_entry_goal_line: payload.stdout.includes("Goal: diagnostics integration flow"),
+    has_entered_plan_mode_surface: payload.stdout.includes("已进入 plan mode"),
+    has_plan_entry_path_line: payload.stdout.includes("计划文件: .grobot/plans/"),
+    has_plan_entry_goal_line: payload.stdout.includes("目标: diagnostics integration flow"),
     has_plan_entry_read_only_line:
-      payload.stdout.includes("Plan mode is read-only until you approve the plan."),
+      payload.stdout.includes("确认计划前，plan mode 只会读取和规划。"),
     has_plan_entry_working_notice: payload.stdout.includes("Planning..."),
-    has_plan_draft_surface: payload.stdout.includes("Plan Draft"),
+    has_plan_draft_surface: payload.stdout.includes("计划草稿"),
     has_plan_draft_refine_hint:
-      payload.stdout.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+      payload.stdout.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
     plan_draft_avoids_legacy_empty_message:
       !payload.stdout.includes("Already in plan mode. No plan written yet."),
   };
@@ -1367,7 +1367,7 @@ function runStartPlanModeFlow(repoRoot) {
       : 0;
   const eventsContent = readTextFileSafe(eventsPath);
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
-  const finalStatusMarkerCurrent = "Plan Draft";
+  const finalStatusMarkerCurrent = "计划草稿";
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -1385,11 +1385,11 @@ function runStartPlanModeFlow(repoRoot) {
     review_failed_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_FAILED")
       || combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
-      || combinedOutput.includes("Diagnostics: PLAN_REVIEW_FAILED")
-      || combinedOutput.includes("Diagnostics: PLAN_REVIEW_BLOCKED"),
+      || combinedOutput.includes("诊断: PLAN_REVIEW_FAILED")
+      || combinedOutput.includes("诊断: PLAN_REVIEW_BLOCKED"),
     review_failed_recommends_refine:
-      combinedOutput.includes("Next: refine the plan")
-      || combinedOutput.includes("Next: 继续完善当前计划（直接输入补充内容）")
+      combinedOutput.includes("下一步: 继续完善计划")
+      || combinedOutput.includes("下一步: 继续完善当前计划（直接输入补充内容）")
       || combinedOutput.includes("suggested_action_command: 继续完善当前计划（直接输入补充内容）"),
     review_failed_avoids_execute_recommendation:
       !combinedOutput.includes("suggested_action_command: Implement the plan."),
@@ -1398,7 +1398,7 @@ function runStartPlanModeFlow(repoRoot) {
       || combinedOutput.includes("Validation: add a real command or explicit manual verification step."),
     review_blocked_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
-      || combinedOutput.includes("Diagnostics: PLAN_REVIEW_BLOCKED"),
+      || combinedOutput.includes("诊断: PLAN_REVIEW_BLOCKED"),
     plan_cancelled_marker_seen: combinedOutput.includes("[plan] cancelled plan_id="),
     plan_final_status_line_seen: combinedOutput.includes(finalStatusMarkerCurrent),
     plan_open_script_notice_hidden:
@@ -1410,22 +1410,22 @@ function runStartPlanModeFlow(repoRoot) {
       && !commandResult.stdout.includes("seq:")
       && !commandResult.stdout.includes("status:"),
     plan_draft_status_seen:
-      commandResult.stdout.includes("Plan Draft"),
+      commandResult.stdout.includes("计划草稿"),
     plan_draft_status_has_path:
       commandResult.stdout.includes(".grobot/plans/"),
     plan_draft_status_has_read_only_boundary:
-      commandResult.stdout.includes("Plan mode is read-only until you approve the final plan."),
+      commandResult.stdout.includes("确认最终计划前，plan mode 只会读取和规划。"),
     plan_draft_status_has_refine_hint:
-      commandResult.stdout.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+      commandResult.stdout.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
     plan_draft_status_avoids_legacy_empty_message:
       !commandResult.stdout.includes("Already in plan mode. No plan written yet."),
-    plan_enter_surface_seen: commandResult.stdout.includes("Entered plan mode"),
+    plan_enter_surface_seen: commandResult.stdout.includes("已进入 plan mode"),
     plan_enter_surface_has_path:
-      commandResult.stdout.includes("Planning: .grobot/plans/"),
+      commandResult.stdout.includes("计划文件: .grobot/plans/"),
     plan_enter_surface_has_goal:
-      commandResult.stdout.includes("Goal: implement plan-mode skeleton"),
+      commandResult.stdout.includes("目标: implement plan-mode skeleton"),
     plan_enter_surface_read_only_seen:
-      commandResult.stdout.includes("Plan mode is read-only until you approve the plan."),
+      commandResult.stdout.includes("确认计划前，plan mode 只会读取和规划。"),
     plan_enter_surface_working_notice_seen:
       commandResult.stdout.includes("Planning..."),
     plan_enter_surface_hides_absolute_path:
@@ -1434,11 +1434,11 @@ function runStartPlanModeFlow(repoRoot) {
     plan_status_preview_hides_required_placeholder:
       !commandResult.stdout.includes("__REQUIRED__"),
     plan_current_display_seen:
-      commandResult.stdout.includes("Current Plan")
-      || commandResult.stdout.includes("Plan Draft"),
+      commandResult.stdout.includes("当前计划")
+      || commandResult.stdout.includes("计划草稿"),
     plan_current_display_has_plan_open_hint:
-      commandResult.stdout.includes("\"/plan open\" to edit this plan")
-      || commandResult.stdout.includes('"/plan open" to edit the draft'),
+      commandResult.stdout.includes('使用 "/plan open" 编辑此计划')
+      || commandResult.stdout.includes('"/plan open" 编辑草稿'),
     plan_status_uses_relative_plan_file:
       /^\.grobot\/plans\//m.test(commandResult.stdout),
     plan_status_hides_absolute_plan_file:

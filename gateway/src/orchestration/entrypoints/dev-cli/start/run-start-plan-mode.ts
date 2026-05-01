@@ -451,19 +451,19 @@ function buildHumanPlanPreviewLines(input: {
     extractPlanSectionBody(input.planContent, "Goal"),
   );
   if (goal) {
-    lines.push(`Goal: ${goal}`);
+    lines.push(`目标: ${goal}`);
   }
   const scope = firstMeaningfulPlanSectionLine(
     extractPlanSectionBody(input.planContent, "Scope In"),
   );
   if (scope) {
-    lines.push(`Scope: ${scope}`);
+    lines.push(`范围: ${scope}`);
   }
   const validation = firstMeaningfulPlanSectionLine(
     extractPlanSectionBody(input.planContent, "Validation"),
   );
   if (validation) {
-    lines.push(`Validation: ${validation}`);
+    lines.push(`验证: ${validation}`);
   }
 
   if (lines.length <= 1) {
@@ -523,16 +523,16 @@ function buildPlanDraftStatusDisplay(input: {
     })
     : undefined;
   const lines = [
-    `${terminalStyle.planMode("●")} Plan Draft`,
+    `${terminalStyle.planMode("●")} 计划草稿`,
   ];
   if (displayPath) {
     lines.push(displayPath);
   }
   lines.push(
     "",
-    "Grobot is preparing this implementation plan.",
-    "Plan mode is read-only until you approve the final plan.",
-    'Reply with more detail to refine, or use "/plan open" to edit the draft.',
+    "Grobot 正在整理实现计划。",
+    "确认最终计划前，plan mode 只会读取和规划。",
+    '直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。',
     "",
   );
   return lines.join("\n");
@@ -557,10 +557,10 @@ function buildCurrentPlanDisplay(input: {
   }
   const editorName = compactSpaces(input.editorName ?? "");
   const editHint = editorName.length > 0
-    ? `"/plan open" to edit this plan in ${editorName}`
-    : "\"/plan open\" to edit this plan";
+    ? `使用 "/plan open" 在 ${editorName} 中编辑此计划`
+    : '使用 "/plan open" 编辑此计划';
   return [
-    `${terminalStyle.planMode("●")} Current Plan`,
+    `${terminalStyle.planMode("●")} 当前计划`,
     displayPath,
     "",
     planContent,
@@ -589,7 +589,7 @@ function buildPlanSavedToHint(input: {
   if (!input.planPath) {
     return undefined;
   }
-  return `Plan saved to: ${formatHumanPlanFilePath({
+  return `计划已保存: ${formatHumanPlanFilePath({
     workDir: input.workDir,
     planPath: input.planPath,
   })} · /plan open to edit`;
@@ -614,7 +614,7 @@ function buildReadyToCodeSurface(input: {
   const divider = buildPlanApprovalDivider(planContent);
   return [
     `${terminalStyle.planMode("●")} 准备开始实现？`,
-    `  ${terminalStyle.muted(`Planning: ${displayPath}`)}`,
+    `  ${terminalStyle.muted(`计划文件: ${displayPath}`)}`,
     `  ${terminalStyle.muted("执行前请确认计划。")}`,
     "",
     divider,
@@ -629,7 +629,7 @@ function buildReadyToCodeSurface(input: {
     "❯ 确认，开始实现计划",
     "  继续完善计划",
     "",
-    `Edit: /plan open · ${displayPath}`,
+    `编辑: /plan open · ${displayPath}`,
     "",
   ].join("\n");
 }
@@ -644,21 +644,21 @@ function buildExitPlanModeSurface(input: {
   });
   return [
     `${terminalStyle.planMode("●")} 退出 plan mode?`,
-    `  ${terminalStyle.muted(`Planning: ${displayPath}`)}`,
+    `  ${terminalStyle.muted(`计划文件: ${displayPath}`)}`,
     "",
     "Grobot 将退出 plan mode",
     "",
     "❯ Yes",
     "  No",
     "",
-    `Edit: /plan open · ${displayPath}`,
+    `编辑: /plan open · ${displayPath}`,
     "",
   ].join("\n");
 }
 
 function buildExitedPlanModeSurface(): string {
   return [
-    `${terminalStyle.planMode("●")} Exited plan mode`,
+    `${terminalStyle.planMode("●")} 已退出 plan mode`,
     "",
   ].join("\n");
 }
@@ -741,13 +741,14 @@ function renderApprovedPlanCard(input: {
     title: input.title,
     planContent: input.approvedPlanContent,
   });
-  const bodyLines = previewLines.length > 0 ? previewLines : ["approved plan"];
-  const footer = `approval ${compactPlanApprovalFingerprint(input.ticketId)} · sha256 ${compactPlanApprovalFingerprint(input.approvedHash)}`;
+  const bodyLines = previewLines.length > 0 ? previewLines : ["已确认计划"];
+  const footer = `确认 ${compactPlanApprovalFingerprint(input.ticketId)} · sha256 ${compactPlanApprovalFingerprint(input.approvedHash)}`;
+  const titleLabel = "将要实现的计划";
   const innerWidth = Math.min(
     PLAN_APPROVAL_CARD_MAX_INNER_WIDTH,
     Math.max(
       PLAN_APPROVAL_CARD_MIN_INNER_WIDTH,
-      measureDisplayWidth("Plan to implement") + 4,
+      measureDisplayWidth(titleLabel) + 4,
       measureDisplayWidth(footer) + 4,
       ...bodyLines.map((line) => measureDisplayWidth(compactSpaces(line)) + 2),
     ),
@@ -756,7 +757,7 @@ function renderApprovedPlanCard(input: {
     renderPlanCardBorderLine({
       left: "╭",
       right: "╮",
-      label: "Plan to implement",
+      label: titleLabel,
       innerWidth,
     }),
     ...bodyLines.map((line) => renderPlanCardBodyLine(line, innerWidth)),
@@ -782,12 +783,12 @@ function buildApprovedPlanExecutionSurface(input: {
     planPath: input.planPath,
   });
   return [
-    `${terminalStyle.planMode("●")} User approved Grobot's plan`,
+    `${terminalStyle.planMode("●")} 计划已确认`,
     savedToHint
-      ? `  ${terminalStyle.muted(`Plan approved · ${savedToHint}`)}`
-      : `  ${terminalStyle.muted("Plan approved")}`,
+      ? `  ${terminalStyle.muted(`已确认 · ${savedToHint}`)}`
+      : `  ${terminalStyle.muted("已确认")}`,
     ...renderApprovedPlanCard(input),
-    "Starting implementation from approved snapshot...",
+    "开始按已确认快照实现...",
     "",
   ].join("\n");
 }
@@ -880,12 +881,12 @@ function formatCompactPlanFailureReason(input: {
   const providerName = input.failureDecision.providerName?.trim();
   const errorClass = input.failureDecision.errorClass?.trim();
   if (input.failureDecision.reason === "provider_runtime_failure" && providerName) {
-    return `Provider unavailable: ${providerName}${errorClass ? ` (${errorClass})` : ""}.`;
+    return `Provider 不可用: ${providerName}${errorClass ? ` (${errorClass})` : ""}。`;
   }
   if (providerName) {
-    return `Runtime failed on ${providerName}${errorClass ? ` (${errorClass})` : ""}.`;
+    return `运行时在 ${providerName} 失败${errorClass ? ` (${errorClass})` : ""}。`;
   }
-  return `Runtime exited with code ${String(input.exitCode)} (${input.failureDecision.diagnosticCode}).`;
+  return `运行时退出码 ${String(input.exitCode)}（${input.failureDecision.diagnosticCode}）。`;
 }
 
 function buildCompactPlanFailureSurface(input: {
@@ -896,17 +897,17 @@ function buildCompactPlanFailureSurface(input: {
   failureDecision: PlanFailureDecision;
 }): string {
   const isApplying = input.phase === "applying";
-  const title = isApplying ? "Plan implementation failed" : "Plan update failed";
+  const title = isApplying ? "计划实现失败" : "计划更新失败";
   const savedToHint = buildPlanSavedToHint({
     workDir: input.workDir,
     planPath: input.planPath,
   });
   const stateLine = isApplying
-    ? `Plan is still available. Fix the issue, then reply "${PLAN_EXECUTION_REPLY}" again.`
-    : 'Plan draft was kept. Plan mode is still active. Reply with more detail to refine, or use "/plan open" to edit the draft.';
+    ? "计划仍可用。修复问题后，再回复“开始实现计划”。"
+    : '计划草稿已保留，plan mode 仍处于开启状态。直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。';
   const nextLine = input.failureDecision.reason === "provider_runtime_failure"
-    ? "Next: fix provider config or switch to an available model, then retry."
-    : "Next: inspect the runtime failure, then retry the plan step.";
+    ? "下一步: 修复 provider 配置或切换到可用模型后重试。"
+    : "下一步: 先定位运行时失败，再重试计划步骤。";
   const lines = [
     `${terminalStyle.planMode("●")} ${title}`,
   ];
@@ -914,13 +915,13 @@ function buildCompactPlanFailureSurface(input: {
     lines.push(`  ${terminalStyle.muted(savedToHint)}`);
   }
   lines.push(
-    `  Reason: ${formatCompactPlanFailureReason({
+    `  原因: ${formatCompactPlanFailureReason({
       exitCode: input.exitCode,
       failureDecision: input.failureDecision,
     })}`,
     `  ${stateLine}`,
     `  ${nextLine}`,
-    `  Diagnostics: ${input.failureDecision.diagnosticCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
+    `  诊断: ${input.failureDecision.diagnosticCode}; 设置 GROBOT_PLAN_STATUS_VERBOSE=1 或 GROBOT_PLAN_FAILURE_VERBOSE=1 查看完整字段。`,
     "",
   );
   return lines.join("\n");
@@ -986,7 +987,7 @@ function buildCompactPlanReviewFailureSurface(input: {
   blocked: boolean;
   findings: readonly { code: string; section?: string; message: string }[];
 }): string {
-  const headline = input.blocked ? "Plan approval blocked" : "Plan is not ready";
+  const headline = input.blocked ? "计划确认被阻止" : "计划还没准备好";
   const orderedFindings = [...input.findings].sort((left, right) =>
     compactPlanReviewFindingPriority(left.code) - compactPlanReviewFindingPriority(right.code),
   );
@@ -998,11 +999,11 @@ function buildCompactPlanReviewFailureSurface(input: {
     : [];
   return [
     `${terminalStyle.planMode("●")} ${headline}`,
-    "  Reason: the plan needs concrete scope, validation, and rollback detail before execution.",
+    "  原因: 执行前计划需要更具体的范围、验证和回滚细节。",
     ...fixes.map((line) => `  ${line}`),
     ...omitted.map((line) => `  ${line}`),
-    `  Next: refine the plan, then reply "${PLAN_EXECUTION_REPLY}" again.`,
-    `  Diagnostics: ${input.reviewCode}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full findings.`,
+    "  下一步: 继续完善计划，然后再回复“开始实现计划”。",
+    `  诊断: ${input.reviewCode}; 设置 GROBOT_PLAN_STATUS_VERBOSE=1 或 GROBOT_PLAN_FAILURE_VERBOSE=1 查看完整发现。`,
     "",
   ].join("\n");
 }
@@ -1054,10 +1055,10 @@ function writePlanQualityGuardBlockedSurface(input: {
   if (input.compactFailureSurface) {
     input.writeStderr(
       [
-        `${terminalStyle.planMode("●")} Plan quality gate blocked execution`,
-        `  Reason: ${input.guardReason}`,
-        "  Next: refine the plan until the quality guard is no longer critical.",
-        `  Diagnostics: ${PLAN_QUALITY_GUARD_BLOCKED_CODE}; set GROBOT_PLAN_STATUS_VERBOSE=1 or GROBOT_PLAN_FAILURE_VERBOSE=1 for full fields.`,
+        `${terminalStyle.planMode("●")} 计划质量门禁阻止执行`,
+        `  原因: ${input.guardReason}`,
+        "  下一步: 继续完善计划，直到质量门禁不再阻断。",
+        `  诊断: ${PLAN_QUALITY_GUARD_BLOCKED_CODE}; 设置 GROBOT_PLAN_STATUS_VERBOSE=1 或 GROBOT_PLAN_FAILURE_VERBOSE=1 查看完整字段。`,
         "",
       ].join("\n"),
     );
@@ -1081,17 +1082,17 @@ function buildPlanModeEnteredSurface(input?: {
     : undefined;
   const compactGoal = compactSpaces(input?.goal ?? "");
   const lines = [
-    `${terminalStyle.planMode("●")} Entered plan mode`,
+    `${terminalStyle.planMode("●")} 已进入 plan mode`,
   ];
   if (displayPath) {
-    lines.push(`  ${terminalStyle.muted(`Planning: ${displayPath}`)}`);
+    lines.push(`  ${terminalStyle.muted(`计划文件: ${displayPath}`)}`);
   }
   if (compactGoal) {
-    lines.push(`  ${terminalStyle.muted(`Goal: ${truncateDisplayWidth(compactGoal, 88)}`)}`);
+    lines.push(`  ${terminalStyle.muted(`目标: ${truncateDisplayWidth(compactGoal, 88)}`)}`);
   }
   lines.push(
-    `  ${terminalStyle.muted("Grobot is now exploring and designing an implementation approach.")}`,
-    `  ${terminalStyle.muted("Plan mode is read-only until you approve the plan.")}`,
+    `  ${terminalStyle.muted("Grobot 正在探索并设计实现方案。")}`,
+    `  ${terminalStyle.muted("确认计划前，plan mode 只会读取和规划。")}`,
     "",
     "",
   );
@@ -1100,17 +1101,17 @@ function buildPlanModeEnteredSurface(input?: {
 
 function buildPlanKeptInPlanningSurface(): string {
   return [
-    `${terminalStyle.planMode("●")} Plan kept in plan mode`,
-    `  ${terminalStyle.muted('Reply with more detail to refine, or use "/plan open" to edit the draft.')}`,
+    `${terminalStyle.planMode("●")} 已继续留在 plan mode`,
+    `  ${terminalStyle.muted('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。')}`,
     "",
   ].join("\n");
 }
 
 function buildPlanNeedsRefinementSurface(detail: string): string {
   return [
-    `${terminalStyle.planMode("●")} Plan needs refinement`,
+    `${terminalStyle.planMode("●")} 计划需要继续完善`,
     `  ${terminalStyle.muted(detail)}`,
-    `  ${terminalStyle.muted('Reply with more detail to refine, or use "/plan open" to edit the draft.')}`,
+    `  ${terminalStyle.muted('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。')}`,
     "",
   ].join("\n");
 }
@@ -1120,9 +1121,9 @@ function buildPlanUpdatedSurface(input: {
   nextAction: string;
 }): string {
   return [
-    `${terminalStyle.planMode("●")} Plan updated`,
-    `  ${terminalStyle.muted(`Status: ${input.phase}`)}`,
-    `  ${terminalStyle.muted(`Next: ${input.nextAction}`)}`,
+    `${terminalStyle.planMode("●")} 计划已更新`,
+    `  ${terminalStyle.muted(`状态: ${input.phase}`)}`,
+    `  ${terminalStyle.muted(`下一步: ${input.nextAction}`)}`,
     "",
   ].join("\n");
 }
@@ -1556,25 +1557,25 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     }
     const latestApplied = resolveLatestPlanEntry(["applied", "apply_failed"]);
     if (latestApplied) {
-      input.writeStdout("Current Plan\n");
-      input.writeStdout("No active plan.\n");
-      input.writeStdout(`Latest plan: ${latestApplied.plan_id} (${humanizePlanStatus(latestApplied.status)})\n`);
-      input.writeStdout("\"/plan <goal>\" to start a new plan\n\n");
+      input.writeStdout("当前计划\n");
+      input.writeStdout("当前没有活跃计划。\n");
+      input.writeStdout(`最近计划: ${latestApplied.plan_id} (${humanizePlanStatus(latestApplied.status)})\n`);
+      input.writeStdout("使用 \"/plan <goal>\" 开始新计划\n\n");
       return 0;
     }
-    input.writeStdout("Current Plan\n");
-    input.writeStdout("No plan written yet.\n");
-    input.writeStdout("\"/plan <goal>\" to start planning\n\n");
+    input.writeStdout("当前计划\n");
+    input.writeStdout("还没有写入计划。\n");
+    input.writeStdout("使用 \"/plan <goal>\" 开始规划\n\n");
     return 0;
   };
 
   const printPlanModeHint = (writeStdout: (message: string) => void = input.writeStdout): void => {
     writeStdout(
       [
-        "Plan mode is read-only. Send requirements to refine the plan.",
-        "A ready plan needs concrete scope, milestones, validation commands/expected results, and rollback steps.",
-        "Use /plan open to inspect the plan file.",
-        `Reply "${PLAN_EXECUTION_REPLY}" to execute after approval.`,
+        "plan mode 只读；直接输入需求即可继续完善计划。",
+        "可执行计划需要明确范围、里程碑、验证命令/预期结果和回滚步骤。",
+        "使用 /plan open 查看计划文件。",
+        "确认后回复“开始实现计划”即可执行。",
         "",
       ].join("\n"),
     );
@@ -2664,7 +2665,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         if (approvalDecision.action === "keep_planning") {
           const feedback = approvalDecision.feedback?.trim();
           if (feedback) {
-            writeStdout("Plan feedback added. Continuing plan mode...\n\n");
+            writeStdout("已添加计划反馈，继续保持 plan mode...\n\n");
             return runPlanTurn(feedback, options);
           }
           if (approvalDecision.silent !== true) {

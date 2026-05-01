@@ -682,8 +682,8 @@ const payload = {
   plan_approval_menu_has_ready_title:
     planApprovalMenuPlainText.includes("准备开始实现？"),
   plan_approval_menu_has_planning_path_header:
-    planApprovalMenuPlainText.includes("Planning: .grobot/plans/demo/001-contract-plan.md")
-    && planApprovalMenuPlainText.indexOf("Planning: .grobot/plans/demo/001-contract-plan.md")
+    planApprovalMenuPlainText.includes("计划文件: .grobot/plans/demo/001-contract-plan.md")
+    && planApprovalMenuPlainText.indexOf("计划文件: .grobot/plans/demo/001-contract-plan.md")
       < planApprovalMenuPlainText.indexOf("准备开始实现？"),
   plan_approval_menu_title_is_not_plan_color_flooded:
     !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1m准备开始实现？"),
@@ -708,7 +708,7 @@ const payload = {
     planApprovalMenuPlainText.includes("Ctrl-G 编辑计划 · vim")
     && planApprovalMenuPlainText.includes(".grobot/plans/demo/001-contract-plan.md"),
   plan_approval_menu_shows_saved_after_external_edit:
-    stripAnsi(planApprovalEditedPlain).includes("✓ Plan saved"),
+    stripAnsi(planApprovalEditedPlain).includes("✓ 计划已保存"),
   plan_approval_menu_shows_keep_planning_feedback_hint:
     stripAnsi(planApprovalKeepPlanningPlain).includes("Shift+Tab 可带反馈批准执行"),
   plan_approval_menu_shows_inline_feedback_input:
@@ -732,7 +732,7 @@ const payload = {
     && !emptyPlanApprovalPlainText.includes("继续完善计划"),
   plan_approval_empty_omits_plan_markdown:
     !emptyPlanApprovalPlainText.includes("Grobot 的计划：")
-    && !emptyPlanApprovalPlainText.includes("No plan found.")
+    && !emptyPlanApprovalPlainText.includes("未找到计划。")
     && !emptyPlanApprovalPlainText.includes("是否开始执行？")
     && !emptyPlanApprovalPlainText.includes("ctrl-g to edit"),
   model_picker_direct_render_uses_model_visible_count:

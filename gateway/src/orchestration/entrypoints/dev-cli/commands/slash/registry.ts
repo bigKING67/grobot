@@ -489,7 +489,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       || userInput === "quit",
     execute: async () => "break",
     helpLines: [
-      "  /exit | /quit        Exit interactive mode",
+      "  /exit | /quit        退出交互模式",
     ],
   },
   {
@@ -648,7 +648,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /model               Open interactive model picker (syncs config provider.model)",
+      "  /model               打开模型选择器（同步 config provider.model）",
     ],
   },
   {
@@ -763,9 +763,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /plan                Enter plan mode; in plan mode show current plan status",
+      "  /plan                进入 plan mode；已在计划中时显示当前计划状态",
       "  /plan open           Open active plan file in editor (interactive)",
-      "  /plan <goal>         Enter plan mode and run first planning turn",
+      "  /plan <goal>         带目标进入 plan mode 并运行首轮规划",
     ],
   },
   {
@@ -780,7 +780,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /interrupt           Interrupt current running turn (Esc: running=interrupt, plan idle=exit plan mode)",
+      "  /interrupt           中断当前运行回合（Esc: 运行中=中断，plan idle=退出 plan mode）",
     ],
   },
   {
@@ -998,26 +998,26 @@ const UTILITY_HELP_ORDER: readonly string[] = [
 ];
 
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
-  { command: "/sessions", description: "Open session menu (create/switch/resume/rewind/continue)" },
-  { command: "/resume", description: "Resume and fully restore a previous session" },
-  { command: "/rewind", description: "Open checkpoint rewind menu for active or selected session" },
-  { command: "/checkpoint", description: "Alias of /rewind (open checkpoint rewind menu)" },
-  { command: "/commands", description: "Manage user-defined slash commands" },
-  { command: "/skill-creator", description: "Create a skill (append requirement text directly)" },
-  { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
-  { command: "/init", description: "Create AGENTS.md with project instructions" },
-  { command: "/context", description: "Show current-turn context assembly status" },
-  { command: "/memory", description: "Show durable memory layer status" },
-  { command: "/health", description: "Show provider failover and circuit status" },
-  { command: "/skills", description: "Show configured skill directories and counts" },
-  { command: "/mcp", description: "Show MCP instruction and server status" },
-  { command: "/model", description: "Open interactive model picker" },
-  { command: "/status", description: "Show current status line config snapshot" },
-  { command: "/plan", description: "Enter plan mode (or show plan status when already in plan mode)" },
-  { command: "/interrupt", description: "Interrupt running turn (Esc: running interrupt, plan idle exits mode)" },
-  { command: "/handoff", description: "Write HANDOFF.md" },
-  { command: "/help", description: "Show interactive help screen" },
-  { command: "/exit", description: "Exit interactive mode" },
+  { command: "/sessions", description: "打开会话菜单（新建/切换/恢复/回退/继续）" },
+  { command: "/resume", description: "恢复并完整还原历史会话" },
+  { command: "/rewind", description: "打开当前或选中会话的 checkpoint 回退菜单" },
+  { command: "/checkpoint", description: "/rewind 的别名（打开 checkpoint 回退菜单）" },
+  { command: "/commands", description: "管理用户自定义 slash commands" },
+  { command: "/skill-creator", description: "创建 skill（可直接追加需求文本）" },
+  { command: "/history [keyword]", description: "按可选关键词查看最近历史" },
+  { command: "/init", description: "创建带项目指令的 AGENTS.md" },
+  { command: "/context", description: "查看当前回合上下文组装状态" },
+  { command: "/memory", description: "查看持久 memory 层状态" },
+  { command: "/health", description: "查看 provider failover 与 circuit 状态" },
+  { command: "/skills", description: "查看已配置 skill 目录和数量" },
+  { command: "/mcp", description: "查看 MCP 指令和 server 状态" },
+  { command: "/model", description: "打开模型选择器" },
+  { command: "/status", description: "查看当前状态栏配置快照" },
+  { command: "/plan", description: "进入 plan mode；已在计划中时显示计划状态" },
+  { command: "/interrupt", description: "中断运行中回合（Esc: 运行中断，plan idle 退出）" },
+  { command: "/handoff", description: "写入 HANDOFF.md" },
+  { command: "/help", description: "显示交互帮助" },
+  { command: "/exit", description: "退出交互模式" },
 ];
 
 const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {

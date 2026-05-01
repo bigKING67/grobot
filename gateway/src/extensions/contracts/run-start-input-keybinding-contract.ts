@@ -107,20 +107,20 @@ async function main(): Promise<void> {
   const slashPlanMenu = resolveSlashSuggestionApplyResult("/plan");
   const slashSkillCreatorMenu = resolveSlashSuggestionApplyResult("/skill-creator");
   const slashOverlayPartial = formatSlashSuggestionPanel(
-    [{ command: "/exit", description: "Exit interactive mode" }],
+    [{ command: "/exit", description: "退出交互模式" }],
     "/e",
     0,
     96,
   );
   const slashOverlayExact = formatSlashSuggestionPanel(
-    [{ command: "/exit", description: "Exit interactive mode" }],
+    [{ command: "/exit", description: "退出交互模式" }],
     "/exit",
     0,
     96,
   );
   const slashOverlayScrolled = formatSlashSuggestionPanel(
     [
-      { command: "/sessions", description: "Open session picker" },
+      { command: "/sessions", description: "打开会话选择器" },
       { command: "/resume", description: "Resume a previous session" },
       { command: "/rewind", description: "Rewind to a checkpoint" },
       { command: "/commands", description: "Browse command menu" },
@@ -167,8 +167,8 @@ async function main(): Promise<void> {
     stripAnsi(slashOverlayDownMarkerLines[slashOverlayDownMarkerLines.length - 1] ?? "");
   const slashOverlayNarrow = formatSlashSuggestionPanel(
     [
-      { command: "/model", description: "Open interactive model picker" },
-      { command: "/commands", description: "Manage user-defined slash commands" },
+      { command: "/model", description: "打开模型选择器" },
+      { command: "/commands", description: "管理用户自定义 slash commands" },
     ],
     "/",
     0,
@@ -292,7 +292,7 @@ async function main(): Promise<void> {
   const promptSuggestionPointer = formatPromptSuggestionPanel({
     suggestions: [
       { id: "command-model", displayText: "/model", description: "Switch model", type: "command" },
-      { id: "command-plan", displayText: "/plan", description: "Enter plan mode", type: "command" },
+      { id: "command-plan", displayText: "/plan", description: "进入 plan mode", type: "command" },
     ],
     selectedIndex: 1,
     terminalColumns: 64,
@@ -305,29 +305,29 @@ async function main(): Promise<void> {
     32,
   );
   const slashOverlayWithArgs = formatSlashSuggestionPanel(
-    [{ command: "/plan", description: "Enter plan mode" }],
+    [{ command: "/plan", description: "进入 plan mode" }],
     "/plan 帮我写一份抖音直播规划",
     0,
     96,
   );
   const slashInputPartialHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/e",
-    suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
+    suggestions: [{ command: "/exit", description: "退出交互模式" }],
   });
   const slashInputExactHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/exit",
-    suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
+    suggestions: [{ command: "/exit", description: "退出交互模式" }],
   });
   const slashInputWithArgsHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
-    suggestions: [{ command: "/plan", description: "Enter plan mode" }],
+    suggestions: [{ command: "/plan", description: "进入 plan mode" }],
   });
   const slashInputWithArgsFallbackSuggestions = resolveSlashInputHighlightSuggestions({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
     suggestions: [],
     getSlashSuggestions: (input) =>
       input === "/plan"
-        ? [{ command: "/plan", description: "Enter plan mode" }]
+        ? [{ command: "/plan", description: "进入 plan mode" }]
         : [],
   });
   const slashInputWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
@@ -339,7 +339,7 @@ async function main(): Promise<void> {
     suggestions: [],
     getSlashSuggestions: (input) =>
       input === "/pl"
-        ? [{ command: "/plan", description: "Enter plan mode" }]
+        ? [{ command: "/plan", description: "进入 plan mode" }]
         : [],
   });
   const slashInputPartialWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
@@ -566,19 +566,19 @@ async function main(): Promise<void> {
     inputGraphemeLength: 0,
   });
   const draftFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["? for shortcuts · grobot · ctx 42%"],
+    footerLines: ["? 快捷键 · grobot · ctx 42%"],
     inputGraphemeLength: 3,
   });
   const styledDraftFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["\u001B[90m\u001B[38;2;202;124;94m? for shortcuts\u001B[0m\u001B[90m · grobot · ctx 42%\u001B[0m"],
+    footerLines: ["\u001B[90m\u001B[38;2;202;124;94m? 快捷键\u001B[0m\u001B[90m · grobot · ctx 42%\u001B[0m"],
     inputGraphemeLength: 3,
   });
   const emptyFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["? for shortcuts · grobot · ctx 42%"],
+    footerLines: ["? 快捷键 · grobot · ctx 42%"],
     inputGraphemeLength: 0,
   });
   const draftHintOnlyFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["? for shortcuts"],
+    footerLines: ["? 快捷键"],
     inputGraphemeLength: 1,
   });
   const inputChromeLines = renderInteractiveInputChromeLines({
@@ -598,7 +598,7 @@ async function main(): Promise<void> {
     theme: "ccline",
     getSlashSuggestions: (input) =>
       input === "/plan"
-        ? [{ command: "/plan", description: "Enter plan mode" }]
+        ? [{ command: "/plan", description: "进入 plan mode" }]
         : [],
   });
   const submittedTranscriptPlain = submittedTranscriptLines
@@ -743,7 +743,7 @@ async function main(): Promise<void> {
     },
   });
   const runtimeFooterDraftNoStatus = resolveSessionInputFooterLines({
-    footerLines: ["? for shortcuts"],
+    footerLines: ["? 快捷键"],
     inputGraphemeLength: 2,
     promptSlot: {
       hasStatusLine: false,
@@ -888,7 +888,7 @@ async function main(): Promise<void> {
       && promptSuggestionMiddleTruncate.endsWith("window.ts")
       && promptSuggestionMiddleTruncate.includes("..."),
     slash_overlay_narrow_hides_description:
-      !stripAnsi(slashOverlayNarrow).includes("Open interactive model picker"),
+      !stripAnsi(slashOverlayNarrow).includes("打开模型选择器"),
     slash_overlay_narrow_lines_within_width:
       slashOverlayNarrowLines.every((line) => measureDisplayWidth(line) <= 52),
     slash_overlay_hidden_when_has_args:
@@ -1015,7 +1015,7 @@ async function main(): Promise<void> {
       && styledDraftFooterLines[0] === "grobot · ctx 42%",
     footer_empty_keeps_shortcut_hint:
       emptyFooterLines.length === 1
-      && emptyFooterLines[0]?.startsWith("? for shortcuts") === true,
+      && emptyFooterLines[0]?.startsWith("? 快捷键") === true,
     footer_draft_removes_hint_only_line:
       draftHintOnlyFooterLines.length === 0,
     input_chrome_has_open_horizontal_rails:
@@ -1046,7 +1046,7 @@ async function main(): Promise<void> {
     submitted_transcript_keeps_user_text:
       submittedTranscriptPlain.includes("❯ 你是啥模型"),
     submitted_transcript_omits_status_footer:
-      !submittedTranscriptPlain.includes("? for shortcuts")
+      !submittedTranscriptPlain.includes("? 快捷键")
       && !submittedTranscriptPlain.includes("window")
       && !submittedTranscriptPlain.includes("kimi/"),
     submitted_transcript_is_input_frame_only:
@@ -1134,7 +1134,7 @@ async function main(): Promise<void> {
     prompt_slot_runtime_short_fullscreen_replaces_status_with_hint:
       runtimeFooterShortFullscreen.promptSlotState.bottomSlot.kind === "idle_hint"
       && runtimeFooterShortFullscreen.footerLines.length === 1
-      && stripAnsi(runtimeFooterShortFullscreen.footerLines[0] ?? "") === "? for shortcuts",
+      && stripAnsi(runtimeFooterShortFullscreen.footerLines[0] ?? "") === "? 快捷键",
     prompt_slot_runtime_short_fullscreen_draft_hides_footer:
       runtimeFooterShortFullscreenDraft.promptSlotState.bottomSlot.kind === "none"
       && runtimeFooterShortFullscreenDraft.footerLines.length === 0,

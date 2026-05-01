@@ -74,17 +74,17 @@ const ROOT_SLASH_PRIORITY_COMMANDS: readonly string[] = [
 const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
   {
     command: "/plan",
-    description: "Enter plan mode (or show current plan status when already in plan mode)",
+    description: "进入 plan mode；已在计划中时显示当前计划状态",
     source: "builtin",
   },
   {
     command: "/plan <goal>",
-    description: "Start plan mode with a goal",
+    description: "带目标进入 plan mode",
     source: "builtin",
   },
   {
     command: "/plan open",
-    description: "Open active plan file in editor",
+    description: "在编辑器中打开当前计划文件",
     source: "builtin",
   },
 ];

@@ -142,10 +142,10 @@ const payload = {
     initialPlain.includes("问题 1/2")
     && initialPlain.includes("(2 项未回答)"),
   panel_plan_mode_shows_planning_path:
-    initialPlain.includes("Planning: .grobot/plans/session/ACTIVE.md"),
+    initialPlain.includes("计划文件: .grobot/plans/session/ACTIVE.md"),
   panel_planning_context_near_top:
-    initialPlain.indexOf("Planning: .grobot/plans/session/ACTIVE.md") > 0
-    && initialPlain.indexOf("Planning: .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
+    initialPlain.indexOf("计划文件: .grobot/plans/session/ACTIVE.md") > 0
+    && initialPlain.indexOf("计划文件: .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
   panel_has_claude_like_question_tabs:
     initialPlain.includes("[□ Scope]")
     && initialPlain.includes("□ Risk Review")

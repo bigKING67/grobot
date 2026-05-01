@@ -448,7 +448,7 @@ export function createRunStartInteractiveModeInput(
   ): Promise<void> => {
     const planPath = input.planMode.getActivePlanPath();
     if (!planPath) {
-      input.output.writeStdout("No active plan file. Use /plan <goal> first.\n\n");
+      input.output.writeStdout("当前没有活跃计划文件。请先使用 /plan <goal>。\n\n");
       return;
     }
     const displayPath = formatPlanPathForPanel(input.workDir, planPath) ?? planPath;

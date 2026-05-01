@@ -26,50 +26,50 @@ interface ShortcutHelpEntry {
 type ShortcutHelpColumn = readonly ShortcutHelpEntry[];
 
 const SHORTCUT_HELP_DISCOVERY_ROWS: ShortcutHelpColumn = [
-  ["/", "for commands"],
-  ["/model", "model picker"],
-  ["/plan", "plan mode"],
-  ["/status", "status panel"],
-  ["/history", "history list"],
+  ["/", "命令"],
+  ["/model", "模型"],
+  ["/plan", "计划"],
+  ["/status", "状态"],
+  ["/history", "历史"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_HELP_EDITING_ROWS: ShortcutHelpColumn = [
-  ["Shift+Enter", "for newline"],
-  ["Esc", "back / clear"],
-  ["Tab", "apply suggestion"],
-  ["Ctrl+R", "history search"],
-  ["Ctrl+V", "paste image"],
+  ["Shift+Enter", "换行"],
+  ["Esc", "返回/清空"],
+  ["Tab", "应用建议"],
+  ["Ctrl+R", "历史搜索"],
+  ["Ctrl+V", "粘贴图片"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_HELP_SESSION_ROWS: ShortcutHelpColumn = [
-  ["Enter", "submit"],
-  ["Up/Down", "move selection"],
-  ["Left/Right", "move cursor"],
-  ["Ctrl+C", "exit"],
-  ["?", "hide"],
+  ["Enter", "发送"],
+  ["Up/Down", "选择"],
+  ["Left/Right", "移动光标"],
+  ["Ctrl+C", "退出"],
+  ["?", "隐藏"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_OVERLAY_MEDIUM_ROWS: ShortcutHelpColumn = [
-  ["/", "for commands"],
-  ["Shift+Enter", "for newline"],
-  ["/model", "model picker"],
-  ["Esc", "back / clear"],
-  ["/plan", "plan mode"],
-  ["Tab", "apply suggestion"],
-  ["Ctrl+R", "history search"],
-  ["Ctrl+V", "paste image"],
-  ["Ctrl+C", "exit"],
-  ["?", "hide"],
+  ["/", "命令"],
+  ["Shift+Enter", "换行"],
+  ["/model", "模型"],
+  ["Esc", "返回/清空"],
+  ["/plan", "计划"],
+  ["Tab", "应用建议"],
+  ["Ctrl+R", "历史搜索"],
+  ["Ctrl+V", "粘贴图片"],
+  ["Ctrl+C", "退出"],
+  ["?", "隐藏"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_OVERLAY_COMPACT_ROWS: ShortcutHelpColumn = [
-  ["/", "for commands"],
-  ["Shift+Enter", "for newline"],
-  ["Esc", "back"],
-  ["Tab", "apply"],
-  ["Ctrl+R", "history"],
-  ["Ctrl+C", "exit"],
-  ["?", "hide"],
+  ["/", "命令"],
+  ["Shift+Enter", "换行"],
+  ["Esc", "返回"],
+  ["Tab", "应用"],
+  ["Ctrl+R", "历史"],
+  ["Ctrl+C", "退出"],
+  ["?", "隐藏"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const FOOTER_HINT_MIN_COLUMNS = 64;
@@ -153,7 +153,7 @@ function buildInputHintLine(input: {
   if (statusLine.length > 0) {
     return undefined;
   }
-  return "? for shortcuts";
+  return "? 快捷键";
 }
 
 function fitFooterLine(input: {

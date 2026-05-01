@@ -75,7 +75,7 @@ const ENTER_KEYPRESS_DEDUP_WINDOW_MS = 80;
 const DEFAULT_SELECT_VISIBLE_OPTION_COUNT = 5;
 const MODEL_PICKER_VISIBLE_OPTION_COUNT = 10;
 const INPUT_CHROME_BODY_LEFT_PADDING = 0;
-const SHORTCUT_HINT_TEXT = "? for shortcuts";
+const SHORTCUT_HINT_TEXT = "? 快捷键";
 
 const INLINE_IMAGE_REGISTRY = new Map<number, RuntimeAttachment>();
 let nextInlineImageId = 1;

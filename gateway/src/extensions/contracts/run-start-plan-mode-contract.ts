@@ -663,33 +663,33 @@ async function main(): Promise<void> {
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
       enter_plan_sets_plan_only: planModeAfterEnter === "plan_only",
       enter_plan_stdout_is_human:
-        stdoutAfterEnter.includes("Entered plan mode")
-        && stdoutAfterEnter.includes("Grobot is now exploring")
+        stdoutAfterEnter.includes("已进入 plan mode")
+        && stdoutAfterEnter.includes("Grobot 正在探索")
         && !stdoutAfterEnter.includes("session_key=")
         && !stdoutAfterEnter.includes("plan_id=")
         && !stdoutAfterEnter.includes("file=")
         && !stdoutAfterEnter.includes("[plan] entered PLAN_ONLY"),
       enter_plan_surface_has_relative_planning_path:
-        stdoutAfterEnter.includes("Planning: .grobot/plans/"),
+        stdoutAfterEnter.includes("计划文件: .grobot/plans/"),
       enter_plan_surface_has_goal:
-        stdoutAfterEnter.includes("Goal: contract cleanup"),
+        stdoutAfterEnter.includes("目标: contract cleanup"),
       enter_plan_surface_has_read_only_boundary:
-        stdoutAfterEnter.includes("Plan mode is read-only until you approve the plan."),
+        stdoutAfterEnter.includes("确认计划前，plan mode 只会读取和规划。"),
       enter_plan_surface_hides_absolute_plan_path:
         !stdoutAfterEnter.includes(workDir),
       enter_plan_surface_order_is_stable:
-        stdoutAfterEnter.indexOf("Entered plan mode") >= 0
-        && stdoutAfterEnter.indexOf("Planning:") > stdoutAfterEnter.indexOf("Entered plan mode")
-        && stdoutAfterEnter.indexOf("Goal:") > stdoutAfterEnter.indexOf("Planning:"),
+        stdoutAfterEnter.indexOf("已进入 plan mode") >= 0
+        && stdoutAfterEnter.indexOf("计划文件:") > stdoutAfterEnter.indexOf("已进入 plan mode")
+        && stdoutAfterEnter.indexOf("目标:") > stdoutAfterEnter.indexOf("计划文件:"),
       draft_plan_surface_handled: draftOpen.handled && draftOpen.code === 0,
       draft_plan_surface_uses_status_title:
-        draftOpenOutput.includes("Plan Draft"),
+        draftOpenOutput.includes("计划草稿"),
       draft_plan_surface_uses_relative_plan_file:
         /^\.grobot\/plans\//m.test(draftOpenOutput),
       draft_plan_surface_has_read_only_boundary:
-        draftOpenOutput.includes("Plan mode is read-only until you approve the final plan."),
+        draftOpenOutput.includes("确认最终计划前，plan mode 只会读取和规划。"),
       draft_plan_surface_has_refine_hint:
-        draftOpenOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+        draftOpenOutput.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
       draft_plan_surface_hides_absolute_path:
         !draftOpenOutput.includes(workDir),
       draft_plan_surface_hides_required_placeholders:
@@ -699,8 +699,8 @@ async function main(): Promise<void> {
       refine_plan_turn_handled: refine === 0,
       refine_plan_turn_surface_matches_reference_shape:
         refineOutput.includes("●")
-        && refineOutput.includes("Plan needs refinement")
-        && refineOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+        && refineOutput.includes("计划需要继续完善")
+        && refineOutput.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
       ready_plan_turn_handled: ready === 0,
       ready_surface_matches_reference_shape:
         readyOutput.includes("准备开始实现？")
@@ -709,7 +709,7 @@ async function main(): Promise<void> {
         && readyOutput.includes("是否开始执行？")
         && readyOutput.includes("❯ 确认，开始实现计划")
         && readyOutput.includes("  继续完善计划")
-        && readyOutput.includes("Edit: /plan open"),
+        && readyOutput.includes("编辑: /plan open"),
       ready_surface_has_plan_separators:
         readyOutput.split("\n").some((line) => /^┄{24,}$/.test(line))
         && readyOutput.split("\n").some((line) => /^─{24,}$/.test(line)),
@@ -719,15 +719,15 @@ async function main(): Promise<void> {
         && readyApprovalRequests[0]?.planPath === planPath
         && readyApprovalRequests[0]?.planContent.includes("# Contract Plan"),
       ready_approval_keep_planning_skips_fallback_surface:
-        keepPlanningOutput.includes("Plan kept in plan mode")
+        keepPlanningOutput.includes("已继续留在 plan mode")
         && !keepPlanningOutput.includes("准备开始实现？"),
       ready_approval_keep_planning_matches_reference_shape:
         keepPlanningOutput.includes("●")
-        && keepPlanningOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
+        && keepPlanningOutput.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
       ready_approval_cancel_returns_input_without_status_surface:
         cancelApprovalRunResult === 0
         && cancelApprovalRuntimeState.getPlanMode() === "plan_only"
-        && !cancelApprovalOutput.includes("Plan kept in plan mode")
+        && !cancelApprovalOutput.includes("已继续留在 plan mode")
         && !cancelApprovalOutput.includes("准备开始实现？"),
       ready_approval_empty_exit_leaves_plan_mode:
         exitApprovalRunResult === 0
@@ -736,18 +736,18 @@ async function main(): Promise<void> {
         exitApprovalExecuteInputs.every((item) => !item.includes("[Approved Plan Execution]")),
       ready_approval_empty_exit_is_quiet:
         !exitApprovalOutput.includes("准备开始实现？")
-        && !exitApprovalOutput.includes("Plan approved")
-        && !exitApprovalOutput.includes("Plan kept in plan mode"),
+        && !exitApprovalOutput.includes("计划已确认")
+        && !exitApprovalOutput.includes("已继续留在 plan mode"),
       ready_approval_yes_executes_plan:
         approvalRunResult === 0
         && approvalExecuteInputs.length === 2
         && approvalExecuteInputs[1]?.includes("[Approved Plan Execution]"),
       ready_approval_yes_skips_text_fallback:
-        approvalStdout.includes("Plan approved")
+        approvalStdout.includes("计划已确认")
         && !approvalStdout.includes("准备开始实现？"),
       ready_approval_yes_matches_exit_plan_reference:
-        approvalStdout.includes("User approved Grobot's plan")
-        && approvalStdout.includes("Plan approved · Plan saved to: .grobot/plans/")
+        approvalStdout.includes("计划已确认")
+        && approvalStdout.includes("已确认 · 计划已保存: .grobot/plans/")
         && approvalStdout.includes("/plan open to edit"),
       ready_approval_yes_exits_plan_mode:
         approvalRuntimeState.getPlanMode() === "normal",
@@ -764,7 +764,7 @@ async function main(): Promise<void> {
         && feedbackExecuteInputs.includes("make validation stricter"),
       ready_approval_feedback_keeps_plan_mode:
         feedbackRuntimeState.getPlanMode() === "plan_only"
-        && feedbackStdout.includes("Plan feedback added. Continuing plan mode"),
+        && feedbackStdout.includes("已添加计划反馈，继续保持 plan mode"),
       plan_turn_injects_plan_workflow_prompt:
         executePromptPreludes.some((item) =>
           item.includes("[Plan Mode Workflow]")
@@ -792,11 +792,14 @@ async function main(): Promise<void> {
       active_plan_path_present: typeof planPath === "string" && planPath.length > 0,
       open_plan_surface_handled: open.handled && open.code === 0,
       open_plan_surface_is_current_plan_display:
-        openOutput.includes("Current Plan")
+        openOutput.includes("当前计划")
         && openOutput.includes("# Contract Plan")
-        && openOutput.includes("\"/plan open\" to edit this plan"),
+        && (
+          openOutput.includes('使用 "/plan open" 编辑此计划')
+          || openOutput.includes('使用 "/plan open" 在 vim 中编辑此计划')
+        ),
       open_plan_surface_has_editor_hint:
-        openOutput.includes("\"/plan open\" to edit this plan in vim"),
+        openOutput.includes('使用 "/plan open" 在 vim 中编辑此计划'),
       open_plan_surface_hides_machine_fields_by_default:
         !openOutput.includes("plan_status_output_mode:")
         && !openOutput.includes("active_plan_phase:")
@@ -817,11 +820,14 @@ async function main(): Promise<void> {
       script_plan_surface_defaults_to_human_summary:
         scriptOpen.handled
         && scriptOpen.code === 0
-        && scriptOpenOutput.includes("Current Plan")
+        && scriptOpenOutput.includes("当前计划")
         && scriptOpenOutput.includes("# Contract Plan")
-        && scriptOpenOutput.includes("\"/plan open\" to edit this plan"),
+        && (
+          scriptOpenOutput.includes('使用 "/plan open" 编辑此计划')
+          || scriptOpenOutput.includes('使用 "/plan open" 在 vim 中编辑此计划')
+        ),
       script_plan_surface_has_editor_hint:
-        scriptOpenOutput.includes("\"/plan open\" to edit this plan in vim"),
+        scriptOpenOutput.includes('使用 "/plan open" 在 vim 中编辑此计划'),
       script_plan_surface_hides_machine_fields_by_default:
         !scriptOpenOutput.includes("plan_status_output_mode:")
         && !scriptOpenOutput.includes("active_plan_phase:")
@@ -837,7 +843,7 @@ async function main(): Promise<void> {
       plan_goal_in_plan_mode_shows_current_plan:
         planGoalInPlan.handled
         && planGoalInPlan.code === 0
-        && planGoalInPlanOutput.includes("Current Plan")
+        && planGoalInPlanOutput.includes("当前计划")
         && planGoalInPlanOutput.includes("# Contract Plan"),
       plan_goal_in_plan_mode_skips_new_query:
         executeCountAfterPlanGoalInPlan === executeCountBeforePlanGoalInPlan,
@@ -866,19 +872,19 @@ async function main(): Promise<void> {
       execute_payload_omits_plain_trigger_as_extra:
         !applyPrompt.includes("Additional user instruction:\nImplement the plan."),
       apply_surface_shows_approved_plan_start:
-        applyOutput.includes("User approved Grobot's plan")
-        && applyOutput.includes("Plan approved")
-        && applyOutput.includes("Plan to implement")
-        && applyOutput.includes("Starting implementation from approved snapshot"),
+        applyOutput.includes("计划已确认")
+        && applyOutput.includes("已确认")
+        && applyOutput.includes("将要实现的计划")
+        && applyOutput.includes("开始按已确认快照实现"),
       apply_surface_has_saved_plan_hint:
-        applyOutput.includes("Plan approved · Plan saved to: .grobot/plans/")
+        applyOutput.includes("已确认 · 计划已保存: .grobot/plans/")
         && applyOutput.includes("/plan open to edit"),
       apply_surface_renders_plan_card:
-        applyOutput.includes("╭─ Plan to implement")
+        applyOutput.includes("╭─ 将要实现的计划")
         && applyOutput.includes("│ Contract Plan")
-        && applyOutput.includes("│ Goal:")
-        && applyOutput.includes("│ Validation:")
-        && applyOutput.includes("╰─ approval"),
+        && applyOutput.includes("│ 目标:")
+        && applyOutput.includes("│ 验证:")
+        && applyOutput.includes("╰─ 确认"),
       apply_surface_hides_machine_fields:
         !applyOutput.includes("plan_id=")
         && !applyOutput.includes("session_key=")
@@ -897,20 +903,20 @@ async function main(): Promise<void> {
       compact_plan_turn_failure_code_preserved: failureResultCode === 1,
       plan_turn_stdout_override_captures_plan_scaffolding:
         stdoutOverrideResult === 0
-        && overrideStdout.includes("Entered plan mode")
+        && overrideStdout.includes("已进入 plan mode")
         && overrideStdout.includes("Planning...")
         && overrideStdout.includes("runtime output through override")
-        && overrideStdout.includes("Plan needs refinement"),
+        && overrideStdout.includes("计划需要继续完善"),
       plan_turn_working_notice_has_plan_bullet:
         stripAnsi(overrideStdout).includes("● Planning..."),
       plan_turn_stdout_override_skips_fallback_writer: fallbackStdout.length === 0,
       compact_plan_turn_failure_surface_human:
-        failureStderr.includes("Plan update failed")
-        && failureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
-        && failureStderr.includes("Plan saved to: .grobot/plans/")
-        && failureStderr.includes("Plan draft was kept")
-        && failureStderr.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.')
-        && failureStderr.includes("Diagnostics: PLAN_PROVIDER_RUNTIME_FAILURE"),
+        failureStderr.includes("计划更新失败")
+        && failureStderr.includes("Provider 不可用: mock (upstream_connect_failed)。")
+        && failureStderr.includes("计划已保存: .grobot/plans/")
+        && failureStderr.includes("计划草稿已保留")
+        && failureStderr.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。')
+        && failureStderr.includes("诊断: PLAN_PROVIDER_RUNTIME_FAILURE"),
       compact_plan_turn_failure_hides_machine_lines:
         !failureStderr.includes("runtime failed:")
         && !failureStderr.includes("[runtime-route] failed attempts=")
@@ -922,12 +928,12 @@ async function main(): Promise<void> {
       compact_plan_apply_failure_code_preserved:
         applyFailureResult.handled && applyFailureResult.code === 1,
       compact_plan_apply_failure_surface_human:
-        applyFailureStderr.includes("Plan implementation failed")
-        && applyFailureStderr.includes("Provider unavailable: mock (upstream_connect_failed).")
-        && applyFailureStderr.includes("Plan saved to: .grobot/plans/")
-        && applyFailureStderr.includes("Plan is still available")
-        && applyFailureStderr.includes('reply "Implement the plan." again')
-        && applyFailureStderr.includes("Diagnostics: PLAN_PROVIDER_RUNTIME_FAILURE"),
+        applyFailureStderr.includes("计划实现失败")
+        && applyFailureStderr.includes("Provider 不可用: mock (upstream_connect_failed)。")
+        && applyFailureStderr.includes("计划已保存: .grobot/plans/")
+        && applyFailureStderr.includes("计划仍可用")
+        && applyFailureStderr.includes("再回复“开始实现计划”")
+        && applyFailureStderr.includes("诊断: PLAN_PROVIDER_RUNTIME_FAILURE"),
       compact_plan_apply_failure_hides_machine_lines:
         !applyFailureStderr.includes("runtime failed:")
         && !applyFailureStderr.includes("[runtime-route] failed attempts=")

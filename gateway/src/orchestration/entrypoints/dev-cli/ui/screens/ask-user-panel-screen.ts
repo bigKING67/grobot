@@ -312,7 +312,7 @@ function renderQuestionPanel(input: {
   const contentWidth = input.surfaceWidth - 2;
   const progress = buildProgressText(input.view);
   if (input.planMode && input.planFilePath?.trim()) {
-    lines.push(`  ${terminalStyle.muted(fitPlainLine(`Planning: ${input.planFilePath}`, contentWidth))}`);
+    lines.push(`  ${terminalStyle.muted(fitPlainLine(`计划文件: ${input.planFilePath}`, contentWidth))}`);
     lines.push(`  ${renderMutedRule(contentWidth)}`);
   }
   const navigationLine = renderNavigationLine({

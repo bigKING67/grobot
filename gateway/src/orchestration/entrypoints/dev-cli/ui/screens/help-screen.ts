@@ -9,21 +9,21 @@ export function buildInteractiveHelpScreen(): string {
   const utility = listUtilitySlashCommandHelpLines();
   const compatibility = listSlashCommandCompatibilityNotes();
   const keyboard = [
-    "  Ctrl+r              Open history search and fill selected prompt",
-    "  Esc                 Interrupt running turn / exit plan mode when idle",
-    "  Ctrl+c              Exit interactive loop immediately",
+    "  Ctrl+r              打开历史搜索并填入选中提示",
+    "  Esc                 中断运行中回合 / 空闲 plan mode 下退出",
+    "  Ctrl+c              立即退出交互循环",
   ];
   return [
-    "Interactive commands (primary):",
+    "交互命令（常用）:",
     ...primary,
     "",
-    "Keyboard shortcuts:",
+    "快捷键:",
     ...keyboard,
     "",
-    "Operational utilities:",
+    "运维工具:",
     ...utility,
     "",
-    "Compatibility notes:",
+    "兼容说明:",
     ...compatibility,
     "",
   ].join("\n");
