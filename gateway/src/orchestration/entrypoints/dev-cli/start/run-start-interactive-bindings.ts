@@ -204,6 +204,18 @@ function trimTrailingSlashes(path: string): string {
   return path.replace(/[\\/]+$/, "");
 }
 
+function buildSkillCreatorSurface(input: {
+  title: string;
+  details?: readonly string[];
+}): string {
+  const lines = [`${terminalStyle.accent("●")} ${input.title}`];
+  for (const detail of input.details ?? []) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
 function buildSkillCreatorPrompt(input: {
   requirement: string;
   projectRoot: string;
@@ -1051,16 +1063,20 @@ export function createRunStartInteractiveModeInput(
     promptSkillCreatorRequirement: async (withInputPaused) => {
       const requirementInput = await withInputPaused(() =>
         runTerminalLinePrompt({
-          prompt: "[skill-creator] 请输入需求> ",
+          prompt: "技能需求> ",
         }),
       );
       if (requirementInput.kind === "cancelled") {
-        input.output.writeStdout("[skill-creator] 已取消。\n\n");
+        input.output.writeStdout(buildSkillCreatorSurface({
+          title: "已取消 skill 创建",
+        }));
         return undefined;
       }
       const requirement = requirementInput.value.trim();
       if (!requirement) {
-        input.output.writeStdout("[skill-creator] 需求为空，已取消。\n\n");
+        input.output.writeStdout(buildSkillCreatorSurface({
+          title: "需求为空，已取消 skill 创建",
+        }));
         return undefined;
       }
       return requirement;
@@ -1071,11 +1087,17 @@ export function createRunStartInteractiveModeInput(
     ) => {
       const normalizedRequirement = requirement.trim();
       if (!normalizedRequirement) {
-        input.output.writeStdout("用法: /skill-creator [需求]\n\n");
+        input.output.writeStdout(buildSkillCreatorSurface({
+          title: "需要提供技能需求",
+          details: ["用法: /skill-creator [需求]"],
+        }));
         return;
       }
       input.output.writeStdout(
-        `[skill-creator] 正在根据需求生成技能：${compactSingleLine(normalizedRequirement, 120)}\n\n`,
+        buildSkillCreatorSurface({
+          title: "正在生成技能",
+          details: [compactSingleLine(normalizedRequirement, 120)],
+        }),
       );
       const prompt = buildSkillCreatorPrompt({
         requirement: normalizedRequirement,

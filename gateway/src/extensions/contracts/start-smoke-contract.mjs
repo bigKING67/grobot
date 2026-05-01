@@ -1056,10 +1056,15 @@ function runStartInteractiveDiagnosticsSkillCreatorFlow(repoRoot, mode) {
     ["/skill-creator create a demo skill for diagnostics contracts", "/exit", ""].join("\n"),
     "skill-creator",
   );
+  const stdoutPlain = stripAnsi(payload.stdout);
   return {
     ...payload,
     command_flow: "skill_creator",
-    has_skill_creator_marker: payload.stdout.includes("[skill-creator]"),
+    has_skill_creator_marker: stdoutPlain.includes("正在生成技能"),
+    skill_creator_surface_avoids_legacy_marker: !payload.stdout.includes("[skill-creator]"),
+    has_human_skill_creator_surface:
+      stdoutPlain.includes("正在生成技能")
+      && stdoutPlain.includes("create a demo skill for diagnostics contracts"),
   };
 }
 

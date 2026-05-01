@@ -17,6 +17,10 @@ const controls: SessionInteractiveControls = {
   withInputPaused: async <T>(operation: () => Promise<T>): Promise<T> => operation(),
 };
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 const DEFAULT_SESSION_SUMMARIES: readonly SessionInteractiveSessionSummary[] = [
   {
     id: "main",
@@ -1057,6 +1061,10 @@ async function main(): Promise<void> {
       skillCreatorNoDemandNonTty.events,
       "writeStdout",
     ),
+    skill_creator_empty_non_tty_surface_is_human:
+      stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("需要提供技能需求")
+      && stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("用法: /skill-creator [需求]")
+      && !skillCreatorNoDemandNonTty.stdout.includes("[skill-creator]"),
     skill_creator_empty_non_tty_prompted: includesEvent(
       skillCreatorNoDemandNonTty.events,
       "promptSkillCreatorRequirement",

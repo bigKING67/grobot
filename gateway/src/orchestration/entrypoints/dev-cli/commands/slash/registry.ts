@@ -558,7 +558,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, controls, handlers }) => {
       const parsed = parseSkillCreatorCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "无效 skill-creator 命令"}\n\n`);
+        handlers.writeStdout(buildSlashNotice(
+          "skill-creator 命令不可用",
+          [parsed.reason ?? "无效 skill-creator 命令"],
+        ));
         return "continue";
       }
       if (parsed.kind === "run") {
@@ -566,7 +569,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (!isInteractiveTerminal()) {
-        handlers.writeStdout("用法: /skill-creator [需求]\n\n");
+        handlers.writeStdout(buildSlashNotice(
+          "需要提供技能需求",
+          ["用法: /skill-creator [需求]"],
+        ));
         return "continue";
       }
       const requirement = await handlers.promptSkillCreatorRequirement(

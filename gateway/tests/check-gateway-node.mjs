@@ -842,6 +842,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_prompted, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_tty_dispatched, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_usage, true);
+  assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_surface_is_human, true);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_prompted, false);
   assert.equal(sessionInteractiveDispatchPayload.skill_creator_empty_non_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.init_dispatched, true);
@@ -7435,6 +7436,10 @@ async function runTsRustExecutionSmoke() {
       assert.equal(diagnosticsFlowPayload.has_short_process_summary_code, true);
     }
     assert.equal(Boolean(diagnosticsFlowPayload[flow.markerKey]), true);
+    if (flow.contract.includes("diagnostics-skill-creator")) {
+      assert.equal(diagnosticsFlowPayload.skill_creator_surface_avoids_legacy_marker, true);
+      assert.equal(diagnosticsFlowPayload.has_human_skill_creator_surface, true);
+    }
     if (flow.contract.includes("diagnostics-user-command")) {
       assert.equal(diagnosticsFlowPayload.command_surface_avoids_legacy_marker, true);
       assert.equal(diagnosticsFlowPayload.has_human_created_command_surface, true);
