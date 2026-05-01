@@ -507,9 +507,9 @@ export function createRunStartModelOps(
     });
     const picked = await withInputPaused(() =>
       runSelectMenu({
-        title: "Select model",
+        title: "选择模型",
         subtitle:
-          "Switch between Grobot models. Applies to this session and future Grobot sessions. For other/previous model names, use /model use <id>.",
+          "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
         hint: "Enter 确认 · Esc 返回",
         items,
         initialIndex,

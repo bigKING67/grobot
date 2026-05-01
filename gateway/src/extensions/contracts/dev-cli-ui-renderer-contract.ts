@@ -183,8 +183,8 @@ const menuInput: TerminalSelectMenuInput = {
 };
 
 const modelPickerInput: TerminalSelectMenuInput = {
-  title: "Select model",
-  subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
+  title: "选择模型",
+  subtitle: "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
   hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
@@ -231,7 +231,7 @@ const askUserMenuInput: TerminalSelectMenuInput = {
 };
 
 const planApprovalMenuInput: TerminalSelectMenuInput = {
-  title: "Ready to code?",
+  title: "准备开始实现？",
   hint: "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
   variant: "plan_approval",
   planApprovalMeta: {
@@ -253,11 +253,11 @@ const planApprovalMenuInput: TerminalSelectMenuInput = {
   items: [
     {
       id: "approve",
-      label: "Yes, Implement the plan.",
+      label: "确认，开始实现计划",
     },
     {
       id: "keep_planning",
-      label: "No, keep planning",
+      label: "继续完善计划",
       description: "Shift+Tab 可带反馈批准执行",
       input: {
         placeholder: "告诉 Grobot 需要调整什么",
@@ -294,8 +294,8 @@ const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
 };
 
 const longModelPickerInput: TerminalSelectMenuInput = {
-  title: "Select model",
-  subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
+  title: "选择模型",
+  subtitle: "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
   hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
@@ -440,8 +440,8 @@ const directLargeMenuInput: TerminalSelectMenuInput = {
 };
 
 const directLargeModelPickerInput: TerminalSelectMenuInput = {
-  title: "Select model",
-  subtitle: "Switch between Grobot models. Applies to this session and future Grobot sessions.",
+  title: "选择模型",
+  subtitle: "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
   hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
@@ -680,13 +680,13 @@ const payload = {
   ask_user_menu_uses_claude_pointer:
     stripAnsi(askUserMenuPlain).includes("❯"),
   plan_approval_menu_has_ready_title:
-    planApprovalMenuPlainText.includes("Ready to code?"),
+    planApprovalMenuPlainText.includes("准备开始实现？"),
   plan_approval_menu_has_planning_path_header:
     planApprovalMenuPlainText.includes("Planning: .grobot/plans/demo/001-contract-plan.md")
     && planApprovalMenuPlainText.indexOf("Planning: .grobot/plans/demo/001-contract-plan.md")
-      < planApprovalMenuPlainText.indexOf("Ready to code?"),
+      < planApprovalMenuPlainText.indexOf("准备开始实现？"),
   plan_approval_menu_title_is_not_plan_color_flooded:
-    !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1mReady to code?"),
+    !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1m准备开始实现？"),
   plan_approval_menu_has_subtitle:
     planApprovalMenuPlainText.includes("执行前请确认计划。"),
   plan_approval_menu_embeds_plan_markdown:
@@ -700,10 +700,10 @@ const payload = {
     planApprovalMenuPlainText.indexOf("是否开始执行？")
       > planApprovalMenuPlainText.indexOf("## Validation")
     && planApprovalMenuPlainText.indexOf("Ctrl-G 编辑计划")
-      > planApprovalMenuPlainText.indexOf("No, keep planning"),
+      > planApprovalMenuPlainText.indexOf("继续完善计划"),
   plan_approval_menu_has_yes_no_options:
-    planApprovalMenuPlainText.includes("❯ Yes, Implement the plan.")
-    && planApprovalMenuPlainText.includes("No, keep planning"),
+    planApprovalMenuPlainText.includes("❯ 确认，开始实现计划")
+    && planApprovalMenuPlainText.includes("继续完善计划"),
   plan_approval_menu_has_ctrl_g_edit_hint:
     planApprovalMenuPlainText.includes("Ctrl-G 编辑计划 · vim")
     && planApprovalMenuPlainText.includes(".grobot/plans/demo/001-contract-plan.md"),
@@ -712,11 +712,11 @@ const payload = {
   plan_approval_menu_shows_keep_planning_feedback_hint:
     stripAnsi(planApprovalKeepPlanningPlain).includes("Shift+Tab 可带反馈批准执行"),
   plan_approval_menu_shows_inline_feedback_input:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("No, keep planning: 告诉 Grobot 需要调整什么"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("继续完善计划: 告诉 Grobot 需要调整什么"),
   plan_approval_menu_shows_inline_feedback_cursor:
     stripAnsi(planApprovalKeepPlanningPlain).includes("告诉 Grobot 需要调整什么▌"),
   plan_approval_menu_preserves_feedback_after_reopen:
-    stripAnsi(planApprovalDraftFeedbackPlain).includes("No, keep planning: tighten validation▌"),
+    stripAnsi(planApprovalDraftFeedbackPlain).includes("继续完善计划: tighten validation▌"),
   plan_approval_menu_uses_plan_mode_color:
     planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
   plan_approval_menu_has_no_default_thin_pointer:
@@ -729,7 +729,7 @@ const payload = {
     emptyPlanApprovalPlainText.includes("❯ Yes")
     && emptyPlanApprovalPlainText.includes("  No")
     && !emptyPlanApprovalPlainText.includes("Implement the plan")
-    && !emptyPlanApprovalPlainText.includes("No, keep planning"),
+    && !emptyPlanApprovalPlainText.includes("继续完善计划"),
   plan_approval_empty_omits_plan_markdown:
     !emptyPlanApprovalPlainText.includes("Grobot 的计划：")
     && !emptyPlanApprovalPlainText.includes("No plan found.")

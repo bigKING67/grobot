@@ -194,6 +194,10 @@ async function main(): Promise<void> {
     list_output_has_variant: listedSnapshot.includes(" model-variant"),
     model_menu_pause_calls: pauseCalls,
     model_menu_variant: capturedModelMenu?.variant ?? "",
+    model_menu_title_is_localized:
+      capturedModelMenu?.title === "选择模型",
+    model_menu_subtitle_is_compact:
+      capturedModelMenu?.subtitle === "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
     model_menu_hint_is_reference_compact:
       capturedModelMenu?.hint === "Enter 确认 · Esc 返回",
     model_menu_initial_index_points_to_current:

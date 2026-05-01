@@ -102,7 +102,7 @@ async function main(): Promise<void> {
         activePlanStatusSource: "live_snapshot",
         activePlanDecisionReady: true,
         activePlanRecommendationCommand: "Implement the plan.",
-        activePlanRecommendationReason: "当前计划已进入待决策态；直接回复 Implement the plan. 即可开始执行",
+        activePlanRecommendationReason: "当前计划已进入待决策态；直接回复“开始实现计划”或选择确认项即可开始执行",
       },
       maxItems: 80,
     });
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
       plan_applied_pending_has_state_tag: planAppliedPending.some((item) =>
         item.description.includes("latest=applied; verification=pending")),
       plan_ready_execute_attaches_direct_reply_hint: planReadyExecute.some((item) =>
-        item.description.includes("Implement the plan.")),
+        item.description.includes("开始实现计划")),
       plan_ready_execute_keeps_minimal_surface: planReadyExecute.every((item) =>
         item.command === "/plan open"),
       ship_filter_has_user_command: shipOnly.some((item) => item.command === "/shipit" && item.source === "user"),

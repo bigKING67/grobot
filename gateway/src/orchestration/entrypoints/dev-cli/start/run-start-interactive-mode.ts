@@ -885,7 +885,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         const isEmptyPlan = isEmptyPlanApprovalContent(currentPlanContent);
         const result = await withInputPaused(() =>
           runTerminalSelectMenu({
-            title: isEmptyPlan ? "退出 plan mode?" : "Ready to code?",
+            title: isEmptyPlan ? "退出 plan mode?" : "准备开始实现？",
             hint: isEmptyPlan
               ? "Enter 确认 · Esc 返回输入框"
               : "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
@@ -913,12 +913,12 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
               : [
                 {
                   id: "approve",
-                  label: "Yes, Implement the plan.",
+                  label: "确认，开始实现计划",
                   description: "从这份计划开始实现。",
                 },
                 {
                   id: "keep_planning",
-                  label: "No, keep planning",
+                  label: "继续完善计划",
                   description: "Shift+Tab 可带反馈批准执行",
                   input: {
                     placeholder: "告诉 Grobot 需要调整什么",

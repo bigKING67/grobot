@@ -637,13 +637,13 @@ async function main(): Promise<void> {
       plan_suggestion_state_preserves_stored_latest:
         livePlanSuggestionState?.latestPlanStatus === "draft",
       plan_slash_suggestions_surface_direct_execute:
-        livePlanSuggestions.some((item) => item.description.includes("Implement the plan.")),
+        livePlanSuggestions.some((item) => item.description.includes("开始实现计划")),
       plan_suggestion_state_invalidates_cache_on_file_change:
         changedPlanSuggestionState?.activePlanStatus !== "ready",
       plan_suggestion_state_after_file_change_uses_live_source:
         changedPlanSuggestionState?.activePlanStatusSource === "live_snapshot",
       plan_slash_suggestions_after_file_change_drops_execute_hint:
-        !changedPlanSuggestions.some((item) => item.description.includes("Implement the plan.")),
+        !changedPlanSuggestions.some((item) => item.description.includes("开始实现计划")),
       plan_execute_submit_transcript_suppressed:
         shouldSuppressRunStartSubmitTranscript({
           value: "Implement the plan.",

@@ -79,7 +79,7 @@ export function resolvePlanStatusRecommendation(input: {
     }
     return {
       action: PLAN_EXECUTION_REPLY,
-      reason: "当前计划已进入待决策态；直接回复 Implement the plan. 即可开始执行",
+      reason: "当前计划已进入待决策态；直接回复“开始实现计划”或选择确认项即可开始执行",
     };
   }
   if (input.status === "applied") {

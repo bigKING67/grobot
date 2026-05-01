@@ -8,7 +8,7 @@ const PLAN_NATURAL_EXECUTION_PATTERNS: readonly RegExp[] = [
   /^implement(?:\s+the)?\s+plan[.!?]?$/i,
   /^execute(?:\s+the)?\s+plan[.!?]?$/i,
   /^start\s+(?:implementing|implementation)[.!?]?$/i,
-  /^(?:开始|直接)(?:执行|实现)(?:这个|该)?(?:计划|方案)[。！？]?$/,
+  /^(?:确认[,，]?)?(?:开始|直接)(?:执行|实现)(?:这个|该)?(?:计划|方案)[。！？]?$/,
 ];
 
 const PLAN_OPEN_ALIASES = new Set([

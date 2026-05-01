@@ -613,7 +613,7 @@ function buildReadyToCodeSurface(input: {
   }
   const divider = buildPlanApprovalDivider(planContent);
   return [
-    `${terminalStyle.planMode("●")} Ready to code?`,
+    `${terminalStyle.planMode("●")} 准备开始实现？`,
     `  ${terminalStyle.muted(`Planning: ${displayPath}`)}`,
     `  ${terminalStyle.muted("执行前请确认计划。")}`,
     "",
@@ -626,8 +626,8 @@ function buildReadyToCodeSurface(input: {
     "─".repeat(Math.max(24, measureDisplayWidth(divider))),
     "是否开始执行？",
     "",
-    `❯ Yes, ${PLAN_EXECUTION_REPLY}`,
-    "  No, keep planning",
+    "❯ 确认，开始实现计划",
+    "  继续完善计划",
     "",
     `Edit: /plan open · ${displayPath}`,
     "",

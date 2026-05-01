@@ -434,7 +434,7 @@ async function main(): Promise<void> {
   const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
   const inlineInputOption = {
     id: "keep_planning",
-    label: "No, keep planning",
+    label: "继续完善计划",
     input: {
       placeholder: "告诉 Grobot 需要调整什么",
       showLabelWithValue: true,

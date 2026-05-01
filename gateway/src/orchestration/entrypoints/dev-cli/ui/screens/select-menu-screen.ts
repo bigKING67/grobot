@@ -87,7 +87,7 @@ const MODEL_PICKER_POINTER = "❯";
 const MODEL_PICKER_CHECK = "✓";
 const MODEL_PICKER_DEFAULT_HINT = "Enter 确认 · Esc 返回";
 const MODEL_PICKER_DEFAULT_SUBTITLE =
-  "Switch between Grobot models. Applies to this session and future Grobot sessions.";
+  "切换当前会话模型；历史/自定义模型可用 /model use <id>。";
 const MENU_TWO_COLUMN_MIN_WIDTH = 64;
 const MENU_DESCRIPTION_MIN_WIDTH = 22;
 const MENU_DESCRIPTION_GAP = 2;
@@ -724,7 +724,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   const surfaceWidth = Math.max(48, Math.min(PLAN_APPROVAL_SURFACE_MAX_WIDTH, columns - 4));
   const dividerWidth = Math.max(48, Math.min(PLAN_APPROVAL_DIVIDER_MAX_WIDTH, columns));
   const viewport = resolveRenderViewport(input.menu);
-  const title = sanitizeMenuText(input.menu.title, "Ready to code?");
+  const title = sanitizeMenuText(input.menu.title, "准备开始实现？");
   const agentName = sanitizeMenuText(input.menu.planApprovalMeta?.agentName, "Grobot");
   const editorName = sanitizeMenuText(input.menu.planApprovalMeta?.editorName, "editor");
   const planContent = input.menu.planApprovalMeta?.planContent ?? "";

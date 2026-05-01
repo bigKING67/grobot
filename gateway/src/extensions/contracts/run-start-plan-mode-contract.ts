@@ -703,12 +703,12 @@ async function main(): Promise<void> {
         && refineOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
       ready_plan_turn_handled: ready === 0,
       ready_surface_matches_reference_shape:
-        readyOutput.includes("Ready to code?")
+        readyOutput.includes("准备开始实现？")
         && readyOutput.includes("Grobot 的计划：")
         && readyOutput.includes("执行前请确认计划。")
         && readyOutput.includes("是否开始执行？")
-        && readyOutput.includes("❯ Yes, Implement the plan.")
-        && readyOutput.includes("  No, keep planning")
+        && readyOutput.includes("❯ 确认，开始实现计划")
+        && readyOutput.includes("  继续完善计划")
         && readyOutput.includes("Edit: /plan open"),
       ready_surface_has_plan_separators:
         readyOutput.split("\n").some((line) => /^┄{24,}$/.test(line))
@@ -720,7 +720,7 @@ async function main(): Promise<void> {
         && readyApprovalRequests[0]?.planContent.includes("# Contract Plan"),
       ready_approval_keep_planning_skips_fallback_surface:
         keepPlanningOutput.includes("Plan kept in plan mode")
-        && !keepPlanningOutput.includes("Ready to code?"),
+        && !keepPlanningOutput.includes("准备开始实现？"),
       ready_approval_keep_planning_matches_reference_shape:
         keepPlanningOutput.includes("●")
         && keepPlanningOutput.includes('Reply with more detail to refine, or use "/plan open" to edit the draft.'),
@@ -728,14 +728,14 @@ async function main(): Promise<void> {
         cancelApprovalRunResult === 0
         && cancelApprovalRuntimeState.getPlanMode() === "plan_only"
         && !cancelApprovalOutput.includes("Plan kept in plan mode")
-        && !cancelApprovalOutput.includes("Ready to code?"),
+        && !cancelApprovalOutput.includes("准备开始实现？"),
       ready_approval_empty_exit_leaves_plan_mode:
         exitApprovalRunResult === 0
         && exitApprovalRuntimeState.getPlanMode() === "normal",
       ready_approval_empty_exit_does_not_apply:
         exitApprovalExecuteInputs.every((item) => !item.includes("[Approved Plan Execution]")),
       ready_approval_empty_exit_is_quiet:
-        !exitApprovalOutput.includes("Ready to code?")
+        !exitApprovalOutput.includes("准备开始实现？")
         && !exitApprovalOutput.includes("Plan approved")
         && !exitApprovalOutput.includes("Plan kept in plan mode"),
       ready_approval_yes_executes_plan:
@@ -744,7 +744,7 @@ async function main(): Promise<void> {
         && approvalExecuteInputs[1]?.includes("[Approved Plan Execution]"),
       ready_approval_yes_skips_text_fallback:
         approvalStdout.includes("Plan approved")
-        && !approvalStdout.includes("Ready to code?"),
+        && !approvalStdout.includes("准备开始实现？"),
       ready_approval_yes_matches_exit_plan_reference:
         approvalStdout.includes("User approved Grobot's plan")
         && approvalStdout.includes("Plan approved · Plan saved to: .grobot/plans/")
