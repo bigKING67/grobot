@@ -13,8 +13,8 @@ const ASK_USER_INTERACTION_NAV_LIMIT = 120;
 const ASK_USER_INTERACTION_TAB_LABEL_LIMIT = 18;
 const ASK_USER_INTERACTION_VISIBLE_OPTION_LIMIT = 7;
 const ASK_USER_OTHER_OPTION_ID = "__other__";
-const ASK_USER_OTHER_OPTION_LABEL = "Other";
-const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type something.";
+const ASK_USER_OTHER_OPTION_LABEL = "自定义";
+const ASK_USER_OTHER_OPTION_PLACEHOLDER = "输入自定义回复";
 
 export type AskUserQuestionnaireMode = "question" | "review";
 export type AskUserQuestionnaireOptionKind = "option" | "other";
@@ -290,7 +290,7 @@ function buildQuestionnaireHint(envelope: AskUserEnvelope): string {
   }
   const maxDirect = Math.min(envelope.optionsDetailed.length, 9);
   const numberHint = maxDirect > 1 ? `1-${String(maxDirect)}` : "1";
-  return `↑/↓ 选择 · ${numberHint} 直选 · Other 输入 · Enter 确认 · Esc 返回输入框`;
+  return `↑/↓ 选择 · ${numberHint} 直选 · 自定义输入 · Enter 确认 · Esc 返回输入框`;
 }
 
 function buildQueueHint(input: {

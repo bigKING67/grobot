@@ -1054,6 +1054,7 @@ fn build_tool_output_summary(tool_name: &str, output_content: &str) -> Value {
         "kind",
         "path",
         "operation",
+        "line_count",
         "line_start",
         "line_end",
         "has_more",

@@ -94,7 +94,7 @@ const pendingPlanModeFooter = renderBottomPaneFooter({
   promptLabel: "› ",
   planMode: true,
   pendingAskCount: 3,
-  pendingAskSummary: "Enter 打开选择 · 1-4 直选 · Other 输入",
+  pendingAskSummary: "Enter 打开选择 · 1-4 直选 · 自定义输入",
 });
 
 const narrowPendingPlanModeFooter = renderBottomPaneFooter({
@@ -220,6 +220,10 @@ const shortcutOverlayFooter = renderShortcutOverlayFooter({
   terminalColumns: 72,
 });
 const shortcutOverlayLines = shortcutOverlayFooter.split("\n");
+const wideShortcutOverlayFooter = renderShortcutOverlayFooter({
+  terminalColumns: 108,
+});
+const wideShortcutOverlayLines = wideShortcutOverlayFooter.split("\n");
 const narrowShortcutOverlayFooter = renderShortcutOverlayFooter({
   terminalColumns: 48,
 });
@@ -355,25 +359,37 @@ const payload = {
   shortcut_overlay_style_keeps_plain_text:
     collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter for newline")
     && collapseSpaces(shortcutOverlayFooter).includes("Ctrl+V paste image"),
-  shortcut_overlay_wide_uses_two_columns:
-    shortcutOverlayLines.length === 4
+  shortcut_overlay_medium_uses_two_columns:
+    shortcutOverlayLines.length === 5
     && shortcutOverlayLines.some((line) =>
       collapseSpaces(line).includes("/ for commands")
       && collapseSpaces(line).includes("Shift+Enter for newline"),
     ),
+  shortcut_overlay_wide_uses_three_columns:
+    wideShortcutOverlayLines.length === 5
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("/ for commands")
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Shift+Enter for newline")
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Enter submit")
+    && collapseSpaces(wideShortcutOverlayFooter).includes("/status status panel")
+    && collapseSpaces(wideShortcutOverlayFooter).includes("Left/Right move cursor"),
   shortcut_overlay_prioritizes_navigation:
-    collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Esc back")
-    && collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Tab apply"),
+    collapseSpaces(shortcutOverlayLines[1] ?? "").includes("/model model picker")
+    && collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Esc back / clear")
+    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("/plan plan mode")
+    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("Tab apply suggestion"),
   shortcut_overlay_narrow_uses_single_column:
-    narrowShortcutOverlayLines.length === 6
+    narrowShortcutOverlayLines.length === 7
     && collapseSpaces(narrowShortcutOverlayLines[0] ?? "") === "/ for commands"
     && collapseSpaces(narrowShortcutOverlayLines[1] ?? "") === "Shift+Enter for newline"
     && collapseSpaces(narrowShortcutOverlayLines[2] ?? "") === "Esc back"
     && collapseSpaces(narrowShortcutOverlayLines[3] ?? "") === "Tab apply"
-    && collapseSpaces(narrowShortcutOverlayLines[4] ?? "") === "Ctrl+C exit"
+    && collapseSpaces(narrowShortcutOverlayLines[4] ?? "") === "Ctrl+R history"
+    && collapseSpaces(narrowShortcutOverlayLines[5] ?? "") === "Ctrl+C exit"
     && !collapseSpaces(narrowShortcutOverlayFooter).includes("Ctrl+V paste image"),
   shortcut_overlay_lines_within_width:
     shortcutOverlayLines.every((line) => measureDisplayWidth(line) <= 72),
+  shortcut_overlay_wide_lines_within_width:
+    wideShortcutOverlayLines.every((line) => measureDisplayWidth(line) <= 108),
   shortcut_overlay_narrow_lines_within_width:
     narrowShortcutOverlayLines.every((line) => measureDisplayWidth(line) <= 48),
 };

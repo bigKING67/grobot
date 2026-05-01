@@ -31,6 +31,10 @@ import {
   type RuntimeProviderCandidate,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-turn";
 import { type RunStartWire } from "../../orchestration/entrypoints/dev-cli/start/run-start-wire";
+import {
+  type TerminalSelectMenuInput,
+  type TerminalSelectMenuResult,
+} from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
 
 async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>): Promise<T> {
   const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -129,6 +133,7 @@ async function main(): Promise<void> {
   writeFileSync(`${tempHomeDir}/skills/global-demo/SKILL.md`, "# Global demo\n", "utf8");
   writeFileSync(`${tempProjectRoot}/.grobot/skills/project-demo/SKILL.md`, "# Project demo\n", "utf8");
   const stdoutChunks: string[] = [];
+  const capturedSelectMenuHints: string[] = [];
   const historyMessages: ChatHistoryMessage[] = [
     { role: "user", content: "first" },
     { role: "assistant", content: "second" },
@@ -293,6 +298,10 @@ async function main(): Promise<void> {
       writeStdout: (message) => {
         stdoutChunks.push(message);
       },
+    },
+    runSelectMenu: async (menu: TerminalSelectMenuInput): Promise<TerminalSelectMenuResult> => {
+      capturedSelectMenuHints.push(menu.hint ?? "");
+      return { kind: "cancelled" };
     },
     modelOps,
     sessionMenuOps,
@@ -517,6 +526,12 @@ async function main(): Promise<void> {
     interactiveModeInput.showPendingAskQueue();
     interactiveModeInput.showPendingAskQueue(-1);
     const statusConfigAfter = interactiveModeInput.getStatusLineConfig();
+    const stdoutBeforeCancelledMenus = stdoutChunks.join("").length;
+    await withStdinTty(true, async () => {
+      await interactiveModeInput.openStatusMenu(async (operation) => operation());
+      await interactiveModeInput.openHistorySearch({ currentInput: "" });
+    });
+    const cancelledMenuOutput = stdoutChunks.join("").slice(stdoutBeforeCancelledMenus);
 
     const outputText = stdoutChunks.join("");
     const payload = {
@@ -564,6 +579,18 @@ async function main(): Promise<void> {
       status_theme_after_update: statusConfigAfter.theme,
       status_layout_after_update: statusConfigAfter.layoutMode,
       status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
+      status_menu_cancel_is_silent: cancelledMenuOutput.length === 0,
+      status_menu_hint_is_reference_compact:
+        capturedSelectMenuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),
+      history_search_hint_is_reference_fill:
+        capturedSelectMenuHints.includes("↑/↓ 选择 · Enter 填入 · Esc 返回"),
+      interactive_menu_hints_omit_secondary_key_chords:
+        capturedSelectMenuHints.every((hint) =>
+          !hint.includes("Ctrl+n/p")
+          && !hint.includes("number to select directly")
+          && !hint.includes("Enter/Space")
+          && !hint.includes("Esc to cancel")
+        ),
       ask_status_no_pending_warned: outputText.includes("没有待确认问题。"),
       ask_status_has_clean_question:
         outputText.includes("需要确认 · Profile") && outputText.includes("Choose profile"),

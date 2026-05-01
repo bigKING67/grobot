@@ -947,7 +947,7 @@ async function runGatewayContractSmoke() {
     true,
   );
   assert.equal(
-    sessionResumeStartupDisambiguationContractPayload.tty_disambiguation_cancel_has_notice,
+    sessionResumeStartupDisambiguationContractPayload.tty_disambiguation_cancel_is_silent,
     true,
   );
   assert.equal(sessionResumeStartupDisambiguationContractPayload.non_tty_does_not_call_picker, true);
@@ -1025,7 +1025,7 @@ async function runGatewayContractSmoke() {
     true,
   );
   assert.equal(
-    sessionRewindStartupDisambiguationContractPayload.tty_disambiguation_cancel_has_notice,
+    sessionRewindStartupDisambiguationContractPayload.tty_disambiguation_cancel_is_silent,
     true,
   );
   assert.equal(sessionRewindStartupDisambiguationContractPayload.non_tty_does_not_call_picker, true);
@@ -1349,6 +1349,9 @@ async function runGatewayContractSmoke() {
   assert.equal(userCommandsContractPayload.deleted, true);
   assert.equal(userCommandsContractPayload.failure_marked, false);
   assert.equal(Number(userCommandsContractPayload.stdout_rows_count) >= 1, true);
+  assert.equal(userCommandsContractPayload.menu_hint_is_reference_compact, true);
+  assert.equal(userCommandsContractPayload.menu_hint_omits_secondary_key_chords, true);
+  assert.equal(userCommandsContractPayload.menu_cancel_is_silent, true);
   logStep("user-commands-contract");
 
   const agentsInstructionsContractResult = runCommand("npx", [
@@ -1695,6 +1698,8 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliUiRendererContractPayload.plan_approval_empty_uses_reference_copy, true);
   assert.equal(devCliUiRendererContractPayload.plan_approval_empty_has_yes_no_only, true);
   assert.equal(devCliUiRendererContractPayload.plan_approval_empty_omits_plan_markdown, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_direct_render_uses_model_visible_count, true);
+  assert.equal(devCliUiRendererContractPayload.model_picker_direct_render_shows_hidden_count, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_direct_render_has_no_row_scroll_marker, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_long_rows_within_width, true);
   assert.equal(devCliUiRendererContractPayload.model_picker_long_current_suffix_preserved, true);
@@ -1988,10 +1993,12 @@ async function runGatewayContractSmoke() {
   assert.equal(devCliBottomPanePayload.shortcut_overlay_has_visual_weight, true);
   assert.equal(devCliBottomPanePayload.shortcut_overlay_style_uses_accent_and_dim, true);
   assert.equal(devCliBottomPanePayload.shortcut_overlay_style_keeps_plain_text, true);
-  assert.equal(devCliBottomPanePayload.shortcut_overlay_wide_uses_two_columns, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_medium_uses_two_columns, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_wide_uses_three_columns, true);
   assert.equal(devCliBottomPanePayload.shortcut_overlay_prioritizes_navigation, true);
   assert.equal(devCliBottomPanePayload.shortcut_overlay_narrow_uses_single_column, true);
   assert.equal(devCliBottomPanePayload.shortcut_overlay_lines_within_width, true);
+  assert.equal(devCliBottomPanePayload.shortcut_overlay_wide_lines_within_width, true);
   assert.equal(devCliBottomPanePayload.shortcut_overlay_narrow_lines_within_width, true);
   logStep("dev-cli-bottom-pane-contract");
 
@@ -2376,6 +2383,10 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_ctx_ratio), 0.42);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_estimated_tokens), 512);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
+  assert.equal(interactiveBindingsPayload.status_menu_cancel_is_silent, true);
+  assert.equal(interactiveBindingsPayload.status_menu_hint_is_reference_compact, true);
+  assert.equal(interactiveBindingsPayload.history_search_hint_is_reference_fill, true);
+  assert.equal(interactiveBindingsPayload.interactive_menu_hints_omit_secondary_key_chords, true);
   assert.equal(interactiveBindingsPayload.ask_status_no_pending_warned, true);
   assert.equal(interactiveBindingsPayload.ask_status_has_clean_question, true);
   assert.equal(interactiveBindingsPayload.ask_status_has_clean_options, true);
@@ -2455,12 +2466,20 @@ async function runGatewayContractSmoke() {
     modelOpsContractPayload.branch_session_summary_after_switch,
     "Follow-up fallback regression",
   );
-  assert.equal(Number(modelOpsContractPayload.list_calls), 3);
+  assert.equal(Number(modelOpsContractPayload.list_calls), 4);
   assert.equal(Number(modelOpsContractPayload.persist_call_count), 2);
   assert.equal(modelOpsContractPayload.persist_first_call, "provider-main:model-variant");
   assert.equal(modelOpsContractPayload.persist_second_call, "provider-main:model-default");
   assert.equal(modelOpsContractPayload.list_output_has_current_marker, true);
   assert.equal(modelOpsContractPayload.list_output_has_variant, true);
+  assert.equal(Number(modelOpsContractPayload.model_menu_pause_calls), 1);
+  assert.equal(modelOpsContractPayload.model_menu_variant, "model_picker");
+  assert.equal(modelOpsContractPayload.model_menu_hint_is_reference_compact, true);
+  assert.equal(modelOpsContractPayload.model_menu_initial_index_points_to_current, true);
+  assert.equal(modelOpsContractPayload.model_menu_current_item_marked, true);
+  assert.equal(modelOpsContractPayload.model_menu_meta_current_model, "model-default");
+  assert.equal(modelOpsContractPayload.model_menu_meta_startup_model, "model-default");
+  assert.equal(modelOpsContractPayload.model_menu_cancel_is_silent, true);
   assert.equal(
     modelOpsContractPayload.runtime_source_after_switch,
     "config_toml:provider.model",
@@ -7499,15 +7518,13 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionMenuViewModelPayload.sessions_omits_session_key, true);
   assert.equal(sessionMenuViewModelPayload.continue_current_skip_hint, true);
   assert.equal(sessionMenuViewModelPayload.resume_current_hint, true);
-  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_ctrl_np, true);
-  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_number_direct, true);
-  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_enter_space, true);
-  assert.equal(sessionMenuViewModelPayload.sessions_hint_has_filter_shortcut, true);
-  assert.equal(sessionMenuViewModelPayload.switch_hint_has_ctrl_np, true);
-  assert.equal(sessionMenuViewModelPayload.continue_hint_has_ctrl_np, true);
-  assert.equal(sessionMenuViewModelPayload.resume_hint_has_ctrl_np, true);
-  assert.equal(sessionMenuViewModelPayload.resume_hint_has_filter_shortcut, true);
-  assert.equal(sessionMenuViewModelPayload.rewind_hint_has_ctrl_np, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_hint_is_reference_compact, true);
+  assert.equal(sessionMenuViewModelPayload.switch_hint_is_reference_compact, true);
+  assert.equal(sessionMenuViewModelPayload.continue_hint_is_reference_continue, true);
+  assert.equal(sessionMenuViewModelPayload.resume_hint_is_reference_compact, true);
+  assert.equal(sessionMenuViewModelPayload.rewind_hint_is_reference_compact, true);
+  assert.equal(sessionMenuViewModelPayload.session_hints_omit_secondary_key_chords, true);
+  assert.equal(sessionMenuViewModelPayload.session_menu_ops_cancel_is_silent_source, true);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
   assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);
   assert.equal(Number(sessionMenuViewModelPayload.resume_initial_index), 0);

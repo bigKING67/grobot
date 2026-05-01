@@ -35,7 +35,6 @@ export async function resolveStartupResumeDisambiguation(
         targetSessionId = picked.sessionId;
       } else {
         targetSessionId = undefined;
-        messages.push("[session] startup resume picker cancelled.\n\n");
       }
     }
     return {

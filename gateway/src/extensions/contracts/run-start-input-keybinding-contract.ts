@@ -29,7 +29,9 @@ import {
 import { formatSlashSuggestionPanel } from "../../orchestration/entrypoints/dev-cli/ui/interactive/slash-overlay";
 import { measureDisplayWidth } from "../../orchestration/entrypoints/dev-cli/ui/interactive/display-width";
 import {
+  formatPromptSuggestionPanel,
   resolveVisibleSuggestionWindow,
+  truncateDisplayWidthMiddle,
 } from "../../orchestration/entrypoints/dev-cli/ui/interactive/suggestion-window";
 import {
   normalizeSelectNavigationState,
@@ -205,6 +207,103 @@ async function main(): Promise<void> {
     selectedIndex: 5,
     visibleCount: 3,
   });
+  const promptSuggestionOverlay = formatPromptSuggestionPanel({
+    suggestions: [
+      { id: "cmd-one", displayText: "/one", description: "one" },
+      { id: "cmd-two", displayText: "/two", description: "two" },
+      { id: "cmd-three", displayText: "/three", description: "three" },
+      { id: "cmd-four", displayText: "/four", description: "four" },
+      { id: "cmd-five", displayText: "/five", description: "five" },
+      { id: "cmd-six", displayText: "/six", description: "six" },
+      { id: "cmd-seven", displayText: "/seven", description: "seven" },
+    ],
+    selectedIndex: 5,
+    terminalColumns: 80,
+    terminalRows: 24,
+    overlay: true,
+  });
+  const promptSuggestionOverlayLines = promptSuggestionOverlay
+    .split("\n")
+    .filter((line) => line.length > 0);
+  const promptSuggestionOverlaySelectedRow = promptSuggestionOverlayLines.findIndex((line) =>
+    line.includes("/six"),
+  );
+  const promptSuggestionInline = formatPromptSuggestionPanel({
+    suggestions: [
+      { id: "cmd-one", displayText: "/one", description: "one" },
+      { id: "cmd-two", displayText: "/two", description: "two" },
+      { id: "cmd-three", displayText: "/three", description: "three" },
+      { id: "cmd-four", displayText: "/four", description: "four" },
+      { id: "cmd-five", displayText: "/five", description: "five" },
+      { id: "cmd-six", displayText: "/six", description: "six" },
+    ],
+    selectedIndex: 4,
+    terminalColumns: 80,
+    terminalRows: 6,
+    overlay: false,
+  });
+  const promptSuggestionInlineLines = promptSuggestionInline
+    .split("\n")
+    .filter((line) => line.length > 0);
+  const promptSuggestionFile = formatPromptSuggestionPanel({
+    suggestions: [{
+      id: "file-gateway/src/orchestration/entrypoints/dev-cli/ui/interactive/suggestion-window.ts",
+      displayText: "gateway/src/orchestration/entrypoints/dev-cli/ui/interactive/suggestion-window.ts",
+      description: "TypeScript source file",
+      type: "file",
+    }],
+    selectedIndex: 0,
+    terminalColumns: 72,
+    overlay: true,
+  });
+  const promptSuggestionFilePlain = stripAnsi(promptSuggestionFile);
+  const promptSuggestionIcons = formatPromptSuggestionPanel({
+    suggestions: [
+      {
+        id: "mcp-resource-project-docs",
+        displayText: "project://docs/architecture",
+        description: "MCP resource",
+        type: "mcp-resource",
+      },
+      {
+        id: "agent-frontend-worker",
+        displayText: "frontend_worker",
+        description: "Worker agent",
+        type: "agent",
+      },
+    ],
+    selectedIndex: 1,
+    terminalColumns: 72,
+    overlay: true,
+  });
+  const promptSuggestionTagged = formatPromptSuggestionPanel({
+    suggestions: [{
+      id: "command-user-weekly",
+      displayText: "/weekly-report",
+      tag: "user",
+      description: "Create\nweekly\toperator summary",
+      type: "command",
+    }],
+    selectedIndex: 0,
+    terminalColumns: 96,
+    overlay: true,
+  });
+  const promptSuggestionTaggedPlain = stripAnsi(promptSuggestionTagged);
+  const promptSuggestionPointer = formatPromptSuggestionPanel({
+    suggestions: [
+      { id: "command-model", displayText: "/model", description: "Switch model", type: "command" },
+      { id: "command-plan", displayText: "/plan", description: "Enter plan mode", type: "command" },
+    ],
+    selectedIndex: 1,
+    terminalColumns: 64,
+    overlay: true,
+    showSelectionPointer: true,
+  });
+  const promptSuggestionPointerPlain = stripAnsi(promptSuggestionPointer);
+  const promptSuggestionMiddleTruncate = truncateDisplayWidthMiddle(
+    "gateway/src/orchestration/entrypoints/dev-cli/ui/interactive/suggestion-window.ts",
+    32,
+  );
   const slashOverlayWithArgs = formatSlashSuggestionPanel(
     [{ command: "/plan", description: "Enter plan mode" }],
     "/plan 帮我写一份抖音直播规划",
@@ -337,7 +436,7 @@ async function main(): Promise<void> {
     id: "keep_planning",
     label: "No, keep planning",
     input: {
-      placeholder: "Tell Grobot what to change",
+      placeholder: "告诉 Grobot 需要调整什么",
       showLabelWithValue: true,
       labelValueSeparator: ": ",
     },
@@ -756,6 +855,38 @@ async function main(): Promise<void> {
       && genericSuggestionWindow.endIndex === 7
       && genericSuggestionWindow.selectedVisibleIndex === 1
       && genericSuggestionWindow.visibleItems[1] === "/six",
+    prompt_suggestions_overlay_caps_at_five:
+      promptSuggestionOverlayLines.length === 5,
+    prompt_suggestions_overlay_centers_selected:
+      promptSuggestionOverlaySelectedRow >= 1 && promptSuggestionOverlaySelectedRow <= 3,
+    prompt_suggestions_inline_uses_rows_minus_prompt_budget:
+      promptSuggestionInlineLines.length === 3,
+    prompt_suggestions_selected_uses_reference_color:
+      promptSuggestionOverlay.includes("\u001B[38;2;202;124;94m/six"),
+    prompt_suggestions_file_uses_icon_and_middle_truncation:
+      promptSuggestionFilePlain.includes("+ ")
+      && promptSuggestionFilePlain.includes("gateway/src")
+      && promptSuggestionFilePlain.includes("suggestion-window.ts")
+      && promptSuggestionFilePlain.includes("..."),
+    prompt_suggestions_file_lines_within_width:
+      promptSuggestionFile
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .every((line) => measureDisplayWidth(line) <= 72),
+    prompt_suggestions_mcp_and_agent_icons:
+      stripAnsi(promptSuggestionIcons).includes("◇ ")
+      && stripAnsi(promptSuggestionIcons).includes("* frontend_worker"),
+    prompt_suggestions_tags_and_description_flatten:
+      promptSuggestionTaggedPlain.includes("[user]")
+      && promptSuggestionTaggedPlain.includes("Create weekly operator summary"),
+    prompt_suggestions_selection_pointer_optional:
+      promptSuggestionPointerPlain
+        .split("\n")
+        .some((line) => line.startsWith("❯ /plan")),
+    prompt_suggestions_middle_truncates_both_edges:
+      promptSuggestionMiddleTruncate.startsWith("gateway/")
+      && promptSuggestionMiddleTruncate.endsWith("window.ts")
+      && promptSuggestionMiddleTruncate.includes("..."),
     slash_overlay_narrow_hides_description:
       !stripAnsi(slashOverlayNarrow).includes("Open interactive model picker"),
     slash_overlay_narrow_lines_within_width:

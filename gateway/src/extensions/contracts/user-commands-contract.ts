@@ -1,5 +1,27 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRunStartUserCommandsRuntime } from "../../orchestration/entrypoints/dev-cli/start/run-start-user-commands";
+import {
+  type TerminalLinePromptResult,
+  type TerminalSelectMenuInput,
+  type TerminalSelectMenuResult,
+} from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
+
+async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>): Promise<T> {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  try {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: stdinIsTty,
+      configurable: true,
+    });
+    return await operation();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process.stdin, "isTTY", descriptor);
+    } else {
+      delete (process.stdin as { isTTY?: boolean }).isTTY;
+    }
+  }
+}
 
 async function main(): Promise<void> {
   const tempRoot = `${process.cwd()}/.tmp-user-commands-contract-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
@@ -7,12 +29,20 @@ async function main(): Promise<void> {
   mkdirSync(homeDir, { recursive: true });
   const stdoutRows: string[] = [];
   const executedPrompts: string[] = [];
+  const menuHints: string[] = [];
   let failureMarked = false;
 
   const runtime = createRunStartUserCommandsRuntime({
     homeDir,
     writeStdout: (message) => {
       stdoutRows.push(message);
+    },
+    runLinePrompt: async (): Promise<TerminalLinePromptResult> => ({
+      kind: "cancelled",
+    }),
+    runSelectMenu: async (menu: TerminalSelectMenuInput): Promise<TerminalSelectMenuResult> => {
+      menuHints.push(menu.hint ?? "");
+      return { kind: "cancelled" };
     },
     executeTurn: async (userInput) => {
       executedPrompts.push(userInput);
@@ -72,6 +102,11 @@ async function main(): Promise<void> {
 
   await runtime.handleManagementCommand("/commands delete shipit");
   const deleted = !existsSync(commandPath);
+  const stdoutRowsBeforeMenuCancel = stdoutRows.length;
+  await withStdinTty(true, async () =>
+    runtime.openManagementMenu(async (operation) => operation())
+  );
+  const menuCancelOutput = stdoutRows.slice(stdoutRowsBeforeMenuCancel).join("");
 
   const payload = {
     created,
@@ -90,6 +125,19 @@ async function main(): Promise<void> {
     failure_marked: failureMarked,
     command_file_snapshot_before_delete: commandFileSnapshotBeforeDelete,
     stdout_rows_count: stdoutRows.length,
+    menu_hint_is_reference_compact:
+      menuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),
+    menu_hint_omits_secondary_key_chords:
+      menuHints.every((hint) =>
+        !hint.includes("Ctrl+n/p")
+        && !hint.includes("number to select directly")
+        && !hint.includes("Enter/Space")
+        && !hint.includes("Esc to cancel")
+      ),
+    menu_cancel_is_silent:
+      menuCancelOutput.length === 0
+      && !stdoutRows.join("").includes("[commands] menu cancelled")
+      && !stdoutRows.join("").includes("[commands] input cancelled"),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

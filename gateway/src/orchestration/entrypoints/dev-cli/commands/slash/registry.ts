@@ -91,7 +91,7 @@ function parseModelCommand(inputRaw: string): ParsedModelCommand {
   if (legacyMatch) {
     return {
       kind: "legacy_subcommand",
-      reason: "[model] legacy subcommands removed. Use /model to open picker (Enter/Space to apply).",
+      reason: "[model] legacy subcommands removed. Use /model to open picker (Enter 确认).",
     };
   }
   return {

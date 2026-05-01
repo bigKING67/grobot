@@ -38,7 +38,6 @@ export async function resolveStartupRewindDisambiguation(
         targetCheckpointId = picked.checkpointId;
       } else {
         targetCheckpointId = undefined;
-        messages.push("[rewind] startup rewind picker cancelled.\n\n");
       }
     }
     return {

@@ -34,6 +34,21 @@ function event(input: {
   };
 }
 
+const writePreviewContent = [
+  "line-01",
+  "line-02",
+  "line-03",
+  "line-04",
+  "line-05",
+  "line-06",
+  "line-07",
+  "line-08",
+  "line-09",
+  "line-10",
+  "line-11",
+  "line-12",
+].join("\n");
+
 const feedEvents = [
   event({
     eventType: "tool_end",
@@ -48,6 +63,21 @@ const feedEvents = [
         matches_count: 12,
         engine: "rg",
         limit_reached: false,
+      },
+    },
+  }),
+  event({
+    eventType: "tool_end",
+    payload: {
+      tool_name: "write",
+      status: "ok",
+      output_summary: {
+        tool: "write",
+        path: "gateway/src/generated-file.ts",
+        operation: "create",
+        bytes_written: 95,
+        line_count: 12,
+        content_preview: writePreviewContent,
       },
     },
   }),
@@ -204,6 +234,16 @@ const payload = {
   renders_edit_with_diff_stats:
     fullPlain.includes("Edited gateway/src/orchestration/entrypoints/dev-cli/ui/screens/bottom-pane-screen.ts (+2 -1)")
     && fullPlain.includes("@@ -42,1 +42,2 @@"),
+  edit_detail_uses_human_copy:
+    fullPlain.includes("  ⎿  1 replacement at line 42")
+    && !fullPlain.includes("replacements=1 line=42"),
+  renders_write_create_with_reference_preview:
+    plain.includes("Wrote 12 lines to gateway/src/generated-file.ts")
+    && fullPlain.includes("  ⎿  line-01")
+    && fullPlain.includes("  ⎿  line-10")
+    && fullPlain.includes("  ⎿  … +2 lines Ctrl-O to expand"),
+  compact_write_preview_hides_content:
+    !plain.includes("line-01") && !plain.includes("Ctrl-O to expand"),
   full_detail_uses_reference_status_glyph:
     fullPlain.includes("  ⎿  matches=12 engine=rg")
     && !fullPlain.includes("  └ matches=12 engine=rg"),

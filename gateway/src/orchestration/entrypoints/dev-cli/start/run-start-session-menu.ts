@@ -17,6 +17,8 @@ export type SessionMenuSelection =
   | { kind: "new" }
   | { kind: "session"; sessionId: string };
 
+type SelectMenuRunner = typeof runTerminalSelectMenu;
+
 function formatSessionMenuDescription(input: {
   sessionId: string;
   sessionKey: string;
@@ -67,18 +69,18 @@ function resolveSessionMenuTitle(mode: SessionMenuMode): string {
 
 function resolveSessionMenuHint(mode: SessionMenuMode): string {
   if (mode === "continue") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to inject summary bridge, / or Ctrl+f to filter, Esc to cancel.";
+    return "↑/↓ 选择 · Enter 继续 · Esc 返回";
   }
   if (mode === "resume") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to restore selected session, / or Ctrl+f to filter, Esc to cancel.";
+    return "↑/↓ 选择 · Enter 确认 · Esc 返回";
   }
   if (mode === "rewind") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to choose rewind target session, / or Ctrl+f to filter, Esc to cancel.";
+    return "↑/↓ 选择 · Enter 确认 · Esc 返回";
   }
   if (mode === "sessions") {
-    return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch/create, / or Ctrl+f to filter, Esc to cancel.";
+    return "↑/↓ 选择 · Enter 确认 · Esc 返回";
   }
-  return "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to switch session, / or Ctrl+f to filter, Esc to cancel.";
+  return "↑/↓ 选择 · Enter 确认 · Esc 返回";
 }
 
 function buildSessionMenuItems(input: {
@@ -139,14 +141,16 @@ export async function runSessionMenuPicker(input: {
   sessionNamespaceKey: string;
   sessions: ReadonlyArray<RunStartSessionSummary>;
   withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>;
+  runSelectMenu?: SelectMenuRunner;
 }): Promise<SessionMenuSelection> {
   const menu = buildSessionMenuViewModel({
     mode: input.mode,
     sessionNamespaceKey: input.sessionNamespaceKey,
     sessions: input.sessions,
   });
+  const runSelectMenu = input.runSelectMenu ?? runTerminalSelectMenu;
   const picked = await input.withInputPaused(() =>
-    runTerminalSelectMenu({
+    runSelectMenu({
       title: menu.title,
       subtitle: menu.subtitle,
       hint: menu.hint,

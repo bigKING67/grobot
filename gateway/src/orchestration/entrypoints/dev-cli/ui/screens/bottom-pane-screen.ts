@@ -18,30 +18,65 @@ export interface BottomPanePromptInput extends StatusLinePromptInput {
 
 type BottomPaneFooterMode = "idle" | "pending" | "running";
 
-const SHORTCUT_OVERLAY_ROWS: Array<[string, string]> = [
+interface ShortcutHelpEntry {
+  keyLabel: string;
+  description: string;
+}
+
+type ShortcutHelpColumn = readonly ShortcutHelpEntry[];
+
+const SHORTCUT_HELP_DISCOVERY_ROWS: ShortcutHelpColumn = [
+  ["/", "for commands"],
+  ["/model", "model picker"],
+  ["/plan", "plan mode"],
+  ["/status", "status panel"],
+  ["/history", "history list"],
+].map(([keyLabel, description]) => ({ keyLabel, description }));
+
+const SHORTCUT_HELP_EDITING_ROWS: ShortcutHelpColumn = [
+  ["Shift+Enter", "for newline"],
+  ["Esc", "back / clear"],
+  ["Tab", "apply suggestion"],
+  ["Ctrl+R", "history search"],
+  ["Ctrl+V", "paste image"],
+].map(([keyLabel, description]) => ({ keyLabel, description }));
+
+const SHORTCUT_HELP_SESSION_ROWS: ShortcutHelpColumn = [
+  ["Enter", "submit"],
+  ["Up/Down", "move selection"],
+  ["Left/Right", "move cursor"],
+  ["Ctrl+C", "exit"],
+  ["?", "hide"],
+].map(([keyLabel, description]) => ({ keyLabel, description }));
+
+const SHORTCUT_OVERLAY_MEDIUM_ROWS: ShortcutHelpColumn = [
+  ["/", "for commands"],
+  ["Shift+Enter", "for newline"],
+  ["/model", "model picker"],
+  ["Esc", "back / clear"],
+  ["/plan", "plan mode"],
+  ["Tab", "apply suggestion"],
+  ["Ctrl+R", "history search"],
+  ["Ctrl+V", "paste image"],
+  ["Ctrl+C", "exit"],
+  ["?", "hide"],
+].map(([keyLabel, description]) => ({ keyLabel, description }));
+
+const SHORTCUT_OVERLAY_COMPACT_ROWS: ShortcutHelpColumn = [
   ["/", "for commands"],
   ["Shift+Enter", "for newline"],
   ["Esc", "back"],
   ["Tab", "apply"],
   ["Ctrl+R", "history"],
-  ["Ctrl+V", "paste image"],
   ["Ctrl+C", "exit"],
   ["?", "hide"],
-];
-
-const SHORTCUT_OVERLAY_COMPACT_ROWS: Array<[string, string]> = [
-  ["/", "for commands"],
-  ["Shift+Enter", "for newline"],
-  ["Esc", "back"],
-  ["Tab", "apply"],
-  ["Ctrl+C", "exit"],
-  ["?", "hide"],
-];
+].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const FOOTER_HINT_MIN_COLUMNS = 64;
 const FOOTER_SECONDARY_STATUS_MIN_COLUMNS = 64;
 const FOOTER_MIN_STATUS_AFTER_HINT_WIDTH = 16;
 const FOOTER_SEPARATOR = " · ";
+const SHORTCUT_OVERLAY_WIDE_MIN_COLUMNS = 96;
 const SHORTCUT_OVERLAY_TWO_COLUMN_MIN_COLUMNS = 72;
 const SHORTCUT_OVERLAY_COMPACT_MAX_COLUMNS = 56;
 const SHORTCUT_OVERLAY_KEY_COLUMN_WIDTH = 11;
@@ -186,10 +221,6 @@ function formatShortcutEntry(input: {
   return `${input.keyLabel} ${input.description}`;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 const BOTTOM_PANE_STYLE = {
   dimLine(line: string): string {
     if (!line || terminalStyle.hasAnsi(line)) {
@@ -212,51 +243,102 @@ const BOTTOM_PANE_STYLE = {
     }
     return terminalStyle.muted(line);
   },
-  shortcutOverlayLine(line: string): string {
-    if (!line) {
-      return line;
+  shortcutEntry(entry: string, keyLabel: string): string {
+    if (!entry) {
+      return entry;
     }
-    let rendered = line;
-    for (const [keyLabel] of [...SHORTCUT_OVERLAY_ROWS].sort((a, b) =>
-      b[0].length - a[0].length
-    )) {
-      const highlightedKey =
-        `${TERMINAL_ANSI.reset}${TERMINAL_ANSI.brand}${keyLabel}`
-        + `${TERMINAL_ANSI.reset}${TERMINAL_ANSI.muted}`;
-      rendered = rendered.replace(
-        new RegExp(escapeRegExp(keyLabel), "g"),
-        highlightedKey,
-      );
+    if (!entry.startsWith(keyLabel)) {
+      return `${TERMINAL_ANSI.muted}${entry}${TERMINAL_ANSI.reset}`;
     }
-    return `${TERMINAL_ANSI.muted}${rendered}${TERMINAL_ANSI.reset}`;
+    return `${TERMINAL_ANSI.brand}${keyLabel}`
+      + `${TERMINAL_ANSI.reset}${TERMINAL_ANSI.muted}`
+      + `${entry.slice(keyLabel.length)}${TERMINAL_ANSI.reset}`;
   },
 } as const;
+
+function shouldUseWideShortcutOverlay(terminalColumns: number): boolean {
+  return terminalColumns >= SHORTCUT_OVERLAY_WIDE_MIN_COLUMNS;
+}
 
 function shouldUseTwoColumnShortcutOverlay(terminalColumns: number): boolean {
   return terminalColumns <= 0 || terminalColumns >= SHORTCUT_OVERLAY_TWO_COLUMN_MIN_COLUMNS;
 }
 
-function resolveShortcutOverlayRows(terminalColumns: number): Array<[string, string]> {
+function resolveShortcutOverlayRows(terminalColumns: number): ShortcutHelpColumn {
   if (terminalColumns > 0 && terminalColumns <= SHORTCUT_OVERLAY_COMPACT_MAX_COLUMNS) {
     return SHORTCUT_OVERLAY_COMPACT_ROWS;
   }
-  return SHORTCUT_OVERLAY_ROWS;
+  return SHORTCUT_OVERLAY_MEDIUM_ROWS;
+}
+
+function renderShortcutEntry(input: {
+  entry: ShortcutHelpEntry;
+  width: number;
+  pad?: boolean;
+}): string {
+  const plainEntry = formatShortcutEntry({
+    keyLabel: input.entry.keyLabel,
+    description: input.entry.description,
+    alignKey: true,
+  });
+  const fitted = truncateDisplayWidth(plainEntry, input.width);
+  const padded = input.pad ? padToDisplayWidth(fitted, input.width) : fitted;
+  return BOTTOM_PANE_STYLE.shortcutEntry(padded, input.entry.keyLabel);
+}
+
+function renderShortcutOverlayColumns(input: {
+  terminalColumns: number;
+  columns: readonly ShortcutHelpColumn[];
+}): string[] {
+  const columnCount = Math.max(1, input.columns.length);
+  const columnGapWidth = measureDisplayWidth(SHORTCUT_OVERLAY_COLUMN_GAP);
+  const totalGapWidth = columnGapWidth * Math.max(0, columnCount - 1);
+  const entryWidth = input.terminalColumns > 0
+    ? Math.max(1, Math.floor((input.terminalColumns - totalGapWidth) / columnCount))
+    : SHORTCUT_OVERLAY_FALLBACK_COLUMN_WIDTH;
+  const maxRows = input.columns.reduce(
+    (max, column) => Math.max(max, column.length),
+    0,
+  );
+  const lines: string[] = [];
+
+  for (let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
+    const rowEntries = input.columns.map((column) => column[rowIndex]);
+    if (!rowEntries.some(Boolean)) {
+      continue;
+    }
+    const renderedColumns = rowEntries.map((entry, columnIndex) => {
+      const shouldPad = columnIndex < rowEntries.length - 1;
+      if (!entry) {
+        return shouldPad ? " ".repeat(entryWidth) : "";
+      }
+      return renderShortcutEntry({
+        entry,
+        width: entryWidth,
+        pad: shouldPad,
+      });
+    });
+    const line = renderedColumns.join(`${TERMINAL_ANSI.muted}${SHORTCUT_OVERLAY_COLUMN_GAP}`);
+    lines.push(line.trimEnd());
+  }
+
+  return lines;
 }
 
 function renderShortcutOverlaySingleColumn(input: {
   terminalColumns: number;
-  rows: Array<[string, string]>;
+  rows: ShortcutHelpColumn;
 }): string[] {
-  return input.rows.map(([keyLabel, description]) => {
+  return input.rows.map((row) => {
     const entry = formatShortcutEntry({
-      keyLabel,
-      description,
+      keyLabel: row.keyLabel,
+      description: row.description,
       alignKey: true,
     });
     const line = input.terminalColumns > 0
       ? truncateDisplayWidth(entry, input.terminalColumns)
       : entry;
-    return BOTTOM_PANE_STYLE.shortcutOverlayLine(line);
+    return BOTTOM_PANE_STYLE.shortcutEntry(line, row.keyLabel);
   });
 }
 
@@ -264,51 +346,27 @@ export function renderShortcutOverlayFooter(input: {
   terminalColumns?: number;
 } = {}): string {
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
+  if (shouldUseWideShortcutOverlay(terminalColumns)) {
+    return renderShortcutOverlayColumns({
+      terminalColumns,
+      columns: [
+        SHORTCUT_HELP_DISCOVERY_ROWS,
+        SHORTCUT_HELP_EDITING_ROWS,
+        SHORTCUT_HELP_SESSION_ROWS,
+      ],
+    }).join("\n");
+  }
+
   const rows = resolveShortcutOverlayRows(terminalColumns);
   if (!shouldUseTwoColumnShortcutOverlay(terminalColumns)) {
     return renderShortcutOverlaySingleColumn({ terminalColumns, rows }).join("\n");
   }
-
-  const columnGapWidth = measureDisplayWidth(SHORTCUT_OVERLAY_COLUMN_GAP);
-  const entryWidth = terminalColumns > 0
-    ? Math.max(
-      1,
-      Math.floor((terminalColumns - columnGapWidth) / 2),
-    )
-    : SHORTCUT_OVERLAY_FALLBACK_COLUMN_WIDTH;
-  const lines: string[] = [];
-  for (let index = 0; index < rows.length; index += 2) {
-    const left = rows[index];
-    const right = rows[index + 1];
-    if (!left) {
-      continue;
-    }
-    const leftEntry = formatShortcutEntry({
-      keyLabel: left[0],
-      description: left[1],
-      alignKey: true,
-    });
-    const rightEntry = right
-      ? formatShortcutEntry({
-        keyLabel: right[0],
-        description: right[1],
-        alignKey: true,
-      })
-      : "";
-    const leftFitted = truncateDisplayWidth(leftEntry, entryWidth);
-    const rightFitted = rightEntry.length > 0
-      ? truncateDisplayWidth(rightEntry, entryWidth)
-      : "";
-    const line = rightFitted.length > 0
-      ? `${padToDisplayWidth(
-        leftFitted,
-        entryWidth,
-      )}${SHORTCUT_OVERLAY_COLUMN_GAP}${rightFitted}`
-      : leftFitted;
-    const fittedLine = terminalColumns > 0 ? truncateDisplayWidth(line, terminalColumns) : line;
-    lines.push(BOTTOM_PANE_STYLE.shortcutOverlayLine(fittedLine));
-  }
-  return lines.join("\n");
+  const leftColumn = rows.filter((_row, index) => index % 2 === 0);
+  const rightColumn = rows.filter((_row, index) => index % 2 === 1);
+  return renderShortcutOverlayColumns({
+    terminalColumns,
+    columns: [leftColumn, rightColumn],
+  }).join("\n");
 }
 
 export function renderBottomPaneFooter(input: BottomPanePromptInput): string {

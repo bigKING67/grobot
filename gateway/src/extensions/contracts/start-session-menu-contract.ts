@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { type RunStartSessionSummary } from "../../orchestration/entrypoints/dev-cli/start/run-start-session-ops";
 import {
   buildSessionMenuViewModel,
@@ -63,6 +64,17 @@ const sessionsBranchDescription = findDescriptionById(sessionMenu.items, "sessio
 const continueActiveDescription = findDescriptionById(continueMenu.items, "session-main");
 const resumeActiveDescription = findDescriptionById(resumeMenu.items, "session-main");
 const rewindBranchDescription = findDescriptionById(rewindMenu.items, "session-branch");
+const allHints = [
+  sessionMenu.hint,
+  switchMenu.hint,
+  continueMenu.hint,
+  resumeMenu.hint,
+  rewindMenu.hint,
+];
+const sessionMenuOpsSource = readFileSync(
+  "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-session-menu-ops.ts",
+  "utf8",
+);
 
 const payload = {
   sessions_title: sessionMenu.title,
@@ -90,15 +102,24 @@ const payload = {
   sessions_omits_session_key: !sessionsBranchDescription.includes("feishu:grobot:dm:menu-contract-user:branch"),
   continue_current_skip_hint: continueActiveDescription.includes("current session (selecting will skip)"),
   resume_current_hint: resumeActiveDescription.includes("current session (already resumed)"),
-  sessions_hint_has_ctrl_np: sessionMenu.hint.includes("Ctrl+n/p"),
-  sessions_hint_has_number_direct: sessionMenu.hint.includes("number to select directly"),
-  sessions_hint_has_enter_space: sessionMenu.hint.includes("Enter/Space"),
-  sessions_hint_has_filter_shortcut: sessionMenu.hint.includes("/ or Ctrl+f"),
-  switch_hint_has_ctrl_np: switchMenu.hint.includes("Ctrl+n/p"),
-  continue_hint_has_ctrl_np: continueMenu.hint.includes("Ctrl+n/p"),
-  resume_hint_has_ctrl_np: resumeMenu.hint.includes("Ctrl+n/p"),
-  resume_hint_has_filter_shortcut: resumeMenu.hint.includes("/ or Ctrl+f"),
-  rewind_hint_has_ctrl_np: rewindMenu.hint.includes("Ctrl+n/p"),
+  sessions_hint_is_reference_compact: sessionMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
+  switch_hint_is_reference_compact: switchMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
+  continue_hint_is_reference_continue: continueMenu.hint === "↑/↓ 选择 · Enter 继续 · Esc 返回",
+  resume_hint_is_reference_compact: resumeMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
+  rewind_hint_is_reference_compact: rewindMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
+  session_hints_omit_secondary_key_chords: allHints.every((hint) =>
+    !hint.includes("Ctrl+n/p")
+    && !hint.includes("number to select directly")
+    && !hint.includes("Enter/Space")
+    && !hint.includes("/ or Ctrl+f")
+    && !hint.includes("Esc to cancel")
+  ),
+  session_menu_ops_cancel_is_silent_source:
+    !sessionMenuOpsSource.includes("[session] menu cancelled")
+    && !sessionMenuOpsSource.includes("[session] picker cancelled")
+    && !sessionMenuOpsSource.includes("[rewind] picker cancelled")
+    && !sessionMenuOpsSource.includes("selection cancelled")
+    && !sessionMenuOpsSource.includes("file filter input cancelled"),
   sessions_initial_index: sessionMenu.initialIndex,
   switch_initial_index: switchMenu.initialIndex,
   continue_initial_index: continueMenu.initialIndex,

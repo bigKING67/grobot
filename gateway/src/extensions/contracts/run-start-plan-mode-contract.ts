@@ -704,9 +704,9 @@ async function main(): Promise<void> {
       ready_plan_turn_handled: ready === 0,
       ready_surface_matches_reference_shape:
         readyOutput.includes("Ready to code?")
-        && readyOutput.includes("Here is Grobot's plan:")
-        && readyOutput.includes("Review the plan before execution.")
-        && readyOutput.includes("Would you like to proceed?")
+        && readyOutput.includes("Grobot 的计划：")
+        && readyOutput.includes("执行前请确认计划。")
+        && readyOutput.includes("是否开始执行？")
         && readyOutput.includes("❯ Yes, Implement the plan.")
         && readyOutput.includes("  No, keep planning")
         && readyOutput.includes("Edit: /plan open"),

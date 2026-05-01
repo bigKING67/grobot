@@ -25,6 +25,7 @@ interface ActivityFeedRow {
 const DEFAULT_MAX_ITEMS = 8;
 const DEFAULT_MAX_DIFF_LINES = 5;
 const DEFAULT_TERMINAL_COLUMNS = 96;
+const WRITE_PREVIEW_MAX_LINES = 10;
 
 export function resolveRuntimeActivityFeedDetailMode(
   valueRaw: string | undefined,
@@ -186,12 +187,80 @@ function compactDiffLines(diff: string, maxLines: number): string[] {
     .slice(0, Math.max(0, maxLines));
 }
 
+function countVisibleLines(content: string): number {
+  const parts = content.split("\n");
+  return content.endsWith("\n") ? parts.length - 1 : parts.length;
+}
+
+function splitVisibleLines(content: string): string[] {
+  const parts = content.split("\n");
+  return content.endsWith("\n") ? parts.slice(0, -1) : parts;
+}
+
+function writeLineCount(summary: Record<string, unknown>, content: string): number | undefined {
+  const explicit = firstNumber(
+    payloadNumber(summary, "line_count"),
+    payloadNumber(summary, "lines_count"),
+    payloadNumber(summary, "lines_written"),
+    payloadNumber(summary, "content_line_count"),
+  );
+  if (typeof explicit === "number") {
+    return Math.max(0, Math.floor(explicit));
+  }
+  if (content.trim().length > 0 || content.length > 0) {
+    return countVisibleLines(content);
+  }
+  return undefined;
+}
+
+function resolveWriteContent(summary: Record<string, unknown>): { content: string; isFullContent: boolean } {
+  const content = firstRawString(payloadString(summary, "content"));
+  if (content) {
+    return { content, isFullContent: true };
+  }
+  const preview = firstRawString(
+    payloadString(summary, "content_preview"),
+    payloadString(summary, "preview"),
+    payloadString(summary, "new_content_preview"),
+  );
+  return { content: preview, isFullContent: false };
+}
+
+function compactWriteContentPreview(
+  summary: Record<string, unknown>,
+): { lineCount: number | undefined; lines: string[]; hiddenLineCount: number } {
+  const resolved = resolveWriteContent(summary);
+  const lineCount = writeLineCount(summary, resolved.content);
+  if (!resolved.content) {
+    return { lineCount, lines: [], hiddenLineCount: 0 };
+  }
+  const visibleLines = splitVisibleLines(resolved.content);
+  const previewLines = visibleLines.slice(0, WRITE_PREVIEW_MAX_LINES);
+  const knownTotal = typeof lineCount === "number"
+    ? lineCount
+    : resolved.isFullContent
+      ? visibleLines.length
+      : undefined;
+  const hiddenLineCount = typeof knownTotal === "number"
+    ? Math.max(0, knownTotal - previewLines.length)
+    : 0;
+  return {
+    lineCount: knownTotal,
+    lines: previewLines,
+    hiddenLineCount,
+  };
+}
+
 function detailFromParts(parts: string[]): string | undefined {
   const detail = parts
     .map((part) => compactSpaces(part))
     .filter(Boolean)
     .join(" ");
   return detail || undefined;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return count === 1 ? singular : plural;
 }
 
 function buildToolEndRow(
@@ -243,7 +312,7 @@ function buildToolEndRow(
   const titleSuffix = toolName === "edit" && (stats.added > 0 || stats.removed > 0)
     ? ` (+${String(stats.added)} -${String(stats.removed)})`
     : "";
-  const title = compactSpaces(`${titlePrefix}${path ? ` ${path}` : ""}${titleSuffix}`);
+  let title = compactSpaces(`${titlePrefix}${path ? ` ${path}` : ""}${titleSuffix}`);
   const detailLines: string[] = [];
 
   if (toolName === "search" || toolName === "semantic_search") {
@@ -296,10 +365,13 @@ function buildToolEndRow(
   } else if (toolName === "edit") {
     const replacements = firstNumber(payloadNumber(summary, "replacements"));
     const firstChangedLine = firstNumber(payloadNumber(summary, "first_changed_line"));
+    const editLocation = typeof firstChangedLine === "number" ? `line ${String(firstChangedLine)}` : "";
+    const replacementDetail = typeof replacements === "number"
+      ? `${String(replacements)} ${pluralize(replacements, "replacement")}${editLocation ? ` at ${editLocation}` : ""}`
+      : editLocation;
     const detail = detailFromParts([
-      typeof replacements === "number" ? `replacements=${String(replacements)}` : "",
-      typeof firstChangedLine === "number" ? `line=${String(firstChangedLine)}` : "",
-      payloadBoolean(summary, "fuzzy_fallback_used") === true ? "fuzzy=true" : "",
+      replacementDetail,
+      payloadBoolean(summary, "fuzzy_fallback_used") === true ? "fuzzy match" : "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -308,11 +380,23 @@ function buildToolEndRow(
   } else if (toolName === "write") {
     const operation = firstString(payloadString(summary, "operation"));
     const bytesWritten = firstNumber(payloadNumber(summary, "bytes_written"));
+    const preview = compactWriteContentPreview(summary);
+    if (status !== "failed" && status !== "deferred" && typeof preview.lineCount === "number") {
+      title = compactSpaces(`Wrote ${String(preview.lineCount)} lines${path ? ` to ${path}` : ""}`);
+    }
+    if (preview.lines.length > 0) {
+      detailLines.push(...preview.lines);
+      if (preview.hiddenLineCount > 0) {
+        detailLines.push(
+          `… +${String(preview.hiddenLineCount)} ${preview.hiddenLineCount === 1 ? "line" : "lines"} Ctrl-O to expand`,
+        );
+      }
+    }
     const detail = detailFromParts([
-      operation ? `operation=${operation}` : "",
-      typeof bytesWritten === "number" ? `bytes=${String(bytesWritten)}` : "",
+      operation,
+      typeof bytesWritten === "number" ? `${String(bytesWritten)} bytes` : "",
     ]);
-    if (detail) {
+    if (detail && preview.lines.length === 0) {
       detailLines.push(detail);
     }
   } else if (toolName === "bash") {

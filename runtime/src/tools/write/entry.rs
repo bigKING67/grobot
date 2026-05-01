@@ -1,3 +1,12 @@
+fn count_visible_lines(content: &str) -> usize {
+    let parts_count = content.split('\n').count();
+    if content.ends_with('\n') {
+        parts_count.saturating_sub(1)
+    } else {
+        parts_count
+    }
+}
+
 fn run_write(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
@@ -150,6 +159,7 @@ fn run_write(
         "path": relative_path,
         "operation": operation,
         "bytes_written": request.content.as_bytes().len(),
+        "line_count": count_visible_lines(request.content.as_str()),
         "line_ending": text_format.line_ending,
         "bom_written": text_format.bom_detected,
         "created_parent_dirs": created_parent_dirs,

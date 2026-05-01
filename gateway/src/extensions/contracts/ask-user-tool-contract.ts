@@ -440,8 +440,8 @@ const payload = {
   issued_display_has_reply_guide: display.includes("数字直接回复"),
   issued_display_uses_prompt_chevron: display.includes("❯ 1"),
   issued_display_has_other_type_something:
-    display.includes("Other  Type something.")
-    && display.includes("Other 输入"),
+    display.includes("自定义  输入自定义回复")
+    && display.includes("自定义输入"),
   issued_display_shows_question_progress: describedDisplay.includes("Scope · 1/2"),
   issued_display_shows_option_description:
     describedDisplay.includes("safe — Run checks before continuing"),
@@ -452,7 +452,7 @@ const payload = {
   issued_display_hides_raw_question_prefix: !display.includes("question="),
   issued_display_uses_confirmation_card: display.includes("需要确认 ·"),
   issued_display_overflow_lists_sixth_option: overflowDisplay.includes("还有 0 项") === false
-    && overflowDisplay.includes("Other  Type something.")
+    && overflowDisplay.includes("自定义  输入自定义回复")
     && overflowDisplay.includes("还有 1 项"),
   issued_event_has_ask_id: formatAskUserIssuedEvent(nextEnvelope).includes("ask_id=ask_q_002"),
   ask_user_menu_title_has_progress:
@@ -489,8 +489,8 @@ const payload = {
     questionnaireView.kind === "question"
     && questionnaireView.optionItems.some((item) =>
       item.kind === "other"
-      && item.label === "Other"
-      && item.placeholder === "Type something."
+      && item.label === "自定义"
+      && item.placeholder === "输入自定义回复"
       && item.id === "__other__"),
   questionnaire_review_available:
     questionnaireReviewView.kind === "review"

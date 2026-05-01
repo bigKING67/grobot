@@ -69,6 +69,8 @@ interface UserCommandFilePayload {
 interface CreateRunStartUserCommandsRuntimeInput {
   homeDir: string;
   writeStdout(message: string): void;
+  runLinePrompt?: typeof runTerminalLinePrompt;
+  runSelectMenu?: typeof runTerminalSelectMenu;
   executeTurn(
     userInput: string,
     interactiveMode: boolean,
@@ -336,6 +338,8 @@ export function createRunStartUserCommandsRuntime(
   input: CreateRunStartUserCommandsRuntimeInput,
 ): RunStartUserCommandsRuntime {
   const commandsDir = resolveCommandsDir(input.homeDir);
+  const runLinePrompt = input.runLinePrompt ?? runTerminalLinePrompt;
+  const runSelectMenu = input.runSelectMenu ?? runTerminalSelectMenu;
 
   const ensureCommandsDir = (): void => {
     mkdirSync(commandsDir, { recursive: true });
@@ -512,10 +516,9 @@ export function createRunStartUserCommandsRuntime(
     options?: { optional?: boolean },
   ): Promise<string | undefined> => {
     const result = await withInputPaused(() =>
-      runTerminalLinePrompt({ prompt }),
+      runLinePrompt({ prompt }),
     );
     if (result.kind === "cancelled") {
-      input.writeStdout("[commands] input cancelled.\n\n");
       return undefined;
     }
     const value = result.value.trim();
@@ -534,10 +537,10 @@ export function createRunStartUserCommandsRuntime(
       return;
     }
     const menu = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Commands Manager",
         subtitle: "Manage ~/.grobot/commands",
-        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "list",
@@ -578,7 +581,6 @@ export function createRunStartUserCommandsRuntime(
       }),
     );
     if (menu.kind === "cancelled") {
-      input.writeStdout("[commands] menu cancelled.\n\n");
       return;
     }
     if (menu.item.id === "list") {

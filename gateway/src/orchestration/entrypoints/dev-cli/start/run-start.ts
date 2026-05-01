@@ -912,7 +912,7 @@ export async function runStart(
             const picked = await runTerminalSelectMenu({
               title: "Startup Rewind Checkpoint",
               subtitle: `Session: ${runtimeState.getActiveSessionId()}`,
-              hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to skip startup rewind.",
+              hint: "↑/↓ 选择 · Enter 确认 · Esc 跳过",
               items: candidates.map((checkpoint) => ({
                 id: checkpoint.checkpointId,
                 label: checkpoint.checkpointId,

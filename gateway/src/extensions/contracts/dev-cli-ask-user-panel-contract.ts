@@ -139,8 +139,8 @@ const payload = {
   panel_omits_raw_ask_user_label: !initialPlain.includes("ask-user")
     && !initialPlain.includes("[ask-user]"),
   panel_has_codex_like_progress:
-    initialPlain.includes("Question 1/2")
-    && initialPlain.includes("(2 unanswered)"),
+    initialPlain.includes("问题 1/2")
+    && initialPlain.includes("(2 项未回答)"),
   panel_plan_mode_shows_planning_path:
     initialPlain.includes("Planning: .grobot/plans/session/ACTIVE.md"),
   panel_planning_context_near_top:
@@ -152,8 +152,8 @@ const payload = {
     && initialPlain.includes("✓ 提交"),
   panel_question_separate_from_options:
     initialRendered.includes("\x1b[1mChoose execution mode")
-    && initialPlain.includes("Choose execution mode\n  Question 1/2")
-    && initialPlain.includes("Question 1/2 (2 unanswered)\n\n")
+    && initialPlain.includes("Choose execution mode\n  问题 1/2")
+    && initialPlain.includes("问题 1/2 (2 项未回答)\n\n")
     && initialPlain.includes("❯ 1. safe"),
   panel_title_is_prominent_and_not_repeated:
     initialRendered.includes("\x1b[1mChoose execution mode")
@@ -162,29 +162,29 @@ const payload = {
     initialPlain.includes("Run checks before continuing")
     && initialPlain.includes("Skip optional checks"),
   panel_has_other_type_something_row:
-    initialPlain.includes("3. Other")
-    && initialPlain.includes("Type something."),
+    initialPlain.includes("3. 自定义")
+    && initialPlain.includes("输入自定义回复"),
   panel_has_direct_keyboard_hints:
-    initialPlain.includes("Enter to select")
-    && initialPlain.includes("↑/↓ to navigate")
-    && initialPlain.includes("n to add notes")
-    && initialPlain.includes("Esc to cancel")
+    initialPlain.includes("Enter 确认")
+    && initialPlain.includes("↑/↓ 选择")
+    && initialPlain.includes("n 添加备注")
+    && initialPlain.includes("Esc 返回输入框")
     && initialPlain.includes("1-2 直选")
-    && initialPlain.includes("Other 输入"),
+    && initialPlain.includes("自定义输入"),
   panel_has_notes_affordance:
-    initialPlain.includes("Notes:")
-    && initialPlain.includes("press n to add notes"),
+    initialPlain.includes("备注:")
+    && initialPlain.includes("按 n 添加备注"),
   panel_has_chat_about_this_row:
-    initialPlain.includes("c. Chat about this"),
+    initialPlain.includes("c. 继续对话补充"),
   panel_has_plan_skip_affordance:
-    initialPlain.includes("s. Skip interview and plan immediately")
-    && initialPlain.includes("s skip"),
+    initialPlain.includes("s. 跳过访谈，直接进入计划")
+    && initialPlain.includes("s 跳过"),
   panel_footer_actions_separated:
-    initialPlain.includes("press n to add notes\n\n  ─")
-    && initialPlain.includes("─\n  c. Chat about this"),
+    initialPlain.includes("按 n 添加备注\n\n  ─")
+    && initialPlain.includes("─\n  c. 继续对话补充"),
   panel_hints_are_muted:
-    initialRendered.includes("\x1b[90mEnter to select")
-    && initialRendered.includes("\x1b[90m↑/↓ to navigate"),
+    initialRendered.includes("\x1b[90mEnter 确认")
+    && initialRendered.includes("\x1b[90m↑/↓ 选择"),
   panel_review_has_submit_edit_cancel:
     reviewPlain.includes("提交答案")
     && reviewPlain.includes("修改 1.")
@@ -210,7 +210,7 @@ const payload = {
     && !initialPlain.includes("╰")
     && !initialPlain.includes("│"),
   panel_narrow_keeps_progress:
-    narrowPlain.includes("Question 1/2")
+    narrowPlain.includes("问题 1/2")
     && narrowPlain.includes("Choose execution mode"),
 };
 

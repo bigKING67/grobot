@@ -79,6 +79,7 @@ interface CreateRunStartInteractiveModeInput {
   runtimeState: RunStartRuntimeState;
   gaMechanismRuntime: GaMechanismRuntime;
   output: Pick<RunStartOutput, "writeStdout">;
+  runSelectMenu?: typeof runTerminalSelectMenu;
   modelOps: RunStartModelOps;
   sessionMenuOps: RunStartSessionMenuOps;
   wire: RunStartWire;
@@ -415,9 +416,11 @@ function filterHistorySearchCandidates(
 export function createRunStartInteractiveModeInput(
   input: CreateRunStartInteractiveModeInput,
 ): RunStartInteractiveModeInput {
+  const runSelectMenu = input.runSelectMenu ?? runTerminalSelectMenu;
   const userCommandsRuntime = createRunStartUserCommandsRuntime({
     homeDir: input.homeDir,
     writeStdout: input.output.writeStdout,
+    runSelectMenu,
     executeTurn: input.executeTurn,
     markFailureObserved: input.runtimeState.markFailureObserved,
   });
@@ -489,10 +492,10 @@ export function createRunStartInteractiveModeInput(
       return;
     }
     const actionMenu = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Status Line",
         subtitle: `Session: ${input.runtimeState.getSessionKey()}`,
-        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "current",
@@ -518,7 +521,6 @@ export function createRunStartInteractiveModeInput(
       }),
     );
     if (actionMenu.kind === "cancelled") {
-      input.output.writeStdout("[status] menu cancelled.\n\n");
       return;
     }
     if (actionMenu.item.id === "current") {
@@ -528,10 +530,10 @@ export function createRunStartInteractiveModeInput(
     if (actionMenu.item.id === "theme") {
       const current = getStatusLineConfig().theme;
       const pickedTheme = await withInputPaused(() =>
-        runTerminalSelectMenu({
+        runSelectMenu({
           title: "Status Theme",
           subtitle: `Current: ${current}`,
-          hint: "Select theme, Enter/Space to apply, Esc to cancel.",
+          hint: "↑/↓ 选择 · Enter 应用 · Esc 返回",
           items: [
             {
               id: "plain",
@@ -555,7 +557,6 @@ export function createRunStartInteractiveModeInput(
         }),
       );
       if (pickedTheme.kind === "cancelled") {
-        input.output.writeStdout("[status] theme change cancelled.\n\n");
         return;
       }
       const theme = resolveStatusTheme(pickedTheme.item.id);
@@ -570,10 +571,10 @@ export function createRunStartInteractiveModeInput(
     if (actionMenu.item.id === "layout") {
       const current = getStatusLineConfig().layoutMode;
       const pickedLayout = await withInputPaused(() =>
-        runTerminalSelectMenu({
+        runSelectMenu({
           title: "Status Layout",
           subtitle: `Current: ${current}`,
-          hint: "Select layout, Enter/Space to apply, Esc to cancel.",
+          hint: "↑/↓ 选择 · Enter 应用 · Esc 返回",
           items: [
             {
               id: "adaptive",
@@ -597,7 +598,6 @@ export function createRunStartInteractiveModeInput(
         }),
       );
       if (pickedLayout.kind === "cancelled") {
-        input.output.writeStdout("[status] layout change cancelled.\n\n");
         return;
       }
       const layoutMode = resolveStatusLayoutMode(pickedLayout.item.id);
@@ -611,10 +611,10 @@ export function createRunStartInteractiveModeInput(
     }
     const config = getStatusLineConfig();
     const pickedSegment = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Status Segment",
         subtitle: "Select segment to change",
-        hint: "Select segment, Enter/Space to continue, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 继续 · Esc 返回",
         items: config.segmentOrder.map((segmentId) => ({
           id: segmentId,
           label: segmentId,
@@ -623,7 +623,6 @@ export function createRunStartInteractiveModeInput(
       }),
     );
     if (pickedSegment.kind === "cancelled") {
-      input.output.writeStdout("[status] segment selection cancelled.\n\n");
       return;
     }
     const segmentId = normalizeStatusSegmentId(pickedSegment.item.id);
@@ -635,10 +634,10 @@ export function createRunStartInteractiveModeInput(
     }
     const currentEnabled = getStatusLineConfig().segments[segmentId];
     const pickedState = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: `Status Segment: ${segmentId}`,
         subtitle: `Current: ${currentEnabled ? "on" : "off"}`,
-        hint: "Select state, Enter/Space to apply, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 应用 · Esc 返回",
         items: [
           {
             id: "on",
@@ -656,7 +655,6 @@ export function createRunStartInteractiveModeInput(
       }),
     );
     if (pickedState.kind === "cancelled") {
-      input.output.writeStdout("[status] segment update cancelled.\n\n");
       return;
     }
     const enabled = pickedState.item.id === "on";
@@ -796,14 +794,14 @@ export function createRunStartInteractiveModeInput(
     const query = compactSingleLine(historyInput.currentInput, 120).trim();
     const filtered = filterHistorySearchCandidates(candidates, query);
     const effectiveCandidates = filtered.length > 0 ? filtered : candidates;
-    const picked = await runTerminalSelectMenu({
+    const picked = await runSelectMenu({
       title: "History Search (Ctrl+R)",
       subtitle: query.length >= 2
         ? filtered.length > 0
           ? `query: ${compactSingleLine(query, 60)} · matched: ${String(filtered.length)}`
           : `query: ${compactSingleLine(query, 60)} · no exact match, showing recent history`
         : "Recent prompts and replies",
-      hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to fill input, Esc to cancel.",
+      hint: "↑/↓ 选择 · Enter 填入 · Esc 返回",
       items: effectiveCandidates
         .slice(0, 30)
         .map((candidate) => ({

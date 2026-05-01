@@ -3995,6 +3995,7 @@ audit_redact_secrets = false
         .expect("write create should succeed");
         assert_eq!(payload["tool"].as_str(), Some("write"));
         assert_eq!(payload["operation"].as_str(), Some("create"));
+        assert_eq!(payload["line_count"].as_u64(), Some(2));
         assert_eq!(payload["line_ending"].as_str(), Some("lf"));
         assert_eq!(payload["bom_written"].as_bool(), Some(false));
         assert_eq!(payload["created_parent_dirs"].as_bool(), Some(false));
@@ -4022,6 +4023,7 @@ audit_redact_secrets = false
         )
         .expect("write create should succeed");
         assert_eq!(payload["operation"].as_str(), Some("create"));
+        assert_eq!(payload["line_count"].as_u64(), Some(2));
         assert_eq!(payload["line_ending"].as_str(), Some("crlf"));
         assert_eq!(payload["bom_written"].as_bool(), Some(true));
         assert_eq!(payload["created_parent_dirs"].as_bool(), Some(true));

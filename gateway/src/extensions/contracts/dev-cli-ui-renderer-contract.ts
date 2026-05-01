@@ -258,9 +258,9 @@ const planApprovalMenuInput: TerminalSelectMenuInput = {
     {
       id: "keep_planning",
       label: "No, keep planning",
-      description: "shift+tab to approve with this feedback",
+      description: "Shift+Tab 可带反馈批准执行",
       input: {
-        placeholder: "Tell Grobot what to change",
+        placeholder: "告诉 Grobot 需要调整什么",
         showLabelWithValue: true,
         labelValueSeparator: ": ",
         resetCursorOnUpdate: true,
@@ -688,33 +688,33 @@ const payload = {
   plan_approval_menu_title_is_not_plan_color_flooded:
     !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1mReady to code?"),
   plan_approval_menu_has_subtitle:
-    planApprovalMenuPlainText.includes("Review the plan before execution."),
+    planApprovalMenuPlainText.includes("执行前请确认计划。"),
   plan_approval_menu_embeds_plan_markdown:
     planApprovalMenuPlainText.includes("# Contract Plan")
     && planApprovalMenuPlainText.includes("## Validation"),
   plan_approval_menu_separates_plan_actions_and_footer:
     planApprovalDividerRows.length >= 2,
   plan_approval_menu_has_reference_prompt:
-    planApprovalMenuPlainText.includes("Would you like to proceed?"),
+    planApprovalMenuPlainText.includes("是否开始执行？"),
   plan_approval_menu_uses_sticky_footer_order:
-    planApprovalMenuPlainText.indexOf("Would you like to proceed?")
+    planApprovalMenuPlainText.indexOf("是否开始执行？")
       > planApprovalMenuPlainText.indexOf("## Validation")
-    && planApprovalMenuPlainText.indexOf("ctrl-g to edit in vim")
+    && planApprovalMenuPlainText.indexOf("Ctrl-G 编辑计划")
       > planApprovalMenuPlainText.indexOf("No, keep planning"),
   plan_approval_menu_has_yes_no_options:
     planApprovalMenuPlainText.includes("❯ Yes, Implement the plan.")
     && planApprovalMenuPlainText.includes("No, keep planning"),
   plan_approval_menu_has_ctrl_g_edit_hint:
-    planApprovalMenuPlainText.includes("ctrl-g to edit in vim")
+    planApprovalMenuPlainText.includes("Ctrl-G 编辑计划 · vim")
     && planApprovalMenuPlainText.includes(".grobot/plans/demo/001-contract-plan.md"),
   plan_approval_menu_shows_saved_after_external_edit:
-    stripAnsi(planApprovalEditedPlain).includes("✓Plan saved!"),
+    stripAnsi(planApprovalEditedPlain).includes("✓ Plan saved"),
   plan_approval_menu_shows_keep_planning_feedback_hint:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("shift+tab to approve with this feedback"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("Shift+Tab 可带反馈批准执行"),
   plan_approval_menu_shows_inline_feedback_input:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("No, keep planning: Tell Grobot what to change"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("No, keep planning: 告诉 Grobot 需要调整什么"),
   plan_approval_menu_shows_inline_feedback_cursor:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to change▌"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("告诉 Grobot 需要调整什么▌"),
   plan_approval_menu_preserves_feedback_after_reopen:
     stripAnsi(planApprovalDraftFeedbackPlain).includes("No, keep planning: tighten validation▌"),
   plan_approval_menu_uses_plan_mode_color:
@@ -722,22 +722,24 @@ const payload = {
   plan_approval_menu_has_no_default_thin_pointer:
     !planApprovalMenuPlainText.includes("›"),
   plan_approval_empty_uses_exit_title:
-    emptyPlanApprovalPlainText.includes("Exit plan mode?"),
+    emptyPlanApprovalPlainText.includes("退出 plan mode?"),
   plan_approval_empty_uses_reference_copy:
-    emptyPlanApprovalPlainText.includes("Grobot wants to exit plan mode"),
+    emptyPlanApprovalPlainText.includes("Grobot 将退出 plan mode"),
   plan_approval_empty_has_yes_no_only:
     emptyPlanApprovalPlainText.includes("❯ Yes")
     && emptyPlanApprovalPlainText.includes("  No")
     && !emptyPlanApprovalPlainText.includes("Implement the plan")
     && !emptyPlanApprovalPlainText.includes("No, keep planning"),
   plan_approval_empty_omits_plan_markdown:
-    !emptyPlanApprovalPlainText.includes("Here is Grobot's plan:")
+    !emptyPlanApprovalPlainText.includes("Grobot 的计划：")
     && !emptyPlanApprovalPlainText.includes("No plan found.")
-    && !emptyPlanApprovalPlainText.includes("Would you like to proceed?")
+    && !emptyPlanApprovalPlainText.includes("是否开始执行？")
     && !emptyPlanApprovalPlainText.includes("ctrl-g to edit"),
   model_picker_direct_render_uses_model_visible_count:
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),
+  model_picker_direct_render_shows_hidden_count:
+    stripAnsi(directLargeModelPickerPlain).includes("and 2 more…"),
   model_picker_direct_render_has_no_row_scroll_marker:
     renderedMenuRows(directLargeModelPickerPlain).every((line) => {
       const trimmed = line.trimStart();

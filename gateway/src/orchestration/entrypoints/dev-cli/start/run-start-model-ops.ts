@@ -5,7 +5,9 @@ import {
 } from "../provider-probe";
 import {
   runTerminalSelectMenu,
+  type TerminalSelectMenuInput,
   type TerminalSelectMenuItem,
+  type TerminalSelectMenuResult,
 } from "./run-start-io";
 import {
   persistRunStartModelToConfig,
@@ -56,6 +58,9 @@ interface CreateRunStartModelOpsInput {
   getActiveSessionId(): string;
   getActiveSessionMetadata?(): ActiveSessionMetadata | undefined;
   writeStdout(message: string): void;
+  runSelectMenu?(
+    menu: TerminalSelectMenuInput,
+  ): Promise<TerminalSelectMenuResult>;
   listProviderModelsByConnection?(
     baseUrl: string,
     apiKey: string,
@@ -228,6 +233,7 @@ export function createRunStartModelOps(
 ): RunStartModelOps {
   const listProviderModelsByConnection =
     input.listProviderModelsByConnection ?? listProviderModels;
+  const runSelectMenu = input.runSelectMenu ?? runTerminalSelectMenu;
   const modelContextWindowTokensCache = new Map<string, number>();
   const resolvePrimaryModelTarget = (): PrimaryModelTarget => {
     if (input.runtimeProviderChain.length > 0) {
@@ -500,11 +506,11 @@ export function createRunStartModelOps(
       currentModel: available.currentModel,
     });
     const picked = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Select model",
         subtitle:
           "Switch between Grobot models. Applies to this session and future Grobot sessions. For other/previous model names, use /model use <id>.",
-        hint: "Enter to confirm · Esc to exit",
+        hint: "Enter 确认 · Esc 返回",
         items,
         initialIndex,
         variant: "model_picker",
@@ -520,7 +526,6 @@ export function createRunStartModelOps(
       }),
     );
     if (picked.kind === "cancelled") {
-      input.writeStdout("[model] picker cancelled.\n\n");
       return;
     }
     await switchModel(picked.item.id, available);

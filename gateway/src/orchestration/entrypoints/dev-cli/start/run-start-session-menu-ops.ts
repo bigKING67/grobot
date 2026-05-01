@@ -12,6 +12,8 @@ import { type RewindRestoreMode } from "./run-start-rewind-store";
 
 interface CreateRunStartSessionMenuOpsInput {
   sessionNamespaceKey: string;
+  runLinePrompt?: typeof runTerminalLinePrompt;
+  runSelectMenu?: typeof runTerminalSelectMenu;
   listSessions(): RunStartSessionSummary[];
   getActiveSessionId(): string;
   printSessionOverview(): void;
@@ -72,6 +74,9 @@ function parseFileFilterInput(value: string): string[] | undefined {
 export function createRunStartSessionMenuOps(
   input: CreateRunStartSessionMenuOpsInput,
 ): RunStartSessionMenuOps {
+  const runLinePrompt = input.runLinePrompt ?? runTerminalLinePrompt;
+  const runSelectMenu = input.runSelectMenu ?? runTerminalSelectMenu;
+
   const openRewindMenu = async (
     sessions: readonly RunStartSessionSummary[],
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
@@ -85,17 +90,17 @@ export function createRunStartSessionMenuOps(
       sessionNamespaceKey: input.sessionNamespaceKey,
       sessions,
       withInputPaused,
+      runSelectMenu,
     });
     if (pickedSession.kind !== "session") {
-      input.writeStdout("[rewind] picker cancelled.\n\n");
       return;
     }
     const sessionId = pickedSession.sessionId;
     const modePick = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Rewind Mode",
         subtitle: `Session: ${sessionId}`,
-        hint: "Choose summarize or restore mode. Enter/Space to confirm, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "summarize",
@@ -121,7 +126,6 @@ export function createRunStartSessionMenuOps(
       }),
     );
     if (modePick.kind === "cancelled") {
-      input.writeStdout("[rewind] mode selection cancelled.\n\n");
       return;
     }
     const mode = resolveModeFromMenuId(modePick.item.id);
@@ -143,10 +147,10 @@ export function createRunStartSessionMenuOps(
       return;
     }
     const pickedCheckpoint = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Rewind Checkpoint",
         subtitle: `Session: ${sessionId}`,
-        hint: "Select checkpoint to restore. Enter/Space to confirm, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "__latest__",
@@ -163,7 +167,6 @@ export function createRunStartSessionMenuOps(
       }),
     );
     if (pickedCheckpoint.kind === "cancelled") {
-      input.writeStdout("[rewind] checkpoint selection cancelled.\n\n");
       return;
     }
     const checkpointId = pickedCheckpoint.item.id === "__latest__"
@@ -172,12 +175,11 @@ export function createRunStartSessionMenuOps(
     let fileFilter: string[] | undefined;
     if (mode === "code") {
       const fileFilterInput = await withInputPaused(() =>
-        runTerminalLinePrompt({
+        runLinePrompt({
           prompt: "[rewind] files filter (optional, comma-separated)> ",
         }),
       );
       if (fileFilterInput.kind === "cancelled") {
-        input.writeStdout("[rewind] file filter input cancelled.\n\n");
         return;
       }
       fileFilter = parseFileFilterInput(fileFilterInput.value);
@@ -196,10 +198,10 @@ export function createRunStartSessionMenuOps(
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<void> => {
     const picked = await withInputPaused(() =>
-      runTerminalSelectMenu({
+      runSelectMenu({
         title: "Session Actions",
         subtitle: `Namespace: ${input.sessionNamespaceKey}`,
-        hint: "Use ↑/↓ (or j/k, Ctrl+n/p), number to select directly, Enter/Space to confirm, Esc to cancel.",
+        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
         items: [
           {
             id: "create",
@@ -235,7 +237,6 @@ export function createRunStartSessionMenuOps(
       }),
     );
     if (picked.kind === "cancelled") {
-      input.writeStdout("[session] menu cancelled.\n\n");
       return;
     }
     if (picked.item.id === "overview") {
@@ -264,9 +265,9 @@ export function createRunStartSessionMenuOps(
         sessionNamespaceKey: input.sessionNamespaceKey,
         sessions,
         withInputPaused,
+        runSelectMenu,
       });
       if (continued.kind === "cancelled") {
-        input.writeStdout("[session] picker cancelled.\n\n");
         return;
       }
       if (continued.kind === "new") {
@@ -286,9 +287,9 @@ export function createRunStartSessionMenuOps(
       sessionNamespaceKey: input.sessionNamespaceKey,
       sessions,
       withInputPaused,
+      runSelectMenu,
     });
     if (pickedSession.kind !== "session") {
-      input.writeStdout("[session] picker cancelled.\n\n");
       return;
     }
     const switched = pickerMode === "resume"
@@ -339,9 +340,9 @@ export function createRunStartSessionMenuOps(
       sessionNamespaceKey: input.sessionNamespaceKey,
       sessions,
       withInputPaused,
+      runSelectMenu,
     });
     if (picked.kind === "cancelled") {
-      input.writeStdout("[session] picker cancelled.\n\n");
       return;
     }
     if (picked.kind === "new") {

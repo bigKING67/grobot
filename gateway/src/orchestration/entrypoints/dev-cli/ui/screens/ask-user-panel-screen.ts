@@ -73,11 +73,23 @@ function renderFooterAction(shortcut: string, label: string, maxWidth: number): 
 
 function buildProgressText(view: Extract<AskUserQuestionnaireView, { kind: "question" }>): string {
   const unanswered = Math.max(0, view.totalCount - view.answeredCount);
-  const base = `Question ${String(view.currentQuestionNumber)}/${String(view.totalCount)}`;
+  const base = `问题 ${String(view.currentQuestionNumber)}/${String(view.totalCount)}`;
   if (unanswered <= 0) {
     return base;
   }
-  return `${base} (${String(unanswered)} unanswered)`;
+  return `${base} (${String(unanswered)} 项未回答)`;
+}
+
+function renderOptionLabel(item: AskUserQuestionnaireOptionItem): string {
+  if (item.kind === "other" && sanitizePanelText(item.label, item.id).toLowerCase() === "other") {
+    return "自定义";
+  }
+  return sanitizePanelText(item.label, item.id);
+}
+
+function renderOtherPlaceholder(value: string | undefined): string {
+  const placeholder = sanitizePanelText(value, "输入自定义回复");
+  return placeholder.toLowerCase() === "type something." ? "输入自定义回复" : placeholder;
 }
 
 function renderTab(tab: AskUserQuestionnaireTab, activeSubmit: boolean): string {
@@ -172,11 +184,11 @@ function renderOptionRows(input: {
     const active = index === input.activeOptionIndex || item.selected;
     const markerPlain = active ? TERMINAL_SYMBOL.pointer : " ";
     const ordinalPlain = `${String(item.optionIndex + 1)}.`;
-    const labelPlain = sanitizePanelText(item.label, item.id);
+    const labelPlain = renderOptionLabel(item);
     const otherInputPlain = item.kind === "other"
       ? sanitizePanelText(item.inputValue).length > 0
         ? sanitizePanelText(item.inputValue)
-        : sanitizePanelText(item.placeholder, "Type something.")
+        : renderOtherPlaceholder(item.placeholder)
       : "";
     const leftBudget = columns.hasDescriptions
       ? columns.labelWidth
@@ -239,12 +251,12 @@ function renderNotesLine(input: {
   active: boolean;
   maxWidth: number;
 }): string {
-  const label = terminalStyle.accent("Notes:");
+  const label = terminalStyle.accent("备注:");
   const rawValue = sanitizeTerminalDisplayText(input.value ?? "");
   const displayValue = rawValue.trim().length > 0
     ? rawValue
-    : "press n to add notes";
-  const available = Math.max(8, input.maxWidth - measureDisplayWidth("Notes:  "));
+    : "按 n 添加备注";
+  const available = Math.max(8, input.maxWidth - measureDisplayWidth("备注:  "));
   const text = fitPlainLine(displayValue, available);
   const renderedValue = input.active || rawValue.trim().length > 0
     ? terminalStyle.accent(text)
@@ -337,21 +349,21 @@ function renderQuestionPanel(input: {
   })}`);
   lines.push("");
   lines.push(`  ${renderMutedRule(contentWidth)}`);
-  lines.push(`  ${renderFooterAction("c", "Chat about this", contentWidth)}`);
+  lines.push(`  ${renderFooterAction("c", "继续对话补充", contentWidth)}`);
   if (input.planMode) {
-    lines.push(`  ${renderFooterAction("s", "Skip interview and plan immediately", contentWidth)}`);
+    lines.push(`  ${renderFooterAction("s", "跳过访谈，直接进入计划", contentWidth)}`);
   }
   lines.push("");
   const standardOptionCount = input.view.optionItems.filter((item) => item.kind === "option").length;
   const maxDirect = Math.min(standardOptionCount, 9);
   const directHint = maxDirect > 0
-    ? ` · ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} 直选 · Other 输入`
+    ? ` · ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} 直选 · 自定义输入`
     : "";
-  const primaryHint = `Enter to select${directHint} · Esc to cancel`;
-  const actionHint = input.planMode ? " · c chat · s skip" : " · c chat";
+  const primaryHint = `Enter 确认${directHint} · Esc 返回输入框`;
+  const actionHint = input.planMode ? " · c 对话 · s 跳过" : " · c 对话";
   const secondaryHint = input.view.totalCount > 1
-    ? `↑/↓ to navigate · n to add notes · ←/→ switch${actionHint}`
-    : `↑/↓ to navigate · n to add notes${actionHint}`;
+    ? `↑/↓ 选择 · n 添加备注 · ←/→ 切换${actionHint}`
+    : `↑/↓ 选择 · n 添加备注${actionHint}`;
   lines.push(`  ${terminalStyle.muted(fitPlainLine(primaryHint, contentWidth))}`);
   lines.push(`  ${terminalStyle.muted(fitPlainLine(secondaryHint, contentWidth))}`);
   return lines;
@@ -365,7 +377,7 @@ function renderReviewPanel(input: {
   const lines: string[] = [];
   const contentWidth = input.surfaceWidth - 2;
   lines.push(`  ${renderPanelTitle(input.view.title, contentWidth)}`);
-  lines.push(`  ${terminalStyle.muted(`Question review (${String(input.view.unansweredCount)} unanswered)`)}`);
+  lines.push(`  ${terminalStyle.muted(`问题复核 (${String(input.view.unansweredCount)} 项未回答)`)}`);
   const navigationLine = renderNavigationLine({
     tabs: [],
     maxWidth: contentWidth,

@@ -86,8 +86,8 @@ async function run(): Promise<void> {
     check("tty_disambiguation_pick_has_no_messages", ttyPicked.messages.length === 0),
     check("tty_disambiguation_cancel_clears_target", typeof ttyCancelled.targetSessionId === "undefined"),
     check(
-      "tty_disambiguation_cancel_has_notice",
-      (ttyCancelled.messages.join("")).includes("startup resume picker cancelled"),
+      "tty_disambiguation_cancel_is_silent",
+      ttyCancelled.messages.length === 0,
     ),
     check("non_tty_does_not_call_picker", nonTtyPickerCallCount === 0),
     check("non_tty_keeps_auto_selected_target", nonTtyAuto.targetSessionId === "session-legacy"),

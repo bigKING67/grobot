@@ -6,8 +6,8 @@ const ASK_USER_OPTION_ITEM_CHAR_LIMIT = 48;
 const ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT = 120;
 const ASK_USER_DISPLAY_OPTION_LIMIT = 6;
 const ASK_USER_PENDING_SUMMARY_LIMIT = 96;
-const ASK_USER_OTHER_OPTION_LABEL = "Other";
-const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type something.";
+const ASK_USER_OTHER_OPTION_LABEL = "自定义";
+const ASK_USER_OTHER_OPTION_PLACEHOLDER = "输入自定义回复";
 
 function compactSingleLine(value: string, maxChars: number): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -119,7 +119,7 @@ export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
       lines.push(`    ... 还有 ${String(hiddenCount)} 项`);
     }
     lines.push("");
-    lines.push("  Enter 打开选择菜单 · 数字直接回复 · Other 输入。");
+    lines.push("  Enter 打开选择菜单 · 数字直接回复 · 自定义输入。");
   } else {
     const defaultOnTimeout = compactSingleLine(
       envelope.defaultOnTimeout,
@@ -140,7 +140,7 @@ export function buildAskUserPendingSummary(envelope: AskUserEnvelope): string {
   const standardMaxOption = Math.min(envelope.options.length, 9);
   const numericHint = standardMaxOption > 1 ? `1-${String(standardMaxOption)}` : "1";
   return compactSingleLine(
-    `Enter 打开选择 · ${numericHint} 直选 · Other 输入`,
+    `Enter 打开选择 · ${numericHint} 直选 · 自定义输入`,
     ASK_USER_PENDING_SUMMARY_LIMIT,
   );
 }

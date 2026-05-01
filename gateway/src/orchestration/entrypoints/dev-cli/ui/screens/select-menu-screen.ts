@@ -121,13 +121,16 @@ interface PreparedRenderMenu {
   activeIndex: number;
 }
 
-function resolveMenuPrimaryAction(hintRaw: string): "select" | "apply" | "continue" {
+function resolveMenuPrimaryAction(hintRaw: string): "select" | "apply" | "continue" | "fill" {
   const hint = hintRaw.toLowerCase();
-  if (hint.includes("apply")) {
+  if (hint.includes("apply") || hint.includes("应用")) {
     return "apply";
   }
-  if (hint.includes("continue")) {
+  if (hint.includes("continue") || hint.includes("继续")) {
     return "continue";
+  }
+  if (hint.includes("fill") || hint.includes("填入")) {
+    return "fill";
   }
   return "select";
 }
@@ -138,7 +141,13 @@ function buildCompactMenuHint(hintRaw?: string): string {
     return fallback;
   }
   const action = resolveMenuPrimaryAction(hintRaw);
-  const actionLabel = action === "apply" ? "应用" : action === "continue" ? "继续" : "确认";
+  const actionLabel = action === "apply"
+    ? "应用"
+    : action === "continue"
+      ? "继续"
+      : action === "fill"
+        ? "填入"
+        : "确认";
   return `↑/↓ 选择 · Enter ${actionLabel} · Esc 返回`;
 }
 
@@ -607,6 +616,11 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
     theme,
   }));
 
+  const hiddenCount = Math.max(0, viewport.totalCount - viewport.visibleCount);
+  if (hiddenCount > 0) {
+    lines.push(`   ${theme.color("muted", `and ${String(hiddenCount)} more…`)}`);
+  }
+
   lines.push("");
   lines.push(theme.color("muted", `  ${hint}`));
   return lines.join("\n");
@@ -720,13 +734,13 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     input.menu.planApprovalMeta?.emptyPlan === true || planContent.trim().length === 0;
   if (isEmptyPlanApproval) {
     const emptyTitle = input.menu.planApprovalMeta?.emptyPlan === true
-      ? "Exit plan mode?"
-      : sanitizeMenuText(input.menu.title, "Exit plan mode?");
+      ? "退出 plan mode?"
+      : sanitizeMenuText(input.menu.title, "退出 plan mode?");
     const lines: string[] = [];
     const optionLabelBudget = Math.max(12, surfaceWidth - 4);
     lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
     lines.push(`  ${theme.bold(truncateDisplayWidth(emptyTitle, surfaceWidth))}`);
-    lines.push(`  ${truncateDisplayWidth(`${agentName} wants to exit plan mode`, surfaceWidth)}`);
+    lines.push(`  ${truncateDisplayWidth(`${agentName} 将退出 plan mode`, surfaceWidth)}`);
     lines.push("");
     for (let index = 0; index < input.menu.items.length; index += 1) {
       const item = input.menu.items[index];
@@ -748,12 +762,12 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     lines.push(theme.color("muted", `  ${truncateDisplayWidth(hintBase, surfaceWidth)}`));
     return lines.join("\n");
   }
-  const subtitle = sanitizeMenuText(input.menu.subtitle, "Review the plan before execution.");
+  const subtitle = sanitizeMenuText(input.menu.subtitle, "执行前请确认计划。");
   const editHint = planPath.length > 0
-    ? `ctrl-g to edit in ${editorName} · ${planPath}`
-    : `ctrl-g to edit in ${editorName}`;
+    ? `Ctrl-G 编辑计划 · ${editorName} · ${planPath}`
+    : `Ctrl-G 编辑计划 · ${editorName}`;
   const editHintWithSaveState = input.menu.planApprovalMeta?.planEdited
-    ? `${editHint} · ✓Plan saved!`
+    ? `${editHint} · ✓ Plan saved`
     : editHint;
   const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["No plan found."];
   const optionLabelBudget = Math.max(12, surfaceWidth - 4);
@@ -767,7 +781,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   lines.push(`  ${theme.bold(truncateDisplayWidth(title, surfaceWidth))}`);
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(subtitle, surfaceWidth)}`));
   lines.push(sectionDivider);
-  lines.push(`  Here is ${agentName}'s plan:`);
+  lines.push(`  ${agentName} 的计划：`);
   lines.push("");
   for (const rawLine of planLines) {
     const sanitizedLine = sanitizeTerminalDisplayText(rawLine).trimEnd();
@@ -780,7 +794,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   lines.push("");
 
   lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
-  lines.push(theme.color("muted", "  Would you like to proceed?"));
+  lines.push(theme.color("muted", "  是否开始执行？"));
   lines.push("");
 
   for (let index = 0; index < input.menu.items.length; index += 1) {
