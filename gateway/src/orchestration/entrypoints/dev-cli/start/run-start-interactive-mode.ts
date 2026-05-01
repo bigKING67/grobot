@@ -903,11 +903,11 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
               ? [
                 {
                   id: "approve",
-                  label: "Yes",
+                  label: "是，退出",
                 },
                 {
                   id: "keep_planning",
-                  label: "No",
+                  label: "否，继续规划",
                 },
               ]
               : [

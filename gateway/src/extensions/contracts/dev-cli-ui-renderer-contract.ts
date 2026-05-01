@@ -270,7 +270,7 @@ const planApprovalMenuInput: TerminalSelectMenuInput = {
 };
 
 const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
-  title: "Exit plan mode?",
+  title: "退出 plan mode?",
   hint: "Enter 确认 · Esc 返回输入框",
   variant: "plan_approval",
   visibleOptionCount: 2,
@@ -284,11 +284,11 @@ const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
   items: [
     {
       id: "approve",
-      label: "Yes",
+      label: "是，退出",
     },
     {
       id: "keep_planning",
-      label: "No",
+      label: "否，继续规划",
     },
   ],
 };
@@ -726,10 +726,10 @@ const payload = {
   plan_approval_empty_uses_reference_copy:
     emptyPlanApprovalPlainText.includes("Grobot 将退出 plan mode"),
   plan_approval_empty_has_yes_no_only:
-    emptyPlanApprovalPlainText.includes("❯ Yes")
-    && emptyPlanApprovalPlainText.includes("  No")
+    emptyPlanApprovalPlainText.includes("❯ 是，退出")
+    && emptyPlanApprovalPlainText.includes("  否，继续规划")
     && !emptyPlanApprovalPlainText.includes("Implement the plan")
-    && !emptyPlanApprovalPlainText.includes("继续完善计划"),
+    && !emptyPlanApprovalPlainText.includes("确认，开始实现计划"),
   plan_approval_empty_omits_plan_markdown:
     !emptyPlanApprovalPlainText.includes("Grobot 的计划：")
     && !emptyPlanApprovalPlainText.includes("未找到计划。")

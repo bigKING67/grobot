@@ -370,7 +370,7 @@ function buildPlanStatusPreviewLines(content: string): string[] {
 function compactPlanApprovalFingerprint(value: string | undefined): string {
   const normalized = value?.trim() ?? "";
   if (!normalized) {
-    return "<missing>";
+    return "<缺失>";
   }
   return normalized.slice(0, PLAN_APPROVAL_FINGERPRINT_CHARS);
 }
@@ -592,7 +592,7 @@ function buildPlanSavedToHint(input: {
   return `计划已保存: ${formatHumanPlanFilePath({
     workDir: input.workDir,
     planPath: input.planPath,
-  })} · /plan open to edit`;
+  })} · /plan open 编辑`;
 }
 
 function buildReadyToCodeSurface(input: {
@@ -648,8 +648,8 @@ function buildExitPlanModeSurface(input: {
     "",
     "Grobot 将退出 plan mode",
     "",
-    "❯ Yes",
-    "  No",
+    "❯ 是，退出",
+    "  否，继续规划",
     "",
     `编辑: /plan open · ${displayPath}`,
     "",
@@ -679,7 +679,7 @@ function formatHumanPlanFilePath(input: {
 }): string {
   const rawPath = input.planPath?.trim();
   if (!rawPath) {
-    return "not available";
+    return "不可用";
   }
   const resolvedPlanPath = resolvePath(rawPath);
   const relativePlanPath = relativePath(input.workDir, resolvedPlanPath);
@@ -934,27 +934,27 @@ function formatCompactPlanReviewFinding(finding: {
   const section = finding.section ? `${finding.section}: ` : "";
   switch (finding.code) {
     case "placeholder_detected":
-      return `${section}replace required placeholders with concrete detail.`;
+      return `${section}将占位符替换为具体细节。`;
     case "validation_missing_command":
-      return `${section}add a real command or explicit manual verification step.`;
+      return `${section}增加真实命令或明确的手工验证步骤。`;
     case "validation_missing_expected_result":
-      return `${section}state the expected validation result.`;
+      return `${section}写明预期验证结果。`;
     case "risk_missing_item":
-      return `${section}name a concrete failure mode.`;
+      return `${section}写出具体失败模式。`;
     case "risk_too_vague":
-      return `${section}make the risk concrete instead of generic.`;
+      return `${section}把风险写具体，不要只写泛化描述。`;
     case "rollback_missing_item":
-      return `${section}add an executable rollback or recovery step.`;
+      return `${section}增加可执行的回滚或恢复步骤。`;
     case "rollback_too_vague":
-      return `${section}make the rollback action executable.`;
+      return `${section}把回滚动作写成可执行步骤。`;
     case "goal_too_vague":
-      return `${section}make the goal specific enough to verify.`;
+      return `${section}把目标写到可验证。`;
     case "scope_in_missing_items":
-      return `${section}list concrete in-scope files or modules.`;
+      return `${section}列出明确纳入范围的文件或模块。`;
     case "scope_out_missing_items":
-      return `${section}list explicit out-of-scope boundaries.`;
+      return `${section}列出明确不做的边界。`;
     default:
-      return `${section}${finding.code.replace(/_/g, " ")}.`;
+      return `${section}${finding.code.replace(/_/g, " ")}。`;
   }
 }
 
@@ -993,9 +993,9 @@ function buildCompactPlanReviewFailureSurface(input: {
   );
   const fixes = orderedFindings
     .slice(0, 4)
-    .map((finding) => `Fix: ${formatCompactPlanReviewFinding(finding)}`);
+    .map((finding) => `修复: ${formatCompactPlanReviewFinding(finding)}`);
   const omitted = input.findings.length > fixes.length
-    ? [`More: ${String(input.findings.length - fixes.length)} additional finding(s) hidden in compact mode.`]
+    ? [`还有 ${String(input.findings.length - fixes.length)} 条发现已在精简模式隐藏。`]
     : [];
   return [
     `${terminalStyle.planMode("●")} ${headline}`,
@@ -1510,25 +1510,38 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   const humanizePlanStatus = (status: string | undefined): string => {
     switch (status) {
       case "draft":
-        return "drafting";
+        return "草稿";
       case "ready":
-        return "ready for decision";
+        return "待确认";
       case "blocked":
-        return "blocked";
+        return "已阻止";
       case "review_failed":
-        return "needs refinement";
+        return "需完善";
       case "approved":
-        return "approved";
+        return "已确认";
       case "applying":
-        return "applying";
+        return "执行中";
       case "applied":
-        return "applied";
+        return "已执行";
       case "apply_failed":
-        return "apply failed";
+        return "执行失败";
       case "discarded":
-        return "discarded";
+        return "已取消";
       default:
-        return status && status.trim().length > 0 ? status : "unknown";
+        return status && status.trim().length > 0 ? status : "未知";
+    }
+  };
+
+  const humanizePlanPhase = (phase: string | undefined): string => {
+    switch (phase) {
+      case "drafting":
+        return "草稿";
+      case "awaiting_decision":
+        return "待确认";
+      case "applying":
+        return "执行中";
+      default:
+        return phase && phase.trim().length > 0 ? phase : "未知";
     }
   };
 
@@ -2023,14 +2036,14 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       if (!label) {
         return {
           ok: false,
-          reason: "benchmark candidate label cannot be empty",
+          reason: "benchmark 候选标签不能为空",
         };
       }
       const labelKey = label.toLowerCase();
       if (seenLabels.has(labelKey)) {
         return {
           ok: false,
-          reason: `duplicate benchmark label: ${label}`,
+          reason: `benchmark 候选标签重复: ${label}`,
         };
       }
       seenLabels.add(labelKey);
@@ -2063,7 +2076,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       });
       if (!presetResolved) {
         input.writeStderr(
-          `[plan-benchmark] unknown preset: ${preset} (supported: generic, core). try preset=core with assert-best=active\n\n`,
+          `[plan-benchmark] 未知 preset: ${preset}（支持: generic, core）。可尝试 preset=core 并设置 assert-best=active\n\n`,
         );
         return 1;
       }
@@ -2077,7 +2090,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           content = readFileSync(item.path, "utf8");
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
-          input.writeStderr(`[plan-benchmark] failed to read preset candidate label=${item.label} path=${item.path}: ${detail}\n\n`);
+          input.writeStderr(`[plan-benchmark] 读取 preset 候选失败 label=${item.label} path=${item.path}: ${detail}\n\n`);
           return 1;
         }
         const pushed = pushCandidate(item.label, content, item.path);
@@ -2087,12 +2100,12 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
       }
       if (presetPolicyWarning) {
-        input.writeStderr(`[plan-benchmark] preset policy warning: ${presetPolicyWarning}\n`);
+        input.writeStderr(`[plan-benchmark] preset policy 警告: ${presetPolicyWarning}\n`);
       }
       if (presetMissingLabels.length > 0) {
         input.writeStdout(`[plan-benchmark] preset=${presetResolved.preset} missing=${presetMissingLabels.join(",")}\n`);
         input.writeStdout(
-          "[plan-benchmark] tip: set GROBOT_PLAN_BENCHMARK_*_PATH or GROBOT_PLAN_BENCHMARK_PRESET_POLICY_PATH to provide missing baselines\n",
+          "[plan-benchmark] 提示: 设置 GROBOT_PLAN_BENCHMARK_*_PATH 或 GROBOT_PLAN_BENCHMARK_PRESET_POLICY_PATH 来提供缺失基线\n",
         );
       }
       if (checkOnly && presetMissingLabels.length > 0) {
@@ -2110,7 +2123,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         content = readFileSync(resolvedPath, "utf8");
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
-        input.writeStderr(`[plan-benchmark] failed to read candidate label=${item.label} path=${resolvedPath}: ${detail}\n\n`);
+        input.writeStderr(`[plan-benchmark] 读取候选失败 label=${item.label} path=${resolvedPath}: ${detail}\n\n`);
         return 1;
       }
       const pushed = pushCandidate(item.label, content, resolvedPath);
@@ -2129,7 +2142,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
           return 2;
         }
         input.writeStderr(
-          "[plan-benchmark] no candidates to compare after preset resolution. check preset paths or provide manual label=path.\n\n",
+          "[plan-benchmark] preset 解析后没有可比较候选。请检查 preset 路径，或手动提供 label=path。\n\n",
         );
         return 1;
       }
@@ -2139,7 +2152,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         return 2;
       }
-      input.writeStderr("[plan-benchmark] no candidates to compare. Provide benchmark candidates as <label=path> or create an active plan first.\n\n");
+      input.writeStderr("[plan-benchmark] 没有可比较候选。请用 <label=path> 提供候选，或先创建一个活动计划。\n\n");
       return 1;
     }
 
@@ -2203,7 +2216,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       if (renderCompactOutput) {
         input.writeStdout(
-          "plan_quality_benchmark_check_detail_hint: set GROBOT_PLAN_BENCHMARK_VERBOSE=1 and rerun this benchmark check for full diagnostics.\n",
+          "plan_quality_benchmark_check_detail_hint: 设置 GROBOT_PLAN_BENCHMARK_VERBOSE=1 并重新运行此 benchmark check 可查看完整诊断。\n",
         );
       } else {
         input.writeStdout(
@@ -2233,7 +2246,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      input.writeStderr(`[plan-benchmark] evaluate failed: ${detail}\n\n`);
+      input.writeStderr(`[plan-benchmark] 评估失败: ${detail}\n\n`);
       return 1;
     }
 
@@ -2298,7 +2311,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     if (renderCompactOutput) {
       input.writeStdout(`plan_quality_benchmark_rows_count: ${String(rowsPayload.length)}\n`);
       input.writeStdout(
-        "plan_quality_benchmark_detail_hint: set GROBOT_PLAN_BENCHMARK_VERBOSE=1 and rerun the benchmark for full rows.\n",
+        "plan_quality_benchmark_detail_hint: 设置 GROBOT_PLAN_BENCHMARK_VERBOSE=1 并重新运行 benchmark 可查看完整行数据。\n",
       );
     } else {
       input.writeStdout(`plan_quality_benchmark_rows: ${JSON.stringify(rowsPayload)}\n`);
@@ -2331,7 +2344,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      input.writeStderr(`[plan-benchmark] warning: failed to persist benchmark event: ${detail}\n`);
+      input.writeStderr(`[plan-benchmark] 警告: benchmark 事件持久化失败: ${detail}\n`);
     }
     if (expectedBest && benchmark.winner.label !== expectedBest) {
       input.writeStderr(
@@ -2435,7 +2448,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         }
         meta = input.runtimeState.getPlanMeta();
         if (!meta?.active_plan_id) {
-          input.writeStderr("[plan] failed to resolve active plan after entering plan mode.\n");
+          input.writeStderr("[plan] 进入 plan mode 后未找到活动计划。\n");
           return 1;
         }
       }
@@ -2449,7 +2462,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         note,
       );
       if (!appended.updated) {
-        input.writeStderr("[plan] failed to update active plan progress.\n");
+        input.writeStderr("[plan] 更新活动计划进度失败。\n");
         return 1;
       }
       writePlanActivityDiagnostic(options, "progress_saved");
@@ -2485,7 +2498,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         compactFailureSurface,
       });
       if (options?.showWorkingNotice) {
-        writeStdout(`${terminalStyle.planMode("●")} Planning...\n`);
+        writeStdout(`${terminalStyle.planMode("●")} 正在规划...\n`);
       }
       writePlanActivityDiagnostic(options, "model_planning", "phase=planning");
       let code: number;
@@ -2540,8 +2553,8 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
             source: "cli",
             detail: `${detailParts.join(" ")} degraded=true`,
           });
-          const hint = failureDecision.hint ?? "check semantic index and retrieval configuration.";
-          writeStdout(`Plan context degraded · draft kept. ${hint}\n\n`);
+          const hint = failureDecision.hint ?? "请检查 semantic index 和检索配置。";
+          writeStdout(`计划上下文已降级 · 草稿已保留。${hint}\n\n`);
           return 0;
         }
         const detailParts = [
@@ -2615,7 +2628,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const reviewedActive = resolveActivePlan();
       if (!reviewedActive) {
         input.writeStderr(
-          `[plan] review failed, active plan disappeared after update: ${meta.active_plan_id}\n`,
+          `[plan] 计划评审失败：更新后活动计划消失 plan_id=${meta.active_plan_id}\n`,
         );
         return 1;
       }
@@ -2623,7 +2636,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       const decisionState = await reviewActivePlanDecisionState(reviewedActive);
       if (!decisionState) {
         input.writeStderr(
-          `[plan] review failed, plan not found: ${meta.active_plan_id}\n`,
+          `[plan] 计划评审失败：未找到计划 plan_id=${meta.active_plan_id}\n`,
         );
         return 1;
       }
@@ -2677,7 +2690,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       } else {
         writePlanActivityDiagnostic(options, "plan_updated");
         writeStdout(buildPlanUpdatedSurface({
-          phase: planPhase,
+          phase: humanizePlanPhase(planPhase),
           nextAction: decisionState.recommendation.action,
         }));
       }
@@ -2696,7 +2709,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
   const cancelPlan = async (): Promise<number> => {
     const active = resolveActivePlan();
     if (!active) {
-      input.writeStdout("[plan] no active plan to cancel.\n\n");
+      input.writeStdout("[plan] 没有可取消的活动计划。\n\n");
       await persistPlanState("normal", undefined);
       return 0;
     }
@@ -2708,7 +2721,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     );
     if (!discarded) {
       input.writeStderr(
-        `[plan] cancel failed, plan not found: ${active.entry.plan_id}\n`,
+        `[plan] 取消失败：未找到计划 plan_id=${active.entry.plan_id}\n`,
       );
       return 1;
     }
@@ -2719,7 +2732,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       source: "cli",
       detail: "cancel command moved plan to discarded",
     });
-    input.writeStdout(`[plan] cancelled plan_id=${active.entry.plan_id}\n\n`);
+    input.writeStdout(`[plan] 已取消计划 plan_id=${active.entry.plan_id}\n\n`);
     return 0;
   };
 
@@ -2741,23 +2754,23 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       });
       const active = resolveActivePlan();
       if (!active) {
-        input.writeStderr("[plan] no active plan to apply. Use /plan <goal> first.\n\n");
+        input.writeStderr("[plan] 没有可执行的活动计划。请先使用 /plan <目标>。\n\n");
         return 1;
       }
       if (recovered.recovered) {
         writeStdout(
-          `[plan] recovered stale apply lock plan_id=${active.entry.plan_id} stale_ms=${String(recovered.stale_ms ?? 0)}\n`,
+          `[plan] 已恢复过期执行锁 plan_id=${active.entry.plan_id} stale_ms=${String(recovered.stale_ms ?? 0)}\n`,
         );
       }
       if (active.entry.status === "applying") {
         writeStdout(
-          `[plan] apply already in progress plan_id=${active.entry.plan_id}\n\n`,
+          `[plan] 计划正在执行中 plan_id=${active.entry.plan_id}\n\n`,
         );
         return 0;
       }
       if (active.entry.status === "applied" || active.entry.status === "discarded") {
         input.writeStderr(
-          `[plan] apply blocked by status=${active.entry.status} plan_id=${active.entry.plan_id}\n`,
+          `[plan] 当前状态不允许执行 status=${active.entry.status} plan_id=${active.entry.plan_id}\n`,
         );
         return 1;
       }
@@ -2823,7 +2836,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         if (!reviewedEntry) {
           input.writeStderr(
-            `[plan] review failed, plan not found: ${active.entry.plan_id}\n`,
+            `[plan] 计划评审失败：未找到计划 plan_id=${active.entry.plan_id}\n`,
           );
           return 1;
         }
@@ -2856,7 +2869,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
         );
         if (!approval.approved || !approval.entry || !approval.planHash || !approval.ticketId) {
           input.writeStderr(
-            `[plan] approval failed plan_id=${active.entry.plan_id}\n`,
+            `[plan] 计划确认失败 plan_id=${active.entry.plan_id}\n`,
           );
           return 1;
         }
@@ -2884,7 +2897,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       if (!applying) {
         input.writeStderr(
-          `[plan] failed to set applying status plan_id=${active.entry.plan_id}\n`,
+          `[plan] 设置执行中状态失败 plan_id=${active.entry.plan_id}\n`,
         );
         return 1;
       }
@@ -2894,7 +2907,7 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
       );
       if (!approvedHash || !approvalTicketId) {
         input.writeStderr(
-          `[plan] apply blocked: approval metadata missing for plan_id=${active.entry.plan_id}\n`,
+          `[plan] 缺少确认元数据，无法执行 plan_id=${active.entry.plan_id}\n`,
         );
         return 1;
       }

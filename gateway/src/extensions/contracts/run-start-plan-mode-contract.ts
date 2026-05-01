@@ -748,7 +748,7 @@ async function main(): Promise<void> {
       ready_approval_yes_matches_exit_plan_reference:
         approvalStdout.includes("计划已确认")
         && approvalStdout.includes("已确认 · 计划已保存: .grobot/plans/")
-        && approvalStdout.includes("/plan open to edit"),
+        && approvalStdout.includes("/plan open 编辑"),
       ready_approval_yes_exits_plan_mode:
         approvalRuntimeState.getPlanMode() === "normal",
       ready_approval_yes_with_feedback_adds_instruction:
@@ -878,7 +878,7 @@ async function main(): Promise<void> {
         && applyOutput.includes("开始按已确认快照实现"),
       apply_surface_has_saved_plan_hint:
         applyOutput.includes("已确认 · 计划已保存: .grobot/plans/")
-        && applyOutput.includes("/plan open to edit"),
+        && applyOutput.includes("/plan open 编辑"),
       apply_surface_renders_plan_card:
         applyOutput.includes("╭─ 将要实现的计划")
         && applyOutput.includes("│ Contract Plan")
@@ -904,11 +904,11 @@ async function main(): Promise<void> {
       plan_turn_stdout_override_captures_plan_scaffolding:
         stdoutOverrideResult === 0
         && overrideStdout.includes("已进入 plan mode")
-        && overrideStdout.includes("Planning...")
+        && overrideStdout.includes("正在规划...")
         && overrideStdout.includes("runtime output through override")
         && overrideStdout.includes("计划需要继续完善"),
       plan_turn_working_notice_has_plan_bullet:
-        stripAnsi(overrideStdout).includes("● Planning..."),
+        stripAnsi(overrideStdout).includes("● 正在规划..."),
       plan_turn_stdout_override_skips_fallback_writer: fallbackStdout.length === 0,
       compact_plan_turn_failure_surface_human:
         failureStderr.includes("计划更新失败")

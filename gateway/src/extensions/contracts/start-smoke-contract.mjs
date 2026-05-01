@@ -1036,7 +1036,7 @@ function runStartInteractiveDiagnosticsPlanFlow(repoRoot, mode) {
     has_plan_entry_goal_line: payload.stdout.includes("目标: diagnostics integration flow"),
     has_plan_entry_read_only_line:
       payload.stdout.includes("确认计划前，plan mode 只会读取和规划。"),
-    has_plan_entry_working_notice: payload.stdout.includes("Planning..."),
+    has_plan_entry_working_notice: payload.stdout.includes("正在规划..."),
     has_plan_draft_surface: payload.stdout.includes("计划草稿"),
     has_plan_draft_refine_hint:
       payload.stdout.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
@@ -1395,11 +1395,11 @@ function runStartPlanModeFlow(repoRoot) {
       !combinedOutput.includes("suggested_action_command: Implement the plan."),
     review_failed_validation_command_gap_seen:
       combinedOutput.includes("validation_missing_command")
-      || combinedOutput.includes("Validation: add a real command or explicit manual verification step."),
+      || combinedOutput.includes("Validation: 增加真实命令或明确的手工验证步骤。"),
     review_blocked_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
       || combinedOutput.includes("诊断: PLAN_REVIEW_BLOCKED"),
-    plan_cancelled_marker_seen: combinedOutput.includes("[plan] cancelled plan_id="),
+    plan_cancelled_marker_seen: combinedOutput.includes("[plan] 已取消计划 plan_id="),
     plan_final_status_line_seen: combinedOutput.includes(finalStatusMarkerCurrent),
     plan_open_script_notice_hidden:
       !combinedOutput.includes("/plan open is interactive-only")
@@ -1427,7 +1427,7 @@ function runStartPlanModeFlow(repoRoot) {
     plan_enter_surface_read_only_seen:
       commandResult.stdout.includes("确认计划前，plan mode 只会读取和规划。"),
     plan_enter_surface_working_notice_seen:
-      commandResult.stdout.includes("Planning..."),
+      commandResult.stdout.includes("正在规划..."),
     plan_enter_surface_hides_absolute_path:
       !commandResult.stdout.includes(`${workDir}/.grobot/plans`)
       && !commandResult.stdout.includes(activePlanPath),
