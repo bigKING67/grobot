@@ -1145,9 +1145,13 @@ export async function dispatchSlashCommand(
     }
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
-      handlers.writeStdout(
-        `[plan] plan mode 中暂不可用 ${commandName}。可使用 /plan、/plan open、/interrupt 或 /exit。\n\n`,
-      );
+      handlers.writeStdout(buildSlashNotice(
+        "plan mode 中暂不可用",
+        [
+          `命令: ${commandName}`,
+          "可使用: /plan、/plan open、/interrupt 或 /exit",
+        ],
+      ));
       return "continue";
     }
     return command.execute(payload);

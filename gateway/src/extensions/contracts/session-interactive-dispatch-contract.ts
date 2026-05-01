@@ -551,6 +551,10 @@ async function main(): Promise<void> {
     stdinIsTty: true,
     planMode: true,
   });
+  const blockedResumeInPlan = await runDispatchCase("/resume", {
+    stdinIsTty: true,
+    planMode: true,
+  });
   const planNaturalExecute = await runDispatchCase("Implement the plan.", { planMode: true });
   const planRefineInPlan = await runDispatchCase("继续补一轮验证细节", { planMode: true });
   const statusCurrent = await runDispatchCase("/status");
@@ -1019,6 +1023,13 @@ async function main(): Promise<void> {
       includesEvent(planGoalInPlan.events, "showPlanStatus"),
     plan_goal_tty_in_plan_skips_new_plan:
       !planGoalInPlan.events.some((event) => event.startsWith("enterPlan:")),
+    blocked_plan_mode_command_surface_is_human:
+      stripAnsi(blockedResumeInPlan.stdout).includes("plan mode 中暂不可用")
+      && stripAnsi(blockedResumeInPlan.stdout).includes("命令: /resume")
+      && stripAnsi(blockedResumeInPlan.stdout).includes("可使用: /plan、/plan open、/interrupt 或 /exit"),
+    blocked_plan_mode_command_avoids_legacy_marker:
+      !blockedResumeInPlan.stdout.includes("[plan]")
+      && !blockedResumeInPlan.stdout.includes("plan_id="),
     plan_natural_execute_in_plan_mode_dispatches_apply:
       includesEvent(planNaturalExecute.events, "applyPlan"),
     plan_natural_execute_in_plan_mode_skips_plan_turn:

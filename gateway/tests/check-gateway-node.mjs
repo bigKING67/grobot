@@ -824,6 +824,8 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.plan_goal_tty_enters_plan_directly, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_goal_tty_in_plan_shows_current_plan, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_goal_tty_in_plan_skips_new_plan, true);
+  assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_surface_is_human, true);
+  assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_avoids_legacy_marker, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_natural_execute_in_plan_mode_dispatches_apply, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_natural_execute_in_plan_mode_skips_plan_turn, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_refine_in_plan_mode_dispatches_plan_turn, true);
