@@ -987,6 +987,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_requires_disambiguation, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_candidates_exposed, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_notice_contains_tip, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_notice_is_human_surface, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_multiple_query_notice_no_autoselect_literal, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_no_match_fallback_targets_latest, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_no_match_fallback_has_notice, true);
@@ -994,6 +995,7 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionRewindStartupContractPayload.rewind_strict_exact_targeted, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_strict_no_match_skips_target, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_strict_no_match_has_skip_notice, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_startup_notices_avoid_legacy_marker, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_requested_accepts_false_literal_as_query, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_selector_keeps_false_literal, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_mode_default_is_both, true);
@@ -1038,6 +1040,10 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionRewindStartupDisambiguationContractPayload.non_tty_keeps_auto_selected_target, true);
   assert.equal(
     sessionRewindStartupDisambiguationContractPayload.non_tty_reports_auto_selected_notice,
+    true,
+  );
+  assert.equal(
+    sessionRewindStartupDisambiguationContractPayload.non_tty_notice_avoids_legacy_marker,
     true,
   );
   assert.equal(sessionRewindStartupDisambiguationContractPayload.no_disambiguation_keeps_target, true);
@@ -7552,6 +7558,10 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionMenuViewModelPayload.rewind_hint_is_reference_compact, true);
   assert.equal(sessionMenuViewModelPayload.session_hints_omit_secondary_key_chords, true);
   assert.equal(sessionMenuViewModelPayload.session_menu_ops_cancel_is_silent_source, true);
+  assert.equal(sessionMenuViewModelPayload.session_menu_ops_rewind_surface_avoids_legacy_marker, true);
+  assert.equal(sessionMenuViewModelPayload.session_menu_ops_rewind_file_filter_prompt_is_human, true);
+  assert.equal(sessionMenuViewModelPayload.session_ops_rewind_surface_avoids_legacy_marker, true);
+  assert.equal(sessionMenuViewModelPayload.rewind_store_summary_avoids_legacy_marker, true);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
   assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);
   assert.equal(Number(sessionMenuViewModelPayload.resume_initial_index), 0);

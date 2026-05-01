@@ -75,6 +75,14 @@ const sessionMenuOpsSource = readFileSync(
   "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-session-menu-ops.ts",
   "utf8",
 );
+const sessionOpsSource = readFileSync(
+  "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-session-ops.ts",
+  "utf8",
+);
+const rewindStoreSource = readFileSync(
+  "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-rewind-store.ts",
+  "utf8",
+);
 
 const payload = {
   sessions_title: sessionMenu.title,
@@ -120,6 +128,15 @@ const payload = {
     && !sessionMenuOpsSource.includes("[rewind] picker cancelled")
     && !sessionMenuOpsSource.includes("selection cancelled")
     && !sessionMenuOpsSource.includes("file filter input cancelled"),
+  session_menu_ops_rewind_surface_avoids_legacy_marker:
+    !sessionMenuOpsSource.includes("[rewind]"),
+  session_menu_ops_rewind_file_filter_prompt_is_human:
+    sessionMenuOpsSource.includes("文件过滤（可选，逗号分隔）> ")
+    && !sessionMenuOpsSource.includes("[rewind] 文件过滤"),
+  session_ops_rewind_surface_avoids_legacy_marker:
+    !sessionOpsSource.includes("[rewind]"),
+  rewind_store_summary_avoids_legacy_marker:
+    !rewindStoreSource.includes("[rewind]"),
   sessions_initial_index: sessionMenu.initialIndex,
   switch_initial_index: switchMenu.initialIndex,
   continue_initial_index: continueMenu.initialIndex,

@@ -42,6 +42,10 @@ function check(label: string, condition: boolean): [string, boolean] {
   return [label, condition];
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 function assertAll(checks: ReadonlyArray<[string, boolean]>): void {
   const failed = checks.filter(([, passed]) => !passed);
   const payload = Object.fromEntries(checks);
@@ -117,6 +121,13 @@ function run(): void {
   const rewindModeInvalidFallback = resolveRewindMode({
     "rewind-mode": "invalid-mode",
   });
+  const startupRewindWarningText = [
+    rewindMultipleMatches.notice ?? "",
+    rewindNoMatchFallback.notice ?? "",
+    rewindNoMatchNoFallback.notice ?? "",
+    rewindStrictNoMatch.notice ?? "",
+  ].join("\n");
+  const startupRewindWarningPlain = stripAnsi(startupRewindWarningText);
 
   assertAll([
     check("no_intent_skips_rewind_target", typeof noIntent.targetCheckpointId === "undefined"),
@@ -135,6 +146,11 @@ function run(): void {
       (rewindMultipleMatches.notice ?? "").includes("可确定回退目标"),
     ),
     check(
+      "rewind_multiple_query_notice_is_human_surface",
+      startupRewindWarningPlain.includes("找到多个启动检查点")
+      && startupRewindWarningPlain.includes("查询: legacy"),
+    ),
+    check(
       "rewind_multiple_query_notice_no_autoselect_literal",
       !(rewindMultipleMatches.notice ?? "").includes("auto-selecting"),
     ),
@@ -145,13 +161,17 @@ function run(): void {
     ),
     check(
       "rewind_no_match_without_fallback_has_notice",
-      (rewindNoMatchNoFallback.notice ?? "").includes("没有匹配，也没有可用检查点"),
+      (rewindNoMatchNoFallback.notice ?? "").includes("没有可用检查点"),
     ),
     check("rewind_strict_exact_targeted", rewindStrictExact.targetCheckpointId === "legacy-a"),
     check("rewind_strict_no_match_skips_target", typeof rewindStrictNoMatch.targetCheckpointId === "undefined"),
     check(
       "rewind_strict_no_match_has_skip_notice",
       (rewindStrictNoMatch.notice ?? "").includes("已跳过回退"),
+    ),
+    check(
+      "rewind_startup_notices_avoid_legacy_marker",
+      !startupRewindWarningText.includes("[rewind]"),
     ),
     check("rewind_requested_accepts_false_literal_as_query", rewindRequestedWithFalseLiteral === true),
     check("rewind_selector_keeps_false_literal", rewindSelectorWithFalseLiteral === "false"),

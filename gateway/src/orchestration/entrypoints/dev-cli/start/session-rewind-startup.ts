@@ -3,6 +3,7 @@ import {
   resolveRewindQueryMatches,
 } from "./session-rewind-search";
 import { type SessionInteractiveRewindCheckpointSummary } from "./session-interactive";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 export type StartupRewindCheckpointSummary = SessionInteractiveRewindCheckpointSummary;
 
@@ -51,6 +52,18 @@ function formatStartupRewindHints(
   return rows.join("\n");
 }
 
+function buildStartupRewindNotice(
+  title: string,
+  details: readonly string[],
+): string {
+  const lines = [`${terminalStyle.accent("●")} ${title}`];
+  for (const detail of details) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
 export function resolveStartupRewindTarget(
   input: ResolveStartupRewindTargetInput,
 ): ResolveStartupRewindTargetResult {
@@ -75,9 +88,14 @@ export function resolveStartupRewindTarget(
         };
       }
       return {
-        notice:
-          `[rewind] 启动检查点 "${queryRaw}" 未找到；已跳过回退。\n`
-          + "[rewind] 提示：使用 --rewind <query> 可模糊选择检查点。\n\n",
+        notice: buildStartupRewindNotice(
+          "启动检查点未找到",
+          [
+            `查询: ${queryRaw}`,
+            "已跳过回退。",
+            "提示：使用 --rewind <query> 可模糊选择检查点。",
+          ],
+        ),
       };
     }
     const matches = resolveRewindQueryMatches(queryRaw, input.checkpoints);
@@ -93,22 +111,36 @@ export function resolveStartupRewindTarget(
         targetCheckpointId: picked?.checkpointId,
         requiresDisambiguation: true,
         disambiguationCandidates: matches,
-        notice:
-          `[rewind] --rewind 查询 "${queryRaw}" 匹配到 ${String(matches.length)} 个检查点。\n`
-          + `${hints}\n`
-          + "[rewind] 提示：使用 --rewind <检查点 ID> 可确定回退目标。\n",
+        notice: [
+          `${terminalStyle.accent("●")} 找到多个启动检查点`,
+          `  ${terminalStyle.muted(`查询: ${queryRaw}`)}`,
+          `  ${terminalStyle.muted(`匹配: ${String(matches.length)} 个检查点`)}`,
+          hints,
+          `  ${terminalStyle.muted("提示：使用 --rewind <检查点 ID> 可确定回退目标。")}`,
+          "",
+        ].join("\n"),
       };
     }
     if (fallbackTargetCheckpointId) {
       return {
         targetCheckpointId: fallbackTargetCheckpointId,
-        notice:
-          `[rewind] --rewind 查询 "${queryRaw}" 没有匹配；已回退到最近检查点 "${fallbackTargetCheckpointId}"。\n\n`,
+        notice: buildStartupRewindNotice(
+          "未匹配到启动检查点",
+          [
+            `查询: ${queryRaw}`,
+            `已回退到最近检查点: ${fallbackTargetCheckpointId}`,
+          ],
+        ),
       };
     }
     return {
-      notice:
-        `[rewind] --rewind 查询 "${queryRaw}" 没有匹配，也没有可用检查点。\n\n`,
+      notice: buildStartupRewindNotice(
+        "未匹配到启动检查点",
+        [
+          `查询: ${queryRaw}`,
+          "没有可用检查点。",
+        ],
+      ),
     };
   }
 
@@ -118,6 +150,9 @@ export function resolveStartupRewindTarget(
     };
   }
   return {
-    notice: "[rewind] 已请求启动回退，但没有可用检查点。\n\n",
+    notice: buildStartupRewindNotice(
+      "启动回退不可用",
+      ["已请求启动回退，但没有可用检查点。"],
+    ),
   };
 }

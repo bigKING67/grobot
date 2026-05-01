@@ -2,6 +2,7 @@ import {
   type ResolveStartupRewindTargetResult,
   type StartupRewindCheckpointSummary,
 } from "./session-rewind-startup";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 export type StartupRewindCheckpointSelection =
   | { kind: "cancelled" }
@@ -51,7 +52,12 @@ export async function resolveStartupRewindDisambiguation(
     && !input.stdinIsTTY
   ) {
     messages.push(
-      `[rewind] 非交互启动已从多个检查点匹配中自动选择 "${targetCheckpointId}"。\n\n`,
+      [
+        `${terminalStyle.accent("●")} 已自动选择启动检查点`,
+        `  ${terminalStyle.muted(`检查点: ${targetCheckpointId}`)}`,
+        `  ${terminalStyle.muted("非交互启动无法打开选择器，已使用首个匹配项。")}`,
+        "",
+      ].join("\n"),
     );
   }
   return {

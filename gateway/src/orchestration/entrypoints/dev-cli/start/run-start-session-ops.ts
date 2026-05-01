@@ -20,6 +20,7 @@ import {
   touchSessionRecord,
   type SessionRegistryPayload,
 } from "./session-registry";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 interface CreateRunStartSessionOpsInput {
   sessionNamespaceKey: string;
@@ -73,6 +74,28 @@ function trimSessionText(value: string, maxLength: number): string {
     return normalized;
   }
   return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function buildRunStartNotice(title: string, details: readonly string[]): string {
+  const lines = [`${terminalStyle.accent("●")} ${title}`];
+  for (const detail of details) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
+function humanizeRewindMode(value: RewindRestoreMode): string {
+  switch (value) {
+    case "both":
+      return "对话 + 代码";
+    case "conversation":
+      return "仅对话";
+    case "code":
+      return "仅代码";
+    case "summarize":
+      return "汇总检查点";
+  }
 }
 
 function resolveSessionTitle(input: {
@@ -277,7 +300,11 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
             failedHint;
         }
       } catch (error) {
-        input.writeStdout(`[rewind] fork 检查点克隆失败: ${String(error)}\n`);
+        input.writeStdout(buildRunStartNotice("检查点克隆失败", [
+          `来源会话: ${sourceId}`,
+          "fork 会话已继续创建，但回退检查点没有完整复制。",
+          `诊断: ${String(error)}`,
+        ]));
       }
     }
     input.setStickyProvider(sourceRecord.sticky_provider);
@@ -327,7 +354,10 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const activeSessionId = input.getActiveSessionId();
     const activeRecord = findSessionRecord(sessionRegistry, activeSessionId);
     if (!activeRecord) {
-      input.writeStdout(`[rewind] 未找到当前会话 "${activeSessionId}"。\n\n`);
+      input.writeStdout(buildRunStartNotice("当前会话不可回退", [
+        `会话: ${activeSessionId}`,
+        "未找到当前会话记录。",
+      ]));
       return false;
     }
     try {
@@ -346,17 +376,28 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
       );
       await input.persistSessionRegistryState();
       const restoredFilesPreview = restored.restoredFiles.length > 0
-        ? ` 文件=${String(restored.restoredFiles.length)}`
+        ? `文件: ${String(restored.restoredFiles.length)}`
         : "";
       const skippedFilesPreview = restored.skippedFiles.length > 0
-        ? ` 跳过=${String(restored.skippedFiles.length)}`
+        ? `跳过文件: ${String(restored.skippedFiles.length)}`
         : "";
-      input.writeStdout(
-        `[rewind] 已恢复检查点 ${restored.checkpointId} · 模式=${restored.mode} · 对话=${restored.restoredConversation ? "是" : "否"} · 代码=${restored.restoredCode ? "是" : "否"}${restoredFilesPreview}${skippedFilesPreview}\n\n`,
-      );
+      const restoredDetails = [
+        `检查点: ${restored.checkpointId}`,
+        `模式: ${humanizeRewindMode(restored.mode)}`,
+        `对话: ${restored.restoredConversation ? "已恢复" : "未恢复"} · 代码: ${restored.restoredCode ? "已恢复" : "未恢复"}`,
+      ];
+      if (restoredFilesPreview) {
+        restoredDetails.push(restoredFilesPreview.trim());
+      }
+      if (skippedFilesPreview) {
+        restoredDetails.push(skippedFilesPreview);
+      }
+      input.writeStdout(buildRunStartNotice("已恢复检查点", restoredDetails));
       return true;
     } catch (error) {
-      input.writeStdout(`[rewind] 恢复失败: ${String(error)}\n\n`);
+      input.writeStdout(buildRunStartNotice("恢复检查点失败", [
+        `诊断: ${String(error)}`,
+      ]));
       return false;
     }
   };

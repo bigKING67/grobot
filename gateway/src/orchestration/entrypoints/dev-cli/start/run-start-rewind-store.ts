@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { removeTrailingSlashes } from "../services/runtime-paths";
 import { normalizeHistoryMessages, type ChatHistoryMessage } from "./session-history";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 const REWIND_STORE_VERSION = 1;
 const REWIND_SUMMARY_DEFAULT_LIMIT = 8;
@@ -450,9 +451,11 @@ function buildCheckpointSummaryText(
   summaries: readonly RewindCheckpointSummary[],
 ): string {
   const lines: string[] = [];
-  lines.push(`[rewind] 会话: ${sessionKey} · 检查点: ${String(summaries.length)}`);
+  lines.push(`${terminalStyle.accent("●")} 检查点概览`);
+  lines.push(`  ${terminalStyle.muted(`会话: ${sessionKey}`)}`);
+  lines.push(`  ${terminalStyle.muted(`检查点: ${String(summaries.length)}`)}`);
   if (summaries.length === 0) {
-    lines.push("[rewind] 暂无可用检查点。");
+    lines.push(`  ${terminalStyle.muted("暂无可用检查点。")}`);
     lines.push("");
     return `${lines.join("\n")}\n`;
   }

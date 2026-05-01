@@ -25,6 +25,10 @@ function check(label: string, condition: boolean): [string, boolean] {
   return [label, condition];
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 function assertAll(checks: ReadonlyArray<[string, boolean]>): void {
   const failed = checks.filter(([, passed]) => !passed);
   const payload = Object.fromEntries(checks);
@@ -82,6 +86,8 @@ async function run(): Promise<void> {
       requiresDisambiguation: false,
     },
   });
+  const nonTtyAutoText = nonTtyAuto.messages.join("");
+  const nonTtyAutoPlain = stripAnsi(nonTtyAutoText);
 
   assertAll([
     check("tty_disambiguation_picks_explicit_checkpoint", ttyPicked.targetCheckpointId === "legacy-b"),
@@ -95,8 +101,10 @@ async function run(): Promise<void> {
     check("non_tty_keeps_auto_selected_target", nonTtyAuto.targetCheckpointId === "legacy-a"),
     check(
       "non_tty_reports_auto_selected_notice",
-      (nonTtyAuto.messages.join("")).includes("非交互启动已从多个检查点匹配中自动选择"),
+      nonTtyAutoPlain.includes("已自动选择启动检查点")
+      && nonTtyAutoPlain.includes("检查点: legacy-a"),
     ),
+    check("non_tty_notice_avoids_legacy_marker", !nonTtyAutoText.includes("[rewind]")),
     check("no_disambiguation_keeps_target", noDisambiguation.targetCheckpointId === "legacy-a"),
     check("no_disambiguation_has_no_messages", noDisambiguation.messages.length === 0),
   ]);

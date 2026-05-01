@@ -9,6 +9,7 @@ import {
   runTerminalSelectMenu,
 } from "./run-start-io";
 import { type RewindRestoreMode } from "./run-start-rewind-store";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 interface CreateRunStartSessionMenuOpsInput {
   sessionNamespaceKey: string;
@@ -71,6 +72,15 @@ function parseFileFilterInput(value: string): string[] | undefined {
   return rows;
 }
 
+function buildSessionMenuNotice(title: string, details: readonly string[]): string {
+  const lines = [`${terminalStyle.accent("●")} ${title}`];
+  for (const detail of details) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
 export function createRunStartSessionMenuOps(
   input: CreateRunStartSessionMenuOpsInput,
 ): RunStartSessionMenuOps {
@@ -82,7 +92,9 @@ export function createRunStartSessionMenuOps(
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<void> => {
     if (sessions.length === 0) {
-      input.writeStdout("[rewind] 暂无可用会话。\n\n");
+      input.writeStdout(buildSessionMenuNotice("暂无可回退会话", [
+        "当前命名空间还没有可选择的会话。",
+      ]));
       return;
     }
     const pickedSession = await runSessionMenuPicker({
@@ -130,7 +142,9 @@ export function createRunStartSessionMenuOps(
     }
     const mode = resolveModeFromMenuId(modePick.item.id);
     if (!mode) {
-      input.writeStdout("[rewind] 无效回退模式。\n\n");
+      input.writeStdout(buildSessionMenuNotice("回退模式无效", [
+        "请重新打开 /rewind 选择回退模式。",
+      ]));
       return;
     }
     if (mode === "summarize") {
@@ -143,7 +157,10 @@ export function createRunStartSessionMenuOps(
     }
     const checkpoints = input.listRewindCheckpoints(sessionId, 32);
     if (checkpoints.length === 0) {
-      input.writeStdout("[rewind] 暂无可用检查点。\n\n");
+      input.writeStdout(buildSessionMenuNotice("暂无可用检查点", [
+        `会话: ${sessionId}`,
+        "继续对话后会自动生成新的回退检查点。",
+      ]));
       return;
     }
     const pickedCheckpoint = await withInputPaused(() =>
@@ -176,7 +193,7 @@ export function createRunStartSessionMenuOps(
     if (mode === "code") {
       const fileFilterInput = await withInputPaused(() =>
         runLinePrompt({
-          prompt: "[rewind] 文件过滤（可选，逗号分隔）> ",
+          prompt: "文件过滤（可选，逗号分隔）> ",
         }),
       );
       if (fileFilterInput.kind === "cancelled") {
