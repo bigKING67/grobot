@@ -1780,6 +1780,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartTuiSurfaceContractPayload.rewind_capture_failed_is_human_surface, true);
   assert.equal(runStartTuiSurfaceContractPayload.surfaces_avoid_legacy_machine_markers, true);
   assert.equal(runStartTuiSurfaceContractPayload.surfaces_end_with_newline, true);
+  assert.equal(runStartTuiSurfaceContractPayload.message_mode_compact_disables_turn_diagnostics, true);
+  assert.equal(runStartTuiSurfaceContractPayload.message_mode_verbose_keeps_turn_diagnostics, true);
   logStep("run-start-tui-surface-contract");
 
   const devCliActivityFeedContractResult = runCommand("npx", [

@@ -187,6 +187,7 @@ export interface RunStartTurnExecuteOptions {
   attachments?: RuntimeAttachment[];
   promptPrelude?: string;
   autoOpenAskUserPanel?: boolean;
+  emitDiagnostics?: boolean;
   writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
   onTurnRecorded?(input: {
@@ -2072,6 +2073,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         : baseInput;
     const turnSignal = options?.signal;
     const runtimeAttachments = options?.attachments;
+    const emitTerminalDiagnostics = interactiveMode || options?.emitDiagnostics === true;
     throwIfTurnInterrupted(turnSignal, "aborted_before_turn_start");
     const sessionKey = input.getSessionKey();
     input.gaMechanismRuntime.hydrateSession(sessionKey, input.getGaState());
@@ -3226,21 +3228,23 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             input.writeStdout(activityFeedStdout);
           }
           input.writeStdout(turnStdout);
-          if (askUserEvent.length > 0) {
-            input.writeStderr(askUserEvent);
+          if (emitTerminalDiagnostics) {
+            if (askUserEvent.length > 0) {
+              input.writeStderr(askUserEvent);
+            }
+            input.writeStderr(
+              `[execution] gateway=${input.executionPlane.gatewayImpl}(${input.executionPlane.gatewayImplSource}) runtime=${input.executionPlane.runtimeImpl}(${input.executionPlane.runtimeImplSource}) shadow=${input.executionPlane.shadowMode ? "on" : "off"}(${input.executionPlane.shadowModeSource})\n`,
+            );
+            input.writeStderr(
+              `[runtime-model] base_url=${input.runtimeModelConfigSource.baseUrl} model=${input.runtimeModelConfigSource.model} provider_kind=${input.runtimeModelConfigSource.providerKind} api_key=${input.runtimeModelConfigSource.apiKey} timeout_ms=${input.runtimeModelConfigSource.timeoutMs}\n`,
+            );
+            input.writeStderr(
+              `[runtime-route] provider=${provider.name} attempts=${String(failures.length + 1)} failovers=${String(failures.length)} sticky=${stickyProvider ?? "<none>"} strategy=sticky+score\n`,
+            );
+            input.writeStderr(
+              `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,
+            );
           }
-          input.writeStderr(
-            `[execution] gateway=${input.executionPlane.gatewayImpl}(${input.executionPlane.gatewayImplSource}) runtime=${input.executionPlane.runtimeImpl}(${input.executionPlane.runtimeImplSource}) shadow=${input.executionPlane.shadowMode ? "on" : "off"}(${input.executionPlane.shadowModeSource})\n`,
-          );
-        input.writeStderr(
-          `[runtime-model] base_url=${input.runtimeModelConfigSource.baseUrl} model=${input.runtimeModelConfigSource.model} provider_kind=${input.runtimeModelConfigSource.providerKind} api_key=${input.runtimeModelConfigSource.apiKey} timeout_ms=${input.runtimeModelConfigSource.timeoutMs}\n`,
-        );
-        input.writeStderr(
-          `[runtime-route] provider=${provider.name} attempts=${String(failures.length + 1)} failovers=${String(failures.length)} sticky=${stickyProvider ?? "<none>"} strategy=sticky+score\n`,
-        );
-        input.writeStderr(
-          `[governance] plane=${report.governance.plane} decision=${report.governance.decision} score=${report.governance.score.toFixed(4)} gate=${report.governance.gatePassed ? "pass" : "fail"} action=${report.governance.suggestedAction}\n`,
-        );
           if (!report.verification.pass) {
             input.onVerificationFailure();
             const feedback = input.memoryOrchestrator.feedback({
@@ -3255,10 +3259,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
             }
           }
           const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
-          for (const task of reflections) {
-            input.writeStderr(
-              `[reflection] trigger=${task.triggerType} id=${task.id} next_action="${task.nextActionHint}"\n`,
-            );
+          if (emitTerminalDiagnostics) {
+            for (const task of reflections) {
+              input.writeStderr(
+                `[reflection] trigger=${task.triggerType} id=${task.id} next_action="${task.nextActionHint}"\n`,
+              );
+            }
           }
           return report.verification.pass ? 0 : 1;
         } catch (error) {

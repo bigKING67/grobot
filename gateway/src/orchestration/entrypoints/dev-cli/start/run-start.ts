@@ -805,6 +805,7 @@ export async function runStart(
       attachments?: RuntimeAttachment[];
       promptPrelude?: string;
       autoOpenAskUserPanel?: boolean;
+      emitDiagnostics?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -824,6 +825,7 @@ export async function runStart(
         attachments: options?.attachments,
         promptPrelude: options?.promptPrelude,
         autoOpenAskUserPanel: options?.autoOpenAskUserPanel,
+        emitDiagnostics: options?.emitDiagnostics,
         writeStdout: options?.writeStdout,
         writeStderr,
         onTurnRecorded: (turnRecord) => {
@@ -881,6 +883,7 @@ export async function runStart(
       attachments?: RuntimeAttachment[];
       promptPrelude?: string;
       autoOpenAskUserPanel?: boolean;
+      emitDiagnostics?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
     },
@@ -1098,6 +1101,7 @@ export async function runStart(
     return runStartMessageMode({
       message,
       executeTurn,
+      emitDiagnostics: startupDiagnosticsEnabled || verboseModeEnabled,
       markFailureObserved: runtimeState.markFailureObserved,
       handoffAutoOnExit,
       writeAutoExitHandoffIfNeeded: () => {
