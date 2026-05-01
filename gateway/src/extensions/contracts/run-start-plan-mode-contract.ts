@@ -658,6 +658,57 @@ async function main(): Promise<void> {
       },
     });
 
+    const normalInterruptWorkDir = resolve(workDir, "interrupt-normal-mode");
+    mkdirSync(normalInterruptWorkDir, { recursive: true });
+    const normalInterruptRuntimeState = createRuntimeState(
+      "feishu:grobot:dm:plan-mode-interrupt-normal-contract",
+    );
+    let normalInterruptStdout = "";
+    const normalInterruptPlanMode = createRunStartPlanMode({
+      workDir: normalInterruptWorkDir,
+      runtimeState: normalInterruptRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        normalInterruptRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        normalInterruptStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    const normalInterruptHandled = await normalInterruptPlanMode.handleMessageInput("/interrupt");
+
+    const idleInterruptWorkDir = resolve(workDir, "interrupt-idle-plan-mode");
+    mkdirSync(idleInterruptWorkDir, { recursive: true });
+    const idleInterruptRuntimeState = createRuntimeState(
+      "feishu:grobot:dm:plan-mode-interrupt-idle-contract",
+    );
+    idleInterruptRuntimeState.setPlanMode("plan_only");
+    let idleInterruptStdout = "";
+    const idleInterruptPlanMode = createRunStartPlanMode({
+      workDir: idleInterruptWorkDir,
+      runtimeState: idleInterruptRuntimeState,
+      persistence,
+      executeTurn: async () => 0,
+      requestRuntimeInterrupt: () => ({
+        code: "TURN_INTERRUPT_NOT_RUNNING",
+        interrupted: false,
+      }),
+      markFailureObserved: () => {
+        idleInterruptRuntimeState.markFailureObserved();
+      },
+      writeStdout: (message) => {
+        idleInterruptStdout += message;
+      },
+      writeStderr: () => undefined,
+    });
+    const idleInterruptResult = await idleInterruptPlanMode.requestPlanInterrupt("command");
+
     const payload = {
       review_passes_for_valid_plan: review.ok && review.blocked === false,
       enter_plan_message_mode_handled: enter.handled && enter.code === 0,
@@ -765,6 +816,21 @@ async function main(): Promise<void> {
       ready_approval_feedback_keeps_plan_mode:
         feedbackRuntimeState.getPlanMode() === "plan_only"
         && feedbackStdout.includes("已添加计划反馈，继续保持 plan mode"),
+      plan_interrupt_command_normal_mode_is_human:
+        normalInterruptHandled.handled
+        && normalInterruptHandled.code === 0
+        && stripAnsi(normalInterruptStdout).includes("当前不在 plan mode")
+        && stripAnsi(normalInterruptStdout).includes("没有可中断的计划回合。")
+        && stripAnsi(normalInterruptStdout).includes("诊断: PLAN_INTERRUPT_NOT_PLAN_MODE")
+        && !normalInterruptStdout.includes("[plan-interrupt]"),
+      plan_interrupt_idle_plan_mode_is_human:
+        idleInterruptResult.code === "PLAN_INTERRUPT_NOT_RUNNING"
+        && idleInterruptResult.accepted === false
+        && idleInterruptResult.phase === "idle"
+        && stripAnsi(idleInterruptStdout).includes("当前没有运行中的 plan 回合")
+        && stripAnsi(idleInterruptStdout).includes("如果想退出 plan mode，可按 Esc 或使用 /exit。")
+        && stripAnsi(idleInterruptStdout).includes("诊断: PLAN_INTERRUPT_NOT_RUNNING")
+        && !idleInterruptStdout.includes("[plan-interrupt]"),
       plan_turn_injects_plan_workflow_prompt:
         executePromptPreludes.some((item) =>
           item.includes("[Plan Mode Workflow]")
