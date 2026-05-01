@@ -1174,6 +1174,7 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
   const registryPayload = readJsonFileSafe(registryPath);
   const sessions = registryPayload && Array.isArray(registryPayload.sessions) ? registryPayload.sessions : [];
   const outputText = `${commandResult.stdout}\n${commandResult.stderr}`;
+  const outputPlain = stripAnsi(outputText);
   const inferredSessionIds = new Set();
   for (const match of outputText.matchAll(/^\s*\*?\s*([A-Za-z0-9_-]+)\s+\|/gm)) {
     const sessionId = String(match[1] ?? "").trim();
@@ -1189,9 +1190,16 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
     has_continue_usage: outputText.includes("用法: /continue"),
     has_resume_usage: outputText.includes("用法: /resume"),
     has_rewind_usage: outputText.includes("用法: /rewind"),
-    has_sessions_overview: outputText.includes("会话命名空间:"),
-    has_session_title_main: outputText.includes("主会话"),
-    has_session_title_untitled: outputText.includes("未命名会话"),
+    has_sessions_overview:
+      outputPlain.includes("● 会话")
+      && outputPlain.includes("命名空间:"),
+    session_surface_avoids_legacy_plain_namespace:
+      !outputPlain.includes("会话命名空间:"),
+    session_switch_surface_is_human:
+      outputPlain.includes("● 已切换会话")
+      && outputPlain.includes("历史来源:"),
+    has_session_title_main: outputPlain.includes("主会话"),
+    has_session_title_untitled: outputPlain.includes("未命名会话"),
     has_status_snapshot: outputText.includes("● 状态栏"),
     has_status_theme_set:
       outputText.includes("● 已更新状态栏主题")

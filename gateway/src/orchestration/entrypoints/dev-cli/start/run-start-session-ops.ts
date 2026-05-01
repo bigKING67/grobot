@@ -150,7 +150,10 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const record = findSessionRecord(sessionRegistry, targetSessionId);
     if (!record) {
-      input.writeStdout(`未找到会话 "${targetSessionId}"。使用 /sessions 查看 id。\n\n`);
+      input.writeStdout(buildRunStartNotice("未找到会话", [
+        `会话: ${targetSessionId}`,
+        "使用 /sessions 查看可用会话。",
+      ]));
       return false;
     }
     input.setActiveSessionId(record.id);
@@ -166,9 +169,12 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     input.writeStoreWarnings(historyLoad.warnings);
     touchSessionRecord(sessionRegistry, record.id);
     await input.persistSessionRegistryState();
-    input.writeStdout(
-      `已切换到会话 "${record.id}"（原因=${reason}，从 ${historyLoad.source} 恢复 ${String(historyLoad.messages.length / 2)} 轮）。\n\n`,
-    );
+    input.writeStdout(buildRunStartNotice("已切换会话", [
+      `会话: ${record.id}`,
+      `原因: ${reason}`,
+      `恢复: ${String(historyLoad.messages.length / 2)} 轮`,
+      `历史来源: ${historyLoad.source}`,
+    ]));
     return true;
   };
 
@@ -189,10 +195,15 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
   const printSessionOverview = (): void => {
     const sessions = listSessions();
     if (!sessions.length) {
-      input.writeStdout("暂无可用会话。\n\n");
+      input.writeStdout(buildRunStartNotice("暂无可用会话", [
+        "当前命名空间里还没有可切换的会话。",
+      ]));
       return;
     }
-    input.writeStdout(`会话命名空间: ${input.sessionNamespaceKey}\n`);
+    input.writeStdout(buildRunStartNotice("会话", [
+      `命名空间: ${input.sessionNamespaceKey}`,
+      `数量: ${String(sessions.length)}`,
+    ]));
     for (const record of sessions) {
       const marker = record.active ? "*" : " ";
       input.writeStdout(
@@ -209,12 +220,18 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const activeSessionId = input.getActiveSessionId();
     if (sourceId === activeSessionId) {
-      input.writeStdout("已跳过：来源会话就是当前会话。\n\n");
+      input.writeStdout(buildRunStartNotice("已跳过继续会话", [
+        `来源会话: ${sourceId}`,
+        "来源会话就是当前会话。",
+      ]));
       return;
     }
     const sourceRecord = findSessionRecord(sessionRegistry, sourceId);
     if (!sourceRecord) {
-      input.writeStdout(`未找到会话 "${sourceId}"。使用 /sessions 查看 id。\n\n`);
+      input.writeStdout(buildRunStartNotice("未找到会话", [
+        `会话: ${sourceId}`,
+        "使用 /sessions 查看可用会话。",
+      ]));
       return;
     }
     const sourceHistoryState = await input.sessionStore.loadHistoryMessagesState(sourceRecord.session_key);
@@ -244,14 +261,18 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     await input.persistHistoryState();
     touchSessionRecord(sessionRegistry, activeSessionId, `continue from ${sourceId}`);
     await input.persistSessionRegistryState();
-    input.writeStdout(
-      `已把 "${sourceId}" 的摘要桥接到当前会话 "${activeSessionId}"（仅摘要，不导入完整历史）。\n\n`,
-    );
+    input.writeStdout(buildRunStartNotice("已继续会话摘要", [
+      `来源会话: ${sourceId}`,
+      `当前会话: ${activeSessionId}`,
+      "仅桥接摘要，不导入完整历史。",
+    ]));
   };
 
   const resumeFromSession = async (sourceId: string, reason = "resume"): Promise<boolean> => {
     if (sourceId === input.getActiveSessionId()) {
-      input.writeStdout(`会话 "${sourceId}" 已是当前会话。\n\n`);
+      input.writeStdout(buildRunStartNotice("会话已是当前会话", [
+        `会话: ${sourceId}`,
+      ]));
       return true;
     }
     return switchActiveSession(sourceId, reason);
@@ -264,7 +285,10 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const sourceRecord = findSessionRecord(sessionRegistry, sourceId);
     if (!sourceRecord) {
-      input.writeStdout(`未找到会话 "${sourceId}"。使用 /sessions 查看 id。\n\n`);
+      input.writeStdout(buildRunStartNotice("未找到会话", [
+        `会话: ${sourceId}`,
+        "使用 /sessions 查看可用会话。",
+      ]));
       return false;
     }
     const sourceHistoryState = await input.sessionStore.loadHistoryMessagesState(sourceRecord.session_key);
@@ -341,7 +365,10 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     const sessionRegistry = input.getSessionRegistry();
     const record = findSessionRecord(sessionRegistry, args.sessionId);
     if (!record) {
-      input.writeStdout(`未找到会话 "${args.sessionId}"。使用 /sessions 查看 id。\n\n`);
+      input.writeStdout(buildRunStartNotice("未找到会话", [
+        `会话: ${args.sessionId}`,
+        "使用 /sessions 查看可用会话。",
+      ]));
       return false;
     }
     if (args.mode === "summarize") {

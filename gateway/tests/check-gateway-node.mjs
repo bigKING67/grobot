@@ -7568,6 +7568,8 @@ async function runTsRustExecutionSmoke() {
   assert.equal(sessionCommandFallbackPayload.has_resume_usage, true);
   assert.equal(sessionCommandFallbackPayload.has_rewind_usage, true);
   assert.equal(sessionCommandFallbackPayload.has_sessions_overview, true);
+  assert.equal(sessionCommandFallbackPayload.session_surface_avoids_legacy_plain_namespace, true);
+  assert.equal(sessionCommandFallbackPayload.session_switch_surface_is_human, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_main, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_untitled, true);
   assert.equal(sessionCommandFallbackPayload.has_status_snapshot, true);
