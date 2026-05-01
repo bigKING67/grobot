@@ -1356,6 +1356,10 @@ async function runGatewayContractSmoke() {
   assert.equal(userCommandsContractPayload.deleted, true);
   assert.equal(userCommandsContractPayload.failure_marked, false);
   assert.equal(Number(userCommandsContractPayload.stdout_rows_count) >= 1, true);
+  assert.equal(userCommandsContractPayload.command_surface_avoids_legacy_marker, true);
+  assert.equal(userCommandsContractPayload.command_created_surface_is_human, true);
+  assert.equal(userCommandsContractPayload.command_disabled_surface_is_human, true);
+  assert.equal(userCommandsContractPayload.command_list_surface_is_human, true);
   assert.equal(userCommandsContractPayload.menu_hint_is_reference_compact, true);
   assert.equal(userCommandsContractPayload.menu_hint_omits_secondary_key_chords, true);
   assert.equal(userCommandsContractPayload.menu_cancel_is_silent, true);
@@ -7431,6 +7435,10 @@ async function runTsRustExecutionSmoke() {
       assert.equal(diagnosticsFlowPayload.has_short_process_summary_code, true);
     }
     assert.equal(Boolean(diagnosticsFlowPayload[flow.markerKey]), true);
+    if (flow.contract.includes("diagnostics-user-command")) {
+      assert.equal(diagnosticsFlowPayload.command_surface_avoids_legacy_marker, true);
+      assert.equal(diagnosticsFlowPayload.has_human_created_command_surface, true);
+    }
     if (flow.command_flow === "plan" || flow.contract.includes("diagnostics-plan")) {
       assert.equal(diagnosticsFlowPayload.has_entered_plan_mode_surface, true);
       assert.equal(diagnosticsFlowPayload.has_plan_entry_path_line, true);

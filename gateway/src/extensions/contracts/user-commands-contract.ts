@@ -6,6 +6,10 @@ import {
   type TerminalSelectMenuResult,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 async function withStdinTty<T>(stdinIsTty: boolean, operation: () => Promise<T>): Promise<T> {
   const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
   try {
@@ -68,6 +72,7 @@ async function main(): Promise<void> {
   await runtime.handleManagementCommand("/commands set shipit 第二版：{{args}}");
   const secondInvocationHandled = await runtime.tryRunUserCommand("/shipit 参数B");
   const secondInvocationPrompt = executedPrompts[1] ?? "";
+  await runtime.handleManagementCommand("/commands list");
 
   await runtime.handleManagementCommand("/commands new model 不应创建");
   const builtinCollisionCreated = existsSync(`${homeDir}/commands/model.json`);
@@ -107,6 +112,8 @@ async function main(): Promise<void> {
     runtime.openManagementMenu(async (operation) => operation())
   );
   const menuCancelOutput = stdoutRows.slice(stdoutRowsBeforeMenuCancel).join("");
+  const stdoutText = stdoutRows.join("");
+  const stdoutPlain = stripAnsi(stdoutText);
 
   const payload = {
     created,
@@ -125,6 +132,18 @@ async function main(): Promise<void> {
     failure_marked: failureMarked,
     command_file_snapshot_before_delete: commandFileSnapshotBeforeDelete,
     stdout_rows_count: stdoutRows.length,
+    command_surface_avoids_legacy_marker: !stdoutText.includes("[commands]"),
+    command_created_surface_is_human:
+      stdoutPlain.includes("已创建自定义命令")
+      && stdoutPlain.includes("命令: /shipit")
+      && !stdoutPlain.includes("[commands] 已创建"),
+    command_disabled_surface_is_human:
+      stdoutPlain.includes("自定义命令已停用")
+      && stdoutPlain.includes("/shipit 当前不可调用。"),
+    command_list_surface_is_human:
+      stdoutPlain.includes("用户自定义命令")
+      && stdoutPlain.includes("二级动作")
+      && !stdoutPlain.includes("用户自定义命令（主入口）"),
     menu_hint_is_reference_compact:
       menuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),
     menu_hint_omits_secondary_key_chords:

@@ -17,6 +17,10 @@ function sameStringArray(left, right) {
   return left.every((item, index) => item === right[index]);
 }
 
+function stripAnsi(value) {
+  return String(value).replace(/\u001B\[[0-9;]*m/g, "");
+}
+
 function sumStringArrayRecordLengths(value) {
   if (!isObject(value)) {
     return null;
@@ -1071,10 +1075,13 @@ function runStartInteractiveDiagnosticsUserCommandFlow(repoRoot, mode) {
     ].join("\n"),
     "user-command",
   );
+  const stdoutPlain = stripAnsi(payload.stdout);
   return {
     ...payload,
     command_flow: "user_command",
-    has_commands_marker: payload.stdout.includes("[commands]"),
+    has_commands_marker: stdoutPlain.includes("已创建自定义命令"),
+    command_surface_avoids_legacy_marker: !payload.stdout.includes("[commands]"),
+    has_human_created_command_surface: stdoutPlain.includes("命令: /ping"),
   };
 }
 

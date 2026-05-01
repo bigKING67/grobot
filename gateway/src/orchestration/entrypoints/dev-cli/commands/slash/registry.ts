@@ -1,6 +1,7 @@
 import { parsePlanCommand } from "../../start/plan-command";
 import { resolveRewindQueryMatches } from "../../start/session-rewind-search";
 import { resolveResumeQueryMatches } from "../../start/session-resume-search";
+import { terminalStyle } from "../../ui/theme/terminal-style";
 import {
   type SessionInteractiveAction,
   type SessionInteractiveControls,
@@ -64,6 +65,15 @@ export interface SlashCommandSuggestion {
 
 const MATCH_LIST_LIMIT = 5;
 const QUICK_PICK_HINT_LIMIT = 3;
+
+function buildSlashNotice(title: string, details: readonly string[]): string {
+  const lines = [`${terminalStyle.accent("●")} ${title}`];
+  for (const detail of details) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
 
 function matchesInteractiveCommand(input: string, command: string): boolean {
   return input === command || input.startsWith(`${command} `);
@@ -524,11 +534,17 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (isInteractiveTerminal()) {
-        handlers.writeStdout("[commands] 交互模式仅保留主入口 /commands；已为你打开菜单。\n\n");
+        handlers.writeStdout(buildSlashNotice(
+          "已打开命令管理",
+          ["交互模式仅保留主入口 /commands。"],
+        ));
         await handlers.openCommandsMenu(controls.withInputPaused);
         return "continue";
       }
-      handlers.writeStdout("[commands] 非交互模式沿用兼容子命令；建议迁移到 /commands 菜单。\n\n");
+      handlers.writeStdout(buildSlashNotice(
+        "正在执行兼容子命令",
+        ["非交互模式仍支持该写法；交互模式建议使用 /commands 菜单。"],
+      ));
       await handlers.handleUserCommandsCommand(userInput);
       return "continue";
     },

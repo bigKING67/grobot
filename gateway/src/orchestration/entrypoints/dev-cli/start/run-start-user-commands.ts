@@ -12,6 +12,7 @@ import {
   runTerminalSelectMenu,
 } from "./run-start-io";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./run-start-turn";
+import { terminalStyle } from "../ui/theme/terminal-style";
 
 const USER_COMMAND_SCHEMA_VERSION = 1;
 const USER_COMMAND_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -138,6 +139,29 @@ function normalizeAndValidateCommandName(nameRaw: string): NormalizedCommandName
   return { ok: true, name };
 }
 
+function buildCommandsSurface(input: {
+  title: string;
+  details?: readonly string[];
+}): string {
+  const lines = [`${terminalStyle.accent("●")} ${input.title}`];
+  for (const detail of input.details ?? []) {
+    if (detail.length === 0) {
+      lines.push("");
+    } else {
+      lines.push(`  ${terminalStyle.muted(detail)}`);
+    }
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
+function buildCommandsUsageSurface(usage: string): string {
+  return buildCommandsSurface({
+    title: "用法不完整",
+    details: [`用法: ${usage}`],
+  });
+}
+
 function parseUserCommandPayload(
   filePath: string,
   rawPayload: unknown,
@@ -186,29 +210,30 @@ function parseUserCommandPayload(
 
 function formatCommandList(records: readonly UserCommandRecord[], commandsDir: string): string {
   const rows: string[] = [];
-  rows.push("[commands] 用户自定义命令（主入口）");
-  rows.push(`- 目录: ${commandsDir}`);
-  rows.push(`- 总数: ${String(records.length)}`);
+  rows.push(`${terminalStyle.accent("●")} 用户自定义命令`);
+  rows.push(`  ${terminalStyle.muted(`目录: ${commandsDir}`)}`);
+  rows.push(`  ${terminalStyle.muted(`总数: ${String(records.length)}`)}`);
   if (records.length === 0) {
-    rows.push("- 状态: 尚未创建用户命令");
+    rows.push(`  ${terminalStyle.muted("状态: 尚未创建用户命令")}`);
+    rows.push(`  ${terminalStyle.muted('使用 "/commands new <name> [prompt]" 创建。')}`);
   } else {
     for (const record of records) {
       const summary = record.description.length > 0 ? record.description : "(无描述)";
-      rows.push(`- /${record.name} [${record.enabled ? "启用" : "停用"}] ${summary}`);
+      rows.push(`  /${record.name}  ${record.enabled ? "启用" : "停用"}  ${summary}`);
     }
   }
   rows.push("");
-  rows.push("入口：");
-  rows.push("- /commands");
+  rows.push("入口");
+  rows.push("  /commands");
   rows.push("");
-  rows.push("二级动作（兼容命令）：");
-  rows.push("- /commands list");
-  rows.push("- /commands new <name> [prompt]");
-  rows.push("- /commands set <name> <prompt>");
-  rows.push("- /commands show <name>");
-  rows.push("- /commands delete <name>");
-  rows.push("- /commands enable <name>");
-  rows.push("- /commands disable <name>");
+  rows.push("二级动作");
+  rows.push("  /commands list");
+  rows.push("  /commands new <name> [prompt]");
+  rows.push("  /commands set <name> <prompt>");
+  rows.push("  /commands show <name>");
+  rows.push("  /commands delete <name>");
+  rows.push("  /commands enable <name>");
+  rows.push("  /commands disable <name>");
   rows.push("");
   return `${rows.join("\n")}\n`;
 }
@@ -397,7 +422,10 @@ export function createRunStartUserCommandsRuntime(
   const resolveManagedCommandName = (nameRaw: string): string | undefined => {
     const normalized = normalizeAndValidateCommandName(nameRaw);
     if (!normalized.ok) {
-      input.writeStdout(`[commands] ${normalized.error}\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "命令名不可用",
+        details: [normalized.error],
+      }));
       return undefined;
     }
     return normalized.name;
@@ -406,12 +434,18 @@ export function createRunStartUserCommandsRuntime(
   const createCommand = (nameRaw: string, promptRaw: string): void => {
     const normalized = normalizeAndValidateCommandName(nameRaw);
     if (!normalized.ok) {
-      input.writeStdout(`[commands] ${normalized.error}\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "命令名不可用",
+        details: [normalized.error],
+      }));
       return;
     }
     const name = normalized.name;
     if (readCommandByName(name)) {
-      input.writeStdout(`[commands] \`/${name}\` 已存在。\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "自定义命令已存在",
+        details: [`/${name}`],
+      }));
       return;
     }
     const now = nowIsoUtc();
@@ -427,9 +461,14 @@ export function createRunStartUserCommandsRuntime(
       path: commandFilePath(name),
     });
     input.writeStdout(
-      `[commands] 已创建 \`/${name}\`。\n`
-      + `- 文件: ${commandFilePath(name)}\n`
-      + `- 下一步: /commands set ${name} <prompt> 或直接编辑该文件\n\n`,
+      buildCommandsSurface({
+        title: "已创建自定义命令",
+        details: [
+          `命令: /${name}`,
+          `文件: ${commandFilePath(name)}`,
+          `下一步: /commands set ${name} <prompt> 或直接编辑该文件`,
+        ],
+      }),
     );
   };
 
@@ -440,12 +479,18 @@ export function createRunStartUserCommandsRuntime(
     }
     const record = readCommandByName(name);
     if (!record) {
-      input.writeStdout(`[commands] 未找到 \`/${name}\`。\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "未找到自定义命令",
+        details: [`/${name}`],
+      }));
       return;
     }
     const prompt = promptRaw.trim();
     if (!prompt) {
-      input.writeStdout("[commands] prompt 不能为空。\n\n");
+      input.writeStdout(buildCommandsSurface({
+        title: "prompt 不能为空",
+        details: [`使用: /commands set ${name} <prompt>`],
+      }));
       return;
     }
     writeCommand({
@@ -453,7 +498,10 @@ export function createRunStartUserCommandsRuntime(
       prompt,
       updated_at: nowIsoUtc(),
     });
-    input.writeStdout(`[commands] 已更新 \`/${name}\` 的 prompt。\n\n`);
+    input.writeStdout(buildCommandsSurface({
+      title: "已更新自定义命令",
+      details: [`/${name} 的 prompt 已更新。`],
+    }));
   };
 
   const toggleCommandEnabled = (nameRaw: string, enabled: boolean): void => {
@@ -463,7 +511,10 @@ export function createRunStartUserCommandsRuntime(
     }
     const record = readCommandByName(name);
     if (!record) {
-      input.writeStdout(`[commands] 未找到 \`/${name}\`。\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "未找到自定义命令",
+        details: [`/${name}`],
+      }));
       return;
     }
     writeCommand({
@@ -471,7 +522,10 @@ export function createRunStartUserCommandsRuntime(
       enabled,
       updated_at: nowIsoUtc(),
     });
-    input.writeStdout(`[commands] \`/${name}\` 已${enabled ? "启用" : "禁用"}。\n\n`);
+    input.writeStdout(buildCommandsSurface({
+      title: `已${enabled ? "启用" : "停用"}自定义命令`,
+      details: [`/${name}`],
+    }));
   };
 
   const showCommand = (nameRaw: string): void => {
@@ -481,15 +535,18 @@ export function createRunStartUserCommandsRuntime(
     }
     const record = readCommandByName(name);
     if (!record) {
-      input.writeStdout(`[commands] 未找到 \`/${name}\`。\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "未找到自定义命令",
+        details: [`/${name}`],
+      }));
       return;
     }
     const rows = [
-      `[commands] /${record.name}`,
-      `- 状态: ${record.enabled ? "启用" : "停用"}`,
-      `- 文件: ${record.path}`,
-      `- 描述: ${record.description || "(无描述)"}`,
-      "- prompt:",
+      `${terminalStyle.accent("●")} /${record.name}`,
+      `  ${terminalStyle.muted(`状态: ${record.enabled ? "启用" : "停用"}`)}`,
+      `  ${terminalStyle.muted(`文件: ${record.path}`)}`,
+      `  ${terminalStyle.muted(`描述: ${record.description || "(无描述)"}`)}`,
+      "  prompt:",
       record.prompt,
       "",
     ];
@@ -503,11 +560,17 @@ export function createRunStartUserCommandsRuntime(
     }
     const filePath = commandFilePath(name);
     if (!existsSync(filePath)) {
-      input.writeStdout(`[commands] 未找到 \`/${name}\`。\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "未找到自定义命令",
+        details: [`/${name}`],
+      }));
       return;
     }
     rmSync(filePath, { force: true });
-    input.writeStdout(`[commands] 已删除 \`/${name}\`。\n\n`);
+    input.writeStdout(buildCommandsSurface({
+      title: "已删除自定义命令",
+      details: [`/${name}`],
+    }));
   };
 
   const readMenuTextInput = async (
@@ -523,7 +586,9 @@ export function createRunStartUserCommandsRuntime(
     }
     const value = result.value.trim();
     if (!options?.optional && value.length === 0) {
-      input.writeStdout("[commands] 输入为空，已取消操作。\n\n");
+      input.writeStdout(buildCommandsSurface({
+        title: "输入为空，已取消操作",
+      }));
       return undefined;
     }
     return value;
@@ -590,14 +655,14 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "new") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] 名称> ",
+        "命令名> ",
       );
       if (!name) {
         return;
       }
       const prompt = await readMenuTextInput(
         withInputPaused,
-        "[commands] prompt（可选）> ",
+        "prompt（可选）> ",
         { optional: true },
       );
       if (typeof prompt === "undefined") {
@@ -609,14 +674,14 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "set") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] 目标名称> ",
+        "目标命令> ",
       );
       if (!name) {
         return;
       }
       const prompt = await readMenuTextInput(
         withInputPaused,
-        "[commands] 新 prompt> ",
+        "新 prompt> ",
       );
       if (!prompt) {
         return;
@@ -627,7 +692,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "show") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] 目标名称> ",
+        "目标命令> ",
       );
       if (!name) {
         return;
@@ -638,7 +703,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "enable") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] 目标名称> ",
+        "目标命令> ",
       );
       if (!name) {
         return;
@@ -649,7 +714,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "disable") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] 目标名称> ",
+        "目标命令> ",
       );
       if (!name) {
         return;
@@ -660,7 +725,7 @@ export function createRunStartUserCommandsRuntime(
     if (menu.item.id === "delete") {
       const name = await readMenuTextInput(
         withInputPaused,
-        "[commands] 目标名称> ",
+        "目标命令> ",
       );
       if (!name) {
         return;
@@ -674,7 +739,10 @@ export function createRunStartUserCommandsRuntime(
     handleManagementCommand: async (userInput: string): Promise<void> => {
       const normalizedInput = normalizeCommandsAliasInput(userInput);
       if (!normalizedInput) {
-        input.writeStdout("[commands] 无效命令入口。\n\n");
+        input.writeStdout(buildCommandsSurface({
+          title: "无效命令入口",
+          details: ['使用 "/commands" 打开命令管理。'],
+        }));
         return;
       }
       const rest = normalizedInput.replace(/^\/commands/i, "").trim();
@@ -687,7 +755,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "new") {
         const parts = splitFirstToken(tail);
         if (!parts.head) {
-          input.writeStdout("[commands] 用法: /commands new <name> [prompt]\n\n");
+          input.writeStdout(buildCommandsUsageSurface("/commands new <name> [prompt]"));
           return;
         }
         createCommand(parts.head, parts.tail);
@@ -696,7 +764,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "set") {
         const parts = splitFirstToken(tail);
         if (!parts.head || !parts.tail) {
-          input.writeStdout("[commands] 用法: /commands set <name> <prompt>\n\n");
+          input.writeStdout(buildCommandsUsageSurface("/commands set <name> <prompt>"));
           return;
         }
         setCommandPrompt(parts.head, parts.tail);
@@ -705,7 +773,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "show") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] 用法: /commands show <name>\n\n");
+          input.writeStdout(buildCommandsUsageSurface("/commands show <name>"));
           return;
         }
         showCommand(name);
@@ -714,7 +782,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "delete") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] 用法: /commands delete <name>\n\n");
+          input.writeStdout(buildCommandsUsageSurface("/commands delete <name>"));
           return;
         }
         deleteCommand(name);
@@ -723,7 +791,7 @@ export function createRunStartUserCommandsRuntime(
       if (action === "enable") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] 用法: /commands enable <name>\n\n");
+          input.writeStdout(buildCommandsUsageSurface("/commands enable <name>"));
           return;
         }
         toggleCommandEnabled(name, true);
@@ -732,13 +800,16 @@ export function createRunStartUserCommandsRuntime(
       if (action === "disable") {
         const name = tail.trim();
         if (!name) {
-          input.writeStdout("[commands] 用法: /commands disable <name>\n\n");
+          input.writeStdout(buildCommandsUsageSurface("/commands disable <name>"));
           return;
         }
         toggleCommandEnabled(name, false);
         return;
       }
-      input.writeStdout(`[commands] 不支持的动作: ${action}\n\n`);
+      input.writeStdout(buildCommandsSurface({
+        title: "不支持的命令动作",
+        details: [`动作: ${action}`, '使用 "/commands help" 查看可用动作。'],
+      }));
     },
     openManagementMenu,
     tryRunUserCommand: async (
@@ -758,7 +829,13 @@ export function createRunStartUserCommandsRuntime(
         return false;
       }
       if (!record.enabled) {
-        input.writeStdout(`[commands] \`/${record.name}\` 当前已禁用。使用 /commands enable ${record.name} 启用。\n\n`);
+        input.writeStdout(buildCommandsSurface({
+          title: "自定义命令已停用",
+          details: [
+            `/${record.name} 当前不可调用。`,
+            `使用: /commands enable ${record.name}`,
+          ],
+        }));
         return true;
       }
       const prompt = applyCommandPromptTemplate(record.prompt, invocation.args);
