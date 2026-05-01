@@ -2168,7 +2168,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         !allowProactiveCompaction &&
         consecutiveCompactionFailures >= input.contextEngineConfig.recovery.circuitBreakerFailures
       ) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=circuit_open failures=${String(consecutiveCompactionFailures)} limit=${String(input.contextEngineConfig.recovery.circuitBreakerFailures)}\n`,
         );
       }
@@ -2271,7 +2271,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         state: graphAutotuneStatePersisted,
       });
       if (graphAutotuneDecision.changed || graphAutotuneDecision.suppressedBy !== "none") {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=graph_quality_autotune action=${graphAutotuneDecision.action} reason=${graphAutotuneDecision.reason} suppressed=${graphAutotuneDecision.suppressedBy} dep_rows=${String(graphAutotuneDecision.dependencyRowsFrom)}->${String(graphAutotuneDecision.dependencyRowsTo)} symbol_rows=${String(graphAutotuneDecision.symbolRowsFrom)}->${String(graphAutotuneDecision.symbolRowsTo)} entries=${String(graphAutotuneDecision.evidenceEntries)} quality_entries=${String(graphAutotuneDecision.evidenceQualityEntries)} persistent_entries=${String(graphAutotuneDecision.evidencePersistentEntries)} hold=${String(graphAutotuneDecision.stateBefore.holdTurnsRemaining)}->${String(graphAutotuneDecision.stateAfter.holdTurnsRemaining)} direction=${graphAutotuneDecision.stateBefore.lastDirection}->${graphAutotuneDecision.stateAfter.lastDirection} downshift_warmup=${String(graphAutotuneDecision.stateBefore.downshiftWarmupStreak)}->${String(graphAutotuneDecision.stateAfter.downshiftWarmupStreak)} dep_depth=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyDepth)} dep_multi_hop=${formatOptionalMetric(graphAutotuneDecision.metrics.dependencyMultiHopRate)} symbol_bridge=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBridgeCoverageRate)} symbol_breadth=${formatOptionalMetric(graphAutotuneDecision.metrics.symbolBreadthCoverageRate)} pressure_utilization=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureUtilization)} pressure_auto_limit=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureAutoLimitRate)} pressure_semantic=${formatOptionalMetric(graphAutotuneDecision.metrics.pressureSemanticRate)} cache_guard=${graphAutotuneDecision.metrics.graphCacheDegraded ? "degraded" : "ok"}:${graphAutotuneDecision.metrics.graphCacheReason} cache_query_hit_rate=${formatOptionalMetric(graphAutotuneDecision.metrics.graphCacheQueryHitRate)} persistent_guard=${graphAutotuneDecision.metrics.persistentDegraded ? "degraded" : "ok"}:${graphAutotuneDecision.metrics.persistentReason} persistent_rates=${formatOptionalMetric(graphAutotuneDecision.metrics.persistentParsedPerScanned)}/${formatOptionalMetric(graphAutotuneDecision.metrics.persistentReusedPerScanned)}/${formatOptionalMetric(graphAutotuneDecision.metrics.persistentRemovedPerScanned)} graph_signal_state=${graphAutotuneDecision.graphQualitySignals.state} graph_signal_reason=${graphAutotuneDecision.graphQualitySignals.reason} adaptive_threshold_source=${graphAutotuneDecision.metrics.adaptiveSource} adaptive_updated=${graphAutotuneDecision.metrics.adaptiveUpdated ? "true" : "false"} adaptive_alpha=${graphAutotuneDecision.metrics.adaptiveAlpha.toFixed(3)} adaptive_updates=${String(graphAutotuneDecision.metrics.adaptiveUpdates)} adaptive_thresholds=${graphAutotuneDecision.metrics.adaptiveCacheThreshold.toFixed(3)}/${graphAutotuneDecision.metrics.adaptiveParsedMaxThreshold.toFixed(3)}/${graphAutotuneDecision.metrics.adaptiveReusedMinThreshold.toFixed(3)}/${graphAutotuneDecision.metrics.adaptiveRemovedMaxThreshold.toFixed(3)} adaptive_action_source=${graphAutotuneDecision.metrics.adaptiveActionSource} adaptive_action_updated=${graphAutotuneDecision.metrics.adaptiveActionUpdated ? "true" : "false"} adaptive_action_scale=${graphAutotuneDecision.metrics.adaptiveActionScale.toFixed(3)} adaptive_action_updates=${String(graphAutotuneDecision.metrics.adaptiveActionUpdates)}\n`,
         );
       }
@@ -2376,12 +2376,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         },
       });
       if (adaptiveGuardPolicyDecision.mode !== "stable" && adaptiveGuardPolicyDecision.mode !== "disabled") {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=quality_guard_policy_adaptive mode=${adaptiveGuardPolicyDecision.mode} reason=${adaptiveGuardPolicyDecision.reason} allowlist=${adaptiveGuardPolicyDecision.allowlist.join(",")} mode_blocked=${adaptiveGuardPolicyDecision.modeBlocked ? "true" : "false"} blocked_mode=${adaptiveGuardPolicyDecision.blockedMode ?? "<none>"} promote_streak=${String(adaptiveGuardPolicyDecision.effectivePolicy.promoteStreak)} severe_promote_streak=${String(adaptiveGuardPolicyDecision.effectivePolicy.severePromoteStreak)} release_streak=${String(adaptiveGuardPolicyDecision.effectivePolicy.releaseStreak)} hold_turns=${String(adaptiveGuardPolicyDecision.effectivePolicy.holdTurns)} pressure_source=${adaptiveGuardPolicyDecision.pressurePolicy.source} pressure_updated=${adaptiveGuardPolicyDecision.pressurePolicy.updated ? "true" : "false"} pressure_alpha=${adaptiveGuardPolicyDecision.pressurePolicy.learnAlpha.toFixed(3)} pressure_thresholds=${adaptiveGuardPolicyDecision.pressurePolicy.utilizationThreshold.toFixed(3)}/${adaptiveGuardPolicyDecision.pressurePolicy.semanticRateThreshold.toFixed(3)}/${adaptiveGuardPolicyDecision.pressurePolicy.autoLimitRateThreshold.toFixed(3)}/${adaptiveGuardPolicyDecision.pressurePolicy.jointRateThreshold.toFixed(3)} semantic_rate=${typeof promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.compressionActivity.snapshotSemanticCompressRate.toFixed(3) : "<none>"} auto_limit_rate=${typeof promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.compressionActivity.autoLimitTriggeredRate.toFixed(3) : "<none>"} avg_utilization=${typeof promptQualityWindowSummary.tokenBudget.averageUtilizationRatio === "number" ? promptQualityWindowSummary.tokenBudget.averageUtilizationRatio.toFixed(3) : "<none>"} hard_budget_rate=${typeof promptQualityWindowSummary.strategyActivity.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyActivity.hardBudgetRate.toFixed(3) : "<none>"} quality_first_rate=${typeof promptQualityWindowSummary.strategyActivity.qualityFirstRate === "number" ? promptQualityWindowSummary.strategyActivity.qualityFirstRate.toFixed(3) : "<none>"} pre_send_overflow=${typeof promptQualityWindowSummary.signalAverages?.preSendOverflowRatio === "number" ? promptQualityWindowSummary.signalAverages.preSendOverflowRatio.toFixed(3) : "<none>"} pre_send_pressure=${typeof promptQualityWindowSummary.signalAverages?.preSendPressureScore === "number" ? promptQualityWindowSummary.signalAverages.preSendPressureScore.toFixed(3) : "<none>"} trend_delta_utilization=${typeof promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio === "number" ? promptQualityWindowSummary.pressureTrends.delta.averageUtilizationRatio.toFixed(3) : "<none>"} trend_delta_semantic=${typeof promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.snapshotSemanticCompressRate.toFixed(3) : "<none>"} trend_delta_auto_limit=${typeof promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate === "number" ? promptQualityWindowSummary.pressureTrends.delta.autoLimitTriggeredRate.toFixed(3) : "<none>"} strategy_trend_delta_hard_budget=${typeof promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate === "number" ? promptQualityWindowSummary.strategyTrends.delta.hardBudgetRate.toFixed(3) : "<none>"} strategy_trend_delta_overflow=${typeof promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio === "number" ? promptQualityWindowSummary.strategyTrends.delta.averageOverflowRatio.toFixed(3) : "<none>"} strategy_trend_delta_pressure=${typeof promptQualityWindowSummary.strategyTrends.delta.averagePressureScore === "number" ? promptQualityWindowSummary.strategyTrends.delta.averagePressureScore.toFixed(3) : "<none>"} outcome_reliability=${String(adaptiveGuardPolicyDecision.outcomeReliability.requiredTransitions)}->${String(adaptiveGuardPolicyDecision.outcomeReliability.nextRequiredTransitions)}/${String(adaptiveGuardPolicyDecision.outcomeReliability.hardBudgetTransitions)}/${String(adaptiveGuardPolicyDecision.outcomeReliability.qualityFirstTransitions)}/${adaptiveGuardPolicyDecision.outcomeReliability.combinedEvidenceScore.toFixed(3)} hard_budget_reliable=${adaptiveGuardPolicyDecision.outcomeReliability.hardBudgetReliable ? "true" : "false"} quality_first_reliable=${adaptiveGuardPolicyDecision.outcomeReliability.qualityFirstReliable ? "true" : "false"} drift_guard=${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceTurns}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenTurns}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenRate.toFixed(3)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenBias ? "bias" : "ok"}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.autoActionLevel}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.alertLevel}/${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.entries)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.latest}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.dominant}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.activeRate.toFixed(3)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.mediumOrHardRate.toFixed(3)}/${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.hardRate.toFixed(3)}/${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.transitionCount)}\n`,
         );
       }
       if (adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenBias) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=quality_guard_policy_drift_guard reason=${adaptiveGuardPolicyDecision.outcomeDriftGuard.reason} recommendation=${adaptiveGuardPolicyDecision.outcomeDriftGuard.recommendation} auto_action_level=${adaptiveGuardPolicyDecision.outcomeDriftGuard.autoActionLevel} window_alert=${adaptiveGuardPolicyDecision.outcomeDriftGuard.windowSummary.alertLevel} high_evidence_turns=${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceTurns)} high_evidence_harden_turns=${String(adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenTurns)} high_evidence_harden_rate=${adaptiveGuardPolicyDecision.outcomeDriftGuard.highEvidenceHardenRate.toFixed(3)}\n`,
         );
       }
@@ -2448,7 +2448,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         || qualityGuardDecision.promoted
         || qualityGuardDecision.released
       ) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=quality_guard_precompact stage=${selectedStage} floor=${qualityGuardDecision.floorStage} reason=${promptQualityWindowDegradation.reason} severe=${qualityGuardDecision.severe ? "true" : "false"} promoted=${qualityGuardDecision.promoted ? "true" : "false"} released=${qualityGuardDecision.released ? "true" : "false"} degraded_streak=${String(qualityGuardDecision.state.degradedStreak)} healthy_streak=${String(qualityGuardDecision.state.healthyStreak)} hold_turns=${String(qualityGuardDecision.state.holdTurnsRemaining)} observed_overall=${typeof promptQualityWindowDegradation.observedOverall === "number" ? promptQualityWindowDegradation.observedOverall.toFixed(3) : "<none>"} observed_low_quality_rate=${typeof promptQualityWindowDegradation.observedLowQualityRate === "number" ? promptQualityWindowDegradation.observedLowQualityRate.toFixed(3) : "<none>"}\n`,
         );
       }
@@ -2464,7 +2464,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           selectedStage = escalated.stage;
           basePrompt = escalated.prompt;
           selectionReason = "budget_guard";
-          input.writeStderr(
+          writeTurnDiagnostic(
             `[context-engine] event=downshift_precompact stage=${selectedStage} previous_limit=${String(previousTargetTokenLimit)} current_limit=${String(targetTokenLimit)}\n`,
           );
         }
@@ -2517,20 +2517,20 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         snapshot: runtimeToolSurfaceAdaptationSnapshot,
       });
       if (runtimeToolContextForTurn.adaptation.active) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[tool-surface] event=adapted from=${runtimeToolContextForTurn.adaptation.fromProfile} to=${runtimeToolContextForTurn.adaptation.appliedProfile} source=${runtimeToolContextForTurn.adaptation.source ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"} recoverable=${runtimeToolContextForTurn.adaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextForTurn.adaptation.recoveryRecoverable)} auto_adaptation_blocked=${runtimeToolContextForTurn.adaptation.autoAdaptationBlocked ? "true" : "false"}\n`,
         );
       } else if (runtimeToolContextForTurn.adaptation.autoAdaptationBlocked) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[tool-surface] event=adaptation_blocked reason=${runtimeToolContextForTurn.adaptation.reason} from=${runtimeToolContextForTurn.adaptation.fromProfile} applied=${runtimeToolContextForTurn.adaptation.appliedProfile} recommended=${runtimeToolContextForTurn.adaptation.recommendedProfile ?? "<none>"} stage=${runtimeToolContextForTurn.adaptation.recoveryStage ?? "<none>"} tool=${runtimeToolContextForTurn.adaptation.recoveryToolName ?? "<none>"} error_class=${runtimeToolContextForTurn.adaptation.recoveryErrorClass ?? "<none>"} recoverable=${runtimeToolContextForTurn.adaptation.recoveryRecoverable === null ? "<unknown>" : String(runtimeToolContextForTurn.adaptation.recoveryRecoverable)} auto_adaptation_blocked=true\n`,
         );
         if (runtimeToolRecoveryGate.blocking) {
-          input.writeStderr(
+          writeTurnDiagnostic(
             `[tool-recovery-gate] event=blocked ${formatRuntimeToolRecoveryGateFields(runtimeToolRecoveryGate)} attention_tool=${runtimeToolRecoveryGate.attentionToolName ?? "<none>"} attention_error_class=${runtimeToolRecoveryGate.attentionErrorClass ?? "<none>"}\n`,
           );
         }
       } else if (runtimeToolContextForTurn.guard.active) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[tool-surface] event=adaptation_guard reason=${runtimeToolContextForTurn.guard.reason} blocked_profile=${runtimeToolContextForTurn.guard.blockedProfile ?? "<none>"} matching_failures=${String(runtimeToolContextForTurn.guard.matchingFailureCount)} recent_profiles=${runtimeToolContextForTurn.guard.recentProfileSequence.join(",") || "<empty>"}\n`,
         );
       }
@@ -2542,9 +2542,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         nowIso: runtimeToolSurfaceAdaptationStartedAtIso,
       });
       promptParts.push(...recoveryPromptFlow.promptBlocks);
-      for (const event of recoveryPromptFlow.stderrEvents) {
-        input.writeStderr(event);
-      }
+      writeTurnDiagnosticEvents(recoveryPromptFlow.stderrEvents);
       const mcpInstructionPrefix = input.mcpInstructionPromptPrefix?.trim() ?? "";
       const mcpInstructionDecision = shouldInjectMcpInstructionPrefix(input, turnUserText);
       const providerKind = resolvePrimaryProviderKind(input);
@@ -2577,21 +2575,21 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       });
       if (semanticPrefetch.block && semanticPrefetch.block.trim().length > 0) {
         promptParts.push(semanticPrefetch.block);
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=semantic_prefetch status=applied evidence=${String(semanticPrefetch.evidenceCount)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
         );
         if (semanticPrefetch.warning) {
-          input.writeStderr(
+          writeTurnDiagnostic(
             `[context-engine] event=semantic_prefetch status=warning message=${compactSingleLine(semanticPrefetch.warning, 140)}\n`,
           );
         }
       } else if (input.contextEngineConfig.semanticPrefetch.enabled) {
         if (semanticPrefetch.warning) {
-          input.writeStderr(
+          writeTurnDiagnostic(
             `[context-engine] event=semantic_prefetch status=degraded message=${compactSingleLine(semanticPrefetch.warning, 140)} duration_ms=${String(semanticPrefetch.durationMs)}\n`,
           );
         } else {
-          input.writeStderr(
+          writeTurnDiagnostic(
             `[context-engine] event=semantic_prefetch status=empty duration_ms=${String(semanticPrefetch.durationMs)}\n`,
           );
         }
@@ -2660,7 +2658,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         preSendCompressionOverflowRatio = preSendCompressionPlan.overflowRatio;
         preSendCompressionPressureScore = preSendCompressionPlan.pressureScore;
         preSendCompressionOrder = preSendCompressionPlan.order.join(",");
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=pre_send_plan stage=${selectedStage} strategy=${preSendCompressionStrategy} overflow_ratio=${preSendCompressionOverflowRatio.toFixed(3)} pressure_score=${preSendCompressionPressureScore.toFixed(3)} order=${preSendCompressionOrder}\n`,
         );
         for (const step of preSendCompressionPlan.order) {
@@ -2681,7 +2679,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                 estimatedTokens: recentTrimmed.estimatedTokens,
               };
               selectionReason = "budget_guard";
-              input.writeStderr(
+              writeTurnDiagnostic(
                 `[context-engine] event=pre_send_recent_trim stage=${selectedStage} removed_rows=${String(preSendRecentTrimRows)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
               );
             }
@@ -2705,17 +2703,17 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                 estimatedTokens: snapshotSemanticCompressed.estimatedTokens,
               };
               selectionReason = "budget_guard";
-              input.writeStderr(
+              writeTurnDiagnostic(
                 `[context-engine] event=pre_send_snapshot_semantic_compress stage=${selectedStage} compressed_sections=${String(preSendSnapshotSemanticCompressSections)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
               );
             }
             if (snapshotSemanticCompressed.generativeUsed) {
-              input.writeStderr(
+              writeTurnDiagnostic(
                 `[context-engine] event=pre_send_snapshot_semantic_generate stage=${selectedStage} generated_sections=${String(snapshotSemanticCompressed.generativeSections.length)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
               );
             }
             if (snapshotSemanticCompressed.warnings.length > 0) {
-              input.writeStderr(
+              writeTurnDiagnostic(
                 `[context-engine] event=pre_send_snapshot_semantic_generate status=degraded message=${compactSingleLine(snapshotSemanticCompressed.warnings.join("; "), 180)}\n`,
               );
             }
@@ -2734,7 +2732,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                 estimatedTokens: snapshotTrimmed.estimatedTokens,
               };
               selectionReason = "budget_guard";
-              input.writeStderr(
+              writeTurnDiagnostic(
                 `[context-engine] event=pre_send_snapshot_trim stage=${selectedStage} removed_sections=${String(preSendSnapshotTrimSections)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} target_limit=${String(targetTokenLimit)}\n`,
               );
             }
@@ -2772,7 +2770,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         input.onHistoryCompacted();
       }
       if (preSendHeadTrimRetries > 0) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[context-engine] event=pre_send_head_trim stage=${selectedStage} retries=${String(preSendHeadTrimRetries)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} effective_window=${String(promptPreparation.effectiveWindowTokens)} target_limit=${String(targetTokenLimit)}\n`,
         );
       }
@@ -2785,7 +2783,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         estimatedTokens: selectedPrepared.estimatedTokens,
         targetTokenLimit,
       });
-      input.writeStderr(
+      writeTurnDiagnostic(
         `[context-engine] event=prompt_prepared stage=${selectedStage} threshold_stage=${promptPreparation.thresholdStage} reason=${selectionReason} utilization=${promptPreparation.utilization.toFixed(3)} selected_utilization=${selectedUtilizationRatio.toFixed(3)} estimated_tokens=${String(selectedPrepared.estimatedTokens)} auto_compact_limit=${String(promptPreparation.autoCompactTokenLimit)} target_limit=${String(targetTokenLimit)} effective_window=${String(promptPreparation.effectiveWindowTokens)} auto_limit_triggered=${promptPreparation.autoCompactLimitTriggered ? "true" : "false"} downshift_guard=${downshiftGuardTriggered ? "true" : "false"} quality_guard=${qualityGuardActive ? "true" : "false"} pre_send_strategy=${preSendCompressionStrategy} pre_send_overflow_ratio=${preSendCompressionOverflowRatio.toFixed(3)} pre_send_pressure_score=${preSendCompressionPressureScore.toFixed(3)} pre_send_order=${preSendCompressionOrder} recent_trim_rows=${String(preSendRecentTrimRows)} snapshot_trim_sections=${String(preSendSnapshotTrimSections)} snapshot_semantic_compress_sections=${String(preSendSnapshotSemanticCompressSections)} pretrim_retries=${String(preSendHeadTrimRetries)}\n`,
       );
       const promptQualitySample = computePromptQualitySample({
@@ -2803,7 +2801,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         preSendOverflowRatio: preSendCompressionOverflowRatio,
         preSendPressureScore: preSendCompressionPressureScore,
       });
-      input.writeStderr(
+      writeTurnDiagnostic(
         `[context-engine] event=prompt_quality coverage=${promptQualitySample.scores.coverage.toFixed(3)} recency=${promptQualitySample.scores.recency.toFixed(3)} size=${promptQualitySample.scores.size.toFixed(3)} overall=${promptQualitySample.scores.overall.toFixed(3)} recent_rows=${String(promptQualitySample.signals.recentRows)} snapshot_sections=${String(promptQualitySample.signals.snapshotSections)} recent_trim_rows=${String(promptQualitySample.signals.recentTrimRows)} snapshot_trim_sections=${String(promptQualitySample.signals.snapshotTrimSections)} snapshot_semantic_compress_sections=${String(promptQualitySample.signals.snapshotSemanticCompressSections)} head_trim_retries=${String(promptQualitySample.signals.headTrimRetries)} pre_send_strategy=${promptQualitySample.signals.preSendStrategy} pre_send_overflow_ratio=${promptQualitySample.signals.preSendOverflowRatio.toFixed(3)} pre_send_pressure_score=${promptQualitySample.signals.preSendPressureScore.toFixed(3)}\n`,
       );
       appendPromptQualityWindowEntry({
@@ -2842,7 +2840,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         dependencyImportStats,
       );
       const graphHintQuality = summarizeGraphHintQualityFromPrompt(selectedPrepared.prompt);
-      input.writeStderr(
+      writeTurnDiagnostic(
         `[context-engine] event=graph_cache_stats delta_symbol_query=${symbolQueryDeltaStats.hit}/${symbolQueryDeltaStats.miss}/${symbolQueryDeltaStats.write}/${symbolQueryDeltaStats.evict} delta_symbol_decl=${symbolDeclarationDeltaStats.hit}/${symbolDeclarationDeltaStats.miss}/${symbolDeclarationDeltaStats.write}/${symbolDeclarationDeltaStats.evict} delta_dependency_query=${dependencyQueryDeltaStats.hit}/${dependencyQueryDeltaStats.miss}/${dependencyQueryDeltaStats.write}/${dependencyQueryDeltaStats.evict} delta_dependency_import=${dependencyImportDeltaStats.hit}/${dependencyImportDeltaStats.miss}/${dependencyImportDeltaStats.write}/${dependencyImportDeltaStats.evict} total_symbol_query=${symbolQueryStats.hit}/${symbolQueryStats.miss}/${symbolQueryStats.write}/${symbolQueryStats.evict} total_symbol_decl=${symbolDeclarationStats.hit}/${symbolDeclarationStats.miss}/${symbolDeclarationStats.write}/${symbolDeclarationStats.evict} total_dependency_query=${dependencyQueryStats.hit}/${dependencyQueryStats.miss}/${dependencyQueryStats.write}/${dependencyQueryStats.evict} total_dependency_import=${dependencyImportStats.hit}/${dependencyImportStats.miss}/${dependencyImportStats.write}/${dependencyImportStats.evict} quality_dependency_rows=${String(graphHintQuality.dependency.rows)} quality_dependency_max_depth=${String(graphHintQuality.dependency.maxChainDepth)} quality_dependency_multi_hop_rows=${String(graphHintQuality.dependency.multiHopRows)} quality_symbol_rows=${String(graphHintQuality.symbol.rows)} quality_symbol_bridge_rows=${String(graphHintQuality.symbol.rowsWithBridge)} quality_symbol_breadth_rows=${String(graphHintQuality.symbol.rowsWithBreadth)}\n`,
       );
       appendGraphCacheWindowEntry({
@@ -2875,7 +2873,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         : basePrompt;
       const prompt = basePrompt;
     if (kimiSearchRoutingPrefix.length > 0) {
-      input.writeStderr(
+      writeTurnDiagnostic(
         `[governance:search-route] event=policy_injected provider=${providerKind} policy=${input.kimiSearchRoutingPolicy} has_grok_search=${hasGrokSearchServer(input.mcpInstructionServerNames) ? "true" : "false"} chars=${String(kimiSearchRoutingPrefix.length)}\n`,
       );
     }
@@ -2884,11 +2882,11 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
         ? input.mcpInstructionServerNames.join(",")
         : "<none>";
       if (mcpInstructionDecision.inject) {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[governance:mcp-instruction] event=prompt_injected servers=${serversSummary} chars=${String(mcpInstructionPrefix.length)} reason=${mcpInstructionDecision.reason}\n`,
         );
       } else {
-        input.writeStderr(
+        writeTurnDiagnostic(
           `[governance:mcp-instruction] event=prompt_skipped servers=${serversSummary} reason=${mcpInstructionDecision.reason}\n`,
         );
       }
@@ -2920,7 +2918,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
     const routeCircuitSkipped = routeDecision.trace.circuitSkipped
       .map((entry) => `${entry.name}@${String(entry.reopenAtMs)}`)
       .join(",");
-    input.writeStderr(
+    writeTurnDiagnostic(
       `[runtime-route] event=decision sticky=${routeDecision.trace.stickyProvider ?? "<none>"} sticky_hit=${routeDecision.trace.stickyHit ? "true" : "false"} sticky_reason=${routeDecision.trace.stickyReason} selected=${orderedProviders[0]?.name ?? "<none>"} score_order=${routeScoreOrder || "<none>"} circuit_skipped=${routeCircuitSkipped || "<none>"} probe=${routeDecision.trace.probeProvider ?? "<none>"} strategy=sticky+score\n`,
     );
       if (orderedProviders.length === 0) {
@@ -2940,9 +2938,9 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
           for (const provider of orderedProviders) {
             throwIfTurnInterrupted(turnSignal, "aborted_before_provider_attempt");
             const startedAtMs = Date.now();
-            const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, turnUserText);
+          const turnModelConfig = resolveTurnModelConfig(provider.modelConfig, turnUserText);
           if (turnModelConfig.timeoutBoosted) {
-            input.writeStderr(
+            writeTurnDiagnostic(
               `[runtime-model] timeout_boost provider=${provider.name} reason=search_intent timeout_ms=${String(turnModelConfig.modelConfig.timeoutMs)}\n`,
             );
           }
@@ -3007,7 +3005,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                   })) {
                     kimiBuiltinFallbackRetryCount += 1;
                     turnPrompt = kimiBuiltinFallbackPrompt;
-                    input.writeStderr(
+                    writeTurnDiagnostic(
                       `[runtime-route] provider_retry provider=${provider.name} reason=kimi_mcp_unavailable fallback=builtin_web_search retry=${String(kimiBuiltinFallbackRetryCount)}\n`,
                     );
                     continue;
@@ -3027,7 +3025,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                         activeCompactionStage = escalated.stage;
                         turnPrompt = escalated.prompt;
                         input.onHistoryCompacted();
-                        input.writeStderr(
+                        writeTurnDiagnostic(
                           `[context-engine] event=reactive_compact_retry provider=${provider.name} reason=${overflow.reason} stage=${activeCompactionStage} retry=${String(reactiveRetryCount)}\n`,
                         );
                         continue;
@@ -3042,21 +3040,21 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                         ptlRetryCount += 1;
                         turnPrompt = truncatedPrompt;
                         input.onHistoryCompacted();
-                        input.writeStderr(
+                        writeTurnDiagnostic(
                           `[context-engine] event=ptl_retry provider=${provider.name} reason=${overflow.reason} retry=${String(ptlRetryCount)}\n`,
                         );
                         continue;
                       }
                     }
                     consecutiveCompactionFailures += 1;
-                    input.writeStderr(
+                    writeTurnDiagnostic(
                       `[context-engine] event=reactive_compact_failed provider=${provider.name} failures=${String(consecutiveCompactionFailures)} reason=${overflow.reason}\n`,
                     );
                     if (
                       consecutiveCompactionFailures >=
                       input.contextEngineConfig.recovery.circuitBreakerFailures
                     ) {
-                      input.writeStderr(
+                      writeTurnDiagnostic(
                         `[context-engine] event=circuit_open failures=${String(consecutiveCompactionFailures)} limit=${String(input.contextEngineConfig.recovery.circuitBreakerFailures)}\n`,
                       );
                     }
@@ -3065,7 +3063,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                     input.contextEngineConfig.reactiveOnPromptTooLong &&
                     !canUseReactiveCompaction
                   ) {
-                    input.writeStderr(
+                    writeTurnDiagnostic(
                       `[context-engine] event=reactive_compact_skipped reason=circuit_open failures=${String(consecutiveCompactionFailures)}\n`,
                     );
                   }
@@ -3080,7 +3078,7 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
                     ? 600
                     : 1_500;
                   const backoffMs = providerRetryCount * backoffBaseMs;
-                  input.writeStderr(
+                  writeTurnDiagnostic(
                     `[runtime-route] provider_retry provider=${provider.name} reason=${retryReason} retry=${String(providerRetryCount)} backoff_ms=${String(backoffMs)}\n`,
                   );
                   await sleepAsync(backoffMs, turnSignal);
@@ -3354,10 +3352,12 @@ export function createRunStartTurnRunner(baseInput: CreateRunStartTurnRunnerInpu
       }),
     );
     const reflections = input.gaMechanismRuntime.pullReflectionTasks(sessionKey);
-    for (const task of reflections) {
-      input.writeStderr(
-        `[reflection] trigger=${task.triggerType} id=${task.id} next_action="${task.nextActionHint}"\n`,
-      );
+    if (emitTerminalDiagnostics) {
+      for (const task of reflections) {
+        input.writeStderr(
+          `[reflection] trigger=${task.triggerType} id=${task.id} next_action="${task.nextActionHint}"\n`,
+        );
+      }
     }
     return 1;
   };

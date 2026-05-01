@@ -7085,6 +7085,7 @@ async function runTsRustExecutionSmoke() {
           GROBOT_API_KEY: "mock-runtime-key",
           GROBOT_MODEL: "mock-runtime-model",
           GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
+          GROBOT_STARTUP_DIAGNOSTICS: "1",
         },
       },
     );

@@ -3488,7 +3488,9 @@ function runStartContextPreSendHeadTrimFlow(repoRoot) {
     "8",
     "--message",
     longMessage,
-  ]);
+  ], {
+    GROBOT_STARTUP_DIAGNOSTICS: "1",
+  });
   const preTrimEvent = result.stderr.match(
     /event=pre_send_head_trim stage=([a-z_]+) retries=(\d+) estimated_tokens=(\d+) effective_window=(\d+)/,
   );
@@ -3620,7 +3622,9 @@ function runStartContextQualityGuardFlow(repoRoot) {
     "8",
     "--message",
     "quality guard should proactively escalate compaction when recent prompt quality window is degraded",
-  ]);
+  ], {
+    GROBOT_STARTUP_DIAGNOSTICS: "1",
+  });
   const qualityGuardEvent = result.stderr.match(
     /event=quality_guard_precompact stage=([a-z_]+).* reason=([a-z_]+)/,
   );
@@ -3789,7 +3793,9 @@ function runStartContextGraphQualityAutotuneFlow(repoRoot) {
     "6",
     "--message",
     "graph quality autotune should raise graph hint rows when evidence quality is poor",
-  ]);
+  ], {
+    GROBOT_STARTUP_DIAGNOSTICS: "1",
+  });
   return {
     ...result,
     ...extractGraphAutotuneTelemetry(result.stderr),
@@ -3891,7 +3897,9 @@ function runStartContextGraphQualityAutotuneHysteresisFlow(repoRoot) {
     "6",
     "--message",
     "graph quality autotune hysteresis should suppress instant direction flip",
-  ]);
+  ], {
+    GROBOT_STARTUP_DIAGNOSTICS: "1",
+  });
   return {
     ...result,
     ...extractGraphAutotuneTelemetry(result.stderr),
@@ -3911,26 +3919,32 @@ function runStartContextGraphQualityAutotuneAdaptiveSequenceFlow(repoRoot) {
   const graphSeedPath = `${contextDir}/graph-cache-window.jsonl`;
   const statePath = `${memoryContextEngineDir}/graph-quality-autotune-state.json`;
   const config = writeConfig(buildSmokeConfig(workDir));
-  const runTurn = (message) => runCommand(repoRoot, [
-    "./grobot",
-    "start",
-    "--project",
-    "grobot",
-    "--work-dir",
-    workDir,
-    "--config",
-    config.configPath,
-    "--gateway-impl",
-    "ts",
-    "--runtime-impl",
-    "rust",
-    "--session-subject",
-    "graph-autotune-adaptive-seq-user",
-    "--history-turns",
-    "6",
-    "--message",
-    message,
-  ]);
+  const runTurn = (message) => runCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--work-dir",
+      workDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      "graph-autotune-adaptive-seq-user",
+      "--history-turns",
+      "6",
+      "--message",
+      message,
+    ],
+    {
+      GROBOT_STARTUP_DIAGNOSTICS: "1",
+    },
+  );
   const readAdaptiveSnapshot = (raw) => {
     if (!isObject(raw)) {
       return {
@@ -5200,7 +5214,9 @@ function runStartRecoveryGateBlocksSurfaceAdaptation(repoRoot) {
     "failing",
     "--message",
     "ts rust recovery gate surface smoke",
-  ]);
+  ], {
+    GROBOT_STARTUP_DIAGNOSTICS: "1",
+  });
   return {
     ...result,
     has_gate_blocked_surface:
