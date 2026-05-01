@@ -101,7 +101,11 @@ function parseModelCommand(inputRaw: string): ParsedModelCommand {
   if (legacyMatch) {
     return {
       kind: "legacy_subcommand",
-      reason: "[model] 旧子命令已移除。使用 /model 打开选择器（Enter 确认）。",
+      reason: [
+        `${terminalStyle.accent("●")} Model`,
+        `  ${terminalStyle.muted("旧子命令已移除。")}`,
+        `  ${terminalStyle.muted("使用 /model 打开选择器（Enter 确认）。")}`,
+      ].join("\n"),
     };
   }
   return {
@@ -715,7 +719,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, controls, handlers }) => {
       if (isInteractiveTerminal()) {
         if (userInput.trim() !== "/status") {
-          handlers.writeStdout("[status] 交互模式已收敛为主入口 /status；已为你打开状态栏菜单。\n\n");
+          handlers.writeStdout(buildSlashNotice("已打开状态栏菜单", [
+            "交互模式已收敛为主入口 /status。",
+          ]));
         }
         await handlers.openStatusMenu(controls.withInputPaused);
         return "continue";

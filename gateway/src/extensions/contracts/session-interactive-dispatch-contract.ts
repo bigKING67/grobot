@@ -1014,6 +1014,10 @@ async function main(): Promise<void> {
     rewind_with_args_hits_run_turn: includesEvent(rewindWithArgs.events, "runTurn:/rewind latest"),
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
+    model_legacy_reset_surface_is_human:
+      stripAnsi(modelLegacyReset.stdout).includes("● Model")
+      && stripAnsi(modelLegacyReset.stdout).includes("旧子命令已移除")
+      && !modelLegacyReset.stdout.includes("[model]"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
     plan_root_tty_enters_plan_directly:
       includesEvent(planMenu.events, "enterPlan:"),
@@ -1059,6 +1063,10 @@ async function main(): Promise<void> {
     status_current_tty_dispatched_directly: includesEvent(statusCurrentTty.events, "showStatusCurrent"),
     status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
     status_theme_tty_warned: includesEvent(statusThemeTty.events, "writeStdout"),
+    status_theme_tty_redirect_surface_is_human:
+      stripAnsi(statusThemeTty.stdout).includes("已打开状态栏菜单")
+      && stripAnsi(statusThemeTty.stdout).includes("交互模式已收敛为主入口 /status")
+      && !statusThemeTty.stdout.includes("[status]"),
     status_theme_tty_opened_menu: includesEvent(statusThemeTty.events, "openStatusMenu"),
     status_theme_tty_dispatched_directly: includesEvent(statusThemeTty.events, "setStatusTheme:nerd"),
     status_layout_alias_dispatched: includesEvent(statusLayoutAlias.events, "setStatusLayoutMode:compact"),
