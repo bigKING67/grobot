@@ -113,6 +113,21 @@ function buildValidPlanMarkdown() {
   ].join("\n");
 }
 
+const LEGACY_STATUS_MARKERS = [
+  "[plan]",
+  "[plan-status]",
+  "plan_id=",
+  "latest_failure=",
+  "next_action=",
+  "status=",
+  "phase=",
+];
+
+function hidesLegacyStatusMarkers(value) {
+  const text = String(value ?? "");
+  return LEGACY_STATUS_MARKERS.every((marker) => !text.includes(marker));
+}
+
 function main() {
   const repoRoot = process.cwd();
   const workDir = mkdtempSync(resolve(tmpdir(), "grobot-bridge-apply-failure-contract-"));
@@ -167,10 +182,10 @@ function main() {
         || statusAfterApplyFailure.payload.plan?.latest_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_FAILED",
       true,
     );
-    assert.equal(
-      String(statusAfterApplyFailure.payload.assistant_message ?? "").includes("latest_failure=plan_apply_failed"),
-      true,
-    );
+    const statusAfterApplyFailureMessage = String(statusAfterApplyFailure.payload.assistant_message ?? "");
+    assert.equal(statusAfterApplyFailureMessage.includes("当前计划"), true);
+    assert.equal(statusAfterApplyFailureMessage.includes("最近失败: 计划执行失败"), true);
+    assert.equal(hidesLegacyStatusMarkers(statusAfterApplyFailureMessage), true);
 
     const eventsPath = resolve(dirname(planPath), "events.jsonl");
     const eventsRaw = readFileSync(eventsPath, "utf8");
@@ -194,6 +209,11 @@ function main() {
       status_latest_failure_event: statusAfterApplyFailure.payload?.plan?.latest_failure_event ?? null,
       status_latest_failure_diagnostic_code:
         statusAfterApplyFailure.payload?.plan?.latest_failure_diagnostic_code ?? null,
+      status_after_failure_assistant_message_human:
+        statusAfterApplyFailureMessage.includes("当前计划")
+        && statusAfterApplyFailureMessage.includes("最近失败: 计划执行失败"),
+      status_after_failure_assistant_message_hides_machine_fields:
+        hidesLegacyStatusMarkers(statusAfterApplyFailureMessage),
       events_has_plan_apply_failed: eventsRaw.includes("\"event\":\"plan_apply_failed\""),
       events_has_policy_action: eventsRaw.includes("policy_action=fail"),
       events_has_policy_reason: eventsRaw.includes("policy_reason="),

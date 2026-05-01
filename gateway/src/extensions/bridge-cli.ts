@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { relative as relativePath, resolve as resolvePath } from "node:path";
 import { runGatewayTurn } from "../orchestration/main";
 import { MigrationOptions, SessionKeyParts } from "../models/types";
 import {
@@ -560,88 +561,234 @@ function resolvePlanRecommendation(plan: ReturnType<typeof currentPlanView>): {
   });
 }
 
-function planModeHintMessage(): string {
+function formatBridgePlanPath(input: {
+  workDir: string;
+  planPath?: string;
+}): string | undefined {
+  const rawPath = input.planPath?.trim();
+  if (!rawPath) {
+    return undefined;
+  }
+  const resolvedPlanPath = resolvePath(rawPath);
+  const relativePlanPath = relativePath(input.workDir, resolvedPlanPath);
+  if (relativePlanPath && !relativePlanPath.startsWith("..") && !relativePlanPath.startsWith("/")) {
+    return relativePlanPath;
+  }
+  return rawPath;
+}
+
+function humanizeBridgePlanStatus(status: BridgePlanStatus | undefined): string {
+  switch (status) {
+    case "draft":
+      return "草稿";
+    case "blocked":
+      return "被阻止";
+    case "review_failed":
+      return "需继续完善";
+    case "ready":
+      return "待确认";
+    case "approved":
+      return "已确认";
+    case "applying":
+      return "执行中";
+    case "apply_failed":
+      return "执行失败";
+    case "applied":
+      return "已执行";
+    case "discarded":
+      return "已丢弃";
+    default:
+      return "未开始";
+  }
+}
+
+function humanizeBridgePlanPhase(phase: BridgePlanPhase | undefined): string {
+  switch (phase) {
+    case "drafting":
+      return "规划中";
+    case "awaiting_decision":
+      return "待确认";
+    case "applying":
+      return "执行中";
+    default:
+      return "未开始";
+  }
+}
+
+function humanizeBridgePlanFailure(event: string | undefined): string | undefined {
+  switch (event) {
+    case "plan_apply_failed":
+      return "计划执行失败";
+    case "plan_review_failed":
+      return "计划评审未通过";
+    case "plan_review_blocked":
+      return "计划评审被阻止";
+    default:
+      return event ? "最近一次计划流程失败" : undefined;
+  }
+}
+
+function buildBridgePlanEnteredMessage(input: {
+  goal?: string;
+  planPath?: string;
+  workDir: string;
+}): string {
+  const lines = [
+    "● 已进入 plan mode",
+  ];
+  const goal = input.goal?.trim();
+  if (goal) {
+    lines.push(`  目标: ${goal}`);
+  }
+  const displayPath = formatBridgePlanPath({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
+  if (displayPath) {
+    lines.push(`  计划文件: ${displayPath}`);
+  }
+  lines.push(
+    "  Grobot 正在探索并设计实现方案。",
+    "  确认计划前，plan mode 只会读取和规划。",
+    "",
+    "直接输入补充内容继续完善，或发送 /plan open 查看计划。",
+    `确认后回复“${PLAN_EXECUTION_REPLY}”即可执行。`,
+  );
+  return lines.join("\n");
+}
+
+function buildBridgePlanStatusMessage(input: {
+  plan: ReturnType<typeof currentPlanView>;
+  workDir: string;
+  nextAction: {
+    action: string;
+    reason: string;
+  };
+}): string {
+  const { plan, nextAction } = input;
+  const lines: string[] = [];
+  if (plan.mode !== "plan_only") {
+    if (!plan.latest_plan_status && !plan.latest_failure_event) {
+      return [
+        "● 当前没有活跃计划",
+        "  使用 /plan <goal> 开始规划。",
+        "",
+        `下一步: ${nextAction.action}`,
+      ].join("\n");
+    }
+    lines.push("● 最近计划状态");
+    lines.push(`  状态: ${humanizeBridgePlanStatus(plan.latest_plan_status)}`);
+    const latestFailure = humanizeBridgePlanFailure(plan.latest_failure_event);
+    if (latestFailure) {
+      lines.push(`  最近失败: ${latestFailure}`);
+    }
+    if (plan.latest_verification_status) {
+      lines.push(`  验证: ${humanizeBridgeVerificationStatus(plan.latest_verification_status)}`);
+    }
+    lines.push("", `下一步: ${nextAction.action}`);
+    return lines.join("\n");
+  }
+
+  lines.push("● 当前计划");
+  const displayPath = formatBridgePlanPath({
+    workDir: input.workDir,
+    planPath: plan.active_plan_path,
+  });
+  if (displayPath) {
+    lines.push(`  计划文件: ${displayPath}`);
+  }
+  if (plan.active_plan_title) {
+    lines.push(`  标题: ${plan.active_plan_title}`);
+  }
+  lines.push(
+    `  状态: ${humanizeBridgePlanStatus(plan.active_plan_status)}`,
+    `  阶段: ${humanizeBridgePlanPhase(plan.active_plan_phase)}`,
+  );
+  if (typeof plan.plan_quality_score === "number") {
+    lines.push(`  计划质量: ${String(plan.plan_quality_score)}/${plan.plan_quality_grade ?? "未评级"}`);
+  }
+  const latestFailure = humanizeBridgePlanFailure(plan.latest_failure_event);
+  if (latestFailure) {
+    lines.push(`  最近失败: ${latestFailure}`);
+  }
+  if (plan.latest_verification_status) {
+    lines.push(`  验证: ${humanizeBridgeVerificationStatus(plan.latest_verification_status)}`);
+  }
+  lines.push(
+    "",
+    `下一步: ${nextAction.action}`,
+    "直接输入补充内容继续完善，或发送 /plan open 查看计划。",
+  );
+  return lines.join("\n");
+}
+
+function humanizeBridgeVerificationStatus(status: "pending" | "passed" | "failed"): string {
+  switch (status) {
+    case "passed":
+      return "已通过";
+    case "failed":
+      return "未通过";
+    case "pending":
+    default:
+      return "待验证";
+  }
+}
+
+function buildBridgePlanApplyInProgressMessage(): string {
   return [
-    "[plan] surface:",
-    "  /plan",
-    "  /plan <goal>",
-    "  /plan open",
-    "  直接输入补充内容，可继续完善当前计划",
-    `  直接回复 ${PLAN_EXECUTION_REPLY}，即可进入执行`,
+    "● 计划正在执行中",
+    "  请等待当前执行完成；需要停止时发送 /interrupt。",
+  ].join("\n");
+}
+
+function buildBridgePlanRecoveredLockMessage(reportMessage: string): string {
+  const normalizedReport = reportMessage.trim();
+  const header = [
+    "● 已恢复计划执行锁",
+    "  上次执行锁已过期，已安全恢复。",
+  ].join("\n");
+  return normalizedReport ? `${header}\n\n${normalizedReport}` : header;
+}
+
+function buildBridgePlanGuardDeniedMessage(input: {
+  workDir: string;
+  planPath?: string;
+}): string {
+  const lines = [
+    "● 已补充到当前计划",
+  ];
+  const displayPath = formatBridgePlanPath({
+    workDir: input.workDir,
+    planPath: input.planPath,
+  });
+  if (displayPath) {
+    lines.push(`  计划文件: ${displayPath}`);
+  }
+  lines.push(
+    "  plan mode 仍在规划阶段，未执行代码。",
+    "",
+    `继续输入补充内容完善计划；确认后回复“${PLAN_EXECUTION_REPLY}”即可执行。`,
+  );
+  return lines.join("\n");
+}
+
+function buildBridgeUnsupportedPlanCommandMessage(): string {
+  return [
+    "● 不支持这个 /plan 子命令",
+    "  可用: /plan、/plan <goal>、/plan open。",
   ].join("\n");
 }
 
 function buildPlanStatusPayload(workDir: string, sessionId: string): Record<string, unknown> {
   const plan = currentPlanView(workDir, sessionId);
-  const phase = plan.active_plan_phase ?? plan.latest_plan_phase ?? "<none>";
-  const planPath = plan.active_plan_path ?? "<none>";
   const nextAction = resolvePlanRecommendation(plan);
-  const qualitySummary = typeof plan.plan_quality_score === "number"
-    ? `${String(plan.plan_quality_score)}/${plan.plan_quality_grade ?? "<none>"}`
-    : "<none>";
-  const qualityTrendSummary = typeof plan.plan_quality_score === "number"
-    ? `${plan.plan_quality_trend ?? "none"}/${typeof plan.plan_quality_delta_from_previous === "number" ? String(plan.plan_quality_delta_from_previous) : "<none>"}`
-    : "<none>";
-  const qualityGuardSummary = typeof plan.plan_quality_score === "number"
-    ? `${plan.plan_quality_guard_level ?? "healthy"}/${plan.plan_quality_regression_streak ?? 0}/${plan.plan_quality_guard_mode ?? "warn"}/${plan.plan_quality_guard_policy_profile ?? "<none>"}`
-    : "<none>";
-  const qualityRepairSummary = Array.isArray(plan.plan_quality_repair_actions) && plan.plan_quality_repair_actions.length > 0
-    ? `${plan.plan_quality_repair_actions[0]?.priority ?? "p2"}:${plan.plan_quality_repair_actions[0]?.title ?? "<none>"}`
-    : "<none>";
-  const latestFailureSummary = plan.latest_failure_event
-    ? `${plan.latest_failure_event}/${plan.latest_failure_policy_reason ?? "<none>"}/${plan.latest_failure_diagnostic_code ?? "<none>"}`
-    : "<none>";
-  const latestVerificationSummary = plan.latest_verification_event
-    ? `${plan.latest_verification_event}/${plan.latest_verification_status ?? "<none>"}`
-    : "<none>";
-  const benchmarkSummary = typeof plan.plan_quality_benchmark_total_runs === "number"
-    && plan.plan_quality_benchmark_total_runs > 0
-    ? `${plan.plan_quality_benchmark_latest_winner ?? "<none>"}/${typeof plan.plan_quality_benchmark_latest_score === "number" ? String(plan.plan_quality_benchmark_latest_score) : "<none>"}/${plan.plan_quality_benchmark_score_trend ?? "none"}/${String(plan.plan_quality_benchmark_total_runs)}/${String(plan.plan_quality_benchmark_winner_switch_count ?? 0)}`
-    : "<none>";
-  const benchmarkHintSummary = typeof plan.plan_quality_benchmark_latest_top_hint === "string"
-    && plan.plan_quality_benchmark_latest_top_hint.trim().length > 0
-    ? plan.plan_quality_benchmark_latest_top_hint.trim().replace(/\s+/g, "_")
-    : "<none>";
-  const benchmarkSequenceSummary = Array.isArray(plan.plan_quality_benchmark_winner_sequence)
-    && plan.plan_quality_benchmark_winner_sequence.length > 0
-    ? plan.plan_quality_benchmark_winner_sequence
-      .map((label) => String(label).trim())
-      .filter((label) => label.length > 0)
-      .join(">")
-    : "<none>";
-  const benchmarkReasonSequenceSummary = Array.isArray(plan.plan_quality_benchmark_winner_reason_sequence)
-    && plan.plan_quality_benchmark_winner_reason_sequence.length > 0
-    ? plan.plan_quality_benchmark_winner_reason_sequence
-      .map((item) => String(item).trim().replace(/\s+/g, "_"))
-      .filter((item) => item.length > 0)
-      .join(">")
-    : "<none>";
-  const benchmarkAssertSummary = typeof plan.plan_quality_benchmark_assert_count === "number"
-    ? `${String(plan.plan_quality_benchmark_assert_fail_count ?? 0)}/${String(plan.plan_quality_benchmark_assert_count)}`
-    : "<none>";
-  const benchmarkSemanticSummary = typeof plan.plan_quality_benchmark_semantic_correlation === "string"
-    ? plan.plan_quality_benchmark_semantic_correlation
-    : "none";
-  const benchmarkSemanticReasonSummary = typeof plan.plan_quality_benchmark_semantic_reason === "string"
-    && plan.plan_quality_benchmark_semantic_reason.trim().length > 0
-    ? plan.plan_quality_benchmark_semantic_reason.trim().replace(/\s+/g, "_")
-    : "<none>";
-  const benchmarkHealthSummary = typeof plan.plan_quality_benchmark_health_score === "number"
-    ? `${String(plan.plan_quality_benchmark_health_score)}/${plan.plan_quality_benchmark_health_level ?? "watch"}`
-    : "<none>";
-  const benchmarkHealthReasonSummary = typeof plan.plan_quality_benchmark_health_reason === "string"
-    && plan.plan_quality_benchmark_health_reason.trim().length > 0
-    ? plan.plan_quality_benchmark_health_reason.trim().replace(/\s+/g, "_")
-    : "<none>";
-  const benchmarkRecommendationSummary =
-    typeof plan.plan_quality_benchmark_recommended_next_action === "string"
-      && plan.plan_quality_benchmark_recommended_next_action.trim().length > 0
-      ? plan.plan_quality_benchmark_recommended_next_action.trim()
-      : "none";
   return {
     status: "ok",
-    assistant_message:
-      `[plan-status] mode=${plan.mode} plan_id=${plan.active_plan_id ?? plan.latest_plan_id ?? "<none>"} status=${plan.active_plan_status ?? plan.latest_plan_status ?? "<none>"} phase=${phase} path=${planPath} quality=${qualitySummary} quality_trend=${qualityTrendSummary} quality_guard=${qualityGuardSummary} quality_repair=${qualityRepairSummary} benchmark=${benchmarkSummary} benchmark_hint=${benchmarkHintSummary} benchmark_seq=${benchmarkSequenceSummary} benchmark_reason_seq=${benchmarkReasonSequenceSummary} benchmark_assert=${benchmarkAssertSummary} benchmark_semantic=${benchmarkSemanticSummary} benchmark_semantic_reason=${benchmarkSemanticReasonSummary} benchmark_health=${benchmarkHealthSummary} benchmark_health_reason=${benchmarkHealthReasonSummary} benchmark_advice=${benchmarkRecommendationSummary} latest_failure=${latestFailureSummary} latest_verification=${latestVerificationSummary} next_action=${nextAction.action}`,
+    assistant_message: buildBridgePlanStatusMessage({
+      plan,
+      workDir,
+      nextAction,
+    }),
     recommended_next_action: nextAction.action,
     recommendation_reason: nextAction.reason,
     report: null,
@@ -740,7 +887,7 @@ async function main(): Promise<number> {
           code: 0,
           payload: {
             status: "ok",
-            assistant_message: `[plan] apply already in progress plan_id=${active.entry.plan_id}`,
+            assistant_message: buildBridgePlanApplyInProgressMessage(),
             report: null,
             plan: currentPlanView(workDir, sessionId),
           },
@@ -922,7 +1069,7 @@ async function main(): Promise<number> {
           payload: {
             status: "ok",
             assistant_message: recovered.recovered
-              ? `[plan] recovered stale apply lock plan_id=${active.entry.plan_id} stale_ms=${String(recovered.stale_ms ?? 0)}\n${report.assistantMessage}`
+              ? buildBridgePlanRecoveredLockMessage(report.assistantMessage)
               : report.assistantMessage,
             report,
             plan: currentPlanView(workDir, sessionId),
@@ -988,7 +1135,11 @@ async function main(): Promise<number> {
         process.stdout.write(
           `${JSON.stringify({
             status: "ok",
-            assistant_message: `[plan] entered PLAN_ONLY plan_id=${created.entry.plan_id} file=${created.planPath}\n${planModeHintMessage()}`,
+            assistant_message: buildBridgePlanEnteredMessage({
+              goal: parsed.goal,
+              planPath: created.planPath,
+              workDir,
+            }),
             report: null,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
@@ -1011,7 +1162,10 @@ async function main(): Promise<number> {
         process.stdout.write(
           `${JSON.stringify({
             status: "ok",
-            assistant_message: `[plan] entered PLAN_ONLY plan_id=${created.entry.plan_id} file=${created.planPath}\n${planModeHintMessage()}`,
+            assistant_message: buildBridgePlanEnteredMessage({
+              planPath: created.planPath,
+              workDir,
+            }),
             report: null,
             plan: currentPlanView(workDir, sessionId),
           })}\n`,
@@ -1025,7 +1179,7 @@ async function main(): Promise<number> {
       process.stdout.write(
         `${JSON.stringify({
           status: "ok",
-          assistant_message: "unsupported /plan subcommand. use /plan, /plan <goal>, or /plan open",
+          assistant_message: buildBridgeUnsupportedPlanCommandMessage(),
           report: null,
           plan: currentPlanView(workDir, sessionId),
         })}\n`,
@@ -1082,8 +1236,10 @@ async function main(): Promise<number> {
       process.stdout.write(
         `${JSON.stringify({
           status: "ok",
-          assistant_message:
-            `[plan-guard] code=${PLAN_GUARD_CODE} plan_only blocks normal execution; note appended file=${appended.planPath ?? activeDraft.planPath}`,
+          assistant_message: buildBridgePlanGuardDeniedMessage({
+            workDir,
+            planPath: appended.planPath ?? activeDraft.planPath,
+          }),
           report: null,
           error_code: PLAN_GUARD_CODE,
           guard_code: PLAN_GUARD_CODE,

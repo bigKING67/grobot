@@ -1462,11 +1462,15 @@ async function runGatewayContractSmoke() {
   assert.equal(typeof bridgeCliContractPayload.entered_plan_id, "string");
   assert.equal(String(bridgeCliContractPayload.entered_plan_id).length > 0, true);
   assert.equal(bridgeCliContractPayload.entered_hint_lists_current_surface, true);
+  assert.equal(bridgeCliContractPayload.entered_hint_is_human_surface, true);
+  assert.equal(bridgeCliContractPayload.entered_hint_hides_machine_fields, true);
   assert.equal(bridgeCliContractPayload.open_with_plan_keeps_active_plan, true);
   assert.equal(bridgeCliContractPayload.open_with_plan_live_phase, "awaiting_decision");
   assert.equal(bridgeCliContractPayload.open_with_plan_live_status, "ready");
   assert.equal(bridgeCliContractPayload.open_with_plan_status_source, "live_snapshot");
   assert.equal(bridgeCliContractPayload.open_with_plan_stored_status, "draft");
+  assert.equal(bridgeCliContractPayload.open_with_plan_assistant_message_human, true);
+  assert.equal(bridgeCliContractPayload.open_with_plan_assistant_message_hides_machine_fields, true);
   assert.equal(
     bridgeCliContractPayload.open_with_plan_recommended_next_action,
     "Implement the plan.",
@@ -1474,6 +1478,8 @@ async function runGatewayContractSmoke() {
   assert.equal(bridgeCliContractPayload.guard_error_code, "PLAN_GUARD_DENIED");
   assert.equal(bridgeCliContractPayload.guard_code, "PLAN_GUARD_DENIED");
   assert.equal(bridgeCliContractPayload.guard_mode_after_note, "plan_only");
+  assert.equal(bridgeCliContractPayload.guard_assistant_message_human, true);
+  assert.equal(bridgeCliContractPayload.guard_assistant_message_hides_machine_fields, true);
   logStep("bridge-cli-contract");
 
   const bridgePlanApplyFailureContractResult = runCommand("node", [
@@ -1510,6 +1516,11 @@ async function runGatewayContractSmoke() {
       || bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_PROVIDER_RUNTIME_FAILURE"
       || bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_TIMEOUT"
       || bridgePlanApplyFailureContractPayload.status_latest_failure_diagnostic_code === "BRIDGE_APPLY_EXEC_FAILED",
+    true,
+  );
+  assert.equal(bridgePlanApplyFailureContractPayload.status_after_failure_assistant_message_human, true);
+  assert.equal(
+    bridgePlanApplyFailureContractPayload.status_after_failure_assistant_message_hides_machine_fields,
     true,
   );
   assert.equal(bridgePlanApplyFailureContractPayload.events_has_plan_apply_failed, true);

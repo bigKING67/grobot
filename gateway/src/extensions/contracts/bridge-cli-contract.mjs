@@ -92,6 +92,21 @@ function buildValidPlanMarkdown() {
   ].join("\n");
 }
 
+const LEGACY_PLAN_SURFACE_MARKERS = [
+  "[plan]",
+  "[plan-status]",
+  "[plan-guard]",
+  "plan_id=",
+  "file=",
+  "latest_failure=",
+  "next_action=",
+];
+
+function hidesLegacyPlanSurfaceMarkers(value) {
+  const text = String(value ?? "");
+  return LEGACY_PLAN_SURFACE_MARKERS.every((marker) => !text.includes(marker));
+}
+
 function main() {
   const repoRoot = process.cwd();
   const workDir = mkdtempSync(resolve(tmpdir(), "grobot-bridge-contract-"));
@@ -117,10 +132,12 @@ function main() {
 
     const enteredPlanId = String(entered.payload.plan.active_plan_id);
     const enteredHint = String(entered.payload.assistant_message ?? "");
-    assert.equal(enteredHint.includes("/plan"), true);
-    assert.equal(enteredHint.includes("/plan <goal>"), true);
+    assert.equal(enteredHint.includes("已进入 plan mode"), true);
+    assert.equal(enteredHint.includes("确认计划前，plan mode 只会读取和规划。"), true);
+    assert.equal(enteredHint.includes("补充内容继续完善"), true);
     assert.equal(enteredHint.includes("/plan open"), true);
     assert.equal(enteredHint.includes("Implement the plan."), true);
+    assert.equal(hidesLegacyPlanSurfaceMarkers(enteredHint), true);
     writeFileSync(String(entered.payload.plan.active_plan_path), `${buildValidPlanMarkdown()}\n`, "utf8");
 
     const openWithPlan = runBridgeTurn(repoRoot, workDir, "/plan open");
@@ -135,6 +152,12 @@ function main() {
     assert.equal(openWithPlan.payload.plan?.active_plan_stored_status, "draft");
     assert.equal(openWithPlan.payload.plan?.active_plan_decision_ready, true);
     assert.equal(openWithPlan.payload.recommended_next_action, "Implement the plan.");
+    const openWithPlanMessage = String(openWithPlan.payload.assistant_message ?? "");
+    assert.equal(openWithPlanMessage.includes("当前计划"), true);
+    assert.equal(openWithPlanMessage.includes("状态: 待确认"), true);
+    assert.equal(openWithPlanMessage.includes("阶段: 待确认"), true);
+    assert.equal(openWithPlanMessage.includes("下一步: Implement the plan."), true);
+    assert.equal(hidesLegacyPlanSurfaceMarkers(openWithPlanMessage), true);
 
     const guarded = runBridgeTurn(repoRoot, workDir, "append note in bridge plan mode");
     assert.equal(guarded.exit_code, 0);
@@ -144,6 +167,10 @@ function main() {
     assert.equal(guarded.payload.guard_code, "PLAN_GUARD_DENIED");
     assert.equal(guarded.payload.plan?.mode, "plan_only");
     assert.equal(guarded.payload.plan?.active_plan_id, enteredPlanId);
+    const guardedMessage = String(guarded.payload.assistant_message ?? "");
+    assert.equal(guardedMessage.includes("已补充到当前计划"), true);
+    assert.equal(guardedMessage.includes("未执行代码"), true);
+    assert.equal(hidesLegacyPlanSurfaceMarkers(guardedMessage), true);
 
     const output = {
       ok: true,
@@ -153,9 +180,13 @@ function main() {
       entered_plan_mode: entered.payload?.plan?.mode ?? null,
       entered_plan_id: enteredPlanId,
       entered_hint_lists_current_surface:
-        enteredHint.includes("/plan <goal>")
+        enteredHint.includes("补充内容继续完善")
         && enteredHint.includes("/plan open")
         && enteredHint.includes("Implement the plan."),
+      entered_hint_is_human_surface:
+        enteredHint.includes("已进入 plan mode")
+        && enteredHint.includes("确认计划前，plan mode 只会读取和规划。"),
+      entered_hint_hides_machine_fields: hidesLegacyPlanSurfaceMarkers(enteredHint),
       open_with_plan_keeps_active_plan: openWithPlan.payload?.plan?.active_plan_id === enteredPlanId,
       open_with_plan_recommended_next_action:
         openWithPlan.payload?.recommended_next_action ?? null,
@@ -163,9 +194,21 @@ function main() {
       open_with_plan_live_status: openWithPlan.payload?.plan?.active_plan_status ?? null,
       open_with_plan_status_source: openWithPlan.payload?.plan?.active_plan_status_source ?? null,
       open_with_plan_stored_status: openWithPlan.payload?.plan?.active_plan_stored_status ?? null,
+      open_with_plan_assistant_message_human:
+        openWithPlanMessage.includes("当前计划")
+        && openWithPlanMessage.includes("状态: 待确认")
+        && openWithPlanMessage.includes("阶段: 待确认")
+        && openWithPlanMessage.includes("下一步: Implement the plan."),
+      open_with_plan_assistant_message_hides_machine_fields:
+        hidesLegacyPlanSurfaceMarkers(openWithPlanMessage),
       guard_error_code: guarded.payload?.error_code ?? null,
       guard_code: guarded.payload?.guard_code ?? null,
       guard_mode_after_note: guarded.payload?.plan?.mode ?? null,
+      guard_assistant_message_human:
+        guardedMessage.includes("已补充到当前计划")
+        && guardedMessage.includes("未执行代码"),
+      guard_assistant_message_hides_machine_fields:
+        hidesLegacyPlanSurfaceMarkers(guardedMessage),
     };
     process.stdout.write(`${JSON.stringify(output)}\n`);
   } finally {
