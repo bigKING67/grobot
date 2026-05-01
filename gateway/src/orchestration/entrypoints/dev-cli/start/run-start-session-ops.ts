@@ -227,7 +227,11 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     );
     if (!bridge) {
       input.writeStdout(
-        `无法从 "${sourceId}" 桥接：来源会话没有可恢复摘要（来源=${sourceHistoryState.source}）。\n\n`,
+        buildRunStartNotice("无法桥接会话", [
+          `来源会话: ${sourceId}`,
+          "来源会话没有可恢复摘要。",
+          `历史来源: ${sourceHistoryState.source}`,
+        ]),
       );
       return;
     }
@@ -312,7 +316,11 @@ export function createRunStartSessionOps(input: CreateRunStartSessionOpsInput) {
     touchSessionRecord(sessionRegistry, forkSessionId, `fork from ${sourceId}`);
     await input.persistSessionRegistryState();
     input.writeStdout(
-      `[session] 已 fork "${sourceId}" -> "${forkSessionId}"（恢复 ${String(nextHistory.length / 2)} 轮${rewindCloneSummary}）。\n\n`,
+      buildRunStartNotice("已 fork 会话", [
+        `来源会话: ${sourceId}`,
+        `新会话: ${forkSessionId}`,
+        `恢复轮次: ${String(nextHistory.length / 2)}${rewindCloneSummary}`,
+      ]),
     );
     return true;
   };

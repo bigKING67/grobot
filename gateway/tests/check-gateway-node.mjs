@@ -727,6 +727,9 @@ async function runGatewayContractSmoke() {
   assert.equal(sessionInteractiveDispatchPayload.resume_find_active_tty_opened_menu, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_active_tty_message_has_prefix, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_active_tty_message_has_menu_hint, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_surface_avoids_legacy_marker, true);
+  assert.equal(sessionInteractiveDispatchPayload.session_command_redirect_surface_avoids_legacy_marker, true);
+  assert.equal(sessionInteractiveDispatchPayload.ask_surface_avoids_legacy_marker, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_missing_tty_warned, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_missing_tty_direct_switch, false);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_missing_tty_opened_menu, true);

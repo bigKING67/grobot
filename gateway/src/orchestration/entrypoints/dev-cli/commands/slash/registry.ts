@@ -184,14 +184,20 @@ function parseSessionMenuCommand(
   if (isInteractiveTerminal()) {
     return {
       kind: "invalid",
-      reason: `[session] ${command} <id> 已移除，请仅使用 ${command} 打开菜单后再选择目标会话。`,
+      reason: buildSlashNotice("会话命令已改为菜单选择", [
+        `${command} <id> 已移除。`,
+        `请使用 ${command} 打开菜单后再选择目标会话。`,
+      ]).trimEnd(),
     };
   }
   const sessionId = rest.split(/\s+/, 1)[0] ?? "";
   return {
     kind: "legacy_with_id",
     sessionId: sessionId.trim(),
-    reason: `[session] ${command} <id> 已废弃；非交互场景保留兼容，建议改用 ${command} 菜单。`,
+    reason: buildSlashNotice("会话命令兼容模式", [
+      `${command} <id> 已废弃；非交互场景保留兼容。`,
+      `建议改用 ${command} 菜单。`,
+    ]).trimEnd(),
   };
 }
 
@@ -231,7 +237,7 @@ function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
   return {
     kind: "legacy_with_id",
     sessionId: sessionId.trim(),
-    reason: "[session] /resume <id> 已废弃；非交互场景保留兼容，建议改用 /resume 菜单。",
+    reason: "● Resume\n  /resume <id> 已废弃；非交互场景保留兼容，建议改用 /resume 菜单。",
   };
 }
 
@@ -264,7 +270,7 @@ function formatQuickPickBlock(
   if (tag === "[rewind]") {
     return `\n快速选择:\n${quickPickHints.join("\n")}`;
   }
-  return `\n${tag} 快速选择:\n${quickPickHints.join("\n")}`;
+  return `\n快速选择:\n${quickPickHints.join("\n")}`;
 }
 
 function formatDisambiguationBlock(
@@ -289,7 +295,11 @@ async function writeMenuHintAndMaybeOpen(
 }
 
 function buildResumeNoMatchMessage(query: string): string {
-  return `[session] 没有匹配 "${query}" 的会话。使用 /resume 打开菜单。\n[session] 提示：可匹配 ID、标题、摘要或更新时间；紧凑查询会忽略空格、"_" 和 "-"。\n\n`;
+  return buildSlashNotice("没有匹配的会话", [
+    `查询: ${query}`,
+    "使用 /resume 打开菜单。",
+    '提示：可匹配 ID、标题、摘要或更新时间；紧凑查询会忽略空格、"_" 和 "-"。',
+  ]);
 }
 
 function buildRewindNoMatchMessage(
@@ -836,7 +846,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => userInput === "/new",
     execute: async ({ controls, handlers }) => {
       if (isInteractiveTerminal()) {
-        handlers.writeStdout("[session] 交互模式已收敛为主入口 /sessions；已为你打开会话菜单。\n\n");
+        handlers.writeStdout(buildSlashNotice("已打开会话菜单", [
+          "交互模式已收敛为主入口 /sessions。",
+        ]));
         await handlers.openSessionMenu("sessions", controls.withInputPaused);
         return "continue";
       }
@@ -852,7 +864,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/switch"),
     execute: async ({ userInput, controls, handlers }) => {
       if (isInteractiveTerminal()) {
-        handlers.writeStdout("[session] 交互模式已收敛为主入口 /sessions；已为你打开会话菜单。\n\n");
+        handlers.writeStdout(buildSlashNotice("已打开会话菜单", [
+          "交互模式已收敛为主入口 /sessions。",
+        ]));
         await handlers.openSessionMenu("sessions", controls.withInputPaused);
         return "continue";
       }
@@ -914,7 +928,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           return writeMenuHintAndMaybeOpen(
             input,
             "resume",
-            `[session] 找到 ${String(matches.length)} 个匹配 "${query}" 的会话。\n${rows.join("\n")}${disambiguationBlock}\n[session] 使用 /resume 明确选择一个。\n\n`,
+            `● 找到多个会话\n  查询: ${query}\n  匹配: ${String(matches.length)}\n${rows.join("\n")}${disambiguationBlock}\n使用 /resume 明确选择一个。\n\n`,
           );
         }
         const target = matches[0];
@@ -922,7 +936,10 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
           return writeMenuHintAndMaybeOpen(
             input,
             "resume",
-            `[session] 会话 "${target.id}" 已是当前会话。使用 /resume 打开菜单。\n\n`,
+            buildSlashNotice("会话已是当前会话", [
+              `会话: ${target.id}`,
+              "使用 /resume 打开菜单。",
+            ]),
           );
         }
         await handlers.switchSession(target.id);
@@ -963,7 +980,9 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/continue"),
     execute: async ({ userInput, controls, handlers }) => {
       if (isInteractiveTerminal()) {
-        handlers.writeStdout("[session] 交互模式已收敛为主入口 /sessions；已为你打开会话菜单。\n\n");
+        handlers.writeStdout(buildSlashNotice("已打开会话菜单", [
+          "交互模式已收敛为主入口 /sessions。",
+        ]));
         await handlers.openSessionMenu("sessions", controls.withInputPaused);
         return "continue";
       }

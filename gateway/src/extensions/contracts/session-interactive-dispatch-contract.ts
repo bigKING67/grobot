@@ -726,7 +726,7 @@ async function main(): Promise<void> {
       "openSessionMenu:resume",
     ),
     resume_search_separator_only_tty_no_match_message: resumeSearchSeparatorOnlyTty.stdout.includes(
-      '没有匹配 "---" 的会话',
+      "没有匹配的会话",
     ),
     resume_search_separator_only_tty_no_match_has_tip: resumeSearchSeparatorOnlyTty.stdout.includes(
       "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
@@ -738,7 +738,7 @@ async function main(): Promise<void> {
       "openSessionMenu:resume",
     ),
     resume_find_active_tty_message_has_prefix: resumeFindActiveTty.stdout.includes(
-      '[session] 会话 "main" 已是当前会话。',
+      "会话已是当前会话",
     ),
     resume_find_active_tty_message_has_menu_hint: resumeFindActiveTty.stdout.includes(
       "使用 /resume 打开菜单。",
@@ -767,8 +767,22 @@ async function main(): Promise<void> {
       "... 还有 1 项",
     ),
     resume_find_multiple_overflow_tty_includes_quick_pick_header: resumeFindMultipleOverflowTty.stdout.includes(
-      "[session] 快速选择:",
+      "快速选择:",
     ),
+    resume_surface_avoids_legacy_marker:
+      !resumeFindActiveTty.stdout.includes("[session]")
+      && !resumeFindMultipleTty.stdout.includes("[session]")
+      && !resumeFindMultipleOverflowTty.stdout.includes("[session]")
+      && !resumeFindMissingTty.stdout.includes("[session]"),
+    session_command_redirect_surface_avoids_legacy_marker:
+      !newCommandTty.stdout.includes("[session]")
+      && !switchLegacyWithIdTty.stdout.includes("[session]")
+      && !continueLegacyWithIdTty.stdout.includes("[session]"),
+    ask_surface_avoids_legacy_marker:
+      !askCommand.stdout.includes("[slash]")
+      && !askCommand.stdout.includes("unknown command: /ask")
+      && !askInvalidArgsCommand.stdout.includes("[slash]")
+      && !askInvalidArgsCommand.stdout.includes("unknown command: /ask"),
     resume_find_multiple_tty_opened_menu: includesEvent(
       resumeFindMultipleTty.events,
       "openSessionMenu:resume",
@@ -1065,10 +1079,10 @@ async function main(): Promise<void> {
     history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
     ask_dispatched: includesEvent(askCommand.events, "writeStdout"),
-    ask_unknown_warned: askCommand.stdout.includes("unknown command: /ask"),
+    ask_unknown_warned: askCommand.stdout.includes("● 未知命令"),
     ask_hits_run_turn: includesEvent(askCommand.events, "runTurn:/ask"),
     ask_invalid_args_warned: includesEvent(askInvalidArgsCommand.events, "writeStdout"),
-    ask_invalid_args_usage_hint: askInvalidArgsCommand.stdout.includes("unknown command: /ask"),
+    ask_invalid_args_usage_hint: askInvalidArgsCommand.stdout.includes("● 未知命令"),
     ask_invalid_args_dispatched: includesEvent(
       askInvalidArgsCommand.events,
       "showPendingAskQueue:default",
@@ -1153,13 +1167,13 @@ async function main(): Promise<void> {
       pendingAskAllowRewind.events,
       "openSessionMenu:rewind",
     ),
-    pending_ask_ask_allowed: pendingAskAllowAsk.stdout.includes("unknown command: /ask"),
+    pending_ask_ask_allowed: pendingAskAllowAsk.stdout.includes("● 未知命令"),
     pending_ask_ask_invalid_args_warned: includesEvent(
       pendingAskAllowAskInvalidArgs.events,
       "writeStdout",
     ),
     pending_ask_ask_invalid_args_dispatched:
-      pendingAskAllowAskInvalidArgs.stdout.includes("unknown command: /ask"),
+      pendingAskAllowAskInvalidArgs.stdout.includes("● 未知命令"),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,
       "runTurn:继续执行快速方案",

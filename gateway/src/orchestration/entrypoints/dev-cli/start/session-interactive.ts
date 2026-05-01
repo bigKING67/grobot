@@ -209,7 +209,7 @@ export async function dispatchSessionInteractiveInput(
   }
   if (isRemovedAskCommand(userInput)) {
     handlers.writeStdout(
-      "[slash] unknown command: /ask. ask-user 机制已改为直接回复，不再提供状态命令。\n\n",
+      "● 未知命令\n  /ask 已停用。ask-user 现在直接在对话里回复，不再提供状态命令。\n\n",
     );
     return "continue";
   }

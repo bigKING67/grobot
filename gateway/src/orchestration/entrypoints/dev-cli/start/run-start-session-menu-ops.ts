@@ -269,7 +269,9 @@ export function createRunStartSessionMenuOps(
       return;
     }
     if (sessions.length === 0) {
-      input.writeStdout("[session] 暂无可用会话。\n\n");
+      input.writeStdout(buildSessionMenuNotice("暂无可用会话", [
+        "当前命名空间里还没有可切换的会话。",
+      ]));
       return;
     }
     if (picked.item.id === "rewind") {
@@ -323,7 +325,9 @@ export function createRunStartSessionMenuOps(
   ): Promise<void> => {
     const sessions = input.listSessions();
     if (mode !== "sessions" && sessions.length === 0) {
-      input.writeStdout("[session] 暂无可用会话。\n\n");
+      input.writeStdout(buildSessionMenuNotice("暂无可用会话", [
+        "当前命名空间里还没有可切换的会话。",
+      ]));
       return;
     }
     if (!process.stdin.isTTY) {
