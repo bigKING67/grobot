@@ -6127,11 +6127,16 @@ function runStartRuntimeDescribeFallbackDiagnostic(repoRoot) {
   return {
     ...result,
     missing_runtime_path: missingRuntimePath,
-    has_tool_surface_fallback_event: result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
-    has_start_default_source: result.stderr.includes("enabled_tools_source=start-default"),
+    has_runtime_tools_fallback_surface:
+      result.stderr.includes("运行时工具描述不可用")
+      && result.stderr.includes("已使用内置工具 schema 启动。")
+      && result.stderr.includes("来源: start-default"),
+    compact_avoids_tool_surface_event: !result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
+    compact_avoids_enabled_tools_source_field: !result.stderr.includes("enabled_tools_source="),
     has_describe_reason: result.stderr.includes("runtime_tools_describe_unavailable:spawn_failed"),
-    has_fallback_manifest: result.stderr.includes("manifest_fingerprint=fallback:"),
-    has_schema_profiles_none: result.stderr.includes("schema_profiles_fingerprint=<none>"),
+    has_status_json_hint: result.stderr.includes("grobot status --json"),
+    compact_avoids_fallback_manifest_field: !result.stderr.includes("manifest_fingerprint=fallback:"),
+    compact_avoids_schema_profiles_field: !result.stderr.includes("schema_profiles_fingerprint=<none>"),
   };
 }
 
@@ -6237,13 +6242,18 @@ function runStartRuntimeDescribeInvalidSchemaProfiles(repoRoot) {
   return {
     ...result,
     fake_runtime_path: fakeRuntimePath,
-    has_tool_surface_fallback_event: result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
-    has_start_default_source: result.stderr.includes("enabled_tools_source=start-default"),
+    has_runtime_tools_fallback_surface:
+      result.stderr.includes("运行时工具描述不可用")
+      && result.stderr.includes("已使用内置工具 schema 启动。")
+      && result.stderr.includes("来源: start-default"),
+    compact_avoids_tool_surface_event: !result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
+    compact_avoids_enabled_tools_source_field: !result.stderr.includes("enabled_tools_source="),
     has_invalid_schema_reason: result.stderr.includes(
       "runtime_tools_describe_invalid_schema_profiles:schema_profiles_invalid_rows:1",
     ),
-    has_fallback_manifest: result.stderr.includes("manifest_fingerprint=fallback:"),
-    has_schema_profiles_none: result.stderr.includes("schema_profiles_fingerprint=<none>"),
+    has_status_json_hint: result.stderr.includes("grobot status --json"),
+    compact_avoids_fallback_manifest_field: !result.stderr.includes("manifest_fingerprint=fallback:"),
+    compact_avoids_schema_profiles_field: !result.stderr.includes("schema_profiles_fingerprint=<none>"),
   };
 }
 

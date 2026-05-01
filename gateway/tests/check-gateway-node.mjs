@@ -8669,11 +8669,13 @@ async function runTsRustExecutionSmoke() {
     startRuntimeDescribeFallbackDiagnosticResult.stdout,
   );
   assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.exit_code, 0);
-  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_tool_surface_fallback_event, true);
-  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_start_default_source, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_runtime_tools_fallback_surface, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.compact_avoids_tool_surface_event, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.compact_avoids_enabled_tools_source_field, true);
   assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_describe_reason, true);
-  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_fallback_manifest, true);
-  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_schema_profiles_none, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.has_status_json_hint, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.compact_avoids_fallback_manifest_field, true);
+  assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.compact_avoids_schema_profiles_field, true);
   logStep("start-smoke-contract start-runtime-describe-fallback-diagnostic");
 
   const runtimeDescribeInvalidSchemaStatusResult = runContract(
@@ -8716,11 +8718,13 @@ async function runTsRustExecutionSmoke() {
     runtimeDescribeInvalidSchemaStartResult.stdout,
   );
   assert.equal(runtimeDescribeInvalidSchemaStartPayload.exit_code, 0);
-  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_tool_surface_fallback_event, true);
-  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_start_default_source, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_runtime_tools_fallback_surface, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.compact_avoids_tool_surface_event, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.compact_avoids_enabled_tools_source_field, true);
   assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_invalid_schema_reason, true);
-  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_fallback_manifest, true);
-  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_schema_profiles_none, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.has_status_json_hint, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.compact_avoids_fallback_manifest_field, true);
+  assert.equal(runtimeDescribeInvalidSchemaStartPayload.compact_avoids_schema_profiles_field, true);
   logStep("start-smoke-contract start-runtime-describe-invalid-schema-profiles");
 
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [

@@ -120,6 +120,26 @@ function buildRuntimeInterruptSurface(input: {
   return lines.join("\n");
 }
 
+function buildRuntimeToolsFallbackSurface(input: {
+  reason: string | undefined;
+  source: string;
+}): string {
+  const details = [
+    "已使用内置工具 schema 启动。",
+    `来源: ${input.source}`,
+  ];
+  if (input.reason && input.reason.trim().length > 0) {
+    details.push(`原因: ${formatDiagnosticToken(input.reason)}`);
+  }
+  details.push("如需完整诊断，可运行 grobot status --json。");
+  const lines = [`${terminalStyle.accent("●")} 运行时工具描述不可用`];
+  for (const detail of details) {
+    lines.push(`  ${terminalStyle.muted(detail)}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function normalizePositiveInt(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -272,8 +292,14 @@ export async function runStart(
       `[tool-surface] event=runtime_describe_ok enabled_tools_source=${runtimeToolContextDiagnostics.enabledToolsSource} manifest_fingerprint=${runtimeToolContextDiagnostics.manifestFingerprint} manifest_tool_count=${String(runtimeToolContextDiagnostics.manifestToolCount)} default_enabled_count=${String(runtimeToolContextDiagnostics.manifestDefaultEnabledCount)} schema_profiles_fingerprint=${runtimeToolContextDiagnostics.schemaProfilesFingerprint ?? "<none>"}\n`,
     );
   } else {
+    const fallbackDiagnostic =
+      `[tool-surface] event=runtime_describe_fallback enabled_tools_source=${runtimeToolContextDiagnostics.enabledToolsSource} reason=${formatDiagnosticToken(runtimeToolContextDiagnostics.enabledToolsSourceDetail)} manifest_fingerprint=${runtimeToolContextDiagnostics.manifestFingerprint} manifest_tool_count=${String(runtimeToolContextDiagnostics.manifestToolCount)} default_enabled_count=${String(runtimeToolContextDiagnostics.manifestDefaultEnabledCount)} schema_profiles_fingerprint=${runtimeToolContextDiagnostics.schemaProfilesFingerprint ?? "<none>"}\n`;
+    writeStartupDiagnostics(fallbackDiagnostic);
     output.writeStderr(
-      `[tool-surface] event=runtime_describe_fallback enabled_tools_source=${runtimeToolContextDiagnostics.enabledToolsSource} reason=${formatDiagnosticToken(runtimeToolContextDiagnostics.enabledToolsSourceDetail)} manifest_fingerprint=${runtimeToolContextDiagnostics.manifestFingerprint} manifest_tool_count=${String(runtimeToolContextDiagnostics.manifestToolCount)} default_enabled_count=${String(runtimeToolContextDiagnostics.manifestDefaultEnabledCount)} schema_profiles_fingerprint=${runtimeToolContextDiagnostics.schemaProfilesFingerprint ?? "<none>"}\n`,
+      buildRuntimeToolsFallbackSurface({
+        reason: runtimeToolContextDiagnostics.enabledToolsSourceDetail,
+        source: runtimeToolContextDiagnostics.enabledToolsSource,
+      }),
     );
   }
   const defaultContextWindowTokens = Math.max(
