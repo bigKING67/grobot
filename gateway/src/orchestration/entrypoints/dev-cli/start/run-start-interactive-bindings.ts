@@ -157,20 +157,35 @@ function formatPlanPathForPanel(workDir: string, planPath: string | undefined): 
 
 function formatStatusLineCurrentSnapshot(config: StatusLineConfig): string {
   const segmentText = config.segmentOrder
-    .map((segmentId) => `${segmentId}=${config.segments[segmentId] ? "on" : "off"}`)
+    .map((segmentId) => `${segmentId} ${config.segments[segmentId] ? "开启" : "关闭"}`)
     .join(", ");
   return [
-    "[status]",
-    `状态: ${config.enabled ? "开启" : "关闭"} (enabled: ${config.enabled ? "on" : "off"})`,
-    `布局: ${config.layoutMode} (layout_mode: ${config.layoutMode})`,
-    `主题: ${config.theme} (theme: ${config.theme})`,
-    `分隔符: ${JSON.stringify(config.separator)} (separator)`,
-    `状态段: ${segmentText} (segments)`,
-    `提醒阈值: ${String(Math.round(config.warningThresholdRatio * 100))}% (warning_threshold)`,
-    `危险阈值: ${String(Math.round(config.criticalThresholdRatio * 100))}% (critical_threshold)`,
-    `预算快照缓存: ${String(config.budgetSnapshotCacheTtlMs)}ms (budget_snapshot_cache_ttl_ms)`,
-    `会话主题缓存: ${String(config.sessionTopicCacheTtlMs)}ms (session_topic_cache_ttl_ms)`,
-    `会话主题宽度: ${String(config.sessionTopicMaxWidth)} (session_topic_max_width)`,
+    "● 状态栏",
+    `  状态: ${config.enabled ? "开启" : "关闭"}`,
+    `  布局: ${config.layoutMode}`,
+    `  主题: ${config.theme}`,
+    `  分隔符: ${JSON.stringify(config.separator)}`,
+    `  状态段: ${segmentText}`,
+    `  提醒阈值: ${String(Math.round(config.warningThresholdRatio * 100))}%`,
+    `  危险阈值: ${String(Math.round(config.criticalThresholdRatio * 100))}%`,
+    `  预算快照缓存: ${String(config.budgetSnapshotCacheTtlMs)}ms`,
+    `  会话主题缓存: ${String(config.sessionTopicCacheTtlMs)}ms`,
+    `  会话主题宽度: ${String(config.sessionTopicMaxWidth)}`,
+    "",
+  ].join("\n");
+}
+
+function buildStatusNotice(
+  title: string,
+  lines: ReadonlyArray<string> = [],
+): string {
+  return [
+    `● ${title}`,
+    ...lines
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => `  ${line}`),
+    "",
     "",
   ].join("\n");
 }
@@ -494,7 +509,7 @@ export function createRunStartInteractiveModeInput(
     if (!process.stdin.isTTY) {
       input.output.writeStdout(
         [
-          "[status] 操作菜单",
+          "● 状态栏操作",
           "- /status current                       查看当前状态栏配置",
           "- /status theme <plain|nerd|ccline>     设置状态栏主题",
           "- /status layout <adaptive|full|compact> 设置状态栏布局模式",
@@ -578,7 +593,9 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ theme });
-      input.output.writeStdout(`[status] 主题已设为 ${theme}\n\n`);
+      input.output.writeStdout(buildStatusNotice("已更新状态栏主题", [
+        `主题: ${theme}`,
+      ]));
       return;
     }
     if (actionMenu.item.id === "layout") {
@@ -619,7 +636,9 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ layoutMode });
-      input.output.writeStdout(`[status] 布局已设为 ${layoutMode} (layout_mode 已设为 ${layoutMode})\n\n`);
+      input.output.writeStdout(buildStatusNotice("已更新状态栏布局", [
+        `布局: ${layoutMode}`,
+      ]));
       return;
     }
     const config = getStatusLineConfig();
@@ -677,7 +696,10 @@ export function createRunStartInteractiveModeInput(
       },
     });
     input.output.writeStdout(
-      `[status] 状态段 ${segmentId} ${enabled ? "已开启" : "已关闭"}\n\n`,
+      buildStatusNotice("已更新状态栏状态段", [
+        `状态段: ${segmentId}`,
+        `状态: ${enabled ? "已开启" : "已关闭"}`,
+      ]),
     );
   };
 
@@ -1170,7 +1192,9 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ theme });
-      input.output.writeStdout(`[status] 主题已设为 ${theme}\n\n`);
+      input.output.writeStdout(buildStatusNotice("已更新状态栏主题", [
+        `主题: ${theme}`,
+      ]));
     },
     setStatusLayoutMode: (rawLayoutMode) => {
       const layoutMode = resolveStatusLayoutMode(rawLayoutMode);
@@ -1181,7 +1205,9 @@ export function createRunStartInteractiveModeInput(
         return;
       }
       updateStatusLineConfig({ layoutMode });
-      input.output.writeStdout(`[status] 布局已设为 ${layoutMode} (layout_mode 已设为 ${layoutMode})\n\n`);
+      input.output.writeStdout(buildStatusNotice("已更新状态栏布局", [
+        `布局: ${layoutMode}`,
+      ]));
     },
     setStatusSegmentEnabled: (rawSegmentId, enabled) => {
       const segmentId = normalizeStatusSegmentId(rawSegmentId);
@@ -1197,7 +1223,10 @@ export function createRunStartInteractiveModeInput(
         },
       });
       input.output.writeStdout(
-        `[status] 状态段 ${segmentId} ${enabled ? "已开启" : "已关闭"}\n\n`,
+        buildStatusNotice("已更新状态栏状态段", [
+          `状态段: ${segmentId}`,
+          `状态: ${enabled ? "已开启" : "已关闭"}`,
+        ]),
       );
     },
     openStatusMenu,

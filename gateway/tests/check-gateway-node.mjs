@@ -2452,6 +2452,11 @@ async function runGatewayContractSmoke() {
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_ctx_ratio), 0.42);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_estimated_tokens), 512);
   assert.equal(Number(interactiveBindingsPayload.prompt_budget_target_tokens), 2048);
+  assert.equal(interactiveBindingsPayload.status_snapshot_has_header, true);
+  assert.equal(interactiveBindingsPayload.status_surface_hides_machine_fields, true);
+  assert.equal(interactiveBindingsPayload.status_theme_after_update, "nerd_font");
+  assert.equal(interactiveBindingsPayload.status_layout_after_update, "compact");
+  assert.equal(interactiveBindingsPayload.status_tokens_segment_after_update, false);
   assert.equal(interactiveBindingsPayload.status_menu_cancel_is_silent, true);
   assert.equal(interactiveBindingsPayload.status_menu_hint_is_reference_compact, true);
   assert.equal(interactiveBindingsPayload.history_search_hint_is_reference_fill, true);

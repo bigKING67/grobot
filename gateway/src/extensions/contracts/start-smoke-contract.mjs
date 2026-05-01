@@ -934,7 +934,7 @@ function runStartBareInteractiveSessionFlow(repoRoot) {
   return {
     ...commandResult,
     has_start_banner: hasStartBannerMarker(outputText),
-    has_status_snapshot: outputText.includes("[status]"),
+    has_status_snapshot: outputText.includes("● 状态栏"),
     has_no_command_hint:
       !outputText.includes("Enter message")
       && !outputText.includes("/ for commands · ? for shortcuts"),
@@ -1192,13 +1192,20 @@ function runStartInteractiveSessionCommandsFallbackFlow(repoRoot) {
     has_sessions_overview: outputText.includes("会话命名空间:"),
     has_session_title_main: outputText.includes("主会话"),
     has_session_title_untitled: outputText.includes("未命名会话"),
-    has_status_snapshot: outputText.includes("[status]"),
-    has_status_theme_set: outputText.includes("[status] 主题已设为 nerd_font"),
-    has_status_layout_set: outputText.includes("[status] 布局已设为 compact"),
-    has_status_tokens_off: outputText.includes("[status] 状态段 tokens 已关闭"),
-    has_status_theme_current: outputText.includes("theme: nerd_font"),
-    has_status_layout_current: outputText.includes("layout_mode: compact"),
-    has_status_tokens_current_off: outputText.includes("tokens=off"),
+    has_status_snapshot: outputText.includes("● 状态栏"),
+    has_status_theme_set:
+      outputText.includes("● 已更新状态栏主题")
+      && outputText.includes("主题: nerd_font"),
+    has_status_layout_set:
+      outputText.includes("● 已更新状态栏布局")
+      && outputText.includes("布局: compact"),
+    has_status_tokens_off:
+      outputText.includes("● 已更新状态栏状态段")
+      && outputText.includes("状态段: tokens")
+      && outputText.includes("状态: 已关闭"),
+    has_status_theme_current: outputText.includes("主题: nerd_font"),
+    has_status_layout_current: outputText.includes("布局: compact"),
+    has_status_tokens_current_off: outputText.includes("tokens 关闭"),
   };
 }
 

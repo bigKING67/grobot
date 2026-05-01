@@ -581,7 +581,12 @@ async function main(): Promise<void> {
       prompt_budget_ctx_ratio: 0.42,
       prompt_budget_estimated_tokens: 512,
       prompt_budget_target_tokens: 2048,
-      status_snapshot_has_header: outputText.includes("[status]"),
+      status_snapshot_has_header: outputText.includes("● 状态栏"),
+      status_surface_hides_machine_fields:
+        !outputText.includes("[status]")
+        && !outputText.includes("layout_mode")
+        && !outputText.includes("theme:")
+        && !outputText.includes("tokens=off"),
       status_theme_after_update: statusConfigAfter.theme,
       status_layout_after_update: statusConfigAfter.layoutMode,
       status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
