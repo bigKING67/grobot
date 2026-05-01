@@ -1325,6 +1325,8 @@ async function runGatewayContractSmoke() {
   assert.equal(runStartPlanModeContractPayload.apply_surface_has_saved_plan_hint, true);
   assert.equal(runStartPlanModeContractPayload.apply_surface_renders_plan_card, true);
   assert.equal(runStartPlanModeContractPayload.apply_surface_hides_machine_fields, true);
+  assert.equal(runStartPlanModeContractPayload.latest_plan_status_surface_is_human, true);
+  assert.equal(runStartPlanModeContractPayload.latest_plan_status_surface_hides_plan_id, true);
   assert.equal(runStartPlanModeContractPayload.apply_surface_hides_plan_metadata_preview, true);
   assert.equal(runStartPlanModeContractPayload.apply_surface_does_not_echo_literal_trigger, true);
   assert.equal(runStartPlanModeContractPayload.execute_exits_plan_only, true);

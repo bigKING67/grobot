@@ -260,11 +260,15 @@ async function main(): Promise<void> {
     const planGoalInPlan = await planMode.handleMessageInput("/plan second contract goal");
     const planGoalInPlanOutput = stdout.slice(stdoutBeforePlanGoalInPlan.length);
     const executeCountAfterPlanGoalInPlan = executeInputs.length;
+    const activePlanIdBeforeApply = runtimeState.getPlanMeta()?.active_plan_id;
     const executeCountBeforeApply = executeInputs.length;
     const stdoutBeforeApply = stdout;
     const execute = await planMode.handleMessageInput("Implement the plan.");
     const applyOutput = stdout.slice(stdoutBeforeApply.length);
     const applyPrompt = executeInputs[executeInputs.length - 1] ?? "";
+    const stdoutBeforeLatestPlanStatus = stdout;
+    const latestPlanStatusCode = await planMode.showPlanStatus();
+    const latestPlanStatusOutput = stdout.slice(stdoutBeforeLatestPlanStatus.length);
 
     const eventsPath = resolve(
       workDir,
@@ -1159,6 +1163,16 @@ async function main(): Promise<void> {
         !applyOutput.includes("plan_id=")
         && !applyOutput.includes("session_key=")
         && !applyOutput.includes("approved_snapshot_path"),
+      latest_plan_status_surface_is_human:
+        latestPlanStatusCode === 0
+        && stripAnsi(latestPlanStatusOutput).includes("最近计划状态")
+        && stripAnsi(latestPlanStatusOutput).includes("当前没有活跃计划。")
+        && stripAnsi(latestPlanStatusOutput).includes("最近计划: contract cleanup · 已执行"),
+      latest_plan_status_surface_hides_plan_id:
+        typeof activePlanIdBeforeApply === "string"
+        && !latestPlanStatusOutput.includes(activePlanIdBeforeApply)
+        && !latestPlanStatusOutput.includes("plan_id")
+        && !latestPlanStatusOutput.includes("p_contract"),
       apply_surface_hides_plan_metadata_preview:
         !applyOutput.includes("session_id:")
         && !applyOutput.includes("plan_id:")

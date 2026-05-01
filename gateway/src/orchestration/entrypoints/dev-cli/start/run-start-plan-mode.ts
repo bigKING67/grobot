@@ -1773,15 +1773,19 @@ export function createRunStartPlanMode(input: CreateRunStartPlanModeInput): RunS
     }
     const latestApplied = resolveLatestPlanEntry(["applied", "apply_failed"]);
     if (latestApplied) {
-      input.writeStdout("当前计划\n");
+      const latestTitle = latestApplied.title.trim();
+      const latestSummary = latestTitle && latestTitle !== "plan session"
+        ? `${latestTitle} · ${humanizePlanStatus(latestApplied.status)}`
+        : humanizePlanStatus(latestApplied.status);
+      input.writeStdout(`${terminalStyle.planMode("●")} 最近计划状态\n`);
       input.writeStdout("当前没有活跃计划。\n");
-      input.writeStdout(`最近计划: ${latestApplied.plan_id} (${humanizePlanStatus(latestApplied.status)})\n`);
-      input.writeStdout("使用 \"/plan <goal>\" 开始新计划\n\n");
+      input.writeStdout(`最近计划: ${latestSummary}\n`);
+      input.writeStdout("使用 \"/plan <goal>\" 开始新计划。\n\n");
       return 0;
     }
-    input.writeStdout("当前计划\n");
+    input.writeStdout(`${terminalStyle.planMode("●")} 当前计划\n`);
     input.writeStdout("还没有写入计划。\n");
-    input.writeStdout("使用 \"/plan <goal>\" 开始规划\n\n");
+    input.writeStdout("使用 \"/plan <goal>\" 开始规划。\n\n");
     return 0;
   };
 
