@@ -1,4 +1,5 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join as joinPath } from "node:path";
 import {
   createRunStartInteractiveModeInput,
 } from "../../orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings";
@@ -198,9 +199,10 @@ async function main(): Promise<void> {
     openSessionMenu: async () => undefined,
   };
   let planModeActive = false;
+  let activePlanPathForEditor: string | undefined;
   const planMode: RunStartPlanMode = {
     isPlanMode: () => planModeActive,
-    getActivePlanPath: () => undefined,
+    getActivePlanPath: () => activePlanPathForEditor,
     enterPlan: async () => 0,
     showPlanStatus: async () => 0,
     runPlanTurn: async () => 0,
@@ -486,6 +488,31 @@ async function main(): Promise<void> {
     interactiveModeInput.setStatusTheme("nerd");
     interactiveModeInput.setStatusLayoutMode("compact");
     interactiveModeInput.setStatusSegmentEnabled("tokens", false);
+    await interactiveModeInput.openPlanInEditor(async (operation) => operation());
+    const planOpenNoActiveText = stdoutChunks.join("");
+    activePlanPathForEditor = joinPath(tempWorkDir, ".grobot", "plans", "interactive-open.md");
+    mkdirSync(joinPath(tempWorkDir, ".grobot", "plans"), { recursive: true });
+    writeFileSync(activePlanPathForEditor, "# Interactive open plan\n", "utf8");
+    const originalVisual = process.env.VISUAL;
+    const originalEditor = process.env.EDITOR;
+    process.env.VISUAL = "true";
+    delete process.env.EDITOR;
+    const planOpenSuccessStart = stdoutChunks.join("").length;
+    try {
+      await interactiveModeInput.openPlanInEditor(async (operation) => operation());
+    } finally {
+      if (typeof originalVisual === "undefined") {
+        delete process.env.VISUAL;
+      } else {
+        process.env.VISUAL = originalVisual;
+      }
+      if (typeof originalEditor === "undefined") {
+        delete process.env.EDITOR;
+      } else {
+        process.env.EDITOR = originalEditor;
+      }
+    }
+    const planOpenSuccessText = stdoutChunks.join("").slice(planOpenSuccessStart);
     interactiveModeInput.writeManualHandoff();
     interactiveModeInput.writeAutoExitHandoffIfNeeded();
     interactiveModeInput.showPendingAskQueue();
@@ -604,6 +631,13 @@ async function main(): Promise<void> {
       status_theme_after_update: statusConfigAfter.theme,
       status_layout_after_update: statusConfigAfter.layoutMode,
       status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
+      plan_open_no_active_surface_is_human:
+        planOpenNoActiveText.includes("● 当前没有活跃计划文件")
+        && planOpenNoActiveText.includes("请先使用 /plan <goal>。"),
+      plan_open_success_surface_is_human:
+        planOpenSuccessText.includes("● 已打开计划文件")
+        && planOpenSuccessText.includes("计划文件: .grobot/plans/interactive-open.md")
+        && !planOpenSuccessText.includes("Opened plan in editor"),
       status_menu_cancel_is_silent: cancelledMenuOutput.length === 0,
       status_menu_hint_is_reference_compact:
         capturedSelectMenuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),

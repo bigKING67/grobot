@@ -484,22 +484,27 @@ export function createRunStartInteractiveModeInput(
   ): Promise<void> => {
     const planPath = input.planMode.getActivePlanPath();
     if (!planPath) {
-      input.output.writeStdout("当前没有活跃计划文件。请先使用 /plan <goal>。\n\n");
+      input.output.writeStdout(buildCompactNotice("当前没有活跃计划文件", [
+        "请先使用 /plan <goal>。",
+      ]));
       return;
     }
     const displayPath = formatPlanPathForPanel(input.workDir, planPath) ?? planPath;
     const openOperation = async (): Promise<void> => {
       const launched = launchPlanFileInEditor(planPath);
       if (!launched.ok) {
-        input.output.writeStdout(
-          `Failed to open plan in editor: ${compactSingleLine(launched.detail, 200)}\n\n`,
-        );
+        input.output.writeStdout(buildCompactNotice("无法打开计划文件", [
+          `原因: ${compactSingleLine(launched.detail, 200)}`,
+          `计划文件: ${displayPath}`,
+        ]));
         return;
       }
       if (options?.suppressOpenPlanEditorNotice) {
         return;
       }
-      input.output.writeStdout(`Opened plan in editor: ${displayPath}\n\n`);
+      input.output.writeStdout(buildCompactNotice("已打开计划文件", [
+        `计划文件: ${displayPath}`,
+      ]));
     };
     if (!process.stdin.isTTY) {
       await openOperation();
