@@ -1,6 +1,6 @@
 import { SessionStoreRuntime } from "../services/session-store";
 import { createCliUiRenderer } from "../tui/kernel/renderer";
-import { type StartScreenViewModel } from "../tui/screens/startup-screen";
+import { type StartScreenViewModel } from "../tui/components/startup/contract";
 import { sanitizeTerminalDisplayText } from "../tui/terminal/text-sanitizer";
 import { resolveCliVersionDisplay } from "../product-identity";
 import {
@@ -143,24 +143,25 @@ function resolveRecentActivityLines(
   return lines;
 }
 
-function resolveDisplayProjectPath(input: {
-  homeDir: string;
+export function resolveDisplayProjectPath(input: {
   projectRoot: string;
 }): string {
-  const homeDir = input.homeDir.trim().replace(/[\\/]+$/, "");
   const projectRoot = input.projectRoot.trim();
-  const basePath = projectRoot.length > 0 ? projectRoot : homeDir;
+  const basePath = projectRoot.length > 0 ? projectRoot : process.cwd();
   if (!basePath) {
     return "~";
   }
-  if (!homeDir) {
+  const userHome = typeof process.env.HOME === "string"
+    ? process.env.HOME.trim().replace(/[\\/]+$/, "")
+    : "";
+  if (!userHome) {
     return basePath;
   }
-  if (basePath === homeDir) {
+  if (basePath === userHome) {
     return "~";
   }
-  if (basePath.startsWith(`${homeDir}/`)) {
-    return `~/${basePath.slice(homeDir.length + 1)}`;
+  if (basePath.startsWith(`${userHome}/`)) {
+    return `~/${basePath.slice(userHome.length + 1)}`;
   }
   return basePath;
 }
@@ -178,7 +179,6 @@ export function printRunStartBanner(input: RunStartBannerInput): void {
     ? `${modelLabel} (${contextWindowLabel}) · API Usage Billing`
     : `${modelLabel} · API Usage Billing`;
   const displayProjectPath = resolveDisplayProjectPath({
-    homeDir: input.homeDir,
     projectRoot: input.projectRoot,
   });
   const rows: string[] = [

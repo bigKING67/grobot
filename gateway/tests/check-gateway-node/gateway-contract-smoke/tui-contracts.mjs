@@ -66,7 +66,75 @@ export async function runTuiContracts() {
   assert.equal(providerHealthFormatPayload.has_latency_field, true);
   assert.equal(providerHealthFormatPayload.has_error_rate_field, true);
   assert.equal(providerHealthFormatPayload.has_rpm_field, true);
+  assert.equal(providerHealthFormatPayload.uses_reference_detail_rows, true);
+  assert.equal(providerHealthFormatPayload.avoids_machine_prefix, true);
   logStep("provider-health-format-contract");
+
+  const cliHelpScreenContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/cli-help-screen-contract.ts",
+  ]);
+  assertSuccess("cli-help-screen-contract", cliHelpScreenContractResult);
+  const cliHelpScreenPayload = parseJsonOutput(
+    "cli-help-screen-contract",
+    cliHelpScreenContractResult.stdout,
+  );
+  assert.equal(cliHelpScreenPayload.has_reference_header, true);
+  assert.equal(cliHelpScreenPayload.has_reference_intro, true);
+  assert.equal(cliHelpScreenPayload.has_shortcuts_section, true);
+  assert.equal(cliHelpScreenPayload.has_ctrl_r, true);
+  assert.equal(cliHelpScreenPayload.has_esc, true);
+  assert.equal(cliHelpScreenPayload.has_commands_section, true);
+  assert.equal(cliHelpScreenPayload.has_sessions_command, true);
+  assert.equal(cliHelpScreenPayload.has_resume_command, true);
+  assert.equal(cliHelpScreenPayload.has_rewind_command, true);
+  assert.equal(cliHelpScreenPayload.has_model_command, true);
+  assert.equal(cliHelpScreenPayload.has_plan_command, true);
+  assert.equal(cliHelpScreenPayload.has_status_command, true);
+  assert.equal(cliHelpScreenPayload.has_help_command, true);
+  assert.equal(cliHelpScreenPayload.has_exit_command, true);
+  assert.equal(cliHelpScreenPayload.has_utilities_section, true);
+  assert.equal(cliHelpScreenPayload.has_health_command, true);
+  assert.equal(cliHelpScreenPayload.has_context_command, true);
+  assert.equal(cliHelpScreenPayload.has_memory_command, true);
+  assert.equal(cliHelpScreenPayload.has_skills_command, true);
+  assert.equal(cliHelpScreenPayload.has_mcp_command, true);
+  assert.equal(cliHelpScreenPayload.has_notes_section, true);
+  assert.equal(cliHelpScreenPayload.has_compatibility_note, true);
+  assert.equal(cliHelpScreenPayload.uses_reference_bullets, true);
+  assert.equal(cliHelpScreenPayload.avoids_legacy_headers, true);
+  assert.equal(cliHelpScreenPayload.avoids_machine_prefix, true);
+  assert.equal(cliHelpScreenPayload.interactive_has_ansi, true);
+  assert.equal(cliHelpScreenPayload.narrow_lines_within_width, true);
+  assert.equal(cliHelpScreenPayload.ends_with_spacing, true);
+  logStep("cli-help-screen-contract");
+
+  const cliInfoPanelContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/cli-info-panel-contract.ts",
+  ]);
+  assertSuccess("cli-info-panel-contract", cliInfoPanelContractResult);
+  const cliInfoPanelPayload = parseJsonOutput(
+    "cli-info-panel-contract",
+    cliInfoPanelContractResult.stdout,
+  );
+  assert.equal(cliInfoPanelPayload.interactive_has_ansi, true);
+  assert.equal(cliInfoPanelPayload.interactive_title_supports_plan_tone, true);
+  assert.equal(cliInfoPanelPayload.has_title, true);
+  assert.equal(cliInfoPanelPayload.has_subtitle, true);
+  assert.equal(cliInfoPanelPayload.uses_reference_row_bullets, true);
+  assert.equal(cliInfoPanelPayload.uses_reference_detail_rows, true);
+  assert.equal(cliInfoPanelPayload.avoids_legacy_title_bullet, true);
+  assert.equal(cliInfoPanelPayload.avoids_machine_prefix, true);
+  assert.equal(cliInfoPanelPayload.narrow_lines_within_width, true);
+  assert.equal(cliInfoPanelPayload.ends_with_newline, true);
+  logStep("cli-info-panel-contract");
 
   const cliUiRendererContractResult = runCommand("npx", [
     "--yes",
@@ -213,6 +281,14 @@ export async function runTuiContracts() {
   );
   assert.equal(startTuiSurfaceContractPayload.mcp_strict_failure_is_human_surface, true);
   assert.equal(startTuiSurfaceContractPayload.mcp_strict_failure_has_fix_hint, true);
+  assert.equal(
+    startTuiSurfaceContractPayload.startup_project_path_uses_user_home_relative_display,
+    true,
+  );
+  assert.equal(
+    startTuiSurfaceContractPayload.startup_project_path_does_not_depend_on_grobot_home,
+    true,
+  );
   assert.equal(startTuiSurfaceContractPayload.scheduler_tick_error_is_human_surface, true);
   assert.equal(startTuiSurfaceContractPayload.scheduler_task_failed_is_human_surface, true);
   assert.equal(startTuiSurfaceContractPayload.memory_maintenance_failed_is_human_surface, true);
@@ -279,6 +355,8 @@ export async function runTuiContracts() {
   assert.equal(cliActivityStatePayload.ok_finish_clears_prompt_activity, true);
   assert.equal(cliActivityStatePayload.error_finish_remains_visible, true);
   assert.equal(cliActivityStatePayload.no_done_footer_noise, true);
+  assert.equal(cliActivityStatePayload.verbose_progress_line_uses_reference_prefix, true);
+  assert.equal(cliActivityStatePayload.verbose_progress_line_avoids_machine_prefix, true);
   logStep("cli-activity-state-contract");
 
   const cliStatusLineContractResult = runCommand("npx", [
@@ -315,6 +393,8 @@ export async function runTuiContracts() {
   assert.equal(cliStatusLineContractPayload.tokens_segment_toggle_effective, true);
   assert.equal(cliStatusLineContractPayload.plan_mode_badge_visible, true);
   assert.equal(cliStatusLineContractPayload.plan_mode_badge_leads_status, true);
+  assert.equal(cliStatusLineContractPayload.ccline_uses_low_noise_text_labels, true);
+  assert.equal(cliStatusLineContractPayload.ccline_avoids_emoji_status_labels, true);
   logStep("cli-status-line-contract");
 
   const terminalTextSanitizerContractResult = runCommand("npx", [

@@ -88,6 +88,10 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(bareInteractiveFlowPayload.exit_code, 0);
   assert.equal(bareInteractiveFlowPayload.has_start_banner, true);
   assert.equal(bareInteractiveFlowPayload.has_status_snapshot, true);
+  assert.equal(
+    bareInteractiveFlowPayload.startup_suppresses_legacy_store_migration_warning,
+    true,
+  );
   assert.equal(bareInteractiveFlowPayload.has_no_command_hint, true);
   assert.equal(bareInteractiveFlowPayload.has_no_unsupported_command_error, true);
   logStep("start-smoke-contract start-bare-interactive-session-flow");
@@ -108,6 +112,8 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(interactiveDiagnosticsCompactFlowPayload.diagnostic_mode, "compact");
   assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_lines, false);
   assert.equal(interactiveDiagnosticsCompactFlowPayload.has_process_summary_lines, false);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.has_machine_process_lines, false);
+  assert.equal(interactiveDiagnosticsCompactFlowPayload.has_machine_process_summary_lines, false);
   assert.equal(interactiveDiagnosticsCompactFlowPayload.stderr_has_event_lines, false);
   assert.equal(typeof interactiveDiagnosticsCompactFlowPayload.stderr_has_runtime_error, "boolean");
   logStep("start-smoke-contract start-interactive-diagnostics-compact-flow");
@@ -128,6 +134,8 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.diagnostic_mode, "verbose");
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_lines, true);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_process_summary_lines, false);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_machine_process_lines, false);
+  assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_machine_process_summary_lines, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.has_short_process_summary_code, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_event_lines, false);
   assert.equal(interactiveDiagnosticsVerboseFlowPayload.stderr_has_trace_lines, false);
@@ -149,6 +157,8 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(interactiveDiagnosticsTraceFlowPayload.diagnostic_mode, "trace");
   assert.equal(interactiveDiagnosticsTraceFlowPayload.has_process_lines, false);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.has_process_summary_lines, false);
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.has_machine_process_lines, false);
+  assert.equal(interactiveDiagnosticsTraceFlowPayload.has_machine_process_summary_lines, false);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_event_lines, true);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_trace_lines, true);
   logStep("start-smoke-contract start-interactive-diagnostics-trace-flow");
@@ -203,6 +213,8 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
       diagnosticsFlowPayload.has_process_lines,
       flow.mode === "verbose",
     );
+    assert.equal(diagnosticsFlowPayload.has_machine_process_lines, false);
+    assert.equal(diagnosticsFlowPayload.has_machine_process_summary_lines, false);
     if (flow.mode === "compact") {
       assert.equal(diagnosticsFlowPayload.has_process_summary_lines, false);
     }

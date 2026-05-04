@@ -89,6 +89,7 @@ export function runStartBareInteractiveSessionFlow(context) {
     writeConfig,
     runCommand,
     hasStartBannerMarker,
+    stripAnsi,
   } = context;
   const workDir = createTempDir("grobot-bare-start-work");
   const homeDir = createTempDir("grobot-bare-start-home");
@@ -125,7 +126,10 @@ export function runStartBareInteractiveSessionFlow(context) {
   return {
     ...commandResult,
     has_start_banner: hasStartBannerMarker(outputText),
-    has_status_snapshot: outputText.includes("● 状态栏"),
+    has_status_snapshot: outputText.includes("状态栏"),
+    startup_suppresses_legacy_store_migration_warning:
+      !outputText.includes("[store] history migrated from legacy path")
+      && !outputText.includes("[session] session registry migrated from legacy path"),
     has_no_command_hint:
       !outputText.includes("Enter message")
       && !outputText.includes("/ for commands · ? for shortcuts"),
@@ -204,9 +208,18 @@ export function runStartInteractiveDiagnosticsFlow(context, mode, scriptedInput,
     ...commandResult,
     diagnostic_mode: normalizedMode,
     verbose_mode: normalizedMode !== "compact",
-    has_process_lines: commandResult.stdout.includes("[process]"),
-    has_process_summary_lines: commandResult.stdout.includes("[process-summary]"),
-    has_short_process_summary_code: /\[process-summary\]\s+(ok|err|int)\s+\d/.test(
+    has_process_lines:
+      commandResult.stdout.includes("› 正在")
+      || commandResult.stdout.includes("› Grobot")
+      || commandResult.stdout.includes("› 等待")
+      || commandResult.stdout.includes("› 语义")
+      || commandResult.stdout.includes("› 所有模型通道暂不可用"),
+    has_machine_process_lines: commandResult.stdout.includes("[process]"),
+    has_process_summary_lines: /›\s+(执行完成|执行失败|已中断)\s+·\s+\d/.test(
+      commandResult.stdout,
+    ),
+    has_machine_process_summary_lines: commandResult.stdout.includes("[process-summary]"),
+    has_short_process_summary_code: /›\s+(执行完成|执行失败|已中断)\s+·\s+\d/.test(
       commandResult.stdout,
     ),
     stderr_has_event_lines: /\bevent=/.test(commandResult.stderr),
@@ -372,24 +385,25 @@ export function runStartInteractiveSessionCommandsFallbackFlow(context) {
     has_resume_usage: outputText.includes("用法: /resume"),
     has_rewind_usage: outputText.includes("用法: /rewind"),
     has_sessions_overview:
-      outputPlain.includes("● 会话")
+      outputPlain.includes("会话")
       && outputPlain.includes("命名空间:"),
     session_surface_avoids_legacy_plain_namespace:
       !outputPlain.includes("会话命名空间:"),
     session_switch_surface_is_human:
-      outputPlain.includes("● 已切换会话")
+      outputPlain.includes("已切换会话")
+      && !outputPlain.includes("● 已切换会话")
       && outputPlain.includes("历史来源:"),
     has_session_title_main: outputPlain.includes("主会话"),
     has_session_title_untitled: outputPlain.includes("未命名会话"),
-    has_status_snapshot: outputText.includes("● 状态栏"),
+    has_status_snapshot: outputText.includes("状态栏"),
     has_status_theme_set:
-      outputText.includes("● 已更新状态栏主题")
+      outputText.includes("已更新状态栏主题")
       && outputText.includes("主题: nerd_font"),
     has_status_layout_set:
-      outputText.includes("● 已更新状态栏布局")
+      outputText.includes("已更新状态栏布局")
       && outputText.includes("布局: compact"),
     has_status_tokens_off:
-      outputText.includes("● 已更新状态栏状态段")
+      outputText.includes("已更新状态栏状态段")
       && outputText.includes("状态段: tokens")
       && outputText.includes("状态: 已关闭"),
     has_status_theme_current: outputText.includes("主题: nerd_font"),

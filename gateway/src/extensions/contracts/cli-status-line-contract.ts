@@ -128,6 +128,19 @@ const disabledStatusPlanModePrompt = renderStatusLinePrompt({
   },
 });
 
+const cclinePrompt = renderStatusLinePrompt({
+  model: "kimi/kimi-k2.5",
+  projectFolder: "grobot",
+  estimatedTokens: 0,
+  targetTokenLimit: 262144,
+  sessionId: "main",
+  terminalColumns: 120,
+  promptLabel: "› ",
+  config: {
+    theme: "ccline",
+  },
+});
+
 const wideLines = wide.split("\n");
 const narrowLines = narrow.split("\n");
 const cjkLines = cjkNarrow.split("\n");
@@ -144,6 +157,7 @@ const warningLine = warningLines[1] ?? "";
 const segmentToggleStatusLine = segmentToggleLines[0] ?? "";
 const planModeStatusLine = planModeLines[0] ?? "";
 const narrowPlanModeLine = narrowPlanModePrompt.split("\n")[0] ?? "";
+const cclinePlain = stripAnsi(cclinePrompt);
 
 const payload = {
   wide_has_model: wideStatusLine.includes("kimi/kimi-k2-2026-04"),
@@ -178,6 +192,12 @@ const payload = {
     disabledStatusPlanModePrompt.includes("plan mode"),
   plan_mode_narrow_line_within_width:
     measureDisplayWidth(narrowPlanModeLine) <= 48,
+  ccline_uses_low_noise_text_labels:
+    cclinePlain.includes("context 剩余 100%")
+    && cclinePlain.includes("262K window")
+    && cclinePlain.includes("kimi/kimi-k2.5"),
+  ccline_avoids_emoji_status_labels:
+    !/[🤖📁⚡📊⏱️]/u.test(cclinePlain),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

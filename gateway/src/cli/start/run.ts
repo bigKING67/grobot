@@ -123,7 +123,10 @@ export async function runStart(
   const output = createRunStartOutput({
     suppressWarningPatterns: startupDiagnosticsEnabled
       ? []
-      : [/^session store fallback to file:/i],
+      : [
+        /^session store fallback to file:/i,
+        / migrated from legacy path \(/i,
+      ],
   });
   const writeStartupDiagnostics = (message: string): void => {
     if (!startupDiagnosticsEnabled) {

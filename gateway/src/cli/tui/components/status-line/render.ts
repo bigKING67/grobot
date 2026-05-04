@@ -252,11 +252,11 @@ function resolveStatusSegmentLabel(input: {
     session: "󱂬",
   };
   const cclineLabels: Record<StatusLineSegmentId, string> = {
-    model: "🤖",
-    project: "📁",
-    context: "⚡️",
-    tokens: "📊",
-    session: "⏱️",
+    model: "",
+    project: "",
+    context: input.compact ? "ctx" : "context",
+    tokens: "",
+    session: "",
   };
   if (input.theme === "ccline") {
     return cclineLabels[input.segmentId];
