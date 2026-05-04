@@ -104,6 +104,13 @@ use std::process::{Command, ExitCode, ExitStatus};
 
 const VERSION: &str = env!("GROBOT_BUNDLE_VERSION");
 
+fn cli_display_version() -> String {
+    VERSION
+        .trim()
+        .trim_start_matches(|value: char| value == 'v' || value == 'V')
+        .to_string()
+}
+
 fn status_to_exit(status: ExitStatus) -> ExitCode {
     if let Some(code) = status.code() {
         ExitCode::from((code & 0xff) as u8)
@@ -182,7 +189,7 @@ fn find_runtime_bin(app_root: &Path) -> Option<PathBuf> {
 
 fn compiled_out_dir(app_root: &Path) -> Option<PathBuf> {
     let candidate = app_root.join("gateway").join("dist");
-    if candidate.join("orchestration").join("dev-cli.js").is_file() {
+    if candidate.join("cli").join("main.js").is_file() {
         return Some(candidate);
     }
     None
@@ -259,7 +266,7 @@ fn print_version(app_root: &Path) {
         .ok()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
-    println!("grobot 0.1.0");
+    println!("grobot {}", cli_display_version());
     println!("Version: {}", VERSION);
     println!("Location: {}", exe);
     println!("Source: portable:native-launcher (real_core=true)");

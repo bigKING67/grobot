@@ -39,6 +39,13 @@ function runCheck({ root, specPath, strict = true }) {
   };
 }
 
+function runGit(root, args) {
+  const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+  }
+}
+
 function testPackageScriptsUseStrictDefault() {
   const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
   const scripts = packageJson.scripts ?? {};
@@ -47,6 +54,347 @@ function testPackageScriptsUseStrictDefault() {
   assert.equal(scripts["check:layer-contract:warn"], "node scripts/layer-contract-check.mjs");
   assert.match(scripts.check ?? "", /npm run check:layer-contract( |$|&&)/);
   assert.doesNotMatch(scripts.check ?? "", /check:layer-contract:warn/);
+}
+
+function testTrackedGeneratedStateTriggersWarning() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write(".grobot/context/cache.jsonl", "{}\n", root);
+    write(".grobot/memory/README.md", "# Memory\n", root);
+    runGit(root, ["add", "."]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.trackedGeneratedStateWarnings = [
+      {
+        name: "runtime-state",
+        pathPrefixes: [".grobot/context/"],
+        allowedBasenames: ["README.md"],
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("tracked runtime state should be untracked: .grobot/context/cache.jsonl")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testLegacyPathRatchetTriggersWarningOnlyWhenDebtGrows() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write("gateway/src/orchestration/entrypoints/dev-cli/index.ts", "export {};\n", root);
+    write("gateway/src/orchestration/entrypoints/dev-cli/start/run.ts", "export {};\n", root);
+    runGit(root, ["add", "."]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.legacyPathWarnings = [
+      {
+        name: "gateway-dev-cli",
+        pathPrefixes: ["gateway/src/orchestration/entrypoints/dev-cli/"],
+        maxFiles: 1,
+        message: "migrate to gateway/src/cli",
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("2 files exceed limit=1")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testLegacyPathRatchetIncludesUntrackedFiles() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write("gateway/src/orchestration/entrypoints/dev-cli/index.ts", "export {};\n", root);
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "init"]);
+    write("gateway/src/orchestration/entrypoints/dev-cli/new-product.ts", "export {};\n", root);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.legacyPathWarnings = [
+      {
+        name: "gateway-dev-cli",
+        pathPrefixes: ["gateway/src/orchestration/entrypoints/dev-cli/"],
+        maxFiles: 1,
+        message: "migrate to gateway/src/cli",
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("2 files exceed limit=1")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testSourceSizeAggregateRatchetFailsOnGrowth() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write("gateway/src/example.ts", `${"x\n".repeat(12)}`, root);
+    runGit(root, ["add", "."]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.sourceFileSizeWarnings = [
+      {
+        name: "product-source",
+        includePrefixes: ["gateway/src/"],
+        extensions: [".ts"],
+        warn: 5,
+        fail: 10,
+        maxWarnCount: 1,
+        maxFailCount: 0,
+        maxObservedLines: 11,
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.failures.some((entry) =>
+        String(entry).includes("fail debt count increased")
+      )
+    );
+    assert.ok(
+      result.payload.failures.some((entry) =>
+        String(entry).includes("largest file grew")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testSourceSizeRatchetIncludesUntrackedFiles() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write(".gitignore", "ignored.ts\n", root);
+    write("gateway/tests/large-untracked.mjs", `${"x\n".repeat(9)}`, root);
+    write("gateway/tests/ignored.ts", `${"x\n".repeat(40)}`, root);
+    runGit(root, ["add", ".gitignore"]);
+    runGit(root, ["commit", "-m", "init"]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.sourceFileSizeWarnings = [
+      {
+        name: "gateway-test-source",
+        includePrefixes: ["gateway/tests/"],
+        extensions: [".mjs", ".ts"],
+        warn: 5,
+        fail: 10,
+        maxWarnCount: 0,
+        maxFailCount: 0,
+        maxObservedLines: 5,
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("warn debt count increased")
+      )
+    );
+    assert.ok(
+      result.payload.failures.some((entry) =>
+        String(entry).includes("largest file grew: 10 lines in gateway/tests/large-untracked.mjs")
+      )
+    );
+    assert.equal(
+      result.payload.failures.some((entry) => String(entry).includes("ignored.ts")),
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testForbiddenTextTriggersWarningWithAllowlist() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write("gateway/src/cli/index.ts", "export const runDevCli = () => 0;\n", root);
+    write("gateway/src/orchestration/entrypoints/dev-cli/index.ts", "export const runDevCli = () => 0;\n", root);
+    runGit(root, ["add", "."]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.forbiddenTextWarnings = [
+      {
+        name: "cli-product-dev-cli-names",
+        includePrefixes: ["gateway/src/cli/", "gateway/src/orchestration/"],
+        extensions: [".ts"],
+        patterns: [
+          {
+            regex: "\\brunDevCli\\b",
+            message: "use Cli names in product code",
+            allowlist: [
+              {
+                pathEquals: "gateway/src/orchestration/entrypoints/dev-cli/index.ts",
+                reason: "legacy compatibility re-export",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway/src/cli/index.ts:1 matched")
+      )
+    );
+    assert.equal(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway/src/orchestration/entrypoints/dev-cli/index.ts")
+      ),
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testForbiddenTextBlocksTsDevCliImplementationNames() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write(
+      "gateway/src/cli/gc/run-gc.ts",
+      "function resolveDefaultTsDevCliCacheRoot() { return ''; }\nconst target = 'ts_dev_cli_cache';\n",
+      root,
+    );
+    runGit(root, ["add", "."]);
+    runGit(root, ["commit", "-m", "init"]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.forbiddenTextWarnings = [
+      {
+        name: "cli-product-dev-cli-names",
+        includePrefixes: ["gateway/src/cli/"],
+        extensions: [".ts"],
+        patterns: [
+          {
+            regex: "\\b[A-Za-z0-9_]*TsDevCli[A-Za-z0-9_]*\\b",
+            message: "ts-dev-cli labels must not leak into product implementation names",
+          },
+          {
+            regex: "\\b[A-Za-z0-9_]*ts_dev_cli[A-Za-z0-9_]*\\b",
+            message: "ts-dev-cli labels must not leak into product implementation names",
+          },
+        ],
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway/src/cli/gc/run-gc.ts:1 matched")
+      )
+    );
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway/src/cli/gc/run-gc.ts:2 matched")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testLegacyContractNameTriggersWarning() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write("gateway/src/extensions/contracts/dev-cli-ui-renderer-contract.ts", "export {};\n", root);
+    write("gateway/src/extensions/contracts/run-start-plan-mode-contract.ts", "export {};\n", root);
+    runGit(root, ["add", "."]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.legacyPathWarnings = [
+      {
+        name: "gateway-dev-cli-contract-names",
+        pathPrefixes: ["gateway/src/extensions/contracts/dev-cli-"],
+        maxFiles: 0,
+        message: "use cli-* contract names",
+      },
+      {
+        name: "gateway-run-start-contract-names",
+        pathPrefixes: ["gateway/src/extensions/contracts/run-start-"],
+        maxFiles: 0,
+        message: "use start-* contract names",
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway-dev-cli-contract-names")
+      )
+    );
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("gateway-run-start-contract-names")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }
 
 function baseSpec() {
@@ -288,6 +636,14 @@ function testWarnModeAllowsWarningsForDiagnostics() {
 
 function main() {
   testPackageScriptsUseStrictDefault();
+  testTrackedGeneratedStateTriggersWarning();
+  testLegacyPathRatchetTriggersWarningOnlyWhenDebtGrows();
+  testLegacyPathRatchetIncludesUntrackedFiles();
+  testSourceSizeAggregateRatchetFailsOnGrowth();
+  testSourceSizeRatchetIncludesUntrackedFiles();
+  testForbiddenTextTriggersWarningWithAllowlist();
+  testForbiddenTextBlocksTsDevCliImplementationNames();
+  testLegacyContractNameTriggersWarning();
   testForbiddenImportTriggersWarning();
   testAllowlistSuppressesWarning();
   testForbiddenTsImportTriggersWarning();

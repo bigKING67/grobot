@@ -127,7 +127,7 @@ const cases = [
 
 const harnessPath = join(tmpDir, "runtime-tool-quality-registry-parity-harness.ts");
 writeFileSync(harnessPath, `
-import { resolveRuntimeToolQualitySignalFromRegistry } from ${JSON.stringify(resolve(repoRoot, "gateway/src/orchestration/entrypoints/dev-cli/status/runtime-tool-quality-registry.ts"))};
+import { resolveRuntimeToolQualitySignalFromRegistry } from ${JSON.stringify(resolve(repoRoot, "gateway/src/cli/status/runtime-tool-quality-registry.ts"))};
 
 type RuntimeToolQualitySurface = "status" | "release";
 interface TestCase {

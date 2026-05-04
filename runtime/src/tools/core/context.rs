@@ -1,0 +1,395 @@
+fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, ToolExecutionError> {
+    let tool_context = input.tool_context.as_ref().ok_or_else(|| {
+        runtime_environment_error(
+            "tool_context_missing",
+            "runtime tool context is required",
+            "tool_context_missing",
+            "fix the runtime tool context/work_dir, then run grobot status --json before retrying",
+            "tool_context",
+            None,
+        )
+    })?;
+    let raw_work_dir = tool_context
+        .work_dir
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            runtime_environment_error(
+                "tool_context_missing",
+                "tool_context.work_dir is required",
+                "tool_context_missing",
+                "fix the runtime tool context/work_dir, then run grobot status --json before retrying",
+                "tool_context.work_dir",
+                None,
+            )
+        })?;
+    let canonical_work_dir = fs::canonicalize(raw_work_dir).map_err(|error| {
+        runtime_environment_error(
+            "tool_context_invalid",
+            format!("failed to resolve work_dir: {error}"),
+            "tool_context_invalid",
+            "choose a valid workspace directory, then run grobot status --json before retrying",
+            "tool_context.work_dir",
+            Some(raw_work_dir),
+        )
+    })?;
+    if !canonical_work_dir.is_dir() {
+        return Err(runtime_environment_error(
+            "tool_context_invalid",
+            "tool_context.work_dir is not a directory",
+            "tool_context_invalid",
+            "choose a valid workspace directory, then run grobot status --json before retrying",
+            "tool_context.work_dir",
+            Some(raw_work_dir),
+        ));
+    }
+    let enabled_tools =
+        normalize_tool_name_set(tool_context.enabled_tools.as_ref()).unwrap_or_else(default_enabled_tools);
+    let profile =
+        canonical_tool_surface_profile(tool_context.tool_surface_profile.as_deref()).to_string();
+    let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref())
+        .unwrap_or_else(|| enabled_tools.clone());
+    let advanced_tool_schema = tool_context.advanced_tool_schema.unwrap_or(false);
+    let bash_allowlist = tool_context
+        .bash_allowlist
+        .as_ref()
+        .map(|values| {
+            values
+                .iter()
+                .map(|item| item.trim())
+                .filter(|item| !item.is_empty())
+                .map(|item| item.to_string())
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+    let session_key = input.session_key.trim().to_string();
+    Ok(ToolContextResolved {
+        session_key,
+        work_dir: canonical_work_dir,
+        enabled_tools,
+        model_visible_tools,
+        tool_surface_profile: profile,
+        advanced_tool_schema,
+        bash_allowlist,
+    })
+}
+
+fn normalize_tool_name_set(values: Option<&Vec<String>>) -> Option<HashSet<String>> {
+    values.map(|rows| {
+        let mut set = HashSet::new();
+        for item in rows {
+            let normalized = normalize_tool_name(item);
+            if normalized.is_empty() {
+                continue;
+            }
+            set.insert(normalized);
+        }
+        set
+    })
+}
+
+fn value_object<'a>(
+    arguments: &'a Value,
+    tool_name: &str,
+) -> Result<&'a Map<String, Value>, ToolExecutionError> {
+    arguments.as_object().ok_or_else(|| {
+        ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("tool {tool_name} expects a JSON object argument"),
+        )
+    })
+}
+
+fn get_string_arg(args: &Map<String, Value>, key: &str) -> Option<String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn get_bool_arg(args: &Map<String, Value>, key: &str, fallback: bool) -> bool {
+    args.get(key).and_then(Value::as_bool).unwrap_or(fallback)
+}
+
+fn get_usize_arg(args: &Map<String, Value>, key: &str, fallback: usize, max: usize) -> usize {
+    let parsed = args
+        .get(key)
+        .and_then(Value::as_u64)
+        .map(|value| value as usize)
+        .unwrap_or(fallback);
+    parsed.clamp(1, max)
+}
+
+fn parse_ask_user_options_arg(raw: &Value) -> Vec<Value> {
+    let Some(items) = raw.as_array() else {
+        return Vec::new();
+    };
+    let mut normalized = Vec::new();
+    for item in items {
+        if let Some(text) = item.as_str() {
+            let compact = truncate_output(text.trim().to_string(), 120);
+            if compact.is_empty() {
+                continue;
+            }
+            normalized.push(json!({
+                "label": compact,
+                "value": compact,
+            }));
+        } else if let Some(option_obj) = item.as_object() {
+            let label = option_obj
+                .get("label")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| truncate_output(value.to_string(), 120));
+            let Some(label) = label else {
+                continue;
+            };
+            let description = option_obj
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| truncate_output(value.to_string(), 180));
+            let value = option_obj
+                .get("value")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|raw| !raw.is_empty())
+                .map(|raw| truncate_output(raw.to_string(), 120))
+                .unwrap_or_else(|| label.clone());
+            let mut row = serde_json::Map::new();
+            row.insert("label".to_string(), Value::String(label));
+            if let Some(description) = description {
+                if !description.is_empty() {
+                    row.insert("description".to_string(), Value::String(description));
+                }
+            }
+            row.insert("value".to_string(), Value::String(value));
+            normalized.push(Value::Object(row));
+        }
+        if normalized.len() >= 6 {
+            break;
+        }
+    }
+    normalized
+}
+
+fn parse_ask_user_arg_questions(args: &Map<String, Value>) -> Vec<Value> {
+    let Some(raw_questions) = args.get("questions").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut questions: Vec<Value> = Vec::new();
+    for (index, raw_question) in raw_questions.iter().enumerate() {
+        let Some(question_obj) = raw_question.as_object() else {
+            continue;
+        };
+        let id = question_obj
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_output(value.to_string(), 80))
+            .unwrap_or_else(|| format!("q{}", index + 1));
+        let header = question_obj
+            .get("header")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_output(value.to_string(), 120))
+            .unwrap_or_else(|| format!("Question {}", index + 1));
+        let question = question_obj
+            .get("question")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| truncate_output(value.to_string(), 600));
+        let Some(question) = question else {
+            continue;
+        };
+        let options = question_obj
+            .get("options")
+            .map(parse_ask_user_options_arg)
+            .unwrap_or_default();
+        questions.push(json!({
+            "id": id,
+            "header": header,
+            "question": question,
+            "options": options,
+        }));
+        if questions.len() >= 3 {
+            break;
+        }
+    }
+    questions
+}
+
+fn build_runtime_generated_id(prefix: &str) -> String {
+    let now_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("{prefix}_{:x}", now_nanos)
+}
+
+fn now_unix_label() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format!("unix:{secs}")
+}
+
+fn run_ask_user(
+    _context: &ToolContextResolved,
+    args: &Map<String, Value>,
+) -> Result<ToolCallOutput, ToolExecutionError> {
+    let questions = parse_ask_user_arg_questions(args);
+    if questions.is_empty() {
+        return Err(ToolExecutionError::new(
+            "invalid_tool_arguments",
+            "ask_user.questions must include at least one valid item",
+        ));
+    }
+    let blocking_node_id =
+        get_string_arg(args, "blocking_node_id").unwrap_or_else(|| "node.unknown".to_string());
+    let default_on_timeout = get_string_arg(args, "default_on_timeout")
+        .unwrap_or_else(|| "continue_with_best_effort".to_string());
+    let resume_token =
+        get_string_arg(args, "resume_token").unwrap_or_else(|| build_runtime_generated_id("resume"));
+    let payload = json!({
+        "tool": TOOL_ASK_USER,
+        "type": "ask_user",
+        "blocking_node_id": blocking_node_id,
+        "questions": questions,
+        "default_on_timeout": default_on_timeout,
+        "resume_token": resume_token,
+        "created_at": now_unix_label(),
+    });
+    Ok(ToolCallOutput::from_payload(payload))
+}
+
+fn ensure_within_workspace(
+    work_dir: &Path,
+    raw_path: &str,
+    allow_missing_leaf: bool,
+) -> Result<PathBuf, ToolExecutionError> {
+    let candidate = if Path::new(raw_path).is_absolute() {
+        PathBuf::from(raw_path)
+    } else {
+        work_dir.join(raw_path)
+    };
+    let resolved = if candidate.exists() {
+        fs::canonicalize(&candidate).map_err(|error| {
+            ToolExecutionError::new("path_invalid", format!("failed to resolve path: {error}"))
+                .with_data(path_resolution_error_data(
+                    raw_path,
+                    Some(candidate.as_path()),
+                    allow_missing_leaf,
+                    "path_invalid",
+                    "failed_to_resolve_path",
+                ))
+        })?
+    } else if allow_missing_leaf {
+        if candidate
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err(ToolExecutionError::new(
+                "path_escape_blocked",
+                "missing write targets must not contain parent traversal",
+            )
+            .with_data(path_resolution_error_data(
+                raw_path,
+                Some(candidate.as_path()),
+                allow_missing_leaf,
+                "path_escape_blocked",
+                "parent_traversal_in_missing_target",
+            )));
+        }
+
+        let mut cursor = candidate.as_path();
+        let mut missing_components = Vec::new();
+        while !cursor.exists() {
+            let component = cursor.file_name().ok_or_else(|| {
+                ToolExecutionError::new("path_invalid", "path parent is invalid")
+                    .with_data(path_resolution_error_data(
+                        raw_path,
+                        Some(candidate.as_path()),
+                        allow_missing_leaf,
+                        "path_invalid",
+                        "missing_parent_component",
+                    ))
+            })?;
+            missing_components.push(component.to_os_string());
+            cursor = cursor.parent().ok_or_else(|| {
+                ToolExecutionError::new("path_invalid", "path parent is invalid")
+                    .with_data(path_resolution_error_data(
+                        raw_path,
+                        Some(candidate.as_path()),
+                        allow_missing_leaf,
+                        "path_invalid",
+                        "missing_parent_path",
+                    ))
+            })?;
+        }
+
+        let mut resolved_parent = fs::canonicalize(cursor).map_err(|error| {
+            ToolExecutionError::new("path_invalid", format!("failed to resolve parent: {error}"))
+                .with_data(path_resolution_error_data(
+                    raw_path,
+                    Some(cursor),
+                    allow_missing_leaf,
+                    "path_invalid",
+                    "failed_to_resolve_parent",
+                ))
+        })?;
+        for component in missing_components.iter().rev() {
+            resolved_parent.push(component);
+        }
+        resolved_parent
+    } else {
+        return Err(ToolExecutionError::new(
+            "path_not_found",
+            format!("path not found: {}", candidate.display()),
+        )
+        .with_data(path_resolution_error_data(
+            raw_path,
+            Some(candidate.as_path()),
+            allow_missing_leaf,
+            "path_not_found",
+            "target_does_not_exist",
+        )));
+    };
+    if !resolved.starts_with(work_dir) {
+        return Err(ToolExecutionError::new(
+            "path_escape_blocked",
+            "path escapes workspace",
+        )
+        .with_data(path_resolution_error_data(
+            raw_path,
+            Some(resolved.as_path()),
+            allow_missing_leaf,
+            "path_escape_blocked",
+            "resolved_path_outside_workspace",
+        )));
+    }
+    Ok(resolved)
+}
+
+fn relative_to_work_dir(work_dir: &Path, value: &Path) -> String {
+    value
+        .strip_prefix(work_dir)
+        .unwrap_or(value)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn truncate_output(raw: String, max_chars: usize) -> String {
+    if raw.chars().count() <= max_chars {
+        return raw;
+    }
+    raw.chars().take(max_chars).collect::<String>()
+}

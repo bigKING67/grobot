@@ -52,8 +52,8 @@ Logging in this repo has three forms:
 
 ## Examples
 
-1. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-turn.ts` (runtime-route diagnostics)
+1. `gateway/src/cli/start/turn.ts` (runtime-route diagnostics)
 2. `gateway/src/tools/ask-user/runtime.ts` (ask-user issued/resolved events)
-3. `gateway/src/orchestration/entrypoints/dev-cli/services/redaction.ts` (secret masking/redaction)
+3. `gateway/src/cli/services/redaction.ts` (secret masking/redaction)
 4. `runtime/src/orchestration/pipeline.rs` (normalized runtime event emission)
 5. `.trellis/tasks/00-bootstrap-guidelines/*.jsonl` (workflow activity journaling)

@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import {
   AGENTS_INSTRUCTION_SEPARATOR,
   resolveAgentsInstructionBlock,
-} from "../../orchestration/entrypoints/dev-cli/services/agents-instructions";
-import { loadGrobotSystemPrompt } from "../../orchestration/entrypoints/dev-cli/system/gro-system-prompt";
+} from "../../cli/services/agents-instructions";
+import { loadGrobotSystemPrompt } from "../../cli/system/gro-system-prompt";
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {
   if (actual !== expected) {

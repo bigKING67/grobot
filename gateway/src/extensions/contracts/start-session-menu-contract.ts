@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
-import { type RunStartSessionSummary } from "../../orchestration/entrypoints/dev-cli/start/run-start-session-ops";
+import { type RunStartSessionSummary } from "../../cli/start/session-ops";
 import {
   buildSessionMenuViewModel,
   SESSION_MENU_NEW_ID,
-} from "../../orchestration/entrypoints/dev-cli/start/run-start-session-menu";
+} from "../../cli/start/session-menu";
 
 function findDescriptionById(
   rows: ReadonlyArray<{ id: string; description?: string }>,
@@ -72,15 +72,15 @@ const allHints = [
   rewindMenu.hint,
 ];
 const sessionMenuOpsSource = readFileSync(
-  "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-session-menu-ops.ts",
+  "gateway/src/cli/start/session-menu-ops.ts",
   "utf8",
 );
 const sessionOpsSource = readFileSync(
-  "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-session-ops.ts",
+  "gateway/src/cli/start/session-ops.ts",
   "utf8",
 );
 const rewindStoreSource = readFileSync(
-  "gateway/src/orchestration/entrypoints/dev-cli/start/run-start-rewind-store.ts",
+  "gateway/src/cli/start/rewind-store.ts",
   "utf8",
 );
 

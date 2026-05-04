@@ -1,612 +1,38 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { getChangedCodeSnapshot, type ChangedCodeSnapshot } from "./changed-code-snapshot";
-import { extractTypeScriptAstDependencyTargets } from "./dependency-ts-ast";
+import { getChangedCodeSnapshot } from "./changed-code-snapshot";
 import {
   computeSnapshotFingerprint,
-  hashContentFNV,
   normalizeQueryKey,
-  readContextGraphCacheStatsBucket,
-  recordContextGraphCacheEvict,
-  recordContextGraphCacheHit,
-  recordContextGraphCacheMiss,
-  recordContextGraphCacheWrite,
-  setLruCacheEntry,
 } from "./cache-utils";
+import { MAX_QUERY_CACHE_ROWS } from "./dependency-hints/constants";
+import {
+  extractImports,
+  resolveRelativeTarget,
+  resolveRelativeTargetInSnapshot,
+} from "./dependency-hints/imports";
+import {
+  buildLocalAdjacency,
+  buildMultiHopDependencyRows,
+  collectSeedPaths,
+  scoreEdge,
+} from "./dependency-hints/ranking";
+import {
+  readQueryCacheRows,
+  writeQueryCacheRows,
+} from "./dependency-hints/query-cache";
+import {
+  clampInteger,
+  dedupeRows,
+  normalizePath,
+  stripTrailingSlash,
+  tokenize,
+} from "./dependency-hints/utils";
+import {
+  type DependencyEdge,
+  type RetrieveDependencyHintsOptions,
+  type ScoredDependencyRow,
+} from "./dependency-hints/types";
 
-interface RetrieveDependencyHintsOptions {
-  workDir?: string;
-  maxRows?: number;
-  changedCodeSnapshot?: ChangedCodeSnapshot;
-}
-
-interface DependencyEdge {
-  fromPath: string;
-  target: string;
-  score: number;
-  targetIsLocal: boolean;
-}
-
-interface DependencyQueryCacheEntry {
-  expiresAtMs: number;
-  snapshotFingerprint: string;
-  rows: string[];
-}
-
-const QUERY_CACHE_TTL_MS = 2_000;
-const MAX_QUERY_CACHE_ENTRIES = 256;
-const MAX_QUERY_CACHE_ROWS = 120;
-const MAX_IMPORT_CACHE_ENTRIES = 640;
-
-const dependencyQueryCache = new Map<string, DependencyQueryCacheEntry>();
-const dependencyImportCache = new Map<string, string[]>();
-const DEPENDENCY_QUERY_CACHE_BUCKET = "dependency_query";
-const DEPENDENCY_IMPORT_CACHE_BUCKET = "dependency_import";
-
-function clampInteger(value: number, fallback: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  const normalized = Math.floor(value);
-  if (normalized < min) {
-    return min;
-  }
-  if (normalized > max) {
-    return max;
-  }
-  return normalized;
-}
-
-function tokenize(raw: string): string[] {
-  return raw
-    .toLowerCase()
-    .split(/[^a-z0-9\u4e00-\u9fff]+/u)
-    .map((item) => item.trim())
-    .filter((item) => item.length >= 2);
-}
-
-function normalizePath(raw: string): string {
-  return raw.replace(/\\/g, "/").replace(/^\.\/+/, "").trim();
-}
-
-function getDirPath(filePath: string): string {
-  const normalized = normalizePath(filePath);
-  const slash = normalized.lastIndexOf("/");
-  if (slash < 0) {
-    return ".";
-  }
-  return normalized.slice(0, slash);
-}
-
-function stripTrailingSlash(rawPath: string): string {
-  if (!rawPath) {
-    return rawPath;
-  }
-  return rawPath.replace(/\/+$/, "");
-}
-
-function resolveRelativeTarget(rootPath: string, fromPath: string, importPath: string): string | undefined {
-  if (!importPath.startsWith(".")) {
-    return undefined;
-  }
-  const baseDir = getDirPath(fromPath);
-  const resolvedBase = resolve(rootPath, baseDir, importPath);
-  const candidates = [
-    resolvedBase,
-    `${resolvedBase}.ts`,
-    `${resolvedBase}.tsx`,
-    `${resolvedBase}.js`,
-    `${resolvedBase}.jsx`,
-    `${resolvedBase}.mjs`,
-    `${resolvedBase}.cjs`,
-    `${resolvedBase}.py`,
-    `${resolvedBase}.rs`,
-    `${resolvedBase}.go`,
-    `${resolvedBase}.java`,
-    `${resolvedBase}/index.ts`,
-    `${resolvedBase}/index.tsx`,
-    `${resolvedBase}/index.js`,
-    `${resolvedBase}/index.mjs`,
-    `${resolvedBase}/index.py`,
-    `${resolvedBase}/mod.rs`,
-  ];
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-    const relativeRaw = candidate.startsWith(rootPath)
-      ? candidate.slice(rootPath.length)
-      : candidate;
-    const relative = normalizePath(relativeRaw);
-    if (!relative) {
-      continue;
-    }
-    return relative;
-  }
-  return normalizePath(importPath);
-}
-
-function resolveRelativeTargetInSnapshot(
-  fromPath: string,
-  importPath: string,
-  snapshotPathSet: ReadonlySet<string>,
-): string | undefined {
-  if (!importPath.startsWith(".")) {
-    return undefined;
-  }
-  const baseDir = getDirPath(fromPath);
-  const resolvedBase = normalizePath(resolve("/", baseDir, importPath)).replace(/^\//, "");
-  const candidates = [
-    resolvedBase,
-    `${resolvedBase}.ts`,
-    `${resolvedBase}.tsx`,
-    `${resolvedBase}.js`,
-    `${resolvedBase}.jsx`,
-    `${resolvedBase}.mjs`,
-    `${resolvedBase}.cjs`,
-    `${resolvedBase}.py`,
-    `${resolvedBase}.rs`,
-    `${resolvedBase}.go`,
-    `${resolvedBase}.java`,
-    `${resolvedBase}/index.ts`,
-    `${resolvedBase}/index.tsx`,
-    `${resolvedBase}/index.js`,
-    `${resolvedBase}/index.mjs`,
-    `${resolvedBase}/index.py`,
-    `${resolvedBase}/mod.rs`,
-  ];
-  for (const candidate of candidates) {
-    const normalized = normalizePath(candidate);
-    if (!normalized) {
-      continue;
-    }
-    if (snapshotPathSet.has(normalized.toLowerCase())) {
-      return normalized;
-    }
-  }
-  return undefined;
-}
-
-function dedupeTargets(rows: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const output: string[] = [];
-  for (const raw of rows) {
-    const normalized = raw.trim();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    output.push(normalized);
-    if (output.length >= 160) {
-      break;
-    }
-  }
-  return output;
-}
-
-function extractRegexImports(content: string): string[] {
-  const rows: string[] = [];
-  const push = (value: string): void => {
-    const normalized = value.trim();
-    if (!normalized) {
-      return;
-    }
-    rows.push(normalized);
-  };
-  const esmRegex = /from\s+["']([^"']+)["']/g;
-  let esmMatch: RegExpExecArray | null = esmRegex.exec(content);
-  while (esmMatch) {
-    if (typeof esmMatch[1] === "string") {
-      push(esmMatch[1]);
-    }
-    esmMatch = esmRegex.exec(content);
-  }
-  const requireRegex = /require\(\s*["']([^"']+)["']\s*\)/g;
-  let requireMatch: RegExpExecArray | null = requireRegex.exec(content);
-  while (requireMatch) {
-    if (typeof requireMatch[1] === "string") {
-      push(requireMatch[1]);
-    }
-    requireMatch = requireRegex.exec(content);
-  }
-  const pythonFromRegex = /^\s*from\s+([A-Za-z0-9_.]+)\s+import\s+/gm;
-  let pythonFromMatch: RegExpExecArray | null = pythonFromRegex.exec(content);
-  while (pythonFromMatch) {
-    if (typeof pythonFromMatch[1] === "string") {
-      push(pythonFromMatch[1]);
-    }
-    pythonFromMatch = pythonFromRegex.exec(content);
-  }
-  const pythonImportRegex = /^\s*import\s+([A-Za-z0-9_.]+)/gm;
-  let pythonImportMatch: RegExpExecArray | null = pythonImportRegex.exec(content);
-  while (pythonImportMatch) {
-    if (typeof pythonImportMatch[1] === "string") {
-      push(pythonImportMatch[1]);
-    }
-    pythonImportMatch = pythonImportRegex.exec(content);
-  }
-  const rustUseRegex = /^\s*use\s+([A-Za-z0-9_:]+)/gm;
-  let rustUseMatch: RegExpExecArray | null = rustUseRegex.exec(content);
-  while (rustUseMatch) {
-    if (typeof rustUseMatch[1] === "string") {
-      push(rustUseMatch[1]);
-    }
-    rustUseMatch = rustUseRegex.exec(content);
-  }
-  return dedupeTargets(rows).slice(0, 120);
-}
-
-function extractImports(filePath: string, content: string): string[] {
-  const cacheKey = `${filePath}::${String(content.length)}::${hashContentFNV(content)}`;
-  const cached = dependencyImportCache.get(cacheKey);
-  if (cached) {
-    recordContextGraphCacheHit(DEPENDENCY_IMPORT_CACHE_BUCKET);
-    return cached;
-  }
-  recordContextGraphCacheMiss(DEPENDENCY_IMPORT_CACHE_BUCKET);
-  const astTargets = extractTypeScriptAstDependencyTargets(filePath, content);
-  const resolved = astTargets.length > 0
-    ? dedupeTargets(astTargets).slice(0, 120)
-    : extractRegexImports(content);
-  const evicted = setLruCacheEntry(
-    dependencyImportCache,
-    cacheKey,
-    resolved,
-    MAX_IMPORT_CACHE_ENTRIES,
-  );
-  recordContextGraphCacheWrite(DEPENDENCY_IMPORT_CACHE_BUCKET);
-  if (evicted > 0) {
-    recordContextGraphCacheEvict(DEPENDENCY_IMPORT_CACHE_BUCKET, evicted);
-  }
-  return resolved;
-}
-
-function scoreEdge(queryTokens: Set<string>, fromPath: string, target: string): number {
-  let score = 1;
-  const tokens = new Set([...tokenize(fromPath), ...tokenize(target)]);
-  for (const token of queryTokens) {
-    if (tokens.has(token)) {
-      score += 2;
-    }
-  }
-  if (target.startsWith(".")) {
-    score += 1;
-  }
-  if (target.includes("/") && /\.[A-Za-z0-9_]+$/.test(target)) {
-    score += 1;
-  }
-  return score;
-}
-
-function dedupeRows(rows: readonly string[], maxRows?: number): string[] {
-  const seen = new Set<string>();
-  const output: string[] = [];
-  for (const row of rows) {
-    const normalized = row.trim();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    output.push(normalized);
-    if (typeof maxRows === "number" && output.length >= maxRows) {
-      break;
-    }
-  }
-  return output;
-}
-
-function countPathTokenMatches(path: string, queryTokens: ReadonlySet<string>): number {
-  if (queryTokens.size === 0) {
-    return 0;
-  }
-  const pathTokens = new Set(tokenize(path));
-  let matched = 0;
-  for (const token of queryTokens) {
-    if (pathTokens.has(token)) {
-      matched += 1;
-    }
-  }
-  return matched;
-}
-
-function shouldPreferDeepChains(queryTokens: ReadonlySet<string>): boolean {
-  if (queryTokens.size === 0) {
-    return false;
-  }
-  const deepTokens = new Set([
-    "trace",
-    "chain",
-    "call",
-    "flow",
-    "pipeline",
-    "path",
-    "route",
-    "link",
-    "lineage",
-    "dependency",
-    "依赖",
-    "链路",
-    "调用",
-    "路径",
-    "追踪",
-  ]);
-  for (const token of queryTokens) {
-    if (deepTokens.has(token)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function buildLocalAdjacency(
-  edges: readonly DependencyEdge[],
-): {
-  forward: Map<string, string[]>;
-  reverse: Map<string, string[]>;
-} {
-  const forward = new Map<string, Set<string>>();
-  const reverse = new Map<string, Set<string>>();
-  const push = (map: Map<string, Set<string>>, key: string, value: string): void => {
-    const current = map.get(key) ?? new Set<string>();
-    current.add(value);
-    map.set(key, current);
-  };
-  for (const edge of edges) {
-    if (!edge.targetIsLocal) {
-      continue;
-    }
-    push(forward, edge.fromPath, edge.target);
-    push(reverse, edge.target, edge.fromPath);
-  }
-  const sortMap = (source: Map<string, Set<string>>): Map<string, string[]> =>
-    new Map(Array.from(source.entries()).map(([key, value]) => [key, Array.from(value).sort()]));
-  return {
-    forward: sortMap(forward),
-    reverse: sortMap(reverse),
-  };
-}
-
-function collectSeedPaths(args: {
-  queryTokens: ReadonlySet<string>;
-  snapshotPaths: readonly string[];
-  edges: readonly DependencyEdge[];
-}): string[] {
-  const scores = new Map<string, number>();
-  const add = (path: string, delta: number): void => {
-    if (!path) {
-      return;
-    }
-    const current = scores.get(path) ?? 0;
-    scores.set(path, current + delta);
-  };
-  for (const path of args.snapshotPaths) {
-    const tokenMatches = countPathTokenMatches(path, args.queryTokens);
-    if (tokenMatches > 0) {
-      add(path, 2 + tokenMatches * 1.1);
-    }
-  }
-  for (const edge of args.edges) {
-    add(edge.fromPath, edge.score * 0.65);
-    if (edge.targetIsLocal) {
-      add(edge.target, edge.score * 0.7);
-    }
-  }
-  return Array.from(scores.entries())
-    .sort((left, right) => {
-      if (left[1] !== right[1]) {
-        return right[1] - left[1];
-      }
-      return left[0].localeCompare(right[0]);
-    })
-    .slice(0, 12)
-    .map((item) => item[0]);
-}
-
-function buildMultiHopDependencyRows(args: {
-  queryTokens: ReadonlySet<string>;
-  seeds: readonly string[];
-  forward: ReadonlyMap<string, readonly string[]>;
-  reverse: ReadonlyMap<string, readonly string[]>;
-  changedPathSet: ReadonlySet<string>;
-}): Array<{ line: string; score: number }> {
-  const maxDepth = shouldPreferDeepChains(args.queryTokens) ? 4 : 3;
-  const maxBranchesPerStep = 4;
-  const maxChainCandidates = MAX_QUERY_CACHE_ROWS * 4;
-  const degree = new Map<string, number>();
-  const accumulateDegree = (map: ReadonlyMap<string, readonly string[]>): void => {
-    for (const [key, values] of map.entries()) {
-      degree.set(key, (degree.get(key) ?? 0) + values.length);
-      for (const value of values) {
-        degree.set(value, (degree.get(value) ?? 0) + 1);
-      }
-    }
-  };
-  accumulateDegree(args.forward);
-  accumulateDegree(args.reverse);
-  const rows: Array<{ line: string; score: number }> = [];
-  const seen = new Set<string>();
-  const scoreChain = (nodes: readonly string[]): number => {
-    const uniqueNodes = Array.from(new Set(nodes));
-    let score = 1 + Math.max(0, nodes.length - 1) * 0.9;
-    let tokenHits = 0;
-    for (const node of uniqueNodes) {
-      tokenHits += countPathTokenMatches(node, args.queryTokens);
-    }
-    score += Math.min(4, tokenHits * 1.2);
-    let changedHits = 0;
-    for (const node of uniqueNodes) {
-      if (args.changedPathSet.has(node.toLowerCase())) {
-        changedHits += 1;
-      }
-    }
-    score += Math.min(4, changedHits * 1.4);
-    const bridgeNodes = uniqueNodes.slice(1, Math.max(1, uniqueNodes.length - 1));
-    const centrality = bridgeNodes.reduce((acc, node) => acc + (degree.get(node) ?? 0), 0);
-    score += Math.min(3, centrality * 0.25);
-    let changedTransitions = 0;
-    for (let index = 0; index < nodes.length - 1; index += 1) {
-      const left = nodes[index]?.toLowerCase() ?? "";
-      const right = nodes[index + 1]?.toLowerCase() ?? "";
-      if (!left || !right) {
-        continue;
-      }
-      if (args.changedPathSet.has(left) || args.changedPathSet.has(right)) {
-        changedTransitions += 1;
-      }
-    }
-    score += Math.min(2.5, changedTransitions * 0.7);
-    if (uniqueNodes.length >= 4) {
-      score += 0.9;
-    }
-    return score;
-  };
-  const pushChain = (nodes: string[]): boolean => {
-    if (nodes.length < 2) {
-      return false;
-    }
-    if (new Set(nodes).size !== nodes.length) {
-      return false;
-    }
-    const line = nodes.join(" -> ");
-    if (seen.has(line)) {
-      return false;
-    }
-    seen.add(line);
-    rows.push({
-      line,
-      score: scoreChain(nodes),
-    });
-    return rows.length >= maxChainCandidates;
-  };
-  const sortNodesByPriority = (nodes: readonly string[]): string[] =>
-    [...nodes].sort((left, right) => {
-      const leftTokenScore = countPathTokenMatches(left, args.queryTokens);
-      const rightTokenScore = countPathTokenMatches(right, args.queryTokens);
-      if (leftTokenScore !== rightTokenScore) {
-        return rightTokenScore - leftTokenScore;
-      }
-      const leftChanged = args.changedPathSet.has(left.toLowerCase()) ? 1 : 0;
-      const rightChanged = args.changedPathSet.has(right.toLowerCase()) ? 1 : 0;
-      if (leftChanged !== rightChanged) {
-        return rightChanged - leftChanged;
-      }
-      const leftDegree = degree.get(left) ?? 0;
-      const rightDegree = degree.get(right) ?? 0;
-      if (leftDegree !== rightDegree) {
-        return rightDegree - leftDegree;
-      }
-      return left.localeCompare(right);
-    });
-  const collectForwardChains = (seed: string): string[][] => {
-    const output: string[][] = [];
-    const walk = (path: string[]): void => {
-      if (path.length >= 2) {
-        output.push([...path]);
-      }
-      if (path.length >= maxDepth || output.length >= maxChainCandidates) {
-        return;
-      }
-      const current = path[path.length - 1];
-      if (!current) {
-        return;
-      }
-      const neighbors = sortNodesByPriority(args.forward.get(current) ?? [])
-        .filter((next) => !path.includes(next))
-        .slice(0, maxBranchesPerStep);
-      for (const next of neighbors) {
-        walk([...path, next]);
-      }
-    };
-    walk([seed]);
-    return output;
-  };
-  for (const seed of args.seeds) {
-    const forwardChains = collectForwardChains(seed);
-    for (const chain of forwardChains) {
-      if (pushChain(chain)) {
-        break;
-      }
-    }
-    if (rows.length >= maxChainCandidates) {
-      break;
-    }
-    const reverseLevel1 = sortNodesByPriority(args.reverse.get(seed) ?? [])
-      .slice(0, maxBranchesPerStep);
-    for (const prev of reverseLevel1) {
-      if (pushChain([prev, seed])) {
-        break;
-      }
-      for (const chain of forwardChains) {
-        if (chain.includes(prev)) {
-          continue;
-        }
-        const merged = [prev, ...chain];
-        const limited = merged.slice(0, maxDepth);
-        if (pushChain(limited)) {
-          break;
-        }
-      }
-      if (rows.length >= maxChainCandidates) {
-        break;
-      }
-    }
-    if (rows.length >= maxChainCandidates) {
-      break;
-    }
-  }
-  return rows
-    .sort((left, right) => {
-      if (left.score !== right.score) {
-        return right.score - left.score;
-      }
-      return left.line.localeCompare(right.line);
-    })
-    .slice(0, MAX_QUERY_CACHE_ROWS);
-}
-
-function readQueryCacheRows(cacheKey: string, snapshotFingerprint: string): string[] | undefined {
-  const cached = dependencyQueryCache.get(cacheKey);
-  if (!cached) {
-    recordContextGraphCacheMiss(DEPENDENCY_QUERY_CACHE_BUCKET);
-    return undefined;
-  }
-  if (cached.expiresAtMs <= Date.now() || cached.snapshotFingerprint !== snapshotFingerprint) {
-    dependencyQueryCache.delete(cacheKey);
-    recordContextGraphCacheMiss(DEPENDENCY_QUERY_CACHE_BUCKET);
-    return undefined;
-  }
-  recordContextGraphCacheHit(DEPENDENCY_QUERY_CACHE_BUCKET);
-  setLruCacheEntry(dependencyQueryCache, cacheKey, cached, MAX_QUERY_CACHE_ENTRIES);
-  return cached.rows;
-}
-
-function writeQueryCacheRows(cacheKey: string, snapshotFingerprint: string, rows: readonly string[]): void {
-  const normalizedRows = dedupeRows(rows, MAX_QUERY_CACHE_ROWS);
-  const evicted = setLruCacheEntry(
-    dependencyQueryCache,
-    cacheKey,
-    {
-      expiresAtMs: Date.now() + QUERY_CACHE_TTL_MS,
-      snapshotFingerprint,
-      rows: normalizedRows,
-    },
-    MAX_QUERY_CACHE_ENTRIES,
-  );
-  recordContextGraphCacheWrite(DEPENDENCY_QUERY_CACHE_BUCKET);
-  if (evicted > 0) {
-    recordContextGraphCacheEvict(DEPENDENCY_QUERY_CACHE_BUCKET, evicted);
-  }
-}
-
-export function readDependencyGraphCacheStats(): {
-  query: ReturnType<typeof readContextGraphCacheStatsBucket>;
-  import: ReturnType<typeof readContextGraphCacheStatsBucket>;
-} {
-  return {
-    query: readContextGraphCacheStatsBucket(DEPENDENCY_QUERY_CACHE_BUCKET),
-    import: readContextGraphCacheStatsBucket(DEPENDENCY_IMPORT_CACHE_BUCKET),
-  };
-}
+export { readDependencyGraphCacheStats } from "./dependency-hints/query-cache";
 
 export function retrieveDependencyGraphHints(
   query: string,
@@ -620,12 +46,10 @@ export function retrieveDependencyGraphHints(
     includeUntracked: true,
     cacheTtlMs: 1_500,
   });
-  if (!snapshot) {
+  if (!snapshot || snapshot.files.length === 0) {
     return [];
   }
-  if (snapshot.files.length === 0) {
-    return [];
-  }
+
   const snapshotFingerprint = computeSnapshotFingerprint(snapshot);
   const queryKey = normalizeQueryKey(query);
   const cacheKey = `${snapshot.rootPath}::${queryKey}`;
@@ -633,8 +57,11 @@ export function retrieveDependencyGraphHints(
   if (cachedRows) {
     return cachedRows.slice(0, maxRows);
   }
+
   const queryTokens = new Set(tokenize(query));
-  const snapshotPathSet = new Set(snapshot.files.map((file) => normalizePath(file.path).toLowerCase()));
+  const snapshotPathSet = new Set(
+    snapshot.files.map((file) => normalizePath(file.path).toLowerCase()),
+  );
   const resolvedTargetCache = new Map<string, string>();
   const edges: DependencyEdge[] = [];
   for (const file of snapshot.files) {
@@ -663,7 +90,8 @@ export function retrieveDependencyGraphHints(
           targetIsLocal = true;
         }
       }
-      const score = scoreEdge(queryTokens, file.path, normalizedTarget) + (targetIsLocal ? 1.5 : 0);
+      const score = scoreEdge(queryTokens, file.path, normalizedTarget)
+        + (targetIsLocal ? 1.5 : 0);
       edges.push({
         fromPath: file.path,
         target: normalizedTarget,
@@ -676,7 +104,8 @@ export function retrieveDependencyGraphHints(
     writeQueryCacheRows(cacheKey, snapshotFingerprint, []);
     return [];
   }
-  const rankedDirect = edges
+
+  const rankedDirect: ScoredDependencyRow[] = edges
     .sort((left, right) => {
       if (left.score !== right.score) {
         return right.score - left.score;
@@ -710,7 +139,7 @@ export function retrieveDependencyGraphHints(
       return left.line.localeCompare(right.line);
     })
     .map((row) => row.line);
-  const deduped = dedupeRows(merged);
+  const deduped = dedupeRows(merged, MAX_QUERY_CACHE_ROWS);
   writeQueryCacheRows(cacheKey, snapshotFingerprint, deduped);
   return deduped.slice(0, maxRows);
 }

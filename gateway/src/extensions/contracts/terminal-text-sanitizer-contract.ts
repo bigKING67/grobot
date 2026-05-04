@@ -1,7 +1,7 @@
 import {
   sanitizeTerminalDisplayText,
   sanitizeTerminalTitle,
-} from "../../orchestration/entrypoints/dev-cli/ui/interactive/terminal-text-sanitizer";
+} from "../../cli/tui/terminal/text-sanitizer";
 
 const ansiInjected = "Hi\u001B[31mRED\u001B[0m\u001B]0;pwnd\u0007!";
 const bidiInjected = "abc\u202Edef\u202Cghi";

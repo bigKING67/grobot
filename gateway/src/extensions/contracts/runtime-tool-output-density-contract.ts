@@ -24,7 +24,19 @@ function expectAllIncludes(source: string, fragments: readonly string[], message
 }
 
 const runtimeTests = readRepoFile("runtime/src/tools/tests.rs");
+const runtimeTestSources = [
+  runtimeTests,
+  readRepoFile("runtime/src/tools/tests/mcp_call.rs"),
+  readRepoFile("runtime/src/tools/tests/runtime_policy/search_dispatch.rs"),
+  readRepoFile("runtime/src/tools/tests/read/text_basic.rs"),
+  readRepoFile("runtime/src/tools/tests/read/text_metadata.rs"),
+  readRepoFile("runtime/src/tools/tests/bash.rs"),
+  readRepoFile("runtime/src/tools/tests/write.rs"),
+  readRepoFile("runtime/src/tools/tests/edit.rs"),
+].join("\n");
 const executor = readRepoFile("runtime/src/models/executor.rs");
+const executorToolTelemetry = readRepoFile("runtime/src/models/executor/tool_telemetry.rs");
+const executorSources = `${executor}\n${executorToolTelemetry}`;
 
 interface OutputDensityRequirement {
   tool: string;
@@ -115,14 +127,23 @@ const implementationRequirements: readonly OutputDensityRequirement[] = [
   },
   {
     tool: "mcp_call",
-    path: "runtime/src/tools/mcp/mod.rs",
+    path: "runtime/src/tools/mcp/arguments.rs",
     fragments: [
-      "MAX_MCP_CALL_ARGUMENT_BYTES",
       '"argument_keys"',
       '"argument_bytes"',
       '"max_argument_bytes"',
       '"argument_preview"',
       "redact_tool_preview_secrets",
+    ],
+    extraPaths: [
+      {
+        path: "runtime/src/tools/mcp/errors.rs",
+        fragments: ["MAX_MCP_CALL_ARGUMENT_BYTES"],
+      },
+      {
+        path: "runtime/src/tools/mcp/mod.rs",
+        fragments: ["parse_mcp_call_arguments", "enrich_mcp_call_error_context"],
+      },
     ],
   },
 ];
@@ -156,11 +177,11 @@ const runtimeTestRequirements = [
 ] as const;
 
 for (const testName of runtimeTestRequirements) {
-  expectIncludes(runtimeTests, `fn ${testName}()`, `runtime output density test coverage ${testName}`);
+  expectIncludes(runtimeTestSources, `fn ${testName}()`, `runtime output density test coverage ${testName}`);
 }
 
 expectAllIncludes(
-  executor,
+  executorSources,
   [
     "TOOL_MESSAGE_BUDGET_POLICY_VERSION",
     '"output_budget"',
@@ -175,7 +196,7 @@ expectAllIncludes(
 );
 
 expectAllIncludes(
-  executor,
+  executorSources,
   [
     '"limit_reached"',
     '"first_changed_line"',

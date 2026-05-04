@@ -3,7 +3,7 @@
 This directory is the reserved home for Grobot runtime core source and build
 metadata used to produce platform binaries.
 
-Current repo uses a TypeScript gateway (`gateway/src/orchestration/dev-cli.ts`) and Rust runtime
+Current repo uses a TypeScript gateway (`gateway/src/cli`) and Rust runtime
 (`runtime/src/main.rs`) for source-checkout execution. The release pipeline should
 compile core binaries from this internal layer and publish them through platform packages:
 

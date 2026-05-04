@@ -1,12 +1,12 @@
 import {
   resolveStartupRewindTarget,
   type StartupRewindCheckpointSummary,
-} from "../../orchestration/entrypoints/dev-cli/start/session-rewind-startup";
+} from "../../cli/start/session-rewind-startup";
 import {
   resolveRewindMode,
   resolveRewindRequested,
   resolveRewindSelector,
-} from "../../orchestration/entrypoints/dev-cli/start/session-options";
+} from "../../cli/start/session-options";
 
 const CHECKPOINT_FIXTURE: readonly StartupRewindCheckpointSummary[] = [
   {

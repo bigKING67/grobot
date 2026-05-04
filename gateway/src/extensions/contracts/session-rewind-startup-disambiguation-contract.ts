@@ -1,4 +1,4 @@
-import { resolveStartupRewindDisambiguation } from "../../orchestration/entrypoints/dev-cli/start/session-rewind-startup-disambiguation";
+import { resolveStartupRewindDisambiguation } from "../../cli/start/session-rewind-startup-disambiguation";
 
 const CANDIDATES = [
   {

@@ -69,7 +69,7 @@ The goal is to fail early on invalid shape/value while keeping public contracts 
 ## Examples
 
 1. `gateway/src/models/types.ts` (canonical cross-layer TS contracts).
-2. `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts` (generic adapter boundaries and typed fallback state).
+2. `gateway/src/cli/services/session-store.ts` (generic adapter boundaries and typed fallback state).
 3. `runtime/src/models/contracts.rs` (runtime execution contracts and typed model errors).
 4. `runtime/src/tools/core/mod.rs` (typed tool errors + serde config parsing).
 5. `runtime/src/extensions/contracts.rs` (protocol structs with serde-driven parsing rules).

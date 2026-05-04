@@ -11,6 +11,8 @@ import type { ToolSurfaceProfile } from "../../models/types";
 
 const repoRoot = process.cwd();
 const rustCoreSource = readRepoFile("runtime/src/tools/core/mod.rs");
+const rustCatalogSource = readRepoFile("runtime/src/tools/core/catalog.rs");
+const rustSurfaceSource = readRepoFile("runtime/src/tools/core/surface.rs");
 const rustDispatcherSource = readRepoFile("runtime/src/tools/dispatcher/mod.rs");
 
 function readRepoFile(path: string): string {
@@ -60,7 +62,7 @@ function rustToolTokens(block: string): string[] {
 function extractRustCatalogEntries(): Array<{ constName: string; name: string; defaultEnabled: boolean }> {
   const entries: Array<{ constName: string; name: string; defaultEnabled: boolean }> = [];
   const pattern = /LocalToolCatalogEntry\s*\{[\s\S]*?\bname:\s*(TOOL_[A-Z_]+)[\s\S]*?\bdefault_enabled:\s*(true|false)/g;
-  for (const match of rustCoreSource.matchAll(pattern)) {
+  for (const match of rustCatalogSource.matchAll(pattern)) {
     const constName = match[1];
     entries.push({
       constName,
@@ -111,12 +113,12 @@ function extractRustSurfaceToolNames(profile: ToolSurfaceProfile): string[] {
 
   const markerStart = "fn tool_surface_profile_names";
   const markerEnd = "fn schema_projection_mode";
-  const start = rustCoreSource.indexOf(markerStart);
-  const end = rustCoreSource.indexOf(markerEnd);
+  const start = rustSurfaceSource.indexOf(markerStart);
+  const end = rustSurfaceSource.indexOf(markerEnd);
   expect(start >= 0 && end > start, "runtime surface profile function block not found");
-  const block = rustCoreSource.slice(start, end);
+  const block = rustSurfaceSource.slice(start, end);
   const profileConst = rustProfileConstName(profile);
-  const profilePattern = new RegExp(`${profileConst}\\s*=>\\s*vec!\\[([\\s\\S]*?)\\]`);
+  const profilePattern = new RegExp(`${profileConst}\\s*=>\\s*(?:\\{\\s*)?vec!\\[([\\s\\S]*?)\\]`);
   const match = block.match(profilePattern);
   expect(match !== null, `runtime surface profile arm missing: ${profile}`);
   return rustToolTokens(match[1]).map(resolveRustToken);

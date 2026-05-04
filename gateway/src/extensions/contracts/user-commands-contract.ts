@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createRunStartUserCommandsRuntime } from "../../orchestration/entrypoints/dev-cli/start/run-start-user-commands";
+import { createRunStartUserCommandsRuntime } from "../../cli/start/user-commands";
 import {
   type TerminalLinePromptResult,
+} from "../../cli/tui/components/prompt-input/contract";
+import {
   type TerminalSelectMenuInput,
   type TerminalSelectMenuResult,
-} from "../../orchestration/entrypoints/dev-cli/start/run-start-io";
+} from "../../cli/tui/components/select-menu/contract";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");

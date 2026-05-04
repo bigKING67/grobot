@@ -2,7 +2,7 @@ import {
   buildToolsManifestFingerprint,
   resolveRuntimeBinaryPath,
   runRuntimeToolsDescribe,
-} from "../../orchestration/entrypoints/dev-cli/runtime-health";
+} from "../../cli/runtime-health";
 import {
   buildAllRuntimeLocalTools,
   buildDefaultRuntimeEnabledTools,

@@ -57,8 +57,8 @@ Error handling follows fail-fast plus explicit fallback boundaries:
 
 ## Examples
 
-1. `gateway/src/orchestration/entrypoints/dev-cli/index.ts` (exit-code based command error handling)
+1. `gateway/src/cli/index.ts` (exit-code based command error handling)
 2. `gateway/src/tools/runtime/stdio-client.ts` (spawn timeout, abort, JSON-RPC error normalization)
-3. `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts` (redis failure fallback)
+3. `gateway/src/cli/services/session-store.ts` (redis failure fallback)
 4. `runtime/src/orchestration/pipeline.rs` (failure-to-event mapping)
 5. `runtime/src/models/config.rs` (provider/config parse and upstream error classes)

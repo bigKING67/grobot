@@ -61,8 +61,8 @@ Quality gates must protect three dimensions simultaneously:
 
 ## Examples
 
-1. `gateway/src/orchestration/entrypoints/dev-cli/index.ts` (thin command dispatch)
-2. `gateway/src/orchestration/entrypoints/dev-cli/services/runtime-paths.ts` (input normalization + path resolution)
-3. `gateway/src/orchestration/entrypoints/dev-cli/services/redaction.ts` (safe output surface)
+1. `gateway/src/cli/index.ts` (thin command dispatch)
+2. `gateway/src/cli/services/runtime-paths.ts` (input normalization + path resolution)
+3. `gateway/src/cli/services/redaction.ts` (safe output surface)
 4. `runtime/src/tools/core/mod.rs` (tool context validation + workspace boundary checks)
 5. `runtime/src/orchestration/pipeline.rs` (deterministic event lifecycle)

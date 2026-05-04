@@ -76,7 +76,7 @@ migrate_legacy_cache_root() {
 CACHE_ROOT="$(resolve_default_cache_root)"
 migrate_legacy_cache_root "$CACHE_ROOT"
 OUT_DIR="${GROBOT_TS_DEV_CLI_OUT_DIR:-$CACHE_ROOT/dist}"
-ENTRY="$OUT_DIR/orchestration/dev-cli.js"
+ENTRY="$OUT_DIR/cli/main.js"
 mkdir -p "$OUT_DIR"
 
 NEEDS_BUILD=0

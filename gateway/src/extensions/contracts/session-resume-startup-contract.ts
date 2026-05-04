@@ -1,11 +1,11 @@
 import {
   resolveStartupResumeTarget,
   type StartupResumeSessionSummary,
-} from "../../orchestration/entrypoints/dev-cli/start/session-resume-startup";
+} from "../../cli/start/session-resume-startup";
 import {
   resolveResumeRequested,
   resolveResumeSelector,
-} from "../../orchestration/entrypoints/dev-cli/start/session-options";
+} from "../../cli/start/session-options";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");

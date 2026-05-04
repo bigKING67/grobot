@@ -1,6 +1,0 @@
-{
-  "pid": 46158,
-  "started_at": "2026-04-15T06:26:32.673Z",
-  "tmwd_ws_endpoint": "ws://127.0.0.1:18765",
-  "tmwd_link_endpoint": "http://127.0.0.1:18766/link"
-}

@@ -15,10 +15,25 @@ packages/*/dist-firefox/
 .env
 config.toml
 .grobot/config.toml
+
+# Grobot source-of-truth files live under .grobot, but runtime state must not.
+# Keep committed skeleton/config/docs/rules/hooks; ignore generated session,
+# memory, cache, wiki, runtime, and experience artifacts.
+.grobot/context/**
+.grobot/experience/tenant/**
+.grobot/memory/context-engine/*.json
+.grobot/memory/context-engine/*.jsonl
+.grobot/memory/v1/**
+.grobot/runtime/*.json
+.grobot/runtime/*.jsonl
+.grobot/session/**
 .grobot/sessions/*
 !.grobot/sessions/README.md
 .grobot/plans/*
 !.grobot/plans/README.md
+.grobot/tmp/**
+.grobot/wiki/shared/**
+.grobot/wiki/users/**
 
 # Editor files
 .vscode/

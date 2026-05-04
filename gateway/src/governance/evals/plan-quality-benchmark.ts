@@ -4,7 +4,7 @@ import {
   evaluatePlanQualityBenchmark,
   resolvePlanQualityGuardMode,
   resolvePlanQualityGuardPolicy,
-} from "../../orchestration/entrypoints/dev-cli/start/plan-artifact";
+} from "../../cli/start/plan-artifact";
 
 interface PlanInput {
   label: string;

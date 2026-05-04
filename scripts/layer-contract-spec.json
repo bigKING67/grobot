@@ -129,6 +129,135 @@
       "max": 80
     }
   ],
+  "trackedGeneratedStateWarnings": [
+    {
+      "name": "grobot-runtime-state",
+      "pathPrefixes": [
+        ".grobot/context/",
+        ".grobot/experience/tenant/",
+        ".grobot/memory/context-engine/",
+        ".grobot/memory/v1/",
+        ".grobot/runtime/",
+        ".grobot/session/",
+        ".grobot/tmp/",
+        ".grobot/wiki/shared/",
+        ".grobot/wiki/users/"
+      ],
+      "allowedBasenames": ["README.md", ".gitkeep"]
+    }
+  ],
+  "legacyPathWarnings": [
+    {
+      "name": "gateway-dev-cli",
+      "pathPrefixes": ["gateway/src/orchestration/entrypoints/dev-cli/"],
+      "maxFiles": 0,
+      "message": "product CLI source belongs under gateway/src/cli; dev-cli is runner compatibility only"
+    },
+    {
+      "name": "gateway-dev-cli-contract-names",
+      "pathPrefixes": [
+        "gateway/src/extensions/contracts/dev-cli-",
+        "gateway/src/extensions/contracts/dev-cli-ui-renderer-contract/"
+      ],
+      "maxFiles": 0,
+      "message": "CLI/TUI contracts must use cli-* names; dev-cli is runner compatibility only"
+    },
+    {
+      "name": "gateway-start-run-prefix",
+      "pathPrefixes": ["gateway/src/cli/start/run-start"],
+      "maxFiles": 0,
+      "message": "start modules must use domain role names such as run.ts, turn.ts, and model-ops.ts"
+    },
+    {
+      "name": "gateway-run-start-contract-names",
+      "pathPrefixes": ["gateway/src/extensions/contracts/run-start-"],
+      "maxFiles": 0,
+      "message": "start contract suites must use start-* names; run-start is a retired product-source prefix"
+    }
+  ],
+  "sourceFileSizeWarnings": [
+    {
+      "name": "product-source",
+      "includePrefixes": [
+        "gateway/src/",
+        "runtime/src/",
+        "adapters/browser-structured-mcp/",
+        "adapters/contextweaver/bridge/"
+      ],
+      "extensions": [".ts", ".tsx", ".mjs", ".js", ".rs"],
+      "warn": 800,
+      "fail": 1500,
+      "maxWarnCount": 0,
+      "maxFailCount": 0,
+      "maxWarnOverflowLines": 0,
+      "maxFailOverflowLines": 0,
+      "maxObservedLines": 800
+    },
+    {
+      "name": "gateway-test-source",
+      "includePrefixes": ["gateway/tests/"],
+      "extensions": [".ts", ".tsx", ".mjs", ".js"],
+      "warn": 800,
+      "fail": 1500,
+      "maxWarnCount": 0,
+      "maxFailCount": 0,
+      "maxWarnOverflowLines": 0,
+      "maxFailOverflowLines": 0,
+      "maxObservedLines": 800
+    }
+  ],
+  "forbiddenTextWarnings": [
+    {
+      "name": "cli-product-dev-cli-names",
+      "includePrefixes": [
+        "gateway/src/cli/",
+        "gateway/src/orchestration/"
+      ],
+      "extensions": [".ts", ".tsx", ".mjs", ".js"],
+      "patterns": [
+        {
+          "regex": "\\bDevCli\\b|\\brunDevCli\\b",
+          "message": "Product CLI code must use Cli names; DevCli aliases are not part of the source architecture."
+        },
+        {
+          "regex": "\\b[A-Za-z0-9_]*TsDevCli[A-Za-z0-9_]*\\b",
+          "message": "Product CLI implementation names must use CLI or TypeScript runner naming; ts-dev-cli is reserved for runner/cache/compat labels."
+        },
+        {
+          "regex": "\\b[A-Za-z0-9_]*ts_dev_cli[A-Za-z0-9_]*\\b",
+          "message": "Product CLI implementation names must use CLI or TypeScript runner naming; ts-dev-cli is reserved for runner/cache/compat labels."
+        },
+        {
+          "literal": "engine: \"ts-dev-cli\"",
+          "message": "Product status/API engine identity must use gateway/src/cli/product-identity.ts."
+        },
+        {
+          "literal": "engine: ts-dev-cli",
+          "message": "Product status/API engine identity must use gateway/src/cli/product-identity.ts."
+        },
+        {
+          "literal": "serve: ts-dev-cli",
+          "message": "Product serve output must use gateway/src/cli/product-identity.ts."
+        },
+        {
+          "literal": "unsupported command for ts-dev-cli",
+          "message": "User-facing CLI errors must say grobot CLI, not ts-dev-cli."
+        },
+        {
+          "literal": "ts-dev-cli fatal error",
+          "message": "User-facing CLI fatal errors must say grobot CLI, not ts-dev-cli."
+        },
+        {
+          "literal": "grobot-ts-dev-cli",
+          "message": "Provider probe user-agent must use grobot-cli, not dev-cli."
+        },
+        {
+          "literal": "rediss is not supported by ts-dev-cli",
+          "message": "User-facing service errors must use product identity, not dev-cli."
+        }
+      ]
+    }
+  ],
   "importPolicyWarnings": [
     {
       "name": "runtime-model",

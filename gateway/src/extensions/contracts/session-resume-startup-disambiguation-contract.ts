@@ -1,4 +1,4 @@
-import { resolveStartupResumeDisambiguation } from "../../orchestration/entrypoints/dev-cli/start/session-resume-startup-disambiguation";
+import { resolveStartupResumeDisambiguation } from "../../cli/start/session-resume-startup-disambiguation";
 
 const CANDIDATES = [
   {

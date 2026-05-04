@@ -9,9 +9,14 @@
 This repository currently has no browser page package (no active `packages/web-ui` implementation path).
 In `grobot`, "frontend" means the **interactive CLI/TUI surface** used by developers:
 
-1. Command parsing and interaction flow in `gateway/src/orchestration/entrypoints/dev-cli/start/*`.
-2. Terminal rendering and menu interaction in `run-start-io.ts` and `run-start-session-menu.ts`.
+1. Command parsing and interaction flow in `gateway/src/cli/start/*` (target).
+2. Terminal rendering and menu interaction in `gateway/src/cli/tui/*` (target).
 3. Human-in-the-loop question/answer UX in `gateway/src/tools/ask-user/*`.
+
+Current CLI implementation lives under `gateway/src/cli/*`. Some files are still
+mid-migration inside `start/*` and `ui/screens/*`; new TUI component work should
+move toward `cli/tui/components/<component>/` role files instead of adding more
+monoliths.
 
 These guidelines define how to keep that interaction layer predictable, type-safe, and maintainable.
 
@@ -42,8 +47,10 @@ These guidelines define how to keep that interaction layer predictable, type-saf
 
 ## Maintenance Rules
 
-1. Document current behavior, not desired future architecture.
-2. Use real file paths from `gateway/src/orchestration/entrypoints/dev-cli/*` and `gateway/src/tools/ask-user/*`.
+1. Document current behavior and clearly mark target-only structure when a
+   component is still mid-migration.
+2. Prefer `gateway/src/cli/*`; do not recreate the retired
+   `gateway/src/orchestration/entrypoints/dev-cli/*` source path.
 3. Keep "frontend" scope aligned with CLI/TUI interaction semantics until browser UI is added.
 4. When browser UI modules are introduced later, split this index into `cli-frontend` and `web-frontend` sections instead of mixing conventions.
 

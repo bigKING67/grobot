@@ -24,16 +24,32 @@ const packageJson = JSON.parse(readRepoFile("package.json")) as {
 };
 const checkScript = packageJson.scripts?.check ?? "";
 const gatewaySmoke = readRepoFile("gateway/tests/check-gateway-node.mjs");
+const gatewayRuntimeToolAssertions = readRepoFile(
+  "gateway/tests/check-gateway-node/runtime-smoke/status-surface/runtime-tool-assertions.mjs",
+);
 const releaseGate = readRepoFile("scripts/core-release-gate.sh");
 const releaseQualityModule = readRepoFile("scripts/lib/runtime-tool-quality-report.mjs");
+const releaseQualityDescribeModule = readRepoFile("scripts/lib/runtime-tool-quality-report/describe.mjs");
+const releaseQualityModuleSources = `${releaseQualityModule}\n${releaseQualityDescribeModule}`;
 const runtimeToolRunner = readRepoFile("scripts/check-runtime-tool-contracts.mjs");
 const runnerSchemaTest = readRepoFile("scripts/test-runtime-tool-contracts-json-schema.mjs");
 const qualityReportModuleTest = readRepoFile("scripts/test-runtime-tool-quality-report-module.mjs");
 const qualityRegistryParityTest = readRepoFile("scripts/test-runtime-tool-quality-registry-parity.mjs");
 const releaseReportTest = readRepoFile("scripts/test-runtime-tool-release-report.mjs");
 const runtimeToolSurfaceContract = readRepoFile("gateway/src/extensions/contracts/runtime-tool-surface-contract.ts");
-const statusCommand = readRepoFile("gateway/src/orchestration/entrypoints/dev-cli/status/run-status.ts");
+const runtimeToolSurfaceContractHelpers = readRepoFile(
+  "gateway/src/extensions/contracts/runtime-tool-surface-contract/helpers.ts",
+);
+const statusCommand = readRepoFile("gateway/src/cli/status/run-status.ts");
+const statusQualityModule = readRepoFile("gateway/src/cli/status/runtime-tool-quality.ts");
+const statusQualityTextModule = readRepoFile("gateway/src/cli/status/runtime-tool-status-lines.ts");
 const startSmokeContract = readRepoFile("gateway/src/extensions/contracts/start-smoke-contract.mjs");
+const startSmokeStatusRuntimeFlows = readRepoFile(
+  "gateway/src/extensions/contracts/start-smoke-contract/status-runtime-flows.mjs",
+);
+const startSmokeStatusTsRustRuntimeToolsStatus = readRepoFile(
+  "gateway/src/extensions/contracts/start-smoke-contract/status-ts-rust-flow/runtime-tools-status.mjs",
+);
 const harnessWorkflow = readRepoFile(".github/workflows/harness-gate.yml");
 const corePackagingWorkflow = readRepoFile(".github/workflows/core-packaging-check.yml");
 const coreReleaseWorkflow = readRepoFile(".github/workflows/core-release-gate.yml");
@@ -111,16 +127,16 @@ expect(
   "release gate runtime_tool_quality must expose status reasons",
 );
 expect(
-  releaseQualityModule.includes("surface_execution_payload")
-    && releaseQualityModule.includes("runtime_surface_execution_smoke_passed")
-    && releaseQualityModule.includes("surface_execution_smoke_failed")
-    && releaseQualityModule.includes("surface_execution_evidence_below_threshold")
-    && releaseQualityModule.includes("runtime_surface_execution_schema_projection_checks")
-    && releaseQualityModule.includes("runtime_surface_execution_structured_error_data_checks")
-    && releaseQualityModule.includes("runtime_surface_execution_recovery_action_catalog_checks")
-    && releaseQualityModule.includes("runtime_surface_execution_threshold_status")
-    && releaseQualityModule.includes("runtime_surface_execution_thresholds")
-    && releaseQualityModule.includes("runtime_surface_execution_threshold_failures"),
+  releaseQualityModuleSources.includes("surface_execution_payload")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_smoke_passed")
+    && releaseQualityModuleSources.includes("surface_execution_smoke_failed")
+    && releaseQualityModuleSources.includes("surface_execution_evidence_below_threshold")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_schema_projection_checks")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_structured_error_data_checks")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_recovery_action_catalog_checks")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_threshold_status")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_thresholds")
+    && releaseQualityModuleSources.includes("runtime_surface_execution_threshold_failures"),
   "release gate runtime_tool_quality must expose real surface execution smoke evidence and focused failure reason",
 );
 expect(
@@ -133,24 +149,24 @@ expect(
 );
 expect(
   statusCommand.includes("runtime_tools_quality")
-    && statusCommand.includes("buildRuntimeToolQualitySummary(")
-    && statusCommand.includes("runtime_tool_quality: status="),
+    && statusQualityModule.includes("buildRuntimeToolQualitySummary(")
+    && statusQualityTextModule.includes("runtime_tool_quality: status="),
   "status --json/text must expose runtime tool quality summary",
 );
 expect(
-  releaseQualityModule.includes("failed_contract_detail"),
+  releaseQualityModuleSources.includes("failed_contract_detail"),
   "release gate report must preserve runtime-tool failed_contract_detail evidence",
 );
 expect(
-  releaseQualityModule.includes("runtime_binary"),
+  releaseQualityModuleSources.includes("runtime_binary"),
   "release gate report must preserve runtime-tool runtime_binary evidence",
 );
 expect(
-  releaseQualityModule.includes("runner_schema_version"),
+  releaseQualityModuleSources.includes("runner_schema_version"),
   "release gate report must preserve runtime-tool runner_schema_version evidence",
 );
 expect(
-  releaseQualityModule.includes("diagnostic_summary"),
+  releaseQualityModuleSources.includes("diagnostic_summary"),
   "release gate report must preserve runtime-tool diagnostic_summary evidence",
 );
 expect(
@@ -236,10 +252,10 @@ expect(
   "package.json must expose runtime-tool release-report regression script",
 );
 expect(
-  runtimeToolSurfaceContract.includes("process.env.TMPDIR ?? \"/tmp\"")
-    && runtimeToolSurfaceContract.includes("process.pid")
-    && runtimeToolSurfaceContract.includes("Date.now()")
-    && !runtimeToolSurfaceContract.includes("workDir: \"/tmp/grobot-runtime-tool-surface-contract\""),
+  runtimeToolSurfaceContractHelpers.includes("process.env.TMPDIR ?? \"/tmp\"")
+    && runtimeToolSurfaceContractHelpers.includes("process.pid")
+    && runtimeToolSurfaceContractHelpers.includes("Date.now()")
+    && !runtimeToolSurfaceContractHelpers.includes("workDir: \"/tmp/grobot-runtime-tool-surface-contract\""),
   "runtime-tool surface contract must isolate tmp fixtures per process",
 );
 for (const fileName of runtimeToolContractFiles) {
@@ -285,10 +301,10 @@ expect(
   "release-report regression test must assert diagnostics, runtime binary, surface execution evidence, focused quality summary reasons, and self-test fields",
 );
 expect(
-  startSmokeContract.includes("status_has_runtime_tools_quality")
-    && startSmokeContract.includes("quality_failure_has_runtime_health_failed")
-    && gatewaySmoke.includes("status_has_runtime_tools_quality")
-    && gatewaySmoke.includes("status_runtime_tool_quality_status"),
+  startSmokeStatusTsRustRuntimeToolsStatus.includes("status_has_runtime_tools_quality")
+    && startSmokeStatusRuntimeFlows.includes("quality_failure_has_runtime_health_failed")
+    && gatewayRuntimeToolAssertions.includes("status_has_runtime_tools_quality")
+    && gatewayRuntimeToolAssertions.includes("status_runtime_tool_quality_status"),
   "gateway status smoke must assert runtime tool quality summary and failure states",
 );
 expect(

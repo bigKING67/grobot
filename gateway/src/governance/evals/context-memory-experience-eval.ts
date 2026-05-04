@@ -1,209 +1,29 @@
 import { writeFileSync } from "node:fs";
 import { runHarness } from "./hill-climb";
-
-type HarnessReport = ReturnType<typeof runHarness>;
-type HarnessVariantReport = HarnessReport["variants"][string];
-type HarnessCaseRow = HarnessVariantReport["cases"][number];
-
-type MetricName =
-  | "task_success"
-  | "tool_use_quality"
-  | "context_retention"
-  | "safety_compliance"
-  | "latency_cost";
-
-type SaturationMetricName = "task_success" | "tool_use_quality" | "context_retention";
-type DimensionName = "context_compression" | "memory_lineage" | "experience_learning";
-
-interface ParsedCliArgs {
-  cases: string;
-  runs: string;
-  gatePolicy: string | null;
-  output: string | null;
-  printJson: boolean;
-  failOnGate: boolean;
-}
-
-interface DimensionThreshold {
-  minCaseCount: number;
-  minAverageScore: number;
-  minPassRate: number;
-  minPassRateLowerBound: number;
-  minMetricAverages: Partial<Record<MetricName, number>>;
-}
-
-interface DimensionSummary {
-  dimension: DimensionName;
-  case_count: number;
-  pass_count: number;
-  pass_rate: number;
-  pass_rate_lower_bound: number;
-  average_score: number;
-  metric_averages: Record<MetricName, number>;
-  failed_case_ids: string[];
-}
-
-interface VariantDimensionReport {
-  variant: string;
-  harness_gate: {
-    passed: boolean;
-    failures: string[];
-  };
-  dimension_gate: {
-    passed: boolean;
-    failures: string[];
-  };
-  summary: HarnessVariantReport["summary"];
-  splits: HarnessVariantReport["splits"];
-  reward_v1: HarnessVariantReport["reward_v1"];
-  dimensions: Record<DimensionName, DimensionSummary>;
-}
-
-interface DimensionDelta {
-  baseline_average_score: number;
-  candidate_average_score: number;
-  average_score_drop: number;
-  baseline_pass_rate: number;
-  candidate_pass_rate: number;
-  pass_rate_drop: number;
-}
-
-interface DimensionRegressionGuardReport {
-  passed: boolean;
-  baseline_variant: string;
-  candidate_variant: string;
-  max_score_drop: number;
-  max_pass_rate_drop: number;
-  dimensions: DimensionName[];
-  deltas: Record<DimensionName, DimensionDelta>;
-  failures: string[];
-}
-
-interface SaturationPolicyPayload {
-  max_perfect_case_rate: number;
-  max_metric_perfect_rate: number;
-  metric_perfect_score_floor: number;
-  min_metric_variance: number;
-  monitored_metrics: SaturationMetricName[];
-}
-
-interface SaturationMetricSnapshot {
-  mean: number;
-  perfect_rate: number;
-  variance: number;
-}
-
-interface VariantSaturationGuardReport {
-  variant: string;
-  case_count: number;
-  perfect_case_count: number;
-  perfect_case_rate: number;
-  max_metric_variance: number;
-  triggered_metrics: SaturationMetricName[];
-  monitored_metrics: Record<SaturationMetricName, SaturationMetricSnapshot>;
-  triggered: boolean;
-  reasons: string[];
-}
-
-interface ContextMemoryEvalReport {
-  schema: "context_memory_experience_eval@v2";
-  generated_at: string;
-  inputs: {
-    cases: string;
-    runs: string;
-    gate_policy: string | null;
-  };
-  coverage_policy: {
-    min_variant_case_count: number;
-    min_holdout_case_count: number;
-    min_optimization_case_count: number;
-  };
-  dimension_policy: Record<DimensionName, {
-    min_case_count: number;
-    min_average_score: number;
-    min_pass_rate: number;
-    min_pass_rate_lower_bound: number;
-    min_metric_averages: Partial<Record<MetricName, number>>;
-  }>;
-  saturation_policy: SaturationPolicyPayload;
-  variants: Record<string, VariantDimensionReport>;
-  saturation_guard: Record<string, VariantSaturationGuardReport>;
-  harness_regression_guard: HarnessReport["regression_guard"] | null;
-  dimension_regression_guard: DimensionRegressionGuardReport;
-  overall_gate: {
-    passed: boolean;
-    failures: string[];
-  };
-}
-
-const METRIC_NAMES: MetricName[] = [
-  "task_success",
-  "tool_use_quality",
-  "context_retention",
-  "safety_compliance",
-  "latency_cost",
-];
-
-const DIMENSION_TAG_ALIASES: Record<DimensionName, string[]> = {
-  context_compression: ["context_compression", "context_compaction", "compression", "budget_control"],
-  memory_lineage: ["memory_lineage", "memory_recall", "lineage_recall", "memory_decay", "memory_reconcile"],
-  experience_learning: ["experience_learning", "experience_reuse", "strategy_transfer", "self_correction"],
-};
-
-const DIMENSION_THRESHOLDS: Record<DimensionName, DimensionThreshold> = {
-  context_compression: {
-    minCaseCount: 10,
-    minAverageScore: 0.82,
-    minPassRate: 0.8,
-    minPassRateLowerBound: 0.72,
-    minMetricAverages: {
-      context_retention: 0.86,
-      task_success: 0.74,
-    },
-  },
-  memory_lineage: {
-    minCaseCount: 10,
-    minAverageScore: 0.8,
-    minPassRate: 0.75,
-    minPassRateLowerBound: 0.68,
-    minMetricAverages: {
-      context_retention: 0.74,
-      task_success: 0.78,
-    },
-  },
-  experience_learning: {
-    minCaseCount: 10,
-    minAverageScore: 0.78,
-    minPassRate: 0.75,
-    minPassRateLowerBound: 0.68,
-    minMetricAverages: {
-      tool_use_quality: 0.82,
-      task_success: 0.75,
-    },
-  },
-};
-
-const COVERAGE_POLICY = {
-  minVariantCaseCount: 36,
-  minHoldoutCaseCount: 16,
-  minOptimizationCaseCount: 12,
-};
-
-const DIMENSION_REGRESSION_GUARD = {
-  baselineVariant: "baseline",
-  candidateVariant: "candidate",
-  dimensions: ["context_compression", "memory_lineage", "experience_learning"] as DimensionName[],
-  maxScoreDrop: 0,
-  maxPassRateDrop: 0,
-};
-
-const SATURATION_POLICY = {
-  maxPerfectCaseRate: 0.95,
-  maxMetricPerfectRate: 0.98,
-  metricPerfectScoreFloor: 0.999,
-  minMetricVariance: 1e-4,
-  monitoredMetrics: ["task_success", "tool_use_quality", "context_retention"] as SaturationMetricName[],
-};
+import { parseArgs, type ParsedCliArgs } from "./context-memory-experience-eval/cli";
+import {
+  COVERAGE_POLICY,
+  DIMENSION_REGRESSION_GUARD,
+  DIMENSION_TAG_ALIASES,
+  DIMENSION_THRESHOLDS,
+  METRIC_NAMES,
+  SATURATION_POLICY,
+} from "./context-memory-experience-eval/policy";
+import {
+  type ContextMemoryEvalReport,
+  type DimensionDelta,
+  type DimensionName,
+  type DimensionRegressionGuardReport,
+  type DimensionSummary,
+  type DimensionThreshold,
+  type HarnessCaseRow,
+  type HarnessVariantReport,
+  type MetricName,
+  type SaturationMetricName,
+  type SaturationMetricSnapshot,
+  type VariantDimensionReport,
+  type VariantSaturationGuardReport,
+} from "./context-memory-experience-eval/types";
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -214,63 +34,6 @@ function asNumber(value: unknown): number {
     return value;
   }
   return 0;
-}
-
-function parseArgs(argv: string[]): ParsedCliArgs {
-  const args: ParsedCliArgs = {
-    cases: "",
-    runs: "",
-    gatePolicy: null,
-    output: null,
-    printJson: false,
-    failOnGate: false,
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    const readValue = (): string => {
-      const value = argv[index + 1] ?? "";
-      if (!value || value.startsWith("--")) {
-        throw new Error(`missing value for ${token}`);
-      }
-      return value;
-    };
-
-    switch (token) {
-      case "--cases":
-        args.cases = readValue();
-        index += 1;
-        break;
-      case "--runs":
-        args.runs = readValue();
-        index += 1;
-        break;
-      case "--gate-policy":
-        args.gatePolicy = readValue();
-        index += 1;
-        break;
-      case "--output":
-        args.output = readValue();
-        index += 1;
-        break;
-      case "--print-json":
-        args.printJson = true;
-        break;
-      case "--fail-on-gate":
-        args.failOnGate = true;
-        break;
-      default:
-        throw new Error(`unknown argument: ${token}`);
-    }
-  }
-
-  if (!args.cases) {
-    throw new Error("missing required args: --cases");
-  }
-  if (!args.runs) {
-    throw new Error("missing required args: --runs");
-  }
-  return args;
 }
 
 function normalizeTag(value: string): string {

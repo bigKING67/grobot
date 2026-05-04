@@ -2,6 +2,8 @@
 
 TypeScript gateway skeleton for Grobot.
 
+版本号规范见根文档 [`../README.md`](../README.md#版本号规范)；Gateway 不单独定义产品版本，统一使用根 `package.json.version` 与 `runtime/Cargo.toml` 对齐后的版本。
+
 ## Architecture Positioning
 
 Gateway follows a `4 execution layers + 1 governance plane` structure:
@@ -66,7 +68,7 @@ Governance plane is intentionally separated from the request hot path. It drives
 31. Management status exposure for execution plane in `GET /api/v1/status` (`execution_plane` + per-field source).
 32. TS bridge CLI (`gateway/src/extensions/bridge-cli.ts`) wired into the TS `start` path when `gateway_impl=ts`, using Rust stdio runtime when `runtime_impl=rust`.
 33. Gateway TypeScript compile gate via `gateway/tsconfig.json`.
-34. TS dev CLI fallback (`gateway/src/orchestration/dev-cli.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
+34. TS dev CLI fallback (`scripts/run-ts-dev-cli.sh`, compiling `gateway/src/cli/main.ts`) for source-checkout launcher path: `status`, `serve --gateway-impl ts --ts-dev-cli`, and `start --message --gateway-impl ts`.
 35. TS `serve --ts-dev-cli` currently exposes `GET /api/v1/status`, `GET /api/v1/config` (auth + masked), `GET /healthz`, `POST /api/v1/reload`, `POST /api/v1/sessions/{id}/interrupt`, `POST /api/v1/mcp/reset`, `POST /api/v1/mcp/servers/{name}/reset`, `GET /api/v1/sessions/{id}/memory`, `GET /api/v1/sessions/{id}/memory/export`, `POST /api/v1/sessions/{id}/memory/import`, `POST /api/v1/sessions/{id}/memory/forget`, `POST /api/v1/sessions/{id}/memory/lifecycle`, and `POST /api/v1/memory/lifecycle/run`.
 36. TS `start/status/serve` 参数层已覆盖常用路径与会话参数（`--home`/`--project-root`/`--config-path`/`--session-scope`/`--session-subject`/`--session-backend` 别名）；`serve` 还支持从 `[management].token` 自动读取管理令牌。
 37. TS memory store backend selection now supports `file` (default) and `redis` (via `--session-store redis` / `GROBOT_SESSION_STORE=redis` / `[runtime.storage].hot_cache=redis`). Status endpoint reports selected backend, Redis key, and fallback reason when Redis bootstrap fails and it falls back to file.
@@ -75,9 +77,9 @@ Governance plane is intentionally separated from the request hot path. It drives
 40. `POST /api/v1/reload` now refreshes memory store runtime config as well (`file/redis`, source, fallback reason) and reloads in-memory session map from the resolved backend.
 41. Skill-router eval baseline/ci-gate/report pipeline is TS-only (`gateway/src/governance/evals/skill-router-*.ts`).
 42. TS `status --probe` now performs a real OpenAI-compatible `/models` probe (credential precedence: CLI > env > selected project provider in `config.toml`), reports HTTP status/model count, and exits non-zero on probe failure.
-43. `gateway/src/orchestration/dev-cli.ts` is now a thin entrypoint. The implementation moved to `gateway/src/orchestration/entrypoints/dev-cli/index.ts` to reduce single-file coupling while keeping CLI/API behavior compatible.
+43. The product CLI implementation lives under `gateway/src/cli`; the old `gateway/src/orchestration/entrypoints/dev-cli` source path has been retired and is blocked by the layer contract.
 44. Legacy Python execution retirement record is documented in `gateway/LEGACY_EXECUTION_BOUNDARY.md`.
-45. `orchestration/entrypoints/dev-cli` now separates argument parsing and runtime health probing into dedicated modules (`cli-args.ts`, `runtime-health.ts`) to reduce single-file coupling without changing command behavior.
+45. `gateway/src/cli` now separates argument parsing and runtime health probing into dedicated modules (`cli-args.ts`, `runtime-health.ts`) to reduce single-file coupling without changing command behavior.
 46. Runtime tool-context recovery knobs are wired end-to-end (`GROBOT_NO_TOOL_FALLBACK_MODE`, `GROBOT_MAX_RECOVERY_ROUNDS`) and forwarded to Rust runtime as `no_tool_fallback_mode` / `max_recovery_rounds`.
 47. Runtime event normalization now includes no-tool lifecycle diagnostics (`no_tool_fallback_triggered` / `no_tool_fallback_succeeded` / `no_tool_fallback_exhausted`) in addition to core turn/tool events.
 

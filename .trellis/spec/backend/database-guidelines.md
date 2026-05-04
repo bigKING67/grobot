@@ -19,14 +19,14 @@ There is no global ORM layer yet; persistence is explicit and module-scoped.
 ## Active State Stores
 
 1. Session/history store selection and fallback logic:
-   - `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts`
+   - `gateway/src/cli/services/session-store.ts`
 2. Memory store encode/decode + redis/file bootstrap:
-   - `gateway/src/orchestration/entrypoints/dev-cli/serve/memory-store-runtime.ts`
+   - `gateway/src/cli/serve/memory-store-runtime.ts`
 3. Redis URL parsing and JSON payload IO helpers:
-   - `gateway/src/orchestration/entrypoints/dev-cli/services/redis-client.ts`
+   - `gateway/src/cli/services/redis-client.ts`
 4. Runtime/config source resolution (`CLI > env > project toml > default`):
-   - `gateway/src/orchestration/entrypoints/dev-cli/services/memory-store-config.ts`
-   - `gateway/src/orchestration/entrypoints/dev-cli/services/runtime-paths.ts`
+   - `gateway/src/cli/services/memory-store-config.ts`
+   - `gateway/src/cli/services/runtime-paths.ts`
 
 ---
 
@@ -72,8 +72,8 @@ There is no global ORM layer yet; persistence is explicit and module-scoped.
 
 ## Examples
 
-1. `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts`
-2. `gateway/src/orchestration/entrypoints/dev-cli/serve/memory-store-runtime.ts`
-3. `gateway/src/orchestration/entrypoints/dev-cli/services/memory-store-config.ts`
-4. `gateway/src/orchestration/entrypoints/dev-cli/services/redis-client.ts`
+1. `gateway/src/cli/services/session-store.ts`
+2. `gateway/src/cli/serve/memory-store-runtime.ts`
+3. `gateway/src/cli/services/memory-store-config.ts`
+4. `gateway/src/cli/services/redis-client.ts`
 5. `.grobot/project.toml`

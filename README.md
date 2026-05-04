@@ -17,6 +17,27 @@
 - Rust: runtime core（调度、会话状态机、工具执行策略、并发控制）。
 - Data plane: PostgreSQL + Redis（后续可扩展对象存储与消息队列）。
 
+## 版本号规范
+
+Grobot 使用 SemVer 版本号：`x.y.z`。
+
+- `x`（major）：重大版本。CLI 命令、配置 schema、session/state schema、runtime protocol、bundle/install 格式出现不兼容变化时递增。
+- `y`（minor）：功能版本。新增向后兼容的 agent 能力、tool/MCP 能力、治理 gate、安装能力或目录结构升级时递增。
+- `z`（patch）：修订版本。bugfix、文档、测试、兼容修复、无破坏性内部重构时递增。
+
+版本真相源：
+
+- `package.json.version` 是 JS/CLI 产品版本主来源，startup 默认展示也从这里派生，例如 `Grobot 0.1.0 developed by 67`。
+- `runtime/Cargo.toml` 的 `version` 必须与 `package.json.version` 同步。
+- release tag 与 portable bundle 使用 `v<x.y.z>`，例如 `v0.1.0`；bundle 内的 `VERSION` 文件由 release 脚本生成，不手写漂移。
+- `GROBOT_VERSION` 仅作为构建/发布注入覆盖入口；`v0.1.0` 会规范化展示为 `0.1.0`，`dev/local-dev` 这类开发标签不会覆盖 startup 产品版本。
+
+升版本时必须同步更新 `package.json.version` 与 `runtime/Cargo.toml`，并通过：
+
+```bash
+npm run check:version
+```
+
 ## Agent 分层架构（4层执行面 + 治理平面）
 
 执行面（在线请求链路）包含 4 层：

@@ -56,8 +56,8 @@ Equivalent reuse patterns are stateful factories and context builders:
 
 ## Examples
 
-1. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-runtime-state.ts`
-2. `gateway/src/orchestration/entrypoints/dev-cli/services/session-store.ts`
+1. `gateway/src/cli/start/runtime-state.ts`
+2. `gateway/src/cli/services/session-store.ts`
 3. `gateway/src/tools/ask-user/runtime.ts`
 4. `gateway/src/tools/ask-user/resolver.ts`
-5. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-interactive-bindings.ts`
+5. `gateway/src/cli/start/interactive-bindings.ts`

@@ -62,8 +62,8 @@ Interaction code must preserve strict TypeScript contracts across:
 
 ## Examples
 
-1. `gateway/src/orchestration/entrypoints/dev-cli/start/session-interactive.ts`
-2. `gateway/src/orchestration/entrypoints/dev-cli/start/run-start-io.ts`
-3. `gateway/src/orchestration/entrypoints/dev-cli/start/session-registry.ts`
-4. `gateway/src/orchestration/entrypoints/dev-cli/services/memory-store-config.ts`
+1. `gateway/src/cli/start/session-interactive.ts`
+2. `gateway/src/cli/tui/components/prompt-input/contract.ts`
+3. `gateway/src/cli/start/session-registry.ts`
+4. `gateway/src/cli/services/memory-store-config.ts`
 5. `gateway/src/tools/ask-user/schema.ts`

@@ -1,5 +1,5 @@
-import { formatProviderHealthSnapshot } from "../../orchestration/entrypoints/dev-cli/start/run-start-provider-health";
-import { type SessionProviderRuntimeState } from "../../orchestration/entrypoints/dev-cli/start/session-registry";
+import { formatProviderHealthSnapshot } from "../../cli/start/provider-health";
+import { type SessionProviderRuntimeState } from "../../cli/start/session-registry";
 
 const nowMs = Date.now();
 const states: SessionProviderRuntimeState[] = [

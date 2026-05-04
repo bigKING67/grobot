@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -170,6 +171,28 @@ function collectForbiddenImportPrefixes(filePath, forbiddenPrefixes) {
   return [...seen];
 }
 
+function escapeRegexLiteral(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function lineNumberAtOffset(text, offset) {
+  return text.slice(0, Math.max(0, offset)).split("\n").length;
+}
+
+function buildForbiddenTextRegex(pattern) {
+  const flags = typeof pattern.flags === "string" && pattern.flags.trim()
+    ? pattern.flags.trim()
+    : "";
+  const normalizedFlags = flags.includes("g") ? flags : `${flags}g`;
+  if (typeof pattern.regex === "string" && pattern.regex.trim()) {
+    return new RegExp(pattern.regex, normalizedFlags);
+  }
+  if (typeof pattern.literal === "string" && pattern.literal) {
+    return new RegExp(escapeRegexLiteral(pattern.literal), normalizedFlags);
+  }
+  return undefined;
+}
+
 function fileMatchesExtensions(path, extensions) {
   for (const ext of extensions) {
     if (path.endsWith(ext)) {
@@ -177,6 +200,91 @@ function fileMatchesExtensions(path, extensions) {
     }
   }
   return false;
+}
+
+function normalizeRepoPath(path) {
+  return String(path || "").replaceAll("\\", "/").replace(/^\.\/+/, "");
+}
+
+function pathMatchesPrefix(path, prefix) {
+  return normalizeRepoPath(path).startsWith(normalizeRepoPath(prefix));
+}
+
+function pathMatchesAnyPrefix(path, prefixes) {
+  return normalizeStringList(prefixes).some((prefix) => pathMatchesPrefix(path, prefix));
+}
+
+function pathMatchesAnyExact(path, paths) {
+  const normalizedPath = normalizeRepoPath(path);
+  return normalizeStringList(paths).some((item) => normalizedPath === normalizeRepoPath(item));
+}
+
+function pathIsAllowlisted(path, allowlist) {
+  const normalizedPath = normalizeRepoPath(path);
+  for (const entry of allowlist ?? []) {
+    if (typeof entry === "string" && normalizedPath === normalizeRepoPath(entry)) {
+      return true;
+    }
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const pathEquals = typeof entry.path === "string" ? entry.path : entry.pathEquals;
+    if (typeof pathEquals === "string" && normalizedPath === normalizeRepoPath(pathEquals)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function describeAllowlistReason(path, allowlist) {
+  const normalizedPath = normalizeRepoPath(path);
+  for (const entry of allowlist ?? []) {
+    if (typeof entry === "string" && normalizedPath === normalizeRepoPath(entry)) {
+      return "";
+    }
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const pathEquals = typeof entry.path === "string" ? entry.path : entry.pathEquals;
+    if (typeof pathEquals === "string" && normalizedPath === normalizeRepoPath(pathEquals)) {
+      return typeof entry.reason === "string" ? entry.reason.trim() : "";
+    }
+  }
+  return "";
+}
+
+function collectGitTrackedFiles(root) {
+  const result = spawnSync("git", ["ls-files"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    notices.push("[git] repository index unavailable; tracked-file checks skipped");
+    return [];
+  }
+  return String(result.stdout || "")
+    .split("\n")
+    .map((item) => normalizeRepoPath(item.trim()))
+    .filter(Boolean);
+}
+
+function collectGitUntrackedFiles(root) {
+  const result = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    notices.push("[git] untracked-file index unavailable; source-size untracked checks skipped");
+    return [];
+  }
+  return String(result.stdout || "")
+    .split("\n")
+    .map((item) => normalizeRepoPath(item.trim()))
+    .filter(Boolean);
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths.map(normalizeRepoPath).filter(Boolean))];
 }
 
 function isImportAllowlisted(relativePath, cratePrefix, allowlist) {
@@ -199,6 +307,12 @@ function isImportAllowlisted(relativePath, cratePrefix, allowlist) {
   }
   return false;
 }
+
+const trackedFiles = collectGitTrackedFiles(repoRoot);
+const sourceCandidateFiles = uniquePaths([
+  ...trackedFiles,
+  ...collectGitUntrackedFiles(repoRoot),
+]);
 
 for (const layer of spec.layers ?? []) {
   const layerPath = resolve(repoRoot, layer.path);
@@ -292,6 +406,250 @@ for (const item of spec.maxLinesWarnings ?? []) {
   const lineCount = readFileSync(target, "utf8").split("\n").length;
   if (lineCount > Number(item.max)) {
     warnings.push(`[lines] ${item.path} has ${lineCount} lines (limit=${item.max})`);
+  }
+}
+
+for (const rule of spec.trackedGeneratedStateWarnings ?? []) {
+  const name = typeof rule.name === "string" && rule.name.trim()
+    ? rule.name.trim()
+    : "tracked-generated-state";
+  const allowedBasenames = new Set(normalizeStringList(rule.allowedBasenames));
+  const allowedPaths = normalizeStringList(rule.allowedPaths).map(normalizeRepoPath);
+  const pathPrefixes = normalizeStringList(rule.pathPrefixes ?? rule.prefixes);
+  const matched = trackedFiles.filter((path) => {
+    if (allowedBasenames.has(basename(path)) || allowedPaths.includes(path)) {
+      return false;
+    }
+    return pathMatchesAnyPrefix(path, pathPrefixes);
+  });
+  for (const path of matched) {
+    warnings.push(
+      `[generated-state:${name}] tracked runtime state should be untracked: ${path}`
+    );
+  }
+}
+
+for (const rule of spec.legacyPathWarnings ?? []) {
+  const name = typeof rule.name === "string" && rule.name.trim()
+    ? rule.name.trim()
+    : "legacy-path";
+  const allowlist = rule.allowlist ?? [];
+  const pathPrefixes = normalizeStringList(rule.pathPrefixes ?? rule.prefixes);
+  const exactPaths = normalizeStringList(rule.paths);
+  const message = typeof rule.message === "string" && rule.message.trim()
+    ? rule.message.trim()
+    : "legacy path should not receive new product code";
+  const matched = sourceCandidateFiles.filter((path) => {
+    if (!existsSync(resolve(repoRoot, path))) {
+      return false;
+    }
+    if (pathIsAllowlisted(path, allowlist)) {
+      return false;
+    }
+    return pathMatchesAnyPrefix(path, pathPrefixes) || pathMatchesAnyExact(path, exactPaths);
+  });
+  const maxFiles = Number(rule.maxFiles ?? rule.maxTrackedFiles ?? NaN);
+  if (Number.isFinite(maxFiles)) {
+    notices.push(`[legacy-path:${name}] files=${matched.length} limit=${maxFiles}`);
+    if (matched.length > maxFiles) {
+      warnings.push(
+        `[legacy-path:${name}] ${matched.length} files exceed limit=${maxFiles}: ${message}`
+      );
+    }
+  } else {
+    for (const path of matched) {
+      warnings.push(`[legacy-path:${name}] ${path}: ${message}`);
+    }
+  }
+}
+
+for (const rule of spec.sourceFileSizeWarnings ?? []) {
+  const name = typeof rule.name === "string" && rule.name.trim()
+    ? rule.name.trim()
+    : "source-size";
+  const includePrefixes = normalizeStringList(rule.includePrefixes);
+  const excludePrefixes = normalizeStringList(rule.excludePrefixes);
+  const extensions = normalizeStringList(rule.extensions);
+  const warnLimit = Number(rule.warn ?? rule.max ?? 0);
+  const failLimit = Number(rule.fail ?? 0);
+  const allowlist = rule.allowlist ?? [];
+  const maxWarnCount = Number(rule.maxWarnCount ?? NaN);
+  const maxFailCount = Number(rule.maxFailCount ?? NaN);
+  const maxWarnOverflowLines = Number(rule.maxWarnOverflowLines ?? NaN);
+  const maxFailOverflowLines = Number(rule.maxFailOverflowLines ?? NaN);
+  const maxObservedLines = Number(rule.maxObservedLines ?? NaN);
+  const aggregateRatchet = [
+    maxWarnCount,
+    maxFailCount,
+    maxWarnOverflowLines,
+    maxFailOverflowLines,
+    maxObservedLines,
+  ].some(Number.isFinite);
+  const summary = {
+    warnCount: 0,
+    failCount: 0,
+    warnOverflowLines: 0,
+    failOverflowLines: 0,
+    maxLines: 0,
+    maxPath: "",
+    allowlistedCount: 0,
+  };
+  for (const path of sourceCandidateFiles) {
+    if (includePrefixes.length > 0 && !pathMatchesAnyPrefix(path, includePrefixes)) {
+      continue;
+    }
+    if (excludePrefixes.length > 0 && pathMatchesAnyPrefix(path, excludePrefixes)) {
+      continue;
+    }
+    if (extensions.length > 0 && !fileMatchesExtensions(path, extensions)) {
+      continue;
+    }
+    const fullPath = resolve(repoRoot, path);
+    if (!existsSync(fullPath)) {
+      continue;
+    }
+    const lineCount = readFileSync(fullPath, "utf8").split("\n").length;
+    if (lineCount > summary.maxLines) {
+      summary.maxLines = lineCount;
+      summary.maxPath = path;
+    }
+    if (warnLimit > 0 && lineCount > warnLimit) {
+      summary.warnCount += 1;
+      summary.warnOverflowLines += lineCount - warnLimit;
+    }
+    if (failLimit > 0 && lineCount > failLimit) {
+      summary.failCount += 1;
+      summary.failOverflowLines += lineCount - failLimit;
+    }
+    if (pathIsAllowlisted(path, allowlist)) {
+      if (warnLimit > 0 && lineCount > warnLimit) {
+        summary.allowlistedCount += 1;
+      }
+      continue;
+    }
+    if (aggregateRatchet) {
+      continue;
+    }
+    if (failLimit > 0 && lineCount > failLimit) {
+      failures.push(
+        `[source-size:${name}] ${path} has ${lineCount} lines (fail=${failLimit})`
+      );
+      continue;
+    }
+    if (warnLimit > 0 && lineCount > warnLimit) {
+      warnings.push(
+        `[source-size:${name}] ${path} has ${lineCount} lines (warn=${warnLimit})`
+      );
+    }
+  }
+  notices.push(
+    `[source-size:${name}] warn>${warnLimit}: ${summary.warnCount} files (+${summary.warnOverflowLines} lines), fail>${failLimit}: ${summary.failCount} files (+${summary.failOverflowLines} lines), allowlisted=${summary.allowlistedCount}, max=${summary.maxLines} ${summary.maxPath}`
+  );
+  if (Number.isFinite(maxWarnCount) && summary.warnCount > maxWarnCount) {
+    warnings.push(
+      `[source-size:${name}] warn debt count increased: ${summary.warnCount} files (limit=${maxWarnCount})`
+    );
+  }
+  if (Number.isFinite(maxFailCount) && summary.failCount > maxFailCount) {
+    failures.push(
+      `[source-size:${name}] fail debt count increased: ${summary.failCount} files (limit=${maxFailCount})`
+    );
+  }
+  if (
+    Number.isFinite(maxWarnOverflowLines)
+    && summary.warnOverflowLines > maxWarnOverflowLines
+  ) {
+    warnings.push(
+      `[source-size:${name}] warn overflow increased: +${summary.warnOverflowLines} lines (limit=+${maxWarnOverflowLines})`
+    );
+  }
+  if (
+    Number.isFinite(maxFailOverflowLines)
+    && summary.failOverflowLines > maxFailOverflowLines
+  ) {
+    failures.push(
+      `[source-size:${name}] fail overflow increased: +${summary.failOverflowLines} lines (limit=+${maxFailOverflowLines})`
+    );
+  }
+  if (Number.isFinite(maxObservedLines) && summary.maxLines > maxObservedLines) {
+    failures.push(
+      `[source-size:${name}] largest file grew: ${summary.maxLines} lines in ${summary.maxPath} (limit=${maxObservedLines})`
+    );
+  }
+  for (const entry of allowlist) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const debtPath = typeof entry.path === "string" ? normalizeRepoPath(entry.path) : "";
+    if (!debtPath) {
+      continue;
+    }
+    if (!trackedFiles.includes(debtPath)) {
+      warnings.push(`[source-size:${name}] stale allowlist entry: ${debtPath}`);
+      continue;
+    }
+    const reason = describeAllowlistReason(debtPath, allowlist);
+    if (!reason) {
+      warnings.push(`[source-size:${name}] allowlist entry missing reason: ${debtPath}`);
+    }
+  }
+}
+
+for (const rule of spec.forbiddenTextWarnings ?? []) {
+  const name = typeof rule.name === "string" && rule.name.trim()
+    ? rule.name.trim()
+    : "forbidden-text";
+  const includePrefixes = normalizeStringList(rule.includePrefixes);
+  const excludePrefixes = normalizeStringList(rule.excludePrefixes);
+  const extensions = normalizeStringList(rule.extensions);
+  const ruleAllowlist = rule.allowlist ?? [];
+  const patterns = Array.isArray(rule.patterns) ? rule.patterns : [];
+  for (const path of sourceCandidateFiles) {
+    if (includePrefixes.length > 0 && !pathMatchesAnyPrefix(path, includePrefixes)) {
+      continue;
+    }
+    if (excludePrefixes.length > 0 && pathMatchesAnyPrefix(path, excludePrefixes)) {
+      continue;
+    }
+    if (extensions.length > 0 && !fileMatchesExtensions(path, extensions)) {
+      continue;
+    }
+    if (pathIsAllowlisted(path, ruleAllowlist)) {
+      continue;
+    }
+    const fullPath = resolve(repoRoot, path);
+    if (!existsSync(fullPath)) {
+      continue;
+    }
+    const text = readFileSync(fullPath, "utf8");
+    for (const pattern of patterns) {
+      if (!pattern || typeof pattern !== "object") {
+        continue;
+      }
+      if (pathIsAllowlisted(path, pattern.allowlist ?? [])) {
+        continue;
+      }
+      const regex = buildForbiddenTextRegex(pattern);
+      if (!regex) {
+        warnings.push(`[forbidden-text:${name}] invalid pattern config`);
+        continue;
+      }
+      const match = regex.exec(text);
+      if (!match) {
+        continue;
+      }
+      const marker =
+        typeof pattern.literal === "string" && pattern.literal
+          ? pattern.literal
+          : String(pattern.regex || "");
+      const message =
+        typeof pattern.message === "string" && pattern.message.trim()
+          ? pattern.message.trim()
+          : "forbidden text matched";
+      warnings.push(
+        `[forbidden-text:${name}] ${path}:${lineNumberAtOffset(text, match.index)} matched ${marker}: ${message}`
+      );
+    }
   }
 }
 

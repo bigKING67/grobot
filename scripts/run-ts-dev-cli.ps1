@@ -47,7 +47,7 @@ function Test-SourceNewerThanEntry {
 
 $cacheRoot = Resolve-DefaultCacheRoot
 $outDir = if ($env:GROBOT_TS_DEV_CLI_OUT_DIR) { $env:GROBOT_TS_DEV_CLI_OUT_DIR } else { Join-Path $cacheRoot "dist" }
-$entry = Join-Path $outDir "orchestration\dev-cli.js"
+$entry = Join-Path $outDir "cli\main.js"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 if (Test-SourceNewerThanEntry -SourceRoot $repoRoot -EntryPath $entry) {
