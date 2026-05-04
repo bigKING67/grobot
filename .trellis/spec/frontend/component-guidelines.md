@@ -6,12 +6,19 @@
 
 ## Overview
 
-This repository does not use React/Vue components for the current frontend surface.
-Our "components" are CLI/TUI interaction modules composed from:
+The CLI/TUI frontend surface now supports React/Ink rendering adapters, but
+public interaction components are still organized as CLI/TUI modules composed
+from:
 
 1. Typed input contract (`interface ...Input`).
 2. Pure view-model or formatter function (`build*`, `format*`, `parse*`).
 3. Effectful runner that executes interaction (`run*`, `open*`, `dispatch*`).
+
+React/Ink adapters belong under `gateway/src/cli/tui/react/`. They currently
+render startup, menu, prompt input, status line, bottom-pane, and ask-user panel
+surfaces, but they must not become new owners for stdin/raw-mode lifecycle. Keep
+controller ownership in the existing component controller role unless the full
+component is deliberately migrated.
 
 ---
 
@@ -82,6 +89,9 @@ Public imports should use these role files directly:
 10. `controller.ts`: `runSessionInputLoop()` and stable prompt-input public
    entrypoints; it owns raw mode handoff, handler lifecycle, and turn-loop
    composition.
+11. The visible prompt chrome is delegated through
+    `gateway/src/cli/tui/react/prompt-input.tsx`; do not bypass
+    `components/prompt-input/render.ts` to print ad hoc input frames.
 
 `gateway/src/cli/start/tui-compat.ts` is only a compatibility re-export plus
 handoff helper surface. New prompt-input imports must not use it.
@@ -106,6 +116,22 @@ Public imports should use these role files directly:
 re-export while legacy imports are removed. Do not add new behavior there.
 `gateway/src/cli/start/tui-compat.ts` must not be used as the owner or import
 surface for ask-user panel code.
+
+### Status, Bottom Pane, Activity Feed, And Turn Notices
+
+Developer-facing passive surfaces are owned by component directories, not
+screen monoliths:
+
+1. `components/status-line/`: status-line contract, config normalization, and
+   render logic. `react/status-line.tsx` owns the visible adapter surface.
+2. `components/bottom-pane/`: prompt-bottom slot footer composition for idle,
+   pending ask, running activity, and shortcut overlay.
+3. `components/activity-feed/`: runtime tool activity feed rows and detail
+   rendering. The feed must stay out of conversation history.
+4. `components/turn-notice/`: turn interruption/open-circuit/failure notices.
+
+The matching files under `gateway/src/cli/tui/screens/*-screen.ts` are
+compatibility re-exports only. New imports should target `components/*`.
 
 ---
 
@@ -143,6 +169,9 @@ surface for ask-user panel code.
 7. Shared prompt, menu, status, and bottom-pane surfaces must have one owner for
    each terminal slot. Do not append ad hoc lines from unrelated turn-output
    code.
+8. React/Ink adapter files should be treated as render implementations. They
+   can compose visual nodes, but keyboard state still belongs in reducers and
+   terminal lifecycle still belongs in controllers.
 
 ## Prompt Slot Ownership
 

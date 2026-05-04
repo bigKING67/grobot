@@ -6,8 +6,10 @@
 
 ## Overview
 
-The current frontend surface is not React-based, so there are no `use*` hooks.
-Equivalent reuse patterns are stateful factories and context builders:
+Most frontend flow code is not browser React state. React/Ink is now used for
+terminal rendering adapters under `gateway/src/cli/tui/react/` (startup, menu,
+prompt, status, bottom-pane, ask-user), while equivalent reuse patterns for the
+rest of the interaction layer remain stateful factories and context builders:
 
 1. Factory objects encapsulating mutable runtime state.
 2. Context builders deriving turn inputs from existing runtime/session state.
@@ -41,7 +43,9 @@ Equivalent reuse patterns are stateful factories and context builders:
 1. `create*`: stateful/runtime factories (`createRunStartInteractiveHandler`, `createRunStartWire`).
 2. `build*`/`format*`: pure transforms (`buildInteractiveHelpText`, `formatAskUserResolvedEvent`).
 3. `resolve*`/`normalize*`/`parse*`: boundary normalization and validation (`resolveMemoryStoreRuntime`, `normalizeAskUserEnvelope`).
-4. Avoid `use*` naming unless introducing an actual hook runtime in the future.
+4. Avoid `use*` naming outside actual React/Ink hook files. Non-React terminal
+   flow helpers should keep `create*`, `build*`, `resolve*`, or `normalize*`
+   naming.
 
 ---
 

@@ -6,7 +6,7 @@ import {
   renderRuntimeFailureSummary,
   renderRuntimeOpenCircuitNotice,
   renderTurnInterruptedNotice,
-} from "../tui/screens/turn-screen";
+} from "../tui/components/turn-notice/render";
 import {
   classifyPromptOverflow,
   escalatePromptVariant,

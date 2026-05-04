@@ -16,7 +16,7 @@ import {
   type PromptSlotStateInput,
 } from "../../interactive/prompt-slot-state";
 import { type SessionPromptLayout } from "../../interactive/interactive-frame";
-import { renderShortcutOverlayFooter } from "../../screens/bottom-pane-screen";
+import { renderShortcutOverlayFooter } from "../bottom-pane/render";
 import {
   DEFAULT_SESSION_PROMPT,
   INLINE_IMAGE_RENDER_PATTERN,
@@ -27,6 +27,7 @@ import {
   resolveSlashInputHighlightSuggestions,
   shouldHighlightSlashInputToken,
 } from "./reducer";
+import { renderReactPromptInputLines } from "../../react/prompt-input";
 
 const ANSI_RESET = "\u001B[0m";
 const ANSI_BOLD = "\u001B[1m";
@@ -243,9 +244,10 @@ export function renderSubmittedInputTranscriptLines(input: {
       : renderedText;
     return `${prefix}${highlightedText}`;
   });
-  return renderInteractiveInputChromeLines({
+  return renderInteractiveInputSurfaceChromeLines({
     bodyLines,
     inputBodyWidth,
+    terminalColumns,
   });
 }
 
@@ -359,6 +361,28 @@ export function renderInteractiveInputChromeLines(input: {
       `${bodyPrefix}${padToDisplayWidth(line, inputContentWidth)}`),
     `${ANSI_DIM}${horizontal}${ANSI_RESET}`,
   ];
+}
+
+export function renderPromptInputSurfaceLines(input: {
+  lines: readonly string[];
+  terminalColumns?: number;
+}): string[] {
+  const rendered = renderReactPromptInputLines({
+    lines: input.lines,
+    terminalColumns: input.terminalColumns,
+  });
+  return rendered.length > 0 ? rendered.split("\n") : [];
+}
+
+export function renderInteractiveInputSurfaceChromeLines(input: {
+  bodyLines: readonly string[];
+  inputBodyWidth: number;
+  terminalColumns?: number;
+}): string[] {
+  return renderPromptInputSurfaceLines({
+    lines: renderInteractiveInputChromeLines(input),
+    terminalColumns: input.terminalColumns,
+  });
 }
 
 export function resolveInteractiveInputBodyWidth(input: {
@@ -619,7 +643,7 @@ export function buildPromptInputRenderSnapshot(
       : renderedText;
     return `${prefix}${highlightedText}`;
   });
-  const renderedLines = [
+  const rawRenderedLines = [
     ...renderInteractiveInputChromeLines({
       bodyLines,
       inputBodyWidth,
@@ -628,6 +652,10 @@ export function buildPromptInputRenderSnapshot(
     ...shortcutOverlayLines,
     ...footerResolution.footerLines,
   ];
+  const renderedLines = renderPromptInputSurfaceLines({
+    lines: rawRenderedLines,
+    terminalColumns,
+  });
   const cursorRenderLineIndex = 1 + activeLineIndex;
   const cursorColumn = resolvePromptRelativeCursorColumn({
     graphemes: input.graphemes,

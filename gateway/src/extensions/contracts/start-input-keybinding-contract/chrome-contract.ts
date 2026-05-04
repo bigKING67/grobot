@@ -1,4 +1,5 @@
 import {
+  renderSlashCommandTokenHighlight,
   renderInteractiveInputChromeLines,
   renderSubmittedInputTranscriptLines,
   resolveDraftAwareFooterLines,
@@ -52,6 +53,7 @@ export function runInputChromeChecks(): ContractPayload {
     .map(stripAnsi)
     .join("\n");
   const submittedPlanTranscriptRaw = submittedPlanTranscriptLines.join("\n");
+  const expectedPlanHighlight = renderSlashCommandTokenHighlight("/plan");
   const inputChromeTopLinePlain = stripAnsi(inputChromeLines[0] ?? "");
   const inputChromeBodyLine = inputChromeLines[1] ?? "";
   const inputChromeBodyLinePlain = stripAnsi(inputChromeBodyLine);
@@ -123,6 +125,6 @@ export function runInputChromeChecks(): ContractPayload {
       submittedTranscriptLines.every((line) => measureDisplayWidth(line) <= 96),
     submitted_slash_transcript_preserves_command_highlight:
       submittedPlanTranscriptPlain.includes("❯ /plan 帮我规划 plan mode 交互")
-      && submittedPlanTranscriptRaw.includes("\u001B[1m\u001B[38;2;202;124;94m/plan\u001B[0m"),
+      && submittedPlanTranscriptRaw.includes(expectedPlanHighlight),
   };
 }

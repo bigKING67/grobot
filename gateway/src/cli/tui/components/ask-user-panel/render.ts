@@ -7,10 +7,12 @@ import {
 import {
   measureDisplayWidth,
   padToDisplayWidth,
+  stripAnsi,
   truncateDisplayWidth,
 } from "../../terminal/display-width";
 import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import { TERMINAL_SYMBOL, terminalStyle } from "../../theme/terminal-style";
+import { renderReactAskUserPanelScreen } from "../../react/ask-user-panel";
 
 export interface AskUserPanelScreenInput {
   view: AskUserQuestionnaireView;
@@ -404,7 +406,7 @@ function renderReviewPanel(input: {
   return lines;
 }
 
-export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string {
+export function renderAskUserPanelScreenLines(input: AskUserPanelScreenInput): string[] {
   const surfaceWidth = resolveSurfaceWidth(input.terminalColumns);
   const lines: string[] = [];
   lines.push(terminalStyle.brand("─".repeat(surfaceWidth)));
@@ -412,7 +414,7 @@ export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string
     lines.push(`  ${renderPanelTitle(input.view.title, surfaceWidth - 2)}`);
     lines.push("");
     lines.push(`  ${terminalStyle.muted(fitPlainLine(input.view.hint, surfaceWidth - 2))}`);
-    return lines.join("\n");
+    return lines;
   }
   if (input.view.kind === "review") {
     lines.push(...renderReviewPanel({
@@ -420,7 +422,7 @@ export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string
       surfaceWidth,
       activeReviewIndex: input.activeReviewIndex,
     }));
-    return lines.join("\n");
+    return lines;
   }
   lines.push(...renderQuestionPanel({
     view: input.view,
@@ -429,5 +431,17 @@ export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string
     planMode: input.planMode,
     planFilePath: input.planFilePath,
   }));
-  return lines.join("\n");
+  return lines;
+}
+
+export function renderAskUserPanelScreen(input: AskUserPanelScreenInput): string {
+  return renderReactAskUserPanelScreen({
+    lines: renderAskUserPanelScreenLines(input),
+    terminalColumns: input.terminalColumns,
+  });
+}
+
+export function renderPlainAskUserPanelScreen(input: AskUserPanelScreenInput): string {
+  const lines = renderAskUserPanelScreenLines(input);
+  return lines.map((line) => stripAnsi(line)).join("\n");
 }

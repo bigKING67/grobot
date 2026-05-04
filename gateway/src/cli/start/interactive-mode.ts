@@ -28,8 +28,8 @@ import {
   setTerminalWindowTitle,
 } from "../tui/terminal/text-sanitizer";
 import { type SessionPromptLayout } from "../tui/interactive/interactive-frame";
-import { renderBottomPaneFooter } from "../tui/screens/bottom-pane-screen";
-import { type StatusLineConfig } from "../tui/screens/status-line-screen";
+import { renderBottomPaneFooter } from "../tui/components/bottom-pane/render";
+import { type StatusLineConfig } from "../tui/components/status-line/contract";
 import { type RuntimeAttachment } from "../../models/types";
 import {
   type InteractiveDiagnosticsMode,

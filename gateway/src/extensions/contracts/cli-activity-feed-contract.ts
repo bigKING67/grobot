@@ -3,7 +3,7 @@ import { measureDisplayWidth } from "../../cli/tui/terminal/display-width";
 import {
   renderRuntimeActivityFeed,
   resolveRuntimeActivityFeedDetailMode,
-} from "../../cli/tui/screens/activity-feed-screen";
+} from "../../cli/tui/components/activity-feed/render";
 import {
   buildTurnTerminalOutputSegments,
   resolveRuntimeActivityFeedTranscriptEnabled,
@@ -104,7 +104,7 @@ const feedEvents = [
       status: "ok",
       output_summary: {
         tool: "edit",
-        path: "gateway/src/cli/tui/screens/bottom-pane-screen.ts",
+        path: "gateway/src/cli/tui/components/bottom-pane/render.ts",
         replacements: 1,
         first_changed_line: 42,
         fuzzy_fallback_used: false,
@@ -232,7 +232,7 @@ const payload = {
     && !plain.includes("error_class=")
     && !plain.includes("@@ -42"),
   renders_edit_with_diff_stats:
-    fullPlain.includes("编辑 gateway/src/cli/tui/screens/bottom-pane-screen.ts (+2 -1)")
+    fullPlain.includes("编辑 gateway/src/cli/tui/components/bottom-pane/render.ts (+2 -1)")
     && fullPlain.includes("@@ -42,1 +42,2 @@"),
   edit_detail_uses_human_copy:
     fullPlain.includes("  ⎿  1 处替换，行 42")

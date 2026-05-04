@@ -1,10 +1,10 @@
 import {
   renderBottomPaneFooter,
   renderShortcutOverlayFooter,
-} from "../../cli/tui/screens/bottom-pane-screen";
+} from "../../cli/tui/components/bottom-pane/render";
 import {
   measureDisplayWidth,
-} from "../../cli/tui/screens/status-line-screen";
+} from "../../cli/tui/components/status-line/render";
 
 function collapseSpaces(value: string): string {
   return stripAnsi(value).replace(/\s+/g, " ").trim();

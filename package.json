@@ -35,9 +35,11 @@
     "core:gate:release": "bash ./scripts/core-release-gate.sh",
     "core:release:prepare": "bash ./scripts/core-release-prepare.sh",
     "core:release:bundles": "bash ./scripts/package-release-bundles.sh",
-    "check": "npm run audit:python:target && npm run check:version && npm run check:layer-contract:test && npm run check:layer-contract && npm run check:gateway:runtime-tools && npm run check:gateway && npm run check:gateway:ts && npm run check:runtime",
+    "check": "npm run audit:python:target && npm run check:version && npm run check:tools-all-reference && npm run check:layer-contract:test && npm run check:layer-contract && npm run check:gateway:runtime-tools && npm run check:gateway && npm run check:gateway:ts && npm run check:runtime",
     "audit:python:target": "node scripts/python-scope-audit.mjs",
     "check:version": "node scripts/check-version-consistency.mjs",
+    "sync:tools-all-reference": "node scripts/sync-tools-all-reference.mjs",
+    "check:tools-all-reference": "node scripts/check-tools-all-reference.mjs",
     "check:layer-contract": "node scripts/layer-contract-check.mjs --strict",
     "check:layer-contract:strict": "node scripts/layer-contract-check.mjs --strict",
     "check:layer-contract:warn": "node scripts/layer-contract-check.mjs",
@@ -114,6 +116,9 @@
     "browser:native:setup:json": "node adapters/browser-structured-mcp/native-deps-setup.mjs --install --yes --json"
   },
   "dependencies": {
+    "@types/react": "19.2.14",
+    "ink": "7.0.1",
+    "react": "19.2.5",
     "toml": "^3.0.0",
     "ws": "8.18.0"
   }

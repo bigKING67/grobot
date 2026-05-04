@@ -88,7 +88,7 @@ else
   fi
   if [ "$NEEDS_BUILD" -eq 0 ]; then
     NEWER_TS_FILE="$(
-      find "$REPO_ROOT/gateway/src" -type f \( -name "*.ts" -o -name "*.d.ts" \) -newer "$ENTRY" -print -quit
+      find "$REPO_ROOT/gateway/src" -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.d.ts" \) -newer "$ENTRY" -print -quit
     )"
     if [ -n "$NEWER_TS_FILE" ]; then
       NEEDS_BUILD=1

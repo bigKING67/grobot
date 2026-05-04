@@ -77,8 +77,27 @@ gateway/src/
 │       │   │   ├── render.ts
 │       │   │   └── controller.ts
 │       │   ├── status-line/
-│       │   └── bottom-pane/
+│       │   │   ├── contract.ts
+│       │   │   ├── reducer.ts
+│       │   │   └── render.ts
+│       │   ├── bottom-pane/
+│       │   │   ├── contract.ts
+│       │   │   └── render.ts
+│       │   ├── activity-feed/
+│       │   │   ├── contract.ts
+│       │   │   └── render.ts
+│       │   └── turn-notice/
+│       │       ├── contract.ts
+│       │       └── render.ts
 │       ├── theme/
+│       ├── react/
+│       │   ├── static-ink.tsx
+│       │   ├── startup-screen.tsx
+│       │   ├── select-menu.tsx
+│       │   ├── prompt-input.tsx
+│       │   ├── status-line.tsx
+│       │   ├── bottom-pane.tsx
+│       │   └── ask-user-panel.tsx
 │       └── kernel/
 └── tools/
     └── ask-user/
@@ -126,10 +145,13 @@ Do not use this legacy layout as the template for new interaction modules.
      cross-component "screen" or `run-start-*` module.
 5. Keep style tokens in `cli/tui/theme/*` and render helpers. Do not scatter raw
    ANSI codes across start/status/serve orchestration files.
-6. Keep session picker view-model separate from session execution flow.
-7. Keep persistence/network concerns in `services/*` or `serve/*`; interaction
+6. Keep React/Ink rendering adapters in `cli/tui/react/*`. These files may wrap
+   upstream-inspired visual composition, but they must delegate public contracts
+   through component `render.ts` files and must not own raw-mode/input lifecycle.
+7. Keep session picker view-model separate from session execution flow.
+8. Keep persistence/network concerns in `services/*` or `serve/*`; interaction
    modules consume interfaces, not low-level sockets/files directly.
-8. Keep ask-user envelope parsing/normalization in `tools/ask-user/schema.ts`;
+9. Keep ask-user envelope parsing/normalization in `tools/ask-user/schema.ts`;
    resolution logic in `resolver.ts`; display text in `display.ts`.
 
 ---
@@ -181,5 +203,11 @@ Do not use this legacy layout as the template for new interaction modules.
    prompt buffer cursor, paste, inline-image-token, and active-line utilities.
 8. `gateway/src/cli/tui/components/ask-user-panel/controller.ts` (target):
    questionnaire panel raw-mode lifecycle and submit/cancel control flow.
-9. `gateway/src/tools/ask-user/schema.ts`: ask-user envelope normalization from
+9. `gateway/src/cli/tui/components/bottom-pane/render.ts` (target):
+   status, pending ask, running activity, and shortcut footer composition.
+10. `gateway/src/cli/tui/components/activity-feed/render.ts` (target):
+   runtime tool activity transcript/feed rendering.
+11. `gateway/src/cli/tui/components/turn-notice/render.ts` (target):
+   turn interruption/failure notice rendering.
+12. `gateway/src/tools/ask-user/schema.ts`: ask-user envelope normalization from
    runtime payloads.

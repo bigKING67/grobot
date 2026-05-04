@@ -1,6 +1,6 @@
 import { consumeInterruptFlag } from "../../services/interrupt-store";
 import { type AskUserTurnPromptContext, createAskUserTurnPromptContext, formatAskUserResolvedAnswerForPersistence } from "../../../tools/ask-user";
-import { renderManagementInterruptNotice } from "../../tui/screens/turn-screen";
+import { renderManagementInterruptNotice } from "../../tui/components/turn-notice/render";
 import { type CreateRunStartTurnRunnerInput, type RunStartTurnExecuteOptions } from "./contract";
 import { parseSessionKeyPartsLoose } from "../session-registry";
 import { type TurnHistoryRecorder } from "./history";

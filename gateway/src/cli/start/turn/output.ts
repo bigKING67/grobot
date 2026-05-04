@@ -2,7 +2,7 @@ import { type RuntimeEvent } from "../../../models/types";
 import {
   renderRuntimeActivityFeed,
   resolveRuntimeActivityFeedDetailMode,
-} from "../../tui/screens/activity-feed-screen";
+} from "../../tui/components/activity-feed/render";
 import {
   renderTerminalMarkdown,
   resolveTerminalMarkdownMode,

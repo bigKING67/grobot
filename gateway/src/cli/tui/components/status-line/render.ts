@@ -5,6 +5,7 @@ import {
   stripAnsi,
   truncateDisplayWidth,
 } from "../../terminal/display-width";
+import { renderReactStatusLineLines } from "../../react/status-line";
 import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import {
   STATUS_LINE_TEMPLATE_FALLBACKS,
@@ -564,7 +565,8 @@ export function resolveStatusLinePromptParts(
 
 export function renderStatusLinePrompt(input: StatusLinePromptInput): string {
   const parts = resolveStatusLinePromptParts(input);
-  return [parts.statusLine, parts.warningLine, parts.activityLine]
-    .filter((line): line is string => typeof line === "string" && line.length > 0)
-    .join("\n");
+  return renderReactStatusLineLines({
+    lines: [parts.statusLine, parts.warningLine ?? "", parts.activityLine ?? ""],
+    terminalColumns: input.terminalColumns,
+  });
 }

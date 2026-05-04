@@ -39,7 +39,7 @@ function Test-SourceNewerThanEntry {
       ((Get-Item (Join-Path $SourceRoot "gateway\tsconfig.json")).LastWriteTimeUtc -gt $entry.LastWriteTimeUtc)) {
     return $true
   }
-  $newer = Get-ChildItem (Join-Path $SourceRoot "gateway\src") -Recurse -File -Include "*.ts","*.d.ts" |
+  $newer = Get-ChildItem (Join-Path $SourceRoot "gateway\src") -Recurse -File -Include "*.ts","*.tsx","*.d.ts" |
     Where-Object { $_.LastWriteTimeUtc -gt $entry.LastWriteTimeUtc } |
     Select-Object -First 1
   return $null -ne $newer

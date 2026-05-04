@@ -3,7 +3,7 @@ import {
   renderRuntimeFailureSummary,
   renderRuntimeOpenCircuitNotice,
   renderTurnInterruptedNotice,
-} from "../../cli/tui/screens/turn-screen";
+} from "../../cli/tui/components/turn-notice/render";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
