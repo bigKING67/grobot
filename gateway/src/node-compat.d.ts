@@ -1,6 +1,7 @@
 declare const process: {
   argv: string[];
   env: Record<string, string | undefined>;
+  platform: string;
   pid: number;
   cwd(): string;
   on(event: string, listener: (...args: unknown[]) => void): void;
