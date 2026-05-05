@@ -1,7 +1,5 @@
-import {
-  measureDisplayWidth,
-  renderStatusLinePrompt,
-} from "../../cli/tui/screens/status-line-screen";
+import { measureDisplayWidth } from "../../cli/tui/terminal/display-width";
+import { renderStatusLinePrompt } from "../../cli/tui/components/status-line/render";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
@@ -179,17 +177,20 @@ const payload = {
   tiny_keeps_short_session_id: tinyStatusLine.includes(sessionShortId),
   tiny_not_session_only: tinyStatusLine !== sessionShortId,
   warning_has_separate_line: warningLines.length >= 2,
-  warning_line_contains_critical: warningLine.includes("critical"),
-  warning_status_line_unchanged: warningStatusLine.includes("context 94%") === false,
+  warning_line_contains_human_label:
+    warningLine.includes("接近上限") || warningLine.includes("已到上限"),
+  warning_status_line_unchanged:
+    warningStatusLine.includes("context 94%") === false
+    && warningStatusLine.includes("上下文 94%") === false,
   tokens_segment_toggle_effective:
     segmentToggleStatusLine.includes("5K window") === false
     && segmentToggleStatusLine.includes("5k window") === false,
-  plan_mode_badge_visible: planModeStatusLine.includes("plan mode"),
+  plan_mode_badge_visible: planModeStatusLine.includes("计划模式"),
   plan_mode_badge_leads_status:
-    stripAnsi(planModeStatusLine).startsWith("⏸ plan mode"),
-  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("plan mode"),
+    stripAnsi(planModeStatusLine).startsWith("⏸ 计划模式"),
+  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("计划模式"),
   plan_mode_badge_kept_when_status_disabled:
-    disabledStatusPlanModePrompt.includes("plan mode"),
+    disabledStatusPlanModePrompt.includes("计划模式"),
   plan_mode_narrow_line_within_width:
     measureDisplayWidth(narrowPlanModeLine) <= 48,
   ccline_uses_low_noise_text_labels:

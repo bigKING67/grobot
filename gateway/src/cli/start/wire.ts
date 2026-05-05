@@ -6,7 +6,7 @@ import { type GaMechanismRuntime } from "../services/ga-mechanism-runtime";
 import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import { type SessionStoreController } from "../services/session-store";
 import { createRunStartHandoff } from "./handoff";
-import { createRunStartSessionOps } from "./session-ops";
+import { createRunStartSessionOps } from "./session/ops";
 import { type RunStartRewindStore } from "./rewind-store";
 import {
   createRunStartTurnRunner,
@@ -17,7 +17,7 @@ import {
 } from "./turn";
 import { type RunStartPersistence } from "./persistence";
 import { type RunStartRuntimeState } from "./runtime-state";
-import { type ChatHistoryMessage } from "./session-history";
+import { type ChatHistoryMessage } from "./session/history";
 import { setSessionGaState, setSessionProviderRuntime, type SessionRegistryPayload, touchSessionRecord } from "./session-registry";
 
 interface CreateRunStartWireInput {

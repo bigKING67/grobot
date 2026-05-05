@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { removeTrailingSlashes } from "../services/runtime-paths";
-import { normalizeHistoryMessages } from "./session-history";
+import { normalizeHistoryMessages } from "./session/history";
 import {
   REWIND_STORE_VERSION,
   REWIND_SUMMARY_DEFAULT_LIMIT,

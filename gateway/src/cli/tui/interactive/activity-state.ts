@@ -49,6 +49,7 @@ export interface CreateInteractiveActivityTrackerInput {
 
 const DEFAULT_MIN_EMIT_INTERVAL_MS = 400;
 const DEFAULT_PROMPT_RETENTION_MS = 20_000;
+const ACTIVITY_PROGRESS_PREFIX = "›";
 
 const DIAGNOSTIC_TAGS = new Set<string>([
   "ask-user",
@@ -142,11 +143,181 @@ function detailFromParts(parts: string[]): string | undefined {
   return detail || undefined;
 }
 
+function humanFieldLabel(label: string): string {
+  switch (label) {
+    case "provider":
+      return "通道";
+    case "timeout":
+      return "超时";
+    case "reason":
+      return "原因";
+    case "retry":
+      return "重试";
+    case "selected":
+      return "路由";
+    case "strategy":
+      return "策略";
+    case "stage":
+      return "阶段";
+    case "util":
+      return "利用率";
+    case "overall":
+      return "质量";
+    case "coverage":
+      return "覆盖";
+    case "symbol":
+      return "符号";
+    case "deps":
+      return "依赖";
+    case "event":
+      return "事件";
+    case "phase":
+      return "阶段";
+    case "status":
+      return "状态";
+    default:
+      return label;
+  }
+}
+
+function humanFieldValue(label: string, value: string): string {
+  const normalized = value.trim();
+  const key = normalized.toLowerCase();
+  if (label === "strategy") {
+    switch (key) {
+      case "sticky+score":
+        return "会话优先 + 评分";
+      case "quality_first":
+        return "质量优先";
+      case "hard_budget":
+        return "硬预算";
+      default:
+        break;
+    }
+  }
+  if (label === "stage" || label === "phase") {
+    switch (key) {
+      case "normal":
+        return "正常";
+      case "proactive":
+        return "主动压缩";
+      case "forced":
+        return "强制压缩";
+      case "minimal":
+        return "最小上下文";
+      case "planning":
+        return "规划中";
+      default:
+        break;
+    }
+  }
+  if (label === "status") {
+    switch (key) {
+      case "applied":
+        return "已应用";
+      case "warning":
+        return "告警";
+      case "degraded":
+        return "降级";
+      case "empty":
+        return "暂无结果";
+      case "success":
+        return "成功";
+      case "failed":
+        return "失败";
+      default:
+        break;
+    }
+  }
+  if (label === "event") {
+    switch (key) {
+      case "maintenance_skipped":
+        return "跳过维护";
+      case "maintenance":
+        return "执行维护";
+      case "maintenance_failed":
+        return "维护失败";
+      case "task_skipped":
+        return "跳过任务";
+      case "task_triggered":
+        return "已触发任务";
+      case "task_finished":
+        return "任务已结束";
+      case "task_failed":
+        return "任务失败";
+      case "context_injected":
+        return "已注入记忆上下文";
+      case "context_skipped":
+        return "跳过记忆上下文";
+      case "prompt_injected":
+        return "已注入提示";
+      case "prompt_skipped":
+        return "跳过提示注入";
+      case "strict_failure":
+        return "指令检查失败";
+      case "policy_injected":
+        return "已注入策略";
+      case "requested":
+        return "已请求";
+      case "applied":
+        return "已应用";
+      case "ignored":
+        return "已忽略";
+      case "rejected":
+        return "已拒绝";
+      default:
+        break;
+    }
+  }
+  if (label === "reason") {
+    switch (key) {
+      case "no_active_turn":
+        return "当前没有运行任务";
+      case "turn_completed_before_abort":
+        return "任务已结束";
+      case "active_turn":
+        return "当前任务运行中";
+      case "pending_ask":
+      case "ask_user_interrupt":
+      case "ask_user_pending_followup":
+        return "等待人工确认";
+      case "plan_mode":
+        return "计划模式中";
+      case "budget_or_no_signal":
+        return "预算或信号不足";
+      case "circuit_open":
+        return "熔断中";
+      default:
+        break;
+    }
+  }
+  if (/^[a-z0-9]+(?:[_-][a-z0-9]+)+$/i.test(normalized)) {
+    return normalized.replace(/[_-]+/g, " ");
+  }
+  return normalized;
+}
+
+function humanDiagnosticTopic(tag: string): string | undefined {
+  const colonIndex = tag.indexOf(":");
+  if (colonIndex < 0) {
+    return undefined;
+  }
+  const topic = tag.slice(colonIndex + 1);
+  switch (topic) {
+    case "mcp-instruction":
+      return "MCP 指令";
+    case "search-route":
+      return "搜索路由";
+    default:
+      return topic.replace(/[-_]+/g, " ");
+  }
+}
+
 function fieldDetail(label: string, value: string | undefined): string {
   if (!value || value === "<none>") {
     return "";
   }
-  return `${label}=${value}`;
+  return `${humanFieldLabel(label)} ${humanFieldValue(label, value)}`;
 }
 
 function promptBudgetDetail(body: string): string | undefined {
@@ -157,7 +328,7 @@ function promptBudgetDetail(body: string): string | undefined {
   const utilization = selectedUtilization ?? extractField(body, "utilization");
   return detailFromParts([
     fieldDetail("stage", stage),
-    estimatedTokens && targetLimit ? `tokens=${estimatedTokens}/${targetLimit}` : "",
+    estimatedTokens && targetLimit ? `预算 ${estimatedTokens}/${targetLimit}` : "",
     fieldDetail("util", utilization),
   ]);
 }
@@ -180,14 +351,14 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     return {
       stageId: "execution_done",
       text: "模型响应已返回，正在整理输出",
-      detail: "formatting final answer",
+      detail: "整理最终回复",
     };
   }
   if (tag === "governance" || tag.startsWith("governance:")) {
     return {
       stageId: "governance",
       text: "正在执行治理与路由策略检查",
-      detail: tag.includes(":") ? tag.slice(tag.indexOf(":") + 1) : undefined,
+      detail: humanDiagnosticTopic(tag),
     };
   }
   if (tag === "runtime-route") {
@@ -224,7 +395,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
         text: "正在选择模型路由",
         detail: detailFromParts([
           fieldDetail("selected", selected),
-          stickyHit === "true" ? "sticky=hit" : "",
+          stickyHit === "true" ? "复用会话通道" : "",
           fieldDetail("strategy", strategy),
         ]),
       };
@@ -321,14 +492,14 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       return {
         stageId: "ask_user_waiting",
         text: "等待你确认后继续执行",
-        detail: "reply in prompt",
+        detail: "在输入框回复",
       };
     }
     if (event === "clarification_hint_injected") {
       return {
         stageId: "ask_user_clarify",
         text: "正在补充澄清提示",
-        detail: "clarification context",
+        detail: "澄清上下文",
       };
     }
     return {
@@ -398,7 +569,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       return {
         stageId: "plan_approval_waiting",
         text: "等待你确认计划",
-        detail: "approve or keep planning",
+        detail: "确认执行或继续规划",
       };
     }
     if (event === "apply_review_started") {
@@ -430,7 +601,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     return {
       stageId: "experience_skip",
       text: "当前轮触发人工确认，跳过经验沉淀",
-      detail: "ask-user pending",
+      detail: "等待人工确认",
     };
   }
   if (tag === "experience-pool" || tag === "experience-scheduler") {
@@ -517,7 +688,7 @@ export function createInteractiveActivityTracker(
     const renderedProgress = next.detail
       ? `${next.text} · ${next.detail}`
       : next.text;
-    writeProgressLine(`[process] ${renderedProgress}\n`);
+    writeProgressLine(`${ACTIVITY_PROGRESS_PREFIX} ${renderedProgress}\n`);
     lastEmittedSignature = nextSignature;
     lastEmittedAtMs = now;
   };

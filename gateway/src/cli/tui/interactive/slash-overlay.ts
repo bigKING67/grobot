@@ -34,6 +34,14 @@ function normalizeDescription(input: SlashOverlaySuggestion): string {
   return (input.description ?? "").trim().replace(/\s+/g, " ");
 }
 
+function normalizeSlashSuggestionTag(input: SlashOverlaySuggestion): string | undefined {
+  const source = (input.source ?? "").trim();
+  if (!source || source.toLowerCase() === "builtin") {
+    return undefined;
+  }
+  return source;
+}
+
 function hasSlashCommandArguments(lineInputRaw: string): boolean {
   const lineInput = lineInputRaw.trim();
   if (!lineInput.startsWith("/")) {
@@ -68,7 +76,7 @@ export function formatSlashSuggestionPanel(
     suggestions: suggestions.map((item) => ({
       id: `command-${item.command}`,
       displayText: item.command.trim(),
-      tag: item.source,
+      tag: normalizeSlashSuggestionTag(item),
       description: normalizeDescription(item),
       type: "command",
     })),

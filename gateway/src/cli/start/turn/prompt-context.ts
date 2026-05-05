@@ -8,7 +8,7 @@ import {
   type PromptVariant,
 } from "../../../tools/context";
 import { applyRuntimeToolRecoveryPromptFlow } from "../../../tools/runtime/recovery-prompt-flow";
-import { compactSingleLine } from "../session-history";
+import { compactSingleLine } from "../session/history";
 import {
   buildKimiBuiltinFallbackPrompt,
   buildKimiSearchRoutingPrefix,

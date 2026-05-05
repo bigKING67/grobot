@@ -179,6 +179,48 @@ const noneRendered = renderRuntimeActivityFeed({
   events: feedEvents,
   detailMode: "none",
 });
+const recoveryRendered = renderRuntimeActivityFeed({
+  terminalColumns: 96,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_recovery",
+      payload: {
+        tool_name: "edit",
+        recovery_stage: "local_fix",
+        recommended_next_action: "reread_target_then_retry",
+        error_class: "edit_stale_target",
+      },
+    }),
+    event({
+      eventType: "tool_recovery",
+      payload: {
+        tool_name: "web_scan",
+        recovery_stage: "ask_user",
+        recommended_next_action: "request_environment_fix",
+        error_class: "browser_backend_result_error",
+      },
+    }),
+    event({
+      eventType: "tool_recovery",
+      payload: {
+        tool_name: "read",
+        recovery_stage: "observe_first",
+        recommended_next_action: "observe_prior_tool_result",
+        error_class: "tool_execution_deferred",
+      },
+    }),
+    event({
+      eventType: "tool_recovery",
+      payload: {
+        tool_name: "mcp_call",
+        recovery_stage: "strategy_switch",
+        recommended_next_action: "inspect_visible_tool_schema_then_retry",
+        error_class: "mcp_rpc_error",
+      },
+    }),
+  ],
+});
 
 const emptyRendered = renderRuntimeActivityFeed({
   events: [
@@ -220,10 +262,14 @@ const turnOutputNonInteractive = buildTurnTerminalOutputSegments({
 });
 const plain = stripAnsi(rendered);
 const fullPlain = stripAnsi(fullRendered);
+const recoveryPlain = stripAnsi(recoveryRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const payload = {
   renders_real_tool_rows: plain.includes("搜索") && plain.includes("读取 gateway/src"),
+  uses_reference_tool_status_dot:
+    plain.trimStart().startsWith("● 搜索")
+    && !plain.trimStart().startsWith("• 搜索"),
   compact_hides_key_value_details:
     !plain.includes("matches=")
     && !plain.includes("engine=")
@@ -238,7 +284,7 @@ const payload = {
     fullPlain.includes("  ⎿  1 处替换，行 42")
     && !fullPlain.includes("replacements=1 line=42"),
   renders_write_create_with_reference_preview:
-    plain.includes("写入 12 行 到 gateway/src/generated-file.ts")
+    plain.includes("写入 gateway/src/generated-file.ts · 12 行")
     && fullPlain.includes("  ⎿  line-01")
     && fullPlain.includes("  ⎿  line-10")
     && fullPlain.includes("  ⎿  … 还有 2 行，Ctrl+O 展开"),
@@ -248,9 +294,29 @@ const payload = {
     fullPlain.includes("  ⎿  12 个匹配 rg 15ms")
     && !fullPlain.includes("  └ 12 个匹配 rg"),
   renders_failed_bash:
-    plain.includes("失败 运行") && fullPlain.includes("错误 bash_command_failed"),
+    plain.includes("运行失败")
+    && fullPlain.includes("错误 命令执行失败")
+    && !fullPlain.includes("错误 bash_command_failed"),
   renders_recovery_row:
-    plain.includes("恢复 bash") && fullPlain.includes("阶段 strategy_switch"),
+    plain.includes("恢复策略 · 运行")
+    && fullPlain.includes("  ⎿  切换策略 检查错误后切换策略 错误 命令执行失败")
+    && !fullPlain.includes("inspect_error_and_switch_strategy"),
+  recovery_rows_humanize_all_known_stages:
+    recoveryPlain.includes("本地修复 重新读取后重试 错误 目标文件已变化")
+    && recoveryPlain.includes("等待确认 需要修复环境 错误 浏览器后端错误")
+    && recoveryPlain.includes("先观察 先观察已有工具结果 错误 工具调用失败")
+    && recoveryPlain.includes("切换策略 检查可见工具参数后重试 错误 MCP 调用失败"),
+  recovery_rows_avoid_raw_stage_and_action_codes:
+    !recoveryPlain.includes("local_fix")
+    && !recoveryPlain.includes("ask_user")
+    && !recoveryPlain.includes("observe_first")
+    && !recoveryPlain.includes("reread_target_then_retry")
+    && !recoveryPlain.includes("request_environment_fix")
+    && !recoveryPlain.includes("observe_prior_tool_result")
+    && !recoveryPlain.includes("inspect_visible_tool_schema_then_retry"),
+  full_detail_hides_raw_error_class:
+    !fullPlain.includes("bash_command_failed")
+    && !fullPlain.includes("error_class="),
   nested_payload_supported: fullPlain.includes("12 个匹配 rg"),
   plan_file_write_uses_reference_label:
     plain.includes("计划已更新")

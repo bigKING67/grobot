@@ -11,6 +11,22 @@ import {
   collectContextEnginePromptQualityGuardStatusSurface,
 } from "./status-ts-rust-flow/context-engine-prompt-quality-guard-status.mjs";
 
+const STATUS_TEXT_FORBIDDEN_RAW_FRAGMENTS = [
+  "status: ok",
+  "Base URL",
+  "API Key",
+  "Profile",
+  "config_toml:",
+  "provider_source:",
+  "route_decision:",
+  "runtime_tool_quality:",
+  "context_engine:",
+  "runtime rpc error -32001",
+  "upstream_connect_failed",
+  "tool_not_visible",
+  "GROBOT_STATUS_LEGACY_TEXT",
+];
+
 export function runStatusTsRust(context, windowSize) {
   const {
     repoRoot,
@@ -37,6 +53,7 @@ export function runStatusTsRust(context, windowSize) {
     commandArgs.push("--context-graph-cache-window-size", String(Math.floor(windowSize)));
   }
   const result = runCommand(repoRoot, commandArgs);
+  const textResult = runCommand(repoRoot, commandArgs.filter((item) => item !== "--json"));
   const parsedStatus = parseJsonObjectSafe(result.stdout);
   const routeDecision = isObject(parsedStatus?.route_decision)
     ? parsedStatus.route_decision
@@ -149,6 +166,15 @@ export function runStatusTsRust(context, windowSize) {
     : null;
   return {
     ...result,
+    status_text_exit_code: textResult.exit_code,
+    status_text_uses_info_panel:
+      textResult.stdout.includes("Grobot 状态")
+      && textResult.stdout.includes("• 路由 ")
+      && textResult.stdout.includes("  ⎿"),
+    status_text_hides_raw_machine_lines:
+      STATUS_TEXT_FORBIDDEN_RAW_FRAGMENTS.every((fragment) => !textResult.stdout.includes(fragment)),
+    status_text_has_json_hint:
+      textResult.stdout.includes("grobot status --json"),
     status_json_parse_ok: Boolean(parsedStatus),
     status_has_route_decision: Boolean(routeDecision),
     status_has_route_observed: Boolean(routeObserved),

@@ -54,7 +54,7 @@ export function createRunStartUserCommandsRuntime(
       if (!normalizedInput) {
         input.writeStdout(buildCommandsSurface({
           title: "无效命令入口",
-          details: ['使用 "/commands" 打开命令管理。'],
+          details: ['输入 "/commands" 打开命令管理。'],
         }));
         return;
       }
@@ -156,7 +156,7 @@ export function createRunStartUserCommandsRuntime(
           title: "自定义命令已停用",
           details: [
             `/${record.name} 当前不可调用。`,
-            `使用: /commands enable ${record.name}`,
+            `重新启用 /commands enable ${record.name}`,
           ],
         }));
         return true;

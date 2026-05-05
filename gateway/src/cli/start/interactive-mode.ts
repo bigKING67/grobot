@@ -5,7 +5,7 @@ import {
   type SessionInteractiveRewindMode,
   type SessionMenuMode,
 } from "./session-interactive";
-import { printRunStartBanner } from "./banner";
+import { printRunStartBanner } from "./startup/banner";
 import { createRunStartInteractiveHandler } from "./interactive-handler";
 import {
   runSessionInputLoop,
@@ -20,7 +20,7 @@ import {
   type PlanReadyApprovalDecision,
   type PlanReadyApprovalRequest,
 } from "./plan-mode";
-import { type RunStartSessionSummary } from "./session-ops";
+import { type RunStartSessionSummary } from "./session/ops";
 import { listRunStartSlashSuggestions } from "./slash-suggestions";
 import { type RunStartPlanSuggestionState } from "./plan-suggestion-state";
 import {
@@ -404,6 +404,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
     workDir: input.workDir,
   });
   let terminalTitleSnapshot = "";
+  const queuedInputPreview: string[] = [];
   const dynamicPrompt = (): SessionPromptLayout => {
     const modelSnapshot = input.getModelSnapshot();
     const statusLineConfig = input.getStatusLineConfig();
@@ -432,6 +433,8 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
       promptLabel: "❯ ",
       pendingAskCount,
       pendingAskSummary: input.getPendingAskPromptSummary?.(),
+      queuedInputCount: queuedInputPreview.length,
+      queuedInputPreview: queuedInputPreview[0],
       running: activityController.isTurnActive(),
       config: statusLineConfig,
     });
@@ -513,6 +516,14 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
           planMode: input.isPlanMode(),
           pendingAskCount: input.getPendingAskQueueSize(),
         });
+      },
+      onQueueInputWhileRunning: (value) => {
+        queuedInputPreview.push(value);
+        pendingInputFrame.rerender();
+      },
+      onQueuedInputConsumed: () => {
+        queuedInputPreview.shift();
+        pendingInputFrame.rerender();
       },
       openHistorySearch: (historyInput) =>
         input.openHistorySearch({

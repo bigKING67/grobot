@@ -57,6 +57,8 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.slash_key_escape_hides_panel, true);
   assert.equal(startInputKeybindingContractPayload.slash_key_no_suggestions_noop, true);
   assert.equal(startInputKeybindingContractPayload.slash_overlay_partial_selected_highlighted, true);
+  assert.equal(startInputKeybindingContractPayload.slash_overlay_selected_description_is_muted, true);
+  assert.equal(startInputKeybindingContractPayload.slash_overlay_selected_description_not_brand_flooded, true);
   assert.equal(startInputKeybindingContractPayload.slash_overlay_exact_selected_highlighted, true);
   assert.equal(startInputKeybindingContractPayload.slash_overlay_scroll_window_keeps_selected_visible, true);
   assert.equal(startInputKeybindingContractPayload.slash_overlay_scroll_window_highlights_selected, true);
@@ -225,6 +227,7 @@ export async function runPlanCommandContracts() {
   assert.equal(startPlanModeContractPayload.draft_plan_surface_handled, true);
   assert.equal(startPlanModeContractPayload.draft_plan_surface_uses_status_title, true);
   assert.equal(startPlanModeContractPayload.draft_plan_surface_uses_relative_plan_file, true);
+  assert.equal(startPlanModeContractPayload.draft_plan_surface_uses_info_panel_rows, true);
   assert.equal(startPlanModeContractPayload.draft_plan_surface_has_read_only_boundary, true);
   assert.equal(startPlanModeContractPayload.draft_plan_surface_has_refine_hint, true);
   assert.equal(startPlanModeContractPayload.draft_plan_surface_hides_absolute_path, true);
@@ -252,6 +255,8 @@ export async function runPlanCommandContracts() {
   assert.equal(startPlanModeContractPayload.ready_approval_feedback_keeps_plan_mode, true);
   assert.equal(startPlanModeContractPayload.plan_interrupt_command_normal_mode_is_human, true);
   assert.equal(startPlanModeContractPayload.plan_interrupt_idle_plan_mode_is_human, true);
+  assert.equal(startPlanModeContractPayload.plan_interrupt_ignored_reason_is_human, true);
+  assert.equal(startPlanModeContractPayload.plan_interrupt_reason_fallback_avoids_raw_token, true);
   assert.equal(startPlanModeContractPayload.plan_cancel_empty_surface_is_human, true);
   assert.equal(startPlanModeContractPayload.plan_cancel_active_surface_is_human, true);
   assert.equal(startPlanModeContractPayload.plan_apply_no_active_surface_is_human, true);
@@ -299,13 +304,15 @@ export async function runPlanCommandContracts() {
   assert.equal(startPlanModeContractPayload.events_has_verification_pending, true);
   assert.equal(startPlanModeContractPayload.compact_plan_turn_failure_code_preserved, true);
   assert.equal(startPlanModeContractPayload.plan_turn_stdout_override_captures_plan_scaffolding, true);
-  assert.equal(startPlanModeContractPayload.plan_turn_working_notice_has_plan_bullet, true);
+  assert.equal(startPlanModeContractPayload.plan_turn_working_notice_uses_info_panel, true);
   assert.equal(startPlanModeContractPayload.compact_plan_turn_failure_surface_human, true);
   assert.equal(startPlanModeContractPayload.compact_plan_turn_failure_hides_machine_lines, true);
   assert.equal(startPlanModeContractPayload.verbose_plan_turn_failure_preserves_machine_lines, true);
   assert.equal(startPlanModeContractPayload.compact_plan_apply_failure_code_preserved, true);
   assert.equal(startPlanModeContractPayload.compact_plan_apply_failure_surface_human, true);
   assert.equal(startPlanModeContractPayload.compact_plan_apply_failure_hides_machine_lines, true);
+  assert.equal(startPlanModeContractPayload.compact_apply_failed_status_surface_shows_human_state, true);
+  assert.equal(startPlanModeContractPayload.compact_apply_failed_status_surface_hides_machine_fields, true);
   assert.equal(startPlanModeContractPayload.stderr_empty_on_success_path, true);
   logStep("start-plan-mode-contract");
 
@@ -340,6 +347,8 @@ export async function runPlanCommandContracts() {
   assert.equal(userCommandsContractPayload.command_created_surface_is_human, true);
   assert.equal(userCommandsContractPayload.command_disabled_surface_is_human, true);
   assert.equal(userCommandsContractPayload.command_list_surface_is_human, true);
+  assert.equal(userCommandsContractPayload.command_details_surface_is_human, true);
+  assert.equal(userCommandsContractPayload.command_surfaces_avoid_raw_labels, true);
   assert.equal(userCommandsContractPayload.menu_hint_is_reference_compact, true);
   assert.equal(userCommandsContractPayload.menu_hint_omits_secondary_key_chords, true);
   assert.equal(userCommandsContractPayload.menu_cancel_is_silent, true);

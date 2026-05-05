@@ -15,10 +15,10 @@ In `grobot`, "frontend" means the **interactive CLI/TUI surface** used by develo
 
 Current CLI implementation lives under `gateway/src/cli/*`. The active TUI
 render owners should live in `cli/tui/components/<component>/` role files, with
-`tui/screens/*-screen.ts` kept as thin compatibility re-exports only. React/Ink
-rendering adapters now live under `gateway/src/cli/tui/react/` and wrap
-component render contracts when the visual surface benefits from upstream-style
-composition.
+legacy `tui/screens/*-screen.ts` compatibility re-exports removed after import
+callers migrated to owner paths. React/Ink rendering adapters now live under
+`gateway/src/cli/tui/react/` and wrap component render contracts when the
+visual surface benefits from upstream-style composition.
 
 These guidelines define how to keep that interaction layer predictable, type-safe, and maintainable.
 

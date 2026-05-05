@@ -1,4 +1,4 @@
-import { type StatusIndicatorMode } from "../../tui/screens/status-indicator-screen";
+import { type StatusIndicatorMode } from "../../tui/components/status-indicator/render";
 
 export type InteractiveDiagnosticsMode = "compact" | "verbose" | "trace";
 export type ProcessFailureCategory = "runtime" | "context" | "ask-user" | "interrupt";
@@ -86,6 +86,16 @@ export function resolveProcessResultCode(result: "ok" | "error" | "interrupted")
     return "int";
   }
   return "ok";
+}
+
+export function renderProcessSummaryLabel(result: "ok" | "error" | "interrupted"): string {
+  if (result === "error") {
+    return "执行失败";
+  }
+  if (result === "interrupted") {
+    return "已中断";
+  }
+  return "执行完成";
 }
 
 export function resolveProcessSummaryDetail(): ProcessSummaryDetail {

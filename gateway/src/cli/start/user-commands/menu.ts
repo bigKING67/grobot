@@ -50,22 +50,22 @@ export async function openUserCommandsManagementMenu(input: {
         {
           id: "list",
           label: "列出命令",
-          description: "显示所有用户自定义命令和用法。",
+          description: "显示所有用户自定义命令。",
         },
         {
           id: "new",
           label: "创建命令",
-          description: "创建 /<name>，可附带 prompt 模板。",
+          description: "创建 /<name>，可附带提示词模板。",
         },
         {
           id: "set",
-          label: "更新 prompt",
-          description: "更新已有命令的 prompt。",
+          label: "更新模板",
+          description: "更新已有命令的提示词模板。",
         },
         {
           id: "show",
           label: "查看详情",
-          description: "输出命令元数据和 prompt 内容。",
+          description: "查看命令状态、位置和模板摘要。",
         },
         {
           id: "enable",
@@ -97,7 +97,7 @@ export async function openUserCommandsManagementMenu(input: {
     if (!name) {
       return;
     }
-    const prompt = await readMenuTextInput(input, input.withInputPaused, "prompt（可选）> ", { optional: true });
+    const prompt = await readMenuTextInput(input, input.withInputPaused, "模板（可选）> ", { optional: true });
     if (typeof prompt === "undefined") {
       return;
     }
@@ -109,7 +109,7 @@ export async function openUserCommandsManagementMenu(input: {
     if (!name) {
       return;
     }
-    const prompt = await readMenuTextInput(input, input.withInputPaused, "新 prompt> ");
+    const prompt = await readMenuTextInput(input, input.withInputPaused, "新模板> ");
     if (!prompt) {
       return;
     }

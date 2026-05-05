@@ -12,6 +12,7 @@ import {
   padToDisplayWidth,
   truncateDisplayWidth,
 } from "../../tui/terminal/display-width";
+import { renderPlanSurface } from "./info-surface";
 import { terminalStyle } from "../../tui/theme/terminal-style";
 
 function compactPlanApprovalFingerprint(value: string | undefined): string {
@@ -98,19 +99,19 @@ function buildHumanPlanPreviewLines(input: {
     extractPlanSectionBody(input.planContent, "Goal"),
   );
   if (goal) {
-    lines.push(`目标: ${goal}`);
+    lines.push(`目标 ${goal}`);
   }
   const scope = firstMeaningfulPlanSectionLine(
     extractPlanSectionBody(input.planContent, "Scope In"),
   );
   if (scope) {
-    lines.push(`范围: ${scope}`);
+    lines.push(`范围 ${scope}`);
   }
   const validation = firstMeaningfulPlanSectionLine(
     extractPlanSectionBody(input.planContent, "Validation"),
   );
   if (validation) {
-    lines.push(`验证: ${validation}`);
+    lines.push(`验证 ${validation}`);
   }
 
   if (lines.length <= 1) {
@@ -127,6 +128,31 @@ function buildHumanPlanPreviewLines(input: {
   return [...new Set(lines)].slice(0, PLAN_APPROVAL_CARD_MAX_LINES);
 }
 
+function formatPlanApplyDiagnosticHint(diagnostic: string): string {
+  switch (diagnostic.trim()) {
+    case "PLAN_APPLY_NO_ACTIVE_PLAN":
+      return "当前会话还没有可执行计划；先创建或打开计划后再执行。";
+    case "PLAN_APPLY_INVALID_STATUS":
+      return "计划状态不允许执行；需要重新规划或选择仍待确认的计划。";
+    case "PLAN_ENTER_ACTIVE_PLAN_MISSING":
+      return "进入计划模式后未生成活动计划；请重新发起计划。";
+    case "PLAN_PROGRESS_APPEND_FAILED":
+      return "计划备注没有写入成功；请打开计划文件确认状态。";
+    case "PLAN_REVIEW_ACTIVE_PLAN_MISSING":
+      return "计划更新后未找到活动计划；请重新打开当前计划。";
+    case "PLAN_REVIEW_ENTRY_MISSING":
+      return "计划记录缺失，无法完成评审；请重新生成计划。";
+    case "PLAN_APPROVAL_FAILED":
+      return "计划确认元数据未写入成功；请重新确认计划。";
+    case "PLAN_APPLY_STATUS_UPDATE_FAILED":
+      return "计划状态未能切换到执行中；请确认计划文件可写。";
+    case "PLAN_APPLY_APPROVAL_METADATA_MISSING":
+      return "缺少确认票据或计划快照；请重新确认计划后再执行。";
+    default:
+      return "计划执行准备未完成；开启详细 plan 日志可查看完整字段。";
+  }
+}
+
 export function buildPlanApplyStateSurface(input: {
   kind:
     | "no_active"
@@ -141,50 +167,57 @@ export function buildPlanApplyStateSurface(input: {
   detail?: string;
   diagnostic?: string;
 }): string {
-  const lines: string[] = [];
+  const detailLines: string[] = [];
+  let title = "计划执行准备失败";
+  let primary = "计划状态未更新。";
   switch (input.kind) {
     case "no_active":
-      lines.push(`${terminalStyle.planMode("●")} 当前没有可执行的计划`);
+      title = "当前没有可执行的计划";
+      primary = '请先使用 "/plan <goal>" 写出计划。';
       break;
     case "lock_recovered":
-      lines.push(`${terminalStyle.planMode("●")} 已恢复计划执行锁`);
+      title = "已恢复计划执行锁";
+      primary = "执行锁已恢复";
       break;
     case "already_applying":
-      lines.push(`${terminalStyle.planMode("●")} 计划正在执行中`);
+      title = "计划正在执行中";
+      primary = "请等待当前执行完成；需要停止时按 Esc。";
       break;
     case "invalid_status":
-      lines.push(`${terminalStyle.planMode("●")} 当前计划不能执行`);
+      title = "当前计划不能执行";
+      primary = `状态 ${input.statusLabel ?? "未知"}`;
       break;
     case "internal_failure":
-      lines.push(`${terminalStyle.planMode("●")} 计划执行准备失败`);
+      title = "计划执行准备失败";
+      primary = input.detail ?? "计划状态未更新。";
       break;
   }
   if (input.workDir && input.planPath) {
-    lines.push(
-      `  ${terminalStyle.muted(`计划文件: ${formatHumanPlanFilePath({
+    detailLines.push(
+      `计划文件 ${formatHumanPlanFilePath({
         workDir: input.workDir,
         planPath: input.planPath,
-      })}`)}`,
+      })}`,
     );
   }
-  if (input.kind === "no_active") {
-    lines.push(`  ${terminalStyle.muted('请先使用 "/plan <goal>" 写出计划。')}`);
-  } else if (input.kind === "lock_recovered") {
+  if (input.kind === "lock_recovered") {
     const staleText = Number.isFinite(input.staleMs) ? ` · stale ${String(input.staleMs)}ms` : "";
-    lines.push(`  ${terminalStyle.muted(`上次执行锁已过期，已安全恢复${staleText}。`)}`);
-  } else if (input.kind === "already_applying") {
-    lines.push(`  ${terminalStyle.muted("请等待当前执行完成；需要停止时按 Esc。")}`);
+    detailLines.push(`上次执行锁已过期，已安全恢复${staleText}。`);
   } else if (input.kind === "invalid_status") {
-    lines.push(`  ${terminalStyle.muted(`状态: ${input.statusLabel ?? "未知"}`)}`);
-    lines.push(`  ${terminalStyle.muted('如需重新规划，请使用 "/plan <goal>" 开始新计划。')}`);
-  } else {
-    lines.push(`  ${terminalStyle.muted(input.detail ?? "计划状态未更新。")}`);
+    detailLines.push('如需重新规划，请使用 "/plan <goal>" 开始新计划。');
   }
   if (input.diagnostic) {
-    lines.push(`  ${terminalStyle.muted(`诊断: ${input.diagnostic}`)}`);
+    detailLines.push(`详情 ${formatPlanApplyDiagnosticHint(input.diagnostic)}`);
   }
-  lines.push("");
-  return lines.join("\n");
+  return renderPlanSurface({
+    title,
+    rows: [
+      {
+        title: primary,
+        detailLines,
+      },
+    ],
+  });
 }
 
 function renderPlanCardBorderLine(input: {
@@ -262,10 +295,12 @@ export function buildApprovedPlanExecutionSurface(input: {
     planPath: input.planPath,
   });
   return [
-    `${terminalStyle.planMode("●")} 计划已确认`,
-    savedToHint
-      ? `  ${terminalStyle.muted(`已确认 · ${savedToHint}`)}`
-      : `  ${terminalStyle.muted("已确认")}`,
+    renderPlanSurface({
+      title: "计划已确认",
+      rows: [{
+        title: savedToHint ? `已确认 · ${savedToHint}` : "已确认",
+      }],
+    }),
     ...renderApprovedPlanCard(input),
     "开始按已确认快照实现...",
     "",

@@ -57,7 +57,7 @@ import {
   resolveSessionPlatformOption,
   resolveSessionScopeOption,
   resolveSessionSubjectOption,
-} from "../start/session-options";
+} from "../start/session/options";
 import {
   readGraphCacheCounter,
   resolveContextEngineRuntimeModelConfig,
@@ -93,6 +93,18 @@ import { resolveRuntimeToolContextPreview } from "./runtime-tool-context-preview
 import { serializeRuntimeToolsStatus } from "./runtime-tool-json";
 import { buildRuntimeToolQualitySummary } from "./runtime-tool-quality";
 import { formatRuntimeToolStatusLines } from "./runtime-tool-status-lines";
+import { renderInfoPanel } from "../tui/components/info-panel/render";
+import {
+  displayValue,
+  enabledText,
+  formatProbeSummary,
+  formatRouteSummary,
+  formatRuntimeHealthSummary,
+  humanizeConfigSource,
+  humanizeExecutionSource,
+  humanizeMachineToken,
+  humanizeStatusSource,
+} from "./human-status-format";
 
 export async function runStatus(options: Record<string, OptionValue>): Promise<number> {
   const outputJson = hasFlag(options, "json");
@@ -571,6 +583,60 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       probe: serializeStatusProviderProbe(providerProbe.probeResult),
     };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return providerProbe.exitCode;
+  }
+
+  if (process.env.GROBOT_STATUS_LEGACY_TEXT !== "1") {
+    const runtimeHealthRow = formatRuntimeHealthSummary(runtimeHealth, runtimeBinaryPath);
+    const probeRow = formatProbeSummary(providerProbe.probeResult);
+    process.stdout.write(renderInfoPanel({
+      title: "Grobot 状态",
+      subtitle: "默认显示可操作摘要；完整机器快照用 grobot status --json。",
+      sections: [{
+        rows: [
+          {
+            title: "运行正常",
+            detailLines: [
+              `引擎 ${humanizeMachineToken(CLI_PRODUCT_ENGINE)}`,
+              `项目 ${projectName}`,
+              `目录 ${workDir}`,
+              `配置 ${humanizeConfigSource(configSource)}`,
+            ],
+          },
+          {
+            title: `模型 ${displayValue(modelName)}`,
+            detailLines: [
+              `通道 ${displayValue(providerName)}`,
+              `配置 ${humanizeStatusSource(projectProviderSnapshot?.source, configSource)}`,
+              `接口 ${displayValue(baseUrl)}`,
+              `密钥 ${displayValue(maskedApiKey)}`,
+            ],
+          },
+          formatRouteSummary(routeDecision),
+          {
+            title: `执行 Gateway ${executionPlane.gatewayImpl} · Runtime ${executionPlane.runtimeImpl}`,
+            detailLines: [
+              `来源 Gateway ${humanizeExecutionSource(executionPlane.gatewayImplSource)} · Runtime ${humanizeExecutionSource(executionPlane.runtimeImplSource)}`,
+              `影子执行 ${enabledText(executionPlane.shadowMode)}`,
+            ],
+          },
+          {
+            title: `上下文 ${enabledText(contextEngineConfig.enabled)}`,
+            detailLines: [
+              `窗口 ${String(contextEngineEffectiveWindowTokens)}`,
+              `目标 ${String(contextEngineTokenBudget.targetTokenLimit)}`,
+              `自动压缩 ${String(contextEngineTokenBudget.autoCompactTokenLimit)}`,
+              `策略 ${humanizeMachineToken(contextEngineConfig.profile)}`,
+            ],
+          },
+          ...(runtimeHealthRow ? [runtimeHealthRow] : []),
+          ...(probeRow ? [probeRow] : []),
+        ],
+      }],
+      footerLines: [
+        "完整机器快照 grobot status --json",
+      ],
+    }));
     return providerProbe.exitCode;
   }
 

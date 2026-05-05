@@ -37,13 +37,13 @@ export function runInputChromeChecks(): ContractPayload {
     theme: "ccline",
   });
   const submittedPlanTranscriptLines = renderSubmittedInputTranscriptLines({
-    value: "/plan 帮我规划 plan mode 交互",
+    value: "/plan 帮我规划计划模式交互",
     promptLabel: "❯ ",
     terminalColumns: 96,
     theme: "ccline",
     getSlashSuggestions: (input) =>
       input === "/plan"
-        ? [{ command: "/plan", description: "进入 plan mode" }]
+        ? [{ command: "/plan", description: "进入计划模式" }]
         : [],
   });
   const submittedTranscriptPlain = submittedTranscriptLines
@@ -124,7 +124,8 @@ export function runInputChromeChecks(): ContractPayload {
     submitted_transcript_lines_within_width:
       submittedTranscriptLines.every((line) => measureDisplayWidth(line) <= 96),
     submitted_slash_transcript_preserves_command_highlight:
-      submittedPlanTranscriptPlain.includes("❯ /plan 帮我规划 plan mode 交互")
-      && submittedPlanTranscriptRaw.includes(expectedPlanHighlight),
+      submittedPlanTranscriptPlain.includes("❯ /plan 帮我规划计划模式交互")
+      && submittedPlanTranscriptRaw.includes(expectedPlanHighlight)
+      && !submittedPlanTranscriptPlain.includes("plan mode"),
   };
 }

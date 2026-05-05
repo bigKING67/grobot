@@ -17,20 +17,14 @@ function parseModelField(
     model: "模型",
     source: "来源",
     session_id: "会话",
-    session_title: "标题",
-    session_summary: "摘要",
+    session_title: "主题",
+    session_summary: "重点",
   }[key];
-  const marker = `${localizedKey}: `;
-  const index = snapshot.indexOf(marker);
-  if (index < 0) {
+  const match = new RegExp(`(?:^|\\n)\\s*(?:⎿\\s+)?${localizedKey}(?:[:：])?\\s+([^\\n]+)`).exec(snapshot);
+  if (!match) {
     return "";
   }
-  const start = index + marker.length;
-  const end = snapshot.indexOf("\n", start);
-  if (end < 0) {
-    return snapshot.slice(start).trim();
-  }
-  return snapshot.slice(start, end).trim();
+  return (match[1] ?? "").trim();
 }
 
 function hidesModelMachineSurface(snapshot: string): boolean {
@@ -38,6 +32,7 @@ function hidesModelMachineSurface(snapshot: string): boolean {
     "[model]",
     "[model-list]",
     "供应商=",
+    "供应商:",
     "模型=",
     "来源=",
     "路径=",
@@ -182,15 +177,32 @@ async function main(): Promise<void> {
     initial_session_title: parseModelField(initialSnapshot, "session_title"),
     initial_session_summary: parseModelField(initialSnapshot, "session_summary"),
     model_current_surface_is_human:
-      initialSnapshot.includes("● 当前模型")
+      initialSnapshot.includes("当前模型")
+      && !initialSnapshot.includes("● 当前模型")
+      && initialSnapshot.includes("• 通道 provider-main")
+      && initialSnapshot.includes("⎿  模型 model-default")
+      && initialSnapshot.includes("⎿  会话 session-main")
+      && initialSnapshot.includes("⎿  主题 Main Session")
+      && initialSnapshot.includes("⎿  重点 Trace model override and reset contract")
+      && !initialSnapshot.includes("供应商")
+      && !initialSnapshot.includes("标题")
+      && !initialSnapshot.includes("摘要")
+      && !initialSnapshot.includes("模型:")
+      && !initialSnapshot.includes("会话:")
       && hidesModelMachineSurface(initialSnapshot),
     model_switch_surface_is_human:
-      switchModelOutput.includes("● 已切换模型")
-      && switchModelOutput.includes("配置: /tmp/grobot-contract.config.toml")
+      switchModelOutput.includes("已切换模型")
+      && !switchModelOutput.includes("● 已切换模型")
+      && switchModelOutput.includes("• 通道 provider-main")
+      && switchModelOutput.includes("⎿  模型 model-variant")
+      && switchModelOutput.includes("⎿  配置 /tmp/grobot-contract.config.toml")
       && hidesModelMachineSurface(switchModelOutput),
     model_reset_surface_is_human:
-      resetModelOutput.includes("● 已恢复启动模型")
-      && resetModelOutput.includes("配置: /tmp/grobot-contract.config.toml")
+      resetModelOutput.includes("已恢复启动模型")
+      && !resetModelOutput.includes("● 已恢复启动模型")
+      && resetModelOutput.includes("• 通道 provider-main")
+      && resetModelOutput.includes("⎿  模型 model-default")
+      && resetModelOutput.includes("⎿  配置 /tmp/grobot-contract.config.toml")
       && hidesModelMachineSurface(resetModelOutput),
     main_model_after_use: parseModelField(mainSessionSnapshot, "model"),
     main_source_after_use: parseModelField(mainSessionSnapshot, "source"),
@@ -221,23 +233,29 @@ async function main(): Promise<void> {
     persist_first_call: persistCalls[0] ?? "",
     persist_second_call: persistCalls[1] ?? "",
     list_surface_is_human:
-      listedSnapshot.includes("● 可用模型")
-      && listedSnapshot.includes("供应商: provider-main")
-      && listedSnapshot.includes("当前: model-default")
+      listedSnapshot.includes("可用模型")
+      && !listedSnapshot.includes("● 可用模型")
+      && listedSnapshot.includes("通道 provider-main")
+      && listedSnapshot.includes("⎿  当前 model-default · 2 个模型")
+      && !listedSnapshot.includes("供应商")
+      && !listedSnapshot.includes("当前:")
+      && !listedSnapshot.includes("数量")
       && hidesModelMachineSurface(listedSnapshot),
     list_output_has_current_marker: listedSnapshot.includes("* model-default"),
-    list_output_has_variant: listedSnapshot.includes(" model-variant"),
+    list_output_has_variant: listedSnapshot.includes("• model-variant"),
     model_menu_pause_calls: pauseCalls,
     model_menu_variant: capturedModelMenu?.variant ?? "",
     model_menu_title_is_localized:
       capturedModelMenu?.title === "选择模型",
     model_menu_subtitle_is_compact:
-      capturedModelMenu?.subtitle === "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
+      capturedModelMenu?.subtitle === "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
     model_menu_hint_is_reference_compact:
       capturedModelMenu?.hint === "Enter 确认 · Esc 返回",
     model_menu_initial_index_points_to_current:
       capturedModelMenu?.initialIndex === 0,
     model_menu_current_item_marked: capturedCurrentItem?.current === true,
+    model_menu_omits_noisy_default_descriptions:
+      capturedModelMenu?.items.every((item) => item.description !== "Provider 可用") === true,
     model_menu_meta_current_model:
       capturedModelMenu?.modelPickerMeta?.currentModel ?? "",
     model_menu_meta_startup_model:

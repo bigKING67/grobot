@@ -6,10 +6,9 @@ import type {
 } from "./contract";
 import {
   compactSpaces,
-  measureDisplayWidth,
-  truncateDisplayWidth,
 } from "../../terminal/display-width";
-import { terminalStyle } from "../../theme/terminal-style";
+import { renderReactRuntimeActivityFeed } from "../../react/activity-feed";
+import { formatTuiErrorClassLabel } from "../error-labels";
 
 const DEFAULT_MAX_ITEMS = 8;
 const DEFAULT_MAX_DIFF_LINES = 5;
@@ -248,6 +247,65 @@ function detailFromParts(parts: string[]): string | undefined {
   return detail || undefined;
 }
 
+function formatToolStatusTitle(status: string, label: string): string {
+  if (status === "failed") {
+    return `${label}失败`;
+  }
+  if (status === "deferred") {
+    return `${label}已延后`;
+  }
+  return label;
+}
+
+function formatRecoveryAction(value: string): string {
+  switch (value) {
+    case "inspect_visible_tool_schema_then_retry":
+      return "检查可见工具参数后重试";
+    case "inspect_error_and_switch_strategy":
+      return "检查错误后切换策略";
+    case "switch_tool_strategy":
+      return "切换工具策略";
+    case "use_suggested_distinct_tool":
+      return "改用建议工具";
+    case "reread_target_then_retry":
+      return "重新读取后重试";
+    case "request_environment_fix":
+      return "需要修复环境";
+    case "observe_prior_tool_result":
+      return "先观察已有工具结果";
+    case "inspect_runtime_tool_recovery_policy":
+      return "检查工具恢复策略";
+    case "ask_user_for_config_or_switch_provider":
+      return "需要配置或切换通道";
+    case "observe_and_continue":
+      return "观察结果后继续";
+    case "avoid_unknown_tool":
+      return "避开未知工具";
+    case "":
+      return "";
+    default:
+      return value.replace(/_/g, " ");
+  }
+}
+
+function formatRecoveryStage(value: string): string {
+  switch (value) {
+    case "strategy_switch":
+      return "切换策略";
+    case "ask_user":
+      return "等待确认";
+    case "local_fix":
+      return "本地修复";
+    case "observe_first":
+      return "先观察";
+    case "none":
+    case "":
+      return "";
+    default:
+      return value.replace(/[_-]+/g, " ");
+  }
+}
+
 function formatOperationLabel(operation: string): string {
   switch (operation) {
     case "create":
@@ -290,7 +348,7 @@ function buildToolEndRow(
   if (isPlanFileTool(toolName, path)) {
     const detailLines = status === "failed" ? [] : ["/plan 预览"];
     if (errorClass) {
-      detailLines.push(`错误 ${errorClass}`);
+      detailLines.push(`错误 ${formatTuiErrorClassLabel(errorClass)}`);
     }
     return {
       title: status === "failed"
@@ -302,11 +360,7 @@ function buildToolEndRow(
       severity,
     };
   }
-  const titlePrefix = status === "failed"
-    ? `失败 ${label}`
-    : status === "deferred"
-      ? `延后 ${label}`
-      : label;
+  const titlePrefix = formatToolStatusTitle(status, label);
   const diff = firstRawString(payloadString(summary, "diff"), payloadString(summary, "diff_preview"));
   const stats = diffStats(diff);
   const titleSuffix = toolName === "edit" && (stats.added > 0 || stats.removed > 0)
@@ -382,7 +436,11 @@ function buildToolEndRow(
     const bytesWritten = firstNumber(payloadNumber(summary, "bytes_written"));
     const preview = compactWriteContentPreview(summary);
     if (status !== "failed" && status !== "deferred" && typeof preview.lineCount === "number") {
-      title = compactSpaces(`写入 ${String(preview.lineCount)} 行${path ? ` 到 ${path}` : ""}`);
+      title = compactSpaces(
+        path
+          ? `写入 ${path} · ${String(preview.lineCount)} 行`
+          : `写入 ${String(preview.lineCount)} 行`,
+      );
     }
     if (preview.lines.length > 0) {
       detailLines.push(...preview.lines);
@@ -416,7 +474,7 @@ function buildToolEndRow(
   }
 
   if (errorClass) {
-    detailLines.push(`错误 ${errorClass}`);
+    detailLines.push(`错误 ${formatTuiErrorClassLabel(errorClass)}`);
   }
   return {
     title,
@@ -428,6 +486,7 @@ function buildToolEndRow(
 function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
   const payload = normalizePayload(event);
   const toolName = payloadString(payload, "tool_name") || "unknown_tool";
+  const label = humanToolLabel(toolName);
   const stage = firstString(payloadString(payload, "recovery_stage"), payloadString(payload, "stage"));
   if (!stage || stage === "none") {
     return undefined;
@@ -435,12 +494,12 @@ function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
   const action = firstString(payloadString(payload, "recommended_next_action"));
   const errorClass = firstString(payloadString(payload, "error_class"));
   return {
-    title: `恢复 ${toolName}`,
+    title: `恢复策略 · ${label}`,
     detailLines: [
       detailFromParts([
-        `阶段 ${stage}`,
-        action ? `建议 ${action}` : "",
-        errorClass ? `错误 ${errorClass}` : "",
+        formatRecoveryStage(stage),
+        formatRecoveryAction(action),
+        errorClass ? `错误 ${formatTuiErrorClassLabel(errorClass)}` : "",
       ]) ?? "",
     ].filter(Boolean),
     severity: "warning",
@@ -468,22 +527,6 @@ function buildRows(input: RuntimeActivityFeedInput): ActivityFeedRow[] {
   return rows.slice(0, maxItems);
 }
 
-function fitLine(line: string, terminalColumns: number): string {
-  if (terminalColumns <= 0 || measureDisplayWidth(line) <= terminalColumns) {
-    return line;
-  }
-  return truncateDisplayWidth(line, terminalColumns, { compact: true });
-}
-
-function styleTitle(row: ActivityFeedRow, line: string): string {
-  const bullet = row.severity === "ok"
-    ? terminalStyle.brand("•")
-    : row.severity === "warning"
-      ? terminalStyle.remember("•")
-      : terminalStyle.info("•");
-  return `${bullet} ${line}`;
-}
-
 export function renderRuntimeActivityFeed(input: RuntimeActivityFeedInput): string {
   if (input.detailMode === "none") {
     return "";
@@ -496,15 +539,10 @@ export function renderRuntimeActivityFeed(input: RuntimeActivityFeedInput): stri
   const terminalColumns = typeof input.terminalColumns === "number" && Number.isFinite(input.terminalColumns)
     ? Math.max(24, Math.floor(input.terminalColumns))
     : DEFAULT_TERMINAL_COLUMNS;
-  const output: string[] = [];
-  for (const row of rows) {
-    output.push(styleTitle(row, fitLine(row.title, Math.max(1, terminalColumns - 2))));
-    if (detailMode === "full") {
-      for (const detail of row.detailLines) {
-        const plain = `  ⎿  ${detail}`;
-        output.push(terminalStyle.muted(fitLine(plain, terminalColumns)));
-      }
-    }
-  }
-  return `${output.join("\n")}\n`;
+  const rendered = renderReactRuntimeActivityFeed({
+    rows,
+    detailMode,
+    terminalColumns,
+  });
+  return rendered ? `${rendered}\n` : "";
 }

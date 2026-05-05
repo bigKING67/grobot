@@ -1,7 +1,7 @@
 import { runGatewayTurn } from "../../orchestration/main";
 import { loadGrobotSystemPrompt } from "../system/gro-system-prompt";
-import { compactSingleLine } from "./session-history";
-import { parsePlatform, parseScope } from "./session-options";
+import { compactSingleLine } from "./session/history";
+import { parsePlatform, parseScope } from "./session/options";
 import {
   renderRuntimeFailureSummary,
   renderRuntimeOpenCircuitNotice,

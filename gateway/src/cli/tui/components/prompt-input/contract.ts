@@ -13,6 +13,8 @@ export type SessionEscapeInterruptPhase = "idle" | "running";
 
 export interface SessionInputLoopOptions {
   onEscapeInterrupt?: (phase: SessionEscapeInterruptPhase) => void | Promise<void>;
+  onQueueInputWhileRunning?: (value: string) => void;
+  onQueuedInputConsumed?: (value: string) => void;
   getSlashSuggestions?: (input: string) => readonly SessionSlashSuggestion[];
   getInlineImageHighlightTheme?: () => "plain" | "nerd_font" | "ccline" | undefined;
   shouldSuppressSubmitTranscript?: (value: string) => boolean;
@@ -72,6 +74,13 @@ export type ShortcutOverlayKeyAction = "none" | "toggle_overlay" | "insert_text"
 
 export type InputShortcutAction = "none" | "sigint" | "history_search";
 
+export type RunningInputAction =
+  | { kind: "append"; value: string }
+  | { kind: "backspace" }
+  | { kind: "interrupt" }
+  | { kind: "submit_queue" }
+  | { kind: "none" };
+
 export type TerminalLinePromptResult =
   | { kind: "submitted"; value: string }
   | { kind: "cancelled" };
@@ -91,6 +100,7 @@ export interface PromptInputTurnRuntime {
   keypressInput: KeypressInputStream;
   controls: SessionInputLoopControls;
   options: SessionInputLoopOptions;
+  initialInput?: string;
   getPauseDepth(): number;
   getEscArmedAt(): number;
   setEscArmedAt(value: number): void;

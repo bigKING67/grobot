@@ -1,4 +1,4 @@
-import { buildPromptWithHistory } from "../../../../cli/start/session-history";
+import { buildPromptWithHistory } from "../../../../cli/start/session/history";
 import {
   computeUtilization,
   estimateTokensFromText,

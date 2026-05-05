@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { type StatusLineConfigInput } from "../../tui/screens/status-line-screen";
+import { type StatusLineConfigInput } from "../../tui/components/status-line/contract";
 import {
   parsePercentageAsRatio,
   parseTomlBoolean,

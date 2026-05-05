@@ -159,10 +159,11 @@ function buildNavigationTabs(
   const tabs = queue.map((envelope, index): AskUserQuestionnaireTab => {
     const key = resolveAnswerKey(envelope);
     const hasAnswer = typeof state.answers[key] === "string" && state.answers[key].trim().length > 0;
+    const isCurrentQuestion = state.mode !== "review" && index === state.currentQuestionIndex;
     return {
       index,
       label: resolveEnvelopeHeader(envelope, index),
-      status: index === state.currentQuestionIndex ? "current" : hasAnswer ? "answered" : "pending",
+      status: isCurrentQuestion ? "current" : hasAnswer ? "answered" : "pending",
     };
   });
   if (queue.length > 1) {
@@ -176,11 +177,14 @@ function buildNavigationTabs(
 }
 
 function formatQuestionnaireTab(tab: AskUserQuestionnaireTab): string {
+  if (tab.label === "提交") {
+    return tab.status === "current" ? "[✓ 提交]" : "✓ 提交";
+  }
   if (tab.status === "current") {
-    return `[${tab.label}]`;
+    return `[□ ${tab.label}]`;
   }
   if (tab.status === "answered") {
-    return `${tab.label} ✓`;
+    return `✓ ${tab.label}`;
   }
   return tab.label;
 }

@@ -170,8 +170,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   });
   const upstreamFailurePayload = parseJsonOutput("start-smoke-contract failover-runs-ts-rust upstream-failure", upstreamFailureResult.stdout);
   assert.equal(upstreamFailurePayload.exit_code !== 0, true);
-  assert.equal(String(upstreamFailurePayload.stderr).includes("runtime rpc error -32001"), true);
-  assert.equal(String(upstreamFailurePayload.stderr).includes("class=upstream_connect_failed"), true);
+  assert.equal(String(upstreamFailurePayload.stderr).includes("回合执行失败"), true);
+  assert.equal(String(upstreamFailurePayload.stderr).includes("上游连接失败"), true);
+  assert.equal(String(upstreamFailurePayload.stderr).includes("runtime rpc error -32001"), false);
+  assert.equal(String(upstreamFailurePayload.stderr).includes("upstream_connect_failed"), false);
   logStep("start-smoke-contract failover-runs-ts-rust-upstream-failure");
 
   const toolCallFailureResult = runContract(
@@ -185,7 +187,9 @@ export async function runRuntimeFailoverAndToolSmoke() {
     toolCallFailureResult.stdout,
   );
   assert.equal(toolCallFailurePayload.exit_code !== 0, true);
-  assert.equal(String(toolCallFailurePayload.stderr).includes("class=tool_not_visible"), true);
+  assert.equal(String(toolCallFailurePayload.stderr).includes("回合执行失败"), true);
+  assert.equal(String(toolCallFailurePayload.stderr).includes("工具不可见"), true);
+  assert.equal(String(toolCallFailurePayload.stderr).includes("tool_not_visible"), false);
   assert.equal(Number(toolCallFailurePayload.runtime_call_count) >= 1, true);
   logStep("runtime-smoke-contract tool-call-fail-fast");
 

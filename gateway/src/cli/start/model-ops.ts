@@ -9,6 +9,8 @@ import {
   type TerminalSelectMenuResult,
 } from "../tui/components/select-menu/contract";
 import { runTerminalSelectMenu } from "../tui/components/select-menu/controller";
+import { renderInfoPanel } from "../tui/components/info-panel/render";
+import type { InfoPanelRow } from "../tui/components/info-panel/contract";
 import {
   persistRunStartModelToConfig,
   type PersistRunStartModelToConfigResult,
@@ -173,7 +175,7 @@ function resolveModelMenuDescription(input: {
   if (contextWindow) {
     return contextWindow;
   }
-  return "Provider 可用";
+  return "";
 }
 
 function buildModelMenuItems(input: {
@@ -214,15 +216,19 @@ function buildModelNotice(
   title: string,
   lines: ReadonlyArray<string> = [],
 ): string {
-  return [
-    `● ${title}`,
-    ...lines
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => `  ${line}`),
-    "",
-    "",
-  ].join("\n");
+  const normalized = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const [primary, ...details] = normalized;
+  return renderInfoPanel({
+    title,
+    sections: [{
+      rows: [{
+        title: primary ?? "无更多信息",
+        detailLines: details,
+      }],
+    }],
+  });
 }
 
 function buildPersistedModelLines(input: {
@@ -232,10 +238,10 @@ function buildPersistedModelLines(input: {
   path?: string;
 }): string[] {
   return [
-    `供应商: ${input.providerName}`,
-    `模型: ${input.modelId}`,
-    `来源: ${input.source}`,
-    ...(input.path ? [`配置: ${input.path}`] : []),
+    `通道 ${input.providerName}`,
+    `模型 ${input.modelId}`,
+    `来源 ${input.source}`,
+    ...(input.path ? [`配置 ${input.path}`] : []),
   ];
 }
 
@@ -306,7 +312,7 @@ export function createRunStartModelOps(
       if (!connection.baseUrl || !connection.apiKey) {
         return {
           ok: false,
-          message: "当前供应商缺少 base_url/api_key",
+          message: "当前通道缺少接口地址或密钥",
         };
       }
       const listed = await listProviderModelsByConnection(
@@ -372,7 +378,7 @@ export function createRunStartModelOps(
     if (!target.modelConfig) {
       return {
         ok: false,
-        message: "运行时供应商模型配置不可用",
+        message: "运行时模型通道配置不可用",
       };
     }
     const persisted = await persistModelToConfig({
@@ -408,8 +414,8 @@ export function createRunStartModelOps(
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(modelId)) {
       input.writeStdout(buildModelNotice("切换模型失败", [
-        `"${modelId}" 不在供应商 ${available.providerName} 的模型列表中。`,
-        `可用模型: ${available.modelIds.join(", ")}`,
+        `"${modelId}" 不在通道 ${available.providerName} 的模型列表中。`,
+        `可用模型 ${available.modelIds.join(", ")}`,
       ]));
       return;
     }
@@ -453,12 +459,12 @@ export function createRunStartModelOps(
     );
     input.writeStdout(
       buildModelNotice("当前模型", [
-        `供应商: ${snapshot.providerName}`,
-        `模型: ${snapshot.model}`,
-        `来源: ${snapshot.source}`,
-        `会话: ${activeSessionId}`,
-        `标题: ${sessionTitle}`,
-        `摘要: ${sessionSummary}`,
+        `通道 ${snapshot.providerName}`,
+        `模型 ${snapshot.model}`,
+        `来源 ${snapshot.source}`,
+        `会话 ${activeSessionId}`,
+        ...(sessionTitle === "<untitled>" ? [] : [`主题 ${sessionTitle}`]),
+        ...(sessionSummary === "<none>" ? [] : [`重点 ${sessionSummary}`]),
       ]),
     );
   };
@@ -474,22 +480,28 @@ export function createRunStartModelOps(
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
       input.writeStdout(buildModelNotice("没有可用模型", [
-        `供应商: ${available.providerName}`,
+        `通道 ${available.providerName}`,
       ]));
       return;
     }
-    input.writeStdout([
-      "● 可用模型",
-      `  供应商: ${available.providerName}`,
-      `  当前: ${available.currentModel ?? "<unset>"}`,
-      `  数量: ${String(available.modelIds.length)}`,
-      "",
-    ].join("\n"));
+    const rows: InfoPanelRow[] = [{
+      title: `通道 ${available.providerName}`,
+      detailLines: [
+        `当前 ${available.currentModel ?? "<unset>"} · ${String(available.modelIds.length)} 个模型`,
+      ],
+    }];
     for (const modelId of available.modelIds) {
-      const marker = modelId === available.currentModel ? "*" : " ";
-      input.writeStdout(`${marker} ${modelId}\n`);
+      rows.push({
+        title: modelId === available.currentModel
+          ? `* ${modelId}`
+          : modelId,
+        tone: modelId === available.currentModel ? "brand" : "muted",
+      });
     }
-    input.writeStdout("\n");
+    input.writeStdout(renderInfoPanel({
+      title: "可用模型",
+      sections: [{ rows }],
+    }));
   };
 
   const useModel = async (modelIdRaw: string): Promise<void> => {
@@ -520,8 +532,8 @@ export function createRunStartModelOps(
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (!available.modelIds.includes(startupPrimaryModel)) {
       input.writeStdout(buildModelNotice("恢复启动模型失败", [
-        `启动模型 "${startupPrimaryModel}" 不在供应商 ${available.providerName} 的模型列表中。`,
-        `可用模型: ${available.modelIds.join(", ")}`,
+        `启动模型 "${startupPrimaryModel}" 不在通道 ${available.providerName} 的模型列表中。`,
+        `可用模型 ${available.modelIds.join(", ")}`,
       ]));
       return;
     }
@@ -555,7 +567,7 @@ export function createRunStartModelOps(
     updateModelContextWindowTokensCache(available.modelContextWindowTokensById);
     if (available.modelIds.length === 0) {
       input.writeStdout(buildModelNotice("没有可用模型", [
-        `供应商: ${available.providerName}`,
+        `通道 ${available.providerName}`,
       ]));
       return;
     }
@@ -573,7 +585,7 @@ export function createRunStartModelOps(
       runSelectMenu({
         title: "选择模型",
         subtitle:
-          "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
+          "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
         hint: "Enter 确认 · Esc 返回",
         items,
         initialIndex,

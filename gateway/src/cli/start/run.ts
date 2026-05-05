@@ -11,7 +11,7 @@ import {
   createRunStartModelOps,
   type RunStartModelOps,
 } from "./model-ops";
-import { createRunStartSessionMenuOps } from "./session-menu-ops";
+import { createRunStartSessionMenuOps } from "./session/menu-ops";
 import { runStartMessageMode } from "./message-mode";
 import { createRunStartOutput } from "./output";
 import { createRunStartPersistence } from "./persistence";
@@ -37,25 +37,25 @@ import {
   resolveExperienceSchedulerConfig,
 } from "../services/experience-scheduler";
 import { type RuntimeAttachment } from "../../models/types";
-import { isTruthyEnvFlag } from "./startup-env";
+import { isTruthyEnvFlag } from "./startup/env";
 import {
   applyContextWindowOverride,
   normalizePositiveInt,
-} from "./context-window-runtime";
+} from "./context/window-runtime";
 import {
   buildExperienceSchedulerTaskFailedSurface,
   buildExperienceSchedulerTickErrorSurface,
   buildMcpInstructionStrictFailureSurface,
   buildRuntimeToolsFallbackSurface,
   formatDiagnosticToken,
-} from "./startup-surfaces";
+} from "./startup/surfaces";
 import {
   runMemoryMaintenanceRuntime,
   type MemoryMaintenanceReason,
 } from "./memory-maintenance-runtime";
 import { createRuntimeInterruptController } from "./runtime-interrupt-controller";
 import { createTurnExecutionController } from "./turn-execution-controller";
-import { runStartupSessionActions } from "./startup-session-actions";
+import { runStartupSessionActions } from "./startup/session-actions";
 
 export async function runStart(
   options: Record<string, OptionValue>,

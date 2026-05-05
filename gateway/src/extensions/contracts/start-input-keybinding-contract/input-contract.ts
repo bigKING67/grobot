@@ -1,9 +1,12 @@
 import {
   decodeAskUserPanelInput,
 } from "../../../cli/tui/components/ask-user-panel/reducer";
+import { createInitialPromptInputTurnState } from "../../../cli/tui/components/prompt-input/turn-state";
 import {
   isHistorySearchShortcut,
   resolveInputShortcutAction,
+  resolveRunningInputAction,
+  resolveRunningInputActions,
   resolveShortcutOverlayKeyAction,
   resolveSubmitKeyAction,
 } from "../../../cli/tui/components/prompt-input/reducer";
@@ -61,6 +64,14 @@ export function runInputKeybindingChecks(): ContractPayload {
   const askUserPanelOtherSubmitCjk = decodeAskUserPanelInput("补充说明\r", 3, true);
   const askUserPanelNumericSubmit = decodeAskUserPanelInput("2\r", 3, false);
   const askUserPanelOtherIndexSubmit = decodeAskUserPanelInput("3\r", 3, false);
+  const askUserPanelFooterChatIndexSubmit = decodeAskUserPanelInput("4\r", 3, false, true, {
+    chatIndex: 4,
+    skipIndex: 5,
+  });
+  const askUserPanelFooterSkipIndexSubmit = decodeAskUserPanelInput("5\r", 3, false, true, {
+    chatIndex: 4,
+    skipIndex: 5,
+  });
   const askUserPanelOtherPrintable = decodeAskUserPanelInput("补", 3, true);
   const askUserPanelOtherBackspace = decodeAskUserPanelInput("\u007f", 3, true);
   const askUserPanelNotesShortcut = decodeAskUserPanelInput("n", 3, false);
@@ -203,6 +214,15 @@ export function runInputKeybindingChecks(): ContractPayload {
     key: { ctrl: true, name: "?", sequence: "?" },
     inputGraphemeLength: 0,
   });
+  const runningAppend = resolveRunningInputAction("继续处理");
+  const runningEmojiAppend = resolveRunningInputAction("A");
+  const runningBackspace = resolveRunningInputAction("\u007f");
+  const runningSubmit = resolveRunningInputAction("\r");
+  const runningEscInterrupt = resolveRunningInputAction("\u001b");
+  const runningCtrlCInterrupt = resolveRunningInputAction("\u0003");
+  const runningControlIgnored = resolveRunningInputAction("\u0012");
+  const runningCoalescedSubmit = resolveRunningInputActions("继续处理\r");
+  const draftCarryState = createInitialPromptInputTurnState("未提交草稿");
 
   return {
     submit_return_detected: submitReturn === "submit",
@@ -237,6 +257,10 @@ export function runInputKeybindingChecks(): ContractPayload {
     ask_user_panel_other_numeric_submit_focuses_other:
       askUserPanelOtherIndexSubmit.kind === "select_index"
       && askUserPanelOtherIndexSubmit.index === 2,
+    ask_user_panel_footer_chat_numeric_submit:
+      askUserPanelFooterChatIndexSubmit.kind === "chat",
+    ask_user_panel_footer_skip_numeric_submit:
+      askUserPanelFooterSkipIndexSubmit.kind === "skip",
     ask_user_panel_other_printable_text:
       askUserPanelOtherPrintable.kind === "text"
       && askUserPanelOtherPrintable.value === "补",
@@ -309,5 +333,29 @@ export function runInputKeybindingChecks(): ContractPayload {
       shortcutOverlaySlashQuestion === "insert_text",
     shortcut_overlay_ctrl_question_ignored:
       shortcutOverlayCtrlQuestionIgnored === "none",
+    running_input_appends_printable:
+      runningAppend.kind === "append"
+      && runningAppend.value === "继续处理",
+    running_input_appends_ascii_printable:
+      runningEmojiAppend.kind === "append"
+      && runningEmojiAppend.value === "A",
+    running_input_backspace:
+      runningBackspace.kind === "backspace",
+    running_input_enter_submits_queue:
+      runningSubmit.kind === "submit_queue",
+    running_input_esc_interrupts:
+      runningEscInterrupt.kind === "interrupt",
+    running_input_ctrl_c_interrupts:
+      runningCtrlCInterrupt.kind === "interrupt",
+    running_input_ignores_other_control:
+      runningControlIgnored.kind === "none",
+    running_input_coalesced_text_enter_submits_queue:
+      runningCoalescedSubmit.length === 2
+      && runningCoalescedSubmit[0]?.kind === "append"
+      && runningCoalescedSubmit[0]?.value === "继续处理"
+      && runningCoalescedSubmit[1]?.kind === "submit_queue",
+    running_input_draft_can_seed_next_prompt:
+      draftCarryState.graphemes.join("") === "未提交草稿"
+      && draftCarryState.cursor === draftCarryState.graphemes.length,
   };
 }

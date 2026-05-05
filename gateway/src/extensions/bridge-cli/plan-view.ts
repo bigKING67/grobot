@@ -3,7 +3,7 @@ import {
   derivePlanPhaseFromStatus,
   resolvePlanStatusRecommendation,
 } from "../../cli/start/plan-state";
-import { evaluateLivePlanDecisionSnapshot } from "../../cli/start/plan-live-status";
+import { evaluateLivePlanDecisionSnapshot } from "../../cli/start/plan-mode/live-status";
 import {
   evaluatePlanQualityBenchmarkHealth,
   evaluatePlanQualityBenchmarkSemanticCorrelation,

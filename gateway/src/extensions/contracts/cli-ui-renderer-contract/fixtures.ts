@@ -1,5 +1,5 @@
 import { type TerminalSelectMenuInput } from "../../../cli/tui/components/select-menu/contract";
-import { type StartScreenViewModel } from "../../../cli/tui/screens/startup-screen";
+import { type StartScreenViewModel } from "../../../cli/tui/components/startup/contract";
 
 export const startupViewModel: StartScreenViewModel = {
   title: "Grobot v0.1.0",
@@ -109,7 +109,7 @@ export const menuInput: TerminalSelectMenuInput = {
 
 export const modelPickerInput: TerminalSelectMenuInput = {
   title: "选择模型",
-  subtitle: "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
+  subtitle: "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
   hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
@@ -195,7 +195,7 @@ export const planApprovalMenuInput: TerminalSelectMenuInput = {
 };
 
 export const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
-  title: "退出 plan mode?",
+  title: "退出计划模式?",
   hint: "Enter 确认 · Esc 返回输入框",
   variant: "plan_approval",
   visibleOptionCount: 2,
@@ -220,7 +220,7 @@ export const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
 
 export const longModelPickerInput: TerminalSelectMenuInput = {
   title: "选择模型",
-  subtitle: "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
+  subtitle: "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
   hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {
@@ -366,7 +366,7 @@ export const directLargeMenuInput: TerminalSelectMenuInput = {
 
 export const directLargeModelPickerInput: TerminalSelectMenuInput = {
   title: "选择模型",
-  subtitle: "切换当前会话模型；历史/自定义模型可用 /model use <id>。",
+  subtitle: "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
   hint: "Enter 确认 · Esc 返回",
   variant: "model_picker",
   modelPickerMeta: {

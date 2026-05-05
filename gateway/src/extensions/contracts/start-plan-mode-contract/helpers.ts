@@ -1,6 +1,6 @@
 import { type RunStartPersistence } from "../../../cli/start/persistence";
 import { type RunStartRuntimeState } from "../../../cli/start/runtime-state";
-import { type ChatHistoryMessage } from "../../../cli/start/session-history";
+import { type ChatHistoryMessage } from "../../../cli/start/session/history";
 import {
   type SessionPlanMeta,
   type SessionProviderRuntimeState,

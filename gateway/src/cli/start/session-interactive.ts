@@ -1,5 +1,7 @@
 import { dispatchSlashCommand } from "../commands/slash/registry";
-import { buildInteractiveHelpScreen } from "../tui/screens/help-screen";
+import { renderInfoPanel } from "../tui/components/info-panel/render";
+import { buildInteractiveHelpScreen } from "../tui/components/help/render";
+import { resolveTerminalColumns } from "./interactive-mode/prompt-surface";
 import { isNaturalPlanExecutionIntent } from "./plan-command";
 
 export type SessionInteractiveAction = "continue" | "break";
@@ -100,7 +102,9 @@ export interface SessionInteractiveHandlers {
 }
 
 export function buildInteractiveHelpText(): string {
-  return buildInteractiveHelpScreen();
+  return buildInteractiveHelpScreen({
+    terminalColumns: resolveTerminalColumns(),
+  });
 }
 
 const PENDING_ASK_ALLOWED_SLASH_COMMANDS = new Set([
@@ -209,7 +213,17 @@ export async function dispatchSessionInteractiveInput(
   }
   if (isRemovedAskCommand(userInput)) {
     handlers.writeStdout(
-      "● 未知命令\n  /ask 已停用。ask-user 现在直接在对话里回复，不再提供状态命令。\n\n",
+      renderInfoPanel({
+        title: "未知命令",
+        sections: [{
+          rows: [{
+            title: "/ask 已停用。",
+            detailLines: [
+              "ask-user 现在直接在对话里回复，不再提供状态命令。",
+            ],
+          }],
+        }],
+      }),
     );
     return "continue";
   }

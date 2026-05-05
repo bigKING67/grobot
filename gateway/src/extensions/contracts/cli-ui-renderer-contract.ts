@@ -62,12 +62,16 @@ const startupNoJoinArtifact = startupVariants.every((rendered) => {
 const startupNoTeeGlyph = startupVariantBodies.every((lines) =>
   lines.every((line) => line.includes("├") === false && line.includes("┤") === false)
 );
-const startupBodyWidthConsistent = startupVariantBodies.every((lines) => {
-  if (lines.length === 0) {
-    return false;
-  }
-  const widths = lines.map((line) => measureDisplayWidth(line));
-  return new Set(widths).size === 1;
+const startupLinesWithinTerminal = startupVariants.every((rendered, index) =>
+  renderedLinesWithinColumns(rendered, [96, 110, 120][index] ?? 120)
+);
+const startupHasNoOuterRoundFrame = startupVariants.every((rendered) => {
+  const plain = stripAnsi(rendered);
+  return !plain.includes("╭")
+    && !plain.includes("╰")
+    && plain.split("\n").every((line) =>
+      !line.startsWith("│ ") && !line.endsWith(" │")
+    );
 });
 const startupDividerCountExpected = startupVariantBodies.every((lines) => {
   const dividerCount = lines.filter((line) => {
@@ -83,13 +87,9 @@ const startupBrandSymbolInteractive = startupBrandSymbolVariants[1] ?? "";
 const startupBrandSymbolBodies = startupBrandSymbolVariants.map((rendered) =>
   extractStartupBodyLines(rendered)
 );
-const startupBrandSymbolBodyLengthConsistent = startupBrandSymbolBodies.every((lines) => {
-  if (lines.length === 0) {
-    return false;
-  }
-  const lengths = lines.map((line) => measureDisplayWidth(line));
-  return new Set(lengths).size === 1;
-});
+const startupBrandSymbolLinesWithinTerminal = startupBrandSymbolVariants.every((rendered, index) =>
+  renderedLinesWithinColumns(rendered, [96, 110, 120][index] ?? 120)
+);
 const startupBrandSymbolHasClaudeLikeHeight = startupBrandSymbolBodies.every((lines) =>
   lines.length >= 8
 );
@@ -180,9 +180,10 @@ const payload = {
     !startupBrandSymbolInteractive.includes("\x1b[96m/sessions 查看更多"),
   startup_has_no_join_artifact: startupNoJoinArtifact,
   startup_has_no_tee_glyph: startupNoTeeGlyph,
-  startup_body_width_consistent: startupBodyWidthConsistent,
+  startup_has_no_outer_round_frame: startupHasNoOuterRoundFrame,
+  startup_lines_within_terminal: startupLinesWithinTerminal,
   startup_feed_divider_count_expected: startupDividerCountExpected,
-  startup_brand_symbol_body_length_consistent: startupBrandSymbolBodyLengthConsistent,
+  startup_brand_symbol_lines_within_terminal: startupBrandSymbolLinesWithinTerminal,
   startup_brand_symbol_has_claude_like_height: startupBrandSymbolHasClaudeLikeHeight,
   startup_registered_symbol_single_width: startupRegisteredSymbolSingleWidth,
   menu_interactive_has_ansi: hasAnsi(menuInteractive),
@@ -234,6 +235,15 @@ const payload = {
   model_picker_current_not_parenthesized: !stripAnsi(modelPickerPlain).includes("(current)"),
   model_picker_has_default_suffix: stripAnsi(modelPickerPlain).includes("model-b (default)"),
   model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter 确认 · Esc 返回"),
+  model_picker_has_config_scope_subtitle:
+    stripAnsi(modelPickerPlain).includes("切换当前配置模型，后续会话沿用"),
+  model_picker_avoids_stale_session_only_copy:
+    !stripAnsi(modelPickerPlain).includes("切换当前会话模型"),
+  model_picker_has_config_scope_context:
+    stripAnsi(modelPickerPlain).includes("通道 alpha · 2 个模型 · 写入当前配置"),
+  model_picker_active_description_is_muted:
+    modelPickerInteractive.includes("\x1b[90mCurrent active model\x1b[0m")
+    && !modelPickerInteractive.includes("\x1b[38;2;202;124;94mCurrent active model"),
   model_picker_has_no_provider_card: !stripAnsi(modelPickerPlain).includes("Provider"),
   model_picker_has_no_startup_badge: !stripAnsi(modelPickerPlain).includes("STARTUP"),
   model_picker_has_no_current_badge: !stripAnsi(modelPickerPlain).includes("CURRENT"),
@@ -254,8 +264,8 @@ const payload = {
   plan_approval_menu_has_ready_title:
     planApprovalMenuPlainText.includes("准备开始实现？"),
   plan_approval_menu_has_planning_path_header:
-    planApprovalMenuPlainText.includes("计划文件: .grobot/plans/demo/001-contract-plan.md")
-    && planApprovalMenuPlainText.indexOf("计划文件: .grobot/plans/demo/001-contract-plan.md")
+    planApprovalMenuPlainText.includes("计划文件 .grobot/plans/demo/001-contract-plan.md")
+    && planApprovalMenuPlainText.indexOf("计划文件 .grobot/plans/demo/001-contract-plan.md")
       < planApprovalMenuPlainText.indexOf("准备开始实现？"),
   plan_approval_menu_title_is_not_plan_color_flooded:
     !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1m准备开始实现？"),
@@ -294,9 +304,9 @@ const payload = {
   plan_approval_menu_has_no_default_thin_pointer:
     !planApprovalMenuPlainText.includes("›"),
   plan_approval_empty_uses_exit_title:
-    emptyPlanApprovalPlainText.includes("退出 plan mode?"),
+    emptyPlanApprovalPlainText.includes("退出计划模式?"),
   plan_approval_empty_uses_reference_copy:
-    emptyPlanApprovalPlainText.includes("Grobot 将退出 plan mode"),
+    emptyPlanApprovalPlainText.includes("Grobot 将退出计划模式"),
   plan_approval_empty_has_yes_no_only:
     emptyPlanApprovalPlainText.includes("❯ 是，退出")
     && emptyPlanApprovalPlainText.includes("  否，继续规划")
@@ -311,7 +321,11 @@ const payload = {
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),
   model_picker_direct_render_shows_hidden_count:
-    stripAnsi(directLargeModelPickerPlain).includes("and 2 more…"),
+    stripAnsi(directLargeModelPickerPlain).includes("还有 2 个模型…"),
+  model_picker_direct_render_has_no_english_hidden_count:
+    !stripAnsi(directLargeModelPickerPlain).includes("and 2 more"),
+  model_picker_direct_render_has_config_scope_context:
+    stripAnsi(directLargeModelPickerPlain).includes("通道 alpha · 12 个模型 · 写入当前配置"),
   model_picker_direct_render_has_no_row_scroll_marker:
     renderedMenuRows(directLargeModelPickerPlain).every((line) => {
       const trimmed = line.trimStart();
@@ -320,9 +334,13 @@ const payload = {
   model_picker_long_rows_within_width:
     renderedLinesWithinColumns(longModelPickerPlain, 72),
   model_picker_long_descriptions_do_not_wrap:
-    stripAnsi(longModelPickerPlain)
+    !stripAnsi(longModelPickerPlain)
       .split("\n")
-      .filter((line) => line.trim().length > 0).length <= 6,
+      .some((line) =>
+        line.trimStart().startsWith("包含较长上下文说明")
+        || line.trimStart().startsWith("路由元数据")
+        || line.trimStart().startsWith("ng provider detail")
+      ),
   model_picker_long_current_suffix_preserved:
     stripAnsi(longModelPickerPlain).includes("✓"),
   model_picker_long_default_suffix_preserved:

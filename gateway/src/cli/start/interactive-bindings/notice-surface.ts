@@ -1,14 +1,20 @@
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
+
 export function buildCompactNotice(
   title: string,
   lines: ReadonlyArray<string> = [],
 ): string {
-  return [
-    `● ${title}`,
-    ...lines
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => `  ${line}`),
-    "",
-    "",
-  ].join("\n");
+  const normalized = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const [primary, ...detailLines] = normalized;
+  return renderInfoPanel({
+    title,
+    sections: [{
+      rows: [{
+        title: primary ?? "无更多信息",
+        detailLines,
+      }],
+    }],
+  });
 }

@@ -19,7 +19,7 @@ import {
   resolveContextEngineConfig,
   type ContextEngineConfig,
 } from "../../tools/context";
-import { createRunStartSessionStore } from "./session-store";
+import { createRunStartSessionStore } from "./session/store";
 import { sessionRegistryFilePath } from "./session-registry";
 import {
   resolveForkSession,
@@ -40,7 +40,7 @@ import {
   resolveSessionPlatformOption,
   resolveSessionScopeOption,
   resolveSessionSubjectOption,
-} from "./session-options";
+} from "./session/options";
 import { buildHandoffPath } from "./handoff-file";
 import {
   resolveExperiencePublishMode,

@@ -97,5 +97,6 @@ export interface RenderTerminalSelectMenuInput {
   activeIndex: number;
   stdinIsTTY?: boolean;
   stdoutIsTTY?: boolean;
+  terminalColumns?: number;
   env?: CliEnv;
 }

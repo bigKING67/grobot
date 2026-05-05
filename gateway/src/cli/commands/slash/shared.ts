@@ -1,17 +1,51 @@
-import { terminalStyle } from "../../tui/theme/terminal-style";
 import { type SessionInteractiveAction } from "../../start/session-interactive";
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
 import { type SlashCommandExecutionInput } from "./types";
+
+export interface SlashUsageEntry {
+  command: string;
+  description?: string;
+}
+
+export function formatUsageLine(value: string): string {
+  return `用法 ${value}`;
+}
 
 export function buildSlashNotice(
   title: string,
   details: readonly string[],
 ): string {
-  const lines = [`${terminalStyle.accent("●")} ${title}`];
-  for (const detail of details) {
-    lines.push(`  ${terminalStyle.muted(detail)}`);
-  }
-  lines.push("");
-  return `${lines.join("\n")}\n`;
+  const normalized = details
+    .map((detail) => detail.trim())
+    .filter((detail) => detail.length > 0);
+  const [primary, ...detailLines] = normalized;
+  return renderInfoPanel({
+    title,
+    sections: [{
+      rows: [{
+        title: primary ?? "无更多信息",
+        detailLines,
+      }],
+    }],
+  });
+}
+
+export function buildSlashUsageNotice(
+  title: string,
+  entries: readonly SlashUsageEntry[],
+  footerLines?: readonly string[],
+): string {
+  return renderInfoPanel({
+    title,
+    sections: [{
+      title: "可用入口",
+      rows: entries.map((entry) => ({
+        title: entry.command,
+        detailLines: entry.description ? [entry.description] : [],
+      })),
+    }],
+    footerLines,
+  });
 }
 
 export function matchesInteractiveCommand(

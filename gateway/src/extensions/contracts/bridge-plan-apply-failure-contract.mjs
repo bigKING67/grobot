@@ -184,7 +184,7 @@ function main() {
     );
     const statusAfterApplyFailureMessage = String(statusAfterApplyFailure.payload.assistant_message ?? "");
     assert.equal(statusAfterApplyFailureMessage.includes("当前计划"), true);
-    assert.equal(statusAfterApplyFailureMessage.includes("最近失败: 计划执行失败"), true);
+    assert.equal(statusAfterApplyFailureMessage.includes("最近失败 计划执行失败"), true);
     assert.equal(hidesLegacyStatusMarkers(statusAfterApplyFailureMessage), true);
 
     const eventsPath = resolve(dirname(planPath), "events.jsonl");
@@ -211,7 +211,7 @@ function main() {
         statusAfterApplyFailure.payload?.plan?.latest_failure_diagnostic_code ?? null,
       status_after_failure_assistant_message_human:
         statusAfterApplyFailureMessage.includes("当前计划")
-        && statusAfterApplyFailureMessage.includes("最近失败: 计划执行失败"),
+        && statusAfterApplyFailureMessage.includes("最近失败 计划执行失败"),
       status_after_failure_assistant_message_hides_machine_fields:
         hidesLegacyStatusMarkers(statusAfterApplyFailureMessage),
       events_has_plan_apply_failed: eventsRaw.includes("\"event\":\"plan_apply_failed\""),

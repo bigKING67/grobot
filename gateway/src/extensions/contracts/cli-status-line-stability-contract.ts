@@ -1,7 +1,5 @@
-import {
-  measureDisplayWidth,
-  renderStatusLinePrompt,
-} from "../../cli/tui/screens/status-line-screen";
+import { measureDisplayWidth } from "../../cli/tui/terminal/display-width";
+import { renderStatusLinePrompt } from "../../cli/tui/components/status-line/render";
 
 const baseInput = {
   model: "kimi/kimi-k2-2026-04",

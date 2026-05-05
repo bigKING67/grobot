@@ -127,31 +127,35 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
     enter_plan_message_mode_handled: enter.handled && enter.code === 0,
     enter_plan_sets_plan_only: planModeAfterEnter === "plan_only",
     enter_plan_stdout_is_human:
-      stdoutAfterEnter.includes("已进入 plan mode")
+      stdoutAfterEnter.includes("已进入计划模式")
       && stdoutAfterEnter.includes("Grobot 正在探索")
       && !stdoutAfterEnter.includes("session_key=")
       && !stdoutAfterEnter.includes("plan_id=")
       && !stdoutAfterEnter.includes("file=")
       && !stdoutAfterEnter.includes("[plan] entered PLAN_ONLY"),
     enter_plan_surface_has_relative_planning_path:
-      stdoutAfterEnter.includes("计划文件: .grobot/plans/"),
+      stdoutAfterEnter.includes("计划文件 .grobot/plans/"),
     enter_plan_surface_has_goal:
-      stdoutAfterEnter.includes("目标: contract cleanup"),
+      stdoutAfterEnter.includes("目标 contract cleanup"),
     enter_plan_surface_has_read_only_boundary:
-      stdoutAfterEnter.includes("确认计划前，plan mode 只会读取和规划。"),
+      stdoutAfterEnter.includes("确认计划前，计划模式只会读取和规划。"),
     enter_plan_surface_hides_absolute_plan_path:
       !stdoutAfterEnter.includes(workDir),
     enter_plan_surface_order_is_stable:
-      stdoutAfterEnter.indexOf("已进入 plan mode") >= 0
-      && stdoutAfterEnter.indexOf("计划文件:") > stdoutAfterEnter.indexOf("已进入 plan mode")
-      && stdoutAfterEnter.indexOf("目标:") > stdoutAfterEnter.indexOf("计划文件:"),
+      stdoutAfterEnter.indexOf("已进入计划模式") >= 0
+      && stdoutAfterEnter.indexOf("计划文件 ") > stdoutAfterEnter.indexOf("已进入计划模式")
+      && stdoutAfterEnter.indexOf("目标 ") > stdoutAfterEnter.indexOf("计划文件 "),
     draft_plan_surface_handled: draftOpen.handled && draftOpen.code === 0,
     draft_plan_surface_uses_status_title:
       draftOpenOutput.includes("计划草稿"),
     draft_plan_surface_uses_relative_plan_file:
-      /^\.grobot\/plans\//m.test(draftOpenOutput),
+      draftOpenOutput.includes(".grobot/plans/"),
+    draft_plan_surface_uses_info_panel_rows:
+      draftOpenOutput.includes("草稿已创建")
+      && draftOpenOutput.includes("• 草稿已创建")
+      && draftOpenOutput.includes("  ⎿  .grobot/plans/"),
     draft_plan_surface_has_read_only_boundary:
-      draftOpenOutput.includes("确认最终计划前，plan mode 只会读取和规划。"),
+      draftOpenOutput.includes("确认最终计划前，计划模式只会读取和规划。"),
     draft_plan_surface_has_refine_hint:
       draftOpenOutput.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
     draft_plan_surface_hides_absolute_path:
@@ -162,12 +166,14 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
       !draftOpenOutput.includes("Already in plan mode. No plan written yet."),
     refine_plan_turn_handled: refine === 0,
     refine_plan_turn_surface_matches_reference_shape:
-      refineOutput.includes("●")
+      refineOutput.includes("•")
+      && refineOutput.includes("  ⎿")
       && refineOutput.includes("计划需要继续完善")
       && refineOutput.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
     ready_plan_turn_handled: ready === 0,
     ready_surface_matches_reference_shape:
       readyOutput.includes("准备开始实现？")
+      && !readyOutput.includes("● 准备开始实现？")
       && readyOutput.includes("Grobot 的计划：")
       && readyOutput.includes("执行前请确认计划。")
       && readyOutput.includes("是否开始执行？")
@@ -183,10 +189,12 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
       && readyApprovalRequests[0]?.planPath === planPath
       && readyApprovalRequests[0]?.planContent.includes("# Contract Plan"),
     ready_approval_keep_planning_skips_fallback_surface:
-      keepPlanningOutput.includes("已继续留在 plan mode")
+      keepPlanningOutput.includes("已继续留在计划模式")
       && !keepPlanningOutput.includes("准备开始实现？"),
     ready_approval_keep_planning_matches_reference_shape:
-      keepPlanningOutput.includes("●")
+      keepPlanningOutput.includes("已继续留在计划模式")
+      && keepPlanningOutput.includes("•")
+      && keepPlanningOutput.includes("  ⎿")
       && keepPlanningOutput.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
     plan_turn_injects_plan_workflow_prompt:
       executePromptPreludes.some((item) =>
@@ -202,6 +210,7 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
     open_plan_surface_handled: open.handled && open.code === 0,
     open_plan_surface_is_current_plan_display:
       openOutput.includes("当前计划")
+      && !openOutput.includes("● 当前计划")
       && openOutput.includes("# Contract Plan")
       && (
         openOutput.includes('使用 "/plan open" 编辑此计划')
@@ -218,7 +227,7 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
       && !openOutput.includes("seq:")
       && !openOutput.includes("status:"),
     open_plan_surface_uses_relative_plan_file:
-      /^\.grobot\/plans\//m.test(openOutput),
+      openOutput.includes(".grobot/plans/"),
     open_plan_surface_hides_absolute_plan_file:
       !openOutput.includes(workDir),
     verbose_plan_surface_handled: verboseOpen.handled && verboseOpen.code === 0,
@@ -246,7 +255,7 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
       && !scriptOpenOutput.includes("seq:")
       && !scriptOpenOutput.includes("status:"),
     script_plan_surface_uses_relative_plan_file:
-      /^\.grobot\/plans\//m.test(scriptOpenOutput),
+      scriptOpenOutput.includes(".grobot/plans/"),
     script_plan_surface_hides_absolute_plan_file:
       !scriptOpenOutput.includes(workDir),
     plan_goal_in_plan_mode_shows_current_plan:
@@ -259,7 +268,8 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
     removed_plan_benchmark_surface_is_human:
       removedBenchmark.handled
       && removedBenchmark.code === 0
-      && stripAnsi(removedBenchmarkOutput).includes("● Plan")
+      && stripAnsi(removedBenchmarkOutput).includes("Plan")
+      && stripAnsi(removedBenchmarkOutput).includes("•")
       && stripAnsi(removedBenchmarkOutput).includes("不支持该 /plan 子命令")
       && stripAnsi(removedBenchmarkOutput).includes("/plan、/plan <目标> 或 /plan open"),
     removed_plan_benchmark_hides_machine_output:
@@ -294,17 +304,18 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
       !applyPrompt.includes("Additional user instruction:\nImplement the plan."),
     apply_surface_shows_approved_plan_start:
       applyOutput.includes("计划已确认")
+      && !applyOutput.includes("● 计划已确认")
       && applyOutput.includes("已确认")
       && applyOutput.includes("将要实现的计划")
       && applyOutput.includes("开始按已确认快照实现"),
     apply_surface_has_saved_plan_hint:
-      applyOutput.includes("已确认 · 计划已保存: .grobot/plans/")
+      applyOutput.includes("• 已确认 · 计划已保存: .grobot/plans/")
       && applyOutput.includes("/plan open 编辑"),
     apply_surface_renders_plan_card:
       applyOutput.includes("╭─ 将要实现的计划")
       && applyOutput.includes("│ Contract Plan")
-      && applyOutput.includes("│ 目标:")
-      && applyOutput.includes("│ 验证:")
+      && applyOutput.includes("│ 目标 ")
+      && applyOutput.includes("│ 验证 ")
       && applyOutput.includes("╰─ 确认"),
     apply_surface_hides_machine_fields:
       !applyOutput.includes("plan_id=")
@@ -314,7 +325,7 @@ export async function runPrimaryPlanModeFlow(workDir: string) {
       latestPlanStatusCode === 0
       && stripAnsi(latestPlanStatusOutput).includes("最近计划状态")
       && stripAnsi(latestPlanStatusOutput).includes("当前没有活跃计划。")
-      && stripAnsi(latestPlanStatusOutput).includes("最近计划: contract cleanup · 已执行"),
+      && stripAnsi(latestPlanStatusOutput).includes("最近计划 contract cleanup · 已执行"),
     latest_plan_status_surface_hides_plan_id:
       typeof activePlanIdBeforeApply === "string"
       && !latestPlanStatusOutput.includes(activePlanIdBeforeApply)

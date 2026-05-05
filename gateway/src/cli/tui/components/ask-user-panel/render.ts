@@ -63,14 +63,18 @@ function renderPanelTitle(value: string, maxWidth: number): string {
   return terminalStyle.bold(fitPlainLine(value, maxWidth));
 }
 
-function renderFooterAction(shortcut: string, label: string, maxWidth: number): string {
-  const key = `${shortcut}.`;
-  const plain = `${key} ${label}`;
-  const fitted = fitPlainLine(plain, maxWidth);
+function renderSecondaryAction(input: {
+  marker: string;
+  label: string;
+  maxWidth: number;
+}): string {
+  const key = `${input.marker}.`;
+  const plain = `${key} ${input.label}`;
+  const fitted = fitPlainLine(plain, input.maxWidth);
   if (!fitted.startsWith(key)) {
     return terminalStyle.muted(fitted);
   }
-  return `${terminalStyle.muted(key)} ${terminalStyle.muted(fitted.slice(key.length + 1))}`;
+  return `${terminalStyle.muted(key)} ${fitted.slice(key.length + 1)}`;
 }
 
 function buildProgressText(view: Extract<AskUserQuestionnaireView, { kind: "question" }>): string {
@@ -314,7 +318,7 @@ function renderQuestionPanel(input: {
   const contentWidth = input.surfaceWidth - 2;
   const progress = buildProgressText(input.view);
   if (input.planMode && input.planFilePath?.trim()) {
-    lines.push(`  ${terminalStyle.muted(fitPlainLine(`计划文件: ${input.planFilePath}`, contentWidth))}`);
+    lines.push(`  ${terminalStyle.muted(fitPlainLine(`计划文件 ${input.planFilePath}`, contentWidth))}`);
     lines.push(`  ${renderMutedRule(contentWidth)}`);
   }
   const navigationLine = renderNavigationLine({
@@ -351,9 +355,18 @@ function renderQuestionPanel(input: {
   })}`);
   lines.push("");
   lines.push(`  ${renderMutedRule(contentWidth)}`);
-  lines.push(`  ${renderFooterAction("c", "继续对话补充", contentWidth)}`);
+  const footerBaseIndex = input.view.optionItems.length + 1;
+  lines.push(`  ${renderSecondaryAction({
+    marker: String(footerBaseIndex),
+    label: "继续对话补充",
+    maxWidth: contentWidth,
+  })}`);
   if (input.planMode) {
-    lines.push(`  ${renderFooterAction("s", "跳过访谈，直接进入计划", contentWidth)}`);
+    lines.push(`  ${renderSecondaryAction({
+      marker: String(footerBaseIndex + 1),
+      label: "跳过访谈，直接进入计划",
+      maxWidth: contentWidth,
+    })}`);
   }
   lines.push("");
   const standardOptionCount = input.view.optionItems.filter((item) => item.kind === "option").length;
@@ -402,7 +415,7 @@ function renderReviewPanel(input: {
   }).map((line) => `  ${line}`));
   lines.push("");
   lines.push(`  ${renderMutedRule(contentWidth)}`);
-  lines.push(`  ${terminalStyle.muted("↑/↓ 选择 | Enter 确认 | ←/→ 切换问题 | Esc 返回输入框")}`);
+  lines.push(`  ${terminalStyle.muted("↑/↓ 选择 · Enter 确认 · ←/→ 切换问题 · Esc 返回输入框")}`);
   return lines;
 }
 

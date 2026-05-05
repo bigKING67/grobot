@@ -4,7 +4,7 @@ import {
   buildAskUserPendingSummary,
   createAskUserQuestionnaireState,
 } from "../../../tools/ask-user";
-import { compactSingleLine } from "../session-history";
+import { compactSingleLine } from "../session/history";
 import { formatPlanPathForPanel } from "./plan-editor";
 import type {
   CreateRunStartInteractiveModeInput,

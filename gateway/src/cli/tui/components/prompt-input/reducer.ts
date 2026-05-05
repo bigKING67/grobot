@@ -1,6 +1,7 @@
 import type {
   InputShortcutAction,
   KeypressPayload,
+  RunningInputAction,
   SessionSlashSuggestion,
   ShortcutOverlayKeyAction,
   SlashSuggestionApplyResult,
@@ -205,6 +206,48 @@ export function resolveShortcutOverlayKeyAction(input: {
     return "insert_text";
   }
   return "toggle_overlay";
+}
+
+export function resolveRunningInputAction(rawInput: string): RunningInputAction {
+  const raw = String(rawInput ?? "");
+  if (raw.length === 0) {
+    return { kind: "none" };
+  }
+  if (raw === "\u001b" || raw === "\u0003") {
+    return { kind: "interrupt" };
+  }
+  if (raw === "\r" || raw === "\n" || raw === "\r\n") {
+    return { kind: "submit_queue" };
+  }
+  if (raw === "\u007f" || raw === "\b") {
+    return { kind: "backspace" };
+  }
+  if (/^[^\u0000-\u001F\u007F]+$/u.test(raw)) {
+    return { kind: "append", value: raw };
+  }
+  return { kind: "none" };
+}
+
+export function resolveRunningInputActions(rawInput: string): readonly RunningInputAction[] {
+  const raw = String(rawInput ?? "");
+  if (raw.length === 0) {
+    return [{ kind: "none" }];
+  }
+
+  const direct = resolveRunningInputAction(raw);
+  if (direct.kind !== "none") {
+    return [direct];
+  }
+
+  const coalescedSubmit = raw.match(/^([^\u0000-\u001F\u007F]+)(\r\n|\r|\n)$/u);
+  if (coalescedSubmit) {
+    return [
+      { kind: "append", value: coalescedSubmit[1] ?? "" },
+      { kind: "submit_queue" },
+    ];
+  }
+
+  return [{ kind: "none" }];
 }
 
 export function shouldHighlightSlashInputToken(input: {

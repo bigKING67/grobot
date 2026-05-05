@@ -1,6 +1,6 @@
 import { readPromptQualityWindowSummary } from "../../../tools/context";
 import { type SessionPromptLayout } from "../../tui/interactive/interactive-frame";
-import { type StatusLineConfig } from "../../tui/screens/status-line-screen";
+import { type StatusLineConfig } from "../../tui/components/status-line/contract";
 import { inferModelApiContextWindowTokens } from "../model-context";
 
 export interface PromptBudgetSnapshot {

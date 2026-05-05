@@ -73,9 +73,9 @@ export function createUserCommandActions(input: {
       buildCommandsSurface({
         title: "已创建自定义命令",
         details: [
-          `命令: /${name}`,
-          `文件: ${store.commandFilePath(name)}`,
-          `下一步: /commands set ${name} <prompt> 或直接编辑该文件`,
+          `/${name}`,
+          `保存位置 ${store.commandFilePath(name)}`,
+          `接下来可用 /commands set ${name} <prompt> 更新模板`,
         ],
       }),
     );
@@ -97,8 +97,8 @@ export function createUserCommandActions(input: {
     const prompt = promptRaw.trim();
     if (!prompt) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "prompt 不能为空",
-        details: [`使用: /commands set ${name} <prompt>`],
+        title: "提示词模板不能为空",
+        details: [`/commands set ${name} <prompt>`],
       }));
       return;
     }
@@ -109,7 +109,7 @@ export function createUserCommandActions(input: {
     });
     runtimeInput.writeStdout(buildCommandsSurface({
       title: "已更新自定义命令",
-      details: [`/${name} 的 prompt 已更新。`],
+      details: [`/${name} 的提示词模板已更新。`],
     }));
   };
 

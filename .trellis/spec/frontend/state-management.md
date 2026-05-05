@@ -63,7 +63,7 @@ If none apply, keep it local to the command/handler function.
 ## Examples
 
 1. `gateway/src/cli/start/runtime-state.ts`
-2. `gateway/src/cli/start/session-ops.ts`
+2. `gateway/src/cli/start/session/ops.ts`
 3. `gateway/src/cli/services/session-store.ts`
 4. `gateway/src/cli/serve/memory-store-runtime.ts`
 5. `gateway/src/tools/ask-user/resolver.ts`

@@ -2,7 +2,7 @@ import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
 import {
   buildRuntimeInterruptIgnoredSurface,
   buildRuntimeInterruptSurface,
-} from "./startup-surfaces";
+} from "./startup/surfaces";
 
 export type RuntimeInterruptSource = "command" | "cli_esc";
 

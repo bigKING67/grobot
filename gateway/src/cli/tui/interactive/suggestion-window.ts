@@ -191,9 +191,18 @@ export function truncateDisplayWidthMiddle(value: string, maxWidth: number): str
   return `${prefix}${ellipsis}${suffix}`;
 }
 
-function colorSuggestionPart(value: string, selected: boolean): string {
+type SuggestionTone = "primary" | "secondary";
+
+function colorSuggestionPart(
+  value: string,
+  selected: boolean,
+  tone: SuggestionTone = "primary",
+): string {
   if (!value) {
     return "";
+  }
+  if (tone === "secondary") {
+    return terminalStyle.muted(value);
   }
   return selected ? terminalStyle.brand(value) : terminalStyle.muted(value);
 }
@@ -304,7 +313,7 @@ function formatStandardSuggestionRow(input: {
 
   const command = colorSuggestionPart(paddedDisplayText, input.selected);
   const tag = tagText ? terminalStyle.muted(tagText) : "";
-  const detail = description ? colorSuggestionPart(description, input.selected) : "";
+  const detail = description ? colorSuggestionPart(description, input.selected, "secondary") : "";
   return `${command}${tag}${detail}`;
 }
 

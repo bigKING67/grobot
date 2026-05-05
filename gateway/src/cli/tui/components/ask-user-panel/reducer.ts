@@ -89,6 +89,10 @@ export function decodeAskUserPanelInput(
   optionCount: number,
   textInputMode: boolean,
   planMode = false,
+  footerActions: {
+    chatIndex?: number;
+    skipIndex?: number;
+  } = {},
 ): AskUserPanelInputAction {
   if (rawInput.length === 0) {
     return { kind: "ignore" };
@@ -100,9 +104,16 @@ export function decodeAskUserPanelInput(
       return { kind: "enter" };
     }
     if (/^\d+$/.test(normalizedPayload)) {
-      const parsedIndex = Number.parseInt(normalizedPayload, 10) - 1;
+      const parsedOneBased = Number.parseInt(normalizedPayload, 10);
+      const parsedIndex = parsedOneBased - 1;
       if (parsedIndex >= 0 && parsedIndex < optionCount) {
         return { kind: "select_index", index: parsedIndex };
+      }
+      if (!textInputMode && parsedOneBased === footerActions.chatIndex) {
+        return { kind: "chat" };
+      }
+      if (planMode && !textInputMode && parsedOneBased === footerActions.skipIndex) {
+        return { kind: "skip" };
       }
     }
     if (isAskUserPanelPrintableInput(coalescedSubmit.normalizedChunk)) {
@@ -150,9 +161,16 @@ export function decodeAskUserPanelInput(
       return { kind: "right" };
     }
     if (/^[1-9]$/.test(rawInput)) {
-      const parsedIndex = Number.parseInt(rawInput, 10) - 1;
+      const parsedOneBased = Number.parseInt(rawInput, 10);
+      const parsedIndex = parsedOneBased - 1;
       if (parsedIndex >= 0 && parsedIndex < optionCount) {
         return { kind: "select_index", index: parsedIndex };
+      }
+      if (!textInputMode && parsedOneBased === footerActions.chatIndex) {
+        return { kind: "chat" };
+      }
+      if (planMode && !textInputMode && parsedOneBased === footerActions.skipIndex) {
+        return { kind: "skip" };
       }
     }
     if (isAskUserPanelPrintableInput(rawInput)) {

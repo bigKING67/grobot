@@ -2,7 +2,7 @@ import { type GaSessionStateSnapshot } from "../../services/ga-mechanism-runtime
 import {
   type ChatHistoryMessage,
   trimHistoryMessages,
-} from "../session-history";
+} from "../session/history";
 import { type SessionProviderRuntimeState } from "../session-registry";
 
 export interface TurnHistoryRecorderInput {

@@ -4,7 +4,7 @@ import {
   hasOpenTodoItems,
   shouldAutoWriteHandoff,
   type ChatHistoryMessage,
-} from "./session-history";
+} from "./session/history";
 import { writeHandoffFile } from "./handoff-file";
 
 interface CreateRunStartHandoffInput {

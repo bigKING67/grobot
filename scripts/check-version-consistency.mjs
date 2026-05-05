@@ -43,12 +43,12 @@ if (cargoVersion !== packageVersion) {
   fail(`runtime/Cargo.toml: version ${JSON.stringify(cargoVersion)} must match package.json ${JSON.stringify(packageVersion)}`);
 }
 
-const bannerSource = readText("gateway/src/cli/start/banner.ts");
+const bannerSource = readText("gateway/src/cli/start/startup/banner.ts");
 if (bannerSource.includes(staleStartupDisplayConstant)) {
-  fail(`gateway/src/cli/start/banner.ts: startup version must use product identity instead of ${staleStartupDisplayConstant}`);
+  fail(`gateway/src/cli/start/startup/banner.ts: startup version must use product identity instead of ${staleStartupDisplayConstant}`);
 }
 if (!bannerSource.includes("resolveCliVersionDisplay(process.env.GROBOT_VERSION)")) {
-  fail("gateway/src/cli/start/banner.ts: startup version must normalize GROBOT_VERSION through product identity");
+  fail("gateway/src/cli/start/startup/banner.ts: startup version must normalize GROBOT_VERSION through product identity");
 }
 
 assertIncludes(

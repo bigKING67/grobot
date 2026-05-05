@@ -16,7 +16,7 @@ import type { RunStartPersistence } from "./persistence";
 import type { RunStartRuntimeState } from "./runtime-state";
 import { setSessionGaState } from "./session-registry";
 import { resolveMemoryStrategyProfile } from "./memory-strategy-profile";
-import { buildMemoryMaintenanceFailedSurface } from "./startup-surfaces";
+import { buildMemoryMaintenanceFailedSurface } from "./startup/surfaces";
 
 export type MemoryMaintenanceReason = "bootstrap" | "post_turn" | "timer";
 

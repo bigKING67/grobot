@@ -1,8 +1,8 @@
 import {
-  renderStartScreen,
   type RenderStartScreenOptions,
   type StartScreenViewModel,
-} from "../screens/startup-screen";
+} from "../components/startup/contract";
+import { renderStartScreen } from "../components/startup/render";
 import {
   renderTerminalSelectMenu,
 } from "../components/select-menu/render";
@@ -13,8 +13,15 @@ import { resolveCliRenderMode, type CliRenderMode } from "./render-mode";
 
 export interface CliUiRenderer {
   readonly mode: CliRenderMode;
-  renderStartupScreen(viewModel: StartScreenViewModel): string;
-  renderSelectMenu(menu: TerminalSelectMenuInput, activeIndex: number): string;
+  renderStartupScreen(
+    viewModel: StartScreenViewModel,
+    renderOptions?: Pick<RenderStartScreenOptions, "terminalColumns">,
+  ): string;
+  renderSelectMenu(
+    menu: TerminalSelectMenuInput,
+    activeIndex: number,
+    renderOptions?: Pick<RenderStartScreenOptions, "terminalColumns">,
+  ): string;
 }
 
 export function createCliUiRenderer(options: RenderStartScreenOptions = {}): CliUiRenderer {
@@ -25,18 +32,20 @@ export function createCliUiRenderer(options: RenderStartScreenOptions = {}): Cli
   });
   return {
     mode,
-    renderStartupScreen: (viewModel) =>
+    renderStartupScreen: (viewModel, renderOptions) =>
       renderStartScreen(viewModel, {
         stdinIsTTY: options.stdinIsTTY,
         stdoutIsTTY: options.stdoutIsTTY,
+        terminalColumns: renderOptions?.terminalColumns ?? options.terminalColumns,
         env: options.env,
       }),
-    renderSelectMenu: (menu, activeIndex) =>
+    renderSelectMenu: (menu, activeIndex, renderOptions) =>
       renderTerminalSelectMenu({
         menu,
         activeIndex,
         stdinIsTTY: options.stdinIsTTY,
         stdoutIsTTY: options.stdoutIsTTY,
+        terminalColumns: renderOptions?.terminalColumns ?? options.terminalColumns,
         env: options.env,
       }),
   };

@@ -9,6 +9,8 @@ import {
   compactSpaces,
   measureDisplayWidth,
 } from "../../tui/terminal/display-width";
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
+import { renderPlanSurface } from "./info-surface";
 import { terminalStyle } from "../../tui/theme/terminal-style";
 
 export function compactPlanStatusLine(value: string): string {
@@ -75,20 +77,21 @@ export function buildPlanDraftStatusDisplay(input: {
       planPath: input.planPath,
     })
     : undefined;
-  const lines = [
-    `${terminalStyle.planMode("●")} 计划草稿`,
-  ];
-  if (displayPath) {
-    lines.push(displayPath);
-  }
-  lines.push(
-    "",
+  const detailLines = [
+    ...(displayPath ? [displayPath] : []),
     "Grobot 正在整理实现计划。",
-    "确认最终计划前，plan mode 只会读取和规划。",
+    "确认最终计划前，计划模式只会读取和规划。",
     '直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。',
-    "",
-  );
-  return lines.join("\n");
+  ];
+  return renderPlanSurface({
+    title: "计划草稿",
+    rows: [
+      {
+        title: "草稿已创建",
+        detailLines,
+      },
+    ],
+  });
 }
 
 export function buildCurrentPlanDisplay(input: {
@@ -96,6 +99,8 @@ export function buildCurrentPlanDisplay(input: {
   planPath: string;
   planContent: string;
   editorName?: string;
+  statusLabel?: string;
+  statusDetailLines?: readonly string[];
 }): string {
   const displayPath = formatHumanPlanFilePath({
     workDir: input.workDir,
@@ -112,9 +117,21 @@ export function buildCurrentPlanDisplay(input: {
   const editHint = editorName.length > 0
     ? `使用 "/plan open" 在 ${editorName} 中编辑此计划`
     : '使用 "/plan open" 编辑此计划';
+  const planFileDetailLines = [
+    ...(input.statusLabel ? [`状态 ${input.statusLabel}`] : []),
+    ...(input.statusDetailLines ?? []),
+  ];
   return [
-    `${terminalStyle.planMode("●")} 当前计划`,
-    displayPath,
+    renderInfoPanel({
+      title: "当前计划",
+      titleTone: "planMode",
+      sections: [{
+        rows: [{
+          title: `计划文件 ${displayPath}`,
+          detailLines: planFileDetailLines.length > 0 ? planFileDetailLines : undefined,
+        }],
+      }],
+    }),
     "",
     planContent,
     "",
@@ -157,10 +174,16 @@ function buildExitPlanModeSurface(input: {
     planPath: input.planPath,
   });
   return [
-    `${terminalStyle.planMode("●")} 退出 plan mode?`,
-    `  ${terminalStyle.muted(`计划文件: ${displayPath}`)}`,
-    "",
-    "Grobot 将退出 plan mode",
+    renderInfoPanel({
+      title: "退出计划模式?",
+      titleTone: "planMode",
+      sections: [{
+        rows: [{
+          title: `计划文件 ${displayPath}`,
+          detailLines: ["Grobot 将退出计划模式"],
+        }],
+      }],
+    }),
     "",
     "❯ 是，退出",
     "  否，继续规划",
@@ -188,9 +211,16 @@ export function buildReadyToCodeSurface(input: {
   }
   const divider = buildPlanApprovalDivider(planContent);
   return [
-    `${terminalStyle.planMode("●")} 准备开始实现？`,
-    `  ${terminalStyle.muted(`计划文件: ${displayPath}`)}`,
-    `  ${terminalStyle.muted("执行前请确认计划。")}`,
+    renderInfoPanel({
+      title: "准备开始实现？",
+      titleTone: "planMode",
+      sections: [{
+        rows: [{
+          title: `计划文件 ${displayPath}`,
+          detailLines: ["执行前请确认计划。"],
+        }],
+      }],
+    }),
     "",
     divider,
     "Grobot 的计划：",

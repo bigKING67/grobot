@@ -37,7 +37,7 @@ export function createPlanReadyApprovalRequester(input: {
         const isEmptyPlan = isEmptyPlanApprovalContent(currentPlanContent);
         const result = await withInputPaused(() =>
           runTerminalSelectMenu({
-            title: isEmptyPlan ? "退出 plan mode?" : "准备开始实现？",
+            title: isEmptyPlan ? "退出计划模式?" : "准备开始实现？",
             hint: isEmptyPlan
               ? "Enter 确认 · Esc 返回输入框"
               : "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",

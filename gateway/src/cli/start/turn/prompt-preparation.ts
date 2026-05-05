@@ -10,7 +10,7 @@ import {
   type PromptPreparationResult,
   type PromptVariant,
 } from "../../../tools/context";
-import { compactSingleLine } from "../session-history";
+import { compactSingleLine } from "../session/history";
 
 type SelectionReason = "threshold" | "budget_guard";
 type PreSendStrategy = "quality_first" | "hard_budget";

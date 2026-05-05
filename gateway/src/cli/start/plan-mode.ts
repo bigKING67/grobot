@@ -44,6 +44,7 @@ import {
   shouldRenderCompactPlanFailureSurface,
   writePlanFailureSurface,
 } from "./plan-mode/surfaces";
+import { renderPlanSurface } from "./plan-mode/info-surface";
 import { showPlanStatus as showRunStartPlanStatus } from "./plan-mode/status";
 import { buildPlanModeWorkflowPrompt } from "./plan-mode/workflow-prompt";
 import { type RunStartPersistence } from "./persistence";
@@ -169,7 +170,7 @@ export function createRunStartPlanMode(
   ): void => {
     writeStdout(
       [
-        "plan mode 只读；直接输入需求即可继续完善计划。",
+        "计划模式只读；直接输入需求即可继续完善计划。",
         "可执行计划需要明确范围、里程碑、验证命令/预期结果和回滚步骤。",
         "使用 /plan open 查看计划文件。",
         "确认后回复“开始实现计划”即可执行。",
@@ -297,7 +298,7 @@ export function createRunStartPlanMode(
           input.writeStderr(
             buildPlanApplyStateSurface({
               kind: "internal_failure",
-              detail: "进入 plan mode 后没有生成活动计划。",
+              detail: "进入计划模式后没有生成活动计划。",
               diagnostic: "PLAN_ENTER_ACTIVE_PLAN_MISSING",
             }),
           );
@@ -368,7 +369,12 @@ export function createRunStartPlanMode(
         compactFailureSurface,
       });
       if (options?.showWorkingNotice) {
-        writeStdout(`${terminalStyle.planMode("●")} 正在规划...\n`);
+        writeStdout(renderPlanSurface({
+          title: "正在规划...",
+          rows: [{
+            title: "模型正在生成计划草稿。",
+          }],
+        }));
       }
       writePlanActivityDiagnostic(options, "model_planning", "phase=planning");
       let code: number;
@@ -561,7 +567,7 @@ export function createRunStartPlanMode(
         if (approvalDecision.action === "keep_planning") {
           const feedback = approvalDecision.feedback?.trim();
           if (feedback) {
-            writeStdout("已添加计划反馈，继续保持 plan mode...\n\n");
+            writeStdout("已添加计划反馈，继续保持计划模式...\n\n");
             return runPlanTurn(feedback, options);
           }
           if (approvalDecision.silent !== true) {

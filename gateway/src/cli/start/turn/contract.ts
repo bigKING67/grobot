@@ -8,7 +8,7 @@ import { type GaMechanismRuntime, type GaSessionStateSnapshot } from "../../serv
 import { type ExperiencePoolRuntime } from "../../services/experience-pool-runtime";
 import { type MemoryOrchestrator } from "../../../tools/memory";
 import { type ContextEngineConfig } from "../../../tools/context";
-import { type ChatHistoryMessage } from "../session-history";
+import { type ChatHistoryMessage } from "../session/history";
 import { type SessionProviderRuntimeState } from "../session-registry";
 
 export interface RuntimeProviderCandidate {

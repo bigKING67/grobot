@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { terminalStyle } from "../../tui/theme/terminal-style";
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
 import { trimTrailingSlashes } from "./path-utils";
 
 export function resolveProjectAgentsPath(projectRoot: string): string {
@@ -42,19 +42,25 @@ export function buildAgentsInitPrompt(input: {
 }
 
 export function buildAgentsInitExistsSurface(targetPath: string): string {
-  return [
-    `${terminalStyle.accent("●")} AGENTS.md 已存在`,
-    `  ${terminalStyle.muted(`已跳过 /init，避免覆盖: ${targetPath}`)}`,
-    "",
-    "",
-  ].join("\n");
+  return renderInfoPanel({
+    title: "AGENTS.md 已存在",
+    sections: [{
+      rows: [{
+        title: "已跳过 /init，避免覆盖。",
+        detailLines: [`路径 ${targetPath}`],
+      }],
+    }],
+  });
 }
 
 export function buildAgentsInitStartedSurface(targetPath: string): string {
-  return [
-    `${terminalStyle.accent("●")} 正在生成项目指令`,
-    `  ${terminalStyle.muted(targetPath)}`,
-    "",
-    "",
-  ].join("\n");
+  return renderInfoPanel({
+    title: "正在生成项目指令",
+    sections: [{
+      rows: [{
+        title: "目标文件已确认。",
+        detailLines: [`路径 ${targetPath}`],
+      }],
+    }],
+  });
 }

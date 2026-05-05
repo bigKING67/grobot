@@ -53,7 +53,7 @@ export async function readPromptInputTurn(
     process.stdout.write(`${resolvedPrompt.prefix}\n`);
   }
 
-  const state: PromptInputTurnState = createInitialPromptInputTurnState();
+  const state: PromptInputTurnState = createInitialPromptInputTurnState(input.initialInput);
   const renderSession = createPromptInputTurnRenderSession({
     resolvedPrompt,
     options,

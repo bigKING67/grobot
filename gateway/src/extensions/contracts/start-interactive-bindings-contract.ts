@@ -5,14 +5,14 @@ import {
 } from "../../cli/start/interactive-bindings";
 import { createRunStartInteractiveHandler } from "../../cli/start/interactive-handler";
 import { shouldSuppressRunStartSubmitTranscript } from "../../cli/start/interactive-mode";
-import { type ChatHistoryMessage } from "../../cli/start/session-history";
+import { type ChatHistoryMessage } from "../../cli/start/session/history";
 import { createGaMechanismRuntime } from "../../cli/services/ga-mechanism-runtime";
 import { normalizeAskUserEnvelopeFromPayload } from "../../tools/ask-user";
 import { type SessionProviderRuntimeState } from "../../cli/start/session-registry";
 import { type SessionStoreRuntime } from "../../cli/services/session-store";
 import { type RunStartModelOps } from "../../cli/start/model-ops";
 import { type RunStartPlanMode } from "../../cli/start/plan-mode";
-import { type RunStartSessionMenuOps } from "../../cli/start/session-menu-ops";
+import { type RunStartSessionMenuOps } from "../../cli/start/session/menu-ops";
 import { createPlanArtifact } from "../../cli/start/plan-artifact";
 import { listRunStartSlashSuggestions } from "../../cli/start/slash-suggestions";
 import { resolveContextEngineConfig } from "../../tools/context";
@@ -389,6 +389,7 @@ async function main(): Promise<void> {
     interactiveModeInput.showMemoryStatus();
     interactiveModeInput.showSkillsStatus();
     interactiveModeInput.showMcpStatus();
+    await interactiveModeInput.showHistory();
     await interactiveModeInput.runInitProjectInstructions();
     writeFileSync(`${tempProjectRoot}/AGENTS.md`, "# Existing agents\n", "utf8");
     await interactiveModeInput.runInitProjectInstructions();
@@ -477,23 +478,45 @@ async function main(): Promise<void> {
       switch_first_call: switchEvents[0] ?? "",
       switch_second_call: switchEvents[1] ?? "",
       model_override_count: applyModelOverrideCount,
-      health_has_header: outputText.includes("[provider-health]"),
-      health_has_sticky_provider: outputText.includes("固定供应商: alpha"),
-      health_has_provider_row: outputText.includes("- alpha 状态=正常(CLOSED)"),
-      context_status_has_header: outputText.includes("● 上下文"),
-      context_status_has_system_prompt_name: outputText.includes("系统提示: SYSTEM.md 内置"),
+      health_has_header: outputText.includes("模型通道"),
+      health_has_sticky_provider: outputText.includes("会话固定通道 alpha"),
+      health_hides_raw_sticky_label: !outputText.includes("sticky alpha"),
+      health_hides_raw_session_namespace:
+        !outputText.includes("session feishu:grobot:dm")
+        && !outputText.includes("feishu:grobot:dm:interactive-binding-contract"),
+      health_has_provider_row: outputText.includes("alpha · 正常"),
+      health_hides_raw_status_codes:
+        !outputText.includes("(CLOSED)")
+        && !outputText.includes("(OPEN)")
+        && !outputText.includes("(HALF_OPEN)"),
+      health_hides_raw_rpm_burst_labels:
+        !outputText.includes("rpm ")
+        && !outputText.includes("burst "),
+      health_uses_human_cooldown: outputText.includes("冷却 30 秒"),
+      context_status_has_header: outputText.includes("上下文"),
+      context_status_uses_human_subtitle:
+        outputText.includes("每轮发送前组装的上下文窗口"),
+      context_status_has_system_prompt_name: outputText.includes("系统提示 · SYSTEM.md 内置"),
       context_status_keeps_memory_separate: outputText.includes("不等同于当前上下文窗口"),
-      memory_status_has_header: outputText.includes("● 记忆"),
+      memory_status_has_header: outputText.includes("记忆"),
+      memory_status_uses_human_subtitle:
+        outputText.includes("跨回合、跨会话、跨项目的持久记忆"),
       skills_status_counts_project_skill:
-        outputText.includes("项目: 可用")
-        && outputText.includes(`目录: ${tempProjectRoot}/.grobot/skills`)
-        && outputText.includes("Skills: 1"),
+        outputText.includes("项目 · 可用")
+        && outputText.includes(`目录 ${tempProjectRoot}/.grobot/skills`)
+        && outputText.includes("技能 1 个"),
       skills_status_counts_global_skill:
-        outputText.includes("全局: 可用")
-        && outputText.includes(`目录: ${tempHomeDir}/skills`)
-        && outputText.includes("Skills: 1"),
-      mcp_status_has_server: outputText.includes("服务: grok-search"),
-      mcp_status_instruction_pack_loaded: outputText.includes("指令包: 已加载"),
+        outputText.includes("全局 · 可用")
+        && outputText.includes(`目录 ${tempHomeDir}/skills`)
+        && outputText.includes("技能 1 个"),
+      skills_status_uses_human_subtitle:
+        outputText.includes("项目与全局技能目录"),
+      mcp_status_has_server: outputText.includes("服务 · grok-search"),
+      mcp_status_instruction_pack_loaded: outputText.includes("指令包 · 已加载"),
+      mcp_status_uses_human_subtitle:
+        outputText.includes("服务清单与指令注入状态"),
+      history_status_uses_human_subtitle:
+        outputText.includes("最近对话记录"),
       init_prompt_targets_agents: turnInputs.some((item) =>
         item.includes(`必须创建文件：${tempProjectRoot}/AGENTS.md`),
       ),
@@ -505,7 +528,8 @@ async function main(): Promise<void> {
       ),
       init_existing_agents_skips:
         outputText.includes("AGENTS.md 已存在")
-        && outputText.includes("已跳过 /init，避免覆盖:")
+        && outputText.includes("已跳过 /init，避免覆盖。")
+        && outputText.includes("路径 ")
         && !outputText.includes("AGENTS.md already exists"),
       init_generation_surface_is_human:
         outputText.includes("正在生成项目指令")
@@ -522,7 +546,12 @@ async function main(): Promise<void> {
       prompt_budget_ctx_ratio: 0.42,
       prompt_budget_estimated_tokens: 512,
       prompt_budget_target_tokens: 2048,
-      status_snapshot_has_header: outputText.includes("● 状态栏"),
+      status_snapshot_has_header: outputText.includes("状态栏"),
+      status_snapshot_uses_human_segment_labels:
+        outputText.includes("模型 开启")
+        && outputText.includes("Token 开启")
+        && !outputText.includes("model 开启")
+        && !outputText.includes("tokens 开启"),
       status_surface_hides_machine_fields:
         !outputText.includes("[status]")
         && !outputText.includes("[context]")
@@ -535,16 +564,54 @@ async function main(): Promise<void> {
         && !outputText.includes("技能=")
         && !outputText.includes("layout_mode")
         && !outputText.includes("theme:")
-        && !outputText.includes("tokens=off"),
+        && !outputText.includes("布局:")
+        && !outputText.includes("主题:")
+        && !outputText.includes("tokens=off")
+        && !outputText.includes("布局: compact")
+        && !outputText.includes("主题: nerd_font")
+        && !outputText.includes("recent conversation history")
+        && !outputText.includes("bounded context window assembled before each turn")
+        && !outputText.includes("persistent memory across turns, sessions, and projects")
+        && !outputText.includes("server inventory and instruction injection state")
+        && !outputText.includes("project and global skill directories")
+        && !outputText.includes("上下文窗口 tokens:")
+        && !outputText.includes("profile ")
+        && !outputText.includes("auto ·")
+        && !outputText.includes("Token 窗口")
+        && !outputText.includes("自动压缩阈值")
+        && !outputText.includes("历史消息")
+        && !outputText.includes("项目指令来源")
+        && !outputText.includes("严格模式失败")
+        && !outputText.includes("调用方式")
+        && !outputText.includes("目录:")
+        && !outputText.includes("路径:")
+        && !outputText.includes("用户:")
+        && !outputText.includes("助手:")
+        && !outputText.includes("version ")
+        && !outputText.includes("GA 行")
+        && !outputText.includes("skill 卡")
+        && !outputText.includes("Skills:")
+        && !outputText.includes("skill 创建")
+        && !outputText.includes("创建或更新 skill")
+        && !outputText.includes("mcp_call(")
+        && !outputText.includes("mcp_call(server, tool)")
+        && !outputText.includes("provider failover"),
       status_theme_after_update: statusConfigAfter.theme,
       status_layout_after_update: statusConfigAfter.layoutMode,
       status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
+      status_segment_update_notice_is_human:
+        outputText.includes("状态段 Token")
+        && outputText.includes("已关闭")
+        && !outputText.includes("状态段: Token")
+        && !outputText.includes("状态段: tokens"),
       plan_open_no_active_surface_is_human:
-        planOpenNoActiveText.includes("● 当前没有活跃计划文件")
-        && planOpenNoActiveText.includes("请先使用 /plan <goal>。"),
+        planOpenNoActiveText.includes("当前没有活跃计划文件")
+        && !planOpenNoActiveText.includes("● 当前没有活跃计划文件")
+        && planOpenNoActiveText.includes("• 请先使用 /plan <goal>。"),
       plan_open_success_surface_is_human:
-        planOpenSuccessText.includes("● 已打开计划文件")
-        && planOpenSuccessText.includes("计划文件: .grobot/plans/interactive-open.md")
+        planOpenSuccessText.includes("已打开计划文件")
+        && !planOpenSuccessText.includes("● 已打开计划文件")
+        && planOpenSuccessText.includes("• 计划文件 .grobot/plans/interactive-open.md")
         && !planOpenSuccessText.includes("Opened plan in editor"),
       status_menu_cancel_is_silent: cancelledMenuOutput.length === 0,
       status_menu_hint_is_reference_compact:

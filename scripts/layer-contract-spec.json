@@ -48,6 +48,41 @@
       "requiredDirs": []
     },
     {
+      "name": "gateway-cli",
+      "path": "gateway/src/cli",
+      "requiredDirs": [
+        "commands",
+        "gc",
+        "init",
+        "provider-probe",
+        "runtime-health",
+        "serve",
+        "services",
+        "start",
+        "status",
+        "system",
+        "tui"
+      ]
+    },
+    {
+      "name": "gateway-cli-start",
+      "path": "gateway/src/cli/start",
+      "requiredDirs": [
+        "context",
+        "interactive-bindings",
+        "interactive-mode",
+        "plan-artifact",
+        "plan-mode",
+        "rewind-store",
+        "session",
+        "session-registry",
+        "startup",
+        "status",
+        "turn",
+        "user-commands"
+      ]
+    },
+    {
       "name": "gateway-model",
       "path": "gateway/src/models",
       "requiredDirs": ["context"]
@@ -173,6 +208,15 @@
       "pathPrefixes": ["gateway/src/extensions/contracts/run-start-"],
       "maxFiles": 0,
       "message": "start contract suites must use start-* names; run-start is a retired product-source prefix"
+    }
+  ],
+  "directFileCountWarnings": [
+    {
+      "name": "gateway-cli-start-root",
+      "path": "gateway/src/cli/start",
+      "extensions": [".ts"],
+      "maxFiles": 34,
+      "message": "start root must stay as thin entrypoints; new domain code belongs in gateway/src/cli/start/<domain>/"
     }
   ],
   "sourceFileSizeWarnings": [

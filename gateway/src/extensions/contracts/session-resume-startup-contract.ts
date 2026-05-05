@@ -1,11 +1,11 @@
 import {
   resolveStartupResumeTarget,
   type StartupResumeSessionSummary,
-} from "../../cli/start/session-resume-startup";
+} from "../../cli/start/startup/session-resume";
 import {
   resolveResumeRequested,
   resolveResumeSelector,
-} from "../../cli/start/session-options";
+} from "../../cli/start/session/options";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
@@ -171,8 +171,19 @@ function run(): void {
     check(
       "resume_multiple_query_notice_surface_is_human",
       startupResumeNoticePlain.includes("找到多个可恢复会话")
-      && startupResumeNoticePlain.includes("查询: session"),
+      && startupResumeNoticePlain.includes("• 查询 session")
+      && startupResumeNoticePlain.includes("  ⎿  匹配 3 个会话")
+      && !startupResumeNoticePlain.includes("查询:")
+      && !startupResumeNoticePlain.includes("匹配:"),
     ),
+    check(
+      "resume_multiple_query_notice_uses_reference_detail_rows",
+      startupResumeNoticePlain.includes("  ⎿  session-legacy")
+      && startupResumeNoticePlain.includes("  ⎿  2026-04-24T09:59:00.000Z · 标题 Legacy Session")
+      && startupResumeNoticePlain.includes("  ⎿  摘要 historical context")
+      && !startupResumeNoticePlain.includes(" | "),
+    ),
+    check("resume_startup_notices_avoid_legacy_title_bullet", !startupResumeNoticePlain.includes("●")),
     check(
       "resume_multiple_query_notice_no_autoselect_literal",
       !(resumeMultipleMatches.notice ?? "").includes("auto-selecting"),

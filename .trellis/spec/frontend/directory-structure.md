@@ -21,7 +21,9 @@ The interaction layer boundary is:
 
 Current CLI files live under `gateway/src/cli/*`. The old
 `gateway/src/orchestration/entrypoints/dev-cli/*` path is retired; do not
-recreate it for UI modules or compatibility aliases.
+recreate it for UI modules or compatibility aliases. The retired
+`gateway/src/cli/tui/screens/*-screen.ts` compatibility layer has also been
+removed; imports must target `tui/components/*` or `tui/react/*` owner paths.
 
 ---
 
@@ -36,11 +38,26 @@ gateway/src/
 │   ├── start/
 │   │   ├── run.ts
 │   │   ├── context.ts
+│   │   ├── context/
+│   │   ├── startup/
 │   │   ├── interactive-mode.ts
+│   │   ├── interactive-mode/
 │   │   ├── interactive-bindings.ts
+│   │   ├── interactive-bindings/
 │   │   ├── turn.ts
+│   │   ├── turn/
 │   │   ├── plan-mode.ts
+│   │   ├── plan-mode/
+│   │   ├── session-registry/
+│   │   ├── rewind-store/
+│   │   ├── status/
+│   │   ├── user-commands/
 │   │   └── session-interactive.ts
+│   ├── gc/
+│   ├── init/
+│   ├── provider-probe/
+│   ├── runtime-health/
+│   ├── system/
 │   ├── status/
 │   ├── serve/
 │   ├── services/
@@ -80,10 +97,24 @@ gateway/src/
 │       │   │   ├── contract.ts
 │       │   │   ├── reducer.ts
 │       │   │   └── render.ts
+│       │   ├── status-indicator/
+│       │   │   └── render.ts
 │       │   ├── bottom-pane/
 │       │   │   ├── contract.ts
 │       │   │   └── render.ts
 │       │   ├── activity-feed/
+│       │   │   ├── contract.ts
+│       │   │   └── render.ts
+│       │   ├── provider-health/
+│       │   │   ├── contract.ts
+│       │   │   └── render.ts
+│       │   ├── help/
+│       │   │   ├── contract.ts
+│       │   │   └── render.ts
+│       │   ├── info-panel/
+│       │   │   ├── contract.ts
+│       │   │   └── render.ts
+│       │   ├── startup/
 │       │   │   ├── contract.ts
 │       │   │   └── render.ts
 │       │   └── turn-notice/
@@ -97,7 +128,12 @@ gateway/src/
 │       │   ├── prompt-input.tsx
 │       │   ├── status-line.tsx
 │       │   ├── bottom-pane.tsx
-│       │   └── ask-user-panel.tsx
+│       │   ├── activity-feed.tsx
+│       │   ├── provider-health.tsx
+│       │   ├── help-screen.tsx
+│       │   ├── info-panel.tsx
+│       │   ├── ask-user-panel.tsx
+│       │   └── turn-notice.tsx
 │       └── kernel/
 └── tools/
     └── ask-user/
@@ -110,21 +146,26 @@ gateway/src/
 
 ---
 
-## Current Legacy Layout
+## Current CLI Layout
 
-Until migration completes, existing source may still be found under:
+Current product CLI source is first-class under `gateway/src/cli/`:
 
 ```text
 gateway/src/cli/
+├── commands/
+├── gc/
+├── init/
+├── provider-probe/
+├── runtime-health/
+├── system/
 ├── start/
 ├── status/
 ├── serve/
 ├── services/
-├── commands/
-└── ui/
+└── tui/
 ```
 
-Do not use this legacy layout as the template for new interaction modules.
+Do not add new `ui/`, `screens/`, `dev-cli`, or `run-start-*` owner paths.
 
 ---
 
@@ -153,6 +194,10 @@ Do not use this legacy layout as the template for new interaction modules.
    modules consume interfaces, not low-level sockets/files directly.
 9. Keep ask-user envelope parsing/normalization in `tools/ask-user/schema.ts`;
    resolution logic in `resolver.ts`; display text in `display.ts`.
+10. Keep start-specific subdomains under `cli/start/<domain>/` once they grow
+    beyond a narrow entrypoint: `startup/`, `plan-mode/`, `turn/`,
+    `session-registry/`, `interactive-bindings/`, `status/`, and
+    `user-commands/`.
 
 ---
 
@@ -209,5 +254,12 @@ Do not use this legacy layout as the template for new interaction modules.
    runtime tool activity transcript/feed rendering.
 11. `gateway/src/cli/tui/components/turn-notice/render.ts` (target):
    turn interruption/failure notice rendering.
-12. `gateway/src/tools/ask-user/schema.ts`: ask-user envelope normalization from
+12. `gateway/src/cli/tui/components/help/render.ts` (target):
+   `/help` command guide rendering.
+13. `gateway/src/cli/tui/components/info-panel/render.ts` (target):
+   passive slash-command snapshots such as `/context`, `/memory`, `/mcp`,
+   `/history`, `Skills`, and current status snapshots.
+14. `gateway/src/cli/tui/components/startup/render.ts` (target):
+    startup banner, title segments, hero block, and feed layout rendering.
+15. `gateway/src/tools/ask-user/schema.ts`: ask-user envelope normalization from
    runtime payloads.

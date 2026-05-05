@@ -436,7 +436,9 @@ function buildWarningLine(input: {
   const level =
     ratio >= input.config.criticalThresholdRatio ? "critical" : "warning";
   const icon = input.config.theme === "nerd_font" ? "" : "!";
-  return `${icon} context ${Math.round(ratio * 100)}% (${level})`;
+  const label = input.config.theme === "ccline" ? "ctx" : "上下文";
+  const stateLabel = level === "critical" ? "已到上限" : "接近上限";
+  return `${icon} ${label} ${Math.round(ratio * 100)}% · ${stateLabel}`;
 }
 
 function buildActivityLine(input: {
@@ -457,7 +459,7 @@ function resolvePlanModeBadge(input: {
   if (!input.prompt.planMode) {
     return undefined;
   }
-  const label = compactSpaces(input.prompt.planModeLabel ?? "plan mode");
+  const label = compactSpaces(input.prompt.planModeLabel ?? "计划模式");
   if (!label) {
     return undefined;
   }

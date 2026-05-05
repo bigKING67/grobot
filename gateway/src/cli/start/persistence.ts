@@ -1,5 +1,5 @@
 import { SessionStoreController } from "../services/session-store";
-import { type ChatHistoryMessage } from "./session-history";
+import { type ChatHistoryMessage } from "./session/history";
 import { type RunStartRuntimeState } from "./runtime-state";
 import { type SessionRegistryPayload } from "./session-registry";
 

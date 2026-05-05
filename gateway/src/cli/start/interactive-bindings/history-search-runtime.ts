@@ -1,5 +1,5 @@
 import { runTerminalSelectMenu } from "../../tui/components/select-menu/controller";
-import { compactSingleLine } from "../session-history";
+import { compactSingleLine } from "../session/history";
 import {
   buildHistorySearchCandidates,
   filterHistorySearchCandidates,
@@ -37,8 +37,8 @@ export function createOpenHistorySearch(
       subtitle:
         query.length >= 2
           ? filtered.length > 0
-            ? `查询: ${compactSingleLine(query, 60)} · 匹配: ${String(filtered.length)}`
-            : `查询: ${compactSingleLine(query, 60)} · 无精确匹配，显示最近历史`
+            ? `查询 ${compactSingleLine(query, 60)} · 匹配 ${String(filtered.length)}`
+            : `查询 ${compactSingleLine(query, 60)} · 无精确匹配，显示最近历史`
           : "最近的 prompts 和回复",
       hint: "↑/↓ 选择 · Enter 填入 · Esc 返回",
       items: effectiveCandidates.slice(0, 30).map((candidate) => ({

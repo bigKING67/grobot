@@ -78,6 +78,28 @@ function resolveModelStatusSuffix(input: {
   return "";
 }
 
+function buildModelPickerContextLine(input: {
+  meta?: TerminalSelectMenuModelPickerMeta;
+  viewportTotalCount: number;
+}): string {
+  const meta = input.meta;
+  const providerName = sanitizeMenuText(meta?.providerName, "");
+  const totalModelCount =
+    typeof meta?.totalModelCount === "number" && Number.isFinite(meta.totalModelCount)
+      ? Math.max(0, Math.floor(meta.totalModelCount))
+      : input.viewportTotalCount;
+  const parts = [
+    providerName.length > 0 ? `通道 ${providerName}` : "",
+    totalModelCount > 0 ? `${String(totalModelCount)} 个模型` : "",
+    "写入当前配置",
+  ].filter((part) => part.length > 0);
+  return parts.join(" · ");
+}
+
+function buildModelPickerHiddenCountLine(hiddenCount: number): string {
+  return `还有 ${String(hiddenCount)} 个模型…`;
+}
+
 function renderModelPickerLabel(input: {
   isActive: boolean;
   isCurrent: boolean;
@@ -113,7 +135,7 @@ function resolveRenderContext(input: RenderTerminalSelectMenuInput): {
   });
   return {
     theme: createCliTheme(mode),
-    columns: resolveMenuColumns(),
+    columns: resolveMenuColumns(input.terminalColumns),
   };
 }
 
@@ -195,7 +217,16 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
 
   const hiddenCount = Math.max(0, viewport.totalCount - viewport.visibleCount);
   if (hiddenCount > 0) {
-    lines.push(`   ${theme.color("muted", `and ${String(hiddenCount)} more…`)}`);
+    lines.push(`   ${theme.color("muted", buildModelPickerHiddenCountLine(hiddenCount))}`);
+  }
+
+  const contextLine = buildModelPickerContextLine({
+    meta,
+    viewportTotalCount: viewport.totalCount,
+  });
+  if (contextLine.length > 0 && surfaceWidth >= 56) {
+    lines.push("");
+    lines.push(`  ${theme.color("muted", truncateDisplayWidth(contextLine, surfaceWidth - 2))}`);
   }
 
   lines.push("");
@@ -296,13 +327,13 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     input.menu.planApprovalMeta?.emptyPlan === true || planContent.trim().length === 0;
   if (isEmptyPlanApproval) {
     const emptyTitle = input.menu.planApprovalMeta?.emptyPlan === true
-      ? "退出 plan mode?"
-      : sanitizeMenuText(input.menu.title, "退出 plan mode?");
+      ? "退出计划模式?"
+      : sanitizeMenuText(input.menu.title, "退出计划模式?");
     const lines: string[] = [];
     const optionLabelBudget = Math.max(12, surfaceWidth - 4);
     lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
     lines.push(`  ${theme.bold(truncateDisplayWidth(emptyTitle, surfaceWidth))}`);
-    lines.push(`  ${truncateDisplayWidth(`${agentName} 将退出 plan mode`, surfaceWidth)}`);
+    lines.push(`  ${truncateDisplayWidth(`${agentName} 将退出计划模式`, surfaceWidth)}`);
     lines.push("");
     for (let index = 0; index < input.menu.items.length; index += 1) {
       const item = input.menu.items[index]!;
@@ -328,7 +359,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     ? `Ctrl-G 编辑计划 · ${editorName} · ${planPath}`
     : `Ctrl-G 编辑计划 · ${editorName}`;
   const editHintWithSaveState = input.menu.planApprovalMeta?.planEdited
-    ? `${editHint} · ✓ 计划已保存`
+    ? `✓ 计划已保存 · ${editHint}`
     : editHint;
   const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["未找到计划。"];
   const optionLabelBudget = Math.max(12, surfaceWidth - 4);
@@ -337,7 +368,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
 
   lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
   if (planPath.length > 0) {
-    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`计划文件: ${planPath}`, surfaceWidth)}`));
+    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`计划文件 ${planPath}`, surfaceWidth)}`));
   }
   lines.push(`  ${theme.bold(truncateDisplayWidth(title, surfaceWidth))}`);
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(subtitle, surfaceWidth)}`));

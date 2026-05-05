@@ -15,3 +15,9 @@ export interface ActivityFeedRow {
   detailLines: string[];
   severity: "ok" | "warning" | "error";
 }
+
+export interface RuntimeActivityFeedViewModel {
+  rows: readonly ActivityFeedRow[];
+  detailMode: RuntimeActivityFeedDetailMode;
+  terminalColumns?: number;
+}

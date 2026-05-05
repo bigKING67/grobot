@@ -1,4 +1,4 @@
-import { type ChatHistoryMessage } from "../../../cli/start/session-history";
+import { type ChatHistoryMessage } from "../../../cli/start/session/history";
 import {
   type SessionPlanMeta,
   type SessionPlanMode,

@@ -1,14 +1,20 @@
-import {
-  normalizeStatusLineConfig,
-  type StatusLineConfig,
-  type StatusLineConfigInput,
-} from "../tui/screens/status-line-screen";
+import { normalizeStatusLineConfig } from "../tui/components/status-line/reducer";
+import type {
+  StatusLineConfig,
+  StatusLineConfigInput,
+} from "../tui/components/status-line/contract";
 import { runTerminalSelectMenu } from "../tui/components/select-menu/controller";
 import { createRunStartUserCommandsRuntime } from "./user-commands";
 import { resolveRunStartPlanSuggestionState } from "./plan-suggestion-state";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
 import { openPlanInEditor as openPlanFileInEditor } from "./interactive-bindings/plan-editor-action";
 import {
+  buildStatusLayoutUsageSurface,
+  buildStatusSegmentUsageSurface,
+  buildStatusThemeUsageSurface,
+  formatStatusLayoutModeLabel,
+  formatStatusSegmentLabel,
+  formatStatusThemeLabel,
   formatStatusLineCurrentSnapshot,
   normalizeStatusSegmentId,
   resolveStatusLayoutMode,
@@ -176,33 +182,33 @@ export function createRunStartInteractiveModeInput(
       const theme = resolveStatusTheme(rawTheme);
       if (!theme) {
         input.output.writeStdout(
-          "无效状态主题；用法: /status theme <plain|nerd|ccline>\n\n",
+          buildStatusThemeUsageSurface("无效状态主题"),
         );
         return;
       }
       statusLineState.updateStatusLineConfig({ theme });
       input.output.writeStdout(
-        buildCompactNotice("已更新状态栏主题", [`主题: ${theme}`]),
+        buildCompactNotice("已更新状态栏主题", [`主题 ${formatStatusThemeLabel(theme)}`]),
       );
     },
     setStatusLayoutMode: (rawLayoutMode) => {
       const layoutMode = resolveStatusLayoutMode(rawLayoutMode);
       if (!layoutMode) {
         input.output.writeStdout(
-          "无效状态布局；用法: /status layout <adaptive|full|compact>\n\n",
+          buildStatusLayoutUsageSurface("无效状态布局"),
         );
         return;
       }
       statusLineState.updateStatusLineConfig({ layoutMode });
       input.output.writeStdout(
-        buildCompactNotice("已更新状态栏布局", [`布局: ${layoutMode}`]),
+        buildCompactNotice("已更新状态栏布局", [`布局 ${formatStatusLayoutModeLabel(layoutMode)}`]),
       );
     },
     setStatusSegmentEnabled: (rawSegmentId, enabled) => {
       const segmentId = normalizeStatusSegmentId(rawSegmentId);
       if (!segmentId) {
         input.output.writeStdout(
-          "无效状态段；用法: /status segment <model|project|context|tokens|session> <on|off>\n\n",
+          buildStatusSegmentUsageSurface("无效状态段"),
         );
         return;
       }
@@ -211,10 +217,11 @@ export function createRunStartInteractiveModeInput(
           [segmentId]: enabled,
         },
       });
+      const segmentLabel = formatStatusSegmentLabel(segmentId);
       input.output.writeStdout(
         buildCompactNotice("已更新状态栏状态段", [
-          `状态段: ${segmentId}`,
-          `状态: ${enabled ? "已开启" : "已关闭"}`,
+          `状态段 ${segmentLabel}`,
+          enabled ? "已开启" : "已关闭",
         ]),
       );
     },

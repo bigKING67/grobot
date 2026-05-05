@@ -1,6 +1,6 @@
 import { type RunStartBootstrapState } from "./bootstrap";
 import { type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
-import { type ChatHistoryMessage } from "./session-history";
+import { type ChatHistoryMessage } from "./session/history";
 import {
   type SessionPlanMeta,
   type SessionPlanMode,

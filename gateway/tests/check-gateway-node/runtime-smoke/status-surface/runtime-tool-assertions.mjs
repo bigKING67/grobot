@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 
 export function assertRuntimeToolStatusSurface(statusPayload) {
   assert.equal(statusPayload.exit_code, 0);
+  assert.equal(statusPayload.status_text_exit_code, 0);
+  assert.equal(statusPayload.status_text_uses_info_panel, true);
+  assert.equal(statusPayload.status_text_hides_raw_machine_lines, true);
+  assert.equal(statusPayload.status_text_has_json_hint, true);
   assert.equal(statusPayload.status_json_parse_ok, true);
   assert.equal(statusPayload.status_has_route_decision, true);
   assert.equal(statusPayload.status_has_route_observed, true);

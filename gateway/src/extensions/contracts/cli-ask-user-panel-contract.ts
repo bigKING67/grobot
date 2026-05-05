@@ -142,10 +142,10 @@ const payload = {
     initialPlain.includes("问题 1/2")
     && initialPlain.includes("(2 项未回答)"),
   panel_plan_mode_shows_planning_path:
-    initialPlain.includes("计划文件: .grobot/plans/session/ACTIVE.md"),
+    initialPlain.includes("计划文件 .grobot/plans/session/ACTIVE.md"),
   panel_planning_context_near_top:
-    initialPlain.indexOf("计划文件: .grobot/plans/session/ACTIVE.md") > 0
-    && initialPlain.indexOf("计划文件: .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
+    initialPlain.indexOf("计划文件 .grobot/plans/session/ACTIVE.md") > 0
+    && initialPlain.indexOf("计划文件 .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
   panel_has_claude_like_question_tabs:
     initialPlain.includes("[□ Scope]")
     && initialPlain.includes("□ Risk Review")
@@ -175,20 +175,30 @@ const payload = {
     initialPlain.includes("备注:")
     && initialPlain.includes("按 n 添加备注"),
   panel_has_chat_about_this_row:
-    initialPlain.includes("c. 继续对话补充"),
+    initialPlain.includes("4. 继续对话补充")
+    && !initialPlain.includes("\nc. 继续对话补充"),
   panel_has_plan_skip_affordance:
-    initialPlain.includes("s. 跳过访谈，直接进入计划")
+    initialPlain.includes("5. 跳过访谈，直接进入计划")
+    && !initialPlain.includes("\ns. 跳过访谈，直接进入计划")
     && initialPlain.includes("s 跳过"),
   panel_footer_actions_separated:
     initialPlain.includes("按 n 添加备注\n\n  ─")
-    && initialPlain.includes("─\n  c. 继续对话补充"),
+    && initialPlain.includes("─\n  4. 继续对话补充"),
   panel_hints_are_muted:
     initialRendered.includes("\x1b[90mEnter 确认")
     && initialRendered.includes("\x1b[90m↑/↓ 选择"),
+  panel_review_hint_uses_reference_byline:
+    reviewPlain.includes("↑/↓ 选择 · Enter 确认 · ←/→ 切换问题 · Esc 返回输入框")
+    && !reviewPlain.includes("↑/↓ 选择 | Enter 确认 | ←/→ 切换问题 | Esc 返回输入框"),
   panel_review_has_submit_edit_cancel:
     reviewPlain.includes("提交答案")
     && reviewPlain.includes("修改 1.")
     && reviewPlain.includes("取消"),
+  panel_review_submit_tab_is_single_active:
+    reviewPlain.includes("✓ Scope")
+    && reviewPlain.includes("✓ Risk Review")
+    && reviewPlain.includes("[✓ 提交]")
+    && !reviewPlain.includes("[Risk Review] [提交]"),
   panel_review_title_is_prominent:
     reviewRendered.includes("\x1b[1m检查答案"),
   panel_review_has_answer_summary:

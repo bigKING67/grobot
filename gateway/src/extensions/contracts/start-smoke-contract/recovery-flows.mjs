@@ -104,7 +104,7 @@ export function runStatusBrowserEnvironmentToolRecovery(context) {
     "rust",
   ];
   const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
-  const textResult = runCommand(repoRoot, statusArgs);
+  const textResult = runCommand(repoRoot, statusArgs, { GROBOT_STATUS_LEGACY_TEXT: "1" });
   const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
   const runtimeTools = isObject(parsedStatus?.runtime_tools)
     ? parsedStatus.runtime_tools
@@ -228,7 +228,7 @@ export function runStatusMcpEnvironmentToolRecovery(context) {
     "rust",
   ];
   const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
-  const textResult = runCommand(repoRoot, statusArgs);
+  const textResult = runCommand(repoRoot, statusArgs, { GROBOT_STATUS_LEGACY_TEXT: "1" });
   const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
   const runtimeTools = isObject(parsedStatus?.runtime_tools)
     ? parsedStatus.runtime_tools
@@ -344,7 +344,7 @@ export function runStatusNonRecoverableToolRecoveryConsumed(context) {
     "rust",
   ];
   const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
-  const textResult = runCommand(repoRoot, statusArgs);
+  const textResult = runCommand(repoRoot, statusArgs, { GROBOT_STATUS_LEGACY_TEXT: "1" });
   const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
   const runtimeTools = isObject(parsedStatus?.runtime_tools)
     ? parsedStatus.runtime_tools

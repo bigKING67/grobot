@@ -466,7 +466,7 @@ const payload = {
     askUserMenuDescriptor?.items[0]?.description === "Run checks before continuing",
   ask_user_queue_display_shows_progress:
     askUserQueueDisplay.includes("需要确认 · Scope · 1/2")
-    && askUserQueueDisplay.includes("[Scope]"),
+    && askUserQueueDisplay.includes("[□ Scope]"),
   ask_user_queue_display_hides_raw_diagnostics:
     !askUserQueueDisplay.includes("[ask-user]")
     && !askUserQueueDisplay.includes("question=")
@@ -483,7 +483,7 @@ const payload = {
     && questionnaireAnsweredState.answers[describedEnvelope.askId] === "fast",
   questionnaire_view_has_question_tabs:
     questionnaireView.kind === "question"
-    && questionnaireView.navigationText.includes("[Scope]")
+    && questionnaireView.navigationText.includes("[□ Scope]")
     && questionnaireView.optionItems.length === 3,
   questionnaire_view_has_other_input_option:
     questionnaireView.kind === "question"

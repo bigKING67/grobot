@@ -45,7 +45,7 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
 
   if (PLAN_OPEN_ALIASES.has(head)) {
     if (tail.length > 0) {
-      return { kind: "invalid", reason: "用法: /plan open" };
+      return { kind: "invalid", reason: "用法 /plan open" };
     }
     return { kind: "open" };
   }

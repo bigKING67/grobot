@@ -34,7 +34,7 @@ export function createInteractiveCommandRuntimes(
     if (requirementInput.kind === "cancelled") {
       input.output.writeStdout(
         buildSkillCreatorSurface({
-          title: "已取消 skill 创建",
+          title: "已取消技能创建",
         }),
       );
       return undefined;
@@ -43,7 +43,7 @@ export function createInteractiveCommandRuntimes(
     if (!requirement) {
       input.output.writeStdout(
         buildSkillCreatorSurface({
-          title: "需求为空，已取消 skill 创建",
+          title: "需求为空，已取消技能创建",
         }),
       );
       return undefined;
@@ -59,7 +59,7 @@ export function createInteractiveCommandRuntimes(
       input.output.writeStdout(
         buildSkillCreatorSurface({
           title: "需要提供技能需求",
-          details: ["用法: /skill-creator [需求]"],
+          details: ["用法 /skill-creator [需求]"],
         }),
       );
       return;

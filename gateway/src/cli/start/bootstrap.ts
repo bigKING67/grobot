@@ -1,6 +1,6 @@
 import { SessionStoreController } from "../services/session-store";
 import { type GaSessionStateSnapshot } from "../services/ga-mechanism-runtime";
-import { type ChatHistoryMessage } from "./session-history";
+import { type ChatHistoryMessage } from "./session/history";
 import {
   createSessionRecord,
   findSessionRecord,

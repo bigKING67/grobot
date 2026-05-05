@@ -29,7 +29,6 @@ export async function runTuiContracts() {
   assert.equal(typeof browserStructuredContractPayload.tool_call_retryable, "boolean");
   assert.equal(Array.isArray(browserStructuredContractPayload.tool_call_transport_attempts), true);
   logStep("browser-structured-mcp-contract");
-
   const browserDoctorSchemaResult = runCommand("node", [
     "gateway/src/extensions/contracts/browser-doctor-json-schema-contract.mjs",
   ], {
@@ -45,7 +44,6 @@ export async function runTuiContracts() {
   assert.equal(Array.isArray(browserDoctorSchemaPayload.doctor_path_enum), true);
   assert.equal(browserDoctorSchemaPayload.doctor_path_enum.includes("cdp"), true);
   logStep("browser-doctor-json-schema-contract");
-
   const providerHealthFormatResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -60,15 +58,47 @@ export async function runTuiContracts() {
   );
   assert.equal(providerHealthFormatPayload.has_header, true);
   assert.equal(providerHealthFormatPayload.has_session, true);
+  assert.equal(providerHealthFormatPayload.hides_raw_session_namespace, true);
   assert.equal(providerHealthFormatPayload.has_sticky, true);
+  assert.equal(providerHealthFormatPayload.hides_raw_sticky_label, true);
   assert.equal(providerHealthFormatPayload.has_alpha_closed, true);
   assert.equal(providerHealthFormatPayload.has_beta_open, true);
+  assert.equal(providerHealthFormatPayload.hides_raw_status_codes, true);
   assert.equal(providerHealthFormatPayload.has_latency_field, true);
   assert.equal(providerHealthFormatPayload.has_error_rate_field, true);
   assert.equal(providerHealthFormatPayload.has_rpm_field, true);
+  assert.equal(providerHealthFormatPayload.has_human_cooldown, true);
+  assert.equal(providerHealthFormatPayload.has_human_error_class, true);
+  assert.equal(providerHealthFormatPayload.hides_raw_error_class, true);
+  assert.equal(providerHealthFormatPayload.hides_raw_rpm_burst_labels, true);
   assert.equal(providerHealthFormatPayload.uses_reference_detail_rows, true);
   assert.equal(providerHealthFormatPayload.avoids_machine_prefix, true);
   logStep("provider-health-format-contract");
+
+  const cliUsageContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/cli-usage-contract.ts",
+  ]);
+  assertSuccess("cli-usage-contract", cliUsageContractResult);
+  const cliUsageContractPayload = parseJsonOutput(
+    "cli-usage-contract",
+    cliUsageContractResult.stdout,
+  );
+  assert.equal(cliUsageContractPayload.has_reference_title, true);
+  assert.equal(cliUsageContractPayload.has_local_tui_entry, true);
+  assert.equal(cliUsageContractPayload.uses_reference_command_rows, true);
+  assert.equal(cliUsageContractPayload.has_status_summary_copy, true);
+  assert.equal(cliUsageContractPayload.has_session_recovery_rows, true);
+  assert.equal(cliUsageContractPayload.has_interactive_help_hint, true);
+  assert.equal(cliUsageContractPayload.avoids_legacy_dev_cli_copy, true);
+  assert.equal(cliUsageContractPayload.avoids_long_option_walls, true);
+  assert.equal(cliUsageContractPayload.avoids_machine_help_terms, true);
+  assert.equal(cliUsageContractPayload.lines_within_reference_width, true);
+  assert.equal(cliUsageContractPayload.ends_without_extra_blank, true);
+  logStep("cli-usage-contract");
 
   const cliHelpScreenContractResult = runCommand("npx", [
     "--yes",
@@ -96,20 +126,33 @@ export async function runTuiContracts() {
   assert.equal(cliHelpScreenPayload.has_status_command, true);
   assert.equal(cliHelpScreenPayload.has_help_command, true);
   assert.equal(cliHelpScreenPayload.has_exit_command, true);
+  assert.equal(cliHelpScreenPayload.avoids_pipe_alias_rows, true);
   assert.equal(cliHelpScreenPayload.has_utilities_section, true);
   assert.equal(cliHelpScreenPayload.has_health_command, true);
   assert.equal(cliHelpScreenPayload.has_context_command, true);
   assert.equal(cliHelpScreenPayload.has_memory_command, true);
   assert.equal(cliHelpScreenPayload.has_skills_command, true);
   assert.equal(cliHelpScreenPayload.has_mcp_command, true);
+  assert.equal(cliHelpScreenPayload.health_copy_is_human, true);
+  assert.equal(cliHelpScreenPayload.help_copy_hides_english_operator_terms, true);
   assert.equal(cliHelpScreenPayload.has_notes_section, true);
   assert.equal(cliHelpScreenPayload.has_compatibility_note, true);
+  assert.equal(cliHelpScreenPayload.has_checkpoint_alias_note, true);
+  assert.equal(cliHelpScreenPayload.uses_compact_notes, true);
+  assert.equal(cliHelpScreenPayload.avoids_document_style_notes, true);
+  assert.equal(cliHelpScreenPayload.uses_compact_overview_descriptions, true);
+  assert.equal(cliHelpScreenPayload.avoids_long_registry_descriptions, true);
   assert.equal(cliHelpScreenPayload.uses_reference_bullets, true);
+  assert.equal(cliHelpScreenPayload.uses_reference_overview_instead_of_full_command_dump, true);
   assert.equal(cliHelpScreenPayload.avoids_legacy_headers, true);
   assert.equal(cliHelpScreenPayload.avoids_machine_prefix, true);
   assert.equal(cliHelpScreenPayload.interactive_has_ansi, true);
+  assert.equal(cliHelpScreenPayload.regular_lines_within_width, true);
+  assert.equal(cliHelpScreenPayload.regular_uses_terminal_width_budget, true);
+  assert.equal(cliHelpScreenPayload.regular_avoids_help_over_truncation, true);
   assert.equal(cliHelpScreenPayload.narrow_lines_within_width, true);
   assert.equal(cliHelpScreenPayload.ends_with_spacing, true);
+  assert.equal(cliHelpScreenPayload.render_keeps_terminal_width_explicit, true);
   logStep("cli-help-screen-contract");
 
   const cliInfoPanelContractResult = runCommand("npx", [
@@ -126,6 +169,7 @@ export async function runTuiContracts() {
   );
   assert.equal(cliInfoPanelPayload.interactive_has_ansi, true);
   assert.equal(cliInfoPanelPayload.interactive_title_supports_plan_tone, true);
+  assert.equal(cliInfoPanelPayload.interactive_uses_human_context_copy, true);
   assert.equal(cliInfoPanelPayload.has_title, true);
   assert.equal(cliInfoPanelPayload.has_subtitle, true);
   assert.equal(cliInfoPanelPayload.uses_reference_row_bullets, true);
@@ -134,6 +178,7 @@ export async function runTuiContracts() {
   assert.equal(cliInfoPanelPayload.avoids_machine_prefix, true);
   assert.equal(cliInfoPanelPayload.narrow_lines_within_width, true);
   assert.equal(cliInfoPanelPayload.ends_with_newline, true);
+  assert.equal(cliInfoPanelPayload.render_keeps_terminal_width_explicit, true);
   logStep("cli-info-panel-contract");
 
   const cliUiRendererContractResult = runCommand("npx", [
@@ -170,9 +215,10 @@ export async function runTuiContracts() {
   assert.equal(cliUiRendererContractPayload.startup_feed_footer_avoids_info_color, true);
   assert.equal(cliUiRendererContractPayload.startup_has_no_join_artifact, true);
   assert.equal(cliUiRendererContractPayload.startup_has_no_tee_glyph, true);
-  assert.equal(cliUiRendererContractPayload.startup_body_width_consistent, true);
+  assert.equal(cliUiRendererContractPayload.startup_has_no_outer_round_frame, true);
+  assert.equal(cliUiRendererContractPayload.startup_lines_within_terminal, true);
   assert.equal(cliUiRendererContractPayload.startup_feed_divider_count_expected, true);
-  assert.equal(cliUiRendererContractPayload.startup_brand_symbol_body_length_consistent, true);
+  assert.equal(cliUiRendererContractPayload.startup_brand_symbol_lines_within_terminal, true);
   assert.equal(cliUiRendererContractPayload.startup_brand_symbol_has_claude_like_height, true);
   assert.equal(cliUiRendererContractPayload.startup_registered_symbol_single_width, true);
   assert.equal(cliUiRendererContractPayload.menu_interactive_has_ansi, true);
@@ -202,6 +248,10 @@ export async function runTuiContracts() {
   assert.equal(cliUiRendererContractPayload.model_picker_current_not_parenthesized, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_default_suffix, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_footer_hint, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_has_config_scope_subtitle, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_avoids_stale_session_only_copy, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_has_config_scope_context, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_active_description_is_muted, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_no_provider_card, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_no_startup_badge, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_no_current_badge, true);
@@ -231,8 +281,11 @@ export async function runTuiContracts() {
   assert.equal(cliUiRendererContractPayload.plan_approval_empty_omits_plan_markdown, true);
   assert.equal(cliUiRendererContractPayload.model_picker_direct_render_uses_model_visible_count, true);
   assert.equal(cliUiRendererContractPayload.model_picker_direct_render_shows_hidden_count, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_no_english_hidden_count, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_config_scope_context, true);
   assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_no_row_scroll_marker, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_rows_within_width, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_long_descriptions_do_not_wrap, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_current_suffix_preserved, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_default_suffix_preserved, true);
   assert.equal(cliUiRendererContractPayload.model_picker_narrow_rows_within_width, true);
@@ -313,10 +366,13 @@ export async function runTuiContracts() {
     cliActivityFeedContractResult.stdout,
   );
   assert.equal(cliActivityFeedPayload.renders_real_tool_rows, true);
+  assert.equal(cliActivityFeedPayload.uses_reference_tool_status_dot, true);
   assert.equal(cliActivityFeedPayload.compact_hides_key_value_details, true);
   assert.equal(cliActivityFeedPayload.renders_edit_with_diff_stats, true);
   assert.equal(cliActivityFeedPayload.renders_failed_bash, true);
   assert.equal(cliActivityFeedPayload.renders_recovery_row, true);
+  assert.equal(cliActivityFeedPayload.recovery_rows_humanize_all_known_stages, true);
+  assert.equal(cliActivityFeedPayload.recovery_rows_avoid_raw_stage_and_action_codes, true);
   assert.equal(cliActivityFeedPayload.nested_payload_supported, true);
   assert.equal(cliActivityFeedPayload.plan_file_write_uses_reference_label, true);
   assert.equal(cliActivityFeedPayload.plan_file_edit_hides_path_and_diff_stats, true);
@@ -349,8 +405,20 @@ export async function runTuiContracts() {
   );
   assert.equal(cliActivityStatePayload.start_snapshot_visible, true);
   assert.equal(cliActivityStatePayload.route_diagnostic_visible, true);
+  assert.equal(cliActivityStatePayload.route_snapshot_has_stage_detail, true);
+  assert.equal(cliActivityStatePayload.route_snapshot_avoids_raw_key_value, true);
+  assert.equal(cliActivityStatePayload.context_snapshot_has_budget_detail, true);
+  assert.equal(cliActivityStatePayload.context_snapshot_avoids_raw_key_value, true);
+  assert.equal(cliActivityStatePayload.ask_user_waiting_has_reply_detail, true);
   assert.equal(cliActivityStatePayload.plan_diagnostic_visible, true);
   assert.equal(cliActivityStatePayload.plan_approval_waiting_has_detail, true);
+  assert.equal(cliActivityStatePayload.semantic_prefetch_status_is_human, true);
+  assert.equal(cliActivityStatePayload.pre_send_detail_is_human, true);
+  assert.equal(cliActivityStatePayload.governance_topic_is_human, true);
+  assert.equal(cliActivityStatePayload.experience_event_detail_is_human, true);
+  assert.equal(cliActivityStatePayload.memory_event_detail_is_human, true);
+  assert.equal(cliActivityStatePayload.interrupt_event_detail_is_human, true);
+  assert.equal(cliActivityStatePayload.residual_activity_details_avoid_raw_codes, true);
   assert.equal(cliActivityStatePayload.plan_mode_start_uses_plan_context, true);
   assert.equal(cliActivityStatePayload.ok_finish_clears_prompt_activity, true);
   assert.equal(cliActivityStatePayload.error_finish_remains_visible, true);
@@ -388,7 +456,7 @@ export async function runTuiContracts() {
   assert.equal(cliStatusLineContractPayload.tiny_keeps_short_session_id, true);
   assert.equal(cliStatusLineContractPayload.tiny_not_session_only, true);
   assert.equal(cliStatusLineContractPayload.warning_has_separate_line, true);
-  assert.equal(cliStatusLineContractPayload.warning_line_contains_critical, true);
+  assert.equal(cliStatusLineContractPayload.warning_line_contains_human_label, true);
   assert.equal(cliStatusLineContractPayload.warning_status_line_unchanged, true);
   assert.equal(cliStatusLineContractPayload.tokens_segment_toggle_effective, true);
   assert.equal(cliStatusLineContractPayload.plan_mode_badge_visible, true);
@@ -430,7 +498,7 @@ export async function runTuiContracts() {
     cliStatusIndicatorContractResult.stdout,
   );
   assert.equal(cliStatusIndicatorPayload.line_contains_elapsed, true);
-  assert.equal(cliStatusIndicatorPayload.line_uses_braille_spinner, true);
+  assert.equal(cliStatusIndicatorPayload.line_uses_reference_spinner, true);
   assert.equal(cliStatusIndicatorPayload.line_has_brand_shimmer, true);
   assert.equal(cliStatusIndicatorPayload.line_has_muted_base, true);
   assert.equal(cliStatusIndicatorPayload.deterministic_for_same_tick, true);

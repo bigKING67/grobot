@@ -66,7 +66,7 @@ export async function runCommandDispatchFlows() {
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_surface_is_human:
-      stripAnsi(modelLegacyReset.stdout).includes("● Model")
+      stripAnsi(modelLegacyReset.stdout).includes("模型选择")
       && stripAnsi(modelLegacyReset.stdout).includes("旧子命令已移除")
       && !modelLegacyReset.stdout.includes("[model]"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
@@ -93,7 +93,7 @@ export async function runCommandDispatchFlows() {
     plan_goal_tty_in_plan_skips_new_plan:
       !planGoalInPlan.events.some((event) => event.startsWith("enterPlan:")),
     plan_removed_subcommand_surface_is_human:
-      stripAnsi(planRemovedBenchmark.stdout).includes("● Plan")
+      stripAnsi(planRemovedBenchmark.stdout).includes("计划模式")
       && stripAnsi(planRemovedBenchmark.stdout).includes("不支持该 /plan 子命令")
       && stripAnsi(planRemovedBenchmark.stdout).includes("/plan、/plan <目标> 或 /plan open"),
     plan_removed_subcommand_hides_machine_output:
@@ -102,9 +102,13 @@ export async function runCommandDispatchFlows() {
       && !planRemovedBenchmark.stdout.includes("suggested_action_")
       && !planRemovedBenchmark.stdout.includes("recommended_next_action:"),
     blocked_plan_mode_command_surface_is_human:
-      stripAnsi(blockedResumeInPlan.stdout).includes("plan mode 中暂不可用")
-      && stripAnsi(blockedResumeInPlan.stdout).includes("命令: /resume")
-      && stripAnsi(blockedResumeInPlan.stdout).includes("可使用: /plan、/plan open、/interrupt 或 /exit"),
+      stripAnsi(blockedResumeInPlan.stdout).includes("计划模式中暂不可用")
+      && stripAnsi(blockedResumeInPlan.stdout).includes("/resume")
+      && stripAnsi(blockedResumeInPlan.stdout).includes("计划模式只接受计划相关操作。")
+      && stripAnsi(blockedResumeInPlan.stdout).includes("可用入口 /plan、/plan open、/interrupt、/exit"),
+    blocked_plan_mode_command_avoids_raw_labels:
+      !stripAnsi(blockedResumeInPlan.stdout).includes("命令:")
+      && !stripAnsi(blockedResumeInPlan.stdout).includes("可使用:"),
     blocked_plan_mode_command_avoids_legacy_marker:
       !blockedResumeInPlan.stdout.includes("[plan]")
       && !blockedResumeInPlan.stdout.includes("plan_id="),
@@ -147,10 +151,14 @@ export async function runCommandDispatchFlows() {
     history_filtered_dispatched: includesEvent(historyFilteredCommand.events, "showHistory:窗口预算"),
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
     ask_dispatched: includesEvent(askCommand.events, "writeStdout"),
-    ask_unknown_warned: askCommand.stdout.includes("● 未知命令"),
+    ask_unknown_warned:
+      stripAnsi(askCommand.stdout).includes("未知命令")
+      && !stripAnsi(askCommand.stdout).includes("● 未知命令"),
     ask_hits_run_turn: includesEvent(askCommand.events, "runTurn:/ask"),
     ask_invalid_args_warned: includesEvent(askInvalidArgsCommand.events, "writeStdout"),
-    ask_invalid_args_usage_hint: askInvalidArgsCommand.stdout.includes("● 未知命令"),
+    ask_invalid_args_usage_hint:
+      stripAnsi(askInvalidArgsCommand.stdout).includes("未知命令")
+      && !stripAnsi(askInvalidArgsCommand.stdout).includes("● 未知命令"),
     ask_invalid_args_dispatched: includesEvent(
       askInvalidArgsCommand.events,
       "showPendingAskQueue:default",
@@ -186,7 +194,8 @@ export async function runCommandDispatchFlows() {
     ),
     skill_creator_empty_non_tty_surface_is_human:
       stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("需要提供技能需求")
-      && stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("用法: /skill-creator [需求]")
+      && stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("用法 /skill-creator [需求]")
+      && !stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("用法: /skill-creator [需求]")
       && !skillCreatorNoDemandNonTty.stdout.includes("[skill-creator]"),
     skill_creator_empty_non_tty_prompted: includesEvent(
       skillCreatorNoDemandNonTty.events,

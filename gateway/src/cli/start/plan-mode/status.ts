@@ -23,7 +23,7 @@ import {
   resolvePlanStatusRecommendationLabel,
 } from "../plan-state";
 import type { RunStartRuntimeState } from "../runtime-state";
-import { evaluateLivePlanDecisionSnapshot } from "../plan-live-status";
+import { evaluateLivePlanDecisionSnapshot } from "./live-status";
 import { isEnvTruthy } from "./env";
 import {
   buildCurrentPlanDisplay,
@@ -32,7 +32,7 @@ import {
 } from "./plan-preview";
 import { buildPlanMeta, humanizePlanStatus } from "./meta";
 import { resolvePlanEditorDisplayName } from "./path";
-import { terminalStyle } from "../../tui/theme/terminal-style";
+import { renderPlanSurface } from "./info-surface";
 
 interface ShowPlanStatusInput {
   workDir: string;
@@ -207,17 +207,43 @@ function writePlanRecommendationLines(input: {
   input.writeStdout(`suggested_action_reason: ${input.recommendation.reason}\n`);
 }
 
+function buildPlanStatusSummarySurface(input: {
+  title: string;
+  primary: string;
+  detailLines?: readonly string[];
+  footerLines?: readonly string[];
+}): string {
+  return renderPlanSurface({
+    title: input.title,
+    rows: [
+      {
+        title: input.primary,
+        detailLines: input.detailLines,
+      },
+    ],
+    footerLines: input.footerLines,
+  });
+}
+
 async function showPlanStatusCompact(input: ShowPlanStatusInput): Promise<number> {
   const sessionId = input.runtimeState.getSessionKey();
   const mode = input.runtimeState.getPlanMode();
   const meta = input.runtimeState.getPlanMeta();
   const active = resolveActivePlan(input.workDir, sessionId);
   if (active) {
+    const statusLabel = humanizePlanStatus(active.entry.status);
+    const statusDetailLines = active.entry.status === "apply_failed"
+      ? [
+          '上次实现没有完成；计划仍保留，可修复问题后回复“开始实现计划”。',
+        ]
+      : undefined;
     input.writeStdout(buildCurrentPlanDisplay({
       workDir: input.workDir,
       planPath: active.planPath,
       planContent: active.content,
       editorName: resolvePlanEditorDisplayName(),
+      statusLabel,
+      statusDetailLines,
     }));
     return 0;
   }
@@ -237,15 +263,23 @@ async function showPlanStatusCompact(input: ShowPlanStatusInput): Promise<number
     const latestSummary = latestTitle && latestTitle !== "plan session"
       ? `${latestTitle} · ${humanizePlanStatus(latestApplied.status)}`
       : humanizePlanStatus(latestApplied.status);
-    input.writeStdout(`${terminalStyle.planMode("●")} 最近计划状态\n`);
-    input.writeStdout("当前没有活跃计划。\n");
-    input.writeStdout(`最近计划: ${latestSummary}\n`);
-    input.writeStdout("使用 \"/plan <goal>\" 开始新计划。\n\n");
+    input.writeStdout(buildPlanStatusSummarySurface({
+      title: "最近计划状态",
+      primary: "当前没有活跃计划。",
+      detailLines: [
+        `最近计划 ${latestSummary}`,
+        '使用 "/plan <goal>" 开始新计划。',
+      ],
+    }));
     return 0;
   }
-  input.writeStdout(`${terminalStyle.planMode("●")} 当前计划\n`);
-  input.writeStdout("还没有写入计划。\n");
-  input.writeStdout("使用 \"/plan <goal>\" 开始规划。\n\n");
+  input.writeStdout(buildPlanStatusSummarySurface({
+    title: "当前计划",
+    primary: "还没有写入计划。",
+    detailLines: [
+      '使用 "/plan <goal>" 开始规划。',
+    ],
+  }));
   return 0;
 }
 

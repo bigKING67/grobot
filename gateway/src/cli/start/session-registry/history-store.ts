@@ -10,7 +10,7 @@ import {
   ChatHistoryMessage,
   normalizeHistoryMessages,
   trimHistoryMessages,
-} from "../session-history";
+} from "../session/history";
 import { HISTORY_STORE_VERSION } from "./types";
 
 export function loadHistoryMessages(

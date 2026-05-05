@@ -1,4 +1,4 @@
-import { resolveStartupResumeDisambiguation } from "../../cli/start/session-resume-startup-disambiguation";
+import { resolveStartupResumeDisambiguation } from "../../cli/start/startup/session-resume-disambiguation";
 
 const CANDIDATES = [
   {
@@ -100,7 +100,8 @@ async function run(): Promise<void> {
     check(
       "non_tty_reports_auto_selected_notice",
       nonTtyAutoPlain.includes("已自动选择启动会话")
-      && nonTtyAutoPlain.includes("会话: session-legacy"),
+      && nonTtyAutoPlain.includes("会话 session-legacy")
+      && !nonTtyAutoPlain.includes("会话: session-legacy"),
     ),
     check("non_tty_notice_avoids_legacy_marker", !nonTtyAutoText.includes("[session]")),
     check("no_disambiguation_keeps_target", noDisambiguation.targetSessionId === "session-legacy"),

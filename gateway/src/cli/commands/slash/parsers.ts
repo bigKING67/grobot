@@ -1,6 +1,10 @@
 import { type SessionInteractiveRewindMode } from "../../start/session-interactive";
-import { terminalStyle } from "../../tui/theme/terminal-style";
-import { buildSlashNotice, isInteractiveTerminal } from "./shared";
+import {
+  buildSlashNotice,
+  buildSlashUsageNotice,
+  formatUsageLine,
+  isInteractiveTerminal,
+} from "./shared";
 
 export interface ParsedModelCommand {
   kind: "menu" | "legacy_subcommand" | "invalid";
@@ -48,6 +52,102 @@ export interface ParsedHistoryCommand {
   reason?: string;
 }
 
+function buildModelUsageNotice(): string {
+  return buildSlashUsageNotice("模型命令", [
+    {
+      command: "/model",
+      description: "打开模型选择器。",
+    },
+  ]);
+}
+
+function buildStatusUsageNotice(): string {
+  return buildSlashUsageNotice("状态栏命令", [
+    {
+      command: "/status",
+      description: "显示当前状态栏快照。",
+    },
+    {
+      command: "/status 当前",
+      description: "显示当前状态栏快照。",
+    },
+    {
+      command: "/status 布局 <自适应|完整|紧凑>",
+      description: "调整状态栏布局。",
+    },
+    {
+      command: "/status 主题 <极简|双行|图标增强>",
+      description: "调整状态栏主题。",
+    },
+    {
+      command: "/status 状态段 <模型|项目|上下文|Token|会话> <开启|关闭>",
+      description: "开启或关闭指定状态段。",
+    },
+  ]);
+}
+
+function buildStatusLayoutUsageNotice(): string {
+  return buildSlashUsageNotice("状态栏布局", [
+    {
+      command: formatUsageLine("/status 布局 <自适应|完整|紧凑>"),
+    },
+  ]);
+}
+
+function buildStatusThemeUsageNotice(): string {
+  return buildSlashUsageNotice("状态栏主题", [
+    {
+      command: formatUsageLine("/status 主题 <极简|双行|图标增强>"),
+    },
+  ]);
+}
+
+function buildStatusSegmentUsageNotice(): string {
+  return buildSlashUsageNotice("状态栏状态段", [
+    {
+      command: formatUsageLine("/status 状态段 <模型|项目|上下文|Token|会话> <开启|关闭>"),
+    },
+  ]);
+}
+
+function buildResumeFindUsageNotice(): string {
+  return buildSlashUsageNotice("恢复会话查询", [
+    {
+      command: formatUsageLine("/resume find <id|title|summary|updated-at>"),
+    },
+  ]);
+}
+
+function buildRewindSummaryUsageNotice(command: "/rewind" | "/checkpoint"): string {
+  return buildSlashUsageNotice("回退汇总命令", [
+    {
+      command: formatUsageLine(`${command} summarize`),
+      description: "显示最近检查点摘要，不执行恢复。",
+    },
+  ]);
+}
+
+function buildRewindNonInteractiveUsageNotice(command: "/rewind" | "/checkpoint"): string {
+  return buildSlashUsageNotice("回退命令", [
+    {
+      command,
+      description: "打开回退菜单。",
+    },
+    {
+      command: `${command} summarize`,
+      description: "显示最近检查点摘要。",
+    },
+  ]);
+}
+
+function buildRewindQueryUsageNotice(command: "/rewind" | "/checkpoint"): string {
+  return buildSlashUsageNotice("回退查询命令", [
+    {
+      command: formatUsageLine(`${command} [find|search] <检查点 ID|文本> [both|conversation|code]`),
+    },
+  ]);
+}
+
 export function parseModelCommand(inputRaw: string): ParsedModelCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/model")) {
@@ -61,16 +161,15 @@ export function parseModelCommand(inputRaw: string): ParsedModelCommand {
   if (legacyMatch) {
     return {
       kind: "legacy_subcommand",
-      reason: [
-        `${terminalStyle.accent("●")} Model`,
-        `  ${terminalStyle.muted("旧子命令已移除。")}`,
-        `  ${terminalStyle.muted("使用 /model 打开选择器（Enter 确认）。")}`,
-      ].join("\n"),
+      reason: buildSlashNotice("模型选择", [
+        "旧子命令已移除。",
+        "使用 /model 打开选择器（Enter 确认）。",
+      ]).trimEnd(),
     };
   }
   return {
     kind: "invalid",
-    reason: "用法: /model",
+    reason: buildModelUsageNotice(),
   };
 }
 
@@ -80,13 +179,26 @@ export function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
     return { kind: "invalid", reason: "命令必须以 /status 开头" };
   }
   const rest = input.slice("/status".length).trim();
-  if (!rest || rest.toLowerCase() === "current") {
+  if (!rest || rest.toLowerCase() === "current" || rest === "当前") {
     return { kind: "current" };
   }
-  if (rest === "full" || rest === "compact" || rest === "adaptive") {
+  const normalizedRest = rest.toLowerCase();
+  if (rest === "完整" || normalizedRest === "full") {
     return {
       kind: "layout",
-      layoutMode: rest,
+      layoutMode: "full",
+    };
+  }
+  if (rest === "紧凑" || normalizedRest === "compact") {
+    return {
+      kind: "layout",
+      layoutMode: "compact",
+    };
+  }
+  if (rest === "自适应" || normalizedRest === "adaptive") {
+    return {
+      kind: "layout",
+      layoutMode: "adaptive",
     };
   }
   const firstSpace = rest.indexOf(" ");
@@ -94,54 +206,53 @@ export function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
     .trim()
     .toLowerCase();
   const tail = (firstSpace >= 0 ? rest.slice(firstSpace + 1) : "").trim();
-  if (head === "layout") {
+  if (head === "layout" || head === "布局") {
     if (!tail) {
       return {
         kind: "invalid",
-        reason: "用法: /status layout <adaptive|full|compact>",
+        reason: buildStatusLayoutUsageNotice(),
       };
     }
     return { kind: "layout", layoutMode: tail };
   }
-  if (head === "theme") {
+  if (head === "theme" || head === "主题") {
     if (!tail) {
       return {
         kind: "invalid",
-        reason: "用法: /status theme <plain|nerd|ccline>",
+        reason: buildStatusThemeUsageNotice(),
       };
     }
     return { kind: "theme", theme: tail };
   }
-  if (head === "segment") {
+  if (head === "segment" || head === "状态段") {
     const segmentTokens = tail
       .split(/\s+/)
       .filter((token) => token.length > 0);
     if (segmentTokens.length !== 2) {
       return {
         kind: "invalid",
-        reason:
-          "用法: /status segment <model|project|context|tokens|session> <on|off>",
+        reason: buildStatusSegmentUsageNotice(),
       };
     }
     const segmentId = segmentTokens[0];
     const state = segmentTokens[1].toLowerCase();
-    if (state !== "on" && state !== "off") {
+    const enabled = state === "on" || state === "开启" || state === "开";
+    const disabled = state === "off" || state === "关闭" || state === "关";
+    if (!enabled && !disabled) {
       return {
         kind: "invalid",
-        reason:
-          "用法: /status segment <model|project|context|tokens|session> <on|off>",
+        reason: buildStatusSegmentUsageNotice(),
       };
     }
     return {
       kind: "segment",
       segmentId,
-      segmentEnabled: state === "on",
+      segmentEnabled: enabled,
     };
   }
   return {
     kind: "invalid",
-    reason:
-      "用法: /status | /status current | /status layout <adaptive|full|compact> | /status theme <plain|nerd|ccline> | /status segment <model|project|context|tokens|session> <on|off>",
+    reason: buildStatusUsageNotice(),
   };
 }
 
@@ -196,7 +307,7 @@ export function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
       if (!query) {
         return {
           kind: "invalid",
-          reason: "用法: /resume find <id|title|summary|updated-at>",
+          reason: buildResumeFindUsageNotice(),
         };
       }
       return {
@@ -213,8 +324,10 @@ export function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
   return {
     kind: "legacy_with_id",
     sessionId: sessionId.trim(),
-    reason:
-      "● Resume\n  /resume <id> 已废弃；非交互场景保留兼容，建议改用 /resume 菜单。",
+    reason: buildSlashNotice("恢复会话", [
+      "/resume <id> 已废弃；非交互场景保留兼容。",
+      "建议改用 /resume 菜单。",
+    ]).trimEnd(),
   };
 }
 
@@ -239,7 +352,7 @@ export function parseRewindCommand(
     if (trailing.length > 0) {
       return {
         kind: "invalid",
-        reason: `用法: ${command} summarize`,
+        reason: buildRewindSummaryUsageNotice(command),
       };
     }
     return { kind: "summarize" };
@@ -247,7 +360,7 @@ export function parseRewindCommand(
   if (!isInteractiveTerminal()) {
     return {
       kind: "invalid",
-      reason: `用法: ${command} | ${command} summarize`,
+      reason: buildRewindNonInteractiveUsageNotice(command),
     };
   }
   const queryMatch = rest.match(/^(?:find|search)\s*([\s\S]*)$/i);
@@ -256,7 +369,7 @@ export function parseRewindCommand(
   if (!querySource) {
     return {
       kind: "invalid",
-      reason: `用法: ${command} [find|search] <检查点 ID|文本> [both|conversation|code]`,
+      reason: buildRewindQueryUsageNotice(command),
     };
   }
   const queryTokens = querySource
@@ -284,14 +397,14 @@ export function parseRewindCommand(
     ) {
       return {
         kind: "invalid",
-        reason: `用法: ${command} [find|search] <检查点 ID|文本> [both|conversation|code]`,
+        reason: buildRewindQueryUsageNotice(command),
       };
     }
   }
   if (!query) {
     return {
       kind: "invalid",
-      reason: `用法: ${command} [find|search] <检查点 ID|文本> [both|conversation|code]`,
+      reason: buildRewindQueryUsageNotice(command),
     };
   }
   return {

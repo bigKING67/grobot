@@ -14,6 +14,7 @@ import {
   type SessionInputPromptValue,
 } from "./contract";
 import { runTerminalLinePrompt } from "./line-prompt";
+import { resolveRunningInputActions } from "./reducer";
 import { readPromptInputTurn } from "./turn-controller";
 
 export { runTerminalLinePrompt } from "./line-prompt";
@@ -25,6 +26,12 @@ function emitKeypressEventsCompat(input: unknown): void {
   if (typeof maybeEmit === "function") {
     maybeEmit(input);
   }
+}
+
+function removeLastCodePoint(value: string): string {
+  const codepoints = Array.from(value);
+  codepoints.pop();
+  return codepoints.join("");
 }
 
 async function runLineBufferedInputLoop(
@@ -79,6 +86,8 @@ export async function runSessionInputLoop(
   let pauseDepth = 0;
   let escArmedAt = 0;
   let handlerRunning = false;
+  const queuedInputsWhileRunning: string[] = [];
+  let runningInputBuffer = "";
 
   const setRawMode = (enabled: boolean): void => {
     if (rawModeEnabled === enabled) {
@@ -124,16 +133,53 @@ export async function runSessionInputLoop(
       return;
     }
     const raw = String(chunk ?? "");
-    if (raw !== "\u001b") {
-      return;
+    for (const action of resolveRunningInputActions(raw)) {
+      if (action.kind === "interrupt") {
+        if (raw === "\u001b") {
+          const now = Date.now();
+          if (now - escArmedAt < 150) {
+            return;
+          }
+          escArmedAt = now;
+        }
+        process.stdout.write("\n");
+        triggerEscInterrupt("running");
+        return;
+      }
+      if (action.kind === "submit_queue") {
+        const queued = runningInputBuffer.trim();
+        runningInputBuffer = "";
+        if (!queued) {
+          return;
+        }
+        queuedInputsWhileRunning.push(queued);
+        if (typeof options.onQueueInputWhileRunning === "function") {
+          options.onQueueInputWhileRunning(queued);
+        } else {
+          process.stdout.write("\n");
+        }
+        return;
+      }
+      if (action.kind === "backspace") {
+        runningInputBuffer = removeLastCodePoint(runningInputBuffer);
+        return;
+      }
+      if (action.kind === "append") {
+        runningInputBuffer += action.value;
+      }
     }
-    const now = Date.now();
-    if (now - escArmedAt < 150) {
-      return;
+  };
+
+  const runHandlerWithRunningCapture = async (value: string): Promise<"continue" | "break"> => {
+    handlerRunning = true;
+    menuInput.on?.("data", onEscDataWhileHandler);
+    try {
+      setRawMode(true);
+      return await handler(value, controls);
+    } finally {
+      menuInput.off?.("data", onEscDataWhileHandler);
+      handlerRunning = false;
     }
-    escArmedAt = now;
-    process.stdout.write("\n");
-    triggerEscInterrupt("running");
   };
 
   const resolvePromptLayoutValue = (): SessionPromptLayout => {
@@ -162,6 +208,7 @@ export async function runSessionInputLoop(
   try {
     setRawMode(true);
     menuInput.resume?.();
+    let shouldExit = false;
     while (true) {
       const inputResult = await readPromptInputTurn({
         resolvedPrompt: resolvePromptLayoutValue(),
@@ -169,6 +216,7 @@ export async function runSessionInputLoop(
         keypressInput,
         controls,
         options,
+        initialInput: runningInputBuffer,
         getPauseDepth: () => pauseDepth,
         getEscArmedAt: () => escArmedAt,
         setEscArmedAt: (value) => {
@@ -180,17 +228,25 @@ export async function runSessionInputLoop(
         process.stdout.write("已中断\n");
         break;
       }
-      handlerRunning = true;
-      menuInput.on?.("data", onEscDataWhileHandler);
-      let action: "continue" | "break";
-      try {
-        setRawMode(true);
-        action = await handler(inputResult.value, controls);
-      } finally {
-        menuInput.off?.("data", onEscDataWhileHandler);
-        handlerRunning = false;
-      }
+      runningInputBuffer = "";
+      const action = await runHandlerWithRunningCapture(inputResult.value);
       if (action === "break") {
+        break;
+      }
+      while (queuedInputsWhileRunning.length > 0) {
+        const queued = queuedInputsWhileRunning.shift();
+        if (typeof queued !== "string") {
+          continue;
+        }
+        options.onQueuedInputConsumed?.(queued);
+        const queuedAction = await runHandlerWithRunningCapture(queued);
+        if (queuedAction === "break") {
+          shouldExit = true;
+          break;
+        }
+      }
+      runningInputBuffer = "";
+      if (shouldExit) {
         break;
       }
     }

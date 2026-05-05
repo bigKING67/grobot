@@ -3,7 +3,7 @@ import {
 } from "../../cli/tui/interactive/interactive-frame";
 import {
   renderStatusLinePrompt,
-} from "../../cli/tui/screens/status-line-screen";
+} from "../../cli/tui/components/status-line/render";
 
 const renderedPrompt = renderStatusLinePrompt({
   model: "kimi/kimi-k2-2026-04",

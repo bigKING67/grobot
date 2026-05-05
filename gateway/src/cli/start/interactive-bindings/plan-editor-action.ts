@@ -1,4 +1,4 @@
-import { compactSingleLine } from "../session-history";
+import { compactSingleLine } from "../session/history";
 import type { RunStartPlanMode } from "../plan-mode";
 import { buildCompactNotice } from "./notice-surface";
 import { formatPlanPathForPanel, launchPlanFileInEditor } from "./plan-editor";
@@ -24,8 +24,8 @@ export async function openPlanInEditor(input: {
     if (!launched.ok) {
       input.writeStdout(
         buildCompactNotice("无法打开计划文件", [
-          `原因: ${compactSingleLine(launched.detail, 200)}`,
-          `计划文件: ${displayPath}`,
+          `原因 ${compactSingleLine(launched.detail, 200)}`,
+          `计划文件 ${displayPath}`,
         ]),
       );
       return;
@@ -34,7 +34,7 @@ export async function openPlanInEditor(input: {
       return;
     }
     input.writeStdout(
-      buildCompactNotice("已打开计划文件", [`计划文件: ${displayPath}`]),
+      buildCompactNotice("已打开计划文件", [`计划文件 ${displayPath}`]),
     );
   };
   if (!process.stdin.isTTY) {

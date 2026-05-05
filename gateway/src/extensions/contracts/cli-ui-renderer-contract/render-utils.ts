@@ -1,6 +1,6 @@
 import { type createCliUiRenderer } from "../../../cli/tui/kernel/renderer";
 import { measureDisplayWidth } from "../../../cli/tui/terminal/display-width";
-import { type StartScreenViewModel } from "../../../cli/tui/screens/startup-screen";
+import { type StartScreenViewModel } from "../../../cli/tui/components/startup/contract";
 import { type TerminalSelectMenuInput } from "../../../cli/tui/components/select-menu/contract";
 
 export function hasAnsi(text: string): boolean {
@@ -16,18 +16,9 @@ export function renderStartupAtColumns(
   viewModel: StartScreenViewModel,
   columns: number,
 ): string {
-  const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "columns");
-  try {
-    Object.defineProperty(process.stdout, "columns", {
-      value: columns,
-      configurable: true,
-    });
-    return renderer.renderStartupScreen(viewModel);
-  } finally {
-    if (descriptor) {
-      Object.defineProperty(process.stdout, "columns", descriptor);
-    }
-  }
+  return renderer.renderStartupScreen(viewModel, {
+    terminalColumns: columns,
+  });
 }
 
 export function renderSelectAtColumns(
@@ -36,18 +27,9 @@ export function renderSelectAtColumns(
   activeIndex: number,
   columns: number,
 ): string {
-  const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "columns");
-  try {
-    Object.defineProperty(process.stdout, "columns", {
-      value: columns,
-      configurable: true,
-    });
-    return renderer.renderSelectMenu(menu, activeIndex);
-  } finally {
-    if (descriptor) {
-      Object.defineProperty(process.stdout, "columns", descriptor);
-    }
-  }
+  return renderer.renderSelectMenu(menu, activeIndex, {
+    terminalColumns: columns,
+  });
 }
 
 export function renderedLinesWithinColumns(rendered: string, columns: number): boolean {
@@ -65,11 +47,15 @@ export function renderedMenuRows(rendered: string): string[] {
 export function extractStartupBodyLines(rendered: string): string[] {
   return stripAnsi(rendered)
     .split("\n")
-    .filter((line) => line.startsWith("│ "));
+    .filter((line) => line.trim().length > 0)
+    .filter((line) => !/^Grobot\b/.test(line.trimStart()));
 }
 
 export function extractRightPanelSegment(line: string): string | undefined {
   const parts = line.split("│");
+  if (parts.length === 2) {
+    return parts[1]?.trim();
+  }
   if (parts.length < 4) {
     return undefined;
   }

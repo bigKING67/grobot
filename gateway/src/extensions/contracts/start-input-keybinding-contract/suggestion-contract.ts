@@ -30,13 +30,25 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     0,
     96,
   );
+  const slashOverlayBuiltinSource = formatSlashSuggestionPanel(
+    [{ command: "/exit", description: "退出交互模式", source: "builtin" }],
+    "/",
+    0,
+    96,
+  );
+  const slashOverlayUserSource = formatSlashSuggestionPanel(
+    [{ command: "/shipit", description: "Ship current branch", source: "user" }],
+    "/",
+    0,
+    96,
+  );
   const slashOverlayScrolled = formatSlashSuggestionPanel(
     [
       { command: "/sessions", description: "打开会话选择器" },
       { command: "/resume", description: "恢复历史会话" },
       { command: "/rewind", description: "回退到检查点" },
       { command: "/commands", description: "浏览命令菜单" },
-      { command: "/skill-creator", description: "创建 skill" },
+      { command: "/skill-creator", description: "创建技能" },
       { command: "/init", description: "初始化项目指令" },
       { command: "/context", description: "查看上下文状态" },
       { command: "/memory", description: "打开 memory 工具" },
@@ -204,7 +216,7 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   const promptSuggestionPointer = formatPromptSuggestionPanel({
     suggestions: [
       { id: "command-model", displayText: "/model", description: "切换模型", type: "command" },
-      { id: "command-plan", displayText: "/plan", description: "进入 plan mode", type: "command" },
+      { id: "command-plan", displayText: "/plan", description: "进入计划模式", type: "command" },
     ],
     selectedIndex: 1,
     terminalColumns: 64,
@@ -217,7 +229,7 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     32,
   );
   const slashOverlayWithArgs = formatSlashSuggestionPanel(
-    [{ command: "/plan", description: "进入 plan mode" }],
+    [{ command: "/plan", description: "进入计划模式" }],
     "/plan 帮我写一份抖音直播规划",
     0,
     96,
@@ -232,14 +244,14 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   });
   const slashInputWithArgsHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
-    suggestions: [{ command: "/plan", description: "进入 plan mode" }],
+    suggestions: [{ command: "/plan", description: "进入计划模式" }],
   });
   const slashInputWithArgsFallbackSuggestions = resolveSlashInputHighlightSuggestions({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
     suggestions: [],
     getSlashSuggestions: (input) =>
       input === "/plan"
-        ? [{ command: "/plan", description: "进入 plan mode" }]
+        ? [{ command: "/plan", description: "进入计划模式" }]
         : [],
   });
   const slashInputWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
@@ -251,7 +263,7 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     suggestions: [],
     getSlashSuggestions: (input) =>
       input === "/pl"
-        ? [{ command: "/plan", description: "进入 plan mode" }]
+        ? [{ command: "/plan", description: "进入计划模式" }]
         : [],
   });
   const slashInputPartialWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
@@ -322,8 +334,16 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
       noopAction.kind === "noop",
     slash_overlay_partial_selected_highlighted:
       slashOverlayPartial.includes("\u001B[38;2;202;124;94m"),
+    slash_overlay_selected_description_is_muted:
+      slashOverlayPartial.includes("\u001B[90m退出交互模式"),
+    slash_overlay_selected_description_not_brand_flooded:
+      !slashOverlayPartial.includes("\u001B[38;2;202;124;94m退出交互模式"),
     slash_overlay_exact_selected_highlighted:
       slashOverlayExact.includes("\u001B[38;2;202;124;94m"),
+    slash_overlay_hides_builtin_source_tag:
+      !stripAnsi(slashOverlayBuiltinSource).includes("[builtin]"),
+    slash_overlay_keeps_user_source_tag:
+      stripAnsi(slashOverlayUserSource).includes("[user]"),
     slash_overlay_scroll_window_keeps_selected_visible:
       slashOverlayScrolled.includes("/model"),
     slash_overlay_scroll_window_highlights_selected:
@@ -385,6 +405,9 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
       slashOverlayNarrowLines.every((line) => measureDisplayWidth(line) <= 52),
     slash_overlay_hidden_when_has_args:
       slashOverlayWithArgs.length === 0,
+    slash_fixture_descriptions_avoid_plan_mode_copy:
+      !promptSuggestionPointerPlain.includes("plan mode")
+      && !slashOverlayWithArgs.includes("plan mode"),
     slash_input_partial_not_highlighted:
       !slashInputPartialHighlight,
     slash_input_exact_highlighted:

@@ -169,25 +169,52 @@ export async function runFailurePlanModeFlow(workDir: string) {
   }
   writeFileSync(applyFailurePlanPath, `${validPlan}\n`, "utf8");
   const applyFailureResult = await applyFailurePlanMode.handleMessageInput("Implement the plan.");
+  let applyFailureStatusStdout = "";
+  const applyFailureStatusPlanMode = createRunStartPlanMode({
+    workDir: applyFailureWorkDir,
+    runtimeState: applyFailureRuntimeState,
+    persistence,
+    executeTurn: async () => 0,
+    requestRuntimeInterrupt: () => ({
+      code: "TURN_INTERRUPT_NOT_RUNNING",
+      interrupted: false,
+    }),
+    markFailureObserved: () => undefined,
+    writeStdout: (message) => {
+      applyFailureStatusStdout += message;
+    },
+    writeStderr: () => undefined,
+  });
+  const applyFailureStatusResult = await applyFailureStatusPlanMode.showPlanStatus();
+  const applyFailureStatusSurface = stripAnsi(applyFailureStatusStdout);
 
   return {
     compact_plan_turn_failure_code_preserved: failureResultCode === 1,
     plan_turn_stdout_override_captures_plan_scaffolding:
       stdoutOverrideResult === 0
-      && overrideStdout.includes("已进入 plan mode")
+      && overrideStdout.includes("已进入计划模式")
       && overrideStdout.includes("正在规划...")
       && overrideStdout.includes("runtime output through override")
       && overrideStdout.includes("计划需要继续完善"),
-    plan_turn_working_notice_has_plan_bullet:
-      stripAnsi(overrideStdout).includes("● 正在规划..."),
+    plan_turn_working_notice_uses_info_panel:
+      !stripAnsi(overrideStdout).includes("● 正在规划...")
+      && stripAnsi(overrideStdout).includes("正在规划...")
+      && stripAnsi(overrideStdout).includes("• 模型正在生成计划草稿。"),
     plan_turn_stdout_override_skips_fallback_writer: fallbackStdout.length === 0,
     compact_plan_turn_failure_surface_human:
       failureStderr.includes("计划更新失败")
-      && failureStderr.includes("Provider 不可用: mock (upstream_connect_failed)。")
+      && failureStderr.includes("• 运行时未完成")
+      && failureStderr.includes("  ⎿")
+      && failureStderr.includes("通道 mock 不可用（上游连接失败）。")
       && failureStderr.includes("计划已保存: .grobot/plans/")
       && failureStderr.includes("计划草稿已保留")
       && failureStderr.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。')
-      && failureStderr.includes("诊断: PLAN_PROVIDER_RUNTIME_FAILURE"),
+      && failureStderr.includes("详细日志可查看通道、退出码和策略字段。")
+      && !failureStderr.includes("供应商不可用:")
+      && !failureStderr.includes("详情:")
+      && !failureStderr.includes("Provider 不可用")
+      && !failureStderr.includes("provider、exit code 和 policy")
+      && !failureStderr.includes("PLAN_PROVIDER_RUNTIME_FAILURE"),
     compact_plan_turn_failure_hides_machine_lines:
       !failureStderr.includes("runtime failed:")
       && !failureStderr.includes("[runtime-route] failed attempts=")
@@ -200,14 +227,34 @@ export async function runFailurePlanModeFlow(workDir: string) {
       applyFailureResult.handled && applyFailureResult.code === 1,
     compact_plan_apply_failure_surface_human:
       applyFailureStderr.includes("计划实现失败")
-      && applyFailureStderr.includes("Provider 不可用: mock (upstream_connect_failed)。")
+      && applyFailureStderr.includes("通道 mock 不可用（上游连接失败）。")
       && applyFailureStderr.includes("计划已保存: .grobot/plans/")
       && applyFailureStderr.includes("计划仍可用")
       && applyFailureStderr.includes("再回复“开始实现计划”")
-      && applyFailureStderr.includes("诊断: PLAN_PROVIDER_RUNTIME_FAILURE"),
+      && applyFailureStderr.includes("详细日志可查看通道、退出码和策略字段。")
+      && !applyFailureStderr.includes("供应商不可用:")
+      && !applyFailureStderr.includes("详情:")
+      && !applyFailureStderr.includes("Provider 不可用")
+      && !applyFailureStderr.includes("provider、exit code 和 policy")
+      && !applyFailureStderr.includes("PLAN_PROVIDER_RUNTIME_FAILURE"),
     compact_plan_apply_failure_hides_machine_lines:
       !applyFailureStderr.includes("runtime failed:")
       && !applyFailureStderr.includes("[runtime-route] failed attempts=")
       && !applyFailureStderr.includes("plan_id="),
+    compact_apply_failed_status_surface_shows_human_state:
+      applyFailureStatusResult === 0
+      && applyFailureStatusSurface.includes("当前计划")
+      && applyFailureStatusSurface.includes("状态 执行失败")
+      && applyFailureStatusSurface.includes("计划仍保留")
+      && applyFailureStatusSurface.includes("开始实现计划"),
+    compact_apply_failed_status_surface_hides_machine_fields:
+      !applyFailureStatusSurface.includes("plan_status_output_mode:")
+      && !applyFailureStatusSurface.includes("active_plan_id:")
+      && !applyFailureStatusSurface.includes("latest_failure_diagnostic_code:")
+      && !applyFailureStatusSurface.includes("recommended_next_action:")
+      && !applyFailureStatusSurface.includes("suggested_action_reason:")
+      && !applyFailureStatusSurface.includes("PLAN_PROVIDER_RUNTIME_FAILURE")
+      && !applyFailureStatusSurface.includes("plan_id")
+      && !applyFailureStatusSurface.includes("p_implementation"),
   };
 }

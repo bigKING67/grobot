@@ -2,17 +2,17 @@ import {
   createInteractiveActivityTracker,
   type InteractiveActivityTracker,
 } from "../../tui/interactive/activity-state";
-import { renderStatusIndicatorLine } from "../../tui/screens/status-indicator-screen";
+import { renderStatusIndicatorLine } from "../../tui/components/status-indicator/render";
 import { TURN_INTERRUPTED_EXIT_CODE } from "../turn";
 import {
   compactSummaryText,
   formatTurnElapsedCompact,
   type InteractiveDiagnosticsMode,
   type ProcessActivitySnapshot,
+  renderProcessSummaryLabel,
   resolveInlineStatusIndicatorMode,
   resolveInteractiveDiagnosticsMode,
   resolveProcessFailureCategory,
-  resolveProcessResultCode,
   resolveProcessSummaryDetail,
 } from "./process-summary";
 import { type PendingInputFrameController } from "./pending-input-frame";
@@ -190,24 +190,23 @@ export function createInteractiveActivityController(input: {
       pendingAskCount: inputSummary.pendingAskCount,
     });
     const parts = [
-      "[process-summary]",
-      resolveProcessResultCode(inputSummary.result),
-      durationText,
+      `› ${renderProcessSummaryLabel(inputSummary.result)}`,
+      `· ${durationText}`,
     ];
     if (failureCategory) {
-      parts.push(`t=${failureCategory}`);
+      parts.push(`· ${failureCategory}`);
     }
     if (typeof inputSummary.exitCode === "number" || inputSummary.exitCode === "<exception>") {
-      parts.push(`x=${String(inputSummary.exitCode)}`);
+      parts.push(`· exit ${String(inputSummary.exitCode)}`);
     }
     if ((inputSummary.pendingAskCount ?? 0) > 0) {
-      parts.push(`ask=${String(inputSummary.pendingAskCount)}`);
+      parts.push(`· 待确认 ${String(inputSummary.pendingAskCount)}`);
     }
     const shouldShowStage = processSummaryDetail === "full"
       || inputSummary.result !== "ok"
       || inputSummary.elapsedMs >= 5_000;
     if (inputSummary.activitySnapshot && shouldShowStage) {
-      parts.push(`s="${compactSummaryText(inputSummary.activitySnapshot.text).replace(/"/g, "'")}"`);
+      parts.push(`· ${compactSummaryText(inputSummary.activitySnapshot.text).replace(/"/g, "'")}`);
     }
     pendingInputFrame?.clear();
     ensureStdoutLineBoundary();

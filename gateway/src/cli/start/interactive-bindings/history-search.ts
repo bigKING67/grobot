@@ -1,4 +1,4 @@
-import { compactSingleLine, type ChatHistoryMessage } from "../session-history";
+import { compactSingleLine, type ChatHistoryMessage } from "../session/history";
 
 export interface HistorySearchCandidate {
   id: string;

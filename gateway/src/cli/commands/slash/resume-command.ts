@@ -1,5 +1,6 @@
-import { resolveResumeQueryMatches } from "../../start/session-resume-search";
+import { resolveResumeQueryMatches } from "../../start/session/resume-search";
 import { type SessionInteractiveAction } from "../../start/session-interactive";
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
 import { parseResumeCommand } from "./parsers";
 import {
   buildSlashNotice,
@@ -12,9 +13,19 @@ import { type SlashCommandExecutionInput } from "./types";
 const MATCH_LIST_LIMIT = 5;
 const QUICK_PICK_HINT_LIMIT = 3;
 
+function formatResumeUpdatedAt(value: string): string {
+  const normalized = value.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(normalized);
+  if (isoMatch) {
+    const [, year, month, day, hour, minute] = isoMatch;
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  }
+  return normalized.length > 0 ? normalized : "未知";
+}
+
 function buildResumeNoMatchMessage(query: string): string {
   return buildSlashNotice("没有匹配的会话", [
-    `查询: ${query}`,
+    `查询 ${query}`,
     "使用 /resume 打开菜单。",
     '提示：可匹配 ID、标题、摘要或更新时间；紧凑查询会忽略空格、"_" 和 "-"。',
   ]);
@@ -29,7 +40,7 @@ export async function executeResumeSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "resume",
-      `${parsed.reason ?? "无效 resume 命令"}\n\n`,
+      `${parsed.reason ?? "恢复会话命令无效"}\n\n`,
     );
   }
   if (parsed.kind === "query") {
@@ -48,10 +59,13 @@ export async function executeResumeSlashCommand(
     if (matches.length > 1) {
       const rows = matches
         .slice(0, MATCH_LIST_LIMIT)
-        .map(
-          (session) =>
-            `- ${session.id}${session.active ? "（当前）" : ""} | ${session.updatedAt} | 标题=${formatSingleLinePreview(session.title, 40)} | 摘要=${formatSingleLinePreview(session.summary, 40)}`,
-        );
+        .map((session) => ({
+          title: `${formatSingleLinePreview(session.title || session.id, 44)}${session.active ? "（当前）" : ""}`,
+          detailLines: [
+            `会话 ${session.id} · 更新 ${formatResumeUpdatedAt(session.updatedAt)}`,
+            `重点 ${formatSingleLinePreview(session.summary, 44)}`,
+          ],
+        }));
       const quickPickHints = matches
         .slice(0, QUICK_PICK_HINT_LIMIT)
         .map((session) => `- /resume ${session.id}`);
@@ -63,7 +77,17 @@ export async function executeResumeSlashCommand(
       return writeMenuHintAndMaybeOpen(
         input,
         "resume",
-        `● 找到多个会话\n  查询: ${query}\n  匹配: ${String(matches.length)}\n${rows.join("\n")}${disambiguationBlock}\n使用 /resume 明确选择一个。\n\n`,
+        renderInfoPanel({
+          title: "找到多个会话",
+          subtitle: `查询 ${query} · 匹配 ${String(matches.length)}`,
+          sections: [{
+            rows,
+          }],
+          footerLines: [
+            ...disambiguationBlock,
+            "使用 /resume 明确选择一个。",
+          ],
+        }),
       );
     }
     const target = matches[0];
@@ -72,7 +96,7 @@ export async function executeResumeSlashCommand(
         input,
         "resume",
         buildSlashNotice("会话已是当前会话", [
-          `会话: ${target.id}`,
+          `会话 ${target.id}`,
           "使用 /resume 打开菜单。",
         ]),
       );

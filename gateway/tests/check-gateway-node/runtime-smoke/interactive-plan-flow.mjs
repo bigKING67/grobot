@@ -33,6 +33,7 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(String(planModeFlowPayload.plan_active_id || "").length > 0, true);
   assert.equal(planModeFlowPayload.review_failed_marker_seen, true);
   assert.equal(planModeFlowPayload.review_failed_recommends_refine, true);
+  assert.equal(planModeFlowPayload.review_failed_avoids_raw_next_label, true);
   assert.equal(planModeFlowPayload.review_failed_avoids_execute_recommendation, true);
   assert.equal(planModeFlowPayload.review_failed_validation_command_gap_seen, true);
   assert.equal(planModeFlowPayload.review_blocked_marker_seen, false);
@@ -288,6 +289,7 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(sessionCommandFallbackPayload.has_sessions_overview, true);
   assert.equal(sessionCommandFallbackPayload.session_surface_avoids_legacy_plain_namespace, true);
   assert.equal(sessionCommandFallbackPayload.session_switch_surface_is_human, true);
+  assert.equal(sessionCommandFallbackPayload.session_commands_avoid_raw_labels, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_main, true);
   assert.equal(sessionCommandFallbackPayload.has_session_title_untitled, true);
   assert.equal(sessionCommandFallbackPayload.has_status_snapshot, true);
@@ -297,6 +299,7 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(sessionCommandFallbackPayload.has_status_theme_current, true);
   assert.equal(sessionCommandFallbackPayload.has_status_layout_current, true);
   assert.equal(sessionCommandFallbackPayload.has_status_tokens_current_off, true);
+  assert.equal(sessionCommandFallbackPayload.status_commands_avoid_raw_labels, true);
   logStep("start-smoke-contract start-interactive-session-commands-fallback-flow");
 
   const sessionMenuViewModelResult = runContract(
@@ -318,14 +321,30 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(sessionMenuViewModelPayload.resume_title, "恢复会话");
   assert.equal(sessionMenuViewModelPayload.rewind_title, "回退会话");
   assert.equal(sessionMenuViewModelPayload.sessions_has_create_item, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_subtitle, "2 个会话 · 当前 Main Session");
+  assert.equal(sessionMenuViewModelPayload.sessions_layout, "compact-vertical");
+  assert.equal(Number(sessionMenuViewModelPayload.sessions_visible_option_count), 6);
+  assert.equal(sessionMenuViewModelPayload.sessions_hub_title, "会话");
+  assert.equal(sessionMenuViewModelPayload.sessions_hub_subtitle, "2 个会话 · 当前 Main Session");
+  assert.equal(sessionMenuViewModelPayload.sessions_hub_layout, "compact-vertical");
+  assert.equal(Number(sessionMenuViewModelPayload.sessions_hub_visible_option_count), 6);
+  assert.equal(Number(sessionMenuViewModelPayload.sessions_hub_item_count), 6);
   assert.equal(sessionMenuViewModelPayload.continue_has_create_item, false);
   assert.equal(sessionMenuViewModelPayload.resume_has_create_item, false);
   assert.equal(sessionMenuViewModelPayload.rewind_has_create_item, false);
   assert.equal(sessionMenuViewModelPayload.sessions_summary_visible, true);
-  assert.equal(sessionMenuViewModelPayload.switch_includes_session_key, true);
-  assert.equal(sessionMenuViewModelPayload.resume_includes_session_key, true);
-  assert.equal(sessionMenuViewModelPayload.rewind_includes_session_key, true);
-  assert.equal(sessionMenuViewModelPayload.sessions_omits_session_key, true);
+  assert.equal(sessionMenuViewModelPayload.switch_subtitle, "2 个会话 · 选择当前上下文");
+  assert.equal(sessionMenuViewModelPayload.continue_subtitle, "2 个会话 · 选择摘要来源");
+  assert.equal(sessionMenuViewModelPayload.resume_subtitle, "2 个会话 · 选择恢复来源");
+  assert.equal(sessionMenuViewModelPayload.rewind_subtitle, "2 个会话 · 选择回退来源");
+  assert.equal(sessionMenuViewModelPayload.session_descriptions_omit_full_session_key, true);
+  assert.equal(sessionMenuViewModelPayload.session_descriptions_avoid_machine_id_label, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_omits_raw_iso_timestamp, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_uses_compact_timestamp, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_has_low_noise_subtitle, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_create_label_is_reference_compact, true);
+  assert.equal(sessionMenuViewModelPayload.switch_keeps_explicit_create_label, true);
+  assert.equal(sessionMenuViewModelPayload.sessions_hub_uses_reference_labels, true);
   assert.equal(sessionMenuViewModelPayload.continue_current_skip_hint, true);
   assert.equal(sessionMenuViewModelPayload.resume_current_hint, true);
   assert.equal(sessionMenuViewModelPayload.sessions_hint_is_reference_compact, true);
@@ -338,7 +357,10 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(sessionMenuViewModelPayload.session_menu_ops_rewind_surface_avoids_legacy_marker, true);
   assert.equal(sessionMenuViewModelPayload.session_menu_ops_rewind_file_filter_prompt_is_human, true);
   assert.equal(sessionMenuViewModelPayload.session_ops_rewind_surface_avoids_legacy_marker, true);
+  assert.equal(sessionMenuViewModelPayload.session_ops_overview_surface_is_reference_style, true);
+  assert.equal(sessionMenuViewModelPayload.session_ops_overview_avoids_raw_session_table, true);
   assert.equal(sessionMenuViewModelPayload.rewind_store_summary_avoids_legacy_marker, true);
+  assert.equal(sessionMenuViewModelPayload.rewind_store_summary_hides_raw_namespace, true);
   assert.equal(Number(sessionMenuViewModelPayload.sessions_initial_index), 1);
   assert.equal(Number(sessionMenuViewModelPayload.continue_initial_index), 0);
   assert.equal(Number(sessionMenuViewModelPayload.resume_initial_index), 0);

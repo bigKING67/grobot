@@ -219,6 +219,16 @@ function pathMatchesAnyExact(path, paths) {
   return normalizeStringList(paths).some((item) => normalizedPath === normalizeRepoPath(item));
 }
 
+function pathIsDirectChildFile(path, directory) {
+  const normalizedDirectory = normalizeRepoPath(directory).replace(/\/+$/, "");
+  const normalizedPath = normalizeRepoPath(path);
+  const prefix = `${normalizedDirectory}/`;
+  if (!normalizedPath.startsWith(prefix)) {
+    return false;
+  }
+  return !normalizedPath.slice(prefix.length).includes("/");
+}
+
 function pathIsAllowlisted(path, allowlist) {
   const normalizedPath = normalizeRepoPath(path);
   for (const entry of allowlist ?? []) {
@@ -460,6 +470,37 @@ for (const rule of spec.legacyPathWarnings ?? []) {
     for (const path of matched) {
       warnings.push(`[legacy-path:${name}] ${path}: ${message}`);
     }
+  }
+}
+
+for (const rule of spec.directFileCountWarnings ?? []) {
+  const name = typeof rule.name === "string" && rule.name.trim()
+    ? rule.name.trim()
+    : "direct-files";
+  const path = typeof rule.path === "string" ? normalizeRepoPath(rule.path) : "";
+  if (!path) {
+    warnings.push(`[direct-files:${name}] missing path`);
+    continue;
+  }
+  const extensions = normalizeStringList(rule.extensions);
+  const maxFiles = Number(rule.maxFiles ?? NaN);
+  const message = typeof rule.message === "string" && rule.message.trim()
+    ? rule.message.trim()
+    : "direct file count should not grow";
+  const matched = sourceCandidateFiles.filter((candidate) => {
+    if (!pathIsDirectChildFile(candidate, path)) {
+      return false;
+    }
+    if (extensions.length > 0 && !fileMatchesExtensions(candidate, extensions)) {
+      return false;
+    }
+    return existsSync(resolve(repoRoot, candidate));
+  });
+  notices.push(`[direct-files:${name}] files=${matched.length} limit=${maxFiles} path=${path}`);
+  if (Number.isFinite(maxFiles) && matched.length > maxFiles) {
+    warnings.push(
+      `[direct-files:${name}] ${matched.length} files exceed limit=${maxFiles}: ${message}`
+    );
   }
 }
 

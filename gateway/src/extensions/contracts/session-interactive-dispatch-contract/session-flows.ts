@@ -228,18 +228,27 @@ export async function runSessionDispatchFlows() {
     resume_find_multiple_tty_includes_quick_pick: resumeFindMultipleTty.stdout.includes(
       "/resume session-legacy",
     ),
-    resume_find_multiple_tty_includes_title_preview: resumeFindMultipleTty.stdout.includes(
-      "| 标题=",
-    ),
-    resume_find_multiple_tty_includes_summary_preview: resumeFindMultipleTty.stdout.includes(
-      "| 摘要=",
-    ),
+    resume_find_multiple_tty_includes_title_preview:
+      resumeFindMultipleTty.stdout.includes("Legacy Session")
+      && resumeFindMultipleTty.stdout.includes("Archive Session")
+      && !resumeFindMultipleTty.stdout.includes("⎿  标题")
+      && !resumeFindMultipleTty.stdout.includes("| 标题="),
+    resume_find_multiple_tty_includes_summary_preview:
+      resumeFindMultipleTty.stdout.includes("⎿  重点")
+      && !resumeFindMultipleTty.stdout.includes("⎿  摘要")
+      && !resumeFindMultipleTty.stdout.includes("| 摘要="),
+    resume_find_multiple_tty_uses_compact_timestamp:
+      resumeFindMultipleTty.stdout.includes("更新 2026-04-19 23:59")
+      && !resumeFindMultipleTty.stdout.includes("2026-04-19T23:59:00.000Z"),
     resume_find_multiple_overflow_tty_includes_overflow_line: resumeFindMultipleOverflowTty.stdout.includes(
       "... 还有 1 项",
     ),
-    resume_find_multiple_overflow_tty_includes_quick_pick_header: resumeFindMultipleOverflowTty.stdout.includes(
-      "快速选择:",
-    ),
+    resume_find_multiple_overflow_tty_includes_quick_pick_header:
+      resumeFindMultipleOverflowTty.stdout.includes("快速选择")
+      && !resumeFindMultipleOverflowTty.stdout.includes("快速选择:"),
+    resume_find_multiple_tty_uses_reference_detail_rows:
+      resumeFindMultipleTty.stdout.includes("  ⎿  ")
+      && !resumeFindMultipleTty.stdout.includes(" | "),
     resume_surface_avoids_legacy_marker:
       !resumeFindActiveTty.stdout.includes("[session]")
       && !resumeFindMultipleTty.stdout.includes("[session]")
@@ -257,8 +266,8 @@ export async function runSessionDispatchFlows() {
       resumeFindEmptyTty.events,
       "openSessionMenu:resume",
     ),
-    resume_find_empty_tty_usage_has_updated_at: resumeFindEmptyTty.stdout.includes(
-      "用法: /resume find <id|title|summary|updated-at>",
-    ),
+    resume_find_empty_tty_usage_has_updated_at:
+      resumeFindEmptyTty.stdout.includes("用法 /resume find <id|title|summary|updated-at>")
+      && !resumeFindEmptyTty.stdout.includes("用法: /resume find <id|title|summary|updated-at>"),
   };
 }

@@ -74,12 +74,12 @@ const ROOT_SLASH_PRIORITY_COMMANDS: readonly string[] = [
 const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
   {
     command: "/plan",
-    description: "进入 plan mode；已在计划中时显示当前计划状态",
+    description: "进入计划模式；已在计划中时显示当前计划状态",
     source: "builtin",
   },
   {
     command: "/plan <goal>",
-    description: "带目标进入 plan mode",
+    description: "带目标进入计划模式",
     source: "builtin",
   },
   {
@@ -117,13 +117,13 @@ function resolvePlanSuggestionStateTag(state: RunStartPlanSuggestionState | unde
   const effectiveStatus = resolved.effectiveStatus;
   const verificationLabel = resolved.verificationPending ? "验证待记录" : "验证已记录";
   if (!activeStatus && (latestStatus === "applied" || latestStatus === "apply_failed")) {
-    return `最近计划: ${humanizePlanSuggestionStatus(latestStatus)} · ${verificationLabel}`;
+    return `最近计划 ${humanizePlanSuggestionStatus(latestStatus)} · ${verificationLabel}`;
   }
   if (effectiveStatus === "applied" || effectiveStatus === "apply_failed") {
-    return `状态: ${humanizePlanSuggestionStatus(effectiveStatus)} · ${verificationLabel}`;
+    return `状态 ${humanizePlanSuggestionStatus(effectiveStatus)} · ${verificationLabel}`;
   }
   if (effectiveStatus) {
-    return `状态: ${humanizePlanSuggestionStatus(effectiveStatus)}`;
+    return `状态 ${humanizePlanSuggestionStatus(effectiveStatus)}`;
   }
   return undefined;
 }

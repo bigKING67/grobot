@@ -5,8 +5,8 @@ import {
   buildMcpInstructionStrictFailureSurface,
   buildRewindCaptureFailedSurface,
   buildRuntimeInterruptIgnoredSurface,
-} from "../../cli/start/startup-surfaces";
-import { resolveDisplayProjectPath } from "../../cli/start/banner";
+} from "../../cli/start/startup/surfaces";
+import { resolveDisplayProjectPath } from "../../cli/start/startup/banner";
 import { runStartMessageMode } from "../../cli/start/message-mode";
 
 function stripAnsi(value: string): string {
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       mcpPlain.includes("MCP 指令加载失败") &&
       !mcpPlain.includes("● MCP 指令加载失败") &&
       mcpPlain.includes("• strict 模式要求所有启用的 MCP 都有指令包。") &&
-      mcpPlain.includes("⎿  原因: missing_required_MCP_rule_packs_for_servers:_grok-search") &&
+      mcpPlain.includes("⎿  原因 missing_required_MCP_rule_packs_for_servers:_grok-search") &&
       mcpPlain.includes(
         "⎿  请补齐 .grobot/rules/mcp/<server>.md，或关闭 mcp.instructions.strict。",
       ),
@@ -113,19 +113,19 @@ async function main(): Promise<void> {
       schedulerTickPlain.includes("经验任务调度失败") &&
       !schedulerTickPlain.includes("● 经验任务调度失败") &&
       schedulerTickPlain.includes("• 后台任务本轮已跳过，不影响当前输入。") &&
-      schedulerTickPlain.includes("⎿  原因: Error:_failed_to_parse_schedule_window"),
+      schedulerTickPlain.includes("⎿  原因 Error:_failed_to_parse_schedule_window"),
     scheduler_task_failed_is_human_surface:
       schedulerTaskPlain.includes("经验任务执行失败") &&
       !schedulerTaskPlain.includes("● 经验任务执行失败") &&
-      schedulerTaskPlain.includes("• 任务: weekly-summary") &&
+      schedulerTaskPlain.includes("• 任务 weekly-summary") &&
       schedulerTaskPlain.includes("⎿  本轮调度已记录失败，不影响继续输入。") &&
-      schedulerTaskPlain.includes("⎿  原因: Error:_model_route_unavailable"),
+      schedulerTaskPlain.includes("⎿  原因 Error:_model_route_unavailable"),
     memory_maintenance_failed_is_human_surface:
       memoryMaintenancePlain.includes("记忆维护失败") &&
       !memoryMaintenancePlain.includes("● 记忆维护失败") &&
-      memoryMaintenancePlain.includes("• 阶段: post_turn") &&
+      memoryMaintenancePlain.includes("• 阶段 post_turn") &&
       memoryMaintenancePlain.includes("⎿  本轮对话会继续，后台记忆清理将在后续回合重试。") &&
-      memoryMaintenancePlain.includes("⎿  原因: Error:_decay_index_locked"),
+      memoryMaintenancePlain.includes("⎿  原因 Error:_decay_index_locked"),
     runtime_interrupt_ignored_is_human_surface:
       runtimeInterruptIgnoredPlain.includes("中断请求未生效") &&
       !runtimeInterruptIgnoredPlain.includes("● 中断请求未生效") &&
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
       !stripAnsi(rewindCaptureFailedSurface).includes("● 检查点保存失败") &&
       stripAnsi(rewindCaptureFailedSurface).includes("• 本轮对话已继续。") &&
       stripAnsi(rewindCaptureFailedSurface).includes("⎿  这一步无法用于 /rewind 回退。") &&
-      stripAnsi(rewindCaptureFailedSurface).includes("⎿  原因: Error:_checkpoint_store_unavailable"),
+      stripAnsi(rewindCaptureFailedSurface).includes("⎿  原因 Error:_checkpoint_store_unavailable"),
     surfaces_avoid_legacy_machine_markers:
       !combined.includes("[governance:mcp-instruction]") &&
       !combined.includes("[experience-scheduler]") &&

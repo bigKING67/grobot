@@ -7,7 +7,7 @@ import type {
   StartScreenLine,
   StartScreenTitleSegment,
   StartScreenViewModel,
-} from "../screens/startup-screen";
+} from "../components/startup/contract";
 import {
   measureDisplayWidth,
   padToDisplayWidth,
@@ -142,17 +142,17 @@ function buildFeedColumn(viewModel: StartScreenViewModel): StartupColumn | undef
 }
 
 function resolveColumns(options: RenderStartScreenOptions): number {
-  const stdout = process.stdout as unknown as {
-    isTTY?: boolean;
-    columns?: number;
-  };
   const stdoutIsTTY = typeof options.stdoutIsTTY === "boolean"
     ? options.stdoutIsTTY
-    : Boolean(stdout.isTTY);
-  if (!stdoutIsTTY || typeof stdout.columns !== "number" || !Number.isFinite(stdout.columns)) {
+    : false;
+  if (
+    !stdoutIsTTY
+    || typeof options.terminalColumns !== "number"
+    || !Number.isFinite(options.terminalColumns)
+  ) {
     return 110;
   }
-  return Math.max(72, Math.floor(stdout.columns));
+  return Math.max(72, Math.floor(options.terminalColumns));
 }
 
 function alignText(raw: string, width: number, align: StartScreenLine["align"]): string {
@@ -191,6 +191,35 @@ function resolveTitleSegments(viewModel: StartScreenViewModel): StartScreenTitle
 
 function titleWidth(segments: StartScreenTitleSegment[]): number {
   return segments.reduce((width, segment) => width + measureDisplayWidth(segment.text), 0);
+}
+
+function resolveTwoColumnWidths(input: {
+  bodyWidth: number;
+  identityWidth: number;
+  feedWidth: number;
+}): { identityWidth: number; feedWidth: number } {
+  const available = Math.max(2, input.bodyWidth - 3);
+  if (input.identityWidth + input.feedWidth <= available) {
+    return {
+      identityWidth: input.identityWidth,
+      feedWidth: input.feedWidth,
+    };
+  }
+  const minIdentityWidth = Math.min(input.identityWidth, 34);
+  const minFeedWidth = Math.min(input.feedWidth, 26);
+  let feedWidth = Math.min(
+    input.feedWidth,
+    Math.max(minFeedWidth, Math.floor(available * 0.42)),
+  );
+  let identityWidth = Math.min(input.identityWidth, available - feedWidth);
+  if (identityWidth < minIdentityWidth) {
+    identityWidth = minIdentityWidth;
+    feedWidth = Math.min(input.feedWidth, Math.max(1, available - identityWidth));
+  }
+  return {
+    identityWidth: Math.max(1, identityWidth),
+    feedWidth: Math.max(1, feedWidth),
+  };
 }
 
 function renderTitle(segments: StartScreenTitleSegment[], maxWidth: number): React.ReactElement[] {
@@ -254,14 +283,30 @@ function StartupScreen({
 }): React.ReactElement {
   const identity = buildIdentityColumn(viewModel);
   const feed = buildFeedColumn(viewModel);
-  const contentBudget = clamp(columns - 8, 72, 116);
+  const horizontalPadding = 2;
+  const contentBudget = clamp(columns - 8 - (horizontalPadding * 2), 56, 116);
   const useTwoColumns = Boolean(feed) && columns >= 96;
   const feedWidth = feed?.width ?? 0;
   const bodyWidth = useTwoColumns
     ? Math.min(contentBudget, identity.width + 3 + feedWidth)
     : Math.min(contentBudget, Math.max(identity.width, feedWidth, 56));
   const segments = resolveTitleSegments(viewModel);
-  const topFill = Math.max(1, bodyWidth - titleWidth(segments) - 1);
+  const surfaceWidth = bodyWidth + (horizontalPadding * 2);
+  const renderedTitleWidth = Math.min(
+    titleWidth(segments),
+    Math.max(1, surfaceWidth - 2),
+  );
+  const topFill = Math.max(1, surfaceWidth - renderedTitleWidth - 1);
+  const columnWidths = useTwoColumns && feed
+    ? resolveTwoColumnWidths({
+      bodyWidth,
+      identityWidth: identity.width,
+      feedWidth,
+    })
+    : {
+      identityWidth: bodyWidth,
+      feedWidth: bodyWidth,
+    };
   const lineCount = useTwoColumns && feed
     ? Math.max(identity.lines.length, feed.lines.length)
     : identity.lines.length + (feed ? 1 + feed.lines.length : 0);
@@ -270,9 +315,9 @@ function StartupScreen({
     if (useTwoColumns && feed) {
       rows.push(
         <Box key={index} flexDirection="row" gap={1}>
-          {renderScreenLine(identity.lines[index] ?? line(""), identity.width)}
+          {renderScreenLine(identity.lines[index] ?? line(""), columnWidths.identityWidth)}
           <Text tone="brand">│</Text>
-          {renderScreenLine(feed.lines[index] ?? line(""), feedWidth)}
+          {renderScreenLine(feed.lines[index] ?? line(""), columnWidths.feedWidth)}
         </Box>,
       );
     } else {
@@ -286,18 +331,12 @@ function StartupScreen({
     <Box flexDirection="column">
       {viewModel.hero?.brandLabel ? <Text tone="accent">{viewModel.hero.brandLabel}</Text> : null}
       <Box flexDirection="row">
-        <Text tone="brand">╭ </Text>
-        {renderTitle(segments, bodyWidth)}
-        <Text tone="brand"> {"─".repeat(topFill)}╮</Text>
+        {renderTitle(segments, renderedTitleWidth)}
+        <Text tone="brand"> {"─".repeat(topFill)}</Text>
       </Box>
-      {rows.map((row, index) => (
-        <Box key={`body-${index}`} flexDirection="row">
-          <Text tone="brand">│ </Text>
-          {row}
-          <Text tone="brand"> │</Text>
-        </Box>
-      ))}
-      <Text tone="brand">╰{"─".repeat(bodyWidth + 2)}╯</Text>
+      <Box flexDirection="column" paddingX={horizontalPadding}>
+        {rows}
+      </Box>
       {viewModel.commandHint.trim() ? (
         <Box paddingTop={1}>
           <Text tone="muted">{viewModel.commandHint.trim()}</Text>

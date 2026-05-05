@@ -1,5 +1,5 @@
 import { normalizeGaSessionStateSnapshot, type GaSessionStateSnapshot } from "../../services/ga-mechanism-runtime";
-import { compactSingleLine } from "../session-history";
+import { compactSingleLine } from "../session/history";
 import {
   normalizePlanMeta,
   normalizeProviderRuntimeStates,

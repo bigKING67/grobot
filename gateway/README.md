@@ -6,13 +6,14 @@ TypeScript gateway skeleton for Grobot.
 
 ## Architecture Positioning
 
-Gateway follows a `4 execution layers + 1 governance plane` structure:
+Gateway follows a `4 execution layers + 1 product interaction layer + 1 governance plane` structure:
 
 1. `models` (`gateway/src/models`): canonical data shapes and session/context modeling.
 2. `tools` (`gateway/src/tools`): runtime/tool adapters and persistence-side executors.
 3. `extensions` (`gateway/src/extensions`): cross-boundary bridge/contracts and external integration entrypoints.
 4. `orchestration` (`gateway/src/orchestration`): command entrypoints and runtime orchestration flow.
-5. `governance` (`gateway/src/governance`): evaluation/testing/auto-optimization loop (policy gates, regression checks, report generation).
+5. `cli` (`gateway/src/cli`): product CLI/TUI interaction surface, command parsing, status/start flows, and terminal rendering owners.
+6. `governance` (`gateway/src/governance`): evaluation/testing/auto-optimization loop (policy gates, regression checks, report generation).
 
 Governance plane is intentionally separated from the request hot path. It drives quality control and iterative optimization, not online turn execution.
 
@@ -24,6 +25,8 @@ Governance plane is intentionally separated from the request hot path. It drives
 2. 边界约束
    - `gateway/src/tools/*` 以适配器与状态管理为主；工具核心执行逻辑归 `runtime/src/tools/*`。
    - `gateway/src/orchestration/*` 负责 CLI/serve/start 流程组织；模型与工具执行细节不下沉到此层。
+   - `gateway/src/cli/*` 是一等产品交互层；`start/*` 负责交互流程编排，`tui/components/*` / `tui/react/*` 负责终端可视表面所有权。
+   - `gateway/src/cli/start/*` 按 domain 收紧：`startup/` 负责启动会话选择与启动表面，`session/` 负责会话菜单/历史/选项/store，`status/` 负责 start 内状态展示适配，`plan-mode/` 与 `turn/` 继续保留各自执行流。
    - `gateway/src/governance/*` 与 `gateway/evals/*` 共同组成治理平面，不与在线请求链路混写。
 3. 新增模块流程
    - 先确定层边界，再在对应层目录新增能力文件；避免跨层“就近塞代码”。

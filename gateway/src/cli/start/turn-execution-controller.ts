@@ -4,7 +4,7 @@ import type { RunStartRuntimeState } from "./runtime-state";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
 import type { RunStartWire } from "./wire";
 import type { RuntimeInterruptController } from "./runtime-interrupt-controller";
-import { buildRewindCaptureFailedSurface } from "./startup-surfaces";
+import { buildRewindCaptureFailedSurface } from "./startup/surfaces";
 
 export interface TurnExecutionOptions {
   attachments?: RuntimeAttachment[];
@@ -32,6 +32,13 @@ export interface TurnExecutionController {
     interactiveMode: boolean,
     options?: TurnExecutionOptions,
   ): Promise<number>;
+}
+
+function formatFallbackAssistantTurnSummary(code: number): string {
+  if (code === 0) {
+    return "回合已完成。";
+  }
+  return `回合执行未完成，退出码 ${String(code)}。`;
 }
 
 export function createTurnExecutionController(
@@ -76,7 +83,7 @@ export function createTurnExecutionController(
             if (last?.role === "assistant") {
               return last.content;
             }
-            return `[turn] exit_code=${String(code)}`;
+            return formatFallbackAssistantTurnSummary(code);
           })();
         try {
           await input.rewindStore.commitTurnCapture({

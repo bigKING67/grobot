@@ -97,6 +97,22 @@ const pendingPlanModeFooter = renderBottomPaneFooter({
   pendingAskSummary: "Enter 打开选择 · 1-4 直选 · 自定义输入",
 });
 
+const runningWithPendingAskFooter = renderBottomPaneFooter({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.42,
+  estimatedTokens: 2200,
+  targetTokenLimit: 5120,
+  sessionId: "019d8b75-8bdf-78e2-a056-1f98a38774bd",
+  sessionTopic: "running pending ask",
+  terminalColumns: 96,
+  promptLabel: "› ",
+  activityText: "正在构建上下文",
+  running: true,
+  pendingAskCount: 2,
+  pendingAskSummary: "Enter 打开选择 · 1-2 直接回复",
+});
+
 const narrowPendingPlanModeFooter = renderBottomPaneFooter({
   model: "kimi/kimi-k2-2026-04",
   projectFolder: "grobot",
@@ -123,6 +139,22 @@ const runningFooter = renderBottomPaneFooter({
   terminalColumns: 72,
   promptLabel: "› ",
   activityText: "正在构建上下文",
+  running: true,
+});
+
+const runningQueuedFooter = renderBottomPaneFooter({
+  model: "kimi/kimi-k2-2026-04",
+  projectFolder: "grobot",
+  contextWindowUsageRatio: 0.42,
+  estimatedTokens: 2200,
+  targetTokenLimit: 5120,
+  sessionId: "019d8b75-8bdf-78e2-a056-1f98a38774bd",
+  sessionTopic: "running queued turn",
+  terminalColumns: 72,
+  promptLabel: "› ",
+  activityText: "正在构建上下文",
+  queuedInputCount: 2,
+  queuedInputPreview: "继续整理 prompt queue 可视化反馈，不要打印 raw diagnostics",
   running: true,
 });
 
@@ -211,7 +243,9 @@ const idleLines = idleFooter.split("\n");
 const pendingLines = pendingFooter.split("\n");
 const narrowPendingLines = narrowPendingFooter.split("\n");
 const pendingPlanModeLines = pendingPlanModeFooter.split("\n");
+const runningWithPendingAskLines = runningWithPendingAskFooter.split("\n");
 const runningLines = runningFooter.split("\n");
+const runningQueuedLines = runningQueuedFooter.split("\n");
 const narrowIdleLines = narrowIdleFooter.split("\n");
 const narrowRunningLines = narrowRunningFooter.split("\n");
 const narrowPendingPlanModeLines = narrowPendingPlanModeFooter.split("\n");
@@ -256,9 +290,9 @@ const payload = {
   idle_narrow_lines_within_width:
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
   plan_mode_idle_keeps_badge_when_short:
-    shortPlanModeIdleFooter.includes("plan mode"),
+    shortPlanModeIdleFooter.includes("计划模式"),
   plan_mode_idle_badge_leads_status:
-    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ plan mode"),
+    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ 计划模式"),
   plan_mode_idle_short_within_width:
     shortPlanModeIdleFooter.split("\n").every((line) => measureDisplayWidth(line) <= 48),
   pending_has_no_divider: !/^─+$/.test(pendingLines[0] ?? ""),
@@ -274,16 +308,22 @@ const payload = {
     pendingWithoutSummaryFooter.includes("需要确认 1 项 · Enter 打开选择")
     && !pendingWithoutSummaryFooter.includes("直接回复继续"),
   pending_plan_mode_keeps_badge:
-    pendingPlanModeFooter.includes("plan mode")
+    pendingPlanModeFooter.includes("计划模式")
     && pendingPlanModeFooter.includes("需要确认 3 项"),
   pending_plan_mode_keeps_status_above_ask:
-    (pendingPlanModeLines[0] ?? "").includes("plan mode")
+    (pendingPlanModeLines[0] ?? "").includes("计划模式")
     && (pendingPlanModeLines[1] ?? "").includes("需要确认 3 项"),
+  pending_preempts_running_activity:
+    !runningWithPendingAskFooter.includes("正在构建上下文")
+    && runningWithPendingAskFooter.includes("需要确认 2 项"),
+  pending_running_state_keeps_status_above_ask:
+    (runningWithPendingAskLines[0] ?? "").includes("ctx")
+    && (runningWithPendingAskLines[1] ?? "").includes("需要确认 2 项"),
   pending_plan_mode_narrow_keeps_badge:
-    narrowPendingPlanModeFooter.includes("plan mode")
+    narrowPendingPlanModeFooter.includes("计划模式")
     && narrowPendingPlanModeFooter.includes("需要确认 3 项"),
   pending_plan_mode_narrow_keeps_status_above_ask:
-    (narrowPendingPlanModeLines[0] ?? "").includes("plan mode")
+    (narrowPendingPlanModeLines[0] ?? "").includes("计划模式")
     && (narrowPendingPlanModeLines[1] ?? "").includes("需要确认 3 项"),
   pending_uses_action_hint_not_question:
     pendingFooter.includes("Enter 打开选择")
@@ -298,7 +338,8 @@ const payload = {
   pending_narrow_hides_secondary_status:
     !narrowPendingFooter.includes("kimi/") && !narrowPendingFooter.includes("019d8b75"),
   pending_omits_shift_enter_hint: !pendingFooter.includes("shift + enter for newline"),
-  pending_warning_kept: pendingFooter.includes("critical"),
+  pending_warning_kept:
+    pendingFooter.includes("接近上限") || pendingFooter.includes("已到上限"),
   pending_lines_within_width: pendingLines.every((line) => measureDisplayWidth(line) <= 64),
   pending_narrow_lines_within_width:
     narrowPendingLines.every((line) => measureDisplayWidth(line) <= 48),
@@ -307,6 +348,15 @@ const payload = {
   pending_plan_mode_narrow_lines_within_width:
     narrowPendingPlanModeLines.every((line) => measureDisplayWidth(line) <= 48),
   running_has_activity: runningFooter.includes("正在构建上下文"),
+  running_queued_input_visible:
+    runningQueuedFooter.includes("已排队 2 条")
+    && runningQueuedFooter.includes("继续整理 prompt queue"),
+  running_queued_input_is_secondary:
+    runningQueuedLines.some((line, index) =>
+      index > 0 && line.includes("已排队 2 条") && /\u001B\[90m/.test(line),
+    ),
+  running_queued_preview_truncated:
+    !runningQueuedFooter.includes("raw diagnostics"),
   running_fallback_is_localized:
     stripAnsi(runningFallbackFooter).includes("~ 正在处理")
     && !stripAnsi(runningFallbackFooter).includes("~ running"),
@@ -319,7 +369,7 @@ const payload = {
   running_narrow_hides_secondary_status:
     !narrowRunningFooter.includes("kimi/") && !narrowRunningFooter.includes("019d8b75"),
   running_plan_mode_narrow_keeps_badge:
-    narrowRunningPlanModeFooter.includes("plan mode"),
+    narrowRunningPlanModeFooter.includes("计划模式"),
   running_plan_mode_narrow_keeps_activity_first:
     (narrowRunningPlanModeLines[0] ?? "").includes("正在构建上下文"),
   running_omits_shift_enter_hint: !runningFooter.includes("shift + enter for newline"),
@@ -327,6 +377,8 @@ const payload = {
     index > 0 && (line.includes("ctx") || line.includes("019d8b75")),
   ),
   running_lines_within_width: runningLines.every((line) => measureDisplayWidth(line) <= 72),
+  running_queued_lines_within_width:
+    runningQueuedLines.every((line) => measureDisplayWidth(line) <= 72),
   running_narrow_lines_within_width:
     narrowRunningLines.every((line) => measureDisplayWidth(line) <= 48),
   running_plan_mode_narrow_lines_within_width:

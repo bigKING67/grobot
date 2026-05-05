@@ -75,6 +75,7 @@ async function main(): Promise<void> {
   const secondInvocationHandled = await runtime.tryRunUserCommand("/shipit 参数B");
   const secondInvocationPrompt = executedPrompts[1] ?? "";
   await runtime.handleManagementCommand("/commands list");
+  await runtime.handleManagementCommand("/commands show shipit");
 
   await runtime.handleManagementCommand("/commands new model 不应创建");
   const builtinCollisionCreated = existsSync(`${homeDir}/commands/model.json`);
@@ -137,15 +138,29 @@ async function main(): Promise<void> {
     command_surface_avoids_legacy_marker: !stdoutText.includes("[commands]"),
     command_created_surface_is_human:
       stdoutPlain.includes("已创建自定义命令")
-      && stdoutPlain.includes("命令: /shipit")
+      && stdoutPlain.includes("/shipit")
+      && stdoutPlain.includes("保存位置 ")
+      && stdoutPlain.includes("接下来可用 /commands set shipit <prompt> 更新模板")
       && !stdoutPlain.includes("[commands] 已创建"),
     command_disabled_surface_is_human:
       stdoutPlain.includes("自定义命令已停用")
       && stdoutPlain.includes("/shipit 当前不可调用。"),
     command_list_surface_is_human:
       stdoutPlain.includes("用户自定义命令")
-      && stdoutPlain.includes("二级动作")
-      && !stdoutPlain.includes("用户自定义命令（主入口）"),
+      && !stdoutPlain.includes("● 用户自定义命令")
+      && stdoutPlain.includes("常用入口")
+      && stdoutPlain.includes("• 命令目录 "),
+    command_details_surface_is_human:
+      stdoutPlain.includes("提示词模板")
+      && stdoutPlain.includes("保存位置 ")
+      && stdoutPlain.includes("说明 "),
+    command_surfaces_avoid_raw_labels:
+      !stdoutPlain.includes("命令:")
+      && !stdoutPlain.includes("文件:")
+      && !stdoutPlain.includes("描述:")
+      && !stdoutPlain.includes("prompt:")
+      && !stdoutPlain.includes("下一步:")
+      && !stdoutPlain.includes("使用:"),
     menu_hint_is_reference_compact:
       menuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),
     menu_hint_omits_secondary_key_chords:

@@ -176,7 +176,7 @@ async function main(): Promise<void> {
       plan_open_filter_only_open: planOpenOnly.every((item) => item.command === "/plan open"),
       plan_open_filter_has_open_first: planOpenOnly[0]?.command === "/plan open",
       plan_applied_pending_has_state_tag: planAppliedPending.some((item) =>
-        item.description.includes("最近计划: 已执行 · 验证待记录")),
+        item.description.includes("最近计划 已执行 · 验证待记录")),
       plan_applied_pending_hides_machine_state_tag: planAppliedPending.every((item) =>
         !item.description.includes("latest=")
         && !item.description.includes("status=")

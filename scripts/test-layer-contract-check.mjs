@@ -54,6 +54,56 @@ function testPackageScriptsUseStrictDefault() {
   assert.equal(scripts["check:layer-contract:warn"], "node scripts/layer-contract-check.mjs");
   assert.match(scripts.check ?? "", /npm run check:layer-contract( |$|&&)/);
   assert.doesNotMatch(scripts.check ?? "", /check:layer-contract:warn/);
+
+  const layerSpec = JSON.parse(
+    readFileSync(resolve(repoRoot, "scripts/layer-contract-spec.json"), "utf8"),
+  );
+  const gatewayCliLayer = (layerSpec.layers ?? []).find((layer) =>
+    layer?.name === "gateway-cli"
+  );
+  assert.equal(gatewayCliLayer?.path, "gateway/src/cli");
+  assert.deepEqual(
+    [...(gatewayCliLayer?.requiredDirs ?? [])].sort(),
+    [
+      "commands",
+      "gc",
+      "init",
+      "provider-probe",
+      "runtime-health",
+      "serve",
+      "services",
+      "start",
+      "status",
+      "system",
+      "tui",
+    ].sort(),
+  );
+  const gatewayCliStartLayer = (layerSpec.layers ?? []).find((layer) =>
+    layer?.name === "gateway-cli-start"
+  );
+  assert.equal(gatewayCliStartLayer?.path, "gateway/src/cli/start");
+  assert.deepEqual(
+    [...(gatewayCliStartLayer?.requiredDirs ?? [])].sort(),
+    [
+      "context",
+      "interactive-bindings",
+      "interactive-mode",
+      "plan-artifact",
+      "plan-mode",
+      "rewind-store",
+      "session",
+      "session-registry",
+      "startup",
+      "status",
+      "turn",
+      "user-commands",
+    ].sort(),
+  );
+  const startRootCountRule = (layerSpec.directFileCountWarnings ?? []).find((rule) =>
+    rule?.name === "gateway-cli-start-root"
+  );
+  assert.equal(startRootCountRule?.path, "gateway/src/cli/start");
+  assert.equal(startRootCountRule?.maxFiles, 34);
 }
 
 function testTrackedGeneratedStateTriggersWarning() {
@@ -151,6 +201,41 @@ function testLegacyPathRatchetIncludesUntrackedFiles() {
     assert.ok(
       result.payload.warnings.some((entry) =>
         String(entry).includes("2 files exceed limit=1")
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function testDirectFileCountRatchetTriggersWarningOnlyWhenRootGrows() {
+  const root = makeTempRepo();
+  try {
+    runGit(root, ["init"]);
+    write("gateway/src/cli/start/run.ts", "export {};\n", root);
+    write("gateway/src/cli/start/session/ops.ts", "export {};\n", root);
+    runGit(root, ["add", "."]);
+    const spec = baseSpec();
+    spec.layers = [];
+    spec.importPolicyWarnings = [];
+    spec.directFileCountWarnings = [
+      {
+        name: "start-root",
+        path: "gateway/src/cli/start",
+        extensions: [".ts"],
+        maxFiles: 0,
+        message: "keep root thin",
+      },
+    ];
+    const specPath = resolve(root, "spec.json");
+    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+
+    const result = runCheck({ root, specPath });
+    assert.equal(result.code, 1);
+    assert.equal(result.payload.pass, false);
+    assert.ok(
+      result.payload.warnings.some((entry) =>
+        String(entry).includes("1 files exceed limit=0")
       )
     );
   } finally {
@@ -639,6 +724,7 @@ function main() {
   testTrackedGeneratedStateTriggersWarning();
   testLegacyPathRatchetTriggersWarningOnlyWhenDebtGrows();
   testLegacyPathRatchetIncludesUntrackedFiles();
+  testDirectFileCountRatchetTriggersWarningOnlyWhenRootGrows();
   testSourceSizeAggregateRatchetFailsOnGrowth();
   testSourceSizeRatchetIncludesUntrackedFiles();
   testForbiddenTextTriggersWarningWithAllowlist();

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { compactSingleLine } from "../session-history";
-import { terminalStyle } from "../../tui/theme/terminal-style";
+import { measureDisplayWidth } from "../../tui/terminal/display-width";
+import { compactSingleLine } from "../session/history";
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
 import { trimTrailingSlashes } from "./path-utils";
 
 interface SkillDirectoryStatus {
@@ -49,18 +50,6 @@ function readSkillDirectoryStatus(path: string): SkillDirectoryStatus {
   };
 }
 
-function formatSkillDirectoryStatusLines(
-  label: string,
-  status: SkillDirectoryStatus,
-): string[] {
-  return [
-    `${label}: ${status.exists ? "可用" : "未找到"}`,
-    `  目录: ${status.path}`,
-    `  Skills: ${String(status.skillCount)}`,
-    `  无效目录: ${String(status.invalidDirectoryCount)}`,
-  ];
-}
-
 export function buildSkillsStatusSurface(input: {
   homeDir: string;
   projectRoot: string;
@@ -69,30 +58,60 @@ export function buildSkillsStatusSurface(input: {
   const globalSkillsDir = `${trimTrailingSlashes(input.homeDir)}/skills`;
   const projectStatus = readSkillDirectoryStatus(projectSkillsDir);
   const globalStatus = readSkillDirectoryStatus(globalSkillsDir);
-  return [
-    "● Skills",
-    ...formatSkillDirectoryStatusLines("项目", projectStatus).map(
-      (line) => `  ${line}`,
-    ),
-    ...formatSkillDirectoryStatusLines("全局", globalStatus).map(
-      (line) => `  ${line}`,
-    ),
-    "  提示: 使用 /skill-creator <需求> 创建或更新 skill",
-    "  提示: 使用 /commands 管理可复用本地命令模板",
-    "",
-  ].join("\n");
+  const widestLine = Math.max(
+    measureDisplayWidth(`目录 ${projectSkillsDir}`),
+    measureDisplayWidth(`目录 ${globalSkillsDir}`),
+    measureDisplayWidth(`技能 ${String(projectStatus.skillCount)} 个 · 无效目录 ${String(projectStatus.invalidDirectoryCount)} 个`),
+    measureDisplayWidth(`技能 ${String(globalStatus.skillCount)} 个 · 无效目录 ${String(globalStatus.invalidDirectoryCount)} 个`),
+  );
+  return renderInfoPanel({
+    title: "技能",
+    subtitle: "项目与全局技能目录",
+    sections: [
+      {
+        rows: [
+          {
+            title: `项目 · ${projectStatus.exists ? "可用" : "未找到"}`,
+            detailLines: [
+              `目录 ${projectStatus.path}`,
+              `技能 ${String(projectStatus.skillCount)} 个 · 无效目录 ${String(projectStatus.invalidDirectoryCount)} 个`,
+            ],
+          },
+          {
+            title: `全局 · ${globalStatus.exists ? "可用" : "未找到"}`,
+            detailLines: [
+              `目录 ${globalStatus.path}`,
+              `技能 ${String(globalStatus.skillCount)} 个 · 无效目录 ${String(globalStatus.invalidDirectoryCount)} 个`,
+            ],
+          },
+        ],
+      },
+    ],
+    footerLines: [
+      "使用 /skill-creator <需求> 创建或更新技能",
+      "使用 /commands 管理可复用本地命令模板",
+    ],
+    terminalColumns: Math.max(96, widestLine + 10),
+  });
 }
 
 export function buildSkillCreatorSurface(input: {
   title: string;
   details?: readonly string[];
 }): string {
-  const lines = [`${terminalStyle.accent("●")} ${input.title}`];
-  for (const detail of input.details ?? []) {
-    lines.push(`  ${terminalStyle.muted(detail)}`);
-  }
-  lines.push("");
-  return `${lines.join("\n")}\n`;
+  const details = (input.details ?? [])
+    .map((detail) => detail.trim())
+    .filter((detail) => detail.length > 0);
+  const [primary, ...detailLines] = details;
+  return renderInfoPanel({
+    title: input.title,
+    sections: [{
+      rows: [{
+        title: primary ?? "无更多信息",
+        detailLines,
+      }],
+    }],
+  });
 }
 
 export function buildSkillCreatorPrompt(input: {

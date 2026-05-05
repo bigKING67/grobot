@@ -75,22 +75,23 @@ export function buildBridgePlanEnteredMessage(input: {
   workDir: string;
 }): string {
   const lines = [
-    "● 已进入 plan mode",
+    "已进入计划模式",
+    "• 开始规划",
   ];
   const goal = input.goal?.trim();
   if (goal) {
-    lines.push(`  目标: ${goal}`);
+    lines.push(`  ⎿  目标 ${goal}`);
   }
   const displayPath = formatBridgePlanPath({
     workDir: input.workDir,
     planPath: input.planPath,
   });
   if (displayPath) {
-    lines.push(`  计划文件: ${displayPath}`);
+    lines.push(`  ⎿  计划文件 ${displayPath}`);
   }
   lines.push(
-    "  Grobot 正在探索并设计实现方案。",
-    "  确认计划前，plan mode 只会读取和规划。",
+    "  ⎿  Grobot 正在探索并设计实现方案。",
+    "  ⎿  确认计划前，计划模式只会读取和规划。",
     "",
     "直接输入补充内容继续完善，或发送 /plan open 查看计划。",
     `确认后回复“${PLAN_EXECUTION_REPLY}”即可执行。`,
@@ -111,70 +112,68 @@ export function buildBridgePlanStatusMessage(input: {
   if (plan.mode !== "plan_only") {
     if (!plan.latest_plan_status && !plan.latest_failure_event) {
       return [
-        "● 当前没有活跃计划",
-        "  使用 /plan <goal> 开始规划。",
-        "",
-        `下一步: ${nextAction.action}`,
+        "当前没有活跃计划",
+        "• 使用 /plan <goal> 开始规划。",
+        `  ⎿  接下来 ${nextAction.action}`,
       ].join("\n");
     }
-    lines.push("● 最近计划状态");
-    lines.push(`  状态: ${humanizeBridgePlanStatus(plan.latest_plan_status)}`);
+    lines.push("最近计划状态");
+    lines.push(`• 状态 ${humanizeBridgePlanStatus(plan.latest_plan_status)}`);
     const latestFailure = humanizeBridgePlanFailure(plan.latest_failure_event);
     if (latestFailure) {
-      lines.push(`  最近失败: ${latestFailure}`);
+      lines.push(`  ⎿  最近失败 ${latestFailure}`);
     }
     if (plan.latest_verification_status) {
-      lines.push(`  验证: ${humanizeBridgeVerificationStatus(plan.latest_verification_status)}`);
+      lines.push(`  ⎿  验证 ${humanizeBridgeVerificationStatus(plan.latest_verification_status)}`);
     }
-    lines.push("", `下一步: ${nextAction.action}`);
+    lines.push(`  ⎿  接下来 ${nextAction.action}`);
     return lines.join("\n");
   }
 
-  lines.push("● 当前计划");
+  lines.push("当前计划");
   const displayPath = formatBridgePlanPath({
     workDir: input.workDir,
     planPath: plan.active_plan_path,
   });
   if (displayPath) {
-    lines.push(`  计划文件: ${displayPath}`);
+    lines.push(`• 计划文件 ${displayPath}`);
   }
   if (plan.active_plan_title) {
-    lines.push(`  标题: ${plan.active_plan_title}`);
+    lines.push(`  ⎿  标题 ${plan.active_plan_title}`);
   }
   lines.push(
-    `  状态: ${humanizeBridgePlanStatus(plan.active_plan_status)}`,
-    `  阶段: ${humanizeBridgePlanPhase(plan.active_plan_phase)}`,
+    `  ⎿  状态 ${humanizeBridgePlanStatus(plan.active_plan_status)}`,
+    `  ⎿  阶段 ${humanizeBridgePlanPhase(plan.active_plan_phase)}`,
   );
   if (typeof plan.plan_quality_score === "number") {
-    lines.push(`  计划质量: ${String(plan.plan_quality_score)}/${plan.plan_quality_grade ?? "未评级"}`);
+    lines.push(`  ⎿  计划质量 ${String(plan.plan_quality_score)}/${plan.plan_quality_grade ?? "未评级"}`);
   }
   const latestFailure = humanizeBridgePlanFailure(plan.latest_failure_event);
   if (latestFailure) {
-    lines.push(`  最近失败: ${latestFailure}`);
+    lines.push(`  ⎿  最近失败 ${latestFailure}`);
   }
   if (plan.latest_verification_status) {
-    lines.push(`  验证: ${humanizeBridgeVerificationStatus(plan.latest_verification_status)}`);
+    lines.push(`  ⎿  验证 ${humanizeBridgeVerificationStatus(plan.latest_verification_status)}`);
   }
   lines.push(
-    "",
-    `下一步: ${nextAction.action}`,
-    "直接输入补充内容继续完善，或发送 /plan open 查看计划。",
+    `  ⎿  接下来 ${nextAction.action}`,
+    `  ⎿  直接输入补充内容继续完善，或发送 /plan open 查看计划。`,
   );
   return lines.join("\n");
 }
 
 export function buildBridgePlanApplyInProgressMessage(): string {
   return [
-    "● 计划正在执行中",
-    "  请等待当前执行完成；需要停止时发送 /interrupt。",
+    "计划正在执行中",
+    "• 请等待当前执行完成；需要停止时发送 /interrupt。",
   ].join("\n");
 }
 
 export function buildBridgePlanRecoveredLockMessage(reportMessage: string): string {
   const normalizedReport = reportMessage.trim();
   const header = [
-    "● 已恢复计划执行锁",
-    "  上次执行锁已过期，已安全恢复。",
+    "已恢复计划执行锁",
+    "• 上次执行锁已过期，已安全恢复。",
   ].join("\n");
   return normalizedReport ? `${header}\n\n${normalizedReport}` : header;
 }
@@ -184,17 +183,17 @@ export function buildBridgePlanGuardDeniedMessage(input: {
   planPath?: string;
 }): string {
   const lines = [
-    "● 已补充到当前计划",
+    "已补充到当前计划",
   ];
   const displayPath = formatBridgePlanPath({
     workDir: input.workDir,
     planPath: input.planPath,
   });
   if (displayPath) {
-    lines.push(`  计划文件: ${displayPath}`);
+    lines.push(`• 计划文件 ${displayPath}`);
   }
   lines.push(
-    "  plan mode 仍在规划阶段，未执行代码。",
+    "  ⎿  计划模式仍在规划阶段，未执行代码。",
     "",
     `继续输入补充内容完善计划；确认后回复“${PLAN_EXECUTION_REPLY}”即可执行。`,
   );
@@ -203,8 +202,8 @@ export function buildBridgePlanGuardDeniedMessage(input: {
 
 export function buildBridgeUnsupportedPlanCommandMessage(): string {
   return [
-    "● 不支持这个 /plan 子命令",
-    "  可用: /plan、/plan <goal>、/plan open。",
+    "不支持这个 /plan 子命令",
+    "• 可用 /plan、/plan <goal>、/plan open。",
   ].join("\n");
 }
 

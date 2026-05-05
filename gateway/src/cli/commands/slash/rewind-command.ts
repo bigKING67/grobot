@@ -1,9 +1,9 @@
-import { resolveRewindQueryMatches } from "../../start/session-rewind-search";
+import { resolveRewindQueryMatches } from "../../start/session/rewind-search";
 import {
   type SessionInteractiveAction,
   type SessionInteractiveRewindCheckpointSummary,
 } from "../../start/session-interactive";
-import { terminalStyle } from "../../tui/theme/terminal-style";
+import { renderInfoPanel } from "../../tui/components/info-panel/render";
 import { parseRewindCommand } from "./parsers";
 import {
   buildSlashNotice,
@@ -15,26 +15,40 @@ import { type SlashCommandExecutionInput } from "./types";
 const MATCH_LIST_LIMIT = 5;
 const QUICK_PICK_HINT_LIMIT = 3;
 
+function formatRewindCreatedAt(value: string): string {
+  const normalized = value.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(normalized);
+  if (isoMatch) {
+    const [, year, month, day, hour, minute] = isoMatch;
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  }
+  return normalized.length > 0 ? normalized : "未知";
+}
+
 function formatMatchOverflow(totalCount: number, listedCount: number): string {
   if (totalCount <= listedCount) {
     return "";
   }
-  return `\n- ... 还有 ${String(totalCount - listedCount)} 项`;
-}
-
-function formatQuickPickBlock(quickPickHints: readonly string[]): string {
-  if (quickPickHints.length <= 0) {
-    return "";
-  }
-  return `\n快速选择:\n${quickPickHints.join("\n")}`;
+  return `... 还有 ${String(totalCount - listedCount)} 项`;
 }
 
 export function formatDisambiguationBlock(
   totalCount: number,
   listedCount: number,
   quickPickHints: readonly string[],
-): string {
-  return `${formatMatchOverflow(totalCount, listedCount)}${formatQuickPickBlock(quickPickHints)}`;
+): readonly string[] {
+  const lines: string[] = [];
+  const overflow = formatMatchOverflow(totalCount, listedCount);
+  if (overflow) {
+    lines.push(overflow);
+  }
+  if (quickPickHints.length > 0) {
+    lines.push(
+      "快速选择",
+      ...quickPickHints,
+    );
+  }
+  return lines;
 }
 
 function buildRewindNoMatchMessage(
@@ -43,8 +57,8 @@ function buildRewindNoMatchMessage(
   activeSessionId: string,
 ): string {
   return buildSlashNotice("没有匹配的检查点", [
-    `会话: ${activeSessionId}`,
-    `查询: ${query}`,
+    `会话 ${activeSessionId}`,
+    `查询 ${query}`,
     `使用 ${command} 打开菜单。`,
     '提示：可匹配检查点 ID、创建时间、用户文本或助手回复；紧凑查询会忽略空格、"_" 和 "-"。',
   ]);
@@ -111,9 +125,14 @@ export async function executeRewindSlashCommand(
     const rows = matches
       .slice(0, MATCH_LIST_LIMIT)
       .map((checkpoint: SessionInteractiveRewindCheckpointSummary) =>
-        `- ${checkpoint.checkpointId} | ${checkpoint.createdAt} | 文件=${String(
-          checkpoint.changedFilesCount,
-        )} | 用户=${formatSingleLinePreview(checkpoint.userText, 44)} | 助手=${formatSingleLinePreview(checkpoint.assistantText, 44)}`,
+        ({
+          title: checkpoint.checkpointId,
+          details: [
+            `${formatRewindCreatedAt(checkpoint.createdAt)} · ${String(checkpoint.changedFilesCount)} 个文件`,
+            `用户 ${formatSingleLinePreview(checkpoint.userText, 44)}`,
+            `助手 ${formatSingleLinePreview(checkpoint.assistantText, 44)}`,
+          ],
+        }),
       );
     const quickPickSuffix =
       parsed.mode && parsed.mode !== "both" ? ` ${parsed.mode}` : "";
@@ -131,15 +150,20 @@ export async function executeRewindSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "rewind",
-      [
-        `${terminalStyle.accent("●")} 找到多个匹配的检查点`,
-        `  ${terminalStyle.muted(`会话: ${activeSessionId}`)}`,
-        `  ${terminalStyle.muted(`查询: ${query}`)}`,
-        rows.join("\n"),
-        `${disambiguationBlock}`,
-        `${terminalStyle.muted(`使用 ${command} 明确选择一个。`)}`,
-        "",
-      ].join("\n"),
+      renderInfoPanel({
+        title: "找到多个匹配的检查点",
+        subtitle: `会话 ${activeSessionId} · 查询 ${query}`,
+        sections: [{
+          rows: rows.map((row) => ({
+            title: row.title,
+            detailLines: row.details,
+          })),
+        }],
+        footerLines: [
+          ...disambiguationBlock,
+          `使用 ${command} 明确选择一个。`,
+        ],
+      }),
     );
   }
   const target = matches[0];

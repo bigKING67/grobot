@@ -56,8 +56,8 @@ Public imports should use these role files directly:
    transition env parsing.
 6. `controller.ts`: `runTerminalSelectMenu()` and terminal lifecycle behavior.
 
-`gateway/src/cli/tui/screens/select-menu-screen.ts` is only a compatibility
-re-export while legacy imports are removed. Do not add new behavior there.
+The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility
+re-export has been removed. Do not recreate screen-path imports.
 `gateway/src/cli/start/tui-compat.ts` must not be used as the owner or import
 surface for select-menu code.
 
@@ -112,8 +112,8 @@ Public imports should use these role files directly:
    mutation.
 4. `controller.ts`: `runAskUserQuestionnairePanel()` and raw-mode lifecycle.
 
-`gateway/src/cli/tui/screens/ask-user-panel-screen.ts` is only a compatibility
-re-export while legacy imports are removed. Do not add new behavior there.
+The former `gateway/src/cli/tui/screens/ask-user-panel-screen.ts` compatibility
+re-export has been removed. Do not recreate screen-path imports.
 `gateway/src/cli/start/tui-compat.ts` must not be used as the owner or import
 surface for ask-user panel code.
 
@@ -127,11 +127,38 @@ screen monoliths:
 2. `components/bottom-pane/`: prompt-bottom slot footer composition for idle,
    pending ask, running activity, and shortcut overlay.
 3. `components/activity-feed/`: runtime tool activity feed rows and detail
-   rendering. The feed must stay out of conversation history.
+   rendering. `react/activity-feed.tsx` owns the visible adapter surface. Keep
+   rows terse and reference-style: one tool/action line, dim details only in
+   full mode, and no raw key/value diagnostic dumps. The feed must stay out of
+   conversation history.
 4. `components/turn-notice/`: turn interruption/open-circuit/failure notices.
+   `react/turn-notice.tsx` owns the visible adapter surface and should keep
+   notices compact, low-noise, and reference-style: one primary line plus only
+   the minimum muted details needed to continue.
+5. `components/provider-health/`: provider failover/circuit state display.
+   `react/provider-health.tsx` owns the visible adapter surface; avoid long
+   key/value log lines in `/health` output.
+6. `components/status-indicator/`: running-turn inline progress indicator.
+   Keep spinner, elapsed time, token/thinking suffix, and stall logic here.
+7. `components/help/`: `/help` command guide surface. `react/help-screen.tsx`
+   owns the visible adapter surface; keep the output low-noise and
+   reference-style with compact command rows, shortcut rows, and muted notes.
+   Do not restore the legacy document-style `交互命令/运维工具/兼容说明`
+   headers.
+8. `components/info-panel/`: passive snapshot surfaces for slash-command
+   status/read-only outputs. `react/info-panel.tsx` owns the visible adapter
+   surface; keep panels terse, low-noise, and reference-style: title,
+   optional muted subtitle, bullet rows, and muted `⎿` detail lines. Start
+   layer files may assemble the data, but they must delegate visual rendering
+   to this component instead of hand-building multiline `● 标题` documents.
+9. `components/startup/`: startup banner surface. `react/startup-screen.tsx`
+   owns the visible adapter surface; keep the banner logic and view-model
+   contracts here. Do not recreate the retired `screens/startup-screen.ts`
+   compatibility re-export.
 
-The matching files under `gateway/src/cli/tui/screens/*-screen.ts` are
-compatibility re-exports only. New imports should target `components/*`.
+The former files under `gateway/src/cli/tui/screens/*-screen.ts` are retired.
+New imports must target `components/*` or the React adapter owner under
+`react/*`.
 
 ---
 

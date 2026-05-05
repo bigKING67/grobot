@@ -8,10 +8,11 @@ export interface PromptInputTurnState {
   shortcutOverlayVisible: boolean;
 }
 
-export function createInitialPromptInputTurnState(): PromptInputTurnState {
+export function createInitialPromptInputTurnState(initialInput = ""): PromptInputTurnState {
+  const graphemes = Array.from(initialInput);
   return {
-    graphemes: [],
-    cursor: 0,
+    graphemes,
+    cursor: graphemes.length,
     historySearchInFlight: false,
     activeSlashSuggestionIndex: 0,
     lastSlashLineInput: "",

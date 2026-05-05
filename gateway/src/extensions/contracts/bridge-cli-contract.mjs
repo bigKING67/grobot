@@ -100,6 +100,7 @@ const LEGACY_PLAN_SURFACE_MARKERS = [
   "file=",
   "latest_failure=",
   "next_action=",
+  "●",
 ];
 
 function hidesLegacyPlanSurfaceMarkers(value) {
@@ -132,8 +133,8 @@ function main() {
 
     const enteredPlanId = String(entered.payload.plan.active_plan_id);
     const enteredHint = String(entered.payload.assistant_message ?? "");
-    assert.equal(enteredHint.includes("已进入 plan mode"), true);
-    assert.equal(enteredHint.includes("确认计划前，plan mode 只会读取和规划。"), true);
+    assert.equal(enteredHint.includes("已进入计划模式"), true);
+    assert.equal(enteredHint.includes("确认计划前，计划模式只会读取和规划。"), true);
     assert.equal(enteredHint.includes("补充内容继续完善"), true);
     assert.equal(enteredHint.includes("/plan open"), true);
     assert.equal(enteredHint.includes("Implement the plan."), true);
@@ -154,9 +155,12 @@ function main() {
     assert.equal(openWithPlan.payload.recommended_next_action, "Implement the plan.");
     const openWithPlanMessage = String(openWithPlan.payload.assistant_message ?? "");
     assert.equal(openWithPlanMessage.includes("当前计划"), true);
-    assert.equal(openWithPlanMessage.includes("状态: 待确认"), true);
-    assert.equal(openWithPlanMessage.includes("阶段: 待确认"), true);
-    assert.equal(openWithPlanMessage.includes("下一步: Implement the plan."), true);
+    assert.equal(openWithPlanMessage.includes("状态 待确认"), true);
+    assert.equal(openWithPlanMessage.includes("阶段 待确认"), true);
+    assert.equal(openWithPlanMessage.includes("接下来 Implement the plan."), true);
+    assert.equal(openWithPlanMessage.includes("状态:"), false);
+    assert.equal(openWithPlanMessage.includes("阶段:"), false);
+    assert.equal(openWithPlanMessage.includes("下一步:"), false);
     assert.equal(hidesLegacyPlanSurfaceMarkers(openWithPlanMessage), true);
 
     const guarded = runBridgeTurn(repoRoot, workDir, "append note in bridge plan mode");
@@ -184,8 +188,8 @@ function main() {
         && enteredHint.includes("/plan open")
         && enteredHint.includes("Implement the plan."),
       entered_hint_is_human_surface:
-        enteredHint.includes("已进入 plan mode")
-        && enteredHint.includes("确认计划前，plan mode 只会读取和规划。"),
+        enteredHint.includes("已进入计划模式")
+        && enteredHint.includes("确认计划前，计划模式只会读取和规划。"),
       entered_hint_hides_machine_fields: hidesLegacyPlanSurfaceMarkers(enteredHint),
       open_with_plan_keeps_active_plan: openWithPlan.payload?.plan?.active_plan_id === enteredPlanId,
       open_with_plan_recommended_next_action:
@@ -196,9 +200,10 @@ function main() {
       open_with_plan_stored_status: openWithPlan.payload?.plan?.active_plan_stored_status ?? null,
       open_with_plan_assistant_message_human:
         openWithPlanMessage.includes("当前计划")
-        && openWithPlanMessage.includes("状态: 待确认")
-        && openWithPlanMessage.includes("阶段: 待确认")
-        && openWithPlanMessage.includes("下一步: Implement the plan."),
+        && openWithPlanMessage.includes("状态 待确认")
+        && openWithPlanMessage.includes("阶段 待确认")
+        && openWithPlanMessage.includes("接下来 Implement the plan.")
+        && !openWithPlanMessage.includes("下一步:"),
       open_with_plan_assistant_message_hides_machine_fields:
         hidesLegacyPlanSurfaceMarkers(openWithPlanMessage),
       guard_error_code: guarded.payload?.error_code ?? null,

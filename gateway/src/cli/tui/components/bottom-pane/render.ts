@@ -81,6 +81,7 @@ const SHORTCUT_OVERLAY_KEY_GAP = "  ";
 const SHORTCUT_OVERLAY_COLUMN_GAP = "  ";
 const SHORTCUT_OVERLAY_FALLBACK_COLUMN_WIDTH = 27;
 const PENDING_ASK_DEFAULT_ACTION_HINT = "Enter 打开选择";
+const QUEUED_INPUT_PREVIEW_MAX_WIDTH = 24;
 
 function resolveTerminalColumns(columns: number | undefined): number {
   if (typeof columns !== "number" || !Number.isFinite(columns)) {
@@ -95,12 +96,18 @@ function resolvePendingAskCount(input: BottomPanePromptInput): number {
     : 0;
 }
 
+function resolveQueuedInputCount(input: BottomPanePromptInput): number {
+  return typeof input.queuedInputCount === "number" && Number.isFinite(input.queuedInputCount)
+    ? Math.max(0, Math.floor(input.queuedInputCount))
+    : 0;
+}
+
 function resolveBottomPaneFooterMode(input: BottomPanePromptInput): BottomPaneFooterMode {
-  if (input.running) {
-    return "running";
-  }
   if (resolvePendingAskCount(input) > 0) {
     return "pending";
+  }
+  if (input.running) {
+    return "running";
   }
   return "idle";
 }
@@ -113,6 +120,23 @@ function buildPendingAskLine(input: BottomPanePromptInput): string | undefined {
   const summary = compactSpaces(input.pendingAskSummary ?? "");
   const actionHint = resolvePendingAskActionHint(summary);
   const baseLine = `需要确认 ${String(pendingAskCount)} 项 · ${actionHint}`;
+  const terminalColumns = resolveTerminalColumns(input.terminalColumns);
+  if (terminalColumns > 0) {
+    return truncateDisplayWidth(baseLine, terminalColumns);
+  }
+  return baseLine;
+}
+
+function buildQueuedInputLine(input: BottomPanePromptInput): string | undefined {
+  const queuedInputCount = resolveQueuedInputCount(input);
+  if (queuedInputCount <= 0) {
+    return undefined;
+  }
+  const preview = compactSpaces(input.queuedInputPreview ?? "");
+  const previewSuffix = preview.length > 0
+    ? ` · ${truncateDisplayWidth(preview, QUEUED_INPUT_PREVIEW_MAX_WIDTH)}`
+    : "";
+  const baseLine = `已排队 ${String(queuedInputCount)} 条${previewSuffix}`;
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   if (terminalColumns > 0) {
     return truncateDisplayWidth(baseLine, terminalColumns);
@@ -370,6 +394,7 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
   const parts = resolveStatusLinePromptParts(input);
   const mode = resolveBottomPaneFooterMode(input);
   const pendingAskLine = buildPendingAskLine(input);
+  const queuedInputLine = buildQueuedInputLine(input);
   const inputHintLine = buildInputHintLine({
     statusLine: parts.statusLine,
   });
@@ -390,6 +415,7 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
     if (renderSecondaryStatus) {
       pushLine(BOTTOM_PANE_STYLE.dimLine(parts.statusLine));
     }
+    pushLine(queuedInputLine ? BOTTOM_PANE_STYLE.dimLine(queuedInputLine) : undefined);
     pushLine(pendingAskLine);
     pushLine(parts.warningLine);
   } else if (mode === "pending") {

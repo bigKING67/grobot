@@ -1,5 +1,5 @@
 import { extractLatestProposedPlanBlock } from "../plan-artifact";
-import type { ChatHistoryMessage } from "../session-history";
+import type { ChatHistoryMessage } from "../session/history";
 
 export interface AssistantProposedPlanCandidate {
   content: string;

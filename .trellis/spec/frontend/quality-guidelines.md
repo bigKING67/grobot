@@ -61,7 +61,7 @@ Frontend quality in `grobot` means:
 ## Examples
 
 1. `gateway/src/cli/start/interactive-handler.ts`
-2. `gateway/src/cli/start/session-menu-ops.ts`
+2. `gateway/src/cli/start/session/menu-ops.ts`
 3. `gateway/src/cli/tui/components/select-menu/controller.ts`
 4. `gateway/src/cli/services/session-store.ts`
 5. `gateway/src/tools/ask-user/runtime.ts`

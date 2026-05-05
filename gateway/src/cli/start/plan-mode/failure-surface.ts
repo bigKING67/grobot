@@ -5,8 +5,8 @@ import type {
 import type { RunStartPlanTurnOptions } from "./contract";
 import { PLAN_QUALITY_GUARD_BLOCKED_CODE } from "./constants";
 import { isEnvTruthy } from "./env";
+import { renderPlanSurface } from "./info-surface";
 import { buildPlanSavedToHint } from "./plan-preview";
-import { terminalStyle } from "../../tui/theme/terminal-style";
 
 export interface PlanTurnDiagnosticStderr {
   writeStderr(message: string): void;
@@ -79,13 +79,38 @@ function formatCompactPlanFailureReason(input: {
 }): string {
   const providerName = input.failureDecision.providerName?.trim();
   const errorClass = input.failureDecision.errorClass?.trim();
+  const errorLabel = errorClass ? `（${formatCompactErrorClass(errorClass)}）` : "";
   if (input.failureDecision.reason === "provider_runtime_failure" && providerName) {
-    return `Provider 不可用: ${providerName}${errorClass ? ` (${errorClass})` : ""}。`;
+    return `通道 ${providerName} 不可用${errorLabel}。`;
   }
   if (providerName) {
-    return `运行时在 ${providerName} 失败${errorClass ? ` (${errorClass})` : ""}。`;
+    return `运行时在 ${providerName} 失败${errorLabel}。`;
   }
-  return `运行时退出码 ${String(input.exitCode)}（${input.failureDecision.diagnosticCode}）。`;
+  return `运行时退出码 ${String(input.exitCode)}。`;
+}
+
+function formatCompactErrorClass(errorClass: string): string {
+  switch (errorClass) {
+    case "upstream_connect_failed":
+      return "上游连接失败";
+    case "timeout":
+      return "请求超时";
+    case "rate_limited":
+      return "请求限流";
+    default:
+      return errorClass.replace(/_/g, " ");
+  }
+}
+
+function formatCompactDiagnosticHint(context: "failure" | "review" | "quality_guard"): string {
+  switch (context) {
+    case "failure":
+      return "详细日志可查看通道、退出码和策略字段。";
+    case "review":
+      return "详细日志可查看完整评审发现。";
+    case "quality_guard":
+      return "详细日志可查看质量门禁模式、级别和来源。";
+  }
 }
 
 function buildCompactPlanFailureSurface(input: {
@@ -103,27 +128,32 @@ function buildCompactPlanFailureSurface(input: {
   });
   const stateLine = isApplying
     ? "计划仍可用。修复问题后，再回复“开始实现计划”。"
-    : '计划草稿已保留，plan mode 仍处于开启状态。直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。';
+    : '计划草稿已保留，计划模式仍处于开启状态。直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。';
   const nextLine = input.failureDecision.reason === "provider_runtime_failure"
-    ? "下一步: 修复 provider 配置或切换到可用模型后重试。"
-    : "下一步: 先定位运行时失败，再重试计划步骤。";
-  const lines = [
-    `${terminalStyle.planMode("●")} ${title}`,
-  ];
+    ? "接下来 修复模型通道配置，或切换到可用模型后重试。"
+    : "接下来 先定位运行时失败，再重试计划步骤。";
+  const detailLines: string[] = [];
   if (savedToHint) {
-    lines.push(`  ${terminalStyle.muted(savedToHint)}`);
+    detailLines.push(savedToHint);
   }
-  lines.push(
-    `  原因: ${formatCompactPlanFailureReason({
+  detailLines.push(
+    `原因 ${formatCompactPlanFailureReason({
       exitCode: input.exitCode,
       failureDecision: input.failureDecision,
     })}`,
-    `  ${stateLine}`,
-    `  ${nextLine}`,
-    `  诊断: ${input.failureDecision.diagnosticCode}; 设置 GROBOT_PLAN_STATUS_VERBOSE=1 或 GROBOT_PLAN_FAILURE_VERBOSE=1 查看完整字段。`,
-    "",
+    stateLine,
+    nextLine,
+    formatCompactDiagnosticHint("failure"),
   );
-  return lines.join("\n");
+  return renderPlanSurface({
+    title,
+    rows: [
+      {
+        title: "运行时未完成",
+        detailLines,
+      },
+    ],
+  });
 }
 
 function formatCompactPlanReviewFinding(finding: {
@@ -192,19 +222,24 @@ function buildCompactPlanReviewFailureSurface(input: {
   );
   const fixes = orderedFindings
     .slice(0, 4)
-    .map((finding) => `修复: ${formatCompactPlanReviewFinding(finding)}`);
+    .map((finding) => `修复 ${formatCompactPlanReviewFinding(finding)}`);
   const omitted = input.findings.length > fixes.length
     ? [`还有 ${String(input.findings.length - fixes.length)} 条发现已在精简模式隐藏。`]
     : [];
-  return [
-    `${terminalStyle.planMode("●")} ${headline}`,
-    "  原因: 执行前计划需要更具体的范围、验证和回滚细节。",
-    ...fixes.map((line) => `  ${line}`),
-    ...omitted.map((line) => `  ${line}`),
-    "  下一步: 继续完善计划，然后再回复“开始实现计划”。",
-    `  诊断: ${input.reviewCode}; 设置 GROBOT_PLAN_STATUS_VERBOSE=1 或 GROBOT_PLAN_FAILURE_VERBOSE=1 查看完整发现。`,
-    "",
-  ].join("\n");
+  return renderPlanSurface({
+    title: headline,
+    rows: [
+      {
+        title: "执行前计划需要更具体的范围、验证和回滚细节。",
+        detailLines: [
+          ...fixes,
+          ...omitted,
+          "接下来 继续完善计划，然后再回复“开始实现计划”。",
+          formatCompactDiagnosticHint("review"),
+        ],
+      },
+    ],
+  });
 }
 
 export function formatReviewFindings(findings: readonly { code: string; section?: string; message: string }[]): string {
@@ -262,13 +297,18 @@ export function writePlanQualityGuardBlockedSurface(input: {
 }): void {
   if (input.compactFailureSurface) {
     input.writeStderr(
-      [
-        `${terminalStyle.planMode("●")} 计划质量门禁阻止执行`,
-        `  原因: ${input.guardReason}`,
-        "  下一步: 继续完善计划，直到质量门禁不再阻断。",
-        `  诊断: ${PLAN_QUALITY_GUARD_BLOCKED_CODE}; 设置 GROBOT_PLAN_STATUS_VERBOSE=1 或 GROBOT_PLAN_FAILURE_VERBOSE=1 查看完整字段。`,
-        "",
-      ].join("\n"),
+      renderPlanSurface({
+        title: "计划质量门禁阻止执行",
+        rows: [
+          {
+            title: `原因 ${input.guardReason}`,
+            detailLines: [
+              "接下来 继续完善计划，直到质量门禁不再阻断。",
+              formatCompactDiagnosticHint("quality_guard"),
+            ],
+          },
+        ],
+      }),
     );
     return;
   }

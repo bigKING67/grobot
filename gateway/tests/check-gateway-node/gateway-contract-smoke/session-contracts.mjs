@@ -88,6 +88,8 @@ export async function runSessionContracts() {
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_includes_quick_pick, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_includes_title_preview, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_includes_summary_preview, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_uses_compact_timestamp, true);
+  assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_uses_reference_detail_rows, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_overflow_tty_includes_overflow_line, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_overflow_tty_includes_quick_pick_header, true);
   assert.equal(sessionInteractiveDispatchPayload.resume_find_multiple_tty_opened_menu, true);
@@ -114,6 +116,8 @@ export async function runSessionContracts() {
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_dispatched, false);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_includes_quick_pick, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_includes_assistant_preview, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_uses_reference_detail_rows, true);
+  assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_tty_uses_compact_timestamp, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_surface_is_human, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_overflow_tty_includes_overflow_line, true);
   assert.equal(sessionInteractiveDispatchPayload.rewind_query_multiple_overflow_tty_includes_quick_pick_header, true);
@@ -179,6 +183,7 @@ export async function runSessionContracts() {
   assert.equal(sessionInteractiveDispatchPayload.plan_removed_subcommand_surface_is_human, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_removed_subcommand_hides_machine_output, true);
   assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_surface_is_human, true);
+  assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_avoids_raw_labels, true);
   assert.equal(sessionInteractiveDispatchPayload.blocked_plan_mode_command_avoids_legacy_marker, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_natural_execute_in_plan_mode_dispatches_apply, true);
   assert.equal(sessionInteractiveDispatchPayload.plan_natural_execute_in_plan_mode_skips_plan_turn, true);

@@ -20,7 +20,7 @@ export const MODEL_PICKER_POINTER = "❯";
 export const MODEL_PICKER_CHECK = "✓";
 export const MODEL_PICKER_DEFAULT_HINT = "Enter 确认 · Esc 返回";
 export const MODEL_PICKER_DEFAULT_SUBTITLE =
-  "切换当前会话模型；历史/自定义模型可用 /model use <id>。";
+  "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。";
 export const MENU_TWO_COLUMN_MIN_WIDTH = 64;
 export const MENU_DESCRIPTION_MIN_WIDTH = 22;
 export const MENU_DESCRIPTION_GAP = 2;
@@ -281,12 +281,11 @@ export function resolveModelPickerMarker(input: {
   };
 }
 
-export function resolveMenuColumns(): number {
-  const stdout = process.stdout as { columns?: number };
-  if (typeof stdout.columns !== "number" || !Number.isFinite(stdout.columns) || stdout.columns <= 0) {
+export function resolveMenuColumns(columns?: number): number {
+  if (typeof columns !== "number" || !Number.isFinite(columns) || columns <= 0) {
     return 80;
   }
-  return Math.max(48, Math.floor(stdout.columns));
+  return Math.max(48, Math.floor(columns));
 }
 
 export function shouldRenderMenuDescriptions(maxWidth: number): boolean {

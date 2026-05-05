@@ -1,12 +1,12 @@
 import {
   resolveStartupRewindTarget,
   type StartupRewindCheckpointSummary,
-} from "../../cli/start/session-rewind-startup";
+} from "../../cli/start/startup/session-rewind";
 import {
   resolveRewindMode,
   resolveRewindRequested,
   resolveRewindSelector,
-} from "../../cli/start/session-options";
+} from "../../cli/start/session/options";
 
 const CHECKPOINT_FIXTURE: readonly StartupRewindCheckpointSummary[] = [
   {
@@ -148,8 +148,19 @@ function run(): void {
     check(
       "rewind_multiple_query_notice_is_human_surface",
       startupRewindWarningPlain.includes("找到多个启动检查点")
-      && startupRewindWarningPlain.includes("查询: legacy"),
+      && startupRewindWarningPlain.includes("• 查询 legacy")
+      && startupRewindWarningPlain.includes("  ⎿  匹配 2 个检查点")
+      && !startupRewindWarningPlain.includes("查询:")
+      && !startupRewindWarningPlain.includes("匹配:"),
     ),
+    check(
+      "rewind_multiple_query_notice_uses_reference_detail_rows",
+      startupRewindWarningPlain.includes("  ⎿  legacy-a")
+      && startupRewindWarningPlain.includes("  ⎿  2026-04-24T09:50:00.000Z · 1 个文件")
+      && startupRewindWarningPlain.includes("  ⎿  助手 assistant alpha")
+      && !startupRewindWarningPlain.includes(" | 文件="),
+    ),
+    check("rewind_startup_notices_avoid_legacy_title_bullet", !startupRewindWarningPlain.includes("●")),
     check(
       "rewind_multiple_query_notice_no_autoselect_literal",
       !(rewindMultipleMatches.notice ?? "").includes("auto-selecting"),

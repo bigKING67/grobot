@@ -9,7 +9,7 @@ import {
   type PlanArtifactStatus,
   type PlanQualityGuardSummary,
 } from "./plan-artifact";
-import { evaluateLivePlanDecisionSnapshot } from "./plan-live-status";
+import { evaluateLivePlanDecisionSnapshot } from "./plan-mode/live-status";
 import {
   derivePlanPhaseFromStatus,
   resolvePlanStatusRecommendation,

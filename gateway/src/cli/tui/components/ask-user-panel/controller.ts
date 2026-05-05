@@ -524,6 +524,12 @@ export async function runAskUserQuestionnairePanel(
         optionCount,
         textInputMode,
         input.planMode === true,
+        view.kind === "question"
+          ? {
+            chatIndex: view.optionItems.length + 1,
+            skipIndex: input.planMode === true ? view.optionItems.length + 2 : undefined,
+          }
+          : {},
       );
       if (view.kind === "question") {
         handleQuestionAction(action, view);

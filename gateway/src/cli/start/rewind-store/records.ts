@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { normalizeHistoryMessages } from "../session-history";
+import { normalizeHistoryMessages } from "../session/history";
 import {
   REWIND_STORE_VERSION,
   type RewindCheckpointRecord,

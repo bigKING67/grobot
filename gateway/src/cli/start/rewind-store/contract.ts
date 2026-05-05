@@ -1,4 +1,4 @@
-import { type ChatHistoryMessage } from "../session-history";
+import { type ChatHistoryMessage } from "../session/history";
 
 export const REWIND_STORE_VERSION = 1;
 export const REWIND_SUMMARY_DEFAULT_LIMIT = 8;

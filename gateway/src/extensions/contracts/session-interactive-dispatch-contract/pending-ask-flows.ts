@@ -1,4 +1,4 @@
-import { includesEvent, runDispatchCase } from "./helpers";
+import { includesEvent, runDispatchCase, stripAnsi } from "./helpers";
 
 export async function runPendingAskDispatchFlows() {
   const pendingAskBlockedStatus = await runDispatchCase("/status", { pendingAskCount: 2 });
@@ -56,13 +56,16 @@ export async function runPendingAskDispatchFlows() {
       pendingAskAllowRewind.events,
       "openSessionMenu:rewind",
     ),
-    pending_ask_ask_allowed: pendingAskAllowAsk.stdout.includes("● 未知命令"),
+    pending_ask_ask_allowed:
+      stripAnsi(pendingAskAllowAsk.stdout).includes("未知命令")
+      && !stripAnsi(pendingAskAllowAsk.stdout).includes("● 未知命令"),
     pending_ask_ask_invalid_args_warned: includesEvent(
       pendingAskAllowAskInvalidArgs.events,
       "writeStdout",
     ),
     pending_ask_ask_invalid_args_dispatched:
-      pendingAskAllowAskInvalidArgs.stdout.includes("● 未知命令"),
+      stripAnsi(pendingAskAllowAskInvalidArgs.stdout).includes("未知命令")
+      && !stripAnsi(pendingAskAllowAskInvalidArgs.stdout).includes("● 未知命令"),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,
       "runTurn:继续执行快速方案",

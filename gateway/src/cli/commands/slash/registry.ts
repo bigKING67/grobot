@@ -11,6 +11,7 @@ import {
 } from "./types";
 import {
   buildSlashNotice,
+  formatUsageLine,
   isInteractiveTerminal,
   matchesInteractiveCommand,
   matchesUserCommandsManagementCommand,
@@ -37,7 +38,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       || userInput === "quit",
     execute: async () => "break",
     helpLines: [
-      "  /exit | /quit        退出交互模式",
+      "  /exit、/quit          退出交互模式",
     ],
   },
   {
@@ -97,8 +98,8 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       const parsed = parseSkillCreatorCommand(userInput);
       if (parsed.kind === "invalid") {
         handlers.writeStdout(buildSlashNotice(
-          "skill-creator 命令不可用",
-          [parsed.reason ?? "无效 skill-creator 命令"],
+          "技能创建不可用",
+          [parsed.reason ?? "技能创建命令无效"],
         ));
         return "continue";
       }
@@ -109,7 +110,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       if (!isInteractiveTerminal()) {
         handlers.writeStdout(buildSlashNotice(
           "需要提供技能需求",
-          ["用法: /skill-creator [需求]"],
+          [formatUsageLine("/skill-creator [需求]")],
         ));
         return "continue";
       }
@@ -123,7 +124,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /skill-creator       根据需求创建 skill（空输入时在 TTY 中询问）",
+      "  /skill-creator       根据需求创建技能（空输入时会询问）",
     ],
   },
   {
@@ -134,7 +135,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /health              查看 provider failover 与 circuit 状态",
+      "  /health              查看模型通道状态",
     ],
   },
   {
@@ -167,7 +168,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /memory              查看持久 memory 层状态",
+      "  /memory              查看持久记忆层状态",
     ],
   },
   {
@@ -178,7 +179,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /skills              查看已配置 skill 目录和数量",
+      "  /skills              查看已配置技能目录和数量",
     ],
   },
   {
@@ -189,7 +190,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /mcp                 查看 MCP 指令和 server 状态",
+      "  /mcp                 查看 MCP 指令和服务状态",
     ],
   },
   {
@@ -202,13 +203,13 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "legacy_subcommand" || parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "无效 model 命令"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "模型命令无效"}\n\n`);
         return "continue";
       }
       return "continue";
     },
     helpLines: [
-      "  /model               打开模型选择器（同步 config provider.model）",
+      "  /model               打开模型选择器（同步模型配置）",
     ],
   },
   {
@@ -226,7 +227,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseStatusCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "无效 status 命令"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "状态栏命令无效"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "current") {
@@ -245,7 +246,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /status              查看/调整状态栏（theme/layout/segment）",
+      "  /status              查看/调整状态栏",
     ],
   },
   {
@@ -254,7 +255,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, handlers }) => {
       const parsed = parseHistoryCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "无效 history 命令"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "历史命令无效"}\n\n`);
         return "continue";
       }
       await handlers.showHistory(parsed.query);
@@ -319,15 +320,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(buildSlashNotice("Plan", [parsed.reason]));
+        handlers.writeStdout(buildSlashNotice("计划模式", [parsed.reason]));
         return "continue";
       }
       return "continue";
     },
     helpLines: [
-      "  /plan                进入 plan mode；已在计划中时显示当前计划状态",
+      "  /plan                进入计划模式；已在计划中时显示当前计划状态",
       "  /plan open           在编辑器中打开当前计划文件（交互模式）",
-      "  /plan <goal>         带目标进入 plan mode 并运行首轮规划",
+      "  /plan <goal>         带目标进入计划模式并运行首轮规划",
     ],
   },
   {
@@ -342,7 +343,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /interrupt           中断当前运行回合（Esc: 运行中=中断，plan idle=退出 plan mode）",
+      "  /interrupt           中断当前运行回合（Esc: 运行中=中断，计划空闲=退出）",
     ],
   },
   {
@@ -376,7 +377,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseSessionMenuCommand(userInput, "/switch");
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "无效 switch 命令"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "切换会话命令无效"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -394,7 +395,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/resume"),
     execute: executeResumeSlashCommand,
     helpLines: [
-      "  /resume [query]      打开完整恢复选择器（快速查询: /resume <query> 或 /resume find <id|title|summary|updated-at>）",
+      "  /resume [query]      打开完整恢复选择器（快速查询 /resume <query> 或 /resume find <id|title|summary|updated-at>）",
     ],
   },
   {
@@ -426,7 +427,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseSessionMenuCommand(userInput, "/continue");
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "无效 continue 命令"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "继续会话命令无效"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -508,18 +509,18 @@ const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
   { command: "/rewind", description: "打开当前或选中会话的检查点回退菜单" },
   { command: "/checkpoint", description: "/rewind 的别名（打开检查点回退菜单）" },
   { command: "/commands", description: "管理用户自定义 / 命令" },
-  { command: "/skill-creator", description: "创建 skill（可直接追加需求文本）" },
+  { command: "/skill-creator", description: "创建技能（可直接追加需求文本）" },
   { command: "/history [keyword]", description: "按可选关键词查看最近历史" },
   { command: "/init", description: "创建带项目指令的 AGENTS.md" },
   { command: "/context", description: "查看当前回合上下文组装状态" },
   { command: "/memory", description: "查看持久记忆层状态" },
-  { command: "/health", description: "查看供应商 failover 与熔断状态" },
-  { command: "/skills", description: "查看已配置 skill 目录和数量" },
+  { command: "/health", description: "查看模型通道状态" },
+  { command: "/skills", description: "查看已配置技能目录和数量" },
   { command: "/mcp", description: "查看 MCP 指令和服务状态" },
   { command: "/model", description: "打开模型选择器" },
   { command: "/status", description: "查看当前状态栏配置快照" },
-  { command: "/plan", description: "进入 plan mode；已在计划中时显示计划状态" },
-  { command: "/interrupt", description: "中断运行中回合（Esc: 运行中断，plan idle 退出）" },
+  { command: "/plan", description: "进入计划模式；已在计划中时显示计划状态" },
+  { command: "/interrupt", description: "中断运行中回合（Esc: 运行中断，计划空闲退出）" },
   { command: "/handoff", description: "写入 HANDOFF.md" },
   { command: "/help", description: "显示交互帮助" },
   { command: "/exit", description: "退出交互模式" },
@@ -603,10 +604,11 @@ export async function dispatchSlashCommand(
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
       handlers.writeStdout(buildSlashNotice(
-        "plan mode 中暂不可用",
+        "计划模式中暂不可用",
         [
-          `命令: ${commandName}`,
-          "可使用: /plan、/plan open、/interrupt 或 /exit",
+          commandName,
+          "计划模式只接受计划相关操作。",
+          "可用入口 /plan、/plan open、/interrupt、/exit",
         ],
       ));
       return "continue";

@@ -1,6 +1,6 @@
 import type { SessionStoreRuntime } from "../../services/session-store";
 import type { GaMechanismRuntime } from "../../services/ga-mechanism-runtime";
-import type { StatusLineConfigInput } from "../../tui/screens/status-line-screen";
+import type { StatusLineConfigInput } from "../../tui/components/status-line/contract";
 import { runTerminalSelectMenu } from "../../tui/components/select-menu/controller";
 import type { RuntimeAttachment } from "../../../models/types";
 import type { ContextEngineConfig } from "../../../tools/context";
@@ -15,7 +15,7 @@ import type {
 import type { RunStartOutput } from "../output";
 import type { RunStartPlanMode } from "../plan-mode";
 import type { RunStartRuntimeState } from "../runtime-state";
-import type { RunStartSessionMenuOps } from "../session-menu-ops";
+import type { RunStartSessionMenuOps } from "../session/menu-ops";
 import type {
   RuntimeFailoverConfig,
   RuntimeProviderCandidate,

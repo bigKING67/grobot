@@ -287,21 +287,43 @@ export function runStatusRuntimeDescribeUnavailable(context) {
     failureReasons,
     warningReasons,
   } = parseRuntimeQualityStatus(context, jsonResult);
+  const runtimeTools = isPlainObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const schemaProjection = isPlainObject(runtimeTools?.schema_projection)
+    ? runtimeTools.schema_projection
+    : null;
+  const schemaDrift = isPlainObject(runtimeTools?.schema_projection_drift)
+    ? runtimeTools.schema_projection_drift
+    : null;
+  const suppressedArgs = isPlainObject(schemaProjection?.per_tool_suppressed_args)
+    ? schemaProjection.per_tool_suppressed_args
+    : null;
+  const suppressedArgCount = suppressedArgs
+    ? Object.values(suppressedArgs)
+        .reduce((count, value) => count + (Array.isArray(value) ? value.length : 0), 0)
+    : 0;
   return {
     ...result,
     json_exit_code: jsonResult.exit_code,
     status_json_parse_ok: Boolean(parsedStatus),
     missing_runtime_path: missingRuntimePath,
-    has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
-    has_gateway_fallback_suppressed_none: result.stdout.includes("runtime_tool_schema_suppressed_args: <none>"),
-    has_gateway_fallback_drift_args_none: result.stdout.includes("runtime_tool_schema_projection_drift_args: <none>"),
-    has_unavailable_suppressed_args: result.stdout.includes("runtime_tool_schema_suppressed_args: <unavailable"),
-    has_unavailable_describe_reason: result.stdout.includes("runtime_tools_describe_unavailable:spawn_failed"),
+    has_gateway_fallback_projection: schemaProjection?.source === "gateway.fallback",
+    has_gateway_fallback_suppressed_none: suppressedArgCount === 0,
+    has_gateway_fallback_drift_args_none:
+      Array.isArray(schemaDrift?.arg_mismatch_details)
+      && schemaDrift.arg_mismatch_details.length === 0,
+    has_unavailable_suppressed_args: result.stdout.includes("runtime_tool_schema_suppressed_args"),
+    has_unavailable_describe_reason:
+      String(runtimeToolsQuality?.runtime_describe_detail ?? "")
+        .includes("runtime_tools_describe_unavailable:spawn_failed"),
     ...runtimeQualityCommonFields(runtimeToolsQuality),
     quality_failure_has_runtime_binary_missing: failureReasons.includes("runtime_binary_missing"),
     quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
     quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
-    text_has_quality_fail: result.stdout.includes("runtime_tool_quality: status=fail"),
+    text_has_quality_fail:
+      result.stdout.includes("运行时 需要检查")
+      && !result.stdout.includes("runtime_tool_quality: status=fail"),
   };
 }
 
@@ -357,7 +379,7 @@ export function runStartRuntimeDescribeFallbackDiagnostic(context) {
     has_runtime_tools_fallback_surface:
       result.stderr.includes("运行时工具描述不可用")
       && result.stderr.includes("已使用内置工具 schema 启动。")
-      && result.stderr.includes("来源: start-default"),
+      && result.stderr.includes("来源 start-default"),
     compact_avoids_tool_surface_event: !result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
     compact_avoids_enabled_tools_source_field: !result.stderr.includes("enabled_tools_source="),
     has_describe_reason: result.stderr.includes("runtime_tools_describe_unavailable:spawn_failed"),
@@ -401,20 +423,28 @@ export function runStatusRuntimeDescribeInvalidSchemaProfiles(context) {
     failureReasons,
     warningReasons,
   } = parseRuntimeQualityStatus(context, jsonResult);
+  const runtimeTools = isPlainObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const schemaProjection = isPlainObject(runtimeTools?.schema_projection)
+    ? runtimeTools.schema_projection
+    : null;
   return {
     ...result,
     json_exit_code: jsonResult.exit_code,
     status_json_parse_ok: Boolean(parsedStatus),
     fake_runtime_path: fakeRuntimePath,
-    has_gateway_fallback_projection: result.stdout.includes("runtime_tool_schema_projection: source=gateway.fallback"),
-    has_start_default_source: result.stdout.includes("runtime_tool_enabled_tools_source: start-default"),
-    has_invalid_schema_reason: result.stdout.includes(
-      "runtime_tools_describe_invalid_schema_profiles:schema_profiles_invalid_rows:1",
-    ),
+    has_gateway_fallback_projection: schemaProjection?.source === "gateway.fallback",
+    has_start_default_source: runtimeToolsQuality?.runtime_describe_source === "start-default",
+    has_invalid_schema_reason:
+      String(runtimeToolsQuality?.runtime_describe_detail ?? "")
+        .includes("runtime_tools_describe_invalid_schema_profiles:schema_profiles_invalid_rows:1"),
     ...runtimeQualityCommonFields(runtimeToolsQuality),
     quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
     quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
-    text_has_quality_fail: result.stdout.includes("runtime_tool_quality: status=fail"),
+    text_has_quality_fail:
+      result.stdout.includes("运行时 需要检查")
+      && !result.stdout.includes("runtime_tool_quality: status=fail"),
   };
 }
 
@@ -473,7 +503,7 @@ export function runStartRuntimeDescribeInvalidSchemaProfiles(context) {
     has_runtime_tools_fallback_surface:
       result.stderr.includes("运行时工具描述不可用")
       && result.stderr.includes("已使用内置工具 schema 启动。")
-      && result.stderr.includes("来源: start-default"),
+      && result.stderr.includes("来源 start-default"),
     compact_avoids_tool_surface_event: !result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
     compact_avoids_enabled_tools_source_field: !result.stderr.includes("enabled_tools_source="),
     has_invalid_schema_reason: result.stderr.includes(

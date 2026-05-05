@@ -51,6 +51,22 @@ function isPlanApprovalExternalEditEnabled(input: TerminalSelectMenuInput): bool
   return input.variant === "plan_approval" && input.planApprovalMeta?.emptyPlan !== true;
 }
 
+function resolveStdoutColumns(): number | undefined {
+  const stdout = process.stdout as unknown as {
+    isTTY?: boolean;
+    columns?: number;
+  };
+  if (
+    stdout.isTTY
+    && typeof stdout.columns === "number"
+    && Number.isFinite(stdout.columns)
+    && stdout.columns > 0
+  ) {
+    return Math.floor(stdout.columns);
+  }
+  return undefined;
+}
+
 export {
   decodeTerminalSelectMenuInput,
   decodeTerminalSelectMenuInput as decodeMenuInput,
@@ -87,8 +103,11 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
   }
 
   const stdout = process.stdout;
+  const stdoutIsTTY = Boolean((stdout as unknown as { isTTY?: boolean }).isTTY);
   const uiRenderer = createCliUiRenderer({
     stdinIsTTY: process.stdin.isTTY,
+    stdoutIsTTY,
+    terminalColumns: resolveStdoutColumns(),
   });
   let visibleItemIndices = input.items.map((_, index) => index);
   let activeIndex = normalizeTerminalSelectMenuIndex(
